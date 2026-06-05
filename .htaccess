@@ -1,6 +1,10 @@
 RewriteEngine On
 
-# Strip-.php: serve /foo from foo.php (mirrors router.php behaviour)
+# Redirect /foo.php → /foo (remove .php extension from URL)
+RewriteCond %{REQUEST_FILENAME} -f
+RewriteRule ^(.+)\.php$ /$1 [R=301,L]
+
+# Strip-.php: serve /foo from foo.php internally
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_FILENAME}.php -f
