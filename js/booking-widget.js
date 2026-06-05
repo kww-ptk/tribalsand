@@ -1,6 +1,5 @@
-// Tribal Sand booking widget — self-contained availability calendar + request-to-book.
-// Exposes window.initBookingWidget() and window.tsLoadRoom(...) so the same calendar
-// powers both the inline widget and the booking modal. Inert unless #availCalendar exists.
+// Tribal Sand booking widget — luxury two-month calendar + request-to-book.
+// Exposes window.initBookingWidget() and window.tsLoadRoom().
 (function () {
   let slug = "", defPrice = 0, currency = "USD";
   let bound = false;
@@ -12,9 +11,11 @@
     if (!form) return;
 
     // Elements
-    const datesBtn   = document.getElementById("bkDatesBtn");
+    const ciBtn      = document.getElementById("bkCiBtn");
+    const coBtn      = document.getElementById("bkCoBtn");
+    const ciValue    = document.getElementById("bkCiValue");
+    const coValue    = document.getElementById("bkCoValue");
     const datesPop   = document.getElementById("bkDatesPop");
-    const datesValue = document.getElementById("bkDatesValue");
     const datesHint  = document.getElementById("bkDatesHint");
     const datesDone  = document.getElementById("bkDatesDone");
     const guestsBtn  = document.getElementById("bkGuestsBtn");
@@ -22,7 +23,9 @@
     const guestsValue= document.getElementById("bkGuestsValue");
     const guestsDone = document.getElementById("bkGuestsDone");
     const calGrid    = document.getElementById("bkCalGrid");
+    const calGrid2   = document.getElementById("bkCalGrid2");
     const monthLbl   = document.getElementById("bkMonthLabel");
+    const monthLbl2  = document.getElementById("bkMonthLabel2");
     const prevBtn    = document.getElementById("bkPrevMonth");
     const nextBtn    = document.getElementById("bkNextMonth");
     const ciHidden   = document.getElementById("availCheckin");
@@ -40,33 +43,41 @@
     let fullyBlocked = [];
     let viewYear, viewMonth;
     let selStart = null, selEnd = null;
-    let availSeq = 0;            // monotonic to ignore stale responses
-    let availOk = null;          // true / false / null
+    let availSeq = 0;
+    let availOk  = null;
 
     const today = new Date(); today.setHours(0, 0, 0, 0);
     viewYear  = today.getFullYear();
     viewMonth = today.getMonth();
 
+    const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+
     function ymd(d) {
-      return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+      return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0");
     }
     function parseYmd(s) { return new Date(s + "T00:00"); }
     function isBlocked(d) { return fullyBlocked.includes(ymd(d)); }
-    function isPast(d) { return d < today; }
+    function isPast(d)    { return d < today; }
 
-    // ── Calendar render ─────────────────────────────────────────
-    function renderCal() {
-      const months = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-      monthLbl.textContent = `${months[viewMonth]} ${viewYear}`;
-      const firstDay = new Date(viewYear, viewMonth, 1);
-      const lastDay  = new Date(viewYear, viewMonth + 1, 0);
-      const leadingBlanks = (firstDay.getDay() + 6) % 7; // Mon-first
+    // Right-month year/month
+    function rightMonth() {
+      return viewMonth === 11
+        ? { y: viewYear + 1, m: 0 }
+        : { y: viewYear,     m: viewMonth + 1 };
+    }
+
+    // ── Render a single month into a grid ───────────────────────
+    function renderMonth(grid, label, year, month) {
+      label.textContent = `${MONTHS[month]} ${year}`;
+      const firstDay = new Date(year, month, 1);
+      const lastDay  = new Date(year, month + 1, 0);
+      const leading  = (firstDay.getDay() + 6) % 7; // Mon-first
 
       let html = "";
-      for (let i = 0; i < leadingBlanks; i++) html += `<div class="bk-cell bk-cell--blank"></div>`;
+      for (let i = 0; i < leading; i++) html += `<div class="bk-cell bk-cell--blank"></div>`;
 
       for (let d = 1; d <= lastDay.getDate(); d++) {
-        const date = new Date(viewYear, viewMonth, d);
+        const date = new Date(year, month, d);
         const key  = ymd(date);
         let cls = "bk-cell";
 
@@ -74,25 +85,37 @@
           cls += " bk-cell--blocked";
         } else {
           if (selStart && key === ymd(selStart)) cls += " bk-cell--start";
-          else if (selEnd && key === ymd(selEnd)) cls += " bk-cell--end";
-          else if (selStart && selEnd && date > selStart && date < selEnd) cls += " bk-cell--in-range";
+          if (selEnd   && key === ymd(selEnd))   cls += " bk-cell--end";
+          if (selStart && selEnd && date > selStart && date < selEnd) cls += " bk-cell--in-range";
         }
         html += `<div class="${cls}" data-date="${key}">${d}</div>`;
       }
-      calGrid.innerHTML = html;
+      grid.innerHTML = html;
 
-      // Attach handlers
-      calGrid.querySelectorAll(".bk-cell:not(.bk-cell--blocked):not(.bk-cell--blank)").forEach(cell => {
-        cell.addEventListener("click", () => onDayClick(cell.dataset.date));
+      grid.querySelectorAll(".bk-cell:not(.bk-cell--blocked):not(.bk-cell--blank)").forEach(cell => {
+        cell.addEventListener("click",      () => onDayClick(cell.dataset.date));
         cell.addEventListener("mouseenter", () => onCellHover(cell.dataset.date));
       });
+    }
+
+    function renderCal() {
+      renderMonth(calGrid,  monthLbl,  viewYear, viewMonth);
+      const r = rightMonth();
+      if (calGrid2 && monthLbl2) renderMonth(calGrid2, monthLbl2, r.y, r.m);
+    }
+
+    // ── Hover range across both grids ───────────────────────────
+    function allCells() {
+      const cells = [...calGrid.querySelectorAll(".bk-cell[data-date]")];
+      if (calGrid2) cells.push(...calGrid2.querySelectorAll(".bk-cell[data-date]"));
+      return cells;
     }
 
     function onCellHover(dateStr) {
       if (!selStart || selEnd) return;
       const start = ymd(selStart);
-      calGrid.querySelectorAll(".bk-cell[data-date]").forEach(c => {
-        const d = c.dataset.date;
+      allCells().forEach(c => {
+        const d  = c.dataset.date;
         const lo = start <= dateStr ? start : dateStr;
         const hi = start <= dateStr ? dateStr : start;
         c.classList.toggle("bk-cell--hover-range", d > lo && d < hi);
@@ -100,53 +123,57 @@
     }
 
     function clearHoverRange() {
-      calGrid.querySelectorAll(".bk-cell--hover-range").forEach(c => c.classList.remove("bk-cell--hover-range"));
+      allCells().forEach(c => c.classList.remove("bk-cell--hover-range"));
     }
 
+    // ── Day click ───────────────────────────────────────────────
     function onDayClick(dateStr) {
       const clicked = parseYmd(dateStr);
 
       if (!selStart || (selStart && selEnd)) {
-        // Start fresh
         selStart = clicked; selEnd = null;
         setHint("Now select your check-out date", "neutral");
+        // visually indicate check-out trigger is next
+        ciBtn.setAttribute("aria-expanded", "false");
+        coBtn.setAttribute("aria-expanded", "true");
       } else if (clicked <= selStart) {
-        // Clicked earlier than current start — move start
         selStart = clicked; selEnd = null;
         setHint("Now select your check-out date", "neutral");
+        ciBtn.setAttribute("aria-expanded", "false");
+        coBtn.setAttribute("aria-expanded", "true");
       } else {
-        // Valid check-out
         selEnd = clicked;
+        ciBtn.setAttribute("aria-expanded", "false");
+        coBtn.setAttribute("aria-expanded", "false");
       }
       clearHoverRange();
       renderCal();
-      updateDatesPill();
+      updateDateFields();
       updateTotal();
 
-      // Both dates set → check live availability
       if (selStart && selEnd) checkAvailability();
     }
 
-    function setHint(text, tone /* neutral | ok | bad | loading */) {
-      datesHint.textContent = text;
+    function setHint(text, tone) {
+      datesHint.textContent  = text;
       datesHint.dataset.tone = tone || "neutral";
     }
 
+    // ── Live availability check ──────────────────────────────────
     async function checkAvailability() {
       if (!selStart || !selEnd) return;
       const ci = ymd(selStart), co = ymd(selEnd);
       setHint("Checking availability…", "loading");
       const mySeq = ++availSeq;
       try {
-        const res = await fetch(`/api/check-availability.php?room=${encodeURIComponent(slug)}&check_in=${ci}&check_out=${co}`);
+        const res  = await fetch(`/api/check-availability.php?room=${encodeURIComponent(slug)}&check_in=${ci}&check_out=${co}`);
         const data = await res.json();
-        if (mySeq !== availSeq) return; // a newer selection has fired
+        if (mySeq !== availSeq) return;
         availOk = !!data.available;
         if (data.available) {
-          const nights = data.nights || Math.round((selEnd - selStart) / 86400000);
+          const nights   = data.nights || Math.round((selEnd - selStart) / 86400000);
           const totalFmt = (data.total || 0).toLocaleString("en-US", { style: "currency", currency: data.currency || currency });
           setHint(`✓ Available — ${nights} night${nights > 1 ? "s" : ""} · ${totalFmt}`, "ok");
-          // Refresh total card with real price (may include rate overrides)
           totalLabel.textContent = `${nights} night${nights > 1 ? "s" : ""}`;
           totalPrice.textContent = totalFmt;
           totalCard.hidden = false;
@@ -160,18 +187,27 @@
       }
     }
 
-    function updateDatesPill() {
-      if (selStart && selEnd) {
-        const fmt = d => d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
-        const nights = Math.round((selEnd - selStart) / 86400000);
-        datesValue.textContent = `${fmt(selStart)} → ${fmt(selEnd)} · ${nights}n`;
-        datesValue.classList.remove("is-empty");
+    // ── Update check-in / check-out display fields ───────────────
+    function updateDateFields() {
+      const fmt = d => d.toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+
+      if (selStart) {
+        ciValue.textContent = fmt(selStart);
+        ciValue.classList.remove("is-empty");
         ciHidden.value = ymd(selStart);
+      } else {
+        ciValue.textContent = "Add date";
+        ciValue.classList.add("is-empty");
+        ciHidden.value = "";
+      }
+
+      if (selEnd) {
+        coValue.textContent = fmt(selEnd);
+        coValue.classList.remove("is-empty");
         coHidden.value = ymd(selEnd);
       } else {
-        datesValue.textContent = "Add dates";
-        datesValue.classList.add("is-empty");
-        ciHidden.value = "";
+        coValue.textContent = "Add date";
+        coValue.classList.add("is-empty");
         coHidden.value = "";
       }
     }
@@ -185,22 +221,27 @@
       totalCard.hidden = false;
     }
 
-    // ── Popover open/close logic ────────────────────────────────
+    // ── Popover open/close ──────────────────────────────────────
     function closeAllPops() {
       [datesPop, guestsPop].forEach(p => p.hidden = true);
-      datesBtn.setAttribute("aria-expanded", "false");
-      guestsBtn.setAttribute("aria-expanded", "false");
-    }
-    function togglePop(btn, pop) {
-      const open = !pop.hidden;
-      closeAllPops();
-      if (!open) {
-        pop.hidden = false;
-        btn.setAttribute("aria-expanded", "true");
-      }
+      [ciBtn, coBtn, guestsBtn].forEach(b => b.setAttribute("aria-expanded", "false"));
     }
 
-    // ── Guests stepper ───────────────────────────────────────────
+    function openDatePop(trigger) {
+      guestsPop.hidden = true;
+      guestsBtn.setAttribute("aria-expanded", "false");
+      const isOpen = !datesPop.hidden;
+      if (isOpen && trigger.getAttribute("aria-expanded") === "true") {
+        // clicking the already-active trigger closes
+        closeAllPops();
+        return;
+      }
+      [ciBtn, coBtn].forEach(b => b.setAttribute("aria-expanded", "false"));
+      datesPop.hidden = false;
+      trigger.setAttribute("aria-expanded", "true");
+    }
+
+    // ── Guests stepper ──────────────────────────────────────────
     function updateGuestsPill() {
       const a = parseInt(adultsH.value, 10);
       const c = parseInt(childrenH.value, 10);
@@ -209,7 +250,7 @@
       guestsValue.textContent = parts.join(", ");
     }
 
-    // ── Submit ───────────────────────────────────────────────────
+    // ── Form error feedback ─────────────────────────────────────
     function showError(msg) {
       feedback.hidden = false;
       feedback.textContent = msg;
@@ -217,29 +258,42 @@
     }
     function clearError() { feedback.hidden = true; feedback.textContent = ""; }
 
+    // ── Bind events (once only) ──────────────────────────────────
     if (!bound) {
-      prevBtn.addEventListener("click", () => { viewMonth--; if (viewMonth < 0) { viewMonth = 11; viewYear--; } renderCal(); });
-      nextBtn.addEventListener("click", () => { viewMonth++; if (viewMonth > 11) { viewMonth = 0; viewYear++; } renderCal(); });
+      prevBtn.addEventListener("click", () => {
+        viewMonth--; if (viewMonth < 0) { viewMonth = 11; viewYear--; } renderCal();
+      });
+      nextBtn.addEventListener("click", () => {
+        viewMonth++; if (viewMonth > 11) { viewMonth = 0; viewYear++; } renderCal();
+      });
 
-      datesBtn.addEventListener("click", e => { e.stopPropagation(); togglePop(datesBtn, datesPop); });
-      guestsBtn.addEventListener("click", e => { e.stopPropagation(); togglePop(guestsBtn, guestsPop); });
+      ciBtn.addEventListener("click", e => { e.stopPropagation(); openDatePop(ciBtn); });
+      coBtn.addEventListener("click", e => { e.stopPropagation(); openDatePop(coBtn); });
+      guestsBtn.addEventListener("click", e => {
+        e.stopPropagation();
+        const open = !guestsPop.hidden;
+        closeAllPops();
+        if (!open) { guestsPop.hidden = false; guestsBtn.setAttribute("aria-expanded", "true"); }
+      });
+
       datesDone.addEventListener("click", closeAllPops);
       guestsDone.addEventListener("click", closeAllPops);
-      // Prevent clicks inside the popovers from reaching the document-level
-      // outside-click handler. Needed because the calendar re-renders mid-click,
-      // detaching e.target so wrap.contains() returns false and the pop closes.
+
+      // Stop popover clicks reaching document handler
       datesPop.addEventListener("click",  e => e.stopPropagation());
       guestsPop.addEventListener("click", e => e.stopPropagation());
-      document.addEventListener("click", e => {
-        if (!wrap.contains(e.target)) closeAllPops();
-      });
+
+      document.addEventListener("click",   e => { if (!wrap.contains(e.target)) closeAllPops(); });
       document.addEventListener("keydown", e => { if (e.key === "Escape") closeAllPops(); });
+
+      calGrid.addEventListener("mouseleave", clearHoverRange);
+      if (calGrid2) calGrid2.addEventListener("mouseleave", clearHoverRange);
 
       guestsPop.querySelectorAll("[data-bk]").forEach(btn => {
         btn.addEventListener("click", () => {
-          const key = btn.dataset.bk;
-          const min = key === "adult" ? 1 : 0;
-          const countEl  = guestsPop.querySelector(`[data-bk-count="${key}"]`);
+          const key     = btn.dataset.bk;
+          const min     = key === "adult" ? 1 : 0;
+          const countEl = guestsPop.querySelector(`[data-bk-count="${key}"]`);
           const hiddenEl = key === "adult" ? adultsH : childrenH;
           let val = parseInt(countEl.textContent, 10) + parseInt(btn.dataset.dir, 10);
           val = Math.max(min, Math.min(20, val));
@@ -255,37 +309,37 @@
 
         if (!ciHidden.value || !coHidden.value) {
           showError("Please pick your check-in and check-out dates.");
-          togglePop(datesBtn, datesPop);
+          openDatePop(ciHidden.value ? coBtn : ciBtn);
           return;
         }
         if (availOk === false) {
           showError("Those dates aren't available. Please pick a different range.");
-          togglePop(datesBtn, datesPop);
+          openDatePop(ciBtn);
           return;
         }
 
         const originalLabel = submitLbl.textContent;
-        submitBtn.disabled = true;
+        submitBtn.disabled  = true;
         submitLbl.textContent = "Checking availability…";
 
         const data = {
-          room_slug:            slug,
-          checkin:              ciHidden.value,
-          checkout:             coHidden.value,
-          name:                 form.querySelector("[name=name]").value.trim(),
-          email:                form.querySelector("[name=email]").value.trim(),
-          phone:                form.querySelector("[name=phone]")?.value.trim() || "",
-          adults:               parseInt(adultsH.value, 10),
-          children:             parseInt(childrenH.value, 10),
-          message:              form.querySelector("[name=message]")?.value.trim() || "",
-          "h-captcha-response": form.querySelector("[name='h-captcha-response']")?.value || "",
+          room_slug:             slug,
+          checkin:               ciHidden.value,
+          checkout:              coHidden.value,
+          name:                  form.querySelector("[name=name]").value.trim(),
+          email:                 form.querySelector("[name=email]").value.trim(),
+          phone:                 form.querySelector("[name=phone]")?.value.trim() || "",
+          adults:                parseInt(adultsH.value, 10),
+          children:              parseInt(childrenH.value, 10),
+          message:               form.querySelector("[name=message]")?.value.trim() || "",
+          "h-captcha-response":  form.querySelector("[name='h-captcha-response']")?.value || "",
         };
 
         try {
           const res  = await fetch("/api/submit-enquiry.php", {
-            method: "POST",
+            method:  "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(data),
+            body:    JSON.stringify(data),
           });
           const json = await res.json();
 
@@ -312,14 +366,13 @@
           submitLbl.textContent = originalLabel;
         }
       });
-      calGrid.addEventListener("mouseleave", clearHoverRange);
     } // end if (!bound)
 
     renderCal();
-    updateDatesPill();
+    updateDateFields();
     updateGuestsPill();
 
-    // Expose a loader so the widget can be (re)pointed at a room (modal reuse).
+    // Re-point the widget at a new room (modal reuse)
     window.tsLoadRoom = function (newSlug, newPrice, newCurrency, prefill) {
       slug     = newSlug || wrap.dataset.slug || "";
       defPrice = parseFloat(newPrice != null ? newPrice : wrap.dataset.price) || 0;
@@ -327,15 +380,16 @@
       wrap.dataset.slug = slug; wrap.dataset.price = defPrice; wrap.dataset.currency = currency;
       selStart = null; selEnd = null; availOk = null; fullyBlocked = [];
       clearError();
-      updateDatesPill(); updateTotal(); renderCal();
+      updateDateFields(); updateTotal(); renderCal();
       if (slug) {
         fetch(`/api/check-availability.php?room=${encodeURIComponent(slug)}`)
-          .then(r => r.json()).then(d => { fullyBlocked = d.fully_blocked || []; renderCal(); })
+          .then(r => r.json())
+          .then(d => { fullyBlocked = d.fully_blocked || []; renderCal(); })
           .catch(() => {});
       }
       if (prefill && prefill.checkin && prefill.checkout) {
         selStart = parseYmd(prefill.checkin); selEnd = parseYmd(prefill.checkout);
-        updateDatesPill(); updateTotal(); renderCal(); checkAvailability();
+        updateDateFields(); updateTotal(); renderCal(); checkAvailability();
       }
     };
 

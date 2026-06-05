@@ -10,7 +10,7 @@ require_once __DIR__ . '/turnstile.php';
 
 $booking_slug = $booking_slug ?? '';
 $__room = $booking_slug ? fetch_room_by_slug($booking_slug) : false;
-if (!$__room) { return; } // no matching room → render nothing (page unaffected)
+if (!$__room) { return; }
 
 $room_slug  = $__room['slug'];
 $room_name  = $__room['name'];
@@ -28,20 +28,41 @@ $room_curr  = $__room['price_currency'] ?? 'USD';
     <input type="hidden" name="adults"   id="availAdults"   value="2">
     <input type="hidden" name="children" id="availChildren" value="0">
 
-    <button type="button" class="bk-pill" id="bkDatesBtn" aria-haspopup="dialog" aria-expanded="false">
-      <span class="bk-pill__label">Dates</span>
-      <span class="bk-pill__value" id="bkDatesValue">Add dates</span>
-      <svg class="bk-pill__chev" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-    </button>
+    <!-- Check-in / Check-out triggers -->
+    <div class="bk-dates-row">
+      <button type="button" class="bk-date-trigger" id="bkCiBtn" aria-haspopup="dialog" aria-expanded="false">
+        <span class="bk-date-trigger__label">Check-in</span>
+        <span class="bk-date-trigger__value is-empty" id="bkCiValue">Add date</span>
+      </button>
+      <button type="button" class="bk-date-trigger" id="bkCoBtn" aria-haspopup="dialog" aria-expanded="false">
+        <span class="bk-date-trigger__label">Check-out</span>
+        <span class="bk-date-trigger__value is-empty" id="bkCoValue">Add date</span>
+      </button>
+    </div>
+
+    <!-- Date picker popover — two months side by side -->
     <div class="bk-pop" id="bkDatesPop" role="dialog" aria-label="Select dates" hidden>
-      <div class="bk-cal">
-        <div class="bk-cal__head">
-          <button type="button" class="bk-cal__nav" id="bkPrevMonth" aria-label="Previous month">&#8249;</button>
-          <span class="bk-cal__title" id="bkMonthLabel"></span>
-          <button type="button" class="bk-cal__nav" id="bkNextMonth" aria-label="Next month">&#8250;</button>
+      <div class="bk-cal-months">
+        <!-- Left month -->
+        <div class="bk-cal bk-cal--left">
+          <div class="bk-cal__head">
+            <button type="button" class="bk-cal__nav" id="bkPrevMonth" aria-label="Previous month">&#8249;</button>
+            <span class="bk-cal__title" id="bkMonthLabel"></span>
+            <button type="button" class="bk-cal__nav bk-cal__nav--hidden" aria-hidden="true" tabindex="-1"></button>
+          </div>
+          <div class="bk-cal__dow"><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span><span>Su</span></div>
+          <div class="bk-cal__grid" id="bkCalGrid"></div>
         </div>
-        <div class="bk-cal__dow"><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span><span>Su</span></div>
-        <div class="bk-cal__grid" id="bkCalGrid"></div>
+        <!-- Right month (desktop only) -->
+        <div class="bk-cal bk-cal--right">
+          <div class="bk-cal__head">
+            <button type="button" class="bk-cal__nav bk-cal__nav--hidden" aria-hidden="true" tabindex="-1"></button>
+            <span class="bk-cal__title" id="bkMonthLabel2"></span>
+            <button type="button" class="bk-cal__nav" id="bkNextMonth" aria-label="Next month">&#8250;</button>
+          </div>
+          <div class="bk-cal__dow"><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span><span>Su</span></div>
+          <div class="bk-cal__grid" id="bkCalGrid2"></div>
+        </div>
       </div>
       <div class="bk-pop__footer">
         <span class="bk-pop__hint" id="bkDatesHint">Select your check-in date</span>
@@ -49,6 +70,7 @@ $room_curr  = $__room['price_currency'] ?? 'USD';
       </div>
     </div>
 
+    <!-- Guests -->
     <button type="button" class="bk-pill" id="bkGuestsBtn" aria-haspopup="dialog" aria-expanded="false">
       <span class="bk-pill__label">Guests</span>
       <span class="bk-pill__value" id="bkGuestsValue">2 adults</span>
@@ -71,14 +93,21 @@ $room_curr  = $__room['price_currency'] ?? 'USD';
           <button type="button" data-bk="child" data-dir="1" aria-label="Increase children">+</button>
         </div>
       </div>
-      <div class="bk-pop__footer bk-pop__footer--end"><button type="button" class="bk-pop__cta" id="bkGuestsDone">Done</button></div>
+      <div class="bk-pop__footer bk-pop__footer--end">
+        <button type="button" class="bk-pop__cta" id="bkGuestsDone">Done</button>
+      </div>
     </div>
 
+    <!-- Price summary -->
     <div class="bk-total" id="bkTotal" hidden>
-      <div class="bk-total__row"><span class="bk-total__label" id="bkTotalLabel">— nights</span><span class="bk-total__price" id="bkTotalPrice">—</span></div>
+      <div class="bk-total__row">
+        <span class="bk-total__label" id="bkTotalLabel">— nights</span>
+        <span class="bk-total__price" id="bkTotalPrice">—</span>
+      </div>
       <div class="bk-total__hint">Final price confirmed by email</div>
     </div>
 
+    <!-- Guest details -->
     <div class="bk-fields">
       <label class="bk-field"><span>Your name</span><input type="text" name="name" placeholder="Full name" required></label>
       <label class="bk-field"><span>Email</span><input type="email" name="email" placeholder="you@example.com" required></label>
@@ -87,7 +116,9 @@ $room_curr  = $__room['price_currency'] ?? 'USD';
     </div>
 
     <div class="bk-feedback" id="availFeedback" hidden></div>
-    <?php if (captcha_site_key()): ?><div class="h-captcha" data-sitekey="<?= e(captcha_site_key()) ?>"></div><?php endif; ?>
+    <?php if (captcha_site_key()): ?>
+    <div class="h-captcha" data-sitekey="<?= e(captcha_site_key()) ?>"></div>
+    <?php endif; ?>
     <button type="submit" class="bk-submit"><span class="bk-submit__label">Check availability</span></button>
     <p class="bk-hold-note">Dates are held for 24 hours pending confirmation</p>
   </form>
