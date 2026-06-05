@@ -1,8 +1,8 @@
 RewriteEngine On
 
-# Redirect /foo.php → /foo (remove .php extension from URL)
-RewriteCond %{REQUEST_FILENAME} -f
-RewriteRule ^(.+)\.php$ /$1 [R=301,L]
+# Redirect /foo.php → /foo only when browser explicitly requests .php
+RewriteCond %{THE_REQUEST} ^[A-Z]+\s/(.+)\.php[\s?] [NC]
+RewriteRule ^ /%1 [R=301,L]
 
 # Strip-.php: serve /foo from foo.php internally
 RewriteCond %{REQUEST_FILENAME} !-f
