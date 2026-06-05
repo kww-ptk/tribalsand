@@ -371,7 +371,7 @@ include __DIR__ . '/_layout.php';
   <div class="card">
     <div class="card__head"><span class="card__title">Upload Images</span></div>
     <div class="card__body">
-      <form method="POST" action="/admin/property-edit.php?id=<?= $id ?>" enctype="multipart/form-data">
+      <form method="POST" action="/admin/property-edit?id=<?= $id ?>" enctype="multipart/form-data">
         <?= csrf_field() ?>
         <div class="dropzone" id="dropzone">
           <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.4" style="color:var(--muted)"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
@@ -402,20 +402,20 @@ include __DIR__ . '/_layout.php';
           <?php endif; ?>
           <img src="<?= e(storage_url($img['filename'])) ?>" alt="<?= e($img['alt_text']) ?>">
           <div class="gallery-item__actions">
-            <form method="POST" action="/admin/property-edit.php?id=<?= $id ?>" style="display:contents">
+            <form method="POST" action="/admin/property-edit?id=<?= $id ?>" style="display:contents">
               <?= csrf_field() ?>
               <input type="hidden" name="gallery_action" value="set_hero">
               <input type="hidden" name="img_id" value="<?= e($img['id']) ?>">
               <button type="submit">★ Hero</button>
             </form>
-            <form method="POST" action="/admin/property-edit.php?id=<?= $id ?>" style="display:contents">
+            <form method="POST" action="/admin/property-edit?id=<?= $id ?>" style="display:contents">
               <?= csrf_field() ?>
               <input type="hidden" name="gallery_action" value="delete">
               <input type="hidden" name="img_id" value="<?= e($img['id']) ?>">
               <button type="submit" onclick="return confirm('Delete this image?')">✕</button>
             </form>
           </div>
-          <form method="POST" action="/admin/property-edit.php?id=<?= $id ?>" style="padding:4px 6px;background:#f9fafb;border-top:1px solid var(--border)">
+          <form method="POST" action="/admin/property-edit?id=<?= $id ?>" style="padding:4px 6px;background:#f9fafb;border-top:1px solid var(--border)">
             <?= csrf_field() ?>
             <input type="hidden" name="gallery_action" value="update_alt">
             <input type="hidden" name="img_id" value="<?= e($img['id']) ?>">
@@ -432,7 +432,7 @@ include __DIR__ . '/_layout.php';
 
 <!-- ── TAB: SEO ── -->
 <div class="tab-panel" id="tab-seo">
-<form method="POST" action="/admin/property-edit.php?id=<?= $id ?>">
+<form method="POST" action="/admin/property-edit?id=<?= $id ?>">
   <?= csrf_field() ?>
   <input type="hidden" name="action" value="save_seo">
 
@@ -473,7 +473,7 @@ include __DIR__ . '/_layout.php';
   <div class="card">
     <div class="card__head"><span class="card__title">Publish Status</span></div>
     <div class="card__body" style="padding:20px">
-      <form method="POST" action="/admin/property-edit.php?id=<?= $id ?>">
+      <form method="POST" action="/admin/property-edit?id=<?= $id ?>">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="save_publish">
         <label style="display:flex;align-items:center;gap:12px;cursor:pointer;margin-bottom:20px">
@@ -494,7 +494,7 @@ include __DIR__ . '/_layout.php';
     <div class="card__head"><span class="card__title" style="color:var(--red)">Danger Zone</span></div>
     <div class="card__body" style="padding:20px">
       <p style="font-size:13px;color:var(--muted);margin-bottom:16px">Deleting a property permanently removes it and all its images. This cannot be undone.</p>
-      <form method="POST" action="/admin/property-edit.php?id=<?= $id ?>"
+      <form method="POST" action="/admin/property-edit?id=<?= $id ?>"
             onsubmit="return confirm('Permanently delete this property and all its images? This cannot be undone.')">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="delete_property">

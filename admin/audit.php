@@ -44,7 +44,7 @@ include __DIR__ . '/_layout.php';
 </div>
 
 <!-- Filter bar -->
-<form method="GET" action="/admin/audit.php" style="margin-bottom:20px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+<form method="GET" action="/admin/audit" style="margin-bottom:20px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
   <select name="action_filter" style="height:36px;padding:0 10px;border:1px solid var(--border);border-radius:5px;font-size:13px;min-width:180px">
     <option value="">All actions</option>
     <?php foreach ($actions as $a): ?>

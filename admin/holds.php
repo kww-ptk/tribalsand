@@ -127,7 +127,7 @@ include __DIR__ . '/_layout.php';
 </div>
 
 <!-- Filters -->
-<form method="GET" action="/admin/holds.php" class="filters">
+<form method="GET" action="/admin/holds" class="filters">
   <select name="status" onchange="this.form.submit()">
     <option value="active"    <?= $status_filter === 'active'    ? 'selected' : '' ?>>Active (pending + confirmed)</option>
     <option value="pending"   <?= $status_filter === 'pending'   ? 'selected' : '' ?>>Pending only</option>

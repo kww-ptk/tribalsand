@@ -72,7 +72,7 @@ include __DIR__ . '/_layout.php';
           <td><span class="badge badge--blue"><?= e(ucfirst($tour['category'])) ?></span></td>
           <td class="text-muted"><?= e($tour['duration'] ?: '—') ?></td>
           <td>
-            <form method="POST" action="/admin/tours.php" style="display:inline">
+            <form method="POST" action="/admin/tours" style="display:inline">
               <?= csrf_field() ?>
               <input type="hidden" name="toggle_publish" value="1">
               <input type="hidden" name="tour_id" value="<?= e($tour['id']) ?>">

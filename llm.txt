@@ -3,7 +3,8 @@
 
 # Website Information
 site: https://tribalsand.com
-sitemap: https://tribalsand.com/sitemap_index.xml
+sitemap: https://tribalsand.com/sitemap.xml
+sitemap_index: https://tribalsand.com/sitemap_index.xml
 owner: TribalSand
 contact: reservations@tribalsand.com
 

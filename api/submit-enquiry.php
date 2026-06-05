@@ -25,14 +25,19 @@ if (!verify_captcha($data['h-captcha-response'] ?? '', $ip)) {
     exit(json_encode(['ok' => false, 'error' => 'Security check failed. Please try again.']));
 }
 
-// Rate limit — max 5 submissions per IP in 10 minutes
+// Rate limit — max 5 submissions per IP or email in 10 minutes
 $window = date('Y-m-d H:i:s', time() - 600);
-$count  = db_query(
+$email_raw = trim($data['email'] ?? '');
+$ip_count = db_query(
     "SELECT COUNT(*) AS cnt FROM submissions WHERE ip_address = :ip AND created_at > :window",
     [':ip' => $ip, ':window' => $window]
 )->fetch()['cnt'];
+$email_count = $email_raw ? db_query(
+    "SELECT COUNT(*) AS cnt FROM submissions WHERE guest_email = :email AND created_at > :window",
+    [':email' => strtolower($email_raw), ':window' => $window]
+)->fetch()['cnt'] : 0;
 
-if ((int)$count >= 5) {
+if ((int)$ip_count >= 5 || (int)$email_count >= 5) {
     http_response_code(429);
     exit(json_encode(['ok' => false, 'error' => 'Too many requests. Please wait a few minutes.']));
 }

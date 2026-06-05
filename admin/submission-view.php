@@ -173,7 +173,7 @@ include __DIR__ . '/_layout.php';
   <div class="card__head"><span class="card__title" style="color:var(--red)">Danger Zone</span></div>
   <div class="card__body" style="padding:20px">
     <p style="font-size:13px;color:var(--muted);margin-bottom:16px">Permanently delete this submission. Cannot be undone.</p>
-    <form method="POST" action="/admin/submission-view.php?id=<?= $id ?>"
+    <form method="POST" action="/admin/submission-view?id=<?= $id ?>"
           onsubmit="return confirm('Delete this submission permanently?')">
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="delete">

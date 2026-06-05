@@ -90,7 +90,7 @@ include __DIR__ . '/_layout.php';
           <td class="text-muted"><?= e($room['slug']) ?></td>
           <td><?= e($room['price_currency']) ?> <?= e(number_format((float)$room['price_amount'], 0)) ?> <span class="text-muted"><?= e($room['price_unit']) ?></span></td>
           <td>
-            <form method="POST" action="/admin/rooms.php" style="display:inline">
+            <form method="POST" action="/admin/rooms" style="display:inline">
               <?= csrf_field() ?>
               <input type="hidden" name="toggle_publish" value="1">
               <input type="hidden" name="room_id" value="<?= e($room['id']) ?>">

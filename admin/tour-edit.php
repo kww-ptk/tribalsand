@@ -267,7 +267,7 @@ include __DIR__ . '/_layout.php';
   <div class="card">
     <div class="card__head"><span class="card__title">Images</span></div>
     <div class="card__body" style="padding:20px">
-      <form method="POST" enctype="multipart/form-data" action="/admin/tour-edit.php?id=<?= $id ?>">
+      <form method="POST" enctype="multipart/form-data" action="/admin/tour-edit?id=<?= $id ?>">
         <?= csrf_field() ?>
         <div class="field">
           <label>Upload images <span class="text-muted">(JPEG, PNG or WebP, max 5 MB each)</span></label>
@@ -284,14 +284,14 @@ include __DIR__ . '/_layout.php';
           <?php if ($img['is_hero']): ?><span class="gallery-item__badge">Hero</span><?php endif; ?>
           <div class="gallery-item__actions">
             <?php if (!$img['is_hero']): ?>
-            <form method="POST" action="/admin/tour-edit.php?id=<?= $id ?>" style="display:inline">
+            <form method="POST" action="/admin/tour-edit?id=<?= $id ?>" style="display:inline">
               <?= csrf_field() ?>
               <input type="hidden" name="gallery_action" value="set_hero">
               <input type="hidden" name="img_id" value="<?= e($img['id']) ?>">
               <button type="submit" class="btn-sm btn-outline">Set hero</button>
             </form>
             <?php endif; ?>
-            <form method="POST" action="/admin/tour-edit.php?id=<?= $id ?>" style="display:inline"
+            <form method="POST" action="/admin/tour-edit?id=<?= $id ?>" style="display:inline"
                   onsubmit="return confirm('Delete this image?')">
               <?= csrf_field() ?>
               <input type="hidden" name="gallery_action" value="delete">
@@ -309,7 +309,7 @@ include __DIR__ . '/_layout.php';
 
 <!-- ── TAB: SEO ── -->
 <div class="tab-panel" id="tab-seo">
-  <form method="POST" action="/admin/tour-edit.php?id=<?= $id ?>">
+  <form method="POST" action="/admin/tour-edit?id=<?= $id ?>">
     <?= csrf_field() ?>
     <input type="hidden" name="action" value="save_seo">
     <div class="card">
@@ -336,7 +336,7 @@ include __DIR__ . '/_layout.php';
   <div class="card">
     <div class="card__head"><span class="card__title">Visibility</span></div>
     <div class="card__body" style="padding:20px">
-      <form method="POST" action="/admin/tour-edit.php?id=<?= $id ?>">
+      <form method="POST" action="/admin/tour-edit?id=<?= $id ?>">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="save_publish">
         <label class="toggle-row">
@@ -348,7 +348,7 @@ include __DIR__ . '/_layout.php';
 
       <hr style="margin:24px 0;border-color:var(--border)">
 
-      <form method="POST" action="/admin/tour-edit.php?id=<?= $id ?>" onsubmit="return confirm('Delete this tour and all its images? This cannot be undone.')">
+      <form method="POST" action="/admin/tour-edit?id=<?= $id ?>" onsubmit="return confirm('Delete this tour and all its images? This cannot be undone.')">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="delete_tour">
         <button type="submit" class="btn-danger">Delete tour permanently</button>

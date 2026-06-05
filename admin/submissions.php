@@ -136,7 +136,7 @@ include __DIR__ . '/_layout.php';
 </div>
 
 <!-- Filters -->
-<form method="GET" action="/admin/submissions.php" class="filters" id="filtersForm">
+<form method="GET" action="/admin/submissions" class="filters" id="filtersForm">
   <select name="type" class="js-auto-submit">
     <option value="">All types</option>
     <option value="enquiry" <?= $type==='enquiry'?'selected':'' ?>>Enquiry</option>
@@ -209,7 +209,7 @@ include __DIR__ . '/_layout.php';
           <td>
             <div style="display:flex;gap:6px;justify-content:flex-end">
               <a href="/admin/submission-view.php?id=<?= e($row['id']) ?>" class="btn-sm btn-outline">View</a>
-              <form method="POST" action="/admin/submissions.php?<?= qs() ?>" style="display:inline"
+              <form method="POST" action="/admin/submissions?<?= qs() ?>" style="display:inline"
                     onsubmit="return confirm('Delete submission #<?= e($row['id']) ?>? This cannot be undone.');">
                 <?= csrf_field() ?>
                 <input type="hidden" name="action" value="delete">

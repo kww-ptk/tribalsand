@@ -178,7 +178,7 @@ include __DIR__ . '/_layout.php';
 <div class="card">
   <div class="card__head"><span class="card__title">Publish</span></div>
   <div class="card__body">
-    <form method="POST" action="/admin/venue-edit.php?id=<?= $id ?>">
+    <form method="POST" action="/admin/venue-edit?id=<?= $id ?>">
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="save_publish">
       <label style="display:flex;align-items:center;gap:8px">
@@ -223,7 +223,7 @@ include __DIR__ . '/_layout.php';
 <div class="card">
   <div class="card__head"><span class="card__title">Gallery photos</span></div>
   <div class="card__body">
-    <form method="POST" action="/admin/venue-edit.php?id=<?= $id ?>" enctype="multipart/form-data">
+    <form method="POST" action="/admin/venue-edit?id=<?= $id ?>" enctype="multipart/form-data">
       <?= csrf_field() ?>
       <input type="file" id="gallery_upload" name="gallery_upload[]" multiple accept="image/jpeg,image/png,image/webp" style="display:none" onchange="this.form.submit()">
       <p><label for="gallery_upload" style="color:var(--brand);cursor:pointer;text-decoration:underline">Upload images</label> (JPEG/PNG/WebP, max 5 MB each). The first becomes the main image.</p>
@@ -235,9 +235,9 @@ include __DIR__ . '/_layout.php';
         <img src="<?= e(storage_url($im['filename'])) ?>" alt="<?= e($im['alt_text']) ?>" style="width:100%;height:110px;object-fit:cover;display:block">
         <div style="display:flex;gap:4px;padding:6px;justify-content:center">
           <?php if (!$im['is_hero']): ?>
-          <form method="POST" action="/admin/venue-edit.php?id=<?= $id ?>" style="display:inline"><?= csrf_field() ?><input type="hidden" name="gallery_action" value="set_hero"><input type="hidden" name="image_id" value="<?= (int)$im['id'] ?>"><button type="submit" class="btn-sm btn-outline" style="font-size:11px">Set main</button></form>
+          <form method="POST" action="/admin/venue-edit?id=<?= $id ?>" style="display:inline"><?= csrf_field() ?><input type="hidden" name="gallery_action" value="set_hero"><input type="hidden" name="image_id" value="<?= (int)$im['id'] ?>"><button type="submit" class="btn-sm btn-outline" style="font-size:11px">Set main</button></form>
           <?php endif; ?>
-          <form method="POST" action="/admin/venue-edit.php?id=<?= $id ?>" style="display:inline" onsubmit="return confirm('Delete this photo?')"><?= csrf_field() ?><input type="hidden" name="gallery_action" value="delete_image"><input type="hidden" name="image_id" value="<?= (int)$im['id'] ?>"><button type="submit" class="btn-sm" style="font-size:11px;color:#c0392b;border:1px solid #c0392b;background:#fff;border-radius:4px">Delete</button></form>
+          <form method="POST" action="/admin/venue-edit?id=<?= $id ?>" style="display:inline" onsubmit="return confirm('Delete this photo?')"><?= csrf_field() ?><input type="hidden" name="gallery_action" value="delete_image"><input type="hidden" name="image_id" value="<?= (int)$im['id'] ?>"><button type="submit" class="btn-sm" style="font-size:11px;color:#c0392b;border:1px solid #c0392b;background:#fff;border-radius:4px">Delete</button></form>
         </div>
       </div>
       <?php endforeach; ?>
@@ -249,7 +249,7 @@ include __DIR__ . '/_layout.php';
 
 <div class="card">
   <div class="card__body">
-    <form method="POST" action="/admin/venue-edit.php?id=<?= $id ?>" onsubmit="return confirm('Delete this property? Its rooms are kept but detached.');">
+    <form method="POST" action="/admin/venue-edit?id=<?= $id ?>" onsubmit="return confirm('Delete this property? Its rooms are kept but detached.');">
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="delete_venue">
       <button type="submit" class="btn-sm" style="background:#dc2626;color:#fff;border:none">Delete property</button>

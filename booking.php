@@ -31,6 +31,10 @@ if (!empty($_GET['ref'])) {
     echo '</body></html>';
     exit;
 }
+<?php
+// No ?ref= — redirect to properties page
+header('Location: /properties', true, 301);
+exit;
 ?>
 <!DOCTYPE html>
 <html lang="en">

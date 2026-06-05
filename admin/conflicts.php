@@ -142,7 +142,7 @@ include __DIR__ . '/_layout.php';
 <?php if ($error):   ?><div class="alert alert--error"><?= e($error) ?></div><?php endif; ?>
 
 <!-- Filter -->
-<form method="GET" action="/admin/conflicts.php" style="margin-bottom:20px">
+<form method="GET" action="/admin/conflicts" style="margin-bottom:20px">
   <select name="status" onchange="this.form.submit()" style="height:36px;padding:0 10px;border:1px solid var(--border);border-radius:5px;font-size:13px">
     <option value="pending"  <?= $status_filter === 'pending'  ? 'selected' : '' ?>>Pending (<?= $pending_count ?>)</option>
     <option value="resolved" <?= $status_filter === 'resolved' ? 'selected' : '' ?>>Resolved</option>
@@ -213,7 +213,7 @@ include __DIR__ . '/_layout.php';
     </div>
 
     <?php if ($c['status'] === 'pending'): ?>
-    <form method="POST" action="/admin/conflicts.php">
+    <form method="POST" action="/admin/conflicts">
       <?= csrf_field() ?>
       <input type="hidden" name="conflict_id" value="<?= e($c['id']) ?>">
       <div class="field" style="max-width:480px;margin-bottom:12px">
