@@ -1,0 +1,12 @@
+User-agent: *
+Allow: /
+
+Disallow: /includes/
+Disallow: /api/
+Disallow: /admin/
+Disallow: /process-agent-form.php
+Disallow: /processproperties.php
+Disallow: /reservation.php
+Disallow: /booking.php
+
+Sitemap: https://tribalsand.com/sitemap.xml

@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Book an Experience – Tribal Sand</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Montserrat:wght@300;400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --sand:#C8A97A; --sand-light:#E8D8BC; --sand-pale:#F5EEE3;
+    --ocean:#2D5F6B; --ocean-deep:#1A3D47; --ocean-light:#4A8A96;
+    --dark:#1C1C1A; --warm-white:#FAF7F2; --text-mid:#6B6355;
+  }
+  *{margin:0;padding:0;box-sizing:border-box;}
+  html{scroll-behavior:smooth;}
+  body{font-family:'Montserrat',sans-serif;background:var(--warm-white);color:var(--dark);overflow-x:hidden;}
+
+  /* ── STICKY NAV ── */
+  .site-nav{
+    position:fixed;top:0;left:0;right:0;z-index:900;
+    display:flex;align-items:center;justify-content:space-between;
+    padding:0 5%;height:64px;
+    background:rgba(26,61,71,0.96);
+    backdrop-filter:blur(12px);
+    border-bottom:1px solid rgba(200,169,122,0.15);
+    transition:all 0.3s;
+  }
+  .nav-logo{font-family:'Cormorant Garamond',serif;font-size:1.4rem;font-weight:300;color:var(--sand-light);letter-spacing:.3em;text-transform:uppercase;text-decoration:none;}
+  .nav-logo span{color:var(--sand);font-weight:500;}
+  .nav-right{display:flex;align-items:center;gap:2rem;}
+  .nav-link{font-size:.6rem;letter-spacing:.2em;text-transform:uppercase;color:rgba(200,169,122,.6);text-decoration:none;transition:color .2s;}
+  .nav-link:hover{color:var(--sand);}
+
+  /* ── FILTER BAR (sticky below nav) ── */
+  .filter-bar{
+    position:sticky;top:64px;z-index:800;
+    background:var(--ocean-deep);
+    border-bottom:1px solid rgba(200,169,122,.12);
+    display:flex;align-items:center;
+    padding:0 5%;
+    overflow-x:auto;
+    scrollbar-width:none;
+    gap:0;
+  }
+  .filter-bar::-webkit-scrollbar{display:none;}
+  .filter-btn{
+    flex-shrink:0;
+    font-family:'Montserrat',sans-serif;
+    font-size:.58rem;letter-spacing:.22em;text-transform:uppercase;
+    padding:0 1.4rem;height:48px;
+    border:none;background:transparent;
+    color:rgba(200,169,122,.5);
+    cursor:pointer;transition:all .25s;
+    border-bottom:2px solid transparent;
+    white-space:nowrap;
+  }
+  .filter-btn:hover{color:var(--sand);}
+  .filter-btn.active{color:var(--sand);border-bottom-color:var(--sand);}
+  .filter-divider{width:1px;height:20px;background:rgba(200,169,122,.1);flex-shrink:0;margin:0 .5rem;}
+
+  /* ── HERO ── */
+  .hero{
+    position:relative;height:100vh;min-height:600px;
+    display:flex;flex-direction:column;
+    background:var(--ocean-deep);overflow:hidden;
+    padding-top:64px;
+  }
+  .hero-bg{
+    position:absolute;inset:0;
+    background:linear-gradient(160deg,#0D2D35 0%,#1A3D47 50%,#2D5F6B 100%);
+  }
+  .hero-img{
+    position:absolute;inset:0;
+    background:linear-gradient(160deg,rgba(13,45,53,0) 0%,rgba(200,169,122,.08) 100%);
+    opacity:1;
+  }
+  .hero-grain{
+    position:absolute;inset:0;
+    background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.04'/%3E%3C/svg%3E");
+    opacity:.4;pointer-events:none;
+  }
+  .wave-line{position:absolute;left:-100%;height:1px;width:300%;background:linear-gradient(90deg,transparent 0%,rgba(200,169,122,.18) 30%,rgba(200,169,122,.35) 50%,rgba(200,169,122,.18) 70%,transparent 100%);animation:waveLine 9s ease-in-out infinite;}
+  .wave-line:nth-child(3){top:38%;animation-delay:0s;}
+  .wave-line:nth-child(4){top:58%;animation-delay:3s;animation-duration:12s;}
+  .wave-line:nth-child(5){top:72%;animation-delay:6s;animation-duration:8s;}
+  @keyframes waveLine{0%{transform:translateX(-30%) skewX(-4deg);opacity:0}20%{opacity:1}80%{opacity:1}100%{transform:translateX(10%) skewX(-4deg);opacity:0}}
+  .hero-content{position:relative;z-index:5;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding:0 5% 5rem;}
+  .hero-eyebrow{font-size:.6rem;letter-spacing:.4em;text-transform:uppercase;color:var(--sand);margin-bottom:1.5rem;display:flex;align-items:center;gap:1rem;}
+  .hero-eyebrow::before,.hero-eyebrow::after{content:'';width:36px;height:1px;background:var(--sand);opacity:.5;}
+  .hero-title{font-family:'Cormorant Garamond',serif;font-size:clamp(3.2rem,8vw,6.5rem);font-weight:300;color:var(--warm-white);line-height:1;margin-bottom:1.5rem;letter-spacing:-.01em;}
+  .hero-title em{font-style:italic;color:var(--sand);}
+  .hero-subtitle{font-size:.72rem;letter-spacing:.18em;color:rgba(232,216,188,.55);max-width:480px;line-height:2.2;text-transform:uppercase;margin-bottom:3rem;}
+  .hero-cta{display:inline-flex;align-items:center;gap:.8rem;background:transparent;border:1px solid var(--sand);color:var(--sand);font-family:'Montserrat',sans-serif;font-size:.65rem;letter-spacing:.28em;text-transform:uppercase;padding:1rem 2.8rem;cursor:pointer;transition:all .35s;text-decoration:none;}
+  .hero-cta:hover{background:var(--sand);color:var(--ocean-deep);}
+  .hero-cta svg{width:13px;height:13px;transition:transform .3s;}
+  .hero-cta:hover svg{transform:translateY(3px);}
+  .hero-scroll{position:absolute;bottom:2.5rem;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:.5rem;color:rgba(200,169,122,.35);font-size:.55rem;letter-spacing:.25em;text-transform:uppercase;}
+  .scroll-bar{width:1px;height:36px;background:linear-gradient(to bottom,var(--sand),transparent);animation:scrollPulse 2s ease infinite;}
+  @keyframes scrollPulse{0%,100%{opacity:.25;transform:scaleY(1)}50%{opacity:.7;transform:scaleY(1.15)}}
+
+  /* ── SECTION HEADER ── */
+  .section-header{text-align:center;padding:5rem 5% 3.5rem;}
+  .section-eyebrow{font-size:.58rem;letter-spacing:.42em;text-transform:uppercase;color:var(--sand);margin-bottom:1rem;}
+  .section-title{font-family:'Cormorant Garamond',serif;font-size:clamp(2rem,5vw,3.2rem);font-weight:300;color:var(--dark);line-height:1.15;}
+  .section-title em{font-style:italic;color:var(--ocean);}
+  .section-rule{width:50px;height:1px;background:var(--sand);margin:1.5rem auto 0;}
+
+  /* ── ACTIVITY CARDS ── */
+  #experiences{background:var(--warm-white);}
+  .activities-grid{
+    display:grid;
+    grid-template-columns:repeat(auto-fill,minmax(320px,1fr));
+    gap:2px;
+    margin:0 5% 6rem;
+    background:rgba(200,169,122,.1);
+    border:1px solid rgba(200,169,122,.1);
+  }
+  .activity-card{
+    background:var(--warm-white);
+    cursor:pointer;transition:all .35s ease;
+    display:flex;flex-direction:column;
+    position:relative;overflow:hidden;
+  }
+  .card-image{
+    position:relative;
+    height:200px;overflow:hidden;
+  }
+  .card-image-placeholder{
+    width:100%;height:100%;
+    background:linear-gradient(135deg,var(--ocean-deep) 0%,var(--ocean) 40%,var(--sand) 100%);
+    display:flex;align-items:center;justify-content:center;
+    flex-direction:column;gap:.4rem;
+    transition:filter .6s ease;
+  }
+  .activity-card:hover .card-image-placeholder{filter:brightness(1.12);}
+  .card-image-placeholder .placeholder-logo{
+    font-family:'Cormorant Garamond',serif;
+    font-size:1.1rem;font-weight:300;letter-spacing:.3em;text-transform:uppercase;
+    color:rgba(232,216,188,.55);
+  }
+  .card-image-placeholder .placeholder-logo span{color:var(--sand);font-weight:500;}
+  .card-image-placeholder .placeholder-rule{width:24px;height:1px;background:rgba(200,169,122,.35);}
+  .card-image-placeholder .placeholder-cat{
+    font-size:.52rem;letter-spacing:.2em;text-transform:uppercase;color:rgba(200,169,122,.4);
+  }
+  .card-image-overlay{
+    position:absolute;inset:0;
+    background:linear-gradient(to bottom,rgba(26,61,71,.1) 0%,rgba(26,61,71,.55) 100%);
+  }
+  .card-cat-badge{
+    position:absolute;top:1rem;left:1rem;
+    font-size:.52rem;letter-spacing:.22em;text-transform:uppercase;
+    background:rgba(26,61,71,.8);backdrop-filter:blur(4px);
+    color:var(--sand);padding:.3rem .7rem;
+  }
+  .card-body{padding:1.5rem;display:flex;flex-direction:column;gap:.6rem;flex:1;}
+  .card-name{font-family:'Cormorant Garamond',serif;font-size:1.2rem;font-weight:400;color:var(--dark);line-height:1.3;}
+  .card-desc{font-size:.72rem;color:var(--text-mid);line-height:1.75;flex:1;}
+  .card-footer{display:flex;justify-content:space-between;align-items:center;padding-top:.75rem;border-top:1px solid rgba(200,169,122,.18);}
+  .card-price{font-size:.8rem;font-weight:600;color:var(--ocean);}
+  .card-duration{font-size:.62rem;color:var(--text-mid);letter-spacing:.08em;}
+  .card-enquire{
+    margin-top:.75rem;width:100%;padding:.65rem;
+    border:1px solid var(--ocean);background:transparent;
+    color:var(--ocean);font-family:'Montserrat',sans-serif;
+    font-size:.6rem;letter-spacing:.22em;text-transform:uppercase;
+    cursor:pointer;transition:all .3s;
+  }
+  .card-enquire:hover{background:var(--ocean);color:white;}
+  /* Hover accent line */
+  .activity-card::after{
+    content:'';position:absolute;left:0;top:0;bottom:0;width:3px;
+    background:var(--sand);transform:scaleY(0);transform-origin:bottom;transition:transform .35s ease;
+  }
+  .activity-card:hover::after{transform:scaleY(1);}
+
+  /* ── KITE SCHOOL ── */
+  #kite-school{background:var(--ocean-deep);padding:0 0 6rem;position:relative;overflow:hidden;}
+  .kite-school-hero{
+    position:relative;height:340px;overflow:hidden;
+    display:flex;align-items:flex-end;padding:0 5% 3rem;
+  }
+  .kite-school-hero-img{
+    position:absolute;inset:0;
+    background:linear-gradient(160deg,#0D2D35 0%,var(--ocean) 60%,rgba(200,169,122,.2) 100%);
+    opacity:.5;
+  }
+  .kite-school-hero-overlay{position:absolute;inset:0;background:linear-gradient(to top,var(--ocean-deep) 0%,rgba(26,61,71,.3) 100%);}
+  .kite-school-hero-text{position:relative;z-index:2;}
+  .kite-school-eyebrow{font-size:.58rem;letter-spacing:.4em;text-transform:uppercase;color:var(--sand);margin-bottom:.75rem;}
+  .kite-school-title{font-family:'Cormorant Garamond',serif;font-size:clamp(2rem,5vw,3.5rem);font-weight:300;color:var(--warm-white);line-height:1.1;}
+  .kite-school-title em{color:var(--sand);font-style:italic;}
+  .kite-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:2px;margin:0 5%;background:rgba(200,169,122,.06);}
+  .kite-card{
+    background:rgba(255,255,255,.02);
+    cursor:pointer;transition:all .3s;
+    display:flex;flex-direction:column;
+    overflow:hidden;
+  }
+  .kite-card-image{position:relative;height:180px;overflow:hidden;}
+  .kite-card-image-placeholder{
+    width:100%;height:100%;
+    background:linear-gradient(135deg,#0D2D35 0%,var(--ocean) 50%,rgba(200,169,122,.6) 100%);
+    display:flex;align-items:center;justify-content:center;
+    flex-direction:column;gap:.4rem;
+    transition:filter .6s ease;
+    opacity:.85;
+  }
+  .kite-card:hover .kite-card-image-placeholder{filter:brightness(1.15);opacity:.95;}
+  .kite-card-image-placeholder .placeholder-logo{
+    font-family:'Cormorant Garamond',serif;
+    font-size:1rem;font-weight:300;letter-spacing:.3em;text-transform:uppercase;
+    color:rgba(232,216,188,.5);
+  }
+  .kite-card-image-placeholder .placeholder-logo span{color:var(--sand);font-weight:500;}
+  .kite-card-image-placeholder .placeholder-rule{width:20px;height:1px;background:rgba(200,169,122,.3);}
+  .kite-card-image-placeholder .placeholder-cat{
+    font-size:.48rem;letter-spacing:.2em;text-transform:uppercase;color:rgba(200,169,122,.35);
+  }
+  .kite-card-image-overlay{position:absolute;inset:0;background:linear-gradient(to bottom,transparent 40%,rgba(13,45,53,.9) 100%);}
+  .kite-card-badge{position:absolute;top:1rem;left:1rem;font-size:.5rem;letter-spacing:.2em;text-transform:uppercase;color:var(--sand);background:rgba(13,45,53,.75);backdrop-filter:blur(4px);padding:.3rem .6rem;}
+  .kite-card-body{padding:1.5rem;flex:1;display:flex;flex-direction:column;gap:.5rem;}
+  .kite-name{font-family:'Cormorant Garamond',serif;font-size:1.3rem;font-weight:300;color:var(--warm-white);}
+  .kite-price{font-size:.9rem;color:var(--sand);font-weight:600;}
+  .kite-desc{font-size:.7rem;color:rgba(232,216,188,.55);line-height:1.75;flex:1;}
+  .kite-location{font-size:.6rem;color:rgba(200,169,122,.5);letter-spacing:.1em;margin-top:.25rem;}
+  .kite-enquire{
+    margin-top:.75rem;width:100%;padding:.6rem;
+    border:1px solid rgba(200,169,122,.3);background:transparent;
+    color:var(--sand);font-family:'Montserrat',sans-serif;
+    font-size:.6rem;letter-spacing:.2em;text-transform:uppercase;
+    cursor:pointer;transition:all .3s;
+  }
+  .kite-enquire:hover{background:var(--sand);color:var(--ocean-deep);}
+
+  /* ── MODAL ── */
+  .modal-overlay{display:none;position:fixed;inset:0;z-index:9000;background:rgba(13,45,53,.92);backdrop-filter:blur(10px);align-items:center;justify-content:center;padding:1.5rem;}
+  .modal-overlay.open{display:flex;}
+  .modal{background:var(--warm-white);width:100%;max-width:700px;max-height:92vh;overflow-y:auto;position:relative;animation:modalIn .4s cubic-bezier(.2,.8,.3,1);}
+  @keyframes modalIn{from{opacity:0;transform:translateY(28px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+  .modal-close{position:absolute;top:1.25rem;right:1.25rem;background:none;border:none;cursor:pointer;color:rgba(200,169,122,.7);font-size:1.1rem;width:2rem;height:2rem;display:flex;align-items:center;justify-content:center;transition:color .2s;z-index:10;}
+  .modal-close:hover{color:var(--warm-white);}
+  .modal-header{background:var(--ocean-deep);padding:2.5rem 2.5rem 0;}
+  .modal-activity-tag{font-size:.55rem;letter-spacing:.3em;text-transform:uppercase;color:var(--sand);margin-bottom:.5rem;}
+  .modal-activity-name{font-family:'Cormorant Garamond',serif;font-size:1.9rem;font-weight:300;color:var(--warm-white);padding-bottom:1.5rem;}
+  .steps-bar{display:flex;background:var(--ocean-deep);padding:.75rem 2.5rem 1.25rem;border-top:1px solid rgba(200,169,122,.12);}
+  .step-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:.35rem;position:relative;}
+  .step-item:not(:last-child)::after{content:'';position:absolute;left:50%;top:.55rem;width:100%;height:1px;background:rgba(200,169,122,.18);}
+  .step-item.active:not(:last-child)::after,.step-item.done:not(:last-child)::after{background:var(--sand);}
+  .step-dot{width:1.1rem;height:1.1rem;border-radius:50%;border:1px solid rgba(200,169,122,.3);background:transparent;display:flex;align-items:center;justify-content:center;font-size:.48rem;color:transparent;transition:all .3s;position:relative;z-index:1;}
+  .step-item.active .step-dot{border-color:var(--sand);background:var(--sand);color:var(--ocean-deep);}
+  .step-item.done .step-dot{border-color:var(--sand);background:var(--ocean);color:white;}
+  .step-label{font-size:.52rem;letter-spacing:.15em;text-transform:uppercase;color:rgba(200,169,122,.4);}
+  .step-item.active .step-label,.step-item.done .step-label{color:var(--sand);}
+  .modal-body{padding:2.5rem;}
+  .form-step{display:none;}
+  .form-step.active{display:block;}
+  .form-step-title{font-family:'Cormorant Garamond',serif;font-size:1.5rem;font-weight:400;color:var(--dark);margin-bottom:.4rem;}
+  .form-step-sub{font-size:.7rem;color:var(--text-mid);margin-bottom:2rem;line-height:1.8;}
+  .option-grid{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin-bottom:2rem;}
+  .option-card{border:1px solid rgba(200,169,122,.28);padding:1.25rem;cursor:pointer;transition:all .3s;position:relative;}
+  .option-card:hover{border-color:var(--ocean);background:rgba(45,95,107,.04);}
+  .option-card.chosen{border-color:var(--ocean);background:rgba(45,95,107,.07);}
+  .option-card.chosen::after{content:'✓';position:absolute;top:.5rem;right:.75rem;color:var(--ocean);font-size:.72rem;font-weight:600;}
+  .option-icon{font-size:1.3rem;margin-bottom:.5rem;display:block;}
+  .option-label{font-size:.75rem;font-weight:600;color:var(--dark);letter-spacing:.04em;margin-bottom:.25rem;}
+  .option-hint{font-size:.63rem;color:var(--text-mid);line-height:1.55;}
+  .property-list{display:flex;flex-direction:column;gap:.5rem;margin-bottom:2rem;}
+  .property-item{display:flex;align-items:center;gap:.75rem;padding:.9rem 1rem;border:1px solid rgba(200,169,122,.22);cursor:pointer;transition:all .25s;font-size:.78rem;color:var(--dark);}
+  .property-item:hover{border-color:var(--ocean);background:rgba(45,95,107,.04);}
+  .property-item.chosen{border-color:var(--ocean);background:rgba(45,95,107,.07);}
+  .property-item input[type="radio"]{accent-color:var(--ocean);width:1rem;height:1rem;flex-shrink:0;}
+  .form-row{margin-bottom:1.25rem;}
+  .form-label{display:block;font-size:.6rem;letter-spacing:.22em;text-transform:uppercase;color:var(--text-mid);margin-bottom:.4rem;}
+  .form-input,.form-textarea{width:100%;padding:.75rem 1rem;border:1px solid rgba(200,169,122,.3);background:white;font-family:'Montserrat',sans-serif;font-size:.8rem;color:var(--dark);outline:none;transition:border-color .25s;}
+  .form-input:focus,.form-textarea:focus{border-color:var(--ocean);}
+  .form-textarea{resize:vertical;min-height:80px;}
+  .form-two-col{display:grid;grid-template-columns:1fr 1fr;gap:1rem;}
+  .btn-row{display:flex;justify-content:space-between;align-items:center;padding-top:1.5rem;border-top:1px solid rgba(200,169,122,.18);margin-top:.75rem;}
+  .btn-back{font-family:'Montserrat',sans-serif;font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--text-mid);background:none;border:none;cursor:pointer;transition:color .2s;}
+  .btn-back:hover{color:var(--dark);}
+  .btn-next{font-family:'Montserrat',sans-serif;font-size:.62rem;letter-spacing:.25em;text-transform:uppercase;padding:.85rem 2.5rem;border:none;background:var(--ocean);color:white;cursor:pointer;transition:all .3s;}
+  .btn-next:hover{background:var(--ocean-deep);}
+  .btn-submit{font-family:'Montserrat',sans-serif;font-size:.62rem;letter-spacing:.25em;text-transform:uppercase;padding:.85rem 2.5rem;border:none;background:var(--sand);color:var(--dark);cursor:pointer;transition:all .3s;}
+  .btn-submit:hover{background:#B8976A;}
+  .price-note{background:rgba(45,95,107,.06);border:1px solid rgba(45,95,107,.14);padding:1rem 1.25rem;margin-bottom:1.5rem;font-size:.7rem;color:var(--ocean);line-height:1.7;}
+  .success-view{display:none;text-align:center;padding:3.5rem 2.5rem;}
+  .success-icon{width:64px;height:64px;border:1px solid var(--sand);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 1.5rem;font-size:1.6rem;}
+  .success-title{font-family:'Cormorant Garamond',serif;font-size:2.2rem;font-weight:300;color:var(--dark);margin-bottom:.75rem;}
+  .success-text{font-size:.75rem;color:var(--text-mid);line-height:1.9;max-width:420px;margin:0 auto;}
+
+  /* ── FOOTER ── */
+  footer{background:var(--dark);padding:4rem 5% 3rem;display:grid;grid-template-columns:1fr 1fr 1fr;gap:3rem;align-items:start;}
+  .footer-col-title{font-size:.58rem;letter-spacing:.3em;text-transform:uppercase;color:var(--sand);margin-bottom:1rem;}
+  .footer-logo{font-family:'Cormorant Garamond',serif;font-size:1.5rem;font-weight:300;color:rgba(200,169,122,.8);letter-spacing:.3em;text-transform:uppercase;margin-bottom:.5rem;}
+  .footer-tagline{font-size:.62rem;color:rgba(255,255,255,.25);letter-spacing:.12em;line-height:1.8;}
+  .footer-links{display:flex;flex-direction:column;gap:.5rem;}
+  .footer-link{font-size:.65rem;color:rgba(255,255,255,.3);letter-spacing:.1em;text-decoration:none;transition:color .2s;}
+  .footer-link:hover{color:var(--sand);}
+  .footer-bottom{background:var(--dark);border-top:1px solid rgba(255,255,255,.05);padding:.75rem 5%;text-align:center;}
+  .footer-bottom p{font-size:.58rem;color:rgba(255,255,255,.18);letter-spacing:.15em;}
+
+  /* ── MISC ── */
+  .hidden{display:none!important;}
+  @media(max-width:768px){
+    footer{grid-template-columns:1fr;gap:2rem;}
+    .filter-bar{padding:0 3%;}
+  }
+  @media(max-width:640px){
+    .option-grid{grid-template-columns:1fr;}
+    .form-two-col{grid-template-columns:1fr;}
+    .modal-body{padding:1.5rem;}
+    .modal-header{padding:1.5rem 1.5rem 0;}
+    .steps-bar{padding:.75rem 1.5rem 1rem;}
+    .activities-grid{margin:0 3% 4rem;}
+    .kite-grid{margin:0 3%;}
+  }
+</style>
+</head>
+<body>
+
+<!-- ══ STICKY NAV ══ -->
+ <nav class="site-nav navbar">
+  <a href="https://tribalsand.com" class="navbar-brand">
+    <img src="images/whitelogo11.png" alt="Tribal Sand Logo"
+         class="img-fluid" style="max-height:40px;">
+  </a>
+
+  <div class="nav-right">
+    <a href="#experiences" class="nav-link">Experiences</a>
+    <a href="#kite-school" class="nav-link">Water Sports</a>
+    <a href="#" class="nav-link" id="navEnquire"
+       style="border:1px solid rgba(200,169,122,.4);padding:.45rem 1.1rem;color:var(--sand);">
+      Enquire
+    </a>
+  </div>
+</nav>
+
+<!-- <nav class="site-nav">
+  <a href="https://tribalsand.com" class="nav-logo">Tribal <span>Sand</span></a>
+  <div class="nav-right">
+    <a href="#experiences" class="nav-link">Experiences</a>
+    <a href="#kite-school" class="nav-link">Water Sports</a>
+    <a href="#" class="nav-link" id="navEnquire" style="border:1px solid rgba(200,169,122,.4);padding:.45rem 1.1rem;color:var(--sand);">Enquire</a>
+  </div>
+</nav> -->
+
+<!-- ══ FILTER BAR ══ -->
+<div class="filter-bar" id="filterBar">
+  <button class="filter-btn active" data-cat="all">All Experiences</button>
+  <div class="filter-divider"></div>
+  <button class="filter-btn" data-cat="marine">🌊 Marine &amp; Ocean</button>
+  <button class="filter-btn" data-cat="nature">🌿 Nature &amp; Culture</button>
+  <button class="filter-btn" data-cat="luxury">⛳ Luxury &amp; Leisure</button>
+  <button class="filter-btn" data-cat="wellness">🧘 Wellness</button>
+  <div class="filter-divider"></div>
+  <button class="filter-btn" data-cat="kite" id="filterKite">🪁 Water Sports</button>
+</div>
+
+<!-- ══ HERO ══ -->
+<section class="hero" id="top">
+  <div class="hero-bg"></div>
+  <div class="hero-img"></div>
+  <div class="hero-grain"></div>
+  <div class="wave-line"></div>
+  <div class="wave-line"></div>
+  <div class="wave-line"></div>
+  <div class="hero-content">
+    <div class="hero-eyebrow">Kenya's North Coast</div>
+    <h1 class="hero-title">Curated<br><em>Experiences</em></h1>
+    <p class="hero-subtitle">Ocean adventures · Cultural encounters<br>Wellness &amp; Water Sports</p>
+    <a href="#experiences" class="hero-cta" id="heroCta">
+      Explore &amp; Enquire
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+    </a>
+  </div>
+  <div class="hero-scroll"><span>Scroll</span><div class="scroll-bar"></div></div>
+</section>
+
+<!-- ══ EXPERIENCES ══ -->
+<section id="experiences">
+  <div class="section-header">
+    <div class="section-eyebrow">Tribal Sand Collection</div>
+    <h2 class="section-title">Curated <em>Experiences</em></h2>
+    <div class="section-rule"></div>
+  </div>
+  <div class="activities-grid" id="activitiesGrid"></div>
+</section>
+
+<!-- ══ KITE SCHOOL ══ -->
+<section id="kite-school">
+  <div class="kite-school-hero">
+    <div class="kite-school-hero-img"></div>
+    <div class="kite-school-hero-overlay"></div>
+    <div class="kite-school-hero-text">
+      <div class="kite-school-eyebrow">Partner · Tribal Kite School</div>
+      <h2 class="kite-school-title">Wind &amp; <em>Water Sports</em></h2>
+    </div>
+  </div>
+  <div class="kite-grid" id="kiteGrid"></div>
+</section>
+
+<!-- ══ MODAL ══ -->
+<div class="modal-overlay" id="modalOverlay">
+  <div class="modal" id="modal">
+    <button class="modal-close" id="modalClose">&#x2715;</button>
+    <div class="modal-header" id="modalHeader">
+      <div class="modal-activity-tag" id="modalTag">Experience</div>
+      <div class="modal-activity-name" id="modalName">–</div>
+    </div>
+    <div class="steps-bar" id="stepsBar">
+      <div class="step-item active" id="step-ind-1"><div class="step-dot">1</div><div class="step-label">Logistics</div></div>
+      <div class="step-item" id="step-ind-2"><div class="step-dot">2</div><div class="step-label">Date &amp; Party</div></div>
+      <div class="step-item" id="step-ind-3"><div class="step-dot">3</div><div class="step-label">Your Details</div></div>
+    </div>
+    <div class="modal-body" id="modalBodyWrap">
+
+      <!-- STEP 1 -->
+      <div class="form-step active" id="step1">
+        <h3 class="form-step-title">Are you a Tribal Sand guest?</h3>
+        <p class="form-step-sub">Let us know how to best arrange your experience.</p>
+        <div class="option-grid">
+          <div class="option-card" id="cardClient">
+            <span class="option-icon">🏡</span>
+            <div class="option-label">I'm staying with Tribal Sand</div>
+            <div class="option-hint">I have an existing booking at one of your properties.</div>
+          </div>
+          <div class="option-card" id="cardExternal">
+            <span class="option-icon">🌍</span>
+            <div class="option-label">I'm an external guest</div>
+            <div class="option-hint">I'm staying elsewhere or not yet booked.</div>
+          </div>
+        </div>
+        <div id="propertySection" class="hidden">
+          <p class="form-step-sub" style="margin-bottom:1rem">Which property are you staying at?</p>
+          <div class="property-list" id="propertyList">
+            <label class="property-item"><input type="radio" name="property" value="Zuri Boutique Hotel – Watamu"><div><strong>Zuri Boutique Hotel</strong> <span style="color:var(--text-mid);font-size:.7rem">· Watamu · Boutique Hotel</span></div></label>
+            <label class="property-item"><input type="radio" name="property" value="Maya Kobe Boutique Hotel – Kilifi"><div><strong>Maya Kobe Boutique Hotel</strong> <span style="color:var(--text-mid);font-size:.7rem">· Kilifi · Boutique Hotel</span></div></label>
+            <label class="property-item"><input type="radio" name="property" value="My Amani Villa – Vipingo"><div><strong>My Amani Villa</strong> <span style="color:var(--text-mid);font-size:.7rem">· Vipingo · Private Villa</span></div></label>
+            <label class="property-item"><input type="radio" name="property" value="Enkare Villa – Kilifi"><div><strong>Enkare Villa</strong> <span style="color:var(--text-mid);font-size:.7rem">· Kilifi · Private Villa</span></div></label>
+            <label class="property-item"><input type="radio" name="property" value="Sandbox Villa – Kilifi"><div><strong>Sandbox Villa</strong> <span style="color:var(--text-mid);font-size:.7rem">· Kilifi · Private Villa</span></div></label>
+            <label class="property-item"><input type="radio" name="property" value="Maya Ilai Villa – Kilifi"><div><strong>Maya Ilai</strong> <span style="color:var(--text-mid);font-size:.7rem">· Kilifi · Private Villa</span></div></label>
+          </div>
+        </div>
+        <div id="pickupSection" class="hidden">
+          <p class="form-step-sub" style="margin-bottom:1rem">How would you like to join the experience?</p>
+          <div class="option-grid">
+            <div class="option-card" id="cardPickup">
+              <span class="option-icon">🚐</span>
+              <div class="option-label">Hotel Pickup</div>
+              <div class="option-hint">We'll arrange transport from your hotel or accommodation.</div>
+            </div>
+            <div class="option-card" id="cardMeetpoint">
+              <span class="option-icon">📍</span>
+              <div class="option-label">Meeting Point</div>
+              <div class="option-hint">I'll make my own way to the activity meeting point.</div>
+            </div>
+          </div>
+          <div id="hotelLocationField" class="hidden">
+            <div class="form-row">
+              <label class="form-label">Hotel / Accommodation Name &amp; Location</label>
+              <input type="text" class="form-input" id="hotelLocation" placeholder="e.g. Hemingways Watamu, Malindi…">
+            </div>
+          </div>
+        </div>
+        <div class="btn-row"><span></span><button class="btn-next" id="btnStep1Next">Continue →</button></div>
+      </div>
+
+      <!-- STEP 2 -->
+      <div class="form-step" id="step2">
+        <h3 class="form-step-title">Date &amp; Party Details</h3>
+        <p class="form-step-sub">Choose your preferred date — we'll confirm availability and send a full quote.</p>
+        <div class="price-note"><strong>Pricing is sent on enquiry.</strong> Rates vary by group size, season and inclusions. Our team will reply within 24 hours with a personalised quote.</div>
+        <div class="form-two-col">
+          <div class="form-row"><label class="form-label">Preferred Date</label><input type="date" class="form-input" id="prefDate"></div>
+          <div class="form-row"><label class="form-label">Alternative Date</label><input type="date" class="form-input" id="altDate"></div>
+        </div>
+        <div class="form-two-col">
+          <div class="form-row"><label class="form-label">Adults</label><input type="number" class="form-input" id="numAdults" min="1" max="20" placeholder="e.g. 2"></div>
+          <div class="form-row"><label class="form-label">Children</label><input type="number" class="form-input" id="numChildren" min="0" max="20" placeholder="e.g. 0"></div>
+        </div>
+        <div class="form-row"><label class="form-label">Special Requests or Notes</label><textarea class="form-textarea" id="notes" placeholder="e.g. dietary requirements, mobility needs, skill level…"></textarea></div>
+        <div class="btn-row"><button class="btn-back" id="btnStep2Back">← Back</button><button class="btn-next" id="btnStep2Next">Continue →</button></div>
+      </div>
+
+      <!-- STEP 3 -->
+      <div class="form-step" id="step3">
+        <h3 class="form-step-title">Your Contact Details</h3>
+        <p class="form-step-sub">We'll send your personalised quote and confirmation to this address.</p>
+        <div class="form-two-col">
+          <div class="form-row"><label class="form-label">First Name</label><input type="text" class="form-input" id="firstName" placeholder="First name"></div>
+          <div class="form-row"><label class="form-label">Last Name</label><input type="text" class="form-input" id="lastName" placeholder="Last name"></div>
+        </div>
+        <div class="form-row"><label class="form-label">Email Address</label><input type="email" class="form-input" id="email" placeholder="your@email.com"></div>
+        <div class="form-row"><label class="form-label">Phone / WhatsApp</label><input type="tel" class="form-input" id="phone" placeholder="+254 …"></div>
+        <div class="form-row"><label class="form-label">Country of Residence</label><input type="text" class="form-input" id="country" placeholder="e.g. United Kingdom"></div>
+        <div class="btn-row"><button class="btn-back" id="btnStep3Back">← Back</button><button class="btn-submit" id="btnSubmit">Send Enquiry →</button></div>
+      </div>
+    </div>
+
+    <div class="success-view" id="successView">
+      <div class="success-icon">✓</div>
+      <h3 class="success-title">Enquiry Received</h3>
+      <p class="success-text">Thank you — our team will be in touch within 24 hours with your personalised quote and availability confirmation.<br><br>We look forward to creating an unforgettable experience for you along Kenya's North Coast.</p>
+      <br>
+      <button class="btn-next" id="btnSuccessClose" style="margin:0 auto;display:block">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- ══ FOOTER ══ -->
+<footer>
+  <div>
+    <div class="footer-logo">Tribal Sand</div>
+    <div class="footer-tagline">Curated experiences along<br>Kenya's spectacular North Coast</div>
+  </div>
+  <div>
+    <div class="footer-col-title">Experiences</div>
+    <div class="footer-links">
+      <a href="#" class="footer-link">Marine &amp; Ocean</a>
+      <a href="#" class="footer-link">Nature &amp; Culture</a>
+      <a href="#" class="footer-link">Luxury &amp; Leisure</a>
+      <a href="#" class="footer-link">Wellness</a>
+      <a href="#kite-school" class="footer-link">Water Sports – Tribal Kite School</a>
+    </div>
+  </div>
+  <div>
+    <div class="footer-col-title">Contact</div>
+    <div class="footer-links">
+      <span class="footer-link">enquiries&#64;tribalsand.com</span>
+      <span class="footer-link">kite&#64;tribalsand.com</span>
+      <span class="footer-link">+254 (0) 11 6005008</span>
+    </div>
+  </div>
+</footer>
+<div class="footer-bottom"><p>&copy; 2026 Tribal Sand &nbsp;&middot;&nbsp; Kenya's North Coast &nbsp;&middot;&nbsp; All rights reserved</p></div>
+
+<script>
+(function(){
+
+
+// ── DATA ──────────────────────────────────────────────────────────────────
+
+// ── DATA ──────────────────────────────────────────────────────────────────
+var activities = [
+  {cat:'marine',name:'Watamu Marine Park Snorkelling & Dolphin Watching',desc:'Explore coral reefs within Watamu Marine National Park followed by dolphin watching along the coastline.',price:'From $60 / person',duration:'3–4 hours'},
+  {cat:'marine',name:'Scuba Diving – Certified Divers',desc:'Discover deeper reef systems and marine biodiversity with professional instructors. Certification required.',price:'From $225 / person',duration:'Half Day'},
+  {cat:'marine',name:'Discover Scuba – Beginner Experience',desc:'Introductory diving for beginners including safety training and a guided open-water dive.',price:'From $160 / person',duration:'Half Day'},
+  {cat:'marine',name:'Open Water Diving Certification',desc:'Internationally recognised certification combining theory and open-water training over several days.',price:'From $660 / person',duration:'3–4 Days'},
+  {cat:'marine',name:'Deep Sea Fishing – Half Day',desc:'Offshore fishing targeting marlin, sailfish, tuna and other seasonal species.',price:'From $840 / boat',duration:'4 hours'},
+  {cat:'marine',name:'Deep Sea Fishing – Full Day',desc:'Extended offshore fishing experience for enthusiasts and experienced anglers.',price:'From $1,200 / boat',duration:'8 hours'},
+  {cat:'marine',name:'Sunset Dhow Cruise',desc:'Relaxing sunset cruise through mangrove-lined waterways capturing the essence of the Kenyan coast.',price:'From $80 / person',duration:'2 hours'},
+  {cat:'marine',name:'Kilifi Creek Sunset Dhow Cruise',desc:'Scenic sunset sailing through the tranquil waters of Kilifi Creek surrounded by mangroves.',price:'From $80 / person',duration:'2 hours'},
+  {cat:'marine',name:'Private Creek Boat Excursion',desc:'Explore mangrove creeks and coastal waterways on a private boat at your own pace.',price:'$360',duration:'2–3 hours'},
+  {cat:'marine',name:'Kayaking in Kilifi Creek',desc:'Paddle through peaceful mangrove channels while observing birdlife and local fishing communities.',price:'On Request',duration:'2 hours'},
+  {cat:'marine',name:'Stand-Up Paddleboarding',desc:'Explore calm coastal waters while paddleboarding in sheltered creek environments.',price:'On Request',duration:'1–2 hours'},
+  {cat:'marine',name:'Kuruwitu Conservancy Snorkelling',desc:"Snorkel within Kenya's first community-managed marine protected area.",price:'On Request',duration:'2–3 hours'},
+  {cat:'nature',name:'Arabuko Sokoke Forest Tour',desc:"Guided exploration of East Africa's largest coastal forest, home to rare bird species found nowhere else.",price:'On Request / person',duration:'3–4 hours'},
+  {cat:'nature',name:'Gede Ruins Historical Tour',desc:'Visit the mysterious Swahili settlement hidden within the forest — ancient mosques and coral stone houses.',price:'From $10-$15 / person',duration:'2 hours'},
+  {cat:'nature',name:'Mnarani Ruins Guided Visit',desc:'Cultural visit to ancient Swahili ruins overlooking the tranquil waters of Kilifi Creek.',price:'On Request',duration:'2 hours'},
+  {cat:'nature',name:'Baobab Forest Exploration Walk',desc:'Discover iconic baobab trees and the local legends they carry in coastal landscapes.',price:'On Request',duration:'1–2 hours'},
+  {cat:'nature',name:'Turtle Conservation Visit',desc:'Educational visit to a local turtle conservation initiative focused on marine protection.',price:'From On Request / person',duration:'1–2 hours'},
+  {cat:'nature',name:'Swahili Cooking Experience',desc:'Hands-on cooking with local chefs exploring traditional Swahili cuisine, ending with a shared meal.',price:'From $75 / person',duration:'3–4 hours'},
+  {cat:'luxury',name:'Vipingo Ridge Golf Experience',desc:"Play on one of East Africa's most spectacular championship golf courses overlooking the Indian Ocean.",price:'On Request',duration:'Half / Full Day'},
+  {cat:'wellness',name:'Private Yoga Session',desc:'Private yoga session promoting relaxation and balance — available at sunrise or sunset by the ocean.',price:'On Request',duration:'60–90 minutes'},
+  {cat:'wellness',name:'Personal Training Session',desc:'Personalised fitness training tailored to individual goals — strength, mobility or overall wellbeing.',price:'On Request',duration:'60 minutes'},
+  {cat:'wellness',name:'In-House Wellness Treatments',desc:'Private massages and therapeutic treatments by skilled therapists in the comfort of your accommodation.',price:'On Request',duration:'60–90 minutes'}
+];
+
+var kiteActivities = [
+  {tag:'Kitesurfing · Beginner',name:'2hr Kite Taster Course',price:'$130',desc:'Sea assessment, kite setup, safety systems, first piloting and basic launch & land.',location:'Kilifi & Watamu'},
+  {tag:'Kitesurfing · Intermediate',name:'6hr Kite Course',price:'$390',desc:'Water entry/exit with kite, body dragging, power strokes, upwind body dragging, water start and controlled stop.',location:'Kilifi & Watamu'},
+  {tag:'Kitesurfing · Advanced',name:'9hr Kite Course',price:'$585',desc:'Speed control by edging, riding upwind, sitting transition and riding toeside. Full independence on the water.',location:'Kilifi & Watamu'},
+  {tag:'SUP · All Levels',name:'Stand-Up Paddleboard Lesson',price:'On Request',desc:'Discover the perfect blend of adventure and tranquility on flat water or gentle waves.',location:'Kilifi Creek & Watamu'},
+  {tag:'SUP Excursion',name:'SUP Excursion',price:'On Request',desc:'Explore the coast by paddleboard — mangroves and marine life at a relaxed pace.',location:'Mida Creek & Watamu'},
+  {tag:'Unique Experience',name:'Floating Experience',price:'On Request',desc:'Unwind on a gentle, drifting platform set on the calm waters of Mida Creek.',location:'Mida Creek'},
+  {tag:'Rental · Equipment',name:'Full Kite Equipment Rental',price:'$50/hr · $150/day',desc:'Full kite setup: kite, bar, board and harness. Available for experienced riders.',location:'Kilifi & Watamu'}
+];
+
+var catLabels = {marine:'Marine & Ocean',nature:'Nature & Culture',luxury:'Luxury & Leisure',wellness:'Wellness'};
+
+// ── RENDER ACTIVITIES ─────────────────────────────────────────────────────
+function renderActivities(filter) {
+  var grid = document.getElementById('activitiesGrid');
+  var list = filter === 'all' ? activities : activities.filter(function(a){return a.cat===filter;});
+  var catCounters = {};
+  grid.innerHTML = list.map(function(a){
+    var realIdx = activities.indexOf(a);
+    catCounters[a.cat] = (catCounters[a.cat]||0);
+    catCounters[a.cat]++;
+    var catLabel = catLabels[a.cat]||a.cat;
+    return '<div class="activity-card" data-idx="'+realIdx+'">' +
+      '<div class="card-image">' +
+        '<div class="card-image-placeholder">' +
+          '<div class="placeholder-logo">Tribal <span>Sand</span></div>' +
+          '<div class="placeholder-rule"></div>' +
+          '<div class="placeholder-cat">'+catLabel+'</div>' +
+        '</div>' +
+        '<div class="card-image-overlay"></div>' +
+        '<div class="card-cat-badge">'+catLabel+'</div>' +
+      '</div>' +
+      '<div class="card-body">' +
+        '<div class="card-name">'+a.name+'</div>' +
+        '<div class="card-desc">'+a.desc+'</div>' +
+        '<div class="card-footer">' +
+          '<div class="card-price">'+a.price+'</div>' +
+          '<div class="card-duration">&#9201; '+a.duration+'</div>' +
+        '</div>' +
+        '<button class="card-enquire">Enquire Now</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+  grid.querySelectorAll('.activity-card').forEach(function(card){
+    card.addEventListener('click', function(){
+      var idx = parseInt(card.getAttribute('data-idx'));
+      openModal(activities[idx].name, catLabels[activities[idx].cat]||'Experience');
+    });
+  });
+}
+
+function renderKite() {
+  var grid = document.getElementById('kiteGrid');
+  grid.innerHTML = kiteActivities.map(function(k,i){
+    return '<div class="kite-card" data-kite="'+i+'">' +
+      '<div class="kite-card-image">' +
+        '<div class="kite-card-image-placeholder">' +
+          '<div class="placeholder-logo">Tribal <span>Sand</span></div>' +
+          '<div class="placeholder-rule"></div>' +
+          '<div class="placeholder-cat">Tribal Kite School</div>' +
+        '</div>' +
+        '<div class="kite-card-image-overlay"></div>' +
+        '<div class="kite-card-badge">'+k.tag+'</div>' +
+      '</div>' +
+      '<div class="kite-card-body">' +
+        '<div class="kite-name">'+k.name+'</div>' +
+        '<div class="kite-price">'+k.price+'</div>' +
+        '<div class="kite-desc">'+k.desc+'</div>' +
+        '<div class="kite-location">&#128205; '+k.location+'</div>' +
+        '<button class="kite-enquire">Enquire Now</button>' +
+      '</div>' +
+    '</div>';
+  }).join('');
+  grid.querySelectorAll('.kite-card').forEach(function(card){
+    card.addEventListener('click', function(){
+      var i = parseInt(card.getAttribute('data-kite'));
+      openModal(kiteActivities[i].name, 'Tribal Kite School');
+    });
+  });
+}
+
+// ── FILTER BAR ────────────────────────────────────────────────────────────
+document.getElementById('filterBar').addEventListener('click', function(e){
+  var btn = e.target.closest('.filter-btn');
+  if (!btn) return;
+  document.querySelectorAll('.filter-btn').forEach(function(b){b.classList.remove('active');});
+  btn.classList.add('active');
+  var cat = btn.getAttribute('data-cat');
+  if (cat === 'kite') {
+    document.getElementById('kite-school').scrollIntoView({behavior:'smooth'});
+  } else {
+    renderActivities(cat);
+    document.getElementById('experiences').scrollIntoView({behavior:'smooth'});
+  }
+});
+
+// ── MODAL ─────────────────────────────────────────────────────────────────
+function openModal(name, tag) {
+  document.getElementById('modalTag').textContent = tag;
+  document.getElementById('modalName').textContent = name;
+  // reset
+  document.querySelectorAll('.option-card').forEach(function(c){c.classList.remove('chosen');});
+  document.querySelectorAll('.property-item').forEach(function(p){p.classList.remove('chosen');});
+  document.getElementById('propertySection').classList.add('hidden');
+  document.getElementById('pickupSection').classList.add('hidden');
+  document.getElementById('hotelLocationField').classList.add('hidden');
+  document.getElementById('successView').style.display = 'none';
+  document.getElementById('modalBodyWrap').style.display = 'block';
+  document.getElementById('stepsBar').style.display = 'flex';
+  document.getElementById('modalHeader').style.display = 'block';
+  goToStep(1);
+  document.getElementById('modalOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeModal(){
+  document.getElementById('modalOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function goToStep(n){
+  document.querySelectorAll('.form-step').forEach(function(s,i){s.classList.toggle('active',i+1===n);});
+  [1,2,3].forEach(function(i){
+    var el = document.getElementById('step-ind-'+i);
+    el.classList.remove('active','done');
+    if(i===n) el.classList.add('active');
+    else if(i<n) el.classList.add('done');
+  });
+  document.getElementById('modal').scrollTop = 0;
+}
+
+// Step 1 choices
+document.getElementById('cardClient').addEventListener('click', function(){
+  document.querySelectorAll('#step1 > .option-grid .option-card').forEach(function(c){c.classList.remove('chosen');});
+  this.classList.add('chosen');
+  document.getElementById('propertySection').classList.remove('hidden');
+  document.getElementById('pickupSection').classList.add('hidden');
+});
+document.getElementById('cardExternal').addEventListener('click', function(){
+  document.querySelectorAll('#step1 > .option-grid .option-card').forEach(function(c){c.classList.remove('chosen');});
+  this.classList.add('chosen');
+  document.getElementById('pickupSection').classList.remove('hidden');
+  document.getElementById('propertySection').classList.add('hidden');
+});
+document.getElementById('propertyList').addEventListener('click', function(e){
+  var item = e.target.closest('.property-item');
+  if(!item) return;
+  document.querySelectorAll('.property-item').forEach(function(p){p.classList.remove('chosen');});
+  item.classList.add('chosen');
+});
+document.getElementById('cardPickup').addEventListener('click', function(){
+  document.querySelectorAll('#pickupSection .option-card').forEach(function(c){c.classList.remove('chosen');});
+  this.classList.add('chosen');
+  document.getElementById('hotelLocationField').classList.remove('hidden');
+});
+document.getElementById('cardMeetpoint').addEventListener('click', function(){
+  document.querySelectorAll('#pickupSection .option-card').forEach(function(c){c.classList.remove('chosen');});
+  this.classList.add('chosen');
+  document.getElementById('hotelLocationField').classList.add('hidden');
+});
+
+// Navigation
+document.getElementById('btnStep1Next').addEventListener('click', function(){goToStep(2);});
+document.getElementById('btnStep2Back').addEventListener('click', function(){goToStep(1);});
+document.getElementById('btnStep2Next').addEventListener('click', function(){goToStep(3);});
+document.getElementById('btnStep3Back').addEventListener('click', function(){goToStep(2);});
+document.getElementById('btnSubmit').addEventListener('click', function(){
+  var name = document.getElementById('firstName').value.trim();
+  var email = document.getElementById('email').value.trim();
+  if(!name||!email){alert('Please fill in your name and email address.');return;}
+  document.getElementById('modalBodyWrap').style.display = 'none';
+  document.getElementById('stepsBar').style.display = 'none';
+  document.getElementById('modalHeader').style.display = 'none';
+  document.getElementById('successView').style.display = 'block';
+});
+document.getElementById('modalClose').addEventListener('click', closeModal);
+document.getElementById('btnSuccessClose').addEventListener('click', closeModal);
+document.getElementById('modalOverlay').addEventListener('click', function(e){if(e.target===this)closeModal();});
+
+// Nav enquire opens modal with blank
+document.getElementById('navEnquire').addEventListener('click', function(e){
+  e.preventDefault();
+  openModal('General Enquiry','Tribal Sand');
+});
+
+// Hero CTA
+document.getElementById('heroCta').addEventListener('click', function(e){
+  e.preventDefault();
+  document.getElementById('experiences').scrollIntoView({behavior:'smooth'});
+});
+
+// ── INIT ─────────────────────────────────────────────────────────────────
+renderActivities('all');
+renderKite();
+
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,42 @@
+/* Tribal Sand — Rooms & Availability (Zuri suite-card look) + search bar */
+.rr{padding:3.5rem 1.25rem 1rem;max-width:1200px;margin:0 auto;font-family:'Jost',sans-serif}
+.rr .sec-label{font-size:.75rem;letter-spacing:.28em;text-transform:uppercase;color:#B8965A;margin-bottom:.55rem;display:flex;align-items:center;gap:.5rem}
+.rr .sec-label::before{content:'';width:14px;height:1px;background:#B8965A}
+.rr .sec-h{font-family:'Cormorant Garamond',serif;font-weight:300;font-size:2.1rem;color:#141412;margin:0 0 .3rem}
+.rr .sec-h em{font-style:italic;color:#1E5C6B}
+.rr .sec-rule{width:54px;height:1px;background:#d9cfc2;margin:.9rem 0 1.8rem}
+.suites-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:1.6rem}
+.suite-card{border:1px solid #ece4d8;background:#fff;overflow:hidden;transition:box-shadow .3s,opacity .3s;display:flex;flex-direction:column}
+.suite-card:hover{box-shadow:0 8px 32px rgba(0,0,0,.09)}
+.suite-card-img{height:220px;overflow:hidden;position:relative;background:#1E5C6B}
+.suite-card-img img{width:100%;height:100%;object-fit:cover;display:block;transition:transform .5s ease}
+.suite-card-img[data-placeholder] img{object-fit:contain;padding:2.4rem;filter:brightness(0) invert(1);opacity:.5}
+.suite-card:hover .suite-card-img img{transform:scale(1.05)}
+.suite-card-tag{position:absolute;bottom:.75rem;left:.75rem;font-size:.58rem;letter-spacing:.22em;text-transform:uppercase;background:rgba(16,47,58,.82);color:rgba(184,150,90,.95);padding:.28rem .75rem;backdrop-filter:blur(6px)}
+.suite-card-body{padding:1.1rem 1.2rem 1.25rem;display:flex;flex-direction:column;flex:1}
+.suite-card-name{font-family:'Cormorant Garamond',serif;font-size:1.35rem;font-weight:400;color:#141412;margin-bottom:.18rem}
+.suite-card-meta{font-size:.78rem;letter-spacing:.08em;color:#A89880;margin-bottom:.6rem}
+.suite-card-desc{font-size:.95rem;color:#6B6050;line-height:1.7;margin:0}
+.suite-card.is-unavailable{opacity:.5}
+.rr-card__avail{margin-top:.9rem;padding-top:.8rem;border-top:1px solid #f0e9df}
+.rr-card__avail-ok{color:#1E5C6B;font-weight:600;margin-bottom:.5rem}
+.rr-card__avail-no{color:#A89880;font-style:italic}
+.rr-req-btn{background:#1E5C6B;color:#fff;border:none;border-radius:999px;padding:.55rem 1.1rem;font-family:'Jost',sans-serif;font-size:.8rem;cursor:pointer}
+.rr-req-btn:hover{background:#16424d}
+.rr-bar{position:sticky;bottom:0;z-index:50;background:#fff;border-top:1px solid #ece4d8;box-shadow:0 -2px 12px rgba(0,0,0,.07);font-family:'Jost',sans-serif}
+.rr-bar__inner{max-width:1100px;margin:0 auto;display:flex;gap:1rem;align-items:flex-end;justify-content:center;flex-wrap:wrap;padding:.85rem 1rem}
+.rr-bar__field{display:flex;flex-direction:column;gap:.25rem;font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;color:#6B6050}
+.rr-bar__field input,.rr-bar__field select{border:1px solid #d9cfc2;border-radius:8px;padding:.55rem .7rem;font-family:'Jost',sans-serif;font-size:.95rem;color:#141412}
+.rr-bar__cta{background:#B8965A;color:#141412;border:none;border-radius:999px;padding:.7rem 1.8rem;font-family:'Jost',sans-serif;font-weight:600;font-size:.9rem;cursor:pointer}
+.rr-bar__cta:disabled{opacity:.6;cursor:default}
+.rr-bar__result{max-width:1100px;margin:0 auto;padding:0 1rem .85rem;display:flex;gap:1rem;align-items:center;justify-content:center;flex-wrap:wrap;color:#6B6050}
+.rr-bar__ok{color:#1E5C6B;font-weight:600}
+@media(max-width:600px){.rr-bar__inner{gap:.6rem}.rr-bar__field{font-size:.6rem}}
+.bk-modal-lock{overflow:hidden}
+.bk-modal{position:fixed;inset:0;z-index:10000;display:flex;align-items:center;justify-content:center}
+.bk-modal[hidden]{display:none}
+.bk-modal__backdrop{position:absolute;inset:0;background:rgba(20,20,18,.55)}
+.bk-modal__dialog{position:relative;background:#fff;border-radius:16px;max-width:460px;width:calc(100% - 2rem);max-height:90vh;overflow:auto;padding:1.6rem 1.4rem;box-shadow:0 20px 60px rgba(0,0,0,.3)}
+.bk-modal__title{font-family:'Cormorant Garamond',serif;font-weight:400;font-size:1.6rem;margin:0 2rem 1rem 0;color:var(--rr-dark,#141412)}
+.bk-modal__close{position:absolute;top:.8rem;right:1rem;background:none;border:none;font-size:1.8rem;line-height:1;color:#8a7c80;cursor:pointer}
+@media(max-width:600px){.rr{padding-top:2.5rem}.rr-bar{flex-direction:column;align-items:stretch}}

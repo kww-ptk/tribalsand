@@ -1,0 +1,1236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0,viewport-fit=cover"/>
+<title>Plan Your Trip · Tribal Sand · Kenya's North Coast</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,600;1,300;1,400&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --sand:#B8965A;--sand-lt:#D4B07A;--sand-pale:#F2E8D6;--sand-faint:#FAF6EE;
+  --teal:#1E5C6B;--teal-d:#102F3A;--teal-m:#2D7A8C;
+  --dark:#141412;--off:#FAF8F4;--white:#fff;
+  --mid:#6B6050;--light:#A89880;--border:rgba(184,150,90,.15);
+  --r:0px;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+html{scroll-behavior:smooth;}
+body{font-family:'Jost',sans-serif;background:var(--off);color:var(--dark);-webkit-font-smoothing:antialiased;min-height:100vh;}
+button,input,select,textarea{font-family:'Jost',sans-serif;outline:none;color:inherit;}
+::-webkit-scrollbar{width:3px;}::-webkit-scrollbar-thumb{background:var(--border);}
+.hidden{display:none!important;}
+
+/* ── NAV ── */
+.nav{position:fixed;inset:0 0 auto;z-index:300;height:56px;display:flex;align-items:center;justify-content:space-between;padding:0 20px;background:rgba(16,47,58,.97);backdrop-filter:blur(18px);border-bottom:1px solid rgba(184,150,90,.1);}
+.nav-logo img{height:26px;width:auto;filter:brightness(0) invert(1);opacity:.85;}
+.nav-badge{font-size:.52rem;letter-spacing:.28em;text-transform:uppercase;color:rgba(184,150,90,.45);}
+.nav-skip{font-size:.58rem;letter-spacing:.15em;text-transform:uppercase;color:rgba(184,150,90,.4);background:none;border:none;cursor:pointer;padding:.4rem .8rem;}
+
+/* ── PROGRESS BAR ── */
+.prog-wrap{position:fixed;top:56px;left:0;right:0;z-index:299;background:var(--teal-d);border-bottom:1px solid rgba(184,150,90,.1);padding:0 20px;}
+.prog-inner{display:flex;align-items:center;gap:0;height:48px;}
+.prog-step{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;position:relative;padding:0 4px;}
+.prog-step::after{content:'';position:absolute;right:0;top:50%;transform:translateY(-50%);width:1px;height:18px;background:rgba(184,150,90,.12);}
+.prog-step:last-child::after{display:none;}
+.prog-num{width:20px;height:20px;border-radius:50%;border:1px solid rgba(184,150,90,.2);display:flex;align-items:center;justify-content:center;font-size:.52rem;color:rgba(184,150,90,.3);margin-bottom:3px;transition:all .25s;flex-shrink:0;}
+.prog-step.active .prog-num{background:var(--sand);border-color:var(--sand);color:var(--teal-d);}
+.prog-step.done .prog-num{background:var(--teal-m);border-color:var(--teal-m);color:#fff;font-size:.6rem;}
+.prog-lbl{font-size:.44rem;letter-spacing:.12em;text-transform:uppercase;color:rgba(184,150,90,.25);white-space:nowrap;}
+.prog-step.active .prog-lbl{color:rgba(184,150,90,.65);}
+.prog-step.done .prog-lbl{color:rgba(184,150,90,.35);}
+.prog-bar{position:absolute;bottom:0;left:0;height:2px;background:var(--sand);transition:width .35s ease;}
+
+/* ── MAIN ── */
+.main{padding-top:104px;padding-bottom:100px;min-height:100vh;}
+.step{display:none;animation:fadeUp .3s ease;}
+.step.active{display:block;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
+
+/* ── STEP INNER ── */
+.step-inner{max-width:600px;margin:0 auto;padding:28px 20px 0;}
+.step-eyebrow{font-size:.52rem;letter-spacing:.38em;text-transform:uppercase;color:var(--sand);margin-bottom:.5rem;display:flex;align-items:center;gap:.6rem;}
+.step-eyebrow::before{content:'';width:16px;height:1px;background:var(--sand);}
+.step-h{font-family:'Cormorant Garamond',serif;font-size:clamp(2rem,6vw,2.8rem);font-weight:300;line-height:1.05;color:var(--dark);margin-bottom:.4rem;}
+.step-h em{font-style:italic;color:var(--teal);}
+.step-rule{width:28px;height:1px;background:var(--sand);margin-bottom:1.4rem;}
+.step-hint{font-size:.76rem;color:var(--mid);line-height:1.85;margin-bottom:1.8rem;}
+
+/* ── FORM ELEMENTS ── */
+.field{margin-bottom:1rem;}
+.lbl{display:block;font-size:.58rem;letter-spacing:.18em;text-transform:uppercase;color:var(--mid);margin-bottom:.4rem;}
+.req{color:var(--sand);}
+.inp,.sel,.ta{width:100%;padding:.85rem 1rem;border:1px solid var(--border);background:var(--white);font-size:1rem;color:var(--dark);border-radius:var(--r);transition:border-color .2s,box-shadow .2s;-webkit-appearance:none;}
+.inp:focus,.sel:focus,.ta:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(30,92,107,.08);}
+.inp::placeholder,.ta::placeholder{color:rgba(107,96,80,.3);}
+.ta{resize:none;min-height:90px;line-height:1.65;}
+.sw{position:relative;}
+.sw::after{content:'▾';position:absolute;right:1rem;top:50%;transform:translateY(-50%);color:var(--light);pointer-events:none;}
+.g2{display:grid;grid-template-columns:1fr 1fr;gap:.85rem;}
+.divider{height:1px;background:var(--border);margin:1.6rem 0;}
+.section-lbl{font-size:.54rem;letter-spacing:.28em;text-transform:uppercase;color:var(--sand);margin-bottom:.9rem;display:flex;align-items:center;gap:.5rem;}
+.section-lbl::before{content:'';width:12px;height:1px;background:var(--sand);}
+
+/* ── COUNTER ROW ── */
+.counter-row{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.1rem;background:var(--white);border:1px solid var(--border);margin-bottom:.55rem;}
+.counter-label{font-size:.82rem;color:var(--dark);}
+.counter-sub{font-size:.65rem;color:var(--light);margin-top:.1rem;}
+.counter-ctrl{display:flex;align-items:center;gap:.85rem;}
+.counter-btn{width:36px;height:36px;border-radius:50%;border:1px solid var(--border);background:var(--white);display:flex;align-items:center;justify-content:center;font-size:1.1rem;cursor:pointer;color:var(--teal);transition:all .18s;flex-shrink:0;}
+.counter-btn:hover{border-color:var(--teal);background:rgba(30,92,107,.05);}
+.counter-btn:disabled{opacity:.3;cursor:default;}
+.counter-val{font-size:1.1rem;font-weight:500;min-width:20px;text-align:center;}
+
+/* ── CHOICE CARDS ── */
+.choice-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:.55rem;margin-bottom:1.4rem;}
+.choice-card{border:1px solid var(--border);padding:1.1rem .85rem;text-align:center;cursor:pointer;transition:all .2s;background:var(--white);position:relative;user-select:none;}
+.choice-card:active{transform:scale(.97);}
+.choice-card.on{border-color:var(--teal);background:rgba(30,92,107,.05);}
+.choice-card.on::after{content:'✓';position:absolute;top:.35rem;right:.5rem;font-size:.5rem;color:var(--teal);font-weight:700;}
+.cc-ico{font-size:1.5rem;margin-bottom:.38rem;}
+.cc-lbl{font-size:.7rem;font-weight:500;color:var(--dark);line-height:1.3;}
+.cc-hint{font-size:.58rem;color:var(--light);margin-top:.12rem;}
+
+/* ── PROPERTY CARDS ── */
+.prop-list{display:flex;flex-direction:column;gap:.5rem;margin-bottom:1.4rem;}
+.prop-card{display:flex;align-items:center;gap:.9rem;padding:1rem 1.1rem;border:1px solid var(--border);cursor:pointer;background:var(--white);transition:all .2s;position:relative;}
+.prop-card:active{transform:scale(.99);}
+.prop-card.on{border-color:var(--teal);background:rgba(30,92,107,.04);}
+.prop-radio{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .2s;}
+.prop-card.on .prop-radio{background:var(--teal);border-color:var(--teal);}
+.prop-card.on .prop-radio::after{content:'';width:6px;height:6px;border-radius:50%;background:#fff;}
+.prop-ico{font-size:1.4rem;flex-shrink:0;}
+.prop-name{font-size:.82rem;font-weight:500;color:var(--dark);}
+.prop-meta{font-size:.62rem;color:var(--light);margin-top:.12rem;line-height:1.4;}
+.prop-type{font-size:.52rem;letter-spacing:.14em;text-transform:uppercase;color:var(--sand);margin-left:auto;flex-shrink:0;}
+
+/* ── PILLS ── */
+.pill-row{display:flex;flex-wrap:wrap;gap:.45rem;margin-bottom:1.2rem;}
+.pill{padding:.55rem 1rem;border:1px solid var(--border);background:var(--white);font-size:.72rem;cursor:pointer;transition:all .18s;user-select:none;}
+.pill.on{background:var(--teal);border-color:var(--teal);color:#fff;}
+.pill:active{transform:scale(.96);}
+
+/* ── CONTACT CARD ── */
+.contact-card{background:var(--white);border:1px solid var(--border);padding:1.4rem;margin-bottom:1.2rem;border-left:3px solid var(--teal);}
+
+/* ── ARRIVAL MODE ── */
+.mode-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-bottom:1.2rem;}
+.mode-card{border:1px solid var(--border);padding:.85rem .6rem;text-align:center;cursor:pointer;transition:all .2s;background:var(--white);}
+.mode-card.on{border-color:var(--teal);background:rgba(30,92,107,.05);}
+.mode-ico{font-size:1.3rem;margin-bottom:.3rem;}
+.mode-lbl{font-size:.62rem;color:var(--dark);line-height:1.3;}
+
+/* ══════════════════════════════════
+   ITINERARY — NEW SIMPLIFIED UX
+══════════════════════════════════ */
+.itin-empty{text-align:center;padding:2rem 1rem;font-size:.76rem;color:var(--light);font-style:italic;border:1px dashed var(--border);margin-bottom:1.2rem;}
+
+/* Day selector - horizontal scroll */
+.day-scroll{display:flex;gap:.5rem;overflow-x:auto;padding-bottom:.5rem;margin-bottom:1.2rem;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+.day-scroll::-webkit-scrollbar{display:none;}
+.day-btn{flex-shrink:0;display:flex;flex-direction:column;align-items:center;padding:.65rem .85rem;border:1px solid var(--border);background:var(--white);cursor:pointer;transition:all .2s;min-width:72px;position:relative;}
+.day-btn.on{border-color:var(--teal);background:var(--teal);}
+.day-btn-n{font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--light);margin-bottom:.18rem;}
+.day-btn.on .day-btn-n{color:rgba(255,255,255,.6);}
+.day-btn-d{font-size:.72rem;font-weight:500;color:var(--dark);}
+.day-btn.on .day-btn-d{color:#fff;}
+.day-btn-cnt{position:absolute;top:-5px;right:-5px;width:18px;height:18px;border-radius:50%;background:var(--sand);color:#fff;font-size:.5rem;display:none;align-items:center;justify-content:center;}
+.day-btn-cnt.show{display:flex;}
+
+/* Current day panel */
+.day-panel{background:var(--white);border:1px solid var(--border);margin-bottom:1.2rem;}
+.day-panel-head{padding:.9rem 1rem;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.day-panel-title{font-size:.82rem;font-weight:500;color:var(--dark);}
+.day-panel-date{font-size:.62rem;color:var(--light);}
+.day-panel-del{font-size:.6rem;color:var(--light);background:none;border:none;cursor:pointer;padding:.3rem .5rem;}
+
+/* Items added to day */
+.day-slots{padding:.65rem 1rem;}
+.slot-item{display:flex;align-items:center;gap:.65rem;padding:.65rem 0;border-bottom:1px solid rgba(184,150,90,.08);}
+.slot-item:last-child{border-bottom:none;}
+.slot-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.slot-ico{font-size:1rem;flex-shrink:0;}
+.slot-name{flex:1;font-size:.78rem;color:var(--dark);line-height:1.3;}
+.slot-time{font-size:.62rem;color:var(--light);}
+.slot-del{width:28px;height:28px;border:none;background:none;color:rgba(168,152,128,.4);cursor:pointer;font-size:.7rem;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
+.slot-del:hover{color:var(--dark);}
+.no-slots{font-size:.72rem;color:rgba(168,152,128,.45);font-style:italic;padding:.65rem 0;}
+
+/* Add activity button */
+.add-activity-btn{width:100%;padding:.9rem 1rem;border:1px dashed rgba(184,150,90,.3);background:rgba(250,246,238,.5);color:var(--teal);font-size:.72rem;letter-spacing:.12em;text-transform:uppercase;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:.5rem;transition:all .2s;margin-bottom:1.2rem;}
+.add-activity-btn:hover,.add-activity-btn:active{border-color:var(--teal);background:rgba(30,92,107,.04);}
+
+/* Category picker */
+.cat-picker{background:var(--white);border:1px solid var(--border);margin-bottom:1.2rem;overflow:hidden;}
+.cat-picker-head{padding:.75rem 1rem;background:var(--sand-faint);border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;}
+.cat-picker-title{font-size:.62rem;letter-spacing:.18em;text-transform:uppercase;color:var(--sand);}
+.cat-picker-close{width:28px;height:28px;border:none;background:none;color:var(--light);cursor:pointer;font-size:.7rem;display:flex;align-items:center;justify-content:center;}
+/* Category tabs */
+.cat-tabs{display:flex;gap:0;overflow-x:auto;border-bottom:1px solid var(--border);scrollbar-width:none;}
+.cat-tabs::-webkit-scrollbar{display:none;}
+.cat-tab{flex-shrink:0;padding:.65rem .85rem;border:none;background:none;font-size:.62rem;color:var(--light);cursor:pointer;border-bottom:2px solid transparent;transition:all .18s;white-space:nowrap;}
+.cat-tab.on{color:var(--teal);border-bottom-color:var(--teal);background:rgba(30,92,107,.03);}
+/* Activity list */
+.act-list{max-height:240px;overflow-y:auto;}
+.act-item{display:flex;align-items:center;gap:.75rem;padding:.8rem 1rem;border-bottom:1px solid rgba(184,150,90,.07);cursor:pointer;transition:background .15s;}
+.act-item:last-child{border-bottom:none;}
+.act-item:hover,.act-item:active{background:rgba(30,92,107,.04);}
+.act-ico{font-size:1.1rem;flex-shrink:0;}
+.act-name{flex:1;font-size:.78rem;color:var(--dark);line-height:1.3;}
+.act-price{font-size:.62rem;color:var(--light);flex-shrink:0;}
+/* Time picker row */
+.time-row{display:flex;align-items:center;gap:.65rem;padding:.75rem 1rem;border-top:1px solid var(--border);background:var(--sand-faint);}
+.time-row-lbl{font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--mid);flex-shrink:0;}
+.time-inp{width:130px;flex-shrink:0;}
+.time-note{flex:1;}
+
+/* ── REVIEW ── */
+.review-card{border:1px solid var(--border);background:var(--white);margin-bottom:.85rem;overflow:hidden;}
+.review-head{display:flex;align-items:center;justify-content:space-between;padding:.8rem 1rem;background:var(--sand-faint);border-bottom:1px solid var(--border);}
+.review-title{font-size:.62rem;letter-spacing:.15em;text-transform:uppercase;font-weight:500;color:var(--dark);}
+.review-edit{font-size:.58rem;letter-spacing:.12em;text-transform:uppercase;color:var(--sand);background:none;border:none;cursor:pointer;}
+.review-body{padding:.9rem 1rem;}
+.review-row{display:flex;justify-content:space-between;align-items:flex-start;padding:.35rem 0;border-bottom:1px solid rgba(184,150,90,.07);font-size:.76rem;}
+.review-row:last-child{border-bottom:none;}
+.review-k{color:var(--mid);}
+.review-v{color:var(--dark);font-weight:500;text-align:right;max-width:58%;}
+.review-slot{display:flex;align-items:center;gap:.55rem;padding:.28rem 0;border-bottom:1px solid rgba(184,150,90,.06);font-size:.73rem;}
+.review-slot:last-child{border-bottom:none;}
+.review-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;}
+.review-day-lbl{font-size:.55rem;letter-spacing:.14em;text-transform:uppercase;color:var(--teal);margin-bottom:.35rem;margin-top:.5rem;}
+
+/* ── INFO / NOTE BOXES ── */
+.info-box{background:rgba(30,92,107,.05);border-left:2px solid var(--teal-m);padding:.85rem 1rem;font-size:.73rem;color:var(--mid);line-height:1.75;margin-bottom:1.2rem;}
+.note-box{background:var(--sand-faint);border-left:2px solid rgba(184,150,90,.3);padding:.85rem 1rem;font-size:.72rem;color:var(--mid);line-height:1.75;margin-top:1.2rem;}
+
+/* ── BOTTOM NAV ── */
+.bnav{position:fixed;bottom:0;left:0;right:0;z-index:200;background:rgba(250,248,244,.97);backdrop-filter:blur(12px);border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:.75rem 20px;padding-bottom:calc(.75rem + env(safe-area-inset-bottom));}
+.btn-back{display:flex;align-items:center;gap:.4rem;font-size:.62rem;letter-spacing:.15em;text-transform:uppercase;color:var(--light);background:none;border:none;cursor:pointer;padding:.5rem;}
+.btn-back:hover{color:var(--dark);}
+.step-lbl{font-size:.55rem;letter-spacing:.15em;text-transform:uppercase;color:var(--light);}
+.btn-next{display:flex;align-items:center;gap:.55rem;font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;padding:.8rem 1.8rem;background:var(--teal);color:#fff;border:none;cursor:pointer;transition:background .2s;}
+.btn-next:hover{background:var(--teal-d);}
+.btn-next:disabled{opacity:.5;cursor:default;}
+
+/* ── SUCCESS ── */
+.succ{display:none;position:fixed;inset:0;z-index:9999;background:var(--teal-d);flex-direction:column;align-items:center;justify-content:center;padding:2rem;text-align:center;}
+.succ.show{display:flex;}
+.succ-ring{width:72px;height:72px;border:1px solid rgba(184,150,90,.4);border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:1.8rem;margin-bottom:1.5rem;animation:popIn .45s cubic-bezier(.2,.8,.3,1);}
+@keyframes popIn{from{transform:scale(0);opacity:0}to{transform:scale(1);opacity:1}}
+.succ-e{font-size:.52rem;letter-spacing:.4em;text-transform:uppercase;color:var(--sand);margin-bottom:.6rem;}
+.succ-h{font-family:'Cormorant Garamond',serif;font-size:clamp(2.2rem,8vw,3.8rem);font-weight:300;color:#fff;line-height:.95;margin-bottom:.85rem;}
+.succ-h em{font-style:italic;color:var(--sand-lt);}
+.succ-ref{font-size:.58rem;letter-spacing:.18em;text-transform:uppercase;color:rgba(184,150,90,.4);margin-bottom:2rem;}
+.succ-p{font-size:.76rem;color:rgba(212,196,172,.4);max-width:380px;line-height:1.9;margin-bottom:2.2rem;}
+.btn-succ{font-size:.62rem;letter-spacing:.22em;text-transform:uppercase;padding:.85rem 2.2rem;background:var(--sand);color:var(--teal-d);border:none;cursor:pointer;}
+
+@media(min-width:640px){
+  .choice-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));}
+  .mode-grid{grid-template-columns:repeat(5,1fr);}
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <a href="#" class="nav-logo"><img src="images/whitelogo11.png" alt="Tribal Sand"></a>
+  <div class="nav-badge">Trip Builder</div>
+  <button class="nav-skip" id="navSkip">Skip to Review</button>
+</nav>
+
+<!-- PROGRESS -->
+<div class="prog-wrap">
+  <div class="prog-inner" id="progInner">
+    <div class="prog-step active" data-g="1"><div class="prog-num">1</div><div class="prog-lbl">When</div></div>
+    <div class="prog-step" data-g="2"><div class="prog-num">2</div><div class="prog-lbl">Where</div></div>
+    <div class="prog-step" data-g="3"><div class="prog-num">3</div><div class="prog-lbl">Itinerary</div></div>
+    <div class="prog-step" data-g="4"><div class="prog-num">4</div><div class="prog-lbl">Travel</div></div>
+    <div class="prog-step" data-g="5"><div class="prog-num">5</div><div class="prog-lbl">Extras</div></div>
+    <div class="prog-step" data-g="6"><div class="prog-num">6</div><div class="prog-lbl">About You</div></div>
+    <div class="prog-step" data-g="7"><div class="prog-num">7</div><div class="prog-lbl">Review</div></div>
+  </div>
+  <div class="prog-bar" id="progBar" style="width:0%"></div>
+</div>
+
+<!-- MAIN -->
+<div class="main">
+
+  <!-- ═══ STEP 1 · WHO & WHEN ═══ -->
+  <div class="step active" id="s1">
+  <div class="step-inner">
+    <div class="step-eyebrow">Step 01 of 6</div>
+    <h2 class="step-h">When are you <em>coming?</em></h2>
+    <div class="step-rule"></div>
+    <p class="step-hint">Pick your dates and tell us who's joining — we'll build everything around this.</p>
+
+    <div class="g2">
+      <div class="field"><label class="lbl">Arrival Date <span class="req">*</span></label><input type="date" class="inp" id="arrDate"></div>
+      <div class="field"><label class="lbl">Departure Date <span class="req">*</span></label><input type="date" class="inp" id="depDate"></div>
+    </div>
+
+    <div class="divider"></div>
+    <div class="section-lbl">How many guests?</div>
+
+    <div class="counter-row">
+      <div><div class="counter-label">Adults</div><div class="counter-sub">18 years and over</div></div>
+      <div class="counter-ctrl">
+        <button class="counter-btn" id="adDn">−</button>
+        <span class="counter-val" id="adVal">2</span>
+        <button class="counter-btn" id="adUp">+</button>
+      </div>
+    </div>
+    <div class="counter-row">
+      <div><div class="counter-label">Children</div><div class="counter-sub">2–17 years</div></div>
+      <div class="counter-ctrl">
+        <button class="counter-btn" id="chDn">−</button>
+        <span class="counter-val" id="chVal">0</span>
+        <button class="counter-btn" id="chUp">+</button>
+      </div>
+    </div>
+    <div class="counter-row">
+      <div><div class="counter-label">Infants</div><div class="counter-sub">Under 2 years</div></div>
+      <div class="counter-ctrl">
+        <button class="counter-btn" id="inDn">−</button>
+        <span class="counter-val" id="inVal">0</span>
+        <button class="counter-btn" id="inUp">+</button>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <!-- ═══ STEP 2 · PROPERTY ═══ -->
+  <div class="step" id="s2">
+  <div class="step-inner">
+    <div class="step-eyebrow">Step 02 of 6</div>
+    <h2 class="step-h">Where are you <em>staying?</em></h2>
+    <div class="step-rule"></div>
+    <p class="step-hint">Pick your property, tell us what kind of trip this is, then leave your details at the bottom.</p>
+
+    <div class="prop-list" id="gProp">
+      <div class="prop-card on" data-v="zuri"><div class="prop-radio"></div><div class="prop-ico">🏨</div><div style="flex:1"><div class="prop-name">Zuri Boutique Hotel</div><div class="prop-meta">Watamu · 6 suites · Up to 14 guests · Beachfront</div></div><div class="prop-type">Hotel</div></div>
+      <div class="prop-card" data-v="mayakobe"><div class="prop-radio"></div><div class="prop-ico">🏨</div><div style="flex:1"><div class="prop-name">Maya Kobe Boutique Hotel</div><div class="prop-meta">Kilifi · 5 suites · Up to 12 guests · Creek views</div></div><div class="prop-type">Hotel</div></div>
+      <div class="prop-card" data-v="amani"><div class="prop-radio"></div><div class="prop-ico">🏡</div><div style="flex:1"><div class="prop-name">My Amani Villa</div><div class="prop-meta">Vipingo · 5 beds · 10 guests · Chef · Infinity pool</div></div><div class="prop-type">Villa</div></div>
+      <div class="prop-card" data-v="enkare"><div class="prop-radio"></div><div class="prop-ico">🏡</div><div style="flex:1"><div class="prop-name">Enkare Villa</div><div class="prop-meta">Kilifi · 5 beds · 10 guests · In-house cook</div></div><div class="prop-type">Villa</div></div>
+      <div class="prop-card" data-v="sandbox"><div class="prop-radio"></div><div class="prop-ico">🏡</div><div style="flex:1"><div class="prop-name">Sandbox Villa</div><div class="prop-meta">Kilifi · 4 beds · 8 guests · Self-catering</div></div><div class="prop-type">Villa</div></div>
+      <div class="prop-card" data-v="ext"><div class="prop-radio"></div><div class="prop-ico">🌍</div><div style="flex:1"><div class="prop-name">Staying elsewhere</div><div class="prop-meta">External accommodation — we still arrange everything</div></div></div>
+    </div>
+    <div class="field hidden" id="extRow"><label class="lbl">Accommodation name & location</label><input type="text" class="inp" id="extName" placeholder="e.g. Hemingways Watamu…"></div>
+
+    <div class="divider"></div>
+    <div class="section-lbl">What kind of trip is this?</div>
+    <div class="choice-grid" id="gPurpose">
+      <div class="choice-card" data-v="leisure"><div class="cc-ico">🏖️</div><div class="cc-lbl">Leisure</div></div>
+      <div class="choice-card" data-v="honeymoon"><div class="cc-ico">💍</div><div class="cc-lbl">Honeymoon</div></div>
+      <div class="choice-card" data-v="family"><div class="cc-ico">👨‍👩‍👧‍👦</div><div class="cc-lbl">Family</div></div>
+      <div class="choice-card" data-v="group"><div class="cc-ico">🥂</div><div class="cc-lbl">Group Getaway</div></div>
+      <div class="choice-card" data-v="adventure"><div class="cc-ico">🌊</div><div class="cc-lbl">Adventure</div></div>
+      <div class="choice-card" data-v="wellness"><div class="cc-ico">🧘</div><div class="cc-lbl">Wellness</div></div>
+      <div class="choice-card" data-v="safari"><div class="cc-ico">🦁</div><div class="cc-lbl">Safari & Beach</div></div>
+      <div class="choice-card" data-v="work"><div class="cc-ico">💼</div><div class="cc-lbl">Work & Play</div></div>
+    </div>
+
+  </div>
+  </div>
+
+  <!-- ═══ STEP 3 · ITINERARY ═══ -->
+  <div class="step" id="s3">
+  <div class="step-inner">
+    <div class="step-eyebrow">Step 03 of 6</div>
+    <h2 class="step-h">Build Your <em>Itinerary</em></h2>
+    <div class="step-rule"></div>
+    <p class="step-hint">Select a day, then tap any activity to add it. Set a time if you like. You can add as many or as few as you want — pricing is confirmed in your 24-hour quote.</p>
+
+    <div id="itinEmpty" class="itin-empty">Set arrival & departure dates in Step 1 to start building your itinerary.</div>
+    <div id="itinBuilder" class="hidden">
+      <!-- Day selector -->
+      <div class="day-scroll" id="dayScroll"></div>
+      <!-- Active day panel -->
+      <div class="day-panel" id="activeDayPanel"></div>
+      <!-- Add activity button -->
+      <button class="add-activity-btn" id="addActivityBtn">
+        <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 2v12M2 8h12"/></svg>
+        Add activity to this day
+      </button>
+      <!-- Category + activity picker (hidden until tapped) -->
+      <div class="cat-picker hidden" id="catPicker">
+        <div class="cat-picker-head">
+          <span class="cat-picker-title">Choose an activity</span>
+          <button class="cat-picker-close" id="catPickerClose">✕</button>
+        </div>
+        <div class="cat-tabs" id="catTabs"></div>
+        <div class="act-list" id="actList"></div>
+        <div class="time-row hidden" id="timeRow">
+          <span class="time-row-lbl">Time</span>
+          <input type="time" class="inp time-inp" id="actTime">
+          <input type="text" class="inp time-note" id="actNote" placeholder="Note (optional)">
+          <button class="btn-next" id="addActConfirm" style="padding:.65rem 1.1rem;font-size:.58rem;">Add</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  </div>
+
+  <!-- ═══ STEP 4 · DEPARTURE ═══ -->
+  <div class="step" id="s4">
+  <div class="step-inner">
+    <div class="step-eyebrow">Step 04 of 6</div>
+    <h2 class="step-h">Travel <em>Details</em></h2>
+    <div class="step-rule"></div>
+    <p class="step-hint">Your arrival and departure logistics — we'll handle every transfer and make sure the timing is perfect.</p>
+
+    <div class="section-lbl">Arrival</div>
+    <div class="mode-grid" id="gArrMode">
+      <div class="mode-card on" data-v="flight"><div class="mode-ico">✈️</div><div class="mode-lbl">International Flight</div></div>
+      <div class="mode-card" data-v="domestic"><div class="mode-ico">🛩️</div><div class="mode-lbl">Domestic Flight</div></div>
+      <div class="mode-card" data-v="charter"><div class="mode-ico">🚁</div><div class="mode-lbl">Charter</div></div>
+      <div class="mode-card" data-v="road"><div class="mode-ico">🚗</div><div class="mode-lbl">Road / Self-Drive</div></div>
+      <div class="mode-card" data-v="here"><div class="mode-ico">📍</div><div class="mode-lbl">Already in Kenya</div></div>
+    </div>
+    <div id="flightBlock">
+      <div class="g2">
+        <div class="field"><label class="lbl">Flight Number</label><input type="text" class="inp" id="fltNum" placeholder="e.g. KQ101"></div>
+        <div class="field"><label class="lbl">Arrival Airport</label>
+          <div class="sw"><select class="sel" id="arrApt"><option value="">Select…</option><option>Malindi Airport (MYD)</option><option>Mombasa · Moi International (MBA)</option><option>Nairobi · JKIA (NBO)</option><option>Wilson Airport (WIL)</option></select></div>
+        </div>
+      </div>
+      <div class="g2">
+        <div class="field"><label class="lbl">Landing Time</label><input type="time" class="inp" id="arrTime"></div>
+        <div class="field"><label class="lbl">Flying From</label><input type="text" class="inp" id="fromCity" placeholder="e.g. London Heathrow"></div>
+      </div>
+    </div>
+    <div class="section-lbl" style="margin-top:1rem">Arrival Transfer</div>
+    <div class="choice-grid" id="gTrans" style="grid-template-columns:repeat(3,1fr)">
+      <div class="choice-card on" data-v="yes"><div class="cc-ico">🚐</div><div class="cc-lbl">Yes please</div><div class="cc-hint">We'll arrange it</div></div>
+      <div class="choice-card" data-v="no"><div class="cc-ico">🙋</div><div class="cc-lbl">I'll manage</div></div>
+      <div class="choice-card" data-v="tbc"><div class="cc-ico">💬</div><div class="cc-lbl">Confirm later</div></div>
+    </div>
+    <div id="vehicleRow">
+      <div class="field"><label class="lbl">Vehicle Preference</label>
+        <div class="pill-row" id="pgVehicle">
+          <button class="pill on" data-pg="vehicle">Standard SUV</button>
+          <button class="pill" data-pg="vehicle">Luxury 4×4</button>
+          <button class="pill" data-pg="vehicle">Minivan (6–8 pax)</button>
+          <button class="pill" data-pg="vehicle">Surprise me</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+    <div class="section-lbl">Departure</div>
+
+    <div class="g2">
+      <div class="field"><label class="lbl">Departure Flight</label><input type="text" class="inp" id="depFlt" placeholder="e.g. KQ102"></div>
+      <div class="field"><label class="lbl">Departure Airport</label>
+        <div class="sw"><select class="sel" id="depApt"><option value="">Select…</option><option>Malindi Airport (MYD)</option><option>Mombasa · Moi International (MBA)</option><option>Nairobi · JKIA (NBO)</option><option>Wilson Airport (WIL)</option></select></div>
+      </div>
+    </div>
+    <div class="g2">
+      <div class="field"><label class="lbl">Departure Time</label><input type="time" class="inp" id="depTime"></div>
+      <div class="field"><label class="lbl">Flying To</label><input type="text" class="inp" id="depDest" placeholder="e.g. London…"></div>
+    </div>
+
+    <div class="divider"></div>
+    <div class="section-lbl">Departure Transfer</div>
+    <div class="choice-grid" id="gDepTrans" style="grid-template-columns:repeat(3,1fr)">
+      <div class="choice-card on" data-v="yes"><div class="cc-ico">🚐</div><div class="cc-lbl">Yes please</div><div class="cc-hint">Timed to your flight</div></div>
+      <div class="choice-card" data-v="no"><div class="cc-ico">🙋</div><div class="cc-lbl">I'll manage</div></div>
+      <div class="choice-card" data-v="tbc"><div class="cc-ico">💬</div><div class="cc-lbl">Confirm later</div></div>
+    </div>
+
+    <div class="field"><label class="lbl">Final Morning Requests</label><textarea class="ta" id="depNotes" placeholder="e.g. Farewell beach breakfast, last sunset walk, early departure snack…"></textarea></div>
+  </div>
+  </div>
+
+  <!-- ═══ STEP 5 · SPECIAL TOUCHES ═══ -->
+  <!-- ═══ STEP 5 · SPECIAL TOUCHES ═══ -->
+  <div class="step" id="s5">
+  <div class="step-inner">
+    <div class="step-eyebrow">Step 05 of 7</div>
+    <h2 class="step-h">Special <em>Touches</em></h2>
+    <div class="step-rule"></div>
+    <p class="step-hint">The details that matter most to you matter most to us.</p>
+
+    <div class="section-lbl">Any special occasions?</div>
+    <div class="choice-grid" id="gOccasion">
+      <div class="choice-card" data-v="birthday"><div class="cc-ico">🎂</div><div class="cc-lbl">Birthday</div></div>
+      <div class="choice-card" data-v="anniversary"><div class="cc-ico">💑</div><div class="cc-lbl">Anniversary</div></div>
+      <div class="choice-card" data-v="proposal"><div class="cc-ico">💍</div><div class="cc-lbl">Proposal</div></div>
+      <div class="choice-card" data-v="babymoon"><div class="cc-ico">🌸</div><div class="cc-lbl">Babymoon</div></div>
+      <div class="choice-card" data-v="graduation"><div class="cc-ico">🎓</div><div class="cc-lbl">Graduation</div></div>
+      <div class="choice-card" data-v="none"><div class="cc-ico">✨</div><div class="cc-lbl">Just a holiday</div></div>
+    </div>
+    <div class="field hidden" id="occNoteRow"><label class="lbl">Tell us more</label><input type="text" class="inp" id="occNote" placeholder="e.g. Surprise proposal, milestone birthday…"></div>
+
+    <div class="divider"></div>
+    <div class="section-lbl">Dietary Requirements</div>
+    <div class="pill-row" id="pgDiet">
+      <button class="pill on" data-pg="diet">No restrictions</button>
+      <button class="pill" data-pg="diet">Vegetarian</button>
+      <button class="pill" data-pg="diet">Vegan</button>
+      <button class="pill" data-pg="diet">Halal</button>
+      <button class="pill" data-pg="diet">Gluten Free</button>
+      <button class="pill" data-pg="diet">Nut Allergy</button>
+      <button class="pill" data-pg="diet">Dairy Free</button>
+      <button class="pill" data-pg="diet">Kosher</button>
+    </div>
+
+    <div class="section-lbl" style="margin-top:1.2rem">Accessibility & Mobility</div>
+    <div class="pill-row" id="pgMobility">
+      <button class="pill on" data-pg="mobility">No requirements</button>
+      <button class="pill" data-pg="mobility">Wheelchair access</button>
+      <button class="pill" data-pg="mobility">Limited walking</button>
+      <button class="pill" data-pg="mobility">Elderly guests</button>
+      <button class="pill" data-pg="mobility">Young children</button>
+      <button class="pill" data-pg="mobility">Pregnancy</button>
+    </div>
+
+    <div class="divider"></div>
+    <div class="section-lbl">Trip Pace</div>
+    <div class="choice-grid" id="gPace" style="grid-template-columns:repeat(3,1fr)">
+      <div class="choice-card" data-v="relaxed"><div class="cc-ico">🌴</div><div class="cc-lbl">Relaxed</div><div class="cc-hint">Slow & restorative</div></div>
+      <div class="choice-card on" data-v="balanced"><div class="cc-ico">⚖️</div><div class="cc-lbl">Balanced</div><div class="cc-hint">Mix of both</div></div>
+      <div class="choice-card" data-v="packed"><div class="cc-ico">🔥</div><div class="cc-lbl">Action-packed</div><div class="cc-hint">Every moment filled</div></div>
+    </div>
+
+    <div class="field"><label class="lbl">Anything else we should know?</label><textarea class="ta" id="extra" placeholder="Fitness levels, children's ages, surprise ideas, preferred activity times…"></textarea></div>
+  </div>
+  </div>
+
+  <!-- ═══ STEP 6 · ABOUT YOU ═══ -->
+  <div class="step" id="s6">
+  <div class="step-inner">
+    <div class="step-eyebrow">Step 06 of 7</div>
+    <h2 class="step-h">Almost <em>there</em></h2>
+    <div class="step-rule"></div>
+    <p class="step-hint">Last step before your review — so our concierge team knows who they're planning for.</p>
+
+    <div class="contact-card">
+      <div class="g2">
+        <div class="field"><label class="lbl">First Name <span class="req">*</span></label><input type="text" class="inp" id="fName" placeholder="First name" autocomplete="given-name"></div>
+        <div class="field"><label class="lbl">Last Name <span class="req">*</span></label><input type="text" class="inp" id="lName" placeholder="Last name" autocomplete="family-name"></div>
+      </div>
+      <div class="field"><label class="lbl">Email Address <span class="req">*</span></label><input type="email" class="inp" id="email" placeholder="your@email.com" autocomplete="email"></div>
+      <div class="field"><label class="lbl">Phone / WhatsApp <span class="req">*</span></label><input type="tel" class="inp" id="phone" placeholder="+254 …" autocomplete="tel"></div>
+    </div>
+
+    <div class="divider"></div>
+    <div class="section-lbl">A few more details <span style="font-size:.55rem;color:var(--light);text-transform:none;letter-spacing:0;font-weight:300;">— optional</span></div>
+    <div class="g2">
+      <div class="field"><label class="lbl">Nationality</label><input type="text" class="inp" id="nation" placeholder="e.g. British" autocomplete="off"></div>
+      <div class="field"><label class="lbl">Country of Residence</label><input type="text" class="inp" id="country" placeholder="e.g. United Kingdom" autocomplete="off"></div>
+    </div>
+
+    <div class="note-box">All requests are personally reviewed by our concierge team. We'll confirm what's possible and suggest alternatives — everything included in your 24-hour quote.</div>
+  </div>
+  </div>
+
+  <!-- ═══ STEP 7 · REVIEW ═══ -->
+  <div class="step" id="s7">
+  <div class="step-inner">
+    <div class="step-eyebrow">Step 07 of 7</div>
+    <h2 class="step-h"><em>Review</em> Your Trip</h2>
+    <div class="step-rule"></div>
+    <p class="step-hint">Everything looking right? Tap any section to edit. When you're ready, send your plan and we'll reply within 24 hours with a personalised quote.</p>
+    <div id="reviewContent"></div>
+    <div class="info-box" style="margin-top:1.5rem"><strong>What happens next:</strong> Our concierge team personally reviews your plan and responds within 24 hours with full pricing and availability. <strong>No payment is taken at this stage.</strong></div>
+  </div>
+  </div>
+
+</div><!-- /main -->
+
+<!-- BOTTOM NAV -->
+<div class="bnav">
+  <button class="btn-back" id="btnBack" style="visibility:hidden">
+    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 3L5 8l5 5"/></svg> Back
+  </button>
+  <span class="step-lbl" id="stepLbl">Step 1 of 6</span>
+  <button class="btn-next" id="btnNext">Continue <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 3l5 5-5 5"/></svg></button>
+</div>
+
+<!-- SUCCESS -->
+<div class="succ" id="succOverlay">
+  <div class="succ-ring">✦</div>
+  <div class="succ-e">Trip Request Sent</div>
+  <h2 class="succ-h">We'll be in<br><em>touch soon</em></h2>
+  <div class="succ-ref" id="succRef"></div>
+  <p class="succ-p">Your personalised itinerary has reached our concierge team. Expect a detailed quote within 24 hours.</p>
+  <button class="btn-succ" id="btnSuccClose">Close</button>
+</div>
+
+<script>
+/* ════════════════════════════════════════════════════════════
+   TRIBAL SAND · GoHighLevel Configuration
+   ════════════════════════════════════════════════════════════ */
+var TS_GHL = {
+  webhookUrl: 'https://services.leadconnectorhq.com/hooks/cBTrngnK5Q4lTkFUwhlo/webhook-trigger/ad7f1a2d-9c2a-4f9a-9049-c30b144643e5',
+  alsoPostToBackend: false,
+  backendUrl: 'https://www.tribalsand.com/tribal-sand/api/submit.php',
+};
+
+(function(){
+'use strict';
+
+/* ── ACTIVITY DATA ── */
+var CATS=[
+  {id:'ocean',   l:'Ocean & Marine',   i:'🌊',c:'#1E5C6B'},
+  {id:'nature',  l:'Nature & Culture', i:'🌿',c:'#2D6A4F'},
+  {id:'wellness',l:'Wellness & Spa',   i:'🧘',c:'#7B6554'},
+  {id:'sports',  l:'Water Sports',     i:'🪁',c:'#2D5F8A'},
+  {id:'dining',  l:'Dining & Drinks',  i:'🍽️',c:'#7A3D2A'},
+  {id:'safari',  l:'Safari & Bush',    i:'🦁',c:'#6B4A1E'},
+  {id:'transfer',l:'Transfers',        i:'🚐',c:'#4A4848'},
+  {id:'special', l:'Special Occasions',i:'✨',c:'#9B6B2D'},
+];
+var ITM={
+  ocean:[{n:'Snorkelling · Watamu Marine Park',p:'From $40/pp',i:'🤿'},{n:'Dolphin Watching Boat Trip',p:'From $40/pp',i:'🐬'},{n:'Scuba Diving · Certified',p:'From $95/pp',i:'🌊'},{n:'Discover Scuba · Beginner',p:'From $120/pp',i:'🌊'},{n:'PADI Open Water Course',p:'From $450/pp',i:'📜'},{n:'Deep Sea Fishing · Half Day',p:'From $550/boat',i:'🎣'},{n:'Deep Sea Fishing · Full Day',p:'From $900/boat',i:'🎣'},{n:'Sunset Dhow Cruise',p:'From $45/pp',i:'⛵'},{n:'Kilifi Creek Dhow Cruise',p:'From $45/pp',i:'⛵'},{n:'Private Creek Boat',p:'On Request',i:'🛥️'},{n:'Kayaking · Kilifi Creek',p:'On Request',i:'🚣'},{n:'Stand-Up Paddleboarding',p:'On Request',i:'🏄'},{n:'Kuruwitu Conservancy Snorkel',p:'On Request',i:'🐠'}],
+  nature:[{n:'Arabuko Sokoke Forest Tour',p:'From $50/pp',i:'🌲'},{n:'Gede Ruins Historical Tour',p:'From $35/pp',i:'🏛️'},{n:'Mnarani Ruins Guided Visit',p:'On Request',i:'🪨'},{n:'Baobab Forest Walk',p:'On Request',i:'🌳'},{n:'Turtle Conservation Programme',p:'From $30/pp',i:'🐢'},{n:'Swahili Cooking Experience',p:'From $75/pp',i:'👨‍🍳'},{n:'Local Village Cultural Tour',p:'On Request',i:'🏘️'},{n:'Bird Watching Walk',p:'On Request',i:'🦜'}],
+  wellness:[{n:'Private Yoga Session',p:'On Request',i:'🧘'},{n:'Sunrise Meditation Walk',p:'On Request',i:'🌅'},{n:'Personal Training Session',p:'On Request',i:'💪'},{n:'In-House Massage · 60 min',p:'On Request',i:'💆'},{n:'Couple\'s Spa Treatment',p:'On Request',i:'🌸'},{n:'Full Body Treatment · 90 min',p:'On Request',i:'✨'},{n:'Sound Bath Session',p:'On Request',i:'🎶'},{n:'Wellness Consultation',p:'On Request',i:'🌿'}],
+  sports:[{n:'Kite Taster Course · 2hrs',p:'$130/pp',i:'🪁'},{n:'Kite Course · 6hrs',p:'$390/pp',i:'🪁'},{n:'Kite Course · 9hrs',p:'$585/pp',i:'🪁'},{n:'SUP Lesson',p:'On Request',i:'🏄'},{n:'SUP Excursion · Mida Creek',p:'On Request',i:'🚣'},{n:'Floating Experience',p:'On Request',i:'🌊'},{n:'Kite Equipment Rental',p:'$50/hr',i:'🪁'},{n:'Vipingo Ridge Golf',p:'On Request',i:'⛳'}],
+  dining:[{n:'Private Beach Dinner',p:'On Request',i:'🕯️'},{n:'Sundowner Cocktails',p:'On Request',i:'🍹'},{n:'Swahili Seafood Feast',p:'On Request',i:'🦞'},{n:'Bush Breakfast · Sunrise',p:'On Request',i:'🌄'},{n:'Rooftop Starlight Dinner',p:'On Request',i:'⭐'},{n:'Wine & Cheese Sunset',p:'On Request',i:'🍷'},{n:'Spice Market Food Tour',p:'On Request',i:'🌶️'},{n:'Traditional Swahili Lunch',p:'On Request',i:'🍲'}],
+  safari:[{n:'Tsavo East · Day Safari',p:'On Request',i:'🦁'},{n:'Tsavo West · Day Safari',p:'On Request',i:'🦒'},{n:'Amboseli · Overnight Safari',p:'On Request',i:'🐘'},{n:'Shimba Hills Day Safari',p:'On Request',i:'🌿'},{n:'Mara Migration · Fly-in',p:'On Request',i:'✈️'},{n:'Arabuko Sokoke Night Safari',p:'On Request',i:'🦉'},{n:'Haller Park Wildlife Walk',p:'On Request',i:'🦏'}],
+  transfer:[{n:'Airport Arrival Transfer',p:'On Request',i:'✈️'},{n:'Airport Departure Transfer',p:'On Request',i:'🛫'},{n:'Inter-Property Transfer',p:'On Request',i:'🚐'},{n:'Full Day Driver Hire',p:'On Request',i:'🚗'},{n:'Half Day Driver Hire',p:'On Request',i:'🚗'},{n:'Boat Transfer',p:'On Request',i:'⛵'},{n:'Helicopter Charter',p:'On Request',i:'🚁'}],
+  special:[{n:'Rose Petal Turndown',p:'On Request',i:'🌹'},{n:'Champagne & Cake Setup',p:'On Request',i:'🎂'},{n:'Proposal Arrangement',p:'On Request',i:'💍'},{n:'Private Beach Picnic',p:'On Request',i:'🧺'},{n:'Flower Arrangement',p:'On Request',i:'💐'},{n:'Surprise Gift Delivery',p:'On Request',i:'🎁'},{n:'Stargazing Experience',p:'On Request',i:'🔭'},{n:'Anniversary Dinner Setup',p:'On Request',i:'🍾'},{n:'Romantic Room Decoration',p:'On Request',i:'❤️'},{n:'Photography Session',p:'On Request',i:'📸'}],
+};
+var PROPS={zuri:'Zuri Boutique Hotel · Watamu',mayakobe:'Maya Kobe · Kilifi',amani:'My Amani Villa · Vipingo',enkare:'Enkare Villa · Kilifi',sandbox:'Sandbox Villa · Kilifi',ext:'External accommodation'};
+
+/* ── STATE ── */
+var S={step:1,arrDate:'',depDate:'',adults:2,children:0,infants:0,arrMode:'flight',transfer:'yes',depTransfer:'yes',prop:'zuri',fName:'',lName:'',email:'',phone:'',purpose:'',occasions:[],pace:'balanced',days:[]};
+var activeDay=0, activeCat='ocean', pendingItem=null;
+
+/* ── HELPERS ── */
+function fmtD(d){var w=['Sun','Mon','Tue','Wed','Thu','Fri','Sat'],m=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];return w[d.getDay()]+' '+d.getDate()+' '+m[d.getMonth()];}
+function isoOf(d){return d.toISOString().split('T')[0];}
+function datesBetween(a,b){var r=[],c=new Date(a+'T12:00:00'),e=new Date(b+'T12:00:00');while(c<=e){r.push(new Date(c));c.setDate(c.getDate()+1);}return r;}
+
+/* ── STEP NAV ── */
+function goStep(n){
+  if(n<1||n>7)return;
+  S.step=n;
+  document.querySelectorAll('.step').forEach(function(s,i){s.classList.toggle('active',i+1===n);});
+  document.querySelectorAll('.prog-step').forEach(function(el){
+    var g=parseInt(el.getAttribute('data-g'));
+    el.classList.remove('active','done');
+    if(g===n)el.classList.add('active');
+    else if(g<n)el.classList.add('done');
+    var num=el.querySelector('.prog-num');
+    if(num)num.innerHTML=g<n?'✓':String(g);
+  });
+  document.getElementById('stepLbl').textContent='Step '+n+' of 7';
+  document.getElementById('btnBack').style.visibility=n===1?'hidden':'visible';
+  var nx=document.getElementById('btnNext');
+  nx.innerHTML=n===7?'Send My Trip <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8h10M9 4l4 4-4 4"/></svg>':'Continue <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M6 3l5 5-5 5"/></svg>';
+  // Progress bar
+  document.getElementById('progBar').style.width=((n-1)/6*100)+'%';
+  if(n===7)buildReview();
+  if(n===3)renderItinerary();
+  window.scrollTo({top:0,behavior:'smooth'});
+}
+
+document.getElementById('btnNext').addEventListener('click',function(){if(S.step<7)goStep(S.step+1);else submit();});
+document.getElementById('btnBack').addEventListener('click',function(){if(S.step>1)goStep(S.step-1);});
+document.getElementById('navSkip').addEventListener('click',function(){goStep(7);});
+document.getElementById('btnSuccClose').addEventListener('click',function(){document.getElementById('succOverlay').classList.remove('show');});
+document.getElementById('progInner').addEventListener('click',function(e){
+  var s=e.target.closest('.prog-step');if(!s)return;
+  var n=parseInt(s.getAttribute('data-g'));if(n<=S.step+1)goStep(n);
+});
+
+/* ── COUNTERS ── */
+function makeCounter(upId,dnId,valId,key,min){
+  var up=document.getElementById(upId),dn=document.getElementById(dnId),val=document.getElementById(valId);
+  function render(){val.textContent=S[key];dn.disabled=S[key]<=min;}
+  up.addEventListener('click',function(){S[key]++;render();});
+  dn.addEventListener('click',function(){if(S[key]>min){S[key]--;render();}});
+  render();
+}
+makeCounter('adUp','adDn','adVal','adults',1);
+makeCounter('chUp','chDn','chVal','children',0);
+makeCounter('inUp','inDn','inVal','infants',0);
+
+/* ── CHOICE GROUPS (single) ── */
+function bindCG(id,key,cb){
+  var el=document.getElementById(id);if(!el)return;
+  el.addEventListener('click',function(e){
+    var c=e.target.closest('.choice-card');if(!c)return;
+    el.querySelectorAll('.choice-card').forEach(function(x){x.classList.remove('on');});
+    c.classList.add('on');S[key]=c.getAttribute('data-v');
+    if(cb)cb(S[key]);
+  });
+}
+/* Multi-select occasions */
+function bindCGMulti(id,key,cb){
+  var el=document.getElementById(id);if(!el)return;
+  el.addEventListener('click',function(e){
+    var c=e.target.closest('.choice-card');if(!c)return;
+    c.classList.toggle('on');
+    var vals=[];el.querySelectorAll('.choice-card.on').forEach(function(x){vals.push(x.getAttribute('data-v'));});
+    S[key]=vals;if(cb)cb(vals);
+  });
+}
+/* Mode cards */
+function bindMode(id,key,cb){
+  var el=document.getElementById(id);if(!el)return;
+  el.addEventListener('click',function(e){
+    var c=e.target.closest('.mode-card');if(!c)return;
+    el.querySelectorAll('.mode-card').forEach(function(x){x.classList.remove('on');});
+    c.classList.add('on');S[key]=c.getAttribute('data-v');
+    if(cb)cb(S[key]);
+  });
+}
+
+bindMode('gArrMode','arrMode',function(v){
+  document.getElementById('flightBlock').style.display=(v==='flight'||v==='domestic'||v==='charter')?'':'none';
+});
+bindCG('gTrans','transfer',function(v){
+  document.getElementById('vehicleRow').style.display=v==='yes'?'':'none';
+});
+bindCG('gPurpose','purpose');
+bindCG('gDepTrans','depTransfer');
+bindCG('gPace','pace');
+bindCGMulti('gOccasion','occasions',function(v){
+  var has=v.length&&!v.includes('none');
+  document.getElementById('occNoteRow').classList.toggle('hidden',!has);
+});
+
+/* ── PROPERTY ── */
+document.getElementById('gProp').addEventListener('click',function(e){
+  var c=e.target.closest('.prop-card');if(!c)return;
+  document.querySelectorAll('.prop-card').forEach(function(x){x.classList.remove('on');});
+  c.classList.add('on');S.prop=c.getAttribute('data-v');
+  document.getElementById('extRow').classList.toggle('hidden',S.prop!=='ext');
+});
+
+/* ── PILLS ── */
+document.addEventListener('click',function(e){
+  var p=e.target.closest('.pill');if(!p)return;
+  var pg=p.getAttribute('data-pg');
+  var single=['vehicle','mobility'];
+  if(single.indexOf(pg)>-1){
+    var row=p.closest('.pill-row');
+    if(row)row.querySelectorAll('.pill').forEach(function(x){x.classList.remove('on');});
+  }
+  p.classList.toggle('on');
+});
+
+/* ── DATE INPUTS ── */
+function rebuildDays(){
+  if(!S.arrDate||!S.depDate)return;
+  var dates=datesBetween(S.arrDate,S.depDate);
+  var old={};S.days.forEach(function(d){old[d.date]=d.slots;});
+  S.days=dates.map(function(d,i){
+    var iso=isoOf(d);
+    return{date:iso,label:(i===0?'Arrival · ':'')+(i===dates.length-1&&dates.length>1?'Departure · ':'')+fmtD(d),slots:old[iso]||[]};
+  });
+  if(activeDay>=S.days.length)activeDay=0;
+  if(S.step===3)renderItinerary();
+}
+document.getElementById('arrDate').addEventListener('change',function(){S.arrDate=this.value;rebuildDays();});
+document.getElementById('depDate').addEventListener('change',function(){S.depDate=this.value;rebuildDays();});
+document.getElementById('fName').addEventListener('input',function(){S.fName=this.value;});
+document.getElementById('lName').addEventListener('input',function(){S.lName=this.value;});
+document.getElementById('email').addEventListener('input',function(){S.email=this.value;});
+document.getElementById('phone').addEventListener('input',function(){S.phone=this.value;});
+
+/* ══════════════════════════════════
+   ITINERARY — SIMPLIFIED
+══════════════════════════════════ */
+function renderItinerary(){
+  var empty=document.getElementById('itinEmpty');
+  var builder=document.getElementById('itinBuilder');
+  if(!S.days.length){
+    empty.classList.remove('hidden');
+    builder.classList.add('hidden');
+    return;
+  }
+  empty.classList.add('hidden');
+  builder.classList.remove('hidden');
+  renderDayScroll();
+  renderDayPanel();
+}
+
+function renderDayScroll(){
+  var scroll=document.getElementById('dayScroll');
+  scroll.innerHTML='';
+  S.days.forEach(function(d,i){
+    var btn=document.createElement('button');
+    btn.className='day-btn'+(i===activeDay?' on':'');
+    var n=document.createElement('div');n.className='day-btn-n';n.textContent='Day '+(i+1);
+    var dt=document.createElement('div');dt.className='day-btn-d';dt.textContent=fmtD(new Date(d.date+'T12:00:00')).replace(/^(Sun|Mon|Tue|Wed|Thu|Fri|Sat) /,'');
+    var cnt=document.createElement('div');cnt.className='day-btn-cnt'+(d.slots.length?' show':'');cnt.textContent=d.slots.length||'';
+    btn.appendChild(n);btn.appendChild(dt);btn.appendChild(cnt);
+    btn.addEventListener('click',function(){activeDay=i;renderDayScroll();renderDayPanel();});
+    scroll.appendChild(btn);
+  });
+}
+
+function renderDayPanel(){
+  var panel=document.getElementById('activeDayPanel');
+  var day=S.days[activeDay];
+  if(!day){panel.innerHTML='';return;}
+  var isFirst=activeDay===0;
+  var isLast=activeDay===S.days.length-1&&S.days.length>1;
+  var dayLabel='Day '+(activeDay+1)+(isFirst?' — Arrival':isLast?' — Departure':'');
+  var delBtn=activeDay>0?'<button class="day-panel-del" id="dpDel">Remove day</button>':'';
+  var slotsHtml='';
+  if(day.slots.length){
+    slotsHtml=day.slots.map(function(s,si){
+      return'<div class="slot-item">'+
+        '<div class="slot-dot" style="background:'+s.color+'"></div>'+
+        '<div class="slot-ico">'+s.icon+'</div>'+
+        '<div class="slot-name">'+s.name+'</div>'+
+        '<div class="slot-time">'+(s.time||'')+' </div>'+
+        '<button class="slot-del" data-si="'+si+'">✕</button>'+
+      '</div>';
+    }).join('');
+  } else {
+    slotsHtml='<div class="no-slots">No activities yet — tap "Add activity" below</div>';
+  }
+  panel.innerHTML=
+    '<div class="day-panel-head">'+
+      '<div><div class="day-panel-title">'+dayLabel+'</div><div class="day-panel-date">'+day.date+'</div></div>'+
+      delBtn+
+    '</div>'+
+    '<div class="day-slots" id="daySlots">'+slotsHtml+'</div>';
+
+  // Delete slot
+  document.getElementById('daySlots').addEventListener('click',function(e){
+    var b=e.target.closest('.slot-del');if(!b)return;
+    var si=parseInt(b.getAttribute('data-si'));
+    S.days[activeDay].slots.splice(si,1);
+    renderDayScroll();renderDayPanel();
+  });
+  // Remove day
+  var dd=document.getElementById('dpDel');
+  if(dd)dd.addEventListener('click',function(){
+    S.days.splice(activeDay,1);
+    activeDay=Math.max(0,activeDay-1);
+    renderDayScroll();renderDayPanel();
+  });
+}
+
+/* ── CATEGORY PICKER ── */
+document.getElementById('addActivityBtn').addEventListener('click',function(){
+  var picker=document.getElementById('catPicker');
+  picker.classList.toggle('hidden');
+  if(!picker.classList.contains('hidden')){
+    renderCatTabs();
+    renderActList();
+    document.getElementById('timeRow').classList.add('hidden');
+    pendingItem=null;
+  }
+});
+document.getElementById('catPickerClose').addEventListener('click',function(){
+  document.getElementById('catPicker').classList.add('hidden');
+});
+
+function renderCatTabs(){
+  var tabs=document.getElementById('catTabs');
+  tabs.innerHTML=CATS.map(function(c){
+    return'<button class="cat-tab'+(c.id===activeCat?' on':'')+'" data-cat="'+c.id+'">'+c.i+' '+c.l+'</button>';
+  }).join('');
+  tabs.querySelectorAll('.cat-tab').forEach(function(b){
+    b.addEventListener('click',function(){
+      activeCat=b.getAttribute('data-cat');
+      tabs.querySelectorAll('.cat-tab').forEach(function(x){x.classList.remove('on');});
+      b.classList.add('on');
+      renderActList();
+      document.getElementById('timeRow').classList.add('hidden');
+      pendingItem=null;
+    });
+  });
+}
+
+function renderActList(){
+  var list=document.getElementById('actList');
+  var cat=CATS.find(function(c){return c.id===activeCat;});
+  list.innerHTML=(ITM[activeCat]||[]).map(function(it,ii){
+    return'<div class="act-item" data-ii="'+ii+'">'+
+      '<div class="act-ico">'+it.i+'</div>'+
+      '<div class="act-name">'+it.n+'</div>'+
+      '<div class="act-price">'+it.p+'</div>'+
+    '</div>';
+  }).join('');
+  list.querySelectorAll('.act-item').forEach(function(el){
+    el.addEventListener('click',function(){
+      list.querySelectorAll('.act-item').forEach(function(x){x.style.background='';});
+      el.style.background='rgba(30,92,107,.06)';
+      var ii=parseInt(el.getAttribute('data-ii'));
+      pendingItem={cat:activeCat,idx:ii};
+      document.getElementById('actTime').value='';
+      document.getElementById('actNote').value='';
+      document.getElementById('timeRow').classList.remove('hidden');
+      document.getElementById('timeRow').scrollIntoView({behavior:'smooth',block:'nearest'});
+    });
+  });
+}
+
+document.getElementById('addActConfirm').addEventListener('click',function(){
+  if(!pendingItem)return;
+  var cat=CATS.find(function(c){return c.id===pendingItem.cat;});
+  var item=ITM[pendingItem.cat][pendingItem.idx];
+  S.days[activeDay].slots.push({
+    id:Date.now(),cat:pendingItem.cat,catL:cat.l,
+    name:item.n,icon:item.i,color:cat.c,
+    time:document.getElementById('actTime').value,
+    note:document.getElementById('actNote').value
+  });
+  pendingItem=null;
+  document.getElementById('catPicker').classList.add('hidden');
+  document.getElementById('timeRow').classList.add('hidden');
+  renderDayScroll();renderDayPanel();
+});
+
+/* ── REVIEW ── */
+function buildReview(){
+  var h='';
+  var am={flight:'International Flight',domestic:'Domestic Flight',road:'Road/Self-Drive',charter:'Charter/Private',here:'Already in Kenya'};
+  var tm={yes:'Arranged ✓',no:'Not required',tbc:'To confirm'};
+  h+=rCard('✈️ Arrival & Party',1,[
+    rRow('Arrival',S.arrDate||'–'),
+    rRow('Departure',S.depDate||'–'),
+    rRow('Party',S.adults+' adults'+(S.children?' + '+S.children+' children':'')+(S.infants?' + '+S.infants+' infants':'')),
+    rRow('Arriving By',am[S.arrMode]||'–'),
+    rRow('Flight',document.getElementById('fltNum').value||'–'),
+    rRow('Airport',document.getElementById('arrApt').value||'–'),
+    rRow('Transfer',tm[S.transfer]||'–'),
+  ]);
+  h+=rCard('🏡 Stay & Guest',2,[
+    rRow('Property',PROPS[S.prop]||'–'),
+    rRow('Guest',(S.fName||'–')+' '+(S.lName||'')),
+    rRow('Email',S.email||'–'),
+    rRow('Phone',S.phone||'–'),
+    S.purpose?rRow('Trip Type',S.purpose.charAt(0).toUpperCase()+S.purpose.slice(1)):'',
+  ]);
+  h+=rCard('🛫 Departure',4,[
+    rRow('Flight',document.getElementById('depFlt').value||'–'),
+    rRow('Airport',document.getElementById('depApt').value||'–'),
+    rRow('Time',document.getElementById('depTime').value||'–'),
+    rRow('Transfer',tm[S.depTransfer]||'–'),
+  ]);
+  // Itinerary
+  var tot=0;S.days.forEach(function(d){tot+=d.slots.length;});
+  if(tot>0){
+    var ih='';
+    S.days.forEach(function(d,i){
+      if(!d.slots.length)return;
+      ih+='<div><div class="review-day-lbl">Day '+(i+1)+' · '+fmtD(new Date(d.date+'T12:00:00'))+'</div>'+
+        d.slots.map(function(s){
+          return'<div class="review-slot"><div class="review-dot" style="background:'+s.color+'"></div>'+
+          '<div style="flex:1">'+s.icon+' '+s.name+'</div>'+
+          '<div style="font-size:.62rem;color:var(--light)">'+(s.time||'TBC')+'</div></div>';
+        }).join('')+'</div>';
+    });
+    h+='<div class="review-card"><div class="review-head"><div class="review-title">🗓️ Itinerary · '+tot+' item'+(tot!==1?'s':'')+' </div><button class="review-edit" data-g="3">Edit</button></div><div class="review-body">'+ih+'</div></div>';
+  }
+  // Special
+  var occ=S.occasions.filter(function(o){return o!=='none';});
+  var diets=[];document.querySelectorAll('#pgDiet .pill.on').forEach(function(p){diets.push(p.textContent.trim());});
+  var extraTxt=document.getElementById('extra').value;
+  if(occ.length||diets.length||extraTxt){
+    h+=rCard('✨ Special Touches',5,[
+      occ.length?rRow('Occasions',occ.join(', ')):'',
+      diets.length?rRow('Dietary',diets.join(', ')):'',
+      extraTxt?rRow('Notes',extraTxt):'',
+    ]);
+  }
+  document.getElementById('reviewContent').innerHTML=h;
+  document.querySelectorAll('.review-edit').forEach(function(b){
+    b.addEventListener('click',function(){goStep(parseInt(b.getAttribute('data-g')));});
+  });
+}
+function rCard(t,g,rows){
+  return'<div class="review-card"><div class="review-head"><div class="review-title">'+t+'</div><button class="review-edit" data-g="'+g+'">Edit</button></div><div class="review-body">'+rows.filter(Boolean).join('')+'</div></div>';
+}
+function rRow(k,v){if(!v||v==='–'||v==='-')return'';return'<div class="review-row"><div class="review-k">'+k+'</div><div class="review-v">'+v+'</div></div>';}
+
+/* ── SUBMIT ── */
+function submit(){
+  var n=(document.getElementById('fName').value||S.fName||'').trim();
+  var e=(document.getElementById('email').value||S.email||'').trim();
+  if(!n||!e){goStep(6);setTimeout(function(){alert('Please enter your name and email before submitting.');},300);return;}
+
+  var btn=document.getElementById('btnNext');
+  btn.textContent='Sending…';btn.disabled=true;
+
+  function getCheckedPills(sel){
+    var pills=[];
+    document.querySelectorAll(sel+' .pill.on').forEach(function(p){pills.push(p.textContent.trim());});
+    return pills;
+  }
+
+  var payload={
+    guest:{
+      firstName:document.getElementById('fName').value||S.fName,
+      lastName:document.getElementById('lName').value||S.lName,
+      email:document.getElementById('email').value||S.email,
+      phone:document.getElementById('phone').value||S.phone,
+      nationality:document.getElementById('nation').value,
+      country:document.getElementById('country').value
+    },
+    trip:{
+      arrDate:S.arrDate,depDate:S.depDate,
+      adults:S.adults,children:S.children,infants:S.infants,
+      arrMode:S.arrMode,
+      flightNum:document.getElementById('fltNum').value,
+      airport:document.getElementById('arrApt').value,
+      arrTime:document.getElementById('arrTime').value,
+      fromCity:document.getElementById('fromCity').value,
+      transfer:S.transfer,prop:S.prop,purpose:S.purpose
+    },
+    departure:{
+      flight:document.getElementById('depFlt').value,
+      airport:document.getElementById('depApt').value,
+      time:document.getElementById('depTime').value,
+      transfer:S.depTransfer,
+      notes:document.getElementById('depNotes').value
+    },
+    special:{
+      occasions:S.occasions,
+      diet:getCheckedPills('#pgDiet'),
+      mobility:getCheckedPills('#pgMobility'),
+      pace:S.pace,
+      extraNotes:document.getElementById('extra').value
+    },
+    itinerary:S.days.map(function(d,i){
+      return{dayIdx:i,date:d.date,label:d.label,slots:d.slots};
+    })
+  };
+
+  /* ── Build ref locally (GHL will also store it) ── */
+  var ref='TS-'+new Date().getFullYear()+'-'+String(Date.now()).slice(-5);
+
+  /* ── Flatten itinerary to a readable summary for GHL notes ── */
+  var itinSummary=payload.itinerary.map(function(d){
+    return d.label+': '+d.slots.map(function(s){return s.icon+' '+s.name;}).join(', ');
+  }).join('\n');
+
+  /* ── HTML email builder ── */
+  var propNames={zuri:'Zuri Boutique Hotel &middot; Watamu',mayakobe:'Maya Kobe &middot; Kilifi',amani:'My Amani Villa &middot; Vipingo',enkare:'Enkare Villa &middot; Kilifi',sandbox:'Sandbox Villa &middot; Kilifi',ext:'External accommodation'};
+  var propName=propNames[payload.trip.prop]||payload.trip.prop||'Your property';
+  var nights=payload.trip.arrDate&&payload.trip.depDate?Math.round((new Date(payload.trip.depDate)-new Date(payload.trip.arrDate))/86400000):0;
+  var partyStr=payload.trip.adults+' adult'+(payload.trip.adults!==1?'s':'')+(payload.trip.children?' + '+payload.trip.children+' child'+(payload.trip.children!==1?'ren':''):'')+(payload.trip.infants?' + '+payload.trip.infants+' infant'+(payload.trip.infants!==1?'s':''):'');
+
+  var itinRowsHtml='';
+  payload.itinerary.filter(function(d){return d.slots&&d.slots.length;}).forEach(function(d){
+    itinRowsHtml+='<tr><td style="padding:8px 0 2px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#B8965A;font-family:Arial,sans-serif;">'+d.label+'</td></tr>';
+    d.slots.forEach(function(s){
+      itinRowsHtml+='<tr><td style="padding:3px 0 3px 16px;font-size:13px;color:#6B6050;font-family:Arial,sans-serif;">'+s.icon+' '+s.name+(s.time?' <span style="color:#B8965A;font-size:12px;">&middot; '+s.time+'</span>':'')+'</td></tr>';
+    });
+  });
+
+  var specialRowsHtml='';
+  if(payload.special.occasions&&payload.special.occasions.filter(function(o){return o&&o!=='none';}).length)
+    specialRowsHtml+='<tr><td style="padding:4px 0;font-size:13px;color:#6B6050;font-family:Arial,sans-serif;"><strong style="color:#141412;">Occasion</strong> &nbsp;'+payload.special.occasions.join(', ')+'</td></tr>';
+  if(payload.special.diet&&payload.special.diet.length)
+    specialRowsHtml+='<tr><td style="padding:4px 0;font-size:13px;color:#6B6050;font-family:Arial,sans-serif;"><strong style="color:#141412;">Dietary</strong> &nbsp;'+payload.special.diet.join(', ')+'</td></tr>';
+  if(payload.special.pace)
+    specialRowsHtml+='<tr><td style="padding:4px 0;font-size:13px;color:#6B6050;font-family:Arial,sans-serif;"><strong style="color:#141412;">Pace</strong> &nbsp;'+payload.special.pace+'</td></tr>';
+  if(payload.special.extraNotes)
+    specialRowsHtml+='<tr><td style="padding:8px 0 4px;font-size:13px;color:#6B6050;font-style:italic;font-family:Arial,sans-serif;">&ldquo;'+payload.special.extraNotes+'&rdquo;</td></tr>';
+
+  var emailParts=[];
+  emailParts.push('<!DOCTYPE html><html><head><meta charset="UTF-8"></head>');
+  emailParts.push('<body style="margin:0;padding:0;background:#F5F0E8;font-family:Georgia,serif;">');
+  emailParts.push('<table width="100%" cellpadding="0" cellspacing="0" style="background:#F5F0E8;padding:40px 0;"><tr><td align="center">');
+  emailParts.push('<table width="580" cellpadding="0" cellspacing="0" style="max-width:580px;width:100%;"><tr><td>');
+  // Header
+  emailParts.push('<table width="100%" cellpadding="0" cellspacing="0" style="background:#0D2130;padding:32px 40px;"><tr><td align="center">');
+  emailParts.push('<p style="margin:0;font-family:Georgia,serif;font-size:22px;font-weight:400;letter-spacing:.55em;color:rgba(242,232,214,.55);text-transform:uppercase;">TRIBAL</p>');
+  emailParts.push('<p style="margin:0;font-family:Georgia,serif;font-size:22px;font-weight:400;letter-spacing:.55em;color:#B8965A;text-transform:uppercase;">SAND</p>');
+  emailParts.push('<p style="margin:8px 0 0;font-size:10px;letter-spacing:.3em;color:rgba(184,150,90,.35);text-transform:uppercase;font-family:Arial,sans-serif;">Kenya&#39;s North Coast</p>');
+  emailParts.push('</td></tr></table>');
+  // Intro
+  emailParts.push('<table width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;padding:40px 40px 32px;"><tr><td>');
+  emailParts.push('<p style="margin:0 0 6px;font-size:10px;letter-spacing:.28em;color:#B8965A;text-transform:uppercase;font-family:Arial,sans-serif;">Trip Enquiry Received</p>');
+  emailParts.push('<h1 style="margin:0 0 20px;font-family:Georgia,serif;font-size:28px;font-weight:400;color:#141412;line-height:1.25;">Dear '+payload.guest.firstName+',</h1>');
+  emailParts.push('<p style="margin:0 0 16px;font-size:15px;color:#6B6050;line-height:1.8;font-family:Arial,sans-serif;">Thank you for choosing Tribal Sand. We have received your trip request and our concierge team will be in touch within <strong style="color:#141412;">24 hours</strong> with your personalised quote.</p>');
+  emailParts.push('<p style="margin:0;font-size:15px;color:#6B6050;line-height:1.8;font-family:Arial,sans-serif;">Here is a summary of everything we have noted for your stay.</p>');
+  emailParts.push('</td></tr></table>');
+  // Ref bar
+  emailParts.push('<table width="100%" cellpadding="0" cellspacing="0" style="background:#F2E8D6;padding:14px 40px;"><tr>');
+  emailParts.push('<td style="font-size:10px;letter-spacing:.22em;color:#B8965A;text-transform:uppercase;font-family:Arial,sans-serif;">Reference</td>');
+  emailParts.push('<td align="right" style="font-family:Georgia,serif;font-size:15px;color:#141412;">'+ref+'</td>');
+  emailParts.push('</tr></table>');
+  // Trip details
+  emailParts.push('<table width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;padding:32px 40px;"><tr><td>');
+  emailParts.push('<p style="margin:0 0 18px;font-size:10px;letter-spacing:.28em;color:#B8965A;text-transform:uppercase;font-family:Arial,sans-serif;">Your Stay</p>');
+  emailParts.push('<table width="100%" cellpadding="0" cellspacing="0">');
+  emailParts.push('<tr><td style="padding:6px 0;border-bottom:1px solid #F2E8D6;"><table width="100%"><tr><td style="font-size:13px;color:#A89880;font-family:Arial,sans-serif;width:120px;">Property</td><td style="font-family:Georgia,serif;font-size:14px;color:#141412;">'+propName+'</td></tr></table></td></tr>');
+  emailParts.push('<tr><td style="padding:6px 0;border-bottom:1px solid #F2E8D6;"><table width="100%"><tr><td style="font-size:13px;color:#A89880;font-family:Arial,sans-serif;width:120px;">Arrival</td><td style="font-family:Georgia,serif;font-size:14px;color:#141412;">'+(payload.trip.arrDate||'—')+'</td></tr></table></td></tr>');
+  emailParts.push('<tr><td style="padding:6px 0;border-bottom:1px solid #F2E8D6;"><table width="100%"><tr><td style="font-size:13px;color:#A89880;font-family:Arial,sans-serif;width:120px;">Departure</td><td style="font-family:Georgia,serif;font-size:14px;color:#141412;">'+(payload.trip.depDate||'—')+'</td></tr></table></td></tr>');
+  emailParts.push('<tr><td style="padding:6px 0;border-bottom:1px solid #F2E8D6;"><table width="100%"><tr><td style="font-size:13px;color:#A89880;font-family:Arial,sans-serif;width:120px;">Duration</td><td style="font-family:Georgia,serif;font-size:14px;color:#141412;">'+nights+' night'+(nights!==1?'s':'')+'</td></tr></table></td></tr>');
+  emailParts.push('<tr><td style="padding:6px 0;"><table width="100%"><tr><td style="font-size:13px;color:#A89880;font-family:Arial,sans-serif;width:120px;">Party</td><td style="font-family:Georgia,serif;font-size:14px;color:#141412;">'+partyStr+'</td></tr></table></td></tr>');
+  emailParts.push('</table></td></tr></table>');
+  // Itinerary
+  if(itinRowsHtml) {
+    emailParts.push('<table width="100%" cellpadding="0" cellspacing="0" style="background:#FAF8F4;padding:32px 40px;"><tr><td>');
+    emailParts.push('<p style="margin:0 0 18px;font-size:10px;letter-spacing:.28em;color:#B8965A;text-transform:uppercase;font-family:Arial,sans-serif;">Your Itinerary</p>');
+    emailParts.push('<table width="100%" cellpadding="0" cellspacing="0">'+itinRowsHtml+'</table>');
+    emailParts.push('</td></tr></table>');
+  }
+  // Special
+  if(specialRowsHtml) {
+    emailParts.push('<table width="100%" cellpadding="0" cellspacing="0" style="background:#ffffff;padding:28px 40px;"><tr><td>');
+    emailParts.push('<p style="margin:0 0 14px;font-size:10px;letter-spacing:.28em;color:#B8965A;text-transform:uppercase;font-family:Arial,sans-serif;">Special Touches</p>');
+    emailParts.push('<table width="100%" cellpadding="0" cellspacing="0">'+specialRowsHtml+'</table>');
+    emailParts.push('</td></tr></table>');
+  }
+  // Footer
+  emailParts.push('<table width="100%" cellpadding="0" cellspacing="0" style="background:#0D2130;padding:32px 40px;"><tr><td align="center">');
+  emailParts.push('<p style="margin:0 0 8px;font-family:Georgia,serif;font-size:13px;color:rgba(184,150,90,.5);">Questions? Reply to this email or contact us at</p>');
+  emailParts.push('<p style="margin:0 0 20px;font-size:13px;color:#B8965A;font-family:Arial,sans-serif;">enquiries@tribalsand.com</p>');
+  emailParts.push('<p style="margin:0;font-size:10px;letter-spacing:.22em;color:rgba(184,150,90,.25);text-transform:uppercase;font-family:Arial,sans-serif;">Tribal Sand &middot; Kenya&#39;s North Coast</p>');
+  emailParts.push('</td></tr></table>');
+  emailParts.push('</td></tr></table></td></tr></table></body></html>');
+
+  var htmlEmail=emailParts.join('');
+
+    /* ── GHL Contact field payload ── */
+  var ghlPayload={
+    /* Standard GHL contact fields */
+    firstName:  payload.guest.firstName,
+    lastName:   payload.guest.lastName,
+    email:      payload.guest.email,
+    phone:      payload.guest.phone,
+    country:    payload.guest.country,
+
+    /* Custom fields — must match your GHL field keys exactly */
+    customData: {
+      ts_ref:               ref,
+      ts_property:          payload.trip.prop,
+      ts_arrival:           payload.trip.arrDate,
+      ts_departure:         payload.trip.depDate,
+      ts_nights:            payload.trip.arrDate&&payload.trip.depDate
+                              ? Math.round((new Date(payload.trip.depDate)-new Date(payload.trip.arrDate))/86400000)
+                              : '',
+      ts_adults:            payload.trip.adults,
+      ts_children:          payload.trip.children,
+      ts_infants:           payload.trip.infants,
+      ts_arr_mode:          payload.trip.arrMode,
+      ts_flight_num:        payload.trip.flightNum,
+      ts_airport:           payload.trip.airport,
+      ts_from_city:         payload.trip.fromCity,
+      ts_transfer:          payload.trip.transfer,
+      ts_purpose:           payload.trip.purpose,
+      ts_occasions:         (payload.special.occasions||[]).join(', '),
+      ts_dietary:           (payload.special.diet||[]).join(', '),
+      ts_pace:              payload.special.pace,
+      ts_itinerary_summary: itinSummary,
+      ts_raw_json:          JSON.stringify(payload),
+    },
+
+    /* Opportunity fields (GHL pipeline) */
+    opportunity: {
+      name:          payload.guest.firstName+' '+payload.guest.lastName+' · '+(payload.trip.prop||''),
+      pipelineStage: 'New Enquiry',
+      monetaryValue: 0,
+      source:        'Trip Builder',
+    },
+
+    /* Tags for segmentation */
+    tags: [
+      'trip-enquiry',
+      payload.trip.prop||'unknown-property',
+      payload.trip.purpose||'leisure',
+    ].filter(Boolean),
+
+    /* Note added to the contact timeline — full trip summary */
+    note: '📋 TRIP ENQUIRY · '+ref
+          +'\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+          +'\n👤 GUEST'
+          +'\nName:        '+payload.guest.firstName+' '+payload.guest.lastName
+          +'\nEmail:       '+payload.guest.email
+          +'\nPhone:       '+payload.guest.phone
+          +'\nNationality: '+payload.guest.nationality
+          +'\nCountry:     '+payload.guest.country
+          +'\n'
+          +'\n🏡 PROPERTY & DATES'
+          +'\nProperty:    '+(payload.trip.prop||'—')
+          +'\nPurpose:     '+(payload.trip.purpose||'—')
+          +'\nArrival:     '+(payload.trip.arrDate||'—')
+          +'\nDeparture:   '+(payload.trip.depDate||'—')
+          +'\nNights:      '+(payload.trip.arrDate&&payload.trip.depDate?Math.round((new Date(payload.trip.depDate)-new Date(payload.trip.arrDate))/86400000):'—')
+          +'\nParty:       '+payload.trip.adults+' adults'+(payload.trip.children?' + '+payload.trip.children+' children':'')+(payload.trip.infants?' + '+payload.trip.infants+' infants':'')
+          +'\n'
+          +'\n✈ ARRIVAL'
+          +'\nMode:        '+(payload.trip.arrMode||'—')
+          +'\nFlight:      '+(payload.trip.flightNum||'—')
+          +'\nAirport:     '+(payload.trip.airport||'—')
+          +'\nLanding:     '+(payload.trip.arrTime||'—')
+          +'\nFrom:        '+(payload.trip.fromCity||'—')
+          +'\nTransfer:    '+(payload.trip.transfer||'—')
+          +'\n'
+          +'\n🛫 DEPARTURE'
+          +'\nFlight:      '+(payload.departure.flight||'—')
+          +'\nAirport:     '+(payload.departure.airport||'—')
+          +'\nTime:        '+(payload.departure.time||'—')
+          +'\nTransfer:    '+(payload.departure.transfer||'—')
+          +(payload.departure.notes?'\nNotes:       '+payload.departure.notes:'')
+          +'\n'
+          +'\n✨ SPECIAL'
+          +(payload.special.occasions&&payload.special.occasions.length?'\nOccasion:    '+payload.special.occasions.join(', '):'')
+          +(payload.special.diet&&payload.special.diet.length?'\nDietary:     '+payload.special.diet.join(', '):'')
+          +(payload.special.mobility&&payload.special.mobility.length?'\nMobility:    '+payload.special.mobility.join(', '):'')
+          +'\nPace:        '+(payload.special.pace||'—')
+          +(payload.special.extraNotes?'\nGuest note:  "'+payload.special.extraNotes+'"':'')
+          +(itinSummary?'\n\n📅 ITINERARY\n'+itinSummary:''),
+
+    /* Flat top-level fields — easiest for GHL trigger mapping */
+    summary:   '📋 '+ref+' · '+payload.trip.prop+' · Arrival: '+payload.trip.arrDate+' → '+payload.trip.depDate+'\nParty: '+payload.trip.adults+' adults'+(payload.trip.children?' + '+payload.trip.children+' children':'')+(payload.special.occasions&&payload.special.occasions.length?'\n⭐ Occasion: '+payload.special.occasions.join(', '):'')+(payload.special.diet&&payload.special.diet.length?'\n🍽 Diet: '+payload.special.diet.join(', '):'')+' \n\n'+itinSummary+(payload.special.notes?'\n\n💬 '+payload.special.notes:''),
+    ref:       ref,
+    property:  payload.trip.prop,
+    arrival:   payload.trip.arrDate,
+    departure: payload.trip.depDate,
+    nights:    payload.trip.arrDate&&payload.trip.depDate ? Math.round((new Date(payload.trip.depDate)-new Date(payload.trip.arrDate))/86400000) : '',
+    adults:    payload.trip.adults,
+    children:  payload.trip.children,
+    purpose:   payload.trip.purpose,
+    occasions:  (payload.special.occasions||[]).join(', '),
+    dietary:    (payload.special.diet||[]).join(', '),
+    html_email: htmlEmail,
+  };
+
+  var sends=[
+    fetch(TS_GHL.webhookUrl,{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body:JSON.stringify(ghlPayload),
+    })
+  ];
+
+  if(TS_GHL.alsoPostToBackend){
+    sends.push(
+      fetch(TS_GHL.backendUrl,{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(payload),
+      })
+    );
+  }
+
+  Promise.all(sends)
+  .then(function(){
+    var refEl=document.getElementById('succRef');
+    if(refEl) refEl.textContent='Reference: '+ref;
+    document.getElementById('succOverlay').classList.add('show');
+  })
+  .catch(function(err){
+    alert('Could not connect. Please email us at enquiries@tribalsand.com');
+    console.error(err);
+  })
+  .finally(function(){
+    btn.innerHTML='Send My Trip &#x27E1;';
+    btn.disabled=false;
+  });
+}
+document.getElementById('btnSuccClose').addEventListener('click',function(){document.getElementById('succOverlay').classList.remove('show');});
+
+
+/* ── INIT ── */
+goStep(1);
+
+})();
+</script>
+</body>
+</html>

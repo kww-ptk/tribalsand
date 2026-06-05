@@ -1,0 +1,1388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>My Amani · Private Beachfront Villa · Vipingo · Tribal Sand Kenya</title>
+<meta name="description" content="My Amani — a five-bedroom private beachfront villa in Vipingo, Kenya. Infinity pool, private chef, direct Indian Ocean access. Book with Tribal Sand.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+<style>
+/* ── TOKENS ── */
+:root{
+  --sand:#B8965A;--sand-lt:#D4B07A;--sand-pale:#F2E8D6;--sand-faint:#FAF6EE;
+  --teal:#1E5C6B;--teal-d:#102F3A;--teal-m:#2D7A8C;
+  --dark:#141412;--off:#FAF8F4;--white:#fff;
+  --mid:#6B6050;--light:#A89880;--border:rgba(184,150,90,.14);
+  --ts-sand:#B8965A;--ts-sand-lt:#D4B07A;--ts-teal:#1E5C6B;--ts-teal-d:#102F3A;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{font-family:'Jost',sans-serif;background:var(--off);color:var(--dark);-webkit-font-smoothing:antialiased;overflow-x:hidden;}
+img{display:block;object-fit:cover;}
+a{text-decoration:none;color:inherit;}
+::-webkit-scrollbar{width:3px;}::-webkit-scrollbar-thumb{background:var(--border);}
+
+/* ── GALLERY HERO ── */
+.gallery{display:grid;grid-template-columns:1.65fr 1fr;grid-template-rows:1fr 1fr;height:92vh;max-height:640px;gap:3px;position:relative;}
+.gallery-main{grid-row:span 2;position:relative;overflow:hidden;cursor:pointer;}
+.gallery-main img{width:100%;height:100%;object-fit:cover;transition:transform .6s ease;}
+.gallery-main:hover img{transform:scale(1.02);}
+.gallery-thumb{position:relative;overflow:hidden;cursor:pointer;}
+.gallery-thumb img{width:100%;height:100%;object-fit:cover;transition:transform .5s ease,opacity .3s;}
+.gallery-thumb:hover img{transform:scale(1.04);opacity:.9;}
+.gallery-thumb.last::after{
+  content:'See all photos';position:absolute;inset:0;
+  background:rgba(16,47,58,.5);backdrop-filter:blur(2px);
+  display:flex;align-items:center;justify-content:center;
+  font-family:'Jost',sans-serif;font-size:.62rem;letter-spacing:.22em;
+  text-transform:uppercase;color:#fff;
+}
+.gallery-badge{
+  position:absolute;bottom:1.2rem;left:1.2rem;z-index:2;
+  background:rgba(16,47,58,.82);backdrop-filter:blur(12px);
+  border:1px solid rgba(184,150,90,.2);
+  padding:.38rem .85rem;
+  font-size:.52rem;letter-spacing:.2em;text-transform:uppercase;color:rgba(184,150,90,.8);
+}
+
+/* ── BREADCRUMB ── */
+.breadcrumb{padding:.9rem 52px;background:var(--white);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:.5rem;flex-wrap:wrap;}
+.breadcrumb a{font-size:.6rem;letter-spacing:.1em;color:var(--light);transition:color .2s;}
+.breadcrumb a:hover{color:var(--teal);}
+.breadcrumb-sep{font-size:.55rem;color:rgba(184,150,90,.3);}
+.breadcrumb-curr{font-size:.6rem;letter-spacing:.1em;color:var(--sand);}
+
+/* ── PAGE LAYOUT ── */
+.page-wrap{max-width:1280px;margin:0 auto;padding:0 52px;display:grid;grid-template-columns:1fr 380px;gap:4rem;padding-top:2.8rem;padding-bottom:6rem;}
+.page-main{min-width:0;}
+.page-side{position:sticky;top:80px;height:fit-content;}
+
+/* ── LISTING HEADER ── */
+.listing-eyebrow{font-size:.54rem;letter-spacing:.32em;text-transform:uppercase;color:var(--sand);margin-bottom:.5rem;display:flex;align-items:center;gap:.55rem;}
+.listing-eyebrow::before{content:'';width:16px;height:1px;background:var(--sand);}
+.listing-h1{font-family:'Cormorant Garamond',serif;font-size:clamp(2.4rem,4vw,3.6rem);font-weight:300;line-height:1;color:var(--dark);margin-bottom:.5rem;}
+.listing-sub{font-size:.72rem;color:var(--light);display:flex;align-items:center;gap:.5rem;margin-bottom:1.5rem;}
+.listing-sub svg{color:var(--sand);flex-shrink:0;}
+
+/* ── QUICK STATS ── */
+.quick-stats{display:flex;gap:0;border:1px solid var(--border);background:var(--white);margin-bottom:2rem;overflow:hidden;}
+.qs{flex:1;padding:1rem .8rem;text-align:center;border-right:1px solid var(--border);}
+.qs:last-child{border-right:none;}
+.qs-n{font-family:'Cormorant Garamond',serif;font-size:1.6rem;font-weight:300;color:var(--dark);line-height:1;}
+.qs-l{font-size:.48rem;letter-spacing:.18em;text-transform:uppercase;color:var(--light);margin-top:.18rem;}
+
+/* ── PILLS ── */
+.pill-row{display:flex;gap:.4rem;flex-wrap:wrap;margin-bottom:2rem;}
+.pill{font-size:.54rem;letter-spacing:.1em;text-transform:uppercase;padding:.24rem .65rem;border:1px solid var(--border);color:var(--mid);}
+.pill.hi{border-color:rgba(30,92,107,.3);color:var(--teal);background:rgba(30,92,107,.04);}
+
+/* ── SECTION ── */
+.sec{margin-bottom:2.8rem;}
+.sec-label{font-size:.55rem;letter-spacing:.28em;text-transform:uppercase;color:var(--sand);margin-bottom:.55rem;display:flex;align-items:center;gap:.5rem;}
+.sec-label::before{content:'';width:14px;height:1px;background:var(--sand);}
+.sec-h{font-family:'Cormorant Garamond',serif;font-size:clamp(1.5rem,2.5vw,2rem);font-weight:300;color:var(--dark);line-height:1.15;margin-bottom:.45rem;}
+.sec-h em{font-style:italic;color:var(--teal);}
+.sec-rule{width:20px;height:1px;background:var(--sand);margin-bottom:1.2rem;}
+.sec-p{font-size:.82rem;line-height:1.92;color:var(--mid);margin-bottom:1rem;}
+.divider{height:1px;background:var(--border);margin:2.4rem 0;}
+
+/* ── AMENITIES ── */
+.amenities-grid{display:grid;grid-template-columns:1fr 1fr;gap:0;border:1px solid var(--border);overflow:hidden;}
+.amenity{display:flex;align-items:center;gap:.75rem;padding:.75rem 1rem;border-bottom:1px solid var(--border);border-right:1px solid var(--border);font-size:.75rem;color:var(--mid);transition:background .18s;}
+.amenity:hover{background:var(--sand-faint);}
+.amenity:nth-child(even){border-right:none;}
+.amenity:nth-last-child(-n+2){border-bottom:none;}
+.amenity-ico{font-size:1rem;flex-shrink:0;width:1.2rem;text-align:center;}
+
+/* ── PHOTO GRID ── */
+.photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:3px;margin-bottom:.5rem;}
+.photo-grid img{width:100%;aspect-ratio:4/3;cursor:pointer;transition:opacity .25s,transform .4s;}
+.photo-grid img:hover{opacity:.88;transform:scale(1.02);}
+.photo-grid-cap{font-size:.55rem;letter-spacing:.14em;text-transform:uppercase;color:var(--light);text-align:right;margin-bottom:2rem;}
+
+/* ── EXPERIENCES ── */
+.exp-list{display:flex;flex-direction:column;gap:1px;background:var(--border);border:1px solid var(--border);}
+.exp-row{background:var(--white);display:flex;align-items:center;gap:1rem;padding:.85rem 1.1rem;transition:background .18s;}
+.exp-row:hover{background:var(--sand-faint);}
+.exp-ico{font-size:1.1rem;flex-shrink:0;}
+.exp-name{font-size:.78rem;color:var(--dark);flex:1;font-weight:400;}
+.exp-price{font-size:.64rem;color:var(--light);white-space:nowrap;}
+.exp-cta{margin-top:1.2rem;}
+
+/* ── REVIEWS ── */
+.review-bar{display:flex;align-items:center;gap:2rem;padding:1.4rem 1.6rem;background:var(--teal-d);margin-bottom:1.2rem;}
+.review-score{font-family:'Cormorant Garamond',serif;font-size:3.2rem;font-weight:300;color:#fff;line-height:1;}
+.review-stars{color:var(--sand);font-size:.85rem;letter-spacing:.12rem;margin-bottom:.2rem;}
+.review-count{font-size:.6rem;color:rgba(255,255,255,.4);letter-spacing:.1em;}
+.review-summary-text{font-size:.75rem;color:rgba(255,255,255,.55);line-height:1.75;flex:1;padding-left:2rem;border-left:1px solid rgba(255,255,255,.08);}
+.reviews-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);}
+.review-card{background:var(--white);padding:1.4rem 1.5rem;border-top:2px solid var(--sand);}
+.review-stars-sm{color:var(--sand);font-size:.6rem;letter-spacing:.12rem;margin-bottom:.65rem;}
+.review-text{font-family:'Cormorant Garamond',serif;font-size:.96rem;font-style:italic;color:var(--mid);line-height:1.75;margin-bottom:.8rem;}
+.review-author{font-size:.54rem;letter-spacing:.18em;text-transform:uppercase;color:var(--light);}
+
+/* ── FAQ ── */
+.faq-item{border-bottom:1px solid var(--border);}
+.faq-q{display:flex;justify-content:space-between;align-items:center;padding:1rem 0;font-size:.8rem;font-weight:400;color:var(--dark);cursor:pointer;user-select:none;gap:1rem;}
+.faq-ico{color:var(--sand);font-size:1.1rem;transition:transform .22s;flex-shrink:0;}
+.faq-item.open .faq-ico{transform:rotate(45deg);}
+.faq-a{display:none;padding:0 0 1rem;font-size:.76rem;color:var(--mid);line-height:1.88;}
+.faq-item.open .faq-a{display:block;}
+
+/* ── MAP ── */
+.map-block{background:var(--teal-d);padding:2rem;display:flex;align-items:center;justify-content:space-between;gap:1.5rem;flex-wrap:wrap;margin-bottom:2rem;}
+.map-info{}
+.map-eyebrow{font-size:.5rem;letter-spacing:.28em;text-transform:uppercase;color:rgba(184,150,90,.5);margin-bottom:.4rem;}
+.map-h{font-family:'Cormorant Garamond',serif;font-size:1.3rem;font-weight:300;color:#fff;margin-bottom:.3rem;}
+.map-p{font-size:.7rem;color:rgba(255,255,255,.4);line-height:1.7;}
+.btn-map{font-size:.58rem;letter-spacing:.18em;text-transform:uppercase;padding:.65rem 1.4rem;border:1px solid rgba(184,150,90,.3);color:var(--sand-lt);background:none;cursor:pointer;transition:all .22s;white-space:nowrap;}
+.btn-map:hover{background:var(--sand);border-color:var(--sand);color:var(--teal-d);}
+
+/* ── OTHER PROPERTIES ── */
+.other-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.2rem;}
+.other-card{background:var(--white);border:1px solid var(--border);overflow:hidden;transition:box-shadow .25s,transform .25s;}
+.other-card:hover{box-shadow:0 8px 32px rgba(0,0,0,.08);transform:translateY(-2px);}
+.other-img{width:100%;height:160px;}
+.other-body{padding:.9rem 1rem;}
+.other-loc{font-size:.5rem;letter-spacing:.22em;text-transform:uppercase;color:var(--sand);margin-bottom:.25rem;}
+.other-name{font-family:'Cormorant Garamond',serif;font-size:1.1rem;font-weight:400;color:var(--dark);margin-bottom:.28rem;}
+.other-meta{font-size:.62rem;color:var(--light);}
+.other-foot{padding:.7rem 1rem;border-top:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;}
+.other-type{font-size:.5rem;letter-spacing:.14em;text-transform:uppercase;color:var(--light);}
+.other-link{font-size:.54rem;letter-spacing:.12em;text-transform:uppercase;color:var(--teal);}
+
+/* ── SIDEBAR ── */
+.book-card{background:var(--white);border:1px solid var(--border);overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.09);}
+
+/* Header with background image */
+.book-head{
+  position:relative;overflow:hidden;
+  background:var(--teal-d);
+  padding:0;
+  height:140px;
+}
+.book-head-bg{position:absolute;inset:0;background:url('https://tribalsand.com/images/my-amani/Aerial/myamani-11.webp') center 30%/cover;opacity:.25;}
+.book-head-overlay{position:absolute;inset:0;background:linear-gradient(to top,rgba(16,47,58,.9) 0%,rgba(16,47,58,.3) 100%);}
+.book-head-inner{position:relative;z-index:1;padding:1.2rem 1.4rem;height:100%;display:flex;flex-direction:column;justify-content:flex-end;}
+.book-eyebrow{font-size:.48rem;letter-spacing:.26em;text-transform:uppercase;color:rgba(184,150,90,.6);margin-bottom:.3rem;}
+.book-name{font-family:'Cormorant Garamond',serif;font-size:1.5rem;font-weight:300;color:#fff;line-height:1;margin-bottom:.2rem;}
+.book-loc{font-size:.58rem;color:rgba(255,255,255,.45);letter-spacing:.06em;}
+
+/* Body */
+.book-body{padding:1.3rem 1.4rem 1rem;}
+.book-field{margin-bottom:.75rem;}
+.book-lbl{font-size:.5rem;letter-spacing:.18em;text-transform:uppercase;color:var(--mid);margin-bottom:.3rem;display:block;}
+
+/* Date row — side by side */
+.book-dates{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);border:1px solid var(--border);margin-bottom:.75rem;}
+.book-date-cell{background:var(--off);padding:.65rem .75rem;cursor:pointer;transition:background .18s;}
+.book-date-cell:hover{background:var(--white);}
+.book-date-lbl{font-size:.46rem;letter-spacing:.18em;text-transform:uppercase;color:var(--light);margin-bottom:.2rem;}
+.book-date-val{font-size:.78rem;color:var(--dark);}
+.book-inp{width:100%;padding:.65rem .8rem;border:1px solid var(--border);background:var(--off);font-size:.78rem;color:var(--dark);font-family:'Jost',sans-serif;transition:border-color .2s;}
+.book-inp:focus{outline:none;border-color:var(--teal);}
+select.book-inp{-webkit-appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' fill='none' stroke='%23A89880' stroke-width='1.5'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right .8rem center;}
+
+/* Policy rows */
+.book-policies{background:rgba(184,150,90,.04);border:1px solid var(--border);margin-bottom:.9rem;}
+.book-pol-row{display:flex;justify-content:space-between;align-items:center;padding:.55rem .85rem;border-bottom:1px solid var(--border);font-size:.68rem;}
+.book-pol-row:last-child{border-bottom:none;}
+.book-pol-k{color:var(--light);}
+.book-pol-v{color:var(--dark);font-weight:500;text-align:right;}
+
+/* Buttons */
+.btn-book-full{display:block;width:100%;padding:.92rem;font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;background:var(--sand);color:var(--teal-d);border:none;cursor:pointer;transition:background .22s;font-family:'Jost',sans-serif;font-weight:500;text-align:center;}
+.btn-book-full:hover{background:var(--sand-lt);}
+.btn-ghost-full{display:block;width:100%;padding:.8rem;font-size:.6rem;letter-spacing:.18em;text-transform:uppercase;background:none;border:1px solid var(--border);color:var(--teal);cursor:pointer;transition:all .22s;margin-top:.5rem;font-family:'Jost',sans-serif;text-align:center;}
+.btn-ghost-full:hover{border-color:var(--teal);background:rgba(30,92,107,.04);}
+.book-note{font-size:.6rem;color:var(--light);text-align:center;margin-top:.7rem;line-height:1.65;padding:0 .5rem;}
+
+/* Footer features */
+.book-features{padding:.9rem 1.4rem;border-top:1px solid var(--border);background:var(--sand-faint);display:flex;flex-direction:column;gap:.38rem;}
+.book-feat{display:flex;align-items:center;gap:.55rem;font-size:.68rem;color:var(--mid);}
+.book-feat-ico{color:var(--teal);font-size:.65rem;flex-shrink:0;width:14px;text-align:center;}
+.book-feat a{color:var(--teal);}
+
+/* WhatsApp row */
+.book-whatsapp{display:flex;align-items:center;justify-content:center;gap:.6rem;padding:.85rem 1.4rem;border-top:1px solid var(--border);background:var(--white);font-size:.68rem;color:var(--teal);font-weight:500;transition:background .2s;}
+.book-whatsapp:hover{background:rgba(30,92,107,.04);}
+.book-whatsapp i{font-size:.95rem;color:#25D366;}
+
+/* ── STICKY CTA BAR (mobile) ── */
+.sticky-cta{
+  display:none;position:fixed;bottom:0;left:0;right:0;z-index:400;
+  background:var(--white);border-top:1px solid var(--border);
+  padding:.9rem 1.2rem;
+  display:none;align-items:center;justify-content:space-between;gap:.75rem;
+}
+.sticky-cta-info{font-family:'Cormorant Garamond',serif;font-size:1rem;font-weight:300;color:var(--dark);}
+.sticky-cta-sub{font-size:.6rem;color:var(--light);}
+.sticky-cta-btn{font-size:.6rem;letter-spacing:.2em;text-transform:uppercase;padding:.75rem 1.4rem;background:var(--sand);color:var(--teal-d);border:none;cursor:pointer;font-family:'Jost',sans-serif;font-weight:500;white-space:nowrap;}
+
+/* ── LIGHTBOX ── */
+.lb{display:none;position:fixed;inset:0;z-index:9999;background:rgba(5,15,20,.96);flex-direction:column;align-items:center;justify-content:center;}
+.lb.show{display:flex;}
+.lb-close{position:absolute;top:1.4rem;right:1.8rem;font-size:1.4rem;color:rgba(255,255,255,.5);cursor:pointer;background:none;border:none;}
+.lb-img{max-width:92vw;max-height:84vh;object-fit:contain;}
+.lb-nav{display:flex;gap:1.2rem;margin-top:1.2rem;}
+.lb-btn{font-size:.58rem;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.45);background:none;border:1px solid rgba(255,255,255,.12);padding:.5rem 1.2rem;cursor:pointer;transition:all .2s;font-family:'Jost',sans-serif;}
+.lb-btn:hover{color:#fff;border-color:rgba(255,255,255,.4);}
+.lb-count{font-size:.56rem;color:rgba(255,255,255,.22);margin-top:.6rem;letter-spacing:.12em;}
+
+/* ── RESPONSIVE ── */
+@media(max-width:1100px){
+  .page-wrap{grid-template-columns:1fr;padding:0 28px 4rem;}
+  .page-side{position:static;}
+  .sticky-cta{display:flex;}
+  body{padding-bottom:72px;}
+}
+@media(max-width:768px){
+  .gallery{grid-template-columns:1fr;height:60vw;max-height:380px;}
+  .gallery-main{grid-row:span 1;}
+  .gallery-thumb{display:none;}
+  .breadcrumb{padding:.75rem 20px;}
+  .page-wrap{padding:0 16px 4rem;}
+  .quick-stats{flex-wrap:wrap;}
+  .qs{flex:0 0 33%;}
+  .amenities-grid{grid-template-columns:1fr;}
+  .amenity{border-right:none!important;}
+  .amenity:nth-last-child(-n+2){border-bottom:1px solid var(--border);}
+  .amenity:last-child{border-bottom:none;}
+  .photo-grid{grid-template-columns:1fr 1fr;}
+  .reviews-grid{grid-template-columns:1fr;}
+  .other-grid{grid-template-columns:1fr 1fr;}
+}
+</style>
+</head>
+<body>
+
+<!-- ═══ NAV (from header.php) ═══ -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
+
+<!-- ═══════════════════════════════════════════════════════
+     TRIBAL SAND · Navigation Header
+     Drop into: includes/header.php
+     ═══════════════════════════════════════════════════════ -->
+
+<style>
+/* ── TOKENS ── */
+:root{
+  --ts-sand:#B8965A;--ts-sand-lt:#D4B07A;
+  --ts-teal:#1E5C6B;--ts-teal-d:#102F3A;
+  --ts-border:rgba(184,150,90,.13);
+}
+.ts-nav *{box-sizing:border-box;margin:0;padding:0;}
+.ts-nav a{text-decoration:none;}
+
+/* ── MAIN NAV ── */
+.ts-nav{
+  position:fixed;top:0;left:0;right:0;z-index:9000;
+  height:68px;display:flex;align-items:center;padding:0 44px;
+  background:rgba(16,47,58,.97);
+  transition:background .35s,height .3s,backdrop-filter .35s;
+  border-bottom:1px solid rgba(184,150,90,.1);
+}
+.ts-nav.scrolled60{
+  background:rgba(16,47,58,.97);
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border-bottom-color:rgba(184,150,90,.1);
+  height:60px;
+}
+/* Add class="ts-nav-transparent" to body on hero pages to get transparent-on-top effect */
+body.ts-nav-transparent .ts-nav:not(.scrolled60):not(.nav-open){
+  background:rgba(16,47,58,0);
+  border-bottom-color:rgba(184,150,90,0);
+}
+.ts-nav.nav-open{background:rgba(16,47,58,.99);border-bottom-color:rgba(184,150,90,.1);}
+
+/* ── LOGO ── */
+.ts-logo{display:flex;align-items:center;flex-shrink:0;margin-right:auto;}
+.ts-logo img{height:38px;width:auto;filter:brightness(0) invert(1);opacity:.88;transition:opacity .2s;}
+.ts-logo:hover img{opacity:1;}
+
+/* ── DESKTOP LINKS ── */
+.ts-links{display:flex;align-items:center;}
+.ts-item{position:relative;}
+.ts-link{
+  display:flex;align-items:center;gap:.35rem;
+  font-family:'Jost',sans-serif;
+  font-size:.75rem;letter-spacing:.14em;text-transform:uppercase;
+  color:rgba(255,255,255,.78);
+  padding:.5rem .9rem;height:68px;
+  background:none;border:none;cursor:pointer;
+  transition:color .2s;white-space:nowrap;
+}
+.ts-link:hover,.ts-item:hover>.ts-link{color:#fff;}
+.ts-link svg{width:8px;height:8px;flex-shrink:0;transition:transform .2s;opacity:.45;}
+.ts-item:hover>.ts-link svg{transform:rotate(180deg);opacity:.8;}
+.ts-nav.scrolled60 .ts-link{height:60px;}
+
+/* ── DROPDOWN ── */
+.ts-drop{
+  position:absolute;top:calc(100% - 1px);left:0;
+  background:rgba(14,42,54,.98);
+  backdrop-filter:blur(24px);
+  border:1px solid rgba(184,150,90,.12);
+  border-top:2px solid var(--ts-sand);
+  min-width:220px;padding:.5rem 0;
+  opacity:0;visibility:hidden;transform:translateY(-8px);
+  transition:all .22s cubic-bezier(.4,0,.2,1);
+  pointer-events:none;
+}
+.ts-item:hover .ts-drop{opacity:1;visibility:visible;transform:none;pointer-events:all;}
+.ts-drop-lbl{
+  font-family:'Jost',sans-serif;font-size:.5rem;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(184,150,90,.6);
+  padding:.6rem 1.2rem .2rem;display:block;
+}
+.ts-drop a{
+  display:flex;align-items:center;gap:.75rem;
+  padding:.62rem 1.2rem;
+  font-family:'Jost',sans-serif;font-size:.72rem;letter-spacing:.06em;
+  color:rgba(212,196,172,.82);
+  transition:color .18s,background .18s;
+}
+.ts-drop a:hover{color:#fff;background:rgba(184,150,90,.08);}
+.ts-drop-div{height:1px;background:rgba(184,150,90,.1);margin:.35rem 0;}
+
+/* Wide 2-col dropdown */
+.ts-drop.wide{min-width:680px;display:grid;grid-template-columns:1fr 1fr 1fr;}
+.ts-drop-col{padding:.6rem 0;}
+.ts-drop-col:first-child{border-right:1px solid rgba(184,150,90,.08);}
+
+/* Property rows with thumbnail */
+.ts-prop-row{
+  display:flex;align-items:center;gap:.85rem;
+  padding:.6rem 1.3rem;
+  transition:background .18s;cursor:pointer;
+}
+.ts-prop-row:hover{background:rgba(184,150,90,.07);}
+.ts-prop-row img{width:46px;height:36px;object-fit:cover;flex-shrink:0;opacity:.78;transition:opacity .2s;border:1px solid rgba(184,150,90,.1);}
+.ts-prop-row:hover img{opacity:1;}
+.ts-prop-name{font-family:'Jost',sans-serif;font-size:.72rem;letter-spacing:.05em;color:rgba(212,196,172,.9);line-height:1.2;white-space:nowrap;}
+.ts-prop-loc{font-size:.6rem;letter-spacing:.08em;color:rgba(184,150,90,.65);margin-top:.06rem;}
+
+/* ── RIGHT ACTIONS ── */
+.ts-actions{display:flex;align-items:center;gap:.7rem;flex-shrink:0;}
+
+.ts-tel{font-family:'Jost',sans-serif;font-size:.62rem;letter-spacing:.1em;color:rgba(255,255,255,.5);transition:color .2s;}
+.ts-tel:hover{color:var(--ts-sand-lt);}
+.ts-btn-plan{
+  font-family:'Jost',sans-serif;font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;
+  padding:.46rem 1.1rem;background:none;
+  border:1px solid rgba(184,150,90,.38);color:var(--ts-sand-lt);
+  transition:all .22s;cursor:pointer;white-space:nowrap;
+}
+.ts-btn-plan:hover{background:rgba(184,150,90,.12);border-color:var(--ts-sand);}
+.ts-btn-book{
+  font-family:'Jost',sans-serif;font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;
+  padding:.46rem 1.25rem;background:var(--ts-sand);
+  border:1px solid var(--ts-sand);color:#102F3A;
+  transition:all .22s;cursor:pointer;white-space:nowrap;font-weight:500;
+}
+.ts-btn-book:hover{background:var(--ts-sand-lt);border-color:var(--ts-sand-lt);}
+
+/* ── HAMBURGER ── */
+.ts-burger{
+  display:none;flex-direction:column;justify-content:center;
+  gap:5px;width:36px;height:36px;background:none;border:none;
+  cursor:pointer;padding:4px;margin-left:.5rem;
+}
+.ts-burger span{display:block;height:1px;background:rgba(255,255,255,.78);transition:all .28s;transform-origin:center;}
+.ts-burger.open span:nth-child(1){transform:translateY(6px) rotate(45deg);}
+.ts-burger.open span:nth-child(2){opacity:0;transform:scaleX(0);}
+.ts-burger.open span:nth-child(3){transform:translateY(-6px) rotate(-45deg);}
+
+/* ── MOBILE DRAWER ── */
+.ts-drawer{
+  display:none;position:fixed;
+  top:60px;left:0;right:0;bottom:0;
+  background:rgba(14,42,54,.99);
+  overflow-y:auto;z-index:8999;
+  transform:translateX(100%);
+  transition:transform .32s cubic-bezier(.4,0,.2,1);
+  padding:1rem 0 5rem;
+}
+.ts-drawer.open{transform:none;}
+.ts-mob-lbl{font-family:'Jost',sans-serif;font-size:.54rem;letter-spacing:.26em;text-transform:uppercase;color:rgba(184,150,90,.6);padding:.65rem 1.5rem .25rem;display:block;}
+.ts-mob-link{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:.88rem 1.5rem;font-family:'Jost',sans-serif;
+  font-size:.84rem;letter-spacing:.07em;
+  color:rgba(212,196,172,.85);
+  border-bottom:1px solid rgba(184,150,90,.07);
+  transition:color .18s,background .18s;
+}
+.ts-mob-link:hover{color:#fff;background:rgba(184,150,90,.06);}
+.ts-mob-arr{font-size:.65rem;color:rgba(184,150,90,.5);}
+.ts-mob-prop{
+  display:flex;align-items:center;gap:.9rem;
+  padding:.72rem 1.5rem;
+  border-bottom:1px solid rgba(184,150,90,.07);
+  transition:background .18s;
+}
+.ts-mob-prop:hover{background:rgba(184,150,90,.06);}
+.ts-mob-prop img{width:46px;height:36px;object-fit:cover;opacity:.72;}
+.ts-mob-prop-name{font-family:'Jost',sans-serif;font-size:.78rem;color:rgba(212,196,172,.92);}
+.ts-mob-prop-loc{font-size:.62rem;color:rgba(184,150,90,.65);margin-top:.06rem;}
+.ts-mob-div{height:1px;background:rgba(184,150,90,.09);margin:.5rem 1.5rem;}
+.ts-mob-actions{padding:1.4rem 1.5rem 0;display:flex;flex-direction:column;gap:.6rem;}
+.ts-mob-btn{
+  display:block;text-align:center;font-family:'Jost',sans-serif;
+  font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;padding:.88rem;transition:all .22s;
+}
+.ts-mob-btn-plan{border:1px solid rgba(184,150,90,.38);color:var(--ts-sand-lt);}
+.ts-mob-btn-plan:hover{background:rgba(184,150,90,.1);}
+.ts-mob-btn-book{background:var(--ts-sand);color:#102F3A;border:none;font-weight:500;}
+.ts-mob-btn-book:hover{background:var(--ts-sand-lt);}
+
+
+/* ── RESPONSIVE ── */
+@media(max-width:1100px){
+  .ts-links{display:none;}
+  .ts-burger{display:flex;}
+  .ts-drawer{display:block;}
+  .ts-social,.ts-tel{display:none;}
+  .ts-nav{padding:0 20px;}
+}
+@media(min-width:1101px){.ts-drawer{display:none!important;}}
+</style>
+
+<nav class="ts-nav" id="tsNav">
+
+  <a href="./" class="ts-logo"><img src="images/whitelogo11.png" alt="Tribal Sand"></a>
+
+  <!-- Desktop links -->
+  <div class="ts-links">
+
+    <!-- Accommodations -->
+    <div class="ts-item">
+      <button class="ts-link">Accommodations
+        <svg viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 1l4 4 4-4"/></svg>
+      </button>
+      <div class="ts-drop wide">
+        <div class="ts-drop-col">
+          <span class="ts-drop-lbl">Beachfront Boutique Hotels</span>
+          <a href="zuri.php" class="ts-prop-row">
+            <img src="https://tribalsand.com/images/zuri/Aerial/zuri-3.webp" alt="Zuri">
+            <div><div class="ts-prop-name">Zuri</div><div class="ts-prop-loc">Watamu · 6 Suites</div></div>
+          </a>
+          <a href="maya-kobe.php" class="ts-prop-row">
+            <img src="https://tribalsand.com/images/Maya-Kobe-1-hero.webp" alt="Maya Kobe">
+            <div><div class="ts-prop-name">Maya Kobe</div><div class="ts-prop-loc">Kilifi · 5 Suites</div></div>
+          </a>
+        </div>
+        <div class="ts-drop-col">
+          <span class="ts-drop-lbl">Beachfront Private Villas</span>
+          <a href="my-amani.php" class="ts-prop-row">
+            <img src="https://tribalsand.com/images/my-amani/Aerial/myamani-11.webp" alt="My Amani">
+            <div><div class="ts-prop-name">My Amani</div><div class="ts-prop-loc">Vipingo · 5 Rooms</div></div>
+          </a>
+          <a href="enkare-bofa.php" class="ts-prop-row">
+            <img src="https://tribalsand.com/images/enkare-bofa/Outdoors/IMG-20251117-WA0032.jpg" alt="Enkare Bofa">
+            <div><div class="ts-prop-name">Enkare Bofa</div><div class="ts-prop-loc">Kilifi · 5 Rooms</div></div>
+          </a>
+          <a href="sandbox.php" class="ts-prop-row">
+            <img src="https://tribalsand.com/images/Sandbox/outdoors/IMG-20251117-WA0091.jpg" alt="Sandbox">
+            <div><div class="ts-prop-name">Sandbox</div><div class="ts-prop-loc">Kilifi · 4 Rooms</div></div>
+          </a>
+        </div>
+        <div class="ts-drop-col">
+          <span class="ts-drop-lbl">Tribal Dunes · Kilifi</span>
+          <a href="maya-kobe.php" class="ts-prop-row">
+            <img src="https://tribalsand.com/images/Maya-Kobe-1-hero.webp" alt="Maya Kobe">
+            <div><div class="ts-prop-name">Maya Kobe</div><div class="ts-prop-loc">Boutique Hotel</div></div>
+          </a>
+          <a href="maya_ilai.php" class="ts-prop-row">
+            <img src="https://tribalsand.com/images/maya_illai/Best1.jpg" alt="Maya Ilai">
+            <div><div class="ts-prop-name">Maya Ilai</div><div class="ts-prop-loc">Eco Compound</div></div>
+          </a>
+          <a href="maya-kobe.php#off-duty" class="ts-prop-row">
+            <img src="https://tribalsand.com/images/maya_illai/Studios/Studio1.jpeg" alt="Off Duty">
+            <div><div class="ts-prop-name">Off Duty</div><div class="ts-prop-loc">Coworking Hotel</div></div>
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Experiences -->
+    <div class="ts-item">
+      <button class="ts-link">Experiences
+        <svg viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 1l4 4 4-4"/></svg>
+      </button>
+      <div class="ts-drop">
+        <a href="activities.php">Activities</a>
+        <a href="http://tribalkiteschool.com/" target="_blank">Kite School</a>
+        <a href="content/TRIBAL-SAND-MENU.pdf" target="_blank">Dining Menu</a>
+        <div class="ts-drop-div"></div>
+        <span class="ts-drop-lbl">Tribal Dunes · Kilifi</span>
+        <a href="maya-kobe.php#tribal-table">Tribal Table</a>
+        <a href="maya-kobe.php#somewhere-cafe">Somewhere Café</a>
+      </div>
+    </div>
+
+    <!-- Tribal Dunes -->
+    <div class="ts-item">
+      <button class="ts-link">Tribal Dunes
+        <svg viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 1l4 4 4-4"/></svg>
+      </button>
+      <div class="ts-drop wide">
+        <div class="ts-drop-col">
+          <span class="ts-drop-lbl">Kilifi · Beachfront</span>
+          <a href="maya-kobe.php" class="ts-prop-row">
+            <img src="https://tribalsand.com/images/Maya-Kobe-1-hero.webp" alt="Maya Kobe">
+            <div><div class="ts-prop-name">Maya Kobe</div><div class="ts-prop-loc">Boutique Hotel · Kilifi</div></div>
+          </a>
+          <a href="maya_ilai.php" class="ts-prop-row">
+            <img src="https://tribalsand.com/images/maya_illai/Best1.jpg" alt="Maya Ilai">
+            <div><div class="ts-prop-name">Maya Ilai</div><div class="ts-prop-loc">Eco Compound · Kilifi</div></div>
+          </a>
+          <a href="#" class="ts-prop-row">
+            <img src="https://tribalsand.com/images/maya_illai/Studios/Studio1.jpeg" alt="Off Duty">
+            <div><div class="ts-prop-name">Off Duty</div><div class="ts-prop-loc">Coworking Hotel · Kilifi</div></div>
+          </a>
+          <div class="ts-drop-div"></div>
+          <a href="https://tribalsand.com/tribalsand-blog-tribal-dunes.html" style="font-size:.62rem;letter-spacing:.12em;color:rgba(184,150,90,.6);padding:.55rem 1.2rem;display:block;transition:color .2s;" onmouseover="this.style.color='#D4B07A'" onmouseout="this.style.color='rgba(184,150,90,.6)'">Read the Tribal Dunes story →</a>
+        </div>
+        <div class="ts-drop-col">
+          <span class="ts-drop-lbl">Dining & Lifestyle</span>
+          <a href="#" class="ts-prop-row">
+            <img src="https://tribalsand.com/images/maya-kobe/Maya Kobe - Day Outdoor, Pool, Beach/Maya Kobe Best4.jpg" alt="Tribal Table">
+            <div><div class="ts-prop-name">Tribal Table <span style="font-size:.54rem;color:rgba(184,150,90,.4);">— Soon</span></div><div class="ts-prop-loc">Restaurant & Bar · Kilifi</div></div>
+          </a>
+          <a href="#" class="ts-prop-row">
+            <img src="https://tribalsand.com/images/maya_illai/best6.jpg" alt="Somewhere Cafe">
+            <div><div class="ts-prop-name">Somewhere Café <span style="font-size:.54rem;color:rgba(184,150,90,.4);">— Soon</span></div><div class="ts-prop-loc">Beachfront Café · Kilifi</div></div>
+          </a>
+          <a href="#" class="ts-prop-row">
+            <img src="https://tribalsand.com/images/34t.jpg" alt="Kite School">
+            <div><div class="ts-prop-name">Kite & Watersport School <span style="font-size:.54rem;color:rgba(184,150,90,.4);">— Soon</span></div><div class="ts-prop-loc">Ocean Sports · Kilifi</div></div>
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- Events -->
+    <div class="ts-item">
+      <a href="events.php" class="ts-link">Events</a>
+    </div>
+
+    <!-- Gallery -->
+    <div class="ts-item">
+      <button class="ts-link">Gallery
+        <svg viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 1l4 4 4-4"/></svg>
+      </button>
+      <div class="ts-drop">
+        <a href="my-amani-gallery.php">My Amani</a>
+        <a href="maya-kobe-gallery.php">Maya Kobe</a>
+        <a href="maya-ilai-gallery.php">Maya Ilai</a>
+        <a href="zuri-gallery.php">Zuri</a>
+        <a href="enkarebofa-gallery.php">Enkare Bofa</a>
+        <a href="sandbox-gallery.php">Sandbox</a>
+        <div class="ts-drop-div"></div>
+        <a href="events-gallery.php">Events Gallery</a>
+      </div>
+    </div>
+
+    <!-- About -->
+    <div class="ts-item">
+      <button class="ts-link">About
+        <svg viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 1l4 4 4-4"/></svg>
+      </button>
+      <div class="ts-drop">
+        <a href="tribalsandstory.php">Our Story</a>
+        <a href="sustainability.php">Sustainability</a>
+        <a href="blog.php">Blog</a>
+        <div class="ts-drop-div"></div>
+        <a href="https://tribalsand.com/wp-content/uploads/2024/12/Watamu-Kenya-COMETA-2025.pdf" target="_blank">Press · Cometa</a>
+        <a href="for-agents.php">For Agents</a>
+        <a href="contact.php">Contact Us</a>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Right actions -->
+  <div class="ts-actions">
+
+    <a href="tel:+254115115247" class="ts-tel">+254 115 115 247</a>
+    <a href="trip-builder.php" class="ts-btn-plan">Plan Your Trip</a>
+    <a href="https://book.tribalsand.com/booking/chain-tribalsand-en" class="ts-btn-book" target="_blank">Book Now</a>
+    <button class="ts-burger" id="tsBurger" aria-label="Menu">
+      <span></span><span></span><span></span>
+    </button>
+  </div>
+
+</nav>
+
+<!-- Mobile drawer -->
+<div class="ts-drawer" id="tsDrawer">
+
+  <div>
+    <span class="ts-mob-lbl">Boutique Hotels</span>
+    <a href="zuri.php" class="ts-mob-prop"><img src="https://tribalsand.com/images/zuri/Aerial/zuri-3.webp" alt="Zuri"><div><div class="ts-mob-prop-name">Zuri</div><div class="ts-mob-prop-loc">Watamu · 6 Suites</div></div></a>
+    <a href="maya-kobe.php" class="ts-mob-prop"><img src="https://tribalsand.com/images/Maya-Kobe-1-hero.webp" alt="Maya Kobe"><div><div class="ts-mob-prop-name">Maya Kobe</div><div class="ts-mob-prop-loc">Kilifi · 5 Suites</div></div></a>
+    <a href="maya_ilai.php" class="ts-mob-prop"><img src="https://tribalsand.com/images/maya_illai/Best1.jpg" alt="Maya Ilai"><div><div class="ts-mob-prop-name">Maya Ilai</div><div class="ts-mob-prop-loc">Kilifi · 16 Units</div></div></a>
+  </div>
+
+  <div>
+    <span class="ts-mob-lbl">Private Villas</span>
+    <a href="my-amani.php" class="ts-mob-prop"><img src="https://tribalsand.com/images/my-amani/Aerial/myamani-11.webp" alt="My Amani"><div><div class="ts-mob-prop-name">My Amani</div><div class="ts-mob-prop-loc">Vipingo · 5 Rooms</div></div></a>
+    <a href="enkare-bofa.php" class="ts-mob-prop"><img src="https://tribalsand.com/images/enkare-bofa/Outdoors/IMG-20251117-WA0032.jpg" alt="Enkare Bofa"><div><div class="ts-mob-prop-name">Enkare Bofa</div><div class="ts-mob-prop-loc">Kilifi · 5 Rooms</div></div></a>
+    <a href="sandbox.php" class="ts-mob-prop"><img src="https://tribalsand.com/images/Sandbox/outdoors/IMG-20251117-WA0091.jpg" alt="Sandbox"><div><div class="ts-mob-prop-name">Sandbox</div><div class="ts-mob-prop-loc">Kilifi · 4 Rooms</div></div></a>
+  </div>
+
+  <div class="ts-mob-div"></div>
+
+  <div>
+    <span class="ts-mob-lbl">Explore</span>
+    <a href="activities.php" class="ts-mob-link">Activities <span class="ts-mob-arr">→</span></a>
+    <a href="http://tribalkiteschool.com/" class="ts-mob-link" target="_blank">Kite School <span class="ts-mob-arr">→</span></a>
+    <a href="events.php" class="ts-mob-link">Events <span class="ts-mob-arr">→</span></a>
+    <a href="maya-kobe.php" class="ts-mob-link">Tribal Dunes <span class="ts-mob-arr">→</span></a>
+  </div>
+
+  <div>
+    <span class="ts-mob-lbl">Gallery</span>
+    <a href="my-amani-gallery.php" class="ts-mob-link">My Amani <span class="ts-mob-arr">→</span></a>
+    <a href="maya-kobe-gallery.php" class="ts-mob-link">Maya Kobe <span class="ts-mob-arr">→</span></a>
+    <a href="zuri-gallery.php" class="ts-mob-link">Zuri <span class="ts-mob-arr">→</span></a>
+    <a href="enkarebofa-gallery.php" class="ts-mob-link">Enkare Bofa <span class="ts-mob-arr">→</span></a>
+    <a href="events-gallery.php" class="ts-mob-link">Events <span class="ts-mob-arr">→</span></a>
+  </div>
+
+  <div>
+    <span class="ts-mob-lbl">Company</span>
+    <a href="tribalsandstory.php" class="ts-mob-link">Our Story <span class="ts-mob-arr">→</span></a>
+    <a href="sustainability.php" class="ts-mob-link">Sustainability <span class="ts-mob-arr">→</span></a>
+    <a href="blog.php" class="ts-mob-link">Blog <span class="ts-mob-arr">→</span></a>
+    <a href="https://tribalsand.com/wp-content/uploads/2024/12/Watamu-Kenya-COMETA-2025.pdf" class="ts-mob-link" target="_blank">Press <span class="ts-mob-arr">→</span></a>
+    <a href="contact.php" class="ts-mob-link">Contact Us <span class="ts-mob-arr">→</span></a>
+    <a href="for-agents.php" class="ts-mob-link">For Agents <span class="ts-mob-arr">→</span></a>
+  </div>
+
+  <div class="ts-mob-actions">
+    <a href="trip-builder.php" class="ts-mob-btn ts-mob-btn-plan">Plan Your Trip</a>
+    <a href="https://book.tribalsand.com/booking/chain-tribalsand-en" class="ts-mob-btn ts-mob-btn-book" target="_blank">Book Now</a>
+    <a href="tel:+254115115247" style="display:block;text-align:center;font-family:'Jost',sans-serif;font-size:.64rem;color:rgba(184,150,90,.5);letter-spacing:.1em;margin-top:.4rem;">+254 115 115 247</a>
+  </div>
+
+
+
+</div>
+
+<!-- ── GTRANSLATE (keep exactly as original) ── -->
+<div class="gtranslate_wrapper" id="gtranslate_wrapper"></div>
+<script>
+window.gtranslateSettings = {
+    "default_language": "en",
+    "languages": ["en","fr","sw","de","hi","it","zh-TW"],
+    "wrapper_selector": ".gtranslate_wrapper",
+    "flag_size": 14,
+    "switcher_horizontal_position": "inline"
+};
+</script>
+<script src="https://cdn.gtranslate.net/widgets/latest/dwf.js" defer></script>
+<style>
+.gtranslate_wrapper{
+  position:fixed;top:72px;right:12px;z-index:99999;
+  transition:top .3s ease-in-out;
+}
+.gtranslate_wrapper.scrolled60{top:64px;}
+@media(max-width:1100px){
+  .gtranslate_wrapper{top:68px;}
+  .gtranslate_wrapper.scrolled60{top:62px;}
+}
+</style>
+
+<script>
+(function(){
+  var nav     = document.getElementById('tsNav');
+  var burger  = document.getElementById('tsBurger');
+  var drawer  = document.getElementById('tsDrawer');
+  var gt      = document.getElementById('gtranslate_wrapper');
+  var open    = false;
+
+  /* ── Scroll ── */
+  function onScroll(){
+    var scrolled = window.scrollY > 40;
+    nav.classList.toggle('scrolled60', scrolled);
+    if(gt) gt.classList.toggle('scrolled60', scrolled);
+  }
+  window.addEventListener('scroll', onScroll, {passive:true});
+  onScroll();
+
+  /* ── Hamburger ── */
+  burger.addEventListener('click', function(){
+    open = !open;
+    burger.classList.toggle('open', open);
+    drawer.classList.toggle('open', open);
+    nav.classList.toggle('nav-open', open);
+    document.body.style.overflow = open ? 'hidden' : '';
+  });
+
+  /* ── Close drawer on link tap ── */
+  drawer.querySelectorAll('a').forEach(function(a){
+    a.addEventListener('click', function(){
+      open = false;
+      burger.classList.remove('open');
+      drawer.classList.remove('open');
+      nav.classList.remove('nav-open');
+      document.body.style.overflow = '';
+    });
+  });
+
+  /* ── Body padding for fixed nav ── */
+  document.body.style.paddingTop = '68px';
+})();
+</script>
+
+
+<!-- ═══ GALLERY ═══ -->
+<div class="gallery" style="margin-top:68px;">
+  <div class="gallery-main" onclick="openLb(0)">
+    <img src="https://tribalsand.com/images/my-amani/Aerial/myamani-11.webp" alt="My Amani aerial">
+    <div class="gallery-badge">My Amani · Vipingo</div>
+  </div>
+  <div class="gallery-thumb" onclick="openLb(1)">
+    <img src="https://tribalsand.com/images/my-amani/My Amani - Outdoor/My Amani Outdoor Day/My Amani Best18.jpg" alt="Pool">
+  </div>
+  <div class="gallery-thumb last" onclick="openLb(2)">
+    <img src="https://tribalsand.com/images/my-amani/My Amani - Outdoor/My Amani Outdoor Day/My Amani Best20.jpg" alt="Garden">
+  </div>
+</div>
+
+<!-- ═══ BREADCRUMB ═══ -->
+<div class="breadcrumb">
+  <a href="./">Home</a>
+  <span class="breadcrumb-sep">›</span>
+  <a href="./#properties">Properties</a>
+  <span class="breadcrumb-sep">›</span>
+  <a href="./#properties">Private Villas</a>
+  <span class="breadcrumb-sep">›</span>
+  <span class="breadcrumb-curr">My Amani</span>
+</div>
+
+<!-- ═══ PAGE WRAP ═══ -->
+<div class="page-wrap">
+
+  <!-- ══ MAIN ══ -->
+  <div class="page-main">
+
+    <!-- Header -->
+    <div class="listing-eyebrow">Private Villa · Entire Retreat Only</div>
+    <h1 class="listing-h1">My Amani</h1>
+    <div class="listing-sub">
+      <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="6" r="2.5"/><path d="M8 1.5C5.24 1.5 3 3.74 3 6.5c0 4 5 8.5 5 8.5s5-4.5 5-8.5c0-2.76-2.24-5-5-5z"/></svg>
+      Vipingo · Kilifi County · Kenya's North Coast
+    </div>
+
+    <!-- Quick stats -->
+    <div class="quick-stats">
+      <div class="qs"><div class="qs-n">5</div><div class="qs-l">Bedrooms</div></div>
+      <div class="qs"><div class="qs-n">10</div><div class="qs-l">Guests</div></div>
+      <div class="qs"><div class="qs-n">5</div><div class="qs-l">Bathrooms</div></div>
+      <div class="qs"><div class="qs-n">∞</div><div class="qs-l">Pool</div></div>
+      <div class="qs"><div class="qs-n">24h</div><div class="qs-l">Security</div></div>
+    </div>
+
+    <!-- Pills -->
+    <div class="pill-row">
+      <span class="pill hi">Beachfront</span>
+      <span class="pill hi">Infinity Pool</span>
+      <span class="pill">Private Chef</span>
+      <span class="pill">Hot Tub</span>
+      <span class="pill">Beach Access</span>
+      <span class="pill">Free Wi-Fi</span>
+      <span class="pill">24hr Security</span>
+      <span class="pill">Airport Transfer</span>
+      <span class="pill">Self-Catering Option</span>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- About -->
+    <div class="sec">
+      <div class="sec-label">About the Property</div>
+      <h2 class="sec-h">Vipingo's Best-Kept <em>Secret</em></h2>
+      <div class="sec-rule"></div>
+      <p class="sec-p">Along the north coast of Kenya, overlooking the Indian Ocean, lies Vipingo's best-kept secret — My Amani. A tastefully furnished five-bedroom retreat with endless views of the Indian Ocean at one end and lush indigenous gardens at the other.</p>
+      <p class="sec-p">My Amani was recycled from an existing home and renovated with the finest local craftsmanship — lying on an eco-friendly beach that protects endangered sea turtle nesting grounds. The entire property is available exclusively as a full private retreat.</p>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Amenities -->
+    <div class="sec">
+      <div class="sec-label">Amenities & Features</div>
+      <h2 class="sec-h">Everything <em>Included</em></h2>
+      <div class="sec-rule"></div>
+      <div class="amenities-grid">
+        <div class="amenity"><span class="amenity-ico">🏖️</span> Direct private beach access</div>
+        <div class="amenity"><span class="amenity-ico">♾️</span> Infinity pool · Ocean views</div>
+        <div class="amenity"><span class="amenity-ico">🛁</span> Private outdoor hot tub</div>
+        <div class="amenity"><span class="amenity-ico">👨‍🍳</span> Private Chef on request</div>
+        <div class="amenity"><span class="amenity-ico">🧹</span> Daily housekeeping</div>
+        <div class="amenity"><span class="amenity-ico">🍳</span> State-of-the-art kitchen</div>
+        <div class="amenity"><span class="amenity-ico">🌿</span> Indigenous tropical garden</div>
+        <div class="amenity"><span class="amenity-ico">🛡️</span> 24hr gated security</div>
+        <div class="amenity"><span class="amenity-ico">🏛️</span> Spacious ocean-view Gazebo</div>
+        <div class="amenity"><span class="amenity-ico">🌅</span> Dual outdoor decks</div>
+        <div class="amenity"><span class="amenity-ico">📶</span> Free Wi-Fi throughout</div>
+        <div class="amenity"><span class="amenity-ico">❄️</span> Air conditioning · All rooms</div>
+        <div class="amenity"><span class="amenity-ico">🚗</span> Airport transfers available</div>
+        <div class="amenity"><span class="amenity-ico">🐢</span> Sea turtle conservation beach</div>
+        <div class="amenity"><span class="amenity-ico">🚪</span> Dual private entrances</div>
+        <div class="amenity"><span class="amenity-ico">⛳</span> Vipingo Ridge Golf nearby</div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Photos -->
+    <div class="sec">
+      <div class="sec-label">Photo Gallery</div>
+      <h2 class="sec-h">Explore <em>My Amani</em></h2>
+      <div class="sec-rule"></div>
+      <div class="photo-grid">
+        <img src="https://tribalsand.com/images/my-amani/My Amani - Outdoor/My Amani Outdoor Day/My Amani Best31.jpg" alt="Outdoor" onclick="openLb(3)">
+        <img src="https://tribalsand.com/images/my-amani/My Amani - Outdoor/My Amani Outdoor Day/My Amani Best25.jpg" alt="Pool" onclick="openLb(4)">
+        <img src="https://tribalsand.com/images/my-amani/My Amani - Bedrooms/Bedroom 1/My Amani Best47.jpg" alt="Bedroom" onclick="openLb(5)">
+        <img src="https://tribalsand.com/images/my-amani/My Amani - Outdoor/My Amani Outdoor Night/My Amani Best34.jpg" alt="Night" onclick="openLb(6)">
+        <img src="https://tribalsand.com/images/my-amani/My Amani - Outdoor/My Amani Outdoor Night/My Amani Best36.jpg" alt="Pool night" onclick="openLb(7)">
+        <img src="https://tribalsand.com/images/my-amani/My Amani - Outdoor/My Amani Outdoor Day/My Amani Best21.jpg" alt="Garden" onclick="openLb(8)">
+      </div>
+      <div class="photo-grid-cap">Tap any photo to enlarge · 9 photos total</div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Experiences -->
+    <div class="sec">
+      <div class="sec-label">Nearby Experiences</div>
+      <h2 class="sec-h">Your Home Base for <em>Adventure</em></h2>
+      <div class="sec-rule"></div>
+      <p class="sec-p" style="margin-bottom:1.2rem;">All activities bookable through your Tribal Sand concierge — quoted in your 24-hour response.</p>
+      <div class="exp-list">
+        <div class="exp-row"><div class="exp-ico">🤿</div><div class="exp-name">Snorkelling · Watamu Marine Park</div><div class="exp-price">From $40/pp</div></div>
+        <div class="exp-row"><div class="exp-ico">🎣</div><div class="exp-name">Deep Sea Fishing · Full or Half Day</div><div class="exp-price">From $550/boat</div></div>
+        <div class="exp-row"><div class="exp-ico">🪁</div><div class="exp-name">Kiteboarding · Tribal Kite School</div><div class="exp-price">From $130/pp</div></div>
+        <div class="exp-row"><div class="exp-ico">⛳</div><div class="exp-name">Vipingo Ridge Golf · 18-hole PGA Course</div><div class="exp-price">On Request</div></div>
+        <div class="exp-row"><div class="exp-ico">⛵</div><div class="exp-name">Sunset Dhow Cruise · Kilifi Creek</div><div class="exp-price">From $45/pp</div></div>
+        <div class="exp-row"><div class="exp-ico">🦁</div><div class="exp-name">Tsavo East · Day Safari</div><div class="exp-price">On Request</div></div>
+        <div class="exp-row"><div class="exp-ico">🧘</div><div class="exp-name">Private Yoga & Wellness Sessions</div><div class="exp-price">On Request</div></div>
+        <div class="exp-row"><div class="exp-ico">🕯️</div><div class="exp-name">Private Beach Dinner</div><div class="exp-price">On Request</div></div>
+      </div>
+      <div class="exp-cta">
+        <a href="trip-builder.php" style="display:inline-flex;align-items:center;gap:.5rem;font-size:.6rem;letter-spacing:.2em;text-transform:uppercase;padding:.78rem 1.6rem;background:var(--teal);color:#fff;font-family:'Jost',sans-serif;transition:background .22s;" onmouseover="this.style.background='#102F3A'" onmouseout="this.style.background='#1E5C6B'">Build Your Itinerary →</a>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Location -->
+    <div class="sec">
+      <div class="sec-label">Location</div>
+      <h2 class="sec-h">Vipingo · <em>Kilifi County</em></h2>
+      <div class="sec-rule"></div>
+      <p class="sec-p">Located on the pristine stretch between Kilifi and Mombasa — one of Kenya's most exclusive coastal addresses. Direct Indian Ocean frontage, 18-hole PGA golf course 5 minutes away, and excellent road access from Mombasa Moi Airport (45 min).</p>
+      <div class="map-block">
+        <div class="map-info">
+          <div class="map-eyebrow">Directions</div>
+          <div class="map-h">Vipingo · Kilifi County · Kenya</div>
+          <div class="map-p">45 min from Mombasa Moi Airport · 1.5hr from Nairobi by air</div>
+        </div>
+        <a href="https://maps.google.com/?q=Vipingo+Kenya" target="_blank" class="btn-map">Open in Google Maps →</a>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Reviews -->
+    <div class="sec">
+      <div class="sec-label">Guest Reviews</div>
+      <h2 class="sec-h">What Our <em>Guests Say</em></h2>
+      <div class="sec-rule"></div>
+      <div class="review-bar">
+        <div>
+          <div class="review-score">5.0</div>
+          <div class="review-stars">★★★★★</div>
+          <div class="review-count">Verified guest stays</div>
+        </div>
+        <div class="review-summary-text">Guests consistently praise My Amani for its impeccable staff, stunning setting and the feeling of complete seclusion — while remaining just minutes from activities and the coast.</div>
+      </div>
+      <div class="reviews-grid">
+        <div class="review-card">
+          <div class="review-stars-sm">★★★★★</div>
+          <div class="review-text">"Stunning place, great staff — friendly and attentive. They made our visit perfect. We will be coming back again and again."</div>
+          <div class="review-author">— Mr & Mrs B Vyas</div>
+        </div>
+        <div class="review-card">
+          <div class="review-stars-sm">★★★★★</div>
+          <div class="review-text">"We will always remember this stunning place — its vibrance, its calm aura, its unbelievably kind staff. Five days of astonishment."</div>
+          <div class="review-author">— Sonal Patel</div>
+        </div>
+        <div class="review-card">
+          <div class="review-stars-sm">★★★★☆</div>
+          <div class="review-text">"The perfect place to relax and unwind. We loved the house, the pool, the outdoor shower, the beach… everything!"</div>
+          <div class="review-author">— Viv & Peter Thairu</div>
+        </div>
+        <div class="review-card">
+          <div class="review-stars-sm">★★★★★</div>
+          <div class="review-text">"Thank you for helping create the most unforgettable birthday. A visual masterpiece — the staff made us feel like family."</div>
+          <div class="review-author">— Erin</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- FAQ -->
+    <div class="sec">
+      <div class="sec-label">Good to Know</div>
+      <h2 class="sec-h">Frequently <em>Asked</em></h2>
+      <div class="sec-rule"></div>
+      <div class="faq-item"><div class="faq-q">Check-in & check-out times? <span class="faq-ico">+</span></div><div class="faq-a">Check-in from 2:00 PM, check-out by 10:00 AM. Early or late requests accommodated where possible — contact us in advance.</div></div>
+      <div class="faq-item"><div class="faq-q">Is a private chef available? <span class="faq-ico">+</span></div><div class="faq-a">Yes, on request at an additional cost. Please request when booking. The kitchen is fully equipped for self-catering if preferred.</div></div>
+      <div class="faq-item"><div class="faq-q">Entire property only or individual rooms? <span class="faq-ico">+</span></div><div class="faq-a">My Amani is available exclusively as a full private retreat. The entire five-bedroom property is yours — it is not available for partial bookings.</div></div>
+      <div class="faq-item"><div class="faq-q">Are children welcome? <span class="faq-ico">+</span></div><div class="faq-a">Absolutely. My Amani is family-friendly with ample space. Babysitting services available on request through your concierge.</div></div>
+      <div class="faq-item"><div class="faq-q">Airport transfers? <span class="faq-ico">+</span></div><div class="faq-a">Yes, arranged at additional cost. Provide flight details in advance. We service Mombasa Moi (MBA), Malindi (MYD) and Nairobi JKIA (NBO).</div></div>
+      <div class="faq-item"><div class="faq-q">Minimum stay? <span class="faq-ico">+</span></div><div class="faq-a">Standard and mid-season: 2 nights minimum. Peak season: 5 nights minimum. A USD 500 security deposit applies.</div></div>
+    </div>
+
+    <div class="divider"></div>
+
+    <!-- Other Properties -->
+    <div class="sec">
+      <div class="sec-label">Explore More</div>
+      <h2 class="sec-h">Other <em>Properties</em></h2>
+      <div class="sec-rule"></div>
+      <div class="other-grid">
+        <a href="zuri.php" class="other-card">
+          <img class="other-img" src="https://tribalsand.com/images/zuri/Aerial/zuri-3.webp" alt="Zuri">
+          <div class="other-body"><div class="other-loc">Watamu</div><div class="other-name">Zuri</div><div class="other-meta">6 Suites · Up to 14 guests</div></div>
+          <div class="other-foot"><span class="other-type">Boutique Hotel</span><span class="other-link">View →</span></div>
+        </a>
+        <a href="maya-kobe.php" class="other-card">
+          <img class="other-img" src="https://tribalsand.com/images/Maya-Kobe-1-hero.webp" alt="Maya Kobe">
+          <div class="other-body"><div class="other-loc">Kilifi</div><div class="other-name">Maya Kobe</div><div class="other-meta">5 Suites · Up to 12 guests</div></div>
+          <div class="other-foot"><span class="other-type">Boutique Hotel</span><span class="other-link">View →</span></div>
+        </a>
+        <a href="enkare-bofa.php" class="other-card">
+          <img class="other-img" src="https://tribalsand.com/images/enkare-bofa/Outdoors/IMG-20251117-WA0032.jpg" alt="Enkare">
+          <div class="other-body"><div class="other-loc">Kilifi</div><div class="other-name">Enkare Bofa</div><div class="other-meta">5 Rooms · Up to 10 guests</div></div>
+          <div class="other-foot"><span class="other-type">Private Villa</span><span class="other-link">View →</span></div>
+        </a>
+      </div>
+    </div>
+
+  </div><!-- /page-main -->
+
+  <!-- ══ SIDEBAR ══ -->
+  <aside class="page-side">
+    <div class="book-card">
+
+      <!-- Header image -->
+      <div class="book-head">
+        <div class="book-head-bg"></div>
+        <div class="book-head-overlay"></div>
+        <div class="book-head-inner">
+          <div class="book-eyebrow">Private Villa · Entire Retreat Only</div>
+          <div class="book-name">My Amani</div>
+          <div class="book-loc">📍 Vipingo · Kilifi County · Kenya</div>
+        </div>
+      </div>
+
+      <!-- Body -->
+      <div class="book-body">
+
+        <!-- Dates -->
+        <div class="book-lbl">Select Dates</div>
+        <div class="book-dates">
+          <div class="book-date-cell">
+            <div class="book-date-lbl">Arrival</div>
+            <input type="date" class="book-inp" id="arrDate" style="border:none;padding:0;background:none;font-size:.8rem;">
+          </div>
+          <div class="book-date-cell">
+            <div class="book-date-lbl">Departure</div>
+            <input type="date" class="book-inp" id="depDate" style="border:none;padding:0;background:none;font-size:.8rem;">
+          </div>
+        </div>
+
+        <!-- Guests -->
+        <div class="book-field">
+          <label class="book-lbl">Guests</label>
+          <select class="book-inp">
+            <option>2 Adults</option>
+            <option>4 Adults</option>
+            <option>6 Adults</option>
+            <option>8 Adults</option>
+            <option>8 Adults + Children</option>
+            <option>10 Adults (Max)</option>
+          </select>
+        </div>
+
+        <!-- Policies -->
+        <div class="book-policies">
+          <div class="book-pol-row"><span class="book-pol-k">Check-in</span><span class="book-pol-v">From 2:00 PM</span></div>
+          <div class="book-pol-row"><span class="book-pol-k">Check-out</span><span class="book-pol-v">By 10:00 AM</span></div>
+          <div class="book-pol-row"><span class="book-pol-k">Min. Stay</span><span class="book-pol-v">2 nights · 5 peak</span></div>
+          <div class="book-pol-row"><span class="book-pol-k">Security Deposit</span><span class="book-pol-v">USD 500</span></div>
+        </div>
+
+        <!-- CTAs -->
+        <a href="https://book.tribalsand.com/booking/roomwisedata.php?hid=tribalsandlimited&roomtypeunkid=5477100000000000001" class="btn-book-full">Request Availability</a>
+        <a href="trip-builder.php" class="btn-ghost-full">Plan My Trip</a>
+        <div class="book-note">No payment at this stage. We reply within 24 hours with pricing and availability.</div>
+      </div>
+
+      <!-- Features -->
+      <div class="book-features">
+        <div class="book-feat"><span class="book-feat-ico">✓</span> Entire villa — no shared spaces</div>
+        <div class="book-feat"><span class="book-feat-ico">✓</span> 24hr on-site concierge</div>
+        <div class="book-feat"><span class="book-feat-ico">✓</span> Experiences arranged by your host</div>
+        <div class="book-feat"><span class="book-feat-ico">✓</span> Airport transfers available</div>
+      </div>
+
+      <!-- WhatsApp -->
+      <a href="https://wa.me/254115115247" class="book-whatsapp">
+        <i class="fab fa-whatsapp"></i> Chat on WhatsApp · +254 115 115 247
+      </a>
+
+    </div>
+  </aside>
+
+</div><!-- /page-wrap -->
+
+<!-- ═══ FOOTER (from footer.php) ═══ -->
+<style>
+/* ── TRIBAL SAND FOOTER ── */
+.ts-footer{
+  background:var(--ts-teal-d, #102F3A);
+  font-family:'Jost',sans-serif;
+  border-top:1px solid rgba(184,150,90,.12);
+}
+
+/* ── TOP SECTION ── */
+.ts-footer-top{
+  display:grid;
+  grid-template-columns:1.6fr 1fr 1fr 1fr 1fr;
+  gap:3rem;
+  padding:5rem 5vw 4rem;
+  max-width:1300px;
+  margin:0 auto;
+}
+
+/* Brand column */
+.ts-foot-logo{
+  height:48px;width:auto;
+  filter:brightness(0) invert(1);
+  opacity:.75;
+  margin-bottom:1.6rem;
+  display:block;
+}
+.ts-foot-desc{
+  font-size:.78rem;color:rgba(255,255,255,.55);
+  line-height:1.88;max-width:260px;
+  margin-bottom:1.6rem;
+}
+.ts-foot-contact a{
+  display:flex;align-items:center;gap:.55rem;
+  font-size:.74rem;color:rgba(184,150,90,.8);
+  margin-bottom:.5rem;text-decoration:none;
+  transition:color .2s;letter-spacing:.04em;
+}
+.ts-foot-contact a:hover{color:#D4B07A;}
+.ts-foot-contact i{font-size:.7rem;width:14px;flex-shrink:0;}
+.ts-foot-social{display:flex;gap:.75rem;margin-top:1.4rem;}
+.ts-foot-social a{
+  width:32px;height:32px;
+  display:flex;align-items:center;justify-content:center;
+  border:1px solid rgba(184,150,90,.18);
+  color:rgba(255,255,255,.3);font-size:.72rem;
+  transition:all .2s;text-decoration:none;
+}
+.ts-foot-social a:hover{border-color:rgba(184,150,90,.5);color:rgba(184,150,90,.8);}
+
+/* Link columns */
+.ts-foot-col-h{
+  font-size:.58rem;letter-spacing:.26em;text-transform:uppercase;
+  color:rgba(184,150,90,.75);margin-bottom:1.1rem;font-weight:500;
+}
+.ts-foot-links{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:.1rem;}
+.ts-foot-links a{
+  font-size:.76rem;color:rgba(255,255,255,.58);
+  text-decoration:none;padding:.32rem 0;
+  display:block;letter-spacing:.04em;
+  transition:color .2s;border-bottom:1px solid rgba(255,255,255,.06);
+}
+.ts-foot-links a:hover{color:rgba(255,255,255,.95);}
+.ts-foot-links li:last-child a{border-bottom:none;}
+
+/* ── DIVIDER ── */
+.ts-footer-div{
+  height:1px;
+  background:linear-gradient(to right, transparent, rgba(184,150,90,.15), transparent);
+  max-width:1300px;margin:0 auto;
+}
+
+/* ── BOTTOM BAR ── */
+.ts-footer-bottom{
+  max-width:1300px;margin:0 auto;
+  padding:1.4rem 5vw;
+  display:flex;align-items:center;justify-content:space-between;
+  flex-wrap:wrap;gap:1rem;
+}
+.ts-foot-copy{
+  font-size:.62rem;color:rgba(255,255,255,.35);
+  letter-spacing:.08em;
+}
+.ts-foot-legal{display:flex;gap:1.5rem;flex-wrap:wrap;}
+.ts-foot-legal a{
+  font-size:.6rem;color:rgba(255,255,255,.32);
+  text-decoration:none;letter-spacing:.08em;
+  transition:color .2s;
+}
+.ts-foot-legal a:hover{color:rgba(255,255,255,.75);}
+
+/* Sub-label inside link columns */
+.ts-foot-sub-lbl{
+  font-size:.5rem;letter-spacing:.24em;text-transform:uppercase;
+  color:rgba(184,150,90,.45);margin:1rem 0 .4rem;display:block;
+}
+
+/* ── TRUST SIGNAL ── */
+.ts-trust{
+  display:flex;align-items:center;gap:.75rem;
+  background:rgba(255,255,255,.04);
+  border:1px solid rgba(184,150,90,.15);
+  padding:.65rem .9rem;
+  margin-top:1.4rem;
+  max-width:260px;
+  cursor:default;
+}
+.ts-trust-dot{
+  width:9px;height:9px;border-radius:50%;
+  background:#4CAF82;flex-shrink:0;
+  animation:ts-pulse 2s ease infinite;
+}
+@keyframes ts-pulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(76,175,130,.5);}
+  50%{box-shadow:0 0 0 6px rgba(76,175,130,0);}
+}
+
+.ts-trust-text{}
+.ts-trust-main{
+  font-family:'Jost',sans-serif;
+  font-size:.66rem;font-weight:500;
+  color:rgba(255,255,255,.88);
+  letter-spacing:.03em;line-height:1.3;
+}
+.ts-trust-main strong{color:#D4B07A;}
+.ts-trust-sub{
+  font-family:'Jost',sans-serif;
+  font-size:.56rem;color:rgba(255,255,255,.35);
+  letter-spacing:.06em;margin-top:.12rem;
+}
+
+
+/* ── RESPONSIVE ── */
+@media(max-width:1100px){
+  .ts-footer-top{grid-template-columns:1fr 1fr 1fr;gap:2rem;}
+}
+@media(max-width:700px){
+  .ts-footer-top{grid-template-columns:1fr 1fr;gap:1.8rem;}
+}
+@media(max-width:600px){
+  .ts-footer-top{grid-template-columns:1fr;padding:3.5rem 5vw 2.5rem;}
+  .ts-footer-bottom{flex-direction:column;align-items:flex-start;gap:.75rem;}
+  .ts-foot-legal{gap:1rem;}
+}
+</style>
+
+<footer class="ts-footer">
+
+  <div class="ts-footer-top">
+
+    <!-- Brand -->
+    <div>
+      <img src="images/footerlogo.png" alt="Tribal Sand" class="ts-foot-logo">
+      <p class="ts-foot-desc">A collection of luxury beachfront boutique hotels and private villas on Kenya's North Coast. Watamu · Kilifi · Vipingo.</p>
+      <div class="ts-foot-contact">
+        <a href="tel:+254115115247"><i class="fas fa-phone"></i>+254 115 115 247</a>
+        <a href="mailto:reservations@tribalsand.com"><i class="fas fa-envelope"></i>reservations@tribalsand.com</a>
+        <a href="https://wa.me/254115115247" target="_blank"><i class="fab fa-whatsapp"></i>WhatsApp Us</a>
+      </div>
+      <div class="ts-foot-social">
+        <a href="https://www.facebook.com/tribalsand/" target="_blank" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>
+        <a href="https://www.instagram.com/tribalsand/" target="_blank" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+        <a href="https://www.youtube.com/@tribalsand7436" target="_blank" aria-label="YouTube"><i class="fab fa-youtube"></i></a>
+      </div>
+
+      <!-- Trust signal -->
+      <div class="ts-trust" id="tsTrust">
+        <div class="ts-trust-dot"></div>
+        <div class="ts-trust-text">
+          <div class="ts-trust-main" id="tsTrustMsg">Booked <strong>7 times</strong> in the last 24h</div>
+          <div class="ts-trust-sub">tribalsand.com · Kenya Coast</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Boutique Hotels + Private Villas -->
+    <div>
+      <div class="ts-foot-col-h">Boutique Hotels</div>
+      <ul class="ts-foot-links">
+        <li><a href="zuri.php">Zuri · Watamu</a></li>
+        <li><a href="maya-kobe.php">Maya Kobe · Kilifi</a></li>
+        <li><a href="maya_ilai.php">Maya Ilai · Kilifi</a></li>
+        <li><a href="#" style="color:rgba(184,150,90,.4);cursor:default;">Off Duty · Kilifi <span style="font-size:.54rem;letter-spacing:.1em;color:rgba(184,150,90,.4);">— Coming Soon</span></a></li>
+      </ul>
+      <span class="ts-foot-sub-lbl">Private Villas</span>
+      <ul class="ts-foot-links">
+        <li><a href="my-amani.php">My Amani · Vipingo</a></li>
+        <li><a href="enkare-bofa.php">Enkare Bofa · Kilifi</a></li>
+        <li><a href="sandbox.php">Sandbox · Kilifi</a></li>
+      </ul>
+    </div>
+
+    <!-- Tribal Dunes -->
+    <div>
+      <div class="ts-foot-col-h">Tribal Dunes</div>
+      <ul class="ts-foot-links">
+        <li><a href="maya-kobe.php">Maya Kobe</a></li>
+        <li><a href="maya_ilai.php">Maya Ilai</a></li>
+        <li><a href="#">Off Duty <span style="font-size:.54rem;color:rgba(184,150,90,.4);">— Soon</span></a></li>
+        <li><a href="maya-kobe.php#tribal-table">Tribal Table <span style="font-size:.54rem;color:rgba(184,150,90,.4);">— Soon</span></a></li>
+        <li><a href="maya-kobe.php#somewhere-cafe">Somewhere Café <span style="font-size:.54rem;color:rgba(184,150,90,.4);">— Soon</span></a></li>
+        <li><a href="http://tribalkiteschool.com/" target="_blank">Kite School</a></li>
+        <li><a href="https://tribalsand.com/tribalsand-blog-tribal-dunes.html">Read the Story →</a></li>
+      </ul>
+    </div>
+
+    <!-- Discover -->
+    <div>
+      <div class="ts-foot-col-h">Discover</div>
+      <ul class="ts-foot-links">
+        <li><a href="activities.php">Activities</a></li>
+        <li><a href="http://tribalkiteschool.com/" target="_blank">Kite School</a></li>
+        <li><a href="events.php">Events</a></li>
+        <li><a href="https://tribalsand.com/tribalsand-blog-tribal-dunes.html">Tribal Dunes</a></li>
+        <li><a href="sustainability.php">Sustainability</a></li>
+        <li><a href="blog.php">Blog</a></li>
+      </ul>
+    </div>
+
+    <!-- Company -->
+    <div>
+      <div class="ts-foot-col-h">Company</div>
+      <ul class="ts-foot-links">
+        <li><a href="tribalsandstory.php">Our Story</a></li>
+        <li><a href="contact.php">Contact Us</a></li>
+        <li><a href="for-agents.php">For Agents</a></li>
+        <li><a href="https://book.tribalsand.com/booking/chain-tribalsand-en" target="_blank">Book Now</a></li>
+        <li><a href="trip-builder.php">Plan Your Trip</a></li>
+      </ul>
+    </div>
+
+  </div>
+
+  <div class="ts-footer-div"></div>
+
+  <div class="ts-footer-bottom">
+    <div class="ts-foot-copy">© 2026 Tribalsand LLC · All Rights Reserved · Tribalsand is a U.S.-based company</div>
+    <div class="ts-foot-legal">
+      <a href="privacy_policy.php" target="_blank">Privacy Policy</a>
+      <a href="sffp.php" target="_blank">Smoke-Free Policy</a>
+      <a href="tc.php" target="_blank">Terms & Conditions</a>
+      <a href="licences.php" target="_blank">Licences</a>
+    </div>
+  </div>
+
+</footer>
+
+<script>
+(function(){
+  var msgs = [
+    'Booked <strong>7 times</strong> in the last 24h',
+    '<strong>3 people</strong> viewing properties now',
+    'Booked <strong>4 times</strong> this week',
+    '<strong>My Amani</strong> just got an enquiry',
+    '<strong>Zuri</strong> is popular this season',
+    'Last booking <strong>2 hours ago</strong>',
+    '<strong>5 enquiries</strong> received today',
+  ];
+  var el = document.getElementById('tsTrustMsg');
+  if(!el) return;
+  var i = 0;
+  setInterval(function(){
+    i = (i + 1) % msgs.length;
+    el.style.opacity = '0';
+    el.style.transition = 'opacity .3s';
+    setTimeout(function(){ el.innerHTML = msgs[i]; el.style.opacity = '1'; }, 300);
+  }, 8000);
+})();
+</script>
+
+<!-- LeadConnector chat widget — kept from original -->
+<script src="https://widgets.leadconnectorhq.com/loader.js"
+  data-resources-url="https://widgets.leadconnectorhq.com/chat-widget/loader.js"
+  data-widget-id="691f01ab467a1f787a2fa6f9">
+</script>
+
+
+<!-- Mobile sticky CTA -->
+<div class="sticky-cta" id="stickyCta">
+  <div><div class="sticky-cta-info">My Amani · Vipingo</div><div class="sticky-cta-sub">5 Bedrooms · Full Private Retreat</div></div>
+  <a href="https://book.tribalsand.com/booking/roomwisedata.php?hid=tribalsandlimited&roomtypeunkid=5477100000000000001" class="sticky-cta-btn">Request →</a>
+</div>
+
+<!-- ═══ LIGHTBOX ═══ -->
+<div class="lb" id="lb">
+  <button class="lb-close" onclick="closeLb()">✕</button>
+  <img class="lb-img" id="lbImg" src="" alt="">
+  <div class="lb-nav"><button class="lb-btn" onclick="lbPrev()">← Prev</button><button class="lb-btn" onclick="lbNext()">Next →</button></div>
+  <div class="lb-count" id="lbCount"></div>
+</div>
+
+<script>
+// FAQ
+document.querySelectorAll('.faq-q').forEach(function(q){
+  q.addEventListener('click',function(){q.closest('.faq-item').classList.toggle('open');});
+});
+
+// Lightbox
+var IMGS=[
+  'https://tribalsand.com/images/my-amani/Aerial/myamani-11.webp',
+  'https://tribalsand.com/images/my-amani/My Amani - Outdoor/My Amani Outdoor Day/My Amani Best18.jpg',
+  'https://tribalsand.com/images/my-amani/My Amani - Outdoor/My Amani Outdoor Day/My Amani Best20.jpg',
+  'https://tribalsand.com/images/my-amani/My Amani - Outdoor/My Amani Outdoor Day/My Amani Best31.jpg',
+  'https://tribalsand.com/images/my-amani/My Amani - Outdoor/My Amani Outdoor Day/My Amani Best25.jpg',
+  'https://tribalsand.com/images/my-amani/My Amani - Bedrooms/Bedroom 1/My Amani Best47.jpg',
+  'https://tribalsand.com/images/my-amani/My Amani - Outdoor/My Amani Outdoor Night/My Amani Best34.jpg',
+  'https://tribalsand.com/images/my-amani/My Amani - Outdoor/My Amani Outdoor Night/My Amani Best36.jpg',
+  'https://tribalsand.com/images/my-amani/My Amani - Outdoor/My Amani Outdoor Day/My Amani Best21.jpg',
+];
+var lbIdx=0;
+function openLb(i){lbIdx=i;document.getElementById('lbImg').src=IMGS[i];document.getElementById('lbCount').textContent=(i+1)+' / '+IMGS.length;document.getElementById('lb').classList.add('show');}
+function closeLb(){document.getElementById('lb').classList.remove('show');}
+function lbNext(){lbIdx=(lbIdx+1)%IMGS.length;openLb(lbIdx);}
+function lbPrev(){lbIdx=(lbIdx-1+IMGS.length)%IMGS.length;openLb(lbIdx);}
+document.getElementById('lb').addEventListener('click',function(e){if(e.target===this)closeLb();});
+document.addEventListener('keydown',function(e){if(e.key==='ArrowRight')lbNext();if(e.key==='ArrowLeft')lbPrev();if(e.key==='Escape')closeLb();});
+
+// Scroll reveal
+var obs=new IntersectionObserver(function(entries){entries.forEach(function(e){if(e.isIntersecting){e.target.style.opacity='1';e.target.style.transform='none';}});},{threshold:0.06});
+document.querySelectorAll('.exp-row,.review-card,.other-card,.amenity,.faq-item').forEach(function(el,i){
+  el.style.opacity='0';el.style.transform='translateY(14px)';
+  el.style.transition='opacity .42s '+(i*0.03)+'s ease,transform .42s '+(i*0.03)+'s ease';
+  obs.observe(el);
+});
+</script>
+</body>
+</html>

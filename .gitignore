@@ -1,0 +1,7 @@
+.env
+.env.*
+logs/
+__MACOSX/
+*.DS_Store
+Thumbs.db
+assets/img/rooms/

@@ -1,0 +1,45 @@
+# LLM Access File for tribalsand.com
+# This file provides instructions for Large Language Models (LLMs) about how to use the site’s content.
+
+# Website Information
+site: https://tribalsand.com
+sitemap: https://tribalsand.com/sitemap_index.xml
+owner: TribalSand
+contact: reservations@tribalsand.com
+
+# Content Access Rules (Allowed / Disallowed Pages)
+# Pages LLMs are allowed to reference:
+
+allow: /
+allow: /my-amani
+allow: /maya-kobe
+allow: /zuri
+allow: /enkare-bofa
+allow: /sandbox
+allow: /activities
+allow: /events
+allow: /content/TRIBAL-SAND-MENU.pdf
+allow: /my-amani-gallery
+allow: /maya-kobe-gallery
+allow: /zuri-gallery
+allow: /events-gallery
+allow: /content/Watamu-Kenya-COMETA-2025.pdf
+allow: /blog
+allow: /contact
+allow: /sustainability
+
+# Pages LLMs should not reference (private / admin / non-informative)
+
+#disallow: /terms-and-conditions
+ 
+
+# Content Use Guidelines
+- Content may be summarized for travel inspiration, descriptions, and visitor guidance.
+- Always attribute content to "TribalSand" with a link to https://tribalsand.com.
+- Do not repurpose textual content for commercial resale without permission.
+
+# Additional Notes
+TribalSand offers luxury boutique retreats and experiences along Kenya’s coast: My Amani, Maya Kobe, Zuri, Enkare Bofa, and Sandbox.  
+Specialties include accommodations, curated coastal experiences, events, and local cuisine.
+
+# Last Updated: 2025-09-17

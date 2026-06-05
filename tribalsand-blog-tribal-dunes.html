@@ -1,0 +1,598 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tribal Dunes — How We Built a Beachfront Village in Kilifi · Tribal Sand</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400;1,500&family=Outfit:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --sand:#e8dcc8;--deep-sand:#c9b99a;
+  --ocean:#2b6b7a;--deep-ocean:#1a4a56;
+  --foam:#f5f0e8;--drift:#7a6a55;
+  --night:#1c1a18;--white:#fdfaf5;
+  --border:rgba(201,185,154,.28);
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{font-family:'Outfit',sans-serif;background:var(--white);color:var(--night);font-weight:300;overflow-x:hidden;-webkit-font-smoothing:antialiased;}
+img{display:block;object-fit:cover;}
+a{color:var(--ocean);text-decoration:none;}
+a:hover{text-decoration:underline;}
+::-webkit-scrollbar{width:3px;}::-webkit-scrollbar-thumb{background:var(--border);}
+
+/* ── NAV ── */
+.nav{position:fixed;inset:0 0 auto;z-index:500;height:60px;display:flex;align-items:center;justify-content:space-between;padding:0 5vw;background:rgba(26,74,86,.96);backdrop-filter:blur(18px);border-bottom:1px solid rgba(232,220,200,.08);}
+.nav-logo img{height:26px;filter:brightness(0) invert(1);opacity:.85;}
+.nav-back{font-size:.58rem;letter-spacing:.22em;text-transform:uppercase;color:rgba(255,255,255,.4);transition:color .2s;}
+.nav-back:hover{color:rgba(255,255,255,.8);text-decoration:none;}
+.nav-cta{font-size:.56rem;letter-spacing:.2em;text-transform:uppercase;padding:.44rem 1.1rem;border:1px solid rgba(232,220,200,.25);color:rgba(232,220,200,.65);transition:all .22s;}
+.nav-cta:hover{background:rgba(232,220,200,.1);color:var(--sand);text-decoration:none;}
+
+/* ── HERO ── */
+.hero{
+  margin-top:60px;
+  position:relative;
+  min-height:70vh;
+  background:#0e2d38;
+  background-image:url('https://tribalsand.com/images/maya-kobe/Aerial/mayakobe-2.webp');
+  background-size:cover;
+  background-position:center 35%;
+  display:flex;align-items:flex-end;
+  padding:0 6vw 8vh;
+  overflow:hidden;
+}
+.hero::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(to bottom, rgba(10,28,36,.65) 0%, rgba(10,28,36,.78) 60%, rgba(10,28,36,.88) 100%);
+}
+.hero-shape{position:absolute;bottom:0;left:0;width:100%;height:30%;background:var(--white);clip-path:ellipse(55% 100% at 15% 100%);opacity:.06;}
+.hero-shape2{position:absolute;bottom:0;right:-5%;width:65%;height:40%;background:var(--sand);clip-path:ellipse(75% 100% at 80% 100%);opacity:.05;}
+.hero-tag{position:absolute;top:1.8rem;left:6vw;font-size:.62rem;letter-spacing:.28em;text-transform:uppercase;color:rgba(255,255,255,.65);font-weight:400;}
+.hero-content{position:relative;z-index:2;max-width:760px;}
+.hero-eyebrow{font-size:.6rem;letter-spacing:.28em;text-transform:uppercase;color:rgba(232,220,200,.75);font-weight:500;margin-bottom:1rem;}
+.hero-h{font-family:'Cormorant Garamond',serif;font-size:clamp(2.2rem,4.5vw,4rem);font-weight:300;color:#ffffff;line-height:1.12;margin-bottom:1.2rem;text-shadow:0 2px 20px rgba(0,0,0,.3);}
+.hero-h em{font-style:italic;color:#D4B07A;}
+.hero-sub{font-size:.82rem;color:rgba(255,255,255,.88);line-height:1.85;max-width:480px;margin-bottom:1.8rem;font-weight:300;}
+.hero-meta{display:flex;gap:2rem;align-items:center;flex-wrap:wrap;}
+.hero-by{font-size:.64rem;letter-spacing:.15em;color:rgba(255,255,255,.7);}
+.hero-dot{width:3px;height:3px;border-radius:50%;background:rgba(255,255,255,.2);}
+.hero-date{font-size:.64rem;letter-spacing:.1em;color:rgba(255,255,255,.7);}
+.hero-read{font-size:.64rem;letter-spacing:.12em;color:rgba(232,220,200,.7);}
+
+/* ── ARTICLE LAYOUT ── */
+.article-outer{max-width:1200px;margin:0 auto;padding:3.5rem 5vw 6rem;display:grid;grid-template-columns:1fr 300px;gap:4rem;align-items:start;}
+.article-main{min-width:0;}
+.article-side{position:sticky;top:88px;}
+
+/* ── LEAD IMAGE ── */
+.lead-img-wrap{margin:0 0 3rem;position:relative;overflow:hidden;}
+.lead-img{width:100%;height:auto;max-height:520px;object-fit:contain;}
+.lead-img-cap{font-size:.56rem;letter-spacing:.14em;text-transform:uppercase;color:var(--drift);text-align:right;padding:.55rem 0 0;opacity:.5;}
+
+/* ── SIDEBAR ── */
+.side-book{background:var(--white);border:1px solid var(--border);overflow:hidden;margin-bottom:1.5rem;}
+.side-book-img{width:100%;height:160px;object-fit:cover;object-position:center 30%;}
+.side-book-body{padding:1.2rem 1.2rem 1rem;}
+.side-book-eyebrow{font-size:.48rem;letter-spacing:.24em;text-transform:uppercase;color:var(--ocean);margin-bottom:.4rem;}
+.side-book-h{font-family:'Cormorant Garamond',serif;font-size:1.15rem;font-weight:400;color:var(--night);margin-bottom:.5rem;line-height:1.2;}
+.side-book-p{font-size:.68rem;color:var(--drift);line-height:1.7;margin-bottom:.9rem;}
+.side-book-meta{display:flex;gap:.6rem;flex-wrap:wrap;margin-bottom:.9rem;}
+.side-book-tag{font-size:.48rem;letter-spacing:.12em;text-transform:uppercase;padding:.18rem .5rem;border:1px solid var(--border);color:var(--drift);}
+.btn-side{display:block;text-align:center;font-size:.55rem;letter-spacing:.2em;text-transform:uppercase;padding:.7rem;background:var(--ocean);color:#fff;transition:background .2s;}
+.btn-side:hover{background:var(--deep-ocean);text-decoration:none;}
+.btn-side-ghost{display:block;text-align:center;font-size:.55rem;letter-spacing:.2em;text-transform:uppercase;padding:.65rem;background:none;border:1px solid var(--border);color:var(--ocean);margin-top:.45rem;transition:all .2s;}
+.btn-side-ghost:hover{border-color:var(--ocean);text-decoration:none;}
+
+.side-toc{background:var(--foam);border:1px solid var(--border);padding:1.2rem;margin-bottom:1.5rem;}
+.side-toc-h{font-size:.56rem;letter-spacing:.22em;text-transform:uppercase;color:var(--ocean);margin-bottom:.9rem;font-weight:500;}
+.side-toc-list{list-style:none;display:flex;flex-direction:column;gap:.1rem;}
+.side-toc-item a{display:block;font-size:.76rem;color:#4a3d2e;padding:.42rem 0;border-bottom:1px solid var(--border);line-height:1.45;transition:color .18s;text-decoration:none;}
+.side-toc-item:last-child a{border-bottom:none;}
+.side-toc-item a:hover{color:var(--ocean);}
+
+.side-props{background:var(--white);border:1px solid var(--border);padding:1.2rem;margin-bottom:1.5rem;}
+.side-props-h{font-size:.56rem;letter-spacing:.22em;text-transform:uppercase;color:var(--ocean);margin-bottom:.9rem;font-weight:500;}
+.side-prop-link{display:block;text-decoration:none;transition:background .18s;}
+.side-prop-link:hover{background:var(--foam);}
+.side-prop-row{display:flex;align-items:center;gap:.75rem;padding:.6rem 0;border-bottom:1px solid var(--border);}
+.side-prop-img{width:48px;height:40px;object-fit:cover;flex-shrink:0;}
+.side-prop-info{}
+.side-prop-name{font-size:.76rem;font-weight:500;color:var(--night);line-height:1.2;}
+.side-prop-meta{font-size:.62rem;color:var(--drift);margin-top:.1rem;}
+
+.side-share{padding:1rem 0;}
+.side-share-h{font-size:.54rem;letter-spacing:.2em;text-transform:uppercase;color:var(--drift);margin-bottom:.65rem;opacity:.75;}
+.side-share-btns{display:flex;gap:.45rem;}
+.share-btn{flex:1;text-align:center;font-size:.58rem;letter-spacing:.1em;text-transform:uppercase;padding:.6rem .4rem;border:1px solid var(--border);color:#4a3d2e;cursor:pointer;transition:all .2s;background:none;text-decoration:none;display:block;}
+.share-btn:hover{border-color:var(--ocean);color:var(--ocean);}
+
+/* ── BODY TYPOGRAPHY ── */
+.body-p{font-size:1rem;line-height:1.92;color:rgba(28,26,24,.88);margin-bottom:1.5rem;font-weight:300;}
+.body-p strong{font-weight:500;color:var(--night);}
+.intro-p{font-size:1.08rem;line-height:1.9;color:rgba(28,26,24,.82);margin-bottom:1.8rem;font-weight:300;}
+
+/* ── SECTION HEADERS ── */
+.sec-label{font-size:.62rem;letter-spacing:.28em;text-transform:uppercase;color:var(--ocean);margin-bottom:.7rem;font-weight:500;}
+.sec-h{font-family:'Cormorant Garamond',serif;font-size:clamp(1.7rem,2.8vw,2.3rem);font-weight:400;color:var(--night);line-height:1.15;margin-bottom:.6rem;}
+.sec-h em{font-style:italic;color:var(--ocean);}
+.sec-rule{width:22px;height:1px;background:var(--deep-sand);margin-bottom:1.4rem;}
+.divider{height:1px;background:var(--border);margin:3rem 0;}
+
+/* ── PULL QUOTE ── */
+.pull-quote{margin:3rem 0;padding:1.8rem 2rem 1.8rem 2.4rem;border-left:2px solid var(--ocean);background:rgba(43,107,122,.04);}
+.pull-quote p{font-family:'Cormorant Garamond',serif;font-size:1.35rem;font-weight:400;font-style:italic;color:var(--deep-ocean);line-height:1.65;}
+.pull-quote cite{display:block;font-family:'Outfit',sans-serif;font-size:.62rem;letter-spacing:.18em;text-transform:uppercase;color:var(--drift);margin-top:.9rem;font-style:normal;opacity:.8;}
+
+/* ── FULL-WIDTH IMAGE ── */
+.full-img-wrap{margin:2.5rem -5vw;position:relative;}
+.full-img{width:100%;height:320px;object-fit:cover;}
+.full-img-cap{font-size:.58rem;letter-spacing:.14em;text-transform:uppercase;color:var(--drift);padding:.55rem 5vw 0;opacity:.5;}
+
+/* ── GRID CALLOUT ── */
+.callout-grid{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--border);margin:2.5rem 0;}
+.callout-item{background:var(--foam);padding:1.6rem 1.4rem;}
+.callout-ico{font-size:1.2rem;margin-bottom:.6rem;}
+.callout-h{font-family:'Cormorant Garamond',serif;font-size:1.12rem;font-weight:400;color:var(--night);margin-bottom:.45rem;}
+.callout-p{font-size:.76rem;color:#4a3d2e;line-height:1.8;}
+
+/* ── PROPERTY LIST ── */
+.prop-list{display:flex;flex-direction:column;gap:1px;background:var(--border);margin:2rem 0;}
+.prop-row{background:var(--white);padding:1.2rem 1.4rem;display:flex;gap:1.2rem;align-items:flex-start;transition:background .18s;}
+.prop-row:hover{background:var(--foam);}
+.prop-row-ico{font-size:1.1rem;flex-shrink:0;margin-top:.1rem;}
+.prop-row-body{}
+.prop-row-name{font-family:'Cormorant Garamond',serif;font-size:1.12rem;font-weight:400;color:var(--night);margin-bottom:.22rem;}
+.prop-row-desc{font-size:.76rem;color:#4a3d2e;line-height:1.75;}
+.prop-row-tag{display:inline-block;font-size:.54rem;letter-spacing:.12em;text-transform:uppercase;padding:.2rem .55rem;border:1px solid rgba(43,107,122,.35);color:var(--ocean);margin-top:.4rem;}
+
+/* ── STAT BAR ── */
+.stat-bar{display:flex;gap:0;background:var(--deep-ocean);margin:2.5rem 0;}
+.stat-item{flex:1;padding:1.4rem 1.2rem;border-right:1px solid rgba(232,220,200,.08);text-align:center;}
+.stat-item:last-child{border-right:none;}
+.stat-n{font-family:'Cormorant Garamond',serif;font-size:1.5rem;font-weight:300;color:var(--sand);line-height:1;}
+.stat-l{font-size:.54rem;letter-spacing:.18em;text-transform:uppercase;color:rgba(232,220,200,.55);margin-top:.28rem;}
+
+/* ── INLINE IMAGE PAIR ── */
+.img-pair{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin:2.5rem 0;}
+.img-pair img{width:100%;height:220px;object-fit:cover;}
+
+/* ── SUSTAINABILITY BLOCK ── */
+.sustain-block{background:linear-gradient(135deg,var(--deep-ocean) 0%,var(--ocean) 100%);padding:2.8rem 2.4rem;margin:3rem 0;}
+.sustain-eyebrow{font-size:.56rem;letter-spacing:.28em;text-transform:uppercase;color:rgba(232,220,200,.4);margin-bottom:.8rem;}
+.sustain-h{font-family:'Cormorant Garamond',serif;font-size:1.7rem;font-weight:300;color:#fff;margin-bottom:1.2rem;line-height:1.15;}
+.sustain-h em{font-style:italic;color:var(--sand);}
+.sustain-items{display:flex;flex-direction:column;gap:.65rem;}
+.sustain-item{display:flex;gap:.8rem;align-items:flex-start;font-size:.8rem;color:rgba(255,255,255,.75);line-height:1.7;}
+.sustain-dot{width:5px;height:5px;border-radius:50%;background:var(--deep-sand);flex-shrink:0;margin-top:.45rem;}
+
+/* ── CLOSING CTA ── */
+.closing{background:var(--foam);border:1px solid var(--border);padding:2.8rem 2.4rem;margin-top:4rem;text-align:center;}
+.closing-eyebrow{font-size:.56rem;letter-spacing:.28em;text-transform:uppercase;color:var(--drift);margin-bottom:.65rem;opacity:.6;}
+.closing-h{font-family:'Cormorant Garamond',serif;font-size:1.7rem;font-weight:300;color:var(--night);margin-bottom:1rem;line-height:1.2;}
+.closing-h em{font-style:italic;color:var(--ocean);}
+.closing-p{font-size:.82rem;color:#4a3d2e;line-height:1.88;max-width:400px;margin:0 auto 1.8rem;}
+.btn-closing{display:inline-block;font-size:.58rem;letter-spacing:.22em;text-transform:uppercase;padding:.8rem 2rem;background:var(--ocean);color:#fff;transition:background .22s;}
+.btn-closing:hover{background:var(--deep-ocean);text-decoration:none;}
+
+/* ── RELATED ── */
+.related{padding:4rem 5vw;background:var(--foam);border-top:1px solid var(--border);}
+.related-label{font-size:.56rem;letter-spacing:.28em;text-transform:uppercase;color:var(--drift);margin-bottom:2rem;opacity:.55;}
+.related-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:1.2rem;}
+.rel-card{background:var(--white);border:1px solid var(--border);overflow:hidden;transition:transform .22s;}
+.rel-card:hover{transform:translateY(-2px);}
+.rel-img{width:100%;height:160px;object-fit:cover;}
+.rel-body{padding:.95rem 1rem;}
+.rel-tag{font-size:.5rem;letter-spacing:.18em;text-transform:uppercase;color:var(--ocean);margin-bottom:.3rem;}
+.rel-title{font-family:'Cormorant Garamond',serif;font-size:1.05rem;font-weight:400;color:var(--night);line-height:1.35;}
+
+/* ── RESPONSIVE ── */
+@media(max-width:1024px){
+  .article-outer{grid-template-columns:1fr;gap:0;}
+  .article-side{position:static;display:none;}
+}
+@media(max-width:720px){
+  .hero{padding:0 5vw 8vh;}
+  .callout-grid{grid-template-columns:1fr;}
+  .img-pair{grid-template-columns:1fr;}
+  .img-pair img{height:200px;}
+  .related-grid{grid-template-columns:1fr;}
+  .stat-bar{flex-wrap:wrap;}
+  .stat-item{flex:0 0 50%;}
+}
+</style>
+</head>
+<body>
+
+<!-- NAV -->
+<nav class="nav">
+  <a href="https://tribalsand.com/" class="nav-logo"><img src="https://tribalsand.com/images/whitelogo11.png" alt="Tribal Sand"></a>
+  <a href="https://tribalsand.com/" class="nav-back">← Back to Tribal Sand</a>
+  <a href="trip-builder.html" class="nav-cta">Plan Your Trip</a>
+</nav>
+
+<!-- HERO -->
+<section class="hero">
+  <div class="hero-shape"></div>
+  <div class="hero-shape2"></div>
+  <div class="hero-content">
+    <div class="hero-eyebrow">Tribal Dunes · Kilifi · Kenya Coast</div>
+    <h1 class="hero-h">Kilifi's beachfront community<br>for travellers who want more<br>than <em>a place to sleep.</em></h1>
+    <p class="hero-sub">Tribal Dunes — one large beachfront property in Kilifi where a boutique hotel, a café, a restaurant, a kite school and an eco compound share the same shore, the same values and the same sun.</p>
+    <div class="hero-meta">
+      <span class="hero-by">Tribal Sand · Editorial</span>
+      <div class="hero-dot"></div>
+      <span class="hero-date">March 2026</span>
+      <div class="hero-dot"></div>
+      <span class="hero-read">8 min read</span>
+    </div>
+  </div>
+</section>
+
+<!-- ARTICLE -->
+<div class="article-outer">
+<article class="article-main">  
+
+  <!-- Lead image -->
+  <div class="lead-img-wrap">
+    <img class="lead-img" src="images/tribal-dunes-sitemap.jpeg" alt="Tribal Dunes site map · Bofa Beach, Kilifi" style="object-fit:contain;background:#f0ece2;">
+    <div style="margin-top:1.2rem;padding:1.4rem 1.6rem;background:var(--foam);border:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:1rem;">
+      <div>
+        <div style="font-size:.52rem;letter-spacing:.26em;text-transform:uppercase;color:var(--ocean);margin-bottom:.3rem;">Tribal Dunes · Kilifi</div>
+        <div style="font-family:'Cormorant Garamond',serif;font-size:1.05rem;font-weight:400;color:var(--night);">See the full layout — explore the property interactively.</div>
+      </div>
+      <!-- <a href="interactive-site-map" style="display:inline-flex;align-items:center;gap:.5rem;font-size:.58rem;letter-spacing:.2em;text-transform:uppercase;padding:.72rem 1.5rem;background:var(--ocean);color:#fff;text-decoration:none;white-space:nowrap;transition:background .2s;" onmouseover="this.style.background='#1a4a56'" onmouseout="this.style.background='#2b6b7a'">View Interactive Map →</a> -->
+      <a href="tribalsand_sitemap.html" style="display:inline-flex;align-items:center;gap:.5rem;font-size:.58rem;letter-spacing:.2em;text-transform:uppercase;padding:.72rem 1.5rem;background:var(--ocean);color:#fff;text-decoration:none;white-space:nowrap;transition:background .2s;" onmouseover="this.style.background='#1a4a56'" onmouseout="this.style.background='#2b6b7a'">View Interactive Map →</a>
+    </div>
+  </div>
+
+  <!-- Intro -->
+  <p class="intro-p">Most hospitality projects start with a brief. A market gap. A spreadsheet. Tribal Dunes started differently — with a question about what a stretch of Kenyan coastline could become if you gave it enough time, enough thought, and enough of a commitment to the people and ecosystem already there.</p>
+
+  <p class="body-p">The result is a beachfront property on Bofa Road in Kilifi that operates more like a small coastal town than a hotel complex. On one large plot of land — shared beach, shared values, separate identities — you will find Maya Kobe boutique hotel, the Off Duty coworking hotel, Somewhere Café, Tribal Table restaurant, the Tribal Kite School and the Maya Ilai eco compound. Each one was designed independently. All of them work better because of the others.</p>
+
+  <p class="body-p">This is the story of how Tribal Dunes was built, why it was built the way it was, and what it means for the guests, the community and the coastline that hosts it.</p>
+
+  <div class="divider"></div>
+
+  <!-- Section 1 -->
+  <div id="section-idea" class="sec-label">The Idea</div>
+  <h2 class="sec-h">One property.<br><em>Many reasons to stay.</em></h2>
+  <div class="sec-rule"></div>
+
+  <p class="body-p">Kilifi has always attracted a particular kind of visitor — someone who has already done the big Safari lodges and wants something more alive. A creative. A kitesurfer. Someone building a company remotely and needing a place that matches their pace. Someone who wants to eat well, sleep well and be at the beach before eight in the morning.</p>
+
+  <p class="body-p">The single biggest problem these visitors faced was fragmentation. A good hotel with no interesting food nearby. A good café with nowhere decent to sleep above it. A kite school with no community around it. Tribal Dunes was conceived as a direct answer to that problem: concentrate everything worth having on one piece of coastline and let each part strengthen the others.</p>
+
+  <div class="pull-quote">
+    <p>"The best hospitality doesn't just give you a room. It gives you a place. Tribal Dunes is our attempt at building that — not as a concept, but as something you can actually walk around in."</p>
+    <cite>— Tribal Sand, Kilifi</cite>
+  </div>
+
+  <p class="body-p">The word "Tribal" was chosen deliberately, and not as branding shorthand. A tribe is a group of people who share values, a sense of place and a way of moving through the world. The community that has formed around Somewhere Café, the kite school, Off Duty and Tribal Table includes kitesurfers from across Africa, remote workers from Europe, local creatives from Kilifi and Nairobi, and guests who came for a week and stayed for a month. That was the intention.</p>
+
+  <div class="divider"></div>
+
+  <!-- Properties -->
+  <div id="section-ecosystem" class="sec-label">The Ecosystem</div>
+  <h2 class="sec-h">What lives at<br><em>Tribal Dunes</em></h2>
+  <div class="sec-rule"></div>
+
+  <p class="body-p">Six distinct operations. One shared plot. Walking distance between all of them. Here is what is actually there.</p>
+
+  <div class="prop-list">
+    <div class="prop-row">
+      <div class="prop-row-ico">🏨</div>
+      <div class="prop-row-body">
+        <div class="prop-row-name">Maya Kobe</div>
+        <div class="prop-row-desc">Luxury beachfront boutique hotel with ocean-facing suites, a private pool and chef-led dining. Balinese-influenced design. Ideal for couples, honeymooners and small groups seeking a fully serviced stay on the Indian Ocean.</div>
+        <span class="prop-row-tag">Boutique Hotel</span>
+      </div>
+    </div>
+    <div class="prop-row">
+      <div class="prop-row-ico">🏡</div>
+      <div class="prop-row-body">
+        <div class="prop-row-name">Off Duty</div>
+        <div class="prop-row-desc">A beachfront coworking hotel designed for people who work well and live actively. Strong Wi-Fi, well-designed rooms, direct beach access and the kite school thirty metres away. The coworking space is open to the public — not only hotel guests.</div>
+        <span class="prop-row-tag">Coworking Hotel</span>
+      </div>
+    </div>
+    <div class="prop-row">
+      <div class="prop-row-ico">☕</div>
+      <div class="prop-row-body">
+        <div class="prop-row-name">Somewhere Café</div>
+        <div class="prop-row-desc">Healthy food, pizza, good coffee, fresh juices, a swimming pool and live music. The social centre of the whole ecosystem. Equally useful for a focused work morning or a long, slow afternoon doing nothing in particular at the beach.</div>
+        <span class="prop-row-tag">Beachfront Café</span>
+      </div>
+    </div>
+    <div class="prop-row">
+      <div class="prop-row-ico">🍽️</div>
+      <div class="prop-row-body">
+        <div class="prop-row-name">Tribal Table</div>
+        <div class="prop-row-desc">An elevated restaurant and cocktail bar beside Maya Kobe. Open to the public. Local ingredients, considered design, and the kind of setting that makes a Tuesday feel like a reason to dress well. A destination in its own right.</div>
+        <span class="prop-row-tag">Restaurant & Bar</span>
+      </div>
+    </div>
+    <div class="prop-row">
+      <div class="prop-row-ico">🪁</div>
+      <div class="prop-row-body">
+        <div class="prop-row-name">Tribal Kite School Kilifi</div>
+        <div class="prop-row-desc">Located directly in front of Off Duty. Lessons, equipment rental and water safety — for beginners and experienced riders. The kite school is not an amenity. It is the reason a significant portion of the community exists at all.</div>
+        <span class="prop-row-tag">Ocean Sports</span>
+      </div>
+    </div>
+    <div class="prop-row">
+      <div class="prop-row-ico">🌿</div>
+      <div class="prop-row-body">
+        <div class="prop-row-name">Maya Ilai</div>
+        <div class="prop-row-desc">An eco compound with 16 units — eight three-bedroom villas and eight studio apartments. Solar powered. Desalinated water. Communal pool, bar, gardens and electric bikes. Walking distance to the beach through Somewhere Café. Adults only. Designed for groups: retreats, weddings, corporate offsites, kitesurf camps.</div>
+        <span class="prop-row-tag">Eco Compound</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- 3-image strip -->
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:4px;margin:2.5rem 0;">
+    <img style="width:100%;height:200px;object-fit:cover;" src="https://tribalsand.com/images/maya-kobe/Maya Kobe - Day Outdoor, Pool, Beach/Maya Kobe Best4.jpg" alt="Maya Kobe pool">
+    <img style="width:100%;height:200px;object-fit:cover;" src="https://tribalsand.com/images/maya_illai/Studios/Studio1.jpeg" alt="Maya Ilai studio">
+    <img style="width:100%;height:200px;object-fit:cover;" src="https://tribalsand.com/images/maya_illai/Best 2.jpg" alt="Maya Ilai pool">
+  </div>
+
+  <!-- Image pair -->
+  <div class="img-pair">
+    <img src="https://tribalsand.com/images/maya_illai/Best1.jpg" alt="Maya Ilai · Kilifi">
+    <img src="https://tribalsand.com/images/maya-kobe/Maya Kobe - Day Outdoor, Pool, Beach/Maya Kobe Best14.jpg" alt="Maya Kobe · Bofa Beach">
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Section 2 - sustainability -->
+  <div id="section-infrastructure" class="sec-label">The Infrastructure</div>
+  <h2 class="sec-h">Powered by the sun.<br><em>Run on the ocean.</em></h2>
+  <div class="sec-rule"></div>
+
+  <p class="body-p">Tribal Dunes is fully solar powered. The desalination system converts seawater into fresh water across the entire site — Maya Kobe, Off Duty, Somewhere Café, Tribal Table, the kite school and Maya Ilai all operate on it. Rainwater is harvested and managed. These are not press release commitments. They are the infrastructure the property runs on every day.</p>
+
+  <p class="body-p">The coral growing garden is a longer-term project — a reef restoration initiative to replant coral along the section of coastline the property shares. It sits alongside the beach cleanup programme and the community education work that the Tribal Sand grounds team runs with local residents.</p>
+
+  <div class="sustain-block">
+    <div class="sustain-eyebrow">Sustainability at Tribal Dunes</div>
+    <h3 class="sustain-h">The things that<br><em>actually matter</em></h3>
+    <div class="sustain-items">
+      <div class="sustain-item"><div class="sustain-dot"></div>Fully solar powered across all six operations on the property</div>
+      <div class="sustain-item"><div class="sustain-dot"></div>Desalinated ocean water system — no reliance on Kenya's freshwater reserves</div>
+      <div class="sustain-item"><div class="sustain-dot"></div>Rainwater harvesting and responsible water management</div>
+      <div class="sustain-item"><div class="sustain-dot"></div>Coral growing garden and reef restoration project</div>
+      <div class="sustain-item"><div class="sustain-dot"></div>Regular beach cleanups with recorded plastic collection</div>
+      <div class="sustain-item"><div class="sustain-dot"></div>Community education programmes on marine ecosystem protection</div>
+      <div class="sustain-item"><div class="sustain-dot"></div>Majority local staff, local sourcing, fair employment</div>
+    </div>
+  </div>
+
+  <div style="margin:2rem 0;">
+    <img style="width:100%;height:320px;object-fit:cover;object-position:center 40%;" src="https://tribalsand.com/images/maya-kobe/Aerial/mayakobe-2.webp" alt="Tribal Dunes from above · Bofa Beach, Kilifi">
+    <div style="font-size:.56rem;letter-spacing:.14em;text-transform:uppercase;color:#7a6a55;padding:.5rem 0 0;opacity:.5;">Tribal Dunes from above · Bofa Beach, Kilifi</div>
+  </div>
+
+  <p class="body-p">None of this is incidental. It reflects a straightforward position: the coastline is the asset. A hospitality brand that depletes it is working against itself. Infrastructure-led sustainability — building systems that make environmental responsibility the path of least resistance — is a better approach than voluntary pledges that depend on individual behaviour.</p>
+
+  <div class="divider"></div>
+
+  <!-- Stat bar -->
+  <div class="stat-bar">
+    <div class="stat-item"><div class="stat-n">6</div><div class="stat-l">Venues on one plot</div></div>
+    <div class="stat-item"><div class="stat-n">16</div><div class="stat-l">Maya Ilai units</div></div>
+    <div class="stat-item"><div class="stat-n">100%</div><div class="stat-l">Solar powered</div></div>
+    <div class="stat-item"><div class="stat-n">0</div><div class="stat-l">Freshwater reliance</div></div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Section 3 - who it's for -->
+  <div id="section-who" class="sec-label">Who Tribal Dunes Is For</div>
+  <h2 class="sec-h">It depends on<br><em>what you need.</em></h2>
+  <div class="sec-rule"></div>
+
+  <p class="body-p">This is one of the more useful things about the Tribal Dunes format: the same property works very differently depending on why you are there.</p>
+
+  <div class="callout-grid">
+    <div class="callout-item">
+      <div class="callout-ico">🧳</div>
+      <div class="callout-h">The couple or small group</div>
+      <div class="callout-p">Maya Kobe gives you privacy, excellent service and a fully curated stay. Tribal Table is a five-minute walk. The ocean is twenty metres away. You don't need a car or a plan.</div>
+    </div>
+    <div class="callout-item">
+      <div class="callout-ico">💻</div>
+      <div class="callout-h">The remote worker</div>
+      <div class="callout-p">Off Duty was designed around this. Strong Wi-Fi, a coworking space open to hotel guests and the public, Somewhere Café below and the kite school directly in front for when you're done.</div>
+    </div>
+    <div class="callout-item">
+      <div class="callout-ico">🪁</div>
+      <div class="callout-h">The kitesurf traveller</div>
+      <div class="callout-p">The kite school is at the beach. Off Duty is directly behind it. Somewhere Café is between them. The entire rhythm of the day — water, food, work, water, food, sunset — is built in.</div>
+    </div>
+    <div class="callout-item">
+      <div class="callout-ico">🎊</div>
+      <div class="callout-h">The large group or retreat</div>
+      <div class="callout-p">Maya Ilai's 16 units can host very large groups — weddings, corporate offsites, wellness retreats, kitesurf camps. The communal spaces, pool and proximity to the restaurant and café make it self-contained.</div>
+    </div>
+  </div>
+
+  <div style="margin:2rem 0;">
+    <img style="width:100%;height:280px;object-fit:cover;" src="https://tribalsand.com/images/maya_illai/best5.jpg" alt="Maya Ilai · Kilifi">
+    <div style="font-size:.56rem;letter-spacing:.14em;text-transform:uppercase;color:#7a6a55;padding:.5rem 0 0;opacity:.5;">Maya Ilai eco compound · Kilifi</div>
+  </div>
+
+  <p class="body-p">The range is intentional. Tribal Sand's view is that a coastal ecosystem that only serves one type of guest is fragile in the wrong ways — commercially and culturally. Tribal Dunes works because the kitesurfer at Somewhere Café and the honeymooners at Maya Kobe and the team from Nairobi at Maya Ilai are all part of the same place, and they make it more interesting for each other without ever being in each other's way.</p>
+
+  <div class="divider"></div>
+
+  <!-- Full-width image -->
+  <div class="full-img-wrap">
+    <img class="full-img" src="https://tribalsand.com/images/maya-kobe/Maya Kobe - Day Outdoor, Pool, Beach/Maya Kobe Best3.jpg" alt="Bofa Beach · Kilifi · Tribal Dunes">
+    <div class="full-img-cap">Kenya's North Coast · The coastline Tribal Dunes is built around</div>
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- Section 4 - the community -->
+  <div id="section-community" class="sec-label">The Community</div>
+  <h2 class="sec-h">Why "Tribal"<br><em>is not just a name.</em></h2>
+  <div class="sec-rule"></div>
+
+  <p class="body-p">A word that gets used a lot in hospitality branding. It is worth explaining what it actually means here.</p>
+
+  <p class="body-p">Somewhere Café hosts live music. The coworking space at Off Duty is open to non-hotel guests — local entrepreneurs and remote workers in Kilifi use it. The kite school has its own community of instructors, students and returning riders that exists independently of any particular hotel stay. Tribal Table draws diners from across the region who have never stayed at any Tribal Sand property.</p>
+
+  <p class="body-p">What this creates is a place with its own social life — one that guests enter rather than one that is performed for them. That distinction matters. The community was not designed as a hospitality amenity. The hospitality was built around a community that already existed and was worth serving.</p>
+
+  <div style="margin:2rem 0;">
+    <img style="width:100%;height:280px;object-fit:cover;" src="https://tribalsand.com/images/maya-kobe/Maya Kobe - Day Outdoor, Pool, Beach/Maya Kobe Best12.jpg" alt="Maya Kobe · Bofa Beach, Kilifi">
+    <div style="font-size:.56rem;letter-spacing:.14em;text-transform:uppercase;color:#7a6a55;padding:.5rem 0 0;opacity:.5;">Maya Kobe · Bofa Beach, Kilifi</div>
+  </div>
+
+  <div class="pull-quote">
+    <p>"Your stay is a point of entry into something that extends well beyond check-out."</p>
+    <cite>— Tribal Sand · The Philosophy</cite>
+  </div>
+
+  <p class="body-p">The local dimension of this is not incidental either. The majority of the Tribal Dunes team are from Kilifi. Local produce is sourced where it is available. The beach cleanups involve community members. The community education work on marine conservation is ongoing. These are not CSR programmes attached to the business. They are part of what the business is.</p>
+
+  <div class="divider"></div>
+
+  <!-- Closing -->
+  <div class="closing">
+    <div class="closing-eyebrow">Come and see it</div>
+    <h3 class="closing-h">Kenya as it was<br><em>meant to be experienced.</em></h3>
+    <p class="closing-p">Whether you are coming for a week at Maya Kobe, a month at Off Duty or a long weekend at Maya Ilai — your concierge team will handle everything from airport transfer to daily experiences. No payment at enquiry stage.</p>
+    <a href="trip-builder.html" class="btn-closing">Plan Your Trip →</a>
+  </div>
+
+</article>
+
+<!-- ── SIDEBAR ── -->
+<aside class="article-side">
+
+  <!-- Table of contents — FIRST -->
+  <div class="side-toc">
+    <div class="side-toc-h">In this article</div>
+    <ul class="side-toc-list">
+      <li class="side-toc-item"><a href="#section-idea">The idea behind Tribal Dunes</a></li>
+      <li class="side-toc-item"><a href="#section-ecosystem">What lives at Tribal Dunes</a></li>
+      <li class="side-toc-item"><a href="#section-infrastructure">Solar power &amp; desalination</a></li>
+      <li class="side-toc-item"><a href="#section-who">Who it is for</a></li>
+      <li class="side-toc-item"><a href="#section-community">Why Tribal is not just a name</a></li>
+    </ul>
+  </div>
+
+  <!-- All properties -->
+  <div class="side-props">
+    <div class="side-props-h">Properties at Tribal Sand</div>
+
+    <a href="https://tribalsand.com/maya-kobe.php" class="side-prop-link">
+      <div class="side-prop-row">
+        <img class="side-prop-img" src="https://tribalsand.com/images/Maya-Kobe-1-hero.webp" alt="Maya Kobe">
+        <div class="side-prop-info">
+          <div class="side-prop-name">Maya Kobe</div>
+          <div class="side-prop-meta">Boutique Hotel · Kilifi</div>
+        </div>
+      </div>
+    </a>
+
+    <a href="https://tribalsand.com/zuri.php" class="side-prop-link">
+      <div class="side-prop-row">
+        <img class="side-prop-img" src="https://tribalsand.com/images/zuri/Aerial/zuri-3.webp" alt="Zuri">
+        <div class="side-prop-info">
+          <div class="side-prop-name">Zuri</div>
+          <div class="side-prop-meta">Boutique Hotel · Watamu</div>
+        </div>
+      </div>
+    </a>
+
+    <a href="https://tribalsand.com/my-amani.php" class="side-prop-link">
+      <div class="side-prop-row">
+        <img class="side-prop-img" src="https://tribalsand.com/images/my-amani/Aerial/myamani-11.webp" alt="My Amani">
+        <div class="side-prop-info">
+          <div class="side-prop-name">My Amani</div>
+          <div class="side-prop-meta">Private Villa · Vipingo</div>
+        </div>
+      </div>
+    </a>
+
+    <a href="https://tribalsand.com/enkare-bofa.php" class="side-prop-link">
+      <div class="side-prop-row">
+        <img class="side-prop-img" src="https://tribalsand.com/images/enkare-bofa/Outdoors/IMG-20251117-WA0032.jpg" alt="Enkare Bofa">
+        <div class="side-prop-info">
+          <div class="side-prop-name">Enkare Bofa</div>
+          <div class="side-prop-meta">Private Villa · Kilifi</div>
+        </div>
+      </div>
+    </a>
+
+    <a href="https://tribalsand.com/sandbox.php" class="side-prop-link">
+      <div class="side-prop-row">
+        <img class="side-prop-img" src="https://tribalsand.com/images/Sandbox/outdoors/IMG-20251117-WA0091.jpg" alt="Sandbox">
+        <div class="side-prop-info">
+          <div class="side-prop-name">Sandbox</div>
+          <div class="side-prop-meta">Private Villa · Kilifi</div>
+        </div>
+      </div>
+    </a>
+
+    <a href="https://tribalsand.com/maya_ilai.php" class="side-prop-link">
+      <div class="side-prop-row" style="border-bottom:none;">
+        <img class="side-prop-img" src="https://tribalsand.com/images/maya_illai/Best1.jpg" alt="Maya Ilai">
+        <div class="side-prop-info">
+          <div class="side-prop-name">Maya Ilai</div>
+          <div class="side-prop-meta">Eco Compound · Kilifi</div>
+        </div>
+      </div>
+    </a>
+
+    <a href="tribal-sand-trip-builder-v3.html" class="btn-side" style="margin-top:.9rem;">Plan Your Trip →</a>
+  </div>
+
+  <!-- Share -->
+  <div class="side-share">
+    <div class="side-share-h">Share this article</div>
+    <div class="side-share-btns">
+      <button class="share-btn" onclick="navigator.clipboard.writeText(window.location.href)">Copy Link</button>
+      <a class="share-btn" href="https://wa.me/?text=Tribal+Dunes+Kilifi+https://tribalsand.com" target="_blank">WhatsApp</a>
+    </div>
+  </div>
+
+</aside>
+</div>
+
+<!-- RELATED -->
+<section class="related">
+  <div class="related-label">More from Tribal Sand</div>
+  <div class="related-grid">
+    <a href="tribalsand-my-amani.html" class="rel-card" style="color:inherit;">
+      <img class="rel-img" src="https://tribalsand.com/images/my-amani/Aerial/myamani-11.webp" alt="My Amani · Vipingo">
+      <div class="rel-body">
+        <div class="rel-tag">Property · Vipingo</div>
+        <div class="rel-title">My Amani — Vipingo's best-kept secret</div>
+      </div>
+    </a>
+    <a href="https://tribalsand.com/activities.php" class="rel-card" style="color:inherit;">
+      <img class="rel-img" src="https://tribalsand.com/images/maya-kobe/Maya Kobe - Day Outdoor, Pool, Beach/Maya Kobe Best12.jpg" alt="Activities · Kenya Coast">
+      <div class="rel-body">
+        <div class="rel-tag">Experiences · Kenya Coast</div>
+        <div class="rel-title">70 ways to spend a day on the Kenyan coast</div>
+      </div>
+    </a>
+    <a href="https://tribalsand.com/sustainability.php" class="rel-card" style="color:inherit;">
+      <img class="rel-img" src="https://tribalsand.com/images/maya_illai/best6.jpg" alt="Maya Ilai · Sustainability">
+      <div class="rel-body">
+        <div class="rel-tag">Sustainability · Tribal Sand</div>
+        <div class="rel-title">Solar power, desalination and what we actually do</div>
+      </div>
+    </a>
+  </div>
+</section>
+
+</body>
+</html>
