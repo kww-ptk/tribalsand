@@ -52,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <div class="alert alert--error"><?= e($error) ?></div>
     <?php endif; ?>
 
-    <form method="POST" action="/admin/login.php" novalidate>
+    <form method="POST" action="/admin/login" novalidate>
       <div class="field">
         <label for="email">Email</label>
         <input type="email" id="email" name="email"
