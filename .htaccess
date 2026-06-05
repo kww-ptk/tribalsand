@@ -1,0 +1,11 @@
+RewriteEngine On
+
+# Strip-.php: serve /foo from foo.php (mirrors router.php behaviour)
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteCond %{REQUEST_FILENAME} !-d
+RewriteCond %{REQUEST_FILENAME}.php -f
+RewriteRule ^(.+)$ $1.php [L]
+
+# Proxy missing images/assets to live site (mirrors router.php behaviour)
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule \.(jpg|jpeg|png|gif|webp|svg|ico|woff|woff2|pdf|mp4|mp3)$ https://tribalsand.com%{REQUEST_URI} [R=302,L]
