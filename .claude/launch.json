@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "tribalsand",
-      "runtimeExecutable": "php",
-      "runtimeArgs": ["-S", "localhost:8080", "-t", "D:\\TribalIsland"],
+      "runtimeExecutable": "D:\\php84\\php.exe",
+      "runtimeArgs": ["-S", "localhost:8080", "-t", "D:\\TribalIsland", "D:\\TribalIsland\\router.php"],
       "port": 8080
     }
   ]

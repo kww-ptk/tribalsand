@@ -18,10 +18,20 @@ if ($uri !== '/' && file_exists($file . '.php') && pathinfo($uri, PATHINFO_EXTEN
     exit;
 }
 
-// Redirect missing images/assets to live site
+// Missing images/assets.
+// Default: redirect to live site so local pages look real.
+// Drop an empty `.router-fast` file in the project root (local screenshot/testing)
+// to instead serve an instant 1×1 placeholder — avoids dozens of slow external
+// image requests that stall headless renders. The sentinel is gitignored.
 $imageExts = ['jpg','jpeg','png','gif','webp','svg','ico','woff','woff2','pdf','mp4','mp3'];
 $ext = strtolower(pathinfo($uri, PATHINFO_EXTENSION));
 if (in_array($ext, $imageExts)) {
+    if (file_exists(__DIR__ . '/.router-fast')) {
+        // 1×1 transparent GIF
+        header('Content-Type: image/gif');
+        echo base64_decode('R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7');
+        exit;
+    }
     header('Location: https://tribalsand.com' . $uri, true, 302);
     exit;
 }

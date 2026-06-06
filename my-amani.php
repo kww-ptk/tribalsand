@@ -217,16 +217,8 @@ a{text-decoration:none;color:inherit;}
 .book-name{font-family:'Cormorant Garamond',serif;font-size:1.5rem;font-weight:300;color:#fff;line-height:1;margin-bottom:.2rem;}
 .book-loc{font-size:.58rem;color:rgba(255,255,255,.45);letter-spacing:.06em;}
 .book-body{padding:0;}
-/* Compact booking widget inside sidebar */
-.book-body .bk-avail{padding:1rem 1.2rem;}
-.book-body .bk-form{gap:.6rem;}
-.book-body .bk-fields{gap:.5rem;}
-.book-body .bk-field span{font-size:10px;}
-.book-body .bk-field input,.book-body .bk-field textarea{padding:.5rem .65rem;font-size:13px;}
-.book-body .bk-field textarea{rows:2;}
-.book-body .bk-total{padding:.65rem .8rem;margin-bottom:0;}
-.book-body .bk-submit{padding:.8rem;}
-.book-body .bk-hold-note{font-size:10px;}
+/* Compact booking-widget overrides now live in css/booking.css
+   (.book-body .bk-* / .room-enquiry-form) so all venue pages match. */
 .book-field{margin-bottom:.75rem;}
 .book-lbl{font-size:.5rem;letter-spacing:.18em;text-transform:uppercase;color:var(--mid);margin-bottom:.3rem;display:block;}
 .book-date-val{font-size:1rem;color:var(--dark);font-weight:400;}

@@ -502,3 +502,29 @@
   padding: 10px 14px; color: #8a1f1f;
   font-size: 13px; margin-bottom: 8px;
 }
+
+/* ═══════════════════════════════════════════════════
+   PROPERTY SIDEBAR — booking widget inside .book-card
+   Shared by every venue overview page (My Amani, Maya Kobe,
+   Zuri, Enkare Bofa, Sandbox, Maya Ilai) so both modes —
+   the availability calendar and the enquiry form — render
+   with identical spacing in the narrow sidebar. Previously
+   these overrides lived only in My Amani's inline <style>,
+   so the other pages rendered edge-to-edge / oversized.
+   ═══════════════════════════════════════════════════ */
+.book-body { padding: 0; }
+
+/* Consistent inset for whichever widget mode renders */
+.book-body .bk-avail,
+.book-body .room-enquiry-form { padding: 1rem 1.2rem; }
+
+/* Compact the availability widget so two-month calendar + fields
+   fit the ~380px sidebar without crowding the edges */
+.book-body .bk-form    { gap: .6rem; }
+.book-body .bk-fields  { gap: .5rem; }
+.book-body .bk-field span { font-size: 10px; }
+.book-body .bk-field input,
+.book-body .bk-field textarea { padding: .5rem .65rem; font-size: 13px; }
+.book-body .bk-total   { padding: .65rem .8rem; margin-bottom: 0; }
+.book-body .bk-submit  { padding: .8rem; }
+.book-body .bk-hold-note { font-size: 10px; }
