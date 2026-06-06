@@ -490,6 +490,9 @@ require_once 'includes/head.php';
     <p class="step-hint">Everything looking right? Tap any section to edit. When you're ready, send your plan and we'll reply within 24 hours with a personalised quote.</p>
     <div id="reviewContent"></div>
     <div class="info-box" style="margin-top:1.5rem"><strong>What happens next:</strong> Our concierge team personally reviews your plan and responds within 24 hours with full pricing and availability. <strong>No payment is taken at this stage.</strong></div>
+    <?php if (captcha_site_key()): ?>
+    <div class="h-captcha" data-sitekey="<?= e(captcha_site_key()) ?>" style="margin-top:1.25rem"></div>
+    <?php endif; ?>
   </div>
   </div>
 
@@ -906,6 +909,14 @@ function submit(){
   var e=(document.getElementById('email').value||S.email||'').trim();
   if(!n||!e){goStep(6);setTimeout(function(){alert('Please enter your name and email before submitting.');},300);return;}
 
+  // hCaptcha gate (only enforced when the widget is present)
+  var hcEl=document.querySelector("[name='h-captcha-response']");
+  var hcToken=hcEl?hcEl.value:'';
+  if(document.querySelector('.h-captcha')&&!hcToken){
+    alert('Please complete the security check before sending.');
+    return;
+  }
+
   var btn=document.getElementById('btnNext');
   btn.textContent='Sending…';btn.disabled=true;
 
@@ -1147,6 +1158,7 @@ function submit(){
     html_email: htmlEmail,
   };
 
+  payload['h-captcha-response']=hcToken;
   if(TS_GHL.alsoPostToBackend){
     fetch(TS_GHL.backendUrl,{
       method:'POST',

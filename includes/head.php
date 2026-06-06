@@ -22,6 +22,7 @@ $page_image  = $page_image  ?? 'https://tribalsand.com/images/Maya-Kobe-1-hero.w
 $page_type   = $page_type   ?? 'website';
 $page_schema = $page_schema ?? '';
 $page_preload = $page_preload ?? '';
+require_once __DIR__ . '/turnstile.php'; // captcha_site_key() available on every page that has a form
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -83,14 +84,16 @@ $page_preload = $page_preload ?? '';
 <!-- ── GLOBAL CSS ── -->
 <link rel="stylesheet" href="css/main.css?v=<?= filemtime(__DIR__ . '/../css/main.css') ?>">
 
+<?php if (captcha_site_key()): ?>
+<!-- ── hCAPTCHA (loaded site-wide so every form's widget works) ── -->
+<script src="https://js.hcaptcha.com/1/api.js" async defer></script>
+<?php endif; ?>
+
 <?php if (!empty($page_booking)): ?>
 <!-- ── BOOKING WIDGET ── -->
 <link rel="stylesheet" href="css/booking.css?v=<?= filemtime(__DIR__ . '/../css/booking.css') ?>">
 <script src="js/datepicker.js?v=<?= filemtime(__DIR__ . '/../js/datepicker.js') ?>" defer></script>
 <script src="js/booking-widget.js?v=<?= filemtime(__DIR__ . '/../js/booking-widget.js') ?>" defer></script>
-<?php if (!empty(getenv('HCAPTCHA_SITE_KEY')) || !empty($_ENV['HCAPTCHA_SITE_KEY'])): ?>
-<script src="https://js.hcaptcha.com/1/api.js" async defer></script>
-<?php endif; ?>
 <?php endif; ?>
 
 <?php if (!empty($page_rooms_rates)): ?>
@@ -101,9 +104,6 @@ $page_preload = $page_preload ?? '';
 <script src="js/booking-widget.js?v=<?= filemtime(__DIR__ . '/../js/booking-widget.js') ?>" defer></script>
 <script src="js/booking-modal.js?v=<?= filemtime(__DIR__ . '/../js/booking-modal.js') ?>" defer></script>
 <script src="js/availability-search.js?v=<?= filemtime(__DIR__ . '/../js/availability-search.js') ?>" defer></script>
-<?php if (!empty(getenv('HCAPTCHA_SITE_KEY')) || !empty($_ENV['HCAPTCHA_SITE_KEY'])): ?>
-<script src="https://js.hcaptcha.com/1/api.js" async defer></script>
-<?php endif; ?>
 <?php endif; ?>
 
 <?php if (!empty($page_preload)): ?>

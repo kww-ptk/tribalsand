@@ -46,6 +46,15 @@ if (!$data) {
     exit;
 }
 
+/* ── Honeypot + hCaptcha ── */
+if (!empty($data['website'])) { echo json_encode(['ok' => true]); exit; }
+require_once __DIR__ . '/includes/turnstile.php';
+if (!verify_captcha($data['h-captcha-response'] ?? '', client_ip())) {
+    http_response_code(403);
+    echo json_encode(['ok' => false, 'error' => 'Security check failed. Please try again.']);
+    exit;
+}
+
 /* ────────────────────────────────────────────────
    Helper: make a GHL API request via cURL
    ──────────────────────────────────────────────── */

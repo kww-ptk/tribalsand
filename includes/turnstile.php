@@ -1,6 +1,8 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/db.php'; // parse_env() / client_ip()
+
 function captcha_site_key(): string {
     return parse_env()['HCAPTCHA_SITE_KEY'] ?? '';
 }

@@ -12,6 +12,12 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(405); exit(json_
 $data = json_decode(file_get_contents('php://input'), true) ?? [];
 if (!empty($data['website'])) { exit(json_encode(['ok' => true])); } // honeypot
 
+require_once __DIR__ . '/../includes/turnstile.php';
+if (!verify_captcha($data['h-captcha-response'] ?? '', client_ip())) {
+    http_response_code(403);
+    exit(json_encode(['ok' => false, 'error' => 'Security check failed. Please try again.']));
+}
+
 $guest = $data['guest'] ?? [];
 $trip  = $data['trip']  ?? [];
 $name  = trim(($guest['firstName'] ?? '') . ' ' . ($guest['lastName'] ?? ''));
