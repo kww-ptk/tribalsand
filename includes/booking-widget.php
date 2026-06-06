@@ -1,30 +1,57 @@
 <?php
 /**
  * Tribal Sand booking widget.
+ *
  * Usage on a property/room page (before including this file):
- *   $booking_slug = 'zuri';            // must match a rooms.slug
+ *   $booking_slug = 'maya-kobe-cottages';   // must match a rooms.slug
  *   include __DIR__ . '/includes/booking-widget.php';
+ *
+ * Form mode is read from the room record (rooms.form_mode):
+ *   'availability' → live calendar + blocked dates + 24h hold on submit
+ *   'enquiry'      → simple date text inputs + enquiry email only
+ *   NULL           → falls back to global setting('form_mode'), default 'enquiry'
  */
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/turnstile.php';
 
 $booking_slug = $booking_slug ?? '';
+
 try {
     $__room = $booking_slug ? fetch_room_by_slug($booking_slug) : false;
 } catch (Throwable $e) {
     $__room = false;
 }
+
 if (!$__room) { return; }
+
+// Determine form mode — per-room overrides global setting
+try {
+    $__form_mode = !empty($__room['form_mode'])
+        ? $__room['form_mode']
+        : setting('form_mode', 'enquiry');
+} catch (Throwable $e) {
+    $__form_mode = 'enquiry';
+}
 
 $room_slug  = $__room['slug'];
 $room_name  = $__room['name'];
 $room_price = (float)($__room['price_amount'] ?? 0);
 $room_curr  = $__room['price_currency'] ?? 'USD';
+
+// ── ENQUIRY MODE ──────────────────────────────────────────────────────────────
+if ($__form_mode !== 'availability') {
+    $room = $__room; // form-enquiry.php expects $room
+    include __DIR__ . '/form-enquiry.php';
+    return;
+}
 ?>
+
+<?php // ── AVAILABILITY MODE ─────────────────────────────────────────────────── ?>
 <div class="bk-avail" id="availCalendar"
      data-slug="<?= e($room_slug) ?>"
      data-price="<?= e($room_price) ?>"
      data-currency="<?= e($room_curr) ?>">
+
   <form id="availForm" class="bk-form" novalidate data-room-slug="<?= e($room_slug) ?>">
     <input type="text" name="website" style="display:none" tabindex="-1" autocomplete="off">
     <input type="hidden" name="checkin"  id="availCheckin">
@@ -123,7 +150,10 @@ $room_curr  = $__room['price_currency'] ?? 'USD';
     <?php if (captcha_site_key()): ?>
     <div class="h-captcha" data-sitekey="<?= e(captcha_site_key()) ?>"></div>
     <?php endif; ?>
-    <button type="submit" class="bk-submit"><span class="bk-submit__label">Check availability</span></button>
+    <button type="submit" class="bk-submit">
+      <span class="bk-submit__label">Check availability</span>
+      <svg class="bk-submit__arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
+    </button>
     <p class="bk-hold-note">Dates are held for 24 hours pending confirmation</p>
   </form>
 </div>
