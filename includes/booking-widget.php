@@ -33,6 +33,18 @@ try {
     $__form_mode = 'enquiry';
 }
 
+// Safety: availability mode requires at least one unit seeded.
+// If none exist, fall back to enquiry so the calendar doesn't
+// accept dates then fail every submission silently.
+if ($__form_mode === 'availability') {
+    try {
+        $__units = fetch_units_by_room((int)$__room['id']);
+        if (count($__units) === 0) $__form_mode = 'enquiry';
+    } catch (Throwable $e) {
+        $__form_mode = 'enquiry';
+    }
+}
+
 $room_slug  = $__room['slug'];
 $room_name  = $__room['name'];
 $room_price = (float)($__room['price_amount'] ?? 0);
