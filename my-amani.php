@@ -610,78 +610,9 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
         </div>
       </div>
 
-      <!-- Body -->
-      <div class="book-body">
-
-        <!-- Enquiry form -->
-        <div class="book-enquiry" id="enqWrap">
-          <!-- Step 1: Trip details -->
-          <div class="enq-step" id="enqStep1">
-            <div class="book-enq-label">Quick Enquiry</div>
-            <div class="enq-row">
-              <div class="book-field">
-                <label class="book-lbl" for="enqArrival">Arrival</label>
-                <input type="date" class="book-inp" id="enqArrival">
-              </div>
-              <div class="book-field">
-                <label class="book-lbl" for="enqDeparture">Departure</label>
-                <input type="date" class="book-inp" id="enqDeparture">
-              </div>
-            </div>
-            <div class="enq-row">
-              <div class="book-field">
-                <label class="book-lbl" for="enqAdults">Adults</label>
-                <select class="book-inp" id="enqAdults">
-                  <option value="">—</option>
-                  <option>1</option><option>2</option><option>3</option><option>4</option>
-                  <option>5</option><option>6</option><option>7</option><option>8</option>
-                  <option>9</option><option>10+</option>
-                </select>
-              </div>
-              <div class="book-field">
-                <label class="book-lbl" for="enqChildren">Children</label>
-                <select class="book-inp" id="enqChildren">
-                  <option value="">—</option>
-                  <option>0</option><option>1</option><option>2</option><option>3</option>
-                  <option>4</option><option>5</option><option>6+</option>
-                </select>
-              </div>
-            </div>
-            <div class="book-field">
-              <label class="book-lbl" for="enqRooms">Rooms</label>
-              <select class="book-inp" id="enqRooms">
-                <option value="">—</option>
-                <option>1 Room</option><option>2 Rooms</option><option>3 Rooms</option>
-                <option>4 Rooms</option><option>Full Villa</option>
-              </select>
-            </div>
-            <button class="btn-book-full" id="enqNext">Next →</button>
-          </div>
-
-          <!-- Step 2: Personal details -->
-          <div class="enq-step" id="enqStep2" style="display:none">
-            <div class="book-enq-label">Your Details</div>
-            <div class="book-field">
-              <label class="book-lbl" for="enqName">Name <span style="color:var(--sand)">*</span></label>
-              <input type="text" class="book-inp" id="enqName" placeholder="Jane Smith" autocomplete="name">
-            </div>
-            <div class="book-field">
-              <label class="book-lbl" for="enqEmail">Email <span style="color:var(--sand)">*</span></label>
-              <input type="email" class="book-inp" id="enqEmail" placeholder="jane@example.com" autocomplete="email">
-            </div>
-            <div class="book-field">
-              <label class="book-lbl" for="enqPhone">Phone / WhatsApp</label>
-              <input type="tel" class="book-inp" id="enqPhone" placeholder="+254 xxx xxx xxx" autocomplete="tel">
-            </div>
-            <div class="book-field">
-              <label class="book-lbl" for="enqMessage">Message</label>
-              <textarea class="book-inp" id="enqMessage" rows="3" placeholder="Anything specific we should know…" style="resize:vertical"></textarea>
-            </div>
-            <button class="btn-book-full" id="btnEnquire">Send Enquiry →</button>
-            <button type="button" class="enq-back-btn" id="enqBack">← Back</button>
-            <div class="book-enq-msg" id="enqMsg"></div>
-          </div>
-        </div>
+      <!-- Booking widget (mode driven by DB: enquiry or availability) -->
+      <div class="book-body" style="padding:0">
+        <?php $booking_slug = 'my-amani-full-rental'; include __DIR__ . '/includes/booking-widget.php'; ?>
       </div>
 
       <!-- Policy accordion -->
