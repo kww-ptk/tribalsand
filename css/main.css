@@ -1223,3 +1223,14 @@ p {
   text-decoration: none;
 }
 .ts-modal__btn:hover { background: var(--teal); }
+
+/* ── Mobile sticky "Book Now" bar — keep its button clear of the
+   LeadConnector chat bubble (fixed bottom-right, rendered in a shadow
+   DOM we can't reposition). Shift the bar's contents left of the bubble
+   and keep the info compact so it doesn't wrap into a tall bar. ── */
+@media (max-width: 920px) {
+  .sticky-cta { padding-right: 5rem !important; }
+  .sticky-cta-info { font-size: .98rem !important; line-height: 1.2; }
+  .sticky-cta-sub  { font-size: .78rem !important; }
+  .sticky-cta-btn  { padding: .7rem 1rem !important; font-size: .72rem !important; }
+}
