@@ -407,3 +407,98 @@
   .bk-date-trigger__value { font-size: 16px; }
   .bk-submit { padding: 15px; }
 }
+
+/* ══ ENQUIRY FORM (form-enquiry.php) ══════════════════
+   Shared field styles for booking-field + dp-btn + booking-step
+   ═════════════════════════════════════════════════════ */
+
+/* dp-btn: datepicker trigger used in enquiry form */
+.dp-btn {
+  display: block; width: 100%;
+  background: #fff;
+  border: 1px solid var(--bk-border);
+  padding: 10px 12px;
+  font: inherit; font-size: 14px;
+  color: var(--bk-light);
+  text-align: left; cursor: pointer;
+  transition: border-color .15s, color .15s;
+}
+.dp-btn:hover,
+.dp-btn:focus          { outline: none; border-color: var(--bk-sand); }
+.dp-btn--active        { color: var(--bk-ink); font-weight: 500; }
+
+/* dp-pop: floating calendar popup (appended to body by datepicker.js) */
+.dp-pop {
+  position: fixed; z-index: 9999;
+  background: #fff;
+  border: 1px solid var(--bk-border);
+  box-shadow: 0 20px 56px rgba(20,20,18,.13), 0 4px 16px rgba(20,20,18,.06);
+  padding: 20px;
+  width: 310px;
+}
+.dp-pop[hidden] { display: none; }
+
+/* dp-pop reuses .bk-cal, .bk-cell, .bk-pop__footer, .bk-pop__cta, .bk-pop__hint */
+
+/* booking-field: label row used in enquiry form */
+.booking-field {
+  display: flex; flex-direction: column;
+  gap: 5px; margin-bottom: 12px;
+}
+.booking-field > span {
+  font-family: 'Jost', sans-serif;
+  font-size: 10px; font-weight: 700;
+  letter-spacing: .16em; text-transform: uppercase;
+  color: var(--bk-sand);
+}
+.booking-field > span small {
+  font-size: 9px; text-transform: none;
+  color: var(--bk-light); letter-spacing: 0; margin-left: 4px;
+}
+.booking-field input,
+.booking-field textarea {
+  font: inherit; font-size: 14px; color: var(--bk-ink);
+  border: 1px solid var(--bk-border);
+  padding: 10px 12px; background: #fff;
+  transition: border-color .15s; width: 100%;
+}
+.booking-field input:focus,
+.booking-field textarea:focus { outline: none; border-color: var(--bk-sand); }
+.booking-field textarea { resize: vertical; min-height: 60px; }
+
+.booking-field--row {
+  flex-direction: row; align-items: center; justify-content: space-between;
+}
+.booking-field--row > span { margin-bottom: 0; }
+
+/* booking-step: +/- stepper in enquiry form */
+.booking-step { display: inline-flex; align-items: center; gap: 12px; }
+.booking-step button {
+  width: 30px; height: 30px;
+  border: 1px solid var(--bk-border); background: #fff;
+  color: var(--bk-ink); cursor: pointer; font-size: 14px;
+  display: flex; align-items: center; justify-content: center;
+  transition: background .15s, color .15s, border-color .15s;
+}
+.booking-step button:hover { background: var(--bk-sand); color: #fff; border-color: var(--bk-sand); }
+.booking-step span { min-width: 20px; text-align: center; font-weight: 500; }
+
+/* Enquiry form submit button */
+.btn--primary.booking-card__submit {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  background: var(--bk-teal); color: #fff;
+  border: 0; padding: 14px 20px; width: 100%;
+  font-family: 'Jost', sans-serif;
+  font-size: 10px; font-weight: 600;
+  letter-spacing: .22em; text-transform: uppercase;
+  cursor: pointer;
+  transition: background .18s;
+}
+.btn--primary.booking-card__submit:hover { background: var(--bk-teal-d); }
+
+/* Enquiry form feedback */
+.form-feedback {
+  background: #fef1f1; border: 1px solid #f4c0c0;
+  padding: 10px 14px; color: #8a1f1f;
+  font-size: 13px; margin-bottom: 8px;
+}

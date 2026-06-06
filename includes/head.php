@@ -86,6 +86,7 @@ $page_preload = $page_preload ?? '';
 <?php if (!empty($page_booking)): ?>
 <!-- ── BOOKING WIDGET ── -->
 <link rel="stylesheet" href="css/booking.css?v=<?= filemtime(__DIR__ . '/../css/booking.css') ?>">
+<script src="js/datepicker.js?v=<?= filemtime(__DIR__ . '/../js/datepicker.js') ?>" defer></script>
 <script src="js/booking-widget.js?v=<?= filemtime(__DIR__ . '/../js/booking-widget.js') ?>" defer></script>
 <?php if (!empty(getenv('HCAPTCHA_SITE_KEY')) || !empty($_ENV['HCAPTCHA_SITE_KEY'])): ?>
 <script src="https://js.hcaptcha.com/1/api.js" async defer></script>
@@ -96,6 +97,7 @@ $page_preload = $page_preload ?? '';
 <!-- ── ROOMS & RATES + BOOKING MODAL ── -->
 <link rel="stylesheet" href="css/booking.css?v=<?= filemtime(__DIR__ . '/../css/booking.css') ?>">
 <link rel="stylesheet" href="css/rooms-and-rates.css?v=<?= filemtime(__DIR__ . '/../css/rooms-and-rates.css') ?>">
+<script src="js/datepicker.js?v=<?= filemtime(__DIR__ . '/../js/datepicker.js') ?>" defer></script>
 <script src="js/booking-widget.js?v=<?= filemtime(__DIR__ . '/../js/booking-widget.js') ?>" defer></script>
 <script src="js/booking-modal.js?v=<?= filemtime(__DIR__ . '/../js/booking-modal.js') ?>" defer></script>
 <script src="js/availability-search.js?v=<?= filemtime(__DIR__ . '/../js/availability-search.js') ?>" defer></script>
