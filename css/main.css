@@ -393,7 +393,7 @@ p {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform .6s ease;
+  transition: transform .35s ease;
 }
 
 .gallery-main:hover img { transform: scale(1.02); }
@@ -408,7 +408,7 @@ p {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform .5s ease, opacity .3s;
+  transition: transform .32s ease, opacity .2s;
 }
 
 .gallery-thumb:hover img { transform: scale(1.04); opacity: .9; }
@@ -705,7 +705,7 @@ p {
   width: 100%;
   height: 268px;
   object-fit: cover;
-  transition: transform .65s cubic-bezier(.25,.46,.45,.94);
+  transition: transform .38s cubic-bezier(.25,.46,.45,.94);
   display: block;
 }
 

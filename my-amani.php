@@ -794,8 +794,8 @@ var obs = new IntersectionObserver(function(entries) {
 
 document.querySelectorAll('.exp-row,.review-card,.other-card,.amenity,.faq-item,.nearby-row').forEach(function(el, i) {
   el.style.opacity = '0';
-  el.style.transform = 'translateY(14px)';
-  el.style.transition = 'opacity .42s ' + (i * 0.03) + 's ease, transform .42s ' + (i * 0.03) + 's ease';
+  el.style.transform = 'translateY(10px)';
+  el.style.transition = 'opacity .28s ' + (i * 0.025) + 's ease, transform .28s ' + (i * 0.025) + 's ease';
   obs.observe(el);
 });
 

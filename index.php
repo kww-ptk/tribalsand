@@ -37,10 +37,10 @@ include 'includes/head.php';
 /* Inner */
 .hero-inner { position:relative; z-index:2; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; padding-top:68px; padding-bottom:5vh; text-align:center; padding-left:20px; padding-right:20px; }
 /* Text animations */
-.hero-eyebrow { animation:heroUp .9s cubic-bezier(.22,1,.36,1) .25s both; }
-.hero-h1 { animation:heroUp 1.1s cubic-bezier(.22,1,.36,1) .5s both; }
-.hero-sub { animation:heroUp .9s cubic-bezier(.22,1,.36,1) .82s both; }
-.hero-btns { animation:heroUp .9s cubic-bezier(.22,1,.36,1) 1.08s both; }
+.hero-eyebrow { animation:heroUp .6s cubic-bezier(.22,1,.36,1) .1s both; }
+.hero-h1 { animation:heroUp .7s cubic-bezier(.22,1,.36,1) .25s both; }
+.hero-sub { animation:heroUp .6s cubic-bezier(.22,1,.36,1) .42s both; }
+.hero-btns { animation:heroUp .6s cubic-bezier(.22,1,.36,1) .58s both; }
 @keyframes heroUp { from{opacity:0;transform:translateY(24px);} to{opacity:1;transform:translateY(0);} }
 /* Dot indicators */
 .hero-indicators { position:absolute; bottom:3.2rem; left:50%; transform:translateX(-50%); display:flex; gap:.55rem; z-index:3; }
@@ -828,11 +828,11 @@ var obs = new IntersectionObserver(function(entries){
   entries.forEach(function(e){
     if (e.isIntersecting){ e.target.style.opacity = '1'; e.target.style.transform = 'none'; }
   });
-}, { threshold: 0.08, rootMargin: '0px 0px -30px 0px' });
+}, { threshold: 0.06, rootMargin: '0px 0px -20px 0px' });
 document.querySelectorAll('.prop-card,.review-card,.exp-item,.how-step,.sustain-pillar,.tribal-venue').forEach(function(el, i){
   el.style.opacity = '0';
-  el.style.transform = 'translateY(18px)';
-  el.style.transition = 'opacity .48s ' + (i * 0.05) + 's ease, transform .48s ' + (i * 0.05) + 's ease';
+  el.style.transform = 'translateY(12px)';
+  el.style.transition = 'opacity .3s ' + (i * 0.03) + 's ease, transform .3s ' + (i * 0.03) + 's ease';
   obs.observe(el);
 });
 </script>
