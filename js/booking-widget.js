@@ -166,7 +166,7 @@
       setHint("Checking availability…", "loading");
       const mySeq = ++availSeq;
       try {
-        const res  = await fetch(`/api/check-availability.php?room=${encodeURIComponent(slug)}&check_in=${ci}&check_out=${co}`);
+        const res  = await fetch(`/api/check-availability?room=${encodeURIComponent(slug)}&check_in=${ci}&check_out=${co}`);
         const data = await res.json();
         if (mySeq !== availSeq) return;
         availOk = !!data.available;
@@ -336,7 +336,7 @@
         };
 
         try {
-          const res  = await fetch("/api/submit-enquiry.php", {
+          const res  = await fetch("/api/submit-enquiry", {
             method:  "POST",
             headers: { "Content-Type": "application/json" },
             body:    JSON.stringify(data),
@@ -386,7 +386,7 @@
       clearError();
       updateDateFields(); updateTotal(); renderCal();
       if (slug) {
-        fetch(`/api/check-availability.php?room=${encodeURIComponent(slug)}`)
+        fetch(`/api/check-availability?room=${encodeURIComponent(slug)}`)
           .then(r => r.json())
           .then(d => { fullyBlocked = d.fully_blocked || []; renderCal(); })
           .catch(() => {});
