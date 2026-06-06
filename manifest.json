@@ -1,0 +1,13 @@
+{
+  "name": "Tribal Sand",
+  "short_name": "Tribal Sand",
+  "description": "Luxury beachfront boutique hotels and private villas in Watamu, Kilifi and Vipingo, Kenya.",
+  "start_url": "/",
+  "display": "browser",
+  "background_color": "#102F3A",
+  "theme_color": "#102F3A",
+  "icons": [
+    { "src": "/images/favicon.png", "sizes": "64x64", "type": "image/png" },
+    { "src": "/images/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

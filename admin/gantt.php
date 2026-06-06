@@ -918,7 +918,7 @@ if (syncBtn) {
   syncBtn.addEventListener('click', () => {
     syncBtn.disabled = true;
     syncBtn.textContent = 'Syncing…';
-    fetch('/api/sync-ical.php?secret=<?= e($sync_secret) ?>')
+    fetch('/api/sync-ical.php', { method: 'POST', headers: { 'Authorization': 'Bearer <?= e($sync_secret) ?>' } })
       .then(r => r.json())
       .then(data => {
         const total = (data.feeds||[]).reduce((s,f) => s + (f.imported||0), 0);

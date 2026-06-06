@@ -1425,10 +1425,14 @@ $booking_slug = 'maya-kobe-cottages';
         </div>
     </section>
 
+    <?php include __DIR__ . '/includes/room-reviews.php'; ?>
+
     <section id="book" class="ts-booking-section" style="max-width:760px;margin:4rem auto;padding:0 1.5rem;">
       <h2 style="font-family:'Cormorant Garamond',serif;font-weight:300;text-align:center;margin-bottom:1.5rem;">Check availability &amp; request your dates</h2>
       <?php include __DIR__ . '/includes/booking-widget.php'; ?>
     </section>
+
+    <?php include __DIR__ . '/includes/cross-sell-tours.php'; ?>
 
     <?php include 'includes/footer.php'; ?>
 

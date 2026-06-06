@@ -154,6 +154,11 @@ include 'includes/head.php';
 .trust-platforms { display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
 .trust-platform { display:flex; align-items:center; gap:.35rem; padding:.35rem .75rem; border:1px solid var(--border); font-size:.75rem; letter-spacing:.05em; color:var(--mid); }
 .trust-platform-stars { color:#F4B942; font-size:.75rem; }
+/* TripAdvisor badge */
+.trust-item--ta { display:flex; align-items:center; }
+.trust-item--ta a { display:flex; align-items:center; justify-content:center; transition:opacity .2s; }
+.trust-item--ta a:hover { opacity:.8; }
+.trust-item__ta-badge { height:56px; width:auto; object-fit:contain; }
 
 /* ── CTA BANNER ── */
 .cta-section { position:relative; height:490px; overflow:hidden; }
@@ -699,6 +704,13 @@ include 'includes/head.php';
         </div>
       </div>
     </div>
+  </div>
+  <div class="trust-divider"></div>
+  <!-- TripAdvisor badge — update href once listing is approved at tripadvisor.com/GetListedNew -->
+  <div class="trust-item trust-item--ta">
+    <a href="https://www.tripadvisor.com/Search?q=Tribal+Sand+Kenya" target="_blank" rel="noopener" aria-label="Tribal Sand on TripAdvisor">
+      <img src="/images/tripadvisor.jpg" alt="TripAdvisor Travellers' Choice" class="trust-item__ta-badge">
+    </a>
   </div>
 </div>
 

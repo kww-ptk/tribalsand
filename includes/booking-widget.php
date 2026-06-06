@@ -9,7 +9,11 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/turnstile.php';
 
 $booking_slug = $booking_slug ?? '';
-$__room = $booking_slug ? fetch_room_by_slug($booking_slug) : false;
+try {
+    $__room = $booking_slug ? fetch_room_by_slug($booking_slug) : false;
+} catch (Throwable $e) {
+    $__room = false;
+}
 if (!$__room) { return; }
 
 $room_slug  = $__room['slug'];

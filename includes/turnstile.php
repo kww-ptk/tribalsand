@@ -6,8 +6,14 @@ function captcha_site_key(): string {
 }
 
 function verify_captcha(string $token, string $ip = ''): bool {
-    $secret = parse_env()['HCAPTCHA_SECRET_KEY'] ?? '';
-    if (!$secret) return true;  // dev / not yet configured — bypass silently
+    $env    = parse_env();
+    $secret = $env['HCAPTCHA_SECRET_KEY'] ?? '';
+    $siteKey = $env['HCAPTCHA_SITE_KEY'] ?? '';
+    if (!$secret && !$siteKey) return true; // both absent = dev mode, bypass OK
+    if (!$secret) {
+        error_log('hCaptcha: HCAPTCHA_SITE_KEY set but secret missing — failing closed');
+        return false;
+    }
     if (!$token)  return false;
 
     $ctx = stream_context_create(['http' => [

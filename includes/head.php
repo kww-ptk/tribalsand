@@ -64,22 +64,29 @@ $page_preload = $page_preload ?? '';
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="preconnect" href="https://cdnjs.cloudflare.com">
 
-<!-- ── FONTS ── -->
-<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=Jost:wght@400;500&display=swap" rel="stylesheet">
+<!-- ── FONTS (non-blocking) ── -->
+<link rel="preload"
+  href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=Jost:wght@400;500&display=swap"
+  as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=Jost:wght@400;500&display=swap" rel="stylesheet">
+</noscript>
 
 <!-- ── ICONS ── -->
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
 <!-- ── FAVICON ── -->
-<link rel="icon" href="images/favicon.png">
+<link rel="icon" type="image/png" href="/images/favicon.png">
+<link rel="apple-touch-icon" href="/images/apple-touch-icon.png">
+<link rel="manifest" href="/manifest.json">
 
 <!-- ── GLOBAL CSS ── -->
-<link rel="stylesheet" href="css/main.css">
+<link rel="stylesheet" href="css/main.css?v=<?= filemtime(__DIR__ . '/../css/main.css') ?>">
 
 <?php if (!empty($page_booking)): ?>
 <!-- ── BOOKING WIDGET ── -->
-<link rel="stylesheet" href="css/booking.css">
-<script src="js/booking-widget.js" defer></script>
+<link rel="stylesheet" href="css/booking.css?v=<?= filemtime(__DIR__ . '/../css/booking.css') ?>">
+<script src="js/booking-widget.js?v=<?= filemtime(__DIR__ . '/../js/booking-widget.js') ?>" defer></script>
 <?php if (!empty(getenv('HCAPTCHA_SITE_KEY')) || !empty($_ENV['HCAPTCHA_SITE_KEY'])): ?>
 <script src="https://js.hcaptcha.com/1/api.js" async defer></script>
 <?php endif; ?>
@@ -87,11 +94,11 @@ $page_preload = $page_preload ?? '';
 
 <?php if (!empty($page_rooms_rates)): ?>
 <!-- ── ROOMS & RATES + BOOKING MODAL ── -->
-<link rel="stylesheet" href="css/booking.css">
-<link rel="stylesheet" href="css/rooms-and-rates.css">
-<script src="js/booking-widget.js" defer></script>
-<script src="js/booking-modal.js" defer></script>
-<script src="js/availability-search.js" defer></script>
+<link rel="stylesheet" href="css/booking.css?v=<?= filemtime(__DIR__ . '/../css/booking.css') ?>">
+<link rel="stylesheet" href="css/rooms-and-rates.css?v=<?= filemtime(__DIR__ . '/../css/rooms-and-rates.css') ?>">
+<script src="js/booking-widget.js?v=<?= filemtime(__DIR__ . '/../js/booking-widget.js') ?>" defer></script>
+<script src="js/booking-modal.js?v=<?= filemtime(__DIR__ . '/../js/booking-modal.js') ?>" defer></script>
+<script src="js/availability-search.js?v=<?= filemtime(__DIR__ . '/../js/availability-search.js') ?>" defer></script>
 <?php if (!empty(getenv('HCAPTCHA_SITE_KEY')) || !empty($_ENV['HCAPTCHA_SITE_KEY'])): ?>
 <script src="https://js.hcaptcha.com/1/api.js" async defer></script>
 <?php endif; ?>

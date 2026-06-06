@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 
+require_once __DIR__ . '/db.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 
 // First-touch UTM + referrer capture — stored once per session
@@ -14,7 +15,7 @@ if (empty($_SESSION['tracking'])) {
         'utm_term'      => $_GET['utm_term']                          ?? '',
         'utm_content'   => $_GET['utm_content']                       ?? '',
         'user_agent'    => $_SERVER['HTTP_USER_AGENT']                ?? '',
-        'ip_address'    => $_SERVER['REMOTE_ADDR']                    ?? '',
+        'ip_address'    => client_ip(),
     ];
 }
 

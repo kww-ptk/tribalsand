@@ -19,7 +19,7 @@ if (!empty($data['website'])) {
 }
 
 // Turnstile
-$ip = $_SERVER['REMOTE_ADDR'] ?? '';
+$ip = client_ip();
 if (!verify_captcha($data['h-captcha-response'] ?? '', $ip)) {
     http_response_code(403);
     exit(json_encode(['ok' => false, 'error' => 'Security check failed. Please try again.']));

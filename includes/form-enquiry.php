@@ -61,6 +61,6 @@ $room_name = $room['name'] ?? '';
   <?php endif; ?>
 
   <button type="submit" class="btn btn--primary booking-card__submit">
-    Book Now <span aria-hidden="true">&rsaquo;</span>
+    Request to Book <span aria-hidden="true">&rsaquo;</span>
   </button>
 </form>

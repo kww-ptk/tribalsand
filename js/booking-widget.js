@@ -344,12 +344,16 @@
           const json = await res.json();
 
           if (json.ok) {
-            wrap.innerHTML = `
-              <div class="bk-success">
-                <svg class="bk-success__icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                <h3 class="bk-success__title">Your dates are held</h3>
-                <p class="bk-success__body">Good news — those dates are available. We've put a 24-hour hold on your booking and will confirm by email shortly.</p>
-              </div>`;
+            // Scroll the widget into view so guest sees the confirmation area
+            wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            // Show animated success modal with 24h countdown
+            if (typeof window.showSuccessModal === 'function') {
+              window.showSuccessModal(
+                'Your dates are held!',
+                'Good news — those dates are available. We\'ve put a 24-hour hold on your booking and will confirm by email shortly.',
+                true // show countdown
+              );
+            }
             return;
           }
           if (json.errors) {

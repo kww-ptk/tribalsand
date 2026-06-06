@@ -1116,3 +1116,110 @@ p {
   .quick-stats { flex-wrap: wrap; }
   .qs { min-width: 50%; }
 }
+
+@media (max-width: 860px) {
+  .hero-btns .btn-ghost {
+    background: rgba(0, 0, 0, 0.28);
+    border-color: rgba(255, 255, 255, 0.7);
+    backdrop-filter: blur(4px);
+    -webkit-backdrop-filter: blur(4px);
+  }
+}
+
+/* ── SUCCESS MODAL ── */
+.ts-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: rgba(16, 47, 58, 0.72);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  animation: ts-backdrop-in .25s ease;
+}
+@keyframes ts-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+
+.ts-modal {
+  background: #fff;
+  max-width: 480px;
+  width: 100%;
+  padding: 3rem 2.5rem 2.5rem;
+  text-align: center;
+  position: relative;
+  animation: ts-modal-in .3s cubic-bezier(.22,1,.36,1);
+}
+@keyframes ts-modal-in {
+  from { opacity: 0; transform: translateY(24px) scale(.97); }
+  to   { opacity: 1; transform: none; }
+}
+
+.ts-modal__close {
+  position: absolute;
+  top: 1rem; right: 1.2rem;
+  background: none; border: none;
+  font-size: 1.4rem; line-height: 1;
+  color: rgba(107,96,80,.5);
+  cursor: pointer;
+  padding: .25rem .5rem;
+  transition: color .2s;
+}
+.ts-modal__close:hover { color: var(--dark); }
+
+.ts-modal__icon {
+  width: 56px; height: 56px;
+  margin: 0 auto 1.4rem;
+  background: #EAF7EF;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+}
+.ts-modal__icon svg { width: 28px; height: 28px; stroke: #2e9e5b; fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+
+.ts-modal__title {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.7rem; font-weight: 300;
+  color: var(--dark);
+  margin-bottom: .75rem;
+  line-height: 1.2;
+}
+
+.ts-modal__body {
+  font-size: .85rem;
+  color: var(--mid);
+  line-height: 1.7;
+  margin-bottom: 1.6rem;
+}
+
+.ts-modal__countdown {
+  font-family: 'Jost', sans-serif;
+  font-size: .72rem;
+  letter-spacing: .08em;
+  color: rgba(107,96,80,.65);
+  margin-top: -.8rem;
+  margin-bottom: 1.4rem;
+}
+.ts-modal__countdown strong {
+  font-weight: 600;
+  color: var(--teal);
+  font-size: .82rem;
+  letter-spacing: .04em;
+}
+
+.ts-modal__btn {
+  display: inline-block;
+  background: var(--teal-d);
+  color: #fff;
+  border: none;
+  padding: .75rem 2rem;
+  font-family: 'Jost', sans-serif;
+  font-size: .78rem;
+  font-weight: 500;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background .2s;
+  text-decoration: none;
+}
+.ts-modal__btn:hover { background: var(--teal); }

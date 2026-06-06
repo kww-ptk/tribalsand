@@ -14,7 +14,12 @@ require_once __DIR__ . '/../includes/db.php';
 header('Content-Type: application/json');
 
 $env    = parse_env();
-$secret = trim($_GET['secret'] ?? '');
+$authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? $_SERVER['REDIRECT_HTTP_AUTHORIZATION'] ?? '';
+if (str_starts_with($authHeader, 'Bearer ')) {
+    $secret = trim(substr($authHeader, 7));
+} else {
+    $secret = trim($_GET['secret'] ?? '');
+}
 $expected = trim($env['ICAL_SYNC_SECRET'] ?? '');
 
 if (!$expected || !hash_equals($expected, $secret)) {

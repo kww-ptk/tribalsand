@@ -30,6 +30,8 @@ function ts_schema_org(): string {
             'https://www.instagram.com/tribalsand/',
             'https://www.facebook.com/tribalsand/',
             'https://www.youtube.com/@tribalsand7436',
+            // TODO: replace with real TripAdvisor listing URL once approved at tripadvisor.com/GetListedNew
+            // 'https://www.tripadvisor.com/Hotel_Review-gXXXXXX-dXXXXXXX-Reviews-Tribal_Sand-Kilifi.html',
         ],
         'contactPoint' => [
             '@type'             => 'ContactPoint',
@@ -173,6 +175,8 @@ function ts_schema_local_business(): string {
         'sameAs' => [
             'https://www.instagram.com/tribalsand/',
             'https://www.facebook.com/tribalsand/',
+            // TODO: add TripAdvisor URL once listing is approved
+            // 'https://www.tripadvisor.com/Hotel_Review-gXXXXXX-dXXXXXXX-Reviews-Tribal_Sand-Kilifi.html',
         ],
     ];
     return '<script type="application/ld+json">' . json_encode($schema, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) . '</script>' . "\n";

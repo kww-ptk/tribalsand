@@ -285,4 +285,13 @@ function audit_log(string $action, string $target_type = '', int $target_id = 0,
     );
 }
 
+function client_ip(): string {
+    $forwarded = $_SERVER['HTTP_X_FORWARDED_FOR'] ?? '';
+    if ($forwarded) {
+        $ip = trim(explode(',', $forwarded)[0]);
+        if (filter_var($ip, FILTER_VALIDATE_IP)) return $ip;
+    }
+    return $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+}
+
 require_once __DIR__ . '/turnstile.php';

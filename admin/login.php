@@ -19,9 +19,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if (!$email || !$password) {
         $error = 'Email and password are required.';
-    } elseif (!verify_captcha($tsToken, $_SERVER['REMOTE_ADDR'] ?? '')) {
+    } elseif (!verify_captcha($tsToken, client_ip())) {
         $error = 'Security check failed. Please try again.';
-    } elseif (is_rate_limited($email, $_SERVER['REMOTE_ADDR'] ?? '')) {
+    } elseif (is_rate_limited($email, client_ip())) {
         $error = 'Too many failed attempts. Please wait 10 minutes and try again.';
     } elseif (login($email, $password)) {
         header('Location: /admin/dashboard.php');
@@ -69,6 +69,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
       <button type="submit" class="btn-primary btn-full">Sign in</button>
     </form>
 
+    <p class="login-back" style="text-align:center;margin-top:1rem;">
+      <a href="/admin/forgot-password.php" style="font-size:.8rem;color:#6B6050;">Forgot password?</a>
+    </p>
     <p class="login-back"><a href="/">← Back to website</a></p>
   </div>
 

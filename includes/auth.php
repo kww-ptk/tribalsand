@@ -46,7 +46,7 @@ function login(string $email, string $password): bool {
 
     $email = strtolower(trim($email)); // emails are case-insensitive — avoid lockouts from auto-capitalised input
 
-    if (is_rate_limited($email, $_SERVER['REMOTE_ADDR'] ?? '')) return false;
+    if (is_rate_limited($email, client_ip())) return false;
 
     $user = db_query(
         'SELECT * FROM admin_users WHERE email = :email',
@@ -57,7 +57,7 @@ function login(string $email, string $password): bool {
 
     db_query(
         'INSERT INTO login_attempts (email, ip_address, success) VALUES (:email, :ip, :ok)',
-        [':email' => $email, ':ip' => $_SERVER['REMOTE_ADDR'] ?? '', ':ok' => $success ? 'TRUE' : 'FALSE']
+        [':email' => $email, ':ip' => client_ip(), ':ok' => $success ? 'TRUE' : 'FALSE']
     );
 
     if ($success) {

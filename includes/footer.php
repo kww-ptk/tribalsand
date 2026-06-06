@@ -129,6 +129,61 @@
 }
 
 
+
+/* ── COOKIE BANNER ── */
+.cookie-banner {
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  z-index: 9500;
+  background: #102F3A;
+  border-top: 1px solid rgba(184,150,90,.25);
+  padding: 1rem 5vw;
+  font-family: 'Jost', sans-serif;
+}
+.cookie-banner__inner {
+  max-width: 1100px;
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+.cookie-banner p {
+  margin: 0;
+  font-size: .76rem;
+  color: rgba(255,255,255,.65);
+  line-height: 1.6;
+  flex: 1;
+  min-width: 200px;
+}
+.cookie-banner p a { color: #D4B07A; text-decoration: underline; }
+.cookie-banner__actions { display: flex; gap: .75rem; flex-shrink: 0; }
+.cookie-banner .btn--ck-accept {
+  background: #B8965A;
+  color: #fff;
+  border: none;
+  padding: .5rem 1.2rem;
+  font-family: 'Jost', sans-serif;
+  font-size: .74rem;
+  font-weight: 500;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background .2s;
+}
+.cookie-banner .btn--ck-accept:hover { background: #D4B07A; }
+.cookie-banner .btn--ck-decline {
+  background: transparent;
+  color: rgba(255,255,255,.45);
+  border: 1px solid rgba(255,255,255,.2);
+  padding: .5rem 1rem;
+  font-family: 'Jost', sans-serif;
+  font-size: .74rem;
+  cursor: pointer;
+  transition: color .2s, border-color .2s;
+}
+.cookie-banner .btn--ck-decline:hover { color: rgba(255,255,255,.75); border-color: rgba(255,255,255,.4); }
+
 /* ── RESPONSIVE ── */
 @media(max-width:1100px){
   .ts-footer-top{grid-template-columns:1fr 1fr 1fr;gap:2rem;}
@@ -264,6 +319,97 @@
     el.style.transition = 'opacity .3s';
     setTimeout(function(){ el.innerHTML = msgs[i]; el.style.opacity = '1'; }, 300);
   }, 8000);
+})();
+</script>
+
+
+<!-- Cookie consent banner -->
+<div class="cookie-banner" id="cookieBanner" hidden role="region" aria-label="Cookie consent">
+  <div class="cookie-banner__inner">
+    <p>We use cookies and third-party services (Google Fonts, hCaptcha, Google Maps) to improve your experience. See our <a href="/privacy_policy.php">Privacy Policy</a>.</p>
+    <div class="cookie-banner__actions">
+      <button id="cookieAccept" class="btn--ck-accept">Accept</button>
+      <button id="cookieDecline" class="btn--ck-decline">Decline</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  if (!localStorage.getItem('cookie_consent')) {
+    setTimeout(function(){ var b = document.getElementById('cookieBanner'); if(b) b.hidden = false; }, 1200);
+  }
+  var accept  = document.getElementById('cookieAccept');
+  var decline = document.getElementById('cookieDecline');
+  function dismiss(val) {
+    localStorage.setItem('cookie_consent', val);
+    var b = document.getElementById('cookieBanner');
+    if(b) b.hidden = true;
+  }
+  if(accept)  accept.addEventListener('click',  function(){ dismiss('accepted'); });
+  if(decline) decline.addEventListener('click', function(){ dismiss('declined'); });
+})();
+</script>
+
+<!-- Global success modal -->
+<script>
+(function(){
+  var _countdownInterval = null;
+
+  window.showSuccessModal = function(title, body, showCountdown) {
+    // Clear any running countdown
+    if (_countdownInterval) { clearInterval(_countdownInterval); _countdownInterval = null; }
+
+    var backdrop = document.createElement('div');
+    backdrop.className = 'ts-modal-backdrop';
+    backdrop.id = 'tsSuccessModal';
+
+    var countdownHtml = '';
+    if (showCountdown) {
+      countdownHtml = '<p class="ts-modal__countdown">Hold expires in <strong id="tsHoldCountdown">24:00:00</strong></p>';
+    }
+
+    backdrop.innerHTML =
+      '<div class="ts-modal" role="dialog" aria-modal="true" aria-label="' + title + '">' +
+        '<button class="ts-modal__close" aria-label="Close">&times;</button>' +
+        '<div class="ts-modal__icon">' +
+          '<svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>' +
+        '</div>' +
+        '<h3 class="ts-modal__title">' + title + '</h3>' +
+        '<p class="ts-modal__body">' + body + '</p>' +
+        countdownHtml +
+        '<button class="ts-modal__btn ts-modal-close-btn">Got it</button>' +
+      '</div>';
+
+    document.body.appendChild(backdrop);
+    document.body.style.overflow = 'hidden';
+
+    // Countdown timer
+    if (showCountdown) {
+      var expiresAt = Date.now() + 24 * 60 * 60 * 1000;
+      function tick() {
+        var left = Math.max(0, expiresAt - Date.now());
+        var h = String(Math.floor(left / 3600000)).padStart(2, '0');
+        var m = String(Math.floor((left % 3600000) / 60000)).padStart(2, '0');
+        var s = String(Math.floor((left % 60000) / 1000)).padStart(2, '0');
+        var el = document.getElementById('tsHoldCountdown');
+        if (el) el.textContent = h + ':' + m + ':' + s;
+      }
+      tick();
+      _countdownInterval = setInterval(tick, 1000);
+    }
+
+    function closeModal() {
+      if (_countdownInterval) { clearInterval(_countdownInterval); _countdownInterval = null; }
+      backdrop.remove();
+      document.body.style.overflow = '';
+    }
+
+    backdrop.querySelector('.ts-modal__close').addEventListener('click', closeModal);
+    backdrop.querySelector('.ts-modal-close-btn').addEventListener('click', closeModal);
+    backdrop.addEventListener('click', function(e){ if (e.target === backdrop) closeModal(); });
+    document.addEventListener('keydown', function esc(e){ if (e.key === 'Escape') { closeModal(); document.removeEventListener('keydown', esc); } });
+  };
 })();
 </script>
 

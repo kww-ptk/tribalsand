@@ -494,7 +494,15 @@ a.ct-card:hover .ct-card-arrow{opacity:1;}
     .then(function(r){ return r.json(); })
     .then(function(r){
       if(r.ok){
-        document.querySelector('.ct-form-wrap').innerHTML = '<div style="padding:3rem 2rem;text-align:center;"><p style="font-family:\'Cormorant Garamond\',serif;font-size:1.6rem;font-weight:300;color:var(--dark);margin-bottom:.8rem;">Thank you — we\'ll be in touch within 24 hours.</p><p style="font-size:.85rem;color:var(--mid);">A member of the Tribal Sand team will respond shortly. For urgent matters, WhatsApp us on <a href="https://wa.me/254115115247" style="color:var(--teal);">+254 115 115 247</a>.</p></div>';
+        btn.textContent = 'Send Enquiry →'; btn.disabled = false;
+        form.reset();
+        if (typeof window.showSuccessModal === 'function') {
+          window.showSuccessModal(
+            'Message Sent!',
+            'Thank you — a member of the Tribal Sand team will be in touch within 24 hours. For urgent matters, WhatsApp us on <a href="https://wa.me/254115115247" style="color:var(--teal);">+254 115 115 247</a>.',
+            false
+          );
+        }
       } else { throw new Error(r.error||'error'); }
     })
     .catch(function(){
