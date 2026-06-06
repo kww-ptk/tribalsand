@@ -104,9 +104,9 @@
 .ts-prop-loc{font-size:.6rem;letter-spacing:.08em;color:rgba(184,150,90,.65);margin-top:.06rem;}
 
 /* ── RIGHT ACTIONS ── */
-.ts-actions{display:flex;align-items:center;gap:.7rem;flex-shrink:0;}
+.ts-actions{display:flex;align-items:center;gap:.6rem;flex-shrink:0;}
 
-.ts-tel{font-family:'Jost',sans-serif;font-size:.62rem;letter-spacing:.1em;color:rgba(255,255,255,.5);transition:color .2s;}
+.ts-tel{font-family:'Jost',sans-serif;font-size:.62rem;letter-spacing:.1em;color:rgba(255,255,255,.5);transition:color .2s;display:none;}
 .ts-tel:hover{color:var(--ts-sand-lt);}
 .ts-btn-plan{
   font-family:'Jost',sans-serif;font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;
@@ -183,7 +183,7 @@
   .ts-links{display:none;}
   .ts-burger{display:flex;}
   .ts-drawer{display:block;}
-  .ts-social,.ts-tel{display:none;}
+  .ts-social,.ts-tel{display:none!important;}
   .ts-nav{padding:0 20px;}
   /* Plan Your Trip lives in the drawer on mobile; keep Book Now compact */
   .ts-btn-plan{display:none;}
@@ -368,7 +368,7 @@
     <a href="tel:+254115115247" class="ts-tel">+254 115 115 247</a>
     <a href="trip-builder.php" class="ts-btn-plan">Plan Your Trip</a>
     <a href="/#properties" class="ts-btn-book">Book Now</a>
-    <!-- Language switcher (GTranslate renders here) -->
+    <!-- Language switcher -->
     <div class="gtranslate_wrapper" id="gtranslate_wrapper"></div>
     <button class="ts-burger" id="tsBurger" aria-label="Menu">
       <span></span><span></span><span></span>
@@ -435,8 +435,8 @@
     <a href="trip-builder.php" class="ts-mob-btn ts-mob-btn-plan">Plan Your Trip</a>
     <a href="/#properties" class="ts-mob-btn ts-mob-btn-book">Book Now</a>
     <a href="tel:+254115115247" style="display:block;text-align:center;font-family:'Jost',sans-serif;font-size:.64rem;color:rgba(184,150,90,.5);letter-spacing:.1em;margin-top:.4rem;">+254 115 115 247</a>
-    <div style="display:flex;align-items:center;gap:.5rem;margin-top:.9rem;padding-top:.8rem;border-top:1px solid rgba(184,150,90,.09);">
-      <span style="font-family:'Jost',sans-serif;font-size:.54rem;letter-spacing:.22em;text-transform:uppercase;color:rgba(184,150,90,.5);">Language</span>
+    <div style="margin-top:.9rem;padding-top:.8rem;border-top:1px solid rgba(184,150,90,.09);">
+      <span style="display:block;font-family:'Jost',sans-serif;font-size:.54rem;letter-spacing:.22em;text-transform:uppercase;color:rgba(184,150,90,.5);margin-bottom:.5rem;">Language</span>
       <div class="gtranslate_wrapper" id="gtranslate_drawer_wrapper"></div>
     </div>
   </div>
@@ -445,113 +445,103 @@
 
 </div>
 
-<!-- ── GTRANSLATE · config unchanged; rendered inside the navbar (see .ts-actions) ── -->
+<!-- ── GTRANSLATE ── -->
 <script>
 window.gtranslateSettings = {
     "default_language": "en",
     "languages": ["en","fr","sw","de","hi","it","zh-TW"],
     "wrapper_selector": ".gtranslate_wrapper",
-    "flag_size": 16,
+    "flag_size": 14,
     "switcher_horizontal_position": "inline"
 };
 </script>
 <script src="https://cdn.gtranslate.net/widgets/latest/dwf.js" defer></script>
 <style>
-/* ── LANGUAGE SWITCHER — branded, compact, lives in the navbar ──
-   #id selectors beat GTranslate's runtime-injected stylesheet so the
-   switcher stays content-width instead of its default ~183px. */
-#gtranslate_wrapper{display:inline-flex;align-items:center;line-height:0;flex-shrink:0;}
-#gtranslate_wrapper .gt_switcher,
-#gtranslate_wrapper .gt_switcher .gt_selected,
-#gtranslate_wrapper .gt_switcher .gt_selected > a{
+/* ── LANGUAGE SWITCHER ── */
+/* Shared base — both nav and drawer instances */
+.gtranslate_wrapper{display:inline-flex;align-items:center;flex-shrink:0;}
+.gtranslate_wrapper .gt_switcher,
+.gtranslate_wrapper .gt_switcher .gt_selected,
+.gtranslate_wrapper .gt_switcher .gt_selected > a{
   width:auto!important;min-width:0!important;max-width:none!important;float:none!important;
 }
-#gtranslate_wrapper .gt_switcher{font-family:'Jost',sans-serif!important;}
-/* The visible pill */
-#gtranslate_wrapper .gt_switcher .gt_selected{
+.gtranslate_wrapper .gt_switcher{font-family:'Jost',sans-serif!important;}
+
+/* Trigger button */
+.gtranslate_wrapper .gt_switcher .gt_selected{
   display:inline-flex!important;align-items:center;height:auto!important;line-height:1!important;
-  background:transparent!important;border:1px solid rgba(184,150,90,.34)!important;border-radius:2px;
-  transition:border-color .22s,background .22s;
+  background:transparent!important;border:1px solid rgba(184,150,90,.3)!important;
+  border-radius:3px;transition:border-color .2s,background .2s;
 }
-#gtranslate_wrapper .gt_switcher .gt_selected:hover{border-color:var(--ts-sand)!important;background:rgba(184,150,90,.1)!important;}
-#gtranslate_wrapper .gt_switcher .gt_selected > a{
-  display:inline-flex!important;align-items:center;gap:.4rem;
-  padding:.42rem .6rem!important;margin:0!important;text-decoration:none!important;
-  color:rgba(255,255,255,.82)!important;
-  font-size:.62rem!important;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;
+.gtranslate_wrapper .gt_switcher .gt_selected:hover{
+  border-color:rgba(184,150,90,.7)!important;background:rgba(184,150,90,.08)!important;
 }
-#gtranslate_wrapper .gt_switcher .gt_selected:hover > a{color:#fff!important;}
-#gtranslate_wrapper .gt_switcher .gt_selected img{margin:0!important;border-radius:1px;flex-shrink:0;}
-#gtranslate_wrapper .gt_switcher .gt_selected .gt_arrow{margin-left:.1rem!important;border-top-color:var(--ts-sand-lt)!important;transition:transform .2s;}
-/* Dropdown panel — right-aligned so it never spills off-screen */
-#gtranslate_wrapper .gt_switcher .gt_option{
-  background:rgba(14,42,54,.98)!important;backdrop-filter:blur(24px);
-  border:1px solid rgba(184,150,90,.16)!important;border-top:2px solid var(--ts-sand)!important;
-  width:auto!important;min-width:148px!important;left:auto!important;right:0!important;
-  box-shadow:0 16px 40px rgba(0,0,0,.34);margin-top:6px!important;overflow:hidden;border-radius:0;
-  z-index:100000!important;
+.gtranslate_wrapper .gt_switcher .gt_selected > a{
+  display:inline-flex!important;align-items:center;gap:.38rem;
+  padding:.4rem .55rem!important;margin:0!important;text-decoration:none!important;
+  font-family:'Jost',sans-serif!important;font-size:.58rem!important;
+  letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.75)!important;white-space:nowrap;
 }
-#gtranslate_wrapper .gt_switcher .gt_option a{
-  display:flex!important;align-items:center;gap:.6rem;padding:.6rem .9rem!important;
-  font-family:'Jost',sans-serif!important;font-size:.7rem!important;letter-spacing:.05em;
-  color:rgba(212,196,172,.85)!important;background:transparent!important;text-decoration:none!important;
-  transition:color .18s,background .18s;
+.gtranslate_wrapper .gt_switcher .gt_selected:hover > a{color:#fff!important;}
+.gtranslate_wrapper .gt_switcher .gt_selected img{margin:0!important;border-radius:1px;flex-shrink:0;opacity:.85;}
+.gtranslate_wrapper .gt_switcher .gt_selected .gt_arrow{
+  border-top-color:rgba(184,150,90,.6)!important;margin-left:.15rem!important;
+  transition:transform .2s;
 }
-#gtranslate_wrapper .gt_switcher .gt_option a:hover{color:#fff!important;background:rgba(184,150,90,.1)!important;}
-/* Ensure dropdown always sits above everything */
-#gtranslate_wrapper .gt_switcher .gt_option{z-index:100000!important;}
-/* Mobile: hide from nav bar; switcher moves into the drawer footer */
-@media(max-width:1100px){
-  #gtranslate_wrapper{display:none!important;}
-  #gtranslate_drawer_wrapper{display:inline-flex;align-items:center;}
-  #gtranslate_drawer_wrapper .gt_switcher{font-family:'Jost',sans-serif!important;}
-  #gtranslate_drawer_wrapper .gt_switcher,
-  #gtranslate_drawer_wrapper .gt_switcher .gt_selected,
-  #gtranslate_drawer_wrapper .gt_switcher .gt_selected > a{
-    width:auto!important;min-width:0!important;max-width:none!important;float:none!important;
-  }
-  #gtranslate_drawer_wrapper .gt_switcher .gt_selected{
-    display:inline-flex!important;align-items:center;height:auto!important;line-height:1!important;
-    background:transparent!important;border:1px solid rgba(184,150,90,.34)!important;border-radius:2px;
-  }
-  #gtranslate_drawer_wrapper .gt_switcher .gt_selected > a{
-    display:inline-flex!important;align-items:center;gap:.5rem;
-    padding:.55rem .8rem!important;color:rgba(255,255,255,.82)!important;
-    font-size:.68rem!important;letter-spacing:.1em;text-transform:uppercase;white-space:nowrap;
-    text-decoration:none!important;
-  }
-  #gtranslate_drawer_wrapper .gt_switcher .gt_selected img{margin:0!important;border-radius:1px;flex-shrink:0;}
-  #gtranslate_drawer_wrapper .gt_switcher .gt_selected .gt_arrow{margin-left:.2rem!important;border-top-color:var(--ts-sand-lt)!important;}
-  #gtranslate_drawer_wrapper .gt_switcher .gt_option{
-    background:rgba(14,42,54,.98)!important;backdrop-filter:blur(24px);
-    border:1px solid rgba(184,150,90,.16)!important;border-top:2px solid var(--ts-sand)!important;
-    width:auto!important;min-width:148px!important;left:0!important;right:auto!important;
-    box-shadow:0 16px 40px rgba(0,0,0,.34);margin-top:6px!important;z-index:100000!important;
-  }
-  #gtranslate_drawer_wrapper .gt_switcher .gt_option a{
-    display:flex!important;align-items:center;gap:.6rem;padding:.6rem .9rem!important;
-    font-family:'Jost',sans-serif!important;font-size:.72rem!important;letter-spacing:.05em;
-    color:rgba(212,196,172,.85)!important;background:transparent!important;text-decoration:none!important;
-    transition:color .18s,background .18s;
-  }
-  #gtranslate_drawer_wrapper .gt_switcher .gt_option a:hover{color:#fff!important;background:rgba(184,150,90,.1)!important;}
+
+/* Dropdown panel — fixed to viewport so it never clips or overflows */
+.gtranslate_wrapper .gt_switcher .gt_option{
+  background:rgba(10,32,42,.97)!important;
+  backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border:1px solid rgba(184,150,90,.18)!important;
+  border-top:2px solid var(--ts-sand)!important;
+  border-radius:0 0 4px 4px;
+  width:auto!important;min-width:160px!important;
+  position:fixed!important;
+  top:68px!important;right:44px!important;left:auto!important;
+  padding:.3rem 0!important;
+  box-shadow:0 20px 50px rgba(0,0,0,.45);
+  margin:0!important;z-index:100000!important;
+}
+.ts-nav.scrolled60 ~ * .gt_option,
+.scrolled60 .gt_option{top:60px!important;}
+.gtranslate_wrapper .gt_switcher .gt_option a{
+  display:flex!important;align-items:center;gap:.65rem;
+  padding:.55rem 1rem!important;
+  font-family:'Jost',sans-serif!important;font-size:.68rem!important;
+  letter-spacing:.07em;text-transform:uppercase;
+  color:rgba(212,196,172,.78)!important;
+  background:transparent!important;text-decoration:none!important;
+  transition:color .15s,background .15s;
+}
+.gtranslate_wrapper .gt_switcher .gt_option a:hover{
+  color:#fff!important;background:rgba(184,150,90,.1)!important;
+}
+.gtranslate_wrapper .gt_switcher .gt_option a img{border-radius:2px;opacity:.8;}
+.gtranslate_wrapper .gt_switcher .gt_option a:hover img{opacity:1;}
+
+/* Nav instance — hide on mobile */
+#gtranslate_wrapper{margin-left:.1rem;}
+@media(max-width:1100px){#gtranslate_wrapper{display:none!important;}}
+
+/* Drawer instance — normal relative positioning, opens upward */
+#gtranslate_drawer_wrapper .gt_switcher .gt_option{
+  position:absolute!important;
+  bottom:calc(100% + 4px)!important;top:auto!important;
+  left:0!important;right:auto!important;
+  margin:0!important;
 }
 </style>
 
 <script>
 (function(){
-  var nav     = document.getElementById('tsNav');
-  var burger  = document.getElementById('tsBurger');
-  var drawer  = document.getElementById('tsDrawer');
-  var gt      = document.getElementById('gtranslate_wrapper');
-  var open    = false;
+  var nav    = document.getElementById('tsNav');
+  var burger = document.getElementById('tsBurger');
+  var drawer = document.getElementById('tsDrawer');
+  var open   = false;
 
   /* ── Scroll ── */
-  function onScroll(){
-    var scrolled = window.scrollY > 40;
-    nav.classList.toggle('scrolled60', scrolled);
-    if(gt) gt.classList.toggle('scrolled60', scrolled);
-  }
+  function onScroll(){nav.classList.toggle('scrolled60', window.scrollY > 40);}
   window.addEventListener('scroll', onScroll, {passive:true});
   onScroll();
 
