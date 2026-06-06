@@ -217,7 +217,7 @@ a{text-decoration:none;color:inherit;}
 .other-link{font-size:.75rem;letter-spacing:.12em;text-transform:uppercase;color:var(--teal);}
 
 /* ── SIDEBAR ── */
-.book-card{background:var(--white);border:1px solid var(--border);overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.09);}
+.book-card{background:var(--white);border:1px solid var(--border);overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.09);max-height:calc(100vh - 100px);overflow-y:auto;}
 .book-head{position:relative;overflow:hidden;background:var(--teal-d);padding:0;height:140px;}
 .book-head-bg{position:absolute;inset:0;background:url('images/hero-maya-kobe.jpg') center 30%/cover;opacity:.25;}
 .book-head-overlay{position:absolute;inset:0;background:linear-gradient(to top,rgba(16,47,58,.9) 0%,rgba(16,47,58,.3) 100%);}
@@ -657,76 +657,8 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
       </div>
 
       <!-- Body -->
-      <div class="book-body">
-
-        <!-- Enquiry form -->
-        <div class="book-enquiry" id="enqWrap">
-          <!-- Step 1: Trip details -->
-          <div class="enq-step" id="enqStep1">
-            <div class="book-enq-label">Quick Enquiry</div>
-            <div class="enq-row">
-              <div class="book-field">
-                <label class="book-lbl" for="enqArrival">Arrival</label>
-                <input type="date" class="book-inp" id="enqArrival">
-              </div>
-              <div class="book-field">
-                <label class="book-lbl" for="enqDeparture">Departure</label>
-                <input type="date" class="book-inp" id="enqDeparture">
-              </div>
-            </div>
-            <div class="enq-row">
-              <div class="book-field">
-                <label class="book-lbl" for="enqAdults">Adults</label>
-                <select class="book-inp" id="enqAdults">
-                  <option value="">—</option>
-                  <option>1</option><option>2</option><option>3</option><option>4</option>
-                  <option>5</option><option>6</option><option>7</option><option>8</option>
-                  <option>9</option><option>10+</option>
-                </select>
-              </div>
-              <div class="book-field">
-                <label class="book-lbl" for="enqChildren">Children</label>
-                <select class="book-inp" id="enqChildren">
-                  <option value="">—</option>
-                  <option>0</option><option>1</option><option>2</option><option>3</option>
-                  <option>4</option><option>5</option><option>6+</option>
-                </select>
-              </div>
-            </div>
-            <div class="book-field">
-              <label class="book-lbl" for="enqRooms">Accommodation</label>
-              <select class="book-inp" id="enqRooms">
-                <option value="">—</option>
-                <option>Main House</option><option>Cottages</option><option>Full Property</option>
-              </select>
-            </div>
-            <button class="btn-book-full" id="enqNext">Next →</button>
-          </div>
-
-          <!-- Step 2: Personal details -->
-          <div class="enq-step" id="enqStep2" style="display:none">
-            <div class="book-enq-label">Your Details</div>
-            <div class="book-field">
-              <label class="book-lbl" for="enqName">Name <span style="color:var(--sand)">*</span></label>
-              <input type="text" class="book-inp" id="enqName" placeholder="Jane Smith" autocomplete="name">
-            </div>
-            <div class="book-field">
-              <label class="book-lbl" for="enqEmail">Email <span style="color:var(--sand)">*</span></label>
-              <input type="email" class="book-inp" id="enqEmail" placeholder="jane@example.com" autocomplete="email">
-            </div>
-            <div class="book-field">
-              <label class="book-lbl" for="enqPhone">Phone / WhatsApp</label>
-              <input type="tel" class="book-inp" id="enqPhone" placeholder="+254 xxx xxx xxx" autocomplete="tel">
-            </div>
-            <div class="book-field">
-              <label class="book-lbl" for="enqMessage">Message</label>
-              <textarea class="book-inp" id="enqMessage" rows="3" placeholder="Anything specific we should know…" style="resize:vertical"></textarea>
-            </div>
-            <button class="btn-book-full" id="btnEnquire">Send Enquiry →</button>
-            <button type="button" class="enq-back-btn" id="enqBack">← Back</button>
-            <div class="book-enq-msg" id="enqMsg"></div>
-          </div>
-        </div>
+      <div class="book-body" style="padding:0">
+        <?php $booking_slug = 'maya-kobe-main-house'; include __DIR__ . '/includes/booking-widget.php'; ?>
       </div>
 
       <!-- Policy accordion -->
@@ -828,82 +760,8 @@ document.querySelectorAll('.exp-row,.review-card,.other-card,.amenity,.faq-item,
   obs.observe(el);
 });
 
-// GHL enquiry submit
+// ── Policy accordion ──
 (function(){
-  // ── Step navigation ──
-  var step1 = document.getElementById('enqStep1');
-  var step2 = document.getElementById('enqStep2');
-  var nextBtn = document.getElementById('enqNext');
-  var backBtn = document.getElementById('enqBack');
-  if (!step1 || !step2) return;
-
-  nextBtn.addEventListener('click', function(){
-    step1.style.display = 'none';
-    step2.style.display = '';
-    document.getElementById('enqName').focus();
-  });
-  backBtn.addEventListener('click', function(){
-    step2.style.display = 'none';
-    step1.style.display = '';
-  });
-
-  // ── Submit ──
-  document.getElementById('btnEnquire').addEventListener('click', function(){
-    var name    = (document.getElementById('enqName').value    || '').trim();
-    var email   = (document.getElementById('enqEmail').value   || '').trim();
-    var phone   = (document.getElementById('enqPhone').value   || '').trim();
-    var message = (document.getElementById('enqMessage').value || '').trim();
-    var arrival   = (document.getElementById('enqArrival')   ? document.getElementById('enqArrival').value   : '');
-    var departure = (document.getElementById('enqDeparture') ? document.getElementById('enqDeparture').value : '');
-    var adults    = (document.getElementById('enqAdults')    ? document.getElementById('enqAdults').value    : '');
-    var children  = (document.getElementById('enqChildren')  ? document.getElementById('enqChildren').value  : '');
-    var rooms     = (document.getElementById('enqRooms')     ? document.getElementById('enqRooms').value     : '');
-    var msgEl     = document.getElementById('enqMsg');
-
-    if (!name || !email) {
-      msgEl.className = 'book-enq-msg show error';
-      msgEl.textContent = 'Please enter your name and email.';
-      return;
-    }
-    var btn = document.getElementById('btnEnquire');
-    btn.textContent = 'Sending…'; btn.disabled = true;
-    msgEl.className = 'book-enq-msg'; msgEl.textContent = '';
-
-    var parts = name.split(' ');
-    var noteLines = ['Maya Kobe Enquiry'];
-    if (arrival)   noteLines.push('Arrival: '   + arrival);
-    if (departure) noteLines.push('Departure: ' + departure);
-    if (adults)    noteLines.push('Adults: '    + adults);
-    if (children)  noteLines.push('Children: '  + children);
-    if (rooms)     noteLines.push('Rooms/Unit: '+ rooms);
-    if (phone)     noteLines.push('Phone: '     + phone);
-    if (message)   noteLines.push('\nMessage:\n' + message);
-
-    fetch('/ghl-submit', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
-      guest:   { firstName: parts[0]||name, lastName: parts.slice(1).join(' ')||'', email: email, phone: phone },
-      trip:    { prop: 'Maya Kobe', arrival: arrival, departure: departure, adults: adults, children: children, rooms: rooms },
-      message: message,
-      tags:    ['website-enquiry', 'maya-kobe-enquiry'],
-      opportunity: { source: 'Website - Maya Kobe' },
-      note:    noteLines.join('\n'),
-      ref:     'WEB-' + Date.now()
-    })})
-    .then(function(r){ return r.json(); })
-    .then(function(r){
-      if (r.ok) {
-        msgEl.className = 'book-enq-msg show success';
-        msgEl.textContent = 'Thank you — we\'ll be in touch within 24 hours.';
-        btn.textContent = 'Enquiry Sent';
-      } else { throw new Error(r.error || 'error'); }
-    })
-    .catch(function(){
-      msgEl.className = 'book-enq-msg show error';
-      msgEl.textContent = 'Something went wrong — please WhatsApp us on +254 115 115 247';
-      btn.textContent = 'Send Enquiry →'; btn.disabled = false;
-    });
-  });
-
-  // ── Policy accordion ──
   var polBtn  = document.getElementById('polBtn');
   var polBody = document.getElementById('polBody');
   var polChev = polBtn ? polBtn.querySelector('.pol-chevron') : null;
