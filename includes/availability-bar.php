@@ -20,8 +20,8 @@ $__fb = $__bv ? db_query(
      data-fallback-price="<?= e($__fb ? (float)$__fb['price_amount'] : 0) ?>"
      data-fallback-currency="<?= e($__fb['price_currency'] ?? 'USD') ?>">
   <div class="rr-bar__inner">
-    <label class="rr-bar__field"><span>Check-in</span><input type="date" id="rrBarCheckin"></label>
-    <label class="rr-bar__field"><span>Check-out</span><input type="date" id="rrBarCheckout"></label>
+    <div class="rr-bar__field"><span>Check-in</span><button type="button" class="dp-btn" data-dp-role="ci" data-dp-pair="rrBar" data-dp-target="rrBarCheckin" data-dp-placeholder="Add date">Add date</button><input type="hidden" id="rrBarCheckin"></div>
+    <div class="rr-bar__field"><span>Check-out</span><button type="button" class="dp-btn" data-dp-role="co" data-dp-pair="rrBar" data-dp-target="rrBarCheckout" data-dp-placeholder="Add date">Add date</button><input type="hidden" id="rrBarCheckout"></div>
     <label class="rr-bar__field"><span>Guests</span>
       <select id="rrBarGuests">
         <?php for ($g = 1; $g <= 16; $g++): ?><option value="<?= $g ?>"<?= $g === 2 ? ' selected' : '' ?>><?= $g ?></option><?php endfor; ?>

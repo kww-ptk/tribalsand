@@ -758,6 +758,7 @@ $booking_slug = 'my-amani-superior-garden-view-twin';
 
     <link rel="stylesheet" href="css/booking.css">
     <script src="js/booking-widget.js" defer></script>
+    <script src="js/datepicker.js" defer></script>
 </head>
 
 <body>
@@ -781,14 +782,16 @@ $booking_slug = 'my-amani-superior-garden-view-twin';
                     <div class="col-md-4">
                         <label class="form-label">Arrival Date</label>
                         <div class="date-input-container">
-                            <input type="date" class="form-control" id="arrivalDate" required>
+                            <button type="button" class="dp-btn" data-dp-role="ci" data-dp-pair="amRoom" data-dp-target="arrivalDate" data-dp-placeholder="Add date">Add date</button>
+                            <input type="hidden" id="arrivalDate">
                             <!-- <i class="fas fa-calendar calendar-icon"></i> -->
                         </div>
                     </div>
                     <div class="col-md-3">
                         <label class="form-label">Departure Date</label>
                         <div class="date-input-container">
-                            <input type="date" class="form-control" id="departureDate" required>
+                            <button type="button" class="dp-btn" data-dp-role="co" data-dp-pair="amRoom" data-dp-target="departureDate" data-dp-placeholder="Add date">Add date</button>
+                            <input type="hidden" id="departureDate">
                             <!-- <i class="fas fa-calendar calendar-icon"></i> -->
                         </div>
                     </div>

@@ -3,7 +3,10 @@
    Inspired by Claris / Seven Island aesthetic
    ═══════════════════════════════════════════════════ */
 
-.bk-avail {
+/* Booking design tokens — global so .dp-btn / .booking-field render
+   correctly wherever the datepicker is used (property enquiry forms,
+   room subpages, trip builder, ad landing), not just inside .bk-avail. */
+:root {
   --bk-sand:      #B8965A;
   --bk-sand-lt:   #D4B07A;
   --bk-sand-pale: rgba(184,150,90,.13);
@@ -15,7 +18,9 @@
   --bk-border:    rgba(184,150,90,.18);
   --bk-off:       #FAF8F4;
   --ease: cubic-bezier(.4,0,.2,1);
+}
 
+.bk-avail {
   /* legacy alias kept for booking-widget.js compat */
   --primary:    var(--bk-teal);
   --accent:     var(--bk-ink);

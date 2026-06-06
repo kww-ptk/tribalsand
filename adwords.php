@@ -973,6 +973,8 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
      <div class="datadiv">
          <div class="container">
              <form method="POST" action="">
+                 <link rel="stylesheet" href="css/booking.css">
+                 <script src="js/datepicker.js" defer></script>
                  <div class="row">
                      <div class="col-md-6 mb-2">
                          <label class="form-label">First Name</label>
@@ -1049,14 +1051,16 @@ if ($_SERVER["REQUEST_METHOD"] == "POST") {
                      <div class="col-md-4 mb-3">
                          <label class="form-label">Arrival Date</label>
                          <div class="date-input">
-                             <input type="date" name="adate" class="form-control" required />
+                             <button type="button" class="dp-btn" data-dp-role="ci" data-dp-pair="adwTrip" data-dp-target="adateInp" data-dp-placeholder="Add date">Add date</button>
+                             <input type="hidden" name="adate" id="adateInp">
                              <i class="bi bi-calendar"></i>
                          </div>
                      </div>
                      <div class="col-md-4 mb-3">
                          <label class="form-label">Departure Date</label>
                          <div class="date-input">
-                             <input type="date" name="ddate" class="form-control" required />
+                             <button type="button" class="dp-btn" data-dp-role="co" data-dp-pair="adwTrip" data-dp-target="ddateInp" data-dp-placeholder="Add date">Add date</button>
+                             <input type="hidden" name="ddate" id="ddateInp">
                              <i class="bi bi-calendar"></i>
                          </div>
                      </div>
