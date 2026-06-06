@@ -208,15 +208,25 @@ a{text-decoration:none;color:inherit;}
 .other-link{font-size:.54rem;letter-spacing:.12em;text-transform:uppercase;color:var(--teal);}
 
 /* ── SIDEBAR ── */
-.book-card{background:var(--white);border:1px solid var(--border);overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.09);}
-.book-head{position:relative;overflow:hidden;background:var(--teal-d);padding:0;height:140px;}
+.book-card{background:var(--white);border:1px solid var(--border);overflow:hidden;box-shadow:0 8px 40px rgba(0,0,0,.09);max-height:calc(100vh - 100px);overflow-y:auto;scrollbar-width:thin;scrollbar-color:var(--border) transparent;}
+.book-head{position:relative;overflow:hidden;background:var(--teal-d);padding:0;height:110px;}
 .book-head-bg{position:absolute;inset:0;background:url('images/my-amani/Aerial/myamani-11.webp') center 30%/cover;opacity:.25;}
 .book-head-overlay{position:absolute;inset:0;background:linear-gradient(to top,rgba(16,47,58,.9) 0%,rgba(16,47,58,.3) 100%);}
 .book-head-inner{position:relative;z-index:1;padding:1.2rem 1.4rem;height:100%;display:flex;flex-direction:column;justify-content:flex-end;}
 .book-eyebrow{font-size:.48rem;letter-spacing:.26em;text-transform:uppercase;color:rgba(184,150,90,.6);margin-bottom:.3rem;}
 .book-name{font-family:'Cormorant Garamond',serif;font-size:1.5rem;font-weight:300;color:#fff;line-height:1;margin-bottom:.2rem;}
 .book-loc{font-size:.58rem;color:rgba(255,255,255,.45);letter-spacing:.06em;}
-.book-body{padding:1.3rem 1.4rem 1rem;}
+.book-body{padding:0;}
+/* Compact booking widget inside sidebar */
+.book-body .bk-avail{padding:1rem 1.2rem;}
+.book-body .bk-form{gap:.6rem;}
+.book-body .bk-fields{gap:.5rem;}
+.book-body .bk-field span{font-size:10px;}
+.book-body .bk-field input,.book-body .bk-field textarea{padding:.5rem .65rem;font-size:13px;}
+.book-body .bk-field textarea{rows:2;}
+.book-body .bk-total{padding:.65rem .8rem;margin-bottom:0;}
+.book-body .bk-submit{padding:.8rem;}
+.book-body .bk-hold-note{font-size:10px;}
 .book-field{margin-bottom:.75rem;}
 .book-lbl{font-size:.5rem;letter-spacing:.18em;text-transform:uppercase;color:var(--mid);margin-bottom:.3rem;display:block;}
 .book-date-val{font-size:1rem;color:var(--dark);font-weight:400;}
