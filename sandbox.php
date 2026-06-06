@@ -274,8 +274,7 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
 
 <!-- ═══ GALLERY HERO ═══ -->
 <?php $pg_venue_slug = 'sandbox'; include __DIR__ . '/includes/property-gallery.php'; ?>
-<?php $rr_venue_slug = 'sandbox'; include __DIR__ . '/includes/availability-bar.php'; ?>
-<?php include __DIR__ . '/includes/booking-modal.php'; ?>
+
 
 <!-- ═══ BREADCRUMB ═══ -->
 <div class="breadcrumb">

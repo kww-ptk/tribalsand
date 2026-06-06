@@ -310,8 +310,6 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
 
 <!-- ═══ GALLERY ═══ -->
 <?php $pg_venue_slug = 'my-amani'; include __DIR__ . '/includes/property-gallery.php'; ?>
-<?php include __DIR__ . '/includes/availability-bar.php'; ?>
-<?php include __DIR__ . '/includes/booking-modal.php'; ?>
 
 <!-- ═══ BREADCRUMB ═══ -->
 <nav class="breadcrumb" aria-label="Breadcrumb">

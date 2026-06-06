@@ -325,8 +325,7 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
 <!-- ═══ GALLERY ═══ -->
 <?php $pg_venue_slug = 'maya-kobe'; include __DIR__ . '/includes/property-gallery.php'; ?>
 <?php $rr_venue_slug = 'maya-kobe'; include __DIR__ . '/includes/rooms-and-rates.php'; ?>
-<?php include __DIR__ . '/includes/availability-bar.php'; ?>
-<?php include __DIR__ . '/includes/booking-modal.php'; ?>
+
 
 <!-- ═══ BREADCRUMB ═══ -->
 <nav class="breadcrumb" aria-label="Breadcrumb">
