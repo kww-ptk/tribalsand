@@ -119,7 +119,8 @@ include __DIR__ . '/_layout.php';
       <div class="form-section">
         <div class="form-section__title">Booking Form Mode</div>
         <p style="font-size:13px;color:var(--muted);margin-bottom:14px">
-          Controls which form appears on all room pages. Changing this takes effect immediately on the public site.
+          The default for any room set to <strong>"Use global setting"</strong> (in Rooms &rarr; Edit).
+          Rooms with their own mode set ignore this. Changes take effect immediately on the public site.
         </p>
         <label style="display:flex;align-items:flex-start;gap:12px;margin-bottom:12px;cursor:pointer">
           <input type="radio" name="form_mode" value="enquiry" <?= $form_mode==='enquiry'?'checked':'' ?> style="margin-top:3px">
@@ -132,7 +133,7 @@ include __DIR__ . '/_layout.php';
           <input type="radio" name="form_mode" value="availability" <?= $form_mode==='availability'?'checked':'' ?> style="margin-top:3px">
           <div>
             <strong>Availability mode</strong> <span class="badge badge--orange" style="font-size:10px">v2</span>
-            <div style="font-size:12.5px;color:var(--muted)">Shows "coming soon" placeholder. Use when building live availability.</div>
+            <div style="font-size:12.5px;color:var(--muted)">Shows the live booking calendar — guests pick open dates and the dates are held for 24 hours.</div>
           </div>
         </label>
       </div>
