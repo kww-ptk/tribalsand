@@ -360,7 +360,9 @@
 
     <a href="tel:+254115115247" class="ts-tel">+254 115 115 247</a>
     <a href="trip-builder.php" class="ts-btn-plan">Plan Your Trip</a>
-    <a href="/booking" class="ts-btn-book">Book Now</a>
+    <a href="/#properties" class="ts-btn-book">Book Now</a>
+    <!-- Language switcher (GTranslate renders here) -->
+    <div class="gtranslate_wrapper" id="gtranslate_wrapper"></div>
     <button class="ts-burger" id="tsBurger" aria-label="Menu">
       <span></span><span></span><span></span>
     </button>
@@ -424,7 +426,7 @@
 
   <div class="ts-mob-actions">
     <a href="trip-builder.php" class="ts-mob-btn ts-mob-btn-plan">Plan Your Trip</a>
-    <a href="/booking" class="ts-mob-btn ts-mob-btn-book">Book Now</a>
+    <a href="/#properties" class="ts-mob-btn ts-mob-btn-book">Book Now</a>
     <a href="tel:+254115115247" style="display:block;text-align:center;font-family:'Jost',sans-serif;font-size:.64rem;color:rgba(184,150,90,.5);letter-spacing:.1em;margin-top:.4rem;">+254 115 115 247</a>
   </div>
 
@@ -432,8 +434,7 @@
 
 </div>
 
-<!-- ── GTRANSLATE (keep exactly as original) ── -->
-<div class="gtranslate_wrapper" id="gtranslate_wrapper"></div>
+<!-- ── GTRANSLATE · config unchanged; rendered inside the navbar (see .ts-actions) ── -->
 <script>
 window.gtranslateSettings = {
     "default_language": "en",
@@ -445,14 +446,45 @@ window.gtranslateSettings = {
 </script>
 <script src="https://cdn.gtranslate.net/widgets/latest/dwf.js" defer></script>
 <style>
-.gtranslate_wrapper{
-  position:fixed;top:72px;right:12px;z-index:99999;
-  transition:top .3s ease-in-out;
+/* ── LANGUAGE SWITCHER — branded, lives in the navbar ── */
+.gtranslate_wrapper{display:inline-flex;align-items:center;line-height:0;}
+.gtranslate_wrapper .gt_switcher{font-family:'Jost',sans-serif!important;width:auto!important;}
+.gtranslate_wrapper .gt_switcher .gt_selected,
+.gtranslate_wrapper .gt_switcher a.gt_selected{
+  display:flex!important;align-items:center;gap:.4rem;
+  width:auto!important;min-width:0!important;
+  background:transparent!important;border:1px solid rgba(184,150,90,.34)!important;
+  color:rgba(255,255,255,.82)!important;
+  padding:.42rem .6rem!important;height:auto!important;
+  font-size:.62rem!important;letter-spacing:.12em;text-transform:uppercase;
+  transition:border-color .22s,color .22s,background .22s;
 }
-.gtranslate_wrapper.scrolled60{top:64px;}
+.gtranslate_wrapper .gt_switcher .gt_selected:hover{
+  border-color:var(--ts-sand)!important;color:#fff!important;background:rgba(184,150,90,.1)!important;
+}
+.gtranslate_wrapper .gt_switcher .gt_selected img{margin:0!important;border-radius:1px;}
+.gtranslate_wrapper .gt_switcher .gt_selected .gt_arrow{
+  margin-left:.15rem!important;border-top-color:var(--ts-sand-lt)!important;transition:transform .2s;
+}
+/* Dropdown panel — matches the nav mega-dropdowns */
+.gtranslate_wrapper .gt_switcher .gt_option{
+  background:rgba(14,42,54,.98)!important;backdrop-filter:blur(24px);
+  border:1px solid rgba(184,150,90,.16)!important;border-top:2px solid var(--ts-sand)!important;
+  width:auto!important;min-width:150px!important;
+  box-shadow:0 16px 40px rgba(0,0,0,.34);
+  margin-top:6px!important;overflow:hidden;border-radius:0;
+}
+.gtranslate_wrapper .gt_switcher .gt_option a{
+  display:flex!important;align-items:center;gap:.6rem;
+  padding:.6rem .9rem!important;
+  font-family:'Jost',sans-serif!important;font-size:.7rem!important;letter-spacing:.05em;
+  color:rgba(212,196,172,.85)!important;background:transparent!important;
+  transition:color .18s,background .18s;
+}
+.gtranslate_wrapper .gt_switcher .gt_option a:hover{color:#fff!important;background:rgba(184,150,90,.1)!important;}
 @media(max-width:1100px){
-  .gtranslate_wrapper{top:68px;}
-  .gtranslate_wrapper.scrolled60{top:62px;}
+  .gtranslate_wrapper{margin-left:.2rem;}
+  .gtranslate_wrapper .gt_switcher .gt_selected span:not(.gt_arrow){display:none;} /* flag only on mobile to save space */
 }
 </style>
 

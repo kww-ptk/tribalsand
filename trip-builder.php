@@ -12,6 +12,10 @@ require_once 'includes/head.php';
 <body class="ts-trip-builder">
 <?php include 'includes/header.php'; ?>
 
+<!-- Reusable datepicker (no native date inputs) -->
+<link rel="stylesheet" href="css/booking.css?v=<?= filemtime(__DIR__ . '/css/booking.css') ?>">
+<script src="js/datepicker.js?v=<?= filemtime(__DIR__ . '/js/datepicker.js') ?>" defer></script>
+
 <!-- Trip Builder CSS -->
 <style>
 /* ── TRIP BUILDER PAGE CSS ── */
@@ -153,6 +157,14 @@ require_once 'includes/head.php';
 .info-box{background:rgba(30,92,107,.05);border-left:2px solid var(--teal-m,#2D7A8C);padding:.85rem 1rem;font-size:.73rem;color:var(--mid);line-height:1.75;margin-bottom:1.2rem;}
 .note-box{background:var(--sand-faint,#FAF6EE);border-left:2px solid rgba(184,150,90,.3);padding:.85rem 1rem;font-size:.72rem;color:var(--mid);line-height:1.75;margin-top:1.2rem;}
 .bnav{position:fixed;bottom:0;left:0;right:0;z-index:200;background:rgba(250,248,244,.97);backdrop-filter:blur(12px);border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;padding:.75rem 20px;padding-bottom:calc(.75rem + env(safe-area-inset-bottom));}
+/* Keep the Continue button clear of the floating chat bubble (bottom-right) */
+.bnav .btn-next{margin-right:80px;}
+@media(max-width:600px){.bnav .btn-next{margin-right:62px;}}
+/* Reusable datepicker trigger — styled to match the trip-builder inputs */
+.tb-dp{display:block;width:100%;text-align:left;margin:0;padding:.85rem 1rem;border:1px solid var(--border);background:#fff;font-family:inherit;font-size:1rem;font-weight:400;letter-spacing:normal;text-transform:none;line-height:1.2;color:rgba(107,96,80,.4);cursor:pointer;border-radius:0;transition:border-color .2s,box-shadow .2s,color .2s;}
+.tb-dp:hover{border-color:var(--teal);}
+.tb-dp:focus-visible{border-color:var(--teal);box-shadow:0 0 0 3px rgba(30,92,107,.08);outline:none;}
+.tb-dp.dp-btn--active{color:var(--dark);}
 .btn-back{display:flex;align-items:center;gap:.4rem;font-size:.62rem;letter-spacing:.15em;text-transform:uppercase;color:var(--light);background:none;border:none;cursor:pointer;padding:.5rem;}
 .btn-back:hover{color:var(--dark);}
 .step-lbl{font-size:.55rem;letter-spacing:.15em;text-transform:uppercase;color:var(--light);}
@@ -206,8 +218,12 @@ require_once 'includes/head.php';
     <p class="step-hint">Pick your dates and tell us who's joining — we'll build everything around this.</p>
 
     <div class="g2">
-      <div class="field"><label class="lbl">Arrival Date <span class="req">*</span></label><input type="date" class="inp" id="arrDate"></div>
-      <div class="field"><label class="lbl">Departure Date <span class="req">*</span></label><input type="date" class="inp" id="depDate"></div>
+      <div class="field"><label class="lbl">Arrival Date <span class="req">*</span></label>
+        <button type="button" class="dp-btn tb-dp" data-dp-role="ci" data-dp-pair="tbTrip" data-dp-target="arrDate" data-dp-placeholder="Add date">Add date</button>
+        <input type="hidden" id="arrDate"></div>
+      <div class="field"><label class="lbl">Departure Date <span class="req">*</span></label>
+        <button type="button" class="dp-btn tb-dp" data-dp-role="co" data-dp-pair="tbTrip" data-dp-target="depDate" data-dp-placeholder="Add date">Add date</button>
+        <input type="hidden" id="depDate"></div>
     </div>
 
     <div class="divider"></div>
