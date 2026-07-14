@@ -155,7 +155,15 @@ include __DIR__ . '/includes/header.php';
         <?= $adults ?> adult<?= $adults !== 1 ? 's' : '' ?><?= $children ? ' · ' . $children . ' child' . ($children !== 1 ? 'ren' : '') : '' ?>
       </div>
 
-      <?php foreach ($results as $r): $v = $r['venue']; $sold = $r['count'] === 0; ?>
+      <?php foreach ($results as $r):
+      $v = $r['venue']; $sold = $r['count'] === 0;
+      $room_count  = count(array_filter($r['rooms'], fn($x) => empty($x['entire'])));
+      $has_entire  = (bool) array_filter($r['rooms'], fn($x) => !empty($x['entire']));
+      $only_entire = !$sold && $room_count === 0 && $has_entire;
+      if ($only_entire)      { $avail_txt = 'Entire villa available'; $cta_txt = 'Book the villa →'; }
+      elseif ($room_count>0) { $avail_txt = $room_count . ' room' . ($room_count !== 1 ? 's' : '') . ' available' . ($has_entire ? ' · or the whole villa' : ''); $cta_txt = 'Select a room →'; }
+      else                   { $avail_txt = 'Available'; $cta_txt = 'Select →'; }
+      ?>
       <div class="vcard<?= $sold ? ' is-sold' : '' ?>">
         <a class="vcard__img" href="/<?= e($v['slug']) ?>" aria-label="<?= e($v['name']) ?>">
           <?php if ($r['hero']): ?><img src="<?= e($r['hero']) ?>" alt="<?= e($v['name']) ?>" loading="lazy"><?php endif; ?>
@@ -169,7 +177,7 @@ include __DIR__ . '/includes/header.php';
             <?php if ($sold): ?>
               <span class="vcard__avail no">No availability for these dates</span>
             <?php else: ?>
-              <span class="vcard__avail ok"><?= (int)$r['count'] ?> room<?= $r['count'] !== 1 ? 's' : '' ?> available</span>
+              <span class="vcard__avail ok"><?= e($avail_txt) ?></span>
               <span class="vcard__from"><small>From (<?= $nights ?> night<?= $nights !== 1 ? 's' : '' ?>)</small><b><?= e($money($r['from'], $r['currency'])) ?></b></span>
             <?php endif; ?>
           </div>
@@ -177,7 +185,7 @@ include __DIR__ . '/includes/header.php';
           <?php if ($sold): ?>
             <a class="vcard__view" href="/<?= e($v['slug']) ?>">View property →</a>
           <?php else: ?>
-            <button type="button" class="vcard__toggle" data-toggle="rl-<?= (int)$v['id'] ?>">Select a room →</button>
+            <button type="button" class="vcard__toggle" data-toggle="rl-<?= (int)$v['id'] ?>"><?= e($cta_txt) ?></button>
           <?php endif; ?>
         </div>
 
