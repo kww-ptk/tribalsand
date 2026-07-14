@@ -406,8 +406,6 @@ $pg_fallback = [
 ];
 include __DIR__ . '/includes/property-gallery.php';
 ?>
-<?php $rr_venue_slug = 'maya_ilai'; include __DIR__ . '/includes/rooms-and-rates.php'; ?>
-
 
 <!-- ═══ BREADCRUMB ═══ -->
 <nav class="breadcrumb" aria-label="Breadcrumb">

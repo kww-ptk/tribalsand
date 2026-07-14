@@ -333,8 +333,6 @@ $pg_fallback = [
 ];
 include __DIR__ . '/includes/property-gallery.php';
 ?>
-<?php $rr_venue_slug = 'maya-kobe'; include __DIR__ . '/includes/rooms-and-rates.php'; ?>
-
 
 <!-- ═══ BREADCRUMB ═══ -->
 <nav class="breadcrumb" aria-label="Breadcrumb">
@@ -398,30 +396,8 @@ include __DIR__ . '/includes/property-gallery.php';
 
     <div class="divider"></div>
 
-    <!-- Suites -->
-    <div class="sec">
-      <div class="sec-label">Accommodations</div>
-      <h2 class="sec-h">Five <em>Ocean Suites</em></h2>
-      <div class="sec-rule"></div>
-      <div class="suites-grid">
-        <div class="suite-card">
-          <div class="suite-card-body">
-            <div class="suite-card-name">Ocean Double Suites</div>
-            <div class="suite-card-meta">4 Suites · 2 guests each</div>
-            <p class="suite-card-desc">Four generously proportioned double suites, each finished in Balinese-inspired materials with direct or unobstructed Indian Ocean views, en-suite bathroom and private terrace.</p>
-          </div>
-        </div>
-        <div class="suite-card">
-          <div class="suite-card-body">
-            <div class="suite-card-name">Prestige Suite</div>
-            <div class="suite-card-meta">1 Suite · Up to 4 guests</div>
-            <p class="suite-card-desc">A self-contained two-bedroom haven with its own private pool and an open-air bathtub framing the ocean horizon. The pinnacle of privacy — bookable independently or as part of a full buyout.</p>
-            <span class="suite-badge">Private Pool · Open-Air Bathtub</span>
-          </div>
-        </div>
-      </div>
-      <p class="sec-p">All suites are fully serviced with daily housekeeping, à la carte dining delivered to your suite or the shared dining pavilion, and access to the full estate.</p>
-    </div>
+    <!-- Rooms & Availability (same as Zuri) -->
+    <?php $rr_venue_slug = 'maya-kobe'; include __DIR__ . '/includes/rooms-and-rates.php'; ?>
 
     <div class="divider"></div>
 
