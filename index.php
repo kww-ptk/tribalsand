@@ -1,5 +1,6 @@
 <?php
 require_once 'includes/schema.php';
+require_once 'includes/db.php';
 
 $page_title   = 'Tribal Sand · Luxury Beachfront Hotels & Villas · Kenya\'s North Coast';
 $page_desc    = 'Tribal Sand — luxury beachfront boutique hotels and private villas in Watamu, Kilifi and Vipingo, Kenya. Zuri, Maya Kobe, My Amani and more. Book direct.';
@@ -402,7 +403,7 @@ include 'includes/head.php';
     <!-- My Amani -->
     <div class="prop-card" data-type="villa" data-loc="vipingo">
       <div class="prop-img-wrap">
-        <img class="prop-img" src="images/my-amani/Aerial/myamani-11.webp"
+        <img class="prop-img" src="<?= e(venue_hero_url('my-amani', 'images/my-amani/Aerial/myamani-11.webp')) ?>"
              alt="My Amani private beachfront villa aerial view — Vipingo, Kenya"
              width="900" height="506" loading="lazy" decoding="async">
         <div class="prop-type-badge">Private Villa</div>
@@ -430,7 +431,7 @@ include 'includes/head.php';
     <!-- Maya Kobe -->
     <div class="prop-card" data-type="hotel" data-loc="kilifi">
       <div class="prop-img-wrap">
-        <img class="prop-img" src="images/hero-maya-kobe.jpg"
+        <img class="prop-img" src="<?= e(venue_hero_url('maya-kobe', 'images/hero-maya-kobe.jpg')) ?>"
              alt="Maya Kobe boutique hotel pool — Bofa Beach, Kilifi, Kenya"
              width="600" height="450" loading="lazy" decoding="async">
         <div class="prop-type-badge">Boutique Hotel</div>
@@ -457,7 +458,7 @@ include 'includes/head.php';
     <!-- Zuri -->
     <div class="prop-card" data-type="hotel" data-loc="watamu">
       <div class="prop-img-wrap">
-        <img class="prop-img" src="images/hero-zuri.jpg"
+        <img class="prop-img" src="<?= e(venue_hero_url('zuri', 'images/hero-zuri.jpg')) ?>"
              alt="Zuri boutique hotel aerial view — Watamu, Kenya"
              width="900" height="506" loading="lazy" decoding="async">
         <div class="prop-type-badge">Boutique Hotel</div>
@@ -485,7 +486,7 @@ include 'includes/head.php';
     <!-- Enkare Bofa -->
     <div class="prop-card" data-type="villa" data-loc="kilifi">
       <div class="prop-img-wrap">
-        <img class="prop-img" src="images/hero-enkare-bofa.jpg"
+        <img class="prop-img" src="<?= e(venue_hero_url('enkare-bofa', 'images/hero-enkare-bofa.jpg')) ?>"
              alt="Enkare Bofa beachfront villa — Bofa Road, Kilifi, Kenya"
              width="600" height="450" loading="lazy" decoding="async">
         <div class="prop-type-badge">Private Villa</div>
@@ -512,7 +513,7 @@ include 'includes/head.php';
     <!-- Sandbox -->
     <div class="prop-card" data-type="villa" data-loc="kilifi">
       <div class="prop-img-wrap">
-        <img class="prop-img" src="images/hero-sandbox.jpg"
+        <img class="prop-img" src="<?= e(venue_hero_url('sandbox', 'images/hero-sandbox.jpg')) ?>"
              alt="Sandbox beachfront self-catering villa — Bofa Road, Kilifi, Kenya"
              width="600" height="450" loading="lazy" decoding="async">
         <div class="prop-type-badge">Private Villa</div>
@@ -539,7 +540,7 @@ include 'includes/head.php';
     <!-- Maya Ilai -->
     <div class="prop-card" data-type="hotel" data-loc="kilifi">
       <div class="prop-img-wrap">
-        <img class="prop-img" src="images/maya_illai/Best1.jpg"
+        <img class="prop-img" src="<?= e(venue_hero_url('maya_ilai', 'images/maya_illai/Best1.jpg')) ?>"
              alt="Maya Ilai eco retreat compound pool — Kilifi, Kenya"
              width="600" height="450" loading="lazy" decoding="async">
         <div class="prop-type-badge">Eco Compound</div>

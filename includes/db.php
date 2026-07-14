@@ -385,6 +385,25 @@ function ts_venue_content(string $slug): array {
     return $cache[$slug];
 }
 
+/**
+ * The admin-managed hero image URL for a venue (venue_images, is_hero first),
+ * or the given fallback when none is set / the DB is unavailable. Cached per
+ * request. Lets the homepage cards reflect what's uploaded in the admin.
+ */
+function venue_hero_url(string $slug, string $fallback = ''): string {
+    static $cache = [];
+    if (!array_key_exists($slug, $cache)) {
+        try {
+            $v = db_query('SELECT id FROM venues WHERE slug = :s', [':s' => $slug])->fetch();
+            $imgs = $v ? fetch_venue_images((int)$v['id']) : [];
+            $cache[$slug] = $imgs ? storage_url($imgs[0]['filename']) : '';
+        } catch (Throwable $e) {
+            $cache[$slug] = '';
+        }
+    }
+    return $cache[$slug] !== '' ? $cache[$slug] : $fallback;
+}
+
 /** One editable field for a venue, or the fallback when unset/blank. */
 function ts_venue_text(string $slug, string $field, string $fallback = ''): string {
     $c = ts_venue_content($slug);
