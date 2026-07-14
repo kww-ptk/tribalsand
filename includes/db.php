@@ -334,24 +334,54 @@ function ts_search_availability(string $check_in, string $check_out, int $guests
             [':vid' => $v['id']]
         )->fetchAll();
 
-        $available = [];
+        // Free/booked status per room for the requested dates.
+        $free = [];
         foreach ($rooms as $r) {
-            $cap = (int)($r['capacity'] ?? 0);
-            if ($cap > 0 && $guests > 0 && $cap < $guests) continue; // room too small for the party
-            if (!find_available_unit((int)$r['id'], $check_in, $check_out)) continue;
+            $free[$r['id']] = (bool) find_available_unit((int)$r['id'], $check_in, $check_out);
+        }
+        // Whole-villa vs individual-room mutual exclusion:
+        //  · the Entire Villa is bookable only when it AND every individual room is free
+        //  · individual rooms disappear once the Entire Villa is booked for these dates
+        $entire_booked  = false; // someone holds the whole villa
+        $all_rooms_free = true;  // every individual (non-entire) room is free
+        foreach ($rooms as $r) {
+            if (!empty($r['is_entire_place'])) {
+                if (!$free[$r['id']]) $entire_booked = true;
+            } else {
+                if (!$free[$r['id']]) $all_rooms_free = false;
+            }
+        }
+
+        $mkItem = function(array $r, bool $entire) use ($check_in, $check_out) {
             $q = room_stay_quote((int)$r['id'], (float)$r['price_amount'], $check_in, $check_out);
-            $available[] = [
+            return [
                 'slug'       => $r['slug'],
                 'name'       => $r['name'],
-                'capacity'   => $cap,
+                'entire'     => $entire,
+                'capacity'   => (int)($r['capacity'] ?? 0),
                 'short_desc' => $r['short_desc'] ?? '',
-                'tag'        => $r['tag_label'] ?? '',
+                'tag'        => $r['tag_label'] ?: ($entire ? 'Whole property' : ''),
                 'price'      => (float)$r['price_amount'],
                 'currency'   => $r['price_currency'] ?: 'USD',
                 'nights'     => $q['nights'],
                 'total'      => $q['total'],
                 'hero'       => !empty($r['hero']) ? storage_url($r['hero']) : null,
             ];
+        };
+
+        $available = [];
+        foreach ($rooms as $r) {
+            $cap = (int)($r['capacity'] ?? 0);
+            if ($cap > 0 && $guests > 0 && $cap < $guests) continue; // too small for the party
+            $entire = !empty($r['is_entire_place']);
+            if ($entire) {
+                // Entire villa: only when the villa itself and all rooms are free
+                if (!$free[$r['id']] || !$all_rooms_free) continue;
+            } else {
+                // Individual room: only when it's free and the villa isn't taken
+                if (!$free[$r['id']] || $entire_booked) continue;
+            }
+            $available[] = $mkItem($r, $entire);
         }
 
         $vimgs = fetch_venue_images((int)$v['id']);

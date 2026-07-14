@@ -312,7 +312,7 @@ include __DIR__ . '/_layout.php';
         <div class="field">
           <label style="display:flex;align-items:center;gap:8px;margin:10px 0">
             <input type="checkbox" name="is_entire_place" value="1" <?= !empty($room['is_entire_place']) ? 'checked' : '' ?>>
-            Entire place (whole-property booking option — shown under the "Entire place" tab)
+            Entire Villa (whole-property option — only shown as available when no individual rooms are booked for the dates)
           </label>
         </div>
       </div>
