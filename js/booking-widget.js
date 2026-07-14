@@ -376,6 +376,23 @@
     updateDateFields();
     updateGuestsPill();
 
+    // Apply adults/children onto the guest stepper + hidden fields
+    function applyGuests(a, c) {
+      if (a != null) {
+        a = Math.max(1, Math.min(20, parseInt(a, 10) || 1));
+        adultsH.value = a;
+        const span = guestsPop.querySelector('[data-bk-count="adult"]');
+        if (span) span.textContent = a;
+      }
+      if (c != null) {
+        c = Math.max(0, Math.min(20, parseInt(c, 10) || 0));
+        childrenH.value = c;
+        const span = guestsPop.querySelector('[data-bk-count="child"]');
+        if (span) span.textContent = c;
+      }
+      updateGuestsPill();
+    }
+
     // Re-point the widget at a new room (modal reuse)
     window.tsLoadRoom = function (newSlug, newPrice, newCurrency, prefill) {
       slug     = newSlug || wrap.dataset.slug || "";
@@ -385,6 +402,17 @@
       selStart = null; selEnd = null; availOk = null; fullyBlocked = [];
       clearError();
       updateDateFields(); updateTotal(); renderCal();
+
+      // Fall back to a hero/home search stored this session (dates + guests)
+      if (!prefill) {
+        try {
+          const saved = JSON.parse(sessionStorage.getItem("ts_search") || "null");
+          if (saved && saved.checkin && saved.checkout) prefill = saved;
+        } catch (e) {}
+      }
+      if (prefill && (prefill.adults != null || prefill.children != null)) {
+        applyGuests(prefill.adults, prefill.children);
+      }
       if (slug) {
         fetch(`/api/check-availability?room=${encodeURIComponent(slug)}`)
           .then(r => r.json())
