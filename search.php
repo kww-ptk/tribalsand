@@ -56,6 +56,9 @@ include __DIR__ . '/includes/header.php';
 .srch-field label{font-size:.58rem;letter-spacing:.16em;text-transform:uppercase;color:var(--sand);font-weight:600;margin-bottom:.3rem;}
 .srch-field input,.srch-field select{border:none;background:none;font-family:'Jost',sans-serif;font-size:.95rem;color:var(--dark);padding:0;width:100%;cursor:pointer;}
 .srch-field input:focus,.srch-field select:focus{outline:none;}
+/* styled datepicker trigger — borderless to match the other fields */
+.srch-field .dp-btn{border:none;background:none;padding:0;font-family:'Jost',sans-serif;font-size:.95rem;color:var(--dark);}
+.srch-field .dp-btn:hover,.srch-field .dp-btn:focus{border:none;}
 .srch-form__btn{flex-shrink:0;background:var(--teal-d);color:#fff;border:none;border-radius:4px;margin:.3rem;padding:0 1.7rem;height:52px;font-family:'Jost',sans-serif;font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;font-weight:600;cursor:pointer;transition:background .2s;}
 .srch-form__btn:hover{background:var(--teal);}
 /* results */
@@ -118,12 +121,14 @@ include __DIR__ . '/includes/header.php';
   <div class="srch-form">
     <form class="srch-form__card" method="GET" action="/search">
       <div class="srch-field">
-        <label for="fCheckin">Check-in</label>
-        <input type="date" id="fCheckin" name="checkin" value="<?= e($checkin) ?>" min="<?= e($today) ?>">
+        <label>Check-in</label>
+        <button type="button" class="dp-btn" data-dp-role="ci" data-dp-pair="srch" data-dp-target="fCheckin" data-dp-placeholder="Add date">Add date</button>
+        <input type="hidden" id="fCheckin" name="checkin" value="<?= e($checkin) ?>">
       </div>
       <div class="srch-field">
-        <label for="fCheckout">Check-out</label>
-        <input type="date" id="fCheckout" name="checkout" value="<?= e($checkout) ?>" min="<?= e($today) ?>">
+        <label>Check-out</label>
+        <button type="button" class="dp-btn" data-dp-role="co" data-dp-pair="srch" data-dp-target="fCheckout" data-dp-placeholder="Add date">Add date</button>
+        <input type="hidden" id="fCheckout" name="checkout" value="<?= e($checkout) ?>">
       </div>
       <div class="srch-field">
         <label for="fAdults">Adults</label>

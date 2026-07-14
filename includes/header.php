@@ -125,15 +125,25 @@
 
 /* ── HAMBURGER ── */
 .ts-burger{
-  display:none;flex-direction:column;justify-content:center;
-  gap:5px;width:36px;height:36px;background:none;border:none;
-  cursor:pointer;padding:4px;margin-left:.5rem;
-  filter:drop-shadow(0 1px 2px rgba(0,0,0,.5));
+  display:none;position:relative;
+  width:40px;height:40px;background:none;border:none;
+  cursor:pointer;padding:0;margin-left:.5rem;
+  -webkit-appearance:none;appearance:none;
 }
-.ts-burger span{display:block;width:100%;height:2px;border-radius:2px;background:#fff;flex:0 0 auto;transition:all .28s;transform-origin:center;}
-.ts-burger.open span:nth-child(1){transform:translateY(6px) rotate(45deg);}
-.ts-burger.open span:nth-child(2){opacity:0;transform:scaleX(0);}
-.ts-burger.open span:nth-child(3){transform:translateY(-6px) rotate(-45deg);}
+/* Bars are absolutely positioned with an EXPLICIT px width so iOS/WebKit
+   can never collapse them to 0 (empty flex children rendered invisible on
+   iOS — the previous flex + width:100% approach did not hold on real devices). */
+.ts-burger span{
+  position:absolute;left:9px;width:22px;height:2px;border-radius:2px;
+  background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.35);
+  transition:transform .28s,opacity .28s;transform-origin:center;
+}
+.ts-burger span:nth-child(1){top:14px;}
+.ts-burger span:nth-child(2){top:20px;}
+.ts-burger span:nth-child(3){top:26px;}
+.ts-burger.open span:nth-child(1){top:20px;transform:rotate(45deg);}
+.ts-burger.open span:nth-child(2){opacity:0;}
+.ts-burger.open span:nth-child(3){top:20px;transform:rotate(-45deg);}
 
 /* ── MOBILE DRAWER ── */
 .ts-drawer{
@@ -182,7 +192,7 @@
 /* ── RESPONSIVE ── */
 @media(max-width:1100px){
   .ts-links{display:none;}
-  .ts-burger{display:flex!important;position:relative;z-index:3;}
+  .ts-burger{display:block!important;position:relative;z-index:3;}
   .ts-drawer{display:block;}
   .ts-social,.ts-tel{display:none!important;}
   .ts-nav{padding:0 20px;}

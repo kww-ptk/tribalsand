@@ -21,12 +21,18 @@ $page_schema .= ts_schema_item_list([
 include 'includes/head.php';
 ?>
 
+<!-- ── STYLED DATE PICKER (hero search) ── -->
+<link rel="stylesheet" href="css/booking.css?v=<?= filemtime(__DIR__ . '/css/booking.css') ?>">
+<script src="js/datepicker.js?v=<?= filemtime(__DIR__ . '/js/datepicker.js') ?>" defer></script>
+
 <style>
 /* ── HOMEPAGE-SPECIFIC STYLES ── */
 
 /* ── HERO ── */
-.hero { position:relative; height:100vh; min-height:640px; overflow:hidden; }
-.hero-bg { position:absolute; inset:0; }
+/* overflow:visible so the guests/date popovers aren't clipped at the hero edge;
+   the Ken Burns zoom is clipped by .hero-bg instead (overrides main.css). */
+.hero { position:relative; height:100vh; min-height:640px; overflow:visible; }
+.hero-bg { position:absolute; inset:0; overflow:hidden; }
 /* Slides */
 .hero-slide { position:absolute; inset:0; opacity:0; transition:opacity 1.5s ease; }
 .hero-slide.active { opacity:1; }
@@ -310,13 +316,15 @@ include 'includes/head.php';
     <!-- Booking search bar -->
     <form class="hero-search" id="heroSearch" aria-label="Search availability">
       <div class="hero-search__field">
-        <label class="hero-search__lbl" for="heroCheckin">Check-in</label>
-        <input type="date" class="hero-search__input" id="heroCheckin" name="checkin" aria-label="Check-in date">
+        <label class="hero-search__lbl">Check-in</label>
+        <button type="button" class="dp-btn hero-search__input" data-dp-role="ci" data-dp-pair="hero" data-dp-target="heroCheckin" data-dp-placeholder="Add date">Add date</button>
+        <input type="hidden" id="heroCheckin" name="checkin">
       </div>
       <div class="hero-search__div" aria-hidden="true"></div>
       <div class="hero-search__field">
-        <label class="hero-search__lbl" for="heroCheckout">Check-out</label>
-        <input type="date" class="hero-search__input" id="heroCheckout" name="checkout" aria-label="Check-out date">
+        <label class="hero-search__lbl">Check-out</label>
+        <button type="button" class="dp-btn hero-search__input" data-dp-role="co" data-dp-pair="hero" data-dp-target="heroCheckout" data-dp-placeholder="Add date">Add date</button>
+        <input type="hidden" id="heroCheckout" name="checkout">
       </div>
       <div class="hero-search__div" aria-hidden="true"></div>
       <div class="hero-search__field hero-search__field--guests">
@@ -909,27 +917,18 @@ include 'includes/head.php';
 (function(){
   var form   = document.getElementById('heroSearch');
   if (!form) return;
-  var ci     = document.getElementById('heroCheckin');
-  var co     = document.getElementById('heroCheckout');
+  var ci     = document.getElementById('heroCheckin');   // hidden input (YYYY-MM-DD)
+  var co     = document.getElementById('heroCheckout');  // hidden input (YYYY-MM-DD)
+  var ciBtn  = form.querySelector('[data-dp-target="heroCheckin"]');
+  var coBtn  = form.querySelector('[data-dp-target="heroCheckout"]');
   var gBtn   = document.getElementById('heroGuestsBtn');
   var gPop   = document.getElementById('heroGuestsPop');
   var gValue = document.getElementById('heroGuestsValue');
   var adults = document.getElementById('heroAdults');
   var kids   = document.getElementById('heroChildren');
 
-  function ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
-  var today = new Date(); today.setHours(0,0,0,0);
-  var tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate()+1);
-  ci.min = ymd(today);
-  co.min = ymd(tomorrow);
-
-  // Keep check-out after check-in
-  ci.addEventListener('change', function(){
-    if (!ci.value) return;
-    var next = new Date(ci.value + 'T00:00'); next.setDate(next.getDate()+1);
-    co.min = ymd(next);
-    if (co.value && co.value <= ci.value) co.value = ymd(next);
-  });
+  // Dates are driven by the styled calendar (datepicker.js); it keeps
+  // check-out after check-in and blocks past dates for us.
 
   // Guests popover
   function toggleGuests(open){
@@ -961,8 +960,8 @@ include 'includes/head.php';
 
   form.addEventListener('submit', function(e){
     e.preventDefault();
-    if (!ci.value){ ci.focus(); if (ci.showPicker) try { ci.showPicker(); } catch(_){} return; }
-    if (!co.value || co.value <= ci.value){ co.focus(); if (co.showPicker) try { co.showPicker(); } catch(_){} return; }
+    if (!ci.value){ if (ciBtn) ciBtn.click(); return; }
+    if (!co.value || co.value <= ci.value){ if (coBtn) coBtn.click(); return; }
     // Also stash for property-page widgets, then go to the live results page
     try {
       sessionStorage.setItem('ts_search', JSON.stringify({
