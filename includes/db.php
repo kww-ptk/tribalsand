@@ -445,4 +445,24 @@ function ts_emphasis(string $escaped): string {
     return preg_replace('/\*([^*]+)\*/', '<em>$1</em>', $escaped);
 }
 
+/**
+ * Coerce form input to valid UTF-8. Browsers (and pastes from Word/Outlook/Excel)
+ * can submit Windows-1252 bytes — most commonly the em-dash 0x97 or smart quotes —
+ * which PostgreSQL's UTF-8 columns reject with a fatal "invalid byte sequence"
+ * error, silently breaking admin saves. Normalising once here, before any handler
+ * reads the superglobals, turns those bytes into proper UTF-8 instead of crashing.
+ */
+function normalize_utf8(&$value): void {
+    if (is_array($value)) {
+        foreach ($value as &$v) normalize_utf8($v);
+        return;
+    }
+    if (is_string($value) && $value !== '' && !mb_check_encoding($value, 'UTF-8')) {
+        $value = mb_convert_encoding($value, 'UTF-8', 'Windows-1252');
+    }
+}
+normalize_utf8($_POST);
+normalize_utf8($_GET);
+normalize_utf8($_REQUEST);
+
 require_once __DIR__ . '/turnstile.php';
