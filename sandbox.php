@@ -345,6 +345,11 @@ include __DIR__ . '/includes/property-gallery.php';
 
     <div class="divider"></div>
 
+    <!-- Rooms & Availability (same as Zuri) -->
+    <?php $rr_venue_slug = 'sandbox'; include __DIR__ . '/includes/rooms-and-rates.php'; ?>
+
+    <div class="divider"></div>
+
     <!-- Amenities -->
     <div class="sec">
       <div class="sec-label">Amenities & Features</div>

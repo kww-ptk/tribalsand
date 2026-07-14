@@ -40,3 +40,6 @@
 .bk-modal__title{font-family:'Cormorant Garamond',serif;font-weight:400;font-size:1.6rem;margin:0 2rem 1rem 0;color:var(--rr-dark,#141412)}
 .bk-modal__close{position:absolute;top:.8rem;right:1rem;background:none;border:none;font-size:1.8rem;line-height:1;color:#8a7c80;cursor:pointer}
 @media(max-width:600px){.rr{padding-top:2.5rem}.rr-bar{flex-direction:column;align-items:stretch}}
+
+/* Collapse adjacent dividers when a DB-driven section (e.g. Rooms & Availability) renders nothing */
+.divider + .divider{display:none;}

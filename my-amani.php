@@ -382,6 +382,11 @@ include __DIR__ . '/includes/property-gallery.php';
 
     <div class="divider"></div>
 
+    <!-- Rooms & Availability (same as Zuri) -->
+    <?php $rr_venue_slug = 'my-amani'; include __DIR__ . '/includes/rooms-and-rates.php'; ?>
+
+    <div class="divider"></div>
+
     <!-- Conservation Highlight -->
     <div class="sec">
       <div class="sec-label">Conservation</div>
