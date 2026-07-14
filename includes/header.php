@@ -129,7 +129,7 @@
   gap:5px;width:36px;height:36px;background:none;border:none;
   cursor:pointer;padding:4px;margin-left:.5rem;
 }
-.ts-burger span{display:block;height:2px;border-radius:2px;background:#fff;transition:all .28s;transform-origin:center;}
+.ts-burger span{display:block;height:2.5px;border-radius:2px;background:var(--ts-sand-lt,#D4B07A);transition:all .28s;transform-origin:center;}
 .ts-burger.open span:nth-child(1){transform:translateY(6px) rotate(45deg);}
 .ts-burger.open span:nth-child(2){opacity:0;transform:scaleX(0);}
 .ts-burger.open span:nth-child(3){transform:translateY(-6px) rotate(-45deg);}
