@@ -323,9 +323,16 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
 <?php include 'includes/header.php'; ?>
 
 <!-- ═══ GALLERY ═══ -->
-<?php $pg_venue_slug = 'maya-kobe'; include __DIR__ . '/includes/property-gallery.php'; ?>
-<?php $rr_venue_slug = 'maya-kobe'; include __DIR__ . '/includes/rooms-and-rates.php'; ?>
-
+<?php
+$pg_venue_slug   = 'maya-kobe';
+$pg_fallback_badge = 'Maya Kobe · Bofa Road · Kilifi';
+$pg_fallback = [
+  ['src' => 'images/hero-maya-kobe.jpg', 'alt' => 'Maya Kobe boutique hotel — Bofa Beach, Kilifi'],
+  ['src' => 'images/maya-kobe/Maya Kobe - Day Outdoor, Pool, Beach/Maya Kobe Best3.jpg', 'alt' => 'Maya Kobe pool and beach'],
+  ['src' => 'images/maya-kobe/Maya Kobe - Day Outdoor, Pool, Beach/Maya Kobe Best4.jpg', 'alt' => 'Maya Kobe outdoor lounge'],
+];
+include __DIR__ . '/includes/property-gallery.php';
+?>
 
 <!-- ═══ BREADCRUMB ═══ -->
 <nav class="breadcrumb" aria-label="Breadcrumb">
@@ -343,7 +350,7 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
   <div class="page-main">
 
     <!-- Header -->
-    <div class="listing-eyebrow">Luxury Beachfront Boutique Hotel · Balinese-Inspired</div>
+    <div class="listing-eyebrow"><?= e(ts_venue_text('maya-kobe', 'tagline', 'Luxury Beachfront Boutique Hotel · Balinese-Inspired')) ?></div>
     <h1 class="listing-h1">Maya Kobe · Eco Beachfront Boutique Hotel · <em>Kilifi</em></h1>
     <div class="listing-sub">
       <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="6" r="2.5"/><path d="M8 1.5C5.24 1.5 3 3.74 3 6.5c0 4 5 8.5 5 8.5s5-4.5 5-8.5c0-2.76-2.24-5-5-5z"/></svg>
@@ -377,42 +384,18 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
 
     <div class="divider"></div>
 
-    <!-- About -->
-    <div class="sec">
-      <div class="sec-label">About the Property</div>
-      <h2 class="sec-h">Best Boutique Hotel on <em>Bofa Beach, Kilifi</em></h2>
-      <div class="sec-rule"></div>
-      <p class="sec-p">Maya Kobe is a Balinese-inspired luxury boutique hotel sitting directly on Bofa Beach in Kilifi — one of Kenya's most breathtaking stretches of coastline. Five ocean suites are wrapped in rich textures, natural materials and panoramic Indian Ocean views, creating a setting that feels both intimate and effortlessly indulgent.</p>
-      <p class="sec-p">At the heart of the property, a 20-metre beachfront swimming pool leads directly onto the white sand beach. A spacious gazebo hangs over the water's edge, while private beachfront massage huts offer wellness without leaving the estate. Every detail — from the Balinese craftsmanship to the chef-led dining — is curated to surpass expectation.</p>
-      <p class="sec-p">Maya Kobe is available for individual suite stays — perfect for couples and intimate groups — or as a full property buyout for up to 12 guests. The Prestige Suite, a self-contained two-bedroom sanctuary with its own private pool and open-air bathtub, adds another four guests to make a total of 16 when the whole estate is yours.</p>
-    </div>
+    <!-- About (editable in admin → Properties → Page Content; falls back to text below) -->
+    <?php
+    $va_slug = 'maya-kobe';
+    $va_heading_fallback = 'Best Boutique Hotel on <em>Bofa Beach, Kilifi</em>';
+    $va_body_fallback = "Maya Kobe is a Balinese-inspired luxury boutique hotel sitting directly on Bofa Beach in Kilifi — one of Kenya's most breathtaking stretches of coastline. Five ocean suites are wrapped in rich textures, natural materials and panoramic Indian Ocean views, creating a setting that feels both intimate and effortlessly indulgent.\n\nAt the heart of the property, a 20-metre beachfront swimming pool leads directly onto the white sand beach. A spacious gazebo hangs over the water's edge, while private beachfront massage huts offer wellness without leaving the estate. Every detail — from the Balinese craftsmanship to the chef-led dining — is curated to surpass expectation.\n\nMaya Kobe is available for individual suite stays — perfect for couples and intimate groups — or as a full property buyout for up to 12 guests. The Prestige Suite, a self-contained two-bedroom sanctuary with its own private pool and open-air bathtub, adds another four guests to make a total of 16 when the whole estate is yours.";
+    include __DIR__ . '/includes/venue-about.php';
+    ?>
 
     <div class="divider"></div>
 
-    <!-- Suites -->
-    <div class="sec">
-      <div class="sec-label">Accommodations</div>
-      <h2 class="sec-h">Five <em>Ocean Suites</em></h2>
-      <div class="sec-rule"></div>
-      <div class="suites-grid">
-        <div class="suite-card">
-          <div class="suite-card-body">
-            <div class="suite-card-name">Ocean Double Suites</div>
-            <div class="suite-card-meta">4 Suites · 2 guests each</div>
-            <p class="suite-card-desc">Four generously proportioned double suites, each finished in Balinese-inspired materials with direct or unobstructed Indian Ocean views, en-suite bathroom and private terrace.</p>
-          </div>
-        </div>
-        <div class="suite-card">
-          <div class="suite-card-body">
-            <div class="suite-card-name">Prestige Suite</div>
-            <div class="suite-card-meta">1 Suite · Up to 4 guests</div>
-            <p class="suite-card-desc">A self-contained two-bedroom haven with its own private pool and an open-air bathtub framing the ocean horizon. The pinnacle of privacy — bookable independently or as part of a full buyout.</p>
-            <span class="suite-badge">Private Pool · Open-Air Bathtub</span>
-          </div>
-        </div>
-      </div>
-      <p class="sec-p">All suites are fully serviced with daily housekeeping, à la carte dining delivered to your suite or the shared dining pavilion, and access to the full estate.</p>
-    </div>
+    <!-- Rooms & Availability (same as Zuri) -->
+    <?php $rr_venue_slug = 'maya-kobe'; include __DIR__ . '/includes/rooms-and-rates.php'; ?>
 
     <div class="divider"></div>
 
@@ -691,6 +674,14 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
   </aside>
 
 </div><!-- /page-wrap -->
+
+<?php
+$sbb_name = 'Maya Kobe';
+$sbb_loc  = 'Bofa Road · Kilifi';
+$sbb_meta = '5 Suites · Up to 12 guests';
+$sbb_cta  = 'Check Availability';
+include __DIR__ . '/includes/sticky-book-bar.php';
+?>
 
 <?php include 'includes/footer.php'; ?>
 

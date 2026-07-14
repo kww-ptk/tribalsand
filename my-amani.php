@@ -311,7 +311,16 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
 <?php include 'includes/header.php'; ?>
 
 <!-- ═══ GALLERY ═══ -->
-<?php $pg_venue_slug = 'my-amani'; include __DIR__ . '/includes/property-gallery.php'; ?>
+<?php
+$pg_venue_slug   = 'my-amani';
+$pg_fallback_badge = 'My Amani · Vipingo · Kilifi County';
+$pg_fallback = [
+  ['src' => 'images/my-amani/Aerial/myamani-11.webp',                                       'alt' => 'My Amani private beachfront villa — aerial, Vipingo'],
+  ['src' => 'images/my-amani/My Amani - Outdoor/My Amani Outdoor Day/My Amani Best18.jpg',   'alt' => 'My Amani outdoor deck and ocean view'],
+  ['src' => 'images/my-amani/My Amani - Outdoor/My Amani Outdoor Day/My Amani Best20.jpg',   'alt' => 'My Amani pool and gardens'],
+];
+include __DIR__ . '/includes/property-gallery.php';
+?>
 
 <!-- ═══ BREADCRUMB ═══ -->
 <nav class="breadcrumb" aria-label="Breadcrumb">
@@ -329,7 +338,7 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
   <main class="page-main">
 
     <!-- Listing Header -->
-    <div class="listing-eyebrow">Ultra-Luxury Private Beachfront Villa · Entire Property Only</div>
+    <div class="listing-eyebrow"><?= e(ts_venue_text('my-amani', 'tagline', 'Ultra-Luxury Private Beachfront Villa · Entire Property Only')) ?></div>
     <h1 class="listing-h1">My Amani · Luxury Private Beachfront Villa · <em>Vipingo</em></h1>
     <div class="listing-sub">
       <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="6" r="2.5"/><path d="M8 1.5C5.24 1.5 3 3.74 3 6.5c0 4 5 8.5 5 8.5s5-4.5 5-8.5c0-2.76-2.24-5-5-5z"/></svg>
@@ -361,15 +370,18 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
 
     <div class="divider"></div>
 
-    <!-- About -->
-    <div class="sec">
-      <div class="sec-label">About the Property</div>
-      <h2 class="sec-h">Best Beachfront Villa in <em>Vipingo, Kenya</em></h2>
-      <div class="sec-rule"></div>
-      <p class="sec-p">Along the north coast of Kenya, overlooking the Indian Ocean, lies Vipingo's best-kept secret — My Amani. A tastefully furnished five-bedroom retreat with endless views of the Indian Ocean at one end and lush indigenous gardens at the other. Slumbering up to 10 guests across five en-suite bedrooms, My Amani is available exclusively as a full private retreat.</p>
-      <p class="sec-p">My Amani was recycled from an existing home and renovated with the finest local craftsmanship. The infinity pool overlooks the Indian Ocean, a private outdoor hot tub sits within the verdant garden, and a spacious ocean-view gazebo opens to dual decks made for outdoor hosting and relaxation. The entire property is yours — no shared spaces, no compromise.</p>
-      <p class="sec-p">A private chef is available on request at additional cost, while the state-of-the-art kitchen is fully equipped for self-catering. Immaculate daily housekeeping, 24-hour on-site security, free Wi-Fi throughout, and air conditioning in all rooms ensure every comfort is met from arrival to departure.</p>
-    </div>
+    <!-- About (editable in admin → Properties → Page Content; falls back to text below) -->
+    <?php
+    $va_slug = 'my-amani';
+    $va_heading_fallback = 'Best Beachfront Villa in <em>Vipingo, Kenya</em>';
+    $va_body_fallback = "Along the north coast of Kenya, overlooking the Indian Ocean, lies Vipingo's best-kept secret — My Amani. A tastefully furnished five-bedroom retreat with endless views of the Indian Ocean at one end and lush indigenous gardens at the other. Slumbering up to 10 guests across five en-suite bedrooms, My Amani is available exclusively as a full private retreat.\n\nMy Amani was recycled from an existing home and renovated with the finest local craftsmanship. The infinity pool overlooks the Indian Ocean, a private outdoor hot tub sits within the verdant garden, and a spacious ocean-view gazebo opens to dual decks made for outdoor hosting and relaxation. The entire property is yours — no shared spaces, no compromise.\n\nA private chef is available on request at additional cost, while the state-of-the-art kitchen is fully equipped for self-catering. Immaculate daily housekeeping, 24-hour on-site security, free Wi-Fi throughout, and air conditioning in all rooms ensure every comfort is met from arrival to departure.";
+    include __DIR__ . '/includes/venue-about.php';
+    ?>
+
+    <div class="divider"></div>
+
+    <!-- Rooms & Availability (same as Zuri) -->
+    <?php $rr_venue_slug = 'my-amani'; include __DIR__ . '/includes/rooms-and-rates.php'; ?>
 
     <div class="divider"></div>
 
@@ -649,6 +661,15 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
 </div><!-- /page-wrap -->
 
 <?php include 'includes/footer.php'; ?>
+
+<!-- ═══ STICKY BOOKING BAR (desktop) ═══ -->
+<?php
+$sbb_name = 'My Amani';
+$sbb_loc  = 'Vipingo · Kilifi County';
+$sbb_meta = '5 Bedrooms · Up to 10 guests · Entire villa';
+$sbb_cta  = 'Check Availability';
+include __DIR__ . '/includes/sticky-book-bar.php';
+?>
 
 <!-- ═══ MOBILE STICKY CTA ═══ -->
 <div class="sticky-cta" id="stickyCta" aria-hidden="true">

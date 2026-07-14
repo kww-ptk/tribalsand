@@ -273,7 +273,14 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
 </style>
 
 <!-- ═══ GALLERY HERO ═══ -->
-<?php $pg_venue_slug = 'sandbox'; include __DIR__ . '/includes/property-gallery.php'; ?>
+<?php
+$pg_venue_slug   = 'sandbox';
+$pg_fallback_badge = 'Sandbox · Bofa Road · Kilifi';
+$pg_fallback = [
+  ['src' => 'images/hero-sandbox.jpg', 'alt' => 'Sandbox self-catering beachfront villa — Bofa Road, Kilifi'],
+];
+include __DIR__ . '/includes/property-gallery.php';
+?>
 
 
 <!-- ═══ BREADCRUMB ═══ -->
@@ -294,7 +301,7 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
   <div class="page-main">
 
     <!-- Listing header -->
-    <div class="listing-eyebrow">Beachfront Self-Catering Villa · Kilifi</div>
+    <div class="listing-eyebrow"><?= e(ts_venue_text('sandbox', 'tagline', 'Beachfront Self-Catering Villa · Kilifi')) ?></div>
     <h1 class="listing-h1">Sandbox · Beachfront Self-Catering Villa · <em>Kilifi</em></h1>
     <div class="listing-sub">
       <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="6" r="2.5"/><path d="M8 1.5C5.24 1.5 3 3.74 3 6.5c0 4 5 8.5 5 8.5s5-4.5 5-8.5c0-2.76-2.24-5-5-5z"/></svg>
@@ -326,15 +333,18 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
 
     <div class="divider"></div>
 
-    <!-- About -->
-    <div class="sec">
-      <div class="sec-label">About the Property</div>
-      <h2 class="sec-h">Best Self-Catering Villa in <em>Kilifi, Kenya</em></h2>
-      <div class="sec-rule"></div>
-      <p class="sec-p">Sandbox is a self-catering beachfront villa on Kilifi's coveted Bofa Road — the same stretch of coast as Maya Kobe and Enkare Bofa. Four bedrooms, three bathrooms, a private pool, and direct beach access make it an ideal base for groups who want privacy, flexibility and genuine coastal living.</p>
-      <p class="sec-p">The villa is fully equipped for self-catering: a spacious, well-appointed kitchen, generous outdoor living areas, and the kind of easy, informal atmosphere that makes holidays feel effortless. No cook is included — you bring your own or self-cater — which also keeps the price point accessible for groups who value independence over full service.</p>
-      <p class="sec-p">Sandbox sleeps up to 8 guests comfortably. Whether you are coming from Nairobi for a long weekend, or travelling from South Africa or beyond for a week on the coast, it delivers exactly what Kilifi does best: warm water, wide skies and no agenda.</p>
-    </div>
+    <!-- About (editable in admin → Properties → Page Content; falls back to text below) -->
+    <?php
+    $va_slug = 'sandbox';
+    $va_heading_fallback = 'Best Self-Catering Villa in <em>Kilifi, Kenya</em>';
+    $va_body_fallback = "Sandbox is a self-catering beachfront villa on Kilifi's coveted Bofa Road — the same stretch of coast as Maya Kobe and Enkare Bofa. Four bedrooms, three bathrooms, a private pool, and direct beach access make it an ideal base for groups who want privacy, flexibility and genuine coastal living.\n\nThe villa is fully equipped for self-catering: a spacious, well-appointed kitchen, generous outdoor living areas, and the kind of easy, informal atmosphere that makes holidays feel effortless. No cook is included — you bring your own or self-cater — which also keeps the price point accessible for groups who value independence over full service.\n\nSandbox sleeps up to 8 guests comfortably. Whether you are coming from Nairobi for a long weekend, or travelling from South Africa or beyond for a week on the coast, it delivers exactly what Kilifi does best: warm water, wide skies and no agenda.";
+    include __DIR__ . '/includes/venue-about.php';
+    ?>
+
+    <div class="divider"></div>
+
+    <!-- Rooms & Availability (same as Zuri) -->
+    <?php $rr_venue_slug = 'sandbox'; include __DIR__ . '/includes/rooms-and-rates.php'; ?>
 
     <div class="divider"></div>
 
@@ -551,6 +561,14 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
   </div>
   <div class="lb-count" id="lbCount"></div>
 </div>
+
+<?php
+$sbb_name = 'Sandbox';
+$sbb_loc  = 'Bofa Road · Kilifi';
+$sbb_meta = '4 Bedrooms · Up to 8 guests';
+$sbb_cta  = 'Check Availability';
+include __DIR__ . '/includes/sticky-book-bar.php';
+?>
 
 <?php include 'includes/footer.php'; ?>
 

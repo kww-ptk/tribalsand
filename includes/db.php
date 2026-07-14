@@ -294,4 +294,33 @@ function client_ip(): string {
     return $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
 }
 
+/**
+ * Editable property page copy (venues.tagline / about_heading / about_body).
+ * Returns [] and never throws if the columns/migration aren't present yet,
+ * so pages safely fall back to their built-in text.
+ */
+function ts_venue_content(string $slug): array {
+    static $cache = [];
+    if (!array_key_exists($slug, $cache)) {
+        try {
+            $row = db_query('SELECT tagline, about_heading, about_body FROM venues WHERE slug = :s', [':s' => $slug])->fetch();
+            $cache[$slug] = $row ?: [];
+        } catch (Throwable $e) {
+            $cache[$slug] = [];
+        }
+    }
+    return $cache[$slug];
+}
+
+/** One editable field for a venue, or the fallback when unset/blank. */
+function ts_venue_text(string $slug, string $field, string $fallback = ''): string {
+    $c = ts_venue_content($slug);
+    return (isset($c[$field]) && trim((string)$c[$field]) !== '') ? (string)$c[$field] : $fallback;
+}
+
+/** Convert *word* to <em>word</em> in already-escaped text (for headings). */
+function ts_emphasis(string $escaped): string {
+    return preg_replace('/\*([^*]+)\*/', '<em>$1</em>', $escaped);
+}
+
 require_once __DIR__ . '/turnstile.php';

@@ -37,11 +37,58 @@ include 'includes/head.php';
 /* Inner */
 .hero-inner { position:relative; z-index:2; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; padding-top:68px; padding-bottom:5vh; text-align:center; padding-left:20px; padding-right:20px; }
 /* Text animations */
-.hero-eyebrow { animation:heroUp .6s cubic-bezier(.22,1,.36,1) .1s both; }
+.hero-eyebrow { animation:heroUp .6s cubic-bezier(.22,1,.36,1) .1s both; letter-spacing:.2em; }
+.hero-eyebrow .sep { color:rgba(184,150,90,.5); margin:0 .5em; font-weight:400; }
 .hero-h1 { animation:heroUp .7s cubic-bezier(.22,1,.36,1) .25s both; }
 .hero-sub { animation:heroUp .6s cubic-bezier(.22,1,.36,1) .42s both; }
-.hero-btns { animation:heroUp .6s cubic-bezier(.22,1,.36,1) .58s both; }
+.hero-search { animation:heroUp .6s cubic-bezier(.22,1,.36,1) .55s both; }
+.hero-search-note { animation:heroUp .6s cubic-bezier(.22,1,.36,1) .66s both; }
+.hero-trust { animation:heroUp .6s cubic-bezier(.22,1,.36,1) .76s both; }
 @keyframes heroUp { from{opacity:0;transform:translateY(24px);} to{opacity:1;transform:translateY(0);} }
+
+/* ── HERO SEARCH BAR ── */
+.hero-search { margin-top:2rem; display:flex; align-items:stretch; gap:0; background:rgba(255,255,255,.96); border-radius:6px; box-shadow:0 18px 50px rgba(10,30,40,.35); padding:.5rem; width:100%; max-width:860px; }
+.hero-search__field { flex:1; display:flex; flex-direction:column; justify-content:center; padding:.55rem 1.1rem; text-align:left; position:relative; min-width:0; }
+.hero-search__field--guests { flex:1.1; }
+.hero-search__lbl { font-size:.62rem; letter-spacing:.16em; text-transform:uppercase; color:var(--sand); font-weight:600; margin-bottom:.25rem; }
+.hero-search__input { border:none; background:none; font-family:'Jost',sans-serif; font-size:.95rem; color:var(--dark); padding:0; width:100%; cursor:pointer; }
+.hero-search__input::-webkit-calendar-picker-indicator { cursor:pointer; opacity:.5; }
+.hero-search__input:focus { outline:none; }
+.hero-search__div { width:1px; background:var(--border); align-self:center; height:60%; flex-shrink:0; }
+.hero-search__guests { border:none; background:none; font-family:'Jost',sans-serif; font-size:.95rem; color:var(--dark); padding:0; cursor:pointer; display:flex; align-items:center; gap:.4rem; text-align:left; }
+.hero-search__guests svg { color:var(--sand); flex-shrink:0; }
+.hero-search__btn { flex-shrink:0; display:flex; align-items:center; gap:.55rem; background:var(--teal-d); color:#fff; border:none; border-radius:4px; padding:0 1.7rem; font-family:'Jost',sans-serif; font-size:.82rem; letter-spacing:.08em; text-transform:uppercase; font-weight:600; cursor:pointer; transition:background .2s; }
+.hero-search__btn:hover { background:var(--teal); }
+.hero-search__btn svg { flex-shrink:0; }
+/* Guests popover */
+.hero-guests-pop { position:absolute; top:calc(100% + .7rem); left:0; z-index:20; background:#fff; border-radius:6px; box-shadow:0 16px 44px rgba(10,30,40,.28); padding:.5rem 1rem; min-width:240px; }
+.hero-guests-row { display:flex; align-items:center; justify-content:space-between; padding:.85rem 0; border-bottom:1px solid var(--border); }
+.hero-guests-row:last-child { border-bottom:none; }
+.hero-guests-row strong { display:block; font-size:.9rem; color:var(--dark); font-weight:600; }
+.hero-guests-row small { font-size:.72rem; color:var(--light); }
+.hero-stepper { display:flex; align-items:center; gap:.9rem; }
+.hero-stepper button { width:30px; height:30px; border-radius:50%; border:1px solid var(--border); background:#fff; color:var(--teal); font-size:1.1rem; line-height:1; cursor:pointer; display:flex; align-items:center; justify-content:center; transition:border-color .2s,color .2s; }
+.hero-stepper button:hover { border-color:var(--sand); color:var(--sand); }
+.hero-stepper span { min-width:1.2rem; text-align:center; font-size:.95rem; color:var(--dark); }
+.hero-search-note { margin-top:1rem; font-size:.78rem; color:rgba(255,255,255,.82); letter-spacing:.02em; }
+.hero-search-note a { color:var(--sand-lt); font-weight:500; white-space:nowrap; }
+.hero-search-note a:hover { color:#fff; }
+/* Trust signals */
+.hero-trust { margin-top:1.9rem; display:flex; align-items:center; justify-content:center; gap:1.1rem; flex-wrap:wrap; }
+.hero-trust__item { font-size:.82rem; color:rgba(255,255,255,.85); display:flex; align-items:center; gap:.45rem; }
+.hero-trust__item strong { color:#fff; font-weight:600; }
+.hero-trust__stars { color:#F4B942; font-size:.82rem; letter-spacing:.05em; }
+.hero-trust__sep { width:4px; height:4px; border-radius:50%; background:rgba(184,150,90,.6); flex-shrink:0; }
+@media(max-width:820px){
+  .hero-search { flex-wrap:wrap; padding:.75rem; gap:.4rem; max-width:440px; }
+  .hero-search__field { flex:1 1 45%; padding:.6rem .9rem; border:1px solid var(--border); border-radius:4px; }
+  .hero-search__field--guests { flex:1 1 100%; }
+  .hero-search__div { display:none; }
+  .hero-search__btn { flex:1 1 100%; justify-content:center; padding:.9rem; margin-top:.2rem; }
+  .hero-guests-pop { right:0; left:auto; }
+  .hero-trust__sep { display:none; }
+  .hero-trust { gap:.5rem 1.2rem; }
+}
 /* Dot indicators */
 .hero-indicators { position:absolute; bottom:3.2rem; left:50%; transform:translateX(-50%); display:flex; gap:.55rem; z-index:3; }
 .hero-dot { width:22px; height:2px; background:rgba(255,255,255,.25); border:none; padding:0; cursor:pointer; transition:all .35s ease; }
@@ -228,12 +275,65 @@ include 'includes/head.php';
   <div class="hero-overlay"></div>
 
   <div class="hero-inner">
-    <div class="hero-eyebrow">Kenya's North Coast &nbsp;·&nbsp; Watamu &nbsp;·&nbsp; Kilifi &nbsp;·&nbsp; Vipingo</div>
+    <div class="hero-eyebrow">Kenya's North Coast <span class="sep">·</span> Watamu <span class="sep">·</span> Kilifi <span class="sep">·</span> Vipingo</div>
     <h1 class="hero-h1">Luxury Beachfront<br><em>Hotels &amp; Villas</em><br>in Kenya</h1>
-    <p class="hero-sub">An interconnected collection of boutique hotels, private villas and lifestyle venues on the Kenyan coast, Africa.</p>
-    <div class="hero-btns">
-      <a href="/booking" class="btn-primary">Book Now</a>
-      <a href="trip-builder.php" class="btn-ghost">Plan Your Trip</a>
+    <p class="hero-sub">Boutique hotels, private villas, lifestyle venues and unique experiences on the Kenyan coast, Africa.</p>
+
+    <!-- Booking search bar -->
+    <form class="hero-search" id="heroSearch" aria-label="Search availability">
+      <div class="hero-search__field">
+        <label class="hero-search__lbl" for="heroCheckin">Check-in</label>
+        <input type="date" class="hero-search__input" id="heroCheckin" name="checkin" aria-label="Check-in date">
+      </div>
+      <div class="hero-search__div" aria-hidden="true"></div>
+      <div class="hero-search__field">
+        <label class="hero-search__lbl" for="heroCheckout">Check-out</label>
+        <input type="date" class="hero-search__input" id="heroCheckout" name="checkout" aria-label="Check-out date">
+      </div>
+      <div class="hero-search__div" aria-hidden="true"></div>
+      <div class="hero-search__field hero-search__field--guests">
+        <label class="hero-search__lbl" for="heroGuests">Guests</label>
+        <button type="button" class="hero-search__guests" id="heroGuestsBtn" aria-haspopup="true" aria-expanded="false">
+          <span id="heroGuestsValue">2 adults</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
+        <input type="hidden" id="heroAdults" value="2">
+        <input type="hidden" id="heroChildren" value="0">
+        <div class="hero-guests-pop" id="heroGuestsPop" hidden>
+          <div class="hero-guests-row">
+            <div><strong>Adults</strong><small>Age 18+</small></div>
+            <div class="hero-stepper">
+              <button type="button" data-g="adult" data-dir="-1" aria-label="Fewer adults">&minus;</button>
+              <span data-g-count="adult">2</span>
+              <button type="button" data-g="adult" data-dir="1" aria-label="More adults">+</button>
+            </div>
+          </div>
+          <div class="hero-guests-row">
+            <div><strong>Children</strong><small>Age 0&ndash;17</small></div>
+            <div class="hero-stepper">
+              <button type="button" data-g="child" data-dir="-1" aria-label="Fewer children">&minus;</button>
+              <span data-g-count="child">0</span>
+              <button type="button" data-g="child" data-dir="1" aria-label="More children">+</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <button type="submit" class="hero-search__btn">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line></svg>
+        <span>Search Stays</span>
+      </button>
+    </form>
+    <div class="hero-search-note">No payment now &nbsp;·&nbsp; Free 24-hour hold &nbsp;·&nbsp; Reply within 24h &nbsp;·&nbsp; <a href="trip-builder.php">Plan your trip &rarr;</a></div>
+
+    <!-- Trust signals -->
+    <div class="hero-trust" aria-label="Guest trust signals">
+      <div class="hero-trust__item"><span class="hero-trust__stars">★★★★★</span><span><strong>4.8</strong> guest rating</span></div>
+      <span class="hero-trust__sep" aria-hidden="true"></span>
+      <div class="hero-trust__item"><strong>1,300+</strong> guests hosted</div>
+      <span class="hero-trust__sep" aria-hidden="true"></span>
+      <div class="hero-trust__item"><strong>40+</strong> countries</div>
+      <span class="hero-trust__sep" aria-hidden="true"></span>
+      <div class="hero-trust__item">Reviewed on Airbnb &middot; Booking &middot; Expedia</div>
     </div>
   </div>
 
@@ -762,6 +862,78 @@ include 'includes/head.php';
     el.style.transition = 'opacity .3s';
     setTimeout(function(){ el.innerHTML = msgs[i]; el.style.opacity = '1'; }, 300);
   }, 7000);
+})();
+
+// Hero booking search bar
+(function(){
+  var form   = document.getElementById('heroSearch');
+  if (!form) return;
+  var ci     = document.getElementById('heroCheckin');
+  var co     = document.getElementById('heroCheckout');
+  var gBtn   = document.getElementById('heroGuestsBtn');
+  var gPop   = document.getElementById('heroGuestsPop');
+  var gValue = document.getElementById('heroGuestsValue');
+  var adults = document.getElementById('heroAdults');
+  var kids   = document.getElementById('heroChildren');
+
+  function ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+  var today = new Date(); today.setHours(0,0,0,0);
+  var tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate()+1);
+  ci.min = ymd(today);
+  co.min = ymd(tomorrow);
+
+  // Keep check-out after check-in
+  ci.addEventListener('change', function(){
+    if (!ci.value) return;
+    var next = new Date(ci.value + 'T00:00'); next.setDate(next.getDate()+1);
+    co.min = ymd(next);
+    if (co.value && co.value <= ci.value) co.value = ymd(next);
+  });
+
+  // Guests popover
+  function toggleGuests(open){
+    gPop.hidden = !open;
+    gBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+  gBtn.addEventListener('click', function(e){ e.stopPropagation(); toggleGuests(gPop.hidden); });
+  gPop.addEventListener('click', function(e){ e.stopPropagation(); });
+  document.addEventListener('click', function(){ toggleGuests(false); });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') toggleGuests(false); });
+
+  function updateGuestsLabel(){
+    var a = parseInt(adults.value,10), c = parseInt(kids.value,10);
+    var parts = [a + ' adult' + (a !== 1 ? 's' : '')];
+    if (c > 0) parts.push(c + ' child' + (c !== 1 ? 'ren' : ''));
+    gValue.textContent = parts.join(', ');
+  }
+  gPop.querySelectorAll('[data-g]').forEach(function(btn){
+    btn.addEventListener('click', function(){
+      var key = btn.dataset.g, min = key === 'adult' ? 1 : 0;
+      var countEl = gPop.querySelector('[data-g-count="'+key+'"]');
+      var hidden  = key === 'adult' ? adults : kids;
+      var val = parseInt(countEl.textContent,10) + parseInt(btn.dataset.dir,10);
+      val = Math.max(min, Math.min(20, val));
+      countEl.textContent = val; hidden.value = val;
+      updateGuestsLabel();
+    });
+  });
+
+  form.addEventListener('submit', function(e){
+    e.preventDefault();
+    if (!ci.value){ ci.focus(); if (ci.showPicker) try { ci.showPicker(); } catch(_){} return; }
+    if (!co.value || co.value <= ci.value){ co.focus(); if (co.showPicker) try { co.showPicker(); } catch(_){} return; }
+    // Carry the search into the property booking widgets via sessionStorage
+    try {
+      sessionStorage.setItem('ts_search', JSON.stringify({
+        checkin:  ci.value,
+        checkout: co.value,
+        adults:   parseInt(adults.value,10),
+        children: parseInt(kids.value,10)
+      }));
+    } catch(_){}
+    var props = document.getElementById('properties');
+    if (props) props.scrollIntoView({ behavior:'smooth', block:'start' });
+  });
 })();
 
 // Property filter

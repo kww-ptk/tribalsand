@@ -315,7 +315,14 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
 <?php include 'includes/header.php'; ?>
 
 <!-- ═══ GALLERY ═══ -->
-<?php $pg_venue_slug = 'zuri'; include __DIR__ . '/includes/property-gallery.php'; ?>
+<?php
+$pg_venue_slug   = 'zuri';
+$pg_fallback_badge = 'Zuri · Watamu · Kilifi County';
+$pg_fallback = [
+  ['src' => 'images/hero-zuri.jpg', 'alt' => 'Zuri beachfront boutique hotel — Watamu, Kenya'],
+];
+include __DIR__ . '/includes/property-gallery.php';
+?>
 
 
 <!-- ═══ BREADCRUMB ═══ -->
@@ -334,7 +341,7 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
   <div class="page-main">
 
     <!-- Listing Header -->
-    <div class="listing-eyebrow">Luxury Boutique Hotel · Direct Beachfront</div>
+    <div class="listing-eyebrow"><?= e(ts_venue_text('zuri', 'tagline', 'Luxury Boutique Hotel · Direct Beachfront')) ?></div>
     <h1 class="listing-h1">Zuri · Beachfront Boutique Hotel · <em>Garoda Beach Watamu</em></h1>
     <div class="listing-sub">
       <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="6" r="2.5"/><path d="M8 1.5C5.24 1.5 3 3.74 3 6.5c0 4 5 8.5 5 8.5s5-4.5 5-8.5c0-2.76-2.24-5-5-5z"/></svg>
@@ -365,15 +372,13 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
 
     <div class="divider"></div>
 
-    <!-- About -->
-    <div class="sec">
-      <div class="sec-label">About the Property</div>
-      <h2 class="sec-h">Best Boutique Hotel in <em>Watamu, Kenya</em></h2>
-      <div class="sec-rule"></div>
-      <p class="sec-p">Zuri is Tribal Sand's luxury beachfront boutique hotel, set directly on the white-sand shoreline of Watamu — one of Kenya's most celebrated coastal destinations. Six elegantly appointed ocean-facing suites are arranged around a private pool, each designed to frame the shifting blues of the Indian Ocean at every hour of the day.</p>
-      <p class="sec-p">With an elevated culinary offering — including à la carte dining and private chef experiences — Zuri redefines what a boutique beach hotel can be on Kenya's North Coast. Whether you book a single suite for a romantic escape or take the entire property for a boutique destination wedding or intimate family gathering, Zuri delivers a fully-serviced, immersive experience.</p>
-      <p class="sec-p">Located within easy reach of the Watamu Marine National Reserve — Kenya's UNESCO-listed marine park — and approximately 120 km north of Mombasa, Zuri places guests at the heart of one of East Africa's most extraordinary natural environments. Malindi Airport (MYD) is just 20 minutes away.</p>
-    </div>
+    <!-- About (editable in admin → Properties → Page Content; falls back to text below) -->
+    <?php
+    $va_slug = 'zuri';
+    $va_heading_fallback = 'Best Boutique Hotel in <em>Watamu, Kenya</em>';
+    $va_body_fallback = "Zuri is Tribal Sand's luxury beachfront boutique hotel, set directly on the white-sand shoreline of Watamu — one of Kenya's most celebrated coastal destinations. Six elegantly appointed ocean-facing suites are arranged around a private pool, each designed to frame the shifting blues of the Indian Ocean at every hour of the day.\n\nWith an elevated culinary offering — including à la carte dining and private chef experiences — Zuri redefines what a boutique beach hotel can be on Kenya's North Coast. Whether you book a single suite for a romantic escape or take the entire property for a boutique destination wedding or intimate family gathering, Zuri delivers a fully-serviced, immersive experience.\n\nLocated within easy reach of the Watamu Marine National Reserve — Kenya's UNESCO-listed marine park — and approximately 120 km north of Mombasa, Zuri places guests at the heart of one of East Africa's most extraordinary natural environments. Malindi Airport (MYD) is just 20 minutes away.";
+    include __DIR__ . '/includes/venue-about.php';
+    ?>
 
     <div class="divider"></div>
 
@@ -574,6 +579,14 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
 
 
 </div><!-- /page-wrap -->
+
+<?php
+$sbb_name = 'Zuri';
+$sbb_loc  = 'Watamu · Kilifi County';
+$sbb_meta = '6 Suites · Up to 14 guests';
+$sbb_cta  = 'Check Availability';
+include __DIR__ . '/includes/sticky-book-bar.php';
+?>
 
 <?php include 'includes/footer.php'; ?>
 
