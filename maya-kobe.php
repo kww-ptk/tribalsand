@@ -323,7 +323,16 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
 <?php include 'includes/header.php'; ?>
 
 <!-- ═══ GALLERY ═══ -->
-<?php $pg_venue_slug = 'maya-kobe'; include __DIR__ . '/includes/property-gallery.php'; ?>
+<?php
+$pg_venue_slug   = 'maya-kobe';
+$pg_fallback_badge = 'Maya Kobe · Bofa Road · Kilifi';
+$pg_fallback = [
+  ['src' => 'images/hero-maya-kobe.jpg', 'alt' => 'Maya Kobe boutique hotel — Bofa Beach, Kilifi'],
+  ['src' => 'images/maya-kobe/Maya Kobe - Day Outdoor, Pool, Beach/Maya Kobe Best3.jpg', 'alt' => 'Maya Kobe pool and beach'],
+  ['src' => 'images/maya-kobe/Maya Kobe - Day Outdoor, Pool, Beach/Maya Kobe Best4.jpg', 'alt' => 'Maya Kobe outdoor lounge'],
+];
+include __DIR__ . '/includes/property-gallery.php';
+?>
 <?php $rr_venue_slug = 'maya-kobe'; include __DIR__ . '/includes/rooms-and-rates.php'; ?>
 
 
@@ -691,6 +700,14 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
   </aside>
 
 </div><!-- /page-wrap -->
+
+<?php
+$sbb_name = 'Maya Kobe';
+$sbb_loc  = 'Bofa Road · Kilifi';
+$sbb_meta = '5 Suites · Up to 12 guests';
+$sbb_cta  = 'Check Availability';
+include __DIR__ . '/includes/sticky-book-bar.php';
+?>
 
 <?php include 'includes/footer.php'; ?>
 

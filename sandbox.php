@@ -273,7 +273,14 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
 </style>
 
 <!-- ═══ GALLERY HERO ═══ -->
-<?php $pg_venue_slug = 'sandbox'; include __DIR__ . '/includes/property-gallery.php'; ?>
+<?php
+$pg_venue_slug   = 'sandbox';
+$pg_fallback_badge = 'Sandbox · Bofa Road · Kilifi';
+$pg_fallback = [
+  ['src' => 'images/hero-sandbox.jpg', 'alt' => 'Sandbox self-catering beachfront villa — Bofa Road, Kilifi'],
+];
+include __DIR__ . '/includes/property-gallery.php';
+?>
 
 
 <!-- ═══ BREADCRUMB ═══ -->
@@ -335,6 +342,11 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
       <p class="sec-p">The villa is fully equipped for self-catering: a spacious, well-appointed kitchen, generous outdoor living areas, and the kind of easy, informal atmosphere that makes holidays feel effortless. No cook is included — you bring your own or self-cater — which also keeps the price point accessible for groups who value independence over full service.</p>
       <p class="sec-p">Sandbox sleeps up to 8 guests comfortably. Whether you are coming from Nairobi for a long weekend, or travelling from South Africa or beyond for a week on the coast, it delivers exactly what Kilifi does best: warm water, wide skies and no agenda.</p>
     </div>
+
+    <div class="divider"></div>
+
+    <!-- Rooms & Availability (same as Zuri) -->
+    <?php $rr_venue_slug = 'sandbox'; include __DIR__ . '/includes/rooms-and-rates.php'; ?>
 
     <div class="divider"></div>
 
@@ -551,6 +563,14 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
   </div>
   <div class="lb-count" id="lbCount"></div>
 </div>
+
+<?php
+$sbb_name = 'Sandbox';
+$sbb_loc  = 'Bofa Road · Kilifi';
+$sbb_meta = '4 Bedrooms · Up to 8 guests';
+$sbb_cta  = 'Check Availability';
+include __DIR__ . '/includes/sticky-book-bar.php';
+?>
 
 <?php include 'includes/footer.php'; ?>
 

@@ -263,7 +263,14 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
 </style>
 
 <!-- ═══ GALLERY HERO ═══ -->
-<?php $pg_venue_slug = 'enkare-bofa'; include __DIR__ . '/includes/property-gallery.php'; ?>
+<?php
+$pg_venue_slug   = 'enkare-bofa';
+$pg_fallback_badge = 'Enkare Bofa · Bofa Road · Kilifi';
+$pg_fallback = [
+  ['src' => 'images/hero-enkare-bofa.jpg', 'alt' => 'Enkare Bofa beachfront villa — Bofa Road, Kilifi'],
+];
+include __DIR__ . '/includes/property-gallery.php';
+?>
 
 
 <!-- ═══ BREADCRUMB ═══ -->
@@ -325,6 +332,11 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
       <p class="sec-p">This is Kilifi done right — relaxed, unpretentious and genuinely on the water — without the ultra-premium price tag. Whether you are travelling from Nairobi, Johannesburg, or further afield, Enkare Bofa gives you a full kitchen, a flexible self-catering option, and a comfortable base for everything Kilifi has to offer.</p>
       <p class="sec-p">The villa takes the whole group — up to 10 guests across 5 bedrooms and 4 bathrooms — so there is space to breathe, gather and properly unwind.</p>
     </div>
+
+    <div class="divider"></div>
+
+    <!-- Rooms & Availability (same as Zuri) -->
+    <?php $rr_venue_slug = 'enkare-bofa'; include __DIR__ . '/includes/rooms-and-rates.php'; ?>
 
     <div class="divider"></div>
 
@@ -524,6 +536,14 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
   </div>
   <div class="lb-count" id="lbCount"></div>
 </div>
+
+<?php
+$sbb_name = 'Enkare Bofa';
+$sbb_loc  = 'Bofa Road · Kilifi';
+$sbb_meta = '5 Bedrooms · Up to 10 guests';
+$sbb_cta  = 'Check Availability';
+include __DIR__ . '/includes/sticky-book-bar.php';
+?>
 
 <?php include 'includes/footer.php'; ?>
 

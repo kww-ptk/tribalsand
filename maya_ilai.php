@@ -396,7 +396,16 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
 <?php include 'includes/header.php'; ?>
 
 <!-- ═══ GALLERY ═══ -->
-<?php $pg_venue_slug = 'maya_ilai'; include __DIR__ . '/includes/property-gallery.php'; ?>
+<?php
+$pg_venue_slug   = 'maya_ilai';
+$pg_fallback_badge = 'Maya Ilai · Kilifi · Tribal Dunes';
+$pg_fallback = [
+  ['src' => 'images/maya_illai/Best1.jpg',  'alt' => 'Maya Ilai eco compound — Kilifi'],
+  ['src' => 'images/maya_illai/Best 2.jpg', 'alt' => 'Maya Ilai communal pool and gardens'],
+  ['src' => 'images/maya_illai/Best4.jpg',  'alt' => 'Maya Ilai eco retreat units'],
+];
+include __DIR__ . '/includes/property-gallery.php';
+?>
 <?php $rr_venue_slug = 'maya_ilai'; include __DIR__ . '/includes/rooms-and-rates.php'; ?>
 
 
@@ -863,6 +872,14 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
   </aside>
 
 </div><!-- /page-wrap -->
+
+<?php
+$sbb_name = 'Maya Ilai';
+$sbb_loc  = 'Kilifi · Tribal Dunes';
+$sbb_meta = '16 Units · Adults 16+';
+$sbb_cta  = 'Check Availability';
+include __DIR__ . '/includes/sticky-book-bar.php';
+?>
 
 <?php include 'includes/footer.php'; ?>
 
