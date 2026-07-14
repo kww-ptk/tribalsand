@@ -102,19 +102,21 @@ include 'includes/head.php';
 @keyframes heroProgress { from{width:0;} to{width:100%;} }
 
 /* ── INTRO STRIP ── */
-.intro-strip { background:var(--teal-d); padding:2.8rem 5vw; display:grid; grid-template-columns:1fr auto; align-items:center; gap:3rem; border-bottom:1px solid rgba(184,150,90,.12); }
-.intro-tagline { font-family:'Cormorant Garamond',serif; font-size:clamp(1.4rem,2.2vw,1.9rem); font-weight:300; font-style:italic; color:rgba(212,196,172,.9); margin-bottom:1.1rem; line-height:1.3; }
-.intro-sub { font-size:.85rem; color:rgba(255,255,255,.45); letter-spacing:.06em; line-height:1.7; }
-.intro-right { display:flex; flex-direction:column; gap:1rem; align-items:flex-end; }
-.intro-stats { display:flex; gap:2.5rem; flex-wrap:wrap; justify-content:flex-end; }
+.intro-strip { background:linear-gradient(180deg,#fff 0%,var(--sand-faint) 100%); padding:3rem 5vw; display:grid; grid-template-columns:1fr auto; align-items:center; gap:3rem; border-bottom:1px solid var(--border); }
+.intro-left { position:relative; padding-left:1.4rem; }
+.intro-left::before { content:''; position:absolute; left:0; top:.2rem; bottom:.2rem; width:2px; background:linear-gradient(var(--sand),rgba(184,150,90,0)); }
+.intro-tagline { font-family:'Cormorant Garamond',serif; font-size:clamp(1.55rem,2.4vw,2.15rem); font-weight:400; font-style:italic; color:var(--teal-d); margin-bottom:.9rem; line-height:1.3; }
+.intro-sub { font-size:.9rem; color:var(--mid); letter-spacing:.03em; line-height:1.7; }
+.intro-right { display:flex; flex-direction:column; gap:1.1rem; align-items:flex-end; }
+.intro-stats { display:flex; gap:2.4rem; flex-wrap:wrap; justify-content:flex-end; }
 .stat { text-align:center; }
-.stat-n { font-family:'Cormorant Garamond',serif; font-size:2.7rem; font-weight:300; color:var(--sand-lt); line-height:1; }
-.stat-l { font-size:.75rem; letter-spacing:.18em; text-transform:uppercase; color:rgba(184,150,90,.6); margin-top:.25rem; }
-.intro-trust { display:flex; align-items:center; gap:.65rem; background:rgba(255,255,255,.05); border:1px solid rgba(184,150,90,.15); padding:.55rem 1rem; }
-.intro-trust-dot { width:8px; height:8px; border-radius:50%; background:#4CAF82; flex-shrink:0; animation:trustPulse 2s ease infinite; }
-@keyframes trustPulse { 0%,100%{box-shadow:0 0 0 0 rgba(76,175,130,.5);}50%{box-shadow:0 0 0 6px rgba(76,175,130,0);} }
-.intro-trust-msg { font-size:.85rem; color:rgba(255,255,255,.78); }
-.intro-trust-msg strong { color:#D4B07A; }
+.stat-n { font-family:'Cormorant Garamond',serif; font-size:2.7rem; font-weight:400; color:var(--teal); line-height:1; }
+.stat-l { font-size:.68rem; letter-spacing:.18em; text-transform:uppercase; color:var(--light); margin-top:.35rem; }
+.intro-trust { display:flex; align-items:center; gap:.6rem; background:#fff; border:1px solid var(--border); padding:.5rem 1.1rem; border-radius:40px; box-shadow:0 4px 16px rgba(10,30,40,.05); }
+.intro-trust-dot { width:8px; height:8px; border-radius:50%; background:#3AA76D; flex-shrink:0; animation:trustPulse 2s ease infinite; }
+@keyframes trustPulse { 0%,100%{box-shadow:0 0 0 0 rgba(58,167,109,.5);}50%{box-shadow:0 0 0 6px rgba(58,167,109,0);} }
+.intro-trust-msg { font-size:.82rem; color:var(--mid); }
+.intro-trust-msg strong { color:var(--teal); }
 
 /* ── PROPERTIES ── */
 .props-section { padding:88px 5vw; background:var(--off); }
@@ -239,6 +241,30 @@ include 'includes/head.php';
   .intro-stats { gap:1.5rem; }
   .trust-bar { gap:1.5rem; }
 }
+
+/* ── HERO: mobile polish (fit content, no dead space) ── */
+@media(max-width:600px){
+  .hero { height:auto; min-height:auto; }
+  .hero-inner { height:auto; justify-content:flex-start; padding:108px 22px 54px; }
+  .hero-eyebrow { font-size:.56rem; letter-spacing:.14em; margin-bottom:1rem; }
+  .hero-h1 { font-size:clamp(2.3rem,10vw,3rem); line-height:1.05; margin-bottom:.85rem; }
+  .hero-sub { font-size:.92rem; line-height:1.55; max-width:33ch; margin-left:auto; margin-right:auto; }
+  .hero-search { margin-top:1.6rem; }
+  .hero-search-note { margin-top:1rem; font-size:.72rem; line-height:1.75; }
+  .hero-trust { margin-top:1.5rem; }
+  .hero-prop, .hero-progress, .hero-indicators { display:none; }
+}
+
+/* ── REVIEWED-ON STRIP (bottom trust) ── */
+.reviewed-strip { background:var(--teal-d); padding:2.6rem 5vw; text-align:center; }
+.reviewed-strip__eyebrow { font-size:.6rem; letter-spacing:.24em; text-transform:uppercase; color:var(--sand-lt); margin-bottom:1.1rem; }
+.reviewed-strip__row { display:flex; align-items:center; justify-content:center; gap:2.4rem 3rem; flex-wrap:wrap; }
+.rv-plat { display:flex; flex-direction:column; align-items:center; gap:.3rem; color:#fff; }
+.rv-plat__name { font-family:'Cormorant Garamond',serif; font-size:1.15rem; font-weight:500; letter-spacing:.02em; color:rgba(255,255,255,.92); }
+.rv-plat__stars { color:#F4B942; font-size:.72rem; letter-spacing:.08em; }
+.rv-plat__score { font-size:.62rem; letter-spacing:.06em; color:rgba(255,255,255,.5); }
+.reviewed-strip__note { margin-top:1.4rem; font-size:.72rem; color:rgba(255,255,255,.45); letter-spacing:.04em; }
+@media(max-width:600px){ .reviewed-strip__row { gap:1.6rem 2rem; } .rv-plat__name { font-size:1rem; } }
 </style>
 
 </head>
@@ -839,6 +865,19 @@ include 'includes/head.php';
       <a href="contact.php" class="btn-ghost">Contact Us</a>
     </div>
   </div>
+</section>
+
+<!-- ═══ REVIEWED ON ═══ -->
+<section class="reviewed-strip" aria-label="Guest reviews across platforms">
+  <div class="reviewed-strip__eyebrow">Reviewed &amp; Loved By Guests On</div>
+  <div class="reviewed-strip__row">
+    <div class="rv-plat"><span class="rv-plat__name">Airbnb</span><span class="rv-plat__stars">★★★★★</span><span class="rv-plat__score">4.9 · Superhost</span></div>
+    <div class="rv-plat"><span class="rv-plat__name">Booking.com</span><span class="rv-plat__stars">★★★★★</span><span class="rv-plat__score">9.4 · Exceptional</span></div>
+    <div class="rv-plat"><span class="rv-plat__name">Google</span><span class="rv-plat__stars">★★★★★</span><span class="rv-plat__score">4.8 · 200+ reviews</span></div>
+    <div class="rv-plat"><span class="rv-plat__name">TripAdvisor</span><span class="rv-plat__stars">★★★★★</span><span class="rv-plat__score">Travellers' Choice</span></div>
+    <div class="rv-plat"><span class="rv-plat__name">Expedia</span><span class="rv-plat__stars">★★★★★</span><span class="rv-plat__score">4.7 · Verified stays</span></div>
+  </div>
+  <div class="reviewed-strip__note">Aggregated guest ratings across booking platforms · 1,300+ guests hosted</div>
 </section>
 
 <?php include 'includes/footer.php'; ?>
