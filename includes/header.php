@@ -128,8 +128,9 @@
   display:none;flex-direction:column;justify-content:center;
   gap:5px;width:36px;height:36px;background:none;border:none;
   cursor:pointer;padding:4px;margin-left:.5rem;
+  filter:drop-shadow(0 1px 2px rgba(0,0,0,.5));
 }
-.ts-burger span{display:block;height:1px;background:rgba(255,255,255,.78);transition:all .28s;transform-origin:center;}
+.ts-burger span{display:block;width:100%;height:2px;border-radius:2px;background:#fff;flex:0 0 auto;transition:all .28s;transform-origin:center;}
 .ts-burger.open span:nth-child(1){transform:translateY(6px) rotate(45deg);}
 .ts-burger.open span:nth-child(2){opacity:0;transform:scaleX(0);}
 .ts-burger.open span:nth-child(3){transform:translateY(-6px) rotate(-45deg);}
@@ -181,7 +182,7 @@
 /* ── RESPONSIVE ── */
 @media(max-width:1100px){
   .ts-links{display:none;}
-  .ts-burger{display:flex;}
+  .ts-burger{display:flex!important;position:relative;z-index:3;}
   .ts-drawer{display:block;}
   .ts-social,.ts-tel{display:none!important;}
   .ts-nav{padding:0 20px;}
@@ -189,6 +190,9 @@
   .ts-btn-plan{display:none;}
   .ts-btn-book{padding:.44rem .8rem;font-size:.58rem;letter-spacing:.1em;}
   .ts-actions{gap:.5rem;}
+  /* Language switcher lives in the drawer footer on mobile — keep the nav clear so the menu button is prominent */
+  .ts-actions .gtranslate_wrapper{display:none;}
+  .ts-burger{width:40px;height:40px;margin-left:.25rem;}
 }
 @media(max-width:360px){
   .ts-btn-book{display:none;} /* very small screens only: Book Now is in the drawer + sticky bar */

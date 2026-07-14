@@ -295,6 +295,79 @@ function client_ip(): string {
 }
 
 /**
+ * Price a stay for a room over [check_in, check_out), honouring per-night rate
+ * overrides in the `rates` table and falling back to the room's default price.
+ * Returns ['nights' => int, 'total' => float]. Shared by the availability API
+ * and the search results page so quotes never drift.
+ */
+function room_stay_quote(int $room_id, float $default_price, string $check_in, string $check_out): array {
+    $nights = max(1, (int)((strtotime($check_out) - strtotime($check_in)) / 86400));
+    $overlap = db_query(
+        "SELECT date_from, date_to, price_amount FROM rates
+         WHERE room_id = :rid AND date_from < :co AND date_to > :ci
+         ORDER BY created_at DESC",
+        [':rid' => $room_id, ':ci' => $check_in, ':co' => $check_out]
+    )->fetchAll();
+    $by_night = [];
+    foreach ($overlap as $r) {
+        $d = new DateTime($r['date_from']); $end = new DateTime($r['date_to']);
+        while ($d < $end) { $k = $d->format('Y-m-d'); if (!isset($by_night[$k])) $by_night[$k] = (float)$r['price_amount']; $d->modify('+1 day'); }
+    }
+    $total = 0.0; $d = new DateTime($check_in); $end = new DateTime($check_out);
+    while ($d < $end) { $total += $by_night[$d->format('Y-m-d')] ?? $default_price; $d->modify('+1 day'); }
+    return ['nights' => $nights, 'total' => round($total, 2)];
+}
+
+/**
+ * Cross-property availability for a date range. Returns one entry per published
+ * venue with its available published rooms (priced), a count and a "from" total.
+ * Used by the /search results page.
+ */
+function ts_search_availability(string $check_in, string $check_out, int $guests = 1): array {
+    $venues = db_query('SELECT * FROM venues WHERE is_published = TRUE ORDER BY sort_order ASC')->fetchAll();
+    $results = [];
+    foreach ($venues as $v) {
+        $rooms = db_query(
+            "SELECT r.*, (SELECT filename FROM room_images WHERE room_id = r.id AND is_hero = TRUE LIMIT 1) AS hero
+             FROM rooms r WHERE r.venue_id = :vid AND r.is_published = TRUE
+             ORDER BY r.is_entire_place ASC, r.sort_order ASC",
+            [':vid' => $v['id']]
+        )->fetchAll();
+
+        $available = [];
+        foreach ($rooms as $r) {
+            $cap = (int)($r['capacity'] ?? 0);
+            if ($cap > 0 && $guests > 0 && $cap < $guests) continue; // room too small for the party
+            if (!find_available_unit((int)$r['id'], $check_in, $check_out)) continue;
+            $q = room_stay_quote((int)$r['id'], (float)$r['price_amount'], $check_in, $check_out);
+            $available[] = [
+                'slug'       => $r['slug'],
+                'name'       => $r['name'],
+                'capacity'   => $cap,
+                'short_desc' => $r['short_desc'] ?? '',
+                'tag'        => $r['tag_label'] ?? '',
+                'price'      => (float)$r['price_amount'],
+                'currency'   => $r['price_currency'] ?: 'USD',
+                'nights'     => $q['nights'],
+                'total'      => $q['total'],
+                'hero'       => !empty($r['hero']) ? storage_url($r['hero']) : null,
+            ];
+        }
+
+        $vimgs = fetch_venue_images((int)$v['id']);
+        $results[] = [
+            'venue'    => $v,
+            'hero'     => $vimgs ? storage_url($vimgs[0]['filename']) : null,
+            'rooms'    => $available,
+            'count'    => count($available),
+            'from'     => $available ? min(array_map(fn($r) => $r['total'], $available)) : null,
+            'currency' => $available[0]['currency'] ?? 'USD',
+        ];
+    }
+    return $results;
+}
+
+/**
  * Editable property page copy (venues.tagline / about_heading / about_body).
  * Returns [] and never throws if the columns/migration aren't present yet,
  * so pages safely fall back to their built-in text.
@@ -310,6 +383,25 @@ function ts_venue_content(string $slug): array {
         }
     }
     return $cache[$slug];
+}
+
+/**
+ * The admin-managed hero image URL for a venue (venue_images, is_hero first),
+ * or the given fallback when none is set / the DB is unavailable. Cached per
+ * request. Lets the homepage cards reflect what's uploaded in the admin.
+ */
+function venue_hero_url(string $slug, string $fallback = ''): string {
+    static $cache = [];
+    if (!array_key_exists($slug, $cache)) {
+        try {
+            $v = db_query('SELECT id FROM venues WHERE slug = :s', [':s' => $slug])->fetch();
+            $imgs = $v ? fetch_venue_images((int)$v['id']) : [];
+            $cache[$slug] = $imgs ? storage_url($imgs[0]['filename']) : '';
+        } catch (Throwable $e) {
+            $cache[$slug] = '';
+        }
+    }
+    return $cache[$slug] !== '' ? $cache[$slug] : $fallback;
 }
 
 /** One editable field for a venue, or the fallback when unset/blank. */
