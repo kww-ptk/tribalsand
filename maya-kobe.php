@@ -350,7 +350,7 @@ include __DIR__ . '/includes/property-gallery.php';
   <div class="page-main">
 
     <!-- Header -->
-    <div class="listing-eyebrow">Luxury Beachfront Boutique Hotel · Balinese-Inspired</div>
+    <div class="listing-eyebrow"><?= e(ts_venue_text('maya-kobe', 'tagline', 'Luxury Beachfront Boutique Hotel · Balinese-Inspired')) ?></div>
     <h1 class="listing-h1">Maya Kobe · Eco Beachfront Boutique Hotel · <em>Kilifi</em></h1>
     <div class="listing-sub">
       <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="6" r="2.5"/><path d="M8 1.5C5.24 1.5 3 3.74 3 6.5c0 4 5 8.5 5 8.5s5-4.5 5-8.5c0-2.76-2.24-5-5-5z"/></svg>
@@ -384,15 +384,13 @@ include __DIR__ . '/includes/property-gallery.php';
 
     <div class="divider"></div>
 
-    <!-- About -->
-    <div class="sec">
-      <div class="sec-label">About the Property</div>
-      <h2 class="sec-h">Best Boutique Hotel on <em>Bofa Beach, Kilifi</em></h2>
-      <div class="sec-rule"></div>
-      <p class="sec-p">Maya Kobe is a Balinese-inspired luxury boutique hotel sitting directly on Bofa Beach in Kilifi — one of Kenya's most breathtaking stretches of coastline. Five ocean suites are wrapped in rich textures, natural materials and panoramic Indian Ocean views, creating a setting that feels both intimate and effortlessly indulgent.</p>
-      <p class="sec-p">At the heart of the property, a 20-metre beachfront swimming pool leads directly onto the white sand beach. A spacious gazebo hangs over the water's edge, while private beachfront massage huts offer wellness without leaving the estate. Every detail — from the Balinese craftsmanship to the chef-led dining — is curated to surpass expectation.</p>
-      <p class="sec-p">Maya Kobe is available for individual suite stays — perfect for couples and intimate groups — or as a full property buyout for up to 12 guests. The Prestige Suite, a self-contained two-bedroom sanctuary with its own private pool and open-air bathtub, adds another four guests to make a total of 16 when the whole estate is yours.</p>
-    </div>
+    <!-- About (editable in admin → Properties → Page Content; falls back to text below) -->
+    <?php
+    $va_slug = 'maya-kobe';
+    $va_heading_fallback = 'Best Boutique Hotel on <em>Bofa Beach, Kilifi</em>';
+    $va_body_fallback = "Maya Kobe is a Balinese-inspired luxury boutique hotel sitting directly on Bofa Beach in Kilifi — one of Kenya's most breathtaking stretches of coastline. Five ocean suites are wrapped in rich textures, natural materials and panoramic Indian Ocean views, creating a setting that feels both intimate and effortlessly indulgent.\n\nAt the heart of the property, a 20-metre beachfront swimming pool leads directly onto the white sand beach. A spacious gazebo hangs over the water's edge, while private beachfront massage huts offer wellness without leaving the estate. Every detail — from the Balinese craftsmanship to the chef-led dining — is curated to surpass expectation.\n\nMaya Kobe is available for individual suite stays — perfect for couples and intimate groups — or as a full property buyout for up to 12 guests. The Prestige Suite, a self-contained two-bedroom sanctuary with its own private pool and open-air bathtub, adds another four guests to make a total of 16 when the whole estate is yours.";
+    include __DIR__ . '/includes/venue-about.php';
+    ?>
 
     <div class="divider"></div>
 

@@ -101,6 +101,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         }
     }
 
+    if ($action === 'save_content' && !$isNew) {
+        db_query(
+            'UPDATE venues SET tagline=:t, about_heading=:h, about_body=:b, updated_at=NOW() WHERE id=:id',
+            [
+                ':t'  => trim($_POST['tagline'] ?? ''),
+                ':h'  => trim($_POST['about_heading'] ?? ''),
+                ':b'  => trim($_POST['about_body'] ?? ''),
+                ':id' => $id,
+            ]
+        );
+        audit_log('venue.content', 'venue', $id);
+        header("Location: /admin/venue-edit.php?id={$id}&saved=1");
+        exit;
+    }
+
     if ($action === 'save_publish' && !$isNew) {
         db_query('UPDATE venues SET is_published=:pub, updated_at=NOW() WHERE id=:id',
             [':pub' => isset($_POST['is_published']) ? 'TRUE' : 'FALSE', ':id' => $id]);
@@ -186,6 +201,35 @@ include __DIR__ . '/_layout.php';
         Published (visible)
       </label>
       <button type="submit" class="btn-sm btn-outline" style="margin-top:10px">Update</button>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card__head"><span class="card__title">Page Content</span></div>
+  <div class="card__body">
+    <form method="POST" action="/admin/venue-edit.php?id=<?= $id ?>">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="save_content">
+
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">Tagline <span style="color:var(--muted);font-weight:400">(the small line above the title)</span></label>
+        <input type="text" name="tagline" value="<?= e($venue['tagline'] ?? '') ?>" placeholder="e.g. Ultra-Luxury Private Beachfront Villa · Entire Property Only" style="width:100%;max-width:640px;padding:8px 10px">
+      </div>
+
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">About — heading</label>
+        <input type="text" name="about_heading" value="<?= e($venue['about_heading'] ?? '') ?>" placeholder="e.g. Best Beachfront Villa in *Vipingo, Kenya*" style="width:100%;max-width:640px;padding:8px 10px">
+        <p style="font-size:12px;color:var(--muted);margin:4px 0 0">Wrap a word in <code>*asterisks*</code> to italicise it (shows in the accent colour).</p>
+      </div>
+
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">About — body</label>
+        <textarea name="about_body" rows="9" placeholder="Write the property description. Leave a blank line between paragraphs." style="width:100%;max-width:640px;padding:8px 10px;font-family:inherit;line-height:1.6"><?= e($venue['about_body'] ?? '') ?></textarea>
+        <p style="font-size:12px;color:var(--muted);margin:4px 0 0">Separate paragraphs with a blank line. Leave everything here empty to keep the page's built-in text.</p>
+      </div>
+
+      <button type="submit" class="btn-primary btn-sm">Save Content</button>
     </form>
   </div>
 </div>

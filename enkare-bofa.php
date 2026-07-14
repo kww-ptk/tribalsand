@@ -291,7 +291,7 @@ include __DIR__ . '/includes/property-gallery.php';
   <div class="page-main">
 
     <!-- Listing header -->
-    <div class="listing-eyebrow">Beachfront Private Villa · Kilifi</div>
+    <div class="listing-eyebrow"><?= e(ts_venue_text('enkare-bofa', 'tagline', 'Beachfront Private Villa · Kilifi')) ?></div>
     <h1 class="listing-h1">Enkare Bofa · Beachfront Private Villa · <em>Kilifi</em></h1>
     <div class="listing-sub">
       <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="6" r="2.5"/><path d="M8 1.5C5.24 1.5 3 3.74 3 6.5c0 4 5 8.5 5 8.5s5-4.5 5-8.5c0-2.76-2.24-5-5-5z"/></svg>
@@ -323,15 +323,13 @@ include __DIR__ . '/includes/property-gallery.php';
 
     <div class="divider"></div>
 
-    <!-- About -->
-    <div class="sec">
-      <div class="sec-label">About the Property</div>
-      <h2 class="sec-h">Best Beachfront Villa on <em>Bofa Road, Kilifi</em></h2>
-      <div class="sec-rule"></div>
-      <p class="sec-p">Enkare Bofa sits on one of Kenya's most sought-after coastal addresses — Bofa Road, Kilifi. A comfortable, stylish five-bedroom beachfront villa, it offers everything a family or group needs for a genuine coastal escape: direct beach access, a private pool, a garden, and the ease of an in-house cook from the moment you arrive.</p>
-      <p class="sec-p">This is Kilifi done right — relaxed, unpretentious and genuinely on the water — without the ultra-premium price tag. Whether you are travelling from Nairobi, Johannesburg, or further afield, Enkare Bofa gives you a full kitchen, a flexible self-catering option, and a comfortable base for everything Kilifi has to offer.</p>
-      <p class="sec-p">The villa takes the whole group — up to 10 guests across 5 bedrooms and 4 bathrooms — so there is space to breathe, gather and properly unwind.</p>
-    </div>
+    <!-- About (editable in admin → Properties → Page Content; falls back to text below) -->
+    <?php
+    $va_slug = 'enkare-bofa';
+    $va_heading_fallback = 'Best Beachfront Villa on <em>Bofa Road, Kilifi</em>';
+    $va_body_fallback = "Enkare Bofa sits on one of Kenya's most sought-after coastal addresses — Bofa Road, Kilifi. A comfortable, stylish five-bedroom beachfront villa, it offers everything a family or group needs for a genuine coastal escape: direct beach access, a private pool, a garden, and the ease of an in-house cook from the moment you arrive.\n\nThis is Kilifi done right — relaxed, unpretentious and genuinely on the water — without the ultra-premium price tag. Whether you are travelling from Nairobi, Johannesburg, or further afield, Enkare Bofa gives you a full kitchen, a flexible self-catering option, and a comfortable base for everything Kilifi has to offer.\n\nThe villa takes the whole group — up to 10 guests across 5 bedrooms and 4 bathrooms — so there is space to breathe, gather and properly unwind.";
+    include __DIR__ . '/includes/venue-about.php';
+    ?>
 
     <div class="divider"></div>
 
