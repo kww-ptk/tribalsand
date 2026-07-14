@@ -311,7 +311,16 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
 <?php include 'includes/header.php'; ?>
 
 <!-- ═══ GALLERY ═══ -->
-<?php $pg_venue_slug = 'my-amani'; include __DIR__ . '/includes/property-gallery.php'; ?>
+<?php
+$pg_venue_slug   = 'my-amani';
+$pg_fallback_badge = 'My Amani · Vipingo · Kilifi County';
+$pg_fallback = [
+  ['src' => 'images/my-amani/Aerial/myamani-11.webp',                                       'alt' => 'My Amani private beachfront villa — aerial, Vipingo'],
+  ['src' => 'images/my-amani/My Amani - Outdoor/My Amani Outdoor Day/My Amani Best18.jpg',   'alt' => 'My Amani outdoor deck and ocean view'],
+  ['src' => 'images/my-amani/My Amani - Outdoor/My Amani Outdoor Day/My Amani Best20.jpg',   'alt' => 'My Amani pool and gardens'],
+];
+include __DIR__ . '/includes/property-gallery.php';
+?>
 
 <!-- ═══ BREADCRUMB ═══ -->
 <nav class="breadcrumb" aria-label="Breadcrumb">
@@ -649,6 +658,15 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
 </div><!-- /page-wrap -->
 
 <?php include 'includes/footer.php'; ?>
+
+<!-- ═══ STICKY BOOKING BAR (desktop) ═══ -->
+<?php
+$sbb_name = 'My Amani';
+$sbb_loc  = 'Vipingo · Kilifi County';
+$sbb_meta = '5 Bedrooms · Up to 10 guests · Entire villa';
+$sbb_cta  = 'Check Availability';
+include __DIR__ . '/includes/sticky-book-bar.php';
+?>
 
 <!-- ═══ MOBILE STICKY CTA ═══ -->
 <div class="sticky-cta" id="stickyCta" aria-hidden="true">

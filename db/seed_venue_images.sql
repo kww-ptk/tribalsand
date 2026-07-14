@@ -19,7 +19,9 @@ INSERT INTO venue_images (venue_id, filename, alt_text, is_hero, sort_order)
 SELECT v.id, x.url, 'Maya Kobe', x.hero, x.so FROM venues v, (VALUES
   ('/images/hero-maya-kobe.jpg', TRUE, 0),
   ('/images/maya-kobe/Maya Kobe - Day Outdoor, Pool, Beach/Maya Kobe Best3.jpg', FALSE, 1),
-  ('/images/maya-kobe/Maya Kobe - Day Outdoor, Pool, Beach/Maya Kobe Best4.jpg', FALSE, 2)
+  ('/images/maya-kobe/Maya Kobe - Day Outdoor, Pool, Beach/Maya Kobe Best4.jpg', FALSE, 2),
+  ('/images/maya-kobe/Maya Kobe - Day Outdoor, Pool, Beach/Maya Kobe Best12.jpg', FALSE, 3),
+  ('/images/maya-kobe/Maya Kobe - Day Outdoor, Pool, Beach/Maya Kobe Best14.jpg', FALSE, 4)
 ) AS x(url,hero,so) WHERE v.slug='maya-kobe';
 
 DELETE FROM venue_images WHERE venue_id=(SELECT id FROM venues WHERE slug='enkare-bofa');

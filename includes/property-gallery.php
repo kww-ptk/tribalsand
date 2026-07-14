@@ -6,23 +6,54 @@
  */
 require_once __DIR__ . '/db.php';
 $pg_venue_slug = $pg_venue_slug ?? '';
-$__pgv = $pg_venue_slug ? db_query('SELECT * FROM venues WHERE slug = :s', [':s' => $pg_venue_slug])->fetch() : false;
-if (!$__pgv) { return; }
-$__imgs = fetch_venue_images((int)$__pgv['id']);
-if (!$__imgs) { return; }
-$__badge  = trim($__pgv['name'] . (!empty($__pgv['location']) ? ' · ' . $__pgv['location'] : ''));
-$__urls   = array_map(fn($im) => storage_url($im['filename']), $__imgs);
-$__thumbs = array_slice($__imgs, 1, 2);
-$__more   = max(0, count($__imgs) - 3);
+
+// ── Gather images from the DB (primary) ───────────────────────────────
+$__pgv  = false;
+$__imgs = [];
+try {
+    $__pgv  = $pg_venue_slug ? db_query('SELECT * FROM venues WHERE slug = :s', [':s' => $pg_venue_slug])->fetch() : false;
+    $__imgs = $__pgv ? fetch_venue_images((int)$__pgv['id']) : [];
+} catch (Throwable $e) {
+    $__pgv = false; $__imgs = [];
+}
+
+// ── Build a unified [url, alt] list — DB first, else static fallback ───
+$__gallery = [];
+$__badge   = '';
+if ($__imgs) {
+    $__badge = trim(($__pgv['name'] ?? '') . (!empty($__pgv['location']) ? ' · ' . $__pgv['location'] : ''));
+    foreach ($__imgs as $im) {
+        $__gallery[] = ['url' => storage_url($im['filename']), 'alt' => ($im['alt_text'] ?: ($__pgv['name'] ?? ''))];
+    }
+} elseif (!empty($pg_fallback) && is_array($pg_fallback)) {
+    // Static fallback so the gallery hero renders without the DB (Render-safe)
+    $__badge = $pg_fallback_badge ?? '';
+    foreach ($pg_fallback as $fb) {
+        if (is_string($fb))      $__gallery[] = ['url' => $fb, 'alt' => ($pg_fallback_badge ?? 'Property photo')];
+        elseif (is_array($fb))   $__gallery[] = ['url' => $fb['src'] ?? ($fb['url'] ?? ''), 'alt' => $fb['alt'] ?? ($pg_fallback_badge ?? 'Property photo')];
+    }
+    $__gallery = array_values(array_filter($__gallery, fn($g) => $g['url'] !== ''));
+}
+
+if (!$__gallery) { return; }
+
+$__urls   = array_map(fn($g) => $g['url'], $__gallery);
+$__count  = count($__gallery);
+$__thumbs = array_slice($__gallery, 1, 2);
+$__more   = max(0, $__count - 3);
 ?>
-<div class="gallery<?= count($__imgs) === 1 ? ' pg-single' : (count($__imgs) === 2 ? ' pg-double' : '') ?>" style="margin-top:0;">
+<div class="gallery<?= $__count === 1 ? ' pg-single' : ($__count === 2 ? ' pg-double' : '') ?>" style="margin-top:0;">
   <div class="gallery-main" onclick="pgOpenLb(0)">
-    <img src="<?= e(storage_url($__imgs[0]['filename'])) ?>" alt="<?= e($__imgs[0]['alt_text'] ?: $__pgv['name']) ?>" loading="eager">
+    <img src="<?= e($__gallery[0]['url']) ?>" alt="<?= e($__gallery[0]['alt']) ?>" loading="eager">
     <?php if ($__badge): ?><div class="gallery-badge"><?= e($__badge) ?></div><?php endif; ?>
+    <button type="button" class="gallery-viewall" onclick="event.stopPropagation();pgOpenLb(0)" aria-label="View all photos">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      View all <?= $__count ?> photos
+    </button>
   </div>
   <?php foreach ($__thumbs as $ti => $t): $idx = $ti + 1; $isLast = ($idx === 2 && $__more > 0); ?>
   <div class="gallery-thumb<?= $isLast ? ' last' : '' ?>" onclick="pgOpenLb(<?= $idx ?>)">
-    <img src="<?= e(storage_url($t['filename'])) ?>" alt="<?= e($t['alt_text'] ?: $__pgv['name']) ?>">
+    <img src="<?= e($t['url']) ?>" alt="<?= e($t['alt']) ?>">
   </div>
   <?php endforeach; ?>
 </div>

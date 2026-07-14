@@ -315,7 +315,14 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
 <?php include 'includes/header.php'; ?>
 
 <!-- ═══ GALLERY ═══ -->
-<?php $pg_venue_slug = 'zuri'; include __DIR__ . '/includes/property-gallery.php'; ?>
+<?php
+$pg_venue_slug   = 'zuri';
+$pg_fallback_badge = 'Zuri · Watamu · Kilifi County';
+$pg_fallback = [
+  ['src' => 'images/hero-zuri.jpg', 'alt' => 'Zuri beachfront boutique hotel — Watamu, Kenya'],
+];
+include __DIR__ . '/includes/property-gallery.php';
+?>
 
 
 <!-- ═══ BREADCRUMB ═══ -->
@@ -574,6 +581,14 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
 
 
 </div><!-- /page-wrap -->
+
+<?php
+$sbb_name = 'Zuri';
+$sbb_loc  = 'Watamu · Kilifi County';
+$sbb_meta = '6 Suites · Up to 14 guests';
+$sbb_cta  = 'Check Availability';
+include __DIR__ . '/includes/sticky-book-bar.php';
+?>
 
 <?php include 'includes/footer.php'; ?>
 
