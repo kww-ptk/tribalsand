@@ -29,6 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ':category'  => trim($_POST['category'] ?? 'classic'),
                 ':tag_label' => trim($_POST['tag_label']?? ''),
                 ':duration'  => trim($_POST['duration'] ?? ''),
+                ':price'     => trim($_POST['price']    ?? ''),
                 ':short_desc'=> trim($_POST['short_desc']?? ''),
                 ':long_desc' => trim($_POST['long_desc'] ?? ''),
                 ':highlights'=> json_encode($highlights),
@@ -36,8 +37,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
             if ($isNew) {
                 db_query(
-                    "INSERT INTO tours (name,slug,category,tag_label,duration,short_desc,long_desc,highlights_json)
-                     VALUES (:name,:slug,:category,:tag_label,:duration,:short_desc,:long_desc,:highlights)",
+                    "INSERT INTO tours (name,slug,category,tag_label,duration,price,short_desc,long_desc,highlights_json)
+                     VALUES (:name,:slug,:category,:tag_label,:duration,:price,:short_desc,:long_desc,:highlights)",
                     $data
                 );
                 $id   = (int)db()->lastInsertId();
@@ -49,7 +50,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $data[':id'] = $id;
                 db_query(
                     "UPDATE tours SET name=:name,slug=:slug,category=:category,tag_label=:tag_label,
-                     duration=:duration,short_desc=:short_desc,long_desc=:long_desc,highlights_json=:highlights,
+                     duration=:duration,price=:price,short_desc=:short_desc,long_desc=:long_desc,highlights_json=:highlights,
                      updated_at=NOW() WHERE id=:id",
                     $data
                 );
@@ -222,10 +223,20 @@ include __DIR__ . '/_layout.php';
       <div class="form-row">
         <div class="field">
           <label>Category</label>
+          <?php $__cat = $tour['category'] ?? ''; ?>
           <select name="category">
-            <option value="classic"   <?= ($tour['category'] ?? '') === 'classic'   ? 'selected' : '' ?>>Classic Safari</option>
-            <option value="custom"    <?= ($tour['category'] ?? '') === 'custom'    ? 'selected' : '' ?>>Custom Journey</option>
-            <option value="excursion" <?= ($tour['category'] ?? '') === 'excursion' ? 'selected' : '' ?>>Day Excursion</option>
+            <optgroup label="Safaris">
+              <option value="classic"   <?= $__cat === 'classic'   ? 'selected' : '' ?>>Classic Safari</option>
+              <option value="custom"    <?= $__cat === 'custom'    ? 'selected' : '' ?>>Custom Journey</option>
+              <option value="excursion" <?= $__cat === 'excursion' ? 'selected' : '' ?>>Day Excursion</option>
+            </optgroup>
+            <optgroup label="Activities">
+              <option value="marine"      <?= $__cat === 'marine'      ? 'selected' : '' ?>>Marine &amp; Ocean</option>
+              <option value="watersports" <?= $__cat === 'watersports' ? 'selected' : '' ?>>Watersports &amp; Kite</option>
+              <option value="nature"      <?= $__cat === 'nature'      ? 'selected' : '' ?>>Nature &amp; Culture</option>
+              <option value="wellness"    <?= $__cat === 'wellness'    ? 'selected' : '' ?>>Wellness</option>
+              <option value="golf"        <?= $__cat === 'golf'        ? 'selected' : '' ?>>Golf</option>
+            </optgroup>
           </select>
         </div>
         <div class="field">
@@ -237,6 +248,10 @@ include __DIR__ . '/_layout.php';
         <div class="field">
           <label>Duration</label>
           <input type="text" name="duration" value="<?= e($tour['duration'] ?? '') ?>" placeholder="e.g. 3 days / 2 nights">
+        </div>
+        <div class="field">
+          <label>Price <span class="text-muted">(activities; shown on card)</span></label>
+          <input type="text" name="price" value="<?= e($tour['price'] ?? '') ?>" placeholder="e.g. From $60 / person">
         </div>
       </div>
       <div class="field" style="margin-top:16px">
