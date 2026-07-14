@@ -130,7 +130,7 @@
   cursor:pointer;padding:4px;margin-left:.5rem;
   filter:drop-shadow(0 1px 2px rgba(0,0,0,.5));
 }
-.ts-burger span{display:block;height:1.5px;border-radius:2px;background:#fff;transition:all .28s;transform-origin:center;}
+.ts-burger span{display:block;width:100%;height:2px;border-radius:2px;background:#fff;flex:0 0 auto;transition:all .28s;transform-origin:center;}
 .ts-burger.open span:nth-child(1){transform:translateY(6px) rotate(45deg);}
 .ts-burger.open span:nth-child(2){opacity:0;transform:scaleX(0);}
 .ts-burger.open span:nth-child(3){transform:translateY(-6px) rotate(-45deg);}
