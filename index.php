@@ -922,7 +922,7 @@ include 'includes/head.php';
     e.preventDefault();
     if (!ci.value){ ci.focus(); if (ci.showPicker) try { ci.showPicker(); } catch(_){} return; }
     if (!co.value || co.value <= ci.value){ co.focus(); if (co.showPicker) try { co.showPicker(); } catch(_){} return; }
-    // Carry the search into the property booking widgets via sessionStorage
+    // Also stash for property-page widgets, then go to the live results page
     try {
       sessionStorage.setItem('ts_search', JSON.stringify({
         checkin:  ci.value,
@@ -931,8 +931,11 @@ include 'includes/head.php';
         children: parseInt(kids.value,10)
       }));
     } catch(_){}
-    var props = document.getElementById('properties');
-    if (props) props.scrollIntoView({ behavior:'smooth', block:'start' });
+    var q = 'checkin=' + encodeURIComponent(ci.value) +
+            '&checkout=' + encodeURIComponent(co.value) +
+            '&adults=' + encodeURIComponent(adults.value) +
+            '&children=' + encodeURIComponent(kids.value);
+    window.location.href = '/search?' + q;
   });
 })();
 
