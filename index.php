@@ -37,7 +37,8 @@ include 'includes/head.php';
 /* Inner */
 .hero-inner { position:relative; z-index:2; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; padding-top:68px; padding-bottom:5vh; text-align:center; padding-left:20px; padding-right:20px; }
 /* Text animations */
-.hero-eyebrow { animation:heroUp .6s cubic-bezier(.22,1,.36,1) .1s both; }
+.hero-eyebrow { animation:heroUp .6s cubic-bezier(.22,1,.36,1) .1s both; letter-spacing:.2em; }
+.hero-eyebrow .sep { color:rgba(184,150,90,.5); margin:0 .5em; font-weight:400; }
 .hero-h1 { animation:heroUp .7s cubic-bezier(.22,1,.36,1) .25s both; }
 .hero-sub { animation:heroUp .6s cubic-bezier(.22,1,.36,1) .42s both; }
 .hero-search { animation:heroUp .6s cubic-bezier(.22,1,.36,1) .55s both; }
@@ -274,9 +275,9 @@ include 'includes/head.php';
   <div class="hero-overlay"></div>
 
   <div class="hero-inner">
-    <div class="hero-eyebrow">Kenya's North Coast &nbsp;·&nbsp; Watamu &nbsp;·&nbsp; Kilifi &nbsp;·&nbsp; Vipingo</div>
+    <div class="hero-eyebrow">Kenya's North Coast <span class="sep">·</span> Watamu <span class="sep">·</span> Kilifi <span class="sep">·</span> Vipingo</div>
     <h1 class="hero-h1">Luxury Beachfront<br><em>Hotels &amp; Villas</em><br>in Kenya</h1>
-    <p class="hero-sub">Boutique hotels, private villas and lifestyle venues on the Kenyan coast, Africa.</p>
+    <p class="hero-sub">Boutique hotels, private villas, lifestyle venues and unique experiences on the Kenyan coast, Africa.</p>
 
     <!-- Booking search bar -->
     <form class="hero-search" id="heroSearch" aria-label="Search availability">
