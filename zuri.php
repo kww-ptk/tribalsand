@@ -61,8 +61,8 @@ include 'includes/head.php';
   --ts-sand:#B8965A;--ts-sand-lt:#D4B07A;--ts-teal:#1E5C6B;--ts-teal-d:#102F3A;
 }
 *{margin:0;padding:0;box-sizing:border-box;}
-html{scroll-behavior:smooth;}
-body{font-family:'Jost',sans-serif;background:var(--off);color:var(--dark);-webkit-font-smoothing:antialiased;overflow-x:hidden;}
+html{scroll-behavior:smooth;overflow-x:hidden;}
+body{font-family:'Jost',sans-serif;background:var(--off);color:var(--dark);-webkit-font-smoothing:antialiased;}
 img{display:block;object-fit:cover;}
 a{text-decoration:none;color:inherit;}
 ::-webkit-scrollbar{width:3px;}::-webkit-scrollbar-thumb{background:var(--border);}
@@ -525,7 +525,7 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
   </div><!-- /page-main -->
 
   <!-- ══ SIDEBAR ══ -->
-  <aside class="page-side">
+  <aside class="page-side" id="book" style="scroll-margin-top:90px">
     <div class="book-card">
 
       <!-- Header with image -->
@@ -583,7 +583,7 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
     <div class="sticky-cta-info">Zuri · Watamu</div>
     <div class="sticky-cta-sub">6 Suites · Up to 14 Guests</div>
   </div>
-  <a href="#rrBar" class="sticky-cta-btn">Book Now →</a>
+  <a href="#book" class="sticky-cta-btn">Book Now →</a>
 </div>
 
 <!-- ═══ LIGHTBOX ═══ -->

@@ -50,8 +50,8 @@ include 'includes/head.php';
   --ts-sand:#B8965A;--ts-sand-lt:#D4B07A;--ts-teal:#1E5C6B;--ts-teal-d:#102F3A;
 }
 *{margin:0;padding:0;box-sizing:border-box;}
-html{scroll-behavior:smooth;}
-body{font-family:'Jost',sans-serif;background:var(--off);color:var(--dark);-webkit-font-smoothing:antialiased;overflow-x:hidden;font-size:1rem;font-weight:400;}
+html{scroll-behavior:smooth;overflow-x:hidden;}
+body{font-family:'Jost',sans-serif;background:var(--off);color:var(--dark);-webkit-font-smoothing:antialiased;font-size:1rem;font-weight:400;}
 img{display:block;object-fit:cover;}
 a{text-decoration:none;color:inherit;}
 ::-webkit-scrollbar{width:3px;}::-webkit-scrollbar-thumb{background:var(--border);}
@@ -598,7 +598,7 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
   </main><!-- /page-main -->
 
   <!-- ══ SIDEBAR ══ -->
-  <aside class="page-side" aria-label="Booking widget">
+  <aside class="page-side" id="book" aria-label="Booking widget" style="scroll-margin-top:90px">
     <div class="book-card">
 
       <!-- Header image -->

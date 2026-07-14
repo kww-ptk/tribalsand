@@ -55,8 +55,8 @@ $rr_venue_slug = 'maya-kobe';
   --mid:#6B6050;--light:#A89880;--border:rgba(184,150,90,.14);
 }
 *{margin:0;padding:0;box-sizing:border-box;}
-html{scroll-behavior:smooth;}
-body{font-family:'Jost',sans-serif;font-size:1rem;font-weight:400;background:var(--off);color:var(--dark);-webkit-font-smoothing:antialiased;overflow-x:hidden;}
+html{scroll-behavior:smooth;overflow-x:hidden;}
+body{font-family:'Jost',sans-serif;font-size:1rem;font-weight:400;background:var(--off);color:var(--dark);-webkit-font-smoothing:antialiased;}
 img{display:block;object-fit:cover;}
 a{text-decoration:none;color:inherit;}
 ::-webkit-scrollbar{width:3px;}::-webkit-scrollbar-thumb{background:var(--border);}
@@ -642,7 +642,7 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
   </div><!-- /page-main -->
 
   <!-- ══ SIDEBAR ══ -->
-  <aside class="page-side">
+  <aside class="page-side" id="book" style="scroll-margin-top:90px">
     <div class="book-card">
 
       <!-- Header image -->

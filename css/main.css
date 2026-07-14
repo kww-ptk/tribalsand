@@ -38,6 +38,7 @@
 html {
   scroll-behavior: smooth;
   -webkit-text-size-adjust: 100%;
+  overflow-x: hidden;        /* clip horizontal on the root scroller, not <body> */
 }
 
 body {
@@ -48,7 +49,6 @@ body {
   color: var(--dark);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  overflow-x: hidden;
   line-height: 1.7;
 }
 

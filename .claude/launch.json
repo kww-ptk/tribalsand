@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "tribalsand",
+      "name": "tribal-sand",
       "runtimeExecutable": "D:\\php84\\php.exe",
-      "runtimeArgs": ["-S", "localhost:8080", "-t", "D:\\TribalIsland", "D:\\TribalIsland\\router.php"],
-      "port": 8080
+      "runtimeArgs": ["-S", "localhost:8765", "-t", "D:\\TribalIsland"],
+      "port": 8765
     }
   ]
 }
