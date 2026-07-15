@@ -202,7 +202,7 @@ include __DIR__ . '/_layout.php';
 
 <!-- ── TAB: Details ── -->
 <div class="tab-panel is-active" id="tab-details">
-<form method="POST" action="/admin/tour-edit.php<?= $id ? "?id={$id}" : '' ?>">
+<form method="POST" action="/admin/tour-edit<?= $id ? "?id={$id}" : '' ?>">
   <?= csrf_field() ?>
   <input type="hidden" name="action" value="save_details">
 

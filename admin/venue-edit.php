@@ -154,7 +154,7 @@ include __DIR__ . '/_layout.php';
 <div class="card">
   <div class="card__head"><span class="card__title">Details</span></div>
   <div class="card__body">
-    <form method="POST" action="/admin/venue-edit.php<?= $id ? '?id=' . $id : '' ?>">
+    <form method="POST" action="/admin/venue-edit<?= $id ? '?id=' . $id : '' ?>">
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="save_details">
 
@@ -208,7 +208,7 @@ include __DIR__ . '/_layout.php';
 <div class="card">
   <div class="card__head"><span class="card__title">Page Content</span></div>
   <div class="card__body">
-    <form method="POST" action="/admin/venue-edit.php?id=<?= $id ?>">
+    <form method="POST" action="/admin/venue-edit?id=<?= $id ?>">
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="save_content">
 
