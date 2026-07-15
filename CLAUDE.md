@@ -14,8 +14,8 @@ Render runs behind a load balancer. `$_SERVER['REMOTE_ADDR']` is always the prox
 **Never use `$_SERVER['REMOTE_ADDR']` directly** — always call `client_ip()` (defined in `includes/db.php`).
 Affects: rate limiting, audit logs, tracking.
 
-### hCaptcha — fail-closed in production
-`verify_captcha()` is in `includes/turnstile.php`. If `HCAPTCHA_SITE_KEY` is set but secret is missing, it returns `false` (fail-closed). Both absent = dev mode bypass. Never revert to the old `return true` bypass.
+### Cloudflare Turnstile — fail-closed in production
+`verify_captcha()` is in `includes/turnstile.php`. If `TURNSTILE_SITE_KEY` is set but secret is missing, it returns `false` (fail-closed). Both absent = dev mode bypass. Never revert to the old `return true` bypass. Widget class is `.cf-turnstile`, token field is `cf-turnstile-response`, script is `challenges.cloudflare.com/turnstile/v0/api.js`.
 
 ### Asset cache busting
 All CSS/JS `<link>`/`<script>` tags in `includes/head.php` use `?v=<?= filemtime(...) ?>` to force cache invalidation on deploy.
@@ -34,7 +34,7 @@ All CSS/JS `<link>`/`<script>` tags in `includes/head.php` use `?v=<?= filemtime
 | `includes/head.php` | SEO meta, OG, structured data, conditional CSS/JS loading |
 | `includes/header.php` | Site nav |
 | `includes/footer.php` | Footer, WhatsApp float button, cookie consent banner |
-| `includes/turnstile.php` | hCaptcha verification (`verify_captcha()`) |
+| `includes/turnstile.php` | Cloudflare Turnstile verification (`verify_captcha()`) |
 | `includes/mail.php` | Email dispatch via Resend API |
 | `includes/auth.php` | Admin login, session, rate limiting |
 | `includes/tracking.php` | First-touch UTM capture in session |
@@ -52,7 +52,7 @@ All CSS/JS `<link>`/`<script>` tags in `includes/head.php` use `?v=<?= filemtime
 
 ### Security (Critical)
 - `client_ip()` helper added to `includes/db.php`; all `$_SERVER['REMOTE_ADDR']` replaced across api/ and includes/
-- hCaptcha fail-closed: `HCAPTCHA_SITE_KEY` set but secret missing now returns `false` instead of `true`
+- Turnstile fail-closed: `TURNSTILE_SITE_KEY` set but secret missing now returns `false` instead of `true`
 - iCal sync secret moved from URL query param to `Authorization: Bearer` header
 
 ### Performance & SEO
@@ -81,8 +81,8 @@ All CSS/JS `<link>`/`<script>` tags in `includes/head.php` use `?v=<?= filemtime
 ```
 DATABASE_URL=         # PostgreSQL connection string
 APP_URL=              # https://tribalsand.com (no trailing slash)
-HCAPTCHA_SITE_KEY=    # hCaptcha public key
-HCAPTCHA_SECRET_KEY=  # hCaptcha secret key
+TURNSTILE_SITE_KEY=   # Cloudflare Turnstile public key
+TURNSTILE_SECRET_KEY= # Cloudflare Turnstile secret key
 ICAL_SYNC_SECRET=     # Random secret for iCal sync endpoint
 RESEND_API_KEY=       # Resend.com API key for emails
 MAIL_FROM=            # noreply@yourdomain.com (must be Resend-verified domain)

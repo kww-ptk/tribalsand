@@ -85,8 +85,8 @@ require_once __DIR__ . '/turnstile.php'; // captcha_site_key() available on ever
 <link rel="stylesheet" href="css/main.css?v=<?= filemtime(__DIR__ . '/../css/main.css') ?>">
 
 <?php if (captcha_site_key()): ?>
-<!-- ── hCAPTCHA (loaded site-wide so every form's widget works) ── -->
-<script src="https://js.hcaptcha.com/1/api.js" async defer></script>
+<!-- ── Cloudflare Turnstile (loaded site-wide so every form's widget works) ── -->
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <?php endif; ?>
 
 <?php if (!empty($page_booking)): ?>

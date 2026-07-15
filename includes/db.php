@@ -166,8 +166,58 @@ function expire_stale_holds(): void {
     }
 }
 
+/**
+ * "Entire villa vs by-room" mutual exclusion.
+ * Returns the unit IDs (belonging to OTHER rooms in the same venue) whose bookings
+ * must also be free for this room to be bookable:
+ *   • Whole-villa room (is_entire_place)  → conflicts with EVERY other unit in the venue
+ *     (you can't rent the whole place while any individual room is taken).
+ *   • Individual room                     → conflicts only with the venue's whole-villa unit(s)
+ *     (booking one room blocks the whole-villa option, but not the other rooms).
+ * A venue with no whole-villa room returns [] — rooms are then independent as before.
+ */
+function room_conflict_unit_ids(array $room): array {
+    $venue_id = $room['venue_id'] ?? null;
+    if (!$venue_id) return [];
+
+    if (!empty($room['is_entire_place'])) {
+        $sql = "SELECT u.id FROM units u
+                JOIN rooms r ON r.id = u.room_id
+                WHERE r.venue_id = :vid AND r.id <> :rid AND u.is_active = TRUE";
+        $params = [':vid' => $venue_id, ':rid' => $room['id']];
+    } else {
+        $sql = "SELECT u.id FROM units u
+                JOIN rooms r ON r.id = u.room_id
+                WHERE r.venue_id = :vid AND r.is_entire_place = TRUE AND u.is_active = TRUE";
+        $params = [':vid' => $venue_id];
+    }
+    return array_map('intval', db_query($sql, $params)->fetchAll(PDO::FETCH_COLUMN));
+}
+
 function find_available_unit(int $room_id, string $check_in, string $check_out): array|false {
     expire_stale_holds();
+
+    $room = db_query(
+        'SELECT id, venue_id, is_entire_place FROM rooms WHERE id = :id',
+        [':id' => $room_id]
+    )->fetch();
+    if (!$room) return false;
+
+    // Whole-villa / by-room mutual exclusion: if a conflicting sibling unit is
+    // booked for the range, this room cannot be booked at all.
+    $conflict_ids = room_conflict_unit_ids($room);
+    if ($conflict_ids) {
+        $placeholders = implode(',', $conflict_ids); // ints from DB — safe to inline
+        $clash = db_query(
+            "SELECT 1 FROM availability_blocks
+             WHERE unit_id IN ($placeholders)
+               AND date_from < :check_out AND date_to > :check_in
+             LIMIT 1",
+            [':check_in' => $check_in, ':check_out' => $check_out]
+        )->fetchColumn();
+        if ($clash) return false;
+    }
+
     return db_query(
         "SELECT u.* FROM units u
          WHERE u.room_id = :room_id AND u.is_active = TRUE
@@ -253,6 +303,34 @@ function get_room_blocked_dates(int $room_id, string $from, string $to): array {
             $fully_blocked[] = $date;
         }
     }
+
+    // Whole-villa / by-room mutual exclusion: a date is also blocked whenever any
+    // conflicting sibling unit is booked (see room_conflict_unit_ids()).
+    $room = db_query(
+        'SELECT id, venue_id, is_entire_place FROM rooms WHERE id = :id',
+        [':id' => $room_id]
+    )->fetch();
+    $conflict_ids = $room ? room_conflict_unit_ids($room) : [];
+    if ($conflict_ids) {
+        $placeholders = implode(',', $conflict_ids); // ints from DB — safe to inline
+        $cblocks = db_query(
+            "SELECT ab.date_from, ab.date_to FROM availability_blocks ab
+             WHERE ab.unit_id IN ($placeholders)
+               AND ab.date_to > :from AND ab.date_from < :to",
+            [':from' => $from, ':to' => $to]
+        )->fetchAll();
+        $seen = array_flip($fully_blocked);
+        foreach ($cblocks as $b) {
+            $d   = new DateTime($b['date_from']);
+            $end = new DateTime($b['date_to']);
+            while ($d < $end) {
+                $key = $d->format('Y-m-d');
+                if (!isset($seen[$key])) { $fully_blocked[] = $key; $seen[$key] = true; }
+                $d->modify('+1 day');
+            }
+        }
+    }
+
     sort($fully_blocked);
     return $fully_blocked;
 }

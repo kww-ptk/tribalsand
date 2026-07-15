@@ -49,7 +49,7 @@ if (!$data) {
 /* ── Honeypot + hCaptcha ── */
 if (!empty($data['website'])) { echo json_encode(['ok' => true]); exit; }
 require_once __DIR__ . '/includes/turnstile.php';
-if (!verify_captcha($data['h-captcha-response'] ?? '', client_ip())) {
+if (!verify_captcha($data['cf-turnstile-response'] ?? '', client_ip())) {
     http_response_code(403);
     echo json_encode(['ok' => false, 'error' => 'Security check failed. Please try again.']);
     exit;

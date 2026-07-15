@@ -301,7 +301,7 @@ require_once 'includes/head.php';
       </div>
 
       <?php if (captcha_site_key()): ?>
-      <div class="h-captcha" data-sitekey="<?= e(captcha_site_key()) ?>" style="margin-bottom:1rem"></div>
+      <div class="cf-turnstile" data-sitekey="<?= e(captcha_site_key()) ?>" style="margin-bottom:1rem"></div>
       <?php endif; ?>
 
       <button class="ag-submit" type="submit" id="submitBtn">Register Interest</button>
@@ -378,7 +378,7 @@ document.getElementById('agent-signup-form').addEventListener('submit', function
     country: '',
     message: 'Travel agent registration enquiry',
     website: (fd.get('name-email') || '').toString(),
-    'h-captcha-response': (form.querySelector("[name='h-captcha-response']")||{}).value || ''
+    'cf-turnstile-response': (form.querySelector("[name='cf-turnstile-response']")||{}).value || ''
   };
   fetch('/api/submit-agency.php', {
     method: 'POST',

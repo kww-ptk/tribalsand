@@ -13,7 +13,7 @@ $data = json_decode(file_get_contents('php://input'), true) ?? [];
 if (!empty($data['website'])) { exit(json_encode(['ok' => true])); } // honeypot
 
 require_once __DIR__ . '/../includes/turnstile.php';
-if (!verify_captcha($data['h-captcha-response'] ?? '', client_ip())) {
+if (!verify_captcha($data['cf-turnstile-response'] ?? '', client_ip())) {
     http_response_code(403);
     exit(json_encode(['ok' => false, 'error' => 'Security check failed. Please try again.']));
 }
