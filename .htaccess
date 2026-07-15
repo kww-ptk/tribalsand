@@ -1,7 +1,9 @@
 RewriteEngine On
 
-# Redirect /foo.php → /foo only when browser explicitly requests .php
-RewriteCond %{THE_REQUEST} ^[A-Z]+\s/(.+)\.php[\s?] [NC]
+# Redirect /foo.php → /foo only when a browser NAVIGATES to .php (GET/HEAD).
+# Must NOT match POST: a 301 on a form submission makes the browser re-issue
+# it as a GET and drop the body, silently breaking every admin save.
+RewriteCond %{THE_REQUEST} ^(?:GET|HEAD)\s/(.+)\.php[\s?] [NC]
 RewriteRule ^ /%1 [R=301,L]
 
 # Strip-.php: serve /foo from foo.php internally
