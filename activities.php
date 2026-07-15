@@ -69,8 +69,12 @@ include 'includes/header.php';
 .act-card__meta{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap;font-size:.72rem;color:var(--light);margin-bottom:1rem;}
 .act-card__dur{display:inline-flex;align-items:center;gap:.3rem;}
 .act-card__price{margin-left:auto;font-family:'Cormorant Garamond',serif;font-size:1.05rem;color:var(--teal);font-weight:500;}
-.act-card__cta{display:block;text-align:center;background:var(--sand);color:var(--teal-d);border:none;border-radius:5px;padding:.7rem;font-family:'Jost',sans-serif;font-size:.6rem;letter-spacing:.18em;text-transform:uppercase;font-weight:600;text-decoration:none;transition:background .2s;}
+.act-card__ctas{display:flex;gap:.5rem;}
+.act-card__cta{flex:1;display:block;text-align:center;background:var(--sand);color:var(--teal-d);border:none;border-radius:5px;padding:.7rem;font-family:'Jost',sans-serif;font-size:.6rem;letter-spacing:.18em;text-transform:uppercase;font-weight:600;text-decoration:none;transition:background .2s;}
 .act-card__cta:hover{background:var(--sand-lt);}
+.act-card__cta--wa{flex:0 0 auto;background:#25D366;color:#fff;display:inline-flex;align-items:center;gap:.35rem;}
+.act-card__cta--wa:hover{background:#1eb457;}
+.act-card__cta--wa svg{width:14px;height:14px;}
 .act-empty{text-align:center;color:var(--light);padding:3rem 1rem;}
 .act-cta-band{background:var(--sand-faint);border:1px solid var(--border);border-radius:10px;padding:2rem;text-align:center;margin-top:1rem;}
 .act-cta-band h3{font-family:'Cormorant Garamond',serif;font-weight:400;font-size:1.5rem;color:var(--dark);margin:0 0 .4rem;}
@@ -118,7 +122,13 @@ include 'includes/header.php';
               <?php if (!empty($a['duration'])): ?><span class="act-card__dur">⏱ <?= e($a['duration']) ?></span><?php endif; ?>
               <?php if (!empty($a['price'])): ?><span class="act-card__price"><?= e($a['price']) ?></span><?php endif; ?>
             </div>
-            <a class="act-card__cta" href="<?= e($wa) ?>" target="_blank" rel="noopener">Enquire →</a>
+            <div class="act-card__ctas">
+              <a class="act-card__cta" href="/enquire.php?tour=<?= e($a['slug']) ?>">Enquire →</a>
+              <a class="act-card__cta act-card__cta--wa" href="<?= e($wa) ?>" target="_blank" rel="noopener" aria-label="Enquire about <?= e($a['name']) ?> on WhatsApp">
+                <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2 22l5.25-1.38a9.9 9.9 0 0 0 4.79 1.22h.01c5.46 0 9.9-4.45 9.9-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2Zm5.8 14.16c-.24.68-1.42 1.32-1.95 1.36-.5.05-.97.24-3.26-.68-2.76-1.09-4.5-3.92-4.64-4.11-.14-.19-1.11-1.48-1.11-2.82 0-1.34.7-2 .95-2.27.24-.27.53-.34.71-.34.18 0 .36.002.51.01.16.007.38-.06.6.46.24.56.8 1.94.87 2.08.07.14.12.3.02.49-.1.19-.14.3-.29.46-.14.16-.3.36-.43.48-.14.14-.29.29-.12.57.17.28.76 1.25 1.63 2.02 1.12.99 2.06 1.3 2.35 1.44.29.14.46.12.63-.07.18-.19.72-.85.91-1.14.19-.29.38-.24.64-.14.26.1 1.64.77 1.92.91.28.14.47.21.53.33.07.12.07.68-.17 1.36Z"/></svg>
+                WhatsApp
+              </a>
+            </div>
           </div>
         </article>
         <?php endforeach; ?>
