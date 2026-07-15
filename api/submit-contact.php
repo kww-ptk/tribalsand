@@ -102,4 +102,12 @@ send_notification([
     'created_at'  => date('Y-m-d H:i:s'),
 ] + $tracking);
 
+send_guest_acknowledgement([
+    'kind'        => 'contact',
+    'guest_name'  => $name,
+    'guest_email' => $email,
+    'subject'     => trim($data['subject'] ?? ''),
+    'message'     => $message,
+]);
+
 echo json_encode(['ok' => true, 'id' => $id]);

@@ -111,6 +111,117 @@ function send_smtp(string $to, string $subject, string $body, string $headers, a
     }
 }
 
+// ── Guest acknowledgement (auto-reply to the customer/sender) ────
+// $a: guest_name, guest_email, kind (enquiry|hold|contact|agency) plus any of
+//     room_name / tour_name / check_in / check_out / agency_name / subject / message.
+function send_guest_acknowledgement(array $a): void {
+    $to = trim((string)($a['guest_email'] ?? ''));
+    if (!filter_var($to, FILTER_VALIDATE_EMAIL)) return;
+
+    $env   = parse_env();
+    $from  = $env['MAIL_FROM'] ?? 'Tribal Sand <noreply@tribalsand.com>';
+    $reply = setting('notify_email', 'reservations@tribalsand.com');
+    $site  = rtrim($env['SITE_URL'] ?? $env['APP_URL'] ?? 'https://tribalsand.com', '/');
+    $name  = trim((string)($a['guest_name'] ?? '')) ?: 'Guest';
+
+    [$subject, $intro] = match ($a['kind'] ?? 'enquiry') {
+        'hold'    => ['We’ve received your booking request — Tribal Sand',
+                      'Thank you for your booking request. We’re holding your selected dates for 24 hours while our team confirms availability — you’ll receive a separate confirmation email shortly.'],
+        'contact' => ['We’ve received your message — Tribal Sand',
+                      'Thank you for getting in touch. We’ve received your message and a member of our team will reply as soon as possible.'],
+        'agency'  => ['We’ve received your enquiry — Tribal Sand',
+                      'Thank you for your interest in working with us. We’ve received your travel agency enquiry and our team will be in touch shortly.'],
+        default   => ['We’ve received your enquiry — Tribal Sand',
+                      'Thank you for your enquiry. We’ve received your message and a member of our reservations team will get back to you within 24 hours.'],
+    };
+
+    $rows = [];
+    foreach (['room_name' => 'Villa / Room', 'tour_name' => 'Experience',
+              'check_in' => 'Check-in', 'check_out' => 'Check-out',
+              'agency_name' => 'Agency', 'subject' => 'Subject'] as $key => $label) {
+        if (!empty($a[$key])) $rows[] = [$label, (string)$a[$key]];
+    }
+
+    $tl = ["Dear {$name},", '', $intro, ''];
+    if ($rows) {
+        $tl[] = 'YOUR DETAILS';
+        foreach ($rows as [$k, $v]) $tl[] = "  {$k}: {$v}";
+        $tl[] = '';
+    }
+    if (!empty($a['message'])) {
+        $tl[] = 'Your message:';
+        $tl[] = (string)$a['message'];
+        $tl[] = '';
+    }
+    $tl[] = "If your enquiry is urgent you can reply to this email or write to {$reply}.";
+    $tl[] = '';
+    $tl[] = 'Warm regards,';
+    $tl[] = 'Tribal Sand';
+    $tl[] = 'Kenya’s North Coast';
+    if ($site) $tl[] = $site;
+    $text = implode("\n", $tl);
+
+    $html = _guest_ack_html([
+        'name'    => $name,
+        'intro'   => $intro,
+        'rows'    => $rows,
+        'message' => (string)($a['message'] ?? ''),
+        'reply'   => $reply,
+        'site'    => $site,
+    ]);
+
+    _dispatch_mail($to, $subject, $text, $from, $reply, $env, $html);
+}
+
+function _guest_ack_html(array $d): string {
+    $esc  = fn(string $v) => htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
+    $site = rtrim($d['site'] ?? '', '/');
+
+    $detail_rows = '';
+    foreach ($d['rows'] as [$k, $v]) {
+        $detail_rows .= '<tr>'
+            . '<td style="padding:7px 0;color:#777;font-size:13px;width:120px;vertical-align:top">' . $esc($k) . '</td>'
+            . '<td style="padding:7px 0;font-size:14px;color:#222;font-weight:600">' . $esc($v) . '</td>'
+            . '</tr>';
+    }
+    $detail_block = $detail_rows
+        ? '<div style="background:#f4f0e8;border-radius:6px;padding:18px 22px;margin:20px 0">'
+            . '<p style="margin:0 0 10px;font-size:12px;font-weight:700;text-transform:uppercase;color:#1E5C6B;letter-spacing:.5px">Your details</p>'
+            . '<table style="width:100%;border-collapse:collapse">' . $detail_rows . '</table>'
+          . '</div>'
+        : '';
+
+    $message_block = '';
+    if (($d['message'] ?? '') !== '') {
+        $message_block = '<div style="margin:20px 0">'
+            . '<p style="margin:0 0 8px;font-size:12px;font-weight:700;text-transform:uppercase;color:#777;letter-spacing:.5px">Your message</p>'
+            . '<div style="background:#f9fafb;border-left:3px solid #B8965A;padding:14px 18px;border-radius:0 4px 4px 0;font-size:14px;color:#333;line-height:1.7">'
+            . nl2br($esc($d['message']))
+            . '</div></div>';
+    }
+
+    return '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>'
+        . '<body style="margin:0;padding:0;background:#f0f4f5;font-family:Arial,Helvetica,sans-serif">'
+        . '<div style="max-width:600px;margin:32px auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1)">'
+          . '<div style="background:#102F3A;padding:24px 32px">'
+            . '<h1 style="margin:0;color:#fff;font-size:20px;font-weight:700">Thank you for contacting us</h1>'
+            . '<p style="margin:6px 0 0;color:#B8965A;font-size:14px">Tribal Sand &mdash; Kenya’s North Coast</p>'
+          . '</div>'
+          . '<div style="padding:32px">'
+            . '<p style="margin:0 0 18px;font-size:15px">Dear <strong>' . $esc($d['name']) . '</strong>,</p>'
+            . '<p style="margin:0 0 4px;font-size:15px;line-height:1.6">' . $esc($d['intro']) . '</p>'
+            . $detail_block
+            . $message_block
+            . '<p style="font-size:13px;color:#777;line-height:1.6;margin-top:24px">If your enquiry is urgent you can simply reply to this email, or write to '
+              . '<a href="mailto:' . $esc($d['reply']) . '" style="color:#1E5C6B">' . $esc($d['reply']) . '</a>.</p>'
+            . '<p style="font-size:14px;margin:24px 0 0">Warm regards,<br><strong>Tribal Sand</strong></p>'
+          . '</div>'
+          . '<div style="background:#f9fafb;padding:16px 32px;text-align:center;font-size:12px;color:#aaa">'
+            . '<a href="' . $esc($site ?: '#') . '" style="color:#1E5C6B;text-decoration:none">tribalsand.com</a>'
+          . '</div>'
+        . '</div></body></html>';
+}
+
 // ── Hold notifications ──────────────────────────────────────────
 
 function send_hold_notification(array $hold): void {

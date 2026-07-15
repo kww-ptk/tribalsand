@@ -164,6 +164,15 @@ try {
             [':id' => $hold_id]
         )->fetch();
         if ($hold_row) send_hold_notification($hold_row);
+        send_guest_acknowledgement([
+            'kind'        => 'hold',
+            'guest_name'  => $name,
+            'guest_email' => $email,
+            'room_name'   => $room ? $room['name'] : '',
+            'check_in'    => $checkin,
+            'check_out'   => $checkout,
+            'message'     => trim($data['message'] ?? ''),
+        ]);
         echo json_encode(['ok' => true, 'id' => $id, 'mode' => 'hold']);
     } else {
         send_notification([
@@ -180,6 +189,16 @@ try {
             'guests_children' => $data['children'] ?? 0,
             'created_at' => date('Y-m-d H:i:s'),
         ] + $tracking);
+        send_guest_acknowledgement([
+            'kind'        => 'enquiry',
+            'guest_name'  => $name,
+            'guest_email' => $email,
+            'room_name'   => $room ? $room['name'] : '',
+            'tour_name'   => $tour ? $tour['name'] : '',
+            'check_in'    => $checkin,
+            'check_out'   => $checkout,
+            'message'     => trim($data['message'] ?? ''),
+        ]);
         echo json_encode(['ok' => true, 'id' => $id, 'mode' => 'enquiry']);
     }
 } catch (Throwable $e) {
