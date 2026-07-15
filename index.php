@@ -359,7 +359,7 @@ include 'includes/head.php';
         <span>Search Stays</span>
       </button>
     </form>
-    <div class="hero-search-note">No payment now &nbsp;·&nbsp; Free 24-hour hold &nbsp;·&nbsp; Reply within 24h &nbsp;·&nbsp; <a href="trip-builder.php">Plan your trip &rarr;</a></div>
+    <div class="hero-search-note">No payment now &nbsp;·&nbsp; Free 24-hour hold &nbsp;·&nbsp; Reply within 24h &nbsp;·&nbsp; <a href="enquire.php">Send an enquiry &rarr;</a> &nbsp;·&nbsp; <a href="trip-builder.php">Plan your trip &rarr;</a></div>
 
     <!-- Trust signals -->
     <div class="hero-trust" aria-label="Guest trust signals">

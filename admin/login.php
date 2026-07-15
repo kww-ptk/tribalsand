@@ -15,7 +15,7 @@ $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email    = trim($_POST['email']    ?? '');
     $password = trim($_POST['password'] ?? '');
-    $tsToken  = $_POST['h-captcha-response'] ?? '';
+    $tsToken  = $_POST['cf-turnstile-response'] ?? '';
 
     if (!$email || !$password) {
         $error = 'Email and password are required.';
@@ -38,7 +38,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Admin Login — Tribal Sand</title>
   <link rel="stylesheet" href="/admin/assets/admin.css">
-  <script src="https://js.hcaptcha.com/1/api.js" async defer></script>
+  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body class="login-page">
 
@@ -64,7 +64,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <input type="password" id="password" name="password" placeholder="••••••••" required>
       </div>
       <?php if (captcha_site_key()): ?>
-      <div class="h-captcha" data-sitekey="<?= e(captcha_site_key()) ?>" style="margin:12px 0"></div>
+      <div class="cf-turnstile" data-sitekey="<?= e(captcha_site_key()) ?>" style="margin:12px 0"></div>
       <?php endif; ?>
       <button type="submit" class="btn-primary btn-full">Sign in</button>
     </form>

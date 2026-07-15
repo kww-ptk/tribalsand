@@ -160,7 +160,7 @@ if ($__form_mode !== 'availability') {
 
     <div class="bk-feedback" id="availFeedback" hidden></div>
     <?php if (captcha_site_key()): ?>
-    <div class="h-captcha" data-sitekey="<?= e(captcha_site_key()) ?>"></div>
+    <div class="cf-turnstile" data-sitekey="<?= e(captcha_site_key()) ?>"></div>
     <?php endif; ?>
     <button type="submit" class="bk-submit">
       <span class="bk-submit__label">Check availability</span>

@@ -101,7 +101,7 @@ require_once __DIR__ . '/turnstile.php';
 
         <div class="bk-feedback" id="availFeedback" hidden></div>
         <?php if (captcha_site_key()): ?>
-        <div class="h-captcha" data-sitekey="<?= e(captcha_site_key()) ?>"></div>
+        <div class="cf-turnstile" data-sitekey="<?= e(captcha_site_key()) ?>"></div>
         <?php endif; ?>
         <button type="submit" class="bk-submit"><span class="bk-submit__label">Check availability</span></button>
         <p class="bk-hold-note">Dates are held for 24 hours pending confirmation</p>

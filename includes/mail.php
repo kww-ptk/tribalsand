@@ -30,8 +30,10 @@ function send_notification(array $sub): void {
         send_resend($to, $subject, $body, $from, $sub['guest_email'] ?? '', $env['RESEND_API_KEY']);
     } elseif ($driver === 'smtp') {
         send_smtp($to, $subject, $body, $headers, $env);
+    } elseif ($driver === 'log') {
+        log_mail_error("[DEV] To: {$to} | Subject: {$subject}\n{$body}");
     } else {
-        if (!mail($to, $subject, $body, $headers)) {
+        if (!@mail($to, $subject, $body, $headers)) {
             log_mail_error("mail() failed for submission #{$sub['id']}");
         }
     }
@@ -397,8 +399,10 @@ function _dispatch_mail(string $to, string $subject, string $body, string $from,
         send_resend($to, $subject, $body, $from, $reply_to, $env['RESEND_API_KEY'], $html);
     } elseif (($env['MAIL_DRIVER'] ?? '') === 'smtp') {
         send_smtp($to, $subject, $body, $headers, $env);
+    } elseif (($env['MAIL_DRIVER'] ?? '') === 'log') {
+        log_mail_error("[DEV] To: {$to} | Subject: {$subject}\n{$body}");
     } else {
-        if (!mail($to, $subject, $body, $headers)) {
+        if (!@mail($to, $subject, $body, $headers)) {
             log_mail_error("mail() failed sending '{$subject}' to {$to}");
         }
     }

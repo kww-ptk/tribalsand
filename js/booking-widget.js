@@ -332,7 +332,7 @@
           adults:                parseInt(adultsH.value, 10),
           children:              parseInt(childrenH.value, 10),
           message:               form.querySelector("[name=message]")?.value.trim() || "",
-          "h-captcha-response":  form.querySelector("[name='h-captcha-response']")?.value || "",
+          "cf-turnstile-response":  form.querySelector("[name='cf-turnstile-response']")?.value || "",
         };
 
         try {

@@ -24,7 +24,7 @@ if (!empty($data['website'])) {
 
 // Turnstile
 $ip = client_ip();
-if (!verify_captcha($data['h-captcha-response'] ?? '', $ip)) {
+if (!verify_captcha($data['cf-turnstile-response'] ?? '', $ip)) {
     http_response_code(403);
     exit(json_encode(['ok' => false, 'error' => 'Security check failed. Please try again.']));
 }
