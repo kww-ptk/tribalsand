@@ -45,8 +45,10 @@ $where_sql = implode(' AND ', $where);
 // ── CSV Export ───────────────────────────────────────────────────
 if ($export) {
     $rows = db_query(
-        "SELECT s.*, r.name AS room_name
-         FROM submissions s LEFT JOIN rooms r ON r.id = s.room_id
+        "SELECT s.*, r.name AS room_name, t.name AS tour_name
+         FROM submissions s
+         LEFT JOIN rooms r ON r.id = s.room_id
+         LEFT JOIN tours t ON t.id = s.tour_id
          WHERE {$where_sql} ORDER BY s.created_at DESC",
         $params
     )->fetchAll();
@@ -58,8 +60,9 @@ if ($export) {
     foreach ($rows as $r) {
         $pl  = json_decode($r['payload_json'] ?? '{}', true) ?: [];
         $src = $pl['submitted_from'] ?? $r['source_page'] ?? '';
+        $subject = $r['room_name'] ?: ($r['tour_name'] ? 'Tour: ' . $r['tour_name'] : '');
         fputcsv($out, [
-            $r['id'], $r['type'], source_label($src), $r['room_name'] ?? '', $r['guest_name'], $r['guest_email'],
+            $r['id'], $r['type'], source_label($src), $subject, $r['guest_name'], $r['guest_email'],
             $r['guest_phone'], $r['message'], $r['check_in'], $r['check_out'],
             $r['guests_adults'], $r['guests_children'],
             $r['source_page'], $r['utm_source'], $r['utm_medium'], $r['utm_campaign'],
@@ -80,8 +83,10 @@ $page        = min($page, $total_pages);
 $offset      = ($page - 1) * $per_page;
 
 $rows = db_query(
-    "SELECT s.*, r.name AS room_name
-     FROM submissions s LEFT JOIN rooms r ON r.id = s.room_id
+    "SELECT s.*, r.name AS room_name, t.name AS tour_name
+     FROM submissions s
+     LEFT JOIN rooms r ON r.id = s.room_id
+     LEFT JOIN tours t ON t.id = s.tour_id
      WHERE {$where_sql}
      ORDER BY s.created_at DESC
      LIMIT {$per_page} OFFSET {$offset}",
@@ -178,7 +183,7 @@ include __DIR__ . '/_layout.php';
           <th>Source</th>
           <th>Name</th>
           <th>Email</th>
-          <th>Room</th>
+          <th>Room / Tour</th>
           <th>Check-in</th>
           <th>Date</th>
           <th></th>
@@ -203,7 +208,7 @@ include __DIR__ . '/_layout.php';
           <td class="text-muted"><?= e(source_label($sourceUrl)) ?></td>
           <td><strong><?= e($row['guest_name']) ?></strong></td>
           <td class="text-muted"><?= e($row['guest_email']) ?></td>
-          <td class="text-muted"><?= e($row['room_name'] ?? '—') ?></td>
+          <td class="text-muted"><?= e($row['room_name'] ?: ($row['tour_name'] ? 'Tour: ' . $row['tour_name'] : '—')) ?></td>
           <td class="text-muted"><?= $row['check_in'] ? e(date('d M Y', strtotime($row['check_in']))) : '—' ?></td>
           <td class="text-muted"><?= e(date('d M Y', strtotime($row['created_at']))) ?></td>
           <td>

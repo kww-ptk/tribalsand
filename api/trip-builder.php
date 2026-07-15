@@ -13,6 +13,7 @@ $data = json_decode(file_get_contents('php://input'), true) ?? [];
 if (!empty($data['website'])) { exit(json_encode(['ok' => true])); } // honeypot
 
 require_once __DIR__ . '/../includes/turnstile.php';
+require_once __DIR__ . '/../includes/mail.php';
 if (!verify_captcha($data['cf-turnstile-response'] ?? '', client_ip())) {
     http_response_code(403);
     exit(json_encode(['ok' => false, 'error' => 'Security check failed. Please try again.']));
@@ -62,4 +63,33 @@ try {
     error_log('[trip-builder] insert failed: ' . $e->getMessage());
     http_response_code(500); exit(json_encode(['ok' => false]));
 }
-echo json_encode(['ok' => true, 'id' => (int)db()->lastInsertId()]);
+$new_id = (int)db()->lastInsertId();
+
+// Notify admin + acknowledge the guest (best-effort; never blocks the response)
+try {
+    send_notification([
+        'id'          => $new_id,
+        'type'        => 'enquiry',
+        'room_name'   => 'Trip Builder itinerary',
+        'guest_name'  => $name,
+        'guest_email' => $email,
+        'guest_phone' => trim($guest['phone'] ?? ''),
+        'message'     => 'Trip Builder request — see the submission in admin for the full itinerary.',
+        'check_in'    => ($trip['arrival']   ?? '') ?: '',
+        'check_out'   => ($trip['departure'] ?? '') ?: '',
+        'guests_adults'   => (int)($trip['adults']   ?? 1),
+        'guests_children' => (int)($trip['children'] ?? 0),
+        'created_at'  => date('Y-m-d H:i:s'),
+    ]);
+    send_guest_acknowledgement([
+        'kind'        => 'enquiry',
+        'guest_name'  => $name,
+        'guest_email' => $email,
+        'check_in'    => ($trip['arrival']   ?? '') ?: '',
+        'check_out'   => ($trip['departure'] ?? '') ?: '',
+    ]);
+} catch (Throwable $e) {
+    error_log('[trip-builder] mail failed: ' . $e->getMessage());
+}
+
+echo json_encode(['ok' => true, 'id' => $new_id]);

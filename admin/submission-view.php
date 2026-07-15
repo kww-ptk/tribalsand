@@ -6,9 +6,10 @@ require_login();
 
 $id  = (int)($_GET['id'] ?? 0);
 $sub = db_query(
-    "SELECT s.*, r.name AS room_name, r.slug AS room_slug
+    "SELECT s.*, r.name AS room_name, r.slug AS room_slug, t.name AS tour_name, t.slug AS tour_slug
      FROM submissions s
      LEFT JOIN rooms r ON r.id = s.room_id
+     LEFT JOIN tours t ON t.id = s.tour_id
      WHERE s.id = :id",
     [':id' => $id]
 )->fetch();
@@ -79,7 +80,16 @@ include __DIR__ . '/_layout.php';
       <div>
         <div class="detail-item__label">Room</div>
         <div class="detail-item__value">
-          <a href="/room.php?slug=<?= e($sub['room_slug']) ?>" target="_blank"><?= e($sub['room_name']) ?></a>
+          <a href="/<?= e($sub['room_slug']) ?>" target="_blank"><?= e($sub['room_name']) ?></a>
+        </div>
+      </div>
+      <?php endif; ?>
+
+      <?php if (!empty($sub['tour_name'])): ?>
+      <div>
+        <div class="detail-item__label">Tour / Activity</div>
+        <div class="detail-item__value">
+          <a href="/activities.php" target="_blank"><?= e($sub['tour_name']) ?></a>
         </div>
       </div>
       <?php endif; ?>

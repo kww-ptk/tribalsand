@@ -8,6 +8,8 @@
  * Optional variables (set before including):
  *   $enq_room_slug  — pre-target a specific room/villa (rooms.slug). Default ''.
  *   $enq_room_name  — label shown to the guest. Default ''.
+ *   $enq_tour_slug  — pre-target a specific tour/activity (tours.slug). Default ''.
+ *   $enq_tour_name  — tour label shown to the guest. Default ''.
  *   $enq_heading    — section heading. Default 'Send an Enquiry'.
  *   $enq_intro      — sub-heading line. Default provided.
  *
@@ -18,8 +20,12 @@ require_once __DIR__ . '/turnstile.php';
 
 $enq_room_slug = $enq_room_slug ?? '';
 $enq_room_name = $enq_room_name ?? '';
+$enq_tour_slug = $enq_tour_slug ?? '';
+$enq_tour_name = $enq_tour_name ?? '';
 $enq_heading   = $enq_heading   ?? 'Send an Enquiry';
 $enq_intro     = $enq_intro     ?? 'Tell us your dates and we’ll reply within 24 hours with availability and a tailored quote.';
+// What the guest is enquiring about (villa takes precedence over tour for the label)
+$enq_subject_name = $enq_room_name ?: $enq_tour_name;
 $enq_uid       = 'enqms_' . substr(md5($enq_room_slug . microtime()), 0, 6);
 $enq_today     = date('Y-m-d');
 ?>
@@ -83,7 +89,7 @@ $enq_today     = date('Y-m-d');
   <div class="enqms__head">
     <div class="enqms__eyebrow">Tribal Sand · Kenya’s North Coast</div>
     <h2 class="enqms__title"><?= e($enq_heading) ?></h2>
-    <p class="enqms__intro"><?= e($enq_intro) ?><?php if ($enq_room_name): ?> <strong style="color:var(--e-teal)"><?= e($enq_room_name) ?></strong><?php endif; ?></p>
+    <p class="enqms__intro"><?= e($enq_intro) ?><?php if ($enq_subject_name): ?> <strong style="color:var(--e-teal)"><?= e($enq_subject_name) ?></strong><?php endif; ?></p>
   </div>
 
   <div class="enqms__card">
@@ -99,6 +105,7 @@ $enq_today     = date('Y-m-d');
           data-room-slug="<?= e($enq_room_slug) ?>" data-room-name="<?= e($enq_room_name) ?>">
       <input type="text" name="website" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
       <input type="hidden" name="room_slug" value="<?= e($enq_room_slug) ?>">
+      <input type="hidden" name="tour_slug" value="<?= e($enq_tour_slug) ?>">
       <input type="hidden" name="adults"   value="2" data-enq-adults>
       <input type="hidden" name="children" value="0" data-enq-children>
 
