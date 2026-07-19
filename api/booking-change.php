@@ -32,7 +32,7 @@ if ((int)$cnt >= 5) { http_response_code(429); exit(json_encode(['ok'=>false,'er
 // Validate: at least one of dates/guests/note present
 $ci    = $str($data['check_in']  ?? '');
 $co    = $str($data['check_out'] ?? '');
-$guests= (int)($data['guests'] ?? 0);
+$guests= (int)$str($data['guests'] ?? '');
 $note  = $str($data['note'] ?? '');
 $isDate = fn($d) => $d === '' || (bool)preg_match('/^\d{4}-\d{2}-\d{2}$/', $d);
 if (!$isDate($ci) || !$isDate($co)) { http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'Please use valid dates.'])); }
