@@ -133,6 +133,7 @@ $page_title = $hold
     : 'Your Booking · Tribal Sand';
 $page_desc  = 'View and manage your Tribal Sand booking.';
 $page_url   = site_url('booking');
+$noindex    = true; // private guest booking page — never index
 
 include __DIR__ . '/includes/head.php';
 include __DIR__ . '/includes/header.php';

@@ -3,11 +3,50 @@
 .bm-submit { background:#102F3A; color:#fff; border:0; padding:12px 20px; border-radius:8px; font-weight:600; font-size:14px; cursor:pointer; }
 .bm-submit:hover { background:#0b2229; }
 .bm-submit:disabled { opacity:.6; cursor:default; }
+.bm-pill { font-size:12px; padding:2px 9px; border-radius:999px; text-transform:capitalize; margin-left:auto; white-space:nowrap; }
+.bm-pill-requested { background:#fff7e6; color:#8a5a00; }
+.bm-pill-confirmed { background:#e6f6ec; color:#146c37; }
+.bm-pill-declined, .bm-pill-cancelled { background:#fbe6e6; color:#a12; }
+.bm-pill-handled { background:#e6eefb; color:#1a4a9c; }
 </style>
 <div class="bk-card" style="margin-bottom:20px">
   <div class="bk-card__body">
     <h3 style="margin:0 0 6px;font-family:'Cormorant Garamond',serif;font-weight:500">Manage your trip</h3>
     <p style="margin:0;color:#6b7280;font-size:14px">Request changes or add tours, transfers and itinerary items — our team confirms availability and pricing by email.</p>
+    <?php
+      $bm_addons  = fetch_booking_addons((int)$hold['id']);
+      $bm_changes = fetch_booking_change_requests((int)$hold['id']);
+    ?>
+    <?php if ($bm_addons || $bm_changes): ?>
+    <div style="margin-top:16px;border-top:1px solid #f0ede7;padding-top:14px">
+      <h4 style="margin:0 0 8px;font-weight:700;font-size:13px;letter-spacing:.05em;text-transform:uppercase;color:#6b7280">Your requests</h4>
+      <ul style="list-style:none;margin:0;padding:0">
+        <?php foreach ($bm_addons as $a): ?>
+          <li style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:7px 0;font-size:14px;border-bottom:1px solid #f5f2ec">
+            <strong><?= e(ucfirst($a['kind'])) ?></strong>
+            <span style="color:#555"><?= e(trim(($a['tour_name'] ?? '') . ' ' . $a['details'])) ?></span>
+            <span class="bm-pill bm-pill-<?= e($a['status']) ?>"><?= e($a['status']) ?></span>
+          </li>
+        <?php endforeach; ?>
+        <?php foreach ($bm_changes as $c): ?>
+          <li style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:7px 0;font-size:14px;border-bottom:1px solid #f5f2ec">
+            <strong>Change</strong>
+            <span style="color:#555">
+              <?php
+                $parts = [];
+                if ($c['requested_check_in'] || $c['requested_check_out'])
+                    $parts[] = trim((string)($c['requested_check_in'] ?? '') . ' → ' . (string)($c['requested_check_out'] ?? ''), ' →');
+                if ($c['requested_guests']) $parts[] = (int)$c['requested_guests'] . ' guests';
+                if (($c['note'] ?? '') !== '') $parts[] = $c['note'];
+                echo e(implode(' · ', $parts));
+              ?>
+            </span>
+            <span class="bm-pill bm-pill-<?= e($c['status']) ?>"><?= e($c['status']) ?></span>
+          </li>
+        <?php endforeach; ?>
+      </ul>
+    </div>
+    <?php endif; ?>
     <!-- change form (Task 5) -->
     <form data-bm action="/api/booking-change.php" class="bm-form" style="margin-top:16px">
       <h4 style="margin:0 0 8px;font-weight:700;font-size:13px;letter-spacing:.05em;text-transform:uppercase;color:#6b7280">Request a change</h4>
