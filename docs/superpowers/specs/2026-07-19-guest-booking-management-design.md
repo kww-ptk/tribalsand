@@ -28,7 +28,7 @@ never instant bookings — avoiding chargeback exposure.
 - No self-service mutation of the hold (dates/guests) — requests go to admin.
 - No manage page for plain enquiry or tour-only leads — **availability holds only**.
 - No admin CRUD for a transfers catalog — transfers are a fixed option list.
-- No "Cancel my booking" self-service button — cancellation is requested via the change form.
+- Self-cancel: the existing `booking.php` self-cancel button (pending anytime; confirmed only ≥7 days before check-in) is **kept as-is** (decision 2026-07-19). The change-request form is for date/detail changes, not cancellation.
 - No guest confirmation email when an admin confirms an add-on (may add later).
 
 ## Access & Security

@@ -386,9 +386,18 @@ git commit -m "feat: booking resolvers + add-on catalog helpers"
 
 ## Task 4: Guest manage page `booking.php`
 
+> **⚠️ REVISED (discovered during execution): `booking.php` ALREADY EXISTS** as a complete 432-line guest page — magic-link `?ref=` access, status badges (pending/confirmed/expired/cancelled), summary card, live expiry countdown, a self-cancel flow (7-day rule for confirmed), branded `.bk-*` styling. **Do NOT recreate it.** Task 4 now = EXTEND the existing page:
+> 1. When the ref is invalid, render a **code + email lookup form** instead of the current "Link not recognised" error card (Turnstile + rate-limited; on success re-resolve and render the booking).
+> 2. Add an **access-code row** to the summary table (`$hold['access_code']`).
+> 3. For actionable statuses (pending/confirmed), include `includes/booking-manage-actions.php` (the change + add-on forms, Tasks 5–6) — styled to match `.bk-*`.
+> 4. Keep the existing cancel button, countdown, hero, and styling untouched.
+> 5. Add `js/booking-manage.js` (fetch handler for the new forms) — **without** a countdown (the page already has one).
+> The CSS below (`.bm-*`) may be added scoped, or restyle the forms with existing `.bk-*` classes. The greenfield steps below are superseded by the dispatch instructions.
+
 **Files:**
-- Create: `booking.php`
-- Create: `js/booking-manage.js` (stub now; wired in Task 7's client behavior — created here so the page can reference it)
+- Modify: `booking.php` (extend — lookup fallback, access-code row, actions include, manage JS)
+- Create: `js/booking-manage.js` (fetch handler only, no countdown)
+- Create: `includes/booking-manage-actions.php` (placeholder here; forms added in Tasks 5–6)
 
 - [ ] **Step 1: Create `js/booking-manage.js`**
 
@@ -943,6 +952,8 @@ git commit -m "feat: guest add-on requests (tours/transfers/itinerary)"
 ---
 
 ## Task 7: Emails — guest link/code + admin notifications
+
+> **⚠️ REVISED (discovered during execution): the CONFIRMATION email (`send_hold_confirmed`) ALREADY includes a `/booking.php?ref=` manage link.** So Task 7 shrinks to: (a) add the manage link **+ access code** to the *initial* acknowledgement email (`send_guest_acknowledgement`, which currently has neither), and (b) add the two admin notification functions (`send_change_request_notification`, `send_addon_request_notification`). Do NOT duplicate the link into `send_hold_confirmed`.
 
 **Files:**
 - Modify: `includes/mail.php` (extend `send_guest_acknowledgement()`; add two notification functions)
