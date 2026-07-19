@@ -485,7 +485,7 @@ include __DIR__ . '/includes/header.php';
 
     <!-- ── Manage actions (change requests + add-ons) ── -->
     <?php if (in_array($status, ['pending', 'confirmed'], true)):
-      $tours = fetch_published_tours();
+      try { $tours = fetch_published_tours(); } catch (Throwable $e) { $tours = []; }
       include __DIR__ . '/includes/booking-manage-actions.php';
     endif; ?>
 
