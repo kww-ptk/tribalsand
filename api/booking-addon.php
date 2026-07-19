@@ -23,9 +23,8 @@ if (!verify_captcha($str($data['cf-turnstile-response'] ?? ''), $ip)) {
 }
 
 // Rate limit — max 10 add-on requests per hold / 10 min
-$window = date('Y-m-d H:i:s', time() - 600);
-$cnt = db_query("SELECT COUNT(*) c FROM booking_addons WHERE hold_id=:h AND created_at>:w",
-    [':h'=>$hold['id'], ':w'=>$window])->fetch()['c'];
+$cnt = db_query("SELECT COUNT(*) c FROM booking_addons WHERE hold_id=:h AND created_at > NOW() - INTERVAL '10 minutes'",
+    [':h'=>$hold['id']])->fetch()['c'];
 if ((int)$cnt >= 10) { http_response_code(429); exit(json_encode(['ok'=>false,'error'=>'Too many requests. Please wait a few minutes.'])); }
 
 // Validate

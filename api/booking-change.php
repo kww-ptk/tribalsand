@@ -24,9 +24,8 @@ if (!verify_captcha($data['cf-turnstile-response'] ?? '', $ip)) {
 }
 
 // Rate limit — max 5 change requests per hold / 10 min
-$window = date('Y-m-d H:i:s', time() - 600);
-$cnt = db_query("SELECT COUNT(*) c FROM booking_change_requests WHERE hold_id=:h AND created_at>:w",
-    [':h'=>$hold['id'], ':w'=>$window])->fetch()['c'];
+$cnt = db_query("SELECT COUNT(*) c FROM booking_change_requests WHERE hold_id=:h AND created_at > NOW() - INTERVAL '10 minutes'",
+    [':h'=>$hold['id']])->fetch()['c'];
 if ((int)$cnt >= 5) { http_response_code(429); exit(json_encode(['ok'=>false,'error'=>'Too many requests. Please wait a few minutes.'])); }
 
 // Validate: at least one of dates/guests/note present
