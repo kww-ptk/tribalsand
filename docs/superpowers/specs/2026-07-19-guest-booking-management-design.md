@@ -24,7 +24,7 @@ never instant bookings — avoiding chargeback exposure.
 ## Non-Goals (v1)
 
 - No online payment / checkout — all add-ons are request-a-quote.
-- No guest accounts or password login — magic link only.
+- No guest accounts or password login — access is by magic link or code + email only.
 - No self-service mutation of the hold (dates/guests) — requests go to admin.
 - No manage page for plain enquiry or tour-only leads — **availability holds only**.
 - No admin CRUD for a transfers catalog — transfers are a fixed option list.
@@ -33,15 +33,31 @@ never instant bookings — avoiding chargeback exposure.
 
 ## Access & Security
 
-**Magic link, stateless HMAC token.** Reuse the existing `BOOKING_TOKEN_SECRET` HMAC pattern
-already used for the one-click email confirm/decline buttons (see `includes/mail.php`).
+Two ways in, both landing on the same manage page:
+
+### 1. Magic link (primary) — stateless HMAC token
+Reuse the existing `BOOKING_TOKEN_SECRET` HMAC pattern already used for the one-click email
+confirm/decline buttons (see `includes/mail.php`).
 
 - Token = `HMAC_SHA256(hold_id . guest_email, BOOKING_TOKEN_SECRET)`, base64url-encoded.
 - URL shape: `https://tribalsand.com/booking?ref=<hold_id>&t=<token>`.
-- No new DB column, nothing to expire-manage, nothing to leak.
+- Nothing to expire-manage, nothing to leak.
 - Invalid/tampered/missing token → generic "booking not found" (no enumeration).
-- If `BOOKING_TOKEN_SECRET` is unset, the feature link is not emitted and endpoints reject
+- If `BOOKING_TOKEN_SECRET` is unset, the link is not emitted and endpoints reject
   (fail-closed, matching the Turnstile convention).
+
+### 2. Typed code (fallback) — random stored code + email
+For guests who lost the email link. Each hold gets a short random **access code**
+(e.g. `K7QM2P`) stored on the `holds` row. A lookup page (`booking.php` with no valid token)
+shows a form: **access code + email**.
+
+- On submit: look up the hold by `access_code` AND matching `guest_email` (case-insensitive).
+- On match, render the same manage page (internally mint the HMAC token so the rest of the
+  flow — add-on/change POSTs — is identical to the magic-link path).
+- No match → generic "we couldn't find a booking with that code and email."
+- Turnstile-gated and rate-limited by `client_ip()` to prevent brute-forcing the code.
+- Code is shown in the guest acknowledgement email and on the manage page.
+- Code format: 6 chars, uppercase, unambiguous alphabet (no `0/O`, `1/I`), generated at hold creation.
 
 All state-changing POSTs (add-on, change request) are additionally protected by:
 - Token gate (must match the booking).
@@ -49,6 +65,17 @@ All state-changing POSTs (add-on, change request) are additionally protected by:
 - Rate limiting by `client_ip()` and email (mirror `api/submit-enquiry.php`: max 5 / 10 min).
 
 ## Data Model
+
+### New column: `holds.access_code`
+```sql
+ALTER TABLE holds ADD COLUMN IF NOT EXISTS access_code VARCHAR(12);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_holds_access_code ON holds(access_code)
+    WHERE access_code IS NOT NULL;
+-- Backfill existing holds with a generated code (one-time UPDATE in the migration).
+```
+The code is generated in PHP at hold creation (in `create_hold_with_block()` /
+`api/submit-enquiry.php`) from a 6-char unambiguous uppercase alphabet, retried on the rare
+unique-index collision. Existing rows are backfilled by the migration.
 
 ### New table: `booking_addons`
 ```sql
@@ -95,6 +122,10 @@ Both migrations follow the existing idempotent `CREATE TABLE IF NOT EXISTS` conv
 
 Server-rendered from the hold using existing `includes/head.php`, `header.php`, `footer.php`, `css/main.css`.
 
+**Lookup state:** if `booking.php` is opened without a valid token (no link, or tampered), it
+renders the **code + email lookup form** (Turnstile-gated, rate-limited) instead of the booking.
+A successful lookup renders the manage page below; a failure re-shows the form with a generic error.
+
 1. **Status banner** — colour-coded by `holds.status`:
    - `pending` → "Reservation held — awaiting confirmation" + live 24h countdown to `expires_at`
      (reuse countdown logic from `js/booking-widget.js`).
@@ -130,13 +161,17 @@ existing admin auth/session.
 
 ## Emails (via `includes/mail.php` / Resend)
 
-- **Guest acknowledgement** (existing hold email) — add a **"Manage your booking"** magic-link button.
+- **Guest acknowledgement** (existing hold email) — add a **"Manage your booking"** magic-link
+  button **and** show the booking **access code** (so a guest who loses the link can still look it up).
 - **New admin notification: add-on request** — links to admin hold view.
 - **New admin notification: change request** — links to admin hold view.
 
 ## Testing
 
-- Token: valid token loads booking; tampered/missing token → "not found"; wrong email in token → rejected.
+- Token: valid token loads booking; tampered/missing token → lookup form; wrong email in token → rejected.
+- Code lookup: correct code + email loads booking; wrong code, wrong email, or mismatched pair → generic
+  error; lookup is Turnstile-gated and rate-limited (brute-force protection).
+- Access code is generated on hold creation, is unique, and uses the unambiguous alphabet.
 - Fail-closed: with `BOOKING_TOKEN_SECRET` unset, no link emitted and endpoints reject.
 - Add-on POST creates a row, is rate-limited, Turnstile-gated, and only against the matching hold.
 - Change request POST creates a row and does **not** modify the hold.
@@ -148,10 +183,11 @@ existing admin auth/session.
 
 | File | Change |
 |------|--------|
-| `booking.php` | New — guest manage page (token-gated render) |
+| `booking.php` | New — guest manage page; token-gated render, else code+email lookup form |
+| `api/submit-enquiry.php` | Generate `access_code` at hold creation |
 | `api/booking-addon.php` | New — add-on request endpoint |
 | `api/booking-change.php` | New — change request endpoint |
-| `db/migrations/add_booking_management.sql` | New — the two tables |
+| `db/migrations/add_booking_management.sql` | New — `holds.access_code` column + backfill + the two tables |
 | `db/run-migrations.sql` | Append the two tables |
 | `includes/mail.php` | Add magic-link button to guest email; add 2 admin notification emails; add token helper |
 | `admin/holds.php` (and/or `admin/submission-view.php`) | Show + action guest requests |
