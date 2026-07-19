@@ -30,10 +30,11 @@ $cnt = db_query("SELECT COUNT(*) c FROM booking_change_requests WHERE hold_id=:h
 if ((int)$cnt >= 5) { http_response_code(429); exit(json_encode(['ok'=>false,'error'=>'Too many requests. Please wait a few minutes.'])); }
 
 // Validate: at least one of dates/guests/note present
-$ci    = trim($data['check_in']  ?? '');
-$co    = trim($data['check_out'] ?? '');
+$str   = fn($v) => is_scalar($v) ? trim((string)$v) : '';
+$ci    = $str($data['check_in']  ?? '');
+$co    = $str($data['check_out'] ?? '');
 $guests= (int)($data['guests'] ?? 0);
-$note  = trim($data['note'] ?? '');
+$note  = $str($data['note'] ?? '');
 $isDate = fn($d) => $d === '' || (bool)preg_match('/^\d{4}-\d{2}-\d{2}$/', $d);
 if (!$isDate($ci) || !$isDate($co)) { http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'Please use valid dates.'])); }
 if ($ci === '' && $co === '' && $guests <= 0 && $note === '') {
@@ -51,5 +52,6 @@ try {
     }
     echo json_encode(['ok'=>true]);
 } catch (Throwable $e) {
+    error_log('[booking-change] failed: ' . $e->getMessage());
     http_response_code(500); echo json_encode(['ok'=>false,'error'=>'Could not save your request. Please try again.']);
 }
