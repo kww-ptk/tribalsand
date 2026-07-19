@@ -3,6 +3,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/mail.php';
+require_once __DIR__ . '/../includes/booking.php';
 require_login();
 
 // Lazy-expire stale holds on every page load
@@ -231,6 +232,55 @@ include __DIR__ . '/_layout.php';
             <?php endif; ?>
           </td>
         </tr>
+        <?php
+          $h_addons  = fetch_booking_addons((int)$hold['id']);
+          $h_changes = fetch_booking_change_requests((int)$hold['id']);
+        ?>
+        <?php if ($h_addons || $h_changes): ?>
+        <tr class="hold-requests-row">
+          <td></td>
+          <td colspan="6" style="padding-top:0;padding-bottom:12px">
+            <div class="hold-requests" style="padding:10px 12px;background:var(--bg-alt,#f7f7f5);border-radius:6px">
+              <?php foreach ($h_addons as $a): ?>
+              <div style="display:flex;gap:8px;align-items:center;font-size:13px;margin:4px 0;flex-wrap:wrap">
+                <strong><?= e(ucfirst($a['kind'])) ?></strong>
+                <span><?= e(trim(($a['tour_name'] ?? '') . ' ' . $a['details'])) ?></span>
+                <em>(<?= e($a['status']) ?>)</em>
+                <?php if ($a['status'] === 'requested'): ?>
+                <form method="POST" action="/admin/booking-request-action.php" style="display:inline;margin:0">
+                  <?= csrf_field() ?>
+                  <input type="hidden" name="type" value="addon">
+                  <input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
+                  <button type="submit" name="status" value="confirmed" class="btn-primary btn-sm">Confirm</button>
+                  <button type="submit" name="status" value="declined" class="btn-danger btn-sm">Decline</button>
+                </form>
+                <?php endif; ?>
+              </div>
+              <?php endforeach; ?>
+              <?php foreach ($h_changes as $c): ?>
+              <div style="display:flex;gap:8px;align-items:center;font-size:13px;margin:4px 0;flex-wrap:wrap">
+                <strong>Change</strong>
+                <span>
+                  <?= e(trim((string)($c['requested_check_in'] ?? '') . ' → ' . (string)($c['requested_check_out'] ?? ''), ' →')) ?>
+                  <?= $c['requested_guests'] ? ' · ' . (int)$c['requested_guests'] . ' guests' : '' ?>
+                  <?= e($c['note']) ?>
+                </span>
+                <em>(<?= e($c['status']) ?>)</em>
+                <?php if ($c['status'] === 'requested'): ?>
+                <form method="POST" action="/admin/booking-request-action.php" style="display:inline;margin:0">
+                  <?= csrf_field() ?>
+                  <input type="hidden" name="type" value="change">
+                  <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
+                  <button type="submit" name="status" value="handled" class="btn-primary btn-sm">Mark handled</button>
+                  <button type="submit" name="status" value="declined" class="btn-danger btn-sm">Decline</button>
+                </form>
+                <?php endif; ?>
+              </div>
+              <?php endforeach; ?>
+            </div>
+          </td>
+        </tr>
+        <?php endif; ?>
         <?php endforeach; ?>
       </tbody>
     </table>
