@@ -10,16 +10,17 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(405); exit(json_
 
 $data = json_decode(file_get_contents('php://input'), true) ?? [];
 $ip   = client_ip();
+$str  = fn($v) => is_scalar($v) ? trim((string)$v) : '';
 
 // Ref gate — must resolve to a real, actionable hold
-$hold = resolve_booking_by_ref((string)($data['ref'] ?? ''));
+$hold = resolve_booking_by_ref($str($data['ref'] ?? ''));
 if (!$hold) { http_response_code(403); exit(json_encode(['ok'=>false,'error'=>'Booking not found.'])); }
 if (!in_array($hold['status'], ['pending','confirmed'], true)) {
     http_response_code(409); exit(json_encode(['ok'=>false,'error'=>'This booking can no longer be changed.']));
 }
 
 // Turnstile
-if (!verify_captcha($data['cf-turnstile-response'] ?? '', $ip)) {
+if (!verify_captcha($str($data['cf-turnstile-response'] ?? ''), $ip)) {
     http_response_code(403); exit(json_encode(['ok'=>false,'error'=>'Security check failed. Please try again.']));
 }
 
@@ -29,7 +30,6 @@ $cnt = db_query("SELECT COUNT(*) c FROM booking_change_requests WHERE hold_id=:h
 if ((int)$cnt >= 5) { http_response_code(429); exit(json_encode(['ok'=>false,'error'=>'Too many requests. Please wait a few minutes.'])); }
 
 // Validate: at least one of dates/guests/note present
-$str   = fn($v) => is_scalar($v) ? trim((string)$v) : '';
 $ci    = $str($data['check_in']  ?? '');
 $co    = $str($data['check_out'] ?? '');
 $guests= (int)($data['guests'] ?? 0);
