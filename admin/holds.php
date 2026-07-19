@@ -251,8 +251,8 @@ include __DIR__ . '/_layout.php';
                   <?= csrf_field() ?>
                   <input type="hidden" name="type" value="addon">
                   <input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
-                  <button type="submit" name="status" value="confirmed" class="btn-primary btn-sm">Confirm</button>
-                  <button type="submit" name="status" value="declined" class="btn-danger btn-sm">Decline</button>
+                  <button type="submit" name="status" value="confirmed" class="btn-primary btn-sm" onclick="return confirm('Apply this action?')">Confirm</button>
+                  <button type="submit" name="status" value="declined" class="btn-danger btn-sm" onclick="return confirm('Apply this action?')">Decline</button>
                 </form>
                 <?php endif; ?>
               </div>
@@ -271,8 +271,8 @@ include __DIR__ . '/_layout.php';
                   <?= csrf_field() ?>
                   <input type="hidden" name="type" value="change">
                   <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
-                  <button type="submit" name="status" value="handled" class="btn-primary btn-sm">Mark handled</button>
-                  <button type="submit" name="status" value="declined" class="btn-danger btn-sm">Decline</button>
+                  <button type="submit" name="status" value="handled" class="btn-primary btn-sm" onclick="return confirm('Apply this action?')">Mark handled</button>
+                  <button type="submit" name="status" value="declined" class="btn-danger btn-sm" onclick="return confirm('Apply this action?')">Decline</button>
                 </form>
                 <?php endif; ?>
               </div>
