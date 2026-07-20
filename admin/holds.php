@@ -192,6 +192,16 @@ include __DIR__ . '/_layout.php';
           <td>
             <strong><?= e($hold['guest_name']) ?></strong><br>
             <a href="mailto:<?= e($hold['guest_email']) ?>" style="font-size:12px;color:var(--muted)"><?= e($hold['guest_email']) ?></a>
+            <?php $__mref = make_manage_url((int)$hold['id']); $__code = $hold['access_code'] ?? ''; ?>
+            <?php if ($__code || $__mref): ?>
+            <div style="font-size:12px;color:var(--muted);margin-top:4px">
+              Code: <strong style="font-family:monospace;letter-spacing:1px;color:var(--text,#111)"><?= e($__code ?: '—') ?></strong>
+              <?php if ($__mref): ?>
+              <button type="button" class="copy-link" data-link="<?= e($__mref) ?>"
+                      style="margin-left:6px;font-size:11px;padding:1px 7px;cursor:pointer;border:1px solid #ccc;border-radius:4px;background:#fff">Copy portal link</button>
+              <?php endif; ?>
+            </div>
+            <?php endif; ?>
           </td>
           <td>
             <?= e($hold['room_name']) ?><br>
@@ -287,5 +297,19 @@ include __DIR__ . '/_layout.php';
     <?php endif; ?>
   </div>
 </div>
+
+<script>
+document.addEventListener('click', function (e) {
+  var b = e.target.closest('.copy-link');
+  if (!b) return;
+  var link = b.getAttribute('data-link');
+  var done = function () { var t = b.textContent; b.textContent = 'Copied!'; setTimeout(function () { b.textContent = t; }, 1500); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(link).then(done).catch(function () { window.prompt('Copy this portal link:', link); });
+  } else {
+    window.prompt('Copy this portal link:', link);
+  }
+});
+</script>
 
 <?php include __DIR__ . '/_layout_end.php'; ?>
