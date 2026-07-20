@@ -172,6 +172,8 @@ try {
             'check_in'    => $checkin,
             'check_out'   => $checkout,
             'message'     => trim($data['message'] ?? ''),
+            'hold_id'     => $hold_id,
+            'access_code' => $hold_row['access_code'] ?? '',
         ]);
         echo json_encode(['ok' => true, 'id' => $id, 'mode' => 'hold']);
     } else {

@@ -238,20 +238,34 @@ function create_hold_with_block(
     string $check_in, string $check_out,
     string $guest_name, string $guest_email
 ): int {
-    $stmt = db()->prepare(
-        "INSERT INTO holds (submission_id, unit_id, check_in, check_out, guest_name, guest_email, expires_at)
-         VALUES (:sub, :unit, :ci, :co, :name, :email, NOW() + INTERVAL '24 hours')
-         RETURNING id"
-    );
-    $stmt->execute([
-        ':sub'   => $submission_id,
-        ':unit'  => $unit_id,
-        ':ci'    => $check_in,
-        ':co'    => $check_out,
-        ':name'  => $guest_name,
-        ':email' => $guest_email,
-    ]);
-    $hold_id = (int)$stmt->fetchColumn();
+    $hold_id = 0;
+    for ($attempt = 0; $attempt < 5; $attempt++) {
+        $code = generate_access_code();
+        try {
+            $stmt = db()->prepare(
+                "INSERT INTO holds
+                    (submission_id, unit_id, check_in, check_out, guest_name, guest_email, access_code, expires_at)
+                 VALUES
+                    (:sub, :unit, :ci, :co, :name, :email, :code, NOW() + INTERVAL '24 hours')
+                 RETURNING id"
+            );
+            $stmt->execute([
+                ':sub'   => $submission_id,
+                ':unit'  => $unit_id,
+                ':ci'    => $check_in,
+                ':co'    => $check_out,
+                ':name'  => $guest_name,
+                ':email' => $guest_email,
+                ':code'  => $code,
+            ]);
+            $hold_id = (int)$stmt->fetchColumn();
+            break;
+        } catch (PDOException $e) {
+            // 23505 = unique_violation (access_code collision) — retry with a new code
+            if (($e->getCode() === '23505') && $attempt < 4) continue;
+            throw $e;
+        }
+    }
 
     db_query(
         "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, hold_id)
@@ -370,6 +384,20 @@ function client_ip(): string {
         if (filter_var($ip, FILTER_VALIDATE_IP)) return $ip;
     }
     return $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+}
+
+/**
+ * Generate a short, human-friendly booking access code.
+ * Uppercase, unambiguous alphabet (no 0/O/1/I/L). Uses random_int (CSPRNG).
+ */
+function generate_access_code(int $len = 6): string {
+    $alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+    $max = strlen($alphabet) - 1;
+    $out = '';
+    for ($i = 0; $i < $len; $i++) {
+        $out .= $alphabet[random_int(0, $max)];
+    }
+    return $out;
 }
 
 /**

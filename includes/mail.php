@@ -142,6 +142,13 @@ function send_guest_acknowledgement(array $a): void {
         if (!empty($a[$key])) $rows[] = [$label, (string)$a[$key]];
     }
 
+    $manage_url  = '';
+    $access_code = trim((string)($a['access_code'] ?? ''));
+    if (($a['kind'] ?? '') === 'hold' && !empty($a['hold_id'])) {
+        require_once __DIR__ . '/booking.php';
+        $manage_url = make_manage_url((int)$a['hold_id']);
+    }
+
     $tl = ["Dear {$name},", '', $intro, ''];
     if ($rows) {
         $tl[] = 'YOUR DETAILS';
@@ -153,6 +160,12 @@ function send_guest_acknowledgement(array $a): void {
         $tl[] = (string)$a['message'];
         $tl[] = '';
     }
+    if ($manage_url) {
+        $tl[] = 'MANAGE YOUR BOOKING';
+        $tl[] = "  View status & add tours/transfers: {$manage_url}";
+        if ($access_code) $tl[] = "  Your booking code: {$access_code}";
+        $tl[] = '';
+    }
     $tl[] = "If your enquiry is urgent you can reply to this email or write to {$reply}.";
     $tl[] = '';
     $tl[] = 'Warm regards,';
@@ -162,12 +175,14 @@ function send_guest_acknowledgement(array $a): void {
     $text = implode("\n", $tl);
 
     $html = _guest_ack_html([
-        'name'    => $name,
-        'intro'   => $intro,
-        'rows'    => $rows,
-        'message' => (string)($a['message'] ?? ''),
-        'reply'   => $reply,
-        'site'    => $site,
+        'name'        => $name,
+        'intro'       => $intro,
+        'rows'        => $rows,
+        'message'     => (string)($a['message'] ?? ''),
+        'reply'       => $reply,
+        'site'        => $site,
+        'manage_url'  => $manage_url,
+        'access_code' => $access_code,
     ]);
 
     _dispatch_mail($to, $subject, $text, $from, $reply, $env, $html);
@@ -200,6 +215,20 @@ function _guest_ack_html(array $d): string {
             . '</div></div>';
     }
 
+    $manage = '';
+    if (!empty($d['manage_url'])) {
+        $codeHtml = !empty($d['access_code'])
+            ? '<p style="margin:10px 0 0;font-size:14px;color:#555">Booking code: <strong style="letter-spacing:2px">'
+              . $esc((string)$d['access_code']) . '</strong></p>'
+            : '';
+        $manage =
+            '<div style="text-align:center;margin:24px 0">'
+          . '<a href="' . $esc((string)$d['manage_url']) . '" '
+          . 'style="display:inline-block;background:#102F3A;color:#fff;text-decoration:none;'
+          . 'padding:12px 24px;border-radius:8px;font-weight:600">Manage your booking</a>'
+          . $codeHtml . '</div>';
+    }
+
     return '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>'
         . '<body style="margin:0;padding:0;background:#f0f4f5;font-family:Arial,Helvetica,sans-serif">'
         . '<div style="max-width:600px;margin:32px auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1)">'
@@ -212,6 +241,7 @@ function _guest_ack_html(array $d): string {
             . '<p style="margin:0 0 4px;font-size:15px;line-height:1.6">' . $esc($d['intro']) . '</p>'
             . $detail_block
             . $message_block
+            . $manage
             . '<p style="font-size:13px;color:#777;line-height:1.6;margin-top:24px">If your enquiry is urgent you can simply reply to this email, or write to '
               . '<a href="mailto:' . $esc($d['reply']) . '" style="color:#1E5C6B">' . $esc($d['reply']) . '</a>.</p>'
             . '<p style="font-size:14px;margin:24px 0 0">Warm regards,<br><strong>Tribal Sand</strong></p>'
@@ -523,4 +553,48 @@ function log_mail_error(string $message): void {
     $log = __DIR__ . '/../logs/mail.log';
     $line = '[' . date('Y-m-d H:i:s') . '] ' . $message . PHP_EOL;
     file_put_contents($log, $line, FILE_APPEND | LOCK_EX);
+}
+
+/** Notify admin of a guest change request. */
+function send_change_request_notification(array $hold, array $req): void {
+    $env  = parse_env();
+    $from = $env['MAIL_FROM'] ?? 'noreply@tribalsand.com';
+    $to   = setting('notify_email', 'reservations@tribalsand.com');
+    $site = rtrim($env['SITE_URL'] ?? $env['APP_URL'] ?? 'https://tribalsand.com', '/');
+    $admin= $site . '/admin/holds.php';
+    $subject = "Change request — hold #{$hold['id']} ({$hold['guest_name']})";
+    $lines = [
+        "Guest {$hold['guest_name']} ({$hold['guest_email']}) requested a change to hold #{$hold['id']} — {$hold['room_name']}.",
+        '',
+        'Requested:',
+        '  New check-in:  ' . (($req['check_in']  ?? '') !== '' ? $req['check_in']  : '—'),
+        '  New check-out: ' . (($req['check_out'] ?? '') !== '' ? $req['check_out'] : '—'),
+        '  Guests:        ' . ((int)($req['guests'] ?? 0) > 0 ? (int)$req['guests'] : '—'),
+        '  Note:          ' . (($req['note'] ?? '') !== '' ? $req['note'] : '—'),
+        '',
+        "Review in admin: {$admin}",
+    ];
+    $text = implode("\n", $lines);
+    $html = '<p>' . nl2br(htmlspecialchars($text)) . '</p>';
+    _dispatch_mail($to, $subject, $text, $from, $to, $env, $html);
+}
+
+/** Notify admin of a guest add-on request. */
+function send_addon_request_notification(array $hold, array $addon): void {
+    $env  = parse_env();
+    $from = $env['MAIL_FROM'] ?? 'noreply@tribalsand.com';
+    $to   = setting('notify_email', 'reservations@tribalsand.com');
+    $site = rtrim($env['SITE_URL'] ?? $env['APP_URL'] ?? 'https://tribalsand.com', '/');
+    $admin= $site . '/admin/holds.php';
+    $subject = "Add-on request — hold #{$hold['id']} ({$hold['guest_name']})";
+    $lines = [
+        "Guest {$hold['guest_name']} ({$hold['guest_email']}) added a {$addon['kind']} to hold #{$hold['id']} — {$hold['room_name']}.",
+        '',
+        'Details: ' . (($addon['details'] ?? '') !== '' ? $addon['details'] : '—'),
+        '',
+        "Review in admin: {$admin}",
+    ];
+    $text = implode("\n", $lines);
+    $html = '<p>' . nl2br(htmlspecialchars($text)) . '</p>';
+    _dispatch_mail($to, $subject, $text, $from, $to, $env, $html);
 }

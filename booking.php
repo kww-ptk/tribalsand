@@ -3,12 +3,16 @@ declare(strict_types=1);
 require_once __DIR__ . '/includes/db.php';
 require_once __DIR__ . '/includes/mail.php';
 require_once __DIR__ . '/includes/booking.php';
+require_once __DIR__ . '/includes/turnstile.php';
 
-$ref     = trim($_GET['ref'] ?? '');
+if (session_status() === PHP_SESSION_NONE) session_start();
+
+$ref     = trim($_GET['ref'] ?? $_POST['ref'] ?? '');
 $holdId  = verify_guest_ref($ref);
 $hold    = null;
 $error   = '';
 $success = '';
+$lookupError = '';
 $can_cancel = false;
 $cancel_blocked_reason = '';
 
@@ -26,6 +30,36 @@ if (!$holdId) {
 
     if (!$hold) {
         $error = 'Booking not found.';
+    }
+}
+
+// ── Fallback: code + email lookup (when no valid ref resolved a hold) ──
+if ((!$holdId || !$hold) && ($_POST['do'] ?? '') === 'lookup') {
+    $now = time();
+    $stamps = array_filter(
+        (array)($_SESSION['bk_lookups'] ?? []),
+        fn($t) => ($now - (int)$t) < 600
+    );
+
+    if (count($stamps) >= 8) {
+        $lookupError = 'Too many attempts. Please wait a few minutes and try again.';
+        $_SESSION['bk_lookups'] = array_values($stamps);
+    } elseif (!verify_captcha($_POST['cf-turnstile-response'] ?? '', client_ip())) {
+        $lookupError = 'Security check failed. Please try again.';
+        $_SESSION['bk_lookups'] = array_values($stamps);
+    } else {
+        $stamps[] = $now;
+        $_SESSION['bk_lookups'] = array_values($stamps);
+
+        $found = resolve_booking_by_code($_POST['code'] ?? '', $_POST['email'] ?? '');
+        if ($found) {
+            $hold   = $found;
+            $holdId = (int)$hold['id'];
+            $ref    = make_guest_ref($holdId);
+            $error  = '';
+        } else {
+            $lookupError = 'We couldn’t find a booking with that code and email.';
+        }
     }
 }
 
@@ -99,6 +133,7 @@ $page_title = $hold
     : 'Your Booking · Tribal Sand';
 $page_desc  = 'View and manage your Tribal Sand booking.';
 $page_url   = site_url('booking');
+$noindex    = true; // private guest booking page — never index
 
 include __DIR__ . '/includes/head.php';
 include __DIR__ . '/includes/header.php';
@@ -204,6 +239,55 @@ include __DIR__ . '/includes/header.php';
 .bk-error-card h2 { margin:0 0 12px; font-family:'Cormorant Garamond',serif; font-size:26px; font-weight:400; }
 .bk-error-card p  { color:#6b7280; line-height:1.65; margin:0 0 28px; }
 
+.bk-lookup-form { max-width:380px; margin:0 auto; }
+.bk-lookup-label {
+  display:block;
+  font-size:12px;
+  font-weight:700;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+  color:#9CA3AF;
+  margin:14px 0 6px;
+}
+.bk-lookup-input {
+  width:100%;
+  padding:12px 14px;
+  border:1px solid #d1d5db;
+  border-radius:8px;
+  font-size:15px;
+  font-family:'Jost',sans-serif;
+  box-sizing:border-box;
+}
+.bk-lookup-input:focus { outline:none; border-color:var(--teal,#1E5C6B); }
+.bk-lookup-btn {
+  width:100%;
+  margin-top:12px;
+  background:var(--teal-d,#102F3A);
+  color:#fff;
+  border:none;
+  padding:13px 32px;
+  font-size:13px;
+  font-weight:700;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  cursor:pointer;
+  font-family:'Jost',sans-serif;
+  border-radius:8px;
+  transition:background .2s;
+}
+.bk-lookup-btn:hover { background:#1E5C6B; }
+.bk-lookup-error {
+  max-width:380px;
+  margin:0 auto 16px;
+  background:#fef2f2;
+  border:1px solid #fecaca;
+  color:#991b1b;
+  border-radius:8px;
+  padding:12px 16px;
+  font-size:13px;
+  line-height:1.5;
+}
+
 .bk-alert-success {
   background:#dcfce7;
   border:1px solid #86efac;
@@ -265,13 +349,33 @@ include __DIR__ . '/includes/header.php';
   <div class="container">
 
     <?php if ($error): ?>
-    <!-- ── Invalid ref ── -->
-    <div class="bk-error-card">
-      <div class="bk-icon">&#128274;</div>
-      <h2>Link not recognised</h2>
-      <p><?= e($error) ?></p>
-      <a href="/properties" style="display:inline-block;padding:12px 32px;background:var(--teal-d,#102F3A);color:#fff;font-size:13px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;font-family:'Jost',sans-serif;text-decoration:none;">View Our Properties</a>
-      <p style="margin:24px 0 0;font-size:13px;color:#9ca3af">
+    <!-- ── Invalid ref / code lookup ── -->
+    <div class="bk-error-card" style="text-align:left">
+      <div style="text-align:center">
+        <div class="bk-icon">&#128274;</div>
+        <h2>Find your booking</h2>
+        <p style="margin:0 0 28px">We couldn&rsquo;t open your booking from that link. Enter your booking code and the email you booked with to continue.</p>
+      </div>
+
+      <?php if ($lookupError): ?>
+      <div class="bk-lookup-error"><?= e($lookupError) ?></div>
+      <?php endif; ?>
+
+      <form method="post" class="bk-lookup-form">
+        <input type="hidden" name="do" value="lookup">
+        <label class="bk-lookup-label" for="bkCode">Booking code</label>
+        <input id="bkCode" type="text" name="code" required autocomplete="off"
+               placeholder="e.g. K7QM2P" value="<?= e($_POST['code'] ?? '') ?>"
+               style="text-transform:uppercase" class="bk-lookup-input">
+        <label class="bk-lookup-label" for="bkEmail">Email address</label>
+        <input id="bkEmail" type="email" name="email" required
+               placeholder="you@example.com" value="<?= e($_POST['email'] ?? '') ?>"
+               class="bk-lookup-input">
+        <div class="cf-turnstile" data-sitekey="<?= e(captcha_site_key()) ?>" style="margin:8px 0 4px"></div>
+        <button type="submit" class="bk-lookup-btn">Find my booking</button>
+      </form>
+
+      <p style="margin:24px 0 0;font-size:13px;color:#9ca3af;text-align:center">
         Need help?&nbsp;
         <a href="mailto:reservations@tribalsand.com" style="color:#1E5C6B">reservations@tribalsand.com</a>
       </p>
@@ -307,6 +411,12 @@ include __DIR__ . '/includes/header.php';
             <td>Guest</td>
             <td><?= e($hold['guest_name']) ?></td>
           </tr>
+          <?php if (!empty($hold['access_code'])): ?>
+          <tr>
+            <td>Booking code</td>
+            <td style="font-family:monospace;letter-spacing:.08em"><?= e($hold['access_code']) ?></td>
+          </tr>
+          <?php endif; ?>
           <tr>
             <td>Property</td>
             <td>
@@ -374,6 +484,12 @@ include __DIR__ . '/includes/header.php';
 
     </div><!-- /bk-card -->
 
+    <!-- ── Manage actions (change requests + add-ons) ── -->
+    <?php if (in_array($status, ['pending', 'confirmed'], true)):
+      try { $tours = fetch_published_tours(); } catch (Throwable $e) { $tours = []; }
+      include __DIR__ . '/includes/booking-manage-actions.php';
+    endif; ?>
+
     <!-- ── Cancel section ── -->
     <?php if ($can_cancel): ?>
     <div class="bk-cancel-card">
@@ -381,6 +497,7 @@ include __DIR__ . '/includes/header.php';
       <p>If your plans have changed you can cancel now. The dates will be freed and you will receive a cancellation confirmation by email.</p>
       <form method="POST" onsubmit="return confirm('Are you sure you want to cancel this booking? This cannot be undone.')">
         <input type="hidden" name="action" value="cancel">
+        <input type="hidden" name="ref" value="<?= e($ref) ?>">
         <button type="submit" class="bk-btn-cancel">Cancel My Booking</button>
       </form>
     </div>
@@ -428,5 +545,7 @@ include __DIR__ . '/includes/header.php';
 })();
 </script>
 <?php endif; ?>
+
+<script src="/js/booking-manage.js?v=<?= @filemtime(__DIR__ . '/js/booking-manage.js') ?: time() ?>" defer></script>
 
 <?php include __DIR__ . '/includes/footer.php'; ?>

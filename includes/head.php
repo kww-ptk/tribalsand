@@ -22,6 +22,7 @@ $page_image  = $page_image  ?? 'https://tribalsand.com/images/Maya-Kobe-1-hero.w
 $page_type   = $page_type   ?? 'website';
 $page_schema = $page_schema ?? '';
 $page_preload = $page_preload ?? '';
+$noindex     = $noindex     ?? false; // set truthy on private pages (e.g. guest booking management) to block indexing
 require_once __DIR__ . '/turnstile.php'; // captcha_site_key() available on every page that has a form
 ?>
 <!DOCTYPE html>
@@ -33,7 +34,8 @@ require_once __DIR__ . '/turnstile.php'; // captcha_site_key() available on ever
 <!-- ── PRIMARY SEO ── -->
 <title><?= htmlspecialchars($page_title) ?></title>
 <meta name="description" content="<?= htmlspecialchars($page_desc) ?>">
-<link rel="canonical" href="<?= htmlspecialchars($page_url) ?>">
+<?php if (!empty($noindex)): ?><meta name="robots" content="noindex,nofollow">
+<?php endif; ?><link rel="canonical" href="<?= htmlspecialchars($page_url) ?>">
 
 <!-- ── OPEN GRAPH ── -->
 <meta property="og:type"        content="<?= htmlspecialchars($page_type) ?>">
