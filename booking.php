@@ -33,7 +33,7 @@ if (!$holdId) {
     }
 }
 
-// ── Fallback: code + email lookup (when no valid ref resolved a hold) ──
+// ── Fallback: code-only lookup (when no valid ref resolved a hold) ──
 if ((!$holdId || !$hold) && ($_POST['do'] ?? '') === 'lookup') {
     $now = time();
     $stamps = array_filter(
@@ -365,7 +365,7 @@ include __DIR__ . '/includes/header.php';
         <input type="hidden" name="do" value="lookup">
         <label class="bk-lookup-label" for="bkCode">Booking code</label>
         <input id="bkCode" type="text" name="code" required autocomplete="off"
-               placeholder="e.g. K7QM2P" value="<?= e($_POST['code'] ?? '') ?>"
+               placeholder="e.g. K7QM2P4T" value="<?= e($_POST['code'] ?? '') ?>"
                style="text-transform:uppercase" class="bk-lookup-input">
         <div class="cf-turnstile" data-sitekey="<?= e(captcha_site_key()) ?>" style="margin:8px 0 4px"></div>
         <button type="submit" class="bk-lookup-btn">Find my booking</button>
