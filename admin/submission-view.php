@@ -43,7 +43,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
 // Convert enquiry → hold (force-create; no availability check by design)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'convert') {
     verify_csrf();
-    require_once __DIR__ . '/../includes/booking.php';
 
     $redirect = '/admin/submission-view?id=' . $id;
 
@@ -54,7 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'conve
     }
 
     $str      = fn($v) => is_scalar($v) ? trim((string)$v) : '';
-    $unit_id  = (int)($_POST['unit_id'] ?? 0);
+    $unit_id  = (int)$str($_POST['unit_id'] ?? '');
     $check_in = $str($_POST['check_in']  ?? '');
     $check_out= $str($_POST['check_out'] ?? '');
     $g_name   = $str($_POST['guest_name']  ?? '');
@@ -77,13 +76,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'conve
 
     try {
         $hold_id = create_hold_with_block($unit_id, $id, $check_in, $check_out, $g_name, $g_email);
+    } catch (Throwable $e) {
+        error_log('[convert-to-hold] create failed: ' . $e->getMessage());
+        $_SESSION['sub_flash'] = ['type' => 'error', 'msg' => 'Could not create the hold. Please try again.'];
+        header('Location: ' . $redirect); exit;
+    }
+    // Hold created — an audit-log failure must NOT be reported as a creation failure.
+    try {
         audit_log('hold.create_from_submission', 'hold', $hold_id,
                   "from submission #{$id} — {$g_name} {$check_in}→{$check_out}");
-        $_SESSION['sub_flash'] = ['type' => 'success', 'msg' => "Hold #{$hold_id} created from this enquiry."];
     } catch (Throwable $e) {
-        error_log('[convert-to-hold] failed: ' . $e->getMessage());
-        $_SESSION['sub_flash'] = ['type' => 'error', 'msg' => 'Could not create the hold. Please try again.'];
+        error_log('[convert-to-hold] audit failed: ' . $e->getMessage());
     }
+    $_SESSION['sub_flash'] = ['type' => 'success', 'msg' => "Hold #{$hold_id} created from this enquiry."];
     header('Location: ' . $redirect); exit;
 }
 
