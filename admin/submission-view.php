@@ -59,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'conve
     $g_name   = $str($_POST['guest_name']  ?? '');
     $g_email  = $str($_POST['guest_email'] ?? '');
 
-    $is_date  = fn($d) => (bool)preg_match('/^\d{4}-\d{2}-\d{2}$/', $d);
+    $is_date  = fn($d) => preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $d, $m) && checkdate((int)$m[2], (int)$m[3], (int)$m[1]);
     $unit_ok  = $unit_id > 0 && db_query("SELECT 1 FROM units WHERE id = :id AND is_active = TRUE", [':id' => $unit_id])->fetchColumn();
 
     $err = '';
