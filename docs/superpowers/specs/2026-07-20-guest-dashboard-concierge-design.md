@@ -35,7 +35,7 @@ friendlier UI on top of them.
 
 - v1 = **Dashboard home + Concierge + Stay info** (persistent login deferred).
 - Home tiles: **Concierge** (featured) + **Stay info**; existing manage features demoted to a "Manage booking" view.
-- Concierge categories: **housekeeping, amenities, maintenance, transfer, activity, restaurant, + free-text "other"**.
+- Concierge categories: **housekeeping, amenities, maintenance, restaurant, + free-text "other"** (new free-text kinds), plus **Transfer** and **Activity** tiles that link into the existing structured pickers (transfer options / tour catalog) rather than being new kinds.
 - Stay info: **one shared, admin-editable** content set (v1).
 
 ## Architecture
@@ -61,15 +61,17 @@ service worker for the install/offline shell — optional, can be a fast-follow)
 ### Concierge — reuses `booking_addons`
 - **Migration** (`db/migrations/add_concierge.sql`, idempotent): expand the two CHECK constraints on
   `booking_addons` (drop + re-add):
-  - `kind` → add `housekeeping, amenities, maintenance, restaurant, activity` (keep `tour, transfer, itinerary, other`).
+  - `kind` → add `housekeeping, amenities, maintenance, restaurant` (keep `tour, transfer, itinerary, other`). No `activity` kind — the Activity tile reuses `tour`/the catalog.
   - `status` → add `completed` (keep `requested, confirmed, declined, cancelled`), so staff can tick off a service request.
 - **Endpoint** (`api/booking-addon.php`, extend): accept the new kinds. `tour` (catalog) and
   `transfer` (options) keep their structured handling; the new kinds + `itinerary`/`other` require
   **free-text details**. Same ref-gate + Turnstile + rate-limit + insert + admin-notify already there.
-- **Guest UI** (`includes/app/concierge.php`): a category grid (the six categories + free-text
-  "something else"); tapping a category reveals a short form (free-text detail, or the existing
-  tour/transfer pickers for those two) that posts to `api/booking-addon.php`; plus a "recent
-  requests" list (reuses `fetch_booking_addons()`), each with a status pill.
+- **Guest UI** (`includes/app/concierge.php`): a category grid. Housekeeping / amenities /
+  maintenance / restaurant / free-text "something else" reveal a short free-text form that posts to
+  `api/booking-addon.php`. **Transfer** and **Activity** tiles instead link to the existing pickers
+  (Transfer → the transfer-options form; Activity → the tour catalog in the "Add to your trip" /
+  Manage view) — no duplicate flow. Plus a "recent requests" list (reuses `fetch_booking_addons()`),
+  each with a status pill.
 - **Admin** (`admin/holds.php` / `admin/booking-request-action.php`, extend): the existing per-hold
   request list + Confirm/Decline already render `booking_addons`; add a **"Mark done"** action
   (sets `status='completed'`) so service requests can be completed. Labels stay generic.
@@ -124,7 +126,7 @@ fail the CHECK constraint. (This is the same gap that broke booking creation ear
 ## Testing
 
 - Migration: `booking_addons` accepts the new `kind` values and `status='completed'`; existing values still valid; idempotent re-run.
-- Endpoint: a housekeeping/amenities/maintenance/restaurant/activity request with free-text details creates a `booking_addons` row (ref-gated, Turnstile, rate-limited); missing details → 422; `tour`/`transfer` still use their structured validation.
+- Endpoint: a housekeeping/amenities/maintenance/restaurant request with free-text details creates a `booking_addons` row (ref-gated, Turnstile, rate-limited); missing details → 422; `tour`/`transfer` still use their structured validation (Activity/Transfer tiles route here).
 - App routing: `?view=home|concierge|stay|manage` each render; invalid view → home; all `noindex`; still gated by ref/code.
 - Concierge UI: category → form → submit → appears in recent requests with `requested`; magic link + code login both reach it.
 - Admin: "Mark done" sets `status='completed'`, transition-guarded; existing Confirm/Decline unaffected.
