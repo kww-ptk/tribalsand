@@ -25,19 +25,21 @@ $id     = (int)($_POST['id'] ?? 0);
 $status = $_POST['status'] ?? '';
 
 $ok = false;
-if ($type === 'addon' && in_array($status, ['confirmed', 'declined', 'cancelled'], true) && $id) {
+if ($type === 'addon' && in_array($status, ['confirmed', 'declined', 'cancelled', 'completed'], true) && $id) {
     $cur = db_query("SELECT status FROM booking_addons WHERE id=:id", [':id' => $id])->fetch();
     if (!$cur) {
         $_SESSION['hold_flash'] = ['type' => 'error', 'msg' => "Add-on request #{$id} not found."];
         header('Location: /admin/holds.php');
         exit;
     }
-    if ($cur['status'] !== 'requested') {
+    $allowedFrom = $status === 'completed' ? ['requested', 'confirmed'] : ['requested'];
+    if (!in_array($cur['status'], $allowedFrom, true)) {
         $_SESSION['hold_flash'] = ['type' => 'error', 'msg' => "Add-on request #{$id} is already {$cur['status']} — no action taken."];
         header('Location: /admin/holds.php');
         exit;
     }
-    db_query("UPDATE booking_addons SET status=:s WHERE id=:id AND status='requested'", [':s' => $status, ':id' => $id]);
+    $placeholders = implode(',', array_map(fn($s) => "'" . $s . "'", $allowedFrom)); // values are code literals — safe
+    db_query("UPDATE booking_addons SET status=:s WHERE id=:id AND status IN ($placeholders)", [':s' => $status, ':id' => $id]);
     audit_log('booking_addon.' . $status, 'booking_addon', $id, 'admin action');
     $ok = true;
 } elseif ($type === 'change' && in_array($status, ['handled', 'declined'], true) && $id) {
