@@ -1,7 +1,7 @@
 <?php /** Home dashboard. Expects $hold, $ref, $status. */ ?>
 <?php $__u = '/booking.php?ref=' . urlencode($ref); ?>
 <div class="bk-tiles" style="display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:8px">
-  <a href="<?= e($__u) ?>&view=concierge" style="text-decoration:none;background:#0e6b7a;color:#fff;border-radius:12px;padding:18px 20px;display:flex;align-items:center;gap:14px">
+  <a href="<?= e($__u) ?>&view=concierge" style="text-decoration:none;background:var(--teal-d,#102F3A);color:#fff;border-radius:12px;padding:18px 20px;display:flex;align-items:center;gap:14px">
     <span style="font-size:24px">&#128276;</span>
     <span><span style="display:block;font-weight:700;font-size:16px">Concierge</span><span style="display:block;font-size:13px;opacity:.85">Towels, housekeeping, anything you need</span></span>
     <span style="margin-left:auto">&rarr;</span>
