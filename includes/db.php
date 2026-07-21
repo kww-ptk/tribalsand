@@ -262,34 +262,39 @@ function find_available_unit(int $room_id, string $check_in, string $check_out):
 }
 
 function create_hold_with_block(
-    int $unit_id, int $submission_id,
+    int $unit_id, ?int $submission_id,
     string $check_in, string $check_out,
-    string $guest_name, string $guest_email
+    string $guest_name, string $guest_email,
+    string $status = 'pending'
 ): int {
+    $confirmed = $status === 'confirmed';
     $hold_id = 0;
     for ($attempt = 0; $attempt < 5; $attempt++) {
         $code = generate_access_code();
         try {
             $stmt = db()->prepare(
                 "INSERT INTO holds
-                    (submission_id, unit_id, check_in, check_out, guest_name, guest_email, access_code, expires_at)
+                    (submission_id, unit_id, check_in, check_out, guest_name, guest_email,
+                     access_code, status, confirmed_at, expires_at)
                  VALUES
-                    (:sub, :unit, :ci, :co, :name, :email, :code, NOW() + INTERVAL '24 hours')
+                    (:sub, :unit, :ci, :co, :name, :email,
+                     :code, :status, :confirmed_at, NOW() + INTERVAL '24 hours')
                  RETURNING id"
             );
             $stmt->execute([
-                ':sub'   => $submission_id,
-                ':unit'  => $unit_id,
-                ':ci'    => $check_in,
-                ':co'    => $check_out,
-                ':name'  => $guest_name,
-                ':email' => $guest_email,
-                ':code'  => $code,
+                ':sub'          => $submission_id,
+                ':unit'         => $unit_id,
+                ':ci'           => $check_in,
+                ':co'           => $check_out,
+                ':name'         => $guest_name,
+                ':email'        => $guest_email,
+                ':code'         => $code,
+                ':status'       => $status,
+                ':confirmed_at' => $confirmed ? date('Y-m-d H:i:s') : null,
             ]);
             $hold_id = (int)$stmt->fetchColumn();
             break;
         } catch (PDOException $e) {
-            // 23505 = unique_violation (access_code collision) — retry with a new code
             if (($e->getCode() === '23505') && $attempt < 4) continue;
             throw $e;
         }
@@ -297,8 +302,9 @@ function create_hold_with_block(
 
     db_query(
         "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, hold_id)
-         VALUES (:unit, :df, :dt, 'hold', :hold)",
-        [':unit' => $unit_id, ':df' => $check_in, ':dt' => $check_out, ':hold' => $hold_id]
+         VALUES (:unit, :df, :dt, :bt, :hold)",
+        [':unit' => $unit_id, ':df' => $check_in, ':dt' => $check_out,
+         ':bt' => $confirmed ? 'booked' : 'hold', ':hold' => $hold_id]
     );
 
     return $hold_id;
@@ -418,7 +424,7 @@ function client_ip(): string {
  * Generate a short, human-friendly booking access code.
  * Uppercase, unambiguous alphabet (no 0/O/1/I/L). Uses random_int (CSPRNG).
  */
-function generate_access_code(int $len = 6): string {
+function generate_access_code(int $len = 8): string {
     $alphabet = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
     $max = strlen($alphabet) - 1;
     $out = '';

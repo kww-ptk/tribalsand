@@ -33,7 +33,7 @@ if (!$holdId) {
     }
 }
 
-// ── Fallback: code + email lookup (when no valid ref resolved a hold) ──
+// ── Fallback: code-only lookup (when no valid ref resolved a hold) ──
 if ((!$holdId || !$hold) && ($_POST['do'] ?? '') === 'lookup') {
     $now = time();
     $stamps = array_filter(
@@ -51,14 +51,14 @@ if ((!$holdId || !$hold) && ($_POST['do'] ?? '') === 'lookup') {
         $stamps[] = $now;
         $_SESSION['bk_lookups'] = array_values($stamps);
 
-        $found = resolve_booking_by_code($_POST['code'] ?? '', $_POST['email'] ?? '');
+        $found = resolve_booking_by_code_only($_POST['code'] ?? '');
         if ($found) {
             $hold   = $found;
             $holdId = (int)$hold['id'];
             $ref    = make_guest_ref($holdId);
             $error  = '';
         } else {
-            $lookupError = 'We couldn’t find a booking with that code and email.';
+            $lookupError = 'We couldn’t find a booking with that code.';
         }
     }
 }
@@ -354,7 +354,7 @@ include __DIR__ . '/includes/header.php';
       <div style="text-align:center">
         <div class="bk-icon">&#128274;</div>
         <h2>Find your booking</h2>
-        <p style="margin:0 0 28px">We couldn&rsquo;t open your booking from that link. Enter your booking code and the email you booked with to continue.</p>
+        <p style="margin:0 0 28px">We couldn&rsquo;t open your booking from that link. Enter the booking code from your confirmation.</p>
       </div>
 
       <?php if ($lookupError): ?>
@@ -365,12 +365,8 @@ include __DIR__ . '/includes/header.php';
         <input type="hidden" name="do" value="lookup">
         <label class="bk-lookup-label" for="bkCode">Booking code</label>
         <input id="bkCode" type="text" name="code" required autocomplete="off"
-               placeholder="e.g. K7QM2P" value="<?= e($_POST['code'] ?? '') ?>"
+               placeholder="e.g. K7QM2P4T" value="<?= e($_POST['code'] ?? '') ?>"
                style="text-transform:uppercase" class="bk-lookup-input">
-        <label class="bk-lookup-label" for="bkEmail">Email address</label>
-        <input id="bkEmail" type="email" name="email" required
-               placeholder="you@example.com" value="<?= e($_POST['email'] ?? '') ?>"
-               class="bk-lookup-input">
         <div class="cf-turnstile" data-sitekey="<?= e(captcha_site_key()) ?>" style="margin:8px 0 4px"></div>
         <button type="submit" class="bk-lookup-btn">Find my booking</button>
       </form>
