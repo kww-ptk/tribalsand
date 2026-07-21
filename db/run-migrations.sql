@@ -197,3 +197,14 @@ CREATE TABLE IF NOT EXISTS booking_change_requests (
     created_at          TIMESTAMP    NOT NULL DEFAULT NOW()
 );
 CREATE INDEX IF NOT EXISTS idx_booking_changes_hold ON booking_change_requests(hold_id);
+
+-- ── Concierge request types ──
+
+ALTER TABLE booking_addons DROP CONSTRAINT IF EXISTS booking_addons_kind_check;
+ALTER TABLE booking_addons ADD CONSTRAINT booking_addons_kind_check
+    CHECK (kind IN ('tour','transfer','itinerary','other',
+                    'housekeeping','amenities','maintenance','restaurant'));
+
+ALTER TABLE booking_addons DROP CONSTRAINT IF EXISTS booking_addons_status_check;
+ALTER TABLE booking_addons ADD CONSTRAINT booking_addons_status_check
+    CHECK (status IN ('requested','confirmed','declined','cancelled','completed'));
