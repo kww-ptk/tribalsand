@@ -12,6 +12,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     foreach (array_keys($fields) as $k) {
         set_setting($k, trim((string)($_POST[$k] ?? '')));
     }
+    audit_log('stay_info.save', 'settings', 0, 'stay info updated');
     $success = 'Stay info saved.';
 }
 
