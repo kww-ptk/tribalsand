@@ -133,6 +133,34 @@ function fetch_units_by_room(int $room_id): array {
     )->fetchAll();
 }
 
+/**
+ * Every active Room—Unit pair, for the "convert to hold" dropdown.
+ * Returns rows: unit_id, unit_name, room_id, room_name (ordered by room then unit).
+ */
+function fetch_room_unit_options(): array {
+    return db_query(
+        "SELECT u.id AS unit_id, u.name AS unit_name, r.id AS room_id, r.name AS room_name
+         FROM units u
+         JOIN rooms r ON r.id = u.room_id
+         WHERE u.is_active = TRUE
+         ORDER BY r.sort_order ASC, r.name ASC, u.sort_order ASC"
+    )->fetchAll();
+}
+
+/** The most recent hold linked to a submission, or false. */
+function fetch_hold_by_submission(int $submission_id): array|false {
+    if ($submission_id <= 0) return false;
+    return db_query(
+        "SELECT h.*, u.name AS unit_name, r.name AS room_name
+         FROM holds h
+         JOIN units u ON u.id = h.unit_id
+         JOIN rooms r ON r.id = u.room_id
+         WHERE h.submission_id = :sid
+         ORDER BY h.id DESC LIMIT 1",
+        [':sid' => $submission_id]
+    )->fetch();
+}
+
 function expire_stale_holds(): void {
     $stmt = db()->prepare(
         "UPDATE holds SET status='expired' WHERE status='pending' AND expires_at < NOW() RETURNING id"

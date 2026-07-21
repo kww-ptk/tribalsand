@@ -23,12 +23,73 @@ if (!$sub) {
     exit;
 }
 
+require_once __DIR__ . '/../includes/booking.php'; // make_manage_url()
+
+// Flash (set by the convert handler on redirect)
+$flash = $_SESSION['sub_flash'] ?? null;
+unset($_SESSION['sub_flash']);
+
+// Is this submission already converted to a hold?
+$linked_hold = fetch_hold_by_submission($id);
+
 // Delete
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete') {
     verify_csrf();
     db_query('DELETE FROM submissions WHERE id = :id', [':id' => $id]);
     header('Location: /admin/submissions.php');
     exit;
+}
+
+// Convert enquiry → hold (force-create; no availability check by design)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'convert') {
+    verify_csrf();
+
+    $redirect = '/admin/submission-view?id=' . $id;
+
+    // Guard: don't create a second hold for the same submission
+    if (fetch_hold_by_submission($id)) {
+        $_SESSION['sub_flash'] = ['type' => 'error', 'msg' => 'This enquiry is already converted to a hold.'];
+        header('Location: ' . $redirect); exit;
+    }
+
+    $str      = fn($v) => is_scalar($v) ? trim((string)$v) : '';
+    $unit_id  = (int)$str($_POST['unit_id'] ?? '');
+    $check_in = $str($_POST['check_in']  ?? '');
+    $check_out= $str($_POST['check_out'] ?? '');
+    $g_name   = $str($_POST['guest_name']  ?? '');
+    $g_email  = $str($_POST['guest_email'] ?? '');
+
+    $is_date  = fn($d) => preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $d, $m) && checkdate((int)$m[2], (int)$m[3], (int)$m[1]);
+    $unit_ok  = $unit_id > 0 && db_query("SELECT 1 FROM units WHERE id = :id AND is_active = TRUE", [':id' => $unit_id])->fetchColumn();
+
+    $err = '';
+    if (!$unit_ok)                                       $err = 'Please choose a valid room / unit.';
+    elseif (!$is_date($check_in) || !$is_date($check_out)) $err = 'Please enter valid check-in and check-out dates.';
+    elseif ($check_in >= $check_out)                    $err = 'Check-out must be after check-in.';
+    elseif ($g_name === '')                             $err = 'Guest name is required.';
+    elseif (!filter_var($g_email, FILTER_VALIDATE_EMAIL)) $err = 'A valid guest email is required.';
+
+    if ($err) {
+        $_SESSION['sub_flash'] = ['type' => 'error', 'msg' => $err];
+        header('Location: ' . $redirect); exit;
+    }
+
+    try {
+        $hold_id = create_hold_with_block($unit_id, $id, $check_in, $check_out, $g_name, $g_email);
+    } catch (Throwable $e) {
+        error_log('[convert-to-hold] create failed: ' . $e->getMessage());
+        $_SESSION['sub_flash'] = ['type' => 'error', 'msg' => 'Could not create the hold. Please try again.'];
+        header('Location: ' . $redirect); exit;
+    }
+    // Hold created — an audit-log failure must NOT be reported as a creation failure.
+    try {
+        audit_log('hold.create_from_submission', 'hold', $hold_id,
+                  "from submission #{$id} — {$g_name} {$check_in}→{$check_out}");
+    } catch (Throwable $e) {
+        error_log('[convert-to-hold] audit failed: ' . $e->getMessage());
+    }
+    $_SESSION['sub_flash'] = ['type' => 'success', 'msg' => "Hold #{$hold_id} created from this enquiry."];
+    header('Location: ' . $redirect); exit;
 }
 
 $badge = match($sub['type']) {
@@ -44,6 +105,12 @@ $pageTitle  = 'Submission #' . $id;
 $activeMenu = 'submissions';
 include __DIR__ . '/_layout.php';
 ?>
+
+<?php if ($flash): ?>
+<div class="card" style="border-left:4px solid <?= $flash['type']==='error' ? 'var(--red,#dc2626)' : 'var(--green,#16a34a)' ?>;margin-bottom:16px">
+  <div class="card__body" style="padding:14px 18px;font-size:14px"><?= e($flash['msg']) ?></div>
+</div>
+<?php endif; ?>
 
 <div class="page-header">
   <h1>Submission #<?= e($id) ?> <span class="badge <?= $badge ?>" style="vertical-align:middle"><?= e($sub['type']) ?></span></h1>
@@ -178,6 +245,93 @@ include __DIR__ . '/_layout.php';
   </div>
 </div>
 
+<!-- Convert to hold -->
+<div class="card">
+  <div class="card__head"><span class="card__title">Convert to Hold</span></div>
+  <div class="card__body" style="padding:20px">
+  <?php if ($linked_hold):
+      $lh_code = $linked_hold['access_code'] ?? '';
+      $lh_link = make_manage_url((int)$linked_hold['id']);
+      $lh_badge = match($linked_hold['status']) {
+          'pending' => 'badge--blue', 'confirmed' => 'badge--green',
+          'cancelled' => 'badge--red', 'expired' => 'badge--grey', default => 'badge--grey',
+      };
+  ?>
+    <p style="margin:0 0 12px;font-size:14px">
+      Converted to
+      <a href="/admin/holds.php"><strong>Hold #<?= (int)$linked_hold['id'] ?></strong></a>
+      <span class="badge <?= $lh_badge ?>" style="vertical-align:middle"><?= e($linked_hold['status']) ?></span>
+      — <?= e($linked_hold['room_name']) ?>,
+      <?= e(date('d M Y', strtotime($linked_hold['check_in']))) ?> → <?= e(date('d M Y', strtotime($linked_hold['check_out']))) ?>
+    </p>
+    <div style="font-size:13px;color:var(--muted)">
+      Booking code: <strong style="font-family:monospace;letter-spacing:1px;color:var(--text,#111)"><?= e($lh_code ?: '—') ?></strong>
+      <?php if ($lh_link): ?>
+      <button type="button" class="copy-link" data-link="<?= e($lh_link) ?>"
+              style="margin-left:6px;font-size:11px;padding:1px 7px;cursor:pointer;border:1px solid #ccc;border-radius:4px;background:#fff">Copy portal link</button>
+      <?php endif; ?>
+    </div>
+  <?php else:
+      $ru_options = fetch_room_unit_options();
+      // Preselect the first active unit of the submission's room, if any
+      $prefill_unit = 0;
+      foreach ($ru_options as $o) { if ((int)$o['room_id'] === (int)$sub['room_id']) { $prefill_unit = (int)$o['unit_id']; break; } }
+  ?>
+    <?php if (!$ru_options): ?>
+      <p style="margin:0;font-size:14px;color:var(--muted)">No availability units are set up yet, so a hold can't be created. Add units to a room first (Rooms admin).</p>
+    <?php else: ?>
+    <p style="margin:0 0 16px;font-size:13px;color:var(--muted)">Creates a 24h hold from this enquiry, generates a booking code, and blocks the dates. Availability is not checked — you control overlaps.</p>
+    <form method="POST" action="/admin/submission-view?id=<?= $id ?>">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="convert">
+      <div class="detail-grid">
+        <div>
+          <div class="detail-item__label">Room / Unit</div>
+          <select name="unit_id" required style="width:100%;padding:9px;border:1px solid #d1d5db;border-radius:6px">
+            <option value="">— select —</option>
+            <?php foreach ($ru_options as $o): ?>
+            <option value="<?= (int)$o['unit_id'] ?>" <?= (int)$o['unit_id'] === $prefill_unit ? 'selected' : '' ?>>
+              <?= e($o['room_name']) ?> — <?= e($o['unit_name']) ?>
+            </option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div>
+          <div class="detail-item__label">Check-in</div>
+          <input type="date" name="check_in" required value="<?= e($sub['check_in'] ?? '') ?>"
+                 style="width:100%;padding:9px;border:1px solid #d1d5db;border-radius:6px">
+        </div>
+        <div>
+          <div class="detail-item__label">Check-out</div>
+          <input type="date" name="check_out" required value="<?= e($sub['check_out'] ?? '') ?>"
+                 style="width:100%;padding:9px;border:1px solid #d1d5db;border-radius:6px">
+        </div>
+        <div>
+          <div class="detail-item__label">Guest name</div>
+          <input type="text" name="guest_name" required value="<?= e($sub['guest_name'] ?? '') ?>"
+                 style="width:100%;padding:9px;border:1px solid #d1d5db;border-radius:6px">
+        </div>
+        <div>
+          <div class="detail-item__label">Guest email</div>
+          <input type="email" name="guest_email" required value="<?= e($sub['guest_email'] ?? '') ?>"
+                 style="width:100%;padding:9px;border:1px solid #d1d5db;border-radius:6px">
+        </div>
+      </div>
+      <?php if (!empty($sub['guest_phone']) || !empty($sub['guests_adults']) || !empty($sub['guests_children'])): ?>
+      <p style="margin:12px 0 0;font-size:12px;color:var(--muted)">
+        For reference (not stored on the hold):
+        <?= !empty($sub['guest_phone']) ? 'phone ' . e($sub['guest_phone']) . '; ' : '' ?>
+        <?= (int)($sub['guests_adults'] ?? 0) ?> adult(s)<?= (int)($sub['guests_children'] ?? 0) ? ', ' . (int)$sub['guests_children'] . ' child(ren)' : '' ?>
+      </p>
+      <?php endif; ?>
+      <button type="submit" class="btn-primary btn-sm" style="margin-top:16px"
+              onclick="return confirm('Create a hold from this enquiry?')">Create Hold</button>
+    </form>
+    <?php endif; ?>
+  <?php endif; ?>
+  </div>
+</div>
+
 <!-- Delete -->
 <div class="card" style="border:1.5px solid var(--red)">
   <div class="card__head"><span class="card__title" style="color:var(--red)">Danger Zone</span></div>
@@ -191,5 +345,19 @@ include __DIR__ . '/_layout.php';
     </form>
   </div>
 </div>
+
+<script>
+document.addEventListener('click', function (e) {
+  var b = e.target.closest('.copy-link');
+  if (!b) return;
+  var link = b.getAttribute('data-link');
+  var done = function () { var t = b.textContent; b.textContent = 'Copied!'; setTimeout(function () { b.textContent = t; }, 1500); };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(link).then(done).catch(function () { window.prompt('Copy this portal link:', link); });
+  } else {
+    window.prompt('Copy this portal link:', link);
+  }
+});
+</script>
 
 <?php include __DIR__ . '/_layout_end.php'; ?>
