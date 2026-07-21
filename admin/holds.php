@@ -103,6 +103,9 @@ include __DIR__ . '/_layout.php';
 
 <div class="page-header">
   <h1>Holds &amp; Bookings</h1>
+  <div class="actions">
+    <a href="/admin/hold-new.php" class="btn-primary btn-sm">+ New Booking</a>
+  </div>
 </div>
 
 <?php if ($success): ?><div class="alert alert--success"><?= e($success) ?></div><?php endif; ?>
