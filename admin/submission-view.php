@@ -40,6 +40,53 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
     exit;
 }
 
+// Convert enquiry → hold (force-create; no availability check by design)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'convert') {
+    verify_csrf();
+    require_once __DIR__ . '/../includes/booking.php';
+
+    $redirect = '/admin/submission-view?id=' . $id;
+
+    // Guard: don't create a second hold for the same submission
+    if (fetch_hold_by_submission($id)) {
+        $_SESSION['sub_flash'] = ['type' => 'error', 'msg' => 'This enquiry is already converted to a hold.'];
+        header('Location: ' . $redirect); exit;
+    }
+
+    $str      = fn($v) => is_scalar($v) ? trim((string)$v) : '';
+    $unit_id  = (int)($_POST['unit_id'] ?? 0);
+    $check_in = $str($_POST['check_in']  ?? '');
+    $check_out= $str($_POST['check_out'] ?? '');
+    $g_name   = $str($_POST['guest_name']  ?? '');
+    $g_email  = $str($_POST['guest_email'] ?? '');
+
+    $is_date  = fn($d) => (bool)preg_match('/^\d{4}-\d{2}-\d{2}$/', $d);
+    $unit_ok  = $unit_id > 0 && db_query("SELECT 1 FROM units WHERE id = :id AND is_active = TRUE", [':id' => $unit_id])->fetchColumn();
+
+    $err = '';
+    if (!$unit_ok)                                       $err = 'Please choose a valid room / unit.';
+    elseif (!$is_date($check_in) || !$is_date($check_out)) $err = 'Please enter valid check-in and check-out dates.';
+    elseif ($check_in >= $check_out)                    $err = 'Check-out must be after check-in.';
+    elseif ($g_name === '')                             $err = 'Guest name is required.';
+    elseif (!filter_var($g_email, FILTER_VALIDATE_EMAIL)) $err = 'A valid guest email is required.';
+
+    if ($err) {
+        $_SESSION['sub_flash'] = ['type' => 'error', 'msg' => $err];
+        header('Location: ' . $redirect); exit;
+    }
+
+    try {
+        $hold_id = create_hold_with_block($unit_id, $id, $check_in, $check_out, $g_name, $g_email);
+        audit_log('hold.create_from_submission', 'hold', $hold_id,
+                  "from submission #{$id} — {$g_name} {$check_in}→{$check_out}");
+        $_SESSION['sub_flash'] = ['type' => 'success', 'msg' => "Hold #{$hold_id} created from this enquiry."];
+    } catch (Throwable $e) {
+        error_log('[convert-to-hold] failed: ' . $e->getMessage());
+        $_SESSION['sub_flash'] = ['type' => 'error', 'msg' => 'Could not create the hold. Please try again.'];
+    }
+    header('Location: ' . $redirect); exit;
+}
+
 $badge = match($sub['type']) {
     'enquiry' => 'badge--blue',
     'contact' => 'badge--green',
