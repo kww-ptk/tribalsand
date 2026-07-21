@@ -269,10 +269,10 @@ include __DIR__ . '/_layout.php';
                 </form>
                 <?php endif; ?>
                 <?php if (in_array($a['status'], ['requested','confirmed'], true)): ?>
-                <form method="post" action="/admin/booking-request-action.php" style="display:inline;margin:0">
+                <form method="POST" action="/admin/booking-request-action.php" style="display:inline;margin:0">
                   <?= csrf_field() ?>
                   <input type="hidden" name="type" value="addon"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
-                  <button name="status" value="completed" class="btn-primary btn-sm" onclick="return confirm('Mark this request done?')">Mark done</button>
+                  <button type="submit" name="status" value="completed" class="btn-primary btn-sm" onclick="return confirm('Mark this request done?')">Mark done</button>
                 </form>
                 <?php endif; ?>
               </div>

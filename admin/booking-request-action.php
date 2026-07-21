@@ -38,8 +38,13 @@ if ($type === 'addon' && in_array($status, ['confirmed', 'declined', 'cancelled'
         header('Location: /admin/holds.php');
         exit;
     }
-    $placeholders = implode(',', array_map(fn($s) => "'" . $s . "'", $allowedFrom)); // values are code literals — safe
-    db_query("UPDATE booking_addons SET status=:s WHERE id=:id AND status IN ($placeholders)", [':s' => $status, ':id' => $id]);
+    $fromParams = [];
+    $fromNames  = [];
+    foreach ($allowedFrom as $i => $s) { $n = ":from{$i}"; $fromNames[] = $n; $fromParams[$n] = $s; }
+    db_query(
+        "UPDATE booking_addons SET status=:s WHERE id=:id AND status IN (" . implode(',', $fromNames) . ")",
+        [':s' => $status, ':id' => $id] + $fromParams
+    );
     audit_log('booking_addon.' . $status, 'booking_addon', $id, 'admin action');
     $ok = true;
 } elseif ($type === 'change' && in_array($status, ['handled', 'declined'], true) && $id) {
