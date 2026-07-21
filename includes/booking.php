@@ -85,11 +85,10 @@ function resolve_booking_by_ref(string $ref): array|false {
     return fetch_hold_for_guest($holdId);
 }
 
-/** Resolve a booking from a typed code + email (case-insensitive). */
-function resolve_booking_by_code(string $code, string $email): array|false {
-    $code  = strtoupper(trim($code));
-    $email = strtolower(trim($email));
-    if ($code === '' || $email === '') return false;
+/** Resolve a booking from a typed code alone (case-insensitive). */
+function resolve_booking_by_code_only(string $code): array|false {
+    $code = strtoupper(trim($code));
+    if ($code === '') return false;
     $row = db_query(
         "SELECT h.*, u.name AS unit_name, r.name AS room_name, r.slug AS room_slug,
                 v.name AS venue_name
@@ -97,8 +96,8 @@ function resolve_booking_by_code(string $code, string $email): array|false {
          JOIN units u  ON u.id = h.unit_id
          JOIN rooms r  ON r.id = u.room_id
          LEFT JOIN venues v ON v.id = r.venue_id
-         WHERE h.access_code = :code AND lower(h.guest_email) = :email",
-        [':code' => $code, ':email' => $email]
+         WHERE h.access_code = :code",
+        [':code' => $code]
     )->fetch();
     return $row ?: false;
 }
