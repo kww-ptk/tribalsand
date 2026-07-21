@@ -128,6 +128,8 @@ $badge_bg = match($status) {
     default     => '#f3f4f6',
 };
 
+$view = in_array($_GET['view'] ?? 'home', ['home','concierge','stay','manage'], true) ? ($_GET['view'] ?? 'home') : 'home';
+
 $page_title = $hold
     ? 'Booking ' . e($ref) . ' · Tribal Sand'
     : 'Your Booking · Tribal Sand';
@@ -386,106 +388,20 @@ include __DIR__ . '/includes/header.php';
     </div>
     <?php endif; ?>
 
-    <!-- ── Booking summary card ── -->
-    <div class="bk-card">
+    <?php include __DIR__ . '/includes/app/status-header.php'; ?>
 
-      <!-- Header -->
-      <div class="bk-card__header">
-        <div>
-          <p class="bk-card__ref-label">Booking Reference</p>
-          <p class="bk-card__ref"><?= e($ref) ?></p>
-        </div>
-        <span class="bk-badge" style="background:<?= e($badge_bg) ?>;color:<?= e($badge_color) ?>">
-          <?= e($badge_text) ?>
-        </span>
-      </div>
-
-      <!-- Details table -->
-      <div class="bk-card__body">
-        <table class="bk-table">
-          <tr>
-            <td>Guest</td>
-            <td><?= e($hold['guest_name']) ?></td>
-          </tr>
-          <?php if (!empty($hold['access_code'])): ?>
-          <tr>
-            <td>Booking code</td>
-            <td style="font-family:monospace;letter-spacing:.08em"><?= e($hold['access_code']) ?></td>
-          </tr>
-          <?php endif; ?>
-          <tr>
-            <td>Property</td>
-            <td>
-              <?= e($hold['room_name']) ?>
-              <?php if ($hold['unit_name'] && $hold['unit_name'] !== 'Unit A'): ?>
-              <span style="font-size:12px;color:#9ca3af;margin-left:6px">&middot; <?= e($hold['unit_name']) ?></span>
-              <?php endif; ?>
-            </td>
-          </tr>
-          <tr>
-            <td>Check-in</td>
-            <td><?= date('d M Y', strtotime($hold['check_in'])) ?></td>
-          </tr>
-          <tr>
-            <td>Check-out</td>
-            <td><?= date('d M Y', strtotime($hold['check_out'])) ?></td>
-          </tr>
-          <?php
-            $nights = (strtotime($hold['check_out']) - strtotime($hold['check_in'])) / 86400;
-          ?>
-          <tr>
-            <td>Duration</td>
-            <td><?= (int)$nights ?> night<?= $nights !== 1 ? 's' : '' ?></td>
-          </tr>
-
-          <?php if ($status === 'pending' && $hold['expires_at']): ?>
-          <tr>
-            <td>Hold expires</td>
-            <td class="bk-expires" id="bkCountdown">
-              <?php
-                $diff = strtotime($hold['expires_at']) - time();
-                echo $diff > 0
-                  ? gmdate('H\h i\m', $diff)
-                  : 'Expiring soon';
-              ?>
-            </td>
-          </tr>
-          <?php elseif ($status === 'confirmed' && $hold['confirmed_at']): ?>
-          <tr>
-            <td>Confirmed</td>
-            <td class="bk-confirmed-on"><?= date('d M Y', strtotime($hold['confirmed_at'])) ?></td>
-          </tr>
-          <?php endif; ?>
-        </table>
-      </div>
-
-      <!-- Status notice -->
-      <?php if ($status === 'pending'): ?>
-      <div class="bk-notice bk-notice--pending">
-        <strong>Awaiting confirmation</strong> — Our team will confirm or decline your hold within 24 hours. You will receive an email either way.
-      </div>
-      <?php elseif ($status === 'confirmed'): ?>
-      <div class="bk-notice bk-notice--confirmed">
-        <strong>Your booking is confirmed!</strong> Our team will be in touch with arrival details and further instructions. We look forward to welcoming you.
-      </div>
-      <?php elseif ($status === 'expired'): ?>
-      <div class="bk-notice bk-notice--expired">
-        This hold was not confirmed within the 24-hour window and has expired. Please <a href="/properties" style="color:#1E5C6B">browse our properties</a> to make a new request.
-      </div>
-      <?php elseif ($status === 'cancelled'): ?>
-      <div class="bk-notice bk-notice--cancelled">
-        This booking has been cancelled. <a href="/properties" style="color:#1E5C6B">Browse our properties</a> if you would like to make a new request.
-      </div>
-      <?php endif; ?>
-
-    </div><!-- /bk-card -->
-
-    <!-- ── Manage actions (change requests + add-ons) ── -->
-    <?php if (in_array($status, ['pending', 'confirmed'], true)):
-      try { $tours = fetch_published_tours(); } catch (Throwable $e) { $tours = []; }
-      include __DIR__ . '/includes/booking-manage-actions.php';
-    endif; ?>
-
+    <?php if ($view === 'home'): ?>
+      <?php include __DIR__ . '/includes/app/home.php'; ?>
+    <?php elseif ($view === 'concierge'): ?>
+      <?php if (is_file(__DIR__ . '/includes/app/concierge.php')) include __DIR__ . '/includes/app/concierge.php'; ?>
+    <?php elseif ($view === 'stay'): ?>
+      <?php if (is_file(__DIR__ . '/includes/app/stay.php')) include __DIR__ . '/includes/app/stay.php'; ?>
+    <?php elseif ($view === 'manage'): ?>
+      <p style="margin:0 0 16px"><a href="/booking.php?ref=<?= e(urlencode($ref)) ?>" style="font-size:13px;color:var(--teal,#1E5C6B)">&larr; Back to home</a></p>
+      <?php if (in_array($status, ['pending', 'confirmed'], true)):
+          try { $tours = fetch_published_tours(); } catch (Throwable $e) { $tours = []; }
+          include __DIR__ . '/includes/booking-manage-actions.php';
+      endif; ?>
     <!-- ── Cancel section ── -->
     <?php if ($can_cancel): ?>
     <div class="bk-cancel-card">
@@ -507,6 +423,7 @@ include __DIR__ . '/includes/header.php';
         &nbsp;or call <a href="tel:+254115115247" style="color:#1E5C6B">+254 115 115 247</a>
       </p>
     </div>
+    <?php endif; ?>
     <?php endif; ?>
 
     <?php endif; ?>
