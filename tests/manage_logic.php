@@ -12,9 +12,9 @@ function check(string $label, bool $cond): void {
 
 // --- generate_access_code ---
 $code = generate_access_code();
-check('code length is 6', strlen($code) === 6);
+check('code length is 8', strlen($code) === 8);
 check('code is uppercase alnum, unambiguous alphabet',
-      (bool)preg_match('/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{6}$/', $code));
+      (bool)preg_match('/^[ABCDEFGHJKMNPQRSTUVWXYZ23456789]{8}$/', $code));
 $codes = [];
 for ($i = 0; $i < 200; $i++) $codes[generate_access_code()] = true;
 check('codes vary (>150 unique of 200)', count($codes) > 150);
