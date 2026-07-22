@@ -19,14 +19,7 @@ $cancel_blocked_reason = '';
 if (!$holdId) {
     $error = 'This booking link is invalid or has expired. Please check your confirmation email.';
 } else {
-    $hold = db_query(
-        "SELECT h.*, u.name AS unit_name, r.name AS room_name, r.slug AS room_slug
-         FROM holds h
-         JOIN units u ON u.id = h.unit_id
-         JOIN rooms r ON r.id = u.room_id
-         WHERE h.id = :id",
-        [':id' => $holdId]
-    )->fetch();
+    $hold = fetch_hold_for_guest($holdId);
 
     if (!$hold) {
         $error = 'Booking not found.';
@@ -90,12 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $hold && $can_cancel) {
             [':hid' => $holdId]
         );
 
-        $hold = db_query(
-            "SELECT h.*, u.name AS unit_name, r.name AS room_name, r.slug AS room_slug
-             FROM holds h JOIN units u ON u.id = h.unit_id JOIN rooms r ON r.id = u.room_id
-             WHERE h.id = :id",
-            [':id' => $holdId]
-        )->fetch();
+        $hold = fetch_hold_for_guest($holdId);
 
         send_hold_cancelled($hold, 'cancelled');
         send_admin_guest_cancelled($hold);
