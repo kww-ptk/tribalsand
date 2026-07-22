@@ -8,9 +8,9 @@ $__tiles = ['housekeeping'=>'Housekeeping','amenities'=>'Towels & amenities','ma
 ?>
 <style>
 .cx-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.cx-tile{background:#fff;border:1px solid #e5e0d6;border-radius:12px;padding:14px;text-align:left;font:inherit;cursor:pointer;font-size:14px;font-weight:600;color:#1a1a1a}
-.cx-tile[aria-expanded=true]{border-color:#102F3A}
-.cx-form{display:none;margin-top:10px;background:#fff;border:1px solid #e5e0d6;border-radius:12px;padding:14px}
+.cx-tile{background:var(--pa-card);border:1px solid var(--pa-line);border-radius:12px;padding:14px;text-align:left;font:inherit;cursor:pointer;font-size:14px;font-weight:600;color:var(--pa-ink)}
+.cx-tile[aria-expanded=true]{border-color:var(--pa-teal-d)}
+.cx-form{display:none;margin-top:10px;background:var(--pa-card);border:1px solid var(--pa-line);border-radius:12px;padding:14px}
 .cx-form.open{display:block}
 </style>
 <p style="margin:0 0 16px"><a href="<?= e($__u) ?>" class="pa-back">&larr; Back to home</a></p>
@@ -53,11 +53,11 @@ $__tiles = ['housekeeping'=>'Housekeeping','amenities'=>'Towels & amenities','ma
 
 <?php if ($__addons): ?>
 <div style="margin-top:20px">
-  <div style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#9ca3af;margin-bottom:8px">Recent requests</div>
+  <div style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--pa-muted);margin-bottom:8px">Recent requests</div>
   <?php foreach ($__addons as $a): ?>
-  <div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid #eee;font-size:14px">
+  <div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--pa-line);font-size:14px">
     <strong style="text-transform:capitalize"><?= e($a['kind']) ?></strong>
-    <span style="color:#555"><?= e(trim(($a['tour_name'] ?? '') . ' ' . $a['details'])) ?></span>
+    <span style="color:var(--pa-muted)"><?= e(trim(($a['tour_name'] ?? '') . ' ' . $a['details'])) ?></span>
     <span class="pa-pill pa-pill--<?= e($a['status']) ?>" style="margin-left:auto"><?= e($a['status']) ?></span>
   </div>
   <?php endforeach; ?>
