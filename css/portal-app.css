@@ -65,6 +65,7 @@
 
 /* ── Responsive card grid (browse-style lists) ── */
 .pa-grid{display:grid;grid-template-columns:1fr;gap:12px;}
+.pa-grid .pa-card{margin-bottom:0;}
 
 /* ── Desktop: widen the shell + flow cards into columns ── */
 @media (min-width:720px){
