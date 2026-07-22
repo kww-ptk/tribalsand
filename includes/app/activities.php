@@ -19,7 +19,9 @@ $__active = in_array($status ?? '', ['pending','confirmed'], true);
 
 <?php if (!$__acts): ?>
   <p class="pa-sub">Experiences will appear here soon.</p>
-<?php else: foreach ($__acts as $a):
+<?php else: ?>
+<div class="pa-grid">
+<?php foreach ($__acts as $a):
     $img = trim((string)($a['hero'] ?? ''));
     $mediaClass = 'pa-media pa-media--' . preg_replace('/[^a-z]/','',strtolower((string)$a['category']));
     $style = $img !== '' ? 'background-image:url(\'' . e(storage_url($img)) . '\')' : '';
@@ -46,7 +48,7 @@ $__active = in_array($status ?? '', ['pending','confirmed'], true);
       <?php endif; ?>
     </div>
   </div>
-<?php endforeach; endif; ?>
+<?php endforeach; ?></div><?php endif; ?>
 
 <script>
 (function(){

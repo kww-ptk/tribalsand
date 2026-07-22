@@ -34,5 +34,41 @@ check('addon_label: empty details with a name shows the name',
 check('addon_label: both empty is an empty string',
       addon_label(['tour_name'=>null,'details'=>'']) === '');
 
+// ── guest board ──────────────────────────────────────────────
+$vid = (int)(db()->query("SELECT id FROM venues ORDER BY id LIMIT 1")->fetchColumn() ?: 0);
+db_query("INSERT INTO guest_board_posts (venue_id, category, title, body) VALUES (NULL, 'update', 'ZZ Global Test', '')");
+$gGlobal = (int)db()->lastInsertId();
+$gScoped = 0;
+if ($vid) {
+    db_query("INSERT INTO guest_board_posts (venue_id, category, title, body) VALUES (:v, 'promotion', 'ZZ Scoped Test', '')", [':v'=>$vid]);
+    $gScoped = (int)db()->lastInsertId();
+}
+
+$boardNull = fetch_guest_board(null);
+check('board(null) is a list', is_array($boardNull));
+check('board(null) includes the global post',
+      in_array('ZZ Global Test', array_column($boardNull, 'title'), true));
+check('board(null) excludes venue-scoped posts',
+      !in_array('ZZ Scoped Test', array_column($boardNull, 'title'), true));
+
+if ($vid) {
+    $boardVenue = fetch_guest_board($vid);
+    check('board(venue) includes global + scoped',
+          in_array('ZZ Global Test', array_column($boardVenue, 'title'), true) &&
+          in_array('ZZ Scoped Test', array_column($boardVenue, 'title'), true));
+    $otherVid = (int)(db()->query("SELECT id FROM venues WHERE id <> {$vid} ORDER BY id LIMIT 1")->fetchColumn() ?: 0);
+    if ($otherVid) {
+        $boardOther = fetch_guest_board($otherVid);
+        check('board(other venue) excludes the scoped post',
+              !in_array('ZZ Scoped Test', array_column($boardOther, 'title'), true));
+    }
+}
+
+check('board rows expose category/title/body/image_filename',
+      $boardNull === [] || (array_key_exists('category',$boardNull[0]) && array_key_exists('title',$boardNull[0])
+                            && array_key_exists('body',$boardNull[0]) && array_key_exists('image_filename',$boardNull[0])));
+
+db_query("DELETE FROM guest_board_posts WHERE id IN (:a, :b)", [':a'=>$gGlobal, ':b'=>$gScoped ?: -1]);
+
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);

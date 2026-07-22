@@ -86,6 +86,10 @@ $admin = current_admin();
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
         Stay info
       </a>
+      <a href="/admin/guest-board.php"  class="sidebar__link <?= ($activeMenu??'')==='guest_board'  ? 'is-active':'' ?>">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="7" y1="13" x2="13" y2="13"/></svg>
+        Guest board
+      </a>
     </nav>
     <div class="sidebar__footer">
       <span><?= e($admin['email'] ?? '') ?></span>

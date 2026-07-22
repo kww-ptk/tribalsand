@@ -56,3 +56,20 @@
 .pa-status__row{display:flex;justify-content:space-between;gap:10px;font-size:14px;padding:6px 0;}
 .pa-status__row dt{color:var(--pa-muted);} .pa-status__row dd{margin:0;font-weight:500;}
 .pa-badge{font-size:12px;font-weight:500;padding:3px 12px;border-radius:999px;}
+
+/* ── Guest-board category tags ── */
+.pa-tag{display:inline-block;font-size:11px;font-weight:500;padding:3px 10px;border-radius:999px;text-transform:capitalize;}
+.pa-tag--update{background:#E6F1FB;color:#0C447C;}
+.pa-tag--excursion{background:#E1F5EE;color:#0F6E56;}
+.pa-tag--promotion{background:#FAEEDA;color:#854F0B;}
+
+/* ── Responsive card grid (browse-style lists) ── */
+.pa-grid{display:grid;grid-template-columns:1fr;gap:12px;}
+.pa-grid .pa-card{margin-bottom:0;}
+
+/* ── Desktop: widen the shell + flow cards into columns ── */
+@media (min-width:720px){
+  .pa-wrap{max-width:880px;}
+  .pa-nav{max-width:880px;}
+  .pa-grid{grid-template-columns:repeat(auto-fill,minmax(240px,1fr));}
+}
