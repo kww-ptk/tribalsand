@@ -377,30 +377,29 @@ include __DIR__ . '/includes/header.php';
     <?php elseif ($view === 'activities'): ?>
       <?php if (is_file(__DIR__ . '/includes/app/activities.php')) include __DIR__ . '/includes/app/activities.php'; ?>
     <?php elseif ($view === 'manage'): ?>
-      <p style="margin:0 0 16px"><a href="/booking.php?ref=<?= e(urlencode($ref)) ?>" style="font-size:13px;color:var(--teal,#1E5C6B)">&larr; Back to home</a></p>
+      <p style="margin:0 0 16px"><a href="/booking.php?ref=<?= e(urlencode($ref)) ?>" class="pa-back">&larr; Back to home</a></p>
       <?php if (in_array($status, ['pending', 'confirmed'], true)):
-          try { $tours = fetch_published_tours(); } catch (Throwable $e) { $tours = []; }
           include __DIR__ . '/includes/booking-manage-actions.php';
       endif; ?>
     <!-- ── Cancel section ── -->
     <?php if ($can_cancel): ?>
-    <div class="bk-cancel-card">
-      <h3>Need to cancel?</h3>
-      <p>If your plans have changed you can cancel now. The dates will be freed and you will receive a cancellation confirmation by email.</p>
+    <div class="pa-card" style="padding:16px">
+      <p style="margin:0 0 6px;font-weight:700">Need to cancel?</p>
+      <p style="margin:0 0 20px;font-size:14px;color:var(--pa-muted);line-height:1.65">If your plans have changed you can cancel now. The dates will be freed and you will receive a cancellation confirmation by email.</p>
       <form method="POST" onsubmit="return confirm('Are you sure you want to cancel this booking? This cannot be undone.')">
         <input type="hidden" name="action" value="cancel">
         <input type="hidden" name="ref" value="<?= e($ref) ?>">
-        <button type="submit" class="bk-btn-cancel">Cancel My Booking</button>
+        <button type="submit" class="pa-btn pa-btn--danger">Cancel My Booking</button>
       </form>
     </div>
 
     <?php elseif ($cancel_blocked_reason): ?>
-    <div class="bk-cancel-card">
-      <h3>Need to cancel?</h3>
-      <p><?= e($cancel_blocked_reason) ?></p>
-      <p style="margin:0;font-size:14px;color:#6b7280">
-        Email us at <a href="mailto:reservations@tribalsand.com" style="color:#1E5C6B">reservations@tribalsand.com</a>
-        &nbsp;or call <a href="tel:+254115115247" style="color:#1E5C6B">+254 115 115 247</a>
+    <div class="pa-card" style="padding:16px">
+      <p style="margin:0 0 6px;font-weight:700">Need to cancel?</p>
+      <p style="margin:0 0 20px;font-size:14px;color:var(--pa-muted);line-height:1.65"><?= e($cancel_blocked_reason) ?></p>
+      <p style="margin:0;font-size:14px;color:var(--pa-muted)">
+        Email us at <a href="mailto:reservations@tribalsand.com" style="color:var(--pa-teal)">reservations@tribalsand.com</a>
+        &nbsp;or call <a href="tel:+254115115247" style="color:var(--pa-teal)">+254 115 115 247</a>
       </p>
     </div>
     <?php endif; ?>
