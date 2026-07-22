@@ -1,23 +1,25 @@
-<?php /** Home dashboard. Expects $hold, $ref, $status. */ ?>
-<?php $__u = '/booking.php?ref=' . urlencode($ref); $__active = in_array($status ?? '', ['pending','confirmed'], true); ?>
-<div class="bk-tiles" style="display:grid;grid-template-columns:1fr;gap:12px;margin-bottom:8px">
-  <?php if ($__active): ?>
-  <a href="<?= e($__u) ?>&view=concierge" style="text-decoration:none;background:var(--teal-d,#102F3A);color:#fff;border-radius:12px;padding:18px 20px;display:flex;align-items:center;gap:14px">
-    <span style="font-size:24px">&#128276;</span>
-    <span><span style="display:block;font-weight:700;font-size:16px">Concierge</span><span style="display:block;font-size:13px;opacity:.85">Towels, housekeeping, anything you need</span></span>
-    <span style="margin-left:auto">&rarr;</span>
-  </a>
-  <?php endif; ?>
-  <a href="<?= e($__u) ?>&view=stay" style="text-decoration:none;background:#fff;border:1px solid #e5e0d6;border-radius:12px;padding:18px 20px;display:flex;align-items:center;gap:14px;color:#1a1a1a">
-    <span style="font-size:24px">&#8505;</span>
-    <span><span style="display:block;font-weight:700;font-size:16px">Stay info</span><span style="display:block;font-size:13px;color:#6b7280">Wi-Fi, check-out, area guide</span></span>
-    <span style="margin-left:auto;color:#9ca3af">&rarr;</span>
-  </a>
-  <?php if ($__active): ?>
-  <a href="<?= e($__u) ?>&view=manage" style="text-decoration:none;background:#fff;border:1px solid #e5e0d6;border-radius:12px;padding:14px 20px;display:flex;align-items:center;gap:14px;color:#1a1a1a">
-    <span style="font-size:20px">&#9998;</span>
-    <span style="font-weight:600;font-size:14px">Manage booking</span>
-    <span style="margin-left:auto;color:#9ca3af;font-size:13px">Add tours &middot; changes &middot; cancel</span>
-  </a>
-  <?php endif; ?>
+<?php /** Home. Expects $hold, $ref, $status. */ ?>
+<?php $__u = '/booking.php?ref=' . urlencode($ref); $__active = in_array($status ?? '', ['pending','confirmed'], true);
+try { $__feat = array_slice(fetch_portal_activities(), 0, 3); } catch (Throwable $e) { $__feat = []; } ?>
+<?php $__first = trim((string)$hold['guest_name']); $__first = $__first !== '' ? explode(' ', $__first)[0] : 'guest'; ?>
+<div style="font-family:'Cormorant Garamond',serif;font-size:24px;margin:4px 0 12px">Karibu, <?= e($__first) ?></div>
+
+<?php if ($__active): ?>
+<a class="pa-tile pa-tile--hero" href="<?= e($__u) ?>&amp;view=concierge">
+  <span aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg></span>
+  <span><span class="pa-tile__t">Concierge</span><span class="pa-tile__s">Towels, housekeeping, anything you need</span></span>
+  <span style="margin-left:auto">&rarr;</span>
+</a>
+<?php endif; ?>
+
+<?php if ($__feat): ?>
+<div style="display:flex;justify-content:space-between;align-items:baseline;margin:16px 0 8px">
+  <div class="pa-h2" style="font-size:18px">Experiences</div>
+  <a href="<?= e($__u) ?>&amp;view=activities" style="font-size:13px;color:var(--pa-teal,#1E5C6B);text-decoration:none">See all &rarr;</a>
 </div>
+<?php foreach ($__feat as $a): $mediaClass='pa-media pa-media--'.preg_replace('/[^a-z]/','',strtolower((string)$a['category'])); $img=trim((string)($a['hero']??'')); ?>
+<a class="pa-card" style="display:block;text-decoration:none;color:inherit" href="<?= e($__u) ?>&amp;view=activities">
+  <div class="<?= e($mediaClass) ?>" style="height:96px;<?= $img!==''?'background-image:url(\''.e(storage_url($img)).'\')':'' ?>"></div>
+  <div class="pa-card__body"><p class="pa-card__title"><?= e($a['name']) ?></p><?php if(!empty($a['duration'])): ?><div class="pa-card__meta"><span><?= e($a['duration']) ?></span></div><?php endif; ?></div>
+</a>
+<?php endforeach; endif; ?>

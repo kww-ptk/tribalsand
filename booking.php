@@ -106,29 +106,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $hold && $can_cancel) {
 }
 
 $status     = $hold['status'] ?? '';
-$badge_text = match($status) {
-    'pending'   => 'Pending Confirmation',
-    'confirmed' => 'Confirmed',
-    'cancelled' => 'Cancelled',
-    'expired'   => 'Expired',
-    default     => ucfirst($status),
-};
-$badge_color = match($status) {
-    'pending'   => '#92400e',
-    'confirmed' => '#166534',
-    'cancelled' => '#991b1b',
-    'expired'   => '#6b7280',
-    default     => '#6b7280',
-};
-$badge_bg = match($status) {
-    'pending'   => '#fef3c7',
-    'confirmed' => '#dcfce7',
-    'cancelled' => '#fee2e2',
-    'expired'   => '#f3f4f6',
-    default     => '#f3f4f6',
-};
 
-$view = in_array($_GET['view'] ?? 'home', ['home','concierge','stay','manage'], true) ? ($_GET['view'] ?? 'home') : 'home';
+$view = in_array($_GET['view'] ?? 'home', ['home','concierge','stay','manage','activities'], true) ? ($_GET['view'] ?? 'home') : 'home';
 
 $page_title = $hold
     ? 'Booking ' . e($ref) . ' · Tribal Sand'
@@ -141,95 +120,10 @@ include __DIR__ . '/includes/head.php';
 include __DIR__ . '/includes/header.php';
 ?>
 
+<link rel="stylesheet" href="/css/portal-app.css?v=<?= @filemtime(__DIR__ . '/css/portal-app.css') ?: time() ?>">
+
 <style>
-/* ── Booking page ── */
-.bk-page { background:#F5F1EB; min-height:70vh; padding:80px 0 100px; }
-.bk-page .container { max-width:700px; margin:0 auto; padding:0 1.5rem; }
-
-.bk-card {
-  background:#fff;
-  border-radius:10px;
-  box-shadow:0 2px 16px rgba(16,47,58,.08);
-  overflow:hidden;
-  margin-bottom:20px;
-}
-.bk-card__header {
-  background:var(--teal-d,#102F3A);
-  padding:24px 32px;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  flex-wrap:wrap;
-  gap:14px;
-}
-.bk-card__ref-label {
-  font-size:11px;
-  font-weight:700;
-  letter-spacing:.1em;
-  text-transform:uppercase;
-  color:rgba(212,176,122,.7);
-  margin:0 0 4px;
-}
-.bk-card__ref {
-  font-family:monospace;
-  font-size:20px;
-  font-weight:700;
-  color:#fff;
-  letter-spacing:.05em;
-  margin:0;
-}
-.bk-badge {
-  padding:6px 16px;
-  border-radius:20px;
-  font-size:13px;
-  font-weight:700;
-}
-.bk-card__body { padding:32px; }
-.bk-table { width:100%; border-collapse:collapse; }
-.bk-table tr { border-bottom:1px solid #f3f4f6; }
-.bk-table tr:last-child { border-bottom:none; }
-.bk-table td { padding:13px 0; vertical-align:top; }
-.bk-table td:first-child {
-  width:120px;
-  font-size:12px;
-  font-weight:700;
-  letter-spacing:.06em;
-  text-transform:uppercase;
-  color:#9CA3AF;
-}
-.bk-table td:last-child { font-weight:600; color:#1a1a1a; }
-.bk-expires { color:#b45309; }
-.bk-confirmed-on { color:#166534; }
-
-.bk-notice {
-  padding:16px 32px;
-  border-top:1px solid;
-  font-size:13px;
-  line-height:1.7;
-}
-.bk-notice--pending  { background:#fffbeb; border-color:#fde68a; color:#92400e; }
-.bk-notice--confirmed { background:#f0fdf4; border-color:#bbf7d0; color:#166534; }
-.bk-notice--expired  { background:#f9fafb; border-color:#e5e7eb; color:#6b7280; }
-.bk-notice--cancelled { background:#fef2f2; border-color:#fecaca; color:#991b1b; }
-
-.bk-cancel-card { background:#fff; border-radius:10px; box-shadow:0 2px 16px rgba(16,47,58,.08); padding:28px 32px; margin-bottom:20px; }
-.bk-cancel-card h3 { margin:0 0 8px; font-size:16px; font-family:'Cormorant Garamond',serif; font-weight:500; color:#1a1a1a; }
-.bk-cancel-card p  { margin:0 0 20px; font-size:14px; color:#6b7280; line-height:1.65; }
-.bk-btn-cancel {
-  background:#dc2626;
-  color:#fff;
-  border:none;
-  padding:12px 32px;
-  font-size:13px;
-  font-weight:700;
-  letter-spacing:.05em;
-  text-transform:uppercase;
-  cursor:pointer;
-  font-family:'Jost',sans-serif;
-  transition:background .2s;
-}
-.bk-btn-cancel:hover { background:#b91c1c; }
-
+/* ── Booking page — error / code-lookup screen (shown when ref/code invalid) ── */
 .bk-error-card {
   background:#fff;
   border-radius:10px;
@@ -312,43 +206,15 @@ include __DIR__ . '/includes/header.php';
 }
 .bk-help a { color:var(--teal,#1E5C6B); font-weight:600; }
 .bk-help .sep { color:#d1d5db; margin:0 8px; }
-
-/* Hero strip */
-.bk-hero {
-  background:linear-gradient(rgba(16,47,58,.65),rgba(16,47,58,.75)),
-             url('/images/Maya-Kobe-1-hero.webp') center/cover no-repeat;
-  min-height:200px;
-  display:flex;
-  align-items:center;
-  padding:80px 5vw 40px;
-}
-.bk-hero__inner { color:#fff; }
-.bk-hero__eyebrow {
-  font-size:11px;
-  letter-spacing:.2em;
-  text-transform:uppercase;
-  color:#D4B07A;
-  margin:0 0 10px;
-}
-.bk-hero__title {
-  font-family:'Cormorant Garamond',serif;
-  font-size:clamp(2rem,5vw,3rem);
-  font-weight:300;
-  margin:0;
-  color:#fff;
-}
 </style>
 
-<!-- Hero -->
-<div class="bk-hero">
-  <div class="bk-hero__inner">
-    <p class="bk-hero__eyebrow">Tribal Sand · Booking Management</p>
-    <h1 class="bk-hero__title">Your Booking</h1>
-  </div>
-</div>
-
-<div class="bk-page">
-  <div class="container">
+<div class="pa-app">
+  <?php
+    $__titles = ['home'=>'Your stay','activities'=>'Activities','concierge'=>'Concierge','stay'=>'Stay info','manage'=>'Booking'];
+    $__t = $hold ? ($__titles[$view] ?? 'Your stay') : 'Your booking';
+  ?>
+  <div class="pa-topbar"><div class="pa-topbar__eyebrow">Tribal Sand</div><div class="pa-topbar__title"><?= e($__t) ?></div></div>
+  <div class="pa-wrap" style="padding-top:16px">
 
     <?php if ($error): ?>
     <!-- ── Invalid ref / code lookup ── -->
@@ -396,31 +262,32 @@ include __DIR__ . '/includes/header.php';
       <?php if (is_file(__DIR__ . '/includes/app/concierge.php')) include __DIR__ . '/includes/app/concierge.php'; ?>
     <?php elseif ($view === 'stay'): ?>
       <?php if (is_file(__DIR__ . '/includes/app/stay.php')) include __DIR__ . '/includes/app/stay.php'; ?>
+    <?php elseif ($view === 'activities'): ?>
+      <?php if (is_file(__DIR__ . '/includes/app/activities.php')) include __DIR__ . '/includes/app/activities.php'; ?>
     <?php elseif ($view === 'manage'): ?>
-      <p style="margin:0 0 16px"><a href="/booking.php?ref=<?= e(urlencode($ref)) ?>" style="font-size:13px;color:var(--teal,#1E5C6B)">&larr; Back to home</a></p>
+      <p style="margin:0 0 16px"><a href="/booking.php?ref=<?= e(urlencode($ref)) ?>" class="pa-back">&larr; Back to home</a></p>
       <?php if (in_array($status, ['pending', 'confirmed'], true)):
-          try { $tours = fetch_published_tours(); } catch (Throwable $e) { $tours = []; }
           include __DIR__ . '/includes/booking-manage-actions.php';
       endif; ?>
     <!-- ── Cancel section ── -->
     <?php if ($can_cancel): ?>
-    <div class="bk-cancel-card">
-      <h3>Need to cancel?</h3>
-      <p>If your plans have changed you can cancel now. The dates will be freed and you will receive a cancellation confirmation by email.</p>
+    <div class="pa-card" style="padding:16px">
+      <p style="margin:0 0 6px;font-weight:700">Need to cancel?</p>
+      <p style="margin:0 0 20px;font-size:14px;color:var(--pa-muted);line-height:1.65">If your plans have changed you can cancel now. The dates will be freed and you will receive a cancellation confirmation by email.</p>
       <form method="POST" onsubmit="return confirm('Are you sure you want to cancel this booking? This cannot be undone.')">
         <input type="hidden" name="action" value="cancel">
         <input type="hidden" name="ref" value="<?= e($ref) ?>">
-        <button type="submit" class="bk-btn-cancel">Cancel My Booking</button>
+        <button type="submit" class="pa-btn pa-btn--danger">Cancel My Booking</button>
       </form>
     </div>
 
     <?php elseif ($cancel_blocked_reason): ?>
-    <div class="bk-cancel-card">
-      <h3>Need to cancel?</h3>
-      <p><?= e($cancel_blocked_reason) ?></p>
-      <p style="margin:0;font-size:14px;color:#6b7280">
-        Email us at <a href="mailto:reservations@tribalsand.com" style="color:#1E5C6B">reservations@tribalsand.com</a>
-        &nbsp;or call <a href="tel:+254115115247" style="color:#1E5C6B">+254 115 115 247</a>
+    <div class="pa-card" style="padding:16px">
+      <p style="margin:0 0 6px;font-weight:700">Need to cancel?</p>
+      <p style="margin:0 0 20px;font-size:14px;color:var(--pa-muted);line-height:1.65"><?= e($cancel_blocked_reason) ?></p>
+      <p style="margin:0;font-size:14px;color:var(--pa-muted)">
+        Email us at <a href="mailto:reservations@tribalsand.com" style="color:var(--pa-teal)">reservations@tribalsand.com</a>
+        &nbsp;or call <a href="tel:+254115115247" style="color:var(--pa-teal)">+254 115 115 247</a>
       </p>
     </div>
     <?php endif; ?>
@@ -436,8 +303,9 @@ include __DIR__ . '/includes/header.php';
       <a href="tel:+254115115247">+254 115 115 247</a>
     </div>
 
-  </div>
-</div>
+  </div><!-- /pa-wrap -->
+  <?php if ($hold): ?><?php include __DIR__ . '/includes/app/nav.php'; ?><?php endif; ?>
+</div><!-- /pa-app -->
 
 <?php if ($status === 'pending' && !empty($hold['expires_at'])): ?>
 <script>

@@ -102,14 +102,6 @@ function resolve_booking_by_code_only(string $code): array|false {
     return $row ?: false;
 }
 
-/** Published tours grouped for the add-on catalog. */
-function fetch_published_tours(): array {
-    return db_query(
-        "SELECT id, slug, name, category, tag_label, duration, short_desc
-         FROM tours WHERE is_published = TRUE
-         ORDER BY sort_order ASC, name ASC"
-    )->fetchAll();
-}
 
 /** Add-ons already recorded against a hold (for display). */
 function fetch_booking_addons(int $holdId): array {
@@ -128,4 +120,39 @@ function fetch_booking_change_requests(int $holdId): array {
         "SELECT * FROM booking_change_requests WHERE hold_id = :id ORDER BY created_at DESC",
         [':id' => $holdId]
     )->fetchAll();
+}
+
+/** Published tours with their hero image + fields, for the portal Activities page. */
+function fetch_portal_activities(): array {
+    return db_query(
+        "SELECT t.id, t.slug, t.name, t.category, t.tag_label, t.duration, t.short_desc,
+                (SELECT filename FROM tour_images ti WHERE ti.tour_id = t.id AND ti.is_hero = TRUE LIMIT 1) AS hero
+         FROM tours t
+         WHERE t.is_published = TRUE
+         ORDER BY t.sort_order ASC, t.name ASC"
+    )->fetchAll();
+}
+
+/**
+ * Human label for an addon row (tour or concierge request), avoiding the
+ * common case where a tour's details duplicate its name ("Tsavo East Tsavo East").
+ * Expects a row with 'tour_name' (nullable) and 'details'.
+ */
+function addon_label(array $a): string {
+    $name = trim((string)($a['tour_name'] ?? ''));
+    $det  = trim((string)($a['details'] ?? ''));
+    if ($name === '') return $det;
+    if ($det === '' || $det === $name) return $name;
+    return "{$name} — {$det}";
+}
+
+/** Distinct published tour categories → {key,label} for the Activities filter. */
+function fetch_tour_categories(): array {
+    $labels = ['classic' => 'Classic safari', 'custom' => 'Custom journey', 'excursion' => 'Excursion'];
+    $rows = db_query(
+        "SELECT DISTINCT category FROM tours WHERE is_published = TRUE AND category <> '' ORDER BY category ASC"
+    )->fetchAll(PDO::FETCH_COLUMN);
+    $out = [];
+    foreach ($rows as $c) { $out[] = ['key' => $c, 'label' => $labels[$c] ?? ucfirst($c)]; }
+    return $out;
 }
