@@ -68,7 +68,7 @@ function make_manage_url(int $holdId): string {
 function fetch_hold_for_guest(int $holdId): array|false {
     return db_query(
         "SELECT h.*, u.name AS unit_name, r.name AS room_name, r.slug AS room_slug,
-                v.name AS venue_name
+                r.venue_id AS venue_id, v.name AS venue_name
          FROM holds h
          JOIN units u  ON u.id = h.unit_id
          JOIN rooms r  ON r.id = u.room_id
@@ -91,7 +91,7 @@ function resolve_booking_by_code_only(string $code): array|false {
     if ($code === '') return false;
     $row = db_query(
         "SELECT h.*, u.name AS unit_name, r.name AS room_name, r.slug AS room_slug,
-                v.name AS venue_name
+                r.venue_id AS venue_id, v.name AS venue_name
          FROM holds h
          JOIN units u  ON u.id = h.unit_id
          JOIN rooms r  ON r.id = u.room_id
@@ -130,6 +130,22 @@ function fetch_portal_activities(): array {
          FROM tours t
          WHERE t.is_published = TRUE
          ORDER BY t.sort_order ASC, t.name ASC"
+    )->fetchAll();
+}
+
+/**
+ * Published guest-board posts visible to a guest at the given venue.
+ * $venueId null (or a venue with no targeted posts) → only global posts (venue_id IS NULL).
+ */
+function fetch_guest_board(?int $venueId): array {
+    return db_query(
+        "SELECT id, category, title, body, image_filename
+         FROM guest_board_posts
+         WHERE is_published = TRUE
+           AND (venue_id IS NULL OR venue_id = :venue)
+         ORDER BY sort_order DESC, created_at DESC
+         LIMIT 6",
+        [':venue' => $venueId]
     )->fetchAll();
 }
 
