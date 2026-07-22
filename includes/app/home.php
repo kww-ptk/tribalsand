@@ -37,9 +37,12 @@ $__tagClass = ['update'=>'pa-tag--update','excursion'=>'pa-tag--excursion','prom
   <div class="pa-h2" style="font-size:18px">Experiences</div>
   <a href="<?= e($__u) ?>&amp;view=activities" style="font-size:13px;color:var(--pa-teal,#1E5C6B);text-decoration:none">See all &rarr;</a>
 </div>
+<div class="pa-grid">
 <?php foreach ($__feat as $a): $mediaClass='pa-media pa-media--'.preg_replace('/[^a-z]/','',strtolower((string)$a['category'])); $img=trim((string)($a['hero']??'')); ?>
 <a class="pa-card" style="display:block;text-decoration:none;color:inherit" href="<?= e($__u) ?>&amp;view=activities">
   <div class="<?= e($mediaClass) ?>" style="height:96px;<?= $img!==''?'background-image:url(\''.e(storage_url($img)).'\')':'' ?>"></div>
   <div class="pa-card__body"><p class="pa-card__title"><?= e($a['name']) ?></p><?php if(!empty($a['duration'])): ?><div class="pa-card__meta"><span><?= e($a['duration']) ?></span></div><?php endif; ?></div>
 </a>
-<?php endforeach; endif; ?>
+<?php endforeach; ?>
+</div>
+<?php endif; ?>
