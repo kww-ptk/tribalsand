@@ -29,7 +29,8 @@ if ((int)$cnt >= 10) { http_response_code(429); exit(json_encode(['ok'=>false,'e
 
 // Validate
 $kind = $str($data['kind'] ?? '');
-if (!in_array($kind, ['tour','transfer','itinerary','other'], true)) {
+if (!in_array($kind, ['tour','transfer','itinerary','other',
+                      'housekeeping','amenities','maintenance','restaurant'], true)) {
     http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'Unknown add-on type.']));
 }
 $details = $str($data['details'] ?? '');
