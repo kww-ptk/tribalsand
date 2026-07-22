@@ -123,94 +123,7 @@ include __DIR__ . '/includes/header.php';
 <link rel="stylesheet" href="/css/portal-app.css?v=<?= @filemtime(__DIR__ . '/css/portal-app.css') ?: time() ?>">
 
 <style>
-/* ── Booking page ── */
-.bk-page { background:#F5F1EB; min-height:70vh; padding:80px 0 100px; }
-.bk-page .container { max-width:700px; margin:0 auto; padding:0 1.5rem; }
-
-.bk-card {
-  background:#fff;
-  border-radius:10px;
-  box-shadow:0 2px 16px rgba(16,47,58,.08);
-  overflow:hidden;
-  margin-bottom:20px;
-}
-.bk-card__header {
-  background:var(--teal-d,#102F3A);
-  padding:24px 32px;
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  flex-wrap:wrap;
-  gap:14px;
-}
-.bk-card__ref-label {
-  font-size:11px;
-  font-weight:700;
-  letter-spacing:.1em;
-  text-transform:uppercase;
-  color:rgba(212,176,122,.7);
-  margin:0 0 4px;
-}
-.bk-card__ref {
-  font-family:monospace;
-  font-size:20px;
-  font-weight:700;
-  color:#fff;
-  letter-spacing:.05em;
-  margin:0;
-}
-.bk-badge {
-  padding:6px 16px;
-  border-radius:20px;
-  font-size:13px;
-  font-weight:700;
-}
-.bk-card__body { padding:32px; }
-.bk-table { width:100%; border-collapse:collapse; }
-.bk-table tr { border-bottom:1px solid #f3f4f6; }
-.bk-table tr:last-child { border-bottom:none; }
-.bk-table td { padding:13px 0; vertical-align:top; }
-.bk-table td:first-child {
-  width:120px;
-  font-size:12px;
-  font-weight:700;
-  letter-spacing:.06em;
-  text-transform:uppercase;
-  color:#9CA3AF;
-}
-.bk-table td:last-child { font-weight:600; color:#1a1a1a; }
-.bk-expires { color:#b45309; }
-.bk-confirmed-on { color:#166534; }
-
-.bk-notice {
-  padding:16px 32px;
-  border-top:1px solid;
-  font-size:13px;
-  line-height:1.7;
-}
-.bk-notice--pending  { background:#fffbeb; border-color:#fde68a; color:#92400e; }
-.bk-notice--confirmed { background:#f0fdf4; border-color:#bbf7d0; color:#166534; }
-.bk-notice--expired  { background:#f9fafb; border-color:#e5e7eb; color:#6b7280; }
-.bk-notice--cancelled { background:#fef2f2; border-color:#fecaca; color:#991b1b; }
-
-.bk-cancel-card { background:#fff; border-radius:10px; box-shadow:0 2px 16px rgba(16,47,58,.08); padding:28px 32px; margin-bottom:20px; }
-.bk-cancel-card h3 { margin:0 0 8px; font-size:16px; font-family:'Cormorant Garamond',serif; font-weight:500; color:#1a1a1a; }
-.bk-cancel-card p  { margin:0 0 20px; font-size:14px; color:#6b7280; line-height:1.65; }
-.bk-btn-cancel {
-  background:#dc2626;
-  color:#fff;
-  border:none;
-  padding:12px 32px;
-  font-size:13px;
-  font-weight:700;
-  letter-spacing:.05em;
-  text-transform:uppercase;
-  cursor:pointer;
-  font-family:'Jost',sans-serif;
-  transition:background .2s;
-}
-.bk-btn-cancel:hover { background:#b91c1c; }
-
+/* ── Booking page — error / code-lookup screen (shown when ref/code invalid) ── */
 .bk-error-card {
   background:#fff;
   border-radius:10px;
@@ -293,31 +206,6 @@ include __DIR__ . '/includes/header.php';
 }
 .bk-help a { color:var(--teal,#1E5C6B); font-weight:600; }
 .bk-help .sep { color:#d1d5db; margin:0 8px; }
-
-/* Hero strip */
-.bk-hero {
-  background:linear-gradient(rgba(16,47,58,.65),rgba(16,47,58,.75)),
-             url('/images/Maya-Kobe-1-hero.webp') center/cover no-repeat;
-  min-height:200px;
-  display:flex;
-  align-items:center;
-  padding:80px 5vw 40px;
-}
-.bk-hero__inner { color:#fff; }
-.bk-hero__eyebrow {
-  font-size:11px;
-  letter-spacing:.2em;
-  text-transform:uppercase;
-  color:#D4B07A;
-  margin:0 0 10px;
-}
-.bk-hero__title {
-  font-family:'Cormorant Garamond',serif;
-  font-size:clamp(2rem,5vw,3rem);
-  font-weight:300;
-  margin:0;
-  color:#fff;
-}
 </style>
 
 <div class="pa-app">

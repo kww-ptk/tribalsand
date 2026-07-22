@@ -1,7 +1,8 @@
 <?php /** Activities view. Expects $hold, $ref, $status. */ ?>
 <?php
-$__acts = fetch_portal_activities();
-$__cats = fetch_tour_categories();
+// Degrade gracefully if the tours catalog is unavailable (mirrors home.php).
+try { $__acts = fetch_portal_activities(); } catch (Throwable $e) { $__acts = []; }
+try { $__cats = fetch_tour_categories(); }  catch (Throwable $e) { $__cats = []; }
 $__active = in_array($status ?? '', ['pending','confirmed'], true);
 ?>
 <h2 class="pa-h2">Experiences</h2>

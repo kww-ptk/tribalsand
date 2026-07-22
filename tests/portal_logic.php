@@ -22,5 +22,17 @@ check('categories is a list', is_array($cats));
 check('categories have key + label',
       $cats === [] || (isset($cats[0]['key'], $cats[0]['label'])));
 
+// addon_label() — pure, DB-free. Guards the "tour details duplicate the name" case.
+check('addon_label: details==name shows name once',
+      addon_label(['tour_name'=>'Tsavo East','details'=>'Tsavo East']) === 'Tsavo East');
+check('addon_label: distinct details are joined',
+      addon_label(['tour_name'=>'Tsavo East','details'=>'2 adults']) === 'Tsavo East — 2 adults');
+check('addon_label: null tour_name falls back to details',
+      addon_label(['tour_name'=>null,'details'=>'Extra towels']) === 'Extra towels');
+check('addon_label: empty details with a name shows the name',
+      addon_label(['tour_name'=>'Quad Safari','details'=>'']) === 'Quad Safari');
+check('addon_label: both empty is an empty string',
+      addon_label(['tour_name'=>null,'details'=>'']) === '');
+
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);

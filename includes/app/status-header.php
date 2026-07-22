@@ -13,7 +13,11 @@ $__nights = (int)((strtotime($hold['check_out']) - strtotime($hold['check_in']))
     <div class="pa-status__row"><dt>Check-in</dt><dd><?= e(date('D, j M Y', strtotime($hold['check_in']))) ?></dd></div>
     <div class="pa-status__row"><dt>Check-out</dt><dd><?= e(date('D, j M Y', strtotime($hold['check_out']))) ?> · <?= e((string)$__nights) ?> nights</dd></div>
     <?php if (!empty($hold['access_code'])): ?><div class="pa-status__row"><dt>Booking code</dt><dd style="font-family:monospace;letter-spacing:1px"><?= e($hold['access_code']) ?></dd></div><?php endif; ?>
-    <?php if ($status === 'pending' && !empty($hold['expires_at'])): ?><div class="pa-status__row"><dt>Hold expires</dt><dd id="bkCountdown" style="color:#b45309"></dd></div><?php endif; ?>
+    <?php if ($status === 'pending' && !empty($hold['expires_at'])):
+      // Server-rendered fallback; the inline countdown script replaces it live.
+      $__left = strtotime($hold['expires_at']) - time();
+      $__fallback = $__left > 0 ? sprintf('%dh %02dm', intdiv($__left, 3600), intdiv($__left % 3600, 60)) : 'Expiring soon';
+    ?><div class="pa-status__row"><dt>Hold expires</dt><dd id="bkCountdown" style="color:#b45309"><?= e($__fallback) ?></dd></div><?php endif; ?>
   </dl>
 </div>
 <?php

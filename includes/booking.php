@@ -125,7 +125,7 @@ function fetch_booking_change_requests(int $holdId): array {
 /** Published tours with their hero image + fields, for the portal Activities page. */
 function fetch_portal_activities(): array {
     return db_query(
-        "SELECT t.id, t.slug, t.name, t.category, t.tag_label, t.duration, t.short_desc, t.highlights_json,
+        "SELECT t.id, t.slug, t.name, t.category, t.tag_label, t.duration, t.short_desc,
                 (SELECT filename FROM tour_images ti WHERE ti.tour_id = t.id AND ti.is_hero = TRUE LIMIT 1) AS hero
          FROM tours t
          WHERE t.is_published = TRUE
