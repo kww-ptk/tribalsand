@@ -9,9 +9,9 @@ $__active = in_array($status ?? '', ['pending','confirmed'], true);
 
 <?php if ($__cats): ?>
 <div class="pa-chips" id="paCatChips">
-  <button type="button" class="pa-chip is-active" data-cat="all">All</button>
+  <button type="button" class="pa-chip is-active" data-cat="all" aria-pressed="true">All</button>
   <?php foreach ($__cats as $c): ?>
-  <button type="button" class="pa-chip" data-cat="<?= e($c['key']) ?>"><?= e($c['label']) ?></button>
+  <button type="button" class="pa-chip" data-cat="<?= e($c['key']) ?>" aria-pressed="false"><?= e($c['label']) ?></button>
   <?php endforeach; ?>
 </div>
 <?php endif; ?>
@@ -31,7 +31,7 @@ $__active = in_array($status ?? '', ['pending','confirmed'], true);
       <p class="pa-card__title"><?= e($a['name']) ?></p>
       <div class="pa-card__meta">
         <?php if (!empty($a['duration'])): ?><span><?= e($a['duration']) ?></span><?php endif; ?>
-        <?php if (!empty($a['short_desc'])): ?><span style="flex-basis:100%;margin-top:4px;color:#555"><?= e($a['short_desc']) ?></span><?php endif; ?>
+        <?php if (!empty($a['short_desc'])): ?><span style="flex-basis:100%;margin-top:4px;color:var(--pa-muted)"><?= e($a['short_desc']) ?></span><?php endif; ?>
       </div>
       <?php if ($__active): ?>
       <form data-bm action="/api/booking-addon.php" style="margin-top:12px">
@@ -52,7 +52,7 @@ $__active = in_array($status ?? '', ['pending','confirmed'], true);
   var chips=document.querySelectorAll('#paCatChips .pa-chip');
   var cards=document.querySelectorAll('.pa-card[data-cat]');
   chips.forEach(function(ch){ch.addEventListener('click',function(){
-    chips.forEach(function(x){x.classList.remove('is-active')}); ch.classList.add('is-active');
+    chips.forEach(function(x){x.classList.remove('is-active');x.setAttribute('aria-pressed','false');}); ch.classList.add('is-active'); ch.setAttribute('aria-pressed','true');
     var cat=ch.getAttribute('data-cat');
     cards.forEach(function(cd){ cd.style.display=(cat==='all'||cd.getAttribute('data-cat')===cat)?'':'none'; });
   });});
