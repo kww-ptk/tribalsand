@@ -66,12 +66,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (!isset($CATS[$category])) $errs[] = 'Pick a category.';
         if ($title === '') $errs[] = 'Title is required.';
         if ($venueId !== null && !in_array($venueId, array_column($venues, 'id'), true)) $errs[] = 'Invalid property.';
+        $existing = null;
+        if ($id > 0) {
+            $existing = db_query('SELECT image_filename FROM guest_board_posts WHERE id = :id', [':id'=>$id])->fetch();
+            if (!$existing) $errs[] = 'That post no longer exists.';
+        }
 
-        $newImage = gb_handle_image($errs);
+        // Only touch storage once the rest of the input is valid — avoids orphaned uploads.
+        $newImage = $errs ? null : gb_handle_image($errs);
 
         if (!$errs) {
             if ($id > 0) {
-                $existing = db_query('SELECT image_filename FROM guest_board_posts WHERE id = :id', [':id'=>$id])->fetch();
                 $img = $existing['image_filename'] ?? null;
                 if (!empty($_POST['remove_image']) && $img) {
                     require_once __DIR__ . '/../includes/storage.php';
@@ -88,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      ':p'=>$pub?'TRUE':'FALSE', ':s'=>$sort, ':id'=>$id]
                 );
                 audit_log('guest_board_update', 'guest_board_post', $id, $title);
-                $flash = 'Post updated.';
+                $_SESSION['gb_flash'] = 'Post updated.';
             } else {
                 db_query(
                     'INSERT INTO guest_board_posts (venue_id, category, title, body, image_filename, is_published, sort_order)
@@ -98,8 +103,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 );
                 $nid = (int)db()->lastInsertId();
                 audit_log('guest_board_create', 'guest_board_post', $nid, $title);
-                $flash = 'Post created.';
+                $_SESSION['gb_flash'] = 'Post created.';
             }
+            header('Location: /admin/guest-board.php');
+            exit;
         }
     } elseif ($action === 'delete') {
         $id = (int)($_POST['id'] ?? 0);
@@ -108,15 +115,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!empty($row['image_filename'])) { require_once __DIR__ . '/../includes/storage.php'; storage_delete($row['image_filename']); }
             db_query('DELETE FROM guest_board_posts WHERE id = :id', [':id'=>$id]);
             audit_log('guest_board_delete', 'guest_board_post', $id, '');
-            $flash = 'Post deleted.';
+            $_SESSION['gb_flash'] = 'Post deleted.';
         }
+        header('Location: /admin/guest-board.php');
+        exit;
     } elseif ($action === 'toggle') {
         $id = (int)($_POST['id'] ?? 0);
         db_query('UPDATE guest_board_posts SET is_published = NOT is_published, updated_at=now() WHERE id = :id', [':id'=>$id]);
         audit_log('guest_board_toggle', 'guest_board_post', $id, '');
-        $flash = 'Visibility updated.';
+        $_SESSION['gb_flash'] = 'Visibility updated.';
+        header('Location: /admin/guest-board.php');
+        exit;
     }
 }
+
+if (!empty($_SESSION['gb_flash'])) { $flash = $_SESSION['gb_flash']; unset($_SESSION['gb_flash']); }
 
 $posts = db_query(
     'SELECT g.*, v.name AS venue_name FROM guest_board_posts g
@@ -212,7 +225,7 @@ include __DIR__ . '/_layout.php';
           <td style="text-align:right;white-space:nowrap">
             <a href="/admin/guest-board.php?edit=<?= (int)$p['id'] ?>" class="btn-outline btn-sm">Edit</a>
             <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="toggle"><input type="hidden" name="id" value="<?= (int)$p['id'] ?>"><button class="btn-outline btn-sm"><?= $p['is_published']?'Hide':'Show' ?></button></form>
-            <form method="POST" style="display:inline" onsubmit="return confirm('Delete this post?')"><?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= (int)$p['id'] ?>"><button class="btn-outline btn-sm" style="color:#dc2626">Delete</button></form>
+            <form method="POST" style="display:inline" onsubmit="return confirm('Delete this post?')"><?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= (int)$p['id'] ?>"><button class="btn-danger btn-sm">Delete</button></form>
           </td>
         </tr>
         <?php endforeach; endif; ?>
