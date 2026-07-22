@@ -1,3 +1,4 @@
+<?php /** Shared booking status header. Expects $hold, $ref, $status. */ if (!isset($hold) || !$hold) return; ?>
     <!-- ── Booking summary card ── -->
     <div class="bk-card">
 
