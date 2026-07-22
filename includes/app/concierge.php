@@ -57,7 +57,7 @@ $__tiles = ['housekeeping'=>'Housekeeping','amenities'=>'Towels & amenities','ma
   <?php foreach ($__addons as $a): ?>
   <div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--pa-line);font-size:14px">
     <strong style="text-transform:capitalize"><?= e($a['kind']) ?></strong>
-    <span style="color:var(--pa-muted)"><?= e(trim(($a['tour_name'] ?? '') . ' ' . $a['details'])) ?></span>
+    <span style="color:var(--pa-muted)"><?= e(addon_label($a)) ?></span>
     <span class="pa-pill pa-pill--<?= e($a['status']) ?>" style="margin-left:auto"><?= e($a['status']) ?></span>
   </div>
   <?php endforeach; ?>

@@ -133,6 +133,19 @@ function fetch_portal_activities(): array {
     )->fetchAll();
 }
 
+/**
+ * Human label for an addon row (tour or concierge request), avoiding the
+ * common case where a tour's details duplicate its name ("Tsavo East Tsavo East").
+ * Expects a row with 'tour_name' (nullable) and 'details'.
+ */
+function addon_label(array $a): string {
+    $name = trim((string)($a['tour_name'] ?? ''));
+    $det  = trim((string)($a['details'] ?? ''));
+    if ($name === '') return $det;
+    if ($det === '' || $det === $name) return $name;
+    return "{$name} — {$det}";
+}
+
 /** Distinct published tour categories → {key,label} for the Activities filter. */
 function fetch_tour_categories(): array {
     $labels = ['classic' => 'Classic safari', 'custom' => 'Custom journey', 'excursion' => 'Excursion'];

@@ -11,7 +11,7 @@
       <?php foreach ($bm_addons as $a): ?>
         <li style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:7px 0;font-size:14px;border-bottom:1px solid var(--pa-line)">
           <strong style="text-transform:capitalize"><?= e($a['kind']) ?></strong>
-          <span style="color:var(--pa-muted)"><?= e(trim(($a['tour_name'] ?? '') . ' ' . $a['details'])) ?></span>
+          <span style="color:var(--pa-muted)"><?= e(addon_label($a)) ?></span>
           <span class="pa-pill pa-pill--<?= e($a['status']) ?>" style="margin-left:auto"><?= e($a['status']) ?></span>
         </li>
       <?php endforeach; ?>
