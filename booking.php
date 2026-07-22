@@ -128,7 +128,7 @@ $badge_bg = match($status) {
     default     => '#f3f4f6',
 };
 
-$view = in_array($_GET['view'] ?? 'home', ['home','concierge','stay','manage'], true) ? ($_GET['view'] ?? 'home') : 'home';
+$view = in_array($_GET['view'] ?? 'home', ['home','concierge','stay','manage','activities'], true) ? ($_GET['view'] ?? 'home') : 'home';
 
 $page_title = $hold
     ? 'Booking ' . e($ref) . ' · Tribal Sand'
@@ -341,16 +341,13 @@ include __DIR__ . '/includes/header.php';
 }
 </style>
 
-<!-- Hero -->
-<div class="bk-hero">
-  <div class="bk-hero__inner">
-    <p class="bk-hero__eyebrow">Tribal Sand · Booking Management</p>
-    <h1 class="bk-hero__title">Your Booking</h1>
-  </div>
-</div>
-
-<div class="bk-page">
-  <div class="container">
+<div class="pa-app">
+  <?php
+    $__titles = ['home'=>'Your stay','activities'=>'Activities','concierge'=>'Concierge','stay'=>'Stay info','manage'=>'Booking'];
+    $__t = $hold ? ($__titles[$view] ?? 'Your stay') : 'Your booking';
+  ?>
+  <div class="pa-topbar"><div class="pa-topbar__eyebrow">Tribal Sand</div><div class="pa-topbar__title"><?= e($__t) ?></div></div>
+  <div class="pa-wrap" style="padding-top:16px">
 
     <?php if ($error): ?>
     <!-- ── Invalid ref / code lookup ── -->
@@ -398,6 +395,8 @@ include __DIR__ . '/includes/header.php';
       <?php if (is_file(__DIR__ . '/includes/app/concierge.php')) include __DIR__ . '/includes/app/concierge.php'; ?>
     <?php elseif ($view === 'stay'): ?>
       <?php if (is_file(__DIR__ . '/includes/app/stay.php')) include __DIR__ . '/includes/app/stay.php'; ?>
+    <?php elseif ($view === 'activities'): ?>
+      <?php if (is_file(__DIR__ . '/includes/app/activities.php')) include __DIR__ . '/includes/app/activities.php'; ?>
     <?php elseif ($view === 'manage'): ?>
       <p style="margin:0 0 16px"><a href="/booking.php?ref=<?= e(urlencode($ref)) ?>" style="font-size:13px;color:var(--teal,#1E5C6B)">&larr; Back to home</a></p>
       <?php if (in_array($status, ['pending', 'confirmed'], true)):
@@ -438,8 +437,9 @@ include __DIR__ . '/includes/header.php';
       <a href="tel:+254115115247">+254 115 115 247</a>
     </div>
 
-  </div>
-</div>
+  </div><!-- /pa-wrap -->
+  <?php if ($hold): ?><?php include __DIR__ . '/includes/app/nav.php'; ?><?php endif; ?>
+</div><!-- /pa-app -->
 
 <?php if ($status === 'pending' && !empty($hold['expires_at'])): ?>
 <script>
