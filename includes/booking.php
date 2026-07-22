@@ -129,3 +129,25 @@ function fetch_booking_change_requests(int $holdId): array {
         [':id' => $holdId]
     )->fetchAll();
 }
+
+/** Published tours with their hero image + fields, for the portal Activities page. */
+function fetch_portal_activities(): array {
+    return db_query(
+        "SELECT t.id, t.slug, t.name, t.category, t.tag_label, t.duration, t.short_desc, t.highlights_json,
+                (SELECT filename FROM tour_images ti WHERE ti.tour_id = t.id AND ti.is_hero = TRUE LIMIT 1) AS hero
+         FROM tours t
+         WHERE t.is_published = TRUE
+         ORDER BY t.sort_order ASC, t.name ASC"
+    )->fetchAll();
+}
+
+/** Distinct published tour categories → {key,label} for the Activities filter. */
+function fetch_tour_categories(): array {
+    $labels = ['classic' => 'Classic safari', 'custom' => 'Custom journey', 'excursion' => 'Excursion'];
+    $rows = db_query(
+        "SELECT DISTINCT category FROM tours WHERE is_published = TRUE AND category <> '' ORDER BY category ASC"
+    )->fetchAll(PDO::FETCH_COLUMN);
+    $out = [];
+    foreach ($rows as $c) { $out[] = ['key' => $c, 'label' => $labels[$c] ?? ucfirst($c)]; }
+    return $out;
+}

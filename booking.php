@@ -141,6 +141,8 @@ include __DIR__ . '/includes/head.php';
 include __DIR__ . '/includes/header.php';
 ?>
 
+<link rel="stylesheet" href="/css/portal-app.css?v=<?= @filemtime(__DIR__ . '/css/portal-app.css') ?: time() ?>">
+
 <style>
 /* ── Booking page ── */
 .bk-page { background:#F5F1EB; min-height:70vh; padding:80px 0 100px; }
