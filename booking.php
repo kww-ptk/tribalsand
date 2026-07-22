@@ -106,27 +106,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $hold && $can_cancel) {
 }
 
 $status     = $hold['status'] ?? '';
-$badge_text = match($status) {
-    'pending'   => 'Pending Confirmation',
-    'confirmed' => 'Confirmed',
-    'cancelled' => 'Cancelled',
-    'expired'   => 'Expired',
-    default     => ucfirst($status),
-};
-$badge_color = match($status) {
-    'pending'   => '#92400e',
-    'confirmed' => '#166534',
-    'cancelled' => '#991b1b',
-    'expired'   => '#6b7280',
-    default     => '#6b7280',
-};
-$badge_bg = match($status) {
-    'pending'   => '#fef3c7',
-    'confirmed' => '#dcfce7',
-    'cancelled' => '#fee2e2',
-    'expired'   => '#f3f4f6',
-    default     => '#f3f4f6',
-};
 
 $view = in_array($_GET['view'] ?? 'home', ['home','concierge','stay','manage','activities'], true) ? ($_GET['view'] ?? 'home') : 'home';
 

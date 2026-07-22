@@ -16,3 +16,16 @@ $__nights = (int)((strtotime($hold['check_out']) - strtotime($hold['check_in']))
     <?php if ($status === 'pending' && !empty($hold['expires_at'])): ?><div class="pa-status__row"><dt>Hold expires</dt><dd id="bkCountdown" style="color:#b45309"></dd></div><?php endif; ?>
   </dl>
 </div>
+<?php
+$__note = [
+  'pending'   => 'Awaiting confirmation — our team will confirm within 24 hours.',
+  'confirmed' => 'Your booking is confirmed. We look forward to welcoming you.',
+  'expired'   => 'This hold expired.',
+  'cancelled' => 'This booking was cancelled.',
+][$status] ?? '';
+?>
+<?php if ($__note): ?>
+<div style="background:<?= $__bg ?>;color:<?= $__fg ?>;border-radius:12px;padding:12px 14px;font-size:13px;line-height:1.6;margin-bottom:12px">
+  <?= e($__note) ?><?php if (in_array($status, ['expired','cancelled'], true)): ?> <a href="/properties" style="color:inherit;font-weight:600;text-decoration:underline">Browse our properties</a><?php endif; ?>
+</div>
+<?php endif; ?>

@@ -1,11 +1,12 @@
 <?php /** Home. Expects $hold, $ref, $status. */ ?>
 <?php $__u = '/booking.php?ref=' . urlencode($ref); $__active = in_array($status ?? '', ['pending','confirmed'], true);
 try { $__feat = array_slice(fetch_portal_activities(), 0, 3); } catch (Throwable $e) { $__feat = []; } ?>
-<div style="font-family:'Cormorant Garamond',serif;font-size:24px;margin:4px 0 12px">Karibu, <?= e(explode(' ', trim((string)$hold['guest_name']))[0] ?? 'guest') ?></div>
+<?php $__first = trim((string)$hold['guest_name']); $__first = $__first !== '' ? explode(' ', $__first)[0] : 'guest'; ?>
+<div style="font-family:'Cormorant Garamond',serif;font-size:24px;margin:4px 0 12px">Karibu, <?= e($__first) ?></div>
 
 <?php if ($__active): ?>
 <a class="pa-tile pa-tile--hero" href="<?= e($__u) ?>&amp;view=concierge">
-  <span aria-hidden="true" style="font-size:24px">&#9782;</span>
+  <span aria-hidden="true"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9a6 6 0 0 1 12 0c0 5 2 6 2 6H4s2-1 2-6z"/><path d="M10 20a2 2 0 0 0 4 0"/></svg></span>
   <span><span class="pa-tile__t">Concierge</span><span class="pa-tile__s">Towels, housekeeping, anything you need</span></span>
   <span style="margin-left:auto">&rarr;</span>
 </a>
