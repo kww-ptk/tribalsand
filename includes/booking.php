@@ -102,14 +102,6 @@ function resolve_booking_by_code_only(string $code): array|false {
     return $row ?: false;
 }
 
-/** Published tours grouped for the add-on catalog. */
-function fetch_published_tours(): array {
-    return db_query(
-        "SELECT id, slug, name, category, tag_label, duration, short_desc
-         FROM tours WHERE is_published = TRUE
-         ORDER BY sort_order ASC, name ASC"
-    )->fetchAll();
-}
 
 /** Add-ons already recorded against a hold (for display). */
 function fetch_booking_addons(int $holdId): array {
