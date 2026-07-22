@@ -1,5 +1,9 @@
 <?php /** Concierge view. Expects $hold, $ref, $status. */ ?>
-<?php $__u = '/booking.php?ref=' . urlencode($ref); $__addons = fetch_booking_addons((int)$hold['id']); ?>
+<?php
+$__u = '/booking.php?ref=' . urlencode($ref);
+$__addons = fetch_booking_addons((int)$hold['id']);
+$__kinds = ['housekeeping'=>'Housekeeping','amenities'=>'Towels & amenities','maintenance'=>'Maintenance','restaurant'=>'Restaurant','other'=>'Something else'];
+?>
 <style>
 .cx-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
 .cx-tile{background:#fff;border:1px solid #e5e0d6;border-radius:12px;padding:14px;text-align:left;font:inherit;cursor:pointer;font-size:14px;font-weight:600;color:#1a1a1a}
@@ -16,14 +20,14 @@
 <p style="margin:0 0 14px;font-size:13px;color:#6b7280">Tap what you need — our team confirms by return.</p>
 
 <div class="cx-grid">
-  <?php foreach (['housekeeping'=>'Housekeeping','amenities'=>'Towels & amenities','maintenance'=>'Maintenance','restaurant'=>'Restaurant','other'=>'Something else'] as $k=>$label): ?>
-  <button type="button" class="cx-tile" data-cx="<?= e($k) ?>" aria-expanded="false"><?= e($label) ?></button>
+  <?php foreach ($__kinds as $k=>$label): ?>
+  <button type="button" class="cx-tile" data-cx="<?= e($k) ?>" aria-expanded="false" aria-controls="cx-form-<?= e($k) ?>"><?= e($label) ?></button>
   <?php endforeach; ?>
   <a href="<?= e($__u) ?>&view=manage" class="cx-tile" style="display:block;text-decoration:none">Transfer</a>
   <a href="<?= e($__u) ?>&view=manage" class="cx-tile" style="display:block;text-decoration:none">Activity</a>
 </div>
 
-<?php foreach (['housekeeping'=>'Housekeeping','amenities'=>'Towels & amenities','maintenance'=>'Maintenance','restaurant'=>'Restaurant','other'=>'Something else'] as $k=>$label): ?>
+<?php foreach ($__kinds as $k=>$label): ?>
 <form data-bm action="/api/booking-addon.php" class="cx-form" id="cx-form-<?= e($k) ?>">
   <input type="hidden" name="ref" value="<?= e($ref) ?>">
   <input type="hidden" name="kind" value="<?= e($k) ?>">
