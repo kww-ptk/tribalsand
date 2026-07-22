@@ -45,7 +45,7 @@
 .pa-pill{font-size:12px;padding:2px 9px;border-radius:999px;text-transform:capitalize;white-space:nowrap;}
 .pa-pill--requested{background:#fff7e6;color:#8a5a00;}
 .pa-pill--confirmed{background:#e6eefb;color:#1a4a9c;}
-.pa-pill--completed{background:#e6f6ec;color:#146c37;}
+.pa-pill--completed,.pa-pill--handled{background:#e6f6ec;color:#146c37;}
 .pa-pill--declined,.pa-pill--cancelled{background:#fbe6e6;color:#a12;}
 
 .pa-nav{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;background:#fff;border-top:1px solid var(--pa-line);max-width:640px;margin:0 auto;}
