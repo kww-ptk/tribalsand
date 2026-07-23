@@ -20,6 +20,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 verify_csrf();
 
+$returnTo = ($_POST['return'] ?? '') === 'concierge-desk' ? '/admin/concierge-desk.php' : '/admin/holds.php';
+
 $type   = $_POST['type']   ?? '';   // 'addon' | 'change'
 $id     = (int)($_POST['id'] ?? 0);
 $status = $_POST['status'] ?? '';
@@ -29,13 +31,13 @@ if ($type === 'addon' && in_array($status, ['confirmed', 'declined', 'cancelled'
     $cur = db_query("SELECT status FROM booking_addons WHERE id=:id", [':id' => $id])->fetch();
     if (!$cur) {
         $_SESSION['hold_flash'] = ['type' => 'error', 'msg' => "Add-on request #{$id} not found."];
-        header('Location: /admin/holds.php');
+        header('Location: ' . $returnTo);
         exit;
     }
     $allowedFrom = $status === 'completed' ? ['requested', 'confirmed'] : ['requested'];
     if (!in_array($cur['status'], $allowedFrom, true)) {
         $_SESSION['hold_flash'] = ['type' => 'error', 'msg' => "Add-on request #{$id} is already {$cur['status']} — no action taken."];
-        header('Location: /admin/holds.php');
+        header('Location: ' . $returnTo);
         exit;
     }
     $fromParams = [];
@@ -51,12 +53,12 @@ if ($type === 'addon' && in_array($status, ['confirmed', 'declined', 'cancelled'
     $cur = db_query("SELECT status FROM booking_change_requests WHERE id=:id", [':id' => $id])->fetch();
     if (!$cur) {
         $_SESSION['hold_flash'] = ['type' => 'error', 'msg' => "Change request #{$id} not found."];
-        header('Location: /admin/holds.php');
+        header('Location: ' . $returnTo);
         exit;
     }
     if ($cur['status'] !== 'requested') {
         $_SESSION['hold_flash'] = ['type' => 'error', 'msg' => "Change request #{$id} is already {$cur['status']} — no action taken."];
-        header('Location: /admin/holds.php');
+        header('Location: ' . $returnTo);
         exit;
     }
     db_query("UPDATE booking_change_requests SET status=:s WHERE id=:id AND status='requested'", [':s' => $status, ':id' => $id]);
@@ -68,5 +70,5 @@ $_SESSION['hold_flash'] = $ok
     ? ['type' => 'success', 'msg' => ucfirst($type) . " request marked {$status}."]
     : ['type' => 'error',   'msg' => 'Invalid request action.'];
 
-header('Location: /admin/holds.php');
+header('Location: ' . $returnTo);
 exit;
