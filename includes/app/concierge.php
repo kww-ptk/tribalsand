@@ -3,12 +3,25 @@
 $__u = '/booking.php?ref=' . urlencode($ref);
 $__addons = fetch_booking_addons((int)$hold['id']);
 $__kinds = ['housekeeping'=>'Housekeeping','amenities'=>'Towels & amenities','maintenance'=>'Maintenance','restaurant'=>'Restaurant','other'=>'Something else'];
-// Tile grid order: service categories + Transfer (structured), then "Something else".
-$__tiles = ['housekeeping'=>'Housekeeping','amenities'=>'Towels & amenities','maintenance'=>'Maintenance','restaurant'=>'Restaurant','transfer'=>'Transfer','other'=>'Something else'];
+// Tile grid: laundry + services + transfer (structured), then "Something else".
+$__tiles = ['laundry'=>'Laundry','housekeeping'=>'Housekeeping','amenities'=>'Towels & amenities','maintenance'=>'Maintenance','restaurant'=>'Restaurant','transfer'=>'Transfer','other'=>'Something else'];
+$__icons = [
+  'laundry'      => '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="13" r="4"/><line x1="7" y1="6" x2="7.01" y2="6"/></svg>',
+  'housekeeping' => '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4"/><path d="M3 18h18M4 12V8a2 2 0 0 1 2-2h5v6"/></svg>',
+  'amenities'    => '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/></svg>',
+  'maintenance'  => '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-2.4z"/></svg>',
+  'restaurant'   => '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v7a2 2 0 0 0 4 0V3M8 10v11"/><path d="M17 3c-1.5 0-3 1.8-3 4.5S15.5 12 17 12v9"/></svg>',
+  'transfer'     => '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l1.6-4.6A2 2 0 0 1 8.5 7h7a2 2 0 0 1 1.9 1.4L19 13v4h-2v-2H7v2H5z"/><circle cx="8" cy="16" r="1"/><circle cx="16" cy="16" r="1"/></svg>',
+  'other'        => '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a8 8 0 0 1-11.6 7.1L4 20.5l1.4-5.4A8 8 0 1 1 21 12z"/></svg>',
+];
+// Shared optional preferred-time field markup.
+$__sched = '<label class="pa-field">Preferred time (optional)<input type="datetime-local" name="scheduled_for"></label>';
 ?>
 <style>
 .cx-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
-.cx-tile{background:var(--pa-card);border:1px solid var(--pa-line);border-radius:12px;padding:14px;text-align:left;font:inherit;cursor:pointer;font-size:14px;font-weight:600;color:var(--pa-ink)}
+@media (min-width:720px){.cx-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+.cx-tile{display:flex;flex-direction:column;align-items:flex-start;gap:8px;background:var(--pa-card);border:1px solid var(--pa-line);border-radius:12px;padding:14px;text-align:left;font:inherit;cursor:pointer;font-size:14px;font-weight:600;color:var(--pa-ink)}
+.cx-tile svg{color:var(--pa-teal)}
 .cx-tile[aria-expanded=true]{border-color:var(--pa-teal-d)}
 .cx-form{display:none;margin-top:10px;background:var(--pa-card);border:1px solid var(--pa-line);border-radius:12px;padding:14px}
 .cx-form.open{display:block}
@@ -19,7 +32,10 @@ $__tiles = ['housekeeping'=>'Housekeeping','amenities'=>'Towels & amenities','ma
 
 <div class="cx-grid">
   <?php foreach ($__tiles as $k=>$label): ?>
-  <button type="button" class="cx-tile" data-cx="<?= e($k) ?>" aria-expanded="false" aria-controls="cx-form-<?= e($k) ?>"><?= e($label) ?></button>
+  <button type="button" class="cx-tile" data-cx="<?= e($k) ?>" aria-expanded="false" aria-controls="cx-form-<?= e($k) ?>">
+    <span aria-hidden="true"><?= $__icons[$k] ?? '' ?></span>
+    <?= e($label) ?>
+  </button>
   <?php endforeach; ?>
 </div>
 
@@ -30,11 +46,28 @@ $__tiles = ['housekeeping'=>'Housekeeping','amenities'=>'Towels & amenities','ma
   <label class="pa-field"><?= e($label) ?> — what do you need?
     <textarea name="details" rows="2" required></textarea>
   </label>
+  <?= $__sched ?>
   <div class="cf-turnstile" data-sitekey="<?= e(captcha_site_key()) ?>" style="margin:0 0 10px"></div>
   <button type="submit" class="pa-btn pa-btn--primary">Send request</button>
   <p class="bm-status" aria-live="polite" style="margin:10px 0 0;font-size:13px"></p>
 </form>
 <?php endforeach; ?>
+
+<form data-bm action="/api/booking-addon.php" class="cx-form" id="cx-form-laundry">
+  <input type="hidden" name="ref" value="<?= e($ref) ?>">
+  <input type="hidden" name="kind" value="laundry">
+  <label class="pa-field">Laundry service
+    <select name="service" required>
+      <option value="">— select —</option>
+      <?php foreach (LAUNDRY_OPTIONS as $__lk => $__ll): ?><option value="<?= e($__lk) ?>"><?= e($__ll) ?></option><?php endforeach; ?>
+    </select>
+  </label>
+  <label class="pa-field">Notes (items, instructions…)<textarea name="details" rows="2"></textarea></label>
+  <?= $__sched ?>
+  <div class="cf-turnstile" data-sitekey="<?= e(captcha_site_key()) ?>" style="margin:0 0 10px"></div>
+  <button type="submit" class="pa-btn pa-btn--primary">Request laundry</button>
+  <p class="bm-status" aria-live="polite" style="margin:10px 0 0;font-size:13px"></p>
+</form>
 
 <form data-bm action="/api/booking-addon.php" class="cx-form" id="cx-form-transfer">
   <input type="hidden" name="ref" value="<?= e($ref) ?>">
@@ -46,6 +79,7 @@ $__tiles = ['housekeeping'=>'Housekeeping','amenities'=>'Towels & amenities','ma
     </select>
   </label>
   <label class="pa-field">Details (flight no., time, pickup…)<textarea name="details" rows="2"></textarea></label>
+  <?= $__sched ?>
   <div class="cf-turnstile" data-sitekey="<?= e(captcha_site_key()) ?>" style="margin:0 0 10px"></div>
   <button type="submit" class="pa-btn pa-btn--primary">Request transfer</button>
   <p class="bm-status" aria-live="polite" style="margin:10px 0 0;font-size:13px"></p>
@@ -57,8 +91,10 @@ $__tiles = ['housekeeping'=>'Housekeeping','amenities'=>'Towels & amenities','ma
   <?php foreach ($__addons as $a): ?>
   <div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--pa-line);font-size:14px">
     <strong style="text-transform:capitalize"><?= e($a['kind']) ?></strong>
-    <span style="color:var(--pa-muted)"><?= e(addon_label($a)) ?></span>
-    <span class="pa-pill pa-pill--<?= e($a['status']) ?>" style="margin-left:auto"><?= e($a['status']) ?></span>
+    <span style="color:var(--pa-muted)">
+      <?= e(addon_label($a)) ?><?php if (!empty($a['scheduled_for'])): ?> · <?= e(date('D j M, H:i', strtotime((string)$a['scheduled_for']))) ?><?php endif; ?>
+    </span>
+    <span class="pa-pill pa-pill--<?= e($a['status']) ?>" style="margin-left:auto"><?= e(addon_status_label($a['status'])) ?></span>
   </div>
   <?php endforeach; ?>
 </div>

@@ -57,6 +57,14 @@ const TRANSFER_OPTIONS = [
     'custom'              => 'Custom transfer',
 ];
 
+/** Laundry service options offered on the concierge laundry form. */
+const LAUNDRY_OPTIONS = [
+    'wash_fold' => 'Wash & fold',
+    'iron'      => 'Ironing',
+    'dry_clean' => 'Dry-clean',
+    'wash_iron' => 'Wash & iron',
+];
+
 /** Absolute URL to the guest manage page for a hold (magic link). '' if secret unset. */
 function make_manage_url(int $holdId): string {
     $ref = make_guest_ref($holdId);
@@ -160,6 +168,17 @@ function addon_label(array $a): string {
     if ($name === '') return $det;
     if ($det === '' || $det === $name) return $name;
     return "{$name} — {$det}";
+}
+
+/** Friendly label for an addon request status (used in guest views and the admin Concierge Desk). */
+function addon_status_label(string $status): string {
+    return [
+        'requested' => 'Requested',
+        'confirmed' => 'In progress',
+        'completed' => 'Done',
+        'declined'  => 'Declined',
+        'cancelled' => 'Cancelled',
+    ][$status] ?? ucfirst($status);
 }
 
 /** Distinct published tour categories → {key,label} for the Activities filter. */

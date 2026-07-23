@@ -30,7 +30,7 @@ if ((int)$cnt >= 10) { http_response_code(429); exit(json_encode(['ok'=>false,'e
 // Validate
 $kind = $str($data['kind'] ?? '');
 if (!in_array($kind, ['tour','transfer','itinerary','other',
-                      'housekeeping','amenities','maintenance','restaurant'], true)) {
+                      'housekeeping','amenities','maintenance','restaurant','laundry'], true)) {
     http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'Unknown add-on type.']));
 }
 $details = $str($data['details'] ?? '');
@@ -47,14 +47,27 @@ if ($kind === 'tour') {
     if (!array_key_exists($opt, TRANSFER_OPTIONS)) { http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'Please choose a transfer option.'])); }
     $label = TRANSFER_OPTIONS[$opt];
     $details = $details === '' ? $label : "{$label} — {$details}";
+} elseif ($kind === 'laundry') {
+    $opt = $str($data['service'] ?? '');
+    if (!array_key_exists($opt, LAUNDRY_OPTIONS)) { http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'Please choose a laundry service.'])); }
+    $label   = LAUNDRY_OPTIONS[$opt];
+    $details = $details === '' ? $label : "{$label} — {$details}";
 } else { // itinerary / other
     if ($details === '') { http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'Please add a few details.'])); }
 }
 
+$sched = $str($data['scheduled_for'] ?? '');
+$schedSql = null;
+if ($sched !== '') {
+    $ts = strtotime($sched);
+    if ($ts !== false) $schedSql = date('Y-m-d H:i:s', $ts); // silently ignore an unparseable value
+}
+
 try {
     db_query(
-        "INSERT INTO booking_addons (hold_id, kind, tour_id, details) VALUES (:h, :k, :t, :d)",
-        [':h'=>$hold['id'], ':k'=>$kind, ':t'=>$tour_id, ':d'=>$details]
+        "INSERT INTO booking_addons (hold_id, kind, tour_id, details, scheduled_for)
+         VALUES (:h, :k, :t, :d, :sf)",
+        [':h'=>$hold['id'], ':k'=>$kind, ':t'=>$tour_id, ':d'=>$details, ':sf'=>$schedSql]
     );
     if (function_exists('send_addon_request_notification')) {
         send_addon_request_notification($hold, ['kind'=>$kind,'details'=>$details]);
