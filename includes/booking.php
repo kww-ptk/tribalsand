@@ -135,32 +135,40 @@ function fetch_message_threads(int $holdId): array {
         $aid  = $th['addon_id'];
         $cond = $aid === null ? 'addon_id IS NULL' : 'addon_id = :aid';
         $p    = [':h'=>$holdId]; if ($aid !== null) $p[':aid'] = $aid;
-        $last = db_query("SELECT body, sender, created_at FROM booking_messages WHERE hold_id=:h AND $cond ORDER BY created_at DESC LIMIT 1", $p)->fetch();
+        try {
+            $last = db_query("SELECT body, sender, created_at FROM booking_messages WHERE hold_id=:h AND $cond ORDER BY created_at DESC LIMIT 1", $p)->fetch();
+            $th['unread_guest'] = (int)db_query("SELECT COUNT(*) FROM booking_messages WHERE hold_id=:h AND $cond AND sender='admin' AND read_by_guest=FALSE", $p)->fetchColumn();
+        } catch (Throwable $e) { $last = false; $th['unread_guest'] = 0; }  // table absent pre-migration
         $th['last_body']    = $last['body'] ?? '';
         $th['last_at']      = $last['created_at'] ?? null;
-        $th['unread_guest'] = (int)db_query("SELECT COUNT(*) FROM booking_messages WHERE hold_id=:h AND $cond AND sender='admin' AND read_by_guest=FALSE", $p)->fetchColumn();
     }
     unset($th);
     return $threads;
 }
 
-/** All messages in one thread, oldest → newest. */
+/** All messages in one thread, oldest → newest. Empty if the table is absent (pre-migration). */
 function fetch_thread_messages(int $holdId, ?int $addonId): array {
     $cond = $addonId === null ? 'addon_id IS NULL' : 'addon_id = :aid';
     $p    = [':h'=>$holdId]; if ($addonId !== null) $p[':aid'] = $addonId;
-    return db_query("SELECT * FROM booking_messages WHERE hold_id=:h AND $cond ORDER BY created_at ASC", $p)->fetchAll();
+    try {
+        return db_query("SELECT * FROM booking_messages WHERE hold_id=:h AND $cond ORDER BY created_at ASC", $p)->fetchAll();
+    } catch (Throwable $e) { return []; }
 }
 
-/** Mark a thread's admin messages read by the guest. */
+/** Mark a thread's admin messages read by the guest. No-op if the table is absent. */
 function mark_thread_read_by_guest(int $holdId, ?int $addonId): void {
     $cond = $addonId === null ? 'addon_id IS NULL' : 'addon_id = :aid';
     $p    = [':h'=>$holdId]; if ($addonId !== null) $p[':aid'] = $addonId;
-    db_query("UPDATE booking_messages SET read_by_guest=TRUE WHERE hold_id=:h AND $cond AND sender='admin' AND read_by_guest=FALSE", $p);
+    try {
+        db_query("UPDATE booking_messages SET read_by_guest=TRUE WHERE hold_id=:h AND $cond AND sender='admin' AND read_by_guest=FALSE", $p);
+    } catch (Throwable $e) { /* table absent pre-migration */ }
 }
 
-/** Total admin messages unread by this guest (nav badge). */
+/** Total admin messages unread by this guest (nav badge). Returns 0 if the table is absent (pre-migration). */
 function count_unread_guest(int $holdId): int {
-    return (int)db_query("SELECT COUNT(*) FROM booking_messages WHERE hold_id=:h AND sender='admin' AND read_by_guest=FALSE", [':h'=>$holdId])->fetchColumn();
+    try {
+        return (int)db_query("SELECT COUNT(*) FROM booking_messages WHERE hold_id=:h AND sender='admin' AND read_by_guest=FALSE", [':h'=>$holdId])->fetchColumn();
+    } catch (Throwable $e) { return 0; }
 }
 
 /** Admin: all threads across holds, unread-by-admin first, with guest/venue context. */
@@ -184,9 +192,11 @@ function fetch_admin_threads(): array {
     )->fetchAll();
 }
 
-/** Admin: total guest messages unread by staff (nav badge). */
+/** Admin: total guest messages unread by staff (nav badge). Returns 0 if the table is absent (pre-migration) so the admin layout never fatals. */
 function count_unread_admin(): int {
-    return (int)db_query("SELECT COUNT(*) FROM booking_messages WHERE sender='guest' AND read_by_admin=FALSE")->fetchColumn();
+    try {
+        return (int)db_query("SELECT COUNT(*) FROM booking_messages WHERE sender='guest' AND read_by_admin=FALSE")->fetchColumn();
+    } catch (Throwable $e) { return 0; }
 }
 
 /** Mark a thread's guest messages read by admin. */

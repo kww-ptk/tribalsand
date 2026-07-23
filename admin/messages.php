@@ -22,12 +22,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $ph = (int)($_POST['hold_id'] ?? 0);
     $pa = ($_POST['addon_id'] ?? '') === '' ? null : (int)$_POST['addon_id'];
     $body = trim((string)($_POST['body'] ?? ''));
-    if ($ph && $body !== '') {
+    // Validate the target: hold must exist, and a targeted addon must belong to it.
+    $holdOk  = $ph > 0 && db_query("SELECT 1 FROM holds WHERE id=:h", [':h'=>$ph])->fetchColumn();
+    $addonOk = $pa === null || db_query("SELECT 1 FROM booking_addons WHERE id=:a AND hold_id=:h", [':a'=>$pa, ':h'=>$ph])->fetchColumn();
+    if ($holdOk && $addonOk && $body !== '') {
         if (mb_strlen($body) > 2000) $body = mb_substr($body, 0, 2000);
         db_query("INSERT INTO booking_messages (hold_id, addon_id, sender, body, read_by_guest, read_by_admin) VALUES (:h,:a,'admin',:b,FALSE,TRUE)",
             [':h'=>$ph, ':a'=>$pa, ':b'=>$body]);
         audit_log('booking_message.admin_reply', 'hold', $ph, '');
         $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Reply sent.'];
+    } elseif ($body !== '') {
+        $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'That conversation no longer exists.'];
     }
     $q = '?hold=' . $ph . '&thread=' . ($pa === null ? 'general' : $pa);
     header('Location: /admin/messages.php' . $q); exit;

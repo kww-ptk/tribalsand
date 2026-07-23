@@ -2,7 +2,6 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/booking.php';
-require_once __DIR__ . '/../includes/turnstile.php';
 require_once __DIR__ . '/../includes/mail.php';
 
 header('Content-Type: application/json');
