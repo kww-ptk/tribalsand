@@ -180,3 +180,12 @@ CREATE TABLE IF NOT EXISTS guest_board_posts (
 
 CREATE INDEX IF NOT EXISTS idx_gbp_visible
     ON guest_board_posts (is_published, venue_id, sort_order DESC, created_at DESC);
+
+-- Concierge desk: laundry kind + optional scheduled_for on booking_addons
+-- (booking_addons is created via db/migrations; these reflect add_concierge_desk.sql)
+ALTER TABLE booking_addons DROP CONSTRAINT IF EXISTS booking_addons_kind_check;
+ALTER TABLE booking_addons ADD CONSTRAINT booking_addons_kind_check
+    CHECK (kind IN ('tour','transfer','itinerary','other',
+                    'housekeeping','amenities','maintenance','restaurant','laundry'));
+
+ALTER TABLE booking_addons ADD COLUMN IF NOT EXISTS scheduled_for TIMESTAMP;
