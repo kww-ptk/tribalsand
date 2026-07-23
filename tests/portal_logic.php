@@ -70,5 +70,23 @@ check('board rows expose category/title/body/image_filename',
 
 db_query("DELETE FROM guest_board_posts WHERE id IN (:a, :b)", [':a'=>$gGlobal, ':b'=>$gScoped ?: -1]);
 
+// ── concierge status labels + laundry options ────────────────
+check('status label: requested', addon_status_label('requested') === 'Requested');
+check('status label: confirmed → In progress', addon_status_label('confirmed') === 'In progress');
+check('status label: completed → Done', addon_status_label('completed') === 'Done');
+check('status label: declined', addon_status_label('declined') === 'Declined');
+check('status label: cancelled', addon_status_label('cancelled') === 'Cancelled');
+check('status label: unknown falls back', addon_status_label('weird') === 'Weird');
+check('laundry options non-empty', is_array(LAUNDRY_OPTIONS) && count(LAUNDRY_OPTIONS) >= 2);
+
+// laundry addon persists with scheduled_for
+$hid = (int)(db()->query("SELECT id FROM holds ORDER BY id DESC LIMIT 1")->fetchColumn() ?: 0);
+if ($hid) {
+    db_query("INSERT INTO booking_addons (hold_id,kind,details,scheduled_for) VALUES (:h,'laundry','Wash & fold — 3 shirts','2029-05-01 09:00')", [':h'=>$hid]);
+    $la = db_query("SELECT kind, scheduled_for FROM booking_addons WHERE hold_id=:h AND kind='laundry' ORDER BY id DESC LIMIT 1", [':h'=>$hid])->fetch();
+    check('laundry addon stored with schedule', $la && $la['kind']==='laundry' && !empty($la['scheduled_for']));
+    db_query("DELETE FROM booking_addons WHERE hold_id=:h AND kind='laundry' AND details='Wash & fold — 3 shirts'", [':h'=>$hid]);
+}
+
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);
