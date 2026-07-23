@@ -9,17 +9,12 @@ header('Content-Type: application/json');
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(405); exit(json_encode(['ok'=>false,'error'=>'Method not allowed'])); }
 
 $data = json_decode(file_get_contents('php://input'), true) ?? [];
-$ip   = client_ip();
 $str  = fn($v) => is_scalar($v) ? trim((string)$v) : '';
 
 $hold = resolve_booking_by_ref($str($data['ref'] ?? ''));
 if (!$hold) { http_response_code(403); exit(json_encode(['ok'=>false,'error'=>'Booking not found.'])); }
 if (!in_array($hold['status'], ['pending','confirmed'], true)) {
     http_response_code(409); exit(json_encode(['ok'=>false,'error'=>'This booking can no longer take additions.']));
-}
-
-if (!verify_captcha($str($data['cf-turnstile-response'] ?? ''), $ip)) {
-    http_response_code(403); exit(json_encode(['ok'=>false,'error'=>'Security check failed. Please try again.']));
 }
 
 // Rate limit — max 10 add-on requests per hold / 10 min
