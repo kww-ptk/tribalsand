@@ -258,7 +258,7 @@ include __DIR__ . '/_layout.php';
               <div style="display:flex;gap:8px;align-items:center;font-size:13px;margin:4px 0;flex-wrap:wrap">
                 <strong><?= e(ucfirst($a['kind'])) ?></strong>
                 <span><?= e(trim(($a['tour_name'] ?? '') . ' ' . $a['details'])) ?></span>
-                <em>(<?= e($a['status']) ?>)</em>
+                <em>(<?= e(addon_status_label($a['status'])) ?>)</em>
                 <?php if ($a['status'] === 'requested'): ?>
                 <form method="POST" action="/admin/booking-request-action.php" style="display:inline;margin:0">
                   <?= csrf_field() ?>

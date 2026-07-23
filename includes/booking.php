@@ -170,7 +170,7 @@ function addon_label(array $a): string {
     return "{$name} — {$det}";
 }
 
-/** Guest-facing label for an addon request status. */
+/** Friendly label for an addon request status (used in guest views and the admin Concierge Desk). */
 function addon_status_label(string $status): string {
     return [
         'requested' => 'Requested',
