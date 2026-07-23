@@ -11,8 +11,8 @@
       <?php foreach ($bm_addons as $a): ?>
         <li style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;padding:7px 0;font-size:14px;border-bottom:1px solid var(--pa-line)">
           <strong style="text-transform:capitalize"><?= e($a['kind']) ?></strong>
-          <span style="color:var(--pa-muted)"><?= e(addon_label($a)) ?></span>
-          <span class="pa-pill pa-pill--<?= e($a['status']) ?>" style="margin-left:auto"><?= e($a['status']) ?></span>
+          <span style="color:var(--pa-muted)"><?= e(addon_label($a)) ?><?php if (!empty($a['scheduled_for'])): ?> · <?= e(date('D j M, H:i', strtotime((string)$a['scheduled_for']))) ?><?php endif; ?></span>
+          <span class="pa-pill pa-pill--<?= e($a['status']) ?>" style="margin-left:auto"><?= e(addon_status_label($a['status'])) ?></span>
         </li>
       <?php endforeach; ?>
       <?php foreach ($bm_changes as $c): ?>
