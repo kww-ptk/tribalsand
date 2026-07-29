@@ -73,3 +73,5 @@
   .pa-nav{max-width:880px;}
   .pa-grid{grid-template-columns:repeat(auto-fill,minmax(240px,1fr));}
 }
+
+.pa-nav__badge{position:absolute;top:-6px;right:-10px;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:#dc2626;color:#fff;font-size:10px;line-height:16px;text-align:center;font-weight:600;}

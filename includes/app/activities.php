@@ -41,7 +41,6 @@ $__active = in_array($status ?? '', ['pending','confirmed'], true);
         <input type="hidden" name="ref" value="<?= e($ref) ?>">
         <input type="hidden" name="kind" value="tour">
         <input type="hidden" name="tour_slug" value="<?= e($a['slug']) ?>">
-        <div class="cf-turnstile" data-sitekey="<?= e(captcha_site_key()) ?>" style="margin:0 0 8px"></div>
         <button type="submit" class="pa-btn pa-btn--primary">Request this activity</button>
         <p class="bm-status" aria-live="polite" style="margin:8px 0 0;font-size:13px"></p>
       </form>

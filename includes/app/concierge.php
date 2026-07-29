@@ -1,7 +1,6 @@
 <?php /** Concierge view. Expects $hold, $ref, $status. */ ?>
 <?php
 $__u = '/booking.php?ref=' . urlencode($ref);
-$__addons = fetch_booking_addons((int)$hold['id']);
 $__kinds = ['housekeeping'=>'Housekeeping','amenities'=>'Towels & amenities','maintenance'=>'Maintenance','restaurant'=>'Restaurant','other'=>'Something else'];
 // Tile grid: laundry + services + transfer (structured), then "Something else".
 $__tiles = ['laundry'=>'Laundry','housekeeping'=>'Housekeeping','amenities'=>'Towels & amenities','maintenance'=>'Maintenance','restaurant'=>'Restaurant','transfer'=>'Transfer','other'=>'Something else'];
@@ -16,6 +15,10 @@ $__icons = [
 ];
 // Shared optional preferred-time field markup.
 $__sched = '<label class="pa-field">Preferred time (optional)<input type="datetime-local" name="scheduled_for"></label>';
+$__venue = isset($hold['venue_id']) && $hold['venue_id'] !== null ? (int)$hold['venue_id'] : null;
+try { $__board = fetch_guest_board($__venue); } catch (Throwable $e) { $__board = []; }
+$__tagClass = ['update'=>'pa-tag--update','excursion'=>'pa-tag--excursion','promotion'=>'pa-tag--promotion'];
+$__first = trim((string)$hold['guest_name']); $__first = $__first !== '' ? explode(' ', $__first)[0] : 'guest';
 ?>
 <style>
 .cx-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
@@ -26,7 +29,21 @@ $__sched = '<label class="pa-field">Preferred time (optional)<input type="dateti
 .cx-form{display:none;margin-top:10px;background:var(--pa-card);border:1px solid var(--pa-line);border-radius:12px;padding:14px}
 .cx-form.open{display:block}
 </style>
-<p style="margin:0 0 16px"><a href="<?= e($__u) ?>" class="pa-back">&larr; Back to home</a></p>
+<div style="font-family:'Cormorant Garamond',serif;font-size:24px;margin:4px 0 12px">Karibu, <?= e($__first) ?></div>
+<?php if ($__board): ?>
+<div class="pa-grid" style="margin:0 0 16px">
+  <?php foreach ($__board as $p): $bimg = trim((string)($p['image_filename'] ?? '')); ?>
+  <div class="pa-card">
+    <?php if ($bimg !== ''): ?><div class="pa-media" style="background-image:url('<?= e(storage_url($bimg)) ?>')"></div><?php endif; ?>
+    <div class="pa-card__body">
+      <span class="pa-tag <?= e($__tagClass[$p['category']] ?? '') ?>"><?= e($p['category']) ?></span>
+      <p class="pa-card__title" style="margin-top:8px"><?= e($p['title']) ?></p>
+      <?php if (($p['body'] ?? '') !== ''): ?><p class="pa-card__meta" style="display:block;margin-top:4px;line-height:1.5"><?= e($p['body']) ?></p><?php endif; ?>
+    </div>
+  </div>
+  <?php endforeach; ?>
+</div>
+<?php endif; ?>
 <h2 class="pa-h2">Concierge</h2>
 <p class="pa-sub">Tap what you need — our team confirms by return.</p>
 
@@ -47,7 +64,6 @@ $__sched = '<label class="pa-field">Preferred time (optional)<input type="dateti
     <textarea name="details" rows="2" required></textarea>
   </label>
   <?= $__sched ?>
-  <div class="cf-turnstile" data-sitekey="<?= e(captcha_site_key()) ?>" style="margin:0 0 10px"></div>
   <button type="submit" class="pa-btn pa-btn--primary">Send request</button>
   <p class="bm-status" aria-live="polite" style="margin:10px 0 0;font-size:13px"></p>
 </form>
@@ -64,7 +80,6 @@ $__sched = '<label class="pa-field">Preferred time (optional)<input type="dateti
   </label>
   <label class="pa-field">Notes (items, instructions…)<textarea name="details" rows="2"></textarea></label>
   <?= $__sched ?>
-  <div class="cf-turnstile" data-sitekey="<?= e(captcha_site_key()) ?>" style="margin:0 0 10px"></div>
   <button type="submit" class="pa-btn pa-btn--primary">Request laundry</button>
   <p class="bm-status" aria-live="polite" style="margin:10px 0 0;font-size:13px"></p>
 </form>
@@ -80,25 +95,9 @@ $__sched = '<label class="pa-field">Preferred time (optional)<input type="dateti
   </label>
   <label class="pa-field">Details (flight no., time, pickup…)<textarea name="details" rows="2"></textarea></label>
   <?= $__sched ?>
-  <div class="cf-turnstile" data-sitekey="<?= e(captcha_site_key()) ?>" style="margin:0 0 10px"></div>
   <button type="submit" class="pa-btn pa-btn--primary">Request transfer</button>
   <p class="bm-status" aria-live="polite" style="margin:10px 0 0;font-size:13px"></p>
 </form>
-
-<?php if ($__addons): ?>
-<div style="margin-top:20px">
-  <div style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--pa-muted);margin-bottom:8px">Recent requests</div>
-  <?php foreach ($__addons as $a): ?>
-  <div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--pa-line);font-size:14px">
-    <strong style="text-transform:capitalize"><?= e($a['kind']) ?></strong>
-    <span style="color:var(--pa-muted)">
-      <?= e(addon_label($a)) ?><?php if (!empty($a['scheduled_for'])): ?> · <?= e(date('D j M, H:i', strtotime((string)$a['scheduled_for']))) ?><?php endif; ?>
-    </span>
-    <span class="pa-pill pa-pill--<?= e($a['status']) ?>" style="margin-left:auto"><?= e(addon_status_label($a['status'])) ?></span>
-  </div>
-  <?php endforeach; ?>
-</div>
-<?php endif; ?>
 
 <script>
 document.querySelectorAll('.cx-tile[data-cx]').forEach(function(b){

@@ -88,5 +88,24 @@ if ($hid) {
     db_query("DELETE FROM booking_addons WHERE hold_id=:h AND kind='laundry' AND details='Wash & fold — 3 shirts'", [':h'=>$hid]);
 }
 
+// ── messages ─────────────────────────────────────────────────
+$mhid = (int)(db()->query("SELECT id FROM holds ORDER BY id DESC LIMIT 1")->fetchColumn() ?: 0);
+if ($mhid) {
+    db_query("INSERT INTO booking_messages (hold_id, addon_id, sender, body, read_by_guest, read_by_admin) VALUES (:h,NULL,'guest','Hello team',TRUE,FALSE)", [':h'=>$mhid]);
+    db_query("INSERT INTO booking_messages (hold_id, addon_id, sender, body, read_by_guest, read_by_admin) VALUES (:h,NULL,'admin','Hi there',FALSE,TRUE)", [':h'=>$mhid]);
+    $threads = fetch_message_threads($mhid);
+    check('threads include the general thread', $threads[0]['addon_id'] === null);
+    $gen = $threads[0];
+    check('general thread unread_guest = 1', $gen['unread_guest'] === 1);
+    check('general thread last message is the admin reply', $gen['last_body'] === 'Hi there');
+    $msgs = fetch_thread_messages($mhid, null);
+    check('thread has 2 messages in order', count($msgs) >= 2 && $msgs[0]['body'] === 'Hello team');
+    check('count_unread_guest >= 1 before read', count_unread_guest($mhid) >= 1);
+    mark_thread_read_by_guest($mhid, null);
+    check('unread_guest cleared after read', count_unread_guest($mhid) === 0);
+    check('count_unread_admin >= 1 (guest msg unread by admin)', count_unread_admin() >= 1);
+    db_query("DELETE FROM booking_messages WHERE hold_id=:h", [':h'=>$mhid]);
+}
+
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);
