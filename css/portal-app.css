@@ -40,7 +40,8 @@
 .pa-tile--hero .pa-tile__s{color:rgba(255,255,255,.85);}
 
 .pa-field{display:block;font-size:13px;margin:0 0 12px;color:var(--pa-ink);}
-.pa-field input,.pa-field select,.pa-field textarea{display:block;width:100%;margin-top:4px;padding:10px;border:1px solid #d1d5db;border-radius:8px;font:inherit;}
+/* font-size:16px is required — iOS Safari auto-zooms on focus for anything smaller. */
+.pa-field input,.pa-field select,.pa-field textarea{display:block;width:100%;margin-top:4px;padding:10px;border:1px solid #d1d5db;border-radius:8px;font-family:inherit;font-size:16px;}
 
 .pa-pill{font-size:12px;padding:2px 9px;border-radius:999px;text-transform:capitalize;white-space:nowrap;}
 .pa-pill--requested{background:#fff7e6;color:#8a5a00;}

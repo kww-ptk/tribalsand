@@ -135,7 +135,7 @@ include __DIR__ . '/includes/header.php';
   padding:12px 14px;
   border:1px solid #d1d5db;
   border-radius:8px;
-  font-size:15px;
+  font-size:16px; /* 16px min — prevents iOS focus auto-zoom */
   font-family:'Jost',sans-serif;
   box-sizing:border-box;
 }
