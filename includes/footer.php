@@ -413,8 +413,10 @@
 })();
 </script>
 
+<?php if (empty($hide_floating_chat)): // suppressed on the app-like guest portal ?>
 <!-- LeadConnector chat widget — kept from original -->
 <script src="https://widgets.leadconnectorhq.com/loader.js"
   data-resources-url="https://widgets.leadconnectorhq.com/chat-widget/loader.js"
   data-widget-id="691f01ab467a1f787a2fa6f9">
 </script>
+<?php endif; ?>

@@ -37,9 +37,6 @@ if ((!$holdId || !$hold) && ($_POST['do'] ?? '') === 'lookup') {
     if (count($stamps) >= 8) {
         $lookupError = 'Too many attempts. Please wait a few minutes and try again.';
         $_SESSION['bk_lookups'] = array_values($stamps);
-    } elseif (!verify_captcha($_POST['cf-turnstile-response'] ?? '', client_ip())) {
-        $lookupError = 'Security check failed. Please try again.';
-        $_SESSION['bk_lookups'] = array_values($stamps);
     } else {
         $stamps[] = $now;
         $_SESSION['bk_lookups'] = array_values($stamps);
@@ -223,7 +220,6 @@ include __DIR__ . '/includes/header.php';
         <input id="bkCode" type="text" name="code" required autocomplete="off"
                placeholder="e.g. K7QM2P4T" value="<?= e($_POST['code'] ?? '') ?>"
                style="text-transform:uppercase" class="bk-lookup-input">
-        <div class="cf-turnstile" data-sitekey="<?= e(captcha_site_key()) ?>" style="margin:8px 0 4px"></div>
         <button type="submit" class="bk-lookup-btn">Find my booking</button>
       </form>
 
@@ -309,4 +305,5 @@ include __DIR__ . '/includes/header.php';
 
 <script src="/js/booking-manage.js?v=<?= @filemtime(__DIR__ . '/js/booking-manage.js') ?: time() ?>" defer></script>
 
+<?php $hide_floating_chat = true; // portal is app-like; suppress the site chat bubble (it overlaps the bottom nav) ?>
 <?php include __DIR__ . '/includes/footer.php'; ?>
