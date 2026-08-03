@@ -91,3 +91,9 @@
 .pa-planit__d{font-size:12px;color:var(--pa-muted);margin-top:2px}
 .pa-planit__tag{display:inline-block;font-size:10px;background:#e6eefb;color:#1a4a9c;padding:0 7px;border-radius:999px;margin-left:6px;vertical-align:1px}
 .pa-planempty{font-size:12px;color:var(--pa-muted);font-style:italic}
+.pa-details{background:var(--pa-card);border:1px solid var(--pa-line);border-radius:14px;margin-bottom:12px;}
+.pa-details__s{list-style:none;cursor:pointer;padding:14px 16px;font-size:15px;font-weight:500;color:var(--pa-ink);}
+.pa-details__s::-webkit-details-marker{display:none;}
+.pa-details__s::after{content:'▾';float:right;color:var(--pa-muted);}
+.pa-details[open] .pa-details__s::after{content:'▴';}
+.pa-details > div{padding:0 16px 14px;}
