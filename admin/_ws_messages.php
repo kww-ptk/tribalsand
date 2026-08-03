@@ -14,7 +14,7 @@ if ($__inThread) mark_thread_read_by_admin($holdId, $__aid);
       <tr>
         <td><a href="?hold=<?= (int)$holdId ?>&tab=messages&thread=<?= e((string)$tid) ?>"><?= e(thread_title($t)) ?></a></td>
         <td class="text-muted" style="font-size:13px;max-width:340px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><?= e((string)($t['last_body'] ?? '')) ?></td>
-        <td><?php if ((int)($t['unread_guest'] ?? 0) > 0): ?><span class="badge badge--orange"><?= (int)$t['unread_guest'] ?></span><?php else: ?>—<?php endif; ?></td>
+        <td><?php if ((int)($t['unread_admin'] ?? 0) > 0): ?><span class="badge badge--orange"><?= (int)$t['unread_admin'] ?></span><?php else: ?>—<?php endif; ?></td>
       </tr>
       <?php endforeach; ?>
     </tbody>

@@ -199,7 +199,8 @@ function fetch_message_threads(int $holdId): array {
         try {
             $last = db_query("SELECT body, sender, created_at FROM booking_messages WHERE hold_id=:h AND $cond ORDER BY created_at DESC LIMIT 1", $p)->fetch();
             $th['unread_guest'] = (int)db_query("SELECT COUNT(*) FROM booking_messages WHERE hold_id=:h AND $cond AND sender='admin' AND read_by_guest=FALSE", $p)->fetchColumn();
-        } catch (Throwable $e) { $last = false; $th['unread_guest'] = 0; }  // table absent pre-migration
+            $th['unread_admin'] = (int)db_query("SELECT COUNT(*) FROM booking_messages WHERE hold_id=:h AND $cond AND sender='guest' AND read_by_admin=FALSE", $p)->fetchColumn();
+        } catch (Throwable $e) { $last = false; $th['unread_guest'] = 0; $th['unread_admin'] = 0; }  // table absent pre-migration
         $th['last_body']    = $last['body'] ?? '';
         $th['last_at']      = $last['created_at'] ?? null;
     }
