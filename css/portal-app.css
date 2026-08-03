@@ -78,3 +78,16 @@
 }
 
 .pa-nav__badge{position:absolute;top:-6px;right:-10px;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:#dc2626;color:#fff;font-size:10px;line-height:16px;text-align:center;font-weight:600;}
+
+/* ── Daily planner ── */
+.pa-planday{margin:0 0 14px}
+.pa-planday__h{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--pa-muted);margin:0 0 8px}
+.pa-planday--today .pa-planday__h{color:var(--pa-teal-d)}
+.pa-planday__today{background:#e6eefb;color:#1a4a9c;font-size:10px;padding:1px 8px;border-radius:999px;text-transform:none;letter-spacing:0}
+.pa-plantl{border-left:2px solid var(--pa-line);padding-left:14px;margin-left:6px;display:flex;flex-direction:column;gap:11px}
+.pa-planit{display:flex;gap:9px;align-items:flex-start}
+.pa-planit__ico{flex:0 0 auto;color:var(--pa-teal);margin-top:1px}
+.pa-planit__t{font-size:14px;font-weight:500;color:var(--pa-ink);line-height:1.3}
+.pa-planit__d{font-size:12px;color:var(--pa-muted);margin-top:2px}
+.pa-planit__tag{display:inline-block;font-size:10px;background:#e6eefb;color:#1a4a9c;padding:0 7px;border-radius:999px;margin-left:6px;vertical-align:1px}
+.pa-planempty{font-size:12px;color:var(--pa-muted);font-style:italic}

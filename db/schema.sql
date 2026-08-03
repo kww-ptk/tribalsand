@@ -203,3 +203,20 @@ CREATE TABLE IF NOT EXISTS booking_messages (
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_bmsg_thread ON booking_messages (hold_id, addon_id, created_at);
+
+-- Per-booking daily itinerary items (admin-authored)
+-- (itinerary_items is created via db/migrations; this mirrors add_itinerary.sql)
+CREATE TABLE IF NOT EXISTS itinerary_items (
+    id         SERIAL PRIMARY KEY,
+    hold_id    INT NOT NULL REFERENCES holds(id) ON DELETE CASCADE,
+    day        DATE NOT NULL,
+    at_time    TIME,
+    category   TEXT NOT NULL DEFAULT 'note'
+               CHECK (category IN ('flight','transfer','tour','dining','activity','checkin','checkout','note')),
+    title      TEXT NOT NULL,
+    detail     TEXT,
+    sort_order INT NOT NULL DEFAULT 0,
+    created_by TEXT NOT NULL DEFAULT 'admin' CHECK (created_by IN ('admin','guest')),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_itin_hold_day ON itinerary_items (hold_id, day, at_time);
