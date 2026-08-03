@@ -157,7 +157,7 @@ function fetch_itinerary(array $hold): array {
             $min = (int)date('G',$ts)*60 + (int)date('i',$ts);
             $buckets[$k][] = ['sort'=>100+$min,'time'=>date('H:i',$ts),'category'=>_itin_map_kind((string)$r['kind']),'title'=>addon_label($r),'detail'=>'from your request','source'=>'request'];
         }
-        $items = db_query("SELECT * FROM itinerary_items WHERE hold_id = :h", [':h'=>(int)$hold['id']])->fetchAll();
+        $items = db_query("SELECT * FROM itinerary_items WHERE hold_id = :h ORDER BY at_time NULLS LAST, sort_order, id", [':h'=>(int)$hold['id']])->fetchAll();
         foreach ($items as $it) {
             $k = (string)$it['day']; if (!isset($buckets[$k])) continue;
             if (!empty($it['at_time'])) {
