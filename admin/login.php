@@ -15,12 +15,9 @@ $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $email    = trim($_POST['email']    ?? '');
     $password = trim($_POST['password'] ?? '');
-    $tsToken  = $_POST['cf-turnstile-response'] ?? '';
 
     if (!$email || !$password) {
         $error = 'Email and password are required.';
-    } elseif (!verify_captcha($tsToken, client_ip())) {
-        $error = 'Security check failed. Please try again.';
     } elseif (is_rate_limited($email, client_ip())) {
         $error = 'Too many failed attempts. Please wait 10 minutes and try again.';
     } elseif (login($email, $password)) {
@@ -63,9 +60,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         <label for="password">Password</label>
         <input type="password" id="password" name="password" placeholder="••••••••" required>
       </div>
-      <?php if (captcha_site_key()): ?>
-      <div class="cf-turnstile" data-sitekey="<?= e(captcha_site_key()) ?>" style="margin:12px 0"></div>
-      <?php endif; ?>
       <button type="submit" class="btn-primary btn-full">Sign in</button>
     </form>
 

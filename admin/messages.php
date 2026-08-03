@@ -90,7 +90,7 @@ include __DIR__ . '/_layout.php';
     <?= csrf_field() ?>
     <input type="hidden" name="hold_id" value="<?= (int)$holdId ?>">
     <input type="hidden" name="addon_id" value="<?= $addonId === null ? '' : (int)$addonId ?>">
-    <textarea name="body" rows="3" required placeholder="Reply to the guest…" style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px"></textarea>
+    <textarea name="body" rows="3" required placeholder="Reply to the guest…" style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px;font-size:16px"></textarea>
     <button type="submit" class="btn-primary" style="margin-top:8px">Send reply</button>
   </form>
 </div></div>
