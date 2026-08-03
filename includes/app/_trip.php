@@ -1,9 +1,4 @@
-<?php /** Stay info view. Expects $ref. Reads admin-edited settings. */ ?>
-<?php $__u = '/booking.php?ref=' . urlencode($ref);
-$__info = ['stay_wifi'=>'Wi-Fi','stay_checkout'=>'Check-out','stay_house_rules'=>'House rules','stay_area_guide'=>'Area guide'];
-$__vals = [];
-foreach ($__info as $__k => $__label) { $__vals[$__k] = trim((string)setting($__k, '')); }
-$__any = false; foreach ($__vals as $__v) { if ($__v !== '') { $__any = true; break; } } ?>
+<?php /** My trip — itinerary + add-to-plan. Expects $hold, $ref, $status. */ ?>
 <?php
 $__itin = fetch_itinerary($hold);
 $__icat = [
@@ -21,7 +16,7 @@ $__days = [];
 for ($__d = new DateTime((string)$hold['check_in']); $__d <= new DateTime((string)$hold['check_out']); $__d->modify('+1 day')) { $__days[$__d->format('Y-m-d')] = $__d->format('D j M'); }
 $__gcats = ['activity'=>'Activity','transfer'=>'Transfer','dining'=>'Restaurant','note'=>'Other'];
 ?>
-<h2 class="pa-h2">Your plan</h2>
+<h2 class="pa-h2">My trip</h2>
 <p class="pa-sub">Your day-by-day itinerary. Tours and transfers you’ve booked appear automatically.</p>
 <?php foreach ($__itin as $__day): ?>
 <div class="pa-planday <?= $__day['is_today'] ? 'pa-planday--today' : '' ?>">
@@ -74,16 +69,3 @@ $__gcats = ['activity'=>'Activity','transfer'=>'Transfer','dining'=>'Restaurant'
 <script>
 (function(){var b=document.getElementById('planAddBtn'),f=document.getElementById('planAddForm');if(b&&f)b.addEventListener('click',function(){var open=f.style.display!=='none';f.style.display=open?'none':'block';if(!open)f.scrollIntoView({behavior:'smooth',block:'nearest'});});})();
 </script>
-
-<div style="height:8px"></div>
-<h2 class="pa-h2">Stay info</h2>
-<?php if (!$__any): ?>
-  <p style="color:#6b7280;font-size:14px">Stay details will appear here soon.</p>
-<?php else: foreach ($__info as $__k=>$__label): $__v = $__vals[$__k]; if ($__v==='') continue; ?>
-  <div class="pa-card">
-    <div class="pa-card__body">
-      <div style="font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:#9ca3af;margin-bottom:6px"><?= e($__label) ?></div>
-      <div style="font-size:14px;line-height:1.6;white-space:pre-wrap"><?= e($__v) ?></div>
-    </div>
-  </div>
-<?php endforeach; endif; ?>

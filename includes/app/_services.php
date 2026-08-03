@@ -1,6 +1,5 @@
-<?php /** Concierge view. Expects $hold, $ref, $status. */ ?>
+<?php /** Concierge service tiles + forms. Expects $hold, $ref, $status. */ ?>
 <?php
-$__u = '/booking.php?ref=' . urlencode($ref);
 $__kinds = ['housekeeping'=>'Housekeeping','amenities'=>'Towels & amenities','maintenance'=>'Maintenance','restaurant'=>'Restaurant','other'=>'Something else'];
 // Tile grid: laundry + services + transfer (structured), then "Something else".
 $__tiles = ['laundry'=>'Laundry','housekeeping'=>'Housekeeping','amenities'=>'Towels & amenities','maintenance'=>'Maintenance','restaurant'=>'Restaurant','transfer'=>'Transfer','other'=>'Something else'];
@@ -15,10 +14,6 @@ $__icons = [
 ];
 // Shared optional preferred-time field markup.
 $__sched = '<label class="pa-field">Preferred time (optional)<input type="datetime-local" name="scheduled_for"></label>';
-$__venue = isset($hold['venue_id']) && $hold['venue_id'] !== null ? (int)$hold['venue_id'] : null;
-try { $__board = fetch_guest_board($__venue); } catch (Throwable $e) { $__board = []; }
-$__tagClass = ['update'=>'pa-tag--update','excursion'=>'pa-tag--excursion','promotion'=>'pa-tag--promotion'];
-$__first = trim((string)$hold['guest_name']); $__first = $__first !== '' ? explode(' ', $__first)[0] : 'guest';
 ?>
 <style>
 .cx-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
@@ -29,22 +24,7 @@ $__first = trim((string)$hold['guest_name']); $__first = $__first !== '' ? explo
 .cx-form{display:none;margin-top:10px;background:var(--pa-card);border:1px solid var(--pa-line);border-radius:12px;padding:14px}
 .cx-form.open{display:block}
 </style>
-<div style="font-family:'Cormorant Garamond',serif;font-size:24px;margin:4px 0 12px">Karibu, <?= e($__first) ?></div>
-<?php if ($__board): ?>
-<div class="pa-grid" style="margin:0 0 16px">
-  <?php foreach ($__board as $p): $bimg = trim((string)($p['image_filename'] ?? '')); ?>
-  <div class="pa-card">
-    <?php if ($bimg !== ''): ?><div class="pa-media" style="background-image:url('<?= e(storage_url($bimg)) ?>')"></div><?php endif; ?>
-    <div class="pa-card__body">
-      <span class="pa-tag <?= e($__tagClass[$p['category']] ?? '') ?>"><?= e($p['category']) ?></span>
-      <p class="pa-card__title" style="margin-top:8px"><?= e($p['title']) ?></p>
-      <?php if (($p['body'] ?? '') !== ''): ?><p class="pa-card__meta" style="display:block;margin-top:4px;line-height:1.5"><?= e($p['body']) ?></p><?php endif; ?>
-    </div>
-  </div>
-  <?php endforeach; ?>
-</div>
-<?php endif; ?>
-<h2 class="pa-h2">Concierge</h2>
+<h2 class="pa-h2">Need something?</h2>
 <p class="pa-sub">Tap what you need — our team confirms by return.</p>
 
 <div class="cx-grid">
