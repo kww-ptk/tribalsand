@@ -122,6 +122,66 @@ function fetch_booking_addons(int $holdId): array {
     )->fetchAll();
 }
 
+/** Map a booking_addons kind to an itinerary category. */
+function _itin_map_kind(string $kind): string {
+    if ($kind === 'tour' || $kind === 'transfer') return $kind;
+    return in_array($kind, ['laundry','housekeeping','amenities','maintenance','restaurant'], true) ? 'activity' : 'note';
+}
+
+/**
+ * Day-by-day itinerary for a hold: check-in → check-out, merging auto anchors,
+ * confirmed scheduled requests, and admin itinerary_items. Guarded so the Stay
+ * tab still renders (anchors only) if the table is absent pre-migration.
+ */
+function fetch_itinerary(array $hold): array {
+    $start = new DateTime((string)$hold['check_in']);
+    $end   = new DateTime((string)$hold['check_out']);
+    $today = date('Y-m-d');
+    $buckets = []; $order = [];
+    for ($d = clone $start; $d <= $end; $d->modify('+1 day')) {
+        $k = $d->format('Y-m-d'); $buckets[$k] = []; $order[] = $k;
+    }
+    $ciKey = $start->format('Y-m-d'); $coKey = $end->format('Y-m-d');
+    $buckets[$ciKey][] = ['sort'=>0,   'time'=>null,'category'=>'checkin', 'title'=>'Check-in', 'detail'=>(string)($hold['room_name'] ?? ''),'source'=>'auto'];
+    $buckets[$coKey][] = ['sort'=>2000,'time'=>null,'category'=>'checkout','title'=>'Check-out','detail'=>'','source'=>'auto'];
+
+    try {
+        $reqs = db_query(
+            "SELECT ba.*, t.name AS tour_name FROM booking_addons ba LEFT JOIN tours t ON t.id = ba.tour_id
+             WHERE ba.hold_id = :h AND ba.scheduled_for IS NOT NULL AND ba.status IN ('confirmed','completed')",
+            [':h'=>(int)$hold['id']]
+        )->fetchAll();
+        foreach ($reqs as $r) {
+            $ts = strtotime((string)$r['scheduled_for']); if ($ts === false) continue;
+            $k = date('Y-m-d', $ts); if (!isset($buckets[$k])) continue;
+            $min = (int)date('G',$ts)*60 + (int)date('i',$ts);
+            $buckets[$k][] = ['sort'=>100+$min,'time'=>date('H:i',$ts),'category'=>_itin_map_kind((string)$r['kind']),'title'=>addon_label($r),'detail'=>'from your request','source'=>'request'];
+        }
+        $items = db_query("SELECT * FROM itinerary_items WHERE hold_id = :h", [':h'=>(int)$hold['id']])->fetchAll();
+        foreach ($items as $it) {
+            $k = (string)$it['day']; if (!isset($buckets[$k])) continue;
+            if (!empty($it['at_time'])) {
+                $ts = strtotime((string)$it['at_time']); $min = (int)date('G',$ts)*60 + (int)date('i',$ts);
+                $sort = 100 + $min; $time = date('H:i', $ts);
+            } else { $sort = 1500 + (int)$it['sort_order']; $time = null; }
+            $buckets[$k][] = ['sort'=>$sort,'time'=>$time,'category'=>(string)$it['category'],'title'=>(string)$it['title'],'detail'=>(string)($it['detail'] ?? ''),'source'=>'admin'];
+        }
+    } catch (Throwable $e) { /* tables absent pre-migration — anchors still render */ }
+
+    $out = []; $n = 0;
+    foreach ($order as $k) {
+        $n++;
+        usort($buckets[$k], fn($a,$b) => $a['sort'] <=> $b['sort']);
+        $out[] = ['date'=>$k,'label'=>'Day '.$n.' · '.(new DateTime($k))->format('D j M'),'is_today'=>($k===$today),'items'=>$buckets[$k]];
+    }
+    return $out;
+}
+
+/** Admin: raw itinerary rows for a hold. */
+function fetch_itinerary_items(int $holdId): array {
+    return db_query("SELECT * FROM itinerary_items WHERE hold_id = :h ORDER BY day, at_time NULLS LAST, sort_order", [':h'=>$holdId])->fetchAll();
+}
+
 /** Threads for a guest: the general thread + one per request, with latest message + unread-by-guest count. */
 function fetch_message_threads(int $holdId): array {
     $threads = [['addon_id'=>null,'kind'=>'general','details'=>'','status'=>'','tour_name'=>null]];
