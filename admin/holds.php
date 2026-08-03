@@ -243,7 +243,7 @@ include __DIR__ . '/_layout.php';
             <?php else: ?>
             <span style="color:var(--muted);font-size:12px">—</span>
             <?php endif; ?>
-            <a href="/admin/itinerary.php?hold=<?= (int)$hold['id'] ?>" class="btn-outline btn-sm" style="margin-left:4px">Plan</a>
+            <a href="/admin/booking.php?hold=<?= (int)$hold['id'] ?>" class="btn-primary btn-sm" style="margin-left:4px">Manage</a>
           </td>
         </tr>
         <?php

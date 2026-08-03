@@ -60,7 +60,7 @@ include __DIR__ . '/_layout.php';
         $tid = $t['addon_id'] === null ? 'general' : (int)$t['addon_id'];
       ?>
       <tr>
-        <td><strong><?= e($t['guest_name'] ?: 'Guest') ?></strong><br><span class="text-muted" style="font-size:12px"><?= e($t['venue_name'] ?? '') ?></span></td>
+        <td><strong><?= e($t['guest_name'] ?: 'Guest') ?></strong><br><a href="/admin/booking.php?hold=<?= (int)$t['hold_id'] ?>&tab=messages" class="text-muted" style="font-size:12px">Manage booking →</a></td>
         <td><a href="?hold=<?= (int)$t['hold_id'] ?>&thread=<?= e((string)$tid) ?>"><?= e(thread_title($t)) ?></a></td>
         <td class="text-muted" style="font-size:13px;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><?= e((string)($t['last_body'] ?? '')) ?></td>
         <td><?php if ((int)$t['unread_admin'] > 0): ?><span class="badge badge--orange"><?= (int)$t['unread_admin'] ?></span><?php else: ?>—<?php endif; ?></td>
