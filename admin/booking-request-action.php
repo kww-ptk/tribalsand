@@ -20,7 +20,10 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 verify_csrf();
 
-$returnTo = ($_POST['return'] ?? '') === 'concierge-desk' ? '/admin/concierge-desk.php' : '/admin/holds.php';
+$rk = $_POST['return'] ?? '';
+if ($rk === 'concierge-desk') { $returnTo = '/admin/concierge-desk.php'; }
+elseif ($rk === 'workspace')  { $returnTo = '/admin/booking.php?hold=' . (int)($_POST['hold_id'] ?? 0) . '&tab=requests'; }
+else { $returnTo = '/admin/holds.php'; }
 
 $type   = $_POST['type']   ?? '';   // 'addon' | 'change'
 $id     = (int)($_POST['id'] ?? 0);
