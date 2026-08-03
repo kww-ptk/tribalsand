@@ -142,8 +142,8 @@ function fetch_itinerary(array $hold): array {
         $k = $d->format('Y-m-d'); $buckets[$k] = []; $order[] = $k;
     }
     $ciKey = $start->format('Y-m-d'); $coKey = $end->format('Y-m-d');
-    $buckets[$ciKey][] = ['sort'=>0,   'time'=>null,'category'=>'checkin', 'title'=>'Check-in', 'detail'=>(string)($hold['room_name'] ?? ''),'source'=>'auto'];
-    $buckets[$coKey][] = ['sort'=>2000,'time'=>null,'category'=>'checkout','title'=>'Check-out','detail'=>'','source'=>'auto'];
+    $buckets[$ciKey][] = ['id'=>null,'sort'=>0,   'time'=>null,'category'=>'checkin', 'title'=>'Check-in', 'detail'=>(string)($hold['room_name'] ?? ''),'source'=>'auto'];
+    $buckets[$coKey][] = ['id'=>null,'sort'=>2000,'time'=>null,'category'=>'checkout','title'=>'Check-out','detail'=>'','source'=>'auto'];
 
     try {
         $reqs = db_query(
@@ -155,7 +155,7 @@ function fetch_itinerary(array $hold): array {
             $ts = strtotime((string)$r['scheduled_for']); if ($ts === false) continue;
             $k = date('Y-m-d', $ts); if (!isset($buckets[$k])) continue;
             $min = (int)date('G',$ts)*60 + (int)date('i',$ts);
-            $buckets[$k][] = ['sort'=>100+$min,'time'=>date('H:i',$ts),'category'=>_itin_map_kind((string)$r['kind']),'title'=>addon_label($r),'detail'=>'from your request','source'=>'request'];
+            $buckets[$k][] = ['id'=>null,'sort'=>100+$min,'time'=>date('H:i',$ts),'category'=>_itin_map_kind((string)$r['kind']),'title'=>addon_label($r),'detail'=>'from your request','source'=>'request'];
         }
         $items = db_query("SELECT * FROM itinerary_items WHERE hold_id = :h ORDER BY at_time NULLS LAST, sort_order, id", [':h'=>(int)$hold['id']])->fetchAll();
         foreach ($items as $it) {
@@ -164,7 +164,8 @@ function fetch_itinerary(array $hold): array {
                 $ts = strtotime((string)$it['at_time']); $min = (int)date('G',$ts)*60 + (int)date('i',$ts);
                 $sort = 100 + $min; $time = date('H:i', $ts);
             } else { $sort = 1500 + (int)$it['sort_order']; $time = null; }
-            $buckets[$k][] = ['sort'=>$sort,'time'=>$time,'category'=>(string)$it['category'],'title'=>(string)$it['title'],'detail'=>(string)($it['detail'] ?? ''),'source'=>'admin'];
+            $src = (($it['created_by'] ?? 'admin') === 'guest') ? 'guest' : 'admin';
+            $buckets[$k][] = ['id'=>(int)$it['id'],'sort'=>$sort,'time'=>$time,'category'=>(string)$it['category'],'title'=>(string)$it['title'],'detail'=>(string)($it['detail'] ?? ''),'source'=>$src];
         }
     } catch (Throwable $e) { /* tables absent pre-migration — anchors still render */ }
 

@@ -216,6 +216,7 @@ CREATE TABLE IF NOT EXISTS itinerary_items (
     title      TEXT NOT NULL,
     detail     TEXT,
     sort_order INT NOT NULL DEFAULT 0,
+    created_by TEXT NOT NULL DEFAULT 'admin' CHECK (created_by IN ('admin','guest')),
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_itin_hold_day ON itinerary_items (hold_id, day, at_time);

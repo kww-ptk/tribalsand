@@ -113,7 +113,7 @@ include __DIR__ . '/_layout.php';
       <div style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px">Your added items</div>
       <?php foreach ($items as $it): ?>
       <div style="display:flex;align-items:center;gap:10px;padding:5px 0;font-size:14px">
-        <span style="flex:1"><?= e((string)$it['day']) ?><?php if (!empty($it['at_time'])): ?> <?= e(substr((string)$it['at_time'],0,5)) ?><?php endif; ?> · <strong><?= e($it['title']) ?></strong> <span style="color:var(--muted);text-transform:capitalize">(<?= e($it['category']) ?>)</span></span>
+        <span style="flex:1"><?= e((string)$it['day']) ?><?php if (!empty($it['at_time'])): ?> <?= e(substr((string)$it['at_time'],0,5)) ?><?php endif; ?> · <strong><?= e($it['title']) ?></strong> <span style="color:var(--muted);text-transform:capitalize">(<?= e($it['category']) ?>)</span><?php if (($it['created_by'] ?? 'admin') === 'guest'): ?> <span class="badge badge--blue" style="font-size:10px">guest</span><?php endif; ?></span>
         <form method="POST" onsubmit="return confirm('Remove this item?')"><?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="hold_id" value="<?= (int)$holdId ?>"><input type="hidden" name="item_id" value="<?= (int)$it['id'] ?>"><button class="btn-danger btn-sm">Delete</button></form>
       </div>
       <?php endforeach; ?>
