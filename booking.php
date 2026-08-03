@@ -92,7 +92,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $hold && $can_cancel) {
 
 $status     = $hold['status'] ?? '';
 
-$view = in_array($_GET['view'] ?? '', ['concierge','activities','messages','stay'], true) ? $_GET['view'] : 'concierge';
+$view = in_array($_GET['view'] ?? '', ['home','activities','messages'], true) ? $_GET['view'] : 'home';
 
 $page_title = $hold
     ? 'Booking ' . e($ref) . ' · Tribal Sand'
@@ -195,7 +195,7 @@ include __DIR__ . '/includes/header.php';
 
 <div class="pa-app">
   <?php
-    $__titles = ['concierge'=>'Concierge','activities'=>'Activities','messages'=>'Messages','stay'=>'Your stay'];
+    $__titles = ['home'=>'Your stay','activities'=>'Activities','messages'=>'Messages'];
     $__t = $hold ? ($__titles[$view] ?? 'Your stay') : 'Your booking';
   ?>
   <div class="pa-topbar"><div class="pa-topbar__eyebrow">Tribal Sand</div><div class="pa-topbar__title"><?= e($__t) ?></div></div>
@@ -238,36 +238,33 @@ include __DIR__ . '/includes/header.php';
     </div>
     <?php endif; ?>
 
-    <?php if (in_array($view, ['concierge','stay'], true)): ?>
+    <?php if ($view === 'home'): ?>
     <?php include __DIR__ . '/includes/app/status-header.php'; ?>
     <?php endif; ?>
 
-    <?php if ($view === 'concierge'): ?>
-      <?php include __DIR__ . '/includes/app/concierge.php'; ?>
-    <?php elseif ($view === 'activities'): ?>
-      <?php include __DIR__ . '/includes/app/activities.php'; ?>
-    <?php elseif ($view === 'messages'): ?>
-      <?php include __DIR__ . '/includes/app/messages.php'; ?>
-    <?php elseif ($view === 'stay'): ?>
-      <?php include __DIR__ . '/includes/app/stay.php'; ?>
-      <?php if ($can_cancel): ?>
-      <div class="pa-card" style="padding:16px">
-        <p style="margin:0 0 6px;font-weight:700">Need to cancel?</p>
-        <p style="margin:0 0 20px;font-size:14px;color:var(--pa-muted);line-height:1.65">If your plans have changed you can cancel now. The dates will be freed and you will receive a cancellation confirmation by email.</p>
-        <form method="POST" onsubmit="return confirm('Are you sure you want to cancel this booking? This cannot be undone.')">
-          <input type="hidden" name="action" value="cancel">
-          <input type="hidden" name="ref" value="<?= e($ref) ?>">
-          <button type="submit" class="pa-btn pa-btn--danger">Cancel My Booking</button>
-        </form>
-      </div>
-      <?php elseif ($cancel_blocked_reason): ?>
-      <div class="pa-card" style="padding:16px">
-        <p style="margin:0 0 6px;font-weight:700">Need to cancel?</p>
-        <p style="margin:0 0 20px;font-size:14px;color:var(--pa-muted);line-height:1.65"><?= e($cancel_blocked_reason) ?></p>
-        <p style="margin:0;font-size:14px;color:var(--pa-muted)">Email us at <a href="mailto:reservations@tribalsand.com" style="color:var(--pa-teal)">reservations@tribalsand.com</a> or call <a href="tel:+254115115247" style="color:var(--pa-teal)">+254 115 115 247</a></p>
-      </div>
+      <?php if ($view === 'home'): ?>
+        <?php include __DIR__ . '/includes/app/home.php'; ?>
+        <?php if ($can_cancel): ?>
+        <div class="pa-card" style="padding:16px">
+          <p style="margin:0 0 6px;font-weight:700">Need to cancel?</p>
+          <p style="margin:0 0 20px;font-size:14px;color:var(--pa-muted);line-height:1.65">If your plans have changed you can cancel now. The dates will be freed and you will receive a cancellation confirmation by email.</p>
+          <form method="POST" onsubmit="return confirm('Are you sure you want to cancel this booking? This cannot be undone.')">
+            <input type="hidden" name="action" value="cancel">
+            <input type="hidden" name="ref" value="<?= e($ref) ?>">
+            <button type="submit" class="pa-btn pa-btn--danger">Cancel My Booking</button>
+          </form>
+        </div>
+        <?php elseif ($cancel_blocked_reason): ?>
+        <div class="pa-card" style="padding:16px">
+          <p style="margin:0 0 6px;font-weight:700">Need to cancel?</p>
+          <p style="margin:0;font-size:14px;color:var(--pa-muted)"><?= e($cancel_blocked_reason) ?></p>
+        </div>
+        <?php endif; ?>
+      <?php elseif ($view === 'activities'): ?>
+        <?php include __DIR__ . '/includes/app/activities.php'; ?>
+      <?php elseif ($view === 'messages'): ?>
+        <?php include __DIR__ . '/includes/app/messages.php'; ?>
       <?php endif; ?>
-    <?php endif; ?>
 
     <?php endif; ?>
 
