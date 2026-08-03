@@ -14,7 +14,7 @@
         });
         var data = await res.json();
         if (data.ok) {
-          if (status) { status.textContent = 'Request sent — we’ll be in touch by email.'; status.className = 'bm-status ok'; }
+          if (status) { status.textContent = form.getAttribute('data-bm-success') || 'Request sent — we’ll be in touch by email.'; status.className = 'bm-status ok'; }
           setTimeout(function () { window.location.reload(); }, 1200);
         } else {
           if (status) { status.textContent = data.error || 'Something went wrong. Please try again.'; status.className = 'bm-status err'; }

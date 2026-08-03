@@ -29,11 +29,11 @@ if ($action === 'delete') {
 // Guests choose from a friendly subset of categories.
 $GUEST_CATS = ['activity'=>'Activity','transfer'=>'Transfer','dining'=>'Restaurant','note'=>'Other'];
 $cat   = $str($data['category'] ?? '');
-$title = $str($data['title'] ?? '');
-$detail= $str($data['detail'] ?? '');
+$title = mb_substr($str($data['title'] ?? ''), 0, 200);
+$detail= mb_substr($str($data['detail'] ?? ''), 0, 2000);
 $day   = $str($data['day'] ?? '');
 $atRaw = $str($data['at_time'] ?? '');
-$at    = preg_match('/^\d{2}:\d{2}$/', $atRaw) ? $atRaw : null;
+$at    = preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $atRaw) ? $atRaw : null;
 
 if (!isset($GUEST_CATS[$cat])) { http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'Pick a category.'])); }
 if ($title === '')             { http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'Add a title.'])); }

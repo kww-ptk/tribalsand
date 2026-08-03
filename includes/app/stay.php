@@ -38,7 +38,7 @@ $__gcats = ['activity'=>'Activity','transfer'=>'Transfer','dining'=>'Restaurant'
           <?php if (($__it['detail'] ?? '') !== '' && $__it['detail'] !== 'from your request'): ?><div class="pa-planit__d"><?= e($__it['detail']) ?></div><?php endif; ?>
         </div>
         <?php if (($__it['source'] ?? '') === 'guest' && !empty($__it['id'])): ?>
-        <form data-bm action="/api/itinerary.php" style="margin:0">
+        <form data-bm data-bm-success="Removed." action="/api/itinerary.php" style="margin:0">
           <input type="hidden" name="ref" value="<?= e($ref) ?>">
           <input type="hidden" name="action" value="delete">
           <input type="hidden" name="item_id" value="<?= (int)$__it['id'] ?>">
@@ -55,7 +55,7 @@ $__gcats = ['activity'=>'Activity','transfer'=>'Transfer','dining'=>'Restaurant'
 
 <div style="margin:6px 0 20px">
   <button type="button" class="pa-btn" id="planAddBtn" style="width:auto;padding:9px 16px">+ Add to plan</button>
-  <form data-bm action="/api/itinerary.php" id="planAddForm" style="display:none;margin-top:12px">
+  <form data-bm data-bm-success="Added to your plan." action="/api/itinerary.php" id="planAddForm" style="display:none;margin-top:12px">
     <input type="hidden" name="ref" value="<?= e($ref) ?>">
     <input type="hidden" name="action" value="add">
     <label class="pa-field">Day
