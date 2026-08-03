@@ -15,6 +15,7 @@ $__isvg = fn(string $cat) => '<svg width="18" height="18" viewBox="0 0 24 24" fi
 $__days = [];
 for ($__d = new DateTime((string)$hold['check_in']); $__d <= new DateTime((string)$hold['check_out']); $__d->modify('+1 day')) { $__days[$__d->format('Y-m-d')] = $__d->format('D j M'); }
 $__gcats = ['activity'=>'Activity','transfer'=>'Transfer','dining'=>'Restaurant','note'=>'Other'];
+try { $__acts = fetch_portal_activities(); } catch (Throwable $e) { $__acts = []; }
 ?>
 <h2 class="pa-h2">My trip</h2>
 <p class="pa-sub">Your day-by-day itinerary. Tours and transfers you’ve booked appear automatically.</p>
@@ -57,9 +58,17 @@ $__gcats = ['activity'=>'Activity','transfer'=>'Transfer','dining'=>'Restaurant'
       <select name="day" required><?php foreach ($__days as $__dv=>$__dl): ?><option value="<?= e($__dv) ?>"><?= e($__dl) ?></option><?php endforeach; ?></select>
     </label>
     <label class="pa-field">Type
-      <select name="category" required><?php foreach ($__gcats as $__cv=>$__cl): ?><option value="<?= e($__cv) ?>"><?= e($__cl) ?></option><?php endforeach; ?></select>
+      <select name="category" id="planCat" required><?php foreach ($__gcats as $__cv=>$__cl): ?><option value="<?= e($__cv) ?>"><?= e($__cl) ?></option><?php endforeach; ?></select>
     </label>
-    <label class="pa-field">What<input type="text" name="title" required placeholder="e.g. Dinner at Somewhere Café"></label>
+    <?php if ($__acts): ?>
+    <label class="pa-field" id="planActWrap">Activity
+      <select id="planActPick">
+        <option value="">— choose an activity —</option>
+        <?php foreach ($__acts as $__a): ?><option value="<?= e($__a['name']) ?>"><?= e($__a['name']) ?></option><?php endforeach; ?>
+      </select>
+    </label>
+    <?php endif; ?>
+    <label class="pa-field" id="planWhatWrap">What<input type="text" name="title" id="planTitle" required placeholder="e.g. Dinner at Somewhere Café"></label>
     <label class="pa-field">Time (optional)<input type="time" name="at_time"></label>
     <label class="pa-field">Notes (optional)<input type="text" name="detail"></label>
     <button type="submit" class="pa-btn pa-btn--primary">Add to plan</button>
@@ -67,5 +76,26 @@ $__gcats = ['activity'=>'Activity','transfer'=>'Transfer','dining'=>'Restaurant'
   </form>
 </div>
 <script>
-(function(){var b=document.getElementById('planAddBtn'),f=document.getElementById('planAddForm');if(b&&f)b.addEventListener('click',function(){var open=f.style.display!=='none';f.style.display=open?'none':'block';if(!open)f.scrollIntoView({behavior:'smooth',block:'nearest'});});})();
+(function(){
+  var b=document.getElementById('planAddBtn'),f=document.getElementById('planAddForm');
+  if(b&&f)b.addEventListener('click',function(){var open=f.style.display!=='none';f.style.display=open?'none':'block';if(!open)f.scrollIntoView({behavior:'smooth',block:'nearest'});});
+  // When Type = Activity, pick from our catalog; that choice fills the title.
+  var cat=document.getElementById('planCat'),pick=document.getElementById('planActPick'),
+      actWrap=document.getElementById('planActWrap'),whatWrap=document.getElementById('planWhatWrap'),
+      title=document.getElementById('planTitle');
+  function sync(){
+    if(!cat||!pick||!actWrap||!whatWrap||!title)return;
+    if(cat.value==='activity'){
+      actWrap.style.display=''; whatWrap.style.display='none';
+      title.required=false; pick.required=true;
+      title.value=pick.value; // may be empty until a choice is made (required select blocks submit)
+    } else {
+      actWrap.style.display='none'; whatWrap.style.display='';
+      title.required=true; pick.required=false;
+    }
+  }
+  if(cat){cat.addEventListener('change',sync);}
+  if(pick){pick.addEventListener('change',function(){title.value=pick.value;});}
+  sync();
+})();
 </script>
