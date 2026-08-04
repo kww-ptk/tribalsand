@@ -144,6 +144,11 @@ check('maps_link: builds a search URL from the address',
       venue_maps_link(['maps_url'=>'','address'=>'Zuri Beach, Vipingo'])
         === 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode('Zuri Beach, Vipingo'));
 check('maps_link: empty when nothing to link', venue_maps_link(['maps_url'=>'','address'=>'']) === '');
+check('maps_link: rejects a javascript: scheme, falls back to address search',
+      venue_maps_link(['maps_url'=>'javascript:alert(1)','address'=>'Zuri Beach'])
+        === 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode('Zuri Beach'));
+check('maps_link: rejects a non-http scheme with no address',
+      venue_maps_link(['maps_url'=>'javascript:alert(1)','address'=>'']) === '');
 check('maps_link: tolerates missing keys', venue_maps_link([]) === '');
 
 $vsNull = fetch_venue_stay(null);

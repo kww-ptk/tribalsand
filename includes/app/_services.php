@@ -1,12 +1,11 @@
 <?php /** Concierge service tiles + forms. Expects $hold, $ref, $status. */ ?>
 <?php
-$__kinds = ['housekeeping'=>'Housekeeping','amenities'=>'Towels & amenities','maintenance'=>'Maintenance','restaurant'=>'Restaurant','other'=>'Something else'];
+$__kinds = ['housekeeping'=>'Housekeeping','maintenance'=>'Maintenance','restaurant'=>'Restaurant','other'=>'Your request'];
 // Tile grid: laundry + services + transfer (structured), then "Something else".
 $__tiles = ['laundry'=>'Laundry','housekeeping'=>'Housekeeping','other'=>'Make a request','maintenance'=>'Maintenance','restaurant'=>'Restaurant','transfer'=>'Transfer'];
 $__icons = [
   'laundry'      => '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="13" r="4"/><line x1="7" y1="6" x2="7.01" y2="6"/></svg>',
   'housekeeping' => '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18v-4a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v4"/><path d="M3 18h18M4 12V8a2 2 0 0 1 2-2h5v6"/></svg>',
-  'amenities'    => '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><line x1="9" y1="4" x2="9" y2="20"/></svg>',
   'maintenance'  => '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18l3 3 6.3-6.3a4 4 0 0 0 5.4-5.4l-2.6 2.6-2.4-2.4z"/></svg>',
   'restaurant'   => '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v7a2 2 0 0 0 4 0V3M8 10v11"/><path d="M17 3c-1.5 0-3 1.8-3 4.5S15.5 12 17 12v9"/></svg>',
   'transfer'     => '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l1.6-4.6A2 2 0 0 1 8.5 7h7a2 2 0 0 1 1.9 1.4L19 13v4h-2v-2H7v2H5z"/><circle cx="8" cy="16" r="1"/><circle cx="16" cy="16" r="1"/></svg>',
@@ -55,7 +54,7 @@ $__refU = urlencode($ref);
 </div>
 
 <?php foreach ($__kinds as $k=>$label): ?>
-<form data-bm action="/api/booking-addon.php" class="cx-form" id="cx-form-<?= e($k) ?>">
+<form data-bm data-bm-success="Request sent — opening your chat…" action="/api/booking-addon.php" class="cx-form" id="cx-form-<?= e($k) ?>">
   <input type="hidden" name="ref" value="<?= e($ref) ?>">
   <input type="hidden" name="kind" value="<?= e($k) ?>">
   <label class="pa-field"><?= e($label) ?> — what do you need?
@@ -67,7 +66,7 @@ $__refU = urlencode($ref);
 </form>
 <?php endforeach; ?>
 
-<form data-bm action="/api/booking-addon.php" class="cx-form" id="cx-form-laundry">
+<form data-bm data-bm-success="Request sent — opening your chat…" action="/api/booking-addon.php" class="cx-form" id="cx-form-laundry">
   <input type="hidden" name="ref" value="<?= e($ref) ?>">
   <input type="hidden" name="kind" value="laundry">
   <label class="pa-field">Laundry service
@@ -82,7 +81,7 @@ $__refU = urlencode($ref);
   <p class="bm-status" aria-live="polite" style="margin:10px 0 0;font-size:13px"></p>
 </form>
 
-<form data-bm action="/api/booking-addon.php" class="cx-form" id="cx-form-transfer">
+<form data-bm data-bm-success="Request sent — opening your chat…" action="/api/booking-addon.php" class="cx-form" id="cx-form-transfer">
   <input type="hidden" name="ref" value="<?= e($ref) ?>">
   <input type="hidden" name="kind" value="transfer">
   <label class="pa-field">Transfer

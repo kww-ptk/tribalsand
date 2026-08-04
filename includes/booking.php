@@ -363,7 +363,9 @@ function fetch_venue_stay(?int $venueId): array {
  */
 function venue_maps_link(array $stay): string {
     $url = trim((string)($stay['maps_url'] ?? ''));
-    if ($url !== '') return $url;
+    // Only honour an http(s) link — a stored javascript:/data: value must never
+    // reach a guest-facing href (htmlspecialchars does not neutralise those schemes).
+    if ($url !== '' && preg_match('#^https?://#i', $url)) return $url;
     $addr = trim((string)($stay['address'] ?? ''));
     if ($addr !== '') return 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode($addr);
     return '';
