@@ -4,7 +4,7 @@ $__info = ['stay_wifi'=>'Wi-Fi','stay_checkout'=>'Check-out','stay_house_rules'=
 $__vals = []; foreach ($__info as $__k => $__label) { $__vals[$__k] = trim((string)setting($__k, '')); }
 $__any = false; foreach ($__vals as $__v) { if ($__v !== '') { $__any = true; break; } }
 ?>
-<details class="pa-details">
+<details class="pa-details" style="margin-top:20px">
   <summary class="pa-details__s">Your stay — Wi-Fi, check-out, house rules</summary>
   <div style="padding-top:6px">
     <?php if (!$__any): ?>

@@ -13,18 +13,27 @@ if (!empty($_SESSION['admin_id'])) {
 $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
-    $email    = trim($_POST['email']    ?? '');
-    $password = trim($_POST['password'] ?? '');
-
-    if (!$email || !$password) {
-        $error = 'Email and password are required.';
-    } elseif (is_rate_limited($email, client_ip())) {
-        $error = 'Too many failed attempts. Please wait 10 minutes and try again.';
-    } elseif (login($email, $password)) {
-        header('Location: /admin/dashboard.php');
-        exit;
+    if (($_POST['do'] ?? '') === 'staff') {
+        // Onsite staff — access-code sign-in.
+        if (login_staff($_POST['staff_code'] ?? '', client_ip())) {
+            header('Location: /admin/concierge-desk.php');
+            exit;
+        }
+        $error = 'Invalid or inactive staff code.';
     } else {
-        $error = 'Invalid email or password.';
+        $email    = trim($_POST['email']    ?? '');
+        $password = trim($_POST['password'] ?? '');
+
+        if (!$email || !$password) {
+            $error = 'Email and password are required.';
+        } elseif (is_rate_limited($email, client_ip())) {
+            $error = 'Too many failed attempts. Please wait 10 minutes and try again.';
+        } elseif (login($email, $password)) {
+            header('Location: /admin/dashboard.php');
+            exit;
+        } else {
+            $error = 'Invalid email or password.';
+        }
     }
 }
 ?>
@@ -35,7 +44,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Admin Login — Tribal Sand</title>
   <link rel="stylesheet" href="/admin/assets/admin.css">
-  <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body class="login-page">
 
@@ -66,6 +74,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <p class="login-back" style="text-align:center;margin-top:1rem;">
       <a href="/admin/forgot-password.php" style="font-size:.8rem;color:#6B6050;">Forgot password?</a>
     </p>
+
+    <hr style="margin:1.5rem 0;border:none;border-top:1px solid #e5e0d6">
+    <form method="POST" action="/admin/login" novalidate>
+      <input type="hidden" name="do" value="staff">
+      <div class="field">
+        <label for="staff_code">Onsite staff — access code</label>
+        <input type="text" id="staff_code" name="staff_code" placeholder="Staff access code"
+               autocomplete="off" style="text-transform:uppercase" required>
+      </div>
+      <button type="submit" class="btn-outline btn-full">Staff sign in</button>
+    </form>
+
     <p class="login-back"><a href="/">← Back to website</a></p>
   </div>
 

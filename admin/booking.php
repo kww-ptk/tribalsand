@@ -17,13 +17,20 @@ $hold = $holdId ? db_query(
 $flash = null;
 if (!empty($_SESSION['hold_flash'])) { $flash = $_SESSION['hold_flash']; unset($_SESSION['hold_flash']); }
 if (!$hold) { $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Booking not found.']; header('Location: /admin/holds.php'); exit; }
+if (is_staff() && !staff_can_hold($holdId)) { $_SESSION['hold_flash']=['type'=>'error','msg'=>'That booking is at a property you don’t manage.']; header('Location: /admin/concierge-desk.php'); exit; }
 
 $tab = $_GET['tab'] ?? 'requests';
 if (!in_array($tab, ['requests','messages','plan','details'], true)) $tab = 'requests';
+if (is_staff() && $tab === 'details') $tab = 'requests';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $act = $_POST['action'] ?? '';
+    // Staff can never confirm/cancel a booking — server-side gate (the Details tab is also hidden).
+    if (is_staff() && in_array($act, ['confirm','cancel'], true)) {
+        $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Staff accounts cannot confirm or cancel bookings.'];
+        header("Location: /admin/booking.php?hold=$holdId&tab=requests"); exit;
+    }
     if ($act === 'confirm' && $hold['status'] === 'pending') {
         db_query("UPDATE holds SET status='confirmed', confirmed_at=NOW() WHERE id=:id", [':id'=>$holdId]);
         db_query("UPDATE availability_blocks SET block_type='booked' WHERE hold_id=:hid", [':hid'=>$holdId]);
@@ -100,6 +107,7 @@ include __DIR__ . '/_layout.php';
 <div class="card" style="margin-bottom:16px"><div class="card__body" style="display:flex;gap:8px;flex-wrap:wrap">
   <?php
   $__wtabs = ['requests'=>'Requests','messages'=>'Messages','plan'=>'Plan','details'=>'Details'];
+  if (is_staff()) unset($__wtabs['details']);
   foreach ($__wtabs as $tk=>$tl):
     $b = $tk==='requests' && $openReq ? " ($openReq)" : ($tk==='messages' && $unreadMsg ? " ($unreadMsg)" : '');
   ?>

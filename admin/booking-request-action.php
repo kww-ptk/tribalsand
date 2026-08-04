@@ -31,10 +31,15 @@ $status = $_POST['status'] ?? '';
 
 $ok = false;
 if ($type === 'addon' && in_array($status, ['confirmed', 'declined', 'cancelled', 'completed'], true) && $id) {
-    $cur = db_query("SELECT status FROM booking_addons WHERE id=:id", [':id' => $id])->fetch();
+    $cur = db_query("SELECT status, hold_id FROM booking_addons WHERE id=:id", [':id' => $id])->fetch();
     if (!$cur) {
         $_SESSION['hold_flash'] = ['type' => 'error', 'msg' => "Add-on request #{$id} not found."];
         header('Location: ' . $returnTo);
+        exit;
+    }
+    if (is_staff() && !staff_can_hold((int)$cur['hold_id'])) {
+        $_SESSION['hold_flash'] = ['type' => 'error', 'msg' => 'Not your property.'];
+        header('Location: /admin/concierge-desk.php');
         exit;
     }
     $allowedFrom = $status === 'completed' ? ['requested', 'confirmed'] : ['requested'];
@@ -53,10 +58,15 @@ if ($type === 'addon' && in_array($status, ['confirmed', 'declined', 'cancelled'
     audit_log('booking_addon.' . $status, 'booking_addon', $id, 'admin action');
     $ok = true;
 } elseif ($type === 'change' && in_array($status, ['handled', 'declined'], true) && $id) {
-    $cur = db_query("SELECT status FROM booking_change_requests WHERE id=:id", [':id' => $id])->fetch();
+    $cur = db_query("SELECT status, hold_id FROM booking_change_requests WHERE id=:id", [':id' => $id])->fetch();
     if (!$cur) {
         $_SESSION['hold_flash'] = ['type' => 'error', 'msg' => "Change request #{$id} not found."];
         header('Location: ' . $returnTo);
+        exit;
+    }
+    if (is_staff() && !staff_can_hold((int)$cur['hold_id'])) {
+        $_SESSION['hold_flash'] = ['type' => 'error', 'msg' => 'Not your property.'];
+        header('Location: /admin/concierge-desk.php');
         exit;
     }
     if ($cur['status'] !== 'requested') {

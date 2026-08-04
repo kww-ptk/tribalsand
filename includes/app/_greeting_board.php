@@ -7,7 +7,7 @@ $__first = trim((string)$hold['guest_name']); $__first = $__first !== '' ? explo
 ?>
 <div style="font-family:'Cormorant Garamond',serif;font-size:24px;margin:4px 0 12px">Karibu, <?= e($__first) ?></div>
 <?php if ($__board): ?>
-<div class="pa-grid" style="margin:0 0 16px">
+<div class="pa-grid" style="margin:0 0 20px">
   <?php foreach ($__board as $p): $bimg = trim((string)($p['image_filename'] ?? '')); ?>
   <div class="pa-card">
     <?php if ($bimg !== ''): ?><div class="pa-media" style="background-image:url('<?= e(storage_url($bimg)) ?>')"></div><?php endif; ?>

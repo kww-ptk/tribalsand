@@ -31,7 +31,11 @@ $admin = current_admin();
     <div class="sidebar__logo">
       <img src="/images/whitelogo11.png" alt="Tribal Sand">
     </div>
+    <?php $__me = current_admin(); if (is_staff()): ?>
+    <div style="padding:8px 12px;font-size:12px;color:#9ca3af"><?= e($__me['name'] ?? 'Staff') ?> <span class="badge badge--blue" style="font-size:10px">Staff</span></div>
+    <?php endif; ?>
     <nav class="sidebar__nav">
+      <?php if (!is_staff()): ?>
       <a href="/admin/dashboard.php"    class="sidebar__link <?= ($activeMenu??'')==='dashboard'    ? 'is-active':'' ?>">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
         Dashboard
@@ -60,14 +64,16 @@ $admin = current_admin();
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
         Holds
       </a>
+      <?php endif; ?>
       <a href="/admin/concierge-desk.php" class="sidebar__link <?= ($activeMenu??'')==='concierge_desk' ? 'is-active':'' ?>">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16"/><path d="M5 19v-4a7 7 0 0 1 14 0v4"/><line x1="12" y1="5" x2="12" y2="8"/></svg>
         Concierge desk
       </a>
       <a href="/admin/messages.php"     class="sidebar__link <?= ($activeMenu??'')==='messages'     ? 'is-active':'' ?>">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-        Messages<?php $u=function_exists('count_unread_admin')?count_unread_admin():0; if($u>0): ?> <span class="badge badge--orange" style="margin-left:6px"><?= (int)$u ?></span><?php endif; ?>
+        Messages<?php $u=function_exists('count_unread_admin')?count_unread_admin(admin_venue_ids()):0; if($u>0): ?> <span class="badge badge--orange" style="margin-left:6px"><?= (int)$u ?></span><?php endif; ?>
       </a>
+      <?php if (!is_staff()): ?>
       <a href="/admin/submissions.php"  class="sidebar__link <?= ($activeMenu??'')==='submissions'  ? 'is-active':'' ?>">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 9v11"/></svg>
         Submissions
@@ -98,6 +104,11 @@ $admin = current_admin();
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="7" y1="13" x2="13" y2="13"/></svg>
         Guest board
       </a>
+      <a href="/admin/staff.php" class="sidebar__link <?= ($activeMenu??'')==='staff' ? 'is-active':'' ?>">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        Staff
+      </a>
+      <?php endif; ?>
     </nav>
     <div class="sidebar__footer">
       <span><?= e($admin['email'] ?? '') ?></span>
