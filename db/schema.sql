@@ -2,10 +2,15 @@
 -- Run: psql $DATABASE_URL -f db/schema.sql
 
 -- Admin users
+-- role/name/access_code/is_active + nullable email/password_hash added via db/migrations/add_staff_role.sql
 CREATE TABLE IF NOT EXISTS admin_users (
     id            SERIAL PRIMARY KEY,
-    email         VARCHAR(255) NOT NULL UNIQUE,
-    password_hash VARCHAR(255) NOT NULL,
+    email         VARCHAR(255) UNIQUE,
+    password_hash VARCHAR(255),
+    role          TEXT NOT NULL DEFAULT 'owner' CHECK (role IN ('owner','staff')),
+    name          TEXT,
+    access_code   VARCHAR(16) UNIQUE,
+    is_active     BOOLEAN NOT NULL DEFAULT TRUE,
     created_at    TIMESTAMP NOT NULL DEFAULT NOW(),
     last_login_at TIMESTAMP
 );
@@ -220,3 +225,11 @@ CREATE TABLE IF NOT EXISTS itinerary_items (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_itin_hold_day ON itinerary_items (hold_id, day, at_time);
+
+-- Per-venue scoping for staff admin users (many-to-many)
+-- (created via db/migrations/add_staff_role.sql)
+CREATE TABLE IF NOT EXISTS admin_user_venues (
+    admin_user_id INT NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
+    venue_id      INT NOT NULL REFERENCES venues(id) ON DELETE CASCADE,
+    PRIMARY KEY (admin_user_id, venue_id)
+);
