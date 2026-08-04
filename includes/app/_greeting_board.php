@@ -3,9 +3,10 @@
 $__venue = isset($hold['venue_id']) && $hold['venue_id'] !== null ? (int)$hold['venue_id'] : null;
 try { $__board = fetch_guest_board($__venue); } catch (Throwable $e) { $__board = []; }
 $__tagClass = ['update'=>'pa-tag--update','excursion'=>'pa-tag--excursion','promotion'=>'pa-tag--promotion'];
-$__first = trim((string)$hold['guest_name']); $__first = $__first !== '' ? explode(' ', $__first)[0] : 'guest';
 ?>
-<div style="font-family:'Cormorant Garamond',serif;font-size:24px;margin:4px 0 12px">Karibu, <?= e($__first) ?></div>
+<?php if ($__board): ?>
+<div class="pa-h2" style="margin-top:20px">What's on</div>
+<?php endif; ?>
 <?php if ($__board): ?>
 <div class="pa-grid" style="margin:0 0 20px">
   <?php foreach ($__board as $p): $bimg = trim((string)($p['image_filename'] ?? '')); ?>
