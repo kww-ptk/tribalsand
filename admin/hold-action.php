@@ -14,6 +14,7 @@ if (empty($_SESSION['admin_id'])) {
 }
 
 require_login();
+require_owner();
 
 $id     = (int)($_GET['id']     ?? 0);
 $action = trim($_GET['action']  ?? '');

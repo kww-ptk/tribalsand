@@ -3,6 +3,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_login();
+require_owner();
 
 $filter_action = trim($_GET['action_filter'] ?? '');
 $page          = max(1, (int)($_GET['p'] ?? 1));

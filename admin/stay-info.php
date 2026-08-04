@@ -3,6 +3,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_login();
+require_owner();
 
 $success = '';
 $fields = ['stay_wifi' => 'Wi-Fi', 'stay_checkout' => 'Check-out', 'stay_house_rules' => 'House rules', 'stay_area_guide' => 'Area guide'];

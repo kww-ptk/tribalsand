@@ -5,6 +5,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/mail.php';
 require_once __DIR__ . '/../includes/booking.php';
 require_login();
+require_owner();
 
 // Lazy-expire stale holds on every page load
 expire_stale_holds();
