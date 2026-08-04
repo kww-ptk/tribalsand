@@ -1,7 +1,8 @@
 <?php /** Your stay essentials (collapsible). */ ?>
 <?php
 $__info = ['stay_wifi'=>'Wi-Fi','stay_checkout'=>'Check-out','stay_house_rules'=>'House rules','stay_area_guide'=>'Area guide'];
-$__vals = []; foreach ($__info as $__k => $__label) { $__vals[$__k] = trim((string)setting($__k, '')); }
+$__stayVals = fetch_venue_stay(isset($hold['venue_id']) && $hold['venue_id'] !== null ? (int)$hold['venue_id'] : null);
+$__vals = []; foreach ($__info as $__k => $__label) { $__vals[$__k] = $__stayVals[$__k] ?? ''; }
 $__any = false; foreach ($__vals as $__v) { if ($__v !== '') { $__any = true; break; } }
 ?>
 <details class="pa-details" style="margin-top:20px">
