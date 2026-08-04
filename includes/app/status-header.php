@@ -41,8 +41,8 @@ $__nights = (int)((strtotime($hold['check_out']) - strtotime($hold['check_in']))
 </div>
 <?php
 $__note = [
+  // 'confirmed' intentionally omitted — the status badge at the top already says it.
   'pending'   => 'Awaiting confirmation — our team will confirm within 24 hours.',
-  'confirmed' => 'Your booking is confirmed. We look forward to welcoming you.',
   'expired'   => 'This hold expired.',
   'cancelled' => 'This booking was cancelled.',
 ][$status] ?? '';
