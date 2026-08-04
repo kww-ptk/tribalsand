@@ -3,6 +3,7 @@ declare(strict_types=1);
 // DB-backed checks for portal v2 helpers. Run: php tests/portal_logic.php
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/booking.php';
+require_once __DIR__ . '/../includes/auth.php';
 
 $failures = 0;
 function check(string $label, bool $cond): void {
@@ -134,6 +135,30 @@ if ($ihold) {
 
     db_query("DELETE FROM itinerary_items WHERE hold_id=:h AND title LIKE 'ZZ %'", [':h'=>$hid]);
     db_query("DELETE FROM booking_addons WHERE hold_id=:h AND details='ZZ Safari'", [':h'=>$hid]);
+}
+
+// ── staff role ───────────────────────────────────────────────
+$vA = (int)(db()->query("SELECT id FROM venues ORDER BY id LIMIT 1")->fetchColumn() ?: 0);
+$vB = (int)(db()->query("SELECT id FROM venues WHERE id <> $vA ORDER BY id LIMIT 1")->fetchColumn() ?: 0);
+if ($vA) {
+    $code = 'ZZTESTCODE01';
+    db_query("DELETE FROM admin_users WHERE access_code=:c", [':c'=>$code]); // idempotent re-run
+    db_query("INSERT INTO admin_users (email, role, name, access_code, is_active) VALUES (NULL,'staff','ZZ Staff',:c,TRUE)", [':c'=>$code]);
+    $sid = (int)db()->lastInsertId();
+    db_query("INSERT INTO admin_user_venues (admin_user_id, venue_id) VALUES (:s,:v)", [':s'=>$sid, ':v'=>$vA]);
+    check('gen_staff_code is 12 hex chars', preg_match('/^[0-9A-F]{12}$/', gen_staff_code()) === 1);
+    @login_staff($code, '127.0.0.1');
+    check('is_staff after staff login', is_staff() === true);
+    check('admin_venue_ids = [vA] for staff', admin_venue_ids() === [$vA]);
+    $hAid = (int)(db()->query("SELECT h.id FROM holds h JOIN units u ON u.id=h.unit_id JOIN rooms r ON r.id=u.room_id WHERE r.venue_id=$vA LIMIT 1")->fetchColumn() ?: 0);
+    if ($hAid) check('staff_can_hold true at assigned venue', staff_can_hold($hAid) === true);
+    if ($vB) { $hBid = (int)(db()->query("SELECT h.id FROM holds h JOIN units u ON u.id=h.unit_id JOIN rooms r ON r.id=u.room_id WHERE r.venue_id=$vB LIMIT 1")->fetchColumn() ?: 0);
+        if ($hBid) check('staff_can_hold false at other venue', staff_can_hold($hBid) === false); }
+    unset($_SESSION['admin_id']);
+    check('login_staff fails with wrong code', @login_staff('NOPEZZ', '10.0.0.9') === false);
+    unset($_SESSION['admin_id']);
+    db_query("DELETE FROM admin_users WHERE access_code=:c", [':c'=>$code]);
+    db_query("DELETE FROM login_attempts WHERE email IN (:c,'NOPEZZ')", [':c'=>$code]);
 }
 
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
