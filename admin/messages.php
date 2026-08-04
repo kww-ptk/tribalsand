@@ -27,6 +27,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $ph = (int)($_POST['hold_id'] ?? 0);
     $pa = ($_POST['addon_id'] ?? '') === '' ? null : (int)$_POST['addon_id'];
     $body = trim((string)($_POST['body'] ?? ''));
+    // Staff may only reply on bookings at their own properties.
+    if (is_staff() && !staff_can_hold($ph)) {
+        $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Not your property.'];
+        header('Location: /admin/messages.php'); exit;
+    }
     // Validate the target: hold must exist, and a targeted addon must belong to it.
     $holdOk  = $ph > 0 && db_query("SELECT 1 FROM holds WHERE id=:h", [':h'=>$ph])->fetchColumn();
     $addonOk = $pa === null || db_query("SELECT 1 FROM booking_addons WHERE id=:a AND hold_id=:h", [':a'=>$pa, ':h'=>$ph])->fetchColumn();

@@ -237,10 +237,14 @@ function count_unread_guest(int $holdId): int {
 function fetch_admin_threads(?array $venueIds = null): array {
     $venueSql = '';
     $params = [];
-    if ($venueIds) {
-        $names = [];
-        foreach (array_values($venueIds) as $i => $v) { $n = ":v$i"; $names[] = $n; $params[$n] = (int)$v; }
-        $venueSql = ' AND r.venue_id IN (' . implode(',', $names) . ')';
+    if ($venueIds !== null) {           // null = owner (all venues); array = staff scope
+        if (!$venueIds) {
+            $venueSql = ' AND 1=0';     // staff with no assigned venue sees nothing
+        } else {
+            $names = [];
+            foreach (array_values($venueIds) as $i => $v) { $n = ":v$i"; $names[] = $n; $params[$n] = (int)$v; }
+            $venueSql = ' AND r.venue_id IN (' . implode(',', $names) . ')';
+        }
     }
     return db_query(
         "SELECT m.hold_id, m.addon_id,
@@ -266,7 +270,8 @@ function fetch_admin_threads(?array $venueIds = null): array {
 /** Admin: total guest messages unread by staff (nav badge). Pass venue ids to scope to staff-assigned venues. Returns 0 if the table is absent (pre-migration) so the admin layout never fatals. */
 function count_unread_admin(?array $venueIds = null): int {
     try {
-        if ($venueIds) {
+        if ($venueIds !== null) {        // null = owner (all); array = staff scope
+            if (!$venueIds) return 0;    // staff with no assigned venue: nothing to count
             $names = [];
             $params = [];
             foreach (array_values($venueIds) as $i => $v) { $n = ":v$i"; $names[] = $n; $params[$n] = (int)$v; }

@@ -30,18 +30,29 @@ function require_login(): void {
         header('Location: /admin/login.php');
         exit;
     }
+    // The account must still exist and be active — a deleted or deactivated
+    // account's live session is invalidated on the next request (prevents a
+    // revoked staff session from lingering, or escalating when the row is gone).
+    $a = current_admin();
+    if (!$a || (array_key_exists('is_active', $a) && !$a['is_active'])) {
+        session_unset();
+        session_destroy();
+        header('Location: /admin/login.php');
+        exit;
+    }
 }
 
 function current_admin(): array|false {
     session_init();
     if (empty($_SESSION['admin_id'])) return false;
     return db_query(
-        'SELECT id, email, name, role, created_at FROM admin_users WHERE id = :id',
+        'SELECT id, email, name, role, is_active, created_at FROM admin_users WHERE id = :id',
         [':id' => $_SESSION['admin_id']]
     )->fetch();
 }
 
-function admin_role(): string { $a = current_admin(); return $a['role'] ?? 'owner'; }
+/** Current admin's role; defaults to the LEAST-privileged value if unknown (fail closed). */
+function admin_role(): string { $a = current_admin(); return ($a && !empty($a['role'])) ? $a['role'] : 'staff'; }
 function is_staff(): bool { return admin_role() === 'staff'; }
 
 /** Venue ids a staff user may see; null = all (owner). */

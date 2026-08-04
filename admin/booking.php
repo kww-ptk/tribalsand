@@ -26,6 +26,11 @@ if (is_staff() && $tab === 'details') $tab = 'requests';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $act = $_POST['action'] ?? '';
+    // Staff can never confirm/cancel a booking — server-side gate (the Details tab is also hidden).
+    if (is_staff() && in_array($act, ['confirm','cancel'], true)) {
+        $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Staff accounts cannot confirm or cancel bookings.'];
+        header("Location: /admin/booking.php?hold=$holdId&tab=requests"); exit;
+    }
     if ($act === 'confirm' && $hold['status'] === 'pending') {
         db_query("UPDATE holds SET status='confirmed', confirmed_at=NOW() WHERE id=:id", [':id'=>$holdId]);
         db_query("UPDATE availability_blocks SET block_type='booked' WHERE hold_id=:hid", [':hid'=>$holdId]);
