@@ -8,3 +8,4 @@ Thumbs.db
 assets/img/rooms/
 .router-fast
 php-server*.log
+.superpowers/

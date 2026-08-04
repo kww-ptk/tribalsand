@@ -97,3 +97,17 @@
 .pa-details__s::after{content:'▾';float:right;color:var(--pa-muted);}
 .pa-details[open] .pa-details__s::after{content:'▴';}
 .pa-details > div{padding:0 16px 14px;}
+
+/* ── Booking-box address → Google Maps ── */
+.pa-maps{display:flex;align-items:center;gap:12px;margin:12px -6px 0;padding:12px;border-radius:12px;background:#f3f8f9;text-decoration:none;color:var(--pa-teal);border-top:1px solid var(--pa-line);}
+.pa-maps__pin{width:40px;height:40px;flex:0 0 auto;border-radius:11px;background:#e0eef0;display:flex;align-items:center;justify-content:center;color:var(--pa-teal);}
+.pa-maps__text{font-size:14px;line-height:1.4;color:var(--pa-ink);}
+.pa-maps__text b{color:var(--pa-teal-d);}
+.pa-maps__go{display:block;margin-top:2px;font-size:11px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--pa-teal);}
+
+/* ── Concierge nav tiles (Activities / Messages) ── */
+.cx-tile{position:relative;}
+.cx-tile--nav{background:var(--pa-teal-d);border-color:var(--pa-teal-d);color:#fff;}
+.cx-tile--nav svg{color:var(--pa-gold);}
+.cx-tile__go{position:absolute;top:12px;right:13px;color:var(--pa-gold);font-size:15px;}
+.cx-tile__badge{position:absolute;top:10px;right:10px;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:#e05b49;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;}

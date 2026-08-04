@@ -15,7 +15,8 @@
         var data = await res.json();
         if (data.ok) {
           if (status) { status.textContent = form.getAttribute('data-bm-success') || 'Request sent — we’ll be in touch by email.'; status.className = 'bm-status ok'; }
-          setTimeout(function () { window.location.reload(); }, 1200);
+          var next = data.redirect;
+          setTimeout(function () { window.location = next ? next : window.location.href.split('#')[0]; }, 1200);
         } else {
           if (status) { status.textContent = data.error || 'Something went wrong. Please try again.'; status.className = 'bm-status err'; }
           if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label; }

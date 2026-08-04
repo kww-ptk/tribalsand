@@ -198,6 +198,7 @@
 }
 </style>
 
+<?php if (!($portal_chrome ?? false)): ?>
 <footer class="ts-footer">
 
   <div class="ts-footer-top">
@@ -322,7 +323,9 @@
 })();
 </script>
 
+<?php endif; ?>
 
+<?php if (!($portal_chrome ?? false)): ?>
 <!-- Cookie consent banner -->
 <div class="cookie-banner" id="cookieBanner" hidden role="region" aria-label="Cookie consent">
   <div class="cookie-banner__inner">
@@ -350,6 +353,7 @@
   if(decline) decline.addEventListener('click', function(){ dismiss('declined'); });
 })();
 </script>
+<?php endif; ?>
 
 <!-- Global success modal -->
 <script>

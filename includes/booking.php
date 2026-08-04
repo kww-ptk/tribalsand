@@ -337,6 +337,53 @@ function fetch_guest_board(?int $venueId): array {
 }
 
 /**
+ * Per-property stay info + location. Always returns the six keys as strings
+ * (blank when the venue is null, missing, or the columns predate the migration).
+ */
+function fetch_venue_stay(?int $venueId): array {
+    $blank = ['address'=>'','maps_url'=>'','stay_wifi'=>'','stay_checkout'=>'','stay_house_rules'=>'','stay_area_guide'=>''];
+    if ($venueId === null) return $blank;
+    try {
+        $row = db_query(
+            "SELECT address, maps_url, stay_wifi, stay_checkout, stay_house_rules, stay_area_guide
+             FROM venues WHERE id = :id",
+            [':id' => $venueId]
+        )->fetch();
+    } catch (Throwable $e) {
+        return $blank; // columns absent pre-migration
+    }
+    if (!$row) return $blank;
+    foreach ($blank as $k => $_) { $blank[$k] = trim((string)($row[$k] ?? '')); }
+    return $blank;
+}
+
+/**
+ * A tappable Google Maps URL for a venue-stay row: the owner's stored maps_url
+ * if present, else a Maps search for the address, else '' (render no link).
+ */
+function venue_maps_link(array $stay): string {
+    $url = trim((string)($stay['maps_url'] ?? ''));
+    // Only honour an http(s) link — a stored javascript:/data: value must never
+    // reach a guest-facing href (htmlspecialchars does not neutralise those schemes).
+    if ($url !== '' && preg_match('#^https?://#i', $url)) return $url;
+    $addr = trim((string)($stay['address'] ?? ''));
+    if ($addr !== '') return 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode($addr);
+    return '';
+}
+
+/**
+ * Open a concierge request's message thread by posting the guest's request as
+ * the first message. Unread for staff, read for the guest who just sent it.
+ */
+function seed_request_message(int $holdId, int $addonId, string $body): void {
+    db_query(
+        "INSERT INTO booking_messages (hold_id, addon_id, sender, body, read_by_guest, read_by_admin)
+         VALUES (:h, :a, 'guest', :b, TRUE, FALSE)",
+        [':h' => $holdId, ':a' => $addonId, ':b' => $body]
+    );
+}
+
+/**
  * Human label for an addon row (tour or concierge request), avoiding the
  * common case where a tour's details duplicate its name ("Tsavo East Tsavo East").
  * Expects a row with 'tour_name' (nullable) and 'details'.

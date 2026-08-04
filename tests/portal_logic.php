@@ -137,6 +137,49 @@ if ($ihold) {
     db_query("DELETE FROM booking_addons WHERE hold_id=:h AND details='ZZ Safari'", [':h'=>$hid]);
 }
 
+// ── per-property stay info + maps link ───────────────────────
+check('maps_link: prefers stored maps_url',
+      venue_maps_link(['maps_url'=>'https://maps.app.goo.gl/xyz','address'=>'Ignored']) === 'https://maps.app.goo.gl/xyz');
+check('maps_link: builds a search URL from the address',
+      venue_maps_link(['maps_url'=>'','address'=>'Zuri Beach, Vipingo'])
+        === 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode('Zuri Beach, Vipingo'));
+check('maps_link: empty when nothing to link', venue_maps_link(['maps_url'=>'','address'=>'']) === '');
+check('maps_link: rejects a javascript: scheme, falls back to address search',
+      venue_maps_link(['maps_url'=>'javascript:alert(1)','address'=>'Zuri Beach'])
+        === 'https://www.google.com/maps/search/?api=1&query=' . rawurlencode('Zuri Beach'));
+check('maps_link: rejects a non-http scheme with no address',
+      venue_maps_link(['maps_url'=>'javascript:alert(1)','address'=>'']) === '');
+check('maps_link: tolerates missing keys', venue_maps_link([]) === '');
+
+$vsNull = fetch_venue_stay(null);
+check('venue_stay(null) returns the six blank keys',
+      $vsNull['address']==='' && $vsNull['maps_url']==='' && $vsNull['stay_wifi']==='' &&
+      $vsNull['stay_checkout']==='' && $vsNull['stay_house_rules']==='' && $vsNull['stay_area_guide']==='');
+
+$vsVid = (int)(db()->query("SELECT id FROM venues ORDER BY id LIMIT 1")->fetchColumn() ?: 0);
+if ($vsVid) {
+    db_query("UPDATE venues SET stay_wifi='ZZ Net · pw zz', address='ZZ Addr' WHERE id=:v", [':v'=>$vsVid]);
+    $vs = fetch_venue_stay($vsVid);
+    check('venue_stay(venue) reads stored wifi', $vs['stay_wifi'] === 'ZZ Net · pw zz');
+    check('venue_stay(venue) reads stored address', $vs['address'] === 'ZZ Addr');
+    db_query("UPDATE venues SET stay_wifi=NULL, address=NULL WHERE id=:v", [':v'=>$vsVid]);
+}
+
+// ── request auto-starts a conversation ───────────────────────
+$shid = (int)(db()->query("SELECT id FROM holds ORDER BY id DESC LIMIT 1")->fetchColumn() ?: 0);
+if ($shid) {
+    db_query("INSERT INTO booking_addons (hold_id, kind, details) VALUES (:h,'other','ZZ seed request')", [':h'=>$shid]);
+    $saId = (int)db()->lastInsertId();
+    seed_request_message($shid, $saId, 'ZZ seed request');
+    $seeded = db_query("SELECT sender, body, read_by_admin, read_by_guest FROM booking_messages WHERE addon_id=:a", [':a'=>$saId])->fetch();
+    check('seed_request_message posts a guest opening message',
+          $seeded && $seeded['sender']==='guest' && $seeded['body']==='ZZ seed request');
+    check('seed_request_message leaves it unread for admin, read for guest',
+          $seeded && !$seeded['read_by_admin'] && $seeded['read_by_guest']);
+    db_query("DELETE FROM booking_messages WHERE addon_id=:a", [':a'=>$saId]);
+    db_query("DELETE FROM booking_addons WHERE id=:a", [':a'=>$saId]);
+}
+
 // ── staff role ───────────────────────────────────────────────
 $vA = (int)(db()->query("SELECT id FROM venues ORDER BY id LIMIT 1")->fetchColumn() ?: 0);
 $vB = (int)(db()->query("SELECT id FROM venues WHERE id <> $vA ORDER BY id LIMIT 1")->fetchColumn() ?: 0);

@@ -63,10 +63,23 @@ try {
          VALUES (:h, :k, :t, :d, :sf)",
         [':h'=>$hold['id'], ':k'=>$kind, ':t'=>$tour_id, ':d'=>$details, ':sf'=>$schedSql]
     );
+    $addonId = (int)db()->lastInsertId();
+
+    // Auto-start a conversation for this request so guest + staff manage it in one place.
+    // Never fail the request if the messages table is unavailable.
+    $redirect = null;
+    try {
+        seed_request_message((int)$hold['id'], $addonId, $details);
+        $ref = make_guest_ref((int)$hold['id']); // re-sign; never trust the posted ref for a URL
+        $redirect = '/booking.php?ref=' . urlencode($ref) . '&view=messages&thread=' . $addonId;
+    } catch (Throwable $e) {
+        error_log('[booking-addon] thread seed failed: ' . $e->getMessage());
+    }
+
     if (function_exists('send_addon_request_notification')) {
         send_addon_request_notification($hold, ['kind'=>$kind,'details'=>$details]);
     }
-    echo json_encode(['ok'=>true]);
+    echo json_encode(['ok'=>true, 'redirect'=>$redirect]);
 } catch (Throwable $e) {
     error_log('[booking-addon] failed: ' . $e->getMessage());
     http_response_code(500); echo json_encode(['ok'=>false,'error'=>'Could not save your request. Please try again.']);
