@@ -15,10 +15,10 @@ $__icons = [
 $__sched = '<label class="pa-field">Preferred time (optional)<input type="datetime-local" name="scheduled_for"></label>';
 ?>
 <style>
-.cx-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.cx-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
 @media (min-width:720px){.cx-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-.cx-tile{display:flex;flex-direction:column;align-items:flex-start;gap:8px;background:var(--pa-card);border:1px solid var(--pa-line);border-radius:12px;padding:14px;text-align:left;font:inherit;cursor:pointer;font-size:14px;font-weight:600;color:var(--pa-ink)}
-.cx-tile svg{color:var(--pa-teal)}
+.cx-tile{display:flex;flex-direction:column;align-items:flex-start;gap:11px;background:var(--pa-card);border:1px solid var(--pa-line);border-radius:16px;padding:17px 16px;text-align:left;font:inherit;cursor:pointer;font-size:15px;font-weight:600;color:var(--pa-ink)}
+.cx-tile svg{color:var(--pa-teal);width:26px;height:26px}
 .cx-tile[aria-expanded=true]{border-color:var(--pa-teal-d)}
 .cx-form{display:none;margin-top:10px;background:var(--pa-card);border:1px solid var(--pa-line);border-radius:12px;padding:14px}
 .cx-form.open{display:block}
