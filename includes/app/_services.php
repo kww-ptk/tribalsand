@@ -1,7 +1,7 @@
 <?php /** Concierge service tiles + forms. Expects $hold, $ref, $status. */ ?>
 <?php
 $__kinds = ['housekeeping'=>'Housekeeping','maintenance'=>'Maintenance','restaurant'=>'Restaurant','other'=>'Your request'];
-// Tile grid: laundry + services + transfer (structured), then "Something else".
+// Tile grid: laundry + services + transfer (structured), then "Make a request".
 $__tiles = ['laundry'=>'Laundry','housekeeping'=>'Housekeeping','other'=>'Make a request','maintenance'=>'Maintenance','restaurant'=>'Restaurant','transfer'=>'Transfer'];
 $__icons = [
   'laundry'      => '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><circle cx="12" cy="13" r="4"/><line x1="7" y1="6" x2="7.01" y2="6"/></svg>',
@@ -19,8 +19,10 @@ $__sched = '<label class="pa-field">Preferred time (optional)<input type="dateti
 @media (min-width:720px){.cx-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 .cx-tile{display:flex;flex-direction:column;align-items:flex-start;gap:11px;background:var(--pa-card);border:1px solid var(--pa-line);border-radius:16px;padding:17px 16px;text-align:left;font:inherit;cursor:pointer;font-size:15px;font-weight:600;color:var(--pa-ink)}
 .cx-tile svg{color:var(--pa-teal);width:26px;height:26px}
-.cx-tile[aria-expanded=true]{border-color:var(--pa-teal-d)}
-.cx-form{display:none;margin-top:10px;background:var(--pa-card);border:1px solid var(--pa-line);border-radius:12px;padding:14px}
+/* An expanded tile — and the form that follows it — span the full grid width so
+   the form opens directly beneath the tapped tile (no jump to the bottom, no gap). */
+.cx-tile[aria-expanded=true]{border-color:var(--pa-teal-d);grid-column:1 / -1}
+.cx-form{display:none;background:var(--pa-card);border:1px solid var(--pa-line);border-radius:14px;padding:15px;grid-column:1 / -1}
 .cx-form.open{display:block}
 </style>
 <h2 class="pa-h2">Need something?</h2>
@@ -32,6 +34,34 @@ $__sched = '<label class="pa-field">Preferred time (optional)<input type="dateti
     <span aria-hidden="true"><?= $__icons[$k] ?? '' ?></span>
     <?= e($label) ?>
   </button>
+  <form data-bm data-bm-success="Request sent — opening your chat…" action="/api/booking-addon.php" class="cx-form" id="cx-form-<?= e($k) ?>">
+    <input type="hidden" name="ref" value="<?= e($ref) ?>">
+    <input type="hidden" name="kind" value="<?= e($k) ?>">
+    <?php if ($k === 'laundry'): ?>
+      <label class="pa-field">Laundry service
+        <select name="service" required>
+          <option value="">— select —</option>
+          <?php foreach (LAUNDRY_OPTIONS as $__lk => $__ll): ?><option value="<?= e($__lk) ?>"><?= e($__ll) ?></option><?php endforeach; ?>
+        </select>
+      </label>
+      <label class="pa-field">Notes (items, instructions…)<textarea name="details" rows="2"></textarea></label>
+    <?php elseif ($k === 'transfer'): ?>
+      <label class="pa-field">Transfer
+        <select name="transfer" required>
+          <option value="">— select —</option>
+          <?php foreach (TRANSFER_OPTIONS as $__tk => $__tl): ?><option value="<?= e($__tk) ?>"><?= e($__tl) ?></option><?php endforeach; ?>
+        </select>
+      </label>
+      <label class="pa-field">Details (flight no., time, pickup…)<textarea name="details" rows="2"></textarea></label>
+    <?php else: ?>
+      <label class="pa-field"><?= e($__kinds[$k] ?? 'Your request') ?> — what do you need?
+        <textarea name="details" rows="2" required></textarea>
+      </label>
+    <?php endif; ?>
+    <?= $__sched ?>
+    <button type="submit" class="pa-btn pa-btn--primary"><?= $k === 'laundry' ? 'Request laundry' : ($k === 'transfer' ? 'Request transfer' : 'Send request') ?></button>
+    <p class="bm-status" aria-live="polite" style="margin:10px 0 0;font-size:13px"></p>
+  </form>
   <?php endforeach; ?>
 </div>
 
@@ -52,49 +82,6 @@ $__refU = urlencode($ref);
     <?php if ($__unreadMsg > 0): ?><span class="cx-tile__badge"><?= (int)$__unreadMsg ?></span><?php endif; ?>
   </a>
 </div>
-
-<?php foreach ($__kinds as $k=>$label): ?>
-<form data-bm data-bm-success="Request sent — opening your chat…" action="/api/booking-addon.php" class="cx-form" id="cx-form-<?= e($k) ?>">
-  <input type="hidden" name="ref" value="<?= e($ref) ?>">
-  <input type="hidden" name="kind" value="<?= e($k) ?>">
-  <label class="pa-field"><?= e($label) ?> — what do you need?
-    <textarea name="details" rows="2" required></textarea>
-  </label>
-  <?= $__sched ?>
-  <button type="submit" class="pa-btn pa-btn--primary">Send request</button>
-  <p class="bm-status" aria-live="polite" style="margin:10px 0 0;font-size:13px"></p>
-</form>
-<?php endforeach; ?>
-
-<form data-bm data-bm-success="Request sent — opening your chat…" action="/api/booking-addon.php" class="cx-form" id="cx-form-laundry">
-  <input type="hidden" name="ref" value="<?= e($ref) ?>">
-  <input type="hidden" name="kind" value="laundry">
-  <label class="pa-field">Laundry service
-    <select name="service" required>
-      <option value="">— select —</option>
-      <?php foreach (LAUNDRY_OPTIONS as $__lk => $__ll): ?><option value="<?= e($__lk) ?>"><?= e($__ll) ?></option><?php endforeach; ?>
-    </select>
-  </label>
-  <label class="pa-field">Notes (items, instructions…)<textarea name="details" rows="2"></textarea></label>
-  <?= $__sched ?>
-  <button type="submit" class="pa-btn pa-btn--primary">Request laundry</button>
-  <p class="bm-status" aria-live="polite" style="margin:10px 0 0;font-size:13px"></p>
-</form>
-
-<form data-bm data-bm-success="Request sent — opening your chat…" action="/api/booking-addon.php" class="cx-form" id="cx-form-transfer">
-  <input type="hidden" name="ref" value="<?= e($ref) ?>">
-  <input type="hidden" name="kind" value="transfer">
-  <label class="pa-field">Transfer
-    <select name="transfer" required>
-      <option value="">— select —</option>
-      <?php foreach (TRANSFER_OPTIONS as $__tk => $__tl): ?><option value="<?= e($__tk) ?>"><?= e($__tl) ?></option><?php endforeach; ?>
-    </select>
-  </label>
-  <label class="pa-field">Details (flight no., time, pickup…)<textarea name="details" rows="2"></textarea></label>
-  <?= $__sched ?>
-  <button type="submit" class="pa-btn pa-btn--primary">Request transfer</button>
-  <p class="bm-status" aria-live="polite" style="margin:10px 0 0;font-size:13px"></p>
-</form>
 
 <script>
 document.querySelectorAll('.cx-tile[data-cx]').forEach(function(b){
