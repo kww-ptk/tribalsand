@@ -38,6 +38,11 @@ if ($statusKey !== 'all') {
     $where[] = 'ba.status IN (' . implode(',', $names) . ')';
 }
 if ($kindKey !== 'all') { $where[] = 'ba.kind = :kind'; $params[':kind'] = $kindKey; }
+if (is_staff()) {
+    $vids = admin_venue_ids() ?: [-1];
+    $ph = []; foreach ($vids as $i=>$v) { $n = ":sv$i"; $ph[] = $n; $params[$n] = (int)$v; }
+    $where[] = 'r.venue_id IN (' . implode(',', $ph) . ')';
+}
 $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
 
 $rows = db_query(

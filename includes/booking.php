@@ -233,8 +233,15 @@ function count_unread_guest(int $holdId): int {
     } catch (Throwable $e) { return 0; }
 }
 
-/** Admin: all threads across holds, unread-by-admin first, with guest/venue context. */
-function fetch_admin_threads(): array {
+/** Admin: all threads across holds, unread-by-admin first, with guest/venue context. Pass venue ids to scope to staff-assigned venues. */
+function fetch_admin_threads(?array $venueIds = null): array {
+    $venueSql = '';
+    $params = [];
+    if ($venueIds) {
+        $names = [];
+        foreach (array_values($venueIds) as $i => $v) { $n = ":v$i"; $names[] = $n; $params[$n] = (int)$v; }
+        $venueSql = ' AND r.venue_id IN (' . implode(',', $names) . ')';
+    }
     return db_query(
         "SELECT m.hold_id, m.addon_id,
                 h.guest_name, v.name AS venue_name,
@@ -249,14 +256,27 @@ function fetch_admin_threads(): array {
          LEFT JOIN venues v ON v.id = r.venue_id
          LEFT JOIN booking_addons ba ON ba.id = m.addon_id
          LEFT JOIN tours t ON t.id = ba.tour_id
+         WHERE 1=1{$venueSql}
          GROUP BY m.hold_id, m.addon_id, h.guest_name, v.name, ba.kind, ba.details, ba.status, t.name
-         ORDER BY unread_admin DESC, last_at DESC"
+         ORDER BY unread_admin DESC, last_at DESC",
+        $params
     )->fetchAll();
 }
 
-/** Admin: total guest messages unread by staff (nav badge). Returns 0 if the table is absent (pre-migration) so the admin layout never fatals. */
-function count_unread_admin(): int {
+/** Admin: total guest messages unread by staff (nav badge). Pass venue ids to scope to staff-assigned venues. Returns 0 if the table is absent (pre-migration) so the admin layout never fatals. */
+function count_unread_admin(?array $venueIds = null): int {
     try {
+        if ($venueIds) {
+            $names = [];
+            $params = [];
+            foreach (array_values($venueIds) as $i => $v) { $n = ":v$i"; $names[] = $n; $params[$n] = (int)$v; }
+            return (int)db_query(
+                "SELECT COUNT(*) FROM booking_messages m
+                 JOIN holds h ON h.id=m.hold_id JOIN units u ON u.id=h.unit_id JOIN rooms r ON r.id=u.room_id
+                 WHERE m.sender='guest' AND m.read_by_admin=FALSE AND r.venue_id IN (" . implode(',', $names) . ")",
+                $params
+            )->fetchColumn();
+        }
         return (int)db_query("SELECT COUNT(*) FROM booking_messages WHERE sender='guest' AND read_by_admin=FALSE")->fetchColumn();
     } catch (Throwable $e) { return 0; }
 }

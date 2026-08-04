@@ -14,6 +14,11 @@ $threadP = $_GET['thread'] ?? null;
 $addonId = ($threadP === null || $threadP === 'general') ? null : (int)$threadP;
 $inThread = $holdId > 0 && $threadP !== null;
 
+if ($inThread && is_staff() && !staff_can_hold($holdId)) {
+    $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Not your property.'];
+    header('Location: /admin/messages.php'); exit;
+}
+
 $flash = null;
 if (!empty($_SESSION['hold_flash'])) { $flash = $_SESSION['hold_flash']; unset($_SESSION['hold_flash']); }
 
@@ -49,7 +54,7 @@ include __DIR__ . '/_layout.php';
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?>"><?= e($flash['msg']) ?></div><?php endif; ?>
 
 <?php if (!$inThread):
-  $threads = fetch_admin_threads();
+  $threads = fetch_admin_threads(admin_venue_ids());
 ?>
 <div class="card"><div class="card__body" style="padding:0">
   <table class="data-table">
