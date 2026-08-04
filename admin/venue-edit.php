@@ -117,6 +117,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         exit;
     }
 
+    if ($action === 'save_stay' && !$isNew) {
+        db_query(
+            'UPDATE venues SET address=:addr, maps_url=:maps, stay_wifi=:wifi,
+                    stay_checkout=:co, stay_house_rules=:hr, stay_area_guide=:ag, updated_at=NOW()
+             WHERE id=:id',
+            [
+                ':addr' => trim($_POST['address'] ?? ''),
+                ':maps' => trim($_POST['maps_url'] ?? ''),
+                ':wifi' => trim($_POST['stay_wifi'] ?? ''),
+                ':co'   => trim($_POST['stay_checkout'] ?? ''),
+                ':hr'   => trim($_POST['stay_house_rules'] ?? ''),
+                ':ag'   => trim($_POST['stay_area_guide'] ?? ''),
+                ':id'   => $id,
+            ]
+        );
+        audit_log('venue.stay', 'venue', $id);
+        header("Location: /admin/venue-edit.php?id={$id}&saved=1");
+        exit;
+    }
+
     if ($action === 'save_publish' && !$isNew) {
         db_query('UPDATE venues SET is_published=:pub, updated_at=NOW() WHERE id=:id',
             [':pub' => isset($_POST['is_published']) ? 'TRUE' : 'FALSE', ':id' => $id]);
@@ -231,6 +251,39 @@ include __DIR__ . '/_layout.php';
       </div>
 
       <button type="submit" class="btn-primary btn-sm">Save Content</button>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card__head"><span class="card__title">Stay info &amp; location</span></div>
+  <div class="card__body">
+    <p style="margin:0 0 14px;font-size:13px;color:var(--muted)">Shown to guests in the app for this property. Leave a field blank to hide it.</p>
+    <form method="POST" action="/admin/venue-edit?id=<?= $id ?>">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="save_stay">
+
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">Address <span style="color:var(--muted);font-weight:400">(shown in the booking box)</span></label>
+        <input type="text" name="address" value="<?= e($venue['address'] ?? '') ?>" placeholder="e.g. Zuri Beach House, Vipingo Ridge, Kilifi County" style="width:100%;max-width:640px;padding:8px 10px">
+      </div>
+
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">Google Maps link <span style="color:var(--muted);font-weight:400">(optional)</span></label>
+        <input type="url" name="maps_url" value="<?= e($venue['maps_url'] ?? '') ?>" placeholder="Paste a Google Maps share link (overrides the address search)" style="width:100%;max-width:640px;padding:8px 10px">
+        <p style="font-size:12px;color:var(--muted);margin:4px 0 0">If blank, the map pin searches Google Maps for the address above.</p>
+      </div>
+
+      <?php
+        $__stay = ['stay_wifi'=>'Wi-Fi','stay_checkout'=>'Check-out','stay_house_rules'=>'House rules','stay_area_guide'=>'Area guide'];
+        foreach ($__stay as $__k => $__label): ?>
+      <div style="margin-bottom:14px">
+        <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px"><?= e($__label) ?></label>
+        <textarea name="<?= e($__k) ?>" rows="3" style="width:100%;max-width:640px;padding:8px 10px;font-family:inherit;line-height:1.6"><?= e($venue[$__k] ?? '') ?></textarea>
+      </div>
+      <?php endforeach; ?>
+
+      <button type="submit" class="btn-primary btn-sm">Save Stay Info</button>
     </form>
   </div>
 </div>
