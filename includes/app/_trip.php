@@ -17,8 +17,10 @@ for ($__d = new DateTime((string)$hold['check_in']); $__d <= new DateTime((strin
 $__gcats = ['activity'=>'Activity','transfer'=>'Transfer','dining'=>'Restaurant','note'=>'Other'];
 try { $__acts = fetch_portal_activities(); } catch (Throwable $e) { $__acts = []; }
 ?>
-<h2 class="pa-h2">My trip</h2>
-<p class="pa-sub">Your day-by-day itinerary. Tours and transfers you’ve booked appear automatically.</p>
+<details class="pa-details" open>
+<summary class="pa-details__s">My Calendar</summary>
+<div style="padding-top:2px">
+<p class="pa-sub" style="margin-top:0">Your day-by-day itinerary. Tours and transfers you’ve booked appear automatically.</p>
 <?php foreach ($__itin as $__day): ?>
 <div class="pa-planday <?= $__day['is_today'] ? 'pa-planday--today' : '' ?>">
   <div class="pa-planday__h"><?= e($__day['label']) ?><?php if ($__day['is_today']): ?><span class="pa-planday__today">Today</span><?php endif; ?></div>
@@ -99,3 +101,5 @@ try { $__acts = fetch_portal_activities(); } catch (Throwable $e) { $__acts = []
   sync();
 })();
 </script>
+</div>
+</details>
