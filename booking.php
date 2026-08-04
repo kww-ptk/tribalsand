@@ -102,7 +102,6 @@ $page_url   = site_url('booking');
 $noindex    = true; // private guest booking page — never index
 
 include __DIR__ . '/includes/head.php';
-include __DIR__ . '/includes/header.php';
 ?>
 
 <link rel="stylesheet" href="/css/portal-app.css?v=<?= @filemtime(__DIR__ . '/css/portal-app.css') ?: time() ?>">
@@ -195,8 +194,10 @@ include __DIR__ . '/includes/header.php';
 
 <div class="pa-app">
   <?php
-    $__titles = ['home'=>'Your stay','activities'=>'Activities','messages'=>'Messages'];
-    $__t = $hold ? ($__titles[$view] ?? 'Your stay') : 'Your booking';
+    $__first = trim((string)($hold['guest_name'] ?? ''));
+    $__first = $__first !== '' ? explode(' ', $__first)[0] : 'guest';
+    $__titles = ['home'=>'Karibu, ' . $__first, 'activities'=>'Activities', 'messages'=>'Messages'];
+    $__t = $hold ? ($__titles[$view] ?? ('Karibu, ' . $__first)) : 'Your booking';
   ?>
   <div class="pa-topbar"><div class="pa-topbar__eyebrow">Tribal Sand</div><div class="pa-topbar__title"><?= e($__t) ?></div></div>
   <div class="pa-wrap" style="padding-top:16px">
@@ -303,4 +304,5 @@ include __DIR__ . '/includes/header.php';
 <script src="/js/booking-manage.js?v=<?= @filemtime(__DIR__ . '/js/booking-manage.js') ?: time() ?>" defer></script>
 
 <?php $hide_floating_chat = true; // portal is app-like; suppress the site chat bubble (it overlaps the bottom nav) ?>
+<?php $portal_chrome = true;      // suppress marketing footer + cookie banner; keep the success-modal JS ?>
 <?php include __DIR__ . '/includes/footer.php'; ?>
