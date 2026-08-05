@@ -499,6 +499,32 @@ function addon_status_label(string $status): string {
     ][$status] ?? ucfirst($status);
 }
 
+/** A booking's chargeable requests (confirmed/completed), with tour name. For the bill. */
+function fetch_bill_lines(int $holdId): array {
+    try {
+        return db_query(
+            "SELECT ba.*, t.name AS tour_name FROM booking_addons ba
+             LEFT JOIN tours t ON t.id = ba.tour_id
+             WHERE ba.hold_id = :h AND ba.status IN ('confirmed','completed')
+             ORDER BY ba.created_at", [':h' => $holdId]
+        )->fetchAll();
+    } catch (Throwable $e) { return []; }
+}
+
+/** Ad-hoc bill line items for a booking (minibar, damages…). */
+function fetch_bill_items(int $holdId): array {
+    try { return db_query("SELECT * FROM bill_items WHERE hold_id = :h ORDER BY id", [':h' => $holdId])->fetchAll(); }
+    catch (Throwable $e) { return []; }
+}
+
+/** Total extras = confirmed/completed request prices (null → 0) + manual items. */
+function bill_total(int $holdId): float {
+    $t = 0.0;
+    foreach (fetch_bill_lines($holdId) as $l) { $t += (float)($l['price_amount'] ?? 0); }
+    foreach (fetch_bill_items($holdId) as $i) { $t += (float)($i['amount'] ?? 0); }
+    return $t;
+}
+
 /** Distinct published tour categories → {key,label} for the Activities filter. */
 function fetch_tour_categories(): array {
     $labels = ['classic' => 'Classic safari', 'custom' => 'Custom journey', 'excursion' => 'Excursion'];
