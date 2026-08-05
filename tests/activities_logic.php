@@ -47,6 +47,11 @@ $flat = ['price_amount'=>1500,'price_per_person'=>false];
 check('price_total per-person × pax', activity_price_total($per, 3) === 3000.0);
 check('price_total flat ignores pax',  activity_price_total($flat, 3) === 1500.0);
 check('price_total null when unpriced', activity_price_total(['price_amount'=>null], 2) === null);
+// Exercise the REAL fetched-row path (price_per_person may come back as bool or 't'/'f').
+$__t1row = fetch_tour_for_booking('zz-t1', $vA);   // per-person, 1000
+$__t2row = fetch_tour_for_booking('zz-t2', $vB);   // flat, 1500
+check('price_total on a fetched per-person row × pax', $__t1row && activity_price_total($__t1row, 3) === 3000.0);
+check('price_total on a fetched flat row ignores pax', $__t2row && activity_price_total($__t2row, 3) === 1500.0);
 
 check('addon_pax_supported true after migration', addon_pax_supported() === true);
 

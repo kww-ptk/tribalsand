@@ -42,8 +42,9 @@ if ($kind === 'tour') {
     $cap = (int)($tour['max_pax'] ?? 0);
     $pax = (int)($data['pax'] ?? 1); if ($pax < 1) $pax = 1; if ($cap > 0 && $pax > $cap) $pax = $cap;
     $atDate = $str($data['at_date'] ?? '');
-    $ts = $atDate !== '' ? strtotime($atDate) : false;
-    if ($ts === false || $atDate < (string)$hold['check_in'] || $atDate > (string)$hold['check_out']) {
+    $ts   = $atDate !== '' ? strtotime($atDate) : false;
+    $norm = $ts !== false ? date('Y-m-d', $ts) : ''; // compare the normalized date we actually store
+    if ($ts === false || $norm < (string)$hold['check_in'] || $norm > (string)$hold['check_out']) {
         http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'Please choose a date within your stay.']));
     }
     $paxValue      = $pax;
@@ -99,7 +100,7 @@ try {
     }
 
     if (function_exists('send_addon_request_notification')) {
-        send_addon_request_notification($hold, ['kind'=>$kind,'details'=>$details]);
+        send_addon_request_notification($hold, ['kind'=>$kind,'details'=>$threadBody ?? $details]);
     }
     echo json_encode(['ok'=>true, 'redirect'=>$redirect]);
 } catch (Throwable $e) {

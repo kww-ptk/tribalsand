@@ -15,7 +15,7 @@ $__isvg = fn(string $cat) => '<svg width="18" height="18" viewBox="0 0 24 24" fi
 $__days = [];
 for ($__d = new DateTime((string)$hold['check_in']); $__d <= new DateTime((string)$hold['check_out']); $__d->modify('+1 day')) { $__days[$__d->format('Y-m-d')] = $__d->format('D j M'); }
 $__gcats = ['activity'=>'Activity','transfer'=>'Transfer','dining'=>'Restaurant','note'=>'Other'];
-try { $__acts = fetch_portal_activities(); } catch (Throwable $e) { $__acts = []; }
+try { $__acts = fetch_portal_activities(isset($hold['venue_id']) && $hold['venue_id'] !== null ? (int)$hold['venue_id'] : null); } catch (Throwable $e) { $__acts = []; }
 ?>
 <details class="pa-details">
 <summary class="pa-details__s">My Calendar</summary>

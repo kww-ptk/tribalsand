@@ -62,6 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 );
                 $id   = (int)db()->lastInsertId();
                 sync_tour_venues($id, (array)($_POST['venue_ids'] ?? []));   // helper defined in Step 2
+                audit_log('tour.save', 'tour', $id, $data[':name']);
                 $tour = db_query('SELECT * FROM tours WHERE id = :id', [':id' => $id])->fetch();
                 $isNew = false;
                 header("Location: /admin/tour-edit.php?id={$id}&saved=1");
@@ -76,6 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $data
                 );
                 sync_tour_venues($id, (array)($_POST['venue_ids'] ?? []));
+                audit_log('tour.save', 'tour', $id, $data[':name']);
                 $success = 'Details saved.';
             }
         }
