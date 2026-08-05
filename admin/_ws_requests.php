@@ -12,7 +12,7 @@
       ?>
       <tr>
         <td style="text-transform:capitalize"><?= e($a['kind']) ?></td>
-        <td><?= e(addon_label($a)) ?><?php if (!empty($a['scheduled_for'])): ?> <span class="text-muted" style="font-size:12px">· <?= e(date('j M, H:i', strtotime((string)$a['scheduled_for']))) ?></span><?php endif; ?></td>
+        <td><?= e(addon_label($a)) ?><?php if (isset($a['price_amount']) && $a['price_amount'] !== null && (float)$a['price_amount'] > 0): ?> <span class="badge badge--grey"><?= e(format_price((float)$a['price_amount'])) ?></span><?php endif; ?><?php if (!empty($a['scheduled_for'])): ?> <span class="text-muted" style="font-size:12px">· <?= e(date('j M, H:i', strtotime((string)$a['scheduled_for']))) ?></span><?php endif; ?></td>
         <td><span class="badge <?= $bc ?>"><?= e(addon_status_label($a['status'])) ?></span></td>
         <td style="text-align:right;white-space:nowrap">
           <?php if ($a['status'] === 'requested'): ?>

@@ -78,7 +78,7 @@ check('status label: completed → Done', addon_status_label('completed') === 'D
 check('status label: declined', addon_status_label('declined') === 'Declined');
 check('status label: cancelled', addon_status_label('cancelled') === 'Cancelled');
 check('status label: unknown falls back', addon_status_label('weird') === 'Weird');
-check('laundry options non-empty', is_array(LAUNDRY_OPTIONS) && count(LAUNDRY_OPTIONS) >= 2);
+check('laundry options non-empty', count(fetch_service_options('laundry', false)) >= 2);
 
 // laundry addon persists with scheduled_for
 $hid = (int)(db()->query("SELECT id FROM holds ORDER BY id DESC LIMIT 1")->fetchColumn() ?: 0);
