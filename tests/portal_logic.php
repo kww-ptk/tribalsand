@@ -204,5 +204,37 @@ if ($vA) {
     db_query("DELETE FROM login_attempts WHERE email IN (:c,'NOPEZZ')", [':c'=>$code]);
 }
 
+// ── request lifecycle: status templates, admin post, header, ordering ──
+check('status msg: confirmed non-empty', request_status_message('confirmed') !== '');
+check('status msg: declined non-empty',  request_status_message('declined')  !== '');
+check('status msg: distinct per status', request_status_message('confirmed') !== request_status_message('completed'));
+check('status msg: unknown is empty',    request_status_message('weird')     === '');
+
+$rlHold = (int)(db()->query("SELECT id FROM holds ORDER BY id DESC LIMIT 1")->fetchColumn() ?: 0);
+if ($rlHold) {
+    db_query("INSERT INTO booking_addons (hold_id,kind,details,status) VALUES (:h,'other','ZZ RL A','requested')", [':h'=>$rlHold]);
+    $rlA = (int)db()->lastInsertId();
+    db_query("INSERT INTO booking_addons (hold_id,kind,details,status) VALUES (:h,'other','ZZ RL B','requested')", [':h'=>$rlHold]);
+    $rlB = (int)db()->lastInsertId();   // created after A (newer)
+
+    $before = count_unread_guest($rlHold);
+    post_admin_message($rlHold, $rlA, 'ZZ admin update');
+    check('post_admin_message increments guest unread', count_unread_guest($rlHold) === $before + 1);
+
+    $hdr = fetch_addon_for_thread($rlHold, $rlA);
+    check('fetch_addon_for_thread returns the row', $hdr && (int)$hdr['id'] === $rlA);
+    check('fetch_addon_for_thread is hold-scoped', fetch_addon_for_thread($rlHold + 999999, $rlA) === false);
+
+    $threads = fetch_message_threads($rlHold);
+    check('threads: general pinned first', $threads[0]['addon_id'] === null);
+    $ids  = array_map(fn($t) => $t['addon_id'], array_slice($threads, 1));
+    $posA = array_search($rlA, $ids, true);
+    $posB = array_search($rlB, $ids, true);
+    check('threads: messaged request bumps above a newer idle one', $posA !== false && $posB !== false && $posA < $posB);
+
+    db_query("DELETE FROM booking_messages WHERE hold_id=:h AND body='ZZ admin update'", [':h'=>$rlHold]);
+    db_query("DELETE FROM booking_addons WHERE id IN (:a,:b)", [':a'=>$rlA, ':b'=>$rlB]);
+}
+
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);
