@@ -32,6 +32,7 @@ $tour_id = null;
 $priceSnapshot = null; // set for laundry/transfer/tour from the catalog
 $paxValue      = null; // set for tour
 $schedOverride = null; // tour date → scheduled_for (set after the generic sched block)
+$threadBody    = null; // richer opening message for the request thread (tours)
 
 if ($kind === 'tour') {
     $slug = $str($data['tour_slug'] ?? '');
@@ -49,7 +50,11 @@ if ($kind === 'tour') {
     $schedOverride = date('Y-m-d H:i:s', $ts);
     $priceSnapshot = activity_price_total($tour, $pax);
     $note = $str($data['details'] ?? '');
-    $details = $tour['name'] . ' · ' . $pax . ' pax' . ($note !== '' ? ' — ' . $note : '');
+    // Stored details holds only the note — addon_label() already shows the tour
+    // name and the admin views add "· N pax", so keep those out of details to
+    // avoid duplication. The thread gets the full human-readable line.
+    $details = $note;
+    $threadBody = $tour['name'] . ' · ' . $pax . ' pax' . ($note !== '' ? ' — ' . $note : '');
 } elseif ($kind === 'transfer' || $kind === 'laundry') {
     $optId = (int)($data[$kind === 'laundry' ? 'service' : 'transfer'] ?? 0);
     $opt   = fetch_service_option($optId);
@@ -86,7 +91,7 @@ try {
     // Never fail the request if the messages table is unavailable.
     $redirect = null;
     try {
-        seed_request_message((int)$hold['id'], $addonId, $details);
+        seed_request_message((int)$hold['id'], $addonId, $threadBody ?? $details);
         $ref = make_guest_ref((int)$hold['id']); // re-sign; never trust the posted ref for a URL
         $redirect = '/booking.php?ref=' . urlencode($ref) . '&view=messages&thread=' . $addonId;
     } catch (Throwable $e) {
