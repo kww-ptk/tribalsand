@@ -52,16 +52,20 @@ if ($type === 'addon' && in_array($status, ['confirmed', 'declined', 'cancelled'
     $fromParams = [];
     $fromNames  = [];
     foreach ($allowedFrom as $i => $s) { $n = ":from{$i}"; $fromNames[] = $n; $fromParams[$n] = $s; }
-    db_query(
+    $upd = db_query(
         "UPDATE booking_addons SET status=:s WHERE id=:id AND status IN (" . implode(',', $fromNames) . ")",
         [':s' => $status, ':id' => $id] + $fromParams
     );
-    audit_log('booking_addon.' . $status, 'booking_addon', $id, 'admin action');
-
-    $__statusMsg = request_status_message($status);
-    if ($__statusMsg !== '') {
-        try { post_admin_message((int)$cur['hold_id'], $id, $__statusMsg); }
-        catch (Throwable $e) { error_log('[request-action] status message failed: ' . $e->getMessage()); }
+    // Only fire side effects for the request that actually transitioned here — a
+    // concurrent double-submit updates 0 rows on the loser, so it won't double
+    // audit-log or double-post the status message.
+    if ($upd->rowCount() === 1) {
+        audit_log('booking_addon.' . $status, 'booking_addon', $id, 'admin action');
+        $__statusMsg = request_status_message($status);
+        if ($__statusMsg !== '') {
+            try { post_admin_message((int)$cur['hold_id'], $id, $__statusMsg); }
+            catch (Throwable $e) { error_log('[request-action] status message failed: ' . $e->getMessage()); }
+        }
     }
 
     $ok = true;
