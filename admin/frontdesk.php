@@ -88,7 +88,7 @@ $card = function(array $r): string {
         <div class="fd-card__meta"><b><?= $place ?></b> · <?= $dates ?><?php if ($code !== ''): ?> · <span class="fd-code"><?= e($code) ?></span><?php endif; ?></div>
         <div class="fd-card__badges">
           <?php if ($reqs > 0): ?><a class="fd-badge fd-badge--req" href="/admin/booking.php?hold=<?= $hid ?>&tab=requests"><?= $reqs ?> request<?= $reqs === 1 ? '' : 's' ?></a><?php endif; ?>
-          <?php if ($unread > 0): ?><a class="fd-badge fd-badge--msg" href="/admin/messages.php?hold=<?= $hid ?>"><?= $unread ?> unread</a><?php endif; ?>
+          <?php if ($unread > 0): ?><a class="fd-badge fd-badge--msg" href="/admin/booking.php?hold=<?= $hid ?>&tab=messages"><?= $unread ?> unread</a><?php endif; ?>
         </div>
       </div>
       <div class="fd-card__side">
