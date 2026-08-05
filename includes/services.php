@@ -39,3 +39,16 @@ function addon_price_supported(): bool {
         return $cached = (bool) $r;
     } catch (Throwable $e) { return $cached = false; }
 }
+
+/** True if booking_addons has the pax column (memoised). False pre-migration. */
+function addon_pax_supported(): bool {
+    static $cached = null;
+    if ($cached !== null) return $cached;
+    try {
+        $r = db_query(
+            "SELECT 1 FROM information_schema.columns
+             WHERE table_name = 'booking_addons' AND column_name = 'pax' LIMIT 1"
+        )->fetch();
+        return $cached = (bool) $r;
+    } catch (Throwable $e) { return $cached = false; }
+}

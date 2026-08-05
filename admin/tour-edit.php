@@ -2,8 +2,20 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/booking.php';
 require_login();
 require_owner();
+
+/** Replace an activity's property assignments with the posted set (ints, existing venues only). */
+function sync_tour_venues(int $tourId, array $venueIds): void {
+    db_query("DELETE FROM tour_venues WHERE tour_id = :t", [':t' => $tourId]);
+    $valid = db_query("SELECT id FROM venues")->fetchAll(PDO::FETCH_COLUMN);
+    foreach (array_unique(array_map('intval', $venueIds)) as $vid) {
+        if (in_array($vid, array_map('intval', $valid), true)) {
+            db_query("INSERT INTO tour_venues (tour_id, venue_id) VALUES (:t,:v) ON CONFLICT DO NOTHING", [':t' => $tourId, ':v' => $vid]);
+        }
+    }
+}
 
 $id   = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 $tour = $id ? db_query('SELECT * FROM tours WHERE id = :id', [':id' => $id])->fetch() : null;
@@ -34,15 +46,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ':short_desc'=> trim($_POST['short_desc']?? ''),
                 ':long_desc' => trim($_POST['long_desc'] ?? ''),
                 ':highlights'=> json_encode($highlights),
+                ':price_amount'  => ($_POST['price_amount'] ?? '') === '' ? null : (float)$_POST['price_amount'],
+                ':per_person'    => isset($_POST['price_per_person']) ? 'TRUE' : 'FALSE',
+                ':max_pax'       => ($_POST['max_pax'] ?? '') === '' ? null : (int)$_POST['max_pax'],
+                ':whats_included'=> trim($_POST['whats_included'] ?? ''),
             ];
 
             if ($isNew) {
                 db_query(
-                    "INSERT INTO tours (name,slug,category,tag_label,duration,price,short_desc,long_desc,highlights_json)
-                     VALUES (:name,:slug,:category,:tag_label,:duration,:price,:short_desc,:long_desc,:highlights)",
+                    "INSERT INTO tours (name,slug,category,tag_label,duration,price,short_desc,long_desc,highlights_json,
+                                        price_amount,price_per_person,max_pax,whats_included)
+                     VALUES (:name,:slug,:category,:tag_label,:duration,:price,:short_desc,:long_desc,:highlights,
+                             :price_amount,:per_person,:max_pax,:whats_included)",
                     $data
                 );
                 $id   = (int)db()->lastInsertId();
+                sync_tour_venues($id, (array)($_POST['venue_ids'] ?? []));   // helper defined in Step 2
+                audit_log('tour.save', 'tour', $id, $data[':name']);
                 $tour = db_query('SELECT * FROM tours WHERE id = :id', [':id' => $id])->fetch();
                 $isNew = false;
                 header("Location: /admin/tour-edit.php?id={$id}&saved=1");
@@ -52,9 +72,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 db_query(
                     "UPDATE tours SET name=:name,slug=:slug,category=:category,tag_label=:tag_label,
                      duration=:duration,price=:price,short_desc=:short_desc,long_desc=:long_desc,highlights_json=:highlights,
+                     price_amount=:price_amount,price_per_person=:per_person,max_pax=:max_pax,whats_included=:whats_included,
                      updated_at=NOW() WHERE id=:id",
                     $data
                 );
+                sync_tour_venues($id, (array)($_POST['venue_ids'] ?? []));
+                audit_log('tour.save', 'tour', $id, $data[':name']);
                 $success = 'Details saved.';
             }
         }
@@ -255,6 +278,33 @@ include __DIR__ . '/_layout.php';
           <input type="text" name="price" value="<?= e($tour['price'] ?? '') ?>" placeholder="e.g. From $60 / person">
         </div>
       </div>
+
+      <div style="margin:14px 0">
+        <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">Booking price <span style="color:var(--muted);font-weight:400">(numeric — used for guest requests &amp; the bill)</span></label>
+        <input type="number" name="price_amount" step="0.01" min="0" value="<?= e($tour['price_amount'] ?? '') ?>" style="width:160px;padding:8px 10px">
+        <label style="margin-left:14px;font-size:13px"><input type="checkbox" name="price_per_person" value="1" <?= (($tour['price_per_person'] ?? true) && ($tour['price_per_person'] ?? 't') !== 'f') ? 'checked' : '' ?>> Price is per person</label>
+        <label style="margin-left:14px;font-size:13px">Max pax <input type="number" name="max_pax" min="1" value="<?= e($tour['max_pax'] ?? '') ?>" style="width:80px;padding:8px 10px"></label>
+      </div>
+
+      <div style="margin:14px 0">
+        <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">What’s included</label>
+        <textarea name="whats_included" rows="3" style="width:100%;max-width:640px;padding:8px 10px" placeholder="e.g. Return transfers, guide, entrance fees, bottled water"><?= e($tour['whats_included'] ?? '') ?></textarea>
+      </div>
+
+      <div style="margin:14px 0">
+        <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:6px">Available at <span style="color:var(--muted);font-weight:400">(none ticked = shown at every property)</span></label>
+        <?php
+          $__assigned = $id ? activity_venue_ids((int)$id) : [];
+          $__venues   = db_query("SELECT id, name FROM venues ORDER BY sort_order, name")->fetchAll();
+          foreach ($__venues as $__v):
+        ?>
+        <label style="display:inline-flex;align-items:center;gap:6px;margin:0 14px 8px 0;font-size:13px">
+          <input type="checkbox" name="venue_ids[]" value="<?= (int)$__v['id'] ?>" <?= in_array((int)$__v['id'], $__assigned, true) ? 'checked' : '' ?>>
+          <?= e($__v['name']) ?>
+        </label>
+        <?php endforeach; ?>
+      </div>
+
       <div class="field" style="margin-top:16px">
         <label>Short description <span class="text-muted">(shown on listing cards)</span></label>
         <textarea name="short_desc" rows="3" placeholder="One or two sentences about this tour."><?= e($tour['short_desc'] ?? '') ?></textarea>

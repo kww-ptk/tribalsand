@@ -29,14 +29,33 @@ if (!in_array($kind, ['tour','transfer','itinerary','other',
 }
 $details = $str($data['details'] ?? '');
 $tour_id = null;
-$priceSnapshot = null; // set for laundry/transfer from the catalog
+$priceSnapshot = null; // set for laundry/transfer/tour from the catalog
+$paxValue      = null; // set for tour
+$schedOverride = null; // tour date → scheduled_for (set after the generic sched block)
+$threadBody    = null; // richer opening message for the request thread (tours)
 
 if ($kind === 'tour') {
     $slug = $str($data['tour_slug'] ?? '');
-    $tour = $slug ? fetch_tour_by_slug($slug) : false;
-    if (!$tour) { http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'Please choose a valid tour.'])); }
+    $tour = $slug ? fetch_tour_for_booking($slug, isset($hold['venue_id']) ? (int)$hold['venue_id'] : null) : false;
+    if (!$tour) { http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'That activity isn’t available for your stay.'])); }
     $tour_id = (int)$tour['id'];
-    if ($details === '') $details = $tour['name'];
+    $cap = (int)($tour['max_pax'] ?? 0);
+    $pax = (int)($data['pax'] ?? 1); if ($pax < 1) $pax = 1; if ($cap > 0 && $pax > $cap) $pax = $cap;
+    $atDate = $str($data['at_date'] ?? '');
+    $ts   = $atDate !== '' ? strtotime($atDate) : false;
+    $norm = $ts !== false ? date('Y-m-d', $ts) : ''; // compare the normalized date we actually store
+    if ($ts === false || $norm < (string)$hold['check_in'] || $norm > (string)$hold['check_out']) {
+        http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'Please choose a date within your stay.']));
+    }
+    $paxValue      = $pax;
+    $schedOverride = date('Y-m-d H:i:s', $ts);
+    $priceSnapshot = activity_price_total($tour, $pax);
+    $note = $str($data['details'] ?? '');
+    // Stored details holds only the note — addon_label() already shows the tour
+    // name and the admin views add "· N pax", so keep those out of details to
+    // avoid duplication. The thread gets the full human-readable line.
+    $details = $note;
+    $threadBody = $tour['name'] . ' · ' . $pax . ' pax' . ($note !== '' ? ' — ' . $note : '');
 } elseif ($kind === 'transfer' || $kind === 'laundry') {
     $optId = (int)($data[$kind === 'laundry' ? 'service' : 'transfer'] ?? 0);
     $opt   = fetch_service_option($optId);
@@ -56,28 +75,24 @@ if ($sched !== '') {
     $ts = strtotime($sched);
     if ($ts !== false) $schedSql = date('Y-m-d H:i:s', $ts); // silently ignore an unparseable value
 }
+if ($schedOverride !== null) $schedSql = $schedOverride; // tour date wins over any preferred-time field
 
 try {
-    if (addon_price_supported()) {
-        db_query(
-            "INSERT INTO booking_addons (hold_id, kind, tour_id, details, scheduled_for, price_amount)
-             VALUES (:h, :k, :t, :d, :sf, :price)",
-            [':h'=>$hold['id'], ':k'=>$kind, ':t'=>$tour_id, ':d'=>$details, ':sf'=>$schedSql, ':price'=>$priceSnapshot]
-        );
-    } else {
-        db_query(
-            "INSERT INTO booking_addons (hold_id, kind, tour_id, details, scheduled_for)
-             VALUES (:h, :k, :t, :d, :sf)",
-            [':h'=>$hold['id'], ':k'=>$kind, ':t'=>$tour_id, ':d'=>$details, ':sf'=>$schedSql]
-        );
-    }
-    $addonId = (int)db()->lastInsertId();
+    $addonId = insert_booking_addon([
+        'hold_id'      => $hold['id'],
+        'kind'         => $kind,
+        'tour_id'      => $tour_id,
+        'details'      => $details,
+        'scheduled_for'=> $schedSql,
+        'price_amount' => $priceSnapshot,
+        'pax'          => $paxValue,
+    ]);
 
     // Auto-start a conversation for this request so guest + staff manage it in one place.
     // Never fail the request if the messages table is unavailable.
     $redirect = null;
     try {
-        seed_request_message((int)$hold['id'], $addonId, $details);
+        seed_request_message((int)$hold['id'], $addonId, $threadBody ?? $details);
         $ref = make_guest_ref((int)$hold['id']); // re-sign; never trust the posted ref for a URL
         $redirect = '/booking.php?ref=' . urlencode($ref) . '&view=messages&thread=' . $addonId;
     } catch (Throwable $e) {
@@ -85,7 +100,7 @@ try {
     }
 
     if (function_exists('send_addon_request_notification')) {
-        send_addon_request_notification($hold, ['kind'=>$kind,'details'=>$details]);
+        send_addon_request_notification($hold, ['kind'=>$kind,'details'=>$threadBody ?? $details]);
     }
     echo json_encode(['ok'=>true, 'redirect'=>$redirect]);
 } catch (Throwable $e) {
