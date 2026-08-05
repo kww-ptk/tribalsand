@@ -67,6 +67,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $eventDate = $evRaw !== '' && strtotime($evRaw) !== false ? date('Y-m-d H:i:s', strtotime($evRaw)) : null;
         $priceRaw = $_POST['price_amount'] ?? '';
         $priceAmt = ($priceRaw === '' ) ? null : (float)$priceRaw;
+        // Date/price are events-only — keep them off other categories.
+        if ($category !== 'event') { $eventDate = null; $priceAmt = null; }
 
         if (!isset($CATS[$category])) $errs[] = 'Pick a category.';
         if ($title === '') $errs[] = 'Title is required.';

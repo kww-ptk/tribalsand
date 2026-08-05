@@ -388,15 +388,21 @@ function insert_booking_addon(array $d): int {
  * $venueId null (or a venue with no targeted posts) → only global posts (venue_id IS NULL).
  */
 function fetch_guest_board(?int $venueId): array {
-    return db_query(
-        "SELECT id, category, title, body, image_filename, event_date, price_amount
-         FROM guest_board_posts
-         WHERE is_published = TRUE
-           AND (venue_id IS NULL OR venue_id = :venue)
-         ORDER BY sort_order DESC, created_at DESC
-         LIMIT 6",
-        [':venue' => $venueId]
-    )->fetchAll();
+    $where = "WHERE is_published = TRUE AND (venue_id IS NULL OR venue_id = :venue)
+              ORDER BY sort_order DESC, created_at DESC LIMIT 6";
+    try {
+        return db_query(
+            "SELECT id, category, title, body, image_filename, event_date, price_amount
+             FROM guest_board_posts {$where}", [':venue' => $venueId]
+        )->fetchAll();
+    } catch (Throwable $e) {
+        // Pre-migration: event_date/price_amount columns don't exist yet — fall back
+        // so the existing board still renders (there can be no 'event' rows anyway).
+        return db_query(
+            "SELECT id, category, title, body, image_filename
+             FROM guest_board_posts {$where}", [':venue' => $venueId]
+        )->fetchAll();
+    }
 }
 
 /** A published 'event' board post available at the venue, by id — else false. */

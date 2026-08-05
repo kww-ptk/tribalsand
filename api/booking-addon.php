@@ -74,7 +74,7 @@ if ($kind === 'tour') {
     $boardPostId   = $postId;
     $details       = 'Join: ' . $ev['title'];
     if (!empty($ev['event_date'])) { $schedOverride = date('Y-m-d H:i:s', strtotime((string)$ev['event_date'])); }
-    $priceSnapshot = ($ev['price_amount'] === null || $ev['price_amount'] === '') ? null : (float)$ev['price_amount'];
+    $priceSnapshot = ($ev['price_amount'] === null || $ev['price_amount'] === '' || (float)$ev['price_amount'] <= 0) ? null : (float)$ev['price_amount']; // matches the portal's "free" test (> 0)
 } else { // itinerary / other
     if ($details === '') { http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'Please add a few details.'])); }
 }
