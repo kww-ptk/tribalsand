@@ -110,7 +110,7 @@ function fetch_booking_addons(int $holdId): array {
 /** Map a booking_addons kind to an itinerary category. */
 function _itin_map_kind(string $kind): string {
     if ($kind === 'tour' || $kind === 'transfer') return $kind;
-    return in_array($kind, ['laundry','housekeeping','amenities','maintenance','restaurant'], true) ? 'activity' : 'note';
+    return in_array($kind, ['laundry','housekeeping','amenities','maintenance','restaurant','event'], true) ? 'activity' : 'note';
 }
 
 /**
@@ -378,6 +378,7 @@ function insert_booking_addon(array $d): int {
     ];
     if (addon_price_supported()) { $cols[] = 'price_amount'; $vals[] = ':price'; $p[':price'] = $d['price_amount'] ?? null; }
     if (addon_pax_supported())   { $cols[] = 'pax';          $vals[] = ':pax';   $p[':pax']   = $d['pax'] ?? null; }
+    if (addon_board_supported())  { $cols[] = 'board_post_id'; $vals[] = ':bp'; $p[':bp'] = $d['board_post_id'] ?? null; }
     db_query('INSERT INTO booking_addons (' . implode(',', $cols) . ') VALUES (' . implode(',', $vals) . ')', $p);
     return (int) db()->lastInsertId();
 }
@@ -388,7 +389,7 @@ function insert_booking_addon(array $d): int {
  */
 function fetch_guest_board(?int $venueId): array {
     return db_query(
-        "SELECT id, category, title, body, image_filename
+        "SELECT id, category, title, body, image_filename, event_date, price_amount
          FROM guest_board_posts
          WHERE is_published = TRUE
            AND (venue_id IS NULL OR venue_id = :venue)
@@ -396,6 +397,27 @@ function fetch_guest_board(?int $venueId): array {
          LIMIT 6",
         [':venue' => $venueId]
     )->fetchAll();
+}
+
+/** A published 'event' board post available at the venue, by id — else false. */
+function fetch_board_event(int $postId, ?int $venueId): array|false {
+    $sql = "SELECT * FROM guest_board_posts WHERE id = :id AND category = 'event' AND is_published = TRUE";
+    $params = [':id' => $postId];
+    if ($venueId !== null) { $sql .= " AND (venue_id IS NULL OR venue_id = :v)"; $params[':v'] = $venueId; }
+    else                   { $sql .= " AND venue_id IS NULL"; }
+    try { $r = db_query($sql, $params)->fetch(); } catch (Throwable $e) { return false; }
+    return $r ?: false;
+}
+
+/** Whether the guest already has an active (non-declined/cancelled) join for an event. */
+function guest_joined_event(int $holdId, int $postId): bool {
+    try {
+        return (bool) db_query(
+            "SELECT 1 FROM booking_addons
+             WHERE hold_id = :h AND board_post_id = :p AND status NOT IN ('declined','cancelled') LIMIT 1",
+            [':h' => $holdId, ':p' => $postId]
+        )->fetchColumn();
+    } catch (Throwable $e) { return false; }
 }
 
 /**

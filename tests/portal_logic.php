@@ -236,5 +236,32 @@ if ($rlHold) {
     db_query("DELETE FROM booking_addons WHERE id IN (:a,:b)", [':a'=>$rlA, ':b'=>$rlB]);
 }
 
+// ── events (What's on bookable) ──
+$evVid = (int)(db()->query("SELECT id FROM venues ORDER BY id LIMIT 1")->fetchColumn() ?: 0);
+db_query("INSERT INTO guest_board_posts (venue_id, category, title, body, is_published, price_amount) VALUES (NULL,'event','ZZ Beach BBQ','Friday night',TRUE,2000)");
+$evId = (int)db()->lastInsertId();
+db_query("INSERT INTO guest_board_posts (venue_id, category, title, is_published) VALUES (NULL,'promotion','ZZ Promo',TRUE)");
+$promoId = (int)db()->lastInsertId();
+
+$ev = fetch_board_event($evId, $evVid ?: null);
+check('fetch_board_event returns the event', $ev && (int)$ev['id'] === $evId && (float)$ev['price_amount'] === 2000.0);
+check('fetch_board_event rejects a non-event post', fetch_board_event($promoId, $evVid ?: null) === false);
+db_query("UPDATE guest_board_posts SET is_published=FALSE WHERE id=:id", [':id'=>$evId]);
+check('fetch_board_event rejects an unpublished event', fetch_board_event($evId, $evVid ?: null) === false);
+db_query("UPDATE guest_board_posts SET is_published=TRUE WHERE id=:id", [':id'=>$evId]);
+
+$evHold = (int)(db()->query("SELECT id FROM holds ORDER BY id DESC LIMIT 1")->fetchColumn() ?: 0);
+if ($evHold) {
+    check('guest_joined_event false before joining', guest_joined_event($evHold, $evId) === false);
+    db_query("INSERT INTO booking_addons (hold_id,kind,details,status,board_post_id) VALUES (:h,'event','Join: ZZ Beach BBQ','requested',:p)", [':h'=>$evHold, ':p'=>$evId]);
+    $evAddon = (int)db()->lastInsertId();
+    check('guest_joined_event true after joining', guest_joined_event($evHold, $evId) === true);
+    db_query("UPDATE booking_addons SET status='declined' WHERE id=:a", [':a'=>$evAddon]);
+    check('guest_joined_event false when the join was declined', guest_joined_event($evHold, $evId) === false);
+    db_query("DELETE FROM booking_addons WHERE id=:a", [':a'=>$evAddon]);
+}
+
+db_query("DELETE FROM guest_board_posts WHERE id IN (:a,:b)", [':a'=>$evId, ':b'=>$promoId]);
+
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);
