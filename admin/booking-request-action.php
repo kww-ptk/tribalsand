@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/booking.php';
 
 // Store intended URL so admin lands here after login if session expired
 session_init();
@@ -56,6 +57,13 @@ if ($type === 'addon' && in_array($status, ['confirmed', 'declined', 'cancelled'
         [':s' => $status, ':id' => $id] + $fromParams
     );
     audit_log('booking_addon.' . $status, 'booking_addon', $id, 'admin action');
+
+    $__statusMsg = request_status_message($status);
+    if ($__statusMsg !== '') {
+        try { post_admin_message((int)$cur['hold_id'], $id, $__statusMsg); }
+        catch (Throwable $e) { error_log('[request-action] status message failed: ' . $e->getMessage()); }
+    }
+
     $ok = true;
 } elseif ($type === 'change' && in_array($status, ['handled', 'declined'], true) && $id) {
     $cur = db_query("SELECT status, hold_id FROM booking_change_requests WHERE id=:id", [':id' => $id])->fetch();
