@@ -29,14 +29,27 @@ if (!in_array($kind, ['tour','transfer','itinerary','other',
 }
 $details = $str($data['details'] ?? '');
 $tour_id = null;
-$priceSnapshot = null; // set for laundry/transfer from the catalog
+$priceSnapshot = null; // set for laundry/transfer/tour from the catalog
+$paxValue      = null; // set for tour
+$schedOverride = null; // tour date → scheduled_for (set after the generic sched block)
 
 if ($kind === 'tour') {
     $slug = $str($data['tour_slug'] ?? '');
-    $tour = $slug ? fetch_tour_by_slug($slug) : false;
-    if (!$tour) { http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'Please choose a valid tour.'])); }
+    $tour = $slug ? fetch_tour_for_booking($slug, isset($hold['venue_id']) ? (int)$hold['venue_id'] : null) : false;
+    if (!$tour) { http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'That activity isn’t available for your stay.'])); }
     $tour_id = (int)$tour['id'];
-    if ($details === '') $details = $tour['name'];
+    $cap = (int)($tour['max_pax'] ?? 0);
+    $pax = (int)($data['pax'] ?? 1); if ($pax < 1) $pax = 1; if ($cap > 0 && $pax > $cap) $pax = $cap;
+    $atDate = $str($data['at_date'] ?? '');
+    $ts = $atDate !== '' ? strtotime($atDate) : false;
+    if ($ts === false || $atDate < (string)$hold['check_in'] || $atDate > (string)$hold['check_out']) {
+        http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'Please choose a date within your stay.']));
+    }
+    $paxValue      = $pax;
+    $schedOverride = date('Y-m-d H:i:s', $ts);
+    $priceSnapshot = activity_price_total($tour, $pax);
+    $note = $str($data['details'] ?? '');
+    $details = $tour['name'] . ' · ' . $pax . ' pax' . ($note !== '' ? ' — ' . $note : '');
 } elseif ($kind === 'transfer' || $kind === 'laundry') {
     $optId = (int)($data[$kind === 'laundry' ? 'service' : 'transfer'] ?? 0);
     $opt   = fetch_service_option($optId);
@@ -56,22 +69,18 @@ if ($sched !== '') {
     $ts = strtotime($sched);
     if ($ts !== false) $schedSql = date('Y-m-d H:i:s', $ts); // silently ignore an unparseable value
 }
+if ($schedOverride !== null) $schedSql = $schedOverride; // tour date wins over any preferred-time field
 
 try {
-    if (addon_price_supported()) {
-        db_query(
-            "INSERT INTO booking_addons (hold_id, kind, tour_id, details, scheduled_for, price_amount)
-             VALUES (:h, :k, :t, :d, :sf, :price)",
-            [':h'=>$hold['id'], ':k'=>$kind, ':t'=>$tour_id, ':d'=>$details, ':sf'=>$schedSql, ':price'=>$priceSnapshot]
-        );
-    } else {
-        db_query(
-            "INSERT INTO booking_addons (hold_id, kind, tour_id, details, scheduled_for)
-             VALUES (:h, :k, :t, :d, :sf)",
-            [':h'=>$hold['id'], ':k'=>$kind, ':t'=>$tour_id, ':d'=>$details, ':sf'=>$schedSql]
-        );
-    }
-    $addonId = (int)db()->lastInsertId();
+    $addonId = insert_booking_addon([
+        'hold_id'      => $hold['id'],
+        'kind'         => $kind,
+        'tour_id'      => $tour_id,
+        'details'      => $details,
+        'scheduled_for'=> $schedSql,
+        'price_amount' => $priceSnapshot,
+        'pax'          => $paxValue,
+    ]);
 
     // Auto-start a conversation for this request so guest + staff manage it in one place.
     // Never fail the request if the messages table is unavailable.
