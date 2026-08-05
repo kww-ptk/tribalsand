@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/services.php';
 
 /**
  * Generate an HMAC-SHA256 token for a hold action (confirm or decline).
@@ -48,22 +49,6 @@ function verify_guest_ref(string $ref): int|false {
     $expected = substr(hash_hmac('sha256', (string)$holdId, $secret), 0, 8);
     return hash_equals($expected, $m[2]) ? $holdId : false;
 }
-
-/** Transfer options offered on the manage page (no admin catalog — fixed list). */
-const TRANSFER_OPTIONS = [
-    'airport_to_property' => 'Airport → Property',
-    'property_to_airport' => 'Property → Airport',
-    'inter_property'      => 'Between properties',
-    'custom'              => 'Custom transfer',
-];
-
-/** Laundry service options offered on the concierge laundry form. */
-const LAUNDRY_OPTIONS = [
-    'wash_fold' => 'Wash & fold',
-    'iron'      => 'Ironing',
-    'dry_clean' => 'Dry-clean',
-    'wash_iron' => 'Wash & iron',
-];
 
 /** Absolute URL to the guest manage page for a hold (magic link). '' if secret unset. */
 function make_manage_url(int $holdId): string {
