@@ -12,7 +12,7 @@ require_owner();
 $pageTitle  = 'Guest board';
 $activeMenu = 'guest_board';
 
-$CATS   = ['update' => 'Update', 'excursion' => 'Excursion', 'promotion' => 'Promotion'];
+$CATS   = ['update' => 'Update', 'excursion' => 'Excursion', 'promotion' => 'Promotion', 'event' => 'Event'];
 $venues = db_query('SELECT id, name FROM venues ORDER BY sort_order ASC, name ASC')->fetchAll();
 $flash  = '';
 $errs   = [];
@@ -63,6 +63,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $venueId  = ($venueRaw === '' ) ? null : (int)$venueRaw;
         $sort     = (int)($_POST['sort_order'] ?? 0);
         $pub      = !empty($_POST['is_published']);
+        $evRaw    = trim((string)($_POST['event_date'] ?? ''));
+        $eventDate = $evRaw !== '' && strtotime($evRaw) !== false ? date('Y-m-d H:i:s', strtotime($evRaw)) : null;
+        $priceRaw = $_POST['price_amount'] ?? '';
+        $priceAmt = ($priceRaw === '' ) ? null : (float)$priceRaw;
+        // Date/price are events-only — keep them off other categories.
+        if ($category !== 'event') { $eventDate = null; $priceAmt = null; }
 
         if (!isset($CATS[$category])) $errs[] = 'Pick a category.';
         if ($title === '') $errs[] = 'Title is required.';
@@ -89,18 +95,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 db_query(
                     'UPDATE guest_board_posts SET venue_id=:v, category=:c, title=:t, body=:b,
-                            image_filename=:img, is_published=:p, sort_order=:s, updated_at=now() WHERE id=:id',
+                            image_filename=:img, is_published=:p, sort_order=:s,
+                            event_date=:ed, price_amount=:pa, updated_at=now() WHERE id=:id',
                     [':v'=>$venueId, ':c'=>$category, ':t'=>$title, ':b'=>$body, ':img'=>$img,
-                     ':p'=>$pub?'TRUE':'FALSE', ':s'=>$sort, ':id'=>$id]
+                     ':p'=>$pub?'TRUE':'FALSE', ':s'=>$sort, ':ed'=>$eventDate, ':pa'=>$priceAmt, ':id'=>$id]
                 );
                 audit_log('guest_board_update', 'guest_board_post', $id, $title);
                 $_SESSION['gb_flash'] = 'Post updated.';
             } else {
                 db_query(
-                    'INSERT INTO guest_board_posts (venue_id, category, title, body, image_filename, is_published, sort_order)
-                     VALUES (:v,:c,:t,:b,:img,:p,:s)',
+                    'INSERT INTO guest_board_posts (venue_id, category, title, body, image_filename, is_published, sort_order, event_date, price_amount)
+                     VALUES (:v,:c,:t,:b,:img,:p,:s,:ed,:pa)',
                     [':v'=>$venueId, ':c'=>$category, ':t'=>$title, ':b'=>$body, ':img'=>$newImage,
-                     ':p'=>$pub?'TRUE':'FALSE', ':s'=>$sort]
+                     ':p'=>$pub?'TRUE':'FALSE', ':s'=>$sort, ':ed'=>$eventDate, ':pa'=>$priceAmt]
                 );
                 $nid = (int)db()->lastInsertId();
                 audit_log('guest_board_create', 'guest_board_post', $nid, $title);
@@ -185,6 +192,13 @@ include __DIR__ . '/_layout.php';
 
       <label style="display:block;margin-bottom:12px">Body
         <textarea name="body" rows="3" style="display:block;width:100%;max-width:520px;margin-top:4px"><?= e($edit['body'] ?? '') ?></textarea>
+      </label>
+
+      <label style="display:block;margin-bottom:12px">Event date &amp; time <span style="color:var(--muted);font-weight:400">(events only)</span>
+        <input type="datetime-local" name="event_date" value="<?= e(!empty($edit['event_date']) ? date('Y-m-d\TH:i', strtotime((string)$edit['event_date'])) : '') ?>" style="display:block;margin-top:4px">
+      </label>
+      <label style="display:block;margin-bottom:12px">Price <span style="color:var(--muted);font-weight:400">(events only — blank = free)</span>
+        <input type="number" name="price_amount" step="0.01" min="0" value="<?= e(isset($edit['price_amount']) && $edit['price_amount'] !== null ? rtrim(rtrim(number_format((float)$edit['price_amount'],2,'.',''),'0'),'.') : '') ?>" style="display:block;width:160px;margin-top:4px">
       </label>
 
       <label style="display:block;margin-bottom:12px">Sort order (higher = pinned toward top)

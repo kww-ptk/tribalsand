@@ -24,7 +24,7 @@ if ((int)$cnt >= 10) { http_response_code(429); exit(json_encode(['ok'=>false,'e
 // Validate
 $kind = $str($data['kind'] ?? '');
 if (!in_array($kind, ['tour','transfer','itinerary','other',
-                      'housekeeping','amenities','maintenance','restaurant','laundry'], true)) {
+                      'housekeeping','amenities','maintenance','restaurant','laundry','event'], true)) {
     http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'Unknown add-on type.']));
 }
 $details = $str($data['details'] ?? '');
@@ -33,6 +33,7 @@ $priceSnapshot = null; // set for laundry/transfer/tour from the catalog
 $paxValue      = null; // set for tour
 $schedOverride = null; // tour date → scheduled_for (set after the generic sched block)
 $threadBody    = null; // richer opening message for the request thread (tours)
+$boardPostId   = null; // set for event joins → links the addon to its board post
 
 if ($kind === 'tour') {
     $slug = $str($data['tour_slug'] ?? '');
@@ -65,6 +66,15 @@ if ($kind === 'tour') {
     $label   = $opt['label'];
     $details = $details === '' ? $label : "{$label} — {$details}";
     $priceSnapshot = (float)$opt['price_amount'];
+} elseif ($kind === 'event') {
+    $postId = (int)($data['board_post_id'] ?? 0);
+    $ev = $postId ? fetch_board_event($postId, isset($hold['venue_id']) ? (int)$hold['venue_id'] : null) : false;
+    if (!$ev) { http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'That event isn’t available.'])); }
+    if (guest_joined_event((int)$hold['id'], $postId)) { http_response_code(409); exit(json_encode(['ok'=>false,'error'=>'You’ve already requested to join this.'])); }
+    $boardPostId   = $postId;
+    $details       = 'Join: ' . $ev['title'];
+    if (!empty($ev['event_date'])) { $schedOverride = date('Y-m-d H:i:s', strtotime((string)$ev['event_date'])); }
+    $priceSnapshot = ($ev['price_amount'] === null || $ev['price_amount'] === '' || (float)$ev['price_amount'] <= 0) ? null : (float)$ev['price_amount']; // matches the portal's "free" test (> 0)
 } else { // itinerary / other
     if ($details === '') { http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'Please add a few details.'])); }
 }
@@ -86,6 +96,7 @@ try {
         'scheduled_for'=> $schedSql,
         'price_amount' => $priceSnapshot,
         'pax'          => $paxValue,
+        'board_post_id'=> $boardPostId,
     ]);
 
     // Auto-start a conversation for this request so guest + staff manage it in one place.
