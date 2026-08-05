@@ -113,3 +113,12 @@
 .cx-tile.cx-tile--nav svg{color:var(--pa-gold);}
 .cx-tile__go{position:absolute;top:14px;right:15px;color:var(--pa-gold);font-size:17px;}
 .cx-tile__badge{position:absolute;top:10px;right:10px;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:#e05b49;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;}
+
+/* ── Request-sent popup ── */
+.pa-modal-backdrop{position:fixed;inset:0;background:rgba(16,47,58,.55);display:flex;align-items:center;justify-content:center;padding:24px;z-index:1000;}
+.pa-modal{background:#fff;border-radius:18px;max-width:360px;width:100%;padding:26px 22px;text-align:center;box-shadow:0 20px 60px rgba(16,47,58,.35);}
+.pa-modal__icon{width:56px;height:56px;margin:0 auto 14px;border-radius:50%;background:#dcfce7;color:#166534;display:flex;align-items:center;justify-content:center;}
+.pa-modal__icon svg{width:28px;height:28px;}
+.pa-modal__title{font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:500;margin:0 0 6px;color:var(--pa-ink);}
+.pa-modal__body{font-size:14px;color:var(--pa-muted);line-height:1.6;margin:0 0 20px;}
+.pa-modal__actions{display:flex;flex-direction:column;gap:8px;}

@@ -5,7 +5,7 @@ $__stayVals = fetch_venue_stay(isset($hold['venue_id']) && $hold['venue_id'] !==
 $__vals = []; foreach ($__info as $__k => $__label) { $__vals[$__k] = $__stayVals[$__k] ?? ''; }
 $__any = false; foreach ($__vals as $__v) { if ($__v !== '') { $__any = true; break; } }
 ?>
-<details class="pa-details" style="margin-top:20px">
+<details class="pa-details" style="margin-top:20px" open>
   <summary class="pa-details__s">Your stay — Wi-Fi, check-out, house rules</summary>
   <div style="padding-top:6px">
     <?php if (!$__any): ?>

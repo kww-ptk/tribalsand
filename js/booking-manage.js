@@ -1,5 +1,45 @@
 // Guest booking manage — fetch submit for add-on & change forms.
 (function () {
+  // Collapse any open concierge tile/form (after a request is sent).
+  function collapseConciergeForms() {
+    document.querySelectorAll('.cx-form.open').forEach(function (f) { f.classList.remove('open'); });
+    document.querySelectorAll('.cx-tile[aria-expanded="true"]').forEach(function (t) { t.setAttribute('aria-expanded', 'false'); });
+  }
+
+  // "Request sent" popup — offered when the request opened a message thread.
+  function showRequestSentModal(redirectUrl, form, btn) {
+    var back = document.createElement('div');
+    back.className = 'pa-modal-backdrop';
+    back.innerHTML =
+      '<div class="pa-modal" role="dialog" aria-modal="true" aria-label="Request sent">' +
+        '<div class="pa-modal__icon" aria-hidden="true">' +
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>' +
+        '</div>' +
+        '<h3 class="pa-modal__title">Request sent</h3>' +
+        '<p class="pa-modal__body">We’ve started a conversation for this — our team will confirm shortly.</p>' +
+        '<div class="pa-modal__actions">' +
+          '<button type="button" class="pa-btn pa-btn--primary" data-pa-manage>Manage request</button>' +
+          '<button type="button" class="pa-btn" data-pa-continue>Continue</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(back);
+    document.body.style.overflow = 'hidden';
+
+    function done() { back.remove(); document.body.style.overflow = ''; document.removeEventListener('keydown', onKey); }
+    function cont() {
+      done();
+      if (form) form.reset();
+      if (btn) { btn.disabled = false; if (btn.dataset.label) btn.textContent = btn.dataset.label; }
+      collapseConciergeForms();
+    }
+    function onKey(e) { if (e.key === 'Escape') cont(); }
+
+    back.querySelector('[data-pa-manage]').addEventListener('click', function () { window.location = redirectUrl; });
+    back.querySelector('[data-pa-continue]').addEventListener('click', cont);
+    back.addEventListener('click', function (e) { if (e.target === back) cont(); });
+    document.addEventListener('keydown', onKey);
+  }
+
   document.querySelectorAll('form[data-bm]').forEach(function (form) {
     form.addEventListener('submit', async function (e) {
       e.preventDefault();
@@ -14,9 +54,13 @@
         });
         var data = await res.json();
         if (data.ok) {
-          if (status) { status.textContent = form.getAttribute('data-bm-success') || 'Request sent — we’ll be in touch by email.'; status.className = 'bm-status ok'; }
-          var next = data.redirect;
-          setTimeout(function () { window.location = next ? next : window.location.href.split('#')[0]; }, 1200);
+          if (data.redirect) {
+            // A request that opened a message thread — offer Manage / Continue.
+            showRequestSentModal(data.redirect, form, btn);
+          } else {
+            if (status) { status.textContent = form.getAttribute('data-bm-success') || 'Request sent — we’ll be in touch by email.'; status.className = 'bm-status ok'; }
+            setTimeout(function () { window.location = window.location.href.split('#')[0]; }, 1200);
+          }
         } else {
           if (status) { status.textContent = data.error || 'Something went wrong. Please try again.'; status.className = 'bm-status err'; }
           if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label; }
