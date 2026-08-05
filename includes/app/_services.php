@@ -41,7 +41,9 @@ $__sched = '<label class="pa-field">Preferred time (optional)<input type="dateti
       <label class="pa-field">Laundry service
         <select name="service" required>
           <option value="">— select —</option>
-          <?php foreach (LAUNDRY_OPTIONS as $__lk => $__ll): ?><option value="<?= e($__lk) ?>"><?= e($__ll) ?></option><?php endforeach; ?>
+          <?php $__laundry = fetch_service_options('laundry'); ?>
+          <?php if (!$__laundry): ?><option value="" disabled>— none available —</option><?php endif; ?>
+          <?php foreach ($__laundry as $__o): ?><option value="<?= (int)$__o['id'] ?>"><?= e($__o['label'] . ((float)$__o['price_amount'] > 0 ? ' — ' . format_price($__o['price_amount']) : '')) ?></option><?php endforeach; ?>
         </select>
       </label>
       <label class="pa-field">Notes (items, instructions…)<textarea name="details" rows="2"></textarea></label>
@@ -49,7 +51,9 @@ $__sched = '<label class="pa-field">Preferred time (optional)<input type="dateti
       <label class="pa-field">Transfer
         <select name="transfer" required>
           <option value="">— select —</option>
-          <?php foreach (TRANSFER_OPTIONS as $__tk => $__tl): ?><option value="<?= e($__tk) ?>"><?= e($__tl) ?></option><?php endforeach; ?>
+          <?php $__transfer = fetch_service_options('transfer'); ?>
+          <?php if (!$__transfer): ?><option value="" disabled>— none available —</option><?php endif; ?>
+          <?php foreach ($__transfer as $__o): ?><option value="<?= (int)$__o['id'] ?>"><?= e($__o['label'] . ((float)$__o['price_amount'] > 0 ? ' — ' . format_price($__o['price_amount']) : '')) ?></option><?php endforeach; ?>
         </select>
       </label>
       <label class="pa-field">Details (flight no., time, pickup…)<textarea name="details" rows="2"></textarea></label>
