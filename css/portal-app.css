@@ -122,3 +122,5 @@
 .pa-modal__title{font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:500;margin:0 0 6px;color:var(--pa-ink);}
 .pa-modal__body{font-size:14px;color:var(--pa-muted);line-height:1.6;margin:0 0 20px;}
 .pa-modal__actions{display:flex;flex-direction:column;gap:8px;}
+
+.pa-tag--event{background:#ede9fe;color:#5b21b6;}
