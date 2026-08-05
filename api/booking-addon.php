@@ -29,6 +29,7 @@ if (!in_array($kind, ['tour','transfer','itinerary','other',
 }
 $details = $str($data['details'] ?? '');
 $tour_id = null;
+$priceSnapshot = null; // set for laundry/transfer from the catalog
 
 if ($kind === 'tour') {
     $slug = $str($data['tour_slug'] ?? '');
@@ -36,16 +37,15 @@ if ($kind === 'tour') {
     if (!$tour) { http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'Please choose a valid tour.'])); }
     $tour_id = (int)$tour['id'];
     if ($details === '') $details = $tour['name'];
-} elseif ($kind === 'transfer') {
-    $opt = $str($data['transfer'] ?? '');
-    if (!array_key_exists($opt, TRANSFER_OPTIONS)) { http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'Please choose a transfer option.'])); }
-    $label = TRANSFER_OPTIONS[$opt];
+} elseif ($kind === 'transfer' || $kind === 'laundry') {
+    $optId = (int)($data[$kind === 'laundry' ? 'service' : 'transfer'] ?? 0);
+    $opt   = fetch_service_option($optId);
+    if (!$opt || $opt['service'] !== $kind || !$opt['is_active']) {
+        http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'Please choose a valid option.']));
+    }
+    $label   = $opt['label'];
     $details = $details === '' ? $label : "{$label} — {$details}";
-} elseif ($kind === 'laundry') {
-    $opt = $str($data['service'] ?? '');
-    if (!array_key_exists($opt, LAUNDRY_OPTIONS)) { http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'Please choose a laundry service.'])); }
-    $label   = LAUNDRY_OPTIONS[$opt];
-    $details = $details === '' ? $label : "{$label} — {$details}";
+    $priceSnapshot = (float)$opt['price_amount'];
 } else { // itinerary / other
     if ($details === '') { http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'Please add a few details.'])); }
 }
@@ -58,11 +58,19 @@ if ($sched !== '') {
 }
 
 try {
-    db_query(
-        "INSERT INTO booking_addons (hold_id, kind, tour_id, details, scheduled_for)
-         VALUES (:h, :k, :t, :d, :sf)",
-        [':h'=>$hold['id'], ':k'=>$kind, ':t'=>$tour_id, ':d'=>$details, ':sf'=>$schedSql]
-    );
+    if (addon_price_supported()) {
+        db_query(
+            "INSERT INTO booking_addons (hold_id, kind, tour_id, details, scheduled_for, price_amount)
+             VALUES (:h, :k, :t, :d, :sf, :price)",
+            [':h'=>$hold['id'], ':k'=>$kind, ':t'=>$tour_id, ':d'=>$details, ':sf'=>$schedSql, ':price'=>$priceSnapshot]
+        );
+    } else {
+        db_query(
+            "INSERT INTO booking_addons (hold_id, kind, tour_id, details, scheduled_for)
+             VALUES (:h, :k, :t, :d, :sf)",
+            [':h'=>$hold['id'], ':k'=>$kind, ':t'=>$tour_id, ':d'=>$details, ':sf'=>$schedSql]
+        );
+    }
     $addonId = (int)db()->lastInsertId();
 
     // Auto-start a conversation for this request so guest + staff manage it in one place.
