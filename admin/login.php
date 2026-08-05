@@ -6,7 +6,7 @@ session_init();
 
 // Already logged in
 if (!empty($_SESSION['admin_id'])) {
-    header('Location: /admin/dashboard.php');
+    header('Location: ' . admin_home_url());
     exit;
 }
 
@@ -16,7 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (($_POST['do'] ?? '') === 'staff') {
         // Onsite staff — access-code sign-in.
         if (login_staff($_POST['staff_code'] ?? '', client_ip())) {
-            header('Location: /admin/concierge-desk.php');
+            header('Location: /admin/frontdesk.php');
             exit;
         }
         $error = 'Invalid or inactive staff code.';
