@@ -35,6 +35,10 @@ $admin = current_admin();
     <div style="padding:8px 12px;font-size:12px;color:#9ca3af"><?= e($__me['name'] ?? 'Staff') ?> <span class="badge badge--blue" style="font-size:10px">Staff</span></div>
     <?php endif; ?>
     <nav class="sidebar__nav">
+      <a href="/admin/frontdesk.php"    class="sidebar__link <?= ($activeMenu??'')==='frontdesk'    ? 'is-active':'' ?>">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 3v3h6V3M8 11h8M8 15h5"/></svg>
+        Front desk
+      </a>
       <?php if (!is_staff()): ?>
       <a href="/admin/dashboard.php"    class="sidebar__link <?= ($activeMenu??'')==='dashboard'    ? 'is-active':'' ?>">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>

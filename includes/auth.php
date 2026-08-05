@@ -55,6 +55,9 @@ function current_admin(): array|false {
 function admin_role(): string { $a = current_admin(); return ($a && !empty($a['role'])) ? $a['role'] : 'staff'; }
 function is_staff(): bool { return admin_role() === 'staff'; }
 
+/** Post-login home for the current admin: staff → Front Desk, owner → dashboard. */
+function admin_home_url(): string { return is_staff() ? '/admin/frontdesk.php' : '/admin/dashboard.php'; }
+
 /** Venue ids a staff user may see; null = all (owner). */
 function admin_venue_ids(): ?array {
     if (!is_staff()) return null;
@@ -65,7 +68,7 @@ function admin_venue_ids(): ?array {
 /** Owner-only gate. Staff are redirected to the concierge desk. */
 function require_owner(): void {
     require_login();
-    if (is_staff()) { $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'That area is not available for staff accounts.']; header('Location: /admin/concierge-desk.php'); exit; }
+    if (is_staff()) { $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'That area is not available for staff accounts.']; header('Location: /admin/frontdesk.php'); exit; }
 }
 
 /** True if current admin may act on this hold (owner: always; staff: hold's venue in scope). */

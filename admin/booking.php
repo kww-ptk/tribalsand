@@ -17,7 +17,7 @@ $hold = $holdId ? db_query(
 $flash = null;
 if (!empty($_SESSION['hold_flash'])) { $flash = $_SESSION['hold_flash']; unset($_SESSION['hold_flash']); }
 if (!$hold) { $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Booking not found.']; header('Location: /admin/holds.php'); exit; }
-if (is_staff() && !staff_can_hold($holdId)) { $_SESSION['hold_flash']=['type'=>'error','msg'=>'That booking is at a property you don’t manage.']; header('Location: /admin/concierge-desk.php'); exit; }
+if (is_staff() && !staff_can_hold($holdId)) { $_SESSION['hold_flash']=['type'=>'error','msg'=>'That booking is at a property you don’t manage.']; header('Location: ' . admin_home_url()); exit; }
 
 $tab = $_GET['tab'] ?? 'requests';
 if (!in_array($tab, ['requests','messages','plan','details'], true)) $tab = 'requests';
