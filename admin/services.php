@@ -54,6 +54,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             foreach ((array)(json_decode($_POST['order'] ?? '[]', true) ?: []) as $o => $iid) {
                 db_query("UPDATE service_options SET sort_order=:o WHERE id=:id AND service=:s", [':o'=>(int)$o, ':id'=>(int)$iid, ':s'=>$svc]);
             }
+            audit_log('service_option.reorder', 'service_option', 0, $svc);
         }
         header('Content-Type: application/json'); exit(json_encode(['ok'=>true]));
     }
