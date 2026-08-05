@@ -85,7 +85,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($act === 'bill_set_price') {
         $aid   = (int)($_POST['addon_id'] ?? 0);
         $price = ($_POST['price_amount'] ?? '') === '' ? null : (float)$_POST['price_amount'];
-        if ($aid && ($price === null || $price >= 0)) {
+        if ($aid && ($price === null || ($price >= 0 && $price < 100000000))) { // NUMERIC(10,2) ceiling
             db_query("UPDATE booking_addons SET price_amount=:p WHERE id=:a AND hold_id=:h", [':p'=>$price, ':a'=>$aid, ':h'=>$holdId]);
             audit_log('bill.set_price', 'booking_addon', $aid, '');
         }
@@ -94,7 +94,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($act === 'bill_add') {
         $label  = trim((string)($_POST['label'] ?? ''));
         $amount = (float)($_POST['amount'] ?? 0);
-        if ($label !== '' && $amount >= 0) {
+        if ($label !== '' && $amount >= 0 && $amount < 100000000) { // NUMERIC(10,2) ceiling
             db_query("INSERT INTO bill_items (hold_id, label, amount) VALUES (:h,:l,:a)", [':h'=>$holdId, ':l'=>mb_substr($label,0,200), ':a'=>$amount]);
             audit_log('bill.add', 'hold', $holdId, $label);
         }
