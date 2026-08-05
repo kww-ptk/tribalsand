@@ -38,6 +38,23 @@ if ($__threadParam === null):
     $__msgs = fetch_thread_messages($__hid, $__addonId);
 ?>
 <p style="margin:0 0 14px"><a href="<?= $__u ?>" class="pa-back">&larr; All messages</a></p>
+<?php if ($__addonId !== null && ($__addon = fetch_addon_for_thread($__hid, $__addonId))): ?>
+<div class="pa-card" style="margin-bottom:14px">
+  <div class="pa-card__body">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px">
+      <p class="pa-card__title" style="margin:0"><?= e(addon_label($__addon)) ?></p>
+      <?php if (!empty($__addon['status'])): ?><span class="pa-pill pa-pill--<?= e($__addon['status']) ?>"><?= e(addon_status_label($__addon['status'])) ?></span><?php endif; ?>
+    </div>
+    <?php
+      $__meta = [];
+      if (($__addon['kind'] ?? '') === 'tour' && (int)($__addon['pax'] ?? 0) > 0) $__meta[] = (int)$__addon['pax'] . ' pax';
+      if (!empty($__addon['scheduled_for'])) $__meta[] = date('D j M, H:i', strtotime((string)$__addon['scheduled_for']));
+      if (isset($__addon['price_amount']) && $__addon['price_amount'] !== null && (float)$__addon['price_amount'] > 0) $__meta[] = format_price((float)$__addon['price_amount']);
+    ?>
+    <?php if ($__meta): ?><p class="pa-card__meta" style="display:block;margin-top:4px;color:var(--pa-muted)"><?= e(implode(' · ', $__meta)) ?></p><?php endif; ?>
+  </div>
+</div>
+<?php endif; ?>
 <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
   <?php if (!$__msgs): ?><p class="pa-sub">No messages yet. Send the first one below.</p><?php endif; ?>
   <?php foreach ($__msgs as $__m): $__me = $__m['sender'] === 'guest'; ?>

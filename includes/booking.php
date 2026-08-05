@@ -172,7 +172,7 @@ function fetch_itinerary_items(int $holdId): array {
 function fetch_message_threads(int $holdId): array {
     $threads = [['addon_id'=>null,'kind'=>'general','details'=>'','status'=>'','tour_name'=>null]];
     $addons = db_query(
-        "SELECT ba.id AS addon_id, ba.kind, ba.details, ba.status, t.name AS tour_name
+        "SELECT ba.id AS addon_id, ba.kind, ba.details, ba.status, ba.created_at, t.name AS tour_name
          FROM booking_addons ba LEFT JOIN tours t ON t.id = ba.tour_id
          WHERE ba.hold_id = :h ORDER BY ba.created_at DESC", [':h'=>$holdId]
     )->fetchAll();
@@ -190,6 +190,16 @@ function fetch_message_threads(int $holdId): array {
         $th['last_at']      = $last['created_at'] ?? null;
     }
     unset($th);
+
+    // General thread stays pinned; request threads sort by most-recent activity
+    // (last message, falling back to the request's creation time).
+    $general = array_shift($threads);
+    usort($threads, function ($a, $b) {
+        $ka = (string)($a['last_at'] ?? $a['created_at'] ?? '');
+        $kb = (string)($b['last_at'] ?? $b['created_at'] ?? '');
+        return strcmp($kb, $ka); // most recent first
+    });
+    array_unshift($threads, $general);
     return $threads;
 }
 
@@ -433,6 +443,36 @@ function seed_request_message(int $holdId, int $addonId, string $body): void {
          VALUES (:h, :a, 'guest', :b, TRUE, FALSE)",
         [':h' => $holdId, ':a' => $addonId, ':b' => $body]
     );
+}
+
+/** Post an admin (staff/system) message into a request/general thread. Unread for the guest. */
+function post_admin_message(int $holdId, ?int $addonId, string $body): void {
+    db_query(
+        "INSERT INTO booking_messages (hold_id, addon_id, sender, body, read_by_guest, read_by_admin)
+         VALUES (:h, :a, 'admin', :b, FALSE, TRUE)",
+        [':h' => $holdId, ':a' => $addonId, ':b' => $body]
+    );
+}
+
+/** Fixed auto-message posted when staff change a request's status. '' = post nothing. */
+function request_status_message(string $status): string {
+    return [
+        'confirmed' => 'Confirmed ✓ — we’ll take care of it.',
+        'completed' => 'Marked as done ✓',
+        'declined'  => 'Sorry, we can’t fulfil this request.',
+        'cancelled' => 'This request was cancelled.',
+    ][$status] ?? '';
+}
+
+/** The addon behind a request thread (with tour name), hold-scoped — for the conversation header. */
+function fetch_addon_for_thread(int $holdId, int $addonId): array|false {
+    $r = db_query(
+        "SELECT ba.*, t.name AS tour_name
+         FROM booking_addons ba LEFT JOIN tours t ON t.id = ba.tour_id
+         WHERE ba.id = :a AND ba.hold_id = :h",
+        [':a' => $addonId, ':h' => $holdId]
+    )->fetch();
+    return $r ?: false;
 }
 
 /**

@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/booking.php';
 
 // Store intended URL so admin lands here after login if session expired
 session_init();
@@ -51,11 +52,22 @@ if ($type === 'addon' && in_array($status, ['confirmed', 'declined', 'cancelled'
     $fromParams = [];
     $fromNames  = [];
     foreach ($allowedFrom as $i => $s) { $n = ":from{$i}"; $fromNames[] = $n; $fromParams[$n] = $s; }
-    db_query(
+    $upd = db_query(
         "UPDATE booking_addons SET status=:s WHERE id=:id AND status IN (" . implode(',', $fromNames) . ")",
         [':s' => $status, ':id' => $id] + $fromParams
     );
-    audit_log('booking_addon.' . $status, 'booking_addon', $id, 'admin action');
+    // Only fire side effects for the request that actually transitioned here — a
+    // concurrent double-submit updates 0 rows on the loser, so it won't double
+    // audit-log or double-post the status message.
+    if ($upd->rowCount() === 1) {
+        audit_log('booking_addon.' . $status, 'booking_addon', $id, 'admin action');
+        $__statusMsg = request_status_message($status);
+        if ($__statusMsg !== '') {
+            try { post_admin_message((int)$cur['hold_id'], $id, $__statusMsg); }
+            catch (Throwable $e) { error_log('[request-action] status message failed: ' . $e->getMessage()); }
+        }
+    }
+
     $ok = true;
 } elseif ($type === 'change' && in_array($status, ['handled', 'declined'], true) && $id) {
     $cur = db_query("SELECT status, hold_id FROM booking_change_requests WHERE id=:id", [':id' => $id])->fetch();
