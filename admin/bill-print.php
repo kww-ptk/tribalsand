@@ -26,7 +26,8 @@ $total = bill_total($holdId);
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 <title>Bill · <?= e($hold['guest_name'] ?: 'Guest') ?></title>
 <style>
-  body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#1b2a2f;max-width:640px;margin:24px auto;padding:0 20px}
+  html{background:#fff}
+  body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#1b2a2f;background:#fff;max-width:640px;margin:24px auto;padding:24px 20px}
   h1{font-size:22px;margin:0 0 4px}
   .muted{color:#6b7280;font-size:13px}
   h2{font-size:15px;margin:22px 0 0}
