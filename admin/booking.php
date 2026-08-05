@@ -20,7 +20,7 @@ if (!$hold) { $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Booking not fou
 if (is_staff() && !staff_can_hold($holdId)) { $_SESSION['hold_flash']=['type'=>'error','msg'=>'That booking is at a property you don’t manage.']; header('Location: ' . admin_home_url()); exit; }
 
 $tab = $_GET['tab'] ?? 'requests';
-if (!in_array($tab, ['requests','messages','plan','details'], true)) $tab = 'requests';
+if (!in_array($tab, ['requests','messages','plan','bill','details'], true)) $tab = 'requests';
 if (is_staff() && $tab === 'details') $tab = 'requests';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -82,6 +82,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Plan item removed.'];
         header("Location: /admin/booking.php?hold=$holdId&tab=plan"); exit;
     }
+    if ($act === 'bill_set_price') {
+        $aid   = (int)($_POST['addon_id'] ?? 0);
+        $price = ($_POST['price_amount'] ?? '') === '' ? null : (float)$_POST['price_amount'];
+        if ($aid && ($price === null || $price >= 0)) {
+            db_query("UPDATE booking_addons SET price_amount=:p WHERE id=:a AND hold_id=:h", [':p'=>$price, ':a'=>$aid, ':h'=>$holdId]);
+            audit_log('bill.set_price', 'booking_addon', $aid, '');
+        }
+        header("Location: /admin/booking.php?hold=$holdId&tab=bill"); exit;
+    }
+    if ($act === 'bill_add') {
+        $label  = trim((string)($_POST['label'] ?? ''));
+        $amount = (float)($_POST['amount'] ?? 0);
+        if ($label !== '' && $amount >= 0) {
+            db_query("INSERT INTO bill_items (hold_id, label, amount) VALUES (:h,:l,:a)", [':h'=>$holdId, ':l'=>mb_substr($label,0,200), ':a'=>$amount]);
+            audit_log('bill.add', 'hold', $holdId, $label);
+        }
+        header("Location: /admin/booking.php?hold=$holdId&tab=bill"); exit;
+    }
+    if ($act === 'bill_del') {
+        db_query("DELETE FROM bill_items WHERE id=:i AND hold_id=:h", [':i'=>(int)($_POST['item_id'] ?? 0), ':h'=>$holdId]);
+        audit_log('bill.del', 'hold', $holdId, '');
+        header("Location: /admin/booking.php?hold=$holdId&tab=bill"); exit;
+    }
 }
 
 $pageTitle  = 'Booking';
@@ -106,7 +129,7 @@ include __DIR__ . '/_layout.php';
 
 <div class="card" style="margin-bottom:16px"><div class="card__body" style="display:flex;gap:8px;flex-wrap:wrap">
   <?php
-  $__wtabs = ['requests'=>'Requests','messages'=>'Messages','plan'=>'Plan','details'=>'Details'];
+  $__wtabs = ['requests'=>'Requests','messages'=>'Messages','plan'=>'Plan','bill'=>'Bill','details'=>'Details'];
   if (is_staff()) unset($__wtabs['details']);
   foreach ($__wtabs as $tk=>$tl):
     $b = $tk==='requests' && $openReq ? " ($openReq)" : ($tk==='messages' && $unreadMsg ? " ($unreadMsg)" : '');
@@ -121,6 +144,8 @@ include __DIR__ . '/_layout.php';
   <?php include __DIR__ . '/_ws_messages.php'; ?>
 <?php elseif ($tab === 'plan'): ?>
   <?php include __DIR__ . '/_ws_plan.php'; ?>
+<?php elseif ($tab === 'bill'): ?>
+  <?php include __DIR__ . '/_ws_bill.php'; ?>
 <?php else: ?>
   <div class="card"><div class="card__body">
     <table class="data-table" style="max-width:520px">
