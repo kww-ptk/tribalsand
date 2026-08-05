@@ -294,15 +294,82 @@ function fetch_booking_change_requests(int $holdId): array {
     )->fetchAll();
 }
 
-/** Published tours with their hero image + fields, for the portal Activities page. */
-function fetch_portal_activities(): array {
-    return db_query(
-        "SELECT t.id, t.slug, t.name, t.category, t.tag_label, t.duration, t.short_desc,
-                (SELECT filename FROM tour_images ti WHERE ti.tour_id = t.id AND ti.is_hero = TRUE LIMIT 1) AS hero
-         FROM tours t
-         WHERE t.is_published = TRUE
-         ORDER BY t.sort_order ASC, t.name ASC"
-    )->fetchAll();
+/**
+ * Published activities for the portal, scoped to a property. $venueId null = all.
+ * A tour with no tour_venues rows shows everywhere; otherwise only at its venues.
+ * The venue clause is added in PHP (not `:vid IS NULL`) so :vid binds exactly once
+ * — pgsql can't infer the type of a NULL-compared placeholder and won't reuse names.
+ */
+function fetch_portal_activities(?int $venueId = null): array {
+    $venueClause = '';
+    $params = [];
+    if ($venueId !== null) {
+        $venueClause = " AND (NOT EXISTS (SELECT 1 FROM tour_venues tv WHERE tv.tour_id = t.id)
+                              OR EXISTS  (SELECT 1 FROM tour_venues tv WHERE tv.tour_id = t.id AND tv.venue_id = :vid))";
+        $params[':vid'] = $venueId;
+    }
+    try {
+        return db_query(
+            "SELECT t.id, t.slug, t.name, t.category, t.tag_label, t.duration, t.short_desc, t.long_desc,
+                    t.price_amount, t.price_per_person, t.max_pax, t.whats_included,
+                    (SELECT filename FROM tour_images ti WHERE ti.tour_id = t.id AND ti.is_hero = TRUE LIMIT 1) AS hero
+             FROM tours t
+             WHERE t.is_published = TRUE{$venueClause}
+             ORDER BY t.sort_order ASC, t.name ASC",
+            $params
+        )->fetchAll();
+    } catch (Throwable $e) { return []; }
+}
+
+/** A published activity available at $venueId, by slug — else false (request-time validation). */
+function fetch_tour_for_booking(string $slug, ?int $venueId): array|false {
+    $venueClause = '';
+    $params = [':slug' => $slug];
+    if ($venueId !== null) {
+        $venueClause = " AND (NOT EXISTS (SELECT 1 FROM tour_venues tv WHERE tv.tour_id = t.id)
+                              OR EXISTS  (SELECT 1 FROM tour_venues tv WHERE tv.tour_id = t.id AND tv.venue_id = :vid))";
+        $params[':vid'] = $venueId;
+    }
+    try {
+        $r = db_query(
+            "SELECT t.* FROM tours t WHERE t.slug = :slug AND t.is_published = TRUE{$venueClause}",
+            $params
+        )->fetch();
+    } catch (Throwable $e) { return false; }
+    return $r ?: false;
+}
+
+/** Venue ids an activity is offered at (empty = all properties). For the admin checklist. */
+function activity_venue_ids(int $tourId): array {
+    try {
+        return array_map('intval', db_query("SELECT venue_id FROM tour_venues WHERE tour_id = :t", [':t' => $tourId])->fetchAll(PDO::FETCH_COLUMN));
+    } catch (Throwable $e) { return []; }
+}
+
+/** Booking total for an activity given pax: per-person × pax, or the flat amount; null when unpriced. */
+function activity_price_total(array $tour, int $pax): ?float {
+    if (!isset($tour['price_amount']) || $tour['price_amount'] === null || $tour['price_amount'] === '') return null;
+    $amt = (float) $tour['price_amount'];
+    $pp  = $tour['price_per_person'] ?? false;
+    $perPerson = ($pp === true || $pp === 't' || $pp === 'true' || $pp === 1 || $pp === '1');
+    return $perPerson ? $amt * max(1, $pax) : $amt;
+}
+
+/**
+ * Insert a booking_addon, including price_amount / pax only when those columns
+ * exist (so every kind works pre- and post-migration). Returns the new id.
+ */
+function insert_booking_addon(array $d): int {
+    $cols = ['hold_id', 'kind', 'tour_id', 'details', 'scheduled_for'];
+    $vals = [':h', ':k', ':t', ':d', ':sf'];
+    $p = [
+        ':h' => $d['hold_id'], ':k' => $d['kind'], ':t' => $d['tour_id'] ?? null,
+        ':d' => $d['details'] ?? '', ':sf' => $d['scheduled_for'] ?? null,
+    ];
+    if (addon_price_supported()) { $cols[] = 'price_amount'; $vals[] = ':price'; $p[':price'] = $d['price_amount'] ?? null; }
+    if (addon_pax_supported())   { $cols[] = 'pax';          $vals[] = ':pax';   $p[':pax']   = $d['pax'] ?? null; }
+    db_query('INSERT INTO booking_addons (' . implode(',', $cols) . ') VALUES (' . implode(',', $vals) . ')', $p);
+    return (int) db()->lastInsertId();
 }
 
 /**
