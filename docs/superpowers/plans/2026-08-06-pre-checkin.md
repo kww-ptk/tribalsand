@@ -1146,9 +1146,35 @@ git commit -m "feat(storage): content-type/folder params + presigned GET for pri
 ### Task 12: Passport upload endpoint
 
 **Files:**
+- Modify: `includes/storage.php` (add private put/delete helpers)
 - Create: `api/checkin-upload.php`
 
-- [ ] **Step 1: Write the endpoint**
+- [ ] **Step 1: Add private-storage helpers to `includes/storage.php`**
+
+Private files are stored by an EXACT key (never a public URL, no folder-prefixing — `$key` already contains the full `checkin/…` path, so `storage_put()`'s `$folder` param would double-prefix). Append:
+
+```php
+/** Store a file at an exact PRIVATE key (never a public URL). True on success. */
+function storage_put_private(string $local_path, string $key, string $content_type): bool {
+    $env = parse_env();
+    if (_r2_configured($env)) return _r2_put($local_path, $key, $env, $content_type) !== false;
+    $dest = __DIR__ . '/../assets/img/' . $key;   // matches storage_local_path()
+    if (!is_dir(dirname($dest))) mkdir(dirname($dest), 0755, true);
+    if (copy($local_path, $dest)) { @unlink($local_path); return true; }
+    return false;
+}
+
+/** Delete a private object by its exact key (R2 when configured, else local). */
+function storage_delete_private(string $key): void {
+    if ($key === '') return;
+    $env = parse_env();
+    if (_r2_configured($env)) { _r2_delete($key, $env); return; }
+    $path = __DIR__ . '/../assets/img/' . $key;
+    if (is_file($path)) @unlink($path);
+}
+```
+
+- [ ] **Step 2: Write the endpoint**
 
 ```php
 <?php
@@ -1177,14 +1203,13 @@ $mime = (new finfo(FILEINFO_MIME_TYPE))->file($f['tmp_name']) ?: '';
 if (!isset($allowed[$mime])) { http_response_code(400); echo json_encode(['error' => 'type not allowed']); exit; }
 
 $key = 'checkin/' . $holdId . '/' . bin2hex(random_bytes(12)) . '.' . $allowed[$mime];
-$stored = storage_put($f['tmp_name'], $key, $mime, 'checkin');   // R2 returns URL/key; local returns relative key
-if ($stored === false) { http_response_code(500); echo json_encode(['error' => 'store failed']); exit; }
+if (!storage_put_private($f['tmp_name'], $key, $mime)) { http_response_code(500); echo json_encode(['error' => 'store failed']); exit; }
 
 // Store the KEY (not a public URL) so viewing always goes through the admin proxy.
 $lead = checkin_lead_guest($holdId);
 if ($lead) {
     // Remove the previous file if one existed.
-    if (!empty($lead['passport_file_key'])) { try { storage_delete($lead['passport_file_key']); } catch (Throwable $e) {} }
+    if (!empty($lead['passport_file_key'])) { try { storage_delete_private($lead['passport_file_key']); } catch (Throwable $e) {} }
     db_query('UPDATE checkin_guests SET passport_file_key = :k WHERE id = :id', [':k' => $key, ':id' => (int)$lead['id']]);
 } else {
     db_query('INSERT INTO checkin_guests (hold_id, is_lead, passport_file_key) VALUES (:h, TRUE, :k)', [':h' => $holdId, ':k' => $key]);
@@ -1192,18 +1217,18 @@ if ($lead) {
 echo json_encode(['ok' => true]);
 ```
 
-- [ ] **Step 2: Verify manually**
+- [ ] **Step 3: Verify manually**
 
 In the wizard's passport step, choose a JPG/PNG/PDF ≤8 MB. Expected: state flips to "Uploaded ✓". Confirm the key (not a URL) is stored:
 ```bash
 php -r 'require "includes/db.php"; echo db_query("SELECT passport_file_key FROM checkin_guests ORDER BY id DESC LIMIT 1")->fetchColumn(), "\n";'
 ```
-Expected: `checkin/<holdId>/<hex>.jpg` (starts with `checkin/`, not `http`). Try a `.txt` → expect a 400 JSON error and no DB change.
+Expected: `checkin/<holdId>/<hex>.jpg` (starts with `checkin/`, not `http`). Try a `.txt` → expect a 400 JSON error and no DB change. In local-fallback mode the file lands at `assets/img/checkin/<holdId>/<hex>.jpg` (which `storage_local_path()` resolves to — the proxy in Task 13 reads it there).
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
-git add api/checkin-upload.php
+git add includes/storage.php api/checkin-upload.php
 git commit -m "feat(checkin): private passport upload endpoint (typed + size-limited)"
 ```
 
