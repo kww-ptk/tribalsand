@@ -2,25 +2,62 @@
 declare(strict_types=1);
 
 // Upload a local file to storage. Returns the stored key (relative path or full URL).
-function storage_put(string $local_path, string $filename): string|false {
+function storage_put(string $local_path, string $filename, string $content_type = 'image/jpeg', string $folder = 'rooms'): string|false {
     $env = parse_env();
 
     if (_r2_configured($env)) {
-        $url = _r2_put($local_path, $filename, $env);
+        $url = _r2_put($local_path, $filename, $env, $content_type);
         return $url ?: false;
     }
 
-    // Local fallback — store in assets/img/rooms/
-    $dest = __DIR__ . '/../assets/img/rooms/' . $filename;
+    // Local fallback — store in assets/img/<folder>/
+    $dest = __DIR__ . '/../assets/img/' . $folder . '/' . $filename;
     if (!is_dir(dirname($dest))) {
         mkdir(dirname($dest), 0755, true);
     }
 
     if (copy($local_path, $dest)) {
         @unlink($local_path);
-        return 'rooms/' . $filename;
+        return $folder . '/' . $filename;
     }
     return false;
+}
+
+/** Presigned GET URL (default 5 min) for a private R2 object key. '' if R2 unconfigured. */
+function storage_signed_get_url(string $key, int $ttl = 300): string {
+    $env = parse_env();
+    if (!_r2_configured($env)) return '';   // local fallback: served by admin proxy reading disk
+    $account_id = $env['R2_ACCOUNT_ID'];
+    $bucket     = $env['R2_BUCKET'] ?? 'tribalsand-images';
+    $access_key = $env['R2_ACCESS_KEY'];
+    $secret_key = $env['R2_SECRET_KEY'];
+    $host   = "{$account_id}.r2.cloudflarestorage.com";
+    $dt     = gmdate('Ymd\THis\Z');
+    $d      = gmdate('Ymd');
+    $region = 'auto'; $service = 's3';
+    $scope  = "{$d}/{$region}/{$service}/aws4_request";
+    $q = [
+        'X-Amz-Algorithm'     => 'AWS4-HMAC-SHA256',
+        'X-Amz-Credential'    => "{$access_key}/{$scope}",
+        'X-Amz-Date'          => $dt,
+        'X-Amz-Expires'       => (string)$ttl,
+        'X-Amz-SignedHeaders' => 'host',
+    ];
+    ksort($q);
+    $canon_query = http_build_query($q, '', '&', PHP_QUERY_RFC3986);
+    $canonical_request = "GET\n/{$bucket}/{$key}\n{$canon_query}\nhost:{$host}\n\nhost\nUNSIGNED-PAYLOAD";
+    $string_to_sign = "AWS4-HMAC-SHA256\n{$dt}\n{$scope}\n" . hash('sha256', $canonical_request);
+    $k_date=hash_hmac('sha256',$d,"AWS4{$secret_key}",true);
+    $k_region=hash_hmac('sha256',$region,$k_date,true);
+    $k_service=hash_hmac('sha256',$service,$k_region,true);
+    $k_signing=hash_hmac('sha256','aws4_request',$k_service,true);
+    $sig=hash_hmac('sha256',$string_to_sign,$k_signing);
+    return "https://{$host}/{$bucket}/{$key}?{$canon_query}&X-Amz-Signature={$sig}";
+}
+
+/** Absolute local path for a key stored via the filesystem fallback. */
+function storage_local_path(string $key): string {
+    return __DIR__ . '/../assets/img/' . $key;
 }
 
 // Delete a stored file by its stored key (relative path or full URL).
@@ -49,7 +86,7 @@ function _r2_configured(array $env): bool {
     return !empty($env['R2_ACCOUNT_ID']) && !empty($env['R2_ACCESS_KEY']) && !empty($env['R2_SECRET_KEY']);
 }
 
-function _r2_put(string $local_path, string $key, array $env): string|false {
+function _r2_put(string $local_path, string $key, array $env, string $content_type = 'image/jpeg'): string|false {
     $account_id = $env['R2_ACCOUNT_ID'];
     $bucket     = $env['R2_BUCKET'] ?? 'tribalsand-images';
     $access_key = $env['R2_ACCESS_KEY'];
@@ -58,7 +95,7 @@ function _r2_put(string $local_path, string $key, array $env): string|false {
 
     $host     = "{$account_id}.r2.cloudflarestorage.com";
     $body     = file_get_contents($local_path);
-    $ct       = 'image/jpeg';
+    $ct       = $content_type;
     $dt       = gmdate('Ymd\THis\Z');
     $d        = gmdate('Ymd');
     $phash    = hash('sha256', $body);
