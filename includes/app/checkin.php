@@ -22,6 +22,10 @@ $arrDate = !empty($data['arrival_at']) ? date('Y-m-d\TH:i', strtotime((string)$d
 </div>
 <?php endif; ?>
 
+<?php if (!empty($_SESSION['ci_error'])): ?>
+<div class="bk-lookup-error" style="max-width:520px"><?= e($_SESSION['ci_error']) ?></div>
+<?php unset($_SESSION['ci_error']); endif; ?>
+
 <form id="ciForm" class="ci-wizard<?= $done ? ' ci-done' : '' ?>" method="post" action="/api/checkin-save.php" enctype="multipart/form-data">
   <?= csrf_field() ?>
   <input type="hidden" name="ref" value="<?= e($ref) ?>">
