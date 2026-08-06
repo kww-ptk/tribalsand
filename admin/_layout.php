@@ -28,7 +28,7 @@ $__roleBadge = $__isManager ? 'Manager' : (is_staff() ? ucfirst((string)$__job) 
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><?= e($pageTitle ?? 'Admin') ?> — Tribal Sand Admin</title>
-  <link rel="stylesheet" href="/admin/assets/admin.css">
+  <link rel="stylesheet" href="/admin/assets/admin.css?v=<?= filemtime(__DIR__ . '/assets/admin.css') ?>">
 </head>
 <body class="admin-body">
 
