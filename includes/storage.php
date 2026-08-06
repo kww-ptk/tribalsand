@@ -177,3 +177,22 @@ function _r2_delete(string $key, array $env): void {
 
     @file_get_contents("https://{$host}/{$bucket}/{$key}", false, $ctx);
 }
+
+/** Store a file at an exact PRIVATE key (never a public URL). True on success. */
+function storage_put_private(string $local_path, string $key, string $content_type): bool {
+    $env = parse_env();
+    if (_r2_configured($env)) return _r2_put($local_path, $key, $env, $content_type) !== false;
+    $dest = __DIR__ . '/../assets/img/' . $key;   // matches storage_local_path()
+    if (!is_dir(dirname($dest))) mkdir(dirname($dest), 0755, true);
+    if (copy($local_path, $dest)) { @unlink($local_path); return true; }
+    return false;
+}
+
+/** Delete a private object by its exact key (R2 when configured, else local). */
+function storage_delete_private(string $key): void {
+    if ($key === '') return;
+    $env = parse_env();
+    if (_r2_configured($env)) { _r2_delete($key, $env); return; }
+    $path = __DIR__ . '/../assets/img/' . $key;
+    if (is_file($path)) @unlink($path);
+}
