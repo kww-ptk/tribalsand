@@ -76,7 +76,7 @@ include __DIR__ . '/_layout.php';
   <a href="/admin/dashboard.php" class="btn-outline btn-sm">← Dashboard</a>
 </div>
 
-<?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?>"><?= e($flash['msg']) ?></div><?php endif; ?>
+<?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?> is-flash"><?= e($flash['msg']) ?></div><?php endif; ?>
 
 <div class="card" style="margin-bottom:16px">
   <div class="card__body" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">

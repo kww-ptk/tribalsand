@@ -1,5 +1,27 @@
 // Guest booking manage — fetch submit for add-on & change forms.
 (function () {
+  // Toast — a small card that slides up from the bottom, then fades out.
+  function toast(message, type) {
+    var wrap = document.getElementById('ts-toasts');
+    if (!wrap) { wrap = document.createElement('div'); wrap.id = 'ts-toasts'; document.body.appendChild(wrap); }
+    var t = document.createElement('div');
+    t.className = 'ts-toast ts-toast--' + (type === 'err' ? 'err' : 'ok');
+    t.setAttribute('role', 'status');
+    var icon = document.createElement('span'); icon.className = 'ts-toast__icon'; icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = type === 'err' ? '✕' : '✓';
+    var msg = document.createElement('span'); msg.className = 'ts-toast__msg'; msg.textContent = message;
+    var x = document.createElement('button'); x.type = 'button'; x.className = 'ts-toast__x';
+    x.setAttribute('aria-label', 'Dismiss'); x.textContent = '×';
+    t.appendChild(icon); t.appendChild(msg); t.appendChild(x);
+    wrap.appendChild(t);
+    requestAnimationFrame(function () { t.classList.add('is-in'); });
+    var timer;
+    function remove() { clearTimeout(timer); t.classList.remove('is-in'); t.classList.add('is-out'); setTimeout(function () { t.remove(); }, 260); }
+    x.addEventListener('click', remove);
+    timer = setTimeout(remove, type === 'err' ? 6500 : 4000);
+    return t;
+  }
+
   // Collapse any open concierge tile/form (after a request is sent).
   function collapseConciergeForms() {
     document.querySelectorAll('.cx-form.open').forEach(function (f) { f.classList.remove('open'); });
@@ -44,7 +66,6 @@
     form.addEventListener('submit', async function (e) {
       e.preventDefault();
       var btn = form.querySelector('button[type=submit]');
-      var status = form.querySelector('.bm-status');
       var payload = Object.fromEntries(new FormData(form).entries());
       if (btn) { btn.disabled = true; btn.dataset.label = btn.textContent; btn.textContent = 'Sending…'; }
       try {
@@ -58,16 +79,16 @@
             // A request that opened a message thread — offer Manage / Continue.
             showRequestSentModal(data.redirect, form, btn);
           } else {
-            if (status) { status.textContent = form.getAttribute('data-bm-success') || 'Request sent — we’ll be in touch by email.'; status.className = 'bm-status ok'; }
+            toast(form.getAttribute('data-bm-success') || 'Request sent — we’ll be in touch by email.', 'ok');
             setTimeout(function () { window.location = window.location.href.split('#')[0]; }, 1200);
           }
         } else {
-          if (status) { status.textContent = data.error || 'Something went wrong. Please try again.'; status.className = 'bm-status err'; }
+          toast(data.error || 'Something went wrong. Please try again.', 'err');
           if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label; }
           if (window.turnstile) window.turnstile.reset();
         }
       } catch (_) {
-        if (status) { status.textContent = 'Network error. Please try again.'; status.className = 'bm-status err'; }
+        toast('Network error. Please try again.', 'err');
         if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label; }
       }
     });

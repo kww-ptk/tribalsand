@@ -337,10 +337,16 @@ a.no-style   { text-decoration: none; color: inherit; }
 .adm-confirm__body { font-size: 13.5px; color: var(--muted); margin: 0 0 18px; line-height: 1.45; }
 .adm-confirm__actions { display: flex; gap: 8px; justify-content: flex-end; }
 
-/* ── Dismissible / self-clearing flash banner (enhanced in _layout_end.php) ── */
-.alert { display: flex; align-items: flex-start; gap: 8px; transition: opacity .4s ease; }
-.alert.is-hiding { opacity: 0; }
-.alert__icon { flex: 0 0 auto; font-weight: 700; line-height: 1.4; }
-.alert__msg { flex: 1 1 auto; }
-.alert__close { flex: 0 0 auto; background: none; border: 0; cursor: pointer; font-size: 17px; line-height: 1; color: inherit; opacity: .55; padding: 0 2px; }
-.alert__close:hover { opacity: 1; }
+/* ── Toast notifications (action responses slide up from the bottom) ── */
+#ts-toasts { position: fixed; left: 50%; bottom: 20px; transform: translateX(-50%); z-index: 2000; display: flex; flex-direction: column; gap: 8px; align-items: center; width: calc(100% - 32px); max-width: 400px; pointer-events: none; }
+.ts-toast { pointer-events: auto; display: flex; align-items: flex-start; gap: 10px; width: 100%; background: var(--white); border-radius: 12px; box-shadow: 0 8px 30px rgba(0,0,0,.18); padding: 12px 14px; font-size: 14px; line-height: 1.4; border-left: 4px solid #999; transform: translateY(14px); opacity: 0; transition: transform .25s ease, opacity .25s ease; }
+.ts-toast.is-in  { transform: translateY(0); opacity: 1; }
+.ts-toast.is-out { opacity: 0; transform: translateY(14px); }
+.ts-toast--ok  { border-left-color: var(--green); }
+.ts-toast--err { border-left-color: var(--red); }
+.ts-toast__icon { flex: 0 0 auto; font-weight: 700; }
+.ts-toast--ok  .ts-toast__icon { color: var(--green); }
+.ts-toast--err .ts-toast__icon { color: var(--red); }
+.ts-toast__msg { flex: 1 1 auto; color: var(--text); }
+.ts-toast__x { flex: 0 0 auto; background: none; border: 0; cursor: pointer; font-size: 16px; line-height: 1; color: var(--muted); padding: 0 2px; }
+.ts-toast__x:hover { color: var(--text); }

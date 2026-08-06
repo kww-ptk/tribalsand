@@ -64,7 +64,6 @@ $__sched = '<label class="pa-field">Preferred time (optional)<input type="dateti
     <?php endif; ?>
     <?= $__sched ?>
     <button type="submit" class="pa-btn pa-btn--primary"><?= $k === 'laundry' ? 'Request laundry' : ($k === 'transfer' ? 'Request transfer' : 'Send request') ?></button>
-    <p class="bm-status" aria-live="polite" style="margin:10px 0 0;font-size:13px"></p>
   </form>
   <?php endforeach; ?>
 </div>

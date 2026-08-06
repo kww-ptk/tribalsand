@@ -97,25 +97,33 @@
     });
   });
 
-  // Self-clearing flash banners: icon + close button; success fades on its own.
-  document.querySelectorAll('.alert').forEach(function (al) {
-    if (al.dataset.enhanced) return;
-    al.dataset.enhanced = '1';
-    var isSuccess = al.classList.contains('alert--success');
-    var isError   = al.classList.contains('alert--error');
-    var icon = document.createElement('span');
-    icon.className = 'alert__icon'; icon.setAttribute('aria-hidden', 'true');
-    icon.textContent = isSuccess ? '✓' : (isError ? '✕' : 'ℹ');
-    var msg = document.createElement('span');
-    msg.className = 'alert__msg';
-    while (al.firstChild) { msg.appendChild(al.firstChild); }
-    var closeBtn = document.createElement('button');
-    closeBtn.type = 'button'; closeBtn.className = 'alert__close';
-    closeBtn.setAttribute('aria-label', 'Dismiss'); closeBtn.textContent = '×';
-    function hide() { al.classList.add('is-hiding'); setTimeout(function () { al.remove(); }, 400); }
-    closeBtn.addEventListener('click', hide);
-    al.appendChild(icon); al.appendChild(msg); al.appendChild(closeBtn);
-    if (isSuccess) setTimeout(hide, 4500);
+  // Toast — a small card that slides up from the bottom, then fades out.
+  function toast(message, type) {
+    var wrap = document.getElementById('ts-toasts');
+    if (!wrap) { wrap = document.createElement('div'); wrap.id = 'ts-toasts'; document.body.appendChild(wrap); }
+    var t = document.createElement('div');
+    t.className = 'ts-toast ts-toast--' + (type === 'err' ? 'err' : 'ok');
+    t.setAttribute('role', 'status');
+    var icon = document.createElement('span'); icon.className = 'ts-toast__icon'; icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = type === 'err' ? '✕' : '✓';
+    var msg = document.createElement('span'); msg.className = 'ts-toast__msg'; msg.textContent = message;
+    var x = document.createElement('button'); x.type = 'button'; x.className = 'ts-toast__x';
+    x.setAttribute('aria-label', 'Dismiss'); x.textContent = '×';
+    t.appendChild(icon); t.appendChild(msg); t.appendChild(x);
+    wrap.appendChild(t);
+    requestAnimationFrame(function () { t.classList.add('is-in'); });
+    var timer;
+    function remove() { clearTimeout(timer); t.classList.remove('is-in'); t.classList.add('is-out'); setTimeout(function () { t.remove(); }, 260); }
+    x.addEventListener('click', remove);
+    timer = setTimeout(remove, type === 'err' ? 6500 : 4000);
+  }
+
+  // Turn the server-rendered flash message (from an action) into a toast.
+  document.querySelectorAll('.alert.is-flash').forEach(function (al) {
+    var type = al.classList.contains('alert--error') ? 'err' : 'ok';
+    var text = al.textContent.trim();
+    al.remove();
+    if (text) toast(text, type);
   });
 })();
 </script>
