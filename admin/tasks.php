@@ -136,11 +136,11 @@ include __DIR__ . '/_layout.php';
 
 <div class="card" style="margin-bottom:20px">
   <div class="card__head"><span class="card__title">New task</span></div>
-  <div class="card__body">
+  <div class="card__body" style="padding:20px 24px">
     <?php if (!$venues): ?>
       <p class="text-muted" style="margin:0">You have no properties assigned yet.</p>
     <?php else: ?>
-    <form method="POST" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;align-items:end">
+    <form method="POST" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;align-items:end">
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="create">
       <label style="grid-column:1/-1">Title
@@ -177,30 +177,28 @@ include __DIR__ . '/_layout.php';
   </div>
 </div>
 
-<div class="filter-bar">
-  <div class="filter-row">
-    <span class="filter-row__label">Status</span>
-    <div class="filter-chips">
+<form method="GET" action="/admin/tasks.php" class="filters">
+  <label class="filter-field">Status
+    <select name="status" class="filter-select" aria-label="Filter by status" onchange="this.form.submit()">
       <?php foreach (['open'=>'Open','todo'=>'To do','in_progress'=>'In progress','done'=>'Done','cancelled'=>'Cancelled','all'=>'All'] as $sk=>$sl): ?>
-        <a href="?status=<?= e($sk) ?>&assignee=<?= e($asgKey) ?>" class="chip <?= $statusKey===$sk?'is-active':'' ?>"><?= e($sl) ?></a>
+      <option value="<?= e($sk) ?>" <?= $statusKey===$sk?'selected':'' ?>><?= e($sl) ?></option>
       <?php endforeach; ?>
-    </div>
-  </div>
-  <div class="filter-row">
-    <span class="filter-row__label">Assignee</span>
-    <div class="filter-chips">
+    </select>
+  </label>
+  <label class="filter-field">Assignee
+    <select name="assignee" class="filter-select" aria-label="Filter by assignee" onchange="this.form.submit()">
       <?php foreach (['all'=>'All','me'=>'Assigned to me','unassigned'=>'Unassigned'] as $ak=>$al): ?>
-        <a href="?status=<?= e($statusKey) ?>&assignee=<?= e($ak) ?>" class="chip <?= $asgKey===$ak?'is-active':'' ?>"><?= e($al) ?></a>
+      <option value="<?= e($ak) ?>" <?= $asgKey===$ak?'selected':'' ?>><?= e($al) ?></option>
       <?php endforeach; ?>
-    </div>
-  </div>
-</div>
+    </select>
+  </label>
+</form>
 
 <div class="card">
   <div class="card__body" style="padding:0">
     <div class="table-wrap">
     <table class="data-table">
-      <thead><tr><th>Task</th><th>Property</th><th>Assignee</th><th>Job</th><th>Due</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead>
+      <thead><tr><th>Task</th><th>Property</th><th>Assignee</th><th>Job</th><th>Due</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody>
         <?php if (!$tasks): ?>
         <tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--muted)">No tasks match this filter.</td></tr>
@@ -221,17 +219,17 @@ include __DIR__ . '/_layout.php';
           <td>
             <div class="row-actions">
             <?php
-              $btn = function(string $to, string $label, string $cls) use ($tid) {
+              $btn = function(string $to, string $title, string $icon, string $variant) use ($tid) {
                 echo '<form method="POST" action="/admin/task-action.php" style="display:inline">' . csrf_field()
                    . '<input type="hidden" name="return" value="tasks"><input type="hidden" name="id" value="' . $tid . '">'
-                   . '<button name="status" value="' . e($to) . '" class="btn-sm ' . $cls . '">' . e($label) . '</button></form>';
+                   . '<button name="status" value="' . e($to) . '" class="btn-icon ' . $variant . '" title="' . e($title) . '" aria-label="' . e($title) . '">' . admin_icon($icon) . '</button></form>';
               };
-              if ($st === 'todo')        $btn('in_progress', 'Start', 'btn-outline');
-              if (in_array($st, ['todo','in_progress'], true)) $btn('done', 'Done', 'btn-primary');
-              if (in_array($st, ['done','cancelled'], true))   $btn('todo', 'Reopen', 'btn-outline');
-              if (in_array($st, ['todo','in_progress'], true)) $btn('cancelled', 'Cancel', 'btn-outline');
+              if ($st === 'todo')        $btn('in_progress', 'Start task', 'play', 'btn-icon--outline');
+              if (in_array($st, ['todo','in_progress'], true)) $btn('done', 'Mark done', 'check', 'btn-icon--primary');
+              if (in_array($st, ['done','cancelled'], true))   $btn('todo', 'Reopen task', 'rotate', 'btn-icon--outline');
+              if (in_array($st, ['todo','in_progress'], true)) $btn('cancelled', 'Cancel task', 'ban', 'btn-icon--outline');
             ?>
-            <form method="POST" style="display:inline" onsubmit="return confirm('Delete this task?')"><?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= $tid ?>"><button class="btn-danger btn-sm">Delete</button></form>
+            <form method="POST" style="display:inline" onsubmit="return confirm('Delete this task?')"><?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= $tid ?>"><button class="btn-icon btn-icon--danger" title="Delete task" aria-label="Delete task"><?= admin_icon('trash') ?></button></form>
             </div>
           </td>
         </tr>

@@ -1,6 +1,7 @@
 <?php
 // Admin shared layout — include at top of each admin page after require_login()
 // Sets: $pageTitle (required), $activeMenu (required)
+require_once __DIR__ . '/../includes/icons.php';   // admin_icon() for icon-only buttons
 $admin = current_admin();
 
 // ── Role / job aware nav visibility ──────────────────────────────────────
@@ -28,7 +29,8 @@ $__roleBadge = $__isManager ? 'Manager' : (is_staff() ? ucfirst((string)$__job) 
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title><?= e($pageTitle ?? 'Admin') ?> — Tribal Sand Admin</title>
-  <link rel="stylesheet" href="/admin/assets/admin.css?v=<?= filemtime(__DIR__ . '/assets/admin.css') ?>">
+  <link rel="stylesheet" href="/admin/assets/admin.css?v=<?= @filemtime(__DIR__ . '/assets/admin.css') ?: '1' ?>">
+  <script defer src="/admin/assets/admin-select.js?v=<?= @filemtime(__DIR__ . '/assets/admin-select.js') ?: '1' ?>"></script>
 </head>
 <body class="admin-body">
 

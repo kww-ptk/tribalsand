@@ -54,7 +54,7 @@ body { font-family: system-ui, -apple-system, sans-serif; font-size: 14px; color
 .sidebar__footer a:hover { color: #fff; }
 
 .admin-main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
-.admin-content { padding: 28px 32px; max-width: 1100px; }
+.admin-content { padding: 28px 32px; max-width: 1270px; }
 
 /* ── Page header ── */
 .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
@@ -123,7 +123,7 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .table-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .table-wrap .data-table { min-width: 720px; }   /* keep columns legible before scroll kicks in */
 /* A group of action buttons in a table cell — wraps instead of forcing overflow. */
-.row-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }
+.row-actions { display: flex; flex-wrap: nowrap; gap: 6px; align-items: center; justify-content: flex-start; }
 /* A compact inline control (e.g. an assignee <select>) inside a table cell. */
 .cell-select { padding: 5px 9px; border: 1.5px solid var(--border); border-radius: 6px; font-size: 12.5px; background: var(--white); color: var(--text); max-width: 170px; }
 .cell-select:focus { outline: none; border-color: var(--brand); }
@@ -144,6 +144,64 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .chip:hover { border-color: var(--brand); color: var(--brand); }
 .chip.is-active { background: var(--brand); border-color: var(--brand); color: #fff; }
 .chip.is-active:hover { color: #fff; }
+
+/* ═══ Reusable: icon-only action buttons ═══
+   Use in table "Actions" columns. Always give the button a title + aria-label. */
+.btn-icon {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 32px; height: 32px; padding: 0; border-radius: 7px;
+  border: 1.5px solid var(--border); background: var(--white); color: var(--muted);
+  cursor: pointer; text-decoration: none; line-height: 0;
+  transition: background .15s, color .15s, border-color .15s, transform .05s;
+}
+.btn-icon svg { width: 16px; height: 16px; }
+.btn-icon:hover { border-color: var(--brand); color: var(--brand); }
+.btn-icon:active { transform: translateY(1px); }
+.btn-icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn-icon--primary:hover { background: var(--brand); border-color: var(--brand); color: #fff; }
+.btn-icon--outline:hover { background: var(--brand); border-color: var(--brand); color: #fff; }
+.btn-icon--danger { color: var(--red); }
+.btn-icon--danger:hover { background: var(--red); border-color: var(--red); color: #fff; }
+.btn-icon:disabled, .btn-icon.is-loading { opacity: .55; cursor: not-allowed; }
+
+/* ═══ Reusable: enhanced filter dropdown ═══
+   Progressive enhancement of <select class="filter-select"> (see admin-select.js).
+   Without JS the native <select> shows normally; with JS it's swapped for this. */
+.filter-field { display: inline-flex; flex-direction: column; gap: 5px;
+  font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; }
+.eselect { position: relative; display: inline-block; }
+.eselect__native { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); border: 0; }
+.eselect__btn {
+  display: inline-flex; align-items: center; justify-content: space-between; gap: 10px;
+  min-width: 168px; width: 100%; padding: 8px 12px; border: 1.5px solid var(--border); border-radius: 8px;
+  background: var(--white); color: var(--text); font-size: 13px; font-weight: 500; line-height: 1.3;
+  font-family: inherit; text-transform: none; letter-spacing: 0; cursor: pointer;
+  transition: border-color .15s, box-shadow .15s;
+}
+.eselect__btn:hover { border-color: var(--brand); }
+.eselect.is-open .eselect__btn, .eselect__btn:focus-visible {
+  outline: none; border-color: var(--brand); box-shadow: 0 0 0 3px rgba(30,92,107,.12);
+}
+.eselect__label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.eselect__chevron { flex: 0 0 auto; color: var(--muted); transition: transform .18s; }
+.eselect.is-open .eselect__chevron { transform: rotate(180deg); }
+.eselect__menu {
+  position: absolute; z-index: 40; top: calc(100% + 6px); left: 0; min-width: 100%;
+  list-style: none; margin: 0; padding: 6px; background: var(--white);
+  border: 1px solid var(--border); border-radius: 10px; box-shadow: 0 10px 30px rgba(16,47,58,.16);
+  max-height: 288px; overflow-y: auto;
+  opacity: 0; transform: translateY(-4px); pointer-events: none;
+  transition: opacity .14s, transform .14s;
+}
+.eselect.is-open .eselect__menu { opacity: 1; transform: translateY(0); pointer-events: auto; }
+.eselect__opt {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px; border-radius: 6px; font-size: 13px; color: var(--text);
+  cursor: pointer; white-space: nowrap;
+}
+.eselect__opt.is-active { background: var(--bg); }
+.eselect__opt.is-selected { color: var(--brand); font-weight: 600; }
+.eselect__opt[aria-disabled="true"] { opacity: .5; cursor: not-allowed; }
 
 /* ── Forms ── */
 .field { margin-bottom: 16px; }
@@ -186,7 +244,7 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .alert--info    { background: #e3f2fd; color: #1565c0; }
 
 /* ── Filters bar ── */
-.filters { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+.filters { display: flex; gap: 14px; margin-bottom: 20px; flex-wrap: wrap; align-items: flex-end; }
 .filters input, .filters select { padding: 7px 12px; border: 1.5px solid var(--border); border-radius: 6px; font-size: 13px; background: var(--white); }
 .filters input:focus, .filters select:focus { outline: none; border-color: var(--brand); }
 
@@ -339,8 +397,11 @@ a.no-style   { text-decoration: none; color: inherit; }
   .detail-grid { grid-template-columns: 1fr; }
 
   /* Filters — stack full width */
-  .filters { flex-direction: column; }
+  .filters { flex-direction: column; align-items: stretch; }
   .filters input, .filters select { width: 100%; }
+  .filters .filter-field, .filters .eselect { width: 100%; }
+  .eselect__btn { min-width: 0; }
+  .eselect__menu { width: 100%; }
 
   /* Tabs — scrollable */
   .tabs { overflow-x: auto; white-space: nowrap; }

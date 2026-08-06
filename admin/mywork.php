@@ -47,18 +47,20 @@ function mywork_row(array $a, callable $badgeClass): void {
       <td><?= e(addon_label($a)) ?><?php if (isset($a['price_amount']) && $a['price_amount'] !== null && (float)$a['price_amount'] > 0): ?> <span class="badge badge--grey"><?= e(format_price((float)$a['price_amount'])) ?></span><?php endif; ?></td>
       <td><?= !empty($a['scheduled_for']) ? e(date('D j M, H:i', strtotime((string)$a['scheduled_for']))) : '<span class="text-muted">—</span>' ?></td>
       <td><span class="badge <?= $badgeClass($a['status']) ?>"><?= e(addon_status_label($a['status'])) ?></span></td>
-      <td style="text-align:right;white-space:nowrap">
-        <a href="/admin/messages.php?hold=<?= (int)$a['hold_id'] ?>&thread=<?= (int)$a['id'] ?>" class="btn-outline btn-sm">Message</a>
+      <td>
+        <div class="row-actions">
+        <a href="/admin/messages.php?hold=<?= (int)$a['hold_id'] ?>&thread=<?= (int)$a['id'] ?>" class="btn-icon btn-icon--outline" title="Message guest" aria-label="Message <?= e($gname) ?>"><?= admin_icon('message') ?></a>
         <?php if ($a['status'] === 'requested'): ?>
-        <form method="POST" action="/admin/booking-request-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="type" value="addon"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="return" value="mywork"><button name="status" value="confirmed" class="btn-primary btn-sm" aria-label="Accept <?= e($gkind) ?> request from <?= e($gname) ?>">Accept</button></form>
+        <form method="POST" action="/admin/booking-request-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="type" value="addon"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="return" value="mywork"><button name="status" value="confirmed" class="btn-icon btn-icon--primary" title="Accept request" aria-label="Accept <?= e($gkind) ?> request from <?= e($gname) ?>"><?= admin_icon('check') ?></button></form>
         <?php endif; ?>
         <?php if (in_array($a['status'], ['requested','confirmed'], true)): ?>
-        <form method="POST" action="/admin/booking-request-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="type" value="addon"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="return" value="mywork"><button name="status" value="completed" class="btn-outline btn-sm" aria-label="Mark <?= e($gkind) ?> request from <?= e($gname) ?> as done">Mark done</button></form>
+        <form method="POST" action="/admin/booking-request-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="type" value="addon"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="return" value="mywork"><button name="status" value="completed" class="btn-icon btn-icon--outline" title="Mark done" aria-label="Mark <?= e($gkind) ?> request from <?= e($gname) ?> as done"><?= admin_icon('check-check') ?></button></form>
         <?php endif; ?>
         <?php if ($a['status'] === 'requested'): ?>
-        <form method="POST" action="/admin/booking-request-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="type" value="addon"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="return" value="mywork"><button name="status" value="declined" class="btn-danger btn-sm" aria-label="Decline <?= e($gkind) ?> request from <?= e($gname) ?>" data-confirm="Decline this <?= e($gkind) ?> request from <?= e($gname) ?>?">Decline</button></form>
+        <form method="POST" action="/admin/booking-request-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="type" value="addon"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="return" value="mywork"><button name="status" value="declined" class="btn-icon btn-icon--danger" title="Decline request" aria-label="Decline <?= e($gkind) ?> request from <?= e($gname) ?>" data-confirm="Decline this <?= e($gkind) ?> request from <?= e($gname) ?>?"><?= admin_icon('x') ?></button></form>
         <?php endif; ?>
         <?php if (!in_array($a['status'], ['requested','confirmed'], true)): ?><span class="text-muted">—</span><?php endif; ?>
+        </div>
       </td>
     </tr>
     <?php
@@ -86,7 +88,7 @@ include __DIR__ . '/_layout.php';
   <div class="card__body" style="padding:0">
     <div class="table-wrap">
     <table class="data-table">
-      <thead><tr><th>Task</th><th>Property</th><th>Due</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead>
+      <thead><tr><th>Task</th><th>Property</th><th>Due</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody>
         <?php if (!$myTasks): ?>
         <tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--muted)">No tasks assigned to you.</td></tr>
@@ -99,13 +101,15 @@ include __DIR__ . '/_layout.php';
           <td><?= e($t['venue_name'] ?? '') ?></td>
           <td><?= !empty($t['due_date']) ? e(date('j M', strtotime((string)$t['due_date']))) : '<span class="text-muted">—</span>' ?></td>
           <td><span class="badge <?= task_badge_class($st) ?>"><?= e(task_status_label($st)) ?></span></td>
-          <td style="text-align:right;white-space:nowrap">
+          <td>
+            <div class="row-actions">
             <?php if ($st === 'todo'): ?>
-            <form method="POST" action="/admin/task-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="return" value="mywork"><input type="hidden" name="id" value="<?= $tid ?>"><button name="status" value="in_progress" class="btn-outline btn-sm">Start</button></form>
+            <form method="POST" action="/admin/task-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="return" value="mywork"><input type="hidden" name="id" value="<?= $tid ?>"><button name="status" value="in_progress" class="btn-icon btn-icon--outline" title="Start task" aria-label="Start task"><?= admin_icon('play') ?></button></form>
             <?php endif; ?>
             <?php if (in_array($st, ['todo','in_progress'], true)): ?>
-            <form method="POST" action="/admin/task-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="return" value="mywork"><input type="hidden" name="id" value="<?= $tid ?>"><button name="status" value="done" class="btn-primary btn-sm">Done</button></form>
+            <form method="POST" action="/admin/task-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="return" value="mywork"><input type="hidden" name="id" value="<?= $tid ?>"><button name="status" value="done" class="btn-icon btn-icon--primary" title="Mark done" aria-label="Mark done"><?= admin_icon('check') ?></button></form>
             <?php endif; ?>
+            </div>
           </td>
         </tr>
         <?php endforeach; endif; ?>
@@ -122,7 +126,7 @@ include __DIR__ . '/_layout.php';
   <div class="card__body" style="padding:0">
     <div class="table-wrap">
     <table class="data-table">
-      <thead><tr><th>Guest</th><th>Service</th><th>Request</th><th>Preferred time</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead>
+      <thead><tr><th>Guest</th><th>Service</th><th>Request</th><th>Preferred time</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody>
         <?php if (!$open): ?>
         <tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--muted)">Nothing assigned to you right now. 🎉</td></tr>
@@ -139,7 +143,7 @@ include __DIR__ . '/_layout.php';
   <div class="card__body" style="padding:0">
     <div class="table-wrap">
     <table class="data-table">
-      <thead><tr><th>Guest</th><th>Service</th><th>Request</th><th>Preferred time</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead>
+      <thead><tr><th>Guest</th><th>Service</th><th>Request</th><th>Preferred time</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody>
         <?php if (!$done): ?>
         <tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--muted)">No completed items.</td></tr>
