@@ -4,6 +4,7 @@ require_once __DIR__ . '/includes/db.php';
 require_once __DIR__ . '/includes/mail.php';
 require_once __DIR__ . '/includes/booking.php';
 require_once __DIR__ . '/includes/turnstile.php';
+require_once __DIR__ . '/includes/checkin.php';
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 
@@ -90,9 +91,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $hold && $can_cancel) {
     }
 }
 
+$checkin_gate = $hold && checkin_required($hold) && !checkin_is_complete($hold);
+
 $status     = $hold['status'] ?? '';
 
-$view = in_array($_GET['view'] ?? '', ['home','activities','messages'], true) ? $_GET['view'] : 'home';
+$view = in_array($_GET['view'] ?? '', ['home','activities','messages','checkin'], true) ? $_GET['view'] : 'home';
+// When check-in is outstanding, the portal is a hard gate: only the check-in
+// flow and the message thread (escape hatch) are reachable.
+if ($checkin_gate && !in_array($view, ['checkin','messages'], true)) $view = 'checkin';
 
 $page_title = $hold
     ? 'Booking ' . e($ref) . ' · Tribal Sand'
@@ -196,7 +202,7 @@ include __DIR__ . '/includes/head.php';
   <?php
     $__first = trim((string)($hold['guest_name'] ?? ''));
     $__first = $__first !== '' ? explode(' ', $__first)[0] : 'guest';
-    $__titles = ['home'=>'Karibu, ' . $__first, 'activities'=>'Activities', 'messages'=>'Messages'];
+    $__titles = ['home'=>'Karibu, ' . $__first, 'activities'=>'Activities', 'messages'=>'Messages', 'checkin'=>'Check-in'];
     $__t = $hold ? ($__titles[$view] ?? ('Karibu, ' . $__first)) : 'Your booking';
   ?>
   <div class="pa-topbar"><div class="pa-topbar__eyebrow">Tribal Sand</div><div class="pa-topbar__title"><?= e($__t) ?></div></div>
@@ -265,6 +271,8 @@ include __DIR__ . '/includes/head.php';
         <?php include __DIR__ . '/includes/app/activities.php'; ?>
       <?php elseif ($view === 'messages'): ?>
         <?php include __DIR__ . '/includes/app/messages.php'; ?>
+      <?php elseif ($view === 'checkin'): ?>
+        <?php include __DIR__ . '/includes/app/checkin.php'; ?>
       <?php endif; ?>
 
     <?php endif; ?>
