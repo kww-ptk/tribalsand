@@ -135,11 +135,11 @@ include __DIR__ . '/_layout.php';
 
 <div class="card" style="margin-bottom:16px">
   <div class="card__head"><span class="card__title">Sign in a visitor</span></div>
-  <div class="card__body">
+  <div class="card__body" style="padding:20px 24px">
     <?php if (!$venues): ?>
       <p class="text-muted" style="margin:0">You have no properties assigned yet.</p>
     <?php else: ?>
-    <form method="POST" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;align-items:end">
+    <form method="POST" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;align-items:end">
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="log">
       <label>Visitor name
@@ -173,7 +173,7 @@ include __DIR__ . '/_layout.php';
   <div class="card__body" style="padding:0">
     <div class="table-wrap">
     <table class="data-table">
-      <thead><tr><th>Visitor</th><th>Property</th><th>Visiting</th><th>Purpose</th><th>Vehicle</th><th>In</th><th>Out</th><th style="text-align:right">Action</th></tr></thead>
+      <thead><tr><th>Visitor</th><th>Property</th><th>Visiting</th><th>Purpose</th><th>Vehicle</th><th>In</th><th>Out</th><th>Action</th></tr></thead>
       <tbody>
         <?php if (!$log): ?>
         <tr><td colspan="8" style="text-align:center;padding:2rem;color:var(--muted)">No visitors logged today.</td></tr>
@@ -186,10 +186,12 @@ include __DIR__ . '/_layout.php';
           <td><?= !empty($vr['vehicle']) ? e($vr['vehicle']) : '<span class="text-muted">—</span>' ?></td>
           <td class="text-muted"><?= e(date('H:i', strtotime((string)$vr['time_in']))) ?></td>
           <td class="text-muted"><?= $open ? '<span class="badge badge--green">On site</span>' : e(date('H:i', strtotime((string)$vr['time_out']))) ?></td>
-          <td style="text-align:right;white-space:nowrap">
+          <td>
+            <div class="row-actions">
             <?php if ($open): ?>
-            <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="signout"><input type="hidden" name="id" value="<?= (int)$vr['id'] ?>"><button class="btn-outline btn-sm">Sign out</button></form>
+            <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="signout"><input type="hidden" name="id" value="<?= (int)$vr['id'] ?>"><button class="btn-icon btn-icon--outline" title="Sign out visitor" aria-label="Sign out <?= e($vr['visitor_name']) ?>"><?= admin_icon('logout') ?></button></form>
             <?php else: ?><span class="text-muted">—</span><?php endif; ?>
+            </div>
           </td>
         </tr>
         <?php endforeach; endif; ?>

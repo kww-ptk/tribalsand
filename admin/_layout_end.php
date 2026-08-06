@@ -74,8 +74,42 @@
       h.type = 'hidden'; h.name = btn.name; h.value = btn.value;
       form.appendChild(h);
     }
+    // Icon-only buttons have no text to swap — just show a muted "busy" state so
+    // the SVG glyph survives (replacing textContent would delete the <svg>).
+    if (btn && btn.classList.contains('btn-icon')) { btn.classList.add('is-loading'); btn.disabled = true; return; }
     if (btn) { btn.dataset.label = btn.textContent; btn.disabled = true; btn.textContent = 'Working…'; }
   }
+
+  // --- Auto-upgrade native confirm() dialogs to the styled modal (site-wide) ---
+  // Reroutes any inline onclick="return confirm('…')" (on a button) or
+  // onsubmit="return confirm('…')" (on a form) through styledConfirm, so every
+  // admin page gets the same polished dialog with no per-page markup changes.
+  function confirmMsg(attr) {
+    var m = attr && attr.match(/confirm\(\s*(['"])([\s\S]*?)\1\s*\)/);
+    if (!m) return null;
+    return m[2].replace(/\\n/g, '\n').replace(/\\(['"])/g, '$1');
+  }
+  document.querySelectorAll('button[onclick*="confirm("]').forEach(function (btn) {
+    var msg = confirmMsg(btn.getAttribute('onclick'));
+    if (!msg) return;
+    btn.removeAttribute('onclick');
+    btn.setAttribute('data-confirm', msg);   // handled by the block just below
+  });
+  document.querySelectorAll('form[onsubmit*="confirm("]').forEach(function (form) {
+    var msg = confirmMsg(form.getAttribute('onsubmit'));
+    if (!msg) return;
+    form.removeAttribute('onsubmit');
+    form.addEventListener('submit', function (e) {
+      if (form.dataset.confirmed) return;   // second pass (programmatic submit) — let it through
+      e.preventDefault();
+      var btn = e.submitter;
+      styledConfirm(msg, function () {
+        form.dataset.confirmed = '1';
+        if (btn && !btn.hasAttribute('data-confirm')) armSubmit(form, btn);
+        form.submit();
+      });
+    });
+  });
 
   // Buttons that need confirmation first (e.g. Decline).
   document.querySelectorAll('button[data-confirm]').forEach(function (btn) {

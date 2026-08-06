@@ -142,19 +142,23 @@ include __DIR__ . '/_layout.php';
 
 <!-- Filters -->
 <form method="GET" action="/admin/holds" class="filters">
-  <select name="status" onchange="this.form.submit()">
-    <option value="active"    <?= $status_filter === 'active'    ? 'selected' : '' ?>>Active (pending + confirmed)</option>
-    <option value="pending"   <?= $status_filter === 'pending'   ? 'selected' : '' ?>>Pending only</option>
-    <option value="confirmed" <?= $status_filter === 'confirmed' ? 'selected' : '' ?>>Confirmed only</option>
-    <option value="expired"   <?= $status_filter === 'expired'   ? 'selected' : '' ?>>Expired</option>
-    <option value="cancelled" <?= $status_filter === 'cancelled' ? 'selected' : '' ?>>Cancelled</option>
-  </select>
-  <select name="room" onchange="this.form.submit()">
-    <option value="">All rooms</option>
-    <?php foreach ($rooms as $r): ?>
-    <option value="<?= e($r['id']) ?>" <?= $room_filter === (int)$r['id'] ? 'selected' : '' ?>><?= e($r['name']) ?></option>
-    <?php endforeach; ?>
-  </select>
+  <label class="filter-field">Status
+    <select name="status" class="filter-select" aria-label="Filter by status" onchange="this.form.submit()">
+      <option value="active"    <?= $status_filter === 'active'    ? 'selected' : '' ?>>Active (pending + confirmed)</option>
+      <option value="pending"   <?= $status_filter === 'pending'   ? 'selected' : '' ?>>Pending only</option>
+      <option value="confirmed" <?= $status_filter === 'confirmed' ? 'selected' : '' ?>>Confirmed only</option>
+      <option value="expired"   <?= $status_filter === 'expired'   ? 'selected' : '' ?>>Expired</option>
+      <option value="cancelled" <?= $status_filter === 'cancelled' ? 'selected' : '' ?>>Cancelled</option>
+    </select>
+  </label>
+  <label class="filter-field">Room
+    <select name="room" class="filter-select" aria-label="Filter by room" onchange="this.form.submit()">
+      <option value="">All rooms</option>
+      <?php foreach ($rooms as $r): ?>
+      <option value="<?= e($r['id']) ?>" <?= $room_filter === (int)$r['id'] ? 'selected' : '' ?>><?= e($r['name']) ?></option>
+      <?php endforeach; ?>
+    </select>
+  </label>
 </form>
 
 <!-- Holds table -->
@@ -228,33 +232,33 @@ include __DIR__ . '/_layout.php';
           <td><span class="badge <?= $badge ?>"><?= e($status) ?></span></td>
           <td style="font-size:12px;color:var(--muted)"><?= e($expires_str) ?></td>
           <td>
+            <div class="row-actions">
             <?php if ($status === 'pending'): ?>
             <form method="POST" style="display:inline">
               <?= csrf_field() ?>
               <input type="hidden" name="hold_id" value="<?= e($hold['id']) ?>">
               <input type="hidden" name="action"  value="confirm">
-              <button type="submit" class="btn-primary btn-sm"
-                      onclick="return confirm('Confirm this hold and notify the guest?')">Confirm</button>
+              <button type="submit" class="btn-icon btn-icon--primary" title="Confirm hold" aria-label="Confirm hold"
+                      data-confirm="Confirm this hold and notify the guest?"><?= admin_icon('check') ?></button>
             </form>
-            <form method="POST" style="display:inline;margin-left:4px">
+            <form method="POST" style="display:inline">
               <?= csrf_field() ?>
               <input type="hidden" name="hold_id" value="<?= e($hold['id']) ?>">
               <input type="hidden" name="action"  value="cancel">
-              <button type="submit" class="btn-danger btn-sm"
-                      onclick="return confirm('Cancel this hold? Dates will be freed and the guest notified.')">Cancel</button>
+              <button type="submit" class="btn-icon btn-icon--danger" title="Cancel hold" aria-label="Cancel hold"
+                      data-confirm="Cancel this hold? Dates will be freed and the guest notified."><?= admin_icon('x') ?></button>
             </form>
             <?php elseif ($status === 'confirmed'): ?>
             <form method="POST" style="display:inline">
               <?= csrf_field() ?>
               <input type="hidden" name="hold_id" value="<?= e($hold['id']) ?>">
               <input type="hidden" name="action"  value="cancel">
-              <button type="submit" class="btn-danger btn-sm"
-                      onclick="return confirm('Cancel this confirmed booking? Dates will be freed and the guest notified.')">Cancel</button>
+              <button type="submit" class="btn-icon btn-icon--danger" title="Cancel booking" aria-label="Cancel booking"
+                      data-confirm="Cancel this confirmed booking? Dates will be freed and the guest notified."><?= admin_icon('x') ?></button>
             </form>
-            <?php else: ?>
-            <span style="color:var(--muted);font-size:12px">—</span>
             <?php endif; ?>
-            <a href="/admin/booking.php?hold=<?= (int)$hold['id'] ?>" class="btn-primary btn-sm" style="margin-left:4px">Manage</a>
+            <a href="/admin/booking.php?hold=<?= (int)$hold['id'] ?>" class="btn-icon btn-icon--outline" title="Manage booking" aria-label="Manage booking"><?= admin_icon('edit') ?></a>
+            </div>
           </td>
         </tr>
         <?php
@@ -290,15 +294,15 @@ include __DIR__ . '/_layout.php';
                   <?= csrf_field() ?>
                   <input type="hidden" name="type" value="addon">
                   <input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
-                  <button type="submit" name="status" value="confirmed" class="btn-primary btn-sm" onclick="return confirm('Apply this action?')">Confirm</button>
-                  <button type="submit" name="status" value="declined" class="btn-danger btn-sm" onclick="return confirm('Apply this action?')">Decline</button>
+                  <button type="submit" name="status" value="confirmed" class="btn-icon btn-icon--primary" title="Confirm request" aria-label="Confirm request" data-confirm="Apply this action?"><?= admin_icon('check') ?></button>
+                  <button type="submit" name="status" value="declined" class="btn-icon btn-icon--danger" title="Decline request" aria-label="Decline request" data-confirm="Apply this action?"><?= admin_icon('x') ?></button>
                 </form>
                 <?php endif; ?>
                 <?php if (in_array($a['status'], ['requested','confirmed'], true)): ?>
                 <form method="POST" action="/admin/booking-request-action.php" style="display:inline;margin:0">
                   <?= csrf_field() ?>
                   <input type="hidden" name="type" value="addon"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
-                  <button type="submit" name="status" value="completed" class="btn-primary btn-sm" onclick="return confirm('Mark this request done?')">Mark done</button>
+                  <button type="submit" name="status" value="completed" class="btn-icon btn-icon--outline" title="Mark done" aria-label="Mark done" data-confirm="Mark this request done?"><?= admin_icon('check-check') ?></button>
                 </form>
                 <?php endif; ?>
               </div>
@@ -317,8 +321,8 @@ include __DIR__ . '/_layout.php';
                   <?= csrf_field() ?>
                   <input type="hidden" name="type" value="change">
                   <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
-                  <button type="submit" name="status" value="handled" class="btn-primary btn-sm" onclick="return confirm('Apply this action?')">Mark handled</button>
-                  <button type="submit" name="status" value="declined" class="btn-danger btn-sm" onclick="return confirm('Apply this action?')">Decline</button>
+                  <button type="submit" name="status" value="handled" class="btn-icon btn-icon--primary" title="Mark handled" aria-label="Mark handled" data-confirm="Apply this action?"><?= admin_icon('check') ?></button>
+                  <button type="submit" name="status" value="declined" class="btn-icon btn-icon--danger" title="Decline change" aria-label="Decline change" data-confirm="Apply this action?"><?= admin_icon('x') ?></button>
                 </form>
                 <?php endif; ?>
               </div>

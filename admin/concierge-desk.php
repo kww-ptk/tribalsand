@@ -99,42 +99,38 @@ include __DIR__ . '/_layout.php';
 
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?> is-flash"><?= e($flash['msg']) ?></div><?php endif; ?>
 
-<?php $asgQ = $asgOn ? '&assignee=' . e($asgKey) : ''; ?>
-<div class="filter-bar">
-  <div class="filter-row">
-    <span class="filter-row__label">Status</span>
-    <div class="filter-chips">
+<form method="GET" action="/admin/concierge-desk.php" class="filters">
+  <label class="filter-field">Status
+    <select name="status" class="filter-select" aria-label="Filter by status" onchange="this.form.submit()">
       <?php foreach ($statusTabs as $sk=>$sl): ?>
-        <a href="?status=<?= e($sk) ?>&kind=<?= e($kindKey) ?><?= $asgQ ?>" class="chip <?= $statusKey===$sk?'is-active':'' ?>"><?= e($sl) ?></a>
+      <option value="<?= e($sk) ?>" <?= $statusKey===$sk?'selected':'' ?>><?= e($sl) ?></option>
       <?php endforeach; ?>
-    </div>
-  </div>
-  <div class="filter-row">
-    <span class="filter-row__label">Service</span>
-    <div class="filter-chips">
-      <a href="?status=<?= e($statusKey) ?>&kind=all<?= $asgQ ?>" class="chip <?= $kindKey==='all'?'is-active':'' ?>">All</a>
+    </select>
+  </label>
+  <label class="filter-field">Service
+    <select name="kind" class="filter-select" aria-label="Filter by service" onchange="this.form.submit()">
+      <option value="all" <?= $kindKey==='all'?'selected':'' ?>>All services</option>
       <?php foreach ($KINDS as $k): ?>
-        <a href="?status=<?= e($statusKey) ?>&kind=<?= e($k) ?><?= $asgQ ?>" class="chip <?= $kindKey===$k?'is-active':'' ?>" style="text-transform:capitalize"><?= e($k) ?></a>
+      <option value="<?= e($k) ?>" <?= $kindKey===$k?'selected':'' ?>><?= e(ucfirst($k)) ?></option>
       <?php endforeach; ?>
-    </div>
-  </div>
+    </select>
+  </label>
   <?php if ($asgOn): ?>
-  <div class="filter-row">
-    <span class="filter-row__label">Assignee</span>
-    <div class="filter-chips">
+  <label class="filter-field">Assignee
+    <select name="assignee" class="filter-select" aria-label="Filter by assignee" onchange="this.form.submit()">
       <?php foreach (['all'=>'All','me'=>'Assigned to me','unassigned'=>'Unassigned'] as $ak=>$al): ?>
-        <a href="?status=<?= e($statusKey) ?>&kind=<?= e($kindKey) ?>&assignee=<?= e($ak) ?>" class="chip <?= $asgKey===$ak?'is-active':'' ?>"><?= e($al) ?></a>
+      <option value="<?= e($ak) ?>" <?= $asgKey===$ak?'selected':'' ?>><?= e($al) ?></option>
       <?php endforeach; ?>
-    </div>
-  </div>
+    </select>
+  </label>
   <?php endif; ?>
-</div>
+</form>
 
 <div class="card">
   <div class="card__body" style="padding:0">
     <div class="table-wrap">
     <table class="data-table">
-      <thead><tr><th>Guest</th><th>Service</th><th>Request</th><th>Preferred time</th><th>Submitted</th><th>Status</th><?php if ($asgOn): ?><th>Assigned</th><?php endif; ?><th style="text-align:right">Actions</th></tr></thead>
+      <thead><tr><th>Guest</th><th>Service</th><th>Request</th><th>Preferred time</th><th>Submitted</th><th>Status</th><?php if ($asgOn): ?><th>Assigned</th><?php endif; ?><th>Actions</th></tr></thead>
       <tbody>
         <?php if (!$rows): ?>
         <tr><td colspan="<?= $asgOn ? 8 : 7 ?>" style="text-align:center;padding:2rem;color:var(--muted)">No requests match this filter.</td></tr>
@@ -172,16 +168,16 @@ include __DIR__ . '/_layout.php';
           <?php endif; ?>
           <td>
             <div class="row-actions">
-            <a href="/admin/messages.php?hold=<?= (int)$a['hold_id'] ?>&thread=<?= (int)$a['id'] ?>" class="btn-outline btn-sm">Message</a>
-            <a href="/admin/booking.php?hold=<?= (int)$a['hold_id'] ?>" class="btn-outline btn-sm">Manage</a>
+            <a href="/admin/messages.php?hold=<?= (int)$a['hold_id'] ?>&thread=<?= (int)$a['id'] ?>" class="btn-icon btn-icon--outline" title="Message guest" aria-label="Message <?= e($gname) ?>"><?= admin_icon('message') ?></a>
+            <a href="/admin/booking.php?hold=<?= (int)$a['hold_id'] ?>" class="btn-icon btn-icon--outline" title="Manage booking" aria-label="Manage booking"><?= admin_icon('edit') ?></a>
             <?php if ($a['status'] === 'requested'): ?>
-            <form method="POST" action="/admin/booking-request-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="type" value="addon"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="return" value="concierge-desk"><button name="status" value="confirmed" class="btn-primary btn-sm" aria-label="Accept <?= e($gkind) ?> request from <?= e($gname) ?>">Accept</button></form>
+            <form method="POST" action="/admin/booking-request-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="type" value="addon"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="return" value="concierge-desk"><button name="status" value="confirmed" class="btn-icon btn-icon--primary" title="Accept request" aria-label="Accept <?= e($gkind) ?> request from <?= e($gname) ?>"><?= admin_icon('check') ?></button></form>
             <?php endif; ?>
             <?php if (in_array($a['status'], ['requested','confirmed'], true)): ?>
-            <form method="POST" action="/admin/booking-request-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="type" value="addon"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="return" value="concierge-desk"><button name="status" value="completed" class="btn-outline btn-sm" aria-label="Mark <?= e($gkind) ?> request from <?= e($gname) ?> as done">Mark done</button></form>
+            <form method="POST" action="/admin/booking-request-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="type" value="addon"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="return" value="concierge-desk"><button name="status" value="completed" class="btn-icon btn-icon--outline" title="Mark done" aria-label="Mark <?= e($gkind) ?> request from <?= e($gname) ?> as done"><?= admin_icon('check-check') ?></button></form>
             <?php endif; ?>
             <?php if ($a['status'] === 'requested'): ?>
-            <form method="POST" action="/admin/booking-request-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="type" value="addon"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="return" value="concierge-desk"><button name="status" value="declined" class="btn-danger btn-sm" aria-label="Decline <?= e($gkind) ?> request from <?= e($gname) ?>" data-confirm="Decline this <?= e($gkind) ?> request from <?= e($gname) ?>? They'll be notified.">Decline</button></form>
+            <form method="POST" action="/admin/booking-request-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="type" value="addon"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="return" value="concierge-desk"><button name="status" value="declined" class="btn-icon btn-icon--danger" title="Decline request" aria-label="Decline <?= e($gkind) ?> request from <?= e($gname) ?>" data-confirm="Decline this <?= e($gkind) ?> request from <?= e($gname) ?>? They'll be notified."><?= admin_icon('x') ?></button></form>
             <?php endif; ?>
             <?php if (!in_array($a['status'], ['requested','confirmed'], true)): ?><span class="text-muted">—</span><?php endif; ?>
             </div>
