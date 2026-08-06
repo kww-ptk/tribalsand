@@ -84,6 +84,7 @@ include __DIR__ . '/_layout.php';
 <div class="card" style="margin-bottom:16px">
   <div class="card__head"><span class="card__title">My tasks</span></div>
   <div class="card__body" style="padding:0">
+    <div class="table-wrap">
     <table class="data-table">
       <thead><tr><th>Task</th><th>Property</th><th>Due</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead>
       <tbody>
@@ -110,6 +111,7 @@ include __DIR__ . '/_layout.php';
         <?php endforeach; endif; ?>
       </tbody>
     </table>
+    </div>
   </div>
 </div>
 <?php endif; ?>
@@ -118,6 +120,7 @@ include __DIR__ . '/_layout.php';
 <div class="card">
   <div class="card__head"><span class="card__title">Requests assigned to me</span></div>
   <div class="card__body" style="padding:0">
+    <div class="table-wrap">
     <table class="data-table">
       <thead><tr><th>Guest</th><th>Service</th><th>Request</th><th>Preferred time</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead>
       <tbody>
@@ -126,6 +129,7 @@ include __DIR__ . '/_layout.php';
         <?php else: foreach ($open as $a) mywork_row($a, $badgeClass); endif; ?>
       </tbody>
     </table>
+    </div>
   </div>
 </div>
 
@@ -133,6 +137,7 @@ include __DIR__ . '/_layout.php';
 <div class="card" style="margin-top:16px">
   <div class="card__head"><span class="card__title">Completed requests</span></div>
   <div class="card__body" style="padding:0">
+    <div class="table-wrap">
     <table class="data-table">
       <thead><tr><th>Guest</th><th>Service</th><th>Request</th><th>Preferred time</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead>
       <tbody>
@@ -141,6 +146,7 @@ include __DIR__ . '/_layout.php';
         <?php else: foreach ($done as $a) mywork_row($a, $badgeClass); endif; ?>
       </tbody>
     </table>
+    </div>
   </div>
 </div>
 <?php endif; ?>

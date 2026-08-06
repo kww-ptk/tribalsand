@@ -93,17 +93,57 @@ body { font-family: system-ui, -apple-system, sans-serif; font-size: 14px; color
 
 /* ── Buttons ── */
 .btn-primary, .btn-outline, .btn-danger, .btn-sm {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 8px 16px; border-radius: 6px; font-size: 13.5px; font-weight: 500;
-  cursor: pointer; border: none; text-decoration: none; transition: opacity .15s;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 16px; border-radius: 6px; font-size: 13.5px; font-weight: 500; line-height: 1.2;
+  cursor: pointer; border: none; text-decoration: none; white-space: nowrap;
+  transition: background .15s, opacity .15s, transform .05s, box-shadow .15s;
 }
 .btn-primary  { background: var(--brand);  color: #fff; }
 .btn-outline  { background: transparent; border: 1.5px solid var(--brand); color: var(--brand); }
 .btn-danger   { background: var(--red);    color: #fff; }
 .btn-sm       { padding: 5px 11px; font-size: 12.5px; }
-.btn-primary:hover, .btn-danger:hover { opacity: .88; }
+/* Button links inside tables must NOT inherit the table's link colour — that was
+   painting <a class="btn-primary"> teal-on-teal (invisible "Manage" button). */
+a.btn-primary, a.btn-danger { color: #fff; }
+a.btn-outline { color: var(--brand); }
+.btn-primary:hover { background: var(--brand-dk); }
+.btn-danger:hover  { opacity: .9; }
 .btn-outline:hover { background: var(--brand); color: #fff; }
+.btn-primary:active, .btn-outline:active, .btn-danger:active { transform: translateY(1px); }
+.btn-primary:focus-visible, .btn-outline:focus-visible, .btn-danger:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+.btn-primary:disabled, .btn-outline:disabled, .btn-danger:disabled,
+button:disabled { opacity: .55; cursor: not-allowed; }
 .btn-full { width: 100%; justify-content: center; }
+
+/* ═══ Reusable: scroll-contained tables ═══
+   Wrap any wide <table class="data-table"> in <div class="table-wrap"> so it
+   scrolls INSIDE its card instead of pushing the whole page sideways. */
+.table-wrap { width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.table-wrap .data-table { min-width: 720px; }   /* keep columns legible before scroll kicks in */
+/* A group of action buttons in a table cell — wraps instead of forcing overflow. */
+.row-actions { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; justify-content: flex-end; }
+/* A compact inline control (e.g. an assignee <select>) inside a table cell. */
+.cell-select { padding: 5px 9px; border: 1.5px solid var(--border); border-radius: 6px; font-size: 12.5px; background: var(--white); color: var(--text); max-width: 170px; }
+.cell-select:focus { outline: none; border-color: var(--brand); }
+
+/* ═══ Reusable: filter bar (chip filters) ═══ */
+.filter-bar { background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow); margin-bottom: 18px; overflow: hidden; }
+.filter-row { display: flex; align-items: center; gap: 12px; padding: 11px 16px; flex-wrap: wrap; }
+.filter-row + .filter-row { border-top: 1px solid var(--border); }
+.filter-row__label { flex: 0 0 auto; min-width: 62px; font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 700; }
+.filter-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 5px 13px; border-radius: 999px; font-size: 12.5px; font-weight: 500; line-height: 1.3;
+  border: 1.5px solid var(--border); background: var(--white); color: var(--muted);
+  cursor: pointer; text-decoration: none; white-space: nowrap;
+  transition: background .15s, border-color .15s, color .15s;
+}
+.chip:hover { border-color: var(--brand); color: var(--brand); }
+.chip.is-active { background: var(--brand); border-color: var(--brand); color: #fff; }
+.chip.is-active:hover { color: #fff; }
 
 /* ── Forms ── */
 .field { margin-bottom: 16px; }

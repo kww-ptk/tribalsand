@@ -171,6 +171,7 @@ include __DIR__ . '/_layout.php';
     <span class="badge badge--blue"><?= (int)$onsite ?> on site</span>
   </div>
   <div class="card__body" style="padding:0">
+    <div class="table-wrap">
     <table class="data-table">
       <thead><tr><th>Visitor</th><th>Property</th><th>Visiting</th><th>Purpose</th><th>Vehicle</th><th>In</th><th>Out</th><th style="text-align:right">Action</th></tr></thead>
       <tbody>
@@ -194,6 +195,7 @@ include __DIR__ . '/_layout.php';
         <?php endforeach; endif; ?>
       </tbody>
     </table>
+    </div>
   </div>
 </div>
 

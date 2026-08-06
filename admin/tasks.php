@@ -177,23 +177,28 @@ include __DIR__ . '/_layout.php';
   </div>
 </div>
 
-<div class="card" style="margin-bottom:16px">
-  <div class="card__body" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-    <span class="text-muted" style="font-size:12px;text-transform:uppercase;letter-spacing:.06em">Status</span>
-    <?php foreach (['open'=>'Open','todo'=>'To do','in_progress'=>'In progress','done'=>'Done','cancelled'=>'Cancelled','all'=>'All'] as $sk=>$sl): ?>
-      <a href="?status=<?= e($sk) ?>&assignee=<?= e($asgKey) ?>" class="btn-sm <?= $statusKey===$sk?'btn-primary':'btn-outline' ?>"><?= e($sl) ?></a>
-    <?php endforeach; ?>
+<div class="filter-bar">
+  <div class="filter-row">
+    <span class="filter-row__label">Status</span>
+    <div class="filter-chips">
+      <?php foreach (['open'=>'Open','todo'=>'To do','in_progress'=>'In progress','done'=>'Done','cancelled'=>'Cancelled','all'=>'All'] as $sk=>$sl): ?>
+        <a href="?status=<?= e($sk) ?>&assignee=<?= e($asgKey) ?>" class="chip <?= $statusKey===$sk?'is-active':'' ?>"><?= e($sl) ?></a>
+      <?php endforeach; ?>
+    </div>
   </div>
-  <div class="card__body" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-top:1px solid #eee">
-    <span class="text-muted" style="font-size:12px;text-transform:uppercase;letter-spacing:.06em">Assignee</span>
-    <?php foreach (['all'=>'All','me'=>'Assigned to me','unassigned'=>'Unassigned'] as $ak=>$al): ?>
-      <a href="?status=<?= e($statusKey) ?>&assignee=<?= e($ak) ?>" class="btn-sm <?= $asgKey===$ak?'btn-primary':'btn-outline' ?>"><?= e($al) ?></a>
-    <?php endforeach; ?>
+  <div class="filter-row">
+    <span class="filter-row__label">Assignee</span>
+    <div class="filter-chips">
+      <?php foreach (['all'=>'All','me'=>'Assigned to me','unassigned'=>'Unassigned'] as $ak=>$al): ?>
+        <a href="?status=<?= e($statusKey) ?>&assignee=<?= e($ak) ?>" class="chip <?= $asgKey===$ak?'is-active':'' ?>"><?= e($al) ?></a>
+      <?php endforeach; ?>
+    </div>
   </div>
 </div>
 
 <div class="card">
   <div class="card__body" style="padding:0">
+    <div class="table-wrap">
     <table class="data-table">
       <thead><tr><th>Task</th><th>Property</th><th>Assignee</th><th>Job</th><th>Due</th><th>Status</th><th style="text-align:right">Actions</th></tr></thead>
       <tbody>
@@ -213,7 +218,8 @@ include __DIR__ . '/_layout.php';
           <td><?= !empty($t['job_type']) ? e($JOBS[$t['job_type']] ?? $t['job_type']) : '<span class="text-muted">—</span>' ?></td>
           <td><?= !empty($t['due_date']) ? e(date('j M', strtotime((string)$t['due_date']))) : '<span class="text-muted">—</span>' ?></td>
           <td><span class="badge <?= task_badge_class($st) ?>"><?= e(task_status_label($st)) ?></span></td>
-          <td style="text-align:right;white-space:nowrap">
+          <td>
+            <div class="row-actions">
             <?php
               $btn = function(string $to, string $label, string $cls) use ($tid) {
                 echo '<form method="POST" action="/admin/task-action.php" style="display:inline">' . csrf_field()
@@ -226,11 +232,13 @@ include __DIR__ . '/_layout.php';
               if (in_array($st, ['todo','in_progress'], true)) $btn('cancelled', 'Cancel', 'btn-outline');
             ?>
             <form method="POST" style="display:inline" onsubmit="return confirm('Delete this task?')"><?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= $tid ?>"><button class="btn-danger btn-sm">Delete</button></form>
+            </div>
           </td>
         </tr>
         <?php endforeach; endif; ?>
       </tbody>
     </table>
+    </div>
   </div>
 </div>
 
