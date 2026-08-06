@@ -444,7 +444,7 @@ In `admin/hold-new.php`, after the existing `require_once` lines (top of file), 
 ```php
 require_once __DIR__ . '/../includes/checkin.php';
 ```
-Then, just before `$ru_options = fetch_room_unit_options();`, add:
+Then, **immediately after `require_login(); require_owner();`** (BEFORE the POST-handling block — the create branch below references `$want_checkin`, so it must be defined first), add:
 ```php
 $checkin_default = checkin_supported() && setting('checkin_required_default', '0') === '1';
 $want_checkin    = ($_SERVER['REQUEST_METHOD'] === 'POST') ? isset($_POST['require_checkin']) : $checkin_default;
