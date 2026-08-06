@@ -57,12 +57,6 @@ $rows = db_query(
 
 $statusTabs = ['open'=>'Open','all'=>'All','requested'=>'Requested','confirmed'=>'In progress','completed'=>'Done','declined'=>'Declined','cancelled'=>'Cancelled'];
 
-/** Map an addon status to the admin badge colour class. */
-$badgeClass = fn(string $s): string => [
-    'requested'=>'badge--orange','confirmed'=>'badge--blue','completed'=>'badge--green',
-    'declined'=>'badge--red','cancelled'=>'badge--grey',
-][$s] ?? 'badge--grey';
-
 include __DIR__ . '/_layout.php';
 ?>
 
@@ -71,17 +65,23 @@ include __DIR__ . '/_layout.php';
   <a href="/admin/dashboard.php" class="btn-outline btn-sm">← Dashboard</a>
 </div>
 
-<?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?>"><?= e($flash['msg']) ?></div><?php endif; ?>
+<?php if ($flash): ?>
+<div class="alert alert--<?= e($flash['type']) ?> alert--dismissible" id="deskFlash" role="status">
+  <span class="alert__ico" aria-hidden="true"><?= $flash['type'] === 'success' ? '✓' : '⚠' ?></span>
+  <span><?= e($flash['msg']) ?></span>
+  <button type="button" class="alert__x" aria-label="Dismiss" onclick="this.closest('.alert').remove()">&times;</button>
+</div>
+<?php endif; ?>
 
 <div class="card" style="margin-bottom:16px">
-  <div class="card__body" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-    <span class="text-muted" style="font-size:12px;text-transform:uppercase;letter-spacing:.06em">Status</span>
+  <div class="card__body filter-row">
+    <span class="filter-row__label">Status</span>
     <?php foreach ($statusTabs as $sk=>$sl): ?>
       <a href="?status=<?= e($sk) ?>&kind=<?= e($kindKey) ?>" class="btn-sm <?= $statusKey===$sk?'btn-primary':'btn-outline' ?>"><?= e($sl) ?></a>
     <?php endforeach; ?>
   </div>
-  <div class="card__body" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-top:1px solid #eee">
-    <span class="text-muted" style="font-size:12px;text-transform:uppercase;letter-spacing:.06em">Service</span>
+  <div class="card__body filter-row filter-row--divided">
+    <span class="filter-row__label">Service</span>
     <a href="?status=<?= e($statusKey) ?>&kind=all" class="btn-sm <?= $kindKey==='all'?'btn-primary':'btn-outline' ?>">All</a>
     <?php foreach ($KINDS as $k): ?>
       <a href="?status=<?= e($statusKey) ?>&kind=<?= e($k) ?>" class="btn-sm <?= $kindKey===$k?'btn-primary':'btn-outline' ?>" style="text-transform:capitalize"><?= e($k) ?></a>
@@ -106,16 +106,17 @@ include __DIR__ . '/_layout.php';
           <td><?= e(addon_label($a)) ?></td>
           <td><?= !empty($a['scheduled_for']) ? e(date('D j M, H:i', strtotime((string)$a['scheduled_for']))) : '<span class="text-muted">—</span>' ?></td>
           <td class="text-muted" style="font-size:12px"><?= e(date('j M, H:i', strtotime((string)$a['created_at']))) ?></td>
-          <td><span class="badge <?= $badgeClass($a['status']) ?>"><?= e(addon_status_label($a['status'])) ?></span></td>
+          <td><?= status_badge($a['status'], 'badge') ?></td>
+          <?php $__who = e(($a['kind'] ?? 'service') . ' request from ' . ($a['guest_name'] ?: 'guest')); ?>
           <td style="text-align:right;white-space:nowrap">
             <?php if ($a['status'] === 'requested'): ?>
-            <form method="POST" action="/admin/booking-request-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="type" value="addon"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="return" value="concierge-desk"><button name="status" value="confirmed" class="btn-primary btn-sm">Accept</button></form>
+            <form method="POST" action="/admin/booking-request-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="type" value="addon"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="return" value="concierge-desk"><button name="status" value="confirmed" class="btn-primary btn-sm" aria-label="Accept <?= $__who ?>">Accept</button></form>
             <?php endif; ?>
             <?php if (in_array($a['status'], ['requested','confirmed'], true)): ?>
-            <form method="POST" action="/admin/booking-request-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="type" value="addon"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="return" value="concierge-desk"><button name="status" value="completed" class="btn-outline btn-sm">Mark done</button></form>
+            <form method="POST" action="/admin/booking-request-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="type" value="addon"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="return" value="concierge-desk"><button name="status" value="completed" class="btn-outline btn-sm" aria-label="Mark <?= $__who ?> as done">Mark done</button></form>
             <?php endif; ?>
             <?php if ($a['status'] === 'requested'): ?>
-            <form method="POST" action="/admin/booking-request-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="type" value="addon"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="return" value="concierge-desk"><button name="status" value="declined" class="btn-danger btn-sm">Decline</button></form>
+            <form method="POST" action="/admin/booking-request-action.php" style="display:inline" data-confirm="Decline this request? This cannot be undone." data-confirm-yes="Decline"><?= csrf_field() ?><input type="hidden" name="type" value="addon"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="return" value="concierge-desk"><button name="status" value="declined" class="btn-danger btn-sm" aria-label="Decline <?= $__who ?>">Decline</button></form>
             <?php endif; ?>
             <?php if (!in_array($a['status'], ['requested','confirmed'], true)): ?><span class="text-muted">—</span><?php endif; ?>
           </td>
@@ -125,5 +126,34 @@ include __DIR__ . '/_layout.php';
     </table>
   </div>
 </div>
+
+<script>
+// Immediate feedback while the action POST round-trips: dim the row, show "…".
+document.querySelectorAll('.data-table form').forEach(function (f) {
+  f.addEventListener('submit', function (e) {
+    if (e.defaultPrevented) return;                                   // confirm dialog cancelled
+    if (f.hasAttribute('data-confirm') && !f.dataset.confirmed) return; // wait for the custom confirm
+    var btn = f.querySelector('button');
+    if (btn) btn.textContent = '…';
+    var cell = f.closest('td');
+    // Defer disabling: the form's entry list is built right after this handler, and a
+    // disabled submit button would be dropped from the POST (losing name="status"). By the
+    // time this timeout runs, the request is already serialized and on its way.
+    setTimeout(function () {
+      if (cell) cell.querySelectorAll('button').forEach(function (b) { b.disabled = true; });
+    }, 0);
+  });
+});
+// Auto-dismiss the flash after a few seconds.
+(function () {
+  var flash = document.getElementById('deskFlash');
+  if (!flash) return;
+  setTimeout(function () {
+    flash.style.transition = 'opacity .3s';
+    flash.style.opacity = '0';
+    setTimeout(function () { flash.remove(); }, 300);
+  }, 4000);
+})();
+</script>
 
 <?php include __DIR__ . '/_layout_end.php'; ?>

@@ -144,11 +144,26 @@ body { font-family: system-ui, -apple-system, sans-serif; font-size: 14px; color
 .alert--error   { background: #fdecea; color: var(--red); }
 .alert--success { background: #e8f5e9; color: var(--green); }
 .alert--info    { background: #e3f2fd; color: #1565c0; }
+.alert--dismissible { display: flex; align-items: center; gap: 8px; }
+
+/* Reusable confirm dialog (data-confirm) */
+.confirm-overlay { display: none; position: fixed; inset: 0; z-index: 1000; background: rgba(16,47,58,.45); align-items: center; justify-content: center; padding: 20px; }
+.confirm-overlay.is-open { display: flex; }
+.confirm-dialog { background: var(--white); border-radius: 10px; max-width: 380px; width: 100%; padding: 20px; box-shadow: 0 12px 40px rgba(0,0,0,.25); }
+.confirm-dialog__msg { font-size: 14.5px; line-height: 1.5; margin-bottom: 18px; color: var(--text); }
+.confirm-dialog__actions { display: flex; justify-content: flex-end; gap: 8px; }
+.alert__ico { font-weight: 700; flex-shrink: 0; }
+.alert__x { margin-left: auto; background: none; border: none; padding: 0 2px; font-size: 20px; line-height: 1; cursor: pointer; color: inherit; opacity: .55; }
+.alert__x:hover { opacity: 1; }
 
 /* ── Filters bar ── */
 .filters { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
 .filters input, .filters select { padding: 7px 12px; border: 1.5px solid var(--border); border-radius: 6px; font-size: 13px; background: var(--white); }
 .filters input:focus, .filters select:focus { outline: none; border-color: var(--brand); }
+/* Pill filter row (Concierge desk status/service filters) */
+.filter-row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.filter-row--divided { border-top: 1px solid var(--border); }
+.filter-row__label { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 
 /* ── Pagination ── */
 .pagination { display: flex; gap: 6px; margin-top: 20px; }

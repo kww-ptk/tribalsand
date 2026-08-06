@@ -1,5 +1,23 @@
 // Guest booking manage — fetch submit for add-on & change forms.
 (function () {
+  // Confirmation toast that survives the post-submit reload (set in sessionStorage before reload).
+  function showToast(msg) {
+    var el = document.createElement('div');
+    el.className = 'bm-toast';
+    el.setAttribute('role', 'status');
+    el.textContent = msg;
+    document.body.appendChild(el);
+    requestAnimationFrame(function () { el.classList.add('show'); });
+    setTimeout(function () {
+      el.classList.remove('show');
+      setTimeout(function () { el.remove(); }, 300);
+    }, 4000);
+  }
+  try {
+    var pending = sessionStorage.getItem('bm_toast');
+    if (pending) { sessionStorage.removeItem('bm_toast'); showToast(pending); }
+  } catch (_) {}
+
   document.querySelectorAll('form[data-bm]').forEach(function (form) {
     form.addEventListener('submit', async function (e) {
       e.preventDefault();
@@ -14,8 +32,10 @@
         });
         var data = await res.json();
         if (data.ok) {
-          if (status) { status.textContent = 'Request sent — we’ll be in touch by email.'; status.className = 'bm-status ok'; }
-          setTimeout(function () { window.location.reload(); }, 1200);
+          var msg = 'Request sent — we’ll confirm by email.';
+          if (status) { status.textContent = msg; status.className = 'bm-status ok'; }
+          try { sessionStorage.setItem('bm_toast', msg); } catch (_) {}
+          setTimeout(function () { window.location.reload(); }, 900);
         } else {
           if (status) { status.textContent = data.error || 'Something went wrong. Please try again.'; status.className = 'bm-status err'; }
           if (btn) { btn.disabled = false; btn.textContent = btn.dataset.label; }

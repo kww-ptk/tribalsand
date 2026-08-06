@@ -170,15 +170,44 @@ function addon_label(array $a): string {
     return "{$name} — {$det}";
 }
 
-/** Friendly label for an addon request status (used in guest views and the admin Concierge Desk). */
+/**
+ * Canonical status → [label, tone]. Single source of truth for status display
+ * across guest views and the admin Concierge Desk.
+ * tone ∈ warning | info | success | danger | neutral.
+ */
+function status_meta(string $status): array {
+    static $map = [
+        'requested' => ['Requested',   'warning'],
+        'confirmed' => ['In progress', 'info'],
+        'completed' => ['Done',        'success'],
+        'handled'   => ['Handled',     'success'],
+        'declined'  => ['Declined',    'danger'],
+        'cancelled' => ['Cancelled',   'neutral'],
+    ];
+    return $map[$status] ?? [ucfirst($status), 'neutral'];
+}
+
+/** Friendly label for a request status (used in guest views and the admin Concierge Desk). */
 function addon_status_label(string $status): string {
-    return [
-        'requested' => 'Requested',
-        'confirmed' => 'In progress',
-        'completed' => 'Done',
-        'declined'  => 'Declined',
-        'cancelled' => 'Cancelled',
-    ][$status] ?? ucfirst($status);
+    return status_meta($status)[0];
+}
+
+/**
+ * Render a status badge for either surface from the one tone mapping — no more
+ * divergent colour maps. $variant 'pill' = guest portal (soft), 'badge' = admin
+ * (uppercase tag). $attrs = extra HTML attributes, e.g. 'style="margin-left:auto"'.
+ */
+function status_badge(string $status, string $variant = 'pill', string $attrs = ''): string {
+    [$label, $tone] = status_meta($status);
+    if ($variant === 'badge') {
+        $base  = 'badge';
+        $tones = ['warning'=>'badge--orange','info'=>'badge--blue','success'=>'badge--green','danger'=>'badge--red','neutral'=>'badge--grey'];
+    } else {
+        $base  = 'pa-pill';
+        $tones = ['warning'=>'pa-pill--requested','info'=>'pa-pill--confirmed','success'=>'pa-pill--completed','danger'=>'pa-pill--declined','neutral'=>'pa-pill--cancelled'];
+    }
+    $cls = $tones[$tone] ?? $tones['neutral'];
+    return '<span class="' . $base . ' ' . $cls . '"' . ($attrs !== '' ? ' ' . $attrs : '') . '>' . e($label) . '</span>';
 }
 
 /** Distinct published tour categories → {key,label} for the Activities filter. */

@@ -23,8 +23,14 @@ $__sched = '<label class="pa-field">Preferred time (optional)<input type="dateti
 .cx-tile{display:flex;flex-direction:column;align-items:flex-start;gap:8px;background:var(--pa-card);border:1px solid var(--pa-line);border-radius:12px;padding:14px;text-align:left;font:inherit;cursor:pointer;font-size:14px;font-weight:600;color:var(--pa-ink)}
 .cx-tile svg{color:var(--pa-teal)}
 .cx-tile[aria-expanded=true]{border-color:var(--pa-teal-d)}
+.cx-tile:focus-visible{outline:2px solid var(--pa-teal);outline-offset:2px}
 .cx-form{display:none;margin-top:10px;background:var(--pa-card);border:1px solid var(--pa-line);border-radius:12px;padding:14px}
 .cx-form.open{display:block}
+.cx-recent{list-style:none;margin:0;padding:0}
+.cx-recent__row{display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--pa-line);font-size:14px}
+.cx-recent__row:last-child{border-bottom:0;padding-bottom:0}
+.cx-recent__kind{text-transform:capitalize}
+.cx-recent__meta{color:var(--pa-muted)}
 </style>
 <p style="margin:0 0 16px"><a href="<?= e($__u) ?>" class="pa-back">&larr; Back to home</a></p>
 <h2 class="pa-h2">Concierge</h2>
@@ -87,16 +93,18 @@ $__sched = '<label class="pa-field">Preferred time (optional)<input type="dateti
 
 <?php if ($__addons): ?>
 <div style="margin-top:20px">
-  <div style="font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--pa-muted);margin-bottom:8px">Recent requests</div>
-  <?php foreach ($__addons as $a): ?>
-  <div style="display:flex;align-items:center;gap:8px;padding:9px 0;border-bottom:1px solid var(--pa-line);font-size:14px">
-    <strong style="text-transform:capitalize"><?= e($a['kind']) ?></strong>
-    <span style="color:var(--pa-muted)">
-      <?= e(addon_label($a)) ?><?php if (!empty($a['scheduled_for'])): ?> · <?= e(date('D j M, H:i', strtotime((string)$a['scheduled_for']))) ?><?php endif; ?>
-    </span>
-    <span class="pa-pill pa-pill--<?= e($a['status']) ?>" style="margin-left:auto"><?= e(addon_status_label($a['status'])) ?></span>
-  </div>
-  <?php endforeach; ?>
+  <p class="pa-eyebrow">Recent requests</p>
+  <div class="pa-card"><div class="pa-card__body">
+    <ul class="cx-recent">
+      <?php foreach ($__addons as $a): ?>
+      <li class="cx-recent__row">
+        <strong class="cx-recent__kind"><?= e($a['kind']) ?></strong>
+        <span class="cx-recent__meta"><?= e(addon_label($a)) ?><?php if (!empty($a['scheduled_for'])): ?> · <?= e(date('D j M, H:i', strtotime((string)$a['scheduled_for']))) ?><?php endif; ?></span>
+        <?= status_badge($a['status'], 'pill', 'style="margin-left:auto"') ?>
+      </li>
+      <?php endforeach; ?>
+    </ul>
+  </div></div>
 </div>
 <?php endif; ?>
 

@@ -12,6 +12,7 @@
 .pa-section{padding:16px 0 8px;}
 .pa-h2{font-family:'Cormorant Garamond',serif;font-weight:500;font-size:22px;margin:0 0 4px;color:var(--pa-ink);}
 .pa-sub{font-size:13px;color:var(--pa-muted);margin:0 0 14px;}
+.pa-eyebrow{font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:var(--pa-muted);margin:0 0 8px;}
 .pa-back{display:inline-block;font-size:13px;color:var(--pa-teal);text-decoration:none;margin:0 0 14px;}
 
 .pa-card{background:var(--pa-card);border:1px solid var(--pa-line);border-radius:14px;overflow:hidden;margin-bottom:12px;}
@@ -73,3 +74,17 @@
   .pa-nav{max-width:880px;}
   .pa-grid{grid-template-columns:repeat(auto-fill,minmax(240px,1fr));}
 }
+
+/* ── Form feedback (booking-manage.js sets .ok / .err on <p class="bm-status">) ── */
+.bm-status:empty{display:none;}
+.bm-status.ok,.bm-status.err{display:flex;align-items:flex-start;gap:8px;padding:9px 12px;border-radius:8px;line-height:1.4;}
+.bm-status.ok{background:#e6f6ec;color:#146c37;border:1px solid #b7e0c4;}
+.bm-status.err{background:#fbe6e6;color:#a1201f;border:1px solid #e7b7b7;}
+.bm-status.ok::before,.bm-status.err::before{font-weight:700;flex-shrink:0;}
+.bm-status.ok::before{content:"\2713";}   /* ✓ */
+.bm-status.err::before{content:"\2715";}   /* ✕ */
+
+/* ── Confirmation toast (survives the post-submit reload) ── */
+.bm-toast{position:fixed;left:50%;bottom:90px;transform:translate(-50%,12px);z-index:60;display:flex;align-items:center;gap:8px;max-width:calc(100% - 32px);background:var(--pa-teal-d);color:#fff;padding:12px 16px;border-radius:10px;font-size:14px;box-shadow:0 6px 24px rgba(0,0,0,.18);opacity:0;transition:opacity .25s,transform .25s;pointer-events:none;}
+.bm-toast.show{opacity:1;transform:translate(-50%,0);}
+.bm-toast::before{content:"\2713";font-weight:700;flex-shrink:0;}
