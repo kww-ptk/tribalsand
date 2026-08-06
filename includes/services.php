@@ -65,3 +65,16 @@ function addon_board_supported(): bool {
         return $cached = (bool) $r;
     } catch (Throwable $e) { return $cached = false; }
 }
+
+/** True if booking_addons has the assigned_to column (memoised). False pre-migration. */
+function addon_assigned_supported(): bool {
+    static $cached = null;
+    if ($cached !== null) return $cached;
+    try {
+        $r = db_query(
+            "SELECT 1 FROM information_schema.columns
+             WHERE table_name = 'booking_addons' AND column_name = 'assigned_to' LIMIT 1"
+        )->fetch();
+        return $cached = (bool) $r;
+    } catch (Throwable $e) { return $cached = false; }
+}

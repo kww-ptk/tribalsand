@@ -23,6 +23,7 @@ verify_csrf();
 
 $rk = $_POST['return'] ?? '';
 if ($rk === 'concierge-desk') { $returnTo = '/admin/concierge-desk.php'; }
+elseif ($rk === 'mywork')     { $returnTo = '/admin/mywork.php'; }
 elseif ($rk === 'workspace')  { $returnTo = '/admin/booking.php?hold=' . (int)($_POST['hold_id'] ?? 0) . '&tab=requests'; }
 else { $returnTo = '/admin/holds.php'; }
 
@@ -38,7 +39,7 @@ if ($type === 'addon' && in_array($status, ['confirmed', 'declined', 'cancelled'
         header('Location: ' . $returnTo);
         exit;
     }
-    if (is_staff() && !staff_can_hold((int)$cur['hold_id'])) {
+    if (!is_owner() && !staff_can_hold((int)$cur['hold_id'])) {
         $_SESSION['hold_flash'] = ['type' => 'error', 'msg' => 'Not your property.'];
         header('Location: /admin/concierge-desk.php');
         exit;
@@ -76,7 +77,7 @@ if ($type === 'addon' && in_array($status, ['confirmed', 'declined', 'cancelled'
         header('Location: ' . $returnTo);
         exit;
     }
-    if (is_staff() && !staff_can_hold((int)$cur['hold_id'])) {
+    if (!is_owner() && !staff_can_hold((int)$cur['hold_id'])) {
         $_SESSION['hold_flash'] = ['type' => 'error', 'msg' => 'Not your property.'];
         header('Location: /admin/concierge-desk.php');
         exit;
@@ -89,6 +90,37 @@ if ($type === 'addon' && in_array($status, ['confirmed', 'declined', 'cancelled'
     db_query("UPDATE booking_change_requests SET status=:s WHERE id=:id AND status='requested'", [':s' => $status, ':id' => $id]);
     audit_log('booking_change.' . $status, 'booking_change_request', $id, 'admin action');
     $ok = true;
+} elseif ($type === 'assign' && $id) {
+    // (Re)assign a request to a team member — owner/manager only.
+    if (!is_owner() && !is_manager()) {
+        $_SESSION['hold_flash'] = ['type' => 'error', 'msg' => 'Only managers can assign requests.'];
+        header('Location: ' . $returnTo); exit;
+    }
+    if (!addon_assigned_supported()) {
+        $_SESSION['hold_flash'] = ['type' => 'error', 'msg' => 'Assignment isn’t enabled yet — run the migration first.'];
+        header('Location: ' . $returnTo); exit;
+    }
+    $cur = db_query("SELECT status, hold_id FROM booking_addons WHERE id=:id", [':id' => $id])->fetch();
+    if (!$cur) {
+        $_SESSION['hold_flash'] = ['type' => 'error', 'msg' => "Request #{$id} not found."];
+        header('Location: ' . $returnTo); exit;
+    }
+    if (!is_owner() && !staff_can_hold((int)$cur['hold_id'])) {
+        $_SESSION['hold_flash'] = ['type' => 'error', 'msg' => 'Not your property.'];
+        header('Location: /admin/concierge-desk.php'); exit;
+    }
+    $raw      = trim((string)($_POST['assigned_to'] ?? ''));
+    $assignee = ($raw === '' || $raw === '0') ? null : (int)$raw;
+    if ($assignee !== null && !team_can_be_assigned($assignee, (int)$cur['hold_id'])) {
+        $_SESSION['hold_flash'] = ['type' => 'error', 'msg' => 'That person can’t be assigned to this property.'];
+        header('Location: ' . $returnTo); exit;
+    }
+    db_query("UPDATE booking_addons SET assigned_to=:a WHERE id=:id", [':a' => $assignee, ':id' => $id]);
+    audit_log('booking_addon.assign', 'booking_addon', $id, 'assigned_to=' . ($assignee ?? 'none'));
+    $_SESSION['hold_flash'] = ['type' => 'success', 'msg' => $assignee === null
+        ? 'Request unassigned.'
+        : 'Assigned to ' . (team_member_name($assignee) ?: 'team member') . '.'];
+    header('Location: ' . $returnTo); exit;
 }
 
 $_SESSION['hold_flash'] = $ok

@@ -114,17 +114,21 @@
 .cx-tile__go{position:absolute;top:14px;right:15px;color:var(--pa-gold);font-size:17px;}
 .cx-tile__badge{position:absolute;top:10px;right:10px;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:#e05b49;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;}
 
-/* ── Request "sent" status line — green on success, red on failure (with icon).
-   JS (booking-manage.js) sets .bm-status.ok / .bm-status.err on the <p>. ── */
-.bm-status{display:none;}
-.bm-status.ok,.bm-status.err{display:block;border-radius:8px;padding:9px 12px;font-weight:500;line-height:1.4;}
-.bm-status.ok{background:#e8f5e9;color:#1b5e20;}
-.bm-status.err{background:#fdecea;color:#b3261e;}
-.bm-status.ok::before{content:"✓ ";font-weight:700;}
-.bm-status.err::before{content:"✕ ";font-weight:700;}
-
 /* ── Keyboard focus — a clear ring on service tiles and buttons (was invisible). ── */
 .cx-tile:focus-visible,.pa-btn:focus-visible,.cx-tile[data-cx]:focus-visible{outline:3px solid var(--pa-gold);outline-offset:2px;}
+
+/* ── Toast notifications (request result slides up from the bottom) ── */
+#ts-toasts{position:fixed;left:50%;bottom:20px;transform:translateX(-50%);z-index:2000;display:flex;flex-direction:column;gap:8px;align-items:center;width:calc(100% - 32px);max-width:400px;pointer-events:none;}
+.ts-toast{pointer-events:auto;display:flex;align-items:flex-start;gap:10px;width:100%;background:var(--pa-card);border-radius:12px;box-shadow:0 8px 30px rgba(16,47,58,.2);padding:12px 14px;font-size:14px;line-height:1.4;border-left:4px solid #999;transform:translateY(14px);opacity:0;transition:transform .25s ease,opacity .25s ease;}
+.ts-toast.is-in{transform:translateY(0);opacity:1;}
+.ts-toast.is-out{opacity:0;transform:translateY(14px);}
+.ts-toast--ok{border-left-color:#2e7d32;}
+.ts-toast--err{border-left-color:#c0392b;}
+.ts-toast__icon{flex:0 0 auto;font-weight:700;}
+.ts-toast--ok .ts-toast__icon{color:#2e7d32;}
+.ts-toast--err .ts-toast__icon{color:#c0392b;}
+.ts-toast__msg{flex:1 1 auto;color:var(--pa-ink);}
+.ts-toast__x{flex:0 0 auto;background:none;border:0;cursor:pointer;font-size:16px;line-height:1;color:var(--pa-muted);padding:0 2px;}
 
 /* ── Request-sent popup ── */
 .pa-modal-backdrop{position:fixed;inset:0;background:rgba(16,47,58,.55);display:flex;align-items:center;justify-content:center;padding:24px;z-index:1000;}
