@@ -79,7 +79,7 @@ if ($room_filter) {
 $where = $conditions ? 'WHERE ' . implode(' AND ', $conditions) : '';
 
 $holds = db_query(
-    "SELECT h.*, u.name AS unit_name, r.name AS room_name, r.id AS room_db_id
+    "SELECT h.*, u.name AS unit_name, r.name AS room_name, r.id AS room_db_id, r.venue_id AS venue_id
      FROM holds h
      JOIN units u ON u.id = h.unit_id
      JOIN rooms r ON r.id = u.room_id
@@ -88,6 +88,15 @@ $holds = db_query(
      LIMIT 200",
     $params
 )->fetchAll();
+
+// Assignment (Phase 2): only surfaces once add_addon_assignee.sql has run. Owner
+// sees this page, so candidates are cached per venue as we render.
+$asgOn = addon_assigned_supported();
+$venueCandCache = [];
+$candsFor = function (int $vid) use (&$venueCandCache) {
+    if (!array_key_exists($vid, $venueCandCache)) $venueCandCache[$vid] = $vid > 0 ? assignable_team_for_venue($vid) : [];
+    return $venueCandCache[$vid];
+};
 
 // KPIs
 $kpi_pending   = db_query("SELECT COUNT(*) FROM holds WHERE status='pending'")->fetchColumn();
@@ -261,6 +270,20 @@ include __DIR__ . '/_layout.php';
                 <strong><?= e(ucfirst($a['kind'])) ?></strong>
                 <span><?= e(trim(($a['tour_name'] ?? '') . ' ' . $a['details'])) ?></span>
                 <em>(<?= e(addon_status_label($a['status'])) ?>)</em>
+                <?php if ($asgOn && in_array($a['status'], ['requested','confirmed'], true)): ?>
+                <?php $curAsg = isset($a['assigned_to']) ? (int)$a['assigned_to'] : 0; $cands = $candsFor((int)($hold['venue_id'] ?? 0)); ?>
+                <form method="POST" action="/admin/booking-request-action.php" style="display:inline;margin:0">
+                  <?= csrf_field() ?>
+                  <input type="hidden" name="type" value="assign">
+                  <input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
+                  <select name="assigned_to" onchange="this.form.submit()" style="font-size:12px;padding:2px 6px;border:1px solid #ccc;border-radius:4px">
+                    <option value="">— Unassigned —</option>
+                    <?php foreach ($cands as $c): ?>
+                    <option value="<?= (int)$c['id'] ?>" <?= $curAsg === (int)$c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?><?= ($c['role'] ?? '')==='manager' ? ' (mgr)' : (!empty($c['job_type']) ? ' · '.e($c['job_type']) : '') ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </form>
+                <?php endif; ?>
                 <?php if ($a['status'] === 'requested'): ?>
                 <form method="POST" action="/admin/booking-request-action.php" style="display:inline;margin:0">
                   <?= csrf_field() ?>
