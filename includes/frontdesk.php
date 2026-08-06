@@ -34,6 +34,7 @@ function frontdesk_rows(?array $venueIds, string $datePredicate, array $params):
     try {
         return db_query(
             "SELECT h.id, h.guest_name, h.check_in, h.check_out, h.access_code,
+                    h.require_checkin, h.checkin_completed_at,
                     r.name AS room_name, u.name AS unit_name,
                     v.id AS venue_id, v.name AS venue_name,
                     s.guest_phone,

@@ -7,6 +7,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/frontdesk.php';
+require_once __DIR__ . '/../includes/checkin.php';
 require_login();
 
 $pageTitle  = 'Front desk';
@@ -89,6 +90,7 @@ $card = function(array $r): string {
         <div class="fd-card__badges">
           <?php if ($reqs > 0): ?><a class="fd-badge fd-badge--req" href="/admin/booking.php?hold=<?= $hid ?>&tab=requests"><?= $reqs ?> request<?= $reqs === 1 ? '' : 's' ?></a><?php endif; ?>
           <?php if ($unread > 0): ?><a class="fd-badge fd-badge--msg" href="/admin/booking.php?hold=<?= $hid ?>&tab=messages"><?= $unread ?> unread</a><?php endif; ?>
+          <?php $__ci = checkin_badge($r); if ($__ci): ?><span class="ci-badge <?= e($__ci['class']) ?>"><?= e($__ci['label']) ?></span><?php endif; ?>
         </div>
       </div>
       <div class="fd-card__side">
