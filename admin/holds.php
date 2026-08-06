@@ -69,7 +69,7 @@ switch ($status_filter) {
     case 'confirmed': $conditions[] = "h.status = 'confirmed'"; break;
     case 'expired':   $conditions[] = "h.status = 'expired'";   break;
     case 'cancelled': $conditions[] = "h.status = 'cancelled'"; break;
-    case 'checkin_pending': $conditions[] = "h.require_checkin = TRUE AND h.checkin_completed_at IS NULL AND h.status IN ('pending','confirmed')"; break;
+    case 'checkin_pending': if (checkin_supported()) { $conditions[] = "h.require_checkin = TRUE AND h.checkin_completed_at IS NULL AND h.status IN ('pending','confirmed')"; break; } // else fall through to active
     default:          $conditions[] = "h.status IN ('pending','confirmed')"; break; // active
 }
 

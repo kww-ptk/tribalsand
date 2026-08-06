@@ -1,8 +1,6 @@
 (function () {
   var form = document.getElementById('ciForm');
-  if (!form || form.classList.contains('ci-done')) {
-    // Completed view: still allow re-editing if steps are present.
-  }
+  if (!form) return;
   var steps = Array.prototype.slice.call(document.querySelectorAll('.ci-step'));
   if (!steps.length) return;
   var bar = document.getElementById('ciBar');

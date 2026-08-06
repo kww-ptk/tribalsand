@@ -35,15 +35,15 @@ db_query(
 );
 
 // ── Upsert lead guest identity (file key handled by the upload endpoint) ───
-$lead = checkin_lead_guest($holdId);
-if ($lead) {
-    db_query("UPDATE checkin_guests SET passport_name=:n, passport_number=:num, nationality=:nat, passport_expiry=:exp WHERE id=:id",
-        [':n'=>$s('passport_name'), ':num'=>$s('passport_number'), ':nat'=>$s('nationality'),
-         ':exp'=>$s('passport_expiry'), ':id'=>(int)$lead['id']]);
-} else {
-    db_query("INSERT INTO checkin_guests (hold_id, is_lead, passport_name, passport_number, nationality, passport_expiry) VALUES (:h,TRUE,:n,:num,:nat,:exp)",
-        [':h'=>$holdId, ':n'=>$s('passport_name'), ':num'=>$s('passport_number'), ':nat'=>$s('nationality'), ':exp'=>$s('passport_expiry')]);
-}
+// Upsert the single lead-guest row atomically (partial unique index on
+// hold_id WHERE is_lead) so a concurrent passport upload can't duplicate it.
+// Only the identity fields are touched here — passport_file_key is left intact.
+db_query(
+    "INSERT INTO checkin_guests (hold_id, is_lead, passport_name, passport_number, nationality, passport_expiry)
+     VALUES (:h, TRUE, :n, :num, :nat, :exp)
+     ON CONFLICT (hold_id) WHERE is_lead
+     DO UPDATE SET passport_name=:n, passport_number=:num, nationality=:nat, passport_expiry=:exp",
+    [':h'=>$holdId, ':n'=>$s('passport_name'), ':num'=>$s('passport_number'), ':nat'=>$s('nationality'), ':exp'=>$s('passport_expiry')]);
 
 // ── Waiver signature (only when they tick + type a name) ───────────────────
 if (!empty($_POST['waiver_agree']) && $s('waiver_signed_name')) {

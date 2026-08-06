@@ -35,3 +35,5 @@ CREATE TABLE IF NOT EXISTS checkin_guests (
     created_at        TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_checkin_guests_hold ON checkin_guests (hold_id);
+-- One lead-guest row per booking (v1 UI). Makes the guest-side upsert race-safe.
+CREATE UNIQUE INDEX IF NOT EXISTS ux_checkin_guests_lead ON checkin_guests (hold_id) WHERE is_lead;

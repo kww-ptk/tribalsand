@@ -26,9 +26,9 @@ function storage_put(string $local_path, string $filename, string $content_type 
 /** Presigned GET URL (default 5 min) for a private R2 object key. '' if R2 unconfigured. */
 function storage_signed_get_url(string $key, int $ttl = 300): string {
     $env = parse_env();
-    if (!_r2_configured($env)) return '';   // local fallback: served by admin proxy reading disk
+    $bucket = $env['R2_CHECKIN_BUCKET'] ?? '';
+    if (!_r2_configured($env) || $bucket === '') return '';   // no private bucket → proxy serves the local private file
     $account_id = $env['R2_ACCOUNT_ID'];
-    $bucket     = $env['R2_BUCKET'] ?? 'tribalsand-images';
     $access_key = $env['R2_ACCESS_KEY'];
     $secret_key = $env['R2_SECRET_KEY'];
     $host   = "{$account_id}.r2.cloudflarestorage.com";
@@ -55,9 +55,9 @@ function storage_signed_get_url(string $key, int $ttl = 300): string {
     return "https://{$host}/{$bucket}/{$key}?{$canon_query}&X-Amz-Signature={$sig}";
 }
 
-/** Absolute local path for a key stored via the filesystem fallback. */
+/** Absolute local path for a PRIVATE check-in file — OUTSIDE the web root. */
 function storage_local_path(string $key): string {
-    return __DIR__ . '/../assets/img/' . $key;
+    return checkin_private_dir() . '/' . $key;
 }
 
 // Delete a stored file by its stored key (relative path or full URL).
@@ -86,9 +86,9 @@ function _r2_configured(array $env): bool {
     return !empty($env['R2_ACCOUNT_ID']) && !empty($env['R2_ACCESS_KEY']) && !empty($env['R2_SECRET_KEY']);
 }
 
-function _r2_put(string $local_path, string $key, array $env, string $content_type = 'image/jpeg'): string|false {
+function _r2_put(string $local_path, string $key, array $env, string $content_type = 'image/jpeg', ?string $bucket = null): string|false {
     $account_id = $env['R2_ACCOUNT_ID'];
-    $bucket     = $env['R2_BUCKET'] ?? 'tribalsand-images';
+    $bucket     = $bucket ?? ($env['R2_BUCKET'] ?? 'tribalsand-images');
     $access_key = $env['R2_ACCESS_KEY'];
     $secret_key = $env['R2_SECRET_KEY'];
     $public_url = rtrim($env['R2_PUBLIC_URL'] ?? '', '/');
@@ -137,9 +137,9 @@ function _r2_put(string $local_path, string $key, array $env, string $content_ty
     return ($status === 200) ? "{$public_url}/{$key}" : false;
 }
 
-function _r2_delete(string $key, array $env): void {
+function _r2_delete(string $key, array $env, ?string $bucket = null): void {
     $account_id = $env['R2_ACCOUNT_ID'];
-    $bucket     = $env['R2_BUCKET'] ?? 'tribalsand-images';
+    $bucket     = $bucket ?? ($env['R2_BUCKET'] ?? 'tribalsand-images');
     $access_key = $env['R2_ACCESS_KEY'];
     $secret_key = $env['R2_SECRET_KEY'];
 
@@ -178,21 +178,42 @@ function _r2_delete(string $key, array $env): void {
     @file_get_contents("https://{$host}/{$bucket}/{$key}", false, $ctx);
 }
 
-/** Store a file at an exact PRIVATE key (never a public URL). True on success. */
+/**
+ * Base dir for PRIVATE check-in files (passports/waivers) — OUTSIDE the web/doc
+ * root so it is never served by Apache OR `php -S`. Override with
+ * CHECKIN_STORAGE_DIR (point it at a persistent disk in production); defaults to
+ * the system temp dir. Sensitive PII must never live under assets/ (web-served).
+ */
+function checkin_private_dir(): string {
+    $base = trim((string)(parse_env()['CHECKIN_STORAGE_DIR'] ?? ''));
+    if ($base === '') $base = sys_get_temp_dir() . '/tribalsand_checkin';
+    return rtrim($base, '/');
+}
+
+/**
+ * Store a check-in file at an exact key. Uses a DEDICATED PRIVATE R2 bucket
+ * (R2_CHECKIN_BUCKET) when configured — never the public image bucket — else a
+ * non-web-served local dir. Returns true on success. The stored key (never a
+ * public URL) is what the DB holds; reads go only through admin/checkin-file.php.
+ */
 function storage_put_private(string $local_path, string $key, string $content_type): bool {
-    $env = parse_env();
-    if (_r2_configured($env)) return _r2_put($local_path, $key, $env, $content_type) !== false;
-    $dest = __DIR__ . '/../assets/img/' . $key;   // matches storage_local_path()
-    if (!is_dir(dirname($dest))) mkdir(dirname($dest), 0755, true);
-    if (copy($local_path, $dest)) { @unlink($local_path); return true; }
+    $env    = parse_env();
+    $bucket = $env['R2_CHECKIN_BUCKET'] ?? '';
+    if ($bucket !== '' && _r2_configured($env)) {
+        return _r2_put($local_path, $key, $env, $content_type, $bucket) !== false;
+    }
+    $dest = checkin_private_dir() . '/' . $key;
+    if (!is_dir(dirname($dest))) @mkdir(dirname($dest), 0700, true);
+    if (copy($local_path, $dest)) { @unlink($local_path); @chmod($dest, 0600); return true; }
     return false;
 }
 
-/** Delete a private object by its exact key (R2 when configured, else local). */
+/** Delete a private check-in file by exact key (private R2 bucket, else local). */
 function storage_delete_private(string $key): void {
     if ($key === '') return;
-    $env = parse_env();
-    if (_r2_configured($env)) { _r2_delete($key, $env); return; }
-    $path = __DIR__ . '/../assets/img/' . $key;
+    $env    = parse_env();
+    $bucket = $env['R2_CHECKIN_BUCKET'] ?? '';
+    if ($bucket !== '' && _r2_configured($env)) { _r2_delete($key, $env, $bucket); return; }
+    $path = checkin_private_dir() . '/' . $key;
     if (is_file($path)) @unlink($path);
 }

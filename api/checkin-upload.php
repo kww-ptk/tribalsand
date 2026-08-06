@@ -27,12 +27,15 @@ $key = 'checkin/' . $holdId . '/' . bin2hex(random_bytes(12)) . '.' . $allowed[$
 if (!storage_put_private($f['tmp_name'], $key, $mime)) { http_response_code(500); echo json_encode(['error' => 'store failed']); exit; }
 
 // Store the KEY (not a public URL) so viewing always goes through the admin proxy.
-$lead = checkin_lead_guest($holdId);
-if ($lead) {
-    // Remove the previous file if one existed.
-    if (!empty($lead['passport_file_key'])) { try { storage_delete_private($lead['passport_file_key']); } catch (Throwable $e) {} }
-    db_query('UPDATE checkin_guests SET passport_file_key = :k WHERE id = :id', [':k' => $key, ':id' => (int)$lead['id']]);
-} else {
-    db_query('INSERT INTO checkin_guests (hold_id, is_lead, passport_file_key) VALUES (:h, TRUE, :k)', [':h' => $holdId, ':k' => $key]);
+// Atomic upsert on the partial unique index (hold_id WHERE is_lead) so a
+// concurrent per-step save can't create a second lead row.
+$prev = checkin_lead_guest($holdId);
+db_query(
+    "INSERT INTO checkin_guests (hold_id, is_lead, passport_file_key) VALUES (:h, TRUE, :k)
+     ON CONFLICT (hold_id) WHERE is_lead DO UPDATE SET passport_file_key = :k",
+    [':h' => $holdId, ':k' => $key]);
+// Remove the previous file, if the key actually changed.
+if ($prev && !empty($prev['passport_file_key']) && $prev['passport_file_key'] !== $key) {
+    try { storage_delete_private($prev['passport_file_key']); } catch (Throwable $e) {}
 }
 echo json_encode(['ok' => true]);
