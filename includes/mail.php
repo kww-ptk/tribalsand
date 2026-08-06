@@ -598,3 +598,25 @@ function send_addon_request_notification(array $hold, array $addon): void {
     $html = '<p>' . nl2br(htmlspecialchars($text)) . '</p>';
     _dispatch_mail($to, $subject, $text, $from, $to, $env, $html);
 }
+
+/** Best-effort front-desk notice on check-in completion. No-ops if mail is unconfigured. */
+function send_checkin_completed(array $hold, ?array $data): void {
+    $env = parse_env();
+    $key = $env['RESEND_API_KEY'] ?? '';
+    $from = $env['MAIL_FROM'] ?? '';
+    $to  = $env['ADMIN_NOTIFY_EMAIL'] ?? $from;
+    if ($key === '' || $from === '' || $to === '') return;     // not configured → silent
+    $lines = [
+        'Guest: ' . ($hold['guest_name'] ?? ''),
+        'Room: '  . ($hold['room_name'] ?? ''),
+        'Flight: ' . trim((string)($data['flight_number'] ?? '') . ' ' . (string)($data['arrival_airport'] ?? '')),
+        'Arrival: ' . (string)($data['arrival_at'] ?? ''),
+        'Transfer: ' . (($data['needs_transfer'] ?? null) ? ('yes — ' . (string)($data['transfer_details'] ?? '')) : 'no'),
+        'Dietary: ' . (string)($data['dietary'] ?? ''),
+        'Requests: ' . (string)($data['special_requests'] ?? ''),
+    ];
+    $body = "Guest completed pre-check-in.\n\n" . implode("\n", $lines)
+          . "\n\n" . site_url('/admin/booking.php?hold=' . (int)$hold['id'] . '&tab=checkin');
+    try { send_resend($to, 'Pre-check-in complete — ' . ($hold['guest_name'] ?? ''), $body, $from, $from, $key); }
+    catch (Throwable $e) { error_log('[checkin] send_resend: ' . $e->getMessage()); }
+}

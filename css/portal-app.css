@@ -140,3 +140,20 @@
 .pa-modal__actions{display:flex;flex-direction:column;gap:8px;}
 
 .pa-tag--event{background:#ede9fe;color:#5b21b6;}
+
+.ci-wizard{max-width:520px;margin:0 auto}
+.ci-welcome{color:var(--pa-muted);line-height:1.6;margin:0 0 16px}
+.ci-progress{height:4px;background:#e7ded7;border-radius:999px;margin:0 0 20px;overflow:hidden}
+.ci-progress__bar{height:100%;width:0;background:var(--teal,#1E5C6B);transition:width .25s}
+.ci-step__num{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#9CA3AF}
+.ci-step__h h3{font-family:'Cormorant Garamond',serif;font-weight:400;font-size:24px;margin:4px 0 18px}
+.ci-req{color:#c0392b}
+.ci-l{display:block;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#6b7280;margin:14px 0 6px}
+.ci-in{width:100%;padding:12px 14px;border:1px solid #d1d5db;border-radius:8px;font-size:16px;font-family:inherit;box-sizing:border-box}
+.ci-radio{display:flex;align-items:center;gap:8px;margin:8px 0;font-size:15px}
+.ci-waiver{max-height:200px;overflow:auto;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px;font-size:14px;line-height:1.6;margin-bottom:12px}
+.ci-upload{display:flex;align-items:center;gap:10px;margin-top:6px}
+.ci-upload__state{font-size:13px;color:#6b7280}
+.ci-nav{display:flex;justify-content:space-between;gap:12px;margin-top:24px}
+.ci-help{text-align:center;margin-top:28px;font-size:13px;color:#9ca3af}
+.pa-btn--ghost{background:transparent;color:var(--teal,#1E5C6B);border:1px solid #d1d5db}

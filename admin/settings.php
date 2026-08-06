@@ -106,6 +106,8 @@ include __DIR__ . '/_layout.php';
   <h1>Settings</h1>
 </div>
 
+<p style="margin:0 0 16px"><a href="/admin/checkin-settings.php" class="btn-outline btn-sm">Pre-Check-in settings →</a></p>
+
 <?php if ($success): ?><div class="alert alert--success"><?= e($success) ?></div><?php endif; ?>
 <?php if ($error):   ?><div class="alert alert--error"><?= e($error) ?></div><?php endif; ?>
 

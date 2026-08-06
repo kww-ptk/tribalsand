@@ -451,3 +451,8 @@ a.no-style   { text-decoration: none; color: inherit; }
 .ts-toast__msg { flex: 1 1 auto; color: var(--text); }
 .ts-toast__x { flex: 0 0 auto; background: none; border: 0; cursor: pointer; font-size: 16px; line-height: 1; color: var(--muted); padding: 0 2px; }
 .ts-toast__x:hover { color: var(--text); }
+
+/* ── Pre-Check-in badges (Frontdesk, Holds, Check-in tab) ── */
+.ci-badge{font-size:11px;font-weight:700;border-radius:999px;padding:3px 9px;display:inline-block}
+.ci-badge--done{background:#dcfce7;color:#166534}
+.ci-badge--pending{background:#fef3c7;color:#92400e}

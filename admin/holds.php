@@ -4,6 +4,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/mail.php';
 require_once __DIR__ . '/../includes/booking.php';
+require_once __DIR__ . '/../includes/checkin.php';
 require_login();
 require_owner();
 
@@ -68,6 +69,7 @@ switch ($status_filter) {
     case 'confirmed': $conditions[] = "h.status = 'confirmed'"; break;
     case 'expired':   $conditions[] = "h.status = 'expired'";   break;
     case 'cancelled': $conditions[] = "h.status = 'cancelled'"; break;
+    case 'checkin_pending': if (checkin_supported()) { $conditions[] = "h.require_checkin = TRUE AND h.checkin_completed_at IS NULL AND h.status IN ('pending','confirmed')"; break; } // else fall through to active
     default:          $conditions[] = "h.status IN ('pending','confirmed')"; break; // active
 }
 
@@ -149,6 +151,9 @@ include __DIR__ . '/_layout.php';
       <option value="confirmed" <?= $status_filter === 'confirmed' ? 'selected' : '' ?>>Confirmed only</option>
       <option value="expired"   <?= $status_filter === 'expired'   ? 'selected' : '' ?>>Expired</option>
       <option value="cancelled" <?= $status_filter === 'cancelled' ? 'selected' : '' ?>>Cancelled</option>
+      <?php if (checkin_supported()): ?>
+      <option value="checkin_pending" <?= $status_filter === 'checkin_pending' ? 'selected' : '' ?>>Check-in pending</option>
+      <?php endif; ?>
     </select>
   </label>
   <label class="filter-field">Room
@@ -176,6 +181,7 @@ include __DIR__ . '/_layout.php';
           <th>Room / Unit</th>
           <th>Dates</th>
           <th>Status</th>
+          <th>Check-in</th>
           <th>Expires / Updated</th>
           <th>Actions</th>
         </tr>
@@ -230,6 +236,7 @@ include __DIR__ . '/_layout.php';
             <span style="font-size:12px;color:var(--muted)">→ <?= e($hold['check_out']) ?></span>
           </td>
           <td><span class="badge <?= $badge ?>"><?= e($status) ?></span></td>
+          <td><?php $__ci = checkin_badge($hold); if ($__ci): ?><span class="ci-badge <?= e($__ci['class']) ?>"><?= e($__ci['label']) ?></span><?php else: ?><span class="text-muted">—</span><?php endif; ?></td>
           <td style="font-size:12px;color:var(--muted)"><?= e($expires_str) ?></td>
           <td>
             <div class="row-actions">
@@ -268,7 +275,7 @@ include __DIR__ . '/_layout.php';
         <?php if ($h_addons || $h_changes): ?>
         <tr class="hold-requests-row">
           <td></td>
-          <td colspan="6" style="padding-top:0;padding-bottom:12px">
+          <td colspan="7" style="padding-top:0;padding-bottom:12px">
             <div class="hold-requests" style="padding:10px 12px;background:var(--bg-alt,#f7f7f5);border-radius:6px">
               <?php foreach ($h_addons as $a): ?>
               <div style="display:flex;gap:8px;align-items:center;font-size:13px;margin:4px 0;flex-wrap:wrap">
