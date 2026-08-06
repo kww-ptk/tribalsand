@@ -9,7 +9,7 @@ require_login();
 
 $holdId = (int)($_GET['hold'] ?? $_POST['hold_id'] ?? 0);
 $hold = $holdId ? db_query(
-    "SELECT h.*, u.name AS unit_name, r.name AS room_name, v.name AS venue_name
+    "SELECT h.*, u.name AS unit_name, r.name AS room_name, r.venue_id AS venue_id, v.name AS venue_name
      FROM holds h JOIN units u ON u.id=h.unit_id JOIN rooms r ON r.id=u.room_id
      LEFT JOIN venues v ON v.id=r.venue_id WHERE h.id=:id", [':id'=>$holdId]
 )->fetch() : null;
@@ -17,18 +17,19 @@ $hold = $holdId ? db_query(
 $flash = null;
 if (!empty($_SESSION['hold_flash'])) { $flash = $_SESSION['hold_flash']; unset($_SESSION['hold_flash']); }
 if (!$hold) { $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Booking not found.']; header('Location: /admin/holds.php'); exit; }
-if (is_staff() && !staff_can_hold($holdId)) { $_SESSION['hold_flash']=['type'=>'error','msg'=>'That booking is at a property you don’t manage.']; header('Location: ' . admin_home_url()); exit; }
+if (!is_owner() && !staff_can_hold($holdId)) { $_SESSION['hold_flash']=['type'=>'error','msg'=>'That booking is at a property you don’t manage.']; header('Location: ' . admin_home_url()); exit; }
 
 $tab = $_GET['tab'] ?? 'requests';
 if (!in_array($tab, ['requests','messages','plan','bill','details'], true)) $tab = 'requests';
-if (is_staff() && $tab === 'details') $tab = 'requests';
+// Only the owner sees the Details tab (booking confirm/cancel/edit is owner-only config).
+if (!is_owner() && $tab === 'details') $tab = 'requests';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $act = $_POST['action'] ?? '';
-    // Staff can never confirm/cancel a booking — server-side gate (the Details tab is also hidden).
-    if (is_staff() && in_array($act, ['confirm','cancel'], true)) {
-        $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Staff accounts cannot confirm or cancel bookings.'];
+    // Only the owner can confirm/cancel a booking — server-side gate (the Details tab is also hidden).
+    if (!is_owner() && in_array($act, ['confirm','cancel'], true)) {
+        $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Only the owner account can confirm or cancel bookings.'];
         header("Location: /admin/booking.php?hold=$holdId&tab=requests"); exit;
     }
     if ($act === 'confirm' && $hold['status'] === 'pending') {
@@ -130,7 +131,7 @@ include __DIR__ . '/_layout.php';
 <div class="card" style="margin-bottom:16px"><div class="card__body" style="display:flex;gap:8px;flex-wrap:wrap">
   <?php
   $__wtabs = ['requests'=>'Requests','messages'=>'Messages','plan'=>'Plan','bill'=>'Bill','details'=>'Details'];
-  if (is_staff()) unset($__wtabs['details']);
+  if (!is_owner()) unset($__wtabs['details']);
   foreach ($__wtabs as $tk=>$tl):
     $b = $tk==='requests' && $openReq ? " ($openReq)" : ($tk==='messages' && $unreadMsg ? " ($unreadMsg)" : '');
   ?>

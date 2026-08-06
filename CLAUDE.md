@@ -26,6 +26,15 @@ All CSS/JS `<link>`/`<script>` tags in `includes/head.php` use `?v=<?= filemtime
 ### iCal sync secret
 `api/sync-ical.php` — secret is passed via `Authorization: Bearer` header. Legacy `?secret=` query param still works for external crons but the admin Gantt "Sync Now" button uses the header. Never revert to query-param-only (it logs the secret in plaintext).
 
+### Team roles & job types
+`admin_users.role` is `owner | manager | staff` (extended from the old owner/staff binary via `db/migrations/add_team_roles.sql`). Gate with the role helpers in `includes/auth.php`, never a raw `admin_role()` string compare:
+- `is_owner()` — full access. `require_owner()` (pricing/settings/staff/bookings config) bounces **everyone but the owner**, so it now blocks managers too.
+- `is_manager()` — per-property ops tier. `require_manager()` = owner **or** manager (guards assignment, `admin/tasks.php`, `admin/gate.php` management).
+- `is_staff()` — access-code staff only (managers are **not** staff). `admin_job()` returns their specialty; a **NULL `job_type` means `frontdesk`** (backward-compatible — existing staff keep landing on Front Desk). `job_is_ops()` = housekeeping/maintenance/gardening/driver.
+- **Scoping now covers managers:** `admin_venue_ids()` returns the venue set for managers *and* staff (owner = `null` = all); `staff_can_hold()` scopes both. When scoping a page, test `!is_owner()`, not `is_staff()`.
+- `admin_home_url()` routes each account to its home (owner→dashboard, manager→frontdesk, security→gate, ops→mywork, else frontdesk); `admin/_layout.php` nav is role/job-aware.
+- Request auto-routing + assignment + tasks + visitors helpers live in `includes/team.php` (loaded via `includes/booking.php`); every read is pre-migration-safe (`*_supported()` guards). Migrations, in order: `add_team_roles` → `add_addon_assignee` → `add_tasks` → `add_visitors`. Test: `php tests/team_logic.php`.
+
 ## File Map
 
 | File | Purpose |

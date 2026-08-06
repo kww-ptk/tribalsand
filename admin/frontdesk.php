@@ -12,9 +12,9 @@ require_login();
 $pageTitle  = 'Front desk';
 $activeMenu = 'frontdesk';
 
-// ── Scope: owner => null (all); staff => their venue ids (empty => none) ──
-$isStaff = is_staff();
-$allowed = $isStaff ? (admin_venue_ids() ?: []) : null;   // null = all venues
+// ── Scope: owner => null (all); manager/staff => their venue ids (empty => none) ──
+$isOwner = is_owner();
+$allowed = $isOwner ? null : (admin_venue_ids() ?: []);   // null = all venues
 
 // Venue list for the filter (owner: all; staff: their venues).
 if ($allowed === null) {
@@ -144,7 +144,7 @@ include __DIR__ . '/_layout.php';
 
 <div class="page-header">
   <h1>Front desk</h1>
-  <?php if (!$isStaff): ?><a href="/admin/dashboard.php" class="btn-outline btn-sm">← Dashboard</a><?php endif; ?>
+  <?php if ($isOwner): ?><a href="/admin/dashboard.php" class="btn-outline btn-sm">← Dashboard</a><?php endif; ?>
 </div>
 
 <div class="fd-topline">

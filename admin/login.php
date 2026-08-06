@@ -14,9 +14,9 @@ $error = '';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (($_POST['do'] ?? '') === 'staff') {
-        // Onsite staff — access-code sign-in.
+        // Onsite staff — access-code sign-in. Land on the job-appropriate home.
         if (login_staff($_POST['staff_code'] ?? '', client_ip())) {
-            header('Location: /admin/frontdesk.php');
+            header('Location: ' . admin_home_url());
             exit;
         }
         $error = 'Invalid or inactive staff code.';
@@ -29,7 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif (is_rate_limited($email, client_ip())) {
             $error = 'Too many failed attempts. Please wait 10 minutes and try again.';
         } elseif (login($email, $password)) {
-            header('Location: /admin/dashboard.php');
+            header('Location: ' . admin_home_url());
             exit;
         } else {
             $error = 'Invalid email or password.';

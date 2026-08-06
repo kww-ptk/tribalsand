@@ -87,6 +87,11 @@ if ($sched !== '') {
 }
 if ($schedOverride !== null) $schedSql = $schedOverride; // tour date wins over any preferred-time field
 
+// Auto-route by job type: a housekeeping/maintenance/transfer request lands on
+// the matching on-site specialist's My Work queue when there's exactly one at
+// this property. Otherwise it stays unassigned for the manager to route.
+$assignee = default_assignee_for($kind, isset($hold['venue_id']) ? (int)$hold['venue_id'] : null);
+
 try {
     $addonId = insert_booking_addon([
         'hold_id'      => $hold['id'],
@@ -97,6 +102,7 @@ try {
         'price_amount' => $priceSnapshot,
         'pax'          => $paxValue,
         'board_post_id'=> $boardPostId,
+        'assigned_to'  => $assignee,
     ]);
 
     // Auto-start a conversation for this request so guest + staff manage it in one place.

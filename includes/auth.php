@@ -45,35 +45,82 @@ function require_login(): void {
 function current_admin(): array|false {
     session_init();
     if (empty($_SESSION['admin_id'])) return false;
+    // SELECT * (not an explicit column list) so a freshly-added column such as
+    // job_type is picked up automatically AND its absence pre-migration never
+    // fatals the whole admin on this per-request query.
     return db_query(
-        'SELECT id, email, name, role, is_active, created_at FROM admin_users WHERE id = :id',
+        'SELECT * FROM admin_users WHERE id = :id',
         [':id' => $_SESSION['admin_id']]
     )->fetch();
 }
 
 /** Current admin's role; defaults to the LEAST-privileged value if unknown (fail closed). */
 function admin_role(): string { $a = current_admin(); return ($a && !empty($a['role'])) ? $a['role'] : 'staff'; }
-function is_staff(): bool { return admin_role() === 'staff'; }
+function is_owner(): bool   { return admin_role() === 'owner'; }
+function is_manager(): bool { return admin_role() === 'manager'; }
+function is_staff(): bool   { return admin_role() === 'staff'; }
 
-/** Post-login home for the current admin: staff → Front Desk, owner → dashboard. */
-function admin_home_url(): string { return is_staff() ? '/admin/frontdesk.php' : '/admin/dashboard.php'; }
-
-/** Venue ids a staff user may see; null = all (owner). */
-function admin_venue_ids(): ?array {
+/**
+ * Current staff member's operational specialty. A NULL job_type is treated as
+ * 'frontdesk' (backward-compatible with pre-extension staff). Owner/manager
+ * accounts are not job-driven, so they return null.
+ */
+function admin_job(): ?string {
     if (!is_staff()) return null;
+    $a = current_admin();
+    return ($a && !empty($a['job_type'])) ? (string)$a['job_type'] : 'frontdesk';
+}
+
+/** The job types whose home is the focused My Work queue (vs Front Desk / Gate). */
+function job_is_ops(?string $job): bool {
+    return in_array($job, ['housekeeping','maintenance','gardening','driver'], true);
+}
+
+/**
+ * Post-login home for the current admin:
+ *   owner → dashboard · manager → front desk · security staff → gate ·
+ *   ops staff → My Work · frontdesk (or job-less) staff → front desk.
+ */
+function admin_home_url(): string {
+    if (is_owner())   return '/admin/dashboard.php';
+    if (is_manager()) return '/admin/frontdesk.php';
+    $job = admin_job();
+    if ($job === 'security') return '/admin/gate.php';
+    if (job_is_ops($job))    return '/admin/mywork.php';
+    return '/admin/frontdesk.php';
+}
+
+/** Venue ids the current admin may see; null = all (owner). Managers and staff are scoped. */
+function admin_venue_ids(): ?array {
+    if (is_owner()) return null;
     $rows = db_query('SELECT venue_id FROM admin_user_venues WHERE admin_user_id = :id', [':id' => $_SESSION['admin_id'] ?? 0])->fetchAll(PDO::FETCH_COLUMN);
     return array_map('intval', $rows);
 }
 
-/** Owner-only gate. Staff are redirected to the concierge desk. */
+/** Owner-only gate. Managers and staff are redirected to their own home. */
 function require_owner(): void {
     require_login();
-    if (is_staff()) { $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'That area is not available for staff accounts.']; header('Location: /admin/frontdesk.php'); exit; }
+    if (!is_owner()) { $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'That area is only available to the owner account.']; header('Location: ' . admin_home_url()); exit; }
 }
 
-/** True if current admin may act on this hold (owner: always; staff: hold's venue in scope). */
+/** Owner-or-manager gate — guards assignment, tasks and gate management. Staff are bounced home. */
+function require_manager(): void {
+    require_login();
+    if (!is_owner() && !is_manager()) { $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'That area is only available to managers.']; header('Location: ' . admin_home_url()); exit; }
+}
+
+/** Gate access — owner, manager, or gate-security staff. Others are bounced home. */
+function require_gate(): void {
+    require_login();
+    if (!is_owner() && !is_manager() && !(is_staff() && admin_job() === 'security')) {
+        $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'The gate isn’t available for your account.'];
+        header('Location: ' . admin_home_url()); exit;
+    }
+}
+
+/** True if current admin may act on this hold (owner: always; manager/staff: hold's venue in scope). */
 function staff_can_hold(int $holdId): bool {
-    if (!is_staff()) return true;
+    if (is_owner()) return true;
     $vids = admin_venue_ids();
     if (!$vids) return false;
     $v = db_query('SELECT r.venue_id FROM holds h JOIN units u ON u.id=h.unit_id JOIN rooms r ON r.id=u.room_id WHERE h.id=:id', [':id'=>$holdId])->fetchColumn();

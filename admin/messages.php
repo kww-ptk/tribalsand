@@ -14,7 +14,7 @@ $threadP = $_GET['thread'] ?? null;
 $addonId = ($threadP === null || $threadP === 'general') ? null : (int)$threadP;
 $inThread = $holdId > 0 && $threadP !== null;
 
-if ($inThread && is_staff() && !staff_can_hold($holdId)) {
+if ($inThread && !is_owner() && !staff_can_hold($holdId)) {
     $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Not your property.'];
     header('Location: /admin/messages.php'); exit;
 }
@@ -27,8 +27,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $ph = (int)($_POST['hold_id'] ?? 0);
     $pa = ($_POST['addon_id'] ?? '') === '' ? null : (int)$_POST['addon_id'];
     $body = trim((string)($_POST['body'] ?? ''));
-    // Staff may only reply on bookings at their own properties.
-    if (is_staff() && !staff_can_hold($ph)) {
+    // Staff and managers may only reply on bookings at their own properties.
+    if (!is_owner() && !staff_can_hold($ph)) {
         $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Not your property.'];
         header('Location: /admin/messages.php'); exit;
     }

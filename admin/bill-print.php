@@ -13,7 +13,7 @@ $hold = $holdId ? db_query(
      LEFT JOIN venues v ON v.id=r.venue_id WHERE h.id=:id", [':id'=>$holdId]
 )->fetch() : null;
 if (!$hold) { http_response_code(404); exit('Booking not found.'); }
-if (is_staff() && !staff_can_hold($holdId)) { http_response_code(403); exit('Not your property.'); }
+if (!is_owner() && !staff_can_hold($holdId)) { http_response_code(403); exit('Not your property.'); }
 
 $cur   = setting('site_currency', 'USD');
 $lines = array_filter(fetch_bill_lines($holdId), fn($l) => isset($l['price_amount']) && $l['price_amount'] !== null && (float)$l['price_amount'] > 0);

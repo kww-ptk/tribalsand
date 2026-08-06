@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/services.php';
+require_once __DIR__ . '/team.php';
 
 /**
  * Generate an HMAC-SHA256 token for a hold action (confirm or decline).
@@ -379,6 +380,7 @@ function insert_booking_addon(array $d): int {
     if (addon_price_supported()) { $cols[] = 'price_amount'; $vals[] = ':price'; $p[':price'] = $d['price_amount'] ?? null; }
     if (addon_pax_supported())   { $cols[] = 'pax';          $vals[] = ':pax';   $p[':pax']   = $d['pax'] ?? null; }
     if (addon_board_supported())  { $cols[] = 'board_post_id'; $vals[] = ':bp'; $p[':bp'] = $d['board_post_id'] ?? null; }
+    if (addon_assigned_supported()) { $cols[] = 'assigned_to'; $vals[] = ':asg'; $p[':asg'] = $d['assigned_to'] ?? null; }
     db_query('INSERT INTO booking_addons (' . implode(',', $cols) . ') VALUES (' . implode(',', $vals) . ')', $p);
     return (int) db()->lastInsertId();
 }

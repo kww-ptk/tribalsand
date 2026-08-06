@@ -2,6 +2,25 @@
 // Admin shared layout — include at top of each admin page after require_login()
 // Sets: $pageTitle (required), $activeMenu (required)
 $admin = current_admin();
+
+// ── Role / job aware nav visibility ──────────────────────────────────────
+// Owner sees everything; manager gets ops surfaces (scoped); staff see only the
+// surface for their job (frontdesk → Front Desk, ops → My Work, security → Gate).
+$__isOwner          = is_owner();
+$__isManager        = is_manager();
+$__job              = admin_job();               // null for owner/manager; specialty for staff
+$__isOps            = job_is_ops($__job);         // housekeeping / maintenance / gardening / driver
+$__isSecurity       = ($__job === 'security');
+$__isFrontdeskStaff = is_staff() && !$__isOps && !$__isSecurity;   // frontdesk or job-less staff
+
+$__navFrontdesk = $__isOwner || $__isManager || $__isFrontdeskStaff;
+$__navConcierge = $__isOwner || $__isManager || $__isFrontdeskStaff;
+$__navTasks     = $__isOwner || $__isManager;
+$__navGate      = $__isOwner || $__isManager || $__isSecurity;
+$__navMyWork    = $__isOps;
+
+// Chip shown under the logo for non-owner accounts.
+$__roleBadge = $__isManager ? 'Manager' : (is_staff() ? ucfirst((string)$__job) : '');
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -31,15 +50,23 @@ $admin = current_admin();
     <div class="sidebar__logo">
       <img src="/images/whitelogo11.png" alt="Tribal Sand">
     </div>
-    <?php $__me = current_admin(); if (is_staff()): ?>
-    <div style="padding:8px 12px;font-size:12px;color:#9ca3af"><?= e($__me['name'] ?? 'Staff') ?> <span class="badge badge--blue" style="font-size:10px">Staff</span></div>
+    <?php if (!$__isOwner && ($admin || $__roleBadge)): ?>
+    <div style="padding:8px 12px;font-size:12px;color:#9ca3af"><?= e($admin['name'] ?? ($__isManager ? 'Manager' : 'Staff')) ?> <?php if ($__roleBadge): ?><span class="badge <?= $__isManager ? 'badge--green' : 'badge--blue' ?>" style="font-size:10px"><?= e($__roleBadge) ?></span><?php endif; ?></div>
     <?php endif; ?>
     <nav class="sidebar__nav">
+      <?php if ($__navFrontdesk): ?>
       <a href="/admin/frontdesk.php"    class="sidebar__link <?= ($activeMenu??'')==='frontdesk'    ? 'is-active':'' ?>">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 3v3h6V3M8 11h8M8 15h5"/></svg>
         Front desk
       </a>
-      <?php if (!is_staff()): ?>
+      <?php endif; ?>
+      <?php if ($__navMyWork): ?>
+      <a href="/admin/mywork.php"       class="sidebar__link <?= ($activeMenu??'')==='mywork'       ? 'is-active':'' ?>">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        My work
+      </a>
+      <?php endif; ?>
+      <?php if ($__isOwner): ?>
       <a href="/admin/dashboard.php"    class="sidebar__link <?= ($activeMenu??'')==='dashboard'    ? 'is-active':'' ?>">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
         Dashboard
@@ -69,15 +96,29 @@ $admin = current_admin();
         Holds
       </a>
       <?php endif; ?>
+      <?php if ($__navConcierge): ?>
       <a href="/admin/concierge-desk.php" class="sidebar__link <?= ($activeMenu??'')==='concierge_desk' ? 'is-active':'' ?>">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16"/><path d="M5 19v-4a7 7 0 0 1 14 0v4"/><line x1="12" y1="5" x2="12" y2="8"/></svg>
         Concierge desk
       </a>
+      <?php endif; ?>
+      <?php if ($__navTasks): ?>
+      <a href="/admin/tasks.php"        class="sidebar__link <?= ($activeMenu??'')==='tasks'        ? 'is-active':'' ?>">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 13l2 2 4-4"/></svg>
+        Tasks
+      </a>
+      <?php endif; ?>
+      <?php if ($__navGate): ?>
+      <a href="/admin/gate.php"         class="sidebar__link <?= ($activeMenu??'')==='gate'         ? 'is-active':'' ?>">
+        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
+        Gate
+      </a>
+      <?php endif; ?>
       <a href="/admin/messages.php"     class="sidebar__link <?= ($activeMenu??'')==='messages'     ? 'is-active':'' ?>">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         Messages<?php $u=function_exists('count_unread_admin')?count_unread_admin(admin_venue_ids()):0; if($u>0): ?> <span class="badge badge--orange" style="margin-left:6px"><?= (int)$u ?></span><?php endif; ?>
       </a>
-      <?php if (!is_staff()): ?>
+      <?php if ($__isOwner): ?>
       <a href="/admin/submissions.php"  class="sidebar__link <?= ($activeMenu??'')==='submissions'  ? 'is-active':'' ?>">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 9v11"/></svg>
         Submissions
