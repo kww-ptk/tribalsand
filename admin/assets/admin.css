@@ -93,16 +93,28 @@ body { font-family: system-ui, -apple-system, sans-serif; font-size: 14px; color
 
 /* ── Buttons ── */
 .btn-primary, .btn-outline, .btn-danger, .btn-sm {
-  display: inline-flex; align-items: center; gap: 6px;
-  padding: 8px 16px; border-radius: 6px; font-size: 13.5px; font-weight: 500;
-  cursor: pointer; border: none; text-decoration: none; transition: opacity .15s;
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 16px; border-radius: 6px; font-size: 13.5px; font-weight: 500; line-height: 1.2;
+  cursor: pointer; border: none; text-decoration: none; white-space: nowrap;
+  transition: background .15s, opacity .15s, transform .05s, box-shadow .15s;
 }
 .btn-primary  { background: var(--brand);  color: #fff; }
 .btn-outline  { background: transparent; border: 1.5px solid var(--brand); color: var(--brand); }
 .btn-danger   { background: var(--red);    color: #fff; }
 .btn-sm       { padding: 5px 11px; font-size: 12.5px; }
-.btn-primary:hover, .btn-danger:hover { opacity: .88; }
+/* Button links inside tables must NOT inherit the table's link colour — that was
+   painting <a class="btn-primary"> teal-on-teal (invisible "Manage" button). */
+a.btn-primary, a.btn-danger { color: #fff; }
+a.btn-outline { color: var(--brand); }
+.btn-primary:hover { background: var(--brand-dk); }
+.btn-danger:hover  { opacity: .9; }
 .btn-outline:hover { background: var(--brand); color: #fff; }
+.btn-primary:active, .btn-outline:active, .btn-danger:active { transform: translateY(1px); }
+.btn-primary:focus-visible, .btn-outline:focus-visible, .btn-danger:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
+}
+.btn-primary:disabled, .btn-outline:disabled, .btn-danger:disabled,
+button:disabled { opacity: .55; cursor: not-allowed; }
 .btn-full { width: 100%; justify-content: center; }
 
 /* ── Forms ── */
