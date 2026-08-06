@@ -141,19 +141,54 @@
 
 .pa-tag--event{background:#ede9fe;color:#5b21b6;}
 
+/* ── Check-in — landing ──────────────────────────────────────── */
 .ci-wizard{max-width:520px;margin:0 auto}
 .ci-welcome{color:var(--pa-muted);line-height:1.6;margin:0 0 16px}
-.ci-progress{height:4px;background:#e7ded7;border-radius:999px;margin:0 0 20px;overflow:hidden}
-.ci-progress__bar{height:100%;width:0;background:var(--teal,#1E5C6B);transition:width .25s}
-.ci-step__num{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:#9CA3AF}
-.ci-step__h h3{font-family:'Cormorant Garamond',serif;font-weight:400;font-size:24px;margin:4px 0 18px}
+.ci-intro{max-width:520px;margin:0 auto}
+.ci-hero{text-align:center;padding:18px 6px 22px}
+.ci-hero__eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--pa-gold);font-weight:600}
+.ci-hero__title{font-family:'Cormorant Garamond',serif;font-weight:500;font-size:34px;line-height:1.05;margin:10px 0 12px;color:var(--pa-ink)}
+.ci-hero__sub{font-size:15px;line-height:1.65;color:var(--pa-muted);margin:0 auto;max-width:400px}
+.ci-trip{padding:2px 0}
+.ci-trip__row{display:flex;justify-content:space-between;align-items:baseline;gap:14px;padding:13px 16px;border-bottom:1px solid var(--pa-line)}
+.ci-trip__row:last-child{border-bottom:0}
+.ci-trip__row>span{font-size:11px;letter-spacing:.05em;text-transform:uppercase;color:var(--pa-muted);white-space:nowrap}
+.ci-trip__row>strong{font-weight:600;color:var(--pa-ink);text-align:right}
+.ci-trip__muted{color:var(--pa-muted);font-weight:400}
+.ci-trip code{font-family:ui-monospace,SFMono-Regular,monospace;background:var(--pa-cream);padding:2px 8px;border-radius:6px;letter-spacing:.06em;font-size:13px}
+.ci-need{margin:20px 4px 4px}
+.ci-need__title{font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--pa-muted);margin:0 0 8px;font-weight:600}
+.ci-need__item{display:flex;align-items:center;gap:12px;font-size:15px;color:var(--pa-ink);padding:8px 2px}
+.ci-need__ic{width:36px;height:36px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;background:#fff;border:1px solid var(--pa-line);border-radius:10px;font-size:17px}
+.ci-start{margin-top:24px;font-size:15px;padding:15px}
+.ci-intro__note{text-align:center;font-size:12px;color:var(--pa-muted);margin:14px 0 0;line-height:1.5}
+
+/* ── Check-in — steps ────────────────────────────────────────── */
+.ci-progress{height:5px;background:#e7ded7;border-radius:999px;margin:2px 0 22px;overflow:hidden}
+.ci-progress__bar{height:100%;width:0;background:var(--pa-teal);transition:width .3s ease}
+.ci-step__num{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--pa-gold)}
+.ci-step__h h3{font-family:'Cormorant Garamond',serif;font-weight:500;font-size:26px;margin:5px 0 20px;color:var(--pa-ink)}
 .ci-req{color:#c0392b}
-.ci-l{display:block;font-size:12px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:#6b7280;margin:14px 0 6px}
-.ci-in{width:100%;padding:12px 14px;border:1px solid #d1d5db;border-radius:8px;font-size:16px;font-family:inherit;box-sizing:border-box}
-.ci-radio{display:flex;align-items:center;gap:8px;margin:8px 0;font-size:15px}
-.ci-waiver{max-height:200px;overflow:auto;background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:14px;font-size:14px;line-height:1.6;margin-bottom:12px}
-.ci-upload{display:flex;align-items:center;gap:10px;margin-top:6px}
-.ci-upload__state{font-size:13px;color:#6b7280}
-.ci-nav{display:flex;justify-content:space-between;gap:12px;margin-top:24px}
+.ci-l{display:block;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--pa-muted);margin:15px 0 6px}
+.ci-in{width:100%;padding:12px 14px;border:1px solid #d1d5db;border-radius:9px;font-size:16px;font-family:inherit;box-sizing:border-box;background:#fff}
+.ci-in:focus{outline:none;border-color:var(--pa-teal);box-shadow:0 0 0 3px rgba(30,92,107,.12)}
+.ci-radio{display:flex;align-items:center;gap:9px;margin:9px 0;font-size:15px}
+.ci-waiver{max-height:210px;overflow:auto;background:#fff;border:1px solid var(--pa-line);border-radius:10px;padding:14px 16px;font-size:14px;line-height:1.65;margin-bottom:14px;color:var(--pa-ink)}
+.ci-upload{display:flex;align-items:center;gap:10px;margin-top:6px;flex-wrap:wrap}
+.ci-upload__state{font-size:13px;color:var(--pa-muted)}
+.ci-nav{display:flex;gap:12px;margin-top:26px}
+.ci-nav .pa-btn{width:auto}
+.ci-nav .ci-back{flex:0 0 auto;padding-left:18px;padding-right:18px}
+.ci-nav .ci-next,.ci-nav .ci-submit{flex:1}
 .ci-help{text-align:center;margin-top:28px;font-size:13px;color:#9ca3af}
-.pa-btn--ghost{background:transparent;color:var(--teal,#1E5C6B);border:1px solid #d1d5db}
+.ci-help a{color:var(--pa-teal);font-weight:500}
+
+/* ── Check-in — done + alert ─────────────────────────────────── */
+.ci-done-card{text-align:center;padding:30px 20px 24px;max-width:520px;margin:0 auto}
+.ci-done-card__check{width:58px;height:58px;margin:0 auto 14px;border-radius:50%;background:#e6f6ec;color:#146c37;display:flex;align-items:center;justify-content:center;font-size:28px}
+.ci-done-card h2{font-family:'Cormorant Garamond',serif;font-weight:500;font-size:27px;margin:0 0 8px;color:var(--pa-ink)}
+.ci-done-card p{color:var(--pa-muted);font-size:14px;line-height:1.6;margin:0 auto 20px;max-width:360px}
+.ci-done-card .pa-btn{margin-bottom:9px}
+.ci-alert{max-width:520px;margin:0 auto 16px;background:#fbe6e6;border:1px solid #f0c2c2;color:#a12;border-radius:10px;padding:12px 16px;font-size:14px;line-height:1.5}
+
+.pa-btn--ghost{background:transparent;color:var(--pa-teal);border:1px solid var(--pa-line)}

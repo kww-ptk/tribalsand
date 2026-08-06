@@ -3,7 +3,11 @@
   if (!form) return;
   var steps = Array.prototype.slice.call(document.querySelectorAll('.ci-step'));
   if (!steps.length) return;
-  var bar = document.getElementById('ciBar');
+  var bar       = document.getElementById('ciBar');
+  var intro     = document.getElementById('ciIntro');   // landing (absent once checked in)
+  var stepsWrap = document.getElementById('ciSteps');
+  var startBtn  = document.getElementById('ciStart');    // "Start / Continue check-in"
+  var editBtn   = document.getElementById('ciEdit');     // "Update my details" (done state)
   var cur = 0;
 
   function show(i) {
@@ -12,6 +16,19 @@
     if (bar) bar.style.width = Math.round(((cur + 1) / steps.length) * 100) + '%';
     window.scrollTo(0, 0);
   }
+  function openSteps() {
+    if (intro) intro.hidden = true;
+    if (stepsWrap) stepsWrap.hidden = false;
+    show(0);
+  }
+  function backToStart() {           // Back from step 1 → return to the landing / done card
+    if (stepsWrap) stepsWrap.hidden = true;
+    if (intro) intro.hidden = false;
+    window.scrollTo(0, 0);
+  }
+
+  if (startBtn) startBtn.addEventListener('click', openSteps);
+  if (editBtn)  editBtn.addEventListener('click', openSteps);
 
   // Save the current step's fields via AJAX, then advance.
   function saveThen(next) {
@@ -24,10 +41,10 @@
 
   form.addEventListener('click', function (e) {
     if (e.target.classList.contains('ci-next')) { e.preventDefault(); saveThen(function () { show(cur + 1); }); }
-    if (e.target.classList.contains('ci-back')) { e.preventDefault(); show(cur - 1); }
+    if (e.target.classList.contains('ci-back')) { e.preventDefault(); if (cur === 0) { backToStart(); } else { show(cur - 1); } }
   });
 
-  // Async passport upload (Phase 3 endpoint). Shows uploaded state; no public URL.
+  // Async passport upload. Shows uploaded state; the file goes to private storage.
   var fileInput = document.getElementById('ciPassportFile');
   if (fileInput) {
     fileInput.addEventListener('change', function () {
@@ -47,5 +64,7 @@
     });
   }
 
-  show(0);
+  // Land on the intro (not-done) or the done card. Only jump straight into the
+  // steps if there is neither (defensive — shouldn't happen).
+  if (!intro && !editBtn) openSteps();
 })();
