@@ -329,3 +329,18 @@ a.no-style   { text-decoration: none; color: inherit; }
   .tabs { gap: 0; }
   .tab-btn { padding: 8px 12px; font-size: 12.5px; }
 }
+
+/* ── Reusable confirm dialog (styled replacement for window.confirm) ── */
+.adm-confirm-back { position: fixed; inset: 0; background: rgba(16,47,58,.45); display: flex; align-items: center; justify-content: center; z-index: 1000; padding: 20px; }
+.adm-confirm { background: var(--white); border-radius: 12px; box-shadow: 0 12px 40px rgba(0,0,0,.25); max-width: 380px; width: 100%; padding: 22px 22px 18px; }
+.adm-confirm__title { font-size: 16px; font-weight: 700; color: var(--text); margin: 0 0 6px; }
+.adm-confirm__body { font-size: 13.5px; color: var(--muted); margin: 0 0 18px; line-height: 1.45; }
+.adm-confirm__actions { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* ── Dismissible / self-clearing flash banner (enhanced in _layout_end.php) ── */
+.alert { display: flex; align-items: flex-start; gap: 8px; transition: opacity .4s ease; }
+.alert.is-hiding { opacity: 0; }
+.alert__icon { flex: 0 0 auto; font-weight: 700; line-height: 1.4; }
+.alert__msg { flex: 1 1 auto; }
+.alert__close { flex: 0 0 auto; background: none; border: 0; cursor: pointer; font-size: 17px; line-height: 1; color: inherit; opacity: .55; padding: 0 2px; }
+.alert__close:hover { opacity: 1; }

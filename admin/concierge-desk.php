@@ -101,7 +101,10 @@ include __DIR__ . '/_layout.php';
       <tbody>
         <?php if (!$rows): ?>
         <tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--muted)">No requests match this filter.</td></tr>
-        <?php else: foreach ($rows as $a): ?>
+        <?php else: foreach ($rows as $a):
+          $gname = $a['guest_name'] ?: 'the guest';
+          $gkind = $a['kind'];
+        ?>
         <tr>
           <td>
             <strong><?= e($a['guest_name'] ?: 'Guest') ?></strong><br>
@@ -116,13 +119,13 @@ include __DIR__ . '/_layout.php';
             <a href="/admin/messages.php?hold=<?= (int)$a['hold_id'] ?>&thread=<?= (int)$a['id'] ?>" class="btn-outline btn-sm">Message</a>
             <a href="/admin/booking.php?hold=<?= (int)$a['hold_id'] ?>" class="btn-outline btn-sm">Manage</a>
             <?php if ($a['status'] === 'requested'): ?>
-            <form method="POST" action="/admin/booking-request-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="type" value="addon"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="return" value="concierge-desk"><button name="status" value="confirmed" class="btn-primary btn-sm">Accept</button></form>
+            <form method="POST" action="/admin/booking-request-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="type" value="addon"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="return" value="concierge-desk"><button name="status" value="confirmed" class="btn-primary btn-sm" aria-label="Accept <?= e($gkind) ?> request from <?= e($gname) ?>">Accept</button></form>
             <?php endif; ?>
             <?php if (in_array($a['status'], ['requested','confirmed'], true)): ?>
-            <form method="POST" action="/admin/booking-request-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="type" value="addon"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="return" value="concierge-desk"><button name="status" value="completed" class="btn-outline btn-sm">Mark done</button></form>
+            <form method="POST" action="/admin/booking-request-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="type" value="addon"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="return" value="concierge-desk"><button name="status" value="completed" class="btn-outline btn-sm" aria-label="Mark <?= e($gkind) ?> request from <?= e($gname) ?> as done">Mark done</button></form>
             <?php endif; ?>
             <?php if ($a['status'] === 'requested'): ?>
-            <form method="POST" action="/admin/booking-request-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="type" value="addon"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="return" value="concierge-desk"><button name="status" value="declined" class="btn-danger btn-sm">Decline</button></form>
+            <form method="POST" action="/admin/booking-request-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="type" value="addon"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="return" value="concierge-desk"><button name="status" value="declined" class="btn-danger btn-sm" aria-label="Decline <?= e($gkind) ?> request from <?= e($gname) ?>" data-confirm="Decline this <?= e($gkind) ?> request from <?= e($gname) ?>? They'll be notified.">Decline</button></form>
             <?php endif; ?>
             <?php if (!in_array($a['status'], ['requested','confirmed'], true)): ?><span class="text-muted">—</span><?php endif; ?>
           </td>

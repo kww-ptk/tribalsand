@@ -114,6 +114,18 @@
 .cx-tile__go{position:absolute;top:14px;right:15px;color:var(--pa-gold);font-size:17px;}
 .cx-tile__badge{position:absolute;top:10px;right:10px;min-width:20px;height:20px;padding:0 5px;border-radius:999px;background:#e05b49;color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;}
 
+/* ── Request "sent" status line — green on success, red on failure (with icon).
+   JS (booking-manage.js) sets .bm-status.ok / .bm-status.err on the <p>. ── */
+.bm-status{display:none;}
+.bm-status.ok,.bm-status.err{display:block;border-radius:8px;padding:9px 12px;font-weight:500;line-height:1.4;}
+.bm-status.ok{background:#e8f5e9;color:#1b5e20;}
+.bm-status.err{background:#fdecea;color:#b3261e;}
+.bm-status.ok::before{content:"✓ ";font-weight:700;}
+.bm-status.err::before{content:"✕ ";font-weight:700;}
+
+/* ── Keyboard focus — a clear ring on service tiles and buttons (was invisible). ── */
+.cx-tile:focus-visible,.pa-btn:focus-visible,.cx-tile[data-cx]:focus-visible{outline:3px solid var(--pa-gold);outline-offset:2px;}
+
 /* ── Request-sent popup ── */
 .pa-modal-backdrop{position:fixed;inset:0;background:rgba(16,47,58,.55);display:flex;align-items:center;justify-content:center;padding:24px;z-index:1000;}
 .pa-modal{background:#fff;border-radius:18px;max-width:360px;width:100%;padding:26px 22px;text-align:center;box-shadow:0 20px 60px rgba(16,47,58,.35);}
