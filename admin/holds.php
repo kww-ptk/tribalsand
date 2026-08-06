@@ -163,6 +163,7 @@ include __DIR__ . '/_layout.php';
     <?php if (empty($holds)): ?>
     <p style="padding:32px;text-align:center;color:var(--muted)">No holds found for this filter.</p>
     <?php else: ?>
+    <div class="table-wrap">
     <table class="data-table">
       <thead>
         <tr>
@@ -329,6 +330,7 @@ include __DIR__ . '/_layout.php';
         <?php endforeach; ?>
       </tbody>
     </table>
+    </div>
     <?php endif; ?>
   </div>
 </div>

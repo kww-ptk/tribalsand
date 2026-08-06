@@ -100,32 +100,39 @@ include __DIR__ . '/_layout.php';
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?> is-flash"><?= e($flash['msg']) ?></div><?php endif; ?>
 
 <?php $asgQ = $asgOn ? '&assignee=' . e($asgKey) : ''; ?>
-<div class="card" style="margin-bottom:16px">
-  <div class="card__body" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-    <span class="text-muted" style="font-size:12px;text-transform:uppercase;letter-spacing:.06em">Status</span>
-    <?php foreach ($statusTabs as $sk=>$sl): ?>
-      <a href="?status=<?= e($sk) ?>&kind=<?= e($kindKey) ?><?= $asgQ ?>" class="btn-sm <?= $statusKey===$sk?'btn-primary':'btn-outline' ?>"><?= e($sl) ?></a>
-    <?php endforeach; ?>
+<div class="filter-bar">
+  <div class="filter-row">
+    <span class="filter-row__label">Status</span>
+    <div class="filter-chips">
+      <?php foreach ($statusTabs as $sk=>$sl): ?>
+        <a href="?status=<?= e($sk) ?>&kind=<?= e($kindKey) ?><?= $asgQ ?>" class="chip <?= $statusKey===$sk?'is-active':'' ?>"><?= e($sl) ?></a>
+      <?php endforeach; ?>
+    </div>
   </div>
-  <div class="card__body" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-top:1px solid #eee">
-    <span class="text-muted" style="font-size:12px;text-transform:uppercase;letter-spacing:.06em">Service</span>
-    <a href="?status=<?= e($statusKey) ?>&kind=all<?= $asgQ ?>" class="btn-sm <?= $kindKey==='all'?'btn-primary':'btn-outline' ?>">All</a>
-    <?php foreach ($KINDS as $k): ?>
-      <a href="?status=<?= e($statusKey) ?>&kind=<?= e($k) ?><?= $asgQ ?>" class="btn-sm <?= $kindKey===$k?'btn-primary':'btn-outline' ?>" style="text-transform:capitalize"><?= e($k) ?></a>
-    <?php endforeach; ?>
+  <div class="filter-row">
+    <span class="filter-row__label">Service</span>
+    <div class="filter-chips">
+      <a href="?status=<?= e($statusKey) ?>&kind=all<?= $asgQ ?>" class="chip <?= $kindKey==='all'?'is-active':'' ?>">All</a>
+      <?php foreach ($KINDS as $k): ?>
+        <a href="?status=<?= e($statusKey) ?>&kind=<?= e($k) ?><?= $asgQ ?>" class="chip <?= $kindKey===$k?'is-active':'' ?>" style="text-transform:capitalize"><?= e($k) ?></a>
+      <?php endforeach; ?>
+    </div>
   </div>
   <?php if ($asgOn): ?>
-  <div class="card__body" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;border-top:1px solid #eee">
-    <span class="text-muted" style="font-size:12px;text-transform:uppercase;letter-spacing:.06em">Assignee</span>
-    <?php foreach (['all'=>'All','me'=>'Assigned to me','unassigned'=>'Unassigned'] as $ak=>$al): ?>
-      <a href="?status=<?= e($statusKey) ?>&kind=<?= e($kindKey) ?>&assignee=<?= e($ak) ?>" class="btn-sm <?= $asgKey===$ak?'btn-primary':'btn-outline' ?>"><?= e($al) ?></a>
-    <?php endforeach; ?>
+  <div class="filter-row">
+    <span class="filter-row__label">Assignee</span>
+    <div class="filter-chips">
+      <?php foreach (['all'=>'All','me'=>'Assigned to me','unassigned'=>'Unassigned'] as $ak=>$al): ?>
+        <a href="?status=<?= e($statusKey) ?>&kind=<?= e($kindKey) ?>&assignee=<?= e($ak) ?>" class="chip <?= $asgKey===$ak?'is-active':'' ?>"><?= e($al) ?></a>
+      <?php endforeach; ?>
+    </div>
   </div>
   <?php endif; ?>
 </div>
 
 <div class="card">
   <div class="card__body" style="padding:0">
+    <div class="table-wrap">
     <table class="data-table">
       <thead><tr><th>Guest</th><th>Service</th><th>Request</th><th>Preferred time</th><th>Submitted</th><th>Status</th><?php if ($asgOn): ?><th>Assigned</th><?php endif; ?><th style="text-align:right">Actions</th></tr></thead>
       <tbody>
@@ -149,22 +156,22 @@ include __DIR__ . '/_layout.php';
           <td>
             <?php $curAsg = isset($a['assigned_to']) ? (int)$a['assigned_to'] : 0; ?>
             <?php if ($canAssign): $cands = $venueCandidates[(int)($a['venue_id'] ?? 0)] ?? []; ?>
-            <form method="POST" action="/admin/booking-request-action.php" style="display:flex;gap:6px;align-items:center">
+            <form method="POST" action="/admin/booking-request-action.php" style="margin:0">
               <?= csrf_field() ?><input type="hidden" name="type" value="assign"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="return" value="concierge-desk">
-              <select name="assigned_to" style="padding:5px 7px;border:1px solid #d9d2c6;border-radius:6px;max-width:150px">
+              <select name="assigned_to" class="cell-select" onchange="this.form.submit()">
                 <option value="">— Unassigned —</option>
                 <?php foreach ($cands as $c): ?>
                 <option value="<?= (int)$c['id'] ?>" <?= $curAsg === (int)$c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?><?= ($c['role'] ?? '')==='manager' ? ' (mgr)' : (!empty($c['job_type']) ? ' · '.e($c['job_type']) : '') ?></option>
                 <?php endforeach; ?>
               </select>
-              <button class="btn-outline btn-sm">Save</button>
             </form>
             <?php else: ?>
               <?= !empty($a['assignee_name']) ? e($a['assignee_name']) : '<span class="text-muted">Unassigned</span>' ?>
             <?php endif; ?>
           </td>
           <?php endif; ?>
-          <td style="text-align:right;white-space:nowrap">
+          <td>
+            <div class="row-actions">
             <a href="/admin/messages.php?hold=<?= (int)$a['hold_id'] ?>&thread=<?= (int)$a['id'] ?>" class="btn-outline btn-sm">Message</a>
             <a href="/admin/booking.php?hold=<?= (int)$a['hold_id'] ?>" class="btn-outline btn-sm">Manage</a>
             <?php if ($a['status'] === 'requested'): ?>
@@ -177,11 +184,13 @@ include __DIR__ . '/_layout.php';
             <form method="POST" action="/admin/booking-request-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="type" value="addon"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="return" value="concierge-desk"><button name="status" value="declined" class="btn-danger btn-sm" aria-label="Decline <?= e($gkind) ?> request from <?= e($gname) ?>" data-confirm="Decline this <?= e($gkind) ?> request from <?= e($gname) ?>? They'll be notified.">Decline</button></form>
             <?php endif; ?>
             <?php if (!in_array($a['status'], ['requested','confirmed'], true)): ?><span class="text-muted">—</span><?php endif; ?>
+            </div>
           </td>
         </tr>
         <?php endforeach; endif; ?>
       </tbody>
     </table>
+    </div>
   </div>
 </div>
 
