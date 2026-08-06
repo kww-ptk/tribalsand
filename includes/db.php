@@ -32,7 +32,13 @@ function db(): PDO {
     $pdo = new PDO($dsn, $user, $pass, [
         PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-        PDO::ATTR_EMULATE_PREPARES   => false,
+        // Emulated prepares send plain SQL rather than server-side prepared
+        // statements. Required behind Neon's PgBouncer pooler: real prepares there
+        // cache query plans in pooled backend connections that survive app
+        // restarts, so a migration that adds columns (e.g. SELECT h.*) triggers
+        // "cached plan must not change result type" and an app redeploy can't
+        // clear it. No bound LIMIT/OFFSET params exist, so this mode is safe here.
+        PDO::ATTR_EMULATE_PREPARES   => true,
     ]);
 
     return $pdo;
