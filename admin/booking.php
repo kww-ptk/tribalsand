@@ -5,6 +5,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/booking.php';
 require_once __DIR__ . '/../includes/mail.php';
+require_once __DIR__ . '/../includes/checkin.php';
 require_login();
 
 $holdId = (int)($_GET['hold'] ?? $_POST['hold_id'] ?? 0);
@@ -20,7 +21,7 @@ if (!$hold) { $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Booking not fou
 if (!is_owner() && !staff_can_hold($holdId)) { $_SESSION['hold_flash']=['type'=>'error','msg'=>'That booking is at a property you don’t manage.']; header('Location: ' . admin_home_url()); exit; }
 
 $tab = $_GET['tab'] ?? 'requests';
-if (!in_array($tab, ['requests','messages','plan','bill','details'], true)) $tab = 'requests';
+if (!in_array($tab, ['requests','messages','plan','bill','checkin','details'], true)) $tab = 'requests';
 // Only the owner sees the Details tab (booking confirm/cancel/edit is owner-only config).
 if (!is_owner() && $tab === 'details') $tab = 'requests';
 
@@ -106,6 +107,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         audit_log('bill.del', 'hold', $holdId, '');
         header("Location: /admin/booking.php?hold=$holdId&tab=bill"); exit;
     }
+    if ($act === 'checkin_toggle' && is_owner() && checkin_supported()) {
+        $on = ($_POST['require_checkin'] ?? '') === '1';
+        db_query('UPDATE holds SET require_checkin = :r WHERE id = :id', [':r' => $on, ':id' => $holdId]);
+        audit_log('checkin.require_toggle', 'hold', $holdId, $on ? 'on' : 'off');
+        $_SESSION['hold_flash'] = ['type' => 'success', 'msg' => 'Check-in requirement updated.'];
+        header("Location: /admin/booking.php?hold=$holdId&tab=checkin"); exit;
+    }
 }
 
 $pageTitle  = 'Booking';
@@ -130,7 +138,7 @@ include __DIR__ . '/_layout.php';
 
 <div class="card" style="margin-bottom:16px"><div class="card__body" style="display:flex;gap:8px;flex-wrap:wrap">
   <?php
-  $__wtabs = ['requests'=>'Requests','messages'=>'Messages','plan'=>'Plan','bill'=>'Bill','details'=>'Details'];
+  $__wtabs = ['requests'=>'Requests','messages'=>'Messages','plan'=>'Plan','bill'=>'Bill','checkin'=>'Check-in','details'=>'Details'];
   if (!is_owner()) unset($__wtabs['details']);
   foreach ($__wtabs as $tk=>$tl):
     $b = $tk==='requests' && $openReq ? " ($openReq)" : ($tk==='messages' && $unreadMsg ? " ($unreadMsg)" : '');
@@ -147,6 +155,8 @@ include __DIR__ . '/_layout.php';
   <?php include __DIR__ . '/_ws_plan.php'; ?>
 <?php elseif ($tab === 'bill'): ?>
   <?php include __DIR__ . '/_ws_bill.php'; ?>
+<?php elseif ($tab === 'checkin'): ?>
+  <?php include __DIR__ . '/_ws_checkin.php'; ?>
 <?php else: ?>
   <div class="card"><div class="card__body">
     <table class="data-table" style="max-width:520px">
