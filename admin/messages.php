@@ -90,7 +90,7 @@ include __DIR__ . '/_layout.php';
   <p style="margin:0 0 12px;font-weight:600"><?= e($ctx['guest_name'] ?? 'Guest') ?></p>
   <?php $lastId = $msgs ? (int)$msgs[count($msgs)-1]['id'] : 0; ?>
   <div id="amThread" class="am-thread"
-       data-poll-url="/admin/messages-poll.php"
+       data-poll-url="/admin/messages-poll"
        data-hold="<?= (int)$holdId ?>"
        data-thread="<?= $addonId === null ? 'general' : (int)$addonId ?>"
        data-last="<?= $lastId ?>"

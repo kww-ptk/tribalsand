@@ -57,7 +57,7 @@ if ($__threadParam === null):
 <?php endif; ?>
 <?php $__lastId = $__msgs ? (int)$__msgs[count($__msgs)-1]['id'] : 0; ?>
 <div id="bmThread" class="bm-thread"
-     data-poll-url="/api/booking-message.php"
+     data-poll-url="/api/booking-message"
      data-ref="<?= e($ref) ?>"
      data-thread="<?= $__addonId === null ? 'general' : (int)$__addonId ?>"
      data-me="guest"

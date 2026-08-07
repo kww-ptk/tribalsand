@@ -25,7 +25,7 @@ if ($__inThread) mark_thread_read_by_admin($holdId, $__aid);
 <div class="card"><div class="card__body">
   <?php $__lastId = $__msgs ? (int)$__msgs[count($__msgs)-1]['id'] : 0; ?>
   <div id="amThread" class="am-thread"
-       data-poll-url="/admin/messages-poll.php"
+       data-poll-url="/admin/messages-poll"
        data-hold="<?= (int)$holdId ?>"
        data-thread="<?= $__aid === null ? 'general' : (int)$__aid ?>"
        data-last="<?= $__lastId ?>"
