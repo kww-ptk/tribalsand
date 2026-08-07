@@ -186,6 +186,8 @@ include __DIR__ . '/_layout.php';
 
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?> is-flash"><?= e($flash['msg']) ?></div><?php endif; ?>
 
+<div class="dt" data-dt>
+  <div class="dt-controls">
 <form method="GET" action="/admin/concierge-desk.php" class="filters">
   <input type="hidden" name="q"   value="<?= e($pg['q']) ?>">
   <input type="hidden" name="per" value="<?= (int)$meta['per'] ?>">
@@ -214,9 +216,8 @@ include __DIR__ . '/_layout.php';
   </label>
   <?php endif; ?>
 </form>
-
-<div class="dt" data-dt>
-  <?php dt_toolbar(['per' => $meta['per'], 'placeholder' => 'Search guest, room, property or service…']); ?>
+    <?php dt_toolbar(['per' => $meta['per'], 'placeholder' => 'Search guest, room, property or service…']); ?>
+  </div>
   <div class="dt-body" data-dt-body><?= $dtBody ?></div>
 </div>
 

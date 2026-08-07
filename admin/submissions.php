@@ -208,7 +208,9 @@ include __DIR__ . '/_layout.php';
   </div>
 </div>
 
-<!-- Filters (full reload; coexist with the search + per-page toolbar) -->
+<!-- Filters + search share one aligned control row -->
+<div class="dt" data-dt>
+  <div class="dt-controls">
 <form method="GET" action="/admin/submissions" class="filters" id="filtersForm">
   <input type="hidden" name="q"   value="<?= e($pg['q']) ?>">
   <input type="hidden" name="per" value="<?= (int)$meta['per'] ?>">
@@ -234,10 +236,8 @@ include __DIR__ . '/_layout.php';
   <a href="/admin/submissions.php" class="btn-outline btn-sm"><?= admin_icon('x', 14) ?> Clear</a>
   <?php endif; ?>
 </form>
-
-<!-- Results -->
-<div class="dt" data-dt>
-  <?php dt_toolbar(['per' => $meta['per'], 'placeholder' => 'Search name, email or message…']); ?>
+    <?php dt_toolbar(['per' => $meta['per'], 'placeholder' => 'Search name, email or message…']); ?>
+  </div>
   <div class="dt-body" data-dt-body><?= $dtBody ?></div>
 </div>
 

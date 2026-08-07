@@ -343,7 +343,9 @@ include __DIR__ . '/_layout.php';
   </div>
 </div>
 
-<!-- Filters -->
+<!-- Filters + search share one aligned control row -->
+<div class="dt" data-dt>
+  <div class="dt-controls">
 <form method="GET" action="/admin/holds" class="filters">
   <input type="hidden" name="q"   value="<?= e($pg['q']) ?>">
   <input type="hidden" name="per" value="<?= (int)$meta['per'] ?>">
@@ -368,9 +370,8 @@ include __DIR__ . '/_layout.php';
     </select>
   </label>
 </form>
-
-<div class="dt" data-dt>
-  <?php dt_toolbar(['per' => $meta['per'], 'placeholder' => 'Search guest, email, room or code…']); ?>
+    <?php dt_toolbar(['per' => $meta['per'], 'placeholder' => 'Search guest, email, room or code…']); ?>
+  </div>
   <div class="dt-body" data-dt-body><?= $dtBody ?></div>
 </div>
 

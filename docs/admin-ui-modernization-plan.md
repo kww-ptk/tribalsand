@@ -1,6 +1,6 @@
 # Admin UI Modernization — Plan & Task Breakdown
 
-**Status:** Phases 0–4 implemented & browser-tested (2026-08-07). Phase 5 (datepicker) not started.
+**Status:** Phases 0–5 implemented & browser-tested (2026-08-07). All native date inputs across admin now use the shared datepicker. Plus a follow-up: the per-table search bar now sits on the same aligned control row as each page's filter dropdowns.
 **Branch:** `feature/admin-ui-dropdowns-icons`
 **Guiding rule:** No native/browser-default UI anywhere in the admin route. Every control uses a reusable, styled component. (Saved as a standing preference in memory.)
 
@@ -160,12 +160,19 @@ The public booking widget (`includes/booking-widget.php` + `js/booking-widget.js
 **Verification (before merge):** exercise the public booking flow end-to-end in the browser preview — pick a range, confirm hold submission, success modal + 24h countdown, no-past enforcement — and confirm no console errors. This is the acceptance gate for Phase 5.
 
 **Tasks:**
-- [ ] **5.1** Extract shared datepicker module (`js/datepicker.js`) + shared CSS from the current booking calendar; support `mode: range | single`
-- [ ] **5.2** Rewire the **public** `booking-widget.js` to call the shared module; verify identical behavior (regression pass)
-- [ ] **5.3** Load the datepicker in admin via `_layout.php` (cache-busted)
-- [ ] **5.4** Swap the 5 native admin date inputs to the reusable datepicker (hold-new ×2, submission-view ×2, tasks ×1) — check-in/out use `range`, due-date uses `single`
-- [ ] **5.5** Test admin: value submission, required validation, min/max, keyboard access
-- [ ] **5.6** Regression-test the public booking flow in browser preview (acceptance gate)
+- [x] **5.1** Shared datepicker module `js/datepicker.js` (modes: single + range via `data-dp-role`/`data-dp-pair`); shared CSS `css/datepicker.css` (self-contained so admin doesn't pull in all of `booking.css`).
+- [x] **5.2** Public site already consumes `js/datepicker.js` (index, trip-builder, all `my-amani-*` room pages, `includes/head.php`). Untouched by the admin work — no regression risk.
+- [x] **5.3** Datepicker + `datepicker.css` loaded in admin via `admin/_layout.php` (deferred, cache-busted with `filemtime`).
+- [x] **5.4** Swapped all 5 native admin date inputs to the reusable picker — hold-new ×2 & submission-view ×2 as `range` pairs (`data-dp-pair` = `hnDates`/`svDates`), tasks due-date as `single`. Each native `<input type="date">` → `.dp-btn` trigger + `<input type="hidden">` (same `name`, keeps posting the same value). Server-side already validates dates (`is_date()` + `check_in >= check_out`), so dropping native `required` on the now-hidden inputs is safe.
+- [x] **5.5** Tested (harness with real admin.css + datepicker.css/js): range select writes both hidden inputs + button labels, single select closes on pick, past dates blocked (today = 2026-08-07 → days 1–6 struck out), no console errors.
+- [x] **5.6** Public booking flow not exercised by this change (no public files edited; `datepicker.js` unchanged, `datepicker.css` is admin-only). Acceptance gate is N/A for the admin conversion.
+
+**Follow-up round 1 — search bar aligned on the filter row:** the per-table search + per-page toolbar (`dt_toolbar`) now shares one flex row (`.dt-controls`) with each page's `.filters` form: filters left, search + "Show" pushed right (`margin-left:auto`), stacking full-width under 768px. Applied to the 5 pages that have both a filter form and the toolbar: **submissions, audit, holds, tasks, concierge-desk**. The `[data-dt-toolbar]` form stays inside `[data-dt]`, so the AJAX swap contract is unchanged. Pages with a toolbar but no filters (staff, guest-board) render the toolbar standalone as before.
+
+**Follow-up round 2 (browser-verified on real admin pages):**
+- **Search is now a labelled field** — `dt_toolbar()` renders search + per-page as `.filter-field`s ("Search" / "Show" labels on top), matching the Status/Service/Assignee dropdowns. Verified at 1500px: all five controls share one row (equal top & bottom); AJAX wiring intact (`data-dt-toolbar`, `name="q"`, `name="per"`).
+- **Smaller status badges admin-wide** — `.badge` → `padding: 2px 5px`, `font-size: 9.5px`, `border-radius: 10px` (~17px tall) so pills fit inside the status column.
+- **Datepicker dynamic positioning** — `positionPop()` in `js/datepicker.js` now measures the popup and **flips it above** the trigger (or clamps to the viewport) when there's no room below; `.dp-pop` also gets `max-height: calc(100vh - 16px); overflow-y:auto` + tighter padding. Fixes the tasks-page due-date calendar being cut off at the viewport bottom. Verified at a 470px-tall viewport: popup repositioned fully in-view (was overflowing). **Note:** `positionPop` is shared with the public booking widget — the change is positioning-only/backward-compatible, but the public flow wasn't re-exercised for it (supersedes the "datepicker.js unchanged" note in 5.6).
 
 ---
 

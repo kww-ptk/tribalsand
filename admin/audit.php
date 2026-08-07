@@ -85,7 +85,9 @@ include __DIR__ . '/_layout.php';
   <span style="color:var(--muted);font-size:13px"><?= number_format($total) ?> event<?= $total !== 1 ? 's' : '' ?></span>
 </div>
 
-<!-- Action filter (full reload; coexists with search + per-page) -->
+<!-- Action filter + search share one aligned control row -->
+<div class="dt" data-dt>
+  <div class="dt-controls">
 <form method="GET" action="/admin/audit.php" class="filters" id="auditFilter">
   <input type="hidden" name="q"   value="<?= e($pg['q']) ?>">
   <input type="hidden" name="per" value="<?= (int)$pg['per'] ?>">
@@ -102,9 +104,8 @@ include __DIR__ . '/_layout.php';
   <a href="/admin/audit.php" class="btn-outline btn-sm" style="align-self:flex-end"><?= admin_icon('x', 14) ?> Clear</a>
   <?php endif; ?>
 </form>
-
-<div class="dt" data-dt>
-  <?php dt_toolbar(['per' => $meta['per'], 'placeholder' => 'Search action, admin, target or notes…']); ?>
+    <?php dt_toolbar(['per' => $meta['per'], 'placeholder' => 'Search action, admin, target or notes…']); ?>
+  </div>
   <div class="dt-body" data-dt-body><?= $dtBody ?></div>
 </div>
 

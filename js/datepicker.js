@@ -158,15 +158,31 @@
     renderCal();
   }
 
-  // ── Popup position (fixed, follows trigger) ───────────────────────────────────
+  // ── Popup position (fixed, follows trigger; flips up / clamps to viewport) ─────
   function positionPop(trigger) {
     const r    = trigger.getBoundingClientRect();
     const popW = Math.min(310, window.innerWidth - 32);
-    let left   = r.left;
+    const gap  = 8;
+
+    let left = r.left;
     if (left + popW > window.innerWidth - 16) left = window.innerWidth - popW - 16;
     if (left < 16) left = 16;
+
+    // Height is measurable here (the popup is already un-hidden and rendered).
+    const popH       = pop.offsetHeight;
+    const spaceBelow = window.innerHeight - r.bottom;
+    const spaceAbove = r.top;
+
+    // Prefer opening below; flip above when there isn't room and there's more above.
+    let top = (spaceBelow >= popH + gap || spaceBelow >= spaceAbove)
+      ? r.bottom + gap
+      : r.top - popH - gap;
+
+    // Never let it run past the top or bottom edge of the viewport.
+    top = Math.max(8, Math.min(top, window.innerHeight - popH - 8));
+
     pop.style.left = `${left}px`;
-    pop.style.top  = `${r.bottom + 8}px`;
+    pop.style.top  = `${top}px`;
   }
 
   // ── Open single-date picker ───────────────────────────────────────────────────
@@ -180,8 +196,8 @@
     vm = selStart ? selStart.getMonth()    : today.getMonth();
     dpHint.textContent = "Select a date";
     pop.hidden = false;
-    positionPop(btn);
     renderCal();
+    positionPop(btn);   // after render so the measured height is accurate (flip-up)
   }
 
   // ── Open range picker (ci or co) ──────────────────────────────────────────────
@@ -203,8 +219,8 @@
       ? (selStart ? "Change your check-in date" : "Select your check-in date")
       : "Select your check-out date";
     pop.hidden = false;
-    positionPop(btn);
     renderCal();
+    positionPop(btn);   // after render so the measured height is accurate (flip-up)
   }
 
   function closePopup() {

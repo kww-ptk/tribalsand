@@ -74,15 +74,16 @@ if (!function_exists('dt_toolbar')) {
           <?php endforeach; ?>
           <input type="hidden" name="page" value="1">
 
-          <div class="dt-search">
-            <span class="dt-search__icon" aria-hidden="true"><?= admin_icon('search', 16) ?></span>
-            <input type="search" name="q" value="<?= e($q) ?>" class="dt-search__input"
-                   placeholder="<?= e($placeholder) ?>" autocomplete="off" aria-label="Search">
-            <button type="submit" class="dt-search__go" title="Search" aria-label="Search"><?= admin_icon('search', 15) ?></button>
-          </div>
+          <label class="filter-field dt-search-field">Search
+            <span class="dt-search">
+              <span class="dt-search__icon" aria-hidden="true"><?= admin_icon('search', 16) ?></span>
+              <input type="search" name="q" value="<?= e($q) ?>" class="dt-search__input"
+                     placeholder="<?= e($placeholder) ?>" autocomplete="off" aria-label="Search">
+              <button type="submit" class="dt-search__go" title="Search" aria-label="Search"><?= admin_icon('search', 15) ?></button>
+            </span>
+          </label>
 
-          <label class="dt-perpage">
-            <span class="dt-perpage__label">Show</span>
+          <label class="filter-field dt-perpage">Show
             <select name="per" class="filter-select" aria-label="Results per page">
               <?php foreach ([10, 25, 50] as $n): ?>
               <option value="<?= $n ?>" <?= $n === $per ? 'selected' : '' ?>><?= $n ?></option>

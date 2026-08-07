@@ -299,13 +299,13 @@ include __DIR__ . '/_layout.php';
         </div>
         <div>
           <div class="detail-item__label">Check-in</div>
-          <input type="date" name="check_in" required value="<?= e($sub['check_in'] ?? '') ?>"
-                 style="width:100%;padding:9px;border:1px solid #d1d5db;border-radius:6px">
+          <button type="button" class="dp-btn" data-dp-role="ci" data-dp-pair="svDates" data-dp-target="svCheckin" data-dp-placeholder="Select check-in date">Select check-in date</button>
+          <input type="hidden" id="svCheckin" name="check_in" value="<?= e($sub['check_in'] ?? '') ?>">
         </div>
         <div>
           <div class="detail-item__label">Check-out</div>
-          <input type="date" name="check_out" required value="<?= e($sub['check_out'] ?? '') ?>"
-                 style="width:100%;padding:9px;border:1px solid #d1d5db;border-radius:6px">
+          <button type="button" class="dp-btn" data-dp-role="co" data-dp-pair="svDates" data-dp-target="svCheckout" data-dp-placeholder="Select check-out date">Select check-out date</button>
+          <input type="hidden" id="svCheckout" name="check_out" value="<?= e($sub['check_out'] ?? '') ?>">
         </div>
         <div>
           <div class="detail-item__label">Guest name</div>

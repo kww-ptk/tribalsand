@@ -239,7 +239,8 @@ include __DIR__ . '/_layout.php';
         </select>
       </label>
       <label>Due date <span class="text-muted">(optional)</span>
-        <input type="date" name="due_date" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid #d9d2c6;border-radius:6px">
+        <button type="button" class="dp-btn" data-dp-target="taskDueDate" data-dp-placeholder="Select due date" style="margin-top:4px">Select due date</button>
+        <input type="hidden" id="taskDueDate" name="due_date">
       </label>
       <div><button type="submit" class="btn-primary">Create task</button></div>
     </form>
@@ -247,6 +248,8 @@ include __DIR__ . '/_layout.php';
   </div>
 </div>
 
+<div class="dt" data-dt>
+  <div class="dt-controls">
 <form method="GET" action="/admin/tasks.php" class="filters">
   <input type="hidden" name="q"   value="<?= e($pg['q']) ?>">
   <input type="hidden" name="per" value="<?= (int)$meta['per'] ?>">
@@ -265,9 +268,8 @@ include __DIR__ . '/_layout.php';
     </select>
   </label>
 </form>
-
-<div class="dt" data-dt>
-  <?php dt_toolbar(['per' => $meta['per'], 'placeholder' => 'Search task, property, assignee or guest…']); ?>
+    <?php dt_toolbar(['per' => $meta['per'], 'placeholder' => 'Search task, property, assignee or guest…']); ?>
+  </div>
   <div class="dt-body" data-dt-body><?= $dtBody ?></div>
 </div>
 

@@ -84,7 +84,7 @@ body { font-family: system-ui, -apple-system, sans-serif; font-size: 14px; color
 .data-table a:hover { text-decoration: underline; }
 
 /* ── Badges ── */
-.badge { display: inline-block; padding: 2px 8px; border-radius: 20px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+.badge { display: inline-block; padding: 2px 5px; border-radius: 10px; font-size: 9.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; line-height: 1.35; }
 .badge--green  { background: #e8f5e9; color: var(--green); }
 .badge--red    { background: #fdecea; color: var(--red); }
 .badge--blue   { background: #e3f2fd; color: #1565c0; }
@@ -446,14 +446,27 @@ a.no-style   { text-decoration: none; color: inherit; }
    Pairs with includes/admin-pagination.php + admin-table.js. Brand-token styled,
    matches the .eselect / .btn-icon language. No native input/select chrome. */
 .dt { margin-bottom: 0; }
+
+/* Filter form + search/per-page toolbar sharing one aligned control row.
+   Filters sit left; the search + per-page toolbar is pushed to the right. */
+.dt-controls {
+  display: flex; align-items: flex-end; flex-wrap: wrap;
+  gap: 12px 20px; margin-bottom: 16px;
+}
+.dt-controls .filters   { margin-bottom: 0; flex: 0 1 auto; }
+.dt-controls .dt-toolbar { margin-bottom: 0; margin-left: auto; flex: 0 1 auto; }
+
 .dt-toolbar {
-  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  display: flex; align-items: flex-end; gap: 14px; flex-wrap: wrap;
   margin-bottom: 16px;
 }
 .dt-toolbar[hidden] { display: none; }
 
+/* Search is a labelled field matching the filter dropdowns (label on top). */
+.dt-search-field .dt-search { width: 300px; max-width: 100%; }
+
 /* Search field — icon + input + submit, one rounded control */
-.dt-search { position: relative; display: inline-flex; align-items: center; flex: 1 1 260px; max-width: 380px; }
+.dt-search { position: relative; display: inline-flex; align-items: center; }
 .dt-search__icon {
   position: absolute; left: 11px; top: 50%; transform: translateY(-50%);
   display: inline-flex; color: var(--muted); pointer-events: none;
@@ -478,9 +491,8 @@ a.no-style   { text-decoration: none; color: inherit; }
 .dt-search__go:hover { background: var(--brand); color: #fff; }
 .dt-search__go:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 
-/* Per-page selector — reuses the enhanced dropdown; label sits beside it */
-.dt-perpage { display: inline-flex; align-items: center; gap: 8px; margin-left: auto; }
-.dt-perpage__label { font-size: 11px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); font-weight: 700; }
+/* Per-page selector — labelled field ("Show" on top), pinned to the right */
+.dt-perpage { margin-left: auto; }
 .dt-perpage .eselect__btn { min-width: 76px; padding: 8px 12px; }
 
 /* Pager footer — count on the left, page controls on the right */
@@ -509,8 +521,13 @@ a.dt-page:hover { border-color: var(--brand); color: var(--brand); }
 
 @media (max-width: 768px) {
   .dt-perpage { margin-left: 0; }
-  .dt-search { max-width: none; flex-basis: 100%; }
+  .dt-search-field { flex: 1 1 100%; }
+  .dt-search-field .dt-search { width: 100%; }
   .dt-pager-wrap { justify-content: center; }
+  /* Stack filters and the search toolbar full width on small screens */
+  .dt-controls { flex-direction: column; align-items: stretch; }
+  .dt-controls .filters,
+  .dt-controls .dt-toolbar { margin-left: 0; width: 100%; }
 }
 
 /* ── Reusable confirm dialog (styled replacement for window.confirm) ── */
