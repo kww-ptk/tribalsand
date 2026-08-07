@@ -151,7 +151,7 @@ ob_start(); ?>
       <thead><tr><th>Task</th><th>Property</th><th>Assignee</th><th>Job</th><th>Due</th><th>Status</th><th>Actions</th></tr></thead>
       <tbody>
         <?php if (!$tasks): ?>
-        <tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--muted)"><?= $pg['q'] !== '' ? 'No tasks match your search.' : 'Nothing to show yet.' ?></td></tr>
+        <tr><td colspan="7" style="padding:0"><?php dt_empty($pg['q'] !== '' ? 'No tasks match your search.' : 'No tasks yet.'); ?></td></tr>
         <?php else: foreach ($tasks as $t):
           $tid = (int)$t['id']; $st = (string)$t['status'];
         ?>
@@ -198,13 +198,23 @@ if ($pg['ajax']) { echo $dtBody; exit; }
 include __DIR__ . '/_layout.php';
 ?>
 
+<?php
+  // Reveal the create form on load if a create attempt just failed (so the user
+  // sees their form + the error) — otherwise it stays collapsed behind the button.
+  $formOpen = $flash && ($flash['type'] ?? '') === 'error';
+?>
 <div class="page-header">
   <h1>Tasks</h1>
+  <?php if ($venues): ?>
+  <div class="actions">
+    <button type="button" class="btn-primary btn-sm" id="taskCreateToggle" aria-expanded="<?= $formOpen ? 'true' : 'false' ?>" aria-controls="taskCreateCard"><?= admin_icon('plus', 15) ?> Create task</button>
+  </div>
+  <?php endif; ?>
 </div>
 
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type'] ?? 'success') ?> is-flash"><?= e($flash['msg'] ?? '') ?></div><?php endif; ?>
 
-<div class="card" style="margin-bottom:20px">
+<div class="card" id="taskCreateCard" style="margin-bottom:20px<?= $formOpen ? '' : ';display:none' ?>">
   <div class="card__head"><span class="card__title">New task</span></div>
   <div class="card__body" style="padding:20px 24px">
     <?php if (!$venues): ?>
@@ -273,5 +283,18 @@ include __DIR__ . '/_layout.php';
   <div class="dt-body" data-dt-body><?= $dtBody ?></div>
 </div>
 
+<script>
+(function () {
+  var btn  = document.getElementById('taskCreateToggle');
+  var card = document.getElementById('taskCreateCard');
+  if (!btn || !card) return;
+  btn.addEventListener('click', function () {
+    var open = card.style.display !== 'none';
+    card.style.display = open ? 'none' : '';
+    btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+    if (!open) { var f = card.querySelector('input[name="title"]'); if (f) f.focus(); }
+  });
+})();
+</script>
 
 <?php include __DIR__ . '/_layout_end.php'; ?>

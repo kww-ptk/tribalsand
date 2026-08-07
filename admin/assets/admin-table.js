@@ -20,6 +20,7 @@
   function reenhance(root) {
     if (typeof window.tsAdminWire === 'function') window.tsAdminWire(root);
     if (typeof window.enhanceFilterSelects === 'function') window.enhanceFilterSelects(root);
+    if (typeof window.tsDtDrag === 'function') window.tsDtDrag(root);   // re-bind drag on reorderable lists
   }
 
   function enhance(root) {
@@ -139,6 +140,18 @@
         .then(function (html) { body.innerHTML = html; body.classList.remove('is-loading'); })
         .catch(function () { window.location.reload(); });
     });
+  });
+
+  // Whole-row links: a <tr data-href> navigates on click. Delegated at the
+  // document level so it keeps working after an AJAX body swap. Real controls
+  // inside the row (links, buttons, form fields) still act normally.
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (!t || !t.closest) return;
+    if (t.closest('a, button, input, select, textarea, label')) return;
+    var row = t.closest('tr[data-href]');
+    if (!row) return;
+    window.location.href = row.getAttribute('data-href');
   });
 
   function init(root) {

@@ -61,7 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // ── Filters ─────────────────────────────────────────────────────
-$status_filter = $_GET['status'] ?? 'active';
+$status_filter = $_GET['status'] ?? 'pending';
 $room_filter   = (int)($_GET['room'] ?? 0);
 
 $conditions = [];
@@ -129,7 +129,7 @@ ob_start(); ?>
 <div class="card">
   <div class="card__body">
     <?php if (empty($holds)): ?>
-    <p style="padding:32px;text-align:center;color:var(--muted)"><?= $pg['q'] !== '' ? 'No bookings match your search.' : 'Nothing to show for this filter.' ?></p>
+    <?php dt_empty($pg['q'] !== '' ? 'No bookings match your search.' : 'Nothing to show for this filter.'); ?>
     <?php else: ?>
     <div class="table-wrap">
     <table class="data-table">
@@ -178,7 +178,7 @@ ob_start(); ?>
             <?php $__mref = make_manage_url((int)$hold['id']); $__code = $hold['access_code'] ?? ''; ?>
             <?php if ($__code || $__mref): ?>
             <div style="font-size:12px;color:var(--muted);margin-top:4px">
-              Code: <strong style="font-family:monospace;letter-spacing:1px;color:var(--text,#111)"><?= e($__code ?: '—') ?></strong>
+              Code: <strong style="letter-spacing:1px;color:var(--text,#111)"><?= e($__code ?: '—') ?></strong>
               <?php if ($__mref): ?>
               <button type="button" class="copy-link" data-link="<?= e($__mref) ?>"
                       style="margin-left:6px;font-size:11px;padding:1px 7px;cursor:pointer;border:1px solid #ccc;border-radius:4px;background:#fff">Copy portal link</button>
@@ -351,7 +351,6 @@ include __DIR__ . '/_layout.php';
   <input type="hidden" name="per" value="<?= (int)$meta['per'] ?>">
   <label class="filter-field">Status
     <select name="status" class="filter-select" aria-label="Filter by status" onchange="this.form.submit()">
-      <option value="active"    <?= $status_filter === 'active'    ? 'selected' : '' ?>>Active (pending + confirmed)</option>
       <option value="pending"   <?= $status_filter === 'pending'   ? 'selected' : '' ?>>Pending only</option>
       <option value="confirmed" <?= $status_filter === 'confirmed' ? 'selected' : '' ?>>Confirmed only</option>
       <option value="expired"   <?= $status_filter === 'expired'   ? 'selected' : '' ?>>Expired</option>

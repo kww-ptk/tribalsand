@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/icons.php';
 require_login();
 require_owner();
 
@@ -28,7 +29,11 @@ include __DIR__ . '/_layout.php';
 
 <div class="page-header">
   <h1>Dashboard</h1>
-  <div class="actions">
+  <div class="actions" style="display:flex;align-items:center;gap:10px">
+    <span class="fm-chip" title="How the public booking form behaves">
+      Form mode: <strong><?= e(ucfirst($form_mode)) ?></strong>
+      <a href="/admin/settings.php" class="fm-chip__gear" title="Change in Settings" aria-label="Change form mode in Settings"><?= admin_icon('settings', 15) ?></a>
+    </span>
     <a href="/admin/submissions.php" class="btn-outline btn-sm">All Submissions</a>
   </div>
 </div>
@@ -50,12 +55,6 @@ include __DIR__ . '/_layout.php';
     <div class="kpi-card__value"><?= e($total) ?></div>
     <div class="kpi-card__sub">all time</div>
   </div>
-</div>
-
-<!-- Form mode notice -->
-<div class="alert alert--info" style="margin-bottom:24px">
-  <strong>Form mode:</strong> <?= e(ucfirst($form_mode)) ?> —
-  <a href="/admin/settings.php">Change in Settings</a>
 </div>
 
 <!-- Recent submissions -->

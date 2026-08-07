@@ -41,7 +41,7 @@ ob_start(); ?>
 <div class="card">
   <div class="card__body" style="padding:0">
     <?php if (!$logs): ?>
-    <p style="padding:32px;text-align:center;color:var(--muted)">No audit events match.</p>
+    <?php dt_empty($pg['q'] !== '' ? 'No audit events match your search.' : 'No audit events yet.'); ?>
     <?php else: ?>
     <div class="table-wrap">
       <table class="data-table">

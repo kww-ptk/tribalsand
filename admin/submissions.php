@@ -132,7 +132,7 @@ ob_start(); ?>
 <div class="card">
   <div class="card__body" style="padding:0">
     <?php if (empty($rows)): ?>
-    <p style="padding:24px;color:var(--muted);text-align:center">No submissions found.</p>
+    <?php dt_empty($pg['q'] !== '' ? 'No submissions match your search.' : 'No submissions yet.'); ?>
     <?php else: ?>
     <div class="table-wrap">
     <table class="data-table">
@@ -228,10 +228,11 @@ include __DIR__ . '/_layout.php';
     <?php endforeach; ?>
   </select>
 
-  <input type="text" name="date_from" value="<?= e($date_from) ?>" placeholder="From date" class="js-datepicker" autocomplete="off">
-  <input type="text" name="date_to"   value="<?= e($date_to) ?>"   placeholder="To date"   class="js-datepicker" autocomplete="off">
+  <button type="button" class="dp-btn" data-dp-target="subDateFrom" data-dp-placeholder="From date" style="width:150px">From date</button>
+  <input type="hidden" id="subDateFrom" name="date_from" value="<?= e($date_from) ?>">
+  <button type="button" class="dp-btn" data-dp-target="subDateTo" data-dp-placeholder="To date" style="width:150px">To date</button>
+  <input type="hidden" id="subDateTo" name="date_to" value="<?= e($date_to) ?>">
 
-  <button type="submit" class="btn-primary btn-sm"><?= admin_icon('filter', 15) ?> Apply</button>
   <?php if ($type || $room_id || $date_from || $date_to || $pg['q']): ?>
   <a href="/admin/submissions.php" class="btn-outline btn-sm"><?= admin_icon('x', 14) ?> Clear</a>
   <?php endif; ?>
@@ -241,25 +242,20 @@ include __DIR__ . '/_layout.php';
   <div class="dt-body" data-dt-body><?= $dtBody ?></div>
 </div>
 
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.css">
-<script src="https://cdn.jsdelivr.net/npm/flatpickr@4.6.13/dist/flatpickr.min.js"></script>
 <script>
   (function () {
     var form = document.getElementById('filtersForm');
     if (!form) return;
 
-    // Auto-submit on dropdown change
+    // Auto-submit on any filter change: the type/room dropdowns and the two
+    // in-house datepickers (js/datepicker.js dispatches 'change' on its hidden
+    // input when a date is picked). No CDN, no Apply button.
     form.querySelectorAll('.js-auto-submit').forEach(function (el) {
       el.addEventListener('change', function () { form.submit(); });
     });
-
-    // Date pickers — auto-submit when a date is picked or cleared
-    flatpickr('.js-datepicker', {
-      dateFormat: 'Y-m-d',
-      altInput: true,
-      altFormat: 'd M Y',
-      allowInput: true,
-      onChange: function () { form.submit(); },
+    ['subDateFrom', 'subDateTo'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el) el.addEventListener('change', function () { form.submit(); });
     });
   })();
 </script>

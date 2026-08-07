@@ -9,6 +9,9 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/booking.php';    // team (visitor) helpers
 require_once __DIR__ . '/../includes/frontdesk.php';
+require_once __DIR__ . '/../includes/icons.php';
+require_once __DIR__ . '/../includes/pagination.php';
+require_once __DIR__ . '/../includes/admin-pagination.php';
 require_login();
 require_gate();
 
@@ -83,15 +86,89 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $today  = frontdesk_today_ymd();
 $day    = frontdesk_day($venueIds, $today);
-$log    = fetch_visitors($venueIds, false, $today);       // still-on-site + signed in today
-$onsite = 0; foreach ($log as $r) { if (empty($r['time_out'])) $onsite++; }
+
+// Live "on site" count — everyone still signed in, independent of the log filters.
+$onsite = count(fetch_visitors($venueIds, true));
+
+// ── Visitor log filters + pagination ────────────────────────────
+$scopeKey = in_array($_GET['scope'] ?? '', ['onsite','all'], true) ? $_GET['scope'] : 'onsite';
+$dateKey  = trim((string)($_GET['vdate'] ?? ''));
+if ($dateKey !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $dateKey)) $dateKey = '';
+
+$pg   = paginate_params(25);
+$vpaged = fetch_visitors_paged($venueIds, [
+    'scope'  => $scopeKey,
+    'date'   => $dateKey,
+    'q'      => $pg['q'],
+    'per'    => $pg['per'],
+    'offset' => 0,   // placeholder; recomputed against meta below
+]);
+$meta = paginate_meta($vpaged['total'], $pg['page'], $pg['per']);
+// Re-fetch the correct page slice now that offset is known.
+$vpaged = fetch_visitors_paged($venueIds, [
+    'scope' => $scopeKey, 'date' => $dateKey, 'q' => $pg['q'],
+    'per'   => $meta['per'], 'offset' => $meta['offset'],
+]);
+$log = $vpaged['rows'];
+
+// ── Swappable body (visitor log table + pager) — reused for AJAX + full page ──
+ob_start(); ?>
+<div class="card">
+  <div class="card__body" style="padding:0">
+    <?php if (!$log): ?>
+    <?php dt_empty($pg['q'] !== '' ? 'No visitors match your search.' : 'No visitors match this filter.'); ?>
+    <?php else: ?>
+    <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Visitor</th><th>Property</th><th>Visiting</th><th>Purpose</th><th>Vehicle</th><th>In</th><th>Out</th><th>Action</th></tr></thead>
+      <tbody>
+        <?php foreach ($log as $vr): $open = empty($vr['time_out']); ?>
+        <tr<?= $open ? '' : ' style="opacity:.6"' ?>>
+          <td><strong><?= e($vr['visitor_name']) ?></strong></td>
+          <td><?= e($vr['venue_name'] ?? '') ?></td>
+          <td><?= !empty($vr['visiting']) ? e($vr['visiting']) : '<span class="text-muted">—</span>' ?></td>
+          <td><?= !empty($vr['purpose']) ? e($vr['purpose']) : '<span class="text-muted">—</span>' ?></td>
+          <td><?= !empty($vr['vehicle']) ? e($vr['vehicle']) : '<span class="text-muted">—</span>' ?></td>
+          <td class="text-muted"><?= e(date('j M H:i', strtotime((string)$vr['time_in']))) ?></td>
+          <td class="text-muted"><?= $open ? '<span class="badge badge--green">On site</span>' : e(date('j M H:i', strtotime((string)$vr['time_out']))) ?></td>
+          <td>
+            <div class="row-actions">
+            <?php if ($open): ?>
+            <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="signout"><input type="hidden" name="id" value="<?= (int)$vr['id'] ?>"><button class="btn-icon btn-icon--outline" title="Sign out visitor" aria-label="Sign out <?= e($vr['visitor_name']) ?>"><?= admin_icon('logout') ?></button></form>
+            <?php else: ?><span class="text-muted">—</span><?php endif; ?>
+            </div>
+          </td>
+        </tr>
+        <?php endforeach; ?>
+      </tbody>
+    </table>
+    </div>
+    <?php endif; ?>
+    <?php dt_pager($meta); ?>
+  </div>
+</div>
+<?php
+$dtBody = ob_get_clean();
+
+// AJAX fragment: emit only the swappable body and stop.
+if ($pg['ajax']) { echo $dtBody; exit; }
 
 include __DIR__ . '/_layout.php';
 ?>
 
+<?php
+  // Reveal the sign-in form on load if a sign-in just failed (so the user sees
+  // their entries + the error) — otherwise it stays collapsed behind the button.
+  $signInOpen = $flash && ($flash['type'] ?? '') === 'error';
+?>
 <div class="page-header">
   <h1>Gate</h1>
-  <span class="text-muted"><?= e(date('l j M', strtotime($today))) ?></span>
+  <div class="actions" style="display:flex;align-items:center;gap:14px">
+    <span class="text-muted"><?= e(date('l j M', strtotime($today))) ?></span>
+    <?php if (visitors_supported() && $venues): ?>
+    <button type="button" class="btn-primary btn-sm" id="gateSignInToggle" aria-expanded="<?= $signInOpen ? 'true' : 'false' ?>" aria-controls="gateSignInCard"><?= admin_icon('plus', 15) ?> Sign in visitor</button>
+    <?php endif; ?>
+  </div>
 </div>
 
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type'] ?? 'success') ?> is-flash"><?= e($flash['msg'] ?? '') ?></div><?php endif; ?>
@@ -133,7 +210,7 @@ include __DIR__ . '/_layout.php';
 <div class="card"><div class="card__body"><p class="text-muted" style="margin:0">The visitor register isn’t enabled yet. Ask the owner to run the <code>add_visitors.sql</code> migration.</p></div></div>
 <?php else: ?>
 
-<div class="card" style="margin-bottom:16px">
+<div class="card" id="gateSignInCard" style="margin-bottom:16px<?= $signInOpen ? '' : ';display:none' ?>">
   <div class="card__head"><span class="card__title">Sign in a visitor</span></div>
   <div class="card__body" style="padding:20px 24px">
     <?php if (!$venues): ?>
@@ -165,42 +242,51 @@ include __DIR__ . '/_layout.php';
   </div>
 </div>
 
-<div class="card">
-  <div class="card__head">
-    <span class="card__title">Visitor log</span>
-    <span class="badge badge--blue"><?= (int)$onsite ?> on site</span>
+<div class="page-header" style="margin-top:8px">
+  <h2 style="margin:0;font-size:18px">Visitor log</h2>
+  <span class="badge badge--blue"><?= (int)$onsite ?> on site</span>
+</div>
+
+<div class="dt" data-dt>
+  <div class="dt-controls">
+<form method="GET" action="/admin/gate.php" class="filters" id="gateLogFilters">
+  <input type="hidden" name="q"   value="<?= e($pg['q']) ?>">
+  <input type="hidden" name="per" value="<?= (int)$meta['per'] ?>">
+  <label class="filter-field">Show
+    <select name="scope" class="filter-select" aria-label="Filter by presence" onchange="this.form.submit()">
+      <option value="onsite" <?= $scopeKey === 'onsite' ? 'selected' : '' ?>>On site now</option>
+      <option value="all"    <?= $scopeKey === 'all'    ? 'selected' : '' ?>>All visitors</option>
+    </select>
+  </label>
+  <label class="filter-field">Date
+    <button type="button" class="dp-btn" data-dp-target="gateVdate" data-dp-placeholder="Any date" style="width:150px"><?= $dateKey !== '' ? e(date('j M Y', strtotime($dateKey))) : 'Any date' ?></button>
+    <input type="hidden" id="gateVdate" name="vdate" value="<?= e($dateKey) ?>">
+  </label>
+</form>
+    <?php dt_toolbar(['per' => $meta['per'], 'placeholder' => 'Search name, visiting, purpose or vehicle…']); ?>
   </div>
-  <div class="card__body" style="padding:0">
-    <div class="table-wrap">
-    <table class="data-table">
-      <thead><tr><th>Visitor</th><th>Property</th><th>Visiting</th><th>Purpose</th><th>Vehicle</th><th>In</th><th>Out</th><th>Action</th></tr></thead>
-      <tbody>
-        <?php if (!$log): ?>
-        <tr><td colspan="8" style="text-align:center;padding:2rem;color:var(--muted)">No visitors logged today.</td></tr>
-        <?php else: foreach ($log as $vr): $open = empty($vr['time_out']); ?>
-        <tr<?= $open ? '' : ' style="opacity:.6"' ?>>
-          <td><strong><?= e($vr['visitor_name']) ?></strong></td>
-          <td><?= e($vr['venue_name'] ?? '') ?></td>
-          <td><?= !empty($vr['visiting']) ? e($vr['visiting']) : '<span class="text-muted">—</span>' ?></td>
-          <td><?= !empty($vr['purpose']) ? e($vr['purpose']) : '<span class="text-muted">—</span>' ?></td>
-          <td><?= !empty($vr['vehicle']) ? e($vr['vehicle']) : '<span class="text-muted">—</span>' ?></td>
-          <td class="text-muted"><?= e(date('H:i', strtotime((string)$vr['time_in']))) ?></td>
-          <td class="text-muted"><?= $open ? '<span class="badge badge--green">On site</span>' : e(date('H:i', strtotime((string)$vr['time_out']))) ?></td>
-          <td>
-            <div class="row-actions">
-            <?php if ($open): ?>
-            <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="signout"><input type="hidden" name="id" value="<?= (int)$vr['id'] ?>"><button class="btn-icon btn-icon--outline" title="Sign out visitor" aria-label="Sign out <?= e($vr['visitor_name']) ?>"><?= admin_icon('logout') ?></button></form>
-            <?php else: ?><span class="text-muted">—</span><?php endif; ?>
-            </div>
-          </td>
-        </tr>
-        <?php endforeach; endif; ?>
-      </tbody>
-    </table>
-    </div>
-  </div>
+  <div class="dt-body" data-dt-body><?= $dtBody ?></div>
 </div>
 
 <?php endif; ?>
+
+<script>
+(function () {
+  var btn  = document.getElementById('gateSignInToggle');
+  var card = document.getElementById('gateSignInCard');
+  if (btn && card) {
+    btn.addEventListener('click', function () {
+      var open = card.style.display !== 'none';
+      card.style.display = open ? 'none' : '';
+      btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+      if (!open) { var f = card.querySelector('input[name="visitor_name"]'); if (f) f.focus(); }
+    });
+  }
+  // Gate-log date filter — auto-submit when a date is picked.
+  var vd = document.getElementById('gateVdate');
+  var lf = document.getElementById('gateLogFilters');
+  if (vd && lf) vd.addEventListener('change', function () { lf.submit(); });
+})();
+</script>
 
 <?php include __DIR__ . '/_layout_end.php'; ?>

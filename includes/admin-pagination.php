@@ -54,13 +54,16 @@ if (!function_exists('dt_toolbar')) {
      * enhanced select). Renders a GET <form> so it works with no JS; admin-table.js
      * intercepts it for the no-reload path.
      *
-     * @param array $opts per (int, current page size), placeholder (string).
+     * @param array $opts per (int, current page size), placeholder (string),
+     *                    per_page (bool, default true — set false on reorderable
+     *                    lists that must show every row on one page).
      */
     function dt_toolbar(array $opts = []): void
     {
         $q           = (string)($_GET['q'] ?? '');
         $per         = (int)($opts['per'] ?? 10);
         $placeholder = (string)($opts['placeholder'] ?? 'Search…');
+        $showPerPage = ($opts['per_page'] ?? true) !== false;
         $path        = dt_current_path();
 
         // Preserve every other current param (existing filter dropdowns, etc.)
@@ -83,6 +86,7 @@ if (!function_exists('dt_toolbar')) {
             </span>
           </label>
 
+          <?php if ($showPerPage): ?>
           <label class="filter-field dt-perpage">Show
             <select name="per" class="filter-select" aria-label="Results per page">
               <?php foreach ([10, 25, 50] as $n): ?>
@@ -90,7 +94,29 @@ if (!function_exists('dt_toolbar')) {
               <?php endforeach; ?>
             </select>
           </label>
+          <?php endif; ?>
         </form>
+        <?php
+    }
+}
+
+if (!function_exists('dt_empty')) {
+    /**
+     * One consistent empty-state for every list. Drop it in place of the table
+     * (or grid) body when there are zero rows — a centred icon + message that,
+     * with the .dt-body min-height, fills a comfortable height above the pager.
+     * Replaces the ad-hoc `<p>` / empty `<tr>` each page used to hand-roll.
+     *
+     * @param string $msg  Line shown to the user.
+     * @param string $icon admin_icon() name (defaults to the inbox glyph).
+     */
+    function dt_empty(string $msg = 'Nothing to show', string $icon = 'inbox'): void
+    {
+        ?>
+        <div class="dt-empty">
+          <span class="dt-empty__icon" aria-hidden="true"><?= admin_icon($icon, 30) ?></span>
+          <p class="dt-empty__msg"><?= e($msg) ?></p>
+        </div>
         <?php
     }
 }

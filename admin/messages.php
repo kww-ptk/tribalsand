@@ -4,6 +4,9 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/booking.php';
+require_once __DIR__ . '/../includes/icons.php';            // admin_icon() — needed in AJAX branch too
+require_once __DIR__ . '/../includes/pagination.php';
+require_once __DIR__ . '/../includes/admin-pagination.php';
 require_login();
 require_frontdesk();   // ops & gate-security have a focused interface with no messaging
 
@@ -51,42 +54,106 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 if ($inThread) { mark_thread_read_by_admin($holdId, $addonId); }
 
+// ── Thread list mode: filter + search + pagination over the toolkit ──────────
+if (!$inThread) {
+    $pg           = paginate_params();          // page / per (default 10) / q / offset / ajax
+    $filterUnread = ($_GET['view'] ?? '') === 'unread';
+
+    $allThreads = fetch_admin_threads(admin_venue_ids());
+
+    if ($filterUnread) {
+        $allThreads = array_values(array_filter($allThreads, static fn($t) => (int)$t['unread_admin'] > 0));
+    }
+    if ($pg['q'] !== '') {
+        $needle = mb_strtolower($pg['q']);
+        $allThreads = array_values(array_filter($allThreads, static function ($t) use ($needle) {
+            $hay = mb_strtolower(($t['guest_name'] ?? '') . ' ' . thread_title($t) . ' '
+                 . ($t['last_body'] ?? '') . ' ' . ($t['venue_name'] ?? ''));
+            return mb_strpos($hay, $needle) !== false;
+        }));
+    }
+
+    $total   = count($allThreads);
+    $meta    = paginate_meta($total, $pg['page'], $pg['per']);
+    $threads = array_slice($allThreads, $meta['offset'], $meta['per']);
+    $filtered = ($pg['q'] !== '' || $filterUnread);
+
+    ob_start(); ?>
+    <div class="card"><div class="card__body" style="padding:0">
+      <?php if (!$threads): ?>
+      <?php dt_empty($filtered ? 'No conversations match your filters.' : 'No messages yet.', 'message'); ?>
+      <?php else: ?>
+      <div class="table-wrap">
+        <table class="data-table">
+          <thead><tr><th>Guest</th><th>Thread</th><th>Latest</th><th>Unread</th></tr></thead>
+          <tbody>
+            <?php foreach ($threads as $t):
+              $tid  = $t['addon_id'] === null ? 'general' : (int)$t['addon_id'];
+              $href = '/admin/messages.php?hold=' . (int)$t['hold_id'] . '&thread=' . $tid;
+            ?>
+            <tr class="dt-rowlink" data-href="<?= e($href) ?>">
+              <td>
+                <strong><?= e($t['guest_name'] ?: 'Guest') ?></strong>
+                <?php if (!empty($t['venue_name'])): ?><br><span class="text-muted" style="font-size:12px"><?= e($t['venue_name']) ?></span><?php endif; ?>
+              </td>
+              <td><a href="<?= e($href) ?>"><?= e(thread_title($t)) ?></a></td>
+              <td class="text-muted" style="font-size:13px;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><?= e((string)($t['last_body'] ?? '')) ?></td>
+              <td><?php if ((int)$t['unread_admin'] > 0): ?><span class="badge badge--orange"><?= (int)$t['unread_admin'] ?></span><?php else: ?>—<?php endif; ?></td>
+            </tr>
+            <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+      <?php endif; ?>
+      <?php dt_pager($meta); ?>
+    </div></div>
+    <?php
+    $dtBody = ob_get_clean();
+
+    // AJAX fragment: emit only the swappable body and stop.
+    if ($pg['ajax']) { echo $dtBody; exit; }
+}
+
 include __DIR__ . '/_layout.php';
 ?>
 <div class="page-header">
   <h1>Messages</h1>
+  <?php if ($inThread): ?>
+  <a href="/admin/messages.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> All threads</a>
+  <?php else: ?>
   <a href="/admin/dashboard.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Dashboard</a>
+  <?php endif; ?>
 </div>
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?>"><?= e($flash['msg']) ?></div><?php endif; ?>
 
-<?php if (!$inThread):
-  $threads = fetch_admin_threads(admin_venue_ids());
-?>
-<div class="card"><div class="card__body" style="padding:0">
-  <table class="data-table">
-    <thead><tr><th>Guest</th><th>Thread</th><th>Latest</th><th>Unread</th></tr></thead>
-    <tbody>
-      <?php if (!$threads): ?><tr><td colspan="4" style="text-align:center;padding:2rem;color:var(--muted)">No messages yet.</td></tr>
-      <?php else: foreach ($threads as $t):
-        $tid = $t['addon_id'] === null ? 'general' : (int)$t['addon_id'];
-      ?>
-      <tr>
-        <td><strong><?= e($t['guest_name'] ?: 'Guest') ?></strong><br><a href="/admin/booking.php?hold=<?= (int)$t['hold_id'] ?>&tab=messages" class="text-muted" style="font-size:12px;display:inline-flex;align-items:center;gap:4px">Manage booking <?= admin_icon('arrow-right', 13) ?></a></td>
-        <td><a href="?hold=<?= (int)$t['hold_id'] ?>&thread=<?= e((string)$tid) ?>"><?= e(thread_title($t)) ?></a></td>
-        <td class="text-muted" style="font-size:13px;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><?= e((string)($t['last_body'] ?? '')) ?></td>
-        <td><?php if ((int)$t['unread_admin'] > 0): ?><span class="badge badge--orange"><?= (int)$t['unread_admin'] ?></span><?php else: ?>—<?php endif; ?></td>
-      </tr>
-      <?php endforeach; endif; ?>
-    </tbody>
-  </table>
-</div></div>
+<?php if (!$inThread): ?>
+<!-- View filter + search share one aligned control row -->
+<div class="dt" data-dt>
+  <div class="dt-controls">
+    <form method="GET" action="/admin/messages.php" class="filters">
+      <input type="hidden" name="q"   value="<?= e($pg['q']) ?>">
+      <input type="hidden" name="per" value="<?= (int)$pg['per'] ?>">
+      <div class="filter-field">
+        <span>View</span>
+        <select name="view" class="filter-select" aria-label="Filter threads" onchange="this.form.submit()">
+          <option value="">All threads</option>
+          <option value="unread" <?= $filterUnread ? 'selected' : '' ?>>Unread only</option>
+        </select>
+      </div>
+      <?php if ($filterUnread): ?>
+      <a href="/admin/messages.php" class="btn-outline btn-sm" style="align-self:flex-end"><?= admin_icon('x', 14) ?> Clear</a>
+      <?php endif; ?>
+    </form>
+    <?php dt_toolbar(['per' => $meta['per'], 'placeholder' => 'Search guest, thread or message…']); ?>
+  </div>
+  <div class="dt-body" data-dt-body><?= $dtBody ?></div>
+</div>
 
 <?php else:
   $msgs = fetch_thread_messages($holdId, $addonId);
   $ctx  = db_query("SELECT h.guest_name FROM holds h WHERE h.id=:h", [':h'=>$holdId])->fetch();
 ?>
-<p style="margin:0 0 14px"><a href="/admin/messages.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> All threads</a></p>
-<div class="card"><div class="card__body">
+<div class="card"><div class="card__body" style="padding:20px">
   <p style="margin:0 0 12px;font-weight:600"><?= e($ctx['guest_name'] ?? 'Guest') ?></p>
   <?php $lastId = $msgs ? (int)$msgs[count($msgs)-1]['id'] : 0; ?>
   <div id="amThread" class="am-thread"

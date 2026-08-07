@@ -266,7 +266,7 @@ include __DIR__ . '/_layout.php';
       <?= e(date('d M Y', strtotime($linked_hold['check_in']))) ?> → <?= e(date('d M Y', strtotime($linked_hold['check_out']))) ?>
     </p>
     <div style="font-size:13px;color:var(--muted)">
-      Booking code: <strong style="font-family:monospace;letter-spacing:1px;color:var(--text,#111)"><?= e($lh_code ?: '—') ?></strong>
+      Booking code: <strong style="letter-spacing:1px;color:var(--text,#111)"><?= e($lh_code ?: '—') ?></strong>
       <?php if ($lh_link): ?>
       <button type="button" class="copy-link" data-link="<?= e($lh_link) ?>"
               style="margin-left:6px;font-size:11px;padding:1px 7px;cursor:pointer;border:1px solid #ccc;border-radius:4px;background:#fff">Copy portal link</button>

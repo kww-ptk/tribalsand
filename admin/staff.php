@@ -187,7 +187,7 @@ ob_start(); ?>
       <thead><tr><th>Name</th><th>Role / job</th><th>Sign in</th><th>Properties</th><th>Status</th><th style="text-align:right">Manage</th></tr></thead>
       <tbody>
         <?php if (!$team): ?>
-        <tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--muted)"><?= $pg['q'] !== '' ? 'No accounts match your search.' : 'Nothing to show yet.' ?></td></tr>
+        <tr><td colspan="6" style="padding:0"><?php dt_empty($pg['q'] !== '' ? 'No accounts match your search.' : 'No accounts yet.'); ?></td></tr>
         <?php else: foreach ($team as $s):
           $sid       = (int)$s['id'];
           $isManager = ($s['role'] ?? '') === 'manager';

@@ -232,6 +232,51 @@ function fetch_visitors(?array $venueIds, bool $openOnly = true, ?string $sinceY
     } catch (Throwable $e) { return []; }
 }
 
+/**
+ * Paged + searchable visitor register for the Gate log. $venueIds null = all/owner.
+ * $opts: scope ('onsite'|'all'), date (Y-m-d filter on time_in, '' = any),
+ *        q (free-text over name/visiting/purpose/vehicle/property), per, offset.
+ * Returns ['rows' => [...], 'total' => int]. Open (on-site) visitors sort first,
+ * then most-recent in. Empty pre-migration — never fatals.
+ */
+function fetch_visitors_paged(?array $venueIds, array $opts = []): array {
+    if (!visitors_supported()) return ['rows' => [], 'total' => 0];
+    $where = []; $params = [];
+    if ($venueIds !== null) {
+        $ids = $venueIds ?: [-1];
+        $ph = []; foreach ($ids as $i => $v) { $n = ":gv{$i}"; $ph[] = $n; $params[$n] = (int)$v; }
+        $where[] = 'vs.venue_id IN (' . implode(',', $ph) . ')';
+    }
+    if (($opts['scope'] ?? 'onsite') === 'onsite') { $where[] = 'vs.time_out IS NULL'; }
+    $date = trim((string)($opts['date'] ?? ''));
+    if ($date !== '') { $where[] = 'vs.time_in::date = :vdate'; $params[':vdate'] = $date; }
+    $q = trim((string)($opts['q'] ?? ''));
+    if ($q !== '') {
+        $where[] = "(vs.visitor_name ILIKE :vq OR COALESCE(vs.visiting,'') ILIKE :vq"
+                 . " OR COALESCE(vs.purpose,'') ILIKE :vq OR COALESCE(vs.vehicle,'') ILIKE :vq"
+                 . " OR COALESCE(v.name,'') ILIKE :vq)";
+        $params[':vq'] = '%' . $q . '%';
+    }
+    $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
+    $per    = max(1, (int)($opts['per'] ?? 25));
+    $offset = max(0, (int)($opts['offset'] ?? 0));
+    try {
+        $total = (int) db_query("SELECT COUNT(*) FROM visitors vs LEFT JOIN venues v ON v.id = vs.venue_id {$whereSql}", $params)->fetchColumn();
+        $rows = db_query(
+            "SELECT vs.*, v.name AS venue_name, a.name AS logged_by_name, h.guest_name AS hold_guest
+             FROM visitors vs
+             LEFT JOIN venues v ON v.id = vs.venue_id
+             LEFT JOIN admin_users a ON a.id = vs.logged_by
+             LEFT JOIN holds h ON h.id = vs.hold_id
+             {$whereSql}
+             ORDER BY (vs.time_out IS NOT NULL) ASC, vs.time_in DESC
+             LIMIT {$per} OFFSET {$offset}",
+            $params
+        )->fetchAll();
+        return ['rows' => $rows, 'total' => $total];
+    } catch (Throwable $e) { return ['rows' => [], 'total' => 0]; }
+}
+
 /** One visitor row by id (with venue for scope checks), or false. */
 function fetch_visitor(int $id): array|false {
     if (!visitors_supported()) return false;

@@ -113,7 +113,7 @@ ob_start(); ?>
       <thead><tr><th>Guest</th><th>Service</th><th>Request</th><th>Preferred time</th><th>Submitted</th><th>Status</th><?php if ($asgOn): ?><th>Assigned</th><?php endif; ?><th>Actions</th></tr></thead>
       <tbody>
         <?php if (!$rows): ?>
-        <tr><td colspan="<?= $asgOn ? 8 : 7 ?>" style="text-align:center;padding:2rem;color:var(--muted)">No requests match this filter.</td></tr>
+        <tr><td colspan="<?= $asgOn ? 8 : 7 ?>" style="padding:0"><?php dt_empty($pg['q'] !== '' ? 'No requests match your search.' : 'No requests match this filter.'); ?></td></tr>
         <?php else: foreach ($rows as $a):
           $gname = $a['guest_name'] ?: 'the guest';
           $gkind = $a['kind'];
@@ -135,7 +135,7 @@ ob_start(); ?>
             <form method="POST" action="/admin/booking-request-action.php" style="margin:0">
               <?= csrf_field() ?><input type="hidden" name="type" value="assign"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="return" value="concierge-desk">
               <select name="assigned_to" class="cell-select" onchange="this.form.submit()">
-                <option value="">— Unassigned —</option>
+                <option value="">Unassigned</option>
                 <?php foreach ($cands as $c): ?>
                 <option value="<?= (int)$c['id'] ?>" <?= $curAsg === (int)$c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?><?= ($c['role'] ?? '')==='manager' ? ' (mgr)' : (!empty($c['job_type']) ? ' · '.e($c['job_type']) : '') ?></option>
                 <?php endforeach; ?>

@@ -175,7 +175,7 @@ ob_start(); ?>
       <thead><tr><th>Title</th><th>Category</th><th>Property</th><th>Published</th><th style="text-align:right">Actions</th></tr></thead>
       <tbody>
         <?php if (!$posts): ?>
-        <tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--muted)"><?= $pg['q'] !== '' ? 'No posts match your search.' : 'Nothing to show yet.' ?></td></tr>
+        <tr><td colspan="5" style="padding:0"><?php dt_empty($pg['q'] !== '' ? 'No posts match your search.' : 'No posts yet.'); ?></td></tr>
         <?php else: foreach ($posts as $p): ?>
         <tr>
           <td><strong><?= e($p['title']) ?></strong></td>

@@ -34,6 +34,7 @@ $__roleBadge = $__isManager ? 'Manager' : (is_staff() ? ucfirst((string)$__job) 
   <link rel="stylesheet" href="/css/datepicker.css?v=<?= @filemtime(__DIR__ . '/../css/datepicker.css') ?: '1' ?>">
   <script defer src="/admin/assets/admin-select.js?v=<?= @filemtime(__DIR__ . '/assets/admin-select.js') ?: '1' ?>"></script>
   <script defer src="/admin/assets/admin-table.js?v=<?= @filemtime(__DIR__ . '/assets/admin-table.js') ?: '1' ?>"></script>
+  <script defer src="/admin/assets/admin-dt-drag.js?v=<?= @filemtime(__DIR__ . '/assets/admin-dt-drag.js') ?: '1' ?>"></script>
   <script defer src="/js/datepicker.js?v=<?= @filemtime(__DIR__ . '/../js/datepicker.js') ?: '1' ?>"></script>
 </head>
 <body class="admin-body">
