@@ -96,8 +96,17 @@ $holdsFrom = "FROM holds h
 $total = (int) db_query("SELECT COUNT(*) {$holdsFrom}", $params)->fetchColumn();
 $meta  = paginate_meta($total, $pg['page'], $pg['per']);
 
+// Guarded subquery so a pre-migration DB (no checkin_guests table) doesn't 42703;
+// feeds checkin_badge()'s "X/N" party label alongside guest_count (already in h.*).
+$ciCols = checkin_supported()
+    ? ", (SELECT COUNT(*) FROM checkin_guests cg WHERE cg.hold_id = h.id AND cg.is_child = FALSE
+           AND COALESCE(cg.passport_name,'') <> '' AND COALESCE(cg.passport_number,'') <> ''
+           AND COALESCE(cg.passport_file_key,'') <> '' AND cg.waiver_signed_at IS NOT NULL) AS ci_complete_count"
+    : '';
+
 $holds = db_query(
     "SELECT h.*, u.name AS unit_name, r.name AS room_name, r.id AS room_db_id, r.venue_id AS venue_id
+     {$ciCols}
      {$holdsFrom}
      ORDER BY h.created_at DESC
      LIMIT {$meta['per']} OFFSET {$meta['offset']}",

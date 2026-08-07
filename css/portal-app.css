@@ -192,3 +192,28 @@
 .ci-alert{max-width:520px;margin:0 auto 16px;background:#fbe6e6;border:1px solid #f0c2c2;color:#a12;border-radius:10px;padding:12px 16px;font-size:14px;line-height:1.5}
 
 .pa-btn--ghost{background:transparent;color:var(--pa-teal);border:1px solid var(--pa-line)}
+
+/* ── Check-in — party roster (multi-guest) ── */
+.ci-party__head{font-size:14px;color:var(--pa-muted);line-height:1.6;margin:0 0 16px}
+.ci-guest{background:#fff;border:1px solid var(--pa-line);border-radius:12px;padding:14px 16px;margin-bottom:12px}
+.ci-guest--lead{border-color:var(--pa-teal);box-shadow:0 0 0 1px rgba(30,92,107,.08)}
+.ci-guest__title{display:flex;align-items:center;gap:8px;margin-bottom:6px}
+.ci-guest__who{font-weight:600;flex:1}
+.ci-guest__name{flex:1;margin:0}
+.ci-chip{font-size:11px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;padding:3px 9px;border-radius:999px;background:#f3f0ea;color:var(--pa-muted);white-space:nowrap}
+.ci-chip--ok{background:#e6f6ec;color:#146c37}
+.ci-guest__remove{flex:0 0 auto;background:none;border:0;font-size:20px;line-height:1;color:#c0392b;cursor:pointer;padding:0 4px}
+.ci-guest__modes{display:flex;gap:8px;margin:8px 0}
+.ci-mode{flex:1;font:inherit;font-size:13px;font-weight:500;padding:9px;border:1px solid var(--pa-line);border-radius:8px;background:#fff;color:var(--pa-teal);cursor:pointer}
+.ci-guest__save{margin-top:12px}
+.ci-hint{font-size:12px;color:var(--pa-muted);margin:8px 0 0;font-style:italic}
+.ci-linkrow{display:flex;gap:8px}
+.ci-linkrow input{flex:1}
+.ci-linkrow .pa-btn{width:auto;padding-left:16px;padding-right:16px}
+.ci-kids{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:12px;padding-top:10px;border-top:1px dashed var(--pa-line)}
+.ci-kid{display:inline-flex;align-items:center;gap:4px;font-size:13px;background:var(--pa-cream);border-radius:999px;padding:4px 6px 4px 12px}
+.ci-kid__x{background:none;border:0;font-size:15px;line-height:1;color:var(--pa-muted);cursor:pointer;padding:0 2px}
+.ci-addkid{font:inherit;font-size:13px;color:var(--pa-teal);background:none;border:1px dashed var(--pa-line);border-radius:999px;padding:5px 12px;cursor:pointer}
+.ci-addguest{margin-top:4px}
+.ci-others{margin-top:22px;padding-top:14px;border-top:1px solid var(--pa-line)}
+.ci-other__row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 2px;font-size:14px}

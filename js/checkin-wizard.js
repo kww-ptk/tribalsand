@@ -4,11 +4,14 @@
   var steps = Array.prototype.slice.call(document.querySelectorAll('.ci-step'));
   if (!steps.length) return;
   var bar       = document.getElementById('ciBar');
-  var intro     = document.getElementById('ciIntro');   // landing (absent once checked in)
+  var intro     = document.getElementById('ciIntro');
   var stepsWrap = document.getElementById('ciSteps');
-  var startBtn  = document.getElementById('ciStart');    // "Start / Continue check-in"
-  var editBtn   = document.getElementById('ciEdit');     // "Update my details" (done state)
+  var startBtn  = document.getElementById('ciStart');
+  var editBtn   = document.getElementById('ciEdit');
   var cur = 0;
+
+  function tok(name) { var el = form.querySelector('input[name=' + name + ']'); return el ? el.value : ''; }
+  var CSRF = tok('csrf_token'), REF = tok('ref');
 
   function show(i) {
     cur = Math.max(0, Math.min(steps.length - 1, i));
@@ -16,55 +19,128 @@
     if (bar) bar.style.width = Math.round(((cur + 1) / steps.length) * 100) + '%';
     window.scrollTo(0, 0);
   }
-  function openSteps() {
-    if (intro) intro.hidden = true;
-    if (stepsWrap) stepsWrap.hidden = false;
-    show(0);
-  }
-  function backToStart() {           // Back from step 1 → return to the landing / done card
-    if (stepsWrap) stepsWrap.hidden = true;
-    if (intro) intro.hidden = false;
-    window.scrollTo(0, 0);
-  }
+  function openSteps(i) { if (intro) intro.hidden = true; if (stepsWrap) stepsWrap.hidden = false; show(i || 0); }
+  function backToStart() { if (stepsWrap) stepsWrap.hidden = true; if (intro) intro.hidden = false; window.scrollTo(0, 0); }
+  if (startBtn) startBtn.addEventListener('click', function () { openSteps(0); });
+  if (editBtn)  editBtn.addEventListener('click', function () { openSteps(0); });
 
-  if (startBtn) startBtn.addEventListener('click', openSteps);
-  if (editBtn)  editBtn.addEventListener('click', openSteps);
-
-  // Save the current step's fields via AJAX, then advance.
+  // Save the lead's main-form fields via AJAX, then continue.
   function saveThen(next) {
     var fd = new FormData(form);
     fd.set('do', 'save'); fd.set('ajax', '1');
     fetch(form.action, { method: 'POST', body: fd, credentials: 'same-origin' })
-      .then(function () { next(); })
-      .catch(function () { next(); }); // save is best-effort; never trap the guest
+      .then(function () { next(); }).catch(function () { next(); });
+  }
+
+  // Form-encoded POST with ref + csrf + extra fields.
+  function apiPost(url, fields) {
+    var body = 'ref=' + encodeURIComponent(REF) + '&csrf_token=' + encodeURIComponent(CSRF);
+    for (var k in fields) body += '&' + encodeURIComponent(k) + '=' + encodeURIComponent(fields[k] == null ? '' : fields[k]);
+    return fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body, credentials: 'same-origin' });
+  }
+  function esc(s) { return String(s).replace(/[&<>"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); }
+
+  function updateAddBtn() {
+    var btn = form.querySelector('.ci-addguest'); if (!btn) return;
+    var need = parseInt(btn.getAttribute('data-need') || '1', 10);
+    var have = form.querySelectorAll('.ci-guest[data-guest-id]').length + 1; // + lead
+    btn.hidden = have >= need;
+    btn.textContent = '+ Add adult (' + have + '/' + need + ')';
   }
 
   form.addEventListener('click', function (e) {
-    if (e.target.classList.contains('ci-next')) { e.preventDefault(); saveThen(function () { show(cur + 1); }); }
-    if (e.target.classList.contains('ci-back')) { e.preventDefault(); if (cur === 0) { backToStart(); } else { show(cur - 1); } }
+    var t = e.target;
+
+    if (t.classList.contains('ci-next')) { e.preventDefault(); saveThen(function () { show(cur + 1); }); return; }
+    if (t.classList.contains('ci-back')) { e.preventDefault(); if (cur === 0) backToStart(); else show(cur - 1); return; }
+
+    if (t.classList.contains('ci-addguest')) {   // add adult → save lead, add slot, reload to the party step
+      e.preventDefault(); t.disabled = true; t.textContent = 'Adding…';
+      saveThen(function () {
+        apiPost('/api/checkin-guest.php', { action: 'add_adult' })
+          .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+          .then(function () { location.href = '/booking.php?ref=' + encodeURIComponent(REF) + '&view=checkin&ci=party'; })
+          .catch(function () { t.disabled = false; t.textContent = '+ Add adult'; });
+      });
+      return;
+    }
+    if (t.classList.contains('ci-guest__remove')) {
+      e.preventDefault();
+      var card = t.closest('.ci-guest'), gid = card.getAttribute('data-guest-id');
+      if (!gid || !confirm('Remove this guest from the booking?')) return;
+      apiPost('/api/checkin-guest.php', { action: 'remove', guest_id: gid }).then(function () { card.remove(); updateAddBtn(); });
+      return;
+    }
+    if (t.classList.contains('ci-guest__fill'))  { e.preventDefault(); var c = t.closest('.ci-guest'); c.querySelector('.ci-guest__inline').hidden = false; c.querySelector('.ci-guest__link').hidden = true; return; }
+    if (t.classList.contains('ci-guest__share')) { e.preventDefault(); var c = t.closest('.ci-guest'); c.querySelector('.ci-guest__link').hidden = false; c.querySelector('.ci-guest__inline').hidden = true; return; }
+
+    if (t.classList.contains('ci-copy')) {
+      e.preventDefault();
+      var inp = t.closest('.ci-linkrow').querySelector('input'); inp.select();
+      try { navigator.clipboard.writeText(inp.value); } catch (_) { try { document.execCommand('copy'); } catch (__) {} }
+      var o = t.textContent; t.textContent = 'Copied ✓'; setTimeout(function () { t.textContent = o; }, 1500);
+      return;
+    }
+
+    if (t.classList.contains('ci-guest__save')) {   // save an additional adult's data (per-guest AJAX)
+      e.preventDefault();
+      var card = t.closest('.ci-guest'), gid = card.getAttribute('data-guest-id');
+      var fd = new FormData();
+      fd.append('ref', REF); fd.append('csrf_token', CSRF); fd.append('guest_id', gid); fd.append('ajax', '1');
+      card.querySelectorAll('[data-field]').forEach(function (el) {
+        var f = el.getAttribute('data-field');
+        if (el.type === 'checkbox') { if (el.checked) fd.append(f, '1'); } else fd.append(f, el.value);
+      });
+      t.disabled = true; t.textContent = 'Saving…';
+      fetch('/api/checkin-save.php', { method: 'POST', body: fd, credentials: 'same-origin' })
+        .then(function () { t.textContent = 'Saved ✓'; setTimeout(function () { t.textContent = 'Save this guest'; t.disabled = false; }, 1300); })
+        .catch(function () { t.textContent = 'Try again'; t.disabled = false; });
+      return;
+    }
+
+    if (t.classList.contains('ci-addkid')) {
+      e.preventDefault();
+      var wrap = t.closest('.ci-kids'), parent = wrap.getAttribute('data-parent');
+      var name = (window.prompt("Child's full name:") || '').trim(); if (!name) return;
+      apiPost('/api/checkin-guest.php', { action: 'add_child', parent_guest_id: parent, passport_name: name })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+        .then(function (d) {
+          var chip = document.createElement('span');
+          chip.className = 'ci-kid'; chip.setAttribute('data-guest-id', d.guest_id);
+          chip.innerHTML = esc(name) + '<button type="button" class="ci-kid__x" aria-label="Remove">&times;</button>';
+          wrap.insertBefore(chip, t);
+        });
+      return;
+    }
+    if (t.classList.contains('ci-kid__x')) {
+      e.preventDefault();
+      var kc = t.closest('.ci-kid'), kid = kc.getAttribute('data-guest-id');
+      apiPost('/api/checkin-guest.php', { action: 'remove', guest_id: kid }).then(function () { kc.remove(); });
+      return;
+    }
   });
 
-  // Async passport upload. Shows uploaded state; the file goes to private storage.
-  var fileInput = document.getElementById('ciPassportFile');
-  if (fileInput) {
-    fileInput.addEventListener('change', function () {
-      var f = fileInput.files && fileInput.files[0];
-      if (!f) return;
-      var wrap = fileInput.closest('.ci-upload');
-      var state = wrap.querySelector('.ci-upload__state');
-      state.textContent = 'Uploading…';
-      var fd = new FormData();
-      fd.append('ref', form.querySelector('input[name=ref]').value);
-      fd.append('csrf_token', form.querySelector('input[name=csrf_token]').value);
-      fd.append('passport', f);
-      fetch('/api/checkin-upload.php', { method: 'POST', body: fd, credentials: 'same-origin' })
-        .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
-        .then(function () { state.innerHTML = 'Uploaded ✓'; wrap.setAttribute('data-has', '1'); })
-        .catch(function () { state.textContent = 'Upload failed — try again'; });
-    });
-  }
+  // Delegated passport upload — any .ci-upload file input. guest_id from the enclosing card (absent → lead).
+  form.addEventListener('change', function (e) {
+    if (e.target.type !== 'file' || !e.target.closest('.ci-upload')) return;
+    var input = e.target, card = input.closest('[data-guest-id]');
+    var f = input.files && input.files[0]; if (!f) return;
+    var wrap = input.closest('.ci-upload'), state = wrap.querySelector('.ci-upload__state');
+    state.textContent = 'Uploading…';
+    var fd = new FormData();
+    fd.append('ref', REF); fd.append('csrf_token', CSRF);
+    if (card) fd.append('guest_id', card.getAttribute('data-guest-id'));
+    fd.append('passport', f);
+    fetch('/api/checkin-upload.php', { method: 'POST', body: fd, credentials: 'same-origin' })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+      .then(function () { state.innerHTML = 'Uploaded ✓'; wrap.setAttribute('data-has', '1'); })
+      .catch(function () { state.textContent = 'Upload failed — try again'; });
+  });
 
-  // Land on the intro (not-done) or the done card. Only jump straight into the
-  // steps if there is neither (defensive — shouldn't happen).
-  if (!intro && !editBtn) openSteps();
+  // Initial view: resume to a step after a roster reload; else land on intro/done.
+  var resume = new URLSearchParams(location.search).get('ci');
+  if (resume) {
+    var idx = -1; steps.forEach(function (s, i) { if (s.getAttribute('data-key') === resume) idx = i; });
+    if (idx >= 0) { openSteps(idx); }
+  } else if (!intro && !editBtn) { openSteps(0); }
 })();

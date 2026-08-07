@@ -33,7 +33,14 @@ function frontdesk_rows(?array $venueIds, string $datePredicate, array $params):
     $whereSql = implode(' AND ', $where);
     // Only select the check-in columns once the migration has added them, so the
     // board still renders in the deploy→migrate window (else the query 42703s).
-    $ci = (function_exists('checkin_supported') && checkin_supported()) ? 'h.require_checkin, h.checkin_completed_at,' : '';
+    // ci_complete_count = adults (is_child=FALSE) with a complete passport AND a
+    // signed waiver — feeds checkin_badge()'s "X/N" party label.
+    $ci = (function_exists('checkin_supported') && checkin_supported())
+        ? "h.require_checkin, h.checkin_completed_at, h.guest_count,
+            (SELECT COUNT(*) FROM checkin_guests cg WHERE cg.hold_id = h.id AND cg.is_child = FALSE
+               AND COALESCE(cg.passport_name,'') <> '' AND COALESCE(cg.passport_number,'') <> ''
+               AND COALESCE(cg.passport_file_key,'') <> '' AND cg.waiver_signed_at IS NOT NULL) AS ci_complete_count,"
+        : '';
     try {
         return db_query(
             "SELECT h.id, h.guest_name, h.check_in, h.check_out, h.access_code,
