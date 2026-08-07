@@ -122,6 +122,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $_SESSION['hold_flash'] = ['type' => 'success', 'msg' => 'Check-in requirement updated.'];
         header("Location: /admin/booking.php?hold=$holdId&tab=checkin"); exit;
     }
+    if ($act === 'guest_count_set' && is_owner() && checkin_supported()) {
+        $n = (int)($_POST['guest_count'] ?? 0);
+        if ($n >= 1 && $n <= 12) {
+            db_query('UPDATE holds SET guest_count = :n WHERE id = :id', [':n' => $n, ':id' => $holdId]);
+            audit_log('checkin.guest_count', 'hold', $holdId, (string)$n);
+            $_SESSION['hold_flash'] = ['type' => 'success', 'msg' => 'Party size updated.'];
+        } else {
+            $_SESSION['hold_flash'] = ['type' => 'error', 'msg' => 'Number of adults must be between 1 and 12.'];
+        }
+        header("Location: /admin/booking.php?hold=$holdId&tab=checkin"); exit;
+    }
 }
 
 $pageTitle  = 'Booking';

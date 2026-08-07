@@ -1,34 +1,60 @@
 <?php /** Workspace Check-in tab. Expects $hold, $holdId. */ ?>
-<?php
-$__ci   = fetch_checkin($holdId);
-$__lead = checkin_lead_guest($holdId);
-$__canDocs = can_view_guest_docs($holdId);
-$__state = checkin_state($hold);
-$__fmt = fn($v) => ($v === null || $v === '') ? '—' : e((string)$v);
-?>
 <?php if (!checkin_supported()): ?>
 <div class="card"><div class="card__body">Run the <code>add_checkin.sql</code> migration to enable check-in.</div></div>
 <?php else: ?>
+<?php
+$__ci     = fetch_checkin($holdId);
+$__guests = fetch_checkin_guests($holdId);
+$__adults = array_values(array_filter($__guests, fn($g) => empty($g['is_child'])));
+$__kidsByParent = [];
+foreach ($__guests as $g) {
+    if (!empty($g['is_child'])) $__kidsByParent[(int)($g['parent_guest_id'] ?? 0)][] = $g;
+}
+$__canDocs = can_view_guest_docs($holdId);
+$__state   = checkin_state($hold);
+$__fmt     = fn($v) => ($v === null || $v === '') ? '—' : e((string)$v);
+
+// Same rule the Frontdesk/Holds badge subquery uses: adult has both a complete
+// passport and a signed waiver. Drives the "X of N adults checked in" status line
+// and each row's own complete chip.
+$__completeAdults = 0;
+foreach ($__adults as $__g) {
+    if (checkin_guest_passport_complete($__g) && checkin_guest_waiver_signed($__g)) $__completeAdults++;
+}
+$__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdults);
+?>
 
 <div class="card" style="margin-bottom:16px"><div class="card__body" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
   <div>
     <strong>Status:</strong>
     <?php if ($__state === 'complete'): ?><span class="ci-badge ci-badge--done">Checked in ✓</span> <span class="text-muted"><?= e(date('j M Y H:i', strtotime((string)$hold['checkin_completed_at']))) ?></span>
-    <?php elseif ($__state === 'pending'): ?><span class="ci-badge ci-badge--pending">Pending</span>
+    <?php elseif ($__state === 'pending'): ?><span class="ci-badge ci-badge--pending"><?= (int)$__party['complete'] ?> of <?= (int)$__party['total'] ?> adults checked in</span>
     <?php else: ?><span class="text-muted">Not required</span><?php endif; ?>
   </div>
   <?php if (is_owner()): ?>
-  <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" style="margin:0">
-    <?= csrf_field() ?>
-    <input type="hidden" name="hold_id" value="<?= $holdId ?>">
-    <input type="hidden" name="action" value="checkin_toggle">
-    <input type="hidden" name="require_checkin" value="<?= !empty($hold['require_checkin']) ? '0' : '1' ?>">
-    <button class="btn-sm btn-outline"><?= !empty($hold['require_checkin']) ? 'Turn off requirement' : 'Require check-in' ?></button>
-  </form>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+    <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" style="display:flex;align-items:center;gap:6px;margin:0">
+      <?= csrf_field() ?>
+      <input type="hidden" name="hold_id" value="<?= $holdId ?>">
+      <input type="hidden" name="action" value="guest_count_set">
+      <label class="text-muted" style="font-size:12px" for="ciGuestCount">Adults</label>
+      <input type="number" id="ciGuestCount" name="guest_count" min="1" max="12" value="<?= (int)($hold['guest_count'] ?? 1) ?>" style="width:60px;padding:5px 7px;border:1px solid #d1d5db;border-radius:6px">
+      <button type="submit" class="btn-sm btn-outline">Save</button>
+    </form>
+    <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" style="margin:0">
+      <?= csrf_field() ?>
+      <input type="hidden" name="hold_id" value="<?= $holdId ?>">
+      <input type="hidden" name="action" value="checkin_toggle">
+      <input type="hidden" name="require_checkin" value="<?= !empty($hold['require_checkin']) ? '0' : '1' ?>">
+      <button class="btn-sm btn-outline"><?= !empty($hold['require_checkin']) ? 'Turn off requirement' : 'Require check-in' ?></button>
+    </form>
+  </div>
   <?php endif; ?>
 </div></div>
 
-<?php if ($__ci || $__lead): ?>
+<?php if ($__ci || $__adults): ?>
+
+<?php if ($__ci): ?>
 <div class="card" style="margin-bottom:16px"><div class="card__body">
   <table class="data-table" style="max-width:600px">
     <tr><td class="text-muted">Airport</td><td><?= $__fmt($__ci['arrival_airport'] ?? '') ?></td></tr>
@@ -37,26 +63,64 @@ $__fmt = fn($v) => ($v === null || $v === '') ? '—' : e((string)$v);
     <tr><td class="text-muted">Transfer</td><td><?php $nt=$__ci['needs_transfer']??null; echo ($nt===null)?'—':(($nt===true||$nt==='t')?'Yes — '.e((string)($__ci['transfer_details']??'')):'No'); ?></td></tr>
     <tr><td class="text-muted">Dietary</td><td><?= $__fmt($__ci['dietary'] ?? '') ?></td></tr>
     <tr><td class="text-muted">Requests</td><td><?= $__fmt($__ci['special_requests'] ?? '') ?></td></tr>
-    <tr><td class="text-muted">Waiver</td><td><?php echo !empty($__ci['waiver_signed_at']) ? 'Signed by '.e((string)$__ci['waiver_signed_name']).' · '.e(date('j M Y', strtotime((string)$__ci['waiver_signed_at']))) : '—'; ?></td></tr>
   </table>
+</div></div>
+<?php endif; ?>
+
+<div class="card"><div class="card__head"><span class="card__title">Guests</span></div><div class="card__body" style="padding:0">
+  <?php if (!$__adults): ?>
+  <p class="text-muted" style="margin:0;padding:20px">No guest identity captured yet.</p>
+  <?php else: ?>
+  <div class="table-wrap">
+  <table class="data-table">
+    <thead>
+      <tr><th>Adult</th><th>Nationality</th><th>Passport #</th><th>Expiry</th><th>Waiver</th><th>Scan</th><th>Status</th></tr>
+    </thead>
+    <tbody>
+      <?php foreach ($__adults as $g): ?>
+      <?php
+        $__passOk   = checkin_guest_passport_complete($g);
+        $__waiverOk = checkin_guest_waiver_signed($g);
+        $__done     = $__passOk && $__waiverOk;
+        $__kids     = $__kidsByParent[(int)$g['id']] ?? [];
+      ?>
+      <tr>
+        <td><?= $__fmt($g['passport_name'] ?? '') ?><?php if (!empty($g['is_lead'])): ?> <span class="badge badge--blue">Lead</span><?php endif; ?></td>
+        <td><?= $__fmt($g['nationality'] ?? '') ?></td>
+        <td><?= $__canDocs ? $__fmt($g['passport_number'] ?? '') : '<span class="text-muted">•••• (restricted)</span>' ?></td>
+        <td><?= $__fmt($g['passport_expiry'] ?? '') ?></td>
+        <td><?php if ($__waiverOk): ?>Signed by <?= e((string)$g['waiver_signed_name']) ?> on <?= e(date('j M Y', strtotime((string)$g['waiver_signed_at']))) ?><?php else: ?><span class="text-muted">Not signed</span><?php endif; ?></td>
+        <td>
+          <?php if (empty($g['passport_file_key'])): ?><span class="text-muted">—</span>
+          <?php elseif ($__canDocs): ?><a href="/admin/checkin-file.php?hold=<?= $holdId ?>&guest=<?= (int)$g['id'] ?>" target="_blank" class="btn-sm btn-outline">View scan →</a>
+          <?php else: ?>On file ✓ <span class="text-muted">(restricted)</span><?php endif; ?>
+        </td>
+        <td><span class="ci-badge <?= $__done ? 'ci-badge--done' : 'ci-badge--pending' ?>"><?= $__done ? 'Complete' : 'Incomplete' ?></span></td>
+      </tr>
+      <?php if ($__kids): ?>
+      <tr class="ci-children-row">
+        <td></td>
+        <td colspan="6" style="padding-top:0;padding-bottom:12px">
+          <div class="ci-children" style="padding:10px 12px;background:var(--bg-alt,#f7f7f5);border-radius:6px">
+            <?php foreach ($__kids as $c): ?>
+            <div style="font-size:13px;margin:4px 0">
+              <span class="badge badge--grey">Child</span>
+              <?= $__fmt($c['passport_name'] ?? '') ?><?php if (!empty($c['date_of_birth'])): ?> <span class="text-muted">· DOB <?= e(date('j M Y', strtotime((string)$c['date_of_birth']))) ?></span><?php endif; ?>
+            </div>
+            <?php endforeach; ?>
+          </div>
+        </td>
+      </tr>
+      <?php endif; ?>
+      <?php endforeach; ?>
+    </tbody>
+  </table>
+  </div>
+  <?php endif; ?>
 </div></div>
 
-<div class="card"><div class="card__head"><span class="card__title">Lead guest — identity</span></div><div class="card__body">
-  <?php if ($__lead): ?>
-  <table class="data-table" style="max-width:600px">
-    <tr><td class="text-muted">Name</td><td><?= $__fmt($__lead['passport_name'] ?? '') ?></td></tr>
-    <tr><td class="text-muted">Nationality</td><td><?= $__fmt($__lead['nationality'] ?? '') ?></td></tr>
-    <tr><td class="text-muted">Passport #</td><td><?= $__canDocs ? $__fmt($__lead['passport_number'] ?? '') : '<span class="text-muted">•••• (restricted)</span>' ?></td></tr>
-    <tr><td class="text-muted">Expiry</td><td><?= $__fmt($__lead['passport_expiry'] ?? '') ?></td></tr>
-    <tr><td class="text-muted">Scan</td><td>
-      <?php if (empty($__lead['passport_file_key'])): ?>—
-      <?php elseif ($__canDocs): ?><a href="/admin/checkin-file.php?hold=<?= $holdId ?>&guest=<?= (int)$__lead['id'] ?>" target="_blank" class="btn-sm btn-outline">View scan →</a>
-      <?php else: ?>On file ✓ <span class="text-muted">(restricted)</span><?php endif; ?>
-    </td></tr>
-  </table>
-  <?php else: ?><p class="text-muted" style="margin:0">No identity captured yet.</p><?php endif; ?>
-</div></div>
 <?php else: ?>
 <div class="card"><div class="card__body text-muted">Nothing submitted yet.</div></div>
 <?php endif; ?>
+
 <?php endif; ?>

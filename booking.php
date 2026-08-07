@@ -27,6 +27,27 @@ if (!$holdId) {
     }
 }
 
+// ── Co-guest self-service branch (opened via a per-guest ?g= link) ──────────
+$gtoken = trim((string)($_GET['g'] ?? $_POST['g'] ?? ''));
+if (!$holdId && $gtoken !== '' && ($gc = verify_guest_pass_token($gtoken)) !== false) {
+    [$gHoldId, $gGuestId] = $gc;
+    $gHold = fetch_hold_for_guest($gHoldId);
+    $me = null;
+    foreach (fetch_checkin_guests($gHoldId) as $row) { if ((int)$row['id'] === $gGuestId) { $me = $row; break; } }
+    if ($gHold && checkin_required($gHold) && $me) {
+        $hold = $gHold; $holdId = $gHoldId;
+        $page_title = 'Guest check-in · Tribal Sand';
+        $page_desc  = 'Complete your check-in.';
+        $page_url   = site_url('booking');
+        $noindex    = true;
+        $hide_floating_chat = true; $portal_chrome = true;
+        include __DIR__ . '/includes/head.php';
+        include __DIR__ . '/includes/app/checkin-guest.php';   // expects $hold, $me, $gtoken
+        include __DIR__ . '/includes/footer.php';
+        exit;
+    }
+}
+
 // ── Fallback: code-only lookup (when no valid ref resolved a hold) ──
 if ((!$holdId || !$hold) && ($_POST['do'] ?? '') === 'lookup') {
     $now = time();
@@ -91,7 +112,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $hold && $can_cancel) {
     }
 }
 
-$checkin_gate = $hold && checkin_required($hold) && !checkin_is_complete($hold);
+// The lead's gate lifts once they've submitted their own part (submitted_at) even
+// if co-guests are still pending — the booking still isn't "fully checked in".
+$__ci = ($hold && checkin_supported()) ? fetch_checkin($holdId) : null;
+$checkin_gate = $hold && checkin_required($hold) && !checkin_is_complete($hold) && empty($__ci['submitted_at']);
 
 $status     = $hold['status'] ?? '';
 

@@ -10,7 +10,7 @@ $checkin_default = checkin_supported() && setting('checkin_required_default', '0
 $want_checkin    = ($_SERVER['REQUEST_METHOD'] === 'POST') ? isset($_POST['require_checkin']) : $checkin_default;
 
 $error = '';
-$old   = ['unit_id' => '', 'check_in' => '', 'check_out' => '', 'guest_name' => '', 'guest_email' => ''];
+$old   = ['unit_id' => '', 'check_in' => '', 'check_out' => '', 'guest_name' => '', 'guest_email' => '', 'guest_count' => 1];
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'create') {
     verify_csrf();
@@ -20,8 +20,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
     $check_out= $str($_POST['check_out'] ?? '');
     $g_name   = $str($_POST['guest_name']  ?? '');
     $g_email  = $str($_POST['guest_email'] ?? '');
+    $g_count  = max(1, (int)($_POST['guest_count'] ?? 1));
     $old = ['unit_id' => $unit_id ?: '', 'check_in' => $check_in, 'check_out' => $check_out,
-            'guest_name' => $g_name, 'guest_email' => $g_email];
+            'guest_name' => $g_name, 'guest_email' => $g_email, 'guest_count' => $g_count];
 
     $is_date  = fn($d) => preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $d, $m) && checkdate((int)$m[2], (int)$m[3], (int)$m[1]);
     $unit_ok  = $unit_id > 0 && db_query("SELECT 1 FROM units WHERE id = :id AND is_active = TRUE", [':id' => $unit_id])->fetchColumn();
@@ -42,6 +43,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
         if (!$error) {
             if (checkin_supported() && $want_checkin) {
                 db_query('UPDATE holds SET require_checkin = TRUE WHERE id = :id', [':id' => $hold_id]);
+            }
+            if (checkin_supported()) {
+                db_query('UPDATE holds SET guest_count = :n WHERE id = :id', [':n' => max(1, (int)($_POST['guest_count'] ?? 1)), ':id' => $hold_id]);
             }
             $code = (string)db_query("SELECT access_code FROM holds WHERE id = :id", [':id' => $hold_id])->fetchColumn();
             try {
@@ -113,6 +117,11 @@ include __DIR__ . '/_layout.php';
                  style="width:100%;padding:9px;border:1px solid #d1d5db;border-radius:6px">
         </div>
         <?php if (checkin_supported()): ?>
+        <div>
+          <div class="detail-item__label">Number of adults</div>
+          <input type="number" name="guest_count" min="1" max="12" value="<?= e($old['guest_count']) ?>"
+                 style="width:100%;padding:9px;border:1px solid #d1d5db;border-radius:6px">
+        </div>
         <div style="grid-column:1/-1">
           <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer">
             <input type="checkbox" name="require_checkin" value="1" <?= $want_checkin ? 'checked' : '' ?>>

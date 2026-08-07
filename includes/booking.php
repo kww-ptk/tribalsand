@@ -58,6 +58,41 @@ function make_manage_url(int $holdId): string {
     return site_url('/booking.php?ref=' . urlencode($ref));
 }
 
+/**
+ * Per-guest self-service token (value of ?g=): "<guestId>-<hmac10>". Binds hold+guest so
+ * a co-guest can complete only their own passport/waiver without the hold magic link.
+ * The "g:" prefix domain-separates it from the hold ref (which hashes just the id).
+ */
+function make_guest_pass_token(int $holdId, int $guestId): string {
+    $secret = parse_env()['BOOKING_TOKEN_SECRET'] ?? '';
+    if (!$secret) return '';
+    $hash = substr(hash_hmac('sha256', "g:{$holdId}:{$guestId}", $secret), 0, 10);
+    return "{$guestId}-{$hash}";
+}
+
+/**
+ * Verify a ?g= token. Returns [holdId, guestId] or false. Resolves hold_id from the guest
+ * row, so a removed/re-added guest's old link stops working automatically.
+ */
+function verify_guest_pass_token(string $tok): array|false {
+    $secret = parse_env()['BOOKING_TOKEN_SECRET'] ?? '';
+    if (!$secret) return false;
+    if (!preg_match('/^(\d+)-([0-9a-f]{10})$/', $tok, $m)) return false;
+    $guestId = (int)$m[1];
+    try { $row = db_query('SELECT hold_id FROM checkin_guests WHERE id = :g', [':g' => $guestId])->fetch(); }
+    catch (Throwable $e) { return false; }
+    if (!$row) return false;
+    $holdId   = (int)$row['hold_id'];
+    $expected = substr(hash_hmac('sha256', "g:{$holdId}:{$guestId}", $secret), 0, 10);
+    return hash_equals($expected, $m[2]) ? [$holdId, $guestId] : false;
+}
+
+/** Absolute co-guest self-service URL (the lead copies this to send). '' if secret unset. */
+function make_guest_pass_url(int $holdId, int $guestId): string {
+    $tok = make_guest_pass_token($holdId, $guestId);
+    return $tok === '' ? '' : site_url('/booking.php?g=' . urlencode($tok));
+}
+
 /** Fetch a hold joined with unit/room/venue names for the guest view. */
 function fetch_hold_for_guest(int $holdId): array|false {
     return db_query(
