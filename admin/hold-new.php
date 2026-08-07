@@ -2,8 +2,12 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/checkin.php';
 require_login();
 require_owner();
+
+$checkin_default = checkin_supported() && setting('checkin_required_default', '0') === '1';
+$want_checkin    = ($_SERVER['REQUEST_METHOD'] === 'POST') ? isset($_POST['require_checkin']) : $checkin_default;
 
 $error = '';
 $old   = ['unit_id' => '', 'check_in' => '', 'check_out' => '', 'guest_name' => '', 'guest_email' => ''];
@@ -36,6 +40,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
             $error = 'Could not create the booking. Please try again.';
         }
         if (!$error) {
+            if (checkin_supported() && $want_checkin) {
+                db_query('UPDATE holds SET require_checkin = TRUE WHERE id = :id', [':id' => $hold_id]);
+            }
             $code = (string)db_query("SELECT access_code FROM holds WHERE id = :id", [':id' => $hold_id])->fetchColumn();
             try {
                 audit_log('hold.create_manual', 'hold', $hold_id, "manual booking — {$g_name} {$check_in}→{$check_out}");
@@ -105,6 +112,14 @@ include __DIR__ . '/_layout.php';
           <input type="email" name="guest_email" required value="<?= e($old['guest_email']) ?>" placeholder="Enter guest email"
                  style="width:100%;padding:9px;border:1px solid #d1d5db;border-radius:6px">
         </div>
+        <?php if (checkin_supported()): ?>
+        <div style="grid-column:1/-1">
+          <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer">
+            <input type="checkbox" name="require_checkin" value="1" <?= $want_checkin ? 'checked' : '' ?>>
+            Require this guest to complete Pre-Check-in before using the portal
+          </label>
+        </div>
+        <?php endif; ?>
       </div>
       <button type="submit" class="btn-primary btn-sm" style="margin-top:16px"
               onclick="return confirm('Create this confirmed booking?')">Create Booking</button>

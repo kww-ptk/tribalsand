@@ -31,9 +31,13 @@ function frontdesk_rows(?array $venueIds, string $datePredicate, array $params):
         $where[] = 'r.venue_id IN (' . implode(',', $ph) . ')';
     }
     $whereSql = implode(' AND ', $where);
+    // Only select the check-in columns once the migration has added them, so the
+    // board still renders in the deploy→migrate window (else the query 42703s).
+    $ci = (function_exists('checkin_supported') && checkin_supported()) ? 'h.require_checkin, h.checkin_completed_at,' : '';
     try {
         return db_query(
             "SELECT h.id, h.guest_name, h.check_in, h.check_out, h.access_code,
+                    {$ci}
                     r.name AS room_name, u.name AS unit_name,
                     v.id AS venue_id, v.name AS venue_name,
                     s.guest_phone,

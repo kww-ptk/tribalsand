@@ -33,6 +33,11 @@ services:
         sync: false
       - key: GHL_STAGE_ID
         sync: false
+      # Pre-Check-in private file storage (optional; set the value in the dashboard).
+      # Set ONE so passport scans persist + stay private, else they go to ephemeral
+      # temp and are wiped on redeploy:
+      #   R2_CHECKIN_BUCKET   — a PRIVATE Cloudflare R2 bucket (no public domain), or
+      #   CHECKIN_STORAGE_DIR — an absolute path on a Render persistent disk.
 
   - type: cron
     name: tribalsand-expire-holds
