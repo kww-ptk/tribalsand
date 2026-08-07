@@ -7,9 +7,7 @@ require_once __DIR__ . '/../includes/storage.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 header('Content-Type: application/json');
 
-$ref    = trim((string)($_POST['ref'] ?? ''));
-$holdId = verify_guest_ref($ref);
-if (!$holdId) { http_response_code(403); echo json_encode(['error' => 'bad ref']); exit; }
+[$holdId, $onlyGuestId] = checkin_auth_context();   // lead (ref) → any guest; co-guest (g) → own row only
 verify_csrf();
 
 $hold = fetch_hold_for_guest($holdId);
@@ -23,19 +21,15 @@ $allowed = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'application/pdf' => 'p
 $mime = (new finfo(FILEINFO_MIME_TYPE))->file($f['tmp_name']) ?: '';
 if (!isset($allowed[$mime])) { http_response_code(400); echo json_encode(['error' => 'type not allowed']); exit; }
 
-$key = 'checkin/' . $holdId . '/' . bin2hex(random_bytes(12)) . '.' . $allowed[$mime];
+// Per-guest private key. Files are stored by hold + guest, never a public URL.
+$guestId = checkin_target_guest_id($holdId, $onlyGuestId);
+$key = 'checkin/' . $holdId . '/' . $guestId . '/' . bin2hex(random_bytes(12)) . '.' . $allowed[$mime];
 if (!storage_put_private($f['tmp_name'], $key, $mime)) { http_response_code(500); echo json_encode(['error' => 'store failed']); exit; }
 
-// Store the KEY (not a public URL) so viewing always goes through the admin proxy.
-// Atomic upsert on the partial unique index (hold_id WHERE is_lead) so a
-// concurrent per-step save can't create a second lead row.
-$prev = checkin_lead_guest($holdId);
-db_query(
-    "INSERT INTO checkin_guests (hold_id, is_lead, passport_file_key) VALUES (:h, TRUE, :k)
-     ON CONFLICT (hold_id) WHERE is_lead DO UPDATE SET passport_file_key = :k",
-    [':h' => $holdId, ':k' => $key]);
-// Remove the previous file, if the key actually changed.
+$prev = db_query('SELECT passport_file_key FROM checkin_guests WHERE id = :g AND hold_id = :h', [':g' => $guestId, ':h' => $holdId])->fetch();
+db_query('UPDATE checkin_guests SET passport_file_key = :k WHERE id = :g AND hold_id = :h', [':k' => $key, ':g' => $guestId, ':h' => $holdId]);
 if ($prev && !empty($prev['passport_file_key']) && $prev['passport_file_key'] !== $key) {
     try { storage_delete_private($prev['passport_file_key']); } catch (Throwable $e) {}
 }
+checkin_recompute_completion($holdId);   // flips green + notifies iff this was the last passport
 echo json_encode(['ok' => true]);
