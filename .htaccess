@@ -1,8 +1,13 @@
 RewriteEngine On
 
+# Serve POST/PUT/PATCH/DELETE to a .php URL DIRECTLY — never redirect. A 301 on a
+# form submission makes the browser re-issue it as GET and DROP the body (the CSRF
+# token + all fields), silently breaking every save/submit (guest check-in, admin,
+# enquiry forms). Guard on the real request method so it can't be bypassed.
+RewriteCond %{REQUEST_METHOD} !^(?:GET|HEAD)$
+RewriteRule \.php$ - [L]
+
 # Redirect /foo.php → /foo only when a browser NAVIGATES to .php (GET/HEAD).
-# Must NOT match POST: a 301 on a form submission makes the browser re-issue
-# it as a GET and drop the body, silently breaking every admin save.
 RewriteCond %{THE_REQUEST} ^(?:GET|HEAD)\s/(.+)\.php[\s?] [NC]
 RewriteRule ^ /%1 [R=301,L]
 
