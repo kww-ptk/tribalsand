@@ -49,7 +49,6 @@ function mywork_row(array $a, callable $badgeClass): void {
       <td><span class="badge <?= $badgeClass($a['status']) ?>"><?= e(addon_status_label($a['status'])) ?></span></td>
       <td>
         <div class="row-actions">
-        <a href="/admin/messages.php?hold=<?= (int)$a['hold_id'] ?>&thread=<?= (int)$a['id'] ?>" class="btn-icon btn-icon--outline" title="Message guest" aria-label="Message <?= e($gname) ?>"><?= admin_icon('message') ?></a>
         <?php if ($a['status'] === 'requested'): ?>
         <form method="POST" action="/admin/booking-request-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="type" value="addon"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="return" value="mywork"><button name="status" value="confirmed" class="btn-icon btn-icon--primary" title="Accept request" aria-label="Accept <?= e($gkind) ?> request from <?= e($gname) ?>"><?= admin_icon('check') ?></button></form>
         <?php endif; ?>

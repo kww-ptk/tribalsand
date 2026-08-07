@@ -55,16 +55,23 @@ if ($__threadParam === null):
   </div>
 </div>
 <?php endif; ?>
-<div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
-  <?php if (!$__msgs): ?><p class="pa-sub">No messages yet. Send the first one below.</p><?php endif; ?>
+<?php $__lastId = $__msgs ? (int)$__msgs[count($__msgs)-1]['id'] : 0; ?>
+<div id="bmThread" class="bm-thread"
+     data-poll-url="/api/booking-message.php"
+     data-ref="<?= e($ref) ?>"
+     data-thread="<?= $__addonId === null ? 'general' : (int)$__addonId ?>"
+     data-me="guest"
+     data-last="<?= $__lastId ?>"
+     style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+  <p class="pa-sub bm-empty"<?= $__msgs ? ' style="display:none"' : '' ?>>No messages yet. Send the first one below.</p>
   <?php foreach ($__msgs as $__m): $__me = $__m['sender'] === 'guest'; ?>
-  <div style="max-width:80%;<?= $__me ? 'align-self:flex-end;background:var(--pa-teal-d);color:#fff;border-radius:12px 12px 2px 12px' : 'align-self:flex-start;background:var(--pa-card);border:1px solid var(--pa-line);border-radius:12px 12px 12px 2px' ?>;padding:9px 12px;font-size:14px;line-height:1.5">
+  <div class="bm-msg" data-mid="<?= (int)$__m['id'] ?>" style="max-width:80%;<?= $__me ? 'align-self:flex-end;background:var(--pa-teal-d);color:#fff;border-radius:12px 12px 2px 12px' : 'align-self:flex-start;background:var(--pa-card);border:1px solid var(--pa-line);border-radius:12px 12px 12px 2px' ?>;padding:9px 12px;font-size:14px;line-height:1.5">
     <?= e($__m['body']) ?>
-    <div style="font-size:11px;margin-top:4px;<?= $__me ? 'color:rgba(255,255,255,.7)' : 'color:var(--pa-muted)' ?>"><?= $__me ? 'You' : 'Concierge' ?> · <?= e(date('j M, H:i', strtotime((string)$__m['created_at']))) ?></div>
+    <div style="font-size:11px;margin-top:4px;<?= $__me ? 'color:rgba(255,255,255,.7)' : 'color:var(--pa-muted)' ?>"><?= $__me ? 'You' : 'Concierge' ?> · <?= e(message_time_label($__m['created_at'])) ?></div>
   </div>
   <?php endforeach; ?>
 </div>
-<form data-bm action="/api/booking-message.php">
+<form data-chat action="/api/booking-message.php">
   <input type="hidden" name="ref" value="<?= e($ref) ?>">
   <input type="hidden" name="addon_id" value="<?= $__addonId === null ? '' : (int)$__addonId ?>">
   <label class="pa-field">Your message<textarea name="body" rows="3" required placeholder="Type a message…"></textarea></label>

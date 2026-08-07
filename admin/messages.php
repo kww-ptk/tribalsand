@@ -5,6 +5,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/booking.php';
 require_login();
+require_frontdesk();   // ops & gate-security have a focused interface with no messaging
 
 $pageTitle  = 'Messages';
 $activeMenu = 'messages';
@@ -87,22 +88,30 @@ include __DIR__ . '/_layout.php';
 <p style="margin:0 0 14px"><a href="/admin/messages.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> All threads</a></p>
 <div class="card"><div class="card__body">
   <p style="margin:0 0 12px;font-weight:600"><?= e($ctx['guest_name'] ?? 'Guest') ?></p>
-  <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
-    <?php if (!$msgs): ?><p class="text-muted">No messages in this thread yet.</p><?php endif; ?>
+  <?php $lastId = $msgs ? (int)$msgs[count($msgs)-1]['id'] : 0; ?>
+  <div id="amThread" class="am-thread"
+       data-poll-url="/admin/messages-poll.php"
+       data-hold="<?= (int)$holdId ?>"
+       data-thread="<?= $addonId === null ? 'general' : (int)$addonId ?>"
+       data-last="<?= $lastId ?>"
+       style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+    <p class="text-muted am-empty"<?= $msgs ? ' style="display:none"' : '' ?>>No messages in this thread yet.</p>
     <?php foreach ($msgs as $m): $adminMsg = $m['sender'] === 'admin'; ?>
-    <div style="max-width:80%;<?= $adminMsg ? 'align-self:flex-end;background:#102F3A;color:#fff' : 'align-self:flex-start;background:#f3f4f6;color:#111' ?>;border-radius:12px;padding:9px 12px;font-size:14px;line-height:1.5">
+    <div class="am-msg" data-mid="<?= (int)$m['id'] ?>" style="max-width:80%;<?= $adminMsg ? 'align-self:flex-end;background:#102F3A;color:#fff' : 'align-self:flex-start;background:#f3f4f6;color:#111' ?>;border-radius:12px;padding:9px 12px;font-size:14px;line-height:1.5">
       <?= e($m['body']) ?>
-      <div style="font-size:11px;margin-top:4px;opacity:.7"><?= $adminMsg ? 'Staff' : 'Guest' ?> · <?= e(date('j M, H:i', strtotime((string)$m['created_at']))) ?></div>
+      <div style="font-size:11px;margin-top:4px;opacity:.7"><?= $adminMsg ? 'Staff' : 'Guest' ?> · <?= e(message_time_label($m['created_at'])) ?></div>
     </div>
     <?php endforeach; ?>
   </div>
-  <form method="POST">
+  <form id="amForm" method="POST">
     <?= csrf_field() ?>
     <input type="hidden" name="hold_id" value="<?= (int)$holdId ?>">
     <input type="hidden" name="addon_id" value="<?= $addonId === null ? '' : (int)$addonId ?>">
     <textarea name="body" rows="3" required placeholder="Reply to the guest…" style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px;font-size:16px"></textarea>
     <button type="submit" class="btn-primary" style="margin-top:8px">Send reply</button>
+    <span class="am-status text-muted" aria-live="polite" style="margin-left:10px;font-size:13px"></span>
   </form>
 </div></div>
+<script src="/admin/assets/admin-chat.js?v=<?= @filemtime(__DIR__ . '/assets/admin-chat.js') ?: '1' ?>" defer></script>
 <?php endif; ?>
 <?php include __DIR__ . '/_layout_end.php'; ?>

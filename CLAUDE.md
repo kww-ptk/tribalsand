@@ -31,9 +31,13 @@ All CSS/JS `<link>`/`<script>` tags in `includes/head.php` use `?v=<?= filemtime
 - `is_owner()` — full access. `require_owner()` (pricing/settings/staff/bookings config) bounces **everyone but the owner**, so it now blocks managers too.
 - `is_manager()` — per-property ops tier. `require_manager()` = owner **or** manager (guards assignment, `admin/tasks.php`, `admin/gate.php` management).
 - `is_staff()` — access-code staff only (managers are **not** staff). `admin_job()` returns their specialty; a **NULL `job_type` means `frontdesk`** (backward-compatible — existing staff keep landing on Front Desk). `job_is_ops()` = housekeeping/maintenance/gardening/driver.
+- `require_frontdesk()` — guest-messaging tier: owner, manager, or front-desk staff. **Bounces ops staff and gate-security** (they get a focused interface with no messaging). Guards `admin/messages.php` + `admin/messages-poll.php`; the Messages nav link (`$__navMessages`) uses the same audience.
 - **Scoping now covers managers:** `admin_venue_ids()` returns the venue set for managers *and* staff (owner = `null` = all); `staff_can_hold()` scopes both. When scoping a page, test `!is_owner()`, not `is_staff()`.
 - `admin_home_url()` routes each account to its home (owner→dashboard, manager→frontdesk, security→gate, ops→mywork, else frontdesk); `admin/_layout.php` nav is role/job-aware.
 - Request auto-routing + assignment + tasks + visitors helpers live in `includes/team.php` (loaded via `includes/booking.php`); every read is pre-migration-safe (`*_supported()` guards). Migrations, in order: `add_team_roles` → `add_addon_assignee` → `add_tasks` → `add_visitors`. Test: `php tests/team_logic.php`.
+
+### Live messaging — polling, not websockets
+Guest↔staff chat updates live via **short polling** (no websockets — Apache/Render has no long-running socket process). Both sides poll a JSON endpoint every 5s (`after=<last id>`) and pause when the tab is hidden. Guest: `GET/POST api/booking-message.php` (ref-authed). Admin: `GET/POST admin/messages-poll.php` (session-authed, `staff_can_hold`-scoped, `require_frontdesk`-gated; JSON POST carries `csrf_token` in the body since `verify_csrf()` reads `$_POST`). Shared helpers in `includes/booking.php`: `fetch_thread_messages_since()`, `message_payload()`, `message_time_label()` — keep initial render and appended bubbles identical. Admin `admin/messages.php` keeps its PRG form as a no-JS fallback; `admin/assets/admin-chat.js` and `js/booking-manage.js` (chat block) enhance it.
 
 ## File Map
 

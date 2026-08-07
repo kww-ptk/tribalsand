@@ -20,10 +20,14 @@ if (!empty($_SESSION['hold_flash'])) { $flash = $_SESSION['hold_flash']; unset($
 if (!$hold) { $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Booking not found.']; header('Location: /admin/holds.php'); exit; }
 if (!is_owner() && !staff_can_hold($holdId)) { $_SESSION['hold_flash']=['type'=>'error','msg'=>'That booking is at a property you don’t manage.']; header('Location: ' . admin_home_url()); exit; }
 
+// Ops staff & gate-security get no guest messaging (mirrors require_frontdesk / the nav).
+$__noMessaging = is_staff() && (job_is_ops(admin_job()) || admin_job() === 'security');
+
 $tab = $_GET['tab'] ?? 'requests';
 if (!in_array($tab, ['requests','messages','plan','bill','checkin','details'], true)) $tab = 'requests';
 // Only the owner sees the Details tab (booking confirm/cancel/edit is owner-only config).
 if (!is_owner() && $tab === 'details') $tab = 'requests';
+if ($__noMessaging && $tab === 'messages') $tab = 'requests';
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
@@ -48,6 +52,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         audit_log('hold.cancel', 'hold', $holdId, "{$hold['guest_name']}");
         $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Cancelled — dates freed, guest notified.'];
         header("Location: /admin/booking.php?hold=$holdId&tab=details"); exit;
+    }
+    if ($act === 'reply' && $__noMessaging) {
+        $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Messaging isn’t available for your account.'];
+        header("Location: /admin/booking.php?hold=$holdId&tab=requests"); exit;
     }
     if ($act === 'reply') {
         $pa = ($_POST['addon_id'] ?? '') === '' ? null : (int)$_POST['addon_id'];
@@ -140,6 +148,7 @@ include __DIR__ . '/_layout.php';
   <?php
   $__wtabs = ['requests'=>'Requests','messages'=>'Messages','plan'=>'Plan','bill'=>'Bill','checkin'=>'Check-in','details'=>'Details'];
   if (!is_owner()) unset($__wtabs['details']);
+  if ($__noMessaging) unset($__wtabs['messages']);
   foreach ($__wtabs as $tk=>$tl):
     $b = $tk==='requests' && $openReq ? " ($openReq)" : ($tk==='messages' && $unreadMsg ? " ($unreadMsg)" : '');
   ?>

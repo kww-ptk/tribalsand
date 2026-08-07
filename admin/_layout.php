@@ -16,6 +16,7 @@ $__isFrontdeskStaff = is_staff() && !$__isOps && !$__isSecurity;   // frontdesk 
 
 $__navFrontdesk = $__isOwner || $__isManager || $__isFrontdeskStaff;
 $__navConcierge = $__isOwner || $__isManager || $__isFrontdeskStaff;
+$__navMessages  = $__isOwner || $__isManager || $__isFrontdeskStaff;  // ops & security get no messaging
 $__navTasks     = $__isOwner || $__isManager;
 $__navGate      = $__isOwner || $__isManager || $__isSecurity;
 $__navMyWork    = $__isOps;
@@ -119,10 +120,12 @@ $__roleBadge = $__isManager ? 'Manager' : (is_staff() ? ucfirst((string)$__job) 
         Gate
       </a>
       <?php endif; ?>
+      <?php if ($__navMessages): ?>
       <a href="/admin/messages.php"     class="sidebar__link <?= ($activeMenu??'')==='messages'     ? 'is-active':'' ?>">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
         Messages<?php $u=function_exists('count_unread_admin')?count_unread_admin(admin_venue_ids()):0; if($u>0): ?> <span class="badge badge--orange" style="margin-left:6px"><?= (int)$u ?></span><?php endif; ?>
       </a>
+      <?php endif; ?>
       <?php if ($__isOwner): ?>
       <a href="/admin/submissions.php"  class="sidebar__link <?= ($activeMenu??'')==='submissions'  ? 'is-active':'' ?>">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 9v11"/></svg>

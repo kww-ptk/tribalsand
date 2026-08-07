@@ -105,8 +105,36 @@ if ($mhid) {
     mark_thread_read_by_guest($mhid, null);
     check('unread_guest cleared after read', count_unread_guest($mhid) === 0);
     check('count_unread_admin >= 1 (guest msg unread by admin)', count_unread_admin() >= 1);
+
+    // ── live polling: fetch_thread_messages_since + payload shape ──
+    $allNow = fetch_thread_messages($mhid, null);
+    $firstId = (int)$allNow[0]['id'];
+    $sinceFirst = fetch_thread_messages_since($mhid, null, $firstId);
+    check('since(firstId) excludes the first message', !in_array('Hello team', array_column($sinceFirst, 'body'), true));
+    check('since(firstId) includes the later message', in_array('Hi there', array_column($sinceFirst, 'body'), true));
+    $maxId = (int)$allNow[count($allNow)-1]['id'];
+    check('since(maxId) returns nothing new', fetch_thread_messages_since($mhid, null, $maxId) === []);
+    check('since(0) returns the whole thread', count(fetch_thread_messages_since($mhid, null, 0)) === count($allNow));
+    $pl = message_payload($allNow[0]);
+    check('message_payload exposes id/sender/body/time_label',
+          isset($pl['id'], $pl['sender'], $pl['body'], $pl['time_label']) && $pl['sender'] === 'guest' && $pl['body'] === 'Hello team');
+    check('message_time_label formats a timestamp', message_time_label('2026-05-01 14:30:00') === '1 May, 14:30');
+
     db_query("DELETE FROM booking_messages WHERE hold_id=:h", [':h'=>$mhid]);
 }
+
+// ── require_frontdesk audience (ops & security get no messaging) ──
+// require_frontdesk() itself redirects (can't run headless), so we assert the
+// underlying predicate it gates on: is_staff() && (ops || security).
+$deny = fn(?string $job, bool $staff): bool => $staff && (job_is_ops($job) || $job === 'security');
+check('frontdesk gate: housekeeping denied', $deny('housekeeping', true) === true);
+check('frontdesk gate: maintenance denied',  $deny('maintenance', true) === true);
+check('frontdesk gate: gardening denied',    $deny('gardening', true) === true);
+check('frontdesk gate: driver denied',       $deny('driver', true) === true);
+check('frontdesk gate: security denied',     $deny('security', true) === true);
+check('frontdesk gate: frontdesk staff allowed', $deny('frontdesk', true) === false);
+check('frontdesk gate: null-job staff allowed',  $deny(null, true) === false);
+check('frontdesk gate: owner/manager allowed (not staff)', $deny(null, false) === false);
 
 // ── itinerary ────────────────────────────────────────────────
 $ihold = db()->query("SELECT id, check_in, check_out, guest_name FROM holds ORDER BY id DESC LIMIT 1")->fetch();

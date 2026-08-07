@@ -93,4 +93,89 @@
       }
     });
   });
+
+  // ── Live chat: append on send + poll for incoming (no page refresh) ──
+  var thread = document.getElementById('bmThread');
+  if (thread) {
+    var lastId = parseInt(thread.dataset.last || '0', 10) || 0;
+    var pollUrl = thread.dataset.pollUrl;
+    var meSender = thread.dataset.me || 'guest';
+
+    function atBottom() {
+      return (window.innerHeight + window.scrollY) >= (document.body.offsetHeight - 120);
+    }
+    function appendMsg(m) {
+      if (m.id && document.querySelector('[data-mid="' + m.id + '"]')) return; // dedupe
+      var mine = m.sender === meSender;
+      var empty = thread.querySelector('.bm-empty');
+      if (empty) empty.style.display = 'none';
+      var el = document.createElement('div');
+      el.className = 'bm-msg';
+      if (m.id) el.setAttribute('data-mid', m.id);
+      el.style.cssText = 'max-width:80%;padding:9px 12px;font-size:14px;line-height:1.5;' + (mine
+        ? 'align-self:flex-end;background:var(--pa-teal-d);color:#fff;border-radius:12px 12px 2px 12px'
+        : 'align-self:flex-start;background:var(--pa-card);border:1px solid var(--pa-line);border-radius:12px 12px 12px 2px');
+      el.appendChild(document.createTextNode(m.body));
+      var meta = document.createElement('div');
+      meta.style.cssText = 'font-size:11px;margin-top:4px;' + (mine ? 'color:rgba(255,255,255,.7)' : 'color:var(--pa-muted)');
+      meta.textContent = (mine ? 'You' : 'Concierge') + ' · ' + m.time_label;
+      el.appendChild(meta);
+      thread.appendChild(el);
+      if (m.id && m.id > lastId) lastId = m.id;
+    }
+
+    var polling = false;
+    async function poll() {
+      if (polling || document.hidden) return;
+      polling = true;
+      try {
+        var url = pollUrl + '?ref=' + encodeURIComponent(thread.dataset.ref)
+          + '&thread=' + encodeURIComponent(thread.dataset.thread) + '&after=' + lastId;
+        var res = await fetch(url, { headers: { 'Accept': 'application/json' } });
+        var data = await res.json();
+        if (data.ok && data.messages && data.messages.length) {
+          var stick = atBottom();
+          data.messages.forEach(appendMsg);
+          if (stick) window.scrollTo(0, document.body.scrollHeight);
+        }
+      } catch (_) { /* transient — try again next tick */ }
+      polling = false;
+    }
+    setInterval(poll, 5000);
+    document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
+
+    // Send: append the guest's own message immediately, then let the poll fill in replies.
+    var chatForm = document.querySelector('form[data-chat]');
+    if (chatForm) {
+      chatForm.addEventListener('submit', async function (e) {
+        e.preventDefault();
+        var ta = chatForm.querySelector('textarea[name=body]');
+        var btn = chatForm.querySelector('button[type=submit]');
+        var status = chatForm.querySelector('.bm-status');
+        var body = (ta && ta.value || '').trim();
+        if (!body) return;
+        if (btn) btn.disabled = true;
+        if (status) { status.style.color = 'var(--pa-muted)'; status.textContent = 'Sending…'; }
+        try {
+          var res = await fetch(chatForm.getAttribute('action'), {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(Object.fromEntries(new FormData(chatForm).entries())),
+          });
+          var data = await res.json();
+          if (data.ok) {
+            if (data.message) appendMsg(data.message);
+            if (ta) ta.value = '';
+            if (status) status.textContent = '';
+            window.scrollTo(0, document.body.scrollHeight);
+          } else if (status) {
+            status.style.color = '#b91c1c';
+            status.textContent = data.error || 'Could not send. Please try again.';
+          }
+        } catch (_) {
+          if (status) { status.style.color = '#b91c1c'; status.textContent = 'Network error. Please try again.'; }
+        }
+        if (btn) btn.disabled = false;
+      });
+    }
+  }
 })();

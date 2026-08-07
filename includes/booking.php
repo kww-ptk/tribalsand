@@ -213,6 +213,30 @@ function fetch_thread_messages(int $holdId, ?int $addonId): array {
     } catch (Throwable $e) { return []; }
 }
 
+/** New messages in a thread with id greater than $afterId, oldest → newest. Powers live polling. */
+function fetch_thread_messages_since(int $holdId, ?int $addonId, int $afterId): array {
+    $cond = $addonId === null ? 'addon_id IS NULL' : 'addon_id = :aid';
+    $p    = [':h'=>$holdId, ':after'=>$afterId]; if ($addonId !== null) $p[':aid'] = $addonId;
+    try {
+        return db_query("SELECT * FROM booking_messages WHERE hold_id=:h AND $cond AND id > :after ORDER BY id ASC", $p)->fetchAll();
+    } catch (Throwable $e) { return []; }
+}
+
+/** Consistent "j M, H:i" timestamp used by both the initial render and the live poll. */
+function message_time_label($createdAt): string {
+    return date('j M, H:i', strtotime((string)$createdAt));
+}
+
+/** Shape a booking_messages row for a JSON poll/send response (id, sender, body, time_label). */
+function message_payload(array $m): array {
+    return [
+        'id'         => (int)$m['id'],
+        'sender'     => (string)$m['sender'],
+        'body'       => (string)$m['body'],
+        'time_label' => message_time_label($m['created_at'] ?? 'now'),
+    ];
+}
+
 /** Mark a thread's admin messages read by the guest. No-op if the table is absent. */
 function mark_thread_read_by_guest(int $holdId, ?int $addonId): void {
     $cond = $addonId === null ? 'addon_id IS NULL' : 'addon_id = :aid';

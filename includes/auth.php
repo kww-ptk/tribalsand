@@ -109,6 +109,20 @@ function require_manager(): void {
     if (!is_owner() && !is_manager()) { $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'That area is only available to managers.']; header('Location: ' . admin_home_url()); exit; }
 }
 
+/**
+ * Messages gate — owner, manager, or front-desk staff. Ops staff (housekeeping,
+ * maintenance, gardening, driver) and gate-security get a focused interface with
+ * no guest messaging, so they are bounced to their own home.
+ */
+function require_frontdesk(): void {
+    require_login();
+    $job = admin_job();
+    if (is_staff() && (job_is_ops($job) || $job === 'security')) {
+        $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Messages aren’t available for your account.'];
+        header('Location: ' . admin_home_url()); exit;
+    }
+}
+
 /** Gate access — owner, manager, or gate-security staff. Others are bounced home. */
 function require_gate(): void {
     require_login();
