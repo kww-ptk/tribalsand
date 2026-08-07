@@ -43,7 +43,7 @@ function checkin_enabled_steps(): array {
 function checkin_supported(): bool {
     static $ok = null;
     if ($ok !== null) return $ok;
-    try { db_query('SELECT require_checkin FROM holds LIMIT 1'); $ok = true; }
+    try { db_query('SELECT require_checkin, guest_count FROM holds LIMIT 1'); $ok = true; }
     catch (Throwable $e) { $ok = false; }
     return $ok;
 }
@@ -62,13 +62,20 @@ function checkin_state(array $hold): string {
     return checkin_is_complete($hold) ? 'complete' : 'pending';
 }
 
-/** Badge descriptor for Frontdesk/Holds, or null when not required. */
+/**
+ * Badge descriptor for Frontdesk/Holds, or null when not required. When the caller
+ * supplies `guest_count` (>1) and `ci_complete_count`, renders "X/N" for a party.
+ */
 function checkin_badge(array $hold): ?array {
-    return match (checkin_state($hold)) {
-        'complete' => ['label' => 'Checked in ✓',    'class' => 'ci-badge--done'],
-        'pending'  => ['label' => 'Check-in pending', 'class' => 'ci-badge--pending'],
-        default    => null,
-    };
+    $state = checkin_state($hold);
+    if ($state === 'none')     return null;
+    if ($state === 'complete') return ['label' => 'Checked in ✓', 'class' => 'ci-badge--done'];
+    $n = (int)($hold['guest_count'] ?? 1);
+    if ($n > 1 && array_key_exists('ci_complete_count', $hold)) {
+        $x = max(0, min((int)$hold['ci_complete_count'], $n));
+        return ['label' => "Check-in {$x}/{$n}", 'class' => 'ci-badge--pending'];
+    }
+    return ['label' => 'Check-in pending', 'class' => 'ci-badge--pending'];
 }
 
 function fetch_checkin(int $holdId): ?array {
@@ -113,14 +120,10 @@ function checkin_step_complete(string $key, ?array $data, ?array $lead): bool {
             if (!array_key_exists('needs_transfer', $data) || $data['needs_transfer'] === null) return false;
             $wants = ($data['needs_transfer'] === true || $data['needs_transfer'] === 't' || $data['needs_transfer'] === '1' || $data['needs_transfer'] === 1);
             return $wants ? trim((string)($data['transfer_details'] ?? '')) !== '' : true;
-        case 'passport':
-            return $lead !== null
-                && trim((string)($lead['passport_name'] ?? '')) !== ''
-                && trim((string)($lead['passport_number'] ?? '')) !== ''
-                && trim((string)($lead['passport_file_key'] ?? '')) !== '';
+        case 'passport': return checkin_guest_passport_complete($lead);
         case 'dietary':  return $has('dietary');
         case 'requests': return $has('special_requests');
-        case 'waiver':   return !empty($data['waiver_signed_at']) && trim((string)($data['waiver_signed_name'] ?? '')) !== '';
+        case 'waiver':   return checkin_guest_waiver_signed($lead);   // per-guest (moved off booking_checkin)
         default:         return false;
     }
 }
@@ -133,4 +136,109 @@ function checkin_missing_steps(array $config, ?array $data, ?array $lead): array
         if (!checkin_step_complete($key, $data, $lead)) $missing[] = $key;
     }
     return $missing;
+}
+
+// ── Multi-guest per booking ─────────────────────────────────────────────────
+
+/** A single guest row has a complete passport (name + number + scan). */
+function checkin_guest_passport_complete(?array $g): bool {
+    return $g !== null
+        && trim((string)($g['passport_name'] ?? '')) !== ''
+        && trim((string)($g['passport_number'] ?? '')) !== ''
+        && trim((string)($g['passport_file_key'] ?? '')) !== '';
+}
+
+/** A single guest row has signed the waiver (name + timestamp). */
+function checkin_guest_waiver_signed(?array $g): bool {
+    return $g !== null
+        && !empty($g['waiver_signed_at'])
+        && trim((string)($g['waiver_signed_name'] ?? '')) !== '';
+}
+
+/** Is an ADULT guest fully done — passport (if that step is required) AND waiver (if required). */
+function checkin_guest_complete(?array $g, array $config): bool {
+    if ($g === null || !empty($g['is_child'])) return false;
+    $needPass   = !empty($config['passport']['enabled']) && !empty($config['passport']['required']);
+    $needWaiver = !empty($config['waiver']['enabled'])   && !empty($config['waiver']['required']);
+    if ($needPass   && !checkin_guest_passport_complete($g)) return false;
+    if ($needWaiver && !checkin_guest_waiver_signed($g))     return false;
+    return true;
+}
+
+/** Pure: clamp completed vs required party size. */
+function checkin_party_status(int $adultCount, int $completeCount): array {
+    $n = max(1, $adultCount);
+    $x = max(0, min($completeCount, $n));
+    return ['complete' => $x, 'total' => $n, 'all_done' => ($x >= $n)];
+}
+
+/** Count ADULT guest rows (is_child = false) that are fully complete. */
+function checkin_party_complete_count(array $guests, array $config): int {
+    $c = 0;
+    foreach ($guests as $g) { if (empty($g['is_child']) && checkin_guest_complete($g, $config)) $c++; }
+    return $c;
+}
+
+/**
+ * Recompute booking completion after any per-guest write. Stamps
+ * holds.checkin_completed_at (+ audit + best-effort staff email) EXACTLY ONCE, when
+ * the lead's booking-level required steps are done AND all N adults are complete.
+ * Safe to call from every write path. Returns true if fully checked in.
+ * Requires includes/booking.php (fetch_hold_for_guest) — always loaded by callers.
+ */
+function checkin_recompute_completion(int $holdId): bool {
+    if (!checkin_supported()) return false;
+    require_once __DIR__ . '/mail.php';
+    $hold = fetch_hold_for_guest($holdId);
+    if (!$hold || !checkin_required($hold)) return false;
+    $config = checkin_config();
+    $data   = fetch_checkin($holdId);
+    $lead   = checkin_lead_guest($holdId);
+    // Booking-level required steps only (passport/waiver are covered per-guest below).
+    foreach ($config as $key => $s) {
+        if ($key === 'passport' || $key === 'waiver') continue;
+        if (empty($s['enabled']) || empty($s['required'])) continue;
+        if (!checkin_step_complete($key, $data, $lead)) return false;
+    }
+    $need = max(1, (int)($hold['guest_count'] ?? 1));
+    if (checkin_party_complete_count(fetch_checkin_guests($holdId), $config) < $need) return false;
+
+    $stmt = db_query("UPDATE holds SET checkin_completed_at = now() WHERE id = :h AND checkin_completed_at IS NULL", [':h' => $holdId]);
+    if ($stmt->rowCount() > 0) {   // only the write that flips NULL→now() notifies
+        try { db_query("UPDATE booking_checkin SET submitted_at = COALESCE(submitted_at, now()) WHERE hold_id = :h", [':h' => $holdId]); } catch (Throwable $e) {}
+        audit_log('checkin.submit', 'hold', $holdId, (string)($hold['guest_name'] ?? ''));
+        try { send_checkin_completed(fetch_hold_for_guest($holdId), fetch_checkin($holdId)); }
+        catch (Throwable $e) { error_log('[checkin] mail: ' . $e->getMessage()); }
+    }
+    return true;
+}
+
+/**
+ * Resolve check-in write authority from the request. Returns [holdId, onlyGuestId|null, ref|null].
+ *   onlyGuestId === null → lead/hold authority (may target any guest of the hold).
+ *   onlyGuestId === <id> → co-guest authority (may target only that guest).
+ * Exits 403 on failure. Requires includes/booking.php (verify_guest_ref/verify_guest_pass_token).
+ */
+function checkin_auth_context(): array {
+    $ref = trim((string)($_POST['ref'] ?? $_GET['ref'] ?? ''));
+    if ($ref !== '' && ($h = verify_guest_ref($ref)) !== false) return [$h, null, $ref];
+    $g = trim((string)($_POST['g'] ?? $_GET['g'] ?? ''));
+    if ($g !== '' && ($r = verify_guest_pass_token($g)) !== false) return [$r[0], $r[1], null];
+    http_response_code(403); exit('Invalid link.');
+}
+
+/**
+ * The guest row a write targets, enforcing the auth scope. Co-guest → their own row.
+ * Lead → validated posted guest_id, else the (ensured) lead row. Exits 403 on mismatch.
+ */
+function checkin_target_guest_id(int $holdId, ?int $onlyGuestId): int {
+    if ($onlyGuestId !== null) return $onlyGuestId;
+    $gid = (int)($_POST['guest_id'] ?? 0);
+    if ($gid > 0) {
+        $ok = db_query('SELECT 1 FROM checkin_guests WHERE id = :g AND hold_id = :h', [':g' => $gid, ':h' => $holdId])->fetchColumn();
+        if (!$ok) { http_response_code(403); exit('Guest not in this booking.'); }
+        return $gid;
+    }
+    db_query("INSERT INTO checkin_guests (hold_id, is_lead) VALUES (:h, TRUE) ON CONFLICT (hold_id) WHERE is_lead DO NOTHING", [':h' => $holdId]);
+    return (int)db_query('SELECT id FROM checkin_guests WHERE hold_id = :h AND is_lead', [':h' => $holdId])->fetchColumn();
 }

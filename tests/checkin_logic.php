@@ -4,6 +4,7 @@ declare(strict_types=1);
 // Pure helpers run always; DB/permission assertions SKIP until add_checkin.sql is applied.
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/booking.php';   // make_guest_pass_token / verify
 require_once __DIR__ . '/../includes/checkin.php';
 
 session_init();
@@ -47,6 +48,8 @@ if (checkin_supported()) {
     check('badge pending label',  $p['class'] === 'ci-badge--pending');
     $d = checkin_badge(['require_checkin' => true, 'checkin_completed_at' => '2026-08-06 10:00:00']);
     check('badge done label',     $d['class'] === 'ci-badge--done');
+    $xn = checkin_badge(['require_checkin' => true, 'checkin_completed_at' => null, 'guest_count' => 3, 'ci_complete_count' => 1]);
+    check('badge shows X/N',      $xn['label'] === 'Check-in 1/3');
 } else {
     echo "SKIP  add_checkin.sql not applied — skipping state/badge/DB assertions\n";
 }
@@ -60,16 +63,31 @@ check('transfer yes needs details',       checkin_step_complete('transfer', ['ne
 check('transfer yes + details = complete',checkin_step_complete('transfer', ['needs_transfer' => true, 'transfer_details' => 'JKIA 2pm'], null) === true);
 check('passport needs name+num+file',     checkin_step_complete('passport', [], ['passport_name' => 'A', 'passport_number' => 'B']) === false);
 check('passport complete w/ file',        checkin_step_complete('passport', [], ['passport_name' => 'A', 'passport_number' => 'B', 'passport_file_key' => 'checkin/1/x.jpg']) === true);
-check('waiver needs signature',           checkin_step_complete('waiver', ['waiver_signed_name' => 'A'], null) === false);
-check('waiver complete when signed',      checkin_step_complete('waiver', ['waiver_signed_name' => 'A', 'waiver_signed_at' => '2026-08-06 10:00'], null) === true);
+check('waiver needs signature',           checkin_step_complete('waiver', [], ['waiver_signed_name' => 'A']) === false);
+check('waiver complete when signed',      checkin_step_complete('waiver', [], ['waiver_signed_name' => 'A', 'waiver_signed_at' => '2026-08-06 10:00']) === true);
 
 // ── Missing-steps aggregation ──────────────────────────────────────────────
 $cfgReq = ['passport' => ['enabled' => true, 'required' => true], 'waiver' => ['enabled' => true, 'required' => true], 'dietary' => ['enabled' => true, 'required' => false]];
 check('missing lists passport+waiver',   checkin_missing_steps($cfgReq, [], null) === ['passport', 'waiver']);
-$fullLead = ['passport_name' => 'A', 'passport_number' => 'B', 'passport_file_key' => 'k'];
-$fullData = ['waiver_signed_name' => 'A', 'waiver_signed_at' => '2026-08-06'];
+$fullLead = ['passport_name' => 'A', 'passport_number' => 'B', 'passport_file_key' => 'k', 'waiver_signed_name' => 'A', 'waiver_signed_at' => '2026-08-06'];
+$fullData = [];
 check('missing empty when all done',     checkin_missing_steps($cfgReq, $fullData, $fullLead) === []);
 check('optional step never missing',     !in_array('dietary', checkin_missing_steps($cfgReq, [], null), true));
+
+// ── Multi-guest helpers (pure) ─────────────────────────────────────────────
+$adult = ['passport_name'=>'A','passport_number'=>'B','passport_file_key'=>'k','waiver_signed_name'=>'A','waiver_signed_at'=>'2026-08-06'];
+check('guest passport complete',   checkin_guest_passport_complete($adult) === true);
+check('guest passport incomplete', checkin_guest_passport_complete(['passport_name'=>'A','passport_number'=>'B']) === false);
+check('guest waiver signed',       checkin_guest_waiver_signed($adult) === true);
+check('guest waiver unsigned',     checkin_guest_waiver_signed(['waiver_signed_name'=>'A']) === false);
+check('adult complete needs both', checkin_guest_complete($adult, $cfgReq) === true);
+check('adult missing waiver',      checkin_guest_complete(['passport_name'=>'A','passport_number'=>'B','passport_file_key'=>'k'], $cfgReq) === false);
+check('child never counts',        checkin_guest_complete(['is_child'=>true] + $adult, $cfgReq) === false);
+check('party 1/1 done',            checkin_party_status(1,1)['all_done'] === true);
+check('party 2/3 not done',        checkin_party_status(3,2)['all_done'] === false);
+check('party clamps over',         checkin_party_status(2,5) === ['complete'=>2,'total'=>2,'all_done'=>true]);
+$party = [$adult, ['passport_name'=>'C'], ['is_child'=>true,'passport_name'=>'Kid']];
+check('party complete count = 1',  checkin_party_complete_count($party, $cfgReq) === 1);
 
 // ── can_view_guest_docs (needs role fixtures + a hold; SKIP if unmigrated) ──
 if (checkin_supported()) {
@@ -100,6 +118,12 @@ if (checkin_supported()) {
         // fetch_checkin round-trip
         db_query("INSERT INTO booking_checkin (hold_id, dietary) VALUES (:h,'none') ON CONFLICT (hold_id) DO UPDATE SET dietary='none'", [':h' => $hold]);
         check('fetch_checkin returns row', (fetch_checkin($hold)['dietary'] ?? '') === 'none');
+
+        // Per-guest token round-trip (seed a lead guest row on the hold).
+        db_query("INSERT INTO checkin_guests (hold_id, is_lead) VALUES (:h, TRUE) ON CONFLICT (hold_id) WHERE is_lead DO NOTHING", [':h' => $hold]);
+        $gid = (int)db_query('SELECT id FROM checkin_guests WHERE hold_id=:h AND is_lead', [':h'=>$hold])->fetchColumn();
+        check('guest token round-trips',    verify_guest_pass_token(make_guest_pass_token($hold, $gid)) === [$hold, $gid]);
+        check('guest token rejects tamper', verify_guest_pass_token($gid.'-0000000000') === false);
 
         db_query('DELETE FROM holds WHERE id = :h', [':h' => $hold]);
         db_query("DELETE FROM admin_users WHERE id IN (:a,:b,:c,:d)", [':a' => $owner, ':b' => $mgrA, ':c' => $mgrB, ':d' => $staff]);
