@@ -84,52 +84,67 @@
   // Reroutes any inline onclick="return confirm('…')" (on a button) or
   // onsubmit="return confirm('…')" (on a form) through styledConfirm, so every
   // admin page gets the same polished dialog with no per-page markup changes.
+  //
+  // Wrapped in wire(root) so it can be re-applied to content injected later by
+  // the data-table AJAX layer (admin-table.js). Each element is marked once so
+  // re-running over an overlapping subtree never double-binds. Exposed as
+  // window.tsAdminWire(root) for admin-table.js to call after a body swap.
   function confirmMsg(attr) {
     var m = attr && attr.match(/confirm\(\s*(['"])([\s\S]*?)\1\s*\)/);
     if (!m) return null;
     return m[2].replace(/\\n/g, '\n').replace(/\\(['"])/g, '$1');
   }
-  document.querySelectorAll('button[onclick*="confirm("]').forEach(function (btn) {
-    var msg = confirmMsg(btn.getAttribute('onclick'));
-    if (!msg) return;
-    btn.removeAttribute('onclick');
-    btn.setAttribute('data-confirm', msg);   // handled by the block just below
-  });
-  document.querySelectorAll('form[onsubmit*="confirm("]').forEach(function (form) {
-    var msg = confirmMsg(form.getAttribute('onsubmit'));
-    if (!msg) return;
-    form.removeAttribute('onsubmit');
-    form.addEventListener('submit', function (e) {
-      if (form.dataset.confirmed) return;   // second pass (programmatic submit) — let it through
-      e.preventDefault();
-      var btn = e.submitter;
-      styledConfirm(msg, function () {
-        form.dataset.confirmed = '1';
+  function wire(root) {
+    root = root || document;
+
+    root.querySelectorAll('button[onclick*="confirm("]').forEach(function (btn) {
+      var msg = confirmMsg(btn.getAttribute('onclick'));
+      if (!msg) return;
+      btn.removeAttribute('onclick');
+      btn.setAttribute('data-confirm', msg);   // handled by the block just below
+    });
+    root.querySelectorAll('form[onsubmit*="confirm("]').forEach(function (form) {
+      var msg = confirmMsg(form.getAttribute('onsubmit'));
+      if (!msg) return;
+      form.removeAttribute('onsubmit');
+      form.addEventListener('submit', function (e) {
+        if (form.dataset.confirmed) return;   // second pass (programmatic submit) — let it through
+        e.preventDefault();
+        var btn = e.submitter;
+        styledConfirm(msg, function () {
+          form.dataset.confirmed = '1';
+          if (btn && !btn.hasAttribute('data-confirm')) armSubmit(form, btn);
+          form.submit();
+        });
+      });
+    });
+
+    // Buttons that need confirmation first (e.g. Decline).
+    root.querySelectorAll('button[data-confirm]').forEach(function (btn) {
+      if (btn.dataset.confirmWired) return;
+      btn.dataset.confirmWired = '1';
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        var form = btn.form;
+        styledConfirm(btn.getAttribute('data-confirm'), function () {
+          armSubmit(form, btn);
+          form.submit(); // native submit() skips the submit event below — no double-arm
+        });
+      });
+    });
+
+    // Remaining request-action forms (Accept / Mark done): "Working…" on submit.
+    root.querySelectorAll('form[action$="booking-request-action.php"]').forEach(function (form) {
+      if (form.dataset.armWired) return;
+      form.dataset.armWired = '1';
+      form.addEventListener('submit', function (e) {
+        var btn = e.submitter;
         if (btn && !btn.hasAttribute('data-confirm')) armSubmit(form, btn);
-        form.submit();
       });
     });
-  });
-
-  // Buttons that need confirmation first (e.g. Decline).
-  document.querySelectorAll('button[data-confirm]').forEach(function (btn) {
-    btn.addEventListener('click', function (e) {
-      e.preventDefault();
-      var form = btn.form;
-      styledConfirm(btn.getAttribute('data-confirm'), function () {
-        armSubmit(form, btn);
-        form.submit(); // native submit() skips the submit event below — no double-arm
-      });
-    });
-  });
-
-  // Remaining request-action forms (Accept / Mark done): "Working…" on submit.
-  document.querySelectorAll('form[action$="booking-request-action.php"]').forEach(function (form) {
-    form.addEventListener('submit', function (e) {
-      var btn = e.submitter;
-      if (btn && !btn.hasAttribute('data-confirm')) armSubmit(form, btn);
-    });
-  });
+  }
+  wire(document);
+  window.tsAdminWire = wire;
 
   // Toast — a small card that slides up from the bottom, then fades out.
   function toast(message, type) {

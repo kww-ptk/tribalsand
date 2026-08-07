@@ -6,6 +6,9 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/icons.php';
+require_once __DIR__ . '/../includes/pagination.php';
+require_once __DIR__ . '/../includes/admin-pagination.php';
 require_login();
 require_owner();
 
@@ -139,10 +142,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 if (!empty($_SESSION['gb_flash'])) { $flash = $_SESSION['gb_flash']; unset($_SESSION['gb_flash']); }
 
+// Search + pagination.
+$pg = paginate_params(25);
+$gbParams = [];
+$gbWhere  = '';
+$sw = search_where(['g.title', "COALESCE(g.body,'')", "COALESCE(v.name,'')", 'g.category'], $pg['q'], $gbParams);
+if ($sw !== '') $gbWhere = "WHERE $sw";
+
+$gbFrom = "FROM guest_board_posts g LEFT JOIN venues v ON v.id = g.venue_id $gbWhere";
+$total  = (int) db_query("SELECT COUNT(*) $gbFrom", $gbParams)->fetchColumn();
+$meta   = paginate_meta($total, $pg['page'], $pg['per']);
+
 $posts = db_query(
-    'SELECT g.*, v.name AS venue_name FROM guest_board_posts g
-     LEFT JOIN venues v ON v.id = g.venue_id
-     ORDER BY g.sort_order DESC, g.created_at DESC'
+    "SELECT g.*, v.name AS venue_name $gbFrom
+     ORDER BY g.sort_order DESC, g.created_at DESC
+     LIMIT {$meta['per']} OFFSET {$meta['offset']}",
+    $gbParams
 )->fetchAll();
 
 $edit = null;
@@ -150,12 +165,47 @@ if (isset($_GET['edit'])) {
     $edit = db_query('SELECT * FROM guest_board_posts WHERE id = :id', [':id'=>(int)$_GET['edit']])->fetch() ?: null;
 }
 
+// ── Swappable body (posts list + pager) — reused for AJAX + full page ──
+ob_start(); ?>
+<div class="card">
+  <div class="card__head"><span class="card__title">All posts</span></div>
+  <div class="card__body" style="padding:0">
+    <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Title</th><th>Category</th><th>Property</th><th>Published</th><th style="text-align:right">Actions</th></tr></thead>
+      <tbody>
+        <?php if (!$posts): ?>
+        <tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--muted)"><?= $pg['q'] !== '' ? 'No posts match your search.' : 'Nothing to show yet.' ?></td></tr>
+        <?php else: foreach ($posts as $p): ?>
+        <tr>
+          <td><strong><?= e($p['title']) ?></strong></td>
+          <td style="text-transform:capitalize"><?= e($p['category']) ?></td>
+          <td><?= e($p['venue_name'] ?? 'All properties') ?></td>
+          <td><?= $p['is_published'] ? 'Yes' : 'No' ?></td>
+          <td style="text-align:right;white-space:nowrap">
+            <a href="/admin/guest-board.php?edit=<?= (int)$p['id'] ?>" class="btn-outline btn-sm">Edit</a>
+            <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="toggle"><input type="hidden" name="id" value="<?= (int)$p['id'] ?>"><button class="btn-outline btn-sm"><?= $p['is_published']?'Hide':'Show' ?></button></form>
+            <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= (int)$p['id'] ?>"><button class="btn-danger btn-sm" data-confirm="Delete this post?">Delete</button></form>
+          </td>
+        </tr>
+        <?php endforeach; endif; ?>
+      </tbody>
+    </table>
+    </div>
+    <?php dt_pager($meta); ?>
+  </div>
+</div>
+<?php
+$dtBody = ob_get_clean();
+
+if ($pg['ajax']) { echo $dtBody; exit; }
+
 include __DIR__ . '/_layout.php';
 ?>
 
 <div class="page-header">
   <h1>Guest board</h1>
-  <a href="/admin/dashboard.php" class="btn-outline btn-sm">← Dashboard</a>
+  <a href="/admin/dashboard.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Dashboard</a>
 </div>
 
 <?php if ($flash): ?><div class="alert alert--success"><?= e($flash) ?></div><?php endif; ?>
@@ -187,22 +237,22 @@ include __DIR__ . '/_layout.php';
       </label>
 
       <label style="display:block;margin-bottom:12px">Title
-        <input type="text" name="title" required value="<?= e($edit['title'] ?? '') ?>" style="display:block;width:100%;max-width:520px;margin-top:4px">
+        <input type="text" name="title" required value="<?= e($edit['title'] ?? '') ?>" placeholder="Enter title" style="display:block;width:100%;max-width:520px;margin-top:4px">
       </label>
 
       <label style="display:block;margin-bottom:12px">Body
-        <textarea name="body" rows="3" style="display:block;width:100%;max-width:520px;margin-top:4px"><?= e($edit['body'] ?? '') ?></textarea>
+        <textarea name="body" rows="3" placeholder="Enter description" style="display:block;width:100%;max-width:520px;margin-top:4px"><?= e($edit['body'] ?? '') ?></textarea>
       </label>
 
       <label style="display:block;margin-bottom:12px">Event date &amp; time <span style="color:var(--muted);font-weight:400">(events only)</span>
         <input type="datetime-local" name="event_date" value="<?= e(!empty($edit['event_date']) ? date('Y-m-d\TH:i', strtotime((string)$edit['event_date'])) : '') ?>" style="display:block;margin-top:4px">
       </label>
       <label style="display:block;margin-bottom:12px">Price <span style="color:var(--muted);font-weight:400">(events only — blank = free)</span>
-        <input type="number" name="price_amount" step="0.01" min="0" value="<?= e(isset($edit['price_amount']) && $edit['price_amount'] !== null ? rtrim(rtrim(number_format((float)$edit['price_amount'],2,'.',''),'0'),'.') : '') ?>" style="display:block;width:160px;margin-top:4px">
+        <input type="number" name="price_amount" step="0.01" min="0" value="<?= e(isset($edit['price_amount']) && $edit['price_amount'] !== null ? rtrim(rtrim(number_format((float)$edit['price_amount'],2,'.',''),'0'),'.') : '') ?>" placeholder="Enter price" style="display:block;width:160px;margin-top:4px">
       </label>
 
       <label style="display:block;margin-bottom:12px">Sort order (higher = pinned toward top)
-        <input type="number" name="sort_order" value="<?= (int)($edit['sort_order'] ?? 0) ?>" style="display:block;width:120px;margin-top:4px">
+        <input type="number" name="sort_order" value="<?= (int)($edit['sort_order'] ?? 0) ?>" placeholder="Enter sort order" style="display:block;width:120px;margin-top:4px">
       </label>
 
       <label style="display:block;margin-bottom:12px">Image (optional, JPEG/PNG/WebP)
@@ -223,30 +273,9 @@ include __DIR__ . '/_layout.php';
   </div>
 </div>
 
-<div class="card">
-  <div class="card__head"><span class="card__title">All posts</span></div>
-  <div class="card__body" style="padding:0">
-    <table class="data-table">
-      <thead><tr><th>Title</th><th>Category</th><th>Property</th><th>Published</th><th style="text-align:right">Actions</th></tr></thead>
-      <tbody>
-        <?php if (!$posts): ?>
-        <tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--muted)">No posts yet.</td></tr>
-        <?php else: foreach ($posts as $p): ?>
-        <tr>
-          <td><strong><?= e($p['title']) ?></strong></td>
-          <td style="text-transform:capitalize"><?= e($p['category']) ?></td>
-          <td><?= e($p['venue_name'] ?? 'All properties') ?></td>
-          <td><?= $p['is_published'] ? 'Yes' : 'No' ?></td>
-          <td style="text-align:right;white-space:nowrap">
-            <a href="/admin/guest-board.php?edit=<?= (int)$p['id'] ?>" class="btn-outline btn-sm">Edit</a>
-            <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="toggle"><input type="hidden" name="id" value="<?= (int)$p['id'] ?>"><button class="btn-outline btn-sm"><?= $p['is_published']?'Hide':'Show' ?></button></form>
-            <form method="POST" style="display:inline" onsubmit="return confirm('Delete this post?')"><?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= (int)$p['id'] ?>"><button class="btn-danger btn-sm">Delete</button></form>
-          </td>
-        </tr>
-        <?php endforeach; endif; ?>
-      </tbody>
-    </table>
-  </div>
+<div class="dt" data-dt>
+  <?php dt_toolbar(['per' => $meta['per'], 'placeholder' => 'Search title, category or property…']); ?>
+  <div class="dt-body" data-dt-body><?= $dtBody ?></div>
 </div>
 
 <?php include __DIR__ . '/_layout_end.php'; ?>

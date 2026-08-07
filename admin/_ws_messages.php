@@ -21,7 +21,7 @@ if ($__inThread) mark_thread_read_by_admin($holdId, $__aid);
   </table>
 </div></div>
 <?php else: $__msgs = fetch_thread_messages($holdId, $__aid); ?>
-<p style="margin:0 0 12px"><a href="?hold=<?= (int)$holdId ?>&tab=messages" class="btn-outline btn-sm">← All threads</a></p>
+<p style="margin:0 0 12px"><a href="?hold=<?= (int)$holdId ?>&tab=messages" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> All threads</a></p>
 <div class="card"><div class="card__body">
   <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
     <?php if (!$__msgs): ?><p class="text-muted">No messages in this thread yet.</p><?php endif; ?>

@@ -205,7 +205,7 @@ include __DIR__ . '/_layout.php';
 <div class="page-header">
   <h1><?= $isNew ? 'Add Tour' : e($tour['name']) ?></h1>
   <div class="actions">
-    <a href="/admin/tours.php" class="btn-outline btn-sm">← Tours</a>
+    <a href="/admin/tours.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Tours</a>
     <?php if (!$isNew): ?>
     <a href="/tour.php?slug=<?= e($tour['slug']) ?>" class="btn-outline btn-sm" target="_blank">View on site</a>
     <?php endif; ?>
@@ -281,9 +281,9 @@ include __DIR__ . '/_layout.php';
 
       <div style="margin:14px 0">
         <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">Booking price <span style="color:var(--muted);font-weight:400">(numeric — used for guest requests &amp; the bill)</span></label>
-        <input type="number" name="price_amount" step="0.01" min="0" value="<?= e($tour['price_amount'] ?? '') ?>" style="width:160px;padding:8px 10px">
+        <input type="number" name="price_amount" step="0.01" min="0" value="<?= e($tour['price_amount'] ?? '') ?>" placeholder="Enter price" style="width:160px;padding:8px 10px">
         <label style="margin-left:14px;font-size:13px"><input type="checkbox" name="price_per_person" value="1" <?= (($tour['price_per_person'] ?? true) && ($tour['price_per_person'] ?? 't') !== 'f') ? 'checked' : '' ?>> Price is per person</label>
-        <label style="margin-left:14px;font-size:13px">Max pax <input type="number" name="max_pax" min="1" value="<?= e($tour['max_pax'] ?? '') ?>" style="width:80px;padding:8px 10px"></label>
+        <label style="margin-left:14px;font-size:13px">Max pax <input type="number" name="max_pax" min="1" value="<?= e($tour['max_pax'] ?? '') ?>" placeholder="Enter max guests" style="width:80px;padding:8px 10px"></label>
       </div>
 
       <div style="margin:14px 0">
@@ -383,11 +383,11 @@ include __DIR__ . '/_layout.php';
       <div class="card__body" style="padding:20px">
         <div class="field">
           <label>SEO title <span class="text-muted">(max 60 chars)</span></label>
-          <input type="text" name="seo_title" maxlength="60" value="<?= e($tour['seo_title'] ?? '') ?>">
+          <input type="text" name="seo_title" maxlength="60" value="<?= e($tour['seo_title'] ?? '') ?>" placeholder="Enter SEO title">
         </div>
         <div class="field" style="margin-top:16px">
           <label>Meta description <span class="text-muted">(max 160 chars)</span></label>
-          <textarea name="seo_description" rows="3" maxlength="160"><?= e($tour['seo_description'] ?? '') ?></textarea>
+          <textarea name="seo_description" rows="3" maxlength="160" placeholder="Enter meta description"><?= e($tour['seo_description'] ?? '') ?></textarea>
         </div>
       </div>
     </div>

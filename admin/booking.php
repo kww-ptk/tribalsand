@@ -123,7 +123,7 @@ include __DIR__ . '/_layout.php';
 ?>
 <div class="page-header">
   <h1><?= e($hold['guest_name'] ?: 'Guest') ?> — <?= e($hold['room_name']) ?></h1>
-  <a href="/admin/holds.php" class="btn-outline btn-sm">← Bookings</a>
+  <a href="/admin/holds.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Bookings</a>
 </div>
 <p class="text-muted" style="margin:-8px 0 14px;font-size:13px"><?= e(date('j M Y',strtotime($hold['check_in']))) ?> → <?= e(date('j M Y',strtotime($hold['check_out']))) ?> · <span class="badge badge--<?= ['pending'=>'orange','confirmed'=>'green','cancelled'=>'red','expired'=>'grey'][$hold['status']] ?? 'grey' ?>"><?= e($hold['status']) ?></span> · <code><?= e($hold['access_code']) ?></code></p>
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?> is-flash"><?= e($flash['msg']) ?></div><?php endif; ?>

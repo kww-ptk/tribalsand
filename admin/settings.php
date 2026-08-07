@@ -227,7 +227,7 @@ include __DIR__ . '/_layout.php';
     <form method="POST" action="/admin/settings">
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="export_holds">
-      <button type="submit" class="btn-secondary">&#8595; Export Active Holds (CSV)</button>
+      <button type="submit" class="btn-outline"><?= admin_icon('download') ?> Export Active Holds (CSV)</button>
     </form>
   </div>
 </div>

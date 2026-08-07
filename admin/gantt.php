@@ -298,11 +298,11 @@ include __DIR__ . '/_layout.php';
 <div class="page-header">
   <h1>Availability Calendar</h1>
   <div class="actions">
-    <a href="?offset=<?= $offset - 1 ?>" class="btn-outline btn-sm">&#8249; Prev</a>
+    <a href="?offset=<?= $offset - 1 ?>" class="btn-outline btn-sm"><?= admin_icon('chevron-left', 15) ?> Prev</a>
     <a href="/admin/gantt.php"            class="btn-outline btn-sm">Today</a>
-    <a href="?offset=<?= $offset + 1 ?>" class="btn-outline btn-sm">Next &#8250;</a>
+    <a href="?offset=<?= $offset + 1 ?>" class="btn-outline btn-sm">Next <?= admin_icon('chevron-right', 15) ?></a>
     <?php if ($sync_secret): ?>
-    <button class="btn-primary btn-sm" id="syncBtn">&#8635; Sync iCal</button>
+    <button class="btn-primary btn-sm" id="syncBtn"><?= admin_icon('rotate', 15) ?> Sync iCal</button>
     <?php endif; ?>
   </div>
 </div>
@@ -958,9 +958,9 @@ function makePicker(popId, hiddenId, displayId) {
     const last   = new Date(viewYear, viewMonth + 1, 0);
     const blanks = (first.getDay() + 6) % 7;
     let html = `<div class="dp__head">
-      <button type="button" class="dp__nav" data-dir="-1">&#8249;</button>
+      <button type="button" class="dp__nav" data-dir="-1" aria-label="Previous month"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg></button>
       <span class="dp__mlabel">${MONTHS[viewMonth]} ${viewYear}</span>
-      <button type="button" class="dp__nav" data-dir="1">&#8250;</button>
+      <button type="button" class="dp__nav" data-dir="1" aria-label="Next month"><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></button>
     </div>
     <div class="dp__daynames">
       <span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span><span>Su</span>

@@ -68,6 +68,7 @@ include __DIR__ . '/_layout.php';
     <?php if (empty($recent)): ?>
     <p style="padding:24px;color:var(--muted);text-align:center">No submissions yet.</p>
     <?php else: ?>
+    <div class="table-wrap">
     <table class="data-table">
       <thead>
         <tr>
@@ -106,6 +107,7 @@ include __DIR__ . '/_layout.php';
         <?php endforeach; ?>
       </tbody>
     </table>
+    </div>
     <?php endif; ?>
   </div>
 </div>

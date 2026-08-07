@@ -61,7 +61,7 @@ include __DIR__ . '/_layout.php';
       <tbody id="toursTbody">
         <?php foreach ($tours as $tour): ?>
         <tr data-id="<?= e($tour['id']) ?>" class="draggable-row">
-          <td style="cursor:grab;color:var(--muted);font-size:18px;text-align:center">&#8942;&#8942;</td>
+          <td style="cursor:grab;color:var(--muted);text-align:center" aria-label="Drag to reorder"><?= admin_icon('grip', 18) ?></td>
           <td>
             <?php if ($tour['hero_img']): ?>
             <img src="<?= e(storage_url($tour['hero_img'])) ?>" class="room-thumb" alt="<?= e($tour['name']) ?>">

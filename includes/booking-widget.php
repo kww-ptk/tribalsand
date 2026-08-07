@@ -89,7 +89,7 @@ if ($__form_mode !== 'availability') {
         <!-- Left month -->
         <div class="bk-cal bk-cal--left">
           <div class="bk-cal__head">
-            <button type="button" class="bk-cal__nav" id="bkPrevMonth" aria-label="Previous month">&#8249;</button>
+            <button type="button" class="bk-cal__nav" id="bkPrevMonth" aria-label="Previous month"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></button>
             <span class="bk-cal__title" id="bkMonthLabel"></span>
             <button type="button" class="bk-cal__nav bk-cal__nav--hidden" aria-hidden="true" tabindex="-1"></button>
           </div>
@@ -101,7 +101,7 @@ if ($__form_mode !== 'availability') {
           <div class="bk-cal__head">
             <button type="button" class="bk-cal__nav bk-cal__nav--hidden" aria-hidden="true" tabindex="-1"></button>
             <span class="bk-cal__title" id="bkMonthLabel2"></span>
-            <button type="button" class="bk-cal__nav" id="bkNextMonth" aria-label="Next month">&#8250;</button>
+            <button type="button" class="bk-cal__nav" id="bkNextMonth" aria-label="Next month"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
           </div>
           <div class="bk-cal__dow"><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span><span>Su</span></div>
           <div class="bk-cal__grid" id="bkCalGrid2"></div>

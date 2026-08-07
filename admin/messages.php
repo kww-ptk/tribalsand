@@ -54,7 +54,7 @@ include __DIR__ . '/_layout.php';
 ?>
 <div class="page-header">
   <h1>Messages</h1>
-  <a href="/admin/dashboard.php" class="btn-outline btn-sm">← Dashboard</a>
+  <a href="/admin/dashboard.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Dashboard</a>
 </div>
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?>"><?= e($flash['msg']) ?></div><?php endif; ?>
 
@@ -70,7 +70,7 @@ include __DIR__ . '/_layout.php';
         $tid = $t['addon_id'] === null ? 'general' : (int)$t['addon_id'];
       ?>
       <tr>
-        <td><strong><?= e($t['guest_name'] ?: 'Guest') ?></strong><br><a href="/admin/booking.php?hold=<?= (int)$t['hold_id'] ?>&tab=messages" class="text-muted" style="font-size:12px">Manage booking →</a></td>
+        <td><strong><?= e($t['guest_name'] ?: 'Guest') ?></strong><br><a href="/admin/booking.php?hold=<?= (int)$t['hold_id'] ?>&tab=messages" class="text-muted" style="font-size:12px;display:inline-flex;align-items:center;gap:4px">Manage booking <?= admin_icon('arrow-right', 13) ?></a></td>
         <td><a href="?hold=<?= (int)$t['hold_id'] ?>&thread=<?= e((string)$tid) ?>"><?= e(thread_title($t)) ?></a></td>
         <td class="text-muted" style="font-size:13px;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><?= e((string)($t['last_body'] ?? '')) ?></td>
         <td><?php if ((int)$t['unread_admin'] > 0): ?><span class="badge badge--orange"><?= (int)$t['unread_admin'] ?></span><?php else: ?>—<?php endif; ?></td>
@@ -84,7 +84,7 @@ include __DIR__ . '/_layout.php';
   $msgs = fetch_thread_messages($holdId, $addonId);
   $ctx  = db_query("SELECT h.guest_name FROM holds h WHERE h.id=:h", [':h'=>$holdId])->fetch();
 ?>
-<p style="margin:0 0 14px"><a href="/admin/messages.php" class="btn-outline btn-sm">← All threads</a></p>
+<p style="margin:0 0 14px"><a href="/admin/messages.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> All threads</a></p>
 <div class="card"><div class="card__body">
   <p style="margin:0 0 12px;font-weight:600"><?= e($ctx['guest_name'] ?? 'Guest') ?></p>
   <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">

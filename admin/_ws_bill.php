@@ -10,7 +10,7 @@ $__numval = fn($v) => ($v === null || $v === '') ? '' : rtrim(rtrim(number_forma
 <div class="card" style="margin-bottom:16px">
   <div class="card__head">
     <span class="card__title">Charges from requests</span>
-    <a href="/admin/bill-print.php?hold=<?= $holdId ?>" target="_blank" class="btn-sm btn-primary">Print bill →</a>
+    <a href="/admin/bill-print.php?hold=<?= $holdId ?>" target="_blank" class="btn-sm btn-primary">Print bill <?= admin_icon('arrow-right', 15) ?></a>
   </div>
   <div class="card__body" style="padding:0">
     <table class="data-table">
@@ -30,7 +30,7 @@ $__numval = fn($v) => ($v === null || $v === '') ? '' : rtrim(rtrim(number_forma
               <input type="hidden" name="hold_id" value="<?= $holdId ?>">
               <input type="hidden" name="addon_id" value="<?= (int)$l['id'] ?>">
               <span class="text-muted" style="font-size:12px"><?= e($__cur) ?></span>
-              <input type="number" name="price_amount" step="0.01" min="0" value="<?= e($__numval($l['price_amount'] ?? '')) ?>" style="width:90px;padding:5px 7px;text-align:right">
+              <input type="number" name="price_amount" step="0.01" min="0" value="<?= e($__numval($l['price_amount'] ?? '')) ?>" placeholder="Enter price" style="width:90px;padding:5px 7px;text-align:right">
               <button type="submit" class="btn-sm btn-outline">Save</button>
             </form>
           </td>

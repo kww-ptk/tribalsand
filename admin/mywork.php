@@ -72,7 +72,7 @@ include __DIR__ . '/_layout.php';
 <div class="page-header">
   <h1>My work</h1>
   <?php if ($asgOn): ?>
-  <a href="/admin/mywork.php<?= $showDone ? '' : '?done=1' ?>" class="btn-outline btn-sm"><?= $showDone ? '← Hide completed' : 'Show completed' ?></a>
+  <a href="/admin/mywork.php<?= $showDone ? '' : '?done=1' ?>" class="btn-outline btn-sm"><?= $showDone ? admin_icon('arrow-left', 15) . ' Hide completed' : 'Show completed' ?></a>
   <?php endif; ?>
 </div>
 

@@ -31,6 +31,7 @@ $__roleBadge = $__isManager ? 'Manager' : (is_staff() ? ucfirst((string)$__job) 
   <title><?= e($pageTitle ?? 'Admin') ?> — Tribal Sand Admin</title>
   <link rel="stylesheet" href="/admin/assets/admin.css?v=<?= @filemtime(__DIR__ . '/assets/admin.css') ?: '1' ?>">
   <script defer src="/admin/assets/admin-select.js?v=<?= @filemtime(__DIR__ . '/assets/admin-select.js') ?: '1' ?>"></script>
+  <script defer src="/admin/assets/admin-table.js?v=<?= @filemtime(__DIR__ . '/assets/admin-table.js') ?: '1' ?>"></script>
 </head>
 <body class="admin-body">
 

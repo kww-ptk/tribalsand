@@ -54,7 +54,7 @@ include __DIR__ . '/_layout.php';
 ?>
 <div class="page-header">
   <h1>New Booking</h1>
-  <div class="actions"><a href="/admin/holds.php" class="btn-outline btn-sm">← Holds</a></div>
+  <div class="actions"><a href="/admin/holds.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Holds</a></div>
 </div>
 
 <?php if ($error): ?>
@@ -97,12 +97,12 @@ include __DIR__ . '/_layout.php';
         </div>
         <div>
           <div class="detail-item__label">Guest name</div>
-          <input type="text" name="guest_name" required value="<?= e($old['guest_name']) ?>"
+          <input type="text" name="guest_name" required value="<?= e($old['guest_name']) ?>" placeholder="Enter guest name"
                  style="width:100%;padding:9px;border:1px solid #d1d5db;border-radius:6px">
         </div>
         <div>
           <div class="detail-item__label">Guest email</div>
-          <input type="email" name="guest_email" required value="<?= e($old['guest_email']) ?>"
+          <input type="email" name="guest_email" required value="<?= e($old['guest_email']) ?>" placeholder="Enter guest email"
                  style="width:100%;padding:9px;border:1px solid #d1d5db;border-radius:6px">
         </div>
       </div>

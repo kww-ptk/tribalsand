@@ -139,27 +139,27 @@ include __DIR__ . '/_layout.php';
     <?php if (!$venues): ?>
       <p class="text-muted" style="margin:0">You have no properties assigned yet.</p>
     <?php else: ?>
-    <form method="POST" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;align-items:end">
+    <form method="POST" style="display:flex;flex-wrap:wrap;gap:16px;align-items:end">
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="log">
-      <label>Visitor name
-        <input type="text" name="visitor_name" required style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid #d9d2c6;border-radius:6px">
+      <label style="flex:1 1 200px;min-width:0">Visitor name
+        <input type="text" name="visitor_name" required placeholder="Enter visitor name" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid #d9d2c6;border-radius:6px">
       </label>
-      <label>Property
+      <label style="flex:1 1 200px;min-width:0">Property
         <select name="venue_id" required style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid #d9d2c6;border-radius:6px">
           <?php foreach ($venues as $v): ?><option value="<?= (int)$v['id'] ?>"><?= e($v['name']) ?></option><?php endforeach; ?>
         </select>
       </label>
-      <label>Visiting <span class="text-muted">(guest / room)</span>
-        <input type="text" name="visiting" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid #d9d2c6;border-radius:6px">
+      <label style="flex:1 1 200px;min-width:0">Visiting <span class="text-muted">(guest / room)</span>
+        <input type="text" name="visiting" placeholder="Enter guest or room being visited" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid #d9d2c6;border-radius:6px">
       </label>
-      <label>Purpose <span class="text-muted">(optional)</span>
-        <input type="text" name="purpose" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid #d9d2c6;border-radius:6px">
+      <label style="flex:1 1 200px;min-width:0">Purpose <span class="text-muted">(optional)</span>
+        <input type="text" name="purpose" placeholder="Enter purpose of visit" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid #d9d2c6;border-radius:6px">
       </label>
-      <label>Vehicle / plate <span class="text-muted">(optional)</span>
-        <input type="text" name="vehicle" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid #d9d2c6;border-radius:6px">
+      <label style="flex:1 1 200px;min-width:0">Vehicle / plate <span class="text-muted">(optional)</span>
+        <input type="text" name="vehicle" placeholder="Enter vehicle or plate number" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid #d9d2c6;border-radius:6px">
       </label>
-      <div><button type="submit" class="btn-primary">Sign in</button></div>
+      <div style="flex:0 0 auto"><button type="submit" class="btn-primary">Sign in</button></div>
     </form>
     <?php endif; ?>
   </div>

@@ -106,11 +106,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid) {
         <input type="hidden" name="email" value="<?= e($email) ?>">
         <div class="field">
           <label for="password">New password <small>(min. 10 chars)</small></label>
-          <input type="password" id="password" name="password" required autofocus minlength="10">
+          <input type="password" id="password" name="password" required autofocus minlength="10" placeholder="Enter new password">
         </div>
         <div class="field">
           <label for="password2">Confirm new password</label>
-          <input type="password" id="password2" name="password2" required minlength="10">
+          <input type="password" id="password2" name="password2" required minlength="10" placeholder="Re-enter new password">
         </div>
         <button type="submit" class="btn-primary btn-full">Set New Password</button>
       </form>

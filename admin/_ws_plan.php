@@ -16,8 +16,8 @@ $__witems = fetch_itinerary_items($holdId);
       <label style="font-size:13px">Day<br><select name="day" required><?php foreach ($__wdays as $dv=>$dl): ?><option value="<?= e($dv) ?>"><?= e($dl) ?></option><?php endforeach; ?></select></label>
       <label style="font-size:13px">Time<br><input type="time" name="at_time"></label>
       <label style="font-size:13px">Category<br><select name="category"><?php foreach ($__wcats as $cv=>$cl): ?><option value="<?= e($cv) ?>"><?= e($cl) ?></option><?php endforeach; ?></select></label>
-      <label style="font-size:13px;flex:1;min-width:160px">Title<br><input type="text" name="title" required style="width:100%"></label>
-      <label style="font-size:13px;flex:1;min-width:160px">Detail<br><input type="text" name="detail" style="width:100%"></label>
+      <label style="font-size:13px;flex:1;min-width:160px">Title<br><input type="text" name="title" required placeholder="Enter title" style="width:100%"></label>
+      <label style="font-size:13px;flex:1;min-width:160px">Detail<br><input type="text" name="detail" placeholder="Enter detail" style="width:100%"></label>
       <button type="submit" class="btn-primary">Add</button>
     </form>
   </div>

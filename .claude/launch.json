@@ -4,7 +4,7 @@
     {
       "name": "tribal-sand",
       "runtimeExecutable": "D:\\php84\\php.exe",
-      "runtimeArgs": ["-S", "localhost:8765", "-t", "D:\\TribalIsland"],
+      "runtimeArgs": ["-S", "localhost:8765", "-t", "D:\\TribalIsland", "D:\\TribalIsland\\router.php"],
       "port": 8765
     }
   ]

@@ -93,7 +93,7 @@ $card = function(array $r): string {
       </div>
       <div class="fd-card__side">
         <?php if ($phone !== ''): ?><a class="fd-phone" href="tel:<?= e(preg_replace('/[^0-9+]/', '', $phone)) ?>"><?= e($phone) ?></a><?php else: ?><span class="fd-phone fd-phone--none">—</span><?php endif; ?>
-        <a class="btn-outline btn-sm" href="/admin/booking.php?hold=<?= $hid ?>">Open →</a>
+        <a class="btn-outline btn-sm" href="/admin/booking.php?hold=<?= $hid ?>">Open <?= admin_icon('arrow-right', 15) ?></a>
       </div>
     </div>
     <?php return ob_get_clean();
@@ -144,7 +144,7 @@ include __DIR__ . '/_layout.php';
 
 <div class="page-header">
   <h1>Front desk</h1>
-  <?php if ($isOwner): ?><a href="/admin/dashboard.php" class="btn-outline btn-sm">← Dashboard</a><?php endif; ?>
+  <?php if ($isOwner): ?><a href="/admin/dashboard.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Dashboard</a><?php endif; ?>
 </div>
 
 <div class="fd-topline">

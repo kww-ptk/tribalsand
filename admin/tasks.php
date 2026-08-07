@@ -8,6 +8,9 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/booking.php';   // team helpers
+require_once __DIR__ . '/../includes/icons.php';
+require_once __DIR__ . '/../includes/pagination.php';
+require_once __DIR__ . '/../includes/admin-pagination.php';
 require_login();
 require_manager();
 
@@ -125,6 +128,73 @@ else { $asgKey = 'all'; }
 
 $tasks = fetch_tasks($venueIds, $filters);
 
+// Search + pagination (this list comes from an aggregate helper, so filter/slice
+// the result set in PHP — same toolkit UX as the DB-paginated pages).
+$pg = paginate_params(25);
+if ($pg['q'] !== '') {
+    $needle = mb_strtolower($pg['q']);
+    $tasks = array_values(array_filter($tasks, function ($t) use ($needle) {
+        $hay = mb_strtolower(($t['title'] ?? '') . ' ' . ($t['detail'] ?? '') . ' ' . ($t['venue_name'] ?? '') . ' ' . ($t['assignee_name'] ?? '') . ' ' . ($t['hold_guest'] ?? ''));
+        return mb_strpos($hay, $needle) !== false;
+    }));
+}
+$total = count($tasks);
+$meta  = paginate_meta($total, $pg['page'], $pg['per']);
+$tasks = array_slice($tasks, $meta['offset'], $meta['per']);
+
+// ── Swappable body (list + pager) — reused for AJAX + full page ──
+ob_start(); ?>
+<div class="card">
+  <div class="card__body" style="padding:0">
+    <div class="table-wrap">
+    <table class="data-table">
+      <thead><tr><th>Task</th><th>Property</th><th>Assignee</th><th>Job</th><th>Due</th><th>Status</th><th>Actions</th></tr></thead>
+      <tbody>
+        <?php if (!$tasks): ?>
+        <tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--muted)"><?= $pg['q'] !== '' ? 'No tasks match your search.' : 'Nothing to show yet.' ?></td></tr>
+        <?php else: foreach ($tasks as $t):
+          $tid = (int)$t['id']; $st = (string)$t['status'];
+        ?>
+        <tr>
+          <td>
+            <strong><?= e($t['title']) ?></strong>
+            <?php if (!empty($t['detail'])): ?><br><span class="text-muted" style="font-size:12px"><?= e($t['detail']) ?></span><?php endif; ?>
+            <?php if (!empty($t['hold_guest'])): ?><br><span class="text-muted" style="font-size:12px">Booking: <?= e($t['hold_guest']) ?></span><?php endif; ?>
+          </td>
+          <td><?= e($t['venue_name'] ?? '') ?></td>
+          <td><?= !empty($t['assignee_name']) ? e($t['assignee_name']) : '<span class="text-muted">Unassigned</span>' ?></td>
+          <td><?= !empty($t['job_type']) ? e($JOBS[$t['job_type']] ?? $t['job_type']) : '<span class="text-muted">—</span>' ?></td>
+          <td><?= !empty($t['due_date']) ? e(date('j M', strtotime((string)$t['due_date']))) : '<span class="text-muted">—</span>' ?></td>
+          <td><span class="badge <?= task_badge_class($st) ?>"><?= e(task_status_label($st)) ?></span></td>
+          <td>
+            <div class="row-actions">
+            <?php
+              $btn = function(string $to, string $title, string $icon, string $variant) use ($tid) {
+                echo '<form method="POST" action="/admin/task-action.php" style="display:inline">' . csrf_field()
+                   . '<input type="hidden" name="return" value="tasks"><input type="hidden" name="id" value="' . $tid . '">'
+                   . '<button name="status" value="' . e($to) . '" class="btn-icon ' . $variant . '" title="' . e($title) . '" aria-label="' . e($title) . '">' . admin_icon($icon) . '</button></form>';
+              };
+              if ($st === 'todo')        $btn('in_progress', 'Start task', 'play', 'btn-icon--outline');
+              if (in_array($st, ['todo','in_progress'], true)) $btn('done', 'Mark done', 'check', 'btn-icon--primary');
+              if (in_array($st, ['done','cancelled'], true))   $btn('todo', 'Reopen task', 'rotate', 'btn-icon--outline');
+              if (in_array($st, ['todo','in_progress'], true)) $btn('cancelled', 'Cancel task', 'ban', 'btn-icon--outline');
+            ?>
+            <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= $tid ?>"><button class="btn-icon btn-icon--danger" title="Delete task" aria-label="Delete task" data-confirm="Delete this task?"><?= admin_icon('trash') ?></button></form>
+            </div>
+          </td>
+        </tr>
+        <?php endforeach; endif; ?>
+      </tbody>
+    </table>
+    </div>
+    <?php dt_pager($meta); ?>
+  </div>
+</div>
+<?php
+$dtBody = ob_get_clean();
+
+if ($pg['ajax']) { echo $dtBody; exit; }
+
 include __DIR__ . '/_layout.php';
 ?>
 
@@ -144,10 +214,10 @@ include __DIR__ . '/_layout.php';
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="create">
       <label style="grid-column:1/-1">Title
-        <input type="text" name="title" required style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid #d9d2c6;border-radius:6px">
+        <input type="text" name="title" required placeholder="Enter task title" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid #d9d2c6;border-radius:6px">
       </label>
       <label style="grid-column:1/-1">Details <span class="text-muted">(optional)</span>
-        <textarea name="detail" rows="2" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid #d9d2c6;border-radius:6px"></textarea>
+        <textarea name="detail" rows="2" placeholder="Enter details (optional)" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid #d9d2c6;border-radius:6px"></textarea>
       </label>
       <label>Property
         <select name="venue_id" required style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid #d9d2c6;border-radius:6px">
@@ -178,6 +248,8 @@ include __DIR__ . '/_layout.php';
 </div>
 
 <form method="GET" action="/admin/tasks.php" class="filters">
+  <input type="hidden" name="q"   value="<?= e($pg['q']) ?>">
+  <input type="hidden" name="per" value="<?= (int)$meta['per'] ?>">
   <label class="filter-field">Status
     <select name="status" class="filter-select" aria-label="Filter by status" onchange="this.form.submit()">
       <?php foreach (['open'=>'Open','todo'=>'To do','in_progress'=>'In progress','done'=>'Done','cancelled'=>'Cancelled','all'=>'All'] as $sk=>$sl): ?>
@@ -194,50 +266,10 @@ include __DIR__ . '/_layout.php';
   </label>
 </form>
 
-<div class="card">
-  <div class="card__body" style="padding:0">
-    <div class="table-wrap">
-    <table class="data-table">
-      <thead><tr><th>Task</th><th>Property</th><th>Assignee</th><th>Job</th><th>Due</th><th>Status</th><th>Actions</th></tr></thead>
-      <tbody>
-        <?php if (!$tasks): ?>
-        <tr><td colspan="7" style="text-align:center;padding:2rem;color:var(--muted)">No tasks match this filter.</td></tr>
-        <?php else: foreach ($tasks as $t):
-          $tid = (int)$t['id']; $st = (string)$t['status'];
-        ?>
-        <tr>
-          <td>
-            <strong><?= e($t['title']) ?></strong>
-            <?php if (!empty($t['detail'])): ?><br><span class="text-muted" style="font-size:12px"><?= e($t['detail']) ?></span><?php endif; ?>
-            <?php if (!empty($t['hold_guest'])): ?><br><span class="text-muted" style="font-size:12px">Booking: <?= e($t['hold_guest']) ?></span><?php endif; ?>
-          </td>
-          <td><?= e($t['venue_name'] ?? '') ?></td>
-          <td><?= !empty($t['assignee_name']) ? e($t['assignee_name']) : '<span class="text-muted">Unassigned</span>' ?></td>
-          <td><?= !empty($t['job_type']) ? e($JOBS[$t['job_type']] ?? $t['job_type']) : '<span class="text-muted">—</span>' ?></td>
-          <td><?= !empty($t['due_date']) ? e(date('j M', strtotime((string)$t['due_date']))) : '<span class="text-muted">—</span>' ?></td>
-          <td><span class="badge <?= task_badge_class($st) ?>"><?= e(task_status_label($st)) ?></span></td>
-          <td>
-            <div class="row-actions">
-            <?php
-              $btn = function(string $to, string $title, string $icon, string $variant) use ($tid) {
-                echo '<form method="POST" action="/admin/task-action.php" style="display:inline">' . csrf_field()
-                   . '<input type="hidden" name="return" value="tasks"><input type="hidden" name="id" value="' . $tid . '">'
-                   . '<button name="status" value="' . e($to) . '" class="btn-icon ' . $variant . '" title="' . e($title) . '" aria-label="' . e($title) . '">' . admin_icon($icon) . '</button></form>';
-              };
-              if ($st === 'todo')        $btn('in_progress', 'Start task', 'play', 'btn-icon--outline');
-              if (in_array($st, ['todo','in_progress'], true)) $btn('done', 'Mark done', 'check', 'btn-icon--primary');
-              if (in_array($st, ['done','cancelled'], true))   $btn('todo', 'Reopen task', 'rotate', 'btn-icon--outline');
-              if (in_array($st, ['todo','in_progress'], true)) $btn('cancelled', 'Cancel task', 'ban', 'btn-icon--outline');
-            ?>
-            <form method="POST" style="display:inline" onsubmit="return confirm('Delete this task?')"><?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= $tid ?>"><button class="btn-icon btn-icon--danger" title="Delete task" aria-label="Delete task"><?= admin_icon('trash') ?></button></form>
-            </div>
-          </td>
-        </tr>
-        <?php endforeach; endif; ?>
-      </tbody>
-    </table>
-    </div>
-  </div>
+<div class="dt" data-dt>
+  <?php dt_toolbar(['per' => $meta['per'], 'placeholder' => 'Search task, property, assignee or guest…']); ?>
+  <div class="dt-body" data-dt-body><?= $dtBody ?></div>
 </div>
+
 
 <?php include __DIR__ . '/_layout_end.php'; ?>

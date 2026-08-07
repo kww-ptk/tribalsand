@@ -78,7 +78,7 @@ include __DIR__ . '/_layout.php';
       <tbody id="roomsTbody">
         <?php foreach ($rooms as $room): ?>
         <tr data-id="<?= e($room['id']) ?>" class="draggable-row">
-          <td style="cursor:grab;color:var(--muted);font-size:18px;text-align:center">&#8942;&#8942;</td>
+          <td style="cursor:grab;color:var(--muted);text-align:center" aria-label="Drag to reorder"><?= admin_icon('grip', 18) ?></td>
           <td>
             <?php if ($room['hero_img']): ?>
             <img src="<?= e(storage_url($room['hero_img'])) ?>" class="room-thumb" alt="<?= e($room['name']) ?>">

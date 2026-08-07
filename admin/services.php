@@ -79,7 +79,7 @@ include __DIR__ . '/_layout.php';
 
 <div class="page-header">
   <h1>Service pricing</h1>
-  <a href="/admin/settings.php" class="btn-outline btn-sm">← Settings</a>
+  <a href="/admin/settings.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Settings</a>
 </div>
 <p class="text-muted" style="margin:0 0 16px;font-size:13px">Guests see active options with their price when requesting laundry or transfers. A price of 0 shows the label only. Drag to reorder.</p>
 
@@ -94,9 +94,9 @@ include __DIR__ . '/_layout.php';
         <?= csrf_field() ?>
         <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
         <span class="svc-handle" title="Drag to reorder" aria-hidden="true">⠿</span>
-        <input type="text" name="label" value="<?= e($r['label']) ?>" required>
+        <input type="text" name="label" value="<?= e($r['label']) ?>" required placeholder="Enter label">
         <span class="svc-cur"><?= e($currency) ?></span>
-        <input type="number" name="price_amount" value="<?= e(rtrim(rtrim(number_format((float)$r['price_amount'], 2, '.', ''), '0'), '.')) ?>" min="0" step="0.01">
+        <input type="number" name="price_amount" value="<?= e(rtrim(rtrim(number_format((float)$r['price_amount'], 2, '.', ''), '0'), '.')) ?>" min="0" step="0.01" placeholder="Enter price">
         <label style="font-size:12px;color:var(--muted);white-space:nowrap"><input type="checkbox" name="is_active" value="1" <?= $r['is_active'] ? 'checked' : '' ?>> Active</label>
         <button type="submit" name="action" value="save" class="btn-sm btn-primary">Save</button>
         <button type="submit" name="action" value="delete" class="btn-sm btn-danger" onclick="return confirm('Delete this option?')">Delete</button>

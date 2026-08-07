@@ -166,7 +166,7 @@ include __DIR__ . '/_layout.php';
 
 <div class="page-header">
   <h1><?= $isNew ? 'New Property' : 'Edit Property: ' . e($venue['name']) ?></h1>
-  <a href="/admin/venues.php" class="btn-sm btn-outline">← Back to Properties</a>
+  <a href="/admin/venues.php" class="btn-sm btn-outline"><?= admin_icon('arrow-left', 15) ?> Back to Properties</a>
 </div>
 
 <?php if ($success): ?><div class="alert alert--success"><?= e($success) ?></div><?php endif; ?>
@@ -181,7 +181,7 @@ include __DIR__ . '/_layout.php';
 
       <div style="margin-bottom:14px">
         <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">Name</label>
-        <input type="text" name="name" value="<?= e($venue['name'] ?? '') ?>" required style="width:100%;max-width:480px;padding:8px 10px">
+        <input type="text" name="name" value="<?= e($venue['name'] ?? '') ?>" required placeholder="Enter property name" style="width:100%;max-width:480px;padding:8px 10px">
       </div>
 
       <div style="margin-bottom:14px">
@@ -202,7 +202,7 @@ include __DIR__ . '/_layout.php';
 
       <div style="margin-bottom:14px">
         <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">Sort order</label>
-        <input type="number" name="sort_order" value="<?= e($venue['sort_order'] ?? 0) ?>" style="width:120px;padding:8px 10px">
+        <input type="number" name="sort_order" value="<?= e($venue['sort_order'] ?? 0) ?>" placeholder="Enter sort order" style="width:120px;padding:8px 10px">
       </div>
 
       <button type="submit" class="btn-primary btn-sm">Save Property</button>
@@ -279,7 +279,7 @@ include __DIR__ . '/_layout.php';
         foreach ($__stay as $__k => $__label): ?>
       <div style="margin-bottom:14px">
         <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px"><?= e($__label) ?></label>
-        <textarea name="<?= e($__k) ?>" rows="3" style="width:100%;max-width:640px;padding:8px 10px;font-family:inherit;line-height:1.6"><?= e($venue[$__k] ?? '') ?></textarea>
+        <textarea name="<?= e($__k) ?>" rows="3" placeholder="Enter <?= e(strtolower($__label)) ?>" style="width:100%;max-width:640px;padding:8px 10px;font-family:inherit;line-height:1.6"><?= e($venue[$__k] ?? '') ?></textarea>
       </div>
       <?php endforeach; ?>
 
@@ -297,7 +297,8 @@ include __DIR__ . '/_layout.php';
     <?php if (!$rooms): ?>
     <p style="padding:24px;text-align:center;color:var(--muted)">No rooms in this property yet.</p>
     <?php else: ?>
-    <table class="admin-table">
+    <div class="table-wrap">
+    <table class="data-table">
       <thead><tr><th>Room</th><th>Price</th><th>Published</th><th></th></tr></thead>
       <tbody>
         <?php foreach ($rooms as $r): ?>
@@ -313,6 +314,7 @@ include __DIR__ . '/_layout.php';
         <?php endforeach; ?>
       </tbody>
     </table>
+    </div>
     <?php endif; ?>
   </div>
 </div>

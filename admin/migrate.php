@@ -46,7 +46,7 @@ include __DIR__ . '/_layout.php';
 
 <div class="page-header">
   <h1>Migrations</h1>
-  <a href="/admin/dashboard.php" class="btn-outline btn-sm">← Dashboard</a>
+  <a href="/admin/dashboard.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Dashboard</a>
 </div>
 
 <?php if ($output): ?>

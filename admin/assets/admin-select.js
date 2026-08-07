@@ -17,8 +17,17 @@
     if (select.dataset.enhanced) return;
     select.dataset.enhanced = '1';
 
+    // Measure the native select BEFORE hiding it, so the styled control can keep
+    // the layout the page intended: full-width form fields stay full-width; inline
+    // filter/table selects keep their compact size.
+    var rect    = select.getBoundingClientRect();
+    var parentW = (select.parentNode && select.parentNode.clientWidth) || 0;
+    var fullWidth = rect.width > 0 && parentW > 0 && rect.width >= parentW * 0.9;
+
     var wrap = document.createElement('div');
     wrap.className = 'eselect';
+    if (fullWidth) wrap.classList.add('eselect--block');
+    else if (rect.width > 0) wrap.style.minWidth = Math.ceil(rect.width) + 'px';
     select.parentNode.insertBefore(wrap, select);
     wrap.appendChild(select);
     select.classList.add('eselect__native');
@@ -46,18 +55,34 @@
     var options = [];
     var open = false;
 
+    function addOpt(opt) {
+      var li = document.createElement('li');
+      li.className = 'eselect__opt';
+      li.setAttribute('role', 'option');
+      li.textContent = opt.textContent;
+      li.dataset.index = String(opt.index); // index within select.options (optgroup-safe)
+      if (opt.disabled) li.setAttribute('aria-disabled', 'true');
+      menu.appendChild(li);
+      options.push(li);
+    }
+
     function build() {
       menu.innerHTML = '';
       options = [];
-      Array.prototype.forEach.call(select.options, function (opt, i) {
-        var li = document.createElement('li');
-        li.className = 'eselect__opt';
-        li.setAttribute('role', 'option');
-        li.textContent = opt.textContent;
-        li.dataset.index = String(i);
-        if (opt.disabled) li.setAttribute('aria-disabled', 'true');
-        menu.appendChild(li);
-        options.push(li);
+      // Walk children so <optgroup> labels render as non-selectable headers.
+      Array.prototype.forEach.call(select.children, function (node) {
+        if (node.tagName === 'OPTGROUP') {
+          var gl = document.createElement('li');
+          gl.className = 'eselect__group';
+          gl.setAttribute('role', 'presentation');
+          gl.textContent = node.label;
+          menu.appendChild(gl);
+          Array.prototype.forEach.call(node.children, function (opt) {
+            if (opt.tagName === 'OPTION') addOpt(opt);
+          });
+        } else if (node.tagName === 'OPTION') {
+          addOpt(node);
+        }
       });
       sync();
     }
@@ -82,21 +107,51 @@
       return select.selectedIndex;
     }
 
+    // The menu is position:fixed so it OVERLAYS everything and escapes any
+    // overflow-clipping ancestor (e.g. .table-wrap). Fixed elements also don't
+    // inflate an ancestor's scroll area, so this kills the phantom scrollbar the
+    // old absolute menu caused inside scroll-wrapped tables. Coords are computed
+    // from the button each time it opens (and on scroll/resize while open).
+    function positionMenu() {
+      var r = btn.getBoundingClientRect();
+      var vh = window.innerHeight || document.documentElement.clientHeight;
+      var gap = 6;
+      var maxH = 288; // matches CSS max-height
+      menu.style.left = Math.round(r.left) + 'px';
+      menu.style.minWidth = Math.round(r.width) + 'px';
+      // Flip above the button when there isn't room below.
+      var below = vh - r.bottom;
+      if (below < Math.min(maxH, 220) && r.top > below) {
+        menu.style.top = 'auto';
+        menu.style.bottom = Math.round(vh - r.top + gap) + 'px';
+      } else {
+        menu.style.bottom = 'auto';
+        menu.style.top = Math.round(r.bottom + gap) + 'px';
+      }
+    }
+
     function openMenu() {
       if (open) return; open = true;
       wrap.classList.add('is-open');
       btn.setAttribute('aria-expanded', 'true');
+      positionMenu();
       setActive(select.selectedIndex);
       document.addEventListener('click', onDoc, true);
       document.addEventListener('keydown', onKey, true);
+      window.addEventListener('scroll', positionMenu, true); // capture inner scrollers too
+      window.addEventListener('resize', positionMenu);
     }
     function closeMenu() {
       if (!open) return; open = false;
       wrap.classList.remove('is-open');
       btn.setAttribute('aria-expanded', 'false');
       options.forEach(function (li) { li.classList.remove('is-active'); });
+      menu.style.top = '-9999px'; // park it offscreen so it never intercepts anything
+      menu.style.bottom = 'auto';
       document.removeEventListener('click', onDoc, true);
       document.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('scroll', positionMenu, true);
+      window.removeEventListener('resize', positionMenu);
     }
     function choose(i) {
       var opt = select.options[i];
@@ -137,12 +192,33 @@
     build();
   }
 
+  // Which selects to enhance: every <select> in the admin content, EXCEPT
+  //  • multi-selects / list boxes (this widget is single-select only)
+  //  • anything opted out with data-no-enhance
+  //  • the hidden native element we ourselves keep in the DOM
+  function shouldEnhance(sel) {
+    if (sel.multiple) return false;
+    if (sel.size > 1) return false;
+    if (sel.hasAttribute('data-no-enhance')) return false;
+    if (sel.classList.contains('eselect__native')) return false;
+    if (sel.dataset.enhanced) return false;
+    return true;
+  }
+
   function init(root) {
-    (root || document).querySelectorAll('select.filter-select').forEach(enhance);
+    root = root || document;
+    // Scope to the admin content area when present so we never touch unrelated
+    // selects; fall back to the whole root (e.g. an AJAX-swapped fragment).
+    var scope = root.querySelector ? (root.querySelector('.admin-content') || root) : root;
+    var sels = scope.querySelectorAll ? scope.querySelectorAll('select') : [];
+    Array.prototype.forEach.call(sels, function (sel) { if (shouldEnhance(sel)) enhance(sel); });
   }
 
   if (document.readyState !== 'loading') init();
   else document.addEventListener('DOMContentLoaded', function () { init(); });
 
+  // Back-compat name kept (admin-table.js calls this after AJAX swaps); it now
+  // enhances every eligible select in the given root, not just .filter-select.
   window.enhanceFilterSelects = init;
+  window.enhanceSelects = init;
 })();

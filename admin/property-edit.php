@@ -220,7 +220,7 @@ include __DIR__ . '/_layout.php';
 <div class="page-header">
   <h1><?= $isNew ? 'Add Property' : e($property['title']) ?></h1>
   <div class="actions">
-    <a href="/admin/properties.php" class="btn-outline btn-sm">← For Sale</a>
+    <a href="/admin/properties.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> For Sale</a>
     <?php if (!$isNew): ?>
     <a href="/property.php?slug=<?= e($property['slug']) ?>" class="btn-outline btn-sm" target="_blank">View on site</a>
     <?php endif; ?>
@@ -413,7 +413,7 @@ include __DIR__ . '/_layout.php';
               <?= csrf_field() ?>
               <input type="hidden" name="gallery_action" value="delete">
               <input type="hidden" name="img_id" value="<?= e($img['id']) ?>">
-              <button type="submit" onclick="return confirm('Delete this image?')">✕</button>
+              <button type="submit" onclick="return confirm('Delete this image?')" aria-label="Delete image" title="Delete image"><?= admin_icon('x', 14) ?></button>
             </form>
           </div>
           <form method="POST" action="/admin/property-edit?id=<?= $id ?>" style="padding:4px 6px;background:#f9fafb;border-top:1px solid var(--border)">

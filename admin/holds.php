@@ -4,6 +4,9 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/mail.php';
 require_once __DIR__ . '/../includes/booking.php';
+require_once __DIR__ . '/../includes/icons.php';
+require_once __DIR__ . '/../includes/pagination.php';
+require_once __DIR__ . '/../includes/admin-pagination.php';
 require_login();
 require_owner();
 
@@ -76,16 +79,26 @@ if ($room_filter) {
     $params[':room_id'] = $room_filter;
 }
 
+// Free-text search + pagination.
+$pg = paginate_params(25);
+$sw = search_where(['h.guest_name', "COALESCE(h.guest_email,'')", 'r.name', "COALESCE(h.access_code,'')"], $pg['q'], $params);
+if ($sw !== '') $conditions[] = $sw;
+
 $where = $conditions ? 'WHERE ' . implode(' AND ', $conditions) : '';
+
+$holdsFrom = "FROM holds h
+     JOIN units u ON u.id = h.unit_id
+     JOIN rooms r ON r.id = u.room_id
+     {$where}";
+
+$total = (int) db_query("SELECT COUNT(*) {$holdsFrom}", $params)->fetchColumn();
+$meta  = paginate_meta($total, $pg['page'], $pg['per']);
 
 $holds = db_query(
     "SELECT h.*, u.name AS unit_name, r.name AS room_name, r.id AS room_db_id, r.venue_id AS venue_id
-     FROM holds h
-     JOIN units u ON u.id = h.unit_id
-     JOIN rooms r ON r.id = u.room_id
-     {$where}
+     {$holdsFrom}
      ORDER BY h.created_at DESC
-     LIMIT 200",
+     LIMIT {$meta['per']} OFFSET {$meta['offset']}",
     $params
 )->fetchAll();
 
@@ -108,64 +121,13 @@ $rooms = db_query("SELECT id, name FROM rooms ORDER BY sort_order ASC")->fetchAl
 
 $pageTitle  = 'Holds & Bookings';
 $activeMenu = 'holds';
-include __DIR__ . '/_layout.php';
-?>
 
-<div class="page-header">
-  <h1>Holds &amp; Bookings</h1>
-  <div class="actions">
-    <a href="/admin/hold-new.php" class="btn-primary btn-sm">+ New Booking</a>
-  </div>
-</div>
-
-<?php if ($success): ?><div class="alert alert--success"><?= e($success) ?></div><?php endif; ?>
-<?php if ($error):   ?><div class="alert alert--error"><?= e($error) ?></div><?php endif; ?>
-
-<!-- KPIs -->
-<div class="kpi-grid" style="grid-template-columns:repeat(3,1fr)">
-  <div class="kpi-card">
-    <div class="kpi-card__label">Pending</div>
-    <div class="kpi-card__value"><?= e($kpi_pending) ?></div>
-    <div class="kpi-card__sub">awaiting confirmation</div>
-  </div>
-  <div class="kpi-card">
-    <div class="kpi-card__label">Confirmed</div>
-    <div class="kpi-card__value"><?= e($kpi_confirmed) ?></div>
-    <div class="kpi-card__sub">active bookings</div>
-  </div>
-  <div class="kpi-card">
-    <div class="kpi-card__label">New Today</div>
-    <div class="kpi-card__value"><?= e($kpi_today) ?></div>
-    <div class="kpi-card__sub">hold requests received</div>
-  </div>
-</div>
-
-<!-- Filters -->
-<form method="GET" action="/admin/holds" class="filters">
-  <label class="filter-field">Status
-    <select name="status" class="filter-select" aria-label="Filter by status" onchange="this.form.submit()">
-      <option value="active"    <?= $status_filter === 'active'    ? 'selected' : '' ?>>Active (pending + confirmed)</option>
-      <option value="pending"   <?= $status_filter === 'pending'   ? 'selected' : '' ?>>Pending only</option>
-      <option value="confirmed" <?= $status_filter === 'confirmed' ? 'selected' : '' ?>>Confirmed only</option>
-      <option value="expired"   <?= $status_filter === 'expired'   ? 'selected' : '' ?>>Expired</option>
-      <option value="cancelled" <?= $status_filter === 'cancelled' ? 'selected' : '' ?>>Cancelled</option>
-    </select>
-  </label>
-  <label class="filter-field">Room
-    <select name="room" class="filter-select" aria-label="Filter by room" onchange="this.form.submit()">
-      <option value="">All rooms</option>
-      <?php foreach ($rooms as $r): ?>
-      <option value="<?= e($r['id']) ?>" <?= $room_filter === (int)$r['id'] ? 'selected' : '' ?>><?= e($r['name']) ?></option>
-      <?php endforeach; ?>
-    </select>
-  </label>
-</form>
-
-<!-- Holds table -->
+// ── Swappable body (table + pager) — reused for AJAX + full page ──
+ob_start(); ?>
 <div class="card">
   <div class="card__body">
     <?php if (empty($holds)): ?>
-    <p style="padding:32px;text-align:center;color:var(--muted)">No holds found for this filter.</p>
+    <p style="padding:32px;text-align:center;color:var(--muted)"><?= $pg['q'] !== '' ? 'No bookings match your search.' : 'Nothing to show for this filter.' ?></p>
     <?php else: ?>
     <div class="table-wrap">
     <table class="data-table">
@@ -336,7 +298,73 @@ include __DIR__ . '/_layout.php';
     </table>
     </div>
     <?php endif; ?>
+    <?php dt_pager($meta); ?>
   </div>
+</div>
+<?php
+$dtBody = ob_get_clean();
+
+// AJAX fragment: emit only the swappable body and stop.
+if ($pg['ajax']) { echo $dtBody; exit; }
+
+include __DIR__ . '/_layout.php';
+?>
+
+<div class="page-header">
+  <h1>Holds &amp; Bookings</h1>
+  <div class="actions">
+    <a href="/admin/hold-new.php" class="btn-primary btn-sm">+ New Booking</a>
+  </div>
+</div>
+
+<?php if ($success): ?><div class="alert alert--success"><?= e($success) ?></div><?php endif; ?>
+<?php if ($error):   ?><div class="alert alert--error"><?= e($error) ?></div><?php endif; ?>
+
+<!-- KPIs -->
+<div class="kpi-grid" style="grid-template-columns:repeat(3,1fr)">
+  <div class="kpi-card">
+    <div class="kpi-card__label">Pending</div>
+    <div class="kpi-card__value"><?= e($kpi_pending) ?></div>
+    <div class="kpi-card__sub">awaiting confirmation</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-card__label">Confirmed</div>
+    <div class="kpi-card__value"><?= e($kpi_confirmed) ?></div>
+    <div class="kpi-card__sub">active bookings</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-card__label">New Today</div>
+    <div class="kpi-card__value"><?= e($kpi_today) ?></div>
+    <div class="kpi-card__sub">hold requests received</div>
+  </div>
+</div>
+
+<!-- Filters -->
+<form method="GET" action="/admin/holds" class="filters">
+  <input type="hidden" name="q"   value="<?= e($pg['q']) ?>">
+  <input type="hidden" name="per" value="<?= (int)$meta['per'] ?>">
+  <label class="filter-field">Status
+    <select name="status" class="filter-select" aria-label="Filter by status" onchange="this.form.submit()">
+      <option value="active"    <?= $status_filter === 'active'    ? 'selected' : '' ?>>Active (pending + confirmed)</option>
+      <option value="pending"   <?= $status_filter === 'pending'   ? 'selected' : '' ?>>Pending only</option>
+      <option value="confirmed" <?= $status_filter === 'confirmed' ? 'selected' : '' ?>>Confirmed only</option>
+      <option value="expired"   <?= $status_filter === 'expired'   ? 'selected' : '' ?>>Expired</option>
+      <option value="cancelled" <?= $status_filter === 'cancelled' ? 'selected' : '' ?>>Cancelled</option>
+    </select>
+  </label>
+  <label class="filter-field">Room
+    <select name="room" class="filter-select" aria-label="Filter by room" onchange="this.form.submit()">
+      <option value="">All rooms</option>
+      <?php foreach ($rooms as $r): ?>
+      <option value="<?= e($r['id']) ?>" <?= $room_filter === (int)$r['id'] ? 'selected' : '' ?>><?= e($r['name']) ?></option>
+      <?php endforeach; ?>
+    </select>
+  </label>
+</form>
+
+<div class="dt" data-dt>
+  <?php dt_toolbar(['per' => $meta['per'], 'placeholder' => 'Search guest, email, room or code…']); ?>
+  <div class="dt-body" data-dt-body><?= $dtBody ?></div>
 </div>
 
 <script>

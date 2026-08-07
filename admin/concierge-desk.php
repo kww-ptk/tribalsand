@@ -7,6 +7,9 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/booking.php';
+require_once __DIR__ . '/../includes/icons.php';
+require_once __DIR__ . '/../includes/pagination.php';
+require_once __DIR__ . '/../includes/admin-pagination.php';
 require_login();
 
 $pageTitle  = 'Concierge desk';
@@ -51,6 +54,12 @@ if (!is_owner()) {
     $ph = []; foreach ($vids as $i=>$v) { $n = ":sv$i"; $ph[] = $n; $params[$n] = (int)$v; }
     $where[] = 'r.venue_id IN (' . implode(',', $ph) . ')';
 }
+
+// Free-text search + pagination.
+$pg = paginate_params(25);
+$sw = search_where(['h.guest_name', "COALESCE(r.name,'')", "COALESCE(v.name,'')", 'ba.kind', "COALESCE(t.name,'')"], $pg['q'], $params);
+if ($sw !== '') $where[] = $sw;
+
 $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
 
 // Only reference the assignee column/join when the migration is in — keeps the
@@ -58,18 +67,24 @@ $whereSql = $where ? ('WHERE ' . implode(' AND ', $where)) : '';
 $asgSelect = $asgOn ? ', aa.name AS assignee_name' : '';
 $asgJoin   = $asgOn ? ' LEFT JOIN admin_users aa ON aa.id = ba.assigned_to' : '';
 
-$rows = db_query(
-    "SELECT ba.*, t.name AS tour_name,
-            h.guest_name, h.check_in, h.check_out,
-            r.name AS room_name, r.venue_id AS venue_id, v.name AS venue_name{$asgSelect}
-     FROM booking_addons ba
+$fromSql = "FROM booking_addons ba
      JOIN holds h  ON h.id = ba.hold_id
      JOIN units u  ON u.id = h.unit_id
      JOIN rooms r  ON r.id = u.room_id
      LEFT JOIN venues v ON v.id = r.venue_id
      LEFT JOIN tours t  ON t.id = ba.tour_id{$asgJoin}
-     {$whereSql}
-     ORDER BY ba.created_at DESC",
+     {$whereSql}";
+
+$total = (int) db_query("SELECT COUNT(*) {$fromSql}", $params)->fetchColumn();
+$meta  = paginate_meta($total, $pg['page'], $pg['per']);
+
+$rows = db_query(
+    "SELECT ba.*, t.name AS tour_name,
+            h.guest_name, h.check_in, h.check_out,
+            r.name AS room_name, r.venue_id AS venue_id, v.name AS venue_name{$asgSelect}
+     {$fromSql}
+     ORDER BY ba.created_at DESC
+     LIMIT {$meta['per']} OFFSET {$meta['offset']}",
     $params
 )->fetchAll();
 
@@ -89,43 +104,8 @@ $badgeClass = fn(string $s): string => [
     'declined'=>'badge--red','cancelled'=>'badge--grey',
 ][$s] ?? 'badge--grey';
 
-include __DIR__ . '/_layout.php';
-?>
-
-<div class="page-header">
-  <h1>Concierge desk</h1>
-  <a href="/admin/dashboard.php" class="btn-outline btn-sm">← Dashboard</a>
-</div>
-
-<?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?> is-flash"><?= e($flash['msg']) ?></div><?php endif; ?>
-
-<form method="GET" action="/admin/concierge-desk.php" class="filters">
-  <label class="filter-field">Status
-    <select name="status" class="filter-select" aria-label="Filter by status" onchange="this.form.submit()">
-      <?php foreach ($statusTabs as $sk=>$sl): ?>
-      <option value="<?= e($sk) ?>" <?= $statusKey===$sk?'selected':'' ?>><?= e($sl) ?></option>
-      <?php endforeach; ?>
-    </select>
-  </label>
-  <label class="filter-field">Service
-    <select name="kind" class="filter-select" aria-label="Filter by service" onchange="this.form.submit()">
-      <option value="all" <?= $kindKey==='all'?'selected':'' ?>>All services</option>
-      <?php foreach ($KINDS as $k): ?>
-      <option value="<?= e($k) ?>" <?= $kindKey===$k?'selected':'' ?>><?= e(ucfirst($k)) ?></option>
-      <?php endforeach; ?>
-    </select>
-  </label>
-  <?php if ($asgOn): ?>
-  <label class="filter-field">Assignee
-    <select name="assignee" class="filter-select" aria-label="Filter by assignee" onchange="this.form.submit()">
-      <?php foreach (['all'=>'All','me'=>'Assigned to me','unassigned'=>'Unassigned'] as $ak=>$al): ?>
-      <option value="<?= e($ak) ?>" <?= $asgKey===$ak?'selected':'' ?>><?= e($al) ?></option>
-      <?php endforeach; ?>
-    </select>
-  </label>
-  <?php endif; ?>
-</form>
-
+// ── Swappable body (table + pager) — reused for AJAX + full page ──
+ob_start(); ?>
 <div class="card">
   <div class="card__body" style="padding:0">
     <div class="table-wrap">
@@ -187,7 +167,57 @@ include __DIR__ . '/_layout.php';
       </tbody>
     </table>
     </div>
+    <?php dt_pager($meta); ?>
   </div>
+</div>
+<?php
+$dtBody = ob_get_clean();
+
+// AJAX fragment: emit only the swappable body and stop.
+if ($pg['ajax']) { echo $dtBody; exit; }
+
+include __DIR__ . '/_layout.php';
+?>
+
+<div class="page-header">
+  <h1>Concierge desk</h1>
+  <a href="/admin/dashboard.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Dashboard</a>
+</div>
+
+<?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?> is-flash"><?= e($flash['msg']) ?></div><?php endif; ?>
+
+<form method="GET" action="/admin/concierge-desk.php" class="filters">
+  <input type="hidden" name="q"   value="<?= e($pg['q']) ?>">
+  <input type="hidden" name="per" value="<?= (int)$meta['per'] ?>">
+  <label class="filter-field">Status
+    <select name="status" class="filter-select" aria-label="Filter by status" onchange="this.form.submit()">
+      <?php foreach ($statusTabs as $sk=>$sl): ?>
+      <option value="<?= e($sk) ?>" <?= $statusKey===$sk?'selected':'' ?>><?= e($sl) ?></option>
+      <?php endforeach; ?>
+    </select>
+  </label>
+  <label class="filter-field">Service
+    <select name="kind" class="filter-select" aria-label="Filter by service" onchange="this.form.submit()">
+      <option value="all" <?= $kindKey==='all'?'selected':'' ?>>All services</option>
+      <?php foreach ($KINDS as $k): ?>
+      <option value="<?= e($k) ?>" <?= $kindKey===$k?'selected':'' ?>><?= e(ucfirst($k)) ?></option>
+      <?php endforeach; ?>
+    </select>
+  </label>
+  <?php if ($asgOn): ?>
+  <label class="filter-field">Assignee
+    <select name="assignee" class="filter-select" aria-label="Filter by assignee" onchange="this.form.submit()">
+      <?php foreach (['all'=>'All','me'=>'Assigned to me','unassigned'=>'Unassigned'] as $ak=>$al): ?>
+      <option value="<?= e($ak) ?>" <?= $asgKey===$ak?'selected':'' ?>><?= e($al) ?></option>
+      <?php endforeach; ?>
+    </select>
+  </label>
+  <?php endif; ?>
+</form>
+
+<div class="dt" data-dt>
+  <?php dt_toolbar(['per' => $meta['per'], 'placeholder' => 'Search guest, room, property or service…']); ?>
+  <div class="dt-body" data-dt-body><?= $dtBody ?></div>
 </div>
 
 <?php include __DIR__ . '/_layout_end.php'; ?>

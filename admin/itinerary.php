@@ -63,7 +63,7 @@ include __DIR__ . '/_layout.php';
 ?>
 <div class="page-header">
   <h1>Itinerary — <?= e($hold['guest_name'] ?: 'Guest') ?></h1>
-  <a href="/admin/holds.php" class="btn-outline btn-sm">← Bookings</a>
+  <a href="/admin/holds.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Bookings</a>
 </div>
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?>"><?= e($flash['msg']) ?></div><?php endif; ?>
 
@@ -83,8 +83,8 @@ include __DIR__ . '/_layout.php';
       <label style="font-size:13px">Category<br>
         <select name="category"><?php foreach ($CATS as $cv=>$cl): ?><option value="<?= e($cv) ?>"><?= e($cl) ?></option><?php endforeach; ?></select>
       </label>
-      <label style="font-size:13px;flex:1;min-width:180px">Title<br><input type="text" name="title" required style="width:100%"></label>
-      <label style="font-size:13px;flex:1;min-width:180px">Detail<br><input type="text" name="detail" style="width:100%"></label>
+      <label style="font-size:13px;flex:1;min-width:180px">Title<br><input type="text" name="title" required placeholder="Enter title" style="width:100%"></label>
+      <label style="font-size:13px;flex:1;min-width:180px">Detail<br><input type="text" name="detail" placeholder="Enter detail" style="width:100%"></label>
       <button type="submit" class="btn-primary">Add</button>
     </form>
   </div>

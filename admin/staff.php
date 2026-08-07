@@ -13,6 +13,9 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/icons.php';
+require_once __DIR__ . '/../includes/pagination.php';
+require_once __DIR__ . '/../includes/admin-pagination.php';
 require_login();
 require_owner();
 
@@ -151,7 +154,20 @@ if (!empty($_SESSION['hold_flash']) && is_string($_SESSION['hold_flash'])) {
     unset($_SESSION['hold_flash'], $_SESSION['hold_flash_type']);
 }
 
-$team = db_query("SELECT * FROM admin_users WHERE role IN ('manager','staff') ORDER BY role ASC, name ASC")->fetchAll();
+// Search + pagination.
+$pg = paginate_params(25);
+$teamParams = [];
+$teamWhere  = "WHERE role IN ('manager','staff')";
+$sw = search_where(['name', "COALESCE(email,'')", "COALESCE(access_code,'')"], $pg['q'], $teamParams);
+if ($sw !== '') $teamWhere .= " AND $sw";
+
+$total = (int) db_query("SELECT COUNT(*) FROM admin_users $teamWhere", $teamParams)->fetchColumn();
+$meta  = paginate_meta($total, $pg['page'], $pg['per']);
+
+$team = db_query(
+    "SELECT * FROM admin_users $teamWhere ORDER BY role ASC, name ASC LIMIT {$meta['per']} OFFSET {$meta['offset']}",
+    $teamParams
+)->fetchAll();
 
 // Prefetch venue assignments: admin_user_id => [venue_id, ...]
 $assignMap = [];
@@ -161,78 +177,17 @@ foreach (db_query('SELECT admin_user_id, venue_id FROM admin_user_venues')->fetc
 $venueNames = [];
 foreach ($venues as $v) { $venueNames[(int)$v['id']] = $v['name']; }
 
-include __DIR__ . '/_layout.php';
-?>
-
-<div class="page-header">
-  <h1>Staff &amp; managers</h1>
-  <a href="/admin/dashboard.php" class="btn-outline btn-sm">← Dashboard</a>
-</div>
-
-<?php if ($flash): ?><div class="alert alert--<?= e($flashType) ?>"><?= e($flash) ?></div><?php endif; ?>
-
-<div class="card" style="margin-bottom:24px">
-  <div class="card__head"><span class="card__title">Add an account</span></div>
-  <div class="card__body">
-    <form method="POST" id="createForm">
-      <?= csrf_field() ?>
-      <input type="hidden" name="action" value="create">
-
-      <div style="margin-bottom:14px">
-        <span class="text-muted" style="display:block;margin-bottom:6px">Account type</span>
-        <label style="margin-right:18px"><input type="radio" name="account_type" value="staff" checked> Staff (access code)</label>
-        <label><input type="radio" name="account_type" value="manager"> Manager (email + password)</label>
-      </div>
-
-      <label style="display:block;margin-bottom:12px">Name
-        <input type="text" name="name" required style="display:block;width:100%;max-width:360px;margin-top:4px">
-      </label>
-
-      <div class="acct-staff" style="margin-bottom:12px">
-        <label style="display:block">Job type
-          <select name="job_type" style="display:block;margin-top:4px;padding:7px 9px;border:1px solid #d9d2c6;border-radius:6px">
-            <?php foreach (STAFF_JOB_TYPES as $jk => $jl): ?>
-            <option value="<?= e($jk) ?>"><?= e($jl) ?></option>
-            <?php endforeach; ?>
-          </select>
-        </label>
-        <span class="text-muted" style="font-size:12px">Ops jobs land on “My work”; gate security lands on “Gate”; front desk lands on “Front desk”.</span>
-      </div>
-
-      <div class="acct-manager" style="margin-bottom:12px;display:none">
-        <label style="display:block;margin-bottom:8px">Email
-          <input type="email" name="email" style="display:block;width:100%;max-width:360px;margin-top:4px">
-        </label>
-        <label style="display:block">Password <small class="text-muted">(min. 10 chars)</small>
-          <input type="password" name="password" minlength="10" autocomplete="new-password" style="display:block;width:100%;max-width:360px;margin-top:4px">
-        </label>
-        <span class="text-muted" style="font-size:12px">Managers assign work, create tasks and run the gate — for their properties only. They can’t touch pricing, settings or accounts.</span>
-      </div>
-
-      <div style="margin-bottom:16px">
-        <span class="text-muted" style="display:block;margin-bottom:6px">Properties this account can manage</span>
-        <?php if (!$venues): ?>
-          <span class="text-muted">No properties yet.</span>
-        <?php else: foreach ($venues as $v): ?>
-          <label style="display:inline-block;margin-right:16px;margin-bottom:6px">
-            <input type="checkbox" name="venue_id[]" value="<?= (int)$v['id'] ?>"> <?= e($v['name']) ?>
-          </label>
-        <?php endforeach; endif; ?>
-      </div>
-
-      <button type="submit" class="btn-primary">Create</button>
-    </form>
-  </div>
-</div>
-
+// ── Swappable body (team list + pager) — reused for AJAX + full page ──
+ob_start(); ?>
 <div class="card">
   <div class="card__head"><span class="card__title">Team accounts</span></div>
   <div class="card__body" style="padding:0">
+    <div class="table-wrap">
     <table class="data-table">
       <thead><tr><th>Name</th><th>Role / job</th><th>Sign in</th><th>Properties</th><th>Status</th><th style="text-align:right">Manage</th></tr></thead>
       <tbody>
         <?php if (!$team): ?>
-        <tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--muted)">No manager or staff accounts yet.</td></tr>
+        <tr><td colspan="6" style="text-align:center;padding:2rem;color:var(--muted)"><?= $pg['q'] !== '' ? 'No accounts match your search.' : 'Nothing to show yet.' ?></td></tr>
         <?php else: foreach ($team as $s):
           $sid       = (int)$s['id'];
           $isManager = ($s['role'] ?? '') === 'manager';
@@ -274,7 +229,7 @@ include __DIR__ . '/_layout.php';
             <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="regen"><input type="hidden" name="staff_id" value="<?= $sid ?>"><button class="btn-outline btn-sm">Regenerate code</button></form>
             <?php endif; ?>
             <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="toggle"><input type="hidden" name="staff_id" value="<?= $sid ?>"><button class="btn-outline btn-sm"><?= !empty($s['is_active']) ? 'Deactivate' : 'Activate' ?></button></form>
-            <form method="POST" style="display:inline" onsubmit="return confirm('Remove this account?')"><?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="staff_id" value="<?= $sid ?>"><button class="btn-danger btn-sm">Delete</button></form>
+            <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="staff_id" value="<?= $sid ?>"><button class="btn-danger btn-sm" data-confirm="Remove this account?">Delete</button></form>
           </td>
         </tr>
         <tr>
@@ -322,7 +277,82 @@ include __DIR__ . '/_layout.php';
         <?php endforeach; endif; ?>
       </tbody>
     </table>
+    </div>
+    <?php dt_pager($meta); ?>
   </div>
+</div>
+<?php
+$dtBody = ob_get_clean();
+
+if ($pg['ajax']) { echo $dtBody; exit; }
+
+include __DIR__ . '/_layout.php';
+?>
+
+<div class="page-header">
+  <h1>Staff &amp; managers</h1>
+  <a href="/admin/dashboard.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Dashboard</a>
+</div>
+
+<?php if ($flash): ?><div class="alert alert--<?= e($flashType) ?>"><?= e($flash) ?></div><?php endif; ?>
+
+<div class="card" style="margin-bottom:24px">
+  <div class="card__head"><span class="card__title">Add an account</span></div>
+  <div class="card__body">
+    <form method="POST" id="createForm">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="create">
+
+      <div style="margin-bottom:14px">
+        <span class="text-muted" style="display:block;margin-bottom:6px">Account type</span>
+        <label style="margin-right:18px"><input type="radio" name="account_type" value="staff" checked> Staff (access code)</label>
+        <label><input type="radio" name="account_type" value="manager"> Manager (email + password)</label>
+      </div>
+
+      <label style="display:block;margin-bottom:12px">Name
+        <input type="text" name="name" required placeholder="Enter full name" style="display:block;width:100%;max-width:360px;margin-top:4px">
+      </label>
+
+      <div class="acct-staff" style="margin-bottom:12px">
+        <label style="display:block">Job type
+          <select name="job_type" style="display:block;margin-top:4px;padding:7px 9px;border:1px solid #d9d2c6;border-radius:6px">
+            <?php foreach (STAFF_JOB_TYPES as $jk => $jl): ?>
+            <option value="<?= e($jk) ?>"><?= e($jl) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </label>
+        <span class="text-muted" style="font-size:12px">Ops jobs land on “My work”; gate security lands on “Gate”; front desk lands on “Front desk”.</span>
+      </div>
+
+      <div class="acct-manager" style="margin-bottom:12px;display:none">
+        <label style="display:block;margin-bottom:8px">Email
+          <input type="email" name="email" placeholder="Enter email address" style="display:block;width:100%;max-width:360px;margin-top:4px">
+        </label>
+        <label style="display:block">Password <small class="text-muted">(min. 10 chars)</small>
+          <input type="password" name="password" minlength="10" autocomplete="new-password" placeholder="Enter a password (min. 10 characters)" style="display:block;width:100%;max-width:360px;margin-top:4px">
+        </label>
+        <span class="text-muted" style="font-size:12px">Managers assign work, create tasks and run the gate — for their properties only. They can’t touch pricing, settings or accounts.</span>
+      </div>
+
+      <div style="margin-bottom:16px">
+        <span class="text-muted" style="display:block;margin-bottom:6px">Properties this account can manage</span>
+        <?php if (!$venues): ?>
+          <span class="text-muted">No properties yet.</span>
+        <?php else: foreach ($venues as $v): ?>
+          <label style="display:inline-block;margin-right:16px;margin-bottom:6px">
+            <input type="checkbox" name="venue_id[]" value="<?= (int)$v['id'] ?>"> <?= e($v['name']) ?>
+          </label>
+        <?php endforeach; endif; ?>
+      </div>
+
+      <button type="submit" class="btn-primary">Create</button>
+    </form>
+  </div>
+</div>
+
+<div class="dt" data-dt>
+  <?php dt_toolbar(['per' => $meta['per'], 'placeholder' => 'Search name, email or access code…']); ?>
+  <div class="dt-body" data-dt-body><?= $dtBody ?></div>
 </div>
 
 <script>
