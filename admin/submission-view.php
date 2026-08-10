@@ -25,6 +25,8 @@ if (!$sub) {
 }
 
 require_once __DIR__ . '/../includes/booking.php'; // make_manage_url()
+require_once __DIR__ . '/../includes/copy-link.php'; // copy_link_control()
+require_once __DIR__ . '/../includes/submission-notes.php'; // internal notes thread (#15)
 
 // Flash (set by the convert handler on redirect)
 $flash = $_SESSION['sub_flash'] ?? null;
@@ -32,6 +34,21 @@ unset($_SESSION['sub_flash']);
 
 // Is this submission already converted to a hold?
 $linked_hold = fetch_hold_by_submission($id);
+
+// Add internal note (staff-only conversation log)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_note') {
+    verify_csrf();
+    $body = trim((string)($_POST['body'] ?? ''));
+    if ($body === '') {
+        $_SESSION['sub_flash'] = ['type' => 'error', 'msg' => 'Note is empty.'];
+    } elseif (!submission_notes_supported()) {
+        $_SESSION['sub_flash'] = ['type' => 'error', 'msg' => 'Notes are unavailable — run the add_submission_notes migration.'];
+    } elseif (!add_submission_note($id, $_SESSION['admin_id'] ?? null, $body)) {
+        $_SESSION['sub_flash'] = ['type' => 'error', 'msg' => 'Could not save the note. Please try again.'];
+    }
+    header('Location: /admin/submission-view?id=' . $id . '#notes');
+    exit;
+}
 
 // Delete
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete') {
@@ -101,6 +118,7 @@ $badge = match($sub['type']) {
 };
 
 $payload = json_decode($sub['payload_json'] ?? '{}', true) ?: [];
+$notes   = fetch_submission_notes($id);
 
 $pageTitle  = 'Submission #' . $id;
 $activeMenu = 'submissions';
@@ -205,6 +223,47 @@ include __DIR__ . '/_layout.php';
   </div>
 </div>
 
+<!-- Internal notes (staff-only conversation log, #15) -->
+<div class="card" id="notes">
+  <div class="card__head">
+    <span class="card__title">Internal Notes</span>
+    <span class="text-muted" style="font-size:12px">Staff only — never shown to the guest<?= $notes ? ' · ' . count($notes) . ' note' . (count($notes) === 1 ? '' : 's') : '' ?></span>
+  </div>
+  <div class="card__body" style="padding:20px">
+    <?php if (!submission_notes_supported()): ?>
+      <p class="text-muted" style="margin:0;font-size:13px">Notes are unavailable on this deployment. Run the <code>add_submission_notes.sql</code> migration to enable them.</p>
+    <?php else: ?>
+      <div class="notes-thread">
+        <?php if (!$notes): ?>
+          <p class="notes-empty">No notes yet. Add the first one below — useful for logging calls, follow-ups and internal context.</p>
+        <?php else: foreach ($notes as $n):
+          $author = trim((string)($n['author_name'] ?? '')) ?: (trim((string)($n['author_email'] ?? '')) ?: 'Unknown');
+          $initial = strtoupper(mb_substr($author, 0, 1)); ?>
+        <div class="note">
+          <div class="note__avatar" aria-hidden="true"><?= e($initial) ?></div>
+          <div class="note__main">
+            <div class="note__head">
+              <span class="note__author"><?= e($author) ?></span>
+              <span class="note__time"><?= e(date('d M Y, H:i', strtotime($n['created_at']))) ?></span>
+            </div>
+            <div class="note__body"><?= nl2br(e($n['body'])) ?></div>
+          </div>
+        </div>
+        <?php endforeach; endif; ?>
+      </div>
+
+      <form method="POST" action="/admin/submission-view?id=<?= $id ?>" class="notes-composer">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="add_note">
+        <textarea name="body" rows="2" class="inp" placeholder="Add an internal note — a call summary, follow-up, or context for the team…" required></textarea>
+        <div class="notes-composer__actions">
+          <button type="submit" class="btn-primary btn-sm"><?= admin_icon('plus', 15) ?> Add note</button>
+        </div>
+      </form>
+    <?php endif; ?>
+  </div>
+</div>
+
 <!-- Tracking -->
 <div class="card">
   <div class="card__head"><span class="card__title">Tracking &amp; Source</span></div>
@@ -265,13 +324,7 @@ include __DIR__ . '/_layout.php';
       — <?= e($linked_hold['room_name']) ?>,
       <?= e(date('d M Y', strtotime($linked_hold['check_in']))) ?> → <?= e(date('d M Y', strtotime($linked_hold['check_out']))) ?>
     </p>
-    <div style="font-size:13px;color:var(--muted)">
-      Booking code: <strong style="letter-spacing:1px;color:var(--text,#111)"><?= e($lh_code ?: '—') ?></strong>
-      <?php if ($lh_link): ?>
-      <button type="button" class="copy-link" data-link="<?= e($lh_link) ?>"
-              style="margin-left:6px;font-size:11px;padding:1px 7px;cursor:pointer;border:1px solid #ccc;border-radius:4px;background:#fff">Copy portal link</button>
-      <?php endif; ?>
-    </div>
+    <?php copy_link_control((string)$lh_code, (string)$lh_link); ?>
   <?php else:
       $ru_options = fetch_room_unit_options();
       // Preselect the first active unit of the submission's room, if any
@@ -346,19 +399,5 @@ include __DIR__ . '/_layout.php';
     </form>
   </div>
 </div>
-
-<script>
-document.addEventListener('click', function (e) {
-  var b = e.target.closest('.copy-link');
-  if (!b) return;
-  var link = b.getAttribute('data-link');
-  var done = function () { var t = b.textContent; b.textContent = 'Copied!'; setTimeout(function () { b.textContent = t; }, 1500); };
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(link).then(done).catch(function () { window.prompt('Copy this portal link:', link); });
-  } else {
-    window.prompt('Copy this portal link:', link);
-  }
-});
-</script>
 
 <?php include __DIR__ . '/_layout_end.php'; ?>

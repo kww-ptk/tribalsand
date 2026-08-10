@@ -21,6 +21,7 @@
     if (typeof window.tsAdminWire === 'function') window.tsAdminWire(root);
     if (typeof window.enhanceFilterSelects === 'function') window.enhanceFilterSelects(root);
     if (typeof window.tsDtDrag === 'function') window.tsDtDrag(root);   // re-bind drag on reorderable lists
+    if (typeof window.tsTipInit === 'function') window.tsTipInit(root); // migrate title= on swapped rows
   }
 
   function enhance(root) {

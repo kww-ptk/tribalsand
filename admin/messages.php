@@ -91,9 +91,9 @@ if (!$inThread) {
               $tid  = $t['addon_id'] === null ? 'general' : (int)$t['addon_id'];
               $href = '/admin/messages.php?hold=' . (int)$t['hold_id'] . '&thread=' . $tid;
             ?>
-            <tr class="dt-rowlink" data-href="<?= e($href) ?>">
+            <tr class="dt-rowlink<?= (int)$t['unread_admin'] > 0 ? ' is-unread' : '' ?>" data-href="<?= e($href) ?>">
               <td>
-                <strong><?= e($t['guest_name'] ?: 'Guest') ?></strong>
+                <strong class="thread-guest"><?= e($t['guest_name'] ?: 'Guest') ?></strong>
                 <?php if (!empty($t['venue_name'])): ?><br><span class="text-muted" style="font-size:12px"><?= e($t['venue_name']) ?></span><?php endif; ?>
               </td>
               <td><a href="<?= e($href) ?>"><?= e(thread_title($t)) ?></a></td>
@@ -160,25 +160,25 @@ include __DIR__ . '/_layout.php';
        data-poll-url="/admin/messages-poll"
        data-hold="<?= (int)$holdId ?>"
        data-thread="<?= $addonId === null ? 'general' : (int)$addonId ?>"
-       data-last="<?= $lastId ?>"
-       style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+       data-last="<?= $lastId ?>">
     <p class="text-muted am-empty"<?= $msgs ? ' style="display:none"' : '' ?>>No messages in this thread yet.</p>
     <?php foreach ($msgs as $m): $adminMsg = $m['sender'] === 'admin'; ?>
-    <div class="am-msg" data-mid="<?= (int)$m['id'] ?>" style="max-width:80%;<?= $adminMsg ? 'align-self:flex-end;background:#102F3A;color:#fff' : 'align-self:flex-start;background:#f3f4f6;color:#111' ?>;border-radius:12px;padding:9px 12px;font-size:14px;line-height:1.5">
+    <div class="am-msg <?= $adminMsg ? 'am-msg--staff' : 'am-msg--guest' ?>" data-mid="<?= (int)$m['id'] ?>">
       <?= e($m['body']) ?>
-      <div style="font-size:11px;margin-top:4px;opacity:.7"><?= $adminMsg ? 'Staff' : 'Guest' ?> · <?= e(message_time_label($m['created_at'])) ?></div>
+      <div class="am-msg__meta"><?= $adminMsg ? 'Staff' : 'Guest' ?> · <?= e(message_time_label($m['created_at'])) ?></div>
     </div>
     <?php endforeach; ?>
   </div>
-  <form id="amForm" method="POST">
+  <form id="amForm" method="POST" class="am-composer">
     <?= csrf_field() ?>
     <input type="hidden" name="hold_id" value="<?= (int)$holdId ?>">
     <input type="hidden" name="addon_id" value="<?= $addonId === null ? '' : (int)$addonId ?>">
-    <textarea name="body" rows="3" required placeholder="Reply to the guest…" style="width:100%;padding:10px;border:1px solid #d1d5db;border-radius:8px;font-size:16px"></textarea>
-    <button type="submit" class="btn-primary" style="margin-top:8px">Send reply</button>
-    <span class="am-status text-muted" aria-live="polite" style="margin-left:10px;font-size:13px"></span>
+    <textarea name="body" rows="3" required placeholder="Reply to the guest…"></textarea>
+    <div class="am-composer__actions">
+      <button type="submit" class="btn-primary"><?= admin_icon('send', 15) ?> Send reply</button>
+      <span class="am-status text-muted" aria-live="polite" style="font-size:13px"></span>
+    </div>
   </form>
 </div></div>
-<script src="/admin/assets/admin-chat.js?v=<?= @filemtime(__DIR__ . '/assets/admin-chat.js') ?: '1' ?>" defer></script>
 <?php endif; ?>
 <?php include __DIR__ . '/_layout_end.php'; ?>

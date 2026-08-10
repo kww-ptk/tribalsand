@@ -224,38 +224,41 @@ ob_start(); ?>
               <span class="badge badge--grey">Inactive</span>
             <?php endif; ?>
           </td>
-          <td style="text-align:right;white-space:nowrap">
-            <?php if (!$isManager): ?>
-            <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="regen"><input type="hidden" name="staff_id" value="<?= $sid ?>"><button class="btn-outline btn-sm">Regenerate code</button></form>
-            <?php endif; ?>
-            <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="toggle"><input type="hidden" name="staff_id" value="<?= $sid ?>"><button class="btn-outline btn-sm"><?= !empty($s['is_active']) ? 'Deactivate' : 'Activate' ?></button></form>
-            <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="staff_id" value="<?= $sid ?>"><button class="btn-danger btn-sm" data-confirm="Remove this account?">Delete</button></form>
+          <td>
+            <div class="dt-actions">
+              <?php if (!$isManager): ?>
+              <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="regen"><input type="hidden" name="staff_id" value="<?= $sid ?>"><button class="btn-icon btn-icon--outline" data-tip="Regenerate access code" aria-label="Regenerate access code"><?= admin_icon('rotate') ?></button></form>
+              <?php endif; ?>
+              <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="toggle"><input type="hidden" name="staff_id" value="<?= $sid ?>"><button class="btn-icon btn-icon--outline" data-tip="<?= !empty($s['is_active']) ? 'Deactivate account' : 'Activate account' ?>" aria-label="<?= !empty($s['is_active']) ? 'Deactivate account' : 'Activate account' ?>"><?= admin_icon(!empty($s['is_active']) ? 'ban' : 'check') ?></button></form>
+              <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="staff_id" value="<?= $sid ?>"><button class="btn-icon btn-icon--danger" data-confirm="Remove this account?" data-tip="Delete account" aria-label="Delete account"><?= admin_icon('trash') ?></button></form>
+            </div>
           </td>
         </tr>
         <tr>
           <td colspan="6" style="background:transparent">
-            <form method="POST" style="display:flex;flex-wrap:wrap;gap:16px;align-items:center">
+            <form method="POST" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">
               <?= csrf_field() ?>
               <input type="hidden" name="action" value="venues">
               <input type="hidden" name="staff_id" value="<?= $sid ?>">
               <span class="text-muted">Properties:</span>
               <?php if (!$venues): ?>
                 <span class="text-muted">No properties yet.</span>
-              <?php else: foreach ($venues as $v): ?>
-                <label style="display:inline-block">
-                  <input type="checkbox" name="venue_id[]" value="<?= (int)$v['id'] ?>" <?= in_array((int)$v['id'], $assigned, true) ? 'checked' : '' ?>> <?= e($v['name']) ?>
-                </label>
-              <?php endforeach; ?>
+              <?php else: ?>
+                <div class="optset">
+                <?php foreach ($venues as $v): ?>
+                  <label class="optchip"><input type="checkbox" name="venue_id[]" value="<?= (int)$v['id'] ?>" <?= in_array((int)$v['id'], $assigned, true) ? 'checked' : '' ?>><?= e($v['name']) ?></label>
+                <?php endforeach; ?>
+                </div>
                 <button class="btn-outline btn-sm">Save properties</button>
               <?php endif; ?>
             </form>
             <?php if (!$isManager): ?>
-            <form method="POST" style="display:flex;gap:8px;align-items:center;margin-top:8px">
+            <form method="POST" style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap">
               <?= csrf_field() ?>
               <input type="hidden" name="action" value="job">
               <input type="hidden" name="staff_id" value="<?= $sid ?>">
               <span class="text-muted">Job:</span>
-              <select name="job_type" style="padding:6px 8px;border:1px solid #d9d2c6;border-radius:6px">
+              <select name="job_type" class="filter-select" aria-label="Job type">
                 <?php foreach (STAFF_JOB_TYPES as $jk => $jl): ?>
                 <option value="<?= e($jk) ?>" <?= ($job ?? 'frontdesk') === $jk ? 'selected' : '' ?>><?= e($jl) ?></option>
                 <?php endforeach; ?>
@@ -263,12 +266,12 @@ ob_start(); ?>
               <button class="btn-outline btn-sm">Save job</button>
             </form>
             <?php else: ?>
-            <form method="POST" style="display:flex;gap:8px;align-items:center;margin-top:8px" onsubmit="return this.password.value.length>=10 || (alert('Password must be at least 10 characters.'),false)">
+            <form method="POST" style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap">
               <?= csrf_field() ?>
               <input type="hidden" name="action" value="setpw">
               <input type="hidden" name="staff_id" value="<?= $sid ?>">
               <span class="text-muted">Set password:</span>
-              <input type="password" name="password" minlength="10" autocomplete="new-password" placeholder="min. 10 chars" style="padding:6px 8px;border:1px solid #d9d2c6;border-radius:6px">
+              <input type="password" name="password" minlength="10" required autocomplete="new-password" placeholder="min. 10 chars" class="inp inp--sm">
               <button class="btn-outline btn-sm">Update</button>
             </form>
             <?php endif; ?>
@@ -289,63 +292,76 @@ if ($pg['ajax']) { echo $dtBody; exit; }
 include __DIR__ . '/_layout.php';
 ?>
 
+<?php $__openCreate = ($flash !== '' && $flashType === 'error'); ?>
 <div class="page-header">
   <h1>Staff &amp; managers</h1>
-  <a href="/admin/dashboard.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Dashboard</a>
+  <div class="actions">
+    <button type="button" class="btn-primary btn-sm" id="addAccountBtn" aria-controls="createCard" aria-expanded="<?= $__openCreate ? 'true' : 'false' ?>"><?= admin_icon('plus', 15) ?> Add account</button>
+    <a href="/admin/dashboard.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Dashboard</a>
+  </div>
 </div>
 
 <?php if ($flash): ?><div class="alert alert--<?= e($flashType) ?>"><?= e($flash) ?></div><?php endif; ?>
 
-<div class="card" style="margin-bottom:24px">
+<div class="card" style="margin-bottom:24px" id="createCard" <?= $__openCreate ? '' : 'hidden' ?>>
   <div class="card__head"><span class="card__title">Add an account</span></div>
-  <div class="card__body">
+  <div class="card__body card__body--pad">
     <form method="POST" id="createForm">
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="create">
 
-      <div style="margin-bottom:14px">
-        <span class="text-muted" style="display:block;margin-bottom:6px">Account type</span>
-        <label style="margin-right:18px"><input type="radio" name="account_type" value="staff" checked> Staff (access code)</label>
-        <label><input type="radio" name="account_type" value="manager"> Manager (email + password)</label>
+      <div class="field">
+        <span>Account type</span>
+        <div class="optset">
+          <label class="optchip"><input type="radio" name="account_type" value="staff" checked> Staff (access code)</label>
+          <label class="optchip"><input type="radio" name="account_type" value="manager"> Manager (email + password)</label>
+        </div>
       </div>
 
-      <label style="display:block;margin-bottom:12px">Name
-        <input type="text" name="name" required placeholder="Enter full name" style="display:block;width:100%;max-width:360px;margin-top:4px">
-      </label>
+      <div class="field" style="max-width:360px">
+        <label for="stName">Name</label>
+        <input id="stName" type="text" name="name" class="inp" required placeholder="Enter full name" style="width:100%">
+      </div>
 
-      <div class="acct-staff" style="margin-bottom:12px">
-        <label style="display:block">Job type
-          <select name="job_type" style="display:block;margin-top:4px;padding:7px 9px;border:1px solid #d9d2c6;border-radius:6px">
+      <div class="acct-staff">
+        <div class="field" style="max-width:360px">
+          <label>Job type</label>
+          <select name="job_type" class="filter-select eselect--block" aria-label="Job type">
             <?php foreach (STAFF_JOB_TYPES as $jk => $jl): ?>
             <option value="<?= e($jk) ?>"><?= e($jl) ?></option>
             <?php endforeach; ?>
           </select>
-        </label>
-        <span class="text-muted" style="font-size:12px">Ops jobs land on “My work”; gate security lands on “Gate”; front desk lands on “Front desk”.</span>
+          <span class="field-hint">Ops jobs land on “My work”; gate security lands on “Gate”; front desk lands on “Front desk”.</span>
+        </div>
       </div>
 
-      <div class="acct-manager" style="margin-bottom:12px;display:none">
-        <label style="display:block;margin-bottom:8px">Email
-          <input type="email" name="email" placeholder="Enter email address" style="display:block;width:100%;max-width:360px;margin-top:4px">
-        </label>
-        <label style="display:block">Password <small class="text-muted">(min. 10 chars)</small>
-          <input type="password" name="password" minlength="10" autocomplete="new-password" placeholder="Enter a password (min. 10 characters)" style="display:block;width:100%;max-width:360px;margin-top:4px">
-        </label>
-        <span class="text-muted" style="font-size:12px">Managers assign work, create tasks and run the gate — for their properties only. They can’t touch pricing, settings or accounts.</span>
+      <div class="acct-manager" style="display:none">
+        <div class="field" style="max-width:360px">
+          <label for="stEmail">Email</label>
+          <input id="stEmail" type="email" name="email" class="inp" placeholder="Enter email address" style="width:100%">
+        </div>
+        <div class="field" style="max-width:360px">
+          <label for="stPass">Password <small class="text-muted">(min. 10 chars)</small></label>
+          <input id="stPass" type="password" name="password" class="inp" minlength="10" autocomplete="new-password" placeholder="Enter a password (min. 10 characters)" style="width:100%">
+          <span class="field-hint">Managers assign work, create tasks and run the gate — for their properties only. They can’t touch pricing, settings or accounts.</span>
+        </div>
       </div>
 
-      <div style="margin-bottom:16px">
-        <span class="text-muted" style="display:block;margin-bottom:6px">Properties this account can manage</span>
+      <div class="field">
+        <span>Properties this account can manage</span>
         <?php if (!$venues): ?>
           <span class="text-muted">No properties yet.</span>
-        <?php else: foreach ($venues as $v): ?>
-          <label style="display:inline-block;margin-right:16px;margin-bottom:6px">
-            <input type="checkbox" name="venue_id[]" value="<?= (int)$v['id'] ?>"> <?= e($v['name']) ?>
-          </label>
-        <?php endforeach; endif; ?>
+        <?php else: ?>
+          <div class="optset">
+          <?php foreach ($venues as $v): ?>
+            <label class="optchip"><input type="checkbox" name="venue_id[]" value="<?= (int)$v['id'] ?>"> <?= e($v['name']) ?></label>
+          <?php endforeach; ?>
+          </div>
+        <?php endif; ?>
       </div>
 
       <button type="submit" class="btn-primary">Create</button>
+      <button type="button" class="btn-outline btn-sm" data-close-create style="margin-left:8px">Cancel</button>
     </form>
   </div>
 </div>
@@ -357,6 +373,18 @@ include __DIR__ . '/_layout.php';
 
 <script>
 (function () {
+  // Toggle the inline "Add an account" form from the header button.
+  var btn = document.getElementById('addAccountBtn'), card = document.getElementById('createCard');
+  if (btn && card) {
+    function setOpen(open) {
+      if (open) { card.removeAttribute('hidden'); card.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); var f = card.querySelector('input,select,textarea'); if (f) f.focus(); }
+      else card.setAttribute('hidden', '');
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    btn.addEventListener('click', function () { setOpen(card.hasAttribute('hidden')); });
+    card.querySelectorAll('[data-close-create]').forEach(function (c) { c.addEventListener('click', function () { setOpen(false); }); });
+  }
+
   var form = document.getElementById('createForm');
   if (!form) return;
   function sync() {

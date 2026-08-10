@@ -234,8 +234,10 @@
   function init() {
     const btns = document.querySelectorAll(".dp-btn");
     if (!btns.length) return;
-    buildPopup();
+    if (!pop) buildPopup();               // build the shared popup once (idempotent re-init)
     btns.forEach(btn => {
+      if (btn.dataset.dpBound) return;     // bind each button once (survives AJAX/shell swaps)
+      btn.dataset.dpBound = "1";
       // Pre-fill button label if hidden input already has a value (e.g. from URL params)
       const inp = btn.dataset.dpTarget ? document.getElementById(btn.dataset.dpTarget) : null;
       if (inp?.value) { btn.textContent = fmtDisp(parseYmd(inp.value)); btn.classList.add("dp-btn--active"); }
@@ -249,6 +251,7 @@
     });
   }
 
+  window.initDatepickers = init;           // let the shell/table layers re-init after a swap
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init);
   else init();
 })();

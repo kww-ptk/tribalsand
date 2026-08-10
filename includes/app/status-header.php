@@ -6,7 +6,7 @@ $__nights = (int)((strtotime($hold['check_out']) - strtotime($hold['check_in']))
 ?>
 <div class="pa-status">
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
-    <div style="font-family:'Cormorant Garamond',serif;font-size:20px"><?= e($hold['room_name']) ?></div>
+    <div style="font-family:'Inter',system-ui,sans-serif;font-size:20px"><?= e($hold['room_name']) ?></div>
     <span class="pa-badge" style="background:<?= $__bg ?>;color:<?= $__fg ?>"><?= e(ucfirst($status)) ?></span>
   </div>
   <dl style="margin:0">

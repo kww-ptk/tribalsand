@@ -182,10 +182,12 @@ ob_start(); ?>
           <td style="text-transform:capitalize"><?= e($p['category']) ?></td>
           <td><?= e($p['venue_name'] ?? 'All properties') ?></td>
           <td><?= $p['is_published'] ? 'Yes' : 'No' ?></td>
-          <td style="text-align:right;white-space:nowrap">
-            <a href="/admin/guest-board.php?edit=<?= (int)$p['id'] ?>" class="btn-outline btn-sm">Edit</a>
-            <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="toggle"><input type="hidden" name="id" value="<?= (int)$p['id'] ?>"><button class="btn-outline btn-sm"><?= $p['is_published']?'Hide':'Show' ?></button></form>
-            <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= (int)$p['id'] ?>"><button class="btn-danger btn-sm" data-confirm="Delete this post?">Delete</button></form>
+          <td>
+            <div class="dt-actions">
+              <a href="/admin/guest-board.php?edit=<?= (int)$p['id'] ?>" class="btn-icon btn-icon--outline" data-tip="Edit post" aria-label="Edit post"><?= admin_icon('edit') ?></a>
+              <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="toggle"><input type="hidden" name="id" value="<?= (int)$p['id'] ?>"><button class="btn-icon btn-icon--outline" data-tip="<?= $p['is_published']?'Hide from guests':'Show to guests' ?>" aria-label="<?= $p['is_published']?'Hide from guests':'Show to guests' ?>"><?= admin_icon($p['is_published']?'ban':'eye') ?></button></form>
+              <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= (int)$p['id'] ?>"><button class="btn-icon btn-icon--danger" data-confirm="Delete this post?" data-tip="Delete post" aria-label="Delete post"><?= admin_icon('trash') ?></button></form>
+            </div>
           </td>
         </tr>
         <?php endforeach; endif; ?>
@@ -203,73 +205,144 @@ if ($pg['ajax']) { echo $dtBody; exit; }
 include __DIR__ . '/_layout.php';
 ?>
 
+<?php $__openForm = $edit || !empty($errs); ?>
 <div class="page-header">
   <h1>Guest board</h1>
-  <a href="/admin/dashboard.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Dashboard</a>
+  <div class="actions">
+    <button type="button" class="btn-primary btn-sm" id="newPostBtn" aria-controls="postCard" aria-expanded="<?= $__openForm ? 'true' : 'false' ?>"><?= admin_icon('plus', 15) ?> New post</button>
+    <a href="/admin/dashboard.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Dashboard</a>
+  </div>
 </div>
 
 <?php if ($flash): ?><div class="alert alert--success"><?= e($flash) ?></div><?php endif; ?>
 <?php foreach ($errs as $er): ?><div class="alert alert--error"><?= e($er) ?></div><?php endforeach; ?>
 
-<div class="card" style="margin-bottom:24px">
+<div class="card" style="margin-bottom:24px" id="postCard" <?= $__openForm ? '' : 'hidden' ?>>
   <div class="card__head"><span class="card__title"><?= $edit ? 'Edit post' : 'New post' ?></span></div>
-  <div class="card__body">
-    <form method="POST" enctype="multipart/form-data">
+  <div class="card__body card__body--pad">
+    <?php
+      $__evDate = !empty($edit['event_date']) ? date('Y-m-d', strtotime((string)$edit['event_date'])) : '';
+      $__evTime = !empty($edit['event_date']) ? date('H:i',   strtotime((string)$edit['event_date'])) : '';
+    ?>
+    <form method="POST" enctype="multipart/form-data" id="gbForm">
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="save">
       <input type="hidden" name="id" value="<?= (int)($edit['id'] ?? 0) ?>">
 
-      <label style="display:block;margin-bottom:12px">Property
-        <select name="venue_id" style="display:block;width:100%;max-width:360px;margin-top:4px">
-          <option value="">All properties</option>
-          <?php foreach ($venues as $v): ?>
-          <option value="<?= (int)$v['id'] ?>" <?= (isset($edit['venue_id']) && (int)$edit['venue_id']===(int)$v['id'])?'selected':'' ?>><?= e($v['name']) ?></option>
-          <?php endforeach; ?>
-        </select>
-      </label>
+      <div class="form-row" style="max-width:520px">
+        <div class="field">
+          <label>Property</label>
+          <select name="venue_id" class="filter-select eselect--block" aria-label="Property">
+            <option value="">All properties</option>
+            <?php foreach ($venues as $v): ?>
+            <option value="<?= (int)$v['id'] ?>" <?= (isset($edit['venue_id']) && (int)$edit['venue_id']===(int)$v['id'])?'selected':'' ?>><?= e($v['name']) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="field">
+          <label>Category</label>
+          <select name="category" class="filter-select eselect--block" aria-label="Category">
+            <?php foreach ($CATS as $ck=>$cl): ?>
+            <option value="<?= e($ck) ?>" <?= (($edit['category'] ?? '')===$ck)?'selected':'' ?>><?= e($cl) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+      </div>
 
-      <label style="display:block;margin-bottom:12px">Category
-        <select name="category" style="display:block;width:100%;max-width:360px;margin-top:4px">
-          <?php foreach ($CATS as $ck=>$cl): ?>
-          <option value="<?= e($ck) ?>" <?= (($edit['category'] ?? '')===$ck)?'selected':'' ?>><?= e($cl) ?></option>
-          <?php endforeach; ?>
-        </select>
-      </label>
+      <div class="field" style="max-width:520px">
+        <label for="gbTitle">Title</label>
+        <input id="gbTitle" type="text" name="title" class="inp" required value="<?= e($edit['title'] ?? '') ?>" placeholder="Enter title" style="width:100%">
+      </div>
 
-      <label style="display:block;margin-bottom:12px">Title
-        <input type="text" name="title" required value="<?= e($edit['title'] ?? '') ?>" placeholder="Enter title" style="display:block;width:100%;max-width:520px;margin-top:4px">
-      </label>
+      <div class="field" style="max-width:520px">
+        <label for="gbBody">Body</label>
+        <textarea id="gbBody" name="body" rows="3" class="inp" placeholder="Enter description" style="width:100%"><?= e($edit['body'] ?? '') ?></textarea>
+      </div>
 
-      <label style="display:block;margin-bottom:12px">Body
-        <textarea name="body" rows="3" placeholder="Enter description" style="display:block;width:100%;max-width:520px;margin-top:4px"><?= e($edit['body'] ?? '') ?></textarea>
-      </label>
+      <div class="field">
+        <label>Event date &amp; time <span class="text-muted" style="font-weight:400">(events only)</span></label>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <button type="button" class="dp-btn" data-dp-target="gbEvDate" data-dp-placeholder="Select date"><?= $__evDate !== '' ? e(date('D j M Y', strtotime($__evDate))) : 'Select date' ?></button>
+          <input type="hidden" id="gbEvDate" value="<?= e($__evDate) ?>">
+          <select id="gbEvTime" class="filter-select" aria-label="Event time">
+            <option value="">Time —</option>
+            <?php for ($__h=0; $__h<24; $__h++): foreach (['00','30'] as $__m): $__t=sprintf('%02d:%s',$__h,$__m); ?>
+            <option value="<?= $__t ?>" <?= $__evTime===$__t?'selected':'' ?>><?= $__t ?></option>
+            <?php endforeach; endfor; ?>
+          </select>
+          <?php if ($__evDate !== ''): ?><button type="button" class="btn-outline btn-sm" id="gbEvClear">Clear</button><?php endif; ?>
+        </div>
+        <input type="hidden" name="event_date" id="gbEvOut" value="">
+      </div>
 
-      <label style="display:block;margin-bottom:12px">Event date &amp; time <span style="color:var(--muted);font-weight:400">(events only)</span>
-        <input type="datetime-local" name="event_date" value="<?= e(!empty($edit['event_date']) ? date('Y-m-d\TH:i', strtotime((string)$edit['event_date'])) : '') ?>" style="display:block;margin-top:4px">
-      </label>
-      <label style="display:block;margin-bottom:12px">Price <span style="color:var(--muted);font-weight:400">(events only — blank = free)</span>
-        <input type="number" name="price_amount" step="0.01" min="0" value="<?= e(isset($edit['price_amount']) && $edit['price_amount'] !== null ? rtrim(rtrim(number_format((float)$edit['price_amount'],2,'.',''),'0'),'.') : '') ?>" placeholder="Enter price" style="display:block;width:160px;margin-top:4px">
-      </label>
+      <div class="form-row" style="max-width:520px">
+        <div class="field">
+          <label for="gbPrice">Price <span class="text-muted" style="font-weight:400">(events only — blank = free)</span></label>
+          <input id="gbPrice" type="number" name="price_amount" class="inp inp--num no-spin" step="0.01" min="0" value="<?= e(isset($edit['price_amount']) && $edit['price_amount'] !== null ? rtrim(rtrim(number_format((float)$edit['price_amount'],2,'.',''),'0'),'.') : '') ?>" placeholder="0" style="width:100%">
+        </div>
+        <div class="field">
+          <label for="gbSort">Sort order <span class="text-muted" style="font-weight:400">(higher = pinned toward top)</span></label>
+          <input id="gbSort" type="number" name="sort_order" class="inp inp--num no-spin" value="<?= (int)($edit['sort_order'] ?? 0) ?>" placeholder="0" style="width:100%">
+        </div>
+      </div>
 
-      <label style="display:block;margin-bottom:12px">Sort order (higher = pinned toward top)
-        <input type="number" name="sort_order" value="<?= (int)($edit['sort_order'] ?? 0) ?>" placeholder="Enter sort order" style="display:block;width:120px;margin-top:4px">
-      </label>
-
-      <label style="display:block;margin-bottom:12px">Image (optional, JPEG/PNG/WebP)
-        <input type="file" name="image" accept="image/*" style="display:block;margin-top:4px">
-      </label>
+      <div class="field">
+        <label>Image <span class="text-muted" style="font-weight:400">(optional, JPEG/PNG/WebP)</span></label>
+        <div class="filefield">
+          <label class="btn-outline btn-sm" style="cursor:pointer"><?= admin_icon('image', 15) ?> Choose image<input type="file" name="image" accept="image/*" data-file-input></label>
+          <span class="filefield__name" data-file-name>No file chosen</span>
+        </div>
+      </div>
       <?php if (!empty($edit['image_filename'])): ?>
-      <div style="margin-bottom:12px">
-        <img src="<?= e(storage_url($edit['image_filename'])) ?>" alt="" style="height:70px;border-radius:6px;vertical-align:middle">
-        <label style="margin-left:10px"><input type="checkbox" name="remove_image" value="1"> Remove image</label>
+      <div class="field" style="display:flex;align-items:center;gap:14px">
+        <img src="<?= e(storage_url($edit['image_filename'])) ?>" alt="" style="height:70px;border-radius:8px">
+        <label class="togglerow"><span class="toggle"><input type="checkbox" name="remove_image" value="1"><span class="toggle-slider"></span></span><span>Remove image</span></label>
       </div>
       <?php endif; ?>
 
-      <label style="display:block;margin-bottom:16px"><input type="checkbox" name="is_published" value="1" <?= (!$edit || !empty($edit['is_published']))?'checked':'' ?>> Published</label>
+      <div class="field">
+        <label class="togglerow"><span class="toggle"><input type="checkbox" name="is_published" value="1" <?= (!$edit || !empty($edit['is_published']))?'checked':'' ?>><span class="toggle-slider"></span></span><span>Published</span></label>
+      </div>
 
       <button type="submit" class="btn-primary"><?= $edit ? 'Save changes' : 'Create post' ?></button>
-      <?php if ($edit): ?><a href="/admin/guest-board.php" class="btn-outline btn-sm" style="margin-left:8px">Cancel</a><?php endif; ?>
+      <?php if ($edit): ?><a href="/admin/guest-board.php" class="btn-outline btn-sm" style="margin-left:8px">Cancel</a>
+      <?php else: ?><button type="button" class="btn-outline btn-sm" data-close-create style="margin-left:8px">Cancel</button><?php endif; ?>
     </form>
+
+    <script>
+    (function () {
+      // Toggle the inline "New post" form from the header button.
+      var btn = document.getElementById('newPostBtn'), card = document.getElementById('postCard');
+      if (btn && card) {
+        function setOpen(open) {
+          if (open) { card.removeAttribute('hidden'); card.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); var f = card.querySelector('input,select,textarea'); if (f) f.focus(); }
+          else card.setAttribute('hidden', '');
+          btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+        }
+        btn.addEventListener('click', function () { setOpen(card.hasAttribute('hidden')); });
+        card.querySelectorAll('[data-close-create]').forEach(function (c) { c.addEventListener('click', function () { setOpen(false); }); });
+      }
+
+      var form = document.getElementById('gbForm');
+      if (!form) return;
+      // Compose the hidden event_date from the styled date picker + time select.
+      var d = document.getElementById('gbEvDate'), t = document.getElementById('gbEvTime'), out = document.getElementById('gbEvOut');
+      function compose() { out.value = (d.value ? d.value + (t.value ? 'T' + t.value : 'T00:00') : ''); }
+      if (d) d.addEventListener('change', compose);
+      if (t) t.addEventListener('change', compose);
+      form.addEventListener('submit', compose);
+      compose();
+      var clr = document.getElementById('gbEvClear');
+      if (clr) clr.addEventListener('click', function () {
+        d.value = ''; if (t) t.value = ''; compose();
+        var btn = form.querySelector('.dp-btn[data-dp-target="gbEvDate"]');
+        if (btn) btn.textContent = 'Select date';
+      });
+      // Styled file input: show the chosen filename.
+      var fi = form.querySelector('[data-file-input]'), fn = form.querySelector('[data-file-name]');
+      if (fi && fn) fi.addEventListener('change', function () { fn.textContent = fi.files && fi.files.length ? fi.files[0].name : 'No file chosen'; });
+    })();
+    </script>
   </div>
 </div>
 

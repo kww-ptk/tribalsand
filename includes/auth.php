@@ -82,8 +82,8 @@ function job_is_ops(?string $job): bool {
  *   ops staff → My Work · frontdesk (or job-less) staff → front desk.
  */
 function admin_home_url(): string {
-    if (is_owner())   return '/admin/dashboard.php';
-    if (is_manager()) return '/admin/frontdesk.php';
+    // Everyone who can reach the Front Desk lands there by default (owner included).
+    // Ops and gate-security keep their focused homes since Front Desk isn't theirs.
     $job = admin_job();
     if ($job === 'security') return '/admin/gate.php';
     if (job_is_ops($job))    return '/admin/mywork.php';

@@ -3,6 +3,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/mail.php';
+require_once __DIR__ . '/../includes/icons.php';
+require_once __DIR__ . '/../includes/admin-pagination.php';
 require_login();
 require_owner();
 
@@ -143,18 +145,18 @@ include __DIR__ . '/_layout.php';
 <?php if ($error):   ?><div class="alert alert--error"><?= e($error) ?></div><?php endif; ?>
 
 <!-- Filter -->
-<form method="GET" action="/admin/conflicts" style="margin-bottom:20px">
-  <select name="status" onchange="this.form.submit()" style="height:36px;padding:0 10px;border:1px solid var(--border);border-radius:5px;font-size:13px">
-    <option value="pending"  <?= $status_filter === 'pending'  ? 'selected' : '' ?>>Pending (<?= $pending_count ?>)</option>
-    <option value="resolved" <?= $status_filter === 'resolved' ? 'selected' : '' ?>>Resolved</option>
-  </select>
+<form method="GET" action="/admin/conflicts.php" class="filters" style="margin-bottom:20px">
+  <label class="filter-field">Status
+    <select name="status" class="filter-select" aria-label="Filter conflicts by status" onchange="this.form.submit()">
+      <option value="pending"  <?= $status_filter === 'pending'  ? 'selected' : '' ?>>Pending (<?= $pending_count ?>)</option>
+      <option value="resolved" <?= $status_filter === 'resolved' ? 'selected' : '' ?>>Resolved</option>
+    </select>
+  </label>
 </form>
 
 <?php if (!$conflicts): ?>
 <div class="card">
-  <div class="card__body" style="padding:32px;text-align:center;color:var(--muted)">
-    <?= $status_filter === 'pending' ? 'No pending conflicts — all clear.' : 'No resolved conflicts yet.' ?>
-  </div>
+  <div class="card__body"><?php dt_empty($status_filter === 'pending' ? 'No pending conflicts — all clear.' : 'No resolved conflicts yet.', 'check-check'); ?></div>
 </div>
 <?php else: ?>
 

@@ -38,7 +38,7 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
       <input type="hidden" name="hold_id" value="<?= $holdId ?>">
       <input type="hidden" name="action" value="guest_count_set">
       <label class="text-muted" style="font-size:12px" for="ciGuestCount">Adults</label>
-      <input type="number" id="ciGuestCount" name="guest_count" min="1" max="12" value="<?= (int)($hold['guest_count'] ?? 1) ?>" style="width:60px;padding:5px 7px;border:1px solid #d1d5db;border-radius:6px">
+      <input type="number" id="ciGuestCount" name="guest_count" min="1" max="12" value="<?= (int)($hold['guest_count'] ?? 1) ?>" class="inp inp--sm inp--num no-spin" style="width:64px" aria-label="Number of adults">
       <button type="submit" class="btn-sm btn-outline">Save</button>
     </form>
     <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" style="margin:0">

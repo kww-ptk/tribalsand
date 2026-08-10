@@ -1,16 +1,44 @@
 /* Portal v2 — travel-app design system (.pa-*) */
+
+/* Inter — self-hosted variable font (no CDN; /fonts/inter-var.woff2, weights
+   100–900). The whole guest portal standardizes on Inter to match the admin
+   (#16); system-ui is the fallback until the woff2 loads. */
+@font-face {
+  font-family: 'Inter';
+  src: url('/fonts/inter-var.woff2?v=1') format('woff2');
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root{
   --pa-teal:#1E5C6B; --pa-teal-d:#102F3A; --pa-gold:#D4B07A; --pa-cream:#F5F1EB;
   --pa-ink:#1a1a1a; --pa-muted:#6b7280; --pa-line:#e5e0d6; --pa-card:#fff;
 }
-.pa-app{background:var(--pa-cream);min-height:100vh;padding-bottom:76px;}
+.pa-app{background:var(--pa-cream);min-height:100vh;padding-bottom:76px;font-family:'Inter',system-ui,-apple-system,sans-serif;}
+/* Form controls don't inherit font-family by default — pull them onto Inter too. */
+.pa-app input,.pa-app select,.pa-app textarea,.pa-app button{font-family:inherit;}
+
+/* ── In-page section tabs inside Home (#16) — breaks the long Home scroll into
+   instant, client-swapped sections. Bottom tab bar (Home/Activities/Messages)
+   is unchanged; these tabs live inside Home. ── */
+.pa-sectabs{display:flex;gap:7px;overflow-x:auto;padding:4px 0 14px;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+.pa-sectabs::-webkit-scrollbar{display:none;}
+.pa-sectab{white-space:nowrap;font:inherit;font-size:14px;font-weight:600;padding:8px 15px;border-radius:999px;border:1px solid var(--pa-line);background:#fff;color:var(--pa-muted);cursor:pointer;transition:background .15s,color .15s,border-color .15s;}
+.pa-sectab:hover{border-color:var(--pa-teal);}
+.pa-sectab.is-active{background:var(--pa-teal-d);color:#fff;border-color:var(--pa-teal-d);}
+.pa-sectab:focus-visible{outline:3px solid var(--pa-gold);outline-offset:2px;}
+.pa-sec{display:none;}
+.pa-sec.is-active{display:block;animation:pa-secfade .2s ease;}
+@keyframes pa-secfade{from{opacity:0;transform:translateY(5px);}to{opacity:1;transform:none;}}
+@media (prefers-reduced-motion:reduce){.pa-sec.is-active{animation:none;}}
 .pa-wrap{max-width:640px;margin:0 auto;padding:0 16px;}
 .pa-topbar{background:var(--pa-teal-d);color:#fff;padding:16px 16px 14px;position:sticky;top:0;z-index:20;}
 .pa-topbar__eyebrow{font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--pa-gold);}
-.pa-topbar__title{font-family:'Cormorant Garamond',serif;font-weight:500;font-size:24px;margin:2px 0 0;line-height:1.1;}
+.pa-topbar__title{font-family:'Inter',system-ui,sans-serif;font-weight:500;font-size:24px;margin:2px 0 0;line-height:1.1;}
 .pa-topbar__row{display:flex;align-items:center;justify-content:space-between;gap:12px;}
 .pa-section{padding:16px 0 8px;}
-.pa-h2{font-family:'Cormorant Garamond',serif;font-weight:500;font-size:22px;margin:0 0 4px;color:var(--pa-ink);}
+.pa-h2{font-family:'Inter',system-ui,sans-serif;font-weight:500;font-size:22px;margin:0 0 4px;color:var(--pa-ink);}
 .pa-sub{font-size:13px;color:var(--pa-muted);margin:0 0 14px;}
 .pa-back{display:inline-block;font-size:13px;color:var(--pa-teal);text-decoration:none;margin:0 0 14px;}
 
@@ -135,7 +163,7 @@
 .pa-modal{background:#fff;border-radius:18px;max-width:360px;width:100%;padding:26px 22px;text-align:center;box-shadow:0 20px 60px rgba(16,47,58,.35);}
 .pa-modal__icon{width:56px;height:56px;margin:0 auto 14px;border-radius:50%;background:#dcfce7;color:#166534;display:flex;align-items:center;justify-content:center;}
 .pa-modal__icon svg{width:28px;height:28px;}
-.pa-modal__title{font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:500;margin:0 0 6px;color:var(--pa-ink);}
+.pa-modal__title{font-family:'Inter',system-ui,sans-serif;font-size:24px;font-weight:500;margin:0 0 6px;color:var(--pa-ink);}
 .pa-modal__body{font-size:14px;color:var(--pa-muted);line-height:1.6;margin:0 0 20px;}
 .pa-modal__actions{display:flex;flex-direction:column;gap:8px;}
 
@@ -147,7 +175,7 @@
 .ci-intro{max-width:520px;margin:0 auto}
 .ci-hero{text-align:center;padding:18px 6px 22px}
 .ci-hero__eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--pa-gold);font-weight:600}
-.ci-hero__title{font-family:'Cormorant Garamond',serif;font-weight:500;font-size:34px;line-height:1.05;margin:10px 0 12px;color:var(--pa-ink)}
+.ci-hero__title{font-family:'Inter',system-ui,sans-serif;font-weight:500;font-size:34px;line-height:1.05;margin:10px 0 12px;color:var(--pa-ink)}
 .ci-hero__sub{font-size:15px;line-height:1.65;color:var(--pa-muted);margin:0 auto;max-width:400px}
 .ci-trip{padding:2px 0}
 .ci-trip__row{display:flex;justify-content:space-between;align-items:baseline;gap:14px;padding:13px 16px;border-bottom:1px solid var(--pa-line)}
@@ -167,7 +195,7 @@
 .ci-progress{height:5px;background:#e7ded7;border-radius:999px;margin:2px 0 22px;overflow:hidden}
 .ci-progress__bar{height:100%;width:0;background:var(--pa-teal);transition:width .3s ease}
 .ci-step__num{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--pa-gold)}
-.ci-step__h h3{font-family:'Cormorant Garamond',serif;font-weight:500;font-size:26px;margin:5px 0 20px;color:var(--pa-ink)}
+.ci-step__h h3{font-family:'Inter',system-ui,sans-serif;font-weight:500;font-size:26px;margin:5px 0 20px;color:var(--pa-ink)}
 .ci-req{color:#c0392b}
 .ci-l{display:block;font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--pa-muted);margin:15px 0 6px}
 .ci-in{width:100%;padding:12px 14px;border:1px solid #d1d5db;border-radius:9px;font-size:16px;font-family:inherit;box-sizing:border-box;background:#fff}
@@ -186,7 +214,7 @@
 /* ── Check-in — done + alert ─────────────────────────────────── */
 .ci-done-card{text-align:center;padding:30px 20px 24px;max-width:520px;margin:0 auto}
 .ci-done-card__check{width:58px;height:58px;margin:0 auto 14px;border-radius:50%;background:#e6f6ec;color:#146c37;display:flex;align-items:center;justify-content:center;font-size:28px}
-.ci-done-card h2{font-family:'Cormorant Garamond',serif;font-weight:500;font-size:27px;margin:0 0 8px;color:var(--pa-ink)}
+.ci-done-card h2{font-family:'Inter',system-ui,sans-serif;font-weight:500;font-size:27px;margin:0 0 8px;color:var(--pa-ink)}
 .ci-done-card p{color:var(--pa-muted);font-size:14px;line-height:1.6;margin:0 auto 20px;max-width:360px}
 .ci-done-card .pa-btn{margin-bottom:9px}
 .ci-alert{max-width:520px;margin:0 auto 16px;background:#fbe6e6;border:1px solid #f0c2c2;color:#a12;border-radius:10px;padding:12px 16px;font-size:14px;line-height:1.5}

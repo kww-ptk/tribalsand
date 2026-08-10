@@ -5,6 +5,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/icons.php';            // admin_icon() — needed in AJAX branch too
 require_once __DIR__ . '/../includes/pagination.php';
 require_once __DIR__ . '/../includes/admin-pagination.php';
+require_once __DIR__ . '/../includes/submission-notes.php';   // note-count badges (#15)
 require_login();
 require_owner();
 
@@ -102,6 +103,9 @@ $rows = db_query(
     $params
 )->fetchAll();
 
+// Internal note counts for the current page's rows (badge in the list). Empty pre-migration.
+$note_counts = submission_note_counts(array_column($rows, 'id'));
+
 // ── Room list for filter dropdown ────────────────────────────────
 $rooms = db_query('SELECT id, name FROM rooms ORDER BY sort_order')->fetchAll();
 
@@ -166,7 +170,12 @@ ob_start(); ?>
             <span class="badge <?= $badge ?>"><?= e($row['type']) ?></span>
           </td>
           <td class="text-muted"><?= e(source_label($sourceUrl)) ?></td>
-          <td><strong><?= e($row['guest_name']) ?></strong></td>
+          <td>
+            <strong><?= e($row['guest_name']) ?></strong>
+            <?php $nc = $note_counts[(int)$row['id']] ?? 0; if ($nc > 0): ?>
+            <span class="note-count" data-tip="<?= (int)$nc ?> internal note<?= $nc === 1 ? '' : 's' ?>"><?= admin_icon('edit', 12) ?> <?= (int)$nc ?></span>
+            <?php endif; ?>
+          </td>
           <td class="text-muted"><?= e($row['guest_email']) ?></td>
           <td class="text-muted"><?= e($row['room_name'] ?: ($row['tour_name'] ? 'Tour: ' . $row['tour_name'] : '—')) ?></td>
           <td class="text-muted"><?= $row['check_in'] ? e(date('d M Y', strtotime($row['check_in']))) : '—' ?></td>

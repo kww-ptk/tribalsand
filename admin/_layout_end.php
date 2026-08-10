@@ -1,3 +1,11 @@
+<?php
+// No-flicker shell (#18): in `?shell=1` mode we captured just the page content in
+// _layout.php — emit it as a fragment (+ menu/title metadata) and stop before any
+// chrome or the site-wide script layer (both already live on the parent page).
+if (!empty($__shellFrag)) {
+    admin_shell_emit(ob_get_clean(), (string)($activeMenu ?? ''), (string)($pageTitle ?? 'Admin') . ' — Tribal Sand Admin');
+}
+?>
     </div><!-- /.admin-content -->
   </main><!-- /.admin-main -->
 
@@ -146,6 +154,42 @@
   wire(document);
   window.tsAdminWire = wire;
 
+  // --- Generic double-submit guard (site-wide) ---------------------------------
+  // A fast double-click (or Enter + click) on any plain create/save form posts
+  // twice — the cause of the "task created twice" bug. After the FIRST real submit
+  // of a form, disable its submitter so a second one can't fire. We skip forms
+  // whose submit was already handled/prevented (the workspace AJAX shell and the
+  // styled-confirm flow manage their own buttons), and mirror the submitter's
+  // name/value first so a named button (e.g. status=done) isn't dropped from POST.
+  document.addEventListener('submit', function (e) {
+    if (e.defaultPrevented) return;              // handled by another layer (AJAX / confirm)
+    var form = e.target;
+    if (!(form instanceof HTMLFormElement)) return;
+    if (form.dataset.submitGuarded) { e.preventDefault(); return; } // second attempt — block it
+    form.dataset.submitGuarded = '1';
+    var btn = e.submitter || form.querySelector('button[type="submit"], input[type="submit"]');
+    if (btn && !btn.disabled) {
+      if (btn.name && !form.querySelector('input[type="hidden"][data-guard-mirror="' + btn.name + '"]')) {
+        var h = document.createElement('input');
+        h.type = 'hidden'; h.name = btn.name; h.value = btn.value;
+        h.setAttribute('data-guard-mirror', btn.name);
+        form.appendChild(h);
+      }
+      if (btn.classList.contains('btn-icon')) { btn.classList.add('is-loading'); btn.disabled = true; }
+      else if (!btn.dataset.label) { btn.dataset.label = btn.textContent; btn.disabled = true; btn.textContent = 'Working…'; }
+    }
+    // Safety net: if the submit didn't actually navigate away (rare), let the form
+    // be usable again rather than trapping the user.
+    setTimeout(function () {
+      form.removeAttribute('data-submit-guarded');
+      if (btn) {
+        btn.disabled = false;
+        btn.classList.remove('is-loading');
+        if (btn.dataset.label) { btn.textContent = btn.dataset.label; delete btn.dataset.label; }
+      }
+    }, 8000);
+  });
+
   // Toast — a small card that slides up from the bottom, then fades out.
   function toast(message, type) {
     var wrap = document.getElementById('ts-toasts');
@@ -166,6 +210,9 @@
     x.addEventListener('click', remove);
     timer = setTimeout(remove, type === 'err' ? 6500 : 4000);
   }
+  // Exposed so the workspace AJAX shell (admin-nav.js) can surface a server flash
+  // as a toast after a no-reload action.
+  window.tsToast = toast;
 
   // Turn the server-rendered flash message (from an action) into a toast.
   document.querySelectorAll('.alert.is-flash').forEach(function (al) {

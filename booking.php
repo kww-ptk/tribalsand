@@ -146,7 +146,7 @@ include __DIR__ . '/includes/head.php';
   text-align:center;
 }
 .bk-error-card .bk-icon  { font-size:48px; margin-bottom:16px; }
-.bk-error-card h2 { margin:0 0 12px; font-family:'Cormorant Garamond',serif; font-size:26px; font-weight:400; }
+.bk-error-card h2 { margin:0 0 12px; font-family:'Inter',system-ui,sans-serif; font-size:26px; font-weight:400; }
 .bk-error-card p  { color:#6b7280; line-height:1.65; margin:0 0 28px; }
 
 .bk-lookup-form { max-width:380px; margin:0 auto; }
@@ -165,7 +165,7 @@ include __DIR__ . '/includes/head.php';
   border:1px solid #d1d5db;
   border-radius:8px;
   font-size:16px; /* 16px min — prevents iOS focus auto-zoom */
-  font-family:'Jost',sans-serif;
+  font-family:inherit;
   box-sizing:border-box;
 }
 .bk-lookup-input:focus { outline:none; border-color:var(--teal,#1E5C6B); }
@@ -181,7 +181,7 @@ include __DIR__ . '/includes/head.php';
   letter-spacing:.08em;
   text-transform:uppercase;
   cursor:pointer;
-  font-family:'Jost',sans-serif;
+  font-family:inherit;
   border-radius:8px;
   transition:background .2s;
 }
@@ -275,22 +275,6 @@ include __DIR__ . '/includes/head.php';
 
       <?php if ($view === 'home'): ?>
         <?php include __DIR__ . '/includes/app/home.php'; ?>
-        <?php if ($can_cancel): ?>
-        <div class="pa-card" style="padding:16px">
-          <p style="margin:0 0 6px;font-weight:700">Need to cancel?</p>
-          <p style="margin:0 0 20px;font-size:14px;color:var(--pa-muted);line-height:1.65">If your plans have changed you can cancel now. The dates will be freed and you will receive a cancellation confirmation by email.</p>
-          <form method="POST" onsubmit="return confirm('Are you sure you want to cancel this booking? This cannot be undone.')">
-            <input type="hidden" name="action" value="cancel">
-            <input type="hidden" name="ref" value="<?= e($ref) ?>">
-            <button type="submit" class="pa-btn pa-btn--danger">Cancel My Booking</button>
-          </form>
-        </div>
-        <?php elseif ($cancel_blocked_reason): ?>
-        <div class="pa-card" style="padding:16px">
-          <p style="margin:0 0 6px;font-weight:700">Need to cancel?</p>
-          <p style="margin:0;font-size:14px;color:var(--pa-muted)"><?= e($cancel_blocked_reason) ?></p>
-        </div>
-        <?php endif; ?>
       <?php elseif ($view === 'activities'): ?>
         <?php include __DIR__ . '/includes/app/activities.php'; ?>
       <?php elseif ($view === 'messages'): ?>

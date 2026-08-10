@@ -17,7 +17,7 @@ for ($__d = new DateTime((string)$hold['check_in']); $__d <= new DateTime((strin
 $__gcats = ['activity'=>'Activity','transfer'=>'Transfer','dining'=>'Restaurant','note'=>'Other'];
 try { $__acts = fetch_portal_activities(isset($hold['venue_id']) && $hold['venue_id'] !== null ? (int)$hold['venue_id'] : null); } catch (Throwable $e) { $__acts = []; }
 ?>
-<details class="pa-details">
+<details class="pa-details" open>
 <summary class="pa-details__s">My Calendar</summary>
 <div style="padding-top:2px">
 <p class="pa-sub" style="margin-top:0">Your day-by-day itinerary. Tours and transfers you’ve booked appear automatically.</p>

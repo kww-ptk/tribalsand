@@ -8,47 +8,60 @@ $__witems = fetch_itinerary_items($holdId);
 ?>
 <div class="card" style="margin-bottom:16px">
   <div class="card__head"><span class="card__title">Add item</span></div>
-  <div class="card__body">
-    <form method="POST" action="/admin/booking.php" style="display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end">
+  <div class="card__body" style="padding:16px 20px">
+    <form method="POST" action="/admin/booking.php" class="ws-addform">
       <?= csrf_field() ?>
       <input type="hidden" name="hold_id" value="<?= (int)$holdId ?>">
       <input type="hidden" name="action" value="itin_add">
-      <label style="font-size:13px">Day<br><select name="day" required><?php foreach ($__wdays as $dv=>$dl): ?><option value="<?= e($dv) ?>"><?= e($dl) ?></option><?php endforeach; ?></select></label>
-      <label style="font-size:13px">Time<br><input type="time" name="at_time"></label>
-      <label style="font-size:13px">Category<br><select name="category"><?php foreach ($__wcats as $cv=>$cl): ?><option value="<?= e($cv) ?>"><?= e($cl) ?></option><?php endforeach; ?></select></label>
-      <label style="font-size:13px;flex:1;min-width:160px">Title<br><input type="text" name="title" required placeholder="Enter title" style="width:100%"></label>
-      <label style="font-size:13px;flex:1;min-width:160px">Detail<br><input type="text" name="detail" placeholder="Enter detail" style="width:100%"></label>
-      <button type="submit" class="btn-primary">Add</button>
+      <label class="wsf"><span>Day</span>
+        <select name="day" required aria-label="Day"><?php foreach ($__wdays as $dv=>$dl): ?><option value="<?= e($dv) ?>"><?= e($dl) ?></option><?php endforeach; ?></select>
+      </label>
+      <label class="wsf"><span>Time</span>
+        <input type="text" name="at_time" class="inp inp--sm" inputmode="numeric" pattern="([01][0-9]|2[0-3]):[0-5][0-9]" placeholder="HH:MM" style="width:92px" aria-label="Time (HH:MM)">
+      </label>
+      <label class="wsf"><span>Category</span>
+        <select name="category" aria-label="Category"><?php foreach ($__wcats as $cv=>$cl): ?><option value="<?= e($cv) ?>"><?= e($cl) ?></option><?php endforeach; ?></select>
+      </label>
+      <label class="wsf wsf--grow"><span>Title</span>
+        <input type="text" name="title" required placeholder="Enter title" class="inp inp--sm" style="width:100%">
+      </label>
+      <label class="wsf wsf--grow"><span>Detail</span>
+        <input type="text" name="detail" placeholder="Enter detail" class="inp inp--sm" style="width:100%">
+      </label>
+      <button type="submit" class="btn-primary"><?= admin_icon('plus', 15) ?> Add</button>
     </form>
   </div>
 </div>
 
 <div class="card">
   <div class="card__head"><span class="card__title">Plan</span></div>
-  <div class="card__body">
+  <div class="card__body" style="padding:16px 20px">
     <?php foreach ($__witin as $day): ?>
-    <div style="margin-bottom:12px">
-      <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:6px"><?= e($day['label']) ?><?= $day['is_today'] ? ' · today' : '' ?></div>
+    <div class="plan-day">
+      <div class="plan-day__label"><?= e($day['label']) ?><?= $day['is_today'] ? ' · today' : '' ?></div>
       <?php if (!$day['items']): ?>
-        <div style="font-size:13px;color:var(--muted);font-style:italic">—</div>
+        <div class="plan-empty">—</div>
       <?php else: foreach ($day['items'] as $it): ?>
-        <div style="display:flex;align-items:center;gap:10px;padding:5px 0;border-bottom:1px solid #f0f0f0;font-size:14px">
-          <span style="min-width:44px;color:var(--muted)"><?= e($it['time'] ?? '—') ?></span>
-          <span style="text-transform:capitalize;min-width:74px;color:var(--muted);font-size:12px"><?= e($it['category']) ?></span>
-          <span style="flex:1"><strong><?= e($it['title']) ?></strong><?php if (($it['detail'] ?? '') !== '' && $it['detail'] !== 'from your request'): ?> <span style="color:var(--muted)">· <?= e($it['detail']) ?></span><?php endif; ?></span>
-          <span style="font-size:11px;color:var(--muted)"><?= e($it['source']) ?></span>
+        <div class="plan-item">
+          <span class="plan-item__time"><?= e($it['time'] ?? '—') ?></span>
+          <span class="plan-item__cat"><?= e($it['category']) ?></span>
+          <span class="plan-item__body"><strong><?= e($it['title']) ?></strong><?php if (($it['detail'] ?? '') !== '' && $it['detail'] !== 'from your request'): ?> <span class="text-muted">· <?= e($it['detail']) ?></span><?php endif; ?></span>
+          <span class="plan-item__src"><?= e($it['source']) ?></span>
         </div>
       <?php endforeach; endif; ?>
     </div>
     <?php endforeach; ?>
 
     <?php if ($__witems): ?>
-    <div style="margin-top:16px;border-top:1px solid #eee;padding-top:12px">
-      <div style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin-bottom:8px">Added items</div>
+    <div style="margin-top:16px;border-top:1px solid var(--border);padding-top:12px">
+      <div class="plan-day__label" style="margin-bottom:8px">Added items</div>
       <?php foreach ($__witems as $it): ?>
-      <div style="display:flex;align-items:center;gap:10px;padding:5px 0;font-size:14px">
-        <span style="flex:1"><?= e((string)$it['day']) ?><?php if (!empty($it['at_time'])): ?> <?= e(substr((string)$it['at_time'],0,5)) ?><?php endif; ?> · <strong><?= e($it['title']) ?></strong> <span style="color:var(--muted);text-transform:capitalize">(<?= e($it['category']) ?>)</span><?php if (($it['created_by'] ?? 'admin') === 'guest'): ?> <span class="badge badge--blue" style="font-size:10px">guest</span><?php endif; ?></span>
-        <form method="POST" action="/admin/booking.php" onsubmit="return confirm('Remove this item?')"><?= csrf_field() ?><input type="hidden" name="hold_id" value="<?= (int)$holdId ?>"><input type="hidden" name="action" value="itin_del"><input type="hidden" name="item_id" value="<?= (int)$it['id'] ?>"><button class="btn-danger btn-sm">Delete</button></form>
+      <div class="plan-item">
+        <span class="plan-item__body"><?= e((string)$it['day']) ?><?php if (!empty($it['at_time'])): ?> <?= e(substr((string)$it['at_time'],0,5)) ?><?php endif; ?> · <strong><?= e($it['title']) ?></strong> <span class="text-muted" style="text-transform:capitalize">(<?= e($it['category']) ?>)</span><?php if (($it['created_by'] ?? 'admin') === 'guest'): ?> <span class="badge badge--blue" style="font-size:10px">guest</span><?php endif; ?></span>
+        <form method="POST" action="/admin/booking.php" style="margin:0">
+          <?= csrf_field() ?><input type="hidden" name="hold_id" value="<?= (int)$holdId ?>"><input type="hidden" name="action" value="itin_del"><input type="hidden" name="item_id" value="<?= (int)$it['id'] ?>">
+          <button class="btn-icon btn-icon--danger" data-confirm="Remove this plan item?" data-tip="Remove item" aria-label="Remove item"><?= admin_icon('trash') ?></button>
+        </form>
       </div>
       <?php endforeach; ?>
     </div>

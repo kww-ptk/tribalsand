@@ -6,6 +6,9 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/booking.php';
 require_once __DIR__ . '/../includes/mail.php';
 require_once __DIR__ . '/../includes/checkin.php';
+require_once __DIR__ . '/../includes/icons.php';            // admin_icon() — used while buffering the AJAX panel (before _layout.php loads it)
+require_once __DIR__ . '/../includes/admin-pagination.php'; // dt_empty() for the workspace thread list
+require_once __DIR__ . '/../includes/copy-link.php';        // copy_link_control() for the Details tab
 require_login();
 
 $holdId = (int)($_GET['hold'] ?? $_POST['hold_id'] ?? 0);
@@ -146,6 +149,30 @@ foreach ($__addons as $a) { if (in_array($a['status'],['requested','confirmed'],
 foreach ($__changes as $c){ if ($c['status']==='requested') $openReq++; }
 $unreadMsg = (int)db_query("SELECT COUNT(*) FROM booking_messages WHERE hold_id=:h AND sender='guest' AND read_by_admin=FALSE",[':h'=>$holdId])->fetchColumn();
 
+// Tab menu (owner-only Details; ops/security get no Messages).
+$__wtabs = ['requests'=>'Requests','messages'=>'Messages','plan'=>'Plan','bill'=>'Bill','checkin'=>'Check-in','details'=>'Details'];
+if (!is_owner())     unset($__wtabs['details']);
+if ($__noMessaging)  unset($__wtabs['messages']);
+
+// Skeleton the shell shows while a tab loads: the tab NAV always lands on the
+// list/overview shape; the panel itself may be a chat when a thread is open.
+$__tabSkel = ['requests'=>'table','messages'=>'table','plan'=>'detail','bill'=>'table','checkin'=>'detail','details'=>'detail'];
+$__skel    = ($tab === 'messages' && ($_GET['thread'] ?? null) !== null) ? 'chat' : ($__tabSkel[$tab] ?? 'table');
+
+// Build the active tab's panel into a buffer so it can be served on its own as an
+// AJAX fragment — the no-flicker shell fetches ?ajax=1 and swaps just this panel.
+ob_start();
+if     ($tab === 'requests') include __DIR__ . '/_ws_requests.php';
+elseif ($tab === 'messages') include __DIR__ . '/_ws_messages.php';
+elseif ($tab === 'plan')     include __DIR__ . '/_ws_plan.php';
+elseif ($tab === 'bill')     include __DIR__ . '/_ws_bill.php';
+elseif ($tab === 'checkin')  include __DIR__ . '/_ws_checkin.php';
+else                         include __DIR__ . '/_ws_details.php';
+$wsPanel = ob_get_clean();
+
+// AJAX fragment: emit only the panel inner and stop (GET only — POSTs stay PRG).
+if (($_GET['ajax'] ?? '') !== '' && $_SERVER['REQUEST_METHOD'] === 'GET') { echo $wsPanel; exit; }
+
 include __DIR__ . '/_layout.php';
 ?>
 <div class="page-header">
@@ -155,46 +182,17 @@ include __DIR__ . '/_layout.php';
 <p class="text-muted" style="margin:-8px 0 14px;font-size:13px"><?= e(date('j M Y',strtotime($hold['check_in']))) ?> → <?= e(date('j M Y',strtotime($hold['check_out']))) ?> · <span class="badge badge--<?= ['pending'=>'orange','confirmed'=>'green','cancelled'=>'red','expired'=>'grey'][$hold['status']] ?? 'grey' ?>"><?= e($hold['status']) ?></span> · <code><?= e($hold['access_code']) ?></code></p>
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?> is-flash"><?= e($flash['msg']) ?></div><?php endif; ?>
 
-<div class="card" style="margin-bottom:16px"><div class="card__body" style="display:flex;gap:8px;flex-wrap:wrap">
-  <?php
-  $__wtabs = ['requests'=>'Requests','messages'=>'Messages','plan'=>'Plan','bill'=>'Bill','checkin'=>'Check-in','details'=>'Details'];
-  if (!is_owner()) unset($__wtabs['details']);
-  if ($__noMessaging) unset($__wtabs['messages']);
-  foreach ($__wtabs as $tk=>$tl):
-    $b = $tk==='requests' && $openReq ? " ($openReq)" : ($tk==='messages' && $unreadMsg ? " ($unreadMsg)" : '');
-  ?>
-  <a href="?hold=<?= $holdId ?>&tab=<?= $tk ?>" class="btn-sm <?= $tab===$tk?'btn-primary':'btn-outline' ?>"><?= e($tl.$b) ?></a>
-  <?php endforeach; ?>
-</div></div>
-
-<?php if ($tab === 'requests'): ?>
-  <?php include __DIR__ . '/_ws_requests.php'; ?>
-<?php elseif ($tab === 'messages'): ?>
-  <?php include __DIR__ . '/_ws_messages.php'; ?>
-<?php elseif ($tab === 'plan'): ?>
-  <?php include __DIR__ . '/_ws_plan.php'; ?>
-<?php elseif ($tab === 'bill'): ?>
-  <?php include __DIR__ . '/_ws_bill.php'; ?>
-<?php elseif ($tab === 'checkin'): ?>
-  <?php include __DIR__ . '/_ws_checkin.php'; ?>
-<?php else: ?>
-  <div class="card"><div class="card__body">
-    <table class="data-table" style="max-width:520px">
-      <tr><td class="text-muted">Guest</td><td><?= e($hold['guest_name']) ?></td></tr>
-      <tr><td class="text-muted">Email</td><td><?= e($hold['guest_email']) ?></td></tr>
-      <tr><td class="text-muted">Property</td><td><?= e(trim(($hold['venue_name']??'').' · '.$hold['room_name'],' ·')) ?></td></tr>
-      <tr><td class="text-muted">Dates</td><td><?= e(date('j M Y',strtotime($hold['check_in']))) ?> → <?= e(date('j M Y',strtotime($hold['check_out']))) ?></td></tr>
-      <tr><td class="text-muted">Code</td><td><code><?= e($hold['access_code']) ?></code></td></tr>
-      <tr><td class="text-muted">Portal link</td><td><input type="text" readonly value="<?= e($portalUrl) ?>" onclick="this.select()" style="width:100%;font-size:12px"></td></tr>
-    </table>
-    <div style="margin-top:14px">
-      <?php if ($hold['status']==='pending'): ?>
-      <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="hold_id" value="<?= $holdId ?>"><input type="hidden" name="action" value="confirm"><button class="btn-primary btn-sm" onclick="return confirm('Confirm and notify the guest?')">Confirm</button></form>
-      <?php endif; ?>
-      <?php if (in_array($hold['status'],['pending','confirmed'],true)): ?>
-      <form method="POST" style="display:inline;margin-left:6px"><?= csrf_field() ?><input type="hidden" name="hold_id" value="<?= $holdId ?>"><input type="hidden" name="action" value="cancel"><button class="btn-danger btn-sm" onclick="return confirm('Cancel this booking? Dates freed, guest notified.')">Cancel</button></form>
-      <?php endif; ?>
-    </div>
-  </div></div>
-<?php endif; ?>
+<div class="ws" data-ws>
+  <nav class="tabs ws-tabs" data-ws-tabs aria-label="Booking sections">
+    <?php foreach ($__wtabs as $tk=>$tl):
+      $cnt = $tk === 'requests' ? $openReq : ($tk === 'messages' ? $unreadMsg : 0);
+    ?>
+    <a href="?hold=<?= $holdId ?>&tab=<?= $tk ?>" class="tab-btn<?= $tab===$tk?' is-active':'' ?>"
+       data-ws-tab data-tab="<?= e($tk) ?>" data-skeleton="<?= e($__tabSkel[$tk] ?? 'table') ?>">
+      <?= e($tl) ?><?php if ($cnt > 0): ?> <span class="tab-btn__count"><?= (int)$cnt ?></span><?php endif; ?>
+    </a>
+    <?php endforeach; ?>
+  </nav>
+  <div class="ws-panel" data-ws-panel data-skeleton="<?= e($__skel) ?>"><?= $wsPanel ?></div>
+</div>
 <?php include __DIR__ . '/_layout_end.php'; ?>
