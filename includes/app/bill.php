@@ -5,10 +5,13 @@ $__lines = fetch_bill_lines($__hid);
 $__items = fetch_bill_items($__hid);
 $__total = bill_total($__hid);
 $__cur   = setting('site_currency', 'USD');
-$__who = function (array $r, string $nameKey, string $leadKey): string {
+// An unnamed lead falls back to the booking name rather than showing nothing.
+$__bookName = (string)($hold['guest_name'] ?? '');
+$__who = function (array $r, string $nameKey, string $leadKey) use ($__bookName): string {
+    $isLead = !empty($r[$leadKey]);
     $n = trim((string)($r[$nameKey] ?? ''));
-    if ($n === '') return '';
-    return guest_display_name(['passport_name' => $n]) . (!empty($r[$leadKey]) ? ' (lead)' : '');
+    if ($n === '' && !$isLead) return '';
+    return attributed_display_name($n, $isLead, $__bookName) . ($isLead ? ' (lead)' : '');
 };
 ?>
 <h2 class="pa-h2">Your bill</h2>
