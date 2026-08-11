@@ -165,7 +165,7 @@ include __DIR__ . '/_layout.php';
     <?php foreach ($msgs as $m): $adminMsg = $m['sender'] === 'admin'; ?>
     <div class="am-msg <?= $adminMsg ? 'am-msg--staff' : 'am-msg--guest' ?>" data-mid="<?= (int)$m['id'] ?>">
       <?= e($m['body']) ?>
-      <div class="am-msg__meta"><?= $adminMsg ? 'Staff' : 'Guest' ?> · <?= e(message_time_label($m['created_at'])) ?></div>
+      <div class="am-msg__meta"><?= e(message_sender_label($m)) ?> · <?= e(message_time_label($m['created_at'])) ?></div>
     </div>
     <?php endforeach; ?>
   </div>
