@@ -18,17 +18,34 @@ audit_log('checkin.file_view', 'hold', $holdId, 'guest ' . $guestId);
 
 $ext = strtolower(pathinfo($key, PATHINFO_EXTENSION));
 $ct  = ['jpg' => 'image/jpeg', 'png' => 'image/png', 'pdf' => 'application/pdf'][$ext] ?? 'application/octet-stream';
-header('Content-Type: ' . $ct);
-header('Content-Disposition: inline; filename="passport.' . $ext . '"');
-header('Cache-Control: private, no-store');
 
+// Resolve the bytes BEFORE sending any content headers — otherwise a missing
+// file returns a text error body under an image/* type and the browser renders
+// it as a broken image instead of showing the real problem.
 $signed = storage_signed_get_url($key);
 if ($signed !== '') {
     $data = @file_get_contents($signed);
-    if ($data === false) { http_response_code(502); exit('Fetch failed'); }
-    echo $data;
+    if ($data === false) {
+        http_response_code(502);
+        header('Content-Type: text/plain; charset=utf-8');
+        exit('Scan is stored remotely but could not be fetched (check R2 credentials/bucket).');
+    }
 } else {
     $path = storage_local_path($key);   // filesystem fallback
-    if (!is_file($path)) { http_response_code(404); exit('No file'); }
-    readfile($path);
+    if (!is_file($path)) {
+        http_response_code(404);
+        header('Content-Type: text/plain; charset=utf-8');
+        exit('Scan file is missing from storage — it was likely lost on a deploy because no persistent check-in bucket (R2_CHECKIN_BUCKET) or disk (CHECKIN_STORAGE_DIR) is configured. The guest must re-upload.');
+    }
+    $data = file_get_contents($path);
+    if ($data === false) {
+        http_response_code(500);
+        header('Content-Type: text/plain; charset=utf-8');
+        exit('Scan file could not be read.');
+    }
 }
+
+header('Content-Type: ' . $ct);
+header('Content-Disposition: inline; filename="passport.' . $ext . '"');
+header('Cache-Control: private, no-store');
+echo $data;
