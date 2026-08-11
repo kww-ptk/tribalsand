@@ -9,6 +9,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/booking.php';    // team (visitor) helpers
 require_once __DIR__ . '/../includes/frontdesk.php';
+require_once __DIR__ . '/../includes/checkin.php';   // checkin_badge() on arrival rows
 require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/pagination.php';
 require_once __DIR__ . '/../includes/admin-pagination.php';
@@ -178,12 +179,35 @@ include __DIR__ . '/_layout.php';
     <div class="card__head"><span class="card__title">Arriving today (<?= count($day['arriving']) ?>)</span></div>
     <div class="card__body" style="padding:0">
       <table class="data-table">
-        <thead><tr><th>Guest</th><th>Property</th><th>Room</th></tr></thead>
+        <thead><tr><th>Guest</th><th>Room</th><th>Party</th><th></th></tr></thead>
         <tbody>
           <?php if (!$day['arriving']): ?>
-          <tr><td colspan="3" style="text-align:center;padding:1.5rem;color:var(--muted)">No arrivals.</td></tr>
+          <tr><td colspan="4" style="text-align:center;padding:1.5rem;color:var(--muted)">No arrivals.</td></tr>
           <?php else: foreach ($day['arriving'] as $r): ?>
-          <tr><td><strong><?= e($r['guest_name'] ?? 'Guest') ?></strong></td><td><?= e($r['venue_name'] ?? '') ?></td><td class="text-muted"><?= e($r['room_name'] ?? '') ?></td></tr>
+          <?php
+            $__n     = (int)($r['guest_count'] ?? 0);
+            $__badge = checkin_badge($r);
+            $__vid   = (int)($r['venue_id'] ?? 0);
+            $__room  = trim(((string)($r['venue_name'] ?? '')) . ' · ' . ((string)($r['room_name'] ?? '')), ' ·');
+          ?>
+          <tr>
+            <td><strong><?= e($r['guest_name'] ?? 'Guest') ?></strong>
+              <?php if (($r['status'] ?? '') !== 'confirmed'): ?> <span class="badge badge--orange">Pending</span><?php endif; ?>
+            </td>
+            <td class="text-muted"><?= e($__room) ?></td>
+            <td>
+              <?= $__n > 0 ? e($__n . ' adult' . ($__n === 1 ? '' : 's')) : '<span class="text-muted">—</span>' ?>
+              <?php if ($__badge): ?><br><span class="ci-badge <?= e($__badge['class']) ?>"><?= e($__badge['label']) ?></span><?php endif; ?>
+            </td>
+            <td style="text-align:right">
+              <?php if (visitors_supported() && in_array($__vid, $scopedVenueIds, true)): ?>
+              <button type="button" class="btn-sm btn-outline gate-signin"
+                      data-name="<?= e((string)($r['guest_name'] ?? '')) ?>"
+                      data-venue="<?= $__vid ?>"
+                      data-room="<?= e($__room) ?>">Sign in</button>
+              <?php endif; ?>
+            </td>
+          </tr>
           <?php endforeach; endif; ?>
         </tbody>
       </table>
@@ -282,6 +306,23 @@ include __DIR__ . '/_layout.php';
       if (!open) { var f = card.querySelector('input[name="visitor_name"]'); if (f) f.focus(); }
     });
   }
+  // One-tap sign-in for an arriving booking: open the existing visitor form with
+  // everything we already know filled in, leaving only the plate to type.
+  document.querySelectorAll('.gate-signin').forEach(function (b) {
+    b.addEventListener('click', function () {
+      if (!card) return;
+      card.style.display = '';
+      if (btn) btn.setAttribute('aria-expanded', 'true');
+      var set = function (name, val) { var el = card.querySelector('[name="' + name + '"]'); if (el) el.value = val; };
+      set('visitor_name', b.getAttribute('data-name') || '');
+      set('venue_id',     b.getAttribute('data-venue') || '');
+      set('visiting',     b.getAttribute('data-room') || '');
+      set('purpose',      'Guest arrival');
+      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      var veh = card.querySelector('[name="vehicle"]');
+      if (veh) veh.focus();
+    });
+  });
   // Gate-log date filter — auto-submit when a date is picked.
   var vd = document.getElementById('gateVdate');
   var lf = document.getElementById('gateLogFilters');

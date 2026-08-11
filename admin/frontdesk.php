@@ -71,7 +71,7 @@ $card = function(array $r): string {
 
     ob_start(); ?>
     <div class="fd-card" data-href="/admin/booking.php?hold=<?= $hid ?>" role="link" tabindex="0" aria-label="Open booking for <?= $name ?>">
-      <div class="fd-card__name"><?= $name ?></div>
+      <div class="fd-card__name"><?= $name ?><?php if (($r['status'] ?? '') !== 'confirmed'): ?> <span class="badge badge--orange" style="margin-left:6px;vertical-align:middle">Pending</span><?php endif; ?></div>
       <div class="fd-card__meta"><b><?= $place ?></b> · <?= $dates ?><?php if ($code !== ''): ?> · <span class="fd-code"><?= e($code) ?></span><?php endif; ?></div>
       <div class="fd-card__badges">
         <?php if ($reqs > 0): ?><a class="fd-badge fd-badge--req" href="/admin/booking.php?hold=<?= $hid ?>&tab=requests"><?= $reqs ?> request<?= $reqs === 1 ? '' : 's' ?></a><?php endif; ?>
