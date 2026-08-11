@@ -173,5 +173,10 @@ check('coguest waiver-only=review', checkin_coguest_view_state([], $cfgWaiverOnl
 $cfgPassOnly = ['passport'=>['enabled'=>true], 'waiver'=>['enabled'=>false]];
 check('coguest passport-only done', checkin_coguest_view_state($ciPass, $cfgPassOnly) === 'done');
 
+// ── Shared portal: display name (pure) ──────────────────────────────────────
+check('display name first word',  guest_display_name(['passport_name'=>'Jess Achieng']) === 'Jess');
+check('display name blank=Guest',  guest_display_name(['passport_name'=>'']) === 'Guest');
+check('display name null=Guest',   guest_display_name(null) === 'Guest');
+
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);

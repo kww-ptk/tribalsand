@@ -114,6 +114,55 @@ function resolve_booking_by_ref(string $ref): array|false {
     return fetch_hold_for_guest($holdId);
 }
 
+/** True once add_shared_portal.sql is applied (holds.share_reservation). Cached. */
+function share_reservation_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { db_query('SELECT share_reservation FROM holds LIMIT 1'); $ok = true; }
+    catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/** True if this hold has sharing turned on (and the column exists). */
+function share_reservation_on(array $hold): bool {
+    return share_reservation_supported() && !empty($hold['share_reservation']);
+}
+
+/** True once booking_addons.requested_by exists. Cached. */
+function addon_requested_by_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { db_query('SELECT requested_by FROM booking_addons LIMIT 1'); $ok = true; }
+    catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/** First name for attribution display, else "Guest". Pure. */
+function guest_display_name(?array $g): string {
+    $n = trim((string)($g['passport_name'] ?? ''));
+    return $n === '' ? 'Guest' : explode(' ', $n)[0];
+}
+
+/**
+ * Resolve a portal token (from ?ref= / ?g= / a posted field) to the acting party.
+ * Returns ['hold'=>row, 'guest_id'=>int, 'is_lead'=>bool] or false.
+ */
+function resolve_portal_actor(string $token): array|false {
+    $token = trim($token);
+    if (($holdId = verify_guest_ref($token)) !== false) {
+        $hold = fetch_hold_for_guest($holdId);
+        if (!$hold) return false;
+        return ['hold' => $hold, 'guest_id' => checkin_ensure_lead_guest_id($holdId), 'is_lead' => true];
+    }
+    if (($r = verify_guest_pass_token($token)) !== false) {
+        [$holdId, $guestId] = $r;
+        $hold = fetch_hold_for_guest($holdId);
+        if (!$hold || !share_reservation_on($hold)) return false;
+        return ['hold' => $hold, 'guest_id' => $guestId, 'is_lead' => false];
+    }
+    return false;
+}
+
 /** Resolve a booking from a typed code alone (case-insensitive). */
 function resolve_booking_by_code_only(string $code): array|false {
     $code = strtoupper(trim($code));
