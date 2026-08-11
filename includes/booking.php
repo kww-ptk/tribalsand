@@ -114,6 +114,12 @@ function resolve_booking_by_ref(string $ref): array|false {
     return fetch_hold_for_guest($holdId);
 }
 
+/** The hold's lead checkin_guests row id, seeding it if absent. Used by resolve_portal_actor. */
+function checkin_ensure_lead_guest_id(int $holdId): int {
+    db_query("INSERT INTO checkin_guests (hold_id, is_lead) VALUES (:h, TRUE) ON CONFLICT (hold_id) WHERE is_lead DO NOTHING", [':h' => $holdId]);
+    return (int) db_query('SELECT id FROM checkin_guests WHERE hold_id = :h AND is_lead', [':h' => $holdId])->fetchColumn();
+}
+
 /** True once add_shared_portal.sql is applied (holds.share_reservation). Cached. */
 function share_reservation_supported(): bool {
     static $ok = null;

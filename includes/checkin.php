@@ -297,9 +297,3 @@ function checkin_target_guest_id(int $holdId, ?int $onlyGuestId): int {
     db_query("INSERT INTO checkin_guests (hold_id, is_lead) VALUES (:h, TRUE) ON CONFLICT (hold_id) WHERE is_lead DO NOTHING", [':h' => $holdId]);
     return (int)db_query('SELECT id FROM checkin_guests WHERE hold_id = :h AND is_lead', [':h' => $holdId])->fetchColumn();
 }
-
-/** The hold's lead checkin_guests row id, seeding it if absent. */
-function checkin_ensure_lead_guest_id(int $holdId): int {
-    db_query("INSERT INTO checkin_guests (hold_id, is_lead) VALUES (:h, TRUE) ON CONFLICT (hold_id) WHERE is_lead DO NOTHING", [':h' => $holdId]);
-    return (int) db_query('SELECT id FROM checkin_guests WHERE hold_id = :h AND is_lead', [':h' => $holdId])->fetchColumn();
-}
