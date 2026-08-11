@@ -23,7 +23,10 @@ function frontdesk_tomorrow_ymd(): string {
  * logs if the query fails (e.g. a table is missing pre-migration).
  */
 function frontdesk_rows(?array $venueIds, string $datePredicate, array $params): array {
-    $where = ["h.status = 'confirmed'", $datePredicate];
+    // Confirmed bookings, plus staff-typed pending ones. The absence of a TTL is
+    // what separates a booking someone typed in (admin/hold-new.php passes NULL)
+    // from a speculative web enquiry, which always carries a 24h expiry.
+    $where = ["(h.status = 'confirmed' OR (h.status = 'pending' AND h.expires_at IS NULL))", $datePredicate];
     if ($venueIds !== null) {
         $ids = $venueIds ?: [-1];
         $ph = [];
@@ -43,7 +46,7 @@ function frontdesk_rows(?array $venueIds, string $datePredicate, array $params):
         : '';
     try {
         return db_query(
-            "SELECT h.id, h.guest_name, h.check_in, h.check_out, h.access_code,
+            "SELECT h.id, h.guest_name, h.check_in, h.check_out, h.access_code, h.status,
                     {$ci}
                     r.name AS room_name, u.name AS unit_name,
                     v.id AS venue_id, v.name AS venue_name,
