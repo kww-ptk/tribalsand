@@ -101,6 +101,13 @@ function waiver_version(string $text): string {
     return substr(sha1(trim($text)), 0, 12);
 }
 
+/** The waiver terms the guest sees: the setting override, else the canonical default. */
+function checkin_waiver_text(): string {
+    $w = trim((string) setting('checkin_waiver_text', ''));
+    return $w !== '' ? $w
+        : 'I confirm the information provided is accurate and accept the terms of stay, indemnity and insurance requirements.';
+}
+
 /** Owner, or a manager who manages this booking's venue, may view passport docs. */
 function can_view_guest_docs(int $holdId): bool {
     if (is_owner()) return true;

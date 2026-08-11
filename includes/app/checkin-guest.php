@@ -5,8 +5,7 @@ $holdId = (int)$hold['id'];
 $cfg    = checkin_enabled_steps();
 $showPassport = isset($cfg['passport']);
 $showWaiver   = isset($cfg['waiver']);
-$waiver = setting('checkin_waiver_text', '');
-$waiverText = $waiver !== '' ? $waiver : 'I confirm the information provided is accurate and accept the terms of stay, indemnity and insurance requirements.';
+$waiverText = checkin_waiver_text();
 
 $guests = fetch_checkin_guests($holdId);
 $others = array_values(array_filter($guests, fn($g) => (int)$g['id'] !== (int)$me['id'] && empty($g['is_child'])));

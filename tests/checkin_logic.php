@@ -151,5 +151,13 @@ check('co-guest signs self',      checkin_can_sign_self(42, false) === true);
 check('lead signs own lead row',  checkin_can_sign_self(null, true) === true);
 check('lead cannot sign other',   checkin_can_sign_self(null, false) === false);
 
+// ── Waiver text resolution (default + override) ─────────────────────────────
+$prevWaiver = setting('checkin_waiver_text', '');
+set_setting('checkin_waiver_text', '');
+check('waiver text default non-empty', trim(checkin_waiver_text()) !== '');
+set_setting('checkin_waiver_text', 'Custom terms XYZ');
+check('waiver text uses override',      checkin_waiver_text() === 'Custom terms XYZ');
+set_setting('checkin_waiver_text', $prevWaiver); // restore
+
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);
