@@ -27,6 +27,28 @@ $kids     = [];
 foreach ($guests as $g) if (!empty($g['is_child'])) $kids[(int)($g['parent_guest_id'] ?? 0)][] = $g;
 $need     = max(1, (int)($hold['guest_count'] ?? 1));
 
+// The lead has finished their own part but the party has not — acknowledge them
+// and show who is still outstanding. The portal itself is already unlocked for
+// them (booking.php lifts the gate on submitted_at), so this is information,
+// not a lock.
+// NB: $fullCfg is checkin_config() — every step with its enabled/required flags.
+// It is NOT the same as $cfg (checkin_enabled_steps()) already defined above:
+// checkin_guest_complete() reads $config['passport']['enabled'], so it needs the
+// full map, including disabled steps.
+$fullCfg      = checkin_config();
+$outstanding  = checkin_outstanding_adults($guests, $fullCfg);
+$unnamedSlots = max(0, $need - count($adults));   // adult slots never added to the roster
+$leadDone     = checkin_guest_complete($lead ?: null, $fullCfg)
+                && checkin_missing_steps($fullCfg, $data, $lead ?: null) === [];
+$leadWaiting  = !$done && $leadDone && ($outstanding || $unnamedSlots > 0);
+
+$waitingNames = [];
+foreach ($outstanding as $__i => $__g) {
+    $__n = trim((string)($__g['passport_name'] ?? ''));
+    $waitingNames[] = $__n !== '' ? explode(' ', $__n)[0] : 'Guest ' . ($__i + 2);
+}
+$waitingLabel = checkin_waiting_on_label($waitingNames, $unnamedSlots);
+
 // Wizard flow: passport + waiver collapse into "Your details" — the lead's own
 // identity, consent and signature. Other adults get their own "Your party" step
 // so adding a guest can never disturb the lead's signature (the old combined
@@ -70,6 +92,37 @@ if (isset($cfg['arrival'])) $needs[] = ['&#9992;&#65039;', 'Flight number &amp; 
 </div>
 <?php endif; ?>
 
+<?php if ($leadWaiting): ?>
+<div class="pa-card ci-done-card">
+  <div class="ci-done-card__check">&#10003;</div>
+  <h2>Thank you, <?= e($first) ?>. Your check-in is complete.</h2>
+  <p>
+    <?php if ($waitingLabel !== ''): ?>We&rsquo;re still waiting on <strong><?= e($waitingLabel) ?></strong>. <?php endif; ?>
+    Once everyone in your party has checked in, your reservation is fully confirmed.
+  </p>
+  <?php if ($outstanding): ?>
+  <div class="ci-others" style="text-align:left">
+    <p class="ci-need__title">Still to check in</p>
+    <?php foreach ($outstanding as $og): $ogid = (int)($og['id'] ?? 0); if (!$ogid) continue; ?>
+    <div class="ci-other__row">
+      <span><?= e(trim((string)($og['passport_name'] ?? '')) !== '' ? (string)$og['passport_name'] : 'Unnamed guest') ?></span>
+      <span class="ci-chip">Pending</span>
+    </div>
+    <div class="ci-linkrow" style="margin-bottom:12px">
+      <input class="ci-in" readonly value="<?= e(make_guest_pass_url($holdId, $ogid)) ?>" onclick="this.select()">
+      <button type="button" class="pa-btn pa-btn--ghost ci-copy">Copy</button>
+    </div>
+    <?php endforeach; ?>
+  </div>
+  <?php endif; ?>
+  <a class="pa-btn pa-btn--primary" href="/booking.php?ref=<?= e($ref) ?>&view=home">Continue to your stay &rarr;</a>
+  <?php if (checkin_guest_waiver_signed($lead)): ?>
+  <a class="pa-btn pa-btn--ghost" href="/admin/consent-print.php?hold=<?= $holdId ?>&guest=<?= (int)($lead['id'] ?? 0) ?>&ref=<?= e($ref) ?>" target="_blank">Download my signed waiver</a>
+  <?php endif; ?>
+  <button type="button" class="pa-btn pa-btn--ghost" id="ciEdit">Update my details</button>
+</div>
+<?php endif; ?>
+
 <?php if (!empty($_SESSION['ci_error'])): ?>
 <div class="ci-alert"><?= e($_SESSION['ci_error']) ?></div>
 <?php unset($_SESSION['ci_error']); endif; ?>
@@ -79,7 +132,7 @@ if (isset($cfg['arrival'])) $needs[] = ['&#9992;&#65039;', 'Flight number &amp; 
   <input type="hidden" name="ref" value="<?= e($ref) ?>">
   <input type="hidden" name="do" value="save">
 
-  <?php if (!$done): ?>
+  <?php if (!$done && !$leadWaiting): ?>
   <section class="ci-intro" id="ciIntro">
     <div class="ci-hero">
       <div class="ci-hero__eyebrow">Pre-arrival check-in</div>
