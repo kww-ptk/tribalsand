@@ -224,6 +224,23 @@ check('waiting label n slots', checkin_waiting_on_label([], 2) === '2 more guest
 check('waiting label mixed',  checkin_waiting_on_label(['Patrik'], 2) === 'Patrik and 2 more guests');
 check('waiting label empty',  checkin_waiting_on_label([], 0) === '');
 
+// ── Guest label: name, else "Guest N" by ROSTER position (pure) ─────────────
+$lblRoster = [
+    ['id' => 1, 'passport_name' => 'Jessica Mwangi'],
+    ['id' => 2, 'passport_name' => ''],
+    ['id' => 3, 'passport_name' => 'Patrik Otieno'],
+];
+check('guest label full name',        checkin_guest_label($lblRoster[0], $lblRoster) === 'Jessica Mwangi');
+check('guest label short name',       checkin_guest_label($lblRoster[0], $lblRoster, true) === 'Jessica');
+check('guest label unnamed by roster', checkin_guest_label($lblRoster[1], $lblRoster) === 'Guest 2');
+check('guest label third keeps name', checkin_guest_label($lblRoster[2], $lblRoster) === 'Patrik Otieno');
+check('guest label short of unnamed',  checkin_guest_label($lblRoster[1], $lblRoster, true) === 'Guest 2');
+check('guest label absent from roster', checkin_guest_label(['id' => 99, 'passport_name' => ''], $lblRoster) === 'Guest 4');
+check('guest label null guest',       checkin_guest_label(null, $lblRoster) === 'Guest 4');
+// The bug this replaces: numbering by filtered-list position named a guest who had finished.
+$lblFiltered = [$lblRoster[1]];   // only guest 2 outstanding, but roster position is still 2
+check('guest label ignores filtered index', checkin_guest_label($lblFiltered[0], $lblRoster) === 'Guest 2');
+
 // ── Shared portal: display name (pure) ──────────────────────────────────────
 check('display name first word',  guest_display_name(['passport_name'=>'Jess Achieng']) === 'Jess');
 check('display name blank=Guest',  guest_display_name(['passport_name'=>'']) === 'Guest');

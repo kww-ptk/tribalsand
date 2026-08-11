@@ -314,6 +314,25 @@ function checkin_outstanding_adults(array $guests, array $config): array {
 }
 
 /**
+ * A guest's display label: their name, else "Guest N" by ROSTER position — never
+ * by position in a filtered list, which would number a guest who had already
+ * finished. $short returns the first word only, for sentences. Pure.
+ */
+function checkin_guest_label(?array $guest, array $adults, bool $short = false): string {
+    $g = $guest ?? [];
+    $n = trim((string)($g['passport_name'] ?? ''));
+    if ($n !== '') return $short ? explode(' ', $n)[0] : $n;
+    $gid = (int)($g['id'] ?? 0);
+    $pos = null;
+    if ($gid > 0) {
+        foreach (array_values($adults) as $i => $a) {
+            if ((int)($a['id'] ?? 0) === $gid) { $pos = $i; break; }
+        }
+    }
+    return 'Guest ' . ($pos === null ? count($adults) + 1 : $pos + 1);
+}
+
+/**
  * Human list of who a party is still waiting on: named guests plus a count of
  * adult slots that have not been added to the roster at all ("2 more guests").
  * Returns '' when nothing is outstanding. Pure.

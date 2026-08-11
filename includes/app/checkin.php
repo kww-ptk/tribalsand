@@ -42,19 +42,10 @@ $leadDone     = checkin_guest_complete($lead ?: null, $fullCfg)
                 && checkin_missing_steps($fullCfg, $data, $lead ?: null) === [];
 $leadWaiting  = !$done && $leadDone && ($outstanding || $unnamedSlots > 0);
 
-// Unnamed guests fall back to their ROSTER number, not their position in the
-// filtered outstanding list — otherwise "guest 2 done, guest 3 unnamed" would
-// label guest 3 as "Guest 2". $adults is ordered lead-first, so index+1 is the
-// number the guest sees.
-$__adultPos = [];
-foreach ($adults as $__p => $__a) { $__adultPos[(int)($__a['id'] ?? 0)] = $__p; }
+// Short labels for the sentence ("waiting on Patrik and Sarah"); the itemised
+// list below uses the full-name form of the same helper.
 $waitingNames = [];
-foreach ($outstanding as $__g) {
-    $__n = trim((string)($__g['passport_name'] ?? ''));
-    if ($__n !== '') { $waitingNames[] = explode(' ', $__n)[0]; continue; }
-    $__pos = $__adultPos[(int)($__g['id'] ?? 0)] ?? null;
-    $waitingNames[] = 'Guest ' . ($__pos === null ? count($waitingNames) + 2 : $__pos + 1);
-}
+foreach ($outstanding as $__g) { $waitingNames[] = checkin_guest_label($__g, $adults, true); }
 $waitingLabel = checkin_waiting_on_label($waitingNames, $unnamedSlots);
 
 // Wizard flow: passport + waiver collapse into "Your details" — the lead's own
@@ -113,7 +104,7 @@ if (isset($cfg['arrival'])) $needs[] = ['&#9992;&#65039;', 'Flight number &amp; 
     <p class="ci-need__title">Still to check in</p>
     <?php foreach ($outstanding as $og): $ogid = (int)($og['id'] ?? 0); if (!$ogid) continue; ?>
     <div class="ci-other__row">
-      <span><?= e(trim((string)($og['passport_name'] ?? '')) !== '' ? (string)$og['passport_name'] : 'Unnamed guest') ?></span>
+      <span><?= e(checkin_guest_label($og, $adults)) ?></span>
       <span class="ci-chip">Pending</span>
     </div>
     <div class="ci-linkrow" style="margin-bottom:12px">
