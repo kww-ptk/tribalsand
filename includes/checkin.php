@@ -244,6 +244,23 @@ function checkin_can_sign_self(?int $onlyGuestId, bool $targetIsLead): bool {
     return $onlyGuestId !== null || $targetIsLead;
 }
 
+/**
+ * Which pieces of consent a signing attempt is missing. [] = ready to sign.
+ * The returned strings are guest-facing sentence fragments ("agree to the
+ * terms"), used verbatim by both the wizard's inline error and the server's
+ * rejection message so the two can never drift apart.
+ *
+ * $alreadySigned = the guest already has a stored signature, so an empty
+ * $signature means "left the existing one alone", not "refused to sign". Pure.
+ */
+function checkin_consent_missing(bool $agreed, string $typedName, string $signature, bool $alreadySigned = false): array {
+    $missing = [];
+    if (!$agreed)                                                $missing[] = 'agree to the terms';
+    if (trim($typedName) === '')                                 $missing[] = 'type your full name';
+    if (!$alreadySigned && !checkin_valid_signature($signature)) $missing[] = 'draw your signature';
+    return $missing;
+}
+
 /** Is an ADULT guest fully done — passport (if that step is required) AND waiver (if required). */
 function checkin_guest_complete(?array $g, array $config): bool {
     if ($g === null || !empty($g['is_child'])) return false;

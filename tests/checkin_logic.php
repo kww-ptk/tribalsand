@@ -169,6 +169,20 @@ check('co-guest signs self',      checkin_can_sign_self(42, false) === true);
 check('lead signs own lead row',  checkin_can_sign_self(null, true) === true);
 check('lead cannot sign other',   checkin_can_sign_self(null, false) === false);
 
+// ── Consent completeness (pure) ─────────────────────────────────────────────
+// A minimal valid PNG data-URL: the 8 magic bytes plus padding to clear the
+// 8-byte floor in checkin_valid_signature().
+$sigOk = 'data:image/png;base64,' . base64_encode(hex2bin('89504e470d0a1a0a') . str_repeat("\0", 16));
+check('consent fixture is a valid sig', checkin_valid_signature($sigOk) === true);
+check('consent complete',               checkin_consent_missing(true, 'Jess Achieng', $sigOk) === []);
+check('consent needs agreement',        checkin_consent_missing(false, 'Jess', $sigOk) === ['agree to the terms']);
+check('consent needs typed name',       checkin_consent_missing(true, '   ', $sigOk) === ['type your full name']);
+check('consent needs signature',        checkin_consent_missing(true, 'Jess', '') === ['draw your signature']);
+check('consent rejects junk signature', checkin_consent_missing(true, 'Jess', 'data:image/png;base64,bm90YXBuZw==') === ['draw your signature']);
+check('consent alreadySigned skips sig', checkin_consent_missing(true, 'Jess', '', true) === []);
+check('consent lists all three',        count(checkin_consent_missing(false, '', '')) === 3);
+check('consent order is stable',        checkin_consent_missing(false, '', '') === ['agree to the terms', 'type your full name', 'draw your signature']);
+
 // ── Waiver text resolution (default + override) ─────────────────────────────
 $prevWaiver = setting('checkin_waiver_text', '');
 set_setting('checkin_waiver_text', '');
