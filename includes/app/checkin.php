@@ -42,10 +42,18 @@ $leadDone     = checkin_guest_complete($lead ?: null, $fullCfg)
                 && checkin_missing_steps($fullCfg, $data, $lead ?: null) === [];
 $leadWaiting  = !$done && $leadDone && ($outstanding || $unnamedSlots > 0);
 
+// Unnamed guests fall back to their ROSTER number, not their position in the
+// filtered outstanding list — otherwise "guest 2 done, guest 3 unnamed" would
+// label guest 3 as "Guest 2". $adults is ordered lead-first, so index+1 is the
+// number the guest sees.
+$__adultPos = [];
+foreach ($adults as $__p => $__a) { $__adultPos[(int)($__a['id'] ?? 0)] = $__p; }
 $waitingNames = [];
-foreach ($outstanding as $__i => $__g) {
+foreach ($outstanding as $__g) {
     $__n = trim((string)($__g['passport_name'] ?? ''));
-    $waitingNames[] = $__n !== '' ? explode(' ', $__n)[0] : 'Guest ' . ($__i + 2);
+    if ($__n !== '') { $waitingNames[] = explode(' ', $__n)[0]; continue; }
+    $__pos = $__adultPos[(int)($__g['id'] ?? 0)] ?? null;
+    $waitingNames[] = 'Guest ' . ($__pos === null ? count($waitingNames) + 2 : $__pos + 1);
 }
 $waitingLabel = checkin_waiting_on_label($waitingNames, $unnamedSlots);
 
