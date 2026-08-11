@@ -143,6 +143,24 @@ function addon_requested_by_supported(): bool {
     return $ok;
 }
 
+/** True once bill_items.guest_id exists (C-2). Cached. */
+function bill_item_guest_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { db_query('SELECT guest_id FROM bill_items LIMIT 1'); $ok = true; }
+    catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/** True once booking_messages.sender_guest_id exists (C-2). Cached. */
+function message_sender_guest_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { db_query('SELECT sender_guest_id FROM booking_messages LIMIT 1'); $ok = true; }
+    catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
 /** First name for attribution display, else "Guest". Pure. */
 function guest_display_name(?array $g): string {
     $n = trim((string)($g['passport_name'] ?? ''));
@@ -647,22 +665,28 @@ function addon_status_label(string $status): string {
     ][$status] ?? ucfirst($status);
 }
 
-/** A booking's chargeable requests (confirmed/completed), with tour name. For the bill. */
+/** A booking's chargeable requests (confirmed/completed), with tour + requester name. For the bill. */
 function fetch_bill_lines(int $holdId): array {
     try {
+        $sel  = addon_requested_by_supported() ? ", cg.passport_name AS requested_by_name, cg.is_lead AS requested_by_is_lead" : "";
+        $join = addon_requested_by_supported() ? "LEFT JOIN checkin_guests cg ON cg.id = ba.requested_by" : "";
         return db_query(
-            "SELECT ba.*, t.name AS tour_name FROM booking_addons ba
+            "SELECT ba.*, t.name AS tour_name{$sel} FROM booking_addons ba
              LEFT JOIN tours t ON t.id = ba.tour_id
+             {$join}
              WHERE ba.hold_id = :h AND ba.status IN ('confirmed','completed')
              ORDER BY ba.created_at", [':h' => $holdId]
         )->fetchAll();
     } catch (Throwable $e) { return []; }
 }
 
-/** Ad-hoc bill line items for a booking (minibar, damages…). */
+/** Ad-hoc bill line items for a booking (minibar, damages…), with guest name when attributed. */
 function fetch_bill_items(int $holdId): array {
-    try { return db_query("SELECT * FROM bill_items WHERE hold_id = :h ORDER BY id", [':h' => $holdId])->fetchAll(); }
-    catch (Throwable $e) { return []; }
+    try {
+        $sel  = bill_item_guest_supported() ? ", cg.passport_name AS guest_name, cg.is_lead AS guest_is_lead" : "";
+        $join = bill_item_guest_supported() ? "LEFT JOIN checkin_guests cg ON cg.id = bi.guest_id" : "";
+        return db_query("SELECT bi.*{$sel} FROM bill_items bi {$join} WHERE bi.hold_id = :h ORDER BY bi.id", [':h' => $holdId])->fetchAll();
+    } catch (Throwable $e) { return []; }
 }
 
 /** Total extras = confirmed/completed request prices (null → 0) + manual items. */
