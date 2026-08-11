@@ -17,6 +17,45 @@ function checkin_step_catalog(): array {
     ];
 }
 
+/** The three ways a guest can arrive. Array order = radio order in the wizard. */
+function checkin_arrival_modes(): array {
+    return [
+        'flight' => 'By air',
+        'road'   => 'By road',
+        'other'  => 'Something else',
+    ];
+}
+
+/**
+ * Airports offered in the arrival dropdown. Keys are the stored value (so the
+ * select round-trips), values are the guest-facing label. The wizard adds an
+ * "Other" choice that writes free text into the same arrival_airport column.
+ */
+function checkin_airports(): array {
+    return [
+        'Vipingo' => 'Vipingo',
+        'Malindi' => 'Malindi (MYD)',
+        'Mombasa' => 'Mombasa — Moi Intl (MBA)',
+    ];
+}
+
+/**
+ * Is the arrival step's required data present? Mode-aware:
+ *   flight      → airport + flight number + arrival time
+ *   road/other  → arrival time only
+ *   no mode set → the legacy rule (flight number + arrival time), so rows saved
+ *                 before add_checkin_arrival.sql keep their old behaviour.
+ * An unrecognised mode falls back to the legacy rule rather than passing. Pure.
+ */
+function checkin_arrival_complete(?array $data): bool {
+    $d    = $data ?? [];
+    $has  = fn($k) => trim((string)($d[$k] ?? '')) !== '';
+    $mode = trim((string)($d['arrival_mode'] ?? ''));
+    if ($mode === 'road' || $mode === 'other') return $has('arrival_at');
+    if ($mode === 'flight') return $has('arrival_airport') && $has('flight_number') && $has('arrival_at');
+    return $has('flight_number') && $has('arrival_at');
+}
+
 /** Merged config: catalog defaults overlaid with the `checkin_steps` setting (JSON). */
 function checkin_config(): array {
     $overrides = [];
@@ -140,7 +179,7 @@ function checkin_step_complete(string $key, ?array $data, ?array $lead): bool {
     $data = $data ?? [];
     $has = fn($k) => trim((string)($data[$k] ?? '')) !== '';
     switch ($key) {
-        case 'arrival':  return $has('flight_number') && !empty($data['arrival_at']);
+        case 'arrival':  return checkin_arrival_complete($data);
         case 'transfer':
             if (!array_key_exists('needs_transfer', $data) || $data['needs_transfer'] === null) return false;
             $wants = ($data['needs_transfer'] === true || $data['needs_transfer'] === 't' || $data['needs_transfer'] === '1' || $data['needs_transfer'] === 1);

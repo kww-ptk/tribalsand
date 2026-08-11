@@ -66,6 +66,22 @@ check('passport complete w/ file',        checkin_step_complete('passport', [], 
 check('waiver needs signature',           checkin_step_complete('waiver', [], ['waiver_signed_name' => 'A']) === false);
 check('waiver complete when signed',      checkin_step_complete('waiver', [], ['waiver_signed_name' => 'A', 'waiver_signed_at' => '2026-08-06 10:00', 'waiver_signature' => 'sig']) === true);
 
+// ── Arrival modes (pure) ────────────────────────────────────────────────────
+check('arrival modes has three',          count(checkin_arrival_modes()) === 3);
+check('arrival modes keyed by value',     array_keys(checkin_arrival_modes()) === ['flight', 'road', 'other']);
+check('airports has three',               count(checkin_airports()) === 3);
+check('arrival legacy needs flight+time', checkin_arrival_complete(['flight_number' => 'KQ100', 'arrival_at' => '2026-09-01 14:00']) === true);
+check('arrival legacy without flight',    checkin_arrival_complete(['arrival_at' => '2026-09-01 14:00']) === false);
+check('arrival flight needs airport',     checkin_arrival_complete(['arrival_mode' => 'flight', 'flight_number' => 'KQ100', 'arrival_at' => '2026-09-01 14:00']) === false);
+check('arrival flight needs flight no',   checkin_arrival_complete(['arrival_mode' => 'flight', 'arrival_airport' => 'Malindi', 'arrival_at' => '2026-09-01 14:00']) === false);
+check('arrival flight complete',          checkin_arrival_complete(['arrival_mode' => 'flight', 'arrival_airport' => 'Malindi', 'flight_number' => 'KQ100', 'arrival_at' => '2026-09-01 14:00']) === true);
+check('arrival road needs only time',     checkin_arrival_complete(['arrival_mode' => 'road', 'arrival_at' => '2026-09-01 14:00']) === true);
+check('arrival road without time',        checkin_arrival_complete(['arrival_mode' => 'road']) === false);
+check('arrival other needs only time',    checkin_arrival_complete(['arrival_mode' => 'other', 'arrival_at' => '2026-09-01 14:00']) === true);
+check('arrival unknown mode = legacy',    checkin_arrival_complete(['arrival_mode' => 'teleport', 'arrival_at' => '2026-09-01 14:00']) === false);
+check('arrival null data incomplete',     checkin_arrival_complete(null) === false);
+check('step_complete delegates to mode',  checkin_step_complete('arrival', ['arrival_mode' => 'road', 'arrival_at' => '2026-09-01 14:00'], null) === true);
+
 // ── Missing-steps aggregation ──────────────────────────────────────────────
 $cfgReq = ['passport' => ['enabled' => true, 'required' => true], 'waiver' => ['enabled' => true, 'required' => true], 'dietary' => ['enabled' => true, 'required' => false]];
 check('missing lists passport+waiver',   checkin_missing_steps($cfgReq, [], null) === ['passport', 'waiver']);
