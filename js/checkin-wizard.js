@@ -66,14 +66,24 @@
     if (t.classList.contains('ci-next')) { e.preventDefault(); saveThen(function () { show(cur + 1); }); return; }
     if (t.classList.contains('ci-back')) { e.preventDefault(); if (cur === 0) backToStart(); else show(cur - 1); return; }
 
-    if (t.classList.contains('ci-addguest')) {   // add adult → save lead, add slot, reload to the party step
-      e.preventDefault(); t.disabled = true; t.textContent = 'Adding…';
-      saveThen(function () {
-        apiPost('/api/checkin-guest.php', { action: 'add_adult' })
-          .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
-          .then(function () { location.href = '/booking.php?ref=' + encodeURIComponent(REF) + '&view=checkin&ci=party'; })
-          .catch(function () { t.disabled = false; t.textContent = '+ Add adult'; });
-      });
+    if (t.classList.contains('ci-addguest')) {   // add adult → append a card in place; never reload
+      e.preventDefault();
+      var addBtn = t; addBtn.disabled = true; addBtn.textContent = 'Adding…';
+      apiPost('/api/checkin-guest.php', { action: 'add_adult' })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+        .then(function (d) {
+          var tpl = document.getElementById('ciGuestTpl');
+          var card = tpl.content.firstElementChild.cloneNode(true);
+          card.setAttribute('data-guest-id', d.guest_id);
+          card.querySelector('.ci-kids').setAttribute('data-parent', d.guest_id);
+          var link = card.querySelector('.ci-guest__link input');
+          if (link) link.value = d.link || '';
+          addBtn.parentNode.insertBefore(card, addBtn);
+          addBtn.disabled = false;
+          updateAddBtn();
+          card.querySelector('.ci-guest__name').focus();
+        })
+        .catch(function () { addBtn.disabled = false; updateAddBtn(); });
       return;
     }
     if (t.classList.contains('ci-guest__remove')) {
@@ -167,10 +177,7 @@
       .catch(function () { state.textContent = 'Upload failed — try again'; });
   });
 
-  // Initial view: resume to a step after a roster reload; else land on intro/done.
-  var resume = new URLSearchParams(location.search).get('ci');
-  if (resume) {
-    var idx = -1; steps.forEach(function (s, i) { if (s.getAttribute('data-key') === resume) idx = i; });
-    if (idx >= 0) { openSteps(idx); }
-  } else if (!intro && !editBtn) { openSteps(0); }
+  // Initial view: intro when there is one, else straight into the steps. The old
+  // ?ci= resume parameter is gone with the reload that needed it.
+  if (!intro && !editBtn) openSteps(0);
 })();

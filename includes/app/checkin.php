@@ -271,6 +271,49 @@ if (isset($cfg['arrival'])) $needs[] = ['&#9992;&#65039;', 'Flight number &amp; 
         </div>
         <?php endforeach; ?>
 
+        <!-- Cloned by js/checkin-wizard.js when a new adult is added. Template
+             content is inert, so its inputs never post and never match a
+             document querySelectorAll. -->
+        <template id="ciGuestTpl">
+          <div class="ci-guest" data-guest-id="">
+            <div class="ci-guest__title">
+              <input class="ci-in ci-guest__name" data-field="passport_name" value="" placeholder="Guest full name">
+              <span class="ci-chip">Pending</span>
+              <button type="button" class="ci-guest__remove" aria-label="Remove guest">&times;</button>
+            </div>
+            <div class="ci-guest__modes">
+              <button type="button" class="ci-mode ci-guest__fill">Fill in for them</button>
+              <button type="button" class="ci-mode ci-guest__share">Send them a link</button>
+            </div>
+            <div class="ci-guest__inline" hidden>
+              <?php if ($showPassport): ?>
+              <label class="ci-l">Passport number</label>
+              <input class="ci-in" data-field="passport_number" value="">
+              <label class="ci-l">Nationality</label>
+              <input class="ci-in" data-field="nationality" value="">
+              <label class="ci-l">Passport expiry</label>
+              <input class="ci-in" type="date" data-field="passport_expiry" value="">
+              <label class="ci-l">Passport scan</label>
+              <div class="ci-upload" data-has="0">
+                <input type="file" accept="image/jpeg,image/png,application/pdf">
+                <span class="ci-upload__state">No file yet</span>
+              </div>
+              <?php endif; ?>
+              <?php if ($showWaiver): ?>
+              <p class="ci-hint">They sign the waiver themselves — use “Send them a link”, or “Sign on this device” from the admin check-in tab if they’re with you.</p>
+              <?php endif; ?>
+              <button type="button" class="pa-btn pa-btn--primary ci-guest__save">Save this guest</button>
+            </div>
+            <div class="ci-guest__link" hidden>
+              <label class="ci-l">Their private check-in link</label>
+              <div class="ci-linkrow"><input class="ci-in" readonly value="" onclick="this.select()"><button type="button" class="pa-btn pa-btn--ghost ci-copy">Copy</button></div>
+            </div>
+            <div class="ci-kids" data-parent="">
+              <button type="button" class="ci-addkid">+ Add child</button>
+            </div>
+          </div>
+        </template>
+
         <button type="button" class="pa-btn pa-btn--ghost ci-addguest" data-need="<?= $need ?>" <?= count($adults) >= $need ? 'hidden' : '' ?>>+ Add adult (<?= count($adults) ?>/<?= $need ?>)</button>
 
       <?php elseif ($key === 'dietary'): ?>
