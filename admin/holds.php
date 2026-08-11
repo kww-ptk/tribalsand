@@ -167,7 +167,9 @@ ob_start(); ?>
               default     => 'badge--grey',
           };
           $expires_str = '';
-          if ($status === 'pending' && $hold['expires_at']) {
+          if ($status === 'pending' && !$hold['expires_at']) {
+              $expires_str = 'Awaiting confirmation';   // staff-created: no TTL
+          } elseif ($status === 'pending' && $hold['expires_at']) {
               $diff = strtotime($hold['expires_at']) - time();
               $expires_str = $diff > 0
                   ? 'Expires in ' . gmdate('H\h i\m', $diff)
