@@ -83,7 +83,11 @@
           updateAddBtn();
           card.querySelector('.ci-guest__name').focus();
         })
-        .catch(function () { addBtn.disabled = false; updateAddBtn(); });
+        .catch(function () {   // tell the guest, then restore the real label — matches ci-guest__save
+          addBtn.disabled = false;
+          addBtn.textContent = 'Could not add — try again';
+          setTimeout(updateAddBtn, 2000);
+        });
       return;
     }
     if (t.classList.contains('ci-guest__remove')) {
