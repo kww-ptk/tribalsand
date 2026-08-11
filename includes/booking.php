@@ -329,23 +329,33 @@ function fetch_message_threads(int $holdId): array {
     return $threads;
 }
 
-/** All messages in one thread, oldest → newest. Empty if the table is absent (pre-migration). */
+/**
+ * All messages in one thread, oldest → newest. Empty if the table is absent.
+ * Also selects the sender's is_lead and the booking's guest_name so an unnamed
+ * lead can be attributed by name — see attributed_display_name().
+ */
 function fetch_thread_messages(int $holdId, ?int $addonId): array {
     $cond = $addonId === null ? 'addon_id IS NULL' : 'addon_id = :aid';
     $p    = [':h'=>$holdId]; if ($addonId !== null) $p[':aid'] = $addonId;
-    $sel  = message_sender_guest_supported() ? ", cg.passport_name AS sender_name" : "";
-    $join = message_sender_guest_supported() ? "LEFT JOIN checkin_guests cg ON cg.id = bm.sender_guest_id" : "";
+    $on   = message_sender_guest_supported();
+    $sel  = $on ? ", cg.passport_name AS sender_name, cg.is_lead AS sender_is_lead, h.guest_name AS hold_guest_name" : "";
+    $join = $on ? "LEFT JOIN checkin_guests cg ON cg.id = bm.sender_guest_id JOIN holds h ON h.id = bm.hold_id" : "";
     try {
         return db_query("SELECT bm.*{$sel} FROM booking_messages bm {$join} WHERE bm.hold_id=:h AND bm.$cond ORDER BY bm.created_at ASC", $p)->fetchAll();
     } catch (Throwable $e) { return []; }
 }
 
-/** New messages in a thread with id greater than $afterId, oldest → newest. Powers live polling. */
+/**
+ * New messages in a thread with id greater than $afterId, oldest → newest. Powers
+ * live polling. Selects the same attribution columns as fetch_thread_messages()
+ * so a polled bubble and a server-rendered one carry identical labels.
+ */
 function fetch_thread_messages_since(int $holdId, ?int $addonId, int $afterId): array {
     $cond = $addonId === null ? 'addon_id IS NULL' : 'addon_id = :aid';
     $p    = [':h'=>$holdId, ':after'=>$afterId]; if ($addonId !== null) $p[':aid'] = $addonId;
-    $sel  = message_sender_guest_supported() ? ", cg.passport_name AS sender_name" : "";
-    $join = message_sender_guest_supported() ? "LEFT JOIN checkin_guests cg ON cg.id = bm.sender_guest_id" : "";
+    $on   = message_sender_guest_supported();
+    $sel  = $on ? ", cg.passport_name AS sender_name, cg.is_lead AS sender_is_lead, h.guest_name AS hold_guest_name" : "";
+    $join = $on ? "LEFT JOIN checkin_guests cg ON cg.id = bm.sender_guest_id JOIN holds h ON h.id = bm.hold_id" : "";
     try {
         return db_query("SELECT bm.*{$sel} FROM booking_messages bm {$join} WHERE bm.hold_id=:h AND bm.$cond AND bm.id > :after ORDER BY bm.id ASC", $p)->fetchAll();
     } catch (Throwable $e) { return []; }
@@ -356,15 +366,37 @@ function message_time_label($createdAt): string {
     return date('j M, H:i', strtotime((string)$createdAt));
 }
 
-/** Shape a booking_messages row for a JSON poll/send response (id, sender, body, time_label). */
+/**
+ * Sender label for a raw fetch_thread_messages() row: 'Staff' for admin, else the
+ * guest's name (booking name for an unnamed lead, 'Guest' when unresolvable).
+ * Shared by every admin render path so they cannot drift. Pure.
+ */
+function message_sender_label(array $m): string {
+    if (($m['sender'] ?? '') === 'admin') return 'Staff';
+    return attributed_display_name(
+        (string)($m['sender_name'] ?? ''),
+        !empty($m['sender_is_lead']),
+        (string)($m['hold_guest_name'] ?? '')
+    );
+}
+
+/**
+ * Shape a booking_messages row for a JSON poll/send response.
+ * sender_name is '' when the sender cannot be attributed at all — the views then
+ * apply their own vocabulary ('You' on the guest side, 'Guest' on the admin side),
+ * which is why this does not hardcode a fallback here.
+ */
 function message_payload(array $m): array {
-    $name = trim((string)($m['sender_name'] ?? ''));
+    $name   = trim((string)($m['sender_name'] ?? ''));
+    $isLead = !empty($m['sender_is_lead']);
+    $known  = $name !== '' || ($isLead && trim((string)($m['hold_guest_name'] ?? '')) !== '');
     return [
         'id'          => (int)$m['id'],
         'sender'      => (string)$m['sender'],
-        'sender_name' => $name === '' ? '' : guest_display_name(['passport_name' => $name]),
+        'sender_name' => $known ? attributed_display_name($name, $isLead, (string)($m['hold_guest_name'] ?? '')) : '',
         'body'        => (string)$m['body'],
         'time_label'  => message_time_label($m['created_at'] ?? 'now'),
+        'guest_id'    => (int)($m['sender_guest_id'] ?? 0),
     ];
 }
 

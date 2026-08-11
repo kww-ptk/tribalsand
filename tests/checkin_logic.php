@@ -255,6 +255,12 @@ check('attributed trims whitespace',     attributed_display_name('   ', true, 'J
 check('attributed first word only',      attributed_display_name('Anne Marie Wanjiru', false, '') === 'Anne');
 check('attributed lead own name beats booking', attributed_display_name('Jess Achieng', true, 'Jessica Mwangi') === 'Jess');
 
+// ── Message sender label (pure, takes a raw fetch_thread_messages row) ──────
+check('sender label admin = Staff',   message_sender_label(['sender' => 'admin']) === 'Staff');
+check('sender label named guest',     message_sender_label(['sender' => 'guest', 'sender_name' => 'Patrik Otieno']) === 'Patrik');
+check('sender label unnamed lead',    message_sender_label(['sender' => 'guest', 'sender_name' => '', 'sender_is_lead' => true, 'hold_guest_name' => 'Jessica Mwangi']) === 'Jessica');
+check('sender label unknown = Guest', message_sender_label(['sender' => 'guest']) === 'Guest');
+
 // ── C-2 support guards return a bool (pure shape) ───────────────────────────
 check('bill_item_guest_supported is bool',     is_bool(bill_item_guest_supported()));
 check('message_sender_guest_supported is bool', is_bool(message_sender_guest_supported()));
