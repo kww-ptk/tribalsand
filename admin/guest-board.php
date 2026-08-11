@@ -70,7 +70,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $eventDate = $evRaw !== '' && strtotime($evRaw) !== false ? date('Y-m-d H:i:s', strtotime($evRaw)) : null;
         $priceRaw = $_POST['price_amount'] ?? '';
         $priceAmt = ($priceRaw === '' ) ? null : (float)$priceRaw;
-        // Date/price are events-only — keep them off other categories.
+        // Date/price are events-only. Previously a non-event silently nulled both,
+        // so an owner who filled them in without noticing the Category dropdown
+        // (which defaults to "Update" on a new post) lost the data and got a
+        // "Post created" flash. Refuse instead of discarding.
+        if ($category !== 'event' && ($evRaw !== '' || $priceRaw !== '')) {
+            $errs[] = 'Pick the Event category to set a date or price.';
+        }
         if ($category !== 'event') { $eventDate = null; $priceAmt = null; }
 
         if (!isset($CATS[$category])) $errs[] = 'Pick a category.';
@@ -259,8 +265,8 @@ include __DIR__ . '/_layout.php';
         <textarea id="gbBody" name="body" rows="3" class="inp" placeholder="Enter description" style="width:100%"><?= e($edit['body'] ?? '') ?></textarea>
       </div>
 
-      <div class="field">
-        <label>Event date &amp; time <span class="text-muted" style="font-weight:400">(events only)</span></label>
+      <div class="field gb-eventonly"<?= (($edit['category'] ?? '') === 'event') ? '' : ' hidden' ?>>
+        <label>Event date &amp; time</label>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
           <button type="button" class="dp-btn" data-dp-target="gbEvDate" data-dp-placeholder="Select date"><?= $__evDate !== '' ? e(date('D j M Y', strtotime($__evDate))) : 'Select date' ?></button>
           <input type="hidden" id="gbEvDate" value="<?= e($__evDate) ?>">
@@ -276,8 +282,8 @@ include __DIR__ . '/_layout.php';
       </div>
 
       <div class="form-row" style="max-width:520px">
-        <div class="field">
-          <label for="gbPrice">Price <span class="text-muted" style="font-weight:400">(events only — blank = free)</span></label>
+        <div class="field gb-eventonly"<?= (($edit['category'] ?? '') === 'event') ? '' : ' hidden' ?>>
+          <label for="gbPrice">Price <span class="text-muted" style="font-weight:400">(blank = free)</span></label>
           <input id="gbPrice" type="number" name="price_amount" class="inp inp--num no-spin" step="0.01" min="0" value="<?= e(isset($edit['price_amount']) && $edit['price_amount'] !== null ? rtrim(rtrim(number_format((float)$edit['price_amount'],2,'.',''),'0'),'.') : '') ?>" placeholder="0" style="width:100%">
         </div>
         <div class="field">
@@ -325,6 +331,15 @@ include __DIR__ . '/_layout.php';
 
       var form = document.getElementById('gbForm');
       if (!form) return;
+      // The date and price fields belong to the Event category — show them only
+      // then, so the values can never be typed into a post that would drop them.
+      var gbCat = form.querySelector('select[name="category"]');
+      function gbSyncEventFields() {
+        var on = gbCat && gbCat.value === 'event';
+        form.querySelectorAll('.gb-eventonly').forEach(function (el) { el.hidden = !on; });
+      }
+      if (gbCat) gbCat.addEventListener('change', gbSyncEventFields);
+      gbSyncEventFields();
       // Compose the hidden event_date from the styled date picker + time select.
       var d = document.getElementById('gbEvDate'), t = document.getElementById('gbEvTime'), out = document.getElementById('gbEvOut');
       function compose() { out.value = (d.value ? d.value + (t.value ? 'T' + t.value : 'T00:00') : ''); }
