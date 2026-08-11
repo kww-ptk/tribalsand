@@ -181,6 +181,7 @@ check('display name null=Guest',   guest_display_name(null) === 'Guest');
 // ── C-2 support guards return a bool (pure shape) ───────────────────────────
 check('bill_item_guest_supported is bool',     is_bool(bill_item_guest_supported()));
 check('message_sender_guest_supported is bool', is_bool(message_sender_guest_supported()));
+check('checkin_arrival_mode_supported is bool', is_bool(checkin_arrival_mode_supported()));
 
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);
