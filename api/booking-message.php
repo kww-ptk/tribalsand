@@ -17,7 +17,8 @@ $resolve_addon = function (array $hold, $threadRaw) {
 
 // ── GET: live poll for new messages in a thread (guest-authed by ref) ──
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    $hold = resolve_booking_by_ref($str($_GET['ref'] ?? ''));
+    $actor = resolve_portal_actor($str($_GET['ref'] ?? $_GET['g'] ?? ''));
+    $hold = $actor ? $actor['hold'] : false;
     if (!$hold) { http_response_code(403); exit(json_encode(['ok'=>false,'error'=>'Booking not found.'])); }
     [$addonId, $own] = $resolve_addon($hold, $_GET['thread'] ?? '');
     if (!$own) { http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'Unknown request.'])); }
@@ -34,7 +35,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(405); exit(json_
 
 $data = json_decode(file_get_contents('php://input'), true) ?? [];
 
-$hold = resolve_booking_by_ref($str($data['ref'] ?? ''));
+$actor = resolve_portal_actor($str($data['ref'] ?? $data['g'] ?? ''));
+$hold = $actor ? $actor['hold'] : false;
 if (!$hold) { http_response_code(403); exit(json_encode(['ok'=>false,'error'=>'Booking not found.'])); }
 
 $body = $str($data['body'] ?? '');

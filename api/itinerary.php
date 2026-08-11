@@ -13,7 +13,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(405); exit(json_
 $data = json_decode(file_get_contents('php://input'), true) ?? [];
 $str  = fn($v) => is_scalar($v) ? trim((string)$v) : '';
 
-$hold = resolve_booking_by_ref($str($data['ref'] ?? ''));
+$actor = resolve_portal_actor($str($data['ref'] ?? $data['g'] ?? ''));
+$hold = $actor ? $actor['hold'] : false;
 if (!$hold) { http_response_code(403); exit(json_encode(['ok'=>false,'error'=>'Booking not found.'])); }
 
 $action = $str($data['action'] ?? 'add');
