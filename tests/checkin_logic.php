@@ -161,5 +161,17 @@ set_setting('checkin_waiver_text', 'Custom terms XYZ');
 check('waiver text uses override',      checkin_waiver_text() === 'Custom terms XYZ');
 set_setting('checkin_waiver_text', $prevWaiver); // restore
 
+// ── Co-guest view state (pure) ──────────────────────────────────────────────
+$cfgPW = ['passport'=>['enabled'=>true,'required'=>true], 'waiver'=>['enabled'=>true,'required'=>true]];
+$ciDone = ['passport_name'=>'A','passport_number'=>'B','passport_file_key'=>'k','waiver_signed_name'=>'A','waiver_signed_at'=>'2026-08-06','waiver_signature'=>'sig'];
+$ciPass = ['passport_name'=>'A','passport_number'=>'B','passport_file_key'=>'k']; // passport done, unsigned
+check('coguest state done',         checkin_coguest_view_state($ciDone, $cfgPW) === 'done');
+check('coguest state review_sign',  checkin_coguest_view_state($ciPass, $cfgPW) === 'review_sign');
+check('coguest state full',         checkin_coguest_view_state(['passport_name'=>'A'], $cfgPW) === 'full');
+$cfgWaiverOnly = ['passport'=>['enabled'=>false], 'waiver'=>['enabled'=>true]];
+check('coguest waiver-only=review', checkin_coguest_view_state([], $cfgWaiverOnly) === 'review_sign');
+$cfgPassOnly = ['passport'=>['enabled'=>true], 'waiver'=>['enabled'=>false]];
+check('coguest passport-only done', checkin_coguest_view_state($ciPass, $cfgPassOnly) === 'done');
+
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);

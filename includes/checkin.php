@@ -206,6 +206,20 @@ function checkin_guest_complete(?array $g, array $config): bool {
     return true;
 }
 
+/**
+ * Which state the co-guest self-service page renders for guest $me:
+ *   'done'        — nothing left (passport where enabled + waiver signed),
+ *   'review_sign' — details are complete; only the signature remains,
+ *   'full'        — passport still needs to be provided.
+ * Pure. $config is checkin_config()-shaped (per-step ['enabled'=>bool]).
+ */
+function checkin_coguest_view_state(?array $me, array $config): string {
+    $passOk   = empty($config['passport']['enabled']) || checkin_guest_passport_complete($me);
+    $waiverOk = empty($config['waiver']['enabled'])   || checkin_guest_waiver_signed($me);
+    if ($passOk && $waiverOk) return 'done';
+    return $passOk ? 'review_sign' : 'full';
+}
+
 /** Pure: clamp completed vs required party size. */
 function checkin_party_status(int $adultCount, int $completeCount): array {
     $n = max(1, $adultCount);
