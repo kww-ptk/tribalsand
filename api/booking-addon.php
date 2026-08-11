@@ -111,7 +111,7 @@ try {
     // Never fail the request if the messages table is unavailable.
     $redirect = null;
     try {
-        seed_request_message((int)$hold['id'], $addonId, $threadBody ?? $details);
+        seed_request_message((int)$hold['id'], $addonId, $threadBody ?? $details, (int)$actor['guest_id']);
         // Re-mint the acting party's own token for the redirect (never trust the posted value).
         $tok = $actor['is_lead']
             ? make_guest_ref((int)$hold['id'])

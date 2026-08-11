@@ -40,7 +40,7 @@
     bubble.appendChild(document.createTextNode(m.body));
     var meta = document.createElement('div');
     meta.className = 'am-msg__meta';
-    meta.textContent = (mine ? 'Staff' : 'Guest') + ' · ' + m.time_label;
+    meta.textContent = (mine ? 'Staff' : (m.sender_name || 'Guest')) + ' · ' + m.time_label;
     bubble.appendChild(meta);
     el.appendChild(bubble);
     if (m.id && m.id > lastId(el)) el.dataset.last = String(m.id);

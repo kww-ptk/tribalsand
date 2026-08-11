@@ -41,7 +41,7 @@ if ($__inThread) mark_thread_read_by_admin($holdId, $__aid);
     <?php foreach ($__msgs as $m): $am = $m['sender'] === 'admin'; ?>
     <div class="am-msg <?= $am ? 'am-msg--staff' : 'am-msg--guest' ?>" data-mid="<?= (int)$m['id'] ?>">
       <?= e($m['body']) ?>
-      <div class="am-msg__meta"><?= $am ? 'Staff' : 'Guest' ?> · <?= e(message_time_label($m['created_at'])) ?></div>
+      <div class="am-msg__meta"><?= $am ? 'Staff' : e(trim((string)($m['sender_name'] ?? '')) !== '' ? guest_display_name(['passport_name'=>$m['sender_name']]) : 'Guest') ?> · <?= e(message_time_label($m['created_at'])) ?></div>
     </div>
     <?php endforeach; ?>
   </div>

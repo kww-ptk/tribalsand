@@ -143,6 +143,24 @@ function addon_requested_by_supported(): bool {
     return $ok;
 }
 
+/** True once bill_items.guest_id exists (C-2). Cached. */
+function bill_item_guest_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { db_query('SELECT guest_id FROM bill_items LIMIT 1'); $ok = true; }
+    catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/** True once booking_messages.sender_guest_id exists (C-2). Cached. */
+function message_sender_guest_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { db_query('SELECT sender_guest_id FROM booking_messages LIMIT 1'); $ok = true; }
+    catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
 /** First name for attribution display, else "Guest". Pure. */
 function guest_display_name(?array $g): string {
     $n = trim((string)($g['passport_name'] ?? ''));
@@ -301,8 +319,10 @@ function fetch_message_threads(int $holdId): array {
 function fetch_thread_messages(int $holdId, ?int $addonId): array {
     $cond = $addonId === null ? 'addon_id IS NULL' : 'addon_id = :aid';
     $p    = [':h'=>$holdId]; if ($addonId !== null) $p[':aid'] = $addonId;
+    $sel  = message_sender_guest_supported() ? ", cg.passport_name AS sender_name" : "";
+    $join = message_sender_guest_supported() ? "LEFT JOIN checkin_guests cg ON cg.id = bm.sender_guest_id" : "";
     try {
-        return db_query("SELECT * FROM booking_messages WHERE hold_id=:h AND $cond ORDER BY created_at ASC", $p)->fetchAll();
+        return db_query("SELECT bm.*{$sel} FROM booking_messages bm {$join} WHERE bm.hold_id=:h AND bm.$cond ORDER BY bm.created_at ASC", $p)->fetchAll();
     } catch (Throwable $e) { return []; }
 }
 
@@ -310,8 +330,10 @@ function fetch_thread_messages(int $holdId, ?int $addonId): array {
 function fetch_thread_messages_since(int $holdId, ?int $addonId, int $afterId): array {
     $cond = $addonId === null ? 'addon_id IS NULL' : 'addon_id = :aid';
     $p    = [':h'=>$holdId, ':after'=>$afterId]; if ($addonId !== null) $p[':aid'] = $addonId;
+    $sel  = message_sender_guest_supported() ? ", cg.passport_name AS sender_name" : "";
+    $join = message_sender_guest_supported() ? "LEFT JOIN checkin_guests cg ON cg.id = bm.sender_guest_id" : "";
     try {
-        return db_query("SELECT * FROM booking_messages WHERE hold_id=:h AND $cond AND id > :after ORDER BY id ASC", $p)->fetchAll();
+        return db_query("SELECT bm.*{$sel} FROM booking_messages bm {$join} WHERE bm.hold_id=:h AND bm.$cond AND bm.id > :after ORDER BY bm.id ASC", $p)->fetchAll();
     } catch (Throwable $e) { return []; }
 }
 
@@ -322,11 +344,13 @@ function message_time_label($createdAt): string {
 
 /** Shape a booking_messages row for a JSON poll/send response (id, sender, body, time_label). */
 function message_payload(array $m): array {
+    $name = trim((string)($m['sender_name'] ?? ''));
     return [
-        'id'         => (int)$m['id'],
-        'sender'     => (string)$m['sender'],
-        'body'       => (string)$m['body'],
-        'time_label' => message_time_label($m['created_at'] ?? 'now'),
+        'id'          => (int)$m['id'],
+        'sender'      => (string)$m['sender'],
+        'sender_name' => $name === '' ? '' : guest_display_name(['passport_name' => $name]),
+        'body'        => (string)$m['body'],
+        'time_label'  => message_time_label($m['created_at'] ?? 'now'),
     ];
 }
 
@@ -585,12 +609,20 @@ function venue_maps_link(array $stay): string {
  * Open a concierge request's message thread by posting the guest's request as
  * the first message. Unread for staff, read for the guest who just sent it.
  */
-function seed_request_message(int $holdId, int $addonId, string $body): void {
-    db_query(
-        "INSERT INTO booking_messages (hold_id, addon_id, sender, body, read_by_guest, read_by_admin)
-         VALUES (:h, :a, 'guest', :b, TRUE, FALSE)",
-        [':h' => $holdId, ':a' => $addonId, ':b' => $body]
-    );
+function seed_request_message(int $holdId, int $addonId, string $body, ?int $senderGuestId = null): void {
+    if (message_sender_guest_supported()) {
+        db_query(
+            "INSERT INTO booking_messages (hold_id, addon_id, sender, body, read_by_guest, read_by_admin, sender_guest_id)
+             VALUES (:h, :a, 'guest', :b, TRUE, FALSE, :sg)",
+            [':h' => $holdId, ':a' => $addonId, ':b' => $body, ':sg' => $senderGuestId]
+        );
+    } else {
+        db_query(
+            "INSERT INTO booking_messages (hold_id, addon_id, sender, body, read_by_guest, read_by_admin)
+             VALUES (:h, :a, 'guest', :b, TRUE, FALSE)",
+            [':h' => $holdId, ':a' => $addonId, ':b' => $body]
+        );
+    }
 }
 
 /** Post an admin (staff/system) message into a request/general thread. Unread for the guest. */
@@ -647,22 +679,28 @@ function addon_status_label(string $status): string {
     ][$status] ?? ucfirst($status);
 }
 
-/** A booking's chargeable requests (confirmed/completed), with tour name. For the bill. */
+/** A booking's chargeable requests (confirmed/completed), with tour + requester name. For the bill. */
 function fetch_bill_lines(int $holdId): array {
     try {
+        $sel  = addon_requested_by_supported() ? ", cg.passport_name AS requested_by_name, cg.is_lead AS requested_by_is_lead" : "";
+        $join = addon_requested_by_supported() ? "LEFT JOIN checkin_guests cg ON cg.id = ba.requested_by" : "";
         return db_query(
-            "SELECT ba.*, t.name AS tour_name FROM booking_addons ba
+            "SELECT ba.*, t.name AS tour_name{$sel} FROM booking_addons ba
              LEFT JOIN tours t ON t.id = ba.tour_id
+             {$join}
              WHERE ba.hold_id = :h AND ba.status IN ('confirmed','completed')
              ORDER BY ba.created_at", [':h' => $holdId]
         )->fetchAll();
     } catch (Throwable $e) { return []; }
 }
 
-/** Ad-hoc bill line items for a booking (minibar, damages…). */
+/** Ad-hoc bill line items for a booking (minibar, damages…), with guest name when attributed. */
 function fetch_bill_items(int $holdId): array {
-    try { return db_query("SELECT * FROM bill_items WHERE hold_id = :h ORDER BY id", [':h' => $holdId])->fetchAll(); }
-    catch (Throwable $e) { return []; }
+    try {
+        $sel  = bill_item_guest_supported() ? ", cg.passport_name AS guest_name, cg.is_lead AS guest_is_lead" : "";
+        $join = bill_item_guest_supported() ? "LEFT JOIN checkin_guests cg ON cg.id = bi.guest_id" : "";
+        return db_query("SELECT bi.*{$sel} FROM bill_items bi {$join} WHERE bi.hold_id = :h ORDER BY bi.id", [':h' => $holdId])->fetchAll();
+    } catch (Throwable $e) { return []; }
 }
 
 /** Total extras = confirmed/completed request prices (null → 0) + manual items. */

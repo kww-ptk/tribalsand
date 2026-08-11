@@ -108,7 +108,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $label  = trim((string)($_POST['label'] ?? ''));
         $amount = (float)($_POST['amount'] ?? 0);
         if ($label !== '' && $amount >= 0 && $amount < 100000000) { // NUMERIC(10,2) ceiling
-            db_query("INSERT INTO bill_items (hold_id, label, amount) VALUES (:h,:l,:a)", [':h'=>$holdId, ':l'=>mb_substr($label,0,200), ':a'=>$amount]);
+            $gid = (int)($_POST['guest_id'] ?? 0);
+            $gid = ($gid > 0 && bill_item_guest_supported()
+                    && db_query('SELECT 1 FROM checkin_guests WHERE id=:g AND hold_id=:h', [':g'=>$gid, ':h'=>$holdId])->fetchColumn())
+                   ? $gid : null;
+            if (bill_item_guest_supported()) {
+                db_query("INSERT INTO bill_items (hold_id, label, amount, guest_id) VALUES (:h,:l,:a,:g)", [':h'=>$holdId, ':l'=>mb_substr($label,0,200), ':a'=>$amount, ':g'=>$gid]);
+            } else {
+                db_query("INSERT INTO bill_items (hold_id, label, amount) VALUES (:h,:l,:a)", [':h'=>$holdId, ':l'=>mb_substr($label,0,200), ':a'=>$amount]);
+            }
             audit_log('bill.add', 'hold', $holdId, $label);
         }
         header("Location: /admin/booking.php?hold=$holdId&tab=bill"); exit;

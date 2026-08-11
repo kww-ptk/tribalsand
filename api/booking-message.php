@@ -55,14 +55,23 @@ $cnt = (int)db_query("SELECT COUNT(*) FROM booking_messages WHERE hold_id=:h AND
 if ($cnt >= 20) { http_response_code(429); exit(json_encode(['ok'=>false,'error'=>'Too many messages. Please wait a few minutes.'])); }
 
 try {
-    db_query(
-        "INSERT INTO booking_messages (hold_id, addon_id, sender, body, read_by_guest, read_by_admin)
-         VALUES (:h, :a, 'guest', :b, TRUE, FALSE)",
-        [':h'=>$hold['id'], ':a'=>$addonId, ':b'=>$body]
-    );
+    if (message_sender_guest_supported()) {
+        db_query(
+            "INSERT INTO booking_messages (hold_id, addon_id, sender, body, read_by_guest, read_by_admin, sender_guest_id)
+             VALUES (:h, :a, 'guest', :b, TRUE, FALSE, :sg)",
+            [':h'=>$hold['id'], ':a'=>$addonId, ':b'=>$body, ':sg'=>(int)$actor['guest_id']]
+        );
+    } else {
+        db_query(
+            "INSERT INTO booking_messages (hold_id, addon_id, sender, body, read_by_guest, read_by_admin)
+             VALUES (:h, :a, 'guest', :b, TRUE, FALSE)",
+            [':h'=>$hold['id'], ':a'=>$addonId, ':b'=>$body]
+        );
+    }
     $id = (int)db()->lastInsertId();
+    $__sn = db_query('SELECT passport_name FROM checkin_guests WHERE id=:g', [':g'=>(int)$actor['guest_id']])->fetchColumn();
     echo json_encode(['ok'=>true, 'message'=>message_payload([
-        'id'=>$id, 'sender'=>'guest', 'body'=>$body, 'created_at'=>'now',
+        'id'=>$id, 'sender'=>'guest', 'body'=>$body, 'created_at'=>'now', 'sender_name'=>$__sn ?: '',
     ])]);
 } catch (Throwable $e) {
     error_log('[booking-message] ' . $e->getMessage());
