@@ -29,6 +29,9 @@ $__pIsLead = !empty($actor['is_lead']);
       $__ok   = checkin_guest_complete($__a, $__pCfg);
       $__mine = $__pKids[$__aid] ?? [];
   ?>
+  <!-- One wrapper per guest so the divider lands on the last GUEST, not the last
+       row — a guest with children or a share link has extra sibling blocks. -->
+  <div class="pty-guest">
   <div class="pty-row">
     <div class="pty-row__main">
       <span class="pty-name"><?= e(checkin_guest_label($__a, $__pAdults)) ?></span>
@@ -50,6 +53,7 @@ $__pIsLead = !empty($actor['is_lead']);
     <button type="button" class="pa-btn pa-btn--ghost ci-copy">Copy</button>
   </div>
   <?php endif; ?>
+  </div><!-- /pty-guest -->
   <?php endforeach; ?>
 </div></div>
 <?php endif; ?>
