@@ -23,6 +23,7 @@ $otherStatus = function (array $g) use ($showWaiver) {
 };
 ?>
 <link rel="stylesheet" href="/css/portal-app.css?v=<?= @filemtime(__DIR__ . '/../../css/portal-app.css') ?: time() ?>">
+<script src="/js/signature-pad.js?v=<?= @filemtime(__DIR__ . '/../../js/signature-pad.js') ?: time() ?>" defer></script>
 <div class="pa-app">
   <div class="pa-topbar"><div class="pa-topbar__eyebrow">Tribal Sand</div><div class="pa-topbar__title">Guest check-in</div></div>
   <div class="pa-wrap" style="padding-top:16px">
@@ -49,6 +50,7 @@ $otherStatus = function (array $g) use ($showWaiver) {
       <form id="ciGForm" method="post" action="/api/checkin-save.php" enctype="multipart/form-data">
         <?= csrf_field() ?>
         <input type="hidden" name="g" value="<?= e($gtoken) ?>">
+        <input type="hidden" name="via" value="<?= e((string)($_GET['via'] ?? '')) ?>">
         <div class="ci-guest ci-guest--lead">
           <?php if ($showPassport): ?>
           <label class="ci-l">Full name (as on passport)</label>
@@ -70,6 +72,12 @@ $otherStatus = function (array $g) use ($showWaiver) {
           <label class="ci-radio"><input type="checkbox" name="waiver_agree" value="1" <?= checkin_guest_waiver_signed($me) ? 'checked' : '' ?>> I have read and agree to the terms</label>
           <label class="ci-l">Type your full name to sign</label>
           <input class="ci-in" name="waiver_signed_name" value="<?= $v('waiver_signed_name') ?>" placeholder="Full name">
+          <label class="ci-l">Sign below with your finger</label>
+          <div class="ci-sign">
+            <button type="button" class="ci-sign-clear">Clear</button>
+            <canvas class="ci-sign-pad" data-target="#ciGSig"></canvas>
+          </div>
+          <input type="hidden" name="waiver_signature" id="ciGSig">
           <?php endif; ?>
           <div class="ci-kids" data-parent="me">
             <?php foreach ($myKids as $c): ?>
