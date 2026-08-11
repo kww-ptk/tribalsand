@@ -26,12 +26,27 @@ $kids     = [];
 foreach ($guests as $g) if (!empty($g['is_child'])) $kids[(int)($g['parent_guest_id'] ?? 0)][] = $g;
 $need     = max(1, (int)($hold['guest_count'] ?? 1));
 
-// Wizard flow: passport's slot becomes "party"; waiver folds in (dropped as its own step).
+// Wizard flow: passport + waiver collapse into "Your details" — the lead's own
+// identity, consent and signature. Other adults get their own "Your party" step
+// so adding a guest can never disturb the lead's signature (the old combined
+// step reloaded the page and appeared to wipe it).
 $flow = [];
 foreach ($cfg as $key => $s) {
-    if ($key === 'passport') { $flow['party'] = ['label' => 'Your party', 'required' => true]; continue; }
-    if ($key === 'waiver')   { if (!isset($flow['party'])) $flow['party'] = ['label' => 'Your party', 'required' => true]; continue; }
+    if ($key === 'passport' || $key === 'waiver') {
+        if (!isset($flow['you'])) $flow['you'] = ['label' => 'Your details', 'required' => true];
+        continue;
+    }
     $flow[$key] = $s;
+}
+// "Your party" only exists when there is something to manage: more than one
+// adult, and at least one of passport/waiver enabled (so "you" was created).
+if (isset($flow['you']) && $need > 1) {
+    $rebuilt = [];
+    foreach ($flow as $k => $v) {
+        $rebuilt[$k] = $v;
+        if ($k === 'you') $rebuilt['party'] = ['label' => 'Your party', 'required' => true];
+    }
+    $flow = $rebuilt;
 }
 
 $needs = [];
@@ -99,7 +114,7 @@ $waiverBlock = function (bool $signed) use ($waiverText) {
     <div class="ci-progress"><div class="ci-progress__bar" id="ciBar"></div></div>
 
     <?php $i = 0; $n = count($flow); foreach ($flow as $key => $s): $i++; ?>
-    <section class="ci-step" data-step="<?= $i ?>" data-key="<?= e($key) ?>" hidden>
+    <section class="ci-step" data-step="<?= $i ?>" data-key="<?= e($key) ?>"<?= ($key === 'you' && $showPassport && !empty($cfg['passport']['required'])) ? ' data-passport-required' : '' ?> hidden>
       <div class="ci-step__h"><span class="ci-step__num">Step <?= $i ?> of <?= $n ?></span><h3><?= e($s['label']) ?><?= $s['required'] ? ' <span class="ci-req">*</span>' : '' ?></h3></div>
 
       <?php if ($key === 'arrival'): ?>
@@ -160,9 +175,7 @@ $waiverBlock = function (bool $signed) use ($waiverText) {
         <label class="ci-l">Transfer details (pickup point, pax, luggage)</label>
         <textarea class="ci-in" name="transfer_details" rows="3"><?= $val('transfer_details') ?></textarea>
 
-      <?php elseif ($key === 'party'): ?>
-        <p class="ci-party__head">Every adult needs <?= $showPassport ? 'their own passport' : '' ?><?= $showPassport && $showWaiver ? ' and ' : '' ?><?= $showWaiver ? 'to sign the waiver' : '' ?>. Add each guest, then fill their details or send them their own link.</p>
-
+      <?php elseif ($key === 'you'): ?>
         <!-- Lead card — part of #ciForm (no guest_id → the lead row) -->
         <div class="ci-guest ci-guest--lead">
           <div class="ci-guest__title"><span class="ci-guest__who">You (lead guest)</span>
@@ -184,7 +197,7 @@ $waiverBlock = function (bool $signed) use ($waiverText) {
           <?php endif; ?>
           <?php if ($showWaiver): ?>
           <div class="ci-waiver"><?= nl2br(e($waiverText)) ?></div>
-          <label class="ci-radio"><input type="checkbox" name="waiver_agree" value="1" <?= checkin_guest_waiver_signed($lead) ? 'checked' : '' ?>> I have read and agree to the terms</label>
+          <label class="ci-radio"><input type="checkbox" class="ci-agree" name="waiver_agree" value="1" <?= checkin_guest_waiver_signed($lead) ? 'checked' : '' ?>> I have read and agree to the terms</label>
           <label class="ci-l">Type your full name to sign</label>
           <input class="ci-in" name="waiver_signed_name" value="<?= $val('waiver_signed_name', $lead) ?>" placeholder="Full name">
           <label class="ci-l">Sign below with your finger</label>
@@ -202,6 +215,9 @@ $waiverBlock = function (bool $signed) use ($waiverText) {
             <button type="button" class="ci-addkid">+ Add child</button>
           </div>
         </div>
+
+      <?php elseif ($key === 'party'): ?>
+        <p class="ci-party__head">Every other adult needs <?= $showPassport ? 'their own passport' : '' ?><?= $showPassport && $showWaiver ? ' and ' : '' ?><?= $showWaiver ? 'to sign the waiver' : '' ?>. Add each guest, then fill their details or send them their own link.</p>
 
         <!-- Additional adult cards (data-field inputs → saved via per-guest AJAX, NOT the main submit) -->
         <?php foreach ($adults as $g): if (!empty($g['is_lead'])) continue; $gid = (int)$g['id'];
