@@ -603,12 +603,20 @@ function venue_maps_link(array $stay): string {
  * Open a concierge request's message thread by posting the guest's request as
  * the first message. Unread for staff, read for the guest who just sent it.
  */
-function seed_request_message(int $holdId, int $addonId, string $body): void {
-    db_query(
-        "INSERT INTO booking_messages (hold_id, addon_id, sender, body, read_by_guest, read_by_admin)
-         VALUES (:h, :a, 'guest', :b, TRUE, FALSE)",
-        [':h' => $holdId, ':a' => $addonId, ':b' => $body]
-    );
+function seed_request_message(int $holdId, int $addonId, string $body, ?int $senderGuestId = null): void {
+    if (message_sender_guest_supported()) {
+        db_query(
+            "INSERT INTO booking_messages (hold_id, addon_id, sender, body, read_by_guest, read_by_admin, sender_guest_id)
+             VALUES (:h, :a, 'guest', :b, TRUE, FALSE, :sg)",
+            [':h' => $holdId, ':a' => $addonId, ':b' => $body, ':sg' => $senderGuestId]
+        );
+    } else {
+        db_query(
+            "INSERT INTO booking_messages (hold_id, addon_id, sender, body, read_by_guest, read_by_admin)
+             VALUES (:h, :a, 'guest', :b, TRUE, FALSE)",
+            [':h' => $holdId, ':a' => $addonId, ':b' => $body]
+        );
+    }
 }
 
 /** Post an admin (staff/system) message into a request/general thread. Unread for the guest. */
