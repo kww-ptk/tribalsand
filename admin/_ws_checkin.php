@@ -70,6 +70,17 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
 <div class="card"><div class="card__head"><span class="card__title">Guests</span></div><div class="card__body" style="padding:0">
   <?php if (!$__adults): ?>
   <p class="text-muted" style="margin:0;padding:20px">No guest identity captured yet.</p>
+  <?php if ($__canDocs): ?>
+  <div style="padding:12px">
+    <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="guest_add_adult">
+      <input class="inp inp--sm" name="passport_name" placeholder="New adult's name (optional)">
+      <button type="submit" class="btn-sm btn-outline">+ Add adult</button>
+      <span class="text-muted" style="font-size:12px">Adding past the party size raises it automatically.</span>
+    </form>
+  </div>
+  <?php endif; ?>
   <?php else: ?>
   <div class="table-wrap">
   <table class="data-table">
@@ -105,6 +116,55 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
         </td>
         <td><span class="ci-badge <?= $__done ? 'ci-badge--done' : 'ci-badge--pending' ?>"><?= $__done ? 'Complete' : 'Incomplete' ?></span></td>
       </tr>
+      <?php if ($__canDocs): ?>
+      <tr class="ci-admin-row">
+        <td colspan="7" style="background:var(--bg-alt,#f7f7f5);padding:10px 12px">
+          <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
+            <details>
+              <summary class="btn-sm btn-outline" style="cursor:pointer;display:inline-block">Edit details</summary>
+              <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" style="margin:10px 0 0;display:grid;gap:6px;max-width:320px">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action" value="guest_fill">
+                <input type="hidden" name="guest_id" value="<?= (int)$g['id'] ?>">
+                <input class="inp inp--sm" name="passport_name" value="<?= e((string)($g['passport_name'] ?? '')) ?>" placeholder="Full name (as on passport)">
+                <input class="inp inp--sm" name="passport_number" value="<?= e((string)($g['passport_number'] ?? '')) ?>" placeholder="Passport number">
+                <input class="inp inp--sm" name="nationality" value="<?= e((string)($g['nationality'] ?? '')) ?>" placeholder="Nationality">
+                <input class="inp inp--sm" type="date" name="passport_expiry" value="<?= e((string)($g['passport_expiry'] ?? '')) ?>">
+                <button type="submit" class="btn-sm btn-primary">Save details</button>
+              </form>
+              <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" enctype="multipart/form-data" style="margin:10px 0 0;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action" value="guest_upload">
+                <input type="hidden" name="guest_id" value="<?= (int)$g['id'] ?>">
+                <input type="file" name="passport" accept="image/jpeg,image/png,application/pdf" required>
+                <button type="submit" class="btn-sm btn-outline">Upload scan</button>
+              </form>
+            </details>
+
+            <details>
+              <summary class="btn-sm btn-outline" style="cursor:pointer;display:inline-block">+ Add child</summary>
+              <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" style="margin:10px 0 0;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action" value="guest_add_child">
+                <input type="hidden" name="parent_guest_id" value="<?= (int)$g['id'] ?>">
+                <input class="inp inp--sm" name="passport_name" placeholder="Child's full name" required>
+                <input class="inp inp--sm" type="date" name="date_of_birth" aria-label="Date of birth">
+                <button type="submit" class="btn-sm btn-outline">Add child</button>
+              </form>
+            </details>
+
+            <?php if (empty($g['is_lead'])): ?>
+            <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" style="margin:0" onsubmit="return confirm('Remove this guest and their children from the booking?')">
+              <?= csrf_field() ?>
+              <input type="hidden" name="action" value="guest_remove">
+              <input type="hidden" name="guest_id" value="<?= (int)$g['id'] ?>">
+              <button type="submit" class="btn-sm btn-outline" style="color:#b23">Remove guest</button>
+            </form>
+            <?php endif; ?>
+          </div>
+        </td>
+      </tr>
+      <?php endif; ?>
       <?php if ($__kids): ?>
       <tr class="ci-children-row">
         <td></td>
@@ -124,6 +184,17 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
     </tbody>
   </table>
   </div>
+  <?php if ($__canDocs): ?>
+  <div style="padding:12px">
+    <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="guest_add_adult">
+      <input class="inp inp--sm" name="passport_name" placeholder="New adult's name (optional)">
+      <button type="submit" class="btn-sm btn-outline">+ Add adult</button>
+      <span class="text-muted" style="font-size:12px">Adding past the party size raises it automatically.</span>
+    </form>
+  </div>
+  <?php endif; ?>
   <?php endif; ?>
 </div></div>
 

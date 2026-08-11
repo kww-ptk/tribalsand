@@ -11,8 +11,8 @@ $guests = fetch_checkin_guests($holdId);
 $others = array_values(array_filter($guests, fn($g) => (int)$g['id'] !== (int)$me['id'] && empty($g['is_child'])));
 $myKids = array_values(array_filter($guests, fn($g) => !empty($g['is_child']) && (int)($g['parent_guest_id'] ?? 0) === (int)$me['id']));
 
-$meComplete = (!$showPassport || checkin_guest_passport_complete($me)) && (!$showWaiver || checkin_guest_waiver_signed($me));
-$done   = $meComplete || !empty($_GET['done']);
+$state  = checkin_coguest_view_state($me, checkin_config());
+$done   = $state === 'done' || !empty($_GET['done']);
 $name   = trim((string)($me['passport_name'] ?? ''));
 $first  = $name !== '' ? explode(' ', $name)[0] : 'there';
 $stayLoc = trim(((string)($hold['venue_name'] ?? '')) . ' · ' . ((string)($hold['room_name'] ?? '')), ' ·');
@@ -47,7 +47,7 @@ $otherStatus = function (array $g) use ($showWaiver) {
       <div class="ci-hero" style="padding:8px 6px 16px">
         <div class="ci-hero__eyebrow">Your check-in</div>
         <h1 class="ci-hero__title">Welcome<?= $first !== 'there' ? ', ' . e($first) : '' ?></h1>
-        <p class="ci-hero__sub">You've been added to a booking at <strong><?= e($stayLoc) ?></strong> (<?= e(date('j M', strtotime((string)$hold['check_in']))) ?> – <?= e(date('j M', strtotime((string)$hold['check_out']))) ?>). Please add your passport<?= $showWaiver ? ' and sign the waiver' : '' ?>.</p>
+        <p class="ci-hero__sub"><?php if ($state === 'review_sign'): ?>Your details are already on file for <strong><?= e($stayLoc) ?></strong> — just sign below to finish.<?php else: ?>You've been added to a booking at <strong><?= e($stayLoc) ?></strong> (<?= e(date('j M', strtotime((string)$hold['check_in']))) ?> – <?= e(date('j M', strtotime((string)$hold['check_out']))) ?>). Please add your passport<?= $showWaiver ? ' and sign the waiver' : '' ?>.<?php endif; ?></p>
       </div>
 
       <form id="ciGForm" method="post" action="/api/checkin-save.php" enctype="multipart/form-data">
@@ -56,6 +56,10 @@ $otherStatus = function (array $g) use ($showWaiver) {
         <input type="hidden" name="via" value="<?= e((string)($_GET['via'] ?? '')) ?>">
         <div class="ci-guest ci-guest--lead">
           <?php if ($showPassport): ?>
+          <?php if ($state === 'review_sign'): ?>
+          <details class="ci-review">
+            <summary>Your details are on file — tap to review or edit</summary>
+          <?php endif; ?>
           <label class="ci-l">Full name (as on passport)</label>
           <input class="ci-in" name="passport_name" value="<?= $v('passport_name') ?>">
           <label class="ci-l">Passport number</label>
@@ -69,6 +73,7 @@ $otherStatus = function (array $g) use ($showWaiver) {
             <input type="file" id="ciGFile" accept="image/jpeg,image/png,application/pdf">
             <span class="ci-upload__state"><?= !empty($me['passport_file_key']) ? 'Uploaded &#10003;' : 'No file yet' ?></span>
           </div>
+          <?php if ($state === 'review_sign'): ?></details><?php endif; ?>
           <?php endif; ?>
           <?php if ($showWaiver): ?>
           <div class="ci-waiver"><?= nl2br(e($waiverText)) ?></div>
