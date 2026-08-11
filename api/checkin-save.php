@@ -81,21 +81,50 @@ db_query(
 
 // ── Per-guest waiver signature: self-sign only, requires a drawn signature ──
 $sig = (string)($_POST['waiver_signature'] ?? '');
-$targetIsLead = (bool) db_query('SELECT is_lead FROM checkin_guests WHERE id=:g AND hold_id=:h', [':g'=>$guestId, ':h'=>$holdId])->fetchColumn();
-if (checkin_signature_supported() && !empty($_POST['waiver_agree']) && $s('waiver_signed_name')
-    && checkin_can_sign_self($onlyGuestId, $targetIsLead)
-    && checkin_valid_signature($sig)) {
-    $terms  = checkin_waiver_text();
-    $method = checkin_signing_method((string)($_POST['via'] ?? ''));
-    db_query(
-        "UPDATE checkin_guests
-            SET waiver_signed_name=:n, waiver_signed_at=now(), waiver_signed_ip=:ip,
-                waiver_version=:v, waiver_signature=:sig, waiver_terms_snapshot=:terms,
-                waiver_signed_user_agent=:ua, waiver_signed_method=:m
-          WHERE id=:g AND hold_id=:h",
-        [':n'=>$s('waiver_signed_name'), ':ip'=>client_ip(), ':v'=>waiver_version($terms),
-         ':sig'=>$sig, ':terms'=>$terms, ':ua'=>substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 500),
-         ':m'=>$method, ':g'=>$guestId, ':h'=>$holdId]);
+$targetRow    = db_query('SELECT * FROM checkin_guests WHERE id=:g AND hold_id=:h', [':g'=>$guestId, ':h'=>$holdId])->fetch() ?: null;
+$targetIsLead = (bool)($targetRow['is_lead'] ?? false);
+
+// Did this request try to record consent at all? A save from another wizard step
+// posts none of these, and must not be treated as a failed signing attempt.
+$triedConsent = !empty($_POST['waiver_agree'])
+    || trim((string)($_POST['waiver_signed_name'] ?? '')) !== ''
+    || $sig !== '';
+
+if ($triedConsent && checkin_signature_supported() && checkin_can_sign_self($onlyGuestId, $targetIsLead)) {
+    $already = checkin_guest_waiver_signed($targetRow);
+    $missing = checkin_consent_missing(
+        !empty($_POST['waiver_agree']),
+        (string)($_POST['waiver_signed_name'] ?? ''),
+        $sig,
+        $already
+    );
+    if ($missing) {
+        // Previously this fell through silently, so a guest could finish the wizard
+        // with no agreement and no signature and never be told.
+        $msg = 'We could not record your signature — please ' . implode(', ', $missing) . '.';
+        if (($_POST['ajax'] ?? '') === '1') {
+            http_response_code(422);
+            header('Content-Type: application/json');
+            exit(json_encode(['ok'=>false, 'error'=>$msg]));
+        }
+        $_SESSION['ci_error'] = $msg;
+        header('Location: ' . $back); exit;
+    }
+    // A fresh drawing replaces the stored one; an untouched signed panel posts an
+    // empty value and leaves the existing signature alone.
+    if (checkin_valid_signature($sig)) {
+        $terms  = checkin_waiver_text();
+        $method = checkin_signing_method((string)($_POST['via'] ?? ''));
+        db_query(
+            "UPDATE checkin_guests
+                SET waiver_signed_name=:n, waiver_signed_at=now(), waiver_signed_ip=:ip,
+                    waiver_version=:v, waiver_signature=:sig, waiver_terms_snapshot=:terms,
+                    waiver_signed_user_agent=:ua, waiver_signed_method=:m
+              WHERE id=:g AND hold_id=:h",
+            [':n'=>$s('waiver_signed_name'), ':ip'=>client_ip(), ':v'=>waiver_version($terms),
+             ':sig'=>$sig, ':terms'=>$terms, ':ua'=>substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 500),
+             ':m'=>$method, ':g'=>$guestId, ':h'=>$holdId]);
+    }
 }
 
 $do = $_POST['do'] ?? 'save';
