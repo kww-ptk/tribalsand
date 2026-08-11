@@ -144,6 +144,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $gs  = fn($k) => (($v = trim((string)($_POST[$k] ?? ''))) === '') ? null : $v;
         $gid = (int)($_POST['guest_id'] ?? 0);
 
+        // Guest-targeting actions must reference a guest that belongs to this hold.
+        if (in_array($act, ['guest_fill','guest_upload','guest_remove'], true)) {
+            $belongs = $gid > 0 && db_query('SELECT 1 FROM checkin_guests WHERE id=:g AND hold_id=:h', [':g'=>$gid, ':h'=>$holdId])->fetchColumn();
+            if (!$belongs) {
+                $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Guest not found on this booking.'];
+                header("Location: /admin/booking.php?hold=$holdId&tab=checkin"); exit;
+            }
+        }
+
         if ($act === 'guest_fill' && $gid > 0) {
             db_query("UPDATE checkin_guests SET passport_name=:n, passport_number=:num, nationality=:nat, passport_expiry=:exp WHERE id=:g AND hold_id=:h",
                 [':n'=>$gs('passport_name'), ':num'=>$gs('passport_number'), ':nat'=>$gs('nationality'), ':exp'=>$gs('passport_expiry'), ':g'=>$gid, ':h'=>$holdId]);
@@ -177,12 +186,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
         } elseif ($act === 'guest_add_adult') {
-            db_query('INSERT INTO checkin_guests (hold_id, is_lead, is_child, passport_name) VALUES (:h, FALSE, FALSE, :n)', [':h'=>$holdId, ':n'=>$gs('passport_name')]);
+            // First adult on an empty roster becomes the lead, so the guest's ref link
+            // reuses it instead of seeding a duplicate lead row later.
+            $hasLead = (bool) db_query('SELECT 1 FROM checkin_guests WHERE hold_id=:h AND is_lead', [':h'=>$holdId])->fetchColumn();
+            if ($hasLead) {
+                db_query('INSERT INTO checkin_guests (hold_id, is_lead, is_child, passport_name) VALUES (:h, FALSE, FALSE, :n)', [':h'=>$holdId, ':n'=>$gs('passport_name')]);
+            } else {
+                db_query('INSERT INTO checkin_guests (hold_id, is_lead, is_child, passport_name) VALUES (:h, TRUE, FALSE, :n)', [':h'=>$holdId, ':n'=>$gs('passport_name')]);
+            }
             $newGid = (int) db()->lastInsertId();
             $adults = (int) db_query('SELECT COUNT(*) FROM checkin_guests WHERE hold_id=:h AND is_child=FALSE', [':h'=>$holdId])->fetchColumn();
             if ($adults > (int)($hold['guest_count'] ?? 1)) {
                 db_query('UPDATE holds SET guest_count=:n WHERE id=:h', [':n'=>$adults, ':h'=>$holdId]);
             }
+            // A newly-added adult is unverified — un-latch completion so the badge reflects reality.
+            db_query('UPDATE holds SET checkin_completed_at = NULL WHERE id=:h', [':h'=>$holdId]);
             audit_log('checkin.guest_add', 'hold', $holdId, 'adult ' . $newGid);
             $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Adult added.'];
 
@@ -201,13 +219,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         } elseif ($act === 'guest_remove' && $gid > 0) {
             require_once __DIR__ . '/../includes/storage.php';
-            $row = db_query('SELECT is_lead FROM checkin_guests WHERE id=:g AND hold_id=:h', [':g'=>$gid, ':h'=>$holdId])->fetch();
+            $row = db_query('SELECT is_lead, is_child FROM checkin_guests WHERE id=:g AND hold_id=:h', [':g'=>$gid, ':h'=>$holdId])->fetch();
             if (!$row || !empty($row['is_lead'])) {
                 $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'The lead guest can’t be removed.'];
             } else {
                 $files = db_query('SELECT passport_file_key FROM checkin_guests WHERE (id=:g OR parent_guest_id=:g) AND hold_id=:h', [':g'=>$gid, ':h'=>$holdId])->fetchAll(PDO::FETCH_COLUMN);
                 db_query('DELETE FROM checkin_guests WHERE id=:g AND hold_id=:h', [':g'=>$gid, ':h'=>$holdId]);
                 foreach ($files as $fk) { if (!empty($fk)) { try { storage_delete_private($fk); } catch (Throwable $e) {} } }
+                if (empty($row['is_child'])) {   // removed an adult — shrink the required party and un-latch completion
+                    $adults = (int) db_query('SELECT COUNT(*) FROM checkin_guests WHERE hold_id=:h AND is_child=FALSE', [':h'=>$holdId])->fetchColumn();
+                    db_query('UPDATE holds SET guest_count = GREATEST(1, LEAST(guest_count, :a)), checkin_completed_at = NULL WHERE id=:h', [':a'=>$adults, ':h'=>$holdId]);
+                }
                 audit_log('checkin.guest_remove', 'hold', $holdId, 'guest ' . $gid);
                 $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Guest removed.'];
             }
