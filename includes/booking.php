@@ -181,12 +181,15 @@ function resolve_booking_by_code_only(string $code): array|false {
 }
 
 
-/** Add-ons already recorded against a hold (for display). */
+/** Add-ons already recorded against a hold (for display), with requester name when attributed. */
 function fetch_booking_addons(int $holdId): array {
+    $join = addon_requested_by_supported() ? "LEFT JOIN checkin_guests cg ON cg.id = ba.requested_by" : "";
+    $sel  = addon_requested_by_supported() ? ", cg.passport_name AS requested_by_name, cg.is_lead AS requested_by_is_lead" : "";
     return db_query(
-        "SELECT ba.*, t.name AS tour_name
+        "SELECT ba.*, t.name AS tour_name{$sel}
          FROM booking_addons ba
          LEFT JOIN tours t ON t.id = ba.tour_id
+         {$join}
          WHERE ba.hold_id = :id ORDER BY ba.created_at DESC",
         [':id' => $holdId]
     )->fetchAll();
@@ -489,6 +492,7 @@ function insert_booking_addon(array $d): int {
     if (addon_pax_supported())   { $cols[] = 'pax';          $vals[] = ':pax';   $p[':pax']   = $d['pax'] ?? null; }
     if (addon_board_supported())  { $cols[] = 'board_post_id'; $vals[] = ':bp'; $p[':bp'] = $d['board_post_id'] ?? null; }
     if (addon_assigned_supported()) { $cols[] = 'assigned_to'; $vals[] = ':asg'; $p[':asg'] = $d['assigned_to'] ?? null; }
+    if (addon_requested_by_supported()) { $cols[] = 'requested_by'; $vals[] = ':rb'; $p[':rb'] = $d['requested_by'] ?? null; }
     db_query('INSERT INTO booking_addons (' . implode(',', $cols) . ') VALUES (' . implode(',', $vals) . ')', $p);
     return (int) db()->lastInsertId();
 }
