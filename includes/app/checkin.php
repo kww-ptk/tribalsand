@@ -17,7 +17,8 @@ $stayLoc = trim(((string)($hold['venue_name'] ?? '')) . ' · ' . ((string)($hold
 $nights  = max(1, (int) round((strtotime((string)$hold['check_out']) - strtotime((string)$hold['check_in'])) / 86400));
 $hasProgress = !empty($data) || !empty($lead);
 
-// Party config: passport + waiver collapse into one "Your party" step.
+// Which identity/consent fields to render — used by the "Your details" step and
+// the intro checklist. The flow build below decides where those steps land.
 $showPassport = isset($cfg['passport']);
 $showWaiver   = isset($cfg['waiver']);
 $guests   = fetch_checkin_guests($holdId);
