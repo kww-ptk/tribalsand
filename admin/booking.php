@@ -136,6 +136,86 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         header("Location: /admin/booking.php?hold=$holdId&tab=checkin"); exit;
     }
+
+    // ── Guest management (owner / venue-manager) — sub-project B ─────────────
+    if (in_array($act, ['guest_fill','guest_upload','guest_add_adult','guest_add_child','guest_remove'], true)
+        && checkin_supported() && can_view_guest_docs($holdId)) {
+
+        $gs  = fn($k) => (($v = trim((string)($_POST[$k] ?? ''))) === '') ? null : $v;
+        $gid = (int)($_POST['guest_id'] ?? 0);
+
+        if ($act === 'guest_fill' && $gid > 0) {
+            db_query("UPDATE checkin_guests SET passport_name=:n, passport_number=:num, nationality=:nat, passport_expiry=:exp WHERE id=:g AND hold_id=:h",
+                [':n'=>$gs('passport_name'), ':num'=>$gs('passport_number'), ':nat'=>$gs('nationality'), ':exp'=>$gs('passport_expiry'), ':g'=>$gid, ':h'=>$holdId]);
+            audit_log('checkin.guest_fill', 'hold', $holdId, 'guest ' . $gid);
+            $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Guest details saved.'];
+
+        } elseif ($act === 'guest_upload' && $gid > 0) {
+            require_once __DIR__ . '/../includes/storage.php';
+            $f = $_FILES['passport'] ?? null;
+            $allowed = ['image/jpeg'=>'jpg','image/png'=>'png','application/pdf'=>'pdf'];
+            if (!$f || ($f['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+                $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'No file received.'];
+            } elseif (($f['size'] ?? 0) > 8 * 1024 * 1024) {
+                $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'File too large (max 8 MB).'];
+            } else {
+                $mime = (new finfo(FILEINFO_MIME_TYPE))->file($f['tmp_name']) ?: '';
+                if (!isset($allowed[$mime])) {
+                    $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'File must be JPG, PNG or PDF.'];
+                } else {
+                    $key = 'checkin/' . $holdId . '/' . $gid . '/' . bin2hex(random_bytes(12)) . '.' . $allowed[$mime];
+                    if (storage_put_private($f['tmp_name'], $key, $mime)) {
+                        $prev = db_query('SELECT passport_file_key FROM checkin_guests WHERE id=:g AND hold_id=:h', [':g'=>$gid, ':h'=>$holdId])->fetch();
+                        db_query('UPDATE checkin_guests SET passport_file_key=:k WHERE id=:g AND hold_id=:h', [':k'=>$key, ':g'=>$gid, ':h'=>$holdId]);
+                        if ($prev && !empty($prev['passport_file_key']) && $prev['passport_file_key'] !== $key) { try { storage_delete_private($prev['passport_file_key']); } catch (Throwable $e) {} }
+                        audit_log('checkin.guest_upload', 'hold', $holdId, 'guest ' . $gid);
+                        $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Passport scan uploaded.'];
+                    } else {
+                        $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Upload failed — try again.'];
+                    }
+                }
+            }
+
+        } elseif ($act === 'guest_add_adult') {
+            db_query('INSERT INTO checkin_guests (hold_id, is_lead, is_child, passport_name) VALUES (:h, FALSE, FALSE, :n)', [':h'=>$holdId, ':n'=>$gs('passport_name')]);
+            $newGid = (int) db()->lastInsertId();
+            $adults = (int) db_query('SELECT COUNT(*) FROM checkin_guests WHERE hold_id=:h AND is_child=FALSE', [':h'=>$holdId])->fetchColumn();
+            if ($adults > (int)($hold['guest_count'] ?? 1)) {
+                db_query('UPDATE holds SET guest_count=:n WHERE id=:h', [':n'=>$adults, ':h'=>$holdId]);
+            }
+            audit_log('checkin.guest_add', 'hold', $holdId, 'adult ' . $newGid);
+            $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Adult added.'];
+
+        } elseif ($act === 'guest_add_child') {
+            $parent = (int)($_POST['parent_guest_id'] ?? 0);
+            $okParent = $parent > 0 && db_query('SELECT 1 FROM checkin_guests WHERE id=:p AND hold_id=:h AND is_child=FALSE', [':p'=>$parent, ':h'=>$holdId])->fetchColumn();
+            if ($okParent) {
+                $dob = ($_POST['date_of_birth'] ?? '') !== '' ? (string)$_POST['date_of_birth'] : null;
+                db_query('INSERT INTO checkin_guests (hold_id, is_lead, is_child, parent_guest_id, passport_name, date_of_birth) VALUES (:h, FALSE, TRUE, :p, :n, :dob)',
+                    [':h'=>$holdId, ':p'=>$parent, ':n'=>$gs('passport_name'), ':dob'=>$dob]);
+                audit_log('checkin.guest_add', 'hold', $holdId, 'child of ' . $parent);
+                $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Child added.'];
+            } else {
+                $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Pick a valid adult to add the child under.'];
+            }
+
+        } elseif ($act === 'guest_remove' && $gid > 0) {
+            require_once __DIR__ . '/../includes/storage.php';
+            $row = db_query('SELECT is_lead FROM checkin_guests WHERE id=:g AND hold_id=:h', [':g'=>$gid, ':h'=>$holdId])->fetch();
+            if (!$row || !empty($row['is_lead'])) {
+                $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'The lead guest can’t be removed.'];
+            } else {
+                $files = db_query('SELECT passport_file_key FROM checkin_guests WHERE (id=:g OR parent_guest_id=:g) AND hold_id=:h', [':g'=>$gid, ':h'=>$holdId])->fetchAll(PDO::FETCH_COLUMN);
+                db_query('DELETE FROM checkin_guests WHERE id=:g AND hold_id=:h', [':g'=>$gid, ':h'=>$holdId]);
+                foreach ($files as $fk) { if (!empty($fk)) { try { storage_delete_private($fk); } catch (Throwable $e) {} } }
+                audit_log('checkin.guest_remove', 'hold', $holdId, 'guest ' . $gid);
+                $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Guest removed.'];
+            }
+        }
+
+        checkin_recompute_completion($holdId);
+        header("Location: /admin/booking.php?hold=$holdId&tab=checkin"); exit;
+    }
 }
 
 $pageTitle  = 'Booking';
