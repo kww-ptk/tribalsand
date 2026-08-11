@@ -94,6 +94,21 @@
     });
   });
 
+  // Copy buttons for any .ci-linkrow outside the check-in form: the check-in
+  // confirmation card and the party roster on Home. booking-manage.js loads on
+  // every portal view; checkin-wizard.js only loads on the check-in view, so this
+  // cannot live there. In-form buttons are skipped — checkin-wizard.js owns those.
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (!t.classList || !t.classList.contains('ci-copy') || t.closest('#ciForm')) return;
+    e.preventDefault();
+    var row = t.closest('.ci-linkrow'); if (!row) return;
+    var inp = row.querySelector('input'); if (!inp) return;
+    inp.select();
+    try { navigator.clipboard.writeText(inp.value); } catch (_) { try { document.execCommand('copy'); } catch (__) {} }
+    var o = t.textContent; t.textContent = 'Copied ✓'; setTimeout(function () { t.textContent = o; }, 1500);
+  });
+
   // ── Live chat: append on send + poll for incoming (no page refresh) ──
   var thread = document.getElementById('bmThread');
   if (thread) {

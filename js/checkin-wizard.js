@@ -248,14 +248,4 @@
     }
   });
 
-  // The confirmation card sits outside #ciForm, so its Copy buttons need their
-  // own delegation. Same behaviour as the in-form handler.
-  document.addEventListener('click', function (e) {
-    var t = e.target;
-    if (!t.classList || !t.classList.contains('ci-copy') || t.closest('#ciForm')) return;
-    e.preventDefault();
-    var inp = t.closest('.ci-linkrow').querySelector('input'); inp.select();
-    try { navigator.clipboard.writeText(inp.value); } catch (_) { try { document.execCommand('copy'); } catch (__) {} }
-    var o = t.textContent; t.textContent = 'Copied ✓'; setTimeout(function () { t.textContent = o; }, 1500);
-  });
 })();

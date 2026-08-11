@@ -246,6 +246,15 @@
 .ci-addguest{margin-top:4px}
 .ci-others{margin-top:22px;padding-top:14px;border-top:1px solid var(--pa-line)}
 .ci-other__row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 2px;font-size:14px}
+/* ── Party roster ──────────────────────────────────────────────────────────── */
+.pty-row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:13px 16px;border-bottom:1px solid var(--pa-line)}
+.pty-row:last-child{border-bottom:0}
+.pty-row__main{display:flex;align-items:center;gap:8px;min-width:0;flex-wrap:wrap}
+.pty-name{font-weight:600;color:var(--pa-ink)}
+.pty-tag{font-size:10px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 7px;border-radius:999px;background:var(--pa-cream);color:var(--pa-muted)}
+.pty-tag--me{background:var(--pa-teal);color:#fff}
+.pty-kids{padding:0 16px 10px;display:flex;flex-wrap:wrap;gap:6px}
+.pty-link{padding:0 16px 14px}
 
 /* ── Arrival modes ─────────────────────────────────────────────────────────── */
 .ci-modes{margin:4px 0 6px}
