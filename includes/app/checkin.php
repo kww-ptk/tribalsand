@@ -54,15 +54,6 @@ $needs = [];
 if ($showPassport)          $needs[] = ['&#128179;', 'A passport for every adult — a clear photo or PDF'];
 if (isset($cfg['arrival'])) $needs[] = ['&#9992;&#65039;', 'Flight number &amp; arrival time'];
 
-/** Render the waiver block for a guest card. $signed = the guest's waiver_signed_at (truthy = signed). $mode 'lead' uses name=, 'guest' uses data-field. */
-$waiverBlock = function (bool $signed) use ($waiverText) {
-    ob_start(); ?>
-    <div class="ci-waiver"><?= nl2br(e($waiverText)) ?></div>
-    <label class="ci-radio"><input type="checkbox" class="ci-f-agree" name="waiver_agree" value="1" <?= $signed ? 'checked' : '' ?>> I have read and agree to the terms</label>
-    <label class="ci-l">Type your full name to sign</label>
-    <input class="ci-in ci-f-signname" name="waiver_signed_name" placeholder="Full name">
-    <?php return ob_get_clean();
-};
 ?>
 <link rel="stylesheet" href="/css/portal-app.css?v=<?= @filemtime(__DIR__ . '/../../css/portal-app.css') ?: time() ?>">
 
