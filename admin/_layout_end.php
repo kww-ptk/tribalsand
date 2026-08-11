@@ -71,6 +71,9 @@ if (!empty($__shellFrag)) {
     document.addEventListener('keydown', onKey);
     yes.addEventListener('click', function () { close(); onYes(); });
   }
+  // Exposed so other admin scripts (e.g. gallery bulk-delete) can raise the same
+  // no-native confirm dialog programmatically instead of the browser's confirm().
+  window.tsConfirm = styledConfirm;
 
   // Show "Working…" on the button WITHOUT dropping its submitted value.
   // A disabled submitter is excluded from the POST, so we first mirror its

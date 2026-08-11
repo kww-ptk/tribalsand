@@ -53,6 +53,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['gallery_action']) && 
     } elseif ($act === 'delete_image') {
         $row = db_query('SELECT filename FROM venue_images WHERE id=:id AND venue_id=:v', [':id'=>$img_id, ':v'=>$id])->fetch();
         if ($row) { storage_delete($row['filename']); db_query('DELETE FROM venue_images WHERE id=:id', [':id'=>$img_id]); }
+    } elseif ($act === 'delete_images') {
+        // Bulk delete — an array of image IDs from the gallery selection bar.
+        $ids = array_values(array_filter(array_map('intval', (array)($_POST['image_ids'] ?? []))));
+        $deleted = 0;
+        foreach ($ids as $iid) {
+            $row = db_query('SELECT filename FROM venue_images WHERE id=:id AND venue_id=:v', [':id'=>$iid, ':v'=>$id])->fetch();
+            if ($row) { storage_delete($row['filename']); db_query('DELETE FROM venue_images WHERE id=:id', [':id'=>$iid]); $deleted++; }
+        }
+        if ($deleted) { audit_log('venue.gallery_delete','venue',$id,"-{$deleted}"); $success = "{$deleted} photo(s) deleted."; }
     } elseif ($act === 'reorder') {
         foreach (json_decode($_POST['order'] ?? '[]', true) as $o => $iid) {
             db_query('UPDATE venue_images SET sort_order=:o WHERE id=:id AND venue_id=:v', [':o'=>$o, ':id'=>(int)$iid, ':v'=>$id]);
@@ -166,199 +175,286 @@ include __DIR__ . '/_layout.php';
 
 <div class="page-header">
   <h1><?= $isNew ? 'New Property' : 'Edit Property: ' . e($venue['name']) ?></h1>
-  <a href="/admin/venues.php" class="btn-sm btn-outline"><?= admin_icon('arrow-left', 15) ?> Back to Properties</a>
+  <div class="actions">
+    <a href="/admin/venues.php" class="btn-sm btn-outline" data-tip="Back to all properties"><?= admin_icon('arrow-left', 15) ?> Properties</a>
+    <?php if (!$isNew): ?>
+    <a href="/<?= e($venue['slug']) ?>" class="btn-sm btn-outline" target="_blank" data-tip="Open the live public page">View on site</a>
+    <?php endif; ?>
+  </div>
 </div>
 
 <?php if ($success): ?><div class="alert alert--success"><?= e($success) ?></div><?php endif; ?>
 <?php if ($error): ?><div class="alert alert--error"><?= e($error) ?></div><?php endif; ?>
 
-<div class="card">
-  <div class="card__head"><span class="card__title">Details</span></div>
-  <div class="card__body">
-    <form method="POST" action="/admin/venue-edit<?= $id ? '?id=' . $id : '' ?>">
-      <?= csrf_field() ?>
-      <input type="hidden" name="action" value="save_details">
-
-      <div style="margin-bottom:14px">
-        <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">Name</label>
-        <input type="text" name="name" value="<?= e($venue['name'] ?? '') ?>" required placeholder="Enter property name" style="width:100%;max-width:480px;padding:8px 10px">
-      </div>
-
-      <div style="margin-bottom:14px">
-        <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">Location</label>
-        <input type="text" name="location" value="<?= e($venue['location'] ?? '') ?>" placeholder="e.g. Watamu" style="width:100%;max-width:480px;padding:8px 10px">
-      </div>
-
-      <div style="margin-bottom:14px">
-        <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">Slug (URL)</label>
-        <?php if ($isNew): ?>
-          <input type="text" name="slug" value="" required placeholder="e.g. zuri" style="width:100%;max-width:480px;padding:8px 10px">
-          <p style="font-size:12px;color:var(--muted);margin:4px 0 0">Must match the page file — e.g. <code>zuri</code> serves <code>/zuri</code>.</p>
-        <?php else: ?>
-          <input type="text" value="<?= e($venue['slug']) ?>" readonly disabled style="width:100%;max-width:480px;padding:8px 10px;background:var(--surface);color:var(--muted)">
-          <p style="font-size:12px;color:var(--muted);margin:4px 0 0">Locked — this is the live URL <code>/<?= e($venue['slug']) ?></code> and cannot be changed.</p>
-        <?php endif; ?>
-      </div>
-
-      <div style="margin-bottom:14px">
-        <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">Sort order</label>
-        <input type="number" name="sort_order" value="<?= e($venue['sort_order'] ?? 0) ?>" placeholder="Enter sort order" style="width:120px;padding:8px 10px">
-      </div>
-
-      <button type="submit" class="btn-primary btn-sm">Save Property</button>
-    </form>
-  </div>
+<!-- Tabs -->
+<div class="tabs">
+  <button class="tab-btn is-active" data-tab="details">Details</button>
+  <?php if (!$isNew): ?>
+  <button class="tab-btn" data-tab="content">Content</button>
+  <button class="tab-btn" data-tab="stay">Stay</button>
+  <button class="tab-btn" data-tab="rooms">Rooms<?php if ($rooms): ?> <span class="tab-btn__count"><?= count($rooms) ?></span><?php endif; ?></button>
+  <button class="tab-btn" data-tab="gallery">Gallery<?php if ($images): ?> <span class="tab-btn__count"><?= count($images) ?></span><?php endif; ?></button>
+  <button class="tab-btn" data-tab="publish">Publish</button>
+  <?php endif; ?>
 </div>
 
-<?php if (!$isNew): ?>
-<div class="card">
-  <div class="card__head"><span class="card__title">Publish</span></div>
-  <div class="card__body">
-    <form method="POST" action="/admin/venue-edit?id=<?= $id ?>">
-      <?= csrf_field() ?>
-      <input type="hidden" name="action" value="save_publish">
-      <label style="display:flex;align-items:center;gap:8px">
-        <input type="checkbox" name="is_published" value="1" <?= $venue['is_published'] ? 'checked' : '' ?>>
-        Published (visible)
-      </label>
-      <button type="submit" class="btn-sm btn-outline" style="margin-top:10px">Update</button>
-    </form>
-  </div>
-</div>
+<!-- ── TAB: Details ── -->
+<div class="tab-panel is-active" id="tab-details">
+  <div class="card">
+    <div class="card__head"><span class="card__title">Details</span></div>
+    <div class="card__body" style="padding:20px">
+      <form method="POST" action="/admin/venue-edit<?= $id ? '?id=' . $id : '' ?>">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="save_details">
 
-<div class="card">
-  <div class="card__head"><span class="card__title">Page Content</span></div>
-  <div class="card__body">
-    <form method="POST" action="/admin/venue-edit?id=<?= $id ?>">
-      <?= csrf_field() ?>
-      <input type="hidden" name="action" value="save_content">
-
-      <div style="margin-bottom:14px">
-        <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">Tagline <span style="color:var(--muted);font-weight:400">(the small line above the title)</span></label>
-        <input type="text" name="tagline" value="<?= e($venue['tagline'] ?? '') ?>" placeholder="e.g. Ultra-Luxury Private Beachfront Villa · Entire Property Only" style="width:100%;max-width:640px;padding:8px 10px">
-      </div>
-
-      <div style="margin-bottom:14px">
-        <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">About — heading</label>
-        <input type="text" name="about_heading" value="<?= e($venue['about_heading'] ?? '') ?>" placeholder="e.g. Best Beachfront Villa in *Vipingo, Kenya*" style="width:100%;max-width:640px;padding:8px 10px">
-        <p style="font-size:12px;color:var(--muted);margin:4px 0 0">Wrap a word in <code>*asterisks*</code> to italicise it (shows in the accent colour).</p>
-      </div>
-
-      <div style="margin-bottom:14px">
-        <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">About — body</label>
-        <textarea name="about_body" rows="9" placeholder="Write the property description. Leave a blank line between paragraphs." style="width:100%;max-width:640px;padding:8px 10px;font-family:inherit;line-height:1.6"><?= e($venue['about_body'] ?? '') ?></textarea>
-        <p style="font-size:12px;color:var(--muted);margin:4px 0 0">Separate paragraphs with a blank line. Leave everything here empty to keep the page's built-in text.</p>
-      </div>
-
-      <button type="submit" class="btn-primary btn-sm">Save Content</button>
-    </form>
-  </div>
-</div>
-
-<div class="card">
-  <div class="card__head"><span class="card__title">Stay info &amp; location</span></div>
-  <div class="card__body">
-    <p style="margin:0 0 14px;font-size:13px;color:var(--muted)">Shown to guests in the app for this property. Leave a field blank to hide it.</p>
-    <form method="POST" action="/admin/venue-edit?id=<?= $id ?>">
-      <?= csrf_field() ?>
-      <input type="hidden" name="action" value="save_stay">
-
-      <div style="margin-bottom:14px">
-        <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">Address <span style="color:var(--muted);font-weight:400">(shown in the booking box)</span></label>
-        <input type="text" name="address" value="<?= e($venue['address'] ?? '') ?>" placeholder="e.g. Zuri Beach House, Vipingo Ridge, Kilifi County" style="width:100%;max-width:640px;padding:8px 10px">
-      </div>
-
-      <div style="margin-bottom:14px">
-        <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">Google Maps link <span style="color:var(--muted);font-weight:400">(optional)</span></label>
-        <input type="url" name="maps_url" value="<?= e($venue['maps_url'] ?? '') ?>" placeholder="Paste a Google Maps share link (overrides the address search)" style="width:100%;max-width:640px;padding:8px 10px">
-        <p style="font-size:12px;color:var(--muted);margin:4px 0 0">If blank, the map pin searches Google Maps for the address above.</p>
-      </div>
-
-      <?php
-        $__stay = ['stay_wifi'=>'Wi-Fi','stay_checkout'=>'Check-out','stay_house_rules'=>'House rules','stay_area_guide'=>'Area guide'];
-        foreach ($__stay as $__k => $__label): ?>
-      <div style="margin-bottom:14px">
-        <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px"><?= e($__label) ?></label>
-        <textarea name="<?= e($__k) ?>" rows="3" placeholder="Enter <?= e(strtolower($__label)) ?>" style="width:100%;max-width:640px;padding:8px 10px;font-family:inherit;line-height:1.6"><?= e($venue[$__k] ?? '') ?></textarea>
-      </div>
-      <?php endforeach; ?>
-
-      <button type="submit" class="btn-primary btn-sm">Save Stay Info</button>
-    </form>
-  </div>
-</div>
-
-<div class="card">
-  <div class="card__head">
-    <span class="card__title">Rooms in this Property</span>
-    <a href="/admin/room-edit.php?venue=<?= $id ?>" class="btn-sm btn-primary">+ Add room to this property</a>
-  </div>
-  <div class="card__body" style="padding:0">
-    <?php if (!$rooms): ?>
-    <p style="padding:24px;text-align:center;color:var(--muted)">No rooms in this property yet.</p>
-    <?php else: ?>
-    <div class="table-wrap">
-    <table class="data-table">
-      <thead><tr><th>Room</th><th>Price</th><th>Published</th><th></th></tr></thead>
-      <tbody>
-        <?php foreach ($rooms as $r): ?>
-        <tr>
-          <td><strong><?= e($r['name']) ?></strong> <code style="font-size:11px;color:var(--muted)"><?= e($r['slug']) ?></code></td>
-          <td><?= e($r['price_currency']) ?> <?= e(number_format((float)$r['price_amount'], 0)) ?></td>
-          <td><?= $r['is_published'] ? '<span class="badge badge--green">Live</span>' : '<span class="badge badge--grey">Hidden</span>' ?></td>
-          <td style="white-space:nowrap">
-            <a href="/admin/room-edit.php?id=<?= (int)$r['id'] ?>" class="btn-sm btn-outline">Edit</a>
-            <a href="/admin/gantt.php?room=<?= (int)$r['id'] ?>" class="btn-sm btn-outline">Availability</a>
-          </td>
-        </tr>
-        <?php endforeach; ?>
-      </tbody>
-    </table>
-    </div>
-    <?php endif; ?>
-  </div>
-</div>
-
-<?php if (!$isNew): ?>
-<div class="card">
-  <div class="card__head"><span class="card__title">Gallery photos</span></div>
-  <div class="card__body">
-    <form method="POST" action="/admin/venue-edit?id=<?= $id ?>" enctype="multipart/form-data">
-      <?= csrf_field() ?>
-      <input type="file" id="gallery_upload" name="gallery_upload[]" multiple accept="image/jpeg,image/png,image/webp" style="display:none" onchange="this.form.submit()">
-      <p><label for="gallery_upload" style="color:var(--brand);cursor:pointer;text-decoration:underline">Upload images</label> (JPEG/PNG/WebP, max 5 MB each). The first becomes the main image.</p>
-    </form>
-    <div class="venue-gallery" id="venueGallery" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:12px;margin-top:12px">
-      <?php foreach ($images as $im): ?>
-      <div class="gallery-item<?= $im['is_hero'] ? ' is-hero' : '' ?>" data-img-id="<?= (int)$im['id'] ?>" draggable="true" style="position:relative;border:1px solid var(--border,#e7ded7);border-radius:8px;overflow:hidden">
-        <?php if ($im['is_hero']): ?><span style="position:absolute;top:6px;left:6px;background:var(--brand,#1E5C6B);color:#fff;font-size:10px;padding:2px 7px;border-radius:8px;z-index:2">MAIN</span><?php endif; ?>
-        <img src="<?= e(storage_url($im['filename'])) ?>" alt="<?= e($im['alt_text']) ?>" style="width:100%;height:110px;object-fit:cover;display:block">
-        <div style="display:flex;gap:4px;padding:6px;justify-content:center">
-          <?php if (!$im['is_hero']): ?>
-          <form method="POST" action="/admin/venue-edit?id=<?= $id ?>" style="display:inline"><?= csrf_field() ?><input type="hidden" name="gallery_action" value="set_hero"><input type="hidden" name="image_id" value="<?= (int)$im['id'] ?>"><button type="submit" class="btn-sm btn-outline" style="font-size:11px">Set main</button></form>
-          <?php endif; ?>
-          <form method="POST" action="/admin/venue-edit?id=<?= $id ?>" style="display:inline" onsubmit="return confirm('Delete this photo?')"><?= csrf_field() ?><input type="hidden" name="gallery_action" value="delete_image"><input type="hidden" name="image_id" value="<?= (int)$im['id'] ?>"><button type="submit" class="btn-sm" style="font-size:11px;color:#c0392b;border:1px solid #c0392b;background:#fff;border-radius:4px">Delete</button></form>
+        <div class="form-row">
+          <div class="field">
+            <label>Name</label>
+            <input type="text" name="name" value="<?= e($venue['name'] ?? '') ?>" required placeholder="Enter property name">
+          </div>
+          <div class="field">
+            <label>Location</label>
+            <input type="text" name="location" value="<?= e($venue['location'] ?? '') ?>" placeholder="e.g. Watamu">
+          </div>
         </div>
-      </div>
-      <?php endforeach; ?>
+
+        <div class="form-row">
+          <div class="field">
+            <label>Slug <span class="text-muted">(URL)</span></label>
+            <?php if ($isNew): ?>
+            <input type="text" name="slug" value="" required placeholder="e.g. zuri">
+            <span class="field-hint">Must match the page file — e.g. <code>zuri</code> serves <code>/zuri</code>.</span>
+            <?php else: ?>
+            <input type="text" value="<?= e($venue['slug']) ?>" readonly disabled style="background:var(--bg);color:var(--muted)">
+            <span class="field-hint">Locked — this is the live URL <code>/<?= e($venue['slug']) ?></code> and cannot be changed.</span>
+            <?php endif; ?>
+          </div>
+          <div class="field">
+            <label>Sort order</label>
+            <input type="number" name="sort_order" value="<?= e($venue['sort_order'] ?? 0) ?>" placeholder="0">
+            <span class="field-hint">Lower numbers show first in listings.</span>
+          </div>
+        </div>
+
+        <button type="submit" class="btn-primary btn-sm" data-tip="Save name, location & sort order">Save Property</button>
+      </form>
     </div>
-    <?php if (!$images): ?><p style="color:var(--muted);padding:12px 0">No photos yet — upload some above.</p><?php endif; ?>
   </div>
 </div>
-<?php endif; ?>
 
-<div class="card">
-  <div class="card__body">
-    <form method="POST" action="/admin/venue-edit?id=<?= $id ?>" onsubmit="return confirm('Delete this property? Its rooms are kept but detached.');">
-      <?= csrf_field() ?>
-      <input type="hidden" name="action" value="delete_venue">
-      <button type="submit" class="btn-sm" style="background:#dc2626;color:#fff;border:none">Delete property</button>
-    </form>
+<?php if (!$isNew): ?>
+<!-- ── TAB: Content ── -->
+<div class="tab-panel" id="tab-content">
+  <div class="card">
+    <div class="card__head"><span class="card__title">Page Content</span></div>
+    <div class="card__body" style="padding:20px">
+      <form method="POST" action="/admin/venue-edit?id=<?= $id ?>">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="save_content">
+
+        <div class="field">
+          <label>Tagline <span class="text-muted">(the small line above the title)</span></label>
+          <input type="text" name="tagline" value="<?= e($venue['tagline'] ?? '') ?>" placeholder="e.g. Ultra-Luxury Private Beachfront Villa · Entire Property Only">
+        </div>
+
+        <div class="field">
+          <label>About — heading</label>
+          <input type="text" name="about_heading" value="<?= e($venue['about_heading'] ?? '') ?>" placeholder="e.g. Best Beachfront Villa in *Vipingo, Kenya*">
+          <span class="field-hint">Wrap a word in <code>*asterisks*</code> to italicise it (shows in the accent colour).</span>
+        </div>
+
+        <div class="field">
+          <label>About — body</label>
+          <textarea name="about_body" rows="9" placeholder="Write the property description. Leave a blank line between paragraphs."><?= e($venue['about_body'] ?? '') ?></textarea>
+          <span class="field-hint">Separate paragraphs with a blank line. Leave everything here empty to keep the page's built-in text.</span>
+        </div>
+
+        <button type="submit" class="btn-primary btn-sm" data-tip="Save the tagline & About text">Save Content</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ── TAB: Stay ── -->
+<div class="tab-panel" id="tab-stay">
+  <div class="card">
+    <div class="card__head"><span class="card__title">Stay info &amp; location</span></div>
+    <div class="card__body" style="padding:20px">
+      <p style="margin:0 0 16px;font-size:13px;color:var(--muted)">Shown to guests in the app for this property. Leave a field blank to hide it.</p>
+      <form method="POST" action="/admin/venue-edit?id=<?= $id ?>">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="save_stay">
+
+        <div class="field">
+          <label>Address <span class="text-muted">(shown in the booking box)</span></label>
+          <input type="text" name="address" value="<?= e($venue['address'] ?? '') ?>" placeholder="e.g. Zuri Beach House, Vipingo Ridge, Kilifi County">
+        </div>
+
+        <div class="field">
+          <label>Google Maps link <span class="text-muted">(optional)</span></label>
+          <input type="url" name="maps_url" value="<?= e($venue['maps_url'] ?? '') ?>" placeholder="Paste a Google Maps share link (overrides the address search)">
+          <span class="field-hint">If blank, the map pin searches Google Maps for the address above.</span>
+        </div>
+
+        <?php
+          $__stay = ['stay_wifi'=>'Wi-Fi','stay_checkout'=>'Check-out','stay_house_rules'=>'House rules','stay_area_guide'=>'Area guide'];
+          foreach ($__stay as $__k => $__label): ?>
+        <div class="field">
+          <label><?= e($__label) ?></label>
+          <textarea name="<?= e($__k) ?>" rows="3" placeholder="Enter <?= e(strtolower($__label)) ?>"><?= e($venue[$__k] ?? '') ?></textarea>
+        </div>
+        <?php endforeach; ?>
+
+        <button type="submit" class="btn-primary btn-sm" data-tip="Save the guest stay details">Save Stay Info</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<!-- ── TAB: Rooms ── -->
+<div class="tab-panel" id="tab-rooms">
+  <div class="card">
+    <div class="card__head">
+      <span class="card__title">Rooms in this Property</span>
+      <a href="/admin/room-edit.php?venue=<?= $id ?>" class="btn-sm btn-primary" data-tip="Create a new room in this property">+ Add room</a>
+    </div>
+    <div class="card__body" style="padding:0">
+      <?php if (!$rooms): ?>
+      <p style="padding:24px;text-align:center;color:var(--muted)">No rooms in this property yet.</p>
+      <?php else: ?>
+      <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Room</th><th>Price</th><th>Published</th><th></th></tr></thead>
+        <tbody>
+          <?php foreach ($rooms as $r): ?>
+          <tr>
+            <td><strong><?= e($r['name']) ?></strong> <code style="font-size:11px;color:var(--muted)"><?= e($r['slug']) ?></code></td>
+            <td><?= e($r['price_currency']) ?> <?= e(number_format((float)$r['price_amount'], 0)) ?></td>
+            <td><?= $r['is_published'] ? '<span class="badge badge--green">Live</span>' : '<span class="badge badge--grey">Hidden</span>' ?></td>
+            <td style="white-space:nowrap">
+              <a href="/admin/room-edit.php?id=<?= (int)$r['id'] ?>" class="btn-sm btn-outline">Edit</a>
+              <a href="/admin/gantt.php?room=<?= (int)$r['id'] ?>" class="btn-sm btn-outline">Availability</a>
+            </td>
+          </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+      </div>
+      <?php endif; ?>
+    </div>
+  </div>
+</div>
+
+<!-- ── TAB: Gallery ── -->
+<div class="tab-panel" id="tab-gallery">
+  <div class="card">
+    <div class="card__head"><span class="card__title">Upload Photos</span></div>
+    <div class="card__body" style="padding:20px">
+      <form method="POST" action="/admin/venue-edit?id=<?= $id ?>" enctype="multipart/form-data">
+        <?= csrf_field() ?>
+        <div class="dropzone" id="dropzone">
+          <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.4" style="color:var(--muted)"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <p>Drop images here or <label for="gallery_upload" style="color:var(--brand);cursor:pointer;text-decoration:underline">browse</label></p>
+          <p>JPEG, PNG, WebP · max 5 MB each · the first becomes the main image</p>
+          <input type="file" id="gallery_upload" name="gallery_upload[]" multiple accept="image/jpeg,image/png,image/webp" style="display:none">
+        </div>
+        <div style="padding:12px 0 0">
+          <button type="submit" class="btn-primary btn-sm" data-tip="Upload the selected photos">Upload selected</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card__head"><span class="card__title">Gallery <span class="text-muted">(drag to reorder)</span></span></div>
+    <div class="card__body">
+      <?php if (!$images): ?>
+      <p style="padding:24px;text-align:center;color:var(--muted)">No photos yet — upload some above.</p>
+      <?php else: ?>
+      <div class="gallery-bulkbar" data-gallery-bulk data-grid="venueGallery"
+           data-endpoint="/admin/venue-edit.php?id=<?= $id ?>" data-idfield="image_id"
+           data-csrf="<?= e(csrf_token()) ?>">
+        <label class="ckwrap"><input type="checkbox" data-bulk-all><span class="ck"></span> Select all</label>
+        <span class="gallery-bulkbar__count" data-bulk-count>0 selected</span>
+        <span class="gallery-bulkbar__spacer"></span>
+        <button type="button" class="btn-outline btn-sm" data-bulk-setmain hidden data-tip="Make the selected photo the main image">Set as main</button>
+        <button type="button" class="btn-outline btn-sm" data-bulk-clear>Clear</button>
+        <button type="button" class="btn-danger btn-sm" data-bulk-delete disabled data-tip="Delete every selected photo">Delete selected (0)</button>
+      </div>
+      <div class="gallery-grid" id="venueGallery">
+        <?php foreach ($images as $im): ?>
+        <div class="gallery-item<?= $im['is_hero'] ? ' is-hero' : '' ?>" data-img-id="<?= (int)$im['id'] ?>" draggable="true">
+          <label class="gallery-select" data-tip="Select photo"><input type="checkbox" data-bulk-item value="<?= (int)$im['id'] ?>"><span class="ck"></span></label>
+          <?php if ($im['is_hero']): ?><span class="gallery-hero-badge">Main</span><?php endif; ?>
+          <img src="<?= e(storage_url($im['filename'])) ?>" alt="<?= e($im['alt_text']) ?>">
+          <div class="gallery-item__actions">
+            <?php if (!$im['is_hero']): ?>
+            <form method="POST" action="/admin/venue-edit?id=<?= $id ?>" style="display:contents"><?= csrf_field() ?><input type="hidden" name="gallery_action" value="set_hero"><input type="hidden" name="image_id" value="<?= (int)$im['id'] ?>"><button type="submit" data-tip="Make this the main image">★ Main</button></form>
+            <?php endif; ?>
+            <form method="POST" action="/admin/venue-edit?id=<?= $id ?>" style="display:contents"><?= csrf_field() ?><input type="hidden" name="gallery_action" value="delete_image"><input type="hidden" name="image_id" value="<?= (int)$im['id'] ?>"><button type="submit" data-confirm="Delete this photo? This cannot be undone." data-tip="Delete photo" aria-label="Delete photo"><?= admin_icon('x', 14) ?></button></form>
+          </div>
+        </div>
+        <?php endforeach; ?>
+      </div>
+      <?php endif; ?>
+    </div>
+  </div>
+</div>
+
+<!-- ── TAB: Publish ── -->
+<div class="tab-panel" id="tab-publish">
+  <div class="card">
+    <div class="card__head"><span class="card__title">Publish Status</span></div>
+    <div class="card__body" style="padding:20px">
+      <form method="POST" action="/admin/venue-edit?id=<?= $id ?>">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="save_publish">
+        <label class="togglerow" style="margin-bottom:16px">
+          <span class="toggle">
+            <input type="checkbox" name="is_published" value="1" <?= $venue['is_published'] ? 'checked' : '' ?>>
+            <span class="toggle-slider"></span>
+          </span>
+          <span><?= $venue['is_published'] ? '<strong>Published</strong> — visible on the public site' : '<strong>Hidden</strong> — not visible to guests' ?></span>
+        </label>
+        <div><button type="submit" class="btn-sm btn-outline" data-tip="Save the publish status">Update status</button></div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card" style="border:1.5px solid var(--red)">
+    <div class="card__head"><span class="card__title" style="color:var(--red)">Danger Zone</span></div>
+    <div class="card__body" style="padding:20px">
+      <p style="font-size:13px;color:var(--muted);margin:0 0 16px">Deleting a property removes it permanently. Its rooms are kept but detached from this property.</p>
+      <form method="POST" action="/admin/venue-edit?id=<?= $id ?>">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="delete_venue">
+        <button type="submit" class="btn-danger btn-sm" data-confirm="Delete this property? Its rooms are kept but detached." data-tip="Permanently delete this property">Delete property</button>
+      </form>
+    </div>
   </div>
 </div>
 <?php endif; ?>
 
 <script>
+// ── Tabs (remember the active tab across saves) ──
+(function () {
+  var KEY = 'ts_venue_tab';
+  var btns = document.querySelectorAll('.tab-btn');
+  if (!btns.length) return;
+  function activate(tab) {
+    document.querySelectorAll('.tab-btn').forEach(function (b) { b.classList.toggle('is-active', b.dataset.tab === tab); });
+    document.querySelectorAll('.tab-panel').forEach(function (p) { p.classList.toggle('is-active', p.id === 'tab-' + tab); });
+  }
+  btns.forEach(function (b) {
+    b.addEventListener('click', function () {
+      activate(b.dataset.tab);
+      try { sessionStorage.setItem(KEY, b.dataset.tab); } catch (e) {}
+    });
+  });
+  var saved; try { saved = sessionStorage.getItem(KEY); } catch (e) {}
+  if (saved && document.getElementById('tab-' + saved)) activate(saved);
+})();
+
 (function(){
   var g=document.getElementById('venueGallery'); if(!g) return; var dragged=null;
   g.querySelectorAll('.gallery-item').forEach(function(it){
@@ -368,6 +464,26 @@ include __DIR__ . '/_layout.php';
     it.addEventListener('dragenter',function(e){e.preventDefault(); if(dragged&&dragged!==it){var k=[].slice.call(g.children);var di=k.indexOf(dragged),ri=k.indexOf(it);g.insertBefore(dragged, di<ri?it.nextSibling:it);}});
   });
   function save(){var ids=[].slice.call(g.querySelectorAll('.gallery-item')).map(function(x){return x.dataset.imgId;});var fd=new FormData();fd.append('gallery_action','reorder');fd.append('order',JSON.stringify(ids));fd.append('csrf_token',<?= json_encode(csrf_token()) ?>);fetch('/admin/venue-edit.php?id=<?= $id ?>',{method:'POST',body:fd});}
+})();
+
+// ── Dropzone (drag-drop + browse, filename readout) ──
+(function () {
+  var dz = document.getElementById('dropzone');
+  var fi = document.getElementById('gallery_upload');
+  if (!dz || !fi) return;
+  var hint = dz.querySelector('p');
+  var hintText = hint ? hint.innerHTML : '';
+  dz.addEventListener('dragover',  function (e) { e.preventDefault(); dz.classList.add('is-over'); });
+  dz.addEventListener('dragleave', function () { dz.classList.remove('is-over'); });
+  dz.addEventListener('drop', function (e) {
+    e.preventDefault(); dz.classList.remove('is-over');
+    fi.files = e.dataTransfer.files;
+    if (hint) hint.textContent = e.dataTransfer.files.length + ' file(s) selected';
+  });
+  fi.addEventListener('change', function () {
+    if (hint) hint.textContent = fi.files.length ? fi.files.length + ' file(s) selected' : '';
+    if (hint && !fi.files.length) hint.innerHTML = hintText;
+  });
 })();
 </script>
 

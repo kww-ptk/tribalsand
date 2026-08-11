@@ -257,6 +257,10 @@
       if ((a.target && a.target !== '_self') || a.hasAttribute('download') || a.hasAttribute('data-no-shell')) return;
       if (/logout\.php/.test(href)) return;
       e.preventDefault();
+      // Highlight the clicked link IMMEDIATELY (optimistic) so the active state
+      // never lags behind the fetch or gets lost if the swap falls back to a full
+      // load. shellNavigate() calls setActiveNav again after the swap (idempotent).
+      setActiveNav(href);
       // Close the mobile drawer if open (the shell keeps the sidebar mounted).
       var sb = document.getElementById('adminSidebar');
       var ov = document.getElementById('sidebarOverlay');

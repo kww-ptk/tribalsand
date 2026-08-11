@@ -48,6 +48,7 @@ if ($__shellFrag) { ob_start(); return; }
   <script defer src="/admin/assets/admin-tip.js?v=<?= @filemtime(__DIR__ . '/assets/admin-tip.js') ?: '1' ?>"></script>
   <script defer src="/admin/assets/admin-copy.js?v=<?= @filemtime(__DIR__ . '/assets/admin-copy.js') ?: '1' ?>"></script>
   <script defer src="/admin/assets/admin-chat.js?v=<?= @filemtime(__DIR__ . '/assets/admin-chat.js') ?: '1' ?>"></script>
+  <script defer src="/admin/assets/admin-gallery.js?v=<?= @filemtime(__DIR__ . '/assets/admin-gallery.js') ?: '1' ?>"></script>
   <script defer src="/admin/assets/admin-nav.js?v=<?= @filemtime(__DIR__ . '/assets/admin-nav.js') ?: '1' ?>"></script>
 </head>
 <body class="admin-body">

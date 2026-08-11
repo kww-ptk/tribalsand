@@ -220,6 +220,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['gallery_action'])) {
         }
         $success = 'Image deleted.';
     }
+    if ($act === 'delete_images') {
+        // Bulk delete — an array of image IDs from the gallery selection bar.
+        require_once __DIR__ . '/../includes/storage.php';
+        $ids = array_values(array_filter(array_map('intval', (array)($_POST['image_ids'] ?? []))));
+        $deleted = 0;
+        foreach ($ids as $iid) {
+            $img = db_query('SELECT filename FROM room_images WHERE id=:id AND room_id=:rid', [':id'=>$iid, ':rid'=>$id])->fetch();
+            if ($img) { storage_delete($img['filename']); db_query('DELETE FROM room_images WHERE id=:id', [':id'=>$iid]); $deleted++; }
+        }
+        $success = $deleted ? "{$deleted} image(s) deleted." : 'Nothing deleted.';
+    }
     if ($act === 'update_alt') {
         db_query('UPDATE room_images SET alt_text=:alt WHERE id=:id AND room_id=:rid',
             [':alt'=>trim($_POST['alt_text']??''), ':id'=>$img_id, ':rid'=>$id]);
@@ -309,13 +320,14 @@ include __DIR__ . '/_layout.php';
           </select>
         </div>
       </div>
-      <div class="form-row">
-        <div class="field">
-          <label style="display:flex;align-items:center;gap:8px;margin:10px 0">
+      <div class="field">
+        <label class="togglerow" style="margin:10px 0">
+          <span class="toggle">
             <input type="checkbox" name="is_entire_place" value="1" <?= !empty($room['is_entire_place']) ? 'checked' : '' ?>>
-            Entire Villa (whole-property option — only shown as available when no individual rooms are booked for the dates)
-          </label>
-        </div>
+            <span class="toggle-slider"></span>
+          </span>
+          <span>Entire Villa <span class="text-muted">(whole-property option — only shown as available when no individual rooms are booked for the dates)</span></span>
+        </label>
       </div>
       <label style="display:block;margin:10px 0">Badge label (optional)
         <input type="text" name="tag_label" value="<?= e($room['tag_label'] ?? '') ?>" placeholder="e.g. Oceanfront" style="width:100%;max-width:320px;padding:8px 10px">
@@ -327,7 +339,16 @@ include __DIR__ . '/_layout.php';
         </div>
         <div class="field">
           <label>Currency</label>
-          <input type="text" name="price_currency" value="<?= e($room['price_currency'] ?? 'USD') ?>" maxlength="10" placeholder="USD">
+          <?php
+            $cur = $room['price_currency'] ?? 'USD';
+            $cur_opts = ['USD' => 'USD — US Dollar', 'KES' => 'KES — Kenyan Shilling'];
+            if ($cur !== '' && !isset($cur_opts[$cur])) $cur_opts[$cur] = $cur; // preserve any legacy value
+          ?>
+          <select name="price_currency">
+            <?php foreach ($cur_opts as $code => $lbl): ?>
+            <option value="<?= e($code) ?>" <?= $cur === $code ? 'selected' : '' ?>><?= e($lbl) ?></option>
+            <?php endforeach; ?>
+          </select>
         </div>
       </div>
       <div class="form-row">
@@ -431,35 +452,24 @@ include __DIR__ . '/_layout.php';
       <span class="text-muted" style="font-size:12px">Which form guests see on this room's page</span>
     </div>
     <div class="card__body" style="padding:20px">
-      <label style="display:flex;gap:10px;align-items:flex-start;margin-bottom:12px;cursor:pointer">
-        <input type="radio" name="form_mode" value="" <?= $room_form_mode === null ? 'checked' : '' ?> style="margin-top:3px">
-        <span>
-          <strong>Use global setting</strong>
-          <span class="badge <?= $global_form_mode==='availability'?'badge--orange':'badge--green' ?>" style="margin-left:6px"><?= e($global_label) ?></span>
-          <div style="font-size:12px;color:var(--muted);margin-top:2px">
-            Inherits the site-wide default from <a href="/admin/settings.php">Settings</a>.
-          </div>
-        </span>
-      </label>
-      <label style="display:flex;gap:10px;align-items:flex-start;margin-bottom:12px;cursor:pointer">
-        <input type="radio" name="form_mode" value="enquiry" <?= $room_form_mode === 'enquiry' ? 'checked' : '' ?> style="margin-top:3px">
-        <span>
-          <strong>Enquiry form</strong>
-          <div style="font-size:12px;color:var(--muted);margin-top:2px">
-            Guest fills out a contact form. You receive a submission and reply manually.
-          </div>
-        </span>
-      </label>
-      <label style="display:flex;gap:10px;align-items:flex-start;cursor:pointer">
-        <input type="radio" name="form_mode" value="availability" <?= $room_form_mode === 'availability' ? 'checked' : '' ?> style="margin-top:3px">
-        <span>
-          <strong>Live availability</strong>
-          <div style="font-size:12px;color:var(--muted);margin-top:2px">
-            Guest sees a calendar with real availability and can request a 24h hold.
-            Requires at least one active <a href="#" onclick="document.querySelector('[data-tab=units]').click();return false">unit</a>.
-          </div>
-        </span>
-      </label>
+      <div class="optset" id="formModeChips">
+        <label class="optchip"><input type="radio" name="form_mode" value="" <?= $room_form_mode === null ? 'checked' : '' ?>> Use global setting</label>
+        <label class="optchip"><input type="radio" name="form_mode" value="enquiry" <?= $room_form_mode === 'enquiry' ? 'checked' : '' ?>> Enquiry form</label>
+        <label class="optchip"><input type="radio" name="form_mode" value="availability" <?= $room_form_mode === 'availability' ? 'checked' : '' ?>> Live availability</label>
+      </div>
+      <div style="margin-top:12px">
+        <div class="field-hint" data-mode-help="" <?= $room_form_mode === null ? '' : 'hidden' ?>>
+          Inherits the site-wide default from <a href="/admin/settings.php">Settings</a> — currently
+          <span class="badge <?= $global_form_mode==='availability'?'badge--orange':'badge--green' ?>"><?= e($global_label) ?></span>.
+        </div>
+        <div class="field-hint" data-mode-help="enquiry" <?= $room_form_mode === 'enquiry' ? '' : 'hidden' ?>>
+          Guest fills out a contact form. You receive a submission and reply manually.
+        </div>
+        <div class="field-hint" data-mode-help="availability" <?= $room_form_mode === 'availability' ? '' : 'hidden' ?>>
+          Guest sees a calendar with real availability and can request a 24h hold.
+          Requires at least one active <a href="#" onclick="document.querySelector('[data-tab=units]').click();return false">unit</a>.
+        </div>
+      </div>
     </div>
   </div>
 
@@ -497,9 +507,20 @@ include __DIR__ . '/_layout.php';
       <?php if (empty($images)): ?>
       <p style="padding:24px;color:var(--muted);text-align:center">No images yet. Upload some above.</p>
       <?php else: ?>
+      <div class="gallery-bulkbar" data-gallery-bulk data-grid="galleryGrid"
+           data-endpoint="/admin/room-edit.php?id=<?= $id ?>" data-idfield="img_id"
+           data-csrf="<?= e(csrf_token()) ?>">
+        <label class="ckwrap"><input type="checkbox" data-bulk-all><span class="ck"></span> Select all</label>
+        <span class="gallery-bulkbar__count" data-bulk-count>0 selected</span>
+        <span class="gallery-bulkbar__spacer"></span>
+        <button type="button" class="btn-outline btn-sm" data-bulk-setmain hidden>Set as hero</button>
+        <button type="button" class="btn-outline btn-sm" data-bulk-clear>Clear</button>
+        <button type="button" class="btn-danger btn-sm" data-bulk-delete disabled>Delete selected (0)</button>
+      </div>
       <div class="gallery-grid" id="galleryGrid">
         <?php foreach ($images as $img): ?>
         <div class="gallery-item <?= $img['is_hero'] ? 'is-hero' : '' ?>" data-img-id="<?= e($img['id']) ?>" draggable="true">
+          <label class="gallery-select" title="Select image"><input type="checkbox" data-bulk-item value="<?= e($img['id']) ?>"><span class="ck"></span></label>
           <?php if ($img['is_hero']): ?>
           <span class="gallery-hero-badge">Hero</span>
           <?php endif; ?>
@@ -515,7 +536,7 @@ include __DIR__ . '/_layout.php';
               <?= csrf_field() ?>
               <input type="hidden" name="gallery_action" value="delete">
               <input type="hidden" name="img_id" value="<?= e($img['id']) ?>">
-              <button type="submit" onclick="return confirm('Delete this image?')" aria-label="Delete image" title="Delete image"><?= admin_icon('x', 14) ?></button>
+              <button type="submit" data-confirm="Delete this image? This cannot be undone." aria-label="Delete image" title="Delete image"><?= admin_icon('x', 14) ?></button>
             </form>
           </div>
           <form method="POST" action="/admin/room-edit?id=<?= $id ?>" style="padding:4px 6px;background:#f9fafb;border-top:1px solid var(--border)">
@@ -686,6 +707,18 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     document.getElementById('tab-' + btn.dataset.tab).classList.add('is-active');
   });
 });
+
+// ── Booking-form-mode chips: show the matching description ──
+(function () {
+  var chips = document.getElementById('formModeChips');
+  if (!chips) return;
+  var helps = document.querySelectorAll('[data-mode-help]');
+  chips.addEventListener('change', function (e) {
+    if (!e.target || e.target.name !== 'form_mode') return;
+    var v = e.target.value;
+    helps.forEach(function (h) { h.hidden = (h.getAttribute('data-mode-help') !== v); });
+  });
+})();
 
 // ── FAQ editor (repeatable Q/A rows) ──
 (function () {

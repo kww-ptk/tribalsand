@@ -874,3 +874,44 @@ tr.is-unpriced td { background: #fff7ed; }
 /* A labeled switch row for a single boolean field. */
 .togglerow { display: inline-flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--text); cursor: pointer; }
 .togglerow > span { user-select: none; }
+
+/* ── Reusable styled checkbox (no native chrome) — bulk-select, opt-in rows ──
+   <label class="ckwrap"><input type="checkbox"><span class="ck"></span> Label</label> */
+.ckwrap { display: inline-flex; align-items: center; gap: 8px; cursor: pointer; font-size: 13px; color: var(--text); user-select: none; }
+.ckwrap input { position: absolute; opacity: 0; width: 0; height: 0; }
+.ck {
+  position: relative; display: inline-block; flex: 0 0 auto; width: 20px; height: 20px;
+  border: 1.5px solid var(--border); border-radius: 6px; background: var(--white);
+  transition: background .15s, border-color .15s;
+}
+.ck::after {
+  content: ""; position: absolute; left: 6px; top: 2px; width: 5px; height: 10px;
+  border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg) scale(0);
+  transform-origin: center; transition: transform .12s;
+}
+.ckwrap input:checked + .ck { background: var(--brand); border-color: var(--brand); }
+.ckwrap input:checked + .ck::after { transform: rotate(45deg) scale(1); }
+.ckwrap input:focus-visible + .ck { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── Bulk image selection & deletion (venue + room galleries) ── */
+/* Per-image checkbox overlay — high-contrast so it reads over any photo. */
+.gallery-select { position: absolute; top: 8px; left: 8px; z-index: 3; cursor: pointer; }
+.gallery-select input { position: absolute; opacity: 0; width: 0; height: 0; }
+.gallery-select .ck { background: rgba(255,255,255,.92); border-color: rgba(255,255,255,.92); box-shadow: 0 1px 5px rgba(0,0,0,.4); }
+.gallery-select input:checked + .ck { background: var(--brand); border-color: #fff; }
+.gallery-item.is-selected { border-color: var(--brand); }
+.gallery-item.is-selected img { opacity: .82; }
+
+/* Sticky action bar above the grid — appears once ≥1 photo exists. */
+.gallery-bulkbar {
+  position: sticky; top: 0; z-index: 5;
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+  padding: 10px 14px; margin: 0 0 14px;
+  background: var(--white); border: 1.5px solid var(--border); border-radius: 10px;
+}
+.gallery-bulkbar__count { font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.gallery-bulkbar__spacer { flex: 1 1 auto; }
+@media (max-width: 640px) {
+  .gallery-bulkbar { gap: 8px; }
+  .gallery-bulkbar__spacer { flex-basis: 100%; height: 0; }
+}

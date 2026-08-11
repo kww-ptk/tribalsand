@@ -482,9 +482,14 @@ include __DIR__ . '/includes/property-gallery.php';
 
     <div class="divider"></div>
 
-    <!-- Accommodations -->
+    <!-- Bookable room types (DB-driven rates + availability) -->
+    <?php $rr_venue_slug = 'maya_ilai'; include __DIR__ . '/includes/rooms-and-rates.php'; ?>
+
+    <div class="divider"></div>
+
+    <!-- Unit directory (physical layout) -->
     <div class="sec">
-      <div class="sec-label">Accommodations</div>
+      <div class="sec-label">The Compound</div>
       <h2 class="sec-h">16 Units — <em>Villas &amp; Studios</em></h2>
       <div class="sec-rule"></div>
 
@@ -835,7 +840,7 @@ include __DIR__ . '/includes/property-gallery.php';
         <div class="sidebar-age-notice" style="padding:1rem 1.4rem .5rem;font-size:.72rem;color:var(--mid);border-bottom:1px solid var(--border)">
           <strong>Adults only — min. age 16.</strong> Guests 16–17 may stay unaccompanied. Alcohol consent form required for under-18s.
         </div>
-        <?php $booking_slug = 'maya_ilai'; include __DIR__ . '/includes/booking-widget.php'; ?>
+        <?php $booking_slug = 'superior-suite'; include __DIR__ . '/includes/booking-widget.php'; ?>
       </div>
 
       <!-- Policy accordion -->

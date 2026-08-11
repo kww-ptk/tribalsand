@@ -641,7 +641,7 @@ include __DIR__ . '/includes/property-gallery.php';
 
       <!-- Body -->
       <div class="book-body" style="padding:0">
-        <?php $booking_slug = 'maya-kobe-main-house'; include __DIR__ . '/includes/booking-widget.php'; ?>
+        <?php $booking_slug = 'maya-kobe-prestige'; include __DIR__ . '/includes/booking-widget.php'; ?>
       </div>
 
       <!-- Policy accordion -->
