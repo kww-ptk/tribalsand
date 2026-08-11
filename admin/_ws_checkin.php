@@ -64,10 +64,24 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
 <?php if ($__ci || $__adults): ?>
 
 <?php if ($__ci): ?>
+<?php
+  $__amOn  = checkin_arrival_mode_supported();
+  $__mode  = $__amOn ? trim((string)($__ci['arrival_mode'] ?? '')) : '';
+  $__modes = checkin_arrival_modes();
+?>
 <div class="card" style="margin-bottom:16px"><div class="card__body">
   <table class="data-table" style="max-width:600px">
+    <?php if ($__amOn): ?>
+    <tr><td class="text-muted">Arriving</td><td><?= $__mode !== '' ? e($__modes[$__mode] ?? $__mode) : '<span class="text-muted">—</span>' ?></td></tr>
+    <?php endif; ?>
+    <?php if ($__mode === '' || $__mode === 'flight'): ?>
     <tr><td class="text-muted">Airport</td><td><?= $__fmt($__ci['arrival_airport'] ?? '') ?></td></tr>
     <tr><td class="text-muted">Flight</td><td><?= $__fmt($__ci['flight_number'] ?? '') ?></td></tr>
+    <?php elseif ($__mode === 'road'): ?>
+    <tr><td class="text-muted">Vehicle</td><td><?= $__fmt($__ci['arrival_vehicle'] ?? '') ?></td></tr>
+    <?php else: ?>
+    <tr><td class="text-muted">Arriving by</td><td><?= $__fmt($__ci['arrival_note'] ?? '') ?></td></tr>
+    <?php endif; ?>
     <tr><td class="text-muted">Arrival</td><td><?= $__fmt(($__ci['arrival_at'] ?? '') ? date('j M Y H:i', strtotime((string)$__ci['arrival_at'])) : '') ?></td></tr>
     <tr><td class="text-muted">Transfer</td><td><?php $nt=$__ci['needs_transfer']??null; echo ($nt===null)?'—':(($nt===true||$nt==='t')?'Yes — '.e((string)($__ci['transfer_details']??'')):'No'); ?></td></tr>
     <tr><td class="text-muted">Dietary</td><td><?= $__fmt($__ci['dietary'] ?? '') ?></td></tr>
