@@ -84,11 +84,12 @@ $sig = (string)($_POST['waiver_signature'] ?? '');
 $targetRow    = db_query('SELECT * FROM checkin_guests WHERE id=:g AND hold_id=:h', [':g'=>$guestId, ':h'=>$holdId])->fetch() ?: null;
 $targetIsLead = (bool)($targetRow['is_lead'] ?? false);
 
-// Did this request try to record consent at all? A save from another wizard step
-// posts none of these, and must not be treated as a failed signing attempt.
-$triedConsent = !empty($_POST['waiver_agree'])
-    || trim((string)($_POST['waiver_signed_name'] ?? '')) !== ''
-    || $sig !== '';
+// Did this request genuinely try to sign? The wizard posts the WHOLE form on every
+// per-step save, so a ticked box or a pre-filled name travels along with a save
+// from an unrelated step — those must not be read as a failed signing attempt, or
+// a half-filled consent step would reject the guest's transfer or dietary save.
+// A posted signature is a real attempt; so is the final submit.
+$triedConsent = $sig !== '' || ($_POST['do'] ?? 'save') === 'submit';
 
 if ($triedConsent && checkin_signature_supported() && checkin_can_sign_self($onlyGuestId, $targetIsLead)) {
     $already = checkin_guest_waiver_signed($targetRow);
