@@ -51,7 +51,7 @@ db_query(
 // ── Per-guest waiver signature: self-sign only, requires a drawn signature ──
 $sig = (string)($_POST['waiver_signature'] ?? '');
 $targetIsLead = (bool) db_query('SELECT is_lead FROM checkin_guests WHERE id=:g AND hold_id=:h', [':g'=>$guestId, ':h'=>$holdId])->fetchColumn();
-if (!empty($_POST['waiver_agree']) && $s('waiver_signed_name')
+if (checkin_signature_supported() && !empty($_POST['waiver_agree']) && $s('waiver_signed_name')
     && checkin_can_sign_self($onlyGuestId, $targetIsLead)
     && checkin_valid_signature($sig)) {
     $terms  = checkin_waiver_text();

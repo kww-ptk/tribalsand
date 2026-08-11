@@ -34,6 +34,9 @@ $otherStatus = function (array $g) use ($showWaiver) {
         <div class="ci-done-card__check">&#10003;</div>
         <h2>You're all set<?= $first !== 'there' ? ', ' . e($first) : '' ?></h2>
         <p>Thanks — your check-in is complete. You can close this page.</p>
+        <?php if (checkin_guest_waiver_signed($me)): ?>
+        <a class="pa-btn pa-btn--ghost" href="/admin/consent-print.php?hold=<?= $holdId ?>&guest=<?= (int)$me['id'] ?>&g=<?= e($gtoken) ?>" target="_blank" style="margin-top:12px">Download my signed waiver</a>
+        <?php endif; ?>
       </div>
     <?php else: ?>
 

@@ -56,6 +56,9 @@ $waiverBlock = function (bool $signed) use ($waiverText) {
   <h2>You're all checked in</h2>
   <p>Thank you, <?= e($first) ?>. Everyone in your party is set — you can update details any time before arrival.</p>
   <a class="pa-btn pa-btn--primary" href="/booking.php?ref=<?= e($ref) ?>&view=home">Continue to your stay &rarr;</a>
+  <?php if (checkin_guest_waiver_signed($lead)): ?>
+  <a class="pa-btn pa-btn--ghost" href="/admin/consent-print.php?hold=<?= $holdId ?>&guest=<?= (int)($lead['id'] ?? 0) ?>&ref=<?= e($ref) ?>" target="_blank">Download my signed waiver</a>
+  <?php endif; ?>
   <button type="button" class="pa-btn pa-btn--ghost" id="ciEdit">Update my details</button>
 </div>
 <?php endif; ?>
