@@ -69,7 +69,13 @@ if ($__threadParam === null):
         // On a shared booking every guest message is sender='guest'. Bubble
         // alignment still keys on that, but the LABEL distinguishes mine from
         // a co-guest's, which is the whole point of attribution.
-        $__mine = $__me && (int)($__m['sender_guest_id'] ?? 0) === (int)($actor['guest_id'] ?? -1); ?>
+        // When either id is unavailable (pre-migration, no sender_guest_id) fall
+        // back to treating it as mine — 'You', today's behaviour. This mirrors the
+        // same fallback in js/booking-manage.js so the server render and the live
+        // poll never disagree.
+        $__myGid = (int)($actor['guest_id'] ?? 0);
+        $__sgid  = (int)($__m['sender_guest_id'] ?? 0);
+        $__mine  = $__me && (!$__myGid || !$__sgid || $__sgid === $__myGid); ?>
   <div class="bm-msg" data-mid="<?= (int)$__m['id'] ?>" style="max-width:80%;<?= $__me ? 'align-self:flex-end;background:var(--pa-teal-d);color:#fff;border-radius:12px 12px 2px 12px' : 'align-self:flex-start;background:var(--pa-card);border:1px solid var(--pa-line);border-radius:12px 12px 12px 2px' ?>;padding:9px 12px;font-size:14px;line-height:1.5">
     <?= e($__m['body']) ?>
     <div style="font-size:11px;margin-top:4px;<?= $__me ? 'color:rgba(255,255,255,.7)' : 'color:var(--pa-muted)' ?>"><?= !$__me ? 'Concierge' : ($__mine ? 'You' : e(attributed_display_name((string)($__m['sender_name'] ?? ''), !empty($__m['sender_is_lead']), (string)($__m['hold_guest_name'] ?? '')))) ?> · <?= e(message_time_label($__m['created_at'])) ?></div>

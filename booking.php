@@ -143,7 +143,13 @@ $checkin_gate = $hold && !$isCoGuest && checkin_required($hold) && !checkin_is_c
 
 $status     = $hold['status'] ?? '';
 
-$__views = ['home','activities','messages','checkin'];
+// The check-in view is the LEAD's wizard — it renders the lead's passport number
+// and signature. A co-guest on a shared booking has finished their own check-in
+// via checkin-guest.php and has no business there, so it is not in their view set.
+// (Writing was already blocked: the form posts ref=<g-token>, which
+// checkin_auth_context() rejects. This closes the read side.)
+$__views = ['home','activities','messages'];
+if (!$isCoGuest) $__views[] = 'checkin';
 if (share_reservation_on($hold ?: [])) $__views[] = 'bill';
 $view = in_array($_GET['view'] ?? '', $__views, true) ? $_GET['view'] : 'home';
 // When check-in is outstanding, the portal is a hard gate: only the check-in
