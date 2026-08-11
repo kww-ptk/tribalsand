@@ -137,6 +137,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: /admin/booking.php?hold=$holdId&tab=checkin"); exit;
     }
 
+    if ($act === 'share_toggle' && checkin_supported() && can_view_guest_docs($holdId) && share_reservation_supported()) {
+        $on = ($_POST['share_reservation'] ?? '') === '1';
+        db_query('UPDATE holds SET share_reservation = :s WHERE id = :id', [':s' => $on, ':id' => $holdId]);
+        audit_log('portal.share_toggle', 'hold', $holdId, $on ? 'on' : 'off');
+        $_SESSION['hold_flash'] = ['type' => 'success', 'msg' => $on ? 'Sharing turned on — co-guests can use the portal.' : 'Sharing turned off.'];
+        header("Location: /admin/booking.php?hold=$holdId&tab=checkin"); exit;
+    }
+
     // ── Guest management (owner / venue-manager) — sub-project B ─────────────
     if (in_array($act, ['guest_fill','guest_upload','guest_add_adult','guest_add_child','guest_remove'], true)
         && checkin_supported() && can_view_guest_docs($holdId)) {

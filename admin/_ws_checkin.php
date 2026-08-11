@@ -31,7 +31,7 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
     <?php elseif ($__state === 'pending'): ?><span class="ci-badge ci-badge--pending"><?= (int)$__party['complete'] ?> of <?= (int)$__party['total'] ?> adults checked in</span>
     <?php else: ?><span class="text-muted">Not required</span><?php endif; ?>
   </div>
-  <?php if (is_owner()): ?>
+  <?php if ($__canDocs): ?>
   <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
     <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" style="display:flex;align-items:center;gap:6px;margin:0">
       <?= csrf_field() ?>
@@ -48,6 +48,15 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
       <input type="hidden" name="require_checkin" value="<?= !empty($hold['require_checkin']) ? '0' : '1' ?>">
       <button class="btn-sm btn-outline"><?= !empty($hold['require_checkin']) ? 'Turn off requirement' : 'Require check-in' ?></button>
     </form>
+    <?php if (share_reservation_supported()): ?>
+    <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" style="margin:0">
+      <?= csrf_field() ?>
+      <input type="hidden" name="hold_id" value="<?= $holdId ?>">
+      <input type="hidden" name="action" value="share_toggle">
+      <input type="hidden" name="share_reservation" value="<?= !empty($hold['share_reservation']) ? '0' : '1' ?>">
+      <button class="btn-sm btn-outline"><?= !empty($hold['share_reservation']) ? 'Stop sharing' : 'Share reservation' ?></button>
+    </form>
+    <?php endif; ?>
   </div>
   <?php endif; ?>
 </div></div>
