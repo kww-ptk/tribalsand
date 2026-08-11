@@ -130,7 +130,9 @@ $checkin_gate = $hold && !$isCoGuest && checkin_required($hold) && !checkin_is_c
 
 $status     = $hold['status'] ?? '';
 
-$view = in_array($_GET['view'] ?? '', ['home','activities','messages','checkin'], true) ? $_GET['view'] : 'home';
+$__views = ['home','activities','messages','checkin'];
+if (share_reservation_on($hold ?: [])) $__views[] = 'bill';
+$view = in_array($_GET['view'] ?? '', $__views, true) ? $_GET['view'] : 'home';
 // When check-in is outstanding, the portal is a hard gate: only the check-in
 // flow and the message thread (escape hatch) are reachable.
 if ($checkin_gate && !in_array($view, ['checkin','messages'], true)) $view = 'checkin';
@@ -290,6 +292,8 @@ include __DIR__ . '/includes/head.php';
         <?php include __DIR__ . '/includes/app/activities.php'; ?>
       <?php elseif ($view === 'messages'): ?>
         <?php include __DIR__ . '/includes/app/messages.php'; ?>
+      <?php elseif ($view === 'bill'): ?>
+        <?php include __DIR__ . '/includes/app/bill.php'; ?>
       <?php elseif ($view === 'checkin'): ?>
         <?php include __DIR__ . '/includes/app/checkin.php'; ?>
       <?php endif; ?>

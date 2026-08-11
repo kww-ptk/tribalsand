@@ -9,6 +9,9 @@ $__tabs = [
   'activities' => ['Activities', $__svg('<circle cx="12" cy="12" r="8.5"/><path d="M15.5 8.5 13 13l-4.5 2.5L11 11z"/>')],
   'messages'   => ['Messages',   $__svg('<path d="M4 5h16v11H8l-4 4z"/>')],
 ];
+if (share_reservation_on($hold)) {
+  $__tabs['bill'] = ['Bill', $__svg('<path d="M6 2h9l3 3v17l-3-2-3 2-3-2-3 2V2z"/><path d="M9 8h6M9 12h6"/>')];
+}
 ?>
 <nav class="pa-nav">
   <?php foreach ($__tabs as $__k => $__t): ?>
