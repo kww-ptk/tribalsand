@@ -227,13 +227,31 @@ include __DIR__ . '/_layout.php';
   <div class="card__head"><span class="card__title"><?= $edit ? 'Edit post' : 'New post' ?></span></div>
   <div class="card__body card__body--pad">
     <?php
-      $__evDate = !empty($edit['event_date']) ? date('Y-m-d', strtotime((string)$edit['event_date'])) : '';
-      $__evTime = !empty($edit['event_date']) ? date('H:i',   strtotime((string)$edit['event_date'])) : '';
+      // On a validation error the form re-opens. Repopulate it from what was posted
+      // so the owner isn't made to retype the whole post — rejecting their input is
+      // only an improvement on silently discarding it if we hand it back.
+      $src = $errs ? $_POST : ($edit ?? []);
+      $fv  = fn(string $k, $d = '') => $src[$k] ?? $d;
+
+      // Accepts both the posted 'Y-m-d\TH:i' and the stored 'Y-m-d H:i:s'.
+      $__evSrc  = trim((string)$fv('event_date'));
+      $__evTs   = $__evSrc !== '' ? strtotime($__evSrc) : false;
+      $__evDate = $__evTs ? date('Y-m-d', $__evTs) : '';
+      $__evTime = $__evTs ? date('H:i',   $__evTs) : '';
+
+      $__price = '';
+      if ($errs) {
+          $__price = (string)$fv('price_amount');
+      } elseif (isset($edit['price_amount']) && $edit['price_amount'] !== null) {
+          $__price = rtrim(rtrim(number_format((float)$edit['price_amount'], 2, '.', ''), '0'), '.');
+      }
+      $__isEvent = $fv('category') === 'event';
+      $__pub     = $errs ? !empty($_POST['is_published']) : (!$edit || !empty($edit['is_published']));
     ?>
     <form method="POST" enctype="multipart/form-data" id="gbForm">
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="save">
-      <input type="hidden" name="id" value="<?= (int)($edit['id'] ?? 0) ?>">
+      <input type="hidden" name="id" value="<?= (int)$fv('id', 0) ?>">
 
       <div class="form-row" style="max-width:520px">
         <div class="field">
@@ -241,7 +259,7 @@ include __DIR__ . '/_layout.php';
           <select name="venue_id" class="filter-select eselect--block" aria-label="Property">
             <option value="">All properties</option>
             <?php foreach ($venues as $v): ?>
-            <option value="<?= (int)$v['id'] ?>" <?= (isset($edit['venue_id']) && (int)$edit['venue_id']===(int)$v['id'])?'selected':'' ?>><?= e($v['name']) ?></option>
+            <option value="<?= (int)$v['id'] ?>" <?= ((string)$fv('venue_id') !== '' && (int)$fv('venue_id')===(int)$v['id'])?'selected':'' ?>><?= e($v['name']) ?></option>
             <?php endforeach; ?>
           </select>
         </div>
@@ -249,7 +267,7 @@ include __DIR__ . '/_layout.php';
           <label>Category</label>
           <select name="category" class="filter-select eselect--block" aria-label="Category">
             <?php foreach ($CATS as $ck=>$cl): ?>
-            <option value="<?= e($ck) ?>" <?= (($edit['category'] ?? '')===$ck)?'selected':'' ?>><?= e($cl) ?></option>
+            <option value="<?= e($ck) ?>" <?= ($fv('category')===$ck)?'selected':'' ?>><?= e($cl) ?></option>
             <?php endforeach; ?>
           </select>
         </div>
@@ -257,15 +275,15 @@ include __DIR__ . '/_layout.php';
 
       <div class="field" style="max-width:520px">
         <label for="gbTitle">Title</label>
-        <input id="gbTitle" type="text" name="title" class="inp" required value="<?= e($edit['title'] ?? '') ?>" placeholder="Enter title" style="width:100%">
+        <input id="gbTitle" type="text" name="title" class="inp" required value="<?= e((string)$fv('title')) ?>" placeholder="Enter title" style="width:100%">
       </div>
 
       <div class="field" style="max-width:520px">
         <label for="gbBody">Body</label>
-        <textarea id="gbBody" name="body" rows="3" class="inp" placeholder="Enter description" style="width:100%"><?= e($edit['body'] ?? '') ?></textarea>
+        <textarea id="gbBody" name="body" rows="3" class="inp" placeholder="Enter description" style="width:100%"><?= e((string)$fv('body')) ?></textarea>
       </div>
 
-      <div class="field gb-eventonly"<?= (($edit['category'] ?? '') === 'event') ? '' : ' hidden' ?>>
+      <div class="field gb-eventonly"<?= $__isEvent ? '' : ' hidden' ?>>
         <label>Event date &amp; time</label>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
           <button type="button" class="dp-btn" data-dp-target="gbEvDate" data-dp-placeholder="Select date"><?= $__evDate !== '' ? e(date('D j M Y', strtotime($__evDate))) : 'Select date' ?></button>
@@ -282,13 +300,13 @@ include __DIR__ . '/_layout.php';
       </div>
 
       <div class="form-row" style="max-width:520px">
-        <div class="field gb-eventonly"<?= (($edit['category'] ?? '') === 'event') ? '' : ' hidden' ?>>
+        <div class="field gb-eventonly"<?= $__isEvent ? '' : ' hidden' ?>>
           <label for="gbPrice">Price <span class="text-muted" style="font-weight:400">(blank = free)</span></label>
-          <input id="gbPrice" type="number" name="price_amount" class="inp inp--num no-spin" step="0.01" min="0" value="<?= e(isset($edit['price_amount']) && $edit['price_amount'] !== null ? rtrim(rtrim(number_format((float)$edit['price_amount'],2,'.',''),'0'),'.') : '') ?>" placeholder="0" style="width:100%">
+          <input id="gbPrice" type="number" name="price_amount" class="inp inp--num no-spin" step="0.01" min="0" value="<?= e($__price) ?>" placeholder="0" style="width:100%">
         </div>
         <div class="field">
           <label for="gbSort">Sort order <span class="text-muted" style="font-weight:400">(higher = pinned toward top)</span></label>
-          <input id="gbSort" type="number" name="sort_order" class="inp inp--num no-spin" value="<?= (int)($edit['sort_order'] ?? 0) ?>" placeholder="0" style="width:100%">
+          <input id="gbSort" type="number" name="sort_order" class="inp inp--num no-spin" value="<?= (int)$fv('sort_order', 0) ?>" placeholder="0" style="width:100%">
         </div>
       </div>
 
@@ -307,7 +325,7 @@ include __DIR__ . '/_layout.php';
       <?php endif; ?>
 
       <div class="field">
-        <label class="togglerow"><span class="toggle"><input type="checkbox" name="is_published" value="1" <?= (!$edit || !empty($edit['is_published']))?'checked':'' ?>><span class="toggle-slider"></span></span><span>Published</span></label>
+        <label class="togglerow"><span class="toggle"><input type="checkbox" name="is_published" value="1" <?= $__pub?'checked':'' ?>><span class="toggle-slider"></span></span><span>Published</span></label>
       </div>
 
       <button type="submit" class="btn-primary"><?= $edit ? 'Save changes' : 'Create post' ?></button>
