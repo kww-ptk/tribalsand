@@ -159,8 +159,12 @@ A three-way radio, "How will you arrive?", switching the fields below it:
 | `road` | Arrival date & time, vehicle or plate (optional) | arrival time |
 | `other` | Arrival date & time, "tell us how you're arriving" | arrival time |
 
-Mode switching is CSS-class based on the radio, with no JS dependency for the *display* of the
-selected mode's fields on first paint — the server renders the saved mode as `checked`.
+The server renders the saved mode as `checked` and emits `hidden` on the two inactive field
+groups, so first paint is correct with no JS. A radio-change handler in `js/checkin-wizard.js`
+toggles `hidden` when the guest switches mode.
+
+Switching mode away from `flight` clears `arrival_airport` and `flight_number` on save, so a
+guest who changes their mind does not leave stale flight data behind for the transfer desk.
 
 `checkin_step_complete('arrival', …)` delegates to a new pure helper:
 
