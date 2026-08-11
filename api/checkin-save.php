@@ -29,14 +29,45 @@ if ($isLead) {
     $arrivalAt = ($_POST['arrival_at'] ?? '') !== '' ? date('Y-m-d H:i:s', strtotime((string)$_POST['arrival_at'])) : null;
     $needsTransfer = array_key_exists('needs_transfer', $_POST) && $_POST['needs_transfer'] !== ''
         ? ($_POST['needs_transfer'] === '1') : null;
+
+    // Arrival mode: validated against the catalog, '' when unknown or unmigrated.
+    $mode = '';
+    if (checkin_arrival_mode_supported()) {
+        $posted = (string)($_POST['arrival_mode'] ?? '');
+        if (array_key_exists($posted, checkin_arrival_modes())) $mode = $posted;
+    }
+
+    // The airport select posts '__other' to reveal a free-text box; store the text.
+    $airport = $s('arrival_airport');
+    if ($airport === '__other') $airport = $s('arrival_airport_other');
+    $flight = $s('flight_number');
+    // Switching away from flying clears stale flight data so the transfer desk
+    // never sees a flight number for someone driving in.
+    if ($mode !== '' && $mode !== 'flight') { $airport = null; $flight = null; }
+
+    // Column list is composed so the write works pre- and post-migration —
+    // same approach as insert_booking_addon() in includes/booking.php.
+    $cols = ['arrival_airport', 'flight_number', 'arrival_at', 'needs_transfer',
+             'transfer_details', 'dietary', 'special_requests'];
+    $vals = [':aa', ':fn', ':at', ':nt', ':td', ':di', ':sr'];
+    $p = [':h'=>$holdId, ':aa'=>$airport, ':fn'=>$flight, ':at'=>$arrivalAt,
+          ':nt'=>$needsTransfer, ':td'=>$s('transfer_details'), ':di'=>$s('dietary'),
+          ':sr'=>$s('special_requests')];
+
+    if (checkin_arrival_mode_supported()) {
+        $cols[] = 'arrival_mode';    $vals[] = ':am'; $p[':am'] = $mode === '' ? null : $mode;
+        $cols[] = 'arrival_vehicle'; $vals[] = ':av'; $p[':av'] = $mode === 'road'  ? $s('arrival_vehicle') : null;
+        $cols[] = 'arrival_note';    $vals[] = ':an'; $p[':an'] = $mode === 'other' ? $s('arrival_note')    : null;
+    }
+
+    $sets = [];
+    foreach ($cols as $i => $c) { $sets[] = "{$c}={$vals[$i]}"; }
+
     db_query(
-        "INSERT INTO booking_checkin (hold_id, arrival_airport, flight_number, arrival_at, needs_transfer, transfer_details, dietary, special_requests, updated_at)
-         VALUES (:h,:aa,:fn,:at,:nt,:td,:di,:sr, now())
-         ON CONFLICT (hold_id) DO UPDATE SET
-           arrival_airport=:aa, flight_number=:fn, arrival_at=:at, needs_transfer=:nt,
-           transfer_details=:td, dietary=:di, special_requests=:sr, updated_at=now()",
-        [':h'=>$holdId, ':aa'=>$s('arrival_airport'), ':fn'=>$s('flight_number'), ':at'=>$arrivalAt,
-         ':nt'=>$needsTransfer, ':td'=>$s('transfer_details'), ':di'=>$s('dietary'), ':sr'=>$s('special_requests')]
+        'INSERT INTO booking_checkin (hold_id, ' . implode(', ', $cols) . ', updated_at)
+         VALUES (:h, ' . implode(', ', $vals) . ', now())
+         ON CONFLICT (hold_id) DO UPDATE SET ' . implode(', ', $sets) . ', updated_at=now()',
+        $p
     );
 }
 
