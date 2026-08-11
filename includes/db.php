@@ -267,13 +267,22 @@ function find_available_unit(int $room_id, string $check_in, string $check_out):
     )->fetch();
 }
 
+/**
+ * $expiresInHours: NULL = the hold never auto-expires. Staff-typed bookings use
+ * NULL so expire_stale_holds() cannot cancel them overnight and free the dates —
+ * its predicate (expires_at < NOW()) is NULL for a NULL column and never matches.
+ * The interval is built in SQL against NOW() on purpose: the app and database
+ * clocks are not in the same timezone, so computing it in PHP would skew it.
+ */
 function create_hold_with_block(
     int $unit_id, ?int $submission_id,
     string $check_in, string $check_out,
     string $guest_name, string $guest_email,
-    string $status = 'pending'
+    string $status = 'pending',
+    ?int $expiresInHours = 24
 ): int {
     $confirmed = $status === 'confirmed';
+    $expiresExpr = $expiresInHours === null ? 'NULL' : 'NOW() + make_interval(hours => :exph)';
     $hold_id = 0;
     for ($attempt = 0; $attempt < 5; $attempt++) {
         $code = generate_access_code();
@@ -284,10 +293,10 @@ function create_hold_with_block(
                      access_code, status, confirmed_at, expires_at)
                  VALUES
                     (:sub, :unit, :ci, :co, :name, :email,
-                     :code, :status, :confirmed_at, NOW() + INTERVAL '24 hours')
+                     :code, :status, :confirmed_at, {$expiresExpr})
                  RETURNING id"
             );
-            $stmt->execute([
+            $params = [
                 ':sub'          => $submission_id,
                 ':unit'         => $unit_id,
                 ':ci'           => $check_in,
@@ -297,7 +306,9 @@ function create_hold_with_block(
                 ':code'         => $code,
                 ':status'       => $status,
                 ':confirmed_at' => $confirmed ? date('Y-m-d H:i:s') : null,
-            ]);
+            ];
+            if ($expiresInHours !== null) $params[':exph'] = $expiresInHours;
+            $stmt->execute($params);
             $hold_id = (int)$stmt->fetchColumn();
             break;
         } catch (PDOException $e) {

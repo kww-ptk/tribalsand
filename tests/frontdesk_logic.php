@@ -32,6 +32,22 @@ $hInhouse = $mk($d($A,-2),     $d($A, 2));   // staying across anchor
 $hDepart  = $mk($d($A,-3),     $A);          // departs on anchor
 $hWeekOut = $mk($d($A,10),     $d($A, 12));  // arrival outside the 7-day window
 
+// ── Staff-created bookings: pending, and never auto-expire ──────────────────
+$hNoExp = create_hold_with_block($unit, null, $d($A, 20), $d($A, 22), 'ZZ FD NoExpiry', 'zz-noexp@example.com', 'pending', null);
+$rowNE  = db_query("SELECT status, expires_at FROM holds WHERE id = :i", [':i' => $hNoExp])->fetch();
+check('null expiry stores NULL',        $rowNE['expires_at'] === null);
+check('null expiry keeps it pending',   $rowNE['status'] === 'pending');
+check('its availability block exists',  (int)db_query("SELECT COUNT(*) FROM availability_blocks WHERE hold_id = :i", [':i' => $hNoExp])->fetchColumn() > 0);
+// Assert the cron's PREDICATE rather than calling expire_stale_holds(): that
+// function sweeps every stale hold in the database, deletes their blocks and
+// EMAILS THEIR GUESTS. A test must never do that. NULL < NOW() is NULL, so the
+// predicate cannot match — which is exactly the property we depend on.
+$wouldExpire = (int)db_query(
+    "SELECT COUNT(*) FROM holds WHERE id = :i AND status = 'pending' AND expires_at < NOW()",
+    [':i' => $hNoExp]
+)->fetchColumn();
+check('expiry predicate cannot match it', $wouldExpire === 0);
+
 $day = frontdesk_day([$venue], $A);
 check('arrival is in "arriving"',      in_array($hArrive,  ids($day['arriving']),  true));
 check('continuing stay is "in house"', in_array($hInhouse, ids($day['inhouse']),   true));
@@ -60,7 +76,8 @@ check('badge: unread_msgs counted',   $arr && (int)$arr['unread_msgs']   >= 1);
 // Cleanup
 db_query("DELETE FROM booking_messages WHERE hold_id = :h", [':h'=>$hArrive]);
 db_query("DELETE FROM booking_addons  WHERE hold_id = :h", [':h'=>$hArrive]);
-db_query("DELETE FROM holds WHERE id IN (:a,:b,:c,:e)", [':a'=>$hArrive, ':b'=>$hInhouse, ':c'=>$hDepart, ':e'=>$hWeekOut]);
+db_query("DELETE FROM availability_blocks WHERE hold_id = :h", [':h'=>$hNoExp]);
+db_query("DELETE FROM holds WHERE id IN (:a,:b,:c,:e,:f)", [':a'=>$hArrive, ':b'=>$hInhouse, ':c'=>$hDepart, ':e'=>$hWeekOut, ':f'=>$hNoExp]);
 
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);
