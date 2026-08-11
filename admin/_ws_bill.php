@@ -4,6 +4,7 @@ $__lines = fetch_bill_lines($holdId);
 $__items = fetch_bill_items($holdId);
 $__total = bill_total($holdId);
 $__cur   = setting('site_currency', 'USD');
+$__adults = array_values(array_filter(fetch_checkin_guests($holdId), fn($g) => empty($g['is_child'])));
 /** number for a value input: 500.00 → "500", 12.50 → "12.5", null → "" */
 $__numval = fn($v) => ($v === null || $v === '') ? '' : rtrim(rtrim(number_format((float)$v, 2, '.', ''), '0'), '.');
 ?>
@@ -21,7 +22,7 @@ $__numval = fn($v) => ($v === null || $v === '') ? '' : rtrim(rtrim(number_forma
           $__priced = isset($l['price_amount']) && $l['price_amount'] !== null && (float)$l['price_amount'] > 0;
         ?>
         <tr<?= $__priced ? '' : ' class="is-unpriced"' ?>>
-          <td><?= e(addon_label($l)) ?><?php if (($l['kind'] ?? '') === 'tour' && !empty($l['pax'])): ?> <span class="text-muted" style="font-size:12px">· <?= (int)$l['pax'] ?> pax</span><?php endif; ?><?php if (!$__priced): ?> <span class="badge badge--orange">set a price</span><?php endif; ?></td>
+          <td><?= e(addon_label($l)) ?><?php if (($l['kind'] ?? '') === 'tour' && !empty($l['pax'])): ?> <span class="text-muted" style="font-size:12px">· <?= (int)$l['pax'] ?> pax</span><?php endif; ?><?php if (!$__priced): ?> <span class="badge badge--orange">set a price</span><?php endif; ?><?php if (!empty($l['requested_by_name'])): ?><div class="text-muted" style="font-size:12px"><?= e(guest_display_name(['passport_name'=>$l['requested_by_name']])) ?><?= !empty($l['requested_by_is_lead']) ? ' (lead)' : '' ?></div><?php endif; ?></td>
           <td class="text-muted" style="font-size:12px"><?= !empty($l['scheduled_for']) ? e(date('j M', strtotime((string)$l['scheduled_for']))) : '—' ?></td>
           <td class="num">
             <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=bill" style="display:inline-flex;gap:6px;align-items:center;justify-content:flex-end">
@@ -46,7 +47,7 @@ $__numval = fn($v) => ($v === null || $v === '') ? '' : rtrim(rtrim(number_forma
   <div class="card__body" style="padding:16px 20px">
     <?php foreach ($__items as $it): ?>
     <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)">
-      <span style="flex:1"><?= e($it['label']) ?></span>
+      <span style="flex:1"><?= e($it['label']) ?><?php if (!empty($it['guest_name'])): ?> <span class="text-muted" style="font-size:12px">· <?= e(guest_display_name(['passport_name'=>$it['guest_name']])) ?></span><?php endif; ?></span>
       <span style="white-space:nowrap;font-variant-numeric:tabular-nums"><?= e(format_price((float)$it['amount'], $__cur)) ?></span>
       <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=bill" style="margin:0">
         <?= csrf_field() ?><input type="hidden" name="action" value="bill_del"><input type="hidden" name="hold_id" value="<?= $holdId ?>"><input type="hidden" name="item_id" value="<?= (int)$it['id'] ?>">
@@ -67,6 +68,16 @@ $__numval = fn($v) => ($v === null || $v === '') ? '' : rtrim(rtrim(number_forma
           <input type="number" name="amount" step="0.01" min="0" value="0" class="inp inp--sm inp--num no-spin" style="width:110px" aria-label="Amount">
         </span>
       </label>
+      <?php if ($__adults): ?>
+      <label class="wsf"><span>For</span>
+        <select name="guest_id" class="inp inp--sm" style="width:130px">
+          <option value="">Whole booking</option>
+          <?php foreach ($__adults as $g): ?>
+          <option value="<?= (int)$g['id'] ?>"><?= e(guest_display_name(['passport_name'=>$g['passport_name']])) ?><?= !empty($g['is_lead']) ? ' (lead)' : '' ?></option>
+          <?php endforeach; ?>
+        </select>
+      </label>
+      <?php endif; ?>
       <button type="submit" class="btn-outline"><?= admin_icon('plus', 15) ?> Add charge</button>
     </form>
   </div>
