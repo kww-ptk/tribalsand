@@ -258,3 +258,8 @@
   background: none; border: 0; color: #123c30; font-weight: 600; font-size: 12px; cursor: pointer;
 }
 .ci-sign-hint { font-size: 11px; color: #9aa39a; margin-top: 4px; }
+
+/* Co-guest review-and-sign: collapsed details summary */
+.ci-review { margin: 4px 0 10px; }
+.ci-review > summary { cursor: pointer; font-size: 13px; color: #123c30; font-weight: 600; padding: 8px 0; }
+.ci-review[open] > summary { margin-bottom: 8px; }
