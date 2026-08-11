@@ -196,18 +196,33 @@ $waiverBlock = function (bool $signed) use ($waiverText) {
             <span class="ci-upload__state"><?= !empty($lead['passport_file_key']) ? 'Uploaded &#10003;' : 'No file yet' ?></span>
           </div>
           <?php endif; ?>
-          <?php if ($showWaiver): ?>
+          <?php if ($showWaiver): $leadSigned = checkin_guest_waiver_signed($lead); ?>
           <div class="ci-waiver"><?= nl2br(e($waiverText)) ?></div>
-          <label class="ci-radio"><input type="checkbox" class="ci-agree" name="waiver_agree" value="1" <?= checkin_guest_waiver_signed($lead) ? 'checked' : '' ?>> I have read and agree to the terms</label>
+          <label class="ci-radio"><input type="checkbox" class="ci-agree" name="waiver_agree" value="1" <?= $leadSigned ? 'checked' : '' ?>> I have read and agree to the terms</label>
           <label class="ci-l">Type your full name to sign</label>
           <input class="ci-in" name="waiver_signed_name" value="<?= $val('waiver_signed_name', $lead) ?>" placeholder="Full name">
-          <label class="ci-l">Sign below with your finger</label>
-          <div class="ci-sign">
-            <button type="button" class="ci-sign-clear">Clear</button>
-            <canvas class="ci-sign-pad" data-target="#ciLeadSig"></canvas>
+          <!-- data-signed drives the client gate: an existing signature satisfies it
+               without the guest having to draw again. The hidden input stays empty
+               unless they re-sign, and api/checkin-save.php only overwrites a stored
+               signature when a valid new one is posted. -->
+          <div class="ci-signwrap" data-signed="<?= $leadSigned ? '1' : '0' ?>">
+            <?php if ($leadSigned): ?>
+            <div class="ci-signed">
+              <img class="ci-signed__img" src="<?= e((string)$lead['waiver_signature']) ?>" alt="Your signature">
+              <span class="ci-signed__meta">Signed by <?= e((string)$lead['waiver_signed_name']) ?><br><?= e(date('j M Y', strtotime((string)$lead['waiver_signed_at']))) ?></span>
+              <button type="button" class="ci-signed__redo" data-resign>Re-sign</button>
+            </div>
+            <?php endif; ?>
+            <div class="ci-signpad"<?= $leadSigned ? ' hidden' : '' ?>>
+              <label class="ci-l">Sign below with your finger</label>
+              <div class="ci-sign">
+                <button type="button" class="ci-sign-clear">Clear</button>
+                <canvas class="ci-sign-pad" data-target="#ciLeadSig"></canvas>
+              </div>
+              <p class="ci-sign-hint">Reception can fill your details, but you sign yourself.</p>
+            </div>
           </div>
           <input type="hidden" name="waiver_signature" id="ciLeadSig">
-          <p class="ci-sign-hint">Reception can fill your details, but you sign yourself.</p>
           <?php endif; ?>
           <div class="ci-kids" data-parent="<?= (int)($lead['id'] ?? 0) ?>">
             <?php foreach (($kids[(int)($lead['id'] ?? 0)] ?? []) as $c): ?>

@@ -51,6 +51,18 @@
   form.addEventListener('click', function (e) {
     var t = e.target;
 
+    if (t.hasAttribute('data-resign')) {   // swap the stored-signature panel for a blank pad
+      e.preventDefault();
+      var wrap = t.closest('.ci-signwrap');
+      wrap.setAttribute('data-signed', '0');
+      var panel = wrap.querySelector('.ci-signed'); if (panel) panel.hidden = true;
+      var pad   = wrap.querySelector('.ci-signpad'); if (pad) pad.hidden = false;
+      // The canvas was already in the DOM (just hidden) so it is initialised;
+      // this is idempotent and guards any future cloned markup.
+      if (window.ciSignInitAll) window.ciSignInitAll();
+      return;
+    }
+
     if (t.classList.contains('ci-next')) { e.preventDefault(); saveThen(function () { show(cur + 1); }); return; }
     if (t.classList.contains('ci-back')) { e.preventDefault(); if (cur === 0) backToStart(); else show(cur - 1); return; }
 
