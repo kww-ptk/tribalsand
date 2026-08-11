@@ -218,6 +218,7 @@
 .ci-done-card p{color:var(--pa-muted);font-size:14px;line-height:1.6;margin:0 auto 20px;max-width:360px}
 .ci-done-card .pa-btn{margin-bottom:9px}
 .ci-alert{max-width:520px;margin:0 auto 16px;background:#fbe6e6;border:1px solid #f0c2c2;color:#a12;border-radius:10px;padding:12px 16px;font-size:14px;line-height:1.5}
+.ci-err{background:#fbe6e6;border:1px solid #f0c2c2;color:#a12;border-radius:9px;padding:11px 14px;font-size:13.5px;line-height:1.55;margin:16px 0 0}
 
 .pa-btn--ghost{background:transparent;color:var(--pa-teal);border:1px solid var(--pa-line)}
 

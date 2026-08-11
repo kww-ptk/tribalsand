@@ -48,6 +48,53 @@
     btn.textContent = '+ Add adult (' + have + '/' + need + ')';
   }
 
+  function fieldVal(sec, name) {
+    var el = sec.querySelector('[name="' + name + '"]');
+    return el ? String(el.value).trim() : '';
+  }
+  function clearErr(sec) { var box = sec.querySelector('.ci-err'); if (box) box.hidden = true; }
+  function showErr(sec, items) {
+    var box = sec.querySelector('.ci-err');
+    if (!box) {
+      box = document.createElement('div');
+      box.className = 'ci-err';
+      box.setAttribute('role', 'alert');
+      sec.insertBefore(box, sec.querySelector('.ci-nav'));
+    }
+    box.textContent = 'Before you continue, please ' + items.join(', ') + '.';
+    box.hidden = false;
+    box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  // "Your details" is the consent gate: terms + typed name + a signature, plus
+  // the passport fields when that step is configured as required. The wording
+  // mirrors checkin_consent_missing() in includes/checkin.php.
+  function validateStep(sec) {
+    if (!sec) return true;
+    clearErr(sec);
+    if (sec.getAttribute('data-key') !== 'you') return true;
+    var missing = [];
+    var agree = sec.querySelector('.ci-agree');
+    if (agree) {
+      if (!agree.checked) missing.push('agree to the terms');
+      if (fieldVal(sec, 'waiver_signed_name') === '') missing.push('type your full name');
+      var wrap = sec.querySelector('.ci-signwrap');
+      if (wrap && wrap.getAttribute('data-signed') !== '1') {
+        var sig = document.getElementById('ciLeadSig');
+        if (!sig || sig.value === '') missing.push('draw your signature');
+      }
+    }
+    if (sec.hasAttribute('data-passport-required')) {
+      if (fieldVal(sec, 'passport_name') === '')   missing.push('enter your passport name');
+      if (fieldVal(sec, 'passport_number') === '') missing.push('enter your passport number');
+      var up = sec.querySelector('.ci-upload');
+      if (up && up.getAttribute('data-has') !== '1') missing.push('upload your passport scan');
+    }
+    if (!missing.length) return true;
+    showErr(sec, missing);
+    return false;
+  }
+
   form.addEventListener('click', function (e) {
     var t = e.target;
 
@@ -63,7 +110,12 @@
       return;
     }
 
-    if (t.classList.contains('ci-next')) { e.preventDefault(); saveThen(function () { show(cur + 1); }); return; }
+    if (t.classList.contains('ci-next')) {
+      e.preventDefault();
+      if (!validateStep(steps[cur])) return;
+      saveThen(function () { show(cur + 1); });
+      return;
+    }
     if (t.classList.contains('ci-back')) { e.preventDefault(); if (cur === 0) backToStart(); else show(cur - 1); return; }
 
     if (t.classList.contains('ci-addguest')) {   // add adult → append a card in place; never reload
@@ -184,4 +236,15 @@
   // Initial view: intro when there is one, else straight into the steps. The old
   // ?ci= resume parameter is gone with the reload that needed it.
   if (!intro && !editBtn) openSteps(0);
+
+  // Final submit re-checks the consent step, so it cannot be skipped by jumping
+  // straight to the last step. The server enforces the same rule regardless.
+  form.addEventListener('submit', function (e) {
+    var you = form.querySelector('.ci-step[data-key="you"]');
+    if (you && !validateStep(you)) {
+      e.preventDefault();
+      var idx = steps.indexOf(you);
+      if (idx >= 0) openSteps(idx);
+    }
+  });
 })();
