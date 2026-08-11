@@ -6,7 +6,7 @@
 
 **Architecture:** `create_hold_with_block()` gains an optional expiry so a staff-typed booking can be pending with `expires_at = NULL`. That NULL is then the signal `frontdesk_rows()` uses to admit staff bookings to the arrivals board while still excluding speculative web enquiries. The guest board's event-only fields become conditional on the category, backed by a server-side validation error instead of a silent null. The gate's arrivals table renders data it already fetches and prefills the existing visitor form.
 
-**Tech Stack:** PHP 8.2 (no framework), PostgreSQL via PDO, vanilla JS, vanilla CSS. Tests are plain PHP scripts with a `check()` helper. **No migration, no schema change.**
+**Tech Stack:** PHP 8.2 (no framework), PostgreSQL via PDO, vanilla JS, vanilla CSS. Tests are plain PHP scripts with a `check()` helper. **One migration** — `add_hold_no_expiry.sql`, already written and applied locally (see Task 1 Step 0).
 
 **Spec:** `docs/superpowers/specs/2026-08-11-admin-ops-fixes-design.md`
 
@@ -53,7 +53,23 @@ Both must end `ALL PASS`. `php tests/team_logic.php` has **two** known failures 
 
 ### Task 1: Optional expiry on hold creation
 
-**Files:** `includes/db.php`, `tests/frontdesk_logic.php`
+**Files:** `db/migrations/add_hold_no_expiry.sql`, `includes/db.php`, `tests/frontdesk_logic.php`
+
+- [ ] **Step 0: The migration (already written and applied)**
+
+`holds.expires_at` was `TIMESTAMP NOT NULL` (`db/migrations/add_availability.sql:32`) — every hold
+used to be a 24h web enquiry — so an `expires_at = NULL` insert is rejected by the database. This
+plan originally missed that and claimed no migration was needed.
+
+`db/migrations/add_hold_no_expiry.sql` exists and has been applied to the local database. Confirm
+before going further:
+
+```bash
+php -r 'require "includes/db.php"; echo db_query("SELECT is_nullable FROM information_schema.columns WHERE table_name=:t AND column_name=:c",[":t"=>"holds",":c"=>"expires_at"])->fetchColumn(), "\n";'
+```
+
+Expected: `YES`. If it prints `NO`, run `php bin/migrate.php db/migrations/add_hold_no_expiry.sql`
+first. Include the migration file in the Task 1 commit.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -200,7 +216,7 @@ Expected: `status=pending` and a ttl of approximately `24:00:00`. **If the ttl i
 - [ ] **Step 6: Commit**
 
 ```bash
-git add includes/db.php tests/frontdesk_logic.php
+git add db/migrations/add_hold_no_expiry.sql includes/db.php tests/frontdesk_logic.php
 git commit -m "feat(holds): allow a hold to be created with no expiry"
 ```
 

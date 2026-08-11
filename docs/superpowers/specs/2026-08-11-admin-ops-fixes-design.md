@@ -207,7 +207,16 @@ that also reproduce on `master` and are tracked separately.
 | `admin/guest-board.php` | Category-conditional date/price fields; validation instead of silent null |
 | `tests/frontdesk_logic.php` | Assertions (the DB-backed harness) |
 
-No migration. No schema change.
+**Correction — one migration is required.** This spec originally claimed none. `holds.expires_at`
+is `TIMESTAMP NOT NULL` (`db/migrations/add_availability.sql:32`), because every hold used to be
+a 24h web enquiry, so the `expires_at = NULL` design above is rejected by the database as written.
+`db/migrations/add_hold_no_expiry.sql` drops that constraint — a catalog-only change in Postgres,
+no table rewrite or scan, existing rows untouched, web enquiries keep their TTL.
+
+Every reader of `expires_at` already guards against a null (`!empty()` or `?? ''`) except
+`admin/holds.php`, which this group fixes anyway; `includes/mail.php:265` degrades to the literal
+text "24 hours" but is only reached by enquiry mail, which keeps its expiry. The
+`idx_holds_status_exp` index is unaffected — Postgres btree indexes nulls.
 
 ## Out of scope
 
