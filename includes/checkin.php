@@ -300,6 +300,34 @@ function checkin_party_complete_count(array $guests, array $config): int {
 }
 
 /**
+ * Adult guest rows that are not yet fully checked in, in roster order. Children
+ * are never included. The counterpart to checkin_party_complete_count(), which
+ * counts the same rows the other way round. Pure.
+ */
+function checkin_outstanding_adults(array $guests, array $config): array {
+    $out = [];
+    foreach ($guests as $g) {
+        if (!empty($g['is_child'])) continue;
+        if (!checkin_guest_complete($g, $config)) $out[] = $g;
+    }
+    return $out;
+}
+
+/**
+ * Human list of who a party is still waiting on: named guests plus a count of
+ * adult slots that have not been added to the roster at all ("2 more guests").
+ * Returns '' when nothing is outstanding. Pure.
+ */
+function checkin_waiting_on_label(array $names, int $unnamedSlots): string {
+    $parts = array_values($names);
+    if ($unnamedSlots > 0) $parts[] = $unnamedSlots === 1 ? '1 more guest' : "{$unnamedSlots} more guests";
+    if (!$parts) return '';
+    if (count($parts) === 1) return $parts[0];
+    $last = array_pop($parts);
+    return implode(', ', $parts) . ' and ' . $last;
+}
+
+/**
  * Recompute booking completion after any per-guest write. Stamps
  * holds.checkin_completed_at (+ audit + best-effort staff email) EXACTLY ONCE, when
  * the lead's booking-level required steps are done AND all N adults are complete.

@@ -203,6 +203,27 @@ check('coguest waiver-only=review', checkin_coguest_view_state([], $cfgWaiverOnl
 $cfgPassOnly = ['passport'=>['enabled'=>true], 'waiver'=>['enabled'=>false]];
 check('coguest passport-only done', checkin_coguest_view_state($ciPass, $cfgPassOnly) === 'done');
 
+// ── Outstanding adults + waiting-on label (pure) ────────────────────────────
+$cfgPW3 = ['passport' => ['enabled' => true, 'required' => true], 'waiver' => ['enabled' => true, 'required' => true]];
+$gDone  = ['passport_name' => 'Jess Achieng', 'passport_number' => 'B', 'passport_file_key' => 'k',
+           'waiver_signed_name' => 'Jess', 'waiver_signed_at' => '2026-08-06', 'waiver_signature' => 'sig'];
+$gTodo  = ['passport_name' => 'Patrik Otieno'];
+$gTodo2 = ['passport_name' => 'Sarah Kim'];
+$gKid   = ['is_child' => true, 'passport_name' => 'Small One'];
+check('outstanding excludes complete',  checkin_outstanding_adults([$gDone], $cfgPW3) === []);
+check('outstanding lists incomplete',   count(checkin_outstanding_adults([$gDone, $gTodo], $cfgPW3)) === 1);
+check('outstanding excludes children',  checkin_outstanding_adults([$gDone, $gKid], $cfgPW3) === []);
+check('outstanding empty roster',       checkin_outstanding_adults([], $cfgPW3) === []);
+check('outstanding keeps roster order', array_column(checkin_outstanding_adults([$gTodo, $gTodo2], $cfgPW3), 'passport_name') === ['Patrik Otieno', 'Sarah Kim']);
+
+check('waiting label one',    checkin_waiting_on_label(['Patrik'], 0) === 'Patrik');
+check('waiting label two',    checkin_waiting_on_label(['Patrik', 'Sarah'], 0) === 'Patrik and Sarah');
+check('waiting label three',  checkin_waiting_on_label(['A', 'B', 'C'], 0) === 'A, B and C');
+check('waiting label 1 slot', checkin_waiting_on_label([], 1) === '1 more guest');
+check('waiting label n slots', checkin_waiting_on_label([], 2) === '2 more guests');
+check('waiting label mixed',  checkin_waiting_on_label(['Patrik'], 2) === 'Patrik and 2 more guests');
+check('waiting label empty',  checkin_waiting_on_label([], 0) === '');
+
 // ── Shared portal: display name (pure) ──────────────────────────────────────
 check('display name first word',  guest_display_name(['passport_name'=>'Jess Achieng']) === 'Jess');
 check('display name blank=Guest',  guest_display_name(['passport_name'=>'']) === 'Guest');
