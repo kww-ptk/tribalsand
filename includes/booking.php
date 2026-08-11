@@ -319,8 +319,10 @@ function fetch_message_threads(int $holdId): array {
 function fetch_thread_messages(int $holdId, ?int $addonId): array {
     $cond = $addonId === null ? 'addon_id IS NULL' : 'addon_id = :aid';
     $p    = [':h'=>$holdId]; if ($addonId !== null) $p[':aid'] = $addonId;
+    $sel  = message_sender_guest_supported() ? ", cg.passport_name AS sender_name" : "";
+    $join = message_sender_guest_supported() ? "LEFT JOIN checkin_guests cg ON cg.id = bm.sender_guest_id" : "";
     try {
-        return db_query("SELECT * FROM booking_messages WHERE hold_id=:h AND $cond ORDER BY created_at ASC", $p)->fetchAll();
+        return db_query("SELECT bm.*{$sel} FROM booking_messages bm {$join} WHERE bm.hold_id=:h AND bm.$cond ORDER BY bm.created_at ASC", $p)->fetchAll();
     } catch (Throwable $e) { return []; }
 }
 
@@ -328,8 +330,10 @@ function fetch_thread_messages(int $holdId, ?int $addonId): array {
 function fetch_thread_messages_since(int $holdId, ?int $addonId, int $afterId): array {
     $cond = $addonId === null ? 'addon_id IS NULL' : 'addon_id = :aid';
     $p    = [':h'=>$holdId, ':after'=>$afterId]; if ($addonId !== null) $p[':aid'] = $addonId;
+    $sel  = message_sender_guest_supported() ? ", cg.passport_name AS sender_name" : "";
+    $join = message_sender_guest_supported() ? "LEFT JOIN checkin_guests cg ON cg.id = bm.sender_guest_id" : "";
     try {
-        return db_query("SELECT * FROM booking_messages WHERE hold_id=:h AND $cond AND id > :after ORDER BY id ASC", $p)->fetchAll();
+        return db_query("SELECT bm.*{$sel} FROM booking_messages bm {$join} WHERE bm.hold_id=:h AND bm.$cond AND bm.id > :after ORDER BY bm.id ASC", $p)->fetchAll();
     } catch (Throwable $e) { return []; }
 }
 
@@ -340,11 +344,13 @@ function message_time_label($createdAt): string {
 
 /** Shape a booking_messages row for a JSON poll/send response (id, sender, body, time_label). */
 function message_payload(array $m): array {
+    $name = trim((string)($m['sender_name'] ?? ''));
     return [
-        'id'         => (int)$m['id'],
-        'sender'     => (string)$m['sender'],
-        'body'       => (string)$m['body'],
-        'time_label' => message_time_label($m['created_at'] ?? 'now'),
+        'id'          => (int)$m['id'],
+        'sender'      => (string)$m['sender'],
+        'sender_name' => $name === '' ? '' : guest_display_name(['passport_name' => $name]),
+        'body'        => (string)$m['body'],
+        'time_label'  => message_time_label($m['created_at'] ?? 'now'),
     ];
 }
 

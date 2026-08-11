@@ -67,7 +67,7 @@ if ($__threadParam === null):
   <?php foreach ($__msgs as $__m): $__me = $__m['sender'] === 'guest'; ?>
   <div class="bm-msg" data-mid="<?= (int)$__m['id'] ?>" style="max-width:80%;<?= $__me ? 'align-self:flex-end;background:var(--pa-teal-d);color:#fff;border-radius:12px 12px 2px 12px' : 'align-self:flex-start;background:var(--pa-card);border:1px solid var(--pa-line);border-radius:12px 12px 12px 2px' ?>;padding:9px 12px;font-size:14px;line-height:1.5">
     <?= e($__m['body']) ?>
-    <div style="font-size:11px;margin-top:4px;<?= $__me ? 'color:rgba(255,255,255,.7)' : 'color:var(--pa-muted)' ?>"><?= $__me ? 'You' : 'Concierge' ?> · <?= e(message_time_label($__m['created_at'])) ?></div>
+    <div style="font-size:11px;margin-top:4px;<?= $__me ? 'color:rgba(255,255,255,.7)' : 'color:var(--pa-muted)' ?>"><?= $__me ? e(trim((string)($__m['sender_name'] ?? '')) !== '' ? guest_display_name(['passport_name'=>$__m['sender_name']]) : 'You') : 'Concierge' ?> · <?= e(message_time_label($__m['created_at'])) ?></div>
   </div>
   <?php endforeach; ?>
 </div>

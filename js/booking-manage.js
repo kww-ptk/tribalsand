@@ -118,7 +118,7 @@
       el.appendChild(document.createTextNode(m.body));
       var meta = document.createElement('div');
       meta.style.cssText = 'font-size:11px;margin-top:4px;' + (mine ? 'color:rgba(255,255,255,.7)' : 'color:var(--pa-muted)');
-      meta.textContent = (mine ? 'You' : 'Concierge') + ' · ' + m.time_label;
+      meta.textContent = (mine ? (m.sender_name || 'You') : 'Concierge') + ' · ' + m.time_label;
       el.appendChild(meta);
       thread.appendChild(el);
       if (m.id && m.id > lastId) lastId = m.id;
