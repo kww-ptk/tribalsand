@@ -245,3 +245,16 @@
 .ci-addguest{margin-top:4px}
 .ci-others{margin-top:22px;padding-top:14px;border-top:1px solid var(--pa-line)}
 .ci-other__row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 2px;font-size:14px}
+
+/* ── Signature pad ─────────────────────────────────────────────────────────── */
+.ci-sign { position: relative; margin: 6px 0 4px; }
+.ci-sign-pad {
+  width: 100%; height: 150px; display: block;
+  background: #fff; border: 1.5px dashed #c3c8bf; border-radius: 9px;
+  touch-action: none;               /* critical: draw instead of scroll on touch */
+}
+.ci-sign-clear {
+  position: absolute; top: 8px; right: 10px;
+  background: none; border: 0; color: #123c30; font-weight: 600; font-size: 12px; cursor: pointer;
+}
+.ci-sign-hint { font-size: 11px; color: #9aa39a; margin-top: 4px; }

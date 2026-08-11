@@ -6,8 +6,7 @@ $cfg     = checkin_enabled_steps();
 $data    = fetch_checkin($holdId) ?? [];
 $lead    = checkin_lead_guest($holdId) ?? [];
 $welcome = setting('checkin_welcome', '');
-$waiver  = setting('checkin_waiver_text', '');
-$waiverText = $waiver !== '' ? $waiver : 'I confirm the information provided is accurate and accept the terms of stay, indemnity and insurance requirements.';
+$waiverText = checkin_waiver_text();
 $done    = checkin_is_complete($hold);
 $val     = fn($k, $src = null) => e((string)(($src ?? $data)[$k] ?? ''));
 $arrDate = !empty($data['arrival_at']) ? date('Y-m-d\TH:i', strtotime((string)$data['arrival_at'])) : '';
@@ -57,6 +56,9 @@ $waiverBlock = function (bool $signed) use ($waiverText) {
   <h2>You're all checked in</h2>
   <p>Thank you, <?= e($first) ?>. Everyone in your party is set — you can update details any time before arrival.</p>
   <a class="pa-btn pa-btn--primary" href="/booking.php?ref=<?= e($ref) ?>&view=home">Continue to your stay &rarr;</a>
+  <?php if (checkin_guest_waiver_signed($lead)): ?>
+  <a class="pa-btn pa-btn--ghost" href="/admin/consent-print.php?hold=<?= $holdId ?>&guest=<?= (int)($lead['id'] ?? 0) ?>&ref=<?= e($ref) ?>" target="_blank">Download my signed waiver</a>
+  <?php endif; ?>
   <button type="button" class="pa-btn pa-btn--ghost" id="ciEdit">Update my details</button>
 </div>
 <?php endif; ?>
@@ -143,6 +145,13 @@ $waiverBlock = function (bool $signed) use ($waiverText) {
           <label class="ci-radio"><input type="checkbox" name="waiver_agree" value="1" <?= checkin_guest_waiver_signed($lead) ? 'checked' : '' ?>> I have read and agree to the terms</label>
           <label class="ci-l">Type your full name to sign</label>
           <input class="ci-in" name="waiver_signed_name" value="<?= $val('waiver_signed_name', $lead) ?>" placeholder="Full name">
+          <label class="ci-l">Sign below with your finger</label>
+          <div class="ci-sign">
+            <button type="button" class="ci-sign-clear">Clear</button>
+            <canvas class="ci-sign-pad" data-target="#ciLeadSig"></canvas>
+          </div>
+          <input type="hidden" name="waiver_signature" id="ciLeadSig">
+          <p class="ci-sign-hint">Reception can fill your details, but you sign yourself.</p>
           <?php endif; ?>
           <div class="ci-kids" data-parent="<?= (int)($lead['id'] ?? 0) ?>">
             <?php foreach (($kids[(int)($lead['id'] ?? 0)] ?? []) as $c): ?>
@@ -180,10 +189,7 @@ $waiverBlock = function (bool $signed) use ($waiverText) {
             </div>
             <?php endif; ?>
             <?php if ($showWaiver): ?>
-            <label class="ci-radio"><input type="checkbox" data-field="waiver_agree" value="1" <?= checkin_guest_waiver_signed($g) ? 'checked' : '' ?>> They agree to the terms</label>
-            <label class="ci-l">Their full name (signature)</label>
-            <input class="ci-in" data-field="waiver_signed_name" value="<?= e((string)$g['waiver_signed_name']) ?>" placeholder="Full name">
-            <p class="ci-hint">Tip: for a personal signature, use “Send them a link” so they sign it themselves.</p>
+            <p class="ci-hint">They sign the waiver themselves — use “Send them a link”, or “Sign on this device” from the admin check-in tab if they’re with you.</p>
             <?php endif; ?>
             <button type="button" class="pa-btn pa-btn--primary ci-guest__save">Save this guest</button>
           </div>
@@ -225,4 +231,5 @@ $waiverBlock = function (bool $signed) use ($waiverText) {
 
   <p class="ci-help"><a href="/booking.php?ref=<?= e($ref) ?>&view=messages">Message the team</a> if you need help.</p>
 </form>
+<script src="/js/signature-pad.js?v=<?= @filemtime(__DIR__ . '/../../js/signature-pad.js') ?: time() ?>" defer></script>
 <script src="/js/checkin-wizard.js?v=<?= @filemtime(__DIR__ . '/../../js/checkin-wizard.js') ?: time() ?>" defer></script>

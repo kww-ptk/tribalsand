@@ -48,6 +48,15 @@ function checkin_supported(): bool {
     return $ok;
 }
 
+/** True once add_checkin_signature.sql is applied. Cached per-request. */
+function checkin_signature_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { db_query('SELECT waiver_signature FROM checkin_guests LIMIT 1'); $ok = true; }
+    catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
 function checkin_required(array $hold): bool {
     return checkin_supported() && !empty($hold['require_checkin']);
 }
@@ -101,6 +110,13 @@ function waiver_version(string $text): string {
     return substr(sha1(trim($text)), 0, 12);
 }
 
+/** The waiver terms the guest sees: the setting override, else the canonical default. */
+function checkin_waiver_text(): string {
+    $w = trim((string) setting('checkin_waiver_text', ''));
+    return $w !== '' ? $w
+        : 'I confirm the information provided is accurate and accept the terms of stay, indemnity and insurance requirements.';
+}
+
 /** Owner, or a manager who manages this booking's venue, may view passport docs. */
 function can_view_guest_docs(int $holdId): bool {
     if (is_owner()) return true;
@@ -148,11 +164,36 @@ function checkin_guest_passport_complete(?array $g): bool {
         && trim((string)($g['passport_file_key'] ?? '')) !== '';
 }
 
-/** A single guest row has signed the waiver (name + timestamp). */
+/** A single guest row has signed the waiver (name + timestamp + a drawn signature). */
 function checkin_guest_waiver_signed(?array $g): bool {
     return $g !== null
         && !empty($g['waiver_signed_at'])
-        && trim((string)($g['waiver_signed_name'] ?? '')) !== '';
+        && trim((string)($g['waiver_signed_name'] ?? '')) !== ''
+        && trim((string)($g['waiver_signature'] ?? '')) !== '';
+}
+
+/** True if $s is a PNG data-URL within the size cap (a drawn signature). Pure. */
+function checkin_valid_signature(string $s): bool {
+    $prefix = 'data:image/png;base64,';
+    if (strncmp($s, $prefix, strlen($prefix)) !== 0) return false;
+    $bin = base64_decode(substr($s, strlen($prefix)), true);
+    if ($bin === false) return false;
+    $len = strlen($bin);
+    if ($len < 8 || $len > 250 * 1024) return false;         // too small / too large
+    return strncmp($bin, "\x89PNG\r\n\x1a\n", 8) === 0;       // PNG magic bytes
+}
+
+/** How the signing surface was reached: 'reception' (admin's device) or 'own_link'. Pure. */
+function checkin_signing_method(string $via): string {
+    return $via === 'reception' ? 'reception' : 'own_link';
+}
+
+/**
+ * Integrity: only the signer may sign. A co-guest (onlyGuestId set) always signs their
+ * own row; the lead (null) may sign only the lead row. Pure.
+ */
+function checkin_can_sign_self(?int $onlyGuestId, bool $targetIsLead): bool {
+    return $onlyGuestId !== null || $targetIsLead;
 }
 
 /** Is an ADULT guest fully done — passport (if that step is required) AND waiver (if required). */

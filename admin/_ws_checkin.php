@@ -89,7 +89,15 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
         <td><?= $__fmt($g['nationality'] ?? '') ?></td>
         <td><?= $__canDocs ? $__fmt($g['passport_number'] ?? '') : '<span class="text-muted">•••• (restricted)</span>' ?></td>
         <td><?= $__fmt($g['passport_expiry'] ?? '') ?></td>
-        <td><?php if ($__waiverOk): ?>Signed by <?= e((string)$g['waiver_signed_name']) ?> on <?= e(date('j M Y', strtotime((string)$g['waiver_signed_at']))) ?><?php else: ?><span class="text-muted">Not signed</span><?php endif; ?></td>
+        <td>
+          <?php if ($__waiverOk): ?>
+            Signed by <?= e((string)$g['waiver_signed_name']) ?> on <?= e(date('j M Y', strtotime((string)$g['waiver_signed_at']))) ?>
+            <?php if ($__canDocs): ?><br><a href="/admin/consent-print.php?hold=<?= $holdId ?>&guest=<?= (int)$g['id'] ?>" target="_blank" class="btn-sm btn-outline" style="margin-top:4px">Download consent &rarr;</a><?php endif; ?>
+          <?php else: ?>
+            <span class="text-muted">Not signed</span>
+            <?php $__signLink = make_guest_pass_url($holdId, (int)$g['id']); if ($__signLink !== ''): ?><br><a href="<?= e($__signLink) ?>&amp;via=reception" target="_blank" class="btn-sm btn-outline" style="margin-top:4px">Sign on this device &rarr;</a><?php endif; ?>
+          <?php endif; ?>
+        </td>
         <td>
           <?php if (empty($g['passport_file_key'])): ?><span class="text-muted">—</span>
           <?php elseif ($__canDocs): ?><a href="/admin/checkin-file.php?hold=<?= $holdId ?>&guest=<?= (int)$g['id'] ?>" target="_blank" class="btn-sm btn-outline">View scan →</a>
