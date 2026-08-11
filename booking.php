@@ -31,7 +31,6 @@ if (!$holdId) {
 $gtoken = trim((string)($_GET['g'] ?? $_POST['g'] ?? ''));
 if ($gtoken === '' && $ref !== '' && verify_guest_ref($ref) === false) $gtoken = $ref; // internal nav carries the g-token in ref=
 $isCoGuest = false;
-$meGuestId = 0;
 if (!$holdId && $gtoken !== '' && ($gc = verify_guest_pass_token($gtoken)) !== false) {
     [$gHoldId, $gGuestId] = $gc;
     $gHold = fetch_hold_for_guest($gHoldId);
@@ -41,9 +40,9 @@ if (!$holdId && $gtoken !== '' && ($gc = verify_guest_pass_token($gtoken)) !== f
         $meDone = (!checkin_required($gHold)) || (checkin_guest_passport_complete($me) && checkin_guest_waiver_signed($me));
         // Shared + this co-guest has finished check-in → give them the full portal.
         if (share_reservation_on($gHold) && $meDone) {
-            $hold = $gHold; $holdId = $gHoldId;
+            $hold = $gHold; $holdId = $gHoldId; $error = '';   // co-guest gets the full portal — clear the earlier "invalid link" error
             $ref = $gtoken;             // the whole portal threads $ref; a g-token here makes every view work for the co-guest
-            $isCoGuest = true; $meGuestId = $gGuestId;
+            $isCoGuest = true;
         } elseif (checkin_required($gHold)) {
             // Not shared yet, or still needs to check in → the check-in screen (unchanged).
             $hold = $gHold; $holdId = $gHoldId;
@@ -125,7 +124,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $hold && $can_cancel) {
 // The lead's gate lifts once they've submitted their own part (submitted_at) even
 // if co-guests are still pending — the booking still isn't "fully checked in".
 $__ci = ($hold && checkin_supported()) ? fetch_checkin($holdId) : null;
-$checkin_gate = $hold && checkin_required($hold) && !checkin_is_complete($hold) && empty($__ci['submitted_at']);
+// Co-guests who reached the portal have already finished their own check-in, so the
+// lead-centric gate never applies to them (it would force them into the lead wizard).
+$checkin_gate = $hold && !$isCoGuest && checkin_required($hold) && !checkin_is_complete($hold) && empty($__ci['submitted_at']);
 
 $status     = $hold['status'] ?? '';
 
