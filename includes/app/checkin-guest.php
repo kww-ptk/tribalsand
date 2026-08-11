@@ -37,6 +37,9 @@ $otherStatus = function (array $g) use ($showWaiver) {
         <?php if (checkin_guest_waiver_signed($me)): ?>
         <a class="pa-btn pa-btn--ghost" href="/admin/consent-print.php?hold=<?= $holdId ?>&guest=<?= (int)$me['id'] ?>&g=<?= e($gtoken) ?>" target="_blank" style="margin-top:12px">Download my signed waiver</a>
         <?php endif; ?>
+        <?php if (share_reservation_on($hold)): ?>
+        <a class="pa-btn pa-btn--primary" href="/booking.php?g=<?= e($gtoken) ?>&view=home" style="margin-top:12px">Continue to your stay &rarr;</a>
+        <?php endif; ?>
       </div>
     <?php else: ?>
 

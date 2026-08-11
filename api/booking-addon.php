@@ -10,8 +10,9 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(405); exit(json_
 $data = json_decode(file_get_contents('php://input'), true) ?? [];
 $str  = fn($v) => is_scalar($v) ? trim((string)$v) : '';
 
-$hold = resolve_booking_by_ref($str($data['ref'] ?? ''));
-if (!$hold) { http_response_code(403); exit(json_encode(['ok'=>false,'error'=>'Booking not found.'])); }
+$actor = resolve_portal_actor($str($data['ref'] ?? $data['g'] ?? ''));
+if (!$actor) { http_response_code(403); exit(json_encode(['ok'=>false,'error'=>'Booking not found.'])); }
+$hold = $actor['hold'];
 if (!in_array($hold['status'], ['pending','confirmed'], true)) {
     http_response_code(409); exit(json_encode(['ok'=>false,'error'=>'This booking can no longer take additions.']));
 }
@@ -103,6 +104,7 @@ try {
         'pax'          => $paxValue,
         'board_post_id'=> $boardPostId,
         'assigned_to'  => $assignee,
+        'requested_by' => $actor['guest_id'],
     ]);
 
     // Auto-start a conversation for this request so guest + staff manage it in one place.
@@ -110,8 +112,11 @@ try {
     $redirect = null;
     try {
         seed_request_message((int)$hold['id'], $addonId, $threadBody ?? $details);
-        $ref = make_guest_ref((int)$hold['id']); // re-sign; never trust the posted ref for a URL
-        $redirect = '/booking.php?ref=' . urlencode($ref) . '&view=messages&thread=' . $addonId;
+        // Re-mint the acting party's own token for the redirect (never trust the posted value).
+        $tok = $actor['is_lead']
+            ? make_guest_ref((int)$hold['id'])
+            : make_guest_pass_token((int)$hold['id'], (int)$actor['guest_id']);
+        $redirect = '/booking.php?ref=' . urlencode($tok) . '&view=messages&thread=' . $addonId;
     } catch (Throwable $e) {
         error_log('[booking-addon] thread seed failed: ' . $e->getMessage());
     }
