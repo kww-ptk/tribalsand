@@ -120,6 +120,24 @@
     }
   });
 
+  // Arrival: show only the chosen mode's fields, and reveal the free-text
+  // airport box when "Other" is picked. First paint is server-rendered.
+  form.addEventListener('change', function (e) {
+    var t = e.target;
+    if (t.classList.contains('ci-f-mode')) {
+      var step = t.closest('.ci-step');
+      step.querySelectorAll('.ci-mode-fields').forEach(function (g) {
+        g.hidden = g.getAttribute('data-mode') !== t.value;
+      });
+      return;
+    }
+    if (t.classList.contains('ci-f-airport')) {
+      var box = t.closest('.ci-mode-fields').querySelector('.ci-airport-other');
+      if (box) box.hidden = t.value !== '__other';
+      return;
+    }
+  });
+
   // Delegated passport upload — any .ci-upload file input. guest_id from the enclosing card (absent → lead).
   form.addEventListener('change', function (e) {
     if (e.target.type !== 'file' || !e.target.closest('.ci-upload')) return;

@@ -103,10 +103,52 @@ $waiverBlock = function (bool $signed) use ($waiverText) {
       <div class="ci-step__h"><span class="ci-step__num">Step <?= $i ?> of <?= $n ?></span><h3><?= e($s['label']) ?><?= $s['required'] ? ' <span class="ci-req">*</span>' : '' ?></h3></div>
 
       <?php if ($key === 'arrival'): ?>
-        <label class="ci-l">Airport of arrival</label>
-        <input class="ci-in" name="arrival_airport" value="<?= $val('arrival_airport') ?>" placeholder="e.g. Moi Intl (MBA)">
-        <label class="ci-l">Flight number</label>
-        <input class="ci-in" name="flight_number" value="<?= $val('flight_number') ?>" placeholder="e.g. KQ610">
+        <?php
+          $amOn     = checkin_arrival_mode_supported();
+          $modes    = checkin_arrival_modes();
+          $airports = checkin_airports();
+          $mode     = $amOn ? trim((string)($data['arrival_mode'] ?? '')) : '';
+          if (!array_key_exists($mode, $modes)) $mode = $amOn ? 'flight' : '';
+          $savedAir = trim((string)($data['arrival_airport'] ?? ''));
+          // A saved airport that isn't in the catalog came from the "Other" box.
+          $airOther = $savedAir !== '' && !array_key_exists($savedAir, $airports);
+        ?>
+        <?php if ($amOn): ?>
+        <label class="ci-l">How will you arrive?</label>
+        <div class="ci-modes">
+          <?php foreach ($modes as $mk => $ml): ?>
+          <label class="ci-radio"><input type="radio" class="ci-f-mode" name="arrival_mode" value="<?= e($mk) ?>" <?= $mode === $mk ? 'checked' : '' ?>> <?= e($ml) ?></label>
+          <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+
+        <div class="ci-mode-fields" data-mode="flight"<?= ($amOn && $mode !== 'flight') ? ' hidden' : '' ?>>
+          <label class="ci-l">Airport of arrival</label>
+          <select class="ci-in ci-f-airport" name="arrival_airport">
+            <option value="">— select —</option>
+            <?php foreach ($airports as $av => $al): ?>
+            <option value="<?= e($av) ?>" <?= $savedAir === $av ? 'selected' : '' ?>><?= e($al) ?></option>
+            <?php endforeach; ?>
+            <option value="__other" <?= $airOther ? 'selected' : '' ?>>Other — I&rsquo;ll type it</option>
+          </select>
+          <div class="ci-airport-other"<?= $airOther ? '' : ' hidden' ?>>
+            <label class="ci-l">Which airport?</label>
+            <input class="ci-in" name="arrival_airport_other" value="<?= $airOther ? e($savedAir) : '' ?>" placeholder="e.g. Nairobi JKIA">
+          </div>
+          <label class="ci-l">Flight number</label>
+          <input class="ci-in" name="flight_number" value="<?= $val('flight_number') ?>" placeholder="e.g. KQ610">
+        </div>
+
+        <div class="ci-mode-fields" data-mode="road"<?= ($amOn && $mode === 'road') ? '' : ' hidden' ?>>
+          <label class="ci-l">Vehicle / number plate <span class="ci-opt">(optional)</span></label>
+          <input class="ci-in" name="arrival_vehicle" value="<?= $val('arrival_vehicle') ?>" placeholder="e.g. white Land Cruiser, KDD 123A">
+        </div>
+
+        <div class="ci-mode-fields" data-mode="other"<?= ($amOn && $mode === 'other') ? '' : ' hidden' ?>>
+          <label class="ci-l">How are you arriving?</label>
+          <input class="ci-in" name="arrival_note" value="<?= $val('arrival_note') ?>" placeholder="e.g. by boat, or dropped off by a tour operator">
+        </div>
+
         <label class="ci-l">Arrival date &amp; time</label>
         <input class="ci-in" type="datetime-local" name="arrival_at" value="<?= e($arrDate) ?>">
 

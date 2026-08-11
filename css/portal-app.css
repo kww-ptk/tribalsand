@@ -246,6 +246,10 @@
 .ci-others{margin-top:22px;padding-top:14px;border-top:1px solid var(--pa-line)}
 .ci-other__row{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:8px 2px;font-size:14px}
 
+/* ── Arrival modes ─────────────────────────────────────────────────────────── */
+.ci-modes{margin:4px 0 6px}
+.ci-opt{font-weight:400;text-transform:none;letter-spacing:0}
+
 /* ── Signature pad ─────────────────────────────────────────────────────────── */
 .ci-sign { position: relative; margin: 6px 0 4px; }
 .ci-sign-pad {
