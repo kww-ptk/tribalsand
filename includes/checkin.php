@@ -155,6 +155,17 @@ function checkin_guest_waiver_signed(?array $g): bool {
         && trim((string)($g['waiver_signed_name'] ?? '')) !== '';
 }
 
+/** True if $s is a PNG data-URL within the size cap (a drawn signature). Pure. */
+function checkin_valid_signature(string $s): bool {
+    $prefix = 'data:image/png;base64,';
+    if (strncmp($s, $prefix, strlen($prefix)) !== 0) return false;
+    $bin = base64_decode(substr($s, strlen($prefix)), true);
+    if ($bin === false) return false;
+    $len = strlen($bin);
+    if ($len < 8 || $len > 250 * 1024) return false;         // too small / too large
+    return strncmp($bin, "\x89PNG\r\n\x1a\n", 8) === 0;       // PNG magic bytes
+}
+
 /** Is an ADULT guest fully done — passport (if that step is required) AND waiver (if required). */
 function checkin_guest_complete(?array $g, array $config): bool {
     if ($g === null || !empty($g['is_child'])) return false;

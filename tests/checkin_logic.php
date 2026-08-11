@@ -133,5 +133,15 @@ if (checkin_supported()) {
     }
 }
 
+// ── Signature validation (pure) ─────────────────────────────────────────────
+$pngBytes = "\x89PNG\r\n\x1a\n" . str_repeat("x", 200);
+check('valid png data-url',      checkin_valid_signature('data:image/png;base64,' . base64_encode($pngBytes)) === true);
+check('reject non-png mime',     checkin_valid_signature('data:image/gif;base64,' . base64_encode($pngBytes)) === false);
+check('reject plain string',     checkin_valid_signature('hello') === false);
+check('reject empty',            checkin_valid_signature('') === false);
+check('reject non-png bytes',    checkin_valid_signature('data:image/png;base64,' . base64_encode(str_repeat("x", 200))) === false);
+$oversize = 'data:image/png;base64,' . base64_encode("\x89PNG\r\n\x1a\n" . str_repeat("x", 300 * 1024));
+check('reject oversize',         checkin_valid_signature($oversize) === false);
+
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);
