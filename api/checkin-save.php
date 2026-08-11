@@ -48,10 +48,23 @@ db_query(
     [':n'=>$s('passport_name'), ':num'=>$s('passport_number'), ':nat'=>$s('nationality'),
      ':exp'=>$s('passport_expiry'), ':g'=>$guestId, ':h'=>$holdId]);
 
-// ── Per-guest waiver signature (only when they tick + type a name) ──────────
-if (!empty($_POST['waiver_agree']) && $s('waiver_signed_name')) {
-    db_query("UPDATE checkin_guests SET waiver_signed_name=:n, waiver_signed_at=now(), waiver_signed_ip=:ip, waiver_version=:v WHERE id=:g AND hold_id=:h",
-        [':n'=>$s('waiver_signed_name'), ':ip'=>client_ip(), ':v'=>waiver_version(setting('checkin_waiver_text','')), ':g'=>$guestId, ':h'=>$holdId]);
+// ── Per-guest waiver signature: self-sign only, requires a drawn signature ──
+$sig = (string)($_POST['waiver_signature'] ?? '');
+$targetIsLead = (bool) db_query('SELECT is_lead FROM checkin_guests WHERE id=:g AND hold_id=:h', [':g'=>$guestId, ':h'=>$holdId])->fetchColumn();
+if (!empty($_POST['waiver_agree']) && $s('waiver_signed_name')
+    && checkin_can_sign_self($onlyGuestId, $targetIsLead)
+    && checkin_valid_signature($sig)) {
+    $terms  = checkin_waiver_text();
+    $method = checkin_signing_method((string)($_POST['via'] ?? ''));
+    db_query(
+        "UPDATE checkin_guests
+            SET waiver_signed_name=:n, waiver_signed_at=now(), waiver_signed_ip=:ip,
+                waiver_version=:v, waiver_signature=:sig, waiver_terms_snapshot=:terms,
+                waiver_signed_user_agent=:ua, waiver_signed_method=:m
+          WHERE id=:g AND hold_id=:h",
+        [':n'=>$s('waiver_signed_name'), ':ip'=>client_ip(), ':v'=>waiver_version($terms),
+         ':sig'=>$sig, ':terms'=>$terms, ':ua'=>substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 500),
+         ':m'=>$method, ':g'=>$guestId, ':h'=>$holdId]);
 }
 
 $do = $_POST['do'] ?? 'save';
