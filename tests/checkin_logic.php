@@ -143,5 +143,13 @@ check('reject non-png bytes',    checkin_valid_signature('data:image/png;base64,
 $oversize = 'data:image/png;base64,' . base64_encode("\x89PNG\r\n\x1a\n" . str_repeat("x", 300 * 1024));
 check('reject oversize',         checkin_valid_signature($oversize) === false);
 
+// ── Signing method + self-sign integrity (pure) ─────────────────────────────
+check('method reception',        checkin_signing_method('reception') === 'reception');
+check('method default own_link',  checkin_signing_method('') === 'own_link');
+check('method other own_link',    checkin_signing_method('whatever') === 'own_link');
+check('co-guest signs self',      checkin_can_sign_self(42, false) === true);
+check('lead signs own lead row',  checkin_can_sign_self(null, true) === true);
+check('lead cannot sign other',   checkin_can_sign_self(null, false) === false);
+
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);

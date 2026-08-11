@@ -166,6 +166,19 @@ function checkin_valid_signature(string $s): bool {
     return strncmp($bin, "\x89PNG\r\n\x1a\n", 8) === 0;       // PNG magic bytes
 }
 
+/** How the signing surface was reached: 'reception' (admin's device) or 'own_link'. Pure. */
+function checkin_signing_method(string $via): string {
+    return $via === 'reception' ? 'reception' : 'own_link';
+}
+
+/**
+ * Integrity: only the signer may sign. A co-guest (onlyGuestId set) always signs their
+ * own row; the lead (null) may sign only the lead row. Pure.
+ */
+function checkin_can_sign_self(?int $onlyGuestId, bool $targetIsLead): bool {
+    return $onlyGuestId !== null || $targetIsLead;
+}
+
 /** Is an ADULT guest fully done — passport (if that step is required) AND waiver (if required). */
 function checkin_guest_complete(?array $g, array $config): bool {
     if ($g === null || !empty($g['is_child'])) return false;
