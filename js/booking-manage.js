@@ -100,6 +100,7 @@
     var lastId = parseInt(thread.dataset.last || '0', 10) || 0;
     var pollUrl = thread.dataset.pollUrl;
     var meSender = thread.dataset.me || 'guest';
+    var meGuest  = parseInt(thread.dataset.meGuest || '0', 10) || 0;
 
     function atBottom() {
       return (window.innerHeight + window.scrollY) >= (document.body.offsetHeight - 120);
@@ -107,6 +108,10 @@
     function appendMsg(m) {
       if (m.id && document.querySelector('[data-mid="' + m.id + '"]')) return; // dedupe
       var mine = m.sender === meSender;
+      // On a shared booking every guest message has sender='guest'. Alignment
+      // still keys on that; authorship needs the guest id. Matches the server
+      // render in includes/app/messages.php.
+      var authored = mine && (!meGuest || !m.guest_id || m.guest_id === meGuest);
       var empty = thread.querySelector('.bm-empty');
       if (empty) empty.style.display = 'none';
       var el = document.createElement('div');
@@ -118,7 +123,7 @@
       el.appendChild(document.createTextNode(m.body));
       var meta = document.createElement('div');
       meta.style.cssText = 'font-size:11px;margin-top:4px;' + (mine ? 'color:rgba(255,255,255,.7)' : 'color:var(--pa-muted)');
-      meta.textContent = (mine ? (m.sender_name || 'You') : 'Concierge') + ' · ' + m.time_label;
+      meta.textContent = (mine ? (authored ? 'You' : (m.sender_name || 'Guest')) : 'Concierge') + ' · ' + m.time_label;
       el.appendChild(meta);
       thread.appendChild(el);
       if (m.id && m.id > lastId) lastId = m.id;

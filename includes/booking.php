@@ -182,6 +182,29 @@ function attributed_display_name(string $guestName, bool $isLead, string $bookin
 }
 
 /**
+ * Who is viewing the portal. Pure — callers do the fetching.
+ *
+ * A co-guest is named only by their own passport_name; they must never inherit
+ * the booking name, which is the lead's. The lead falls back to it because a lead
+ * has no passport_name unless the passport step is enabled.
+ *
+ * Returns ['guest_id' => int|null, 'is_lead' => bool, 'name' => string, 'first' => string].
+ */
+function portal_actor(?array $leadRow, ?array $meRow, bool $isCoGuest, string $bookingName): array {
+    if ($isCoGuest && $meRow) {
+        $name = trim((string)($meRow['passport_name'] ?? ''));
+        $id   = (int)($meRow['id'] ?? 0);
+        return ['guest_id' => $id ?: null, 'is_lead' => false, 'name' => $name,
+                'first' => $name === '' ? '' : explode(' ', $name)[0]];
+    }
+    $name = trim((string)($leadRow['passport_name'] ?? ''));
+    if ($name === '') $name = trim($bookingName);
+    $id = (int)($leadRow['id'] ?? 0);
+    return ['guest_id' => $id ?: null, 'is_lead' => true, 'name' => $name,
+            'first' => $name === '' ? '' : explode(' ', $name)[0]];
+}
+
+/**
  * Resolve a portal token (from ?ref= / ?g= / a posted field) to the acting party.
  * Returns ['hold'=>row, 'guest_id'=>int, 'is_lead'=>bool] or false.
  */
