@@ -48,6 +48,15 @@ function checkin_supported(): bool {
     return $ok;
 }
 
+/** True once add_checkin_signature.sql is applied. Cached per-request. */
+function checkin_signature_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { db_query('SELECT waiver_signature FROM checkin_guests LIMIT 1'); $ok = true; }
+    catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
 function checkin_required(array $hold): bool {
     return checkin_supported() && !empty($hold['require_checkin']);
 }
@@ -155,11 +164,12 @@ function checkin_guest_passport_complete(?array $g): bool {
         && trim((string)($g['passport_file_key'] ?? '')) !== '';
 }
 
-/** A single guest row has signed the waiver (name + timestamp). */
+/** A single guest row has signed the waiver (name + timestamp + a drawn signature). */
 function checkin_guest_waiver_signed(?array $g): bool {
     return $g !== null
         && !empty($g['waiver_signed_at'])
-        && trim((string)($g['waiver_signed_name'] ?? '')) !== '';
+        && trim((string)($g['waiver_signed_name'] ?? '')) !== ''
+        && trim((string)($g['waiver_signature'] ?? '')) !== '';
 }
 
 /** True if $s is a PNG data-URL within the size cap (a drawn signature). Pure. */

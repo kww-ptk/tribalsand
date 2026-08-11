@@ -64,22 +64,24 @@ check('transfer yes + details = complete',checkin_step_complete('transfer', ['ne
 check('passport needs name+num+file',     checkin_step_complete('passport', [], ['passport_name' => 'A', 'passport_number' => 'B']) === false);
 check('passport complete w/ file',        checkin_step_complete('passport', [], ['passport_name' => 'A', 'passport_number' => 'B', 'passport_file_key' => 'checkin/1/x.jpg']) === true);
 check('waiver needs signature',           checkin_step_complete('waiver', [], ['waiver_signed_name' => 'A']) === false);
-check('waiver complete when signed',      checkin_step_complete('waiver', [], ['waiver_signed_name' => 'A', 'waiver_signed_at' => '2026-08-06 10:00']) === true);
+check('waiver complete when signed',      checkin_step_complete('waiver', [], ['waiver_signed_name' => 'A', 'waiver_signed_at' => '2026-08-06 10:00', 'waiver_signature' => 'sig']) === true);
 
 // ── Missing-steps aggregation ──────────────────────────────────────────────
 $cfgReq = ['passport' => ['enabled' => true, 'required' => true], 'waiver' => ['enabled' => true, 'required' => true], 'dietary' => ['enabled' => true, 'required' => false]];
 check('missing lists passport+waiver',   checkin_missing_steps($cfgReq, [], null) === ['passport', 'waiver']);
-$fullLead = ['passport_name' => 'A', 'passport_number' => 'B', 'passport_file_key' => 'k', 'waiver_signed_name' => 'A', 'waiver_signed_at' => '2026-08-06'];
+$fullLead = ['passport_name' => 'A', 'passport_number' => 'B', 'passport_file_key' => 'k', 'waiver_signed_name' => 'A', 'waiver_signed_at' => '2026-08-06', 'waiver_signature' => 'sig'];
 $fullData = [];
 check('missing empty when all done',     checkin_missing_steps($cfgReq, $fullData, $fullLead) === []);
 check('optional step never missing',     !in_array('dietary', checkin_missing_steps($cfgReq, [], null), true));
 
 // ── Multi-guest helpers (pure) ─────────────────────────────────────────────
-$adult = ['passport_name'=>'A','passport_number'=>'B','passport_file_key'=>'k','waiver_signed_name'=>'A','waiver_signed_at'=>'2026-08-06'];
+$adult = ['passport_name'=>'A','passport_number'=>'B','passport_file_key'=>'k','waiver_signed_name'=>'A','waiver_signed_at'=>'2026-08-06','waiver_signature'=>'sig'];
 check('guest passport complete',   checkin_guest_passport_complete($adult) === true);
 check('guest passport incomplete', checkin_guest_passport_complete(['passport_name'=>'A','passport_number'=>'B']) === false);
 check('guest waiver signed',       checkin_guest_waiver_signed($adult) === true);
 check('guest waiver unsigned',     checkin_guest_waiver_signed(['waiver_signed_name'=>'A']) === false);
+check('waiver needs a signature',  checkin_guest_waiver_signed(['waiver_signed_name'=>'A','waiver_signed_at'=>'2026-08-06']) === false);
+check('waiver signed w/ signature', checkin_guest_waiver_signed(['waiver_signed_name'=>'A','waiver_signed_at'=>'2026-08-06','waiver_signature'=>'sig']) === true);
 check('adult complete needs both', checkin_guest_complete($adult, $cfgReq) === true);
 check('adult missing waiver',      checkin_guest_complete(['passport_name'=>'A','passport_number'=>'B','passport_file_key'=>'k'], $cfgReq) === false);
 check('child never counts',        checkin_guest_complete(['is_child'=>true] + $adult, $cfgReq) === false);
