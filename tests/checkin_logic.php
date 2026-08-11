@@ -229,6 +229,15 @@ check('display name first word',  guest_display_name(['passport_name'=>'Jess Ach
 check('display name blank=Guest',  guest_display_name(['passport_name'=>'']) === 'Guest');
 check('display name null=Guest',   guest_display_name(null) === 'Guest');
 
+// ── Attribution name: falls back to the booking name for an unnamed lead ────
+check('attributed own name wins',        attributed_display_name('Patrik Otieno', false, 'Jessica Mwangi') === 'Patrik');
+check('attributed lead uses booking',    attributed_display_name('', true, 'Jessica Mwangi') === 'Jessica');
+check('attributed co-guest = Guest',     attributed_display_name('', false, 'Jessica Mwangi') === 'Guest');
+check('attributed lead no booking name', attributed_display_name('', true, '') === 'Guest');
+check('attributed trims whitespace',     attributed_display_name('   ', true, 'Jessica Mwangi') === 'Jessica');
+check('attributed first word only',      attributed_display_name('Anne Marie Wanjiru', false, '') === 'Anne');
+check('attributed lead own name beats booking', attributed_display_name('Jess Achieng', true, 'Jessica Mwangi') === 'Jess');
+
 // ── C-2 support guards return a bool (pure shape) ───────────────────────────
 check('bill_item_guest_supported is bool',     is_bool(bill_item_guest_supported()));
 check('message_sender_guest_supported is bool', is_bool(message_sender_guest_supported()));

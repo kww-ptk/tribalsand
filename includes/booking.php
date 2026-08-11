@@ -168,6 +168,20 @@ function guest_display_name(?array $g): string {
 }
 
 /**
+ * Display name for an attributed row: the guest's own name, the booking name for
+ * an unnamed lead, else "Guest". Returns the first word only, matching
+ * guest_display_name(), so attribution reads the same everywhere.
+ *
+ * The lead fallback exists because a lead only gets a passport_name when the
+ * passport step is enabled — without it their own requests read as "Guest". Pure.
+ */
+function attributed_display_name(string $guestName, bool $isLead, string $bookingName): string {
+    $n = trim($guestName);
+    if ($n === '' && $isLead) $n = trim($bookingName);
+    return $n === '' ? 'Guest' : explode(' ', $n)[0];
+}
+
+/**
  * Resolve a portal token (from ?ref= / ?g= / a posted field) to the acting party.
  * Returns ['hold'=>row, 'guest_id'=>int, 'is_lead'=>bool] or false.
  */
