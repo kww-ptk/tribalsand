@@ -95,8 +95,24 @@
 .pa-tag--promotion{background:#FAEEDA;color:#854F0B;}
 
 /* ── Responsive card grid (browse-style lists) ── */
-.pa-grid{display:grid;grid-template-columns:1fr;gap:12px;}
+/* Two-up on a phone: these are browse lists (Activities, What's on), so a guest
+   is scanning options rather than reading one. The 720px rule below widens it
+   further on desktop. */
+.pa-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;}
 .pa-grid .pa-card{margin-bottom:0;}
+/* A card whose request form is open spans the row — the form (guests, date,
+   notes, total) cannot work in a ~165px column. Same trick as .cx-tile. */
+.pa-grid .pa-card.is-open{grid-column:1 / -1;}
+@media (max-width:719px){
+  .pa-grid .pa-media{height:92px;}
+  .pa-grid .pa-card__body{padding:11px 12px;}
+  .pa-grid .pa-card__title{font-size:14px;}
+  .pa-grid .pa-card__meta{font-size:11.5px;}
+  .pa-grid .pa-card .pa-btn{padding:10px 8px;font-size:13px;}
+  /* An open card is full width again, so its controls get their room back. */
+  .pa-grid .pa-card.is-open .pa-media{height:120px;}
+  .pa-grid .pa-card.is-open .pa-btn{padding:11px 14px;font-size:14px;}
+}
 
 /* ── Desktop: widen the shell + flow cards into columns ── */
 @media (min-width:720px){
