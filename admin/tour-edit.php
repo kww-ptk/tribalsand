@@ -42,7 +42,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ':category'  => trim($_POST['category'] ?? 'classic'),
                 ':tag_label' => trim($_POST['tag_label']?? ''),
                 ':duration'  => trim($_POST['duration'] ?? ''),
-                ':price'     => trim($_POST['price']    ?? ''),
                 ':short_desc'=> trim($_POST['short_desc']?? ''),
                 ':long_desc' => trim($_POST['long_desc'] ?? ''),
                 ':highlights'=> json_encode($highlights),
@@ -54,9 +53,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
             if ($isNew) {
                 db_query(
-                    "INSERT INTO tours (name,slug,category,tag_label,duration,price,short_desc,long_desc,highlights_json,
+                    "INSERT INTO tours (name,slug,category,tag_label,duration,short_desc,long_desc,highlights_json,
                                         price_amount,price_per_person,max_pax,whats_included)
-                     VALUES (:name,:slug,:category,:tag_label,:duration,:price,:short_desc,:long_desc,:highlights,
+                     VALUES (:name,:slug,:category,:tag_label,:duration,:short_desc,:long_desc,:highlights,
                              :price_amount,:per_person,:max_pax,:whats_included)",
                     $data
                 );
@@ -71,7 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $data[':id'] = $id;
                 db_query(
                     "UPDATE tours SET name=:name,slug=:slug,category=:category,tag_label=:tag_label,
-                     duration=:duration,price=:price,short_desc=:short_desc,long_desc=:long_desc,highlights_json=:highlights,
+                     duration=:duration,short_desc=:short_desc,long_desc=:long_desc,highlights_json=:highlights,
                      price_amount=:price_amount,price_per_person=:per_person,max_pax=:max_pax,whats_included=:whats_included,
                      updated_at=NOW() WHERE id=:id",
                     $data
@@ -273,15 +272,24 @@ include __DIR__ . '/_layout.php';
           <label>Duration</label>
           <input type="text" name="duration" value="<?= e($tour['duration'] ?? '') ?>" placeholder="e.g. 3 days / 2 nights">
         </div>
-        <div class="field">
-          <label>Price <span class="text-muted">(activities; shown on card)</span></label>
-          <input type="text" name="price" value="<?= e($tour['price'] ?? '') ?>" placeholder="e.g. From $60 / person">
-        </div>
       </div>
 
       <div style="margin:14px 0">
-        <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">Booking price <span style="color:var(--muted);font-weight:400">(numeric — used for guest requests &amp; the bill)</span></label>
+        <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">Price <span style="color:var(--muted);font-weight:400">(shown on the guest card, and charged on the bill)</span></label>
         <input type="number" name="price_amount" step="0.01" min="0" value="<?= e($tour['price_amount'] ?? '') ?>" placeholder="Enter price" style="width:160px;padding:8px 10px">
+        <?php
+          // Until this tour is priced numerically, show whatever was typed into the
+          // old free-text Price field. That column is written by nothing now and read
+          // by nothing ever — this is the only way the owner sees it again. It is NOT
+          // auto-converted: "From $60 / person" would mean guessing a currency and
+          // guessing per-person, then silently charging a guest that number.
+          $__legacyPrice = trim((string)($tour['price'] ?? ''));
+        ?>
+        <?php if ($__legacyPrice !== '' && !is_priced($tour['price_amount'] ?? null)): ?>
+        <p class="text-muted" style="margin:6px 0 0;font-size:12.5px">
+          Previously entered as text: <strong><?= e($__legacyPrice) ?></strong> — retype it above as a number to use it.
+        </p>
+        <?php endif; ?>
         <label style="margin-left:14px;font-size:13px"><input type="checkbox" name="price_per_person" value="1" <?= (($tour['price_per_person'] ?? true) && ($tour['price_per_person'] ?? 't') !== 'f') ? 'checked' : '' ?>> Price is per person</label>
         <label style="margin-left:14px;font-size:13px">Max pax <input type="number" name="max_pax" min="1" value="<?= e($tour['max_pax'] ?? '') ?>" placeholder="Enter max guests" style="width:80px;padding:8px 10px"></label>
       </div>
