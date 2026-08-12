@@ -27,8 +27,14 @@ $s = fn($k) => (($v = trim((string)($_POST[$k] ?? ''))) === '') ? null : $v;
 // ── Booking-level fields (LEAD only — booking_checkin is hold-scoped) ───────
 if ($isLead) {
     $arrivalAt = ($_POST['arrival_at'] ?? '') !== '' ? date('Y-m-d H:i:s', strtotime((string)$_POST['arrival_at'])) : null;
+    // 'TRUE'/'FALSE' strings, not PHP booleans. db() runs with
+    // PDO::ATTR_EMULATE_PREPARES, which renders a bound PHP false as '' — and
+    // Postgres rejects '' for a boolean column ("invalid input syntax for type
+    // boolean"). Answering "No, I'll make my own way" used to fatal here. NULL
+    // still means unanswered. This matches the convention used everywhere else
+    // in the codebase (see includes/auth.php:153, admin/services.php:36).
     $needsTransfer = array_key_exists('needs_transfer', $_POST) && $_POST['needs_transfer'] !== ''
-        ? ($_POST['needs_transfer'] === '1') : null;
+        ? ($_POST['needs_transfer'] === '1' ? 'TRUE' : 'FALSE') : null;
 
     // Arrival mode: validated against the catalog, '' when unknown or unmigrated.
     $mode = '';
