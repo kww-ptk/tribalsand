@@ -34,6 +34,40 @@ check('enabled steps exclude waiver',     !array_key_exists('waiver', checkin_en
 check('unspecified step keeps default',   $cfg2['passport']['required'] === true);
 set_setting('checkin_steps', $prev); // restore
 
+// ── Check-in / check-out windows (settings + defaults) ──────────────────────
+$prevTimes = [];
+foreach (['checkin_time_from','checkin_time_to','checkout_time_from','checkout_time_to','checkin_early_late_note'] as $__k) {
+    $prevTimes[$__k] = setting($__k, '');
+    set_setting($__k, '');
+}
+$t = checkin_times();
+check('times has all five keys',  array_keys($t) === ['ci_from','ci_to','co_from','co_to','note']);
+check('default check-in from',    $t['ci_from'] === '14:00');
+check('default check-in to',      $t['ci_to']   === '20:00');
+check('default check-out from',   $t['co_from'] === '10:00');
+check('default check-out to',     $t['co_to']   === '11:00');
+check('default note non-empty',   trim($t['note']) !== '');
+set_setting('checkin_time_from', '15:30');
+set_setting('checkin_early_late_note', 'Ask reception.');
+$t2 = checkin_times();
+check('override check-in from',   $t2['ci_from'] === '15:30');
+check('override note',            $t2['note'] === 'Ask reception.');
+check('unset key keeps default',  $t2['ci_to'] === '20:00');
+foreach ($prevTimes as $__k => $__v) { set_setting($__k, $__v); }   // restore
+
+// ── Arrival flag against the window (pure) ──────────────────────────────────
+check('flag before window = early', checkin_arrival_flag('10:00', '14:00', '20:00') === 'early');
+check('flag after window = late',   checkin_arrival_flag('22:30', '14:00', '20:00') === 'late');
+check('flag inside window = none',  checkin_arrival_flag('16:00', '14:00', '20:00') === '');
+check('flag on opening boundary',   checkin_arrival_flag('14:00', '14:00', '20:00') === '');
+check('flag on closing boundary',   checkin_arrival_flag('20:00', '14:00', '20:00') === '');
+check('flag one minute early',      checkin_arrival_flag('13:59', '14:00', '20:00') === 'early');
+check('flag one minute late',       checkin_arrival_flag('20:01', '14:00', '20:00') === 'late');
+check('flag null = none',           checkin_arrival_flag(null, '14:00', '20:00') === '');
+check('flag empty = none',          checkin_arrival_flag('', '14:00', '20:00') === '');
+check('flag garbage = none',        checkin_arrival_flag('not a time', '14:00', '20:00') === '');
+check('flag accepts seconds',       checkin_arrival_flag('10:00:00', '14:00', '20:00') === 'early');
+
 // ── waiver_version ─────────────────────────────────────────────────────────
 check('waiver_version stable',   waiver_version('  terms  ') === waiver_version('terms'));
 check('waiver_version differs',   waiver_version('a') !== waiver_version('b'));
