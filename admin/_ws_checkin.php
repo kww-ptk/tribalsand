@@ -61,7 +61,14 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
   <?php endif; ?>
 </div></div>
 
-<?php if ($__ci || $__adults): ?>
+<?php
+// Also render for anyone who may manage guest docs, even when the guest has
+// submitted nothing. Previously this required $__ci or $__adults, so a brand-new
+// booking fell through to "Nothing submitted yet." and the "+ Add adult" form
+// below — the only way for staff to start a roster — was unreachable. Reception
+// could not fill anything in until the guest had already begun themselves.
+?>
+<?php if ($__ci || $__adults || $__canDocs): ?>
 
 <?php if ($__ci): ?>
 <?php
@@ -92,7 +99,9 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
 
 <div class="card"><div class="card__head"><span class="card__title">Guests</span></div><div class="card__body" style="padding:0">
   <?php if (!$__adults): ?>
-  <p class="text-muted" style="margin:0;padding:20px">No guest identity captured yet.</p>
+  <p class="text-muted" style="margin:0;padding:20px 20px 4px"><?= $__canDocs
+      ? 'Nothing captured yet — add each adult below, then fill in their passport details. They sign for themselves.'
+      : 'No guest identity captured yet.' ?></p>
   <?php if ($__canDocs): ?>
   <div style="padding:12px">
     <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0">
