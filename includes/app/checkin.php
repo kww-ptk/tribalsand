@@ -222,8 +222,11 @@ if (isset($cfg['arrival'])) $needs[] = ['&#9992;&#65039;', 'Flight number &amp; 
           <input class="ci-in" name="arrival_note" value="<?= $val('arrival_note') ?>" placeholder="e.g. by boat, or dropped off by a tour operator">
         </div>
 
-        <label class="ci-l" data-mode-label="flight"<?= $mode === 'flight' ? '' : ' hidden' ?>>Flight arrival <span class="ci-opt">(landing time)</span></label>
-        <label class="ci-l" data-mode-label="other"<?= $mode === 'flight' ? ' hidden' : '' ?>>When do you expect to reach us?</label>
+        <?php // $isFlight, not ($mode === 'flight'): identical whenever $amOn, but pre-migration
+              // ($amOn false, $mode '') arrival_at IS treated as a landing time and the flight
+              // field groups above ARE shown, so the label must say so too. ?>
+        <label class="ci-l" data-mode-label="flight"<?= $isFlight ? '' : ' hidden' ?>>Flight arrival <span class="ci-opt">(landing time)</span></label>
+        <label class="ci-l" data-mode-label="other"<?= $isFlight ? ' hidden' : '' ?>>When do you expect to reach us?</label>
         <input class="ci-in" type="datetime-local" name="arrival_at" value="<?= e($arrDate) ?>">
 
         <?php if ($paOn): ?>
