@@ -15,6 +15,9 @@ $__isvg = fn(string $cat) => '<svg width="18" height="18" viewBox="0 0 24 24" fi
 $__days = [];
 for ($__d = new DateTime((string)$hold['check_in']); $__d <= new DateTime((string)$hold['check_out']); $__d->modify('+1 day')) { $__days[$__d->format('Y-m-d')] = $__d->format('D j M'); }
 $__gcats = ['activity'=>'Activity','transfer'=>'Transfer','dining'=>'Restaurant','note'=>'Other'];
+// Half-hourly slots (06:00–22:00) for the styled (non-native) time dropdown.
+$__times = [];
+for ($__h = 6; $__h <= 22; $__h++) { foreach ([0,30] as $__m) { if ($__h === 22 && $__m > 0) break; $__tk = sprintf('%02d:%02d', $__h, $__m); $__times[$__tk] = date('g:i A', strtotime($__tk)); } }
 try { $__acts = fetch_portal_activities(isset($hold['venue_id']) && $hold['venue_id'] !== null ? (int)$hold['venue_id'] : null); } catch (Throwable $e) { $__acts = []; }
 ?>
 <details class="pa-details" open>
@@ -56,23 +59,27 @@ try { $__acts = fetch_portal_activities(isset($hold['venue_id']) && $hold['venue
   <form data-bm data-bm-success="Added to your plan." action="/api/itinerary.php" id="planAddForm" style="display:none;margin-top:12px">
     <input type="hidden" name="ref" value="<?= e($ref) ?>">
     <input type="hidden" name="action" value="add">
-    <label class="pa-field">Day
-      <select name="day" required><?php foreach ($__days as $__dv=>$__dl): ?><option value="<?= e($__dv) ?>"><?= e($__dl) ?></option><?php endforeach; ?></select>
-    </label>
-    <label class="pa-field">Type
-      <select name="category" id="planCat" required><?php foreach ($__gcats as $__cv=>$__cl): ?><option value="<?= e($__cv) ?>"><?= e($__cl) ?></option><?php endforeach; ?></select>
-    </label>
-    <?php if ($__acts): ?>
-    <label class="pa-field" id="planActWrap">Activity
-      <select id="planActPick">
-        <option value="">— choose an activity —</option>
-        <?php foreach ($__acts as $__a): ?><option value="<?= e($__a['name']) ?>"><?= e($__a['name']) ?></option><?php endforeach; ?>
-      </select>
-    </label>
-    <?php endif; ?>
-    <label class="pa-field" id="planWhatWrap">What<input type="text" name="title" id="planTitle" required placeholder="e.g. Dinner at Somewhere Café"></label>
-    <label class="pa-field">Time (optional)<input type="time" name="at_time"></label>
-    <label class="pa-field">Notes (optional)<input type="text" name="detail"></label>
+    <div class="pa-formgrid">
+      <label class="pa-field">Day
+        <select name="day" required><?php foreach ($__days as $__dv=>$__dl): ?><option value="<?= e($__dv) ?>"><?= e($__dl) ?></option><?php endforeach; ?></select>
+      </label>
+      <label class="pa-field">Type
+        <select name="category" id="planCat" required><?php foreach ($__gcats as $__cv=>$__cl): ?><option value="<?= e($__cv) ?>"><?= e($__cl) ?></option><?php endforeach; ?></select>
+      </label>
+      <?php if ($__acts): ?>
+      <label class="pa-field" id="planActWrap">Activity
+        <select id="planActPick">
+          <option value="">— choose an activity —</option>
+          <?php foreach ($__acts as $__a): ?><option value="<?= e($__a['name']) ?>"><?= e($__a['name']) ?></option><?php endforeach; ?>
+        </select>
+      </label>
+      <?php endif; ?>
+      <label class="pa-field" id="planWhatWrap">What<input type="text" name="title" id="planTitle" required placeholder="e.g. Dinner at Somewhere Café"></label>
+      <label class="pa-field">Time (optional)
+        <select name="at_time"><option value="">Any time</option><?php foreach ($__times as $__tv=>$__tl): ?><option value="<?= e($__tv) ?>"><?= e($__tl) ?></option><?php endforeach; ?></select>
+      </label>
+      <label class="pa-field pa-field--full">Notes (optional)<input type="text" name="detail"></label>
+    </div>
     <button type="submit" class="pa-btn pa-btn--primary">Add to plan</button>
     <p class="bm-status" aria-live="polite" style="margin:10px 0 0;font-size:13px"></p>
   </form>

@@ -56,14 +56,13 @@ if ($__threadParam === null):
 </div>
 <?php endif; ?>
 <?php $__lastId = $__msgs ? (int)$__msgs[count($__msgs)-1]['id'] : 0; ?>
-<div id="bmThread" class="bm-thread"
+<div id="bmThread" class="bm-thread pa-chat__thread"
      data-poll-url="/api/booking-message"
      data-ref="<?= e($ref) ?>"
      data-thread="<?= $__addonId === null ? 'general' : (int)$__addonId ?>"
      data-me="guest"
      data-me-guest="<?= (int)($actor['guest_id'] ?? 0) ?>"
-     data-last="<?= $__lastId ?>"
-     style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+     data-last="<?= $__lastId ?>">
   <p class="pa-sub bm-empty"<?= $__msgs ? ' style="display:none"' : '' ?>>No messages yet. Send the first one below.</p>
   <?php foreach ($__msgs as $__m): $__me = $__m['sender'] === 'guest';
         // On a shared booking every guest message is sender='guest'. Bubble
@@ -82,11 +81,13 @@ if ($__threadParam === null):
   </div>
   <?php endforeach; ?>
 </div>
-<form data-chat action="/api/booking-message.php">
+<form data-chat action="/api/booking-message.php" class="pa-chat__composer">
   <input type="hidden" name="ref" value="<?= e($ref) ?>">
   <input type="hidden" name="addon_id" value="<?= $__addonId === null ? '' : (int)$__addonId ?>">
-  <label class="pa-field">Your message<textarea name="body" rows="3" required placeholder="Type a message…"></textarea></label>
-  <button type="submit" class="pa-btn pa-btn--primary">Send</button>
-  <p class="bm-status" aria-live="polite" style="margin:10px 0 0;font-size:13px"></p>
+  <textarea name="body" rows="1" required placeholder="Type a message…" aria-label="Your message"></textarea>
+  <button type="submit" class="pa-chat__send" aria-label="Send message">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/></svg>
+  </button>
+  <p class="bm-status" aria-live="polite"></p>
 </form>
 <?php endif; ?>

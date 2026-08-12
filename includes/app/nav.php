@@ -6,6 +6,8 @@ $__unread = 0;
 try { $__unread = count_unread_guest((int)$hold['id']); } catch (Throwable $e) { $__unread = 0; }
 $__tabs = [
   'home'       => ['Home',       $__svg('<path d="M3 10.5 12 4l9 6.5"/><path d="M5 9.5V20h14V9.5"/>')],
+  'calendar'   => ['Calendar',   $__svg('<rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17"/><path d="M8 3.5v3"/><path d="M16 3.5v3"/>')],
+  'requests'   => ['Request',    $__svg('<path d="M4 19h16"/><path d="M19 19a7 7 0 0 0-14 0"/><path d="M12 6.2V4"/><path d="M10.5 4h3"/>')],
   'activities' => ['Activities', $__svg('<circle cx="12" cy="12" r="8.5"/><path d="M15.5 8.5 13 13l-4.5 2.5L11 11z"/>')],
   'messages'   => ['Messages',   $__svg('<path d="M4 5h16v11H8l-4 4z"/>')],
 ];
@@ -19,7 +21,7 @@ if (share_reservation_on($hold)) {
     <span class="pa-nav__ico" style="position:relative;display:inline-block">
       <?= $__t[1] ?>
       <?php if ($__k === 'messages' && $__unread > 0): ?><span class="pa-nav__badge"><?= (int)$__unread ?></span><?php endif; ?>
-    </span><?= e($__t[0]) ?>
+    </span><span class="pa-nav__label"><?= e($__t[0]) ?></span>
   </a>
   <?php endforeach; ?>
 </nav>

@@ -11,8 +11,20 @@ $__icons = [
   'transfer'     => '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l1.6-4.6A2 2 0 0 1 8.5 7h7a2 2 0 0 1 1.9 1.4L19 13v4h-2v-2H7v2H5z"/><circle cx="8" cy="16" r="1"/><circle cx="16" cy="16" r="1"/></svg>',
   'other'        => '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>',
 ];
-// Shared optional preferred-time field markup.
-$__sched = '<label class="pa-field">Preferred time (optional)<input type="datetime-local" name="scheduled_for"></label>';
+// Shared optional preferred day + time — styled (non-native) selects that a small
+// script combines into the hidden `scheduled_for` field the API already expects.
+$__schedDays = [];
+try { for ($__d = new DateTime((string)$hold['check_in']); $__d <= new DateTime((string)$hold['check_out']); $__d->modify('+1 day')) { $__schedDays[$__d->format('Y-m-d')] = $__d->format('D j M'); } } catch (Throwable $e) {}
+$__schedTimes = [];
+for ($__h = 6; $__h <= 22; $__h++) { foreach ([0,30] as $__m) { if ($__h === 22 && $__m > 0) break; $__tk = sprintf('%02d:%02d', $__h, $__m); $__schedTimes[$__tk] = date('g:i A', strtotime($__tk)); } }
+$__dayOpts = '<option value="">—</option>';  foreach ($__schedDays as $__dv=>$__dl) { $__dayOpts  .= '<option value="' . e($__dv) . '">' . e($__dl) . '</option>'; }
+$__timeOpts = '<option value="">—</option>'; foreach ($__schedTimes as $__tv=>$__tl) { $__timeOpts .= '<option value="' . e($__tv) . '">' . e($__tl) . '</option>'; }
+$__sched =
+  '<div class="pa-formgrid pa-sched">'
+  . '<label class="pa-field">Preferred day (optional)<select class="pa-sched-day">' . $__dayOpts . '</select></label>'
+  . '<label class="pa-field">Preferred time (optional)<select class="pa-sched-time">' . $__timeOpts . '</select></label>'
+  . '<input type="hidden" name="scheduled_for" class="pa-sched-val">'
+  . '</div>';
 ?>
 <style>
 .cx-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
@@ -46,6 +58,7 @@ $__sched = '<label class="pa-field">Preferred time (optional)<input type="dateti
           <?php foreach ($__laundry as $__o): ?><option value="<?= (int)$__o['id'] ?>"><?= e($__o['label'] . ((float)$__o['price_amount'] > 0 ? ' — ' . format_price($__o['price_amount']) : '')) ?></option><?php endforeach; ?>
         </select>
       </label>
+      <?= $__sched ?>
       <label class="pa-field">Notes (items, instructions…)<textarea name="details" rows="2"></textarea></label>
     <?php elseif ($k === 'transfer'): ?>
       <label class="pa-field">Transfer
@@ -56,34 +69,17 @@ $__sched = '<label class="pa-field">Preferred time (optional)<input type="dateti
           <?php foreach ($__transfer as $__o): ?><option value="<?= (int)$__o['id'] ?>"><?= e($__o['label'] . ((float)$__o['price_amount'] > 0 ? ' — ' . format_price($__o['price_amount']) : '')) ?></option><?php endforeach; ?>
         </select>
       </label>
+      <?= $__sched ?>
       <label class="pa-field">Details (flight no., time, pickup…)<textarea name="details" rows="2"></textarea></label>
     <?php else: ?>
+      <?= $__sched ?>
       <label class="pa-field"><?= e($__kinds[$k] ?? 'Your request') ?> — what do you need?
         <textarea name="details" rows="2" required></textarea>
       </label>
     <?php endif; ?>
-    <?= $__sched ?>
     <button type="submit" class="pa-btn pa-btn--primary"><?= $k === 'laundry' ? 'Request laundry' : ($k === 'transfer' ? 'Request transfer' : 'Send request') ?></button>
   </form>
   <?php endforeach; ?>
-</div>
-
-<?php
-$__unreadMsg = 0;
-try { $__unreadMsg = count_unread_guest((int)$hold['id']); } catch (Throwable $e) { $__unreadMsg = 0; }
-$__refU = urlencode($ref);
-?>
-<div class="cx-grid" style="margin-top:10px">
-  <a class="cx-tile cx-tile--nav" href="/booking.php?ref=<?= e($__refU) ?>&amp;view=activities">
-    <span aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M15.5 8.5 13 13l-4.5 2.5L11 11z"/></svg></span>
-    Activities
-    <span class="cx-tile__go" aria-hidden="true">→</span>
-  </a>
-  <a class="cx-tile cx-tile--nav" href="/booking.php?ref=<?= e($__refU) ?>&amp;view=messages">
-    <span aria-hidden="true"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H8l-4 4z"/></svg></span>
-    Messages
-    <?php if ($__unreadMsg > 0): ?><span class="cx-tile__badge"><?= (int)$__unreadMsg ?></span><?php endif; ?>
-  </a>
 </div>
 
 <script>
@@ -95,5 +91,13 @@ document.querySelectorAll('.cx-tile[data-cx]').forEach(function(b){
     document.querySelectorAll('.cx-tile[data-cx]').forEach(function(x){x.setAttribute('aria-expanded','false')});
     if(!open){f.classList.add('open'); b.setAttribute('aria-expanded','true'); f.scrollIntoView({behavior:'smooth',block:'nearest'});}
   });
+});
+// Combine the preferred day + time selects into the hidden scheduled_for
+// (format YYYY-MM-DDTHH:MM — the API parses it with strtotime()).
+document.querySelectorAll('.pa-sched').forEach(function(g){
+  var day=g.querySelector('.pa-sched-day'), time=g.querySelector('.pa-sched-time'), val=g.querySelector('.pa-sched-val');
+  if(!day||!time||!val) return;
+  function sync(){ var d=day.value, t=time.value; val.value = d ? (t ? d+'T'+t : d) : ''; }
+  day.addEventListener('change',sync); time.addEventListener('change',sync);
 });
 </script>

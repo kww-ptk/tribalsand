@@ -1,6 +1,13 @@
 <?php
 declare(strict_types=1);
 
+// The property (and its guests, staff and gate) operate in Kenya. Run the whole
+// app in Africa/Nairobi so every date() / strtotime() / DateTime('now') and the
+// Postgres NOW() / CURRENT_DATE / ::date all agree — otherwise "today" computed
+// in Nairobi disagrees with UTC-stored rows (e.g. the gate visitor day-filter
+// dropped today's entries after 21:00 UTC). Set once at module load.
+date_default_timezone_set('Africa/Nairobi');
+
 function db(): PDO {
     static $pdo = null;
     if ($pdo !== null) return $pdo;
@@ -40,6 +47,12 @@ function db(): PDO {
         // clear it. No bound LIMIT/OFFSET params exist, so this mode is safe here.
         PDO::ATTR_EMULATE_PREPARES   => true,
     ]);
+
+    // Align the DB session with the app's Nairobi timezone (above). Makes NOW(),
+    // CURRENT_DATE, ::date casts and timestamptz rendering all Nairobi-local.
+    // Neon's PgBouncer tracks the TimeZone session parameter, so this persists
+    // across pooled statements within the connection.
+    $pdo->exec("SET TIME ZONE 'Africa/Nairobi'");
 
     return $pdo;
 }

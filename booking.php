@@ -148,7 +148,7 @@ $status     = $hold['status'] ?? '';
 // via checkin-guest.php and has no business there, so it is not in their view set.
 // (Writing was already blocked: the form posts ref=<g-token>, which
 // checkin_auth_context() rejects. This closes the read side.)
-$__views = ['home','activities','messages'];
+$__views = ['home','calendar','requests','activities','messages'];
 if (!$isCoGuest) $__views[] = 'checkin';
 if (share_reservation_on($hold ?: [])) $__views[] = 'bill';
 $view = in_array($_GET['view'] ?? '', $__views, true) ? $_GET['view'] : 'home';
@@ -256,11 +256,28 @@ include __DIR__ . '/includes/head.php';
 
 <div class="pa-app">
   <?php
+    // Co-guest-aware name source (portal_actor resolves the right person).
     $__first = $actor['first'] !== '' ? $actor['first'] : 'guest';
-    $__titles = ['home'=>'Karibu, ' . $__first, 'activities'=>'Activities', 'messages'=>'Messages', 'checkin'=>'Check-in'];
-    $__t = $hold ? ($__titles[$view] ?? ('Karibu, ' . $__first)) : 'Your booking';
+    // The greeting stays put on every tab — the header always says "Karibu, <name>".
+    $__t = $hold ? ('Karibu, ' . $__first) : 'Your booking';
+    $__homeUrl = '/booking.php?ref=' . urlencode($ref) . '&view=home';
   ?>
-  <div class="pa-topbar"><div class="pa-topbar__eyebrow">Tribal Sand</div><div class="pa-topbar__title"><?= e($__t) ?></div></div>
+  <div class="pa-topbar">
+    <div class="pa-topbar__inner">
+      <?php if ($hold): ?>
+      <a class="pa-topbar__brand" href="<?= e($__homeUrl) ?>" aria-label="Go to home">
+        <div class="pa-topbar__eyebrow">Tribal Sand</div>
+        <div class="pa-topbar__title"><?= e($__t) ?></div>
+      </a>
+      <?php else: ?>
+      <div class="pa-topbar__brand">
+        <div class="pa-topbar__eyebrow">Tribal Sand</div>
+        <div class="pa-topbar__title"><?= e($__t) ?></div>
+      </div>
+      <?php endif; ?>
+      <?php if ($hold): ?><?php include __DIR__ . '/includes/app/nav.php'; ?><?php endif; ?>
+    </div>
+  </div>
   <div class="pa-wrap" style="padding-top:16px">
 
     <?php if ($error): ?>
@@ -300,12 +317,16 @@ include __DIR__ . '/includes/head.php';
     </div>
     <?php endif; ?>
 
-    <?php if ($view === 'home'): ?>
+    <?php if (in_array($view, ['home','calendar','requests'], true)): ?>
     <?php include __DIR__ . '/includes/app/status-header.php'; ?>
     <?php endif; ?>
 
       <?php if ($view === 'home'): ?>
         <?php include __DIR__ . '/includes/app/home.php'; ?>
+      <?php elseif ($view === 'calendar'): ?>
+        <?php include __DIR__ . '/includes/app/_trip.php'; ?>
+      <?php elseif ($view === 'requests'): ?>
+        <?php include __DIR__ . '/includes/app/_services.php'; ?>
       <?php elseif ($view === 'activities'): ?>
         <?php include __DIR__ . '/includes/app/activities.php'; ?>
       <?php elseif ($view === 'messages'): ?>
@@ -318,16 +339,15 @@ include __DIR__ . '/includes/head.php';
 
     <?php endif; ?>
 
-    <!-- ── Help footer ── -->
-    <div class="bk-help">
-      <p style="margin:0 0 6px">Questions about your booking?</p>
-      <a href="mailto:reservations@tribalsand.com">reservations@tribalsand.com</a>
-      <span class="sep">&middot;</span>
-      <a href="tel:+254115115247">+254 115 115 247</a>
-    </div>
-
   </div><!-- /pa-wrap -->
-  <?php if ($hold): ?><?php include __DIR__ . '/includes/app/nav.php'; ?><?php endif; ?>
+
+  <!-- ── Fixed help footer ── -->
+  <div class="pa-help-footer">
+    <strong>Questions about your booking?</strong>
+    <a href="mailto:reservations@tribalsand.com">reservations@tribalsand.com</a>
+    <span class="sep">&middot;</span>
+    <a href="tel:+254115115247">+254 115 115 247</a>
+  </div>
 </div><!-- /pa-app -->
 
 <?php if ($status === 'pending' && !empty($hold['expires_at'])): ?>
@@ -351,6 +371,8 @@ include __DIR__ . '/includes/head.php';
 <?php endif; ?>
 
 <script src="/js/booking-manage.js?v=<?= @filemtime(__DIR__ . '/js/booking-manage.js') ?: time() ?>" defer></script>
+<!-- Non-native dropdowns: reuse the admin's styled <select> enhancer (progressive; native select stays for no-JS). -->
+<script src="/admin/assets/admin-select.js?v=<?= @filemtime(__DIR__ . '/admin/assets/admin-select.js') ?: time() ?>" defer></script>
 
 <?php $hide_floating_chat = true; // portal is app-like; suppress the site chat bubble (it overlaps the bottom nav) ?>
 <?php $portal_chrome = true;      // suppress marketing footer + cookie banner; keep the success-modal JS ?>

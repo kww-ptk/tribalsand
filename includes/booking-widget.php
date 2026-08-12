@@ -64,6 +64,8 @@ if ($__form_mode !== 'availability') {
      data-price="<?= e($room_price) ?>"
      data-currency="<?= e($room_curr) ?>">
 
+  <div class="bk-room-label" id="bkRoomLabel"><?= e($room_name) ?></div>
+
   <form id="availForm" class="bk-form" novalidate data-room-slug="<?= e($room_slug) ?>">
     <input type="text" name="website" style="display:none" tabindex="-1" autocomplete="off">
     <input type="hidden" name="checkin"  id="availCheckin">

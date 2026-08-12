@@ -18,6 +18,31 @@
 .suite-card-meta{font-size:.78rem;letter-spacing:.08em;color:#A89880;margin-bottom:.6rem}
 .suite-card-desc{font-size:.95rem;color:#6B6050;line-height:1.7;margin:0}
 .suite-card.is-unavailable{opacity:.5}
+/* Nightly price on each room card */
+.suite-card-price{margin:.15rem 0 .55rem;display:flex;align-items:baseline;gap:.4rem;flex-wrap:wrap}
+.suite-card-price__amt{font-family:'Cormorant Garamond',serif;font-size:1.35rem;color:#1E5C6B;font-weight:500}
+.suite-card-price__amt--soft{color:#A89880;font-style:italic;font-size:1.1rem}
+.suite-card-price__unit{font-size:.72rem;letter-spacing:.06em;text-transform:lowercase;color:#A89880}
+/* Photo count badge + clickable image */
+.suite-card-img[role=button]{cursor:pointer}
+.suite-card-img[role=button]:focus-visible{outline:2px solid #B8965A;outline-offset:2px}
+.suite-card-photos{position:absolute;top:.7rem;right:.7rem;display:inline-flex;align-items:center;gap:.32rem;font-size:.62rem;letter-spacing:.12em;text-transform:uppercase;background:rgba(16,47,58,.82);color:#fff;padding:.3rem .6rem;border-radius:999px;backdrop-filter:blur(6px)}
+/* Card action row: view photos + check availability */
+.suite-card-actions{display:flex;gap:.55rem;flex-wrap:wrap;margin-top:auto;padding-top:.9rem}
+.rr-photos-btn{background:none;border:1px solid #d9cfc2;color:#6B6050;border-radius:999px;padding:.5rem 1rem;font-family:'Jost',sans-serif;font-size:.8rem;cursor:pointer;transition:border-color .2s,color .2s}
+.rr-photos-btn:hover{border-color:#B8965A;color:#141412}
+.rr-book-btn{background:#B8965A;color:#141412;border:none;border-radius:999px;padding:.5rem 1.15rem;font-family:'Jost',sans-serif;font-weight:600;font-size:.8rem;cursor:pointer;transition:background .2s}
+.rr-book-btn:hover{background:#a8843f}
+.suite-card.is-unavailable .rr-book-btn{background:#d9cfc2;color:#6B6050;cursor:default}
+/* Per-room lightbox */
+.rr-lb{position:fixed;inset:0;z-index:10001;background:rgba(20,20,18,.92);display:flex;align-items:center;justify-content:center}
+.rr-lb[hidden]{display:none}
+.rr-lb__stage{margin:0;max-width:90vw;max-height:86vh}
+.rr-lb__stage img{max-width:90vw;max-height:86vh;object-fit:contain;display:block}
+.rr-lb__close{position:absolute;top:18px;right:24px;background:none;border:none;color:#fff;font-size:2.4rem;line-height:1;cursor:pointer}
+.rr-lb__nav{position:absolute;top:50%;transform:translateY(-50%);background:rgba(255,255,255,.12);border:none;color:#fff;font-size:2rem;width:52px;height:52px;border-radius:50%;cursor:pointer}
+.rr-lb__prev{left:24px}.rr-lb__next{right:24px}
+.rr-lb__count{position:absolute;bottom:22px;left:50%;transform:translateX(-50%);color:#fff;font-size:.85rem;letter-spacing:.1em}
 .rr-card__avail{margin-top:.9rem;padding-top:.8rem;border-top:1px solid #f0e9df}
 .rr-card__avail-ok{color:#1E5C6B;font-weight:600;margin-bottom:.5rem}
 .rr-card__avail-no{color:#A89880;font-style:italic}

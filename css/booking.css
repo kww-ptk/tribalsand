@@ -31,6 +31,17 @@
   color: var(--bk-ink);
 }
 
+/* Selected-room label — updated when a guest taps a room card's "Check availability". */
+.bk-room-label {
+  font-family: 'Cormorant Garamond', serif;
+  font-size: 1.15rem;
+  color: var(--bk-teal, #1E5C6B);
+  padding: 0 0 .55rem;
+  margin: 0 0 .3rem;
+  border-bottom: 1px solid #f0e9df;
+}
+.bk-room-label[hidden] { display: none; }
+
 .bk-form {
   display: flex;
   flex-direction: column;

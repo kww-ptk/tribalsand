@@ -14,6 +14,9 @@ Render runs behind a load balancer. `$_SERVER['REMOTE_ADDR']` is always the prox
 **Never use `$_SERVER['REMOTE_ADDR']` directly** — always call `client_ip()` (defined in `includes/db.php`).
 Affects: rate limiting, audit logs, tracking.
 
+### Timezone — the whole app runs in Africa/Nairobi
+`includes/db.php` sets `date_default_timezone_set('Africa/Nairobi')` at module load **and** issues `SET TIME ZONE 'Africa/Nairobi'` on every PDO connect. So PHP `date()`/`strtotime()`/`DateTime('now')` and Postgres `NOW()`/`CURRENT_DATE`/`::date`/`timestamptz` rendering all agree on Kenya local time. **Never assume UTC** and never hardcode a UTC offset — "today" (e.g. `frontdesk_today_ymd()`, the gate visitor day-filter in `includes/team.php`) is Nairobi-local and must match the DB. Note: legacy naive `TIMESTAMP` rows written before this change hold UTC wall-clock and read ~3h off until superseded; `TIMESTAMPTZ` columns are unaffected.
+
 ### Cloudflare Turnstile — fail-closed in production
 `verify_captcha()` is in `includes/turnstile.php`. If `TURNSTILE_SITE_KEY` is set but secret is missing, it returns `false` (fail-closed). Both absent = dev mode bypass. Never revert to the old `return true` bypass. Widget class is `.cf-turnstile`, token field is `cf-turnstile-response`, script is `challenges.cloudflare.com/turnstile/v0/api.js`.
 

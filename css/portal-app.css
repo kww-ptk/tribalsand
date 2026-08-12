@@ -123,6 +123,23 @@
 
 .pa-nav__badge{position:absolute;top:-6px;right:-10px;min-width:16px;height:16px;padding:0 4px;border-radius:999px;background:#dc2626;color:#fff;font-size:10px;line-height:16px;text-align:center;font-weight:600;}
 
+/* ── Activities pager (6 per page, chevron arrows) ── */
+.pa-pager{display:flex;align-items:center;justify-content:center;gap:16px;margin:18px 0 4px;}
+.pa-pager[hidden]{display:none;}
+.pa-pager__btn{display:inline-flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:999px;border:1px solid var(--pa-line);background:#fff;color:var(--pa-teal-d);cursor:pointer;transition:border-color .15s,opacity .15s;}
+.pa-pager__btn:hover:not(:disabled){border-color:var(--pa-teal);}
+.pa-pager__btn:disabled{opacity:.4;cursor:default;}
+.pa-pager__btn:focus-visible{outline:2px solid var(--pa-gold);outline-offset:2px;}
+.pa-pager__info{font-size:13px;font-weight:500;color:var(--pa-muted);min-width:52px;text-align:center;}
+
+/* Activity request form, hoisted below the category tabs. */
+.act-host{background:var(--pa-card);border:1px solid var(--pa-teal-d);border-radius:14px;padding:14px 16px;margin:0 0 16px;}
+.act-host[hidden]{display:none;}
+.act-host__head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px;}
+.act-host__title{font-size:15px;font-weight:600;color:var(--pa-ink);}
+.act-host__x{background:none;border:0;font-size:22px;line-height:1;color:var(--pa-muted);cursor:pointer;padding:0 2px;}
+.act-host__x:hover{color:var(--pa-ink);}
+
 /* ── Daily planner ── */
 .pa-planday{margin:0 0 14px}
 .pa-planday__h{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--pa-muted);margin:0 0 8px}
@@ -136,10 +153,11 @@
 .pa-planit__tag{display:inline-block;font-size:10px;background:#e6eefb;color:#1a4a9c;padding:0 7px;border-radius:999px;margin-left:6px;vertical-align:1px}
 .pa-planempty{font-size:12px;color:var(--pa-muted);font-style:italic}
 .pa-details{background:var(--pa-card);border:1px solid var(--pa-line);border-radius:14px;margin-bottom:12px;}
-.pa-details__s{list-style:none;cursor:pointer;padding:14px 16px;font-size:15px;font-weight:500;color:var(--pa-ink);}
+.pa-details__s{list-style:none;cursor:pointer;padding:14px 16px;font-size:15px;font-weight:500;color:var(--pa-ink);display:flex;align-items:center;justify-content:space-between;gap:10px;}
 .pa-details__s::-webkit-details-marker{display:none;}
-.pa-details__s::after{content:'▾';float:right;color:var(--pa-muted);}
-.pa-details[open] .pa-details__s::after{content:'▴';}
+/* Lucide chevron (SVG, not a native glyph) so the disclosure arrow matches the icon set. */
+.pa-details__s::after{content:'';flex:0 0 auto;width:16px;height:16px;background:no-repeat center/16px url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'><path d='m6 9 6 6 6-6'/></svg>");transition:transform .18s;}
+.pa-details[open] .pa-details__s::after{transform:rotate(180deg);}
 .pa-details > div{padding:0 16px 14px;}
 
 /* ── Booking-box address → Google Maps ── */
@@ -304,3 +322,98 @@
 .ci-review { margin: 4px 0 10px; }
 .ci-review > summary { cursor: pointer; font-size: 13px; color: #123c30; font-weight: 600; padding: 8px 0; }
 .ci-review[open] > summary { margin-bottom: 8px; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Portal redesign — top nav, non-native selects, underline tabs, chat, footer
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Header + nav are one sticky dark bar: title on the left, the icon+label
+   nav on the right, both aligned to the centered content column. ── */
+.pa-topbar{position:sticky;top:0;z-index:20;padding:12px 0;}
+.pa-topbar__inner{max-width:640px;margin:0 auto;padding:0 16px;display:flex;align-items:center;justify-content:space-between;gap:10px 20px;flex-wrap:wrap;}
+.pa-topbar__brand{min-width:0;text-decoration:none;color:inherit;display:block;}
+a.pa-topbar__brand{cursor:pointer;}
+a.pa-topbar__brand:hover .pa-topbar__title{opacity:.92;}
+@media (min-width:720px){.pa-topbar__inner{max-width:880px;}}
+
+/* Nav lives inside the header now — plain text+icon links, not the old bar. */
+.pa-nav{position:static;background:transparent;border:0;box-shadow:none;max-width:none;margin:0;padding:0;display:flex;align-items:center;gap:12px;width:auto;}
+.pa-nav__item{flex:0 0 auto;flex-direction:row;gap:6px;padding:7px 9px;border-radius:8px;color:rgba(255,255,255,.72);font-size:13px;font-weight:500;letter-spacing:0;transition:color .15s;}
+.pa-nav__item:hover{color:#fff;}
+.pa-nav__item:active{background:rgba(255,255,255,.08);}
+.pa-nav__item.is-active{color:var(--pa-gold);font-weight:600;box-shadow:inset 0 -2px 0 var(--pa-gold);border-radius:0;}
+.pa-nav__item:focus-visible{outline:2px solid var(--pa-gold);outline-offset:2px;}
+.pa-nav__ico svg{width:18px;height:18px;}
+
+/* Narrow phones: the nav wraps to its own full-width row beneath the title,
+   items spread so tap targets stay large. */
+@media (max-width:640px){
+  .pa-topbar__brand{flex:1 1 100%;}
+  .pa-nav{flex:1 1 100%;justify-content:space-around;gap:4px;}
+  .pa-nav__item{padding:9px 8px;}
+  .pa-nav__label{display:none;}         /* icons only on phones */
+  .pa-nav__ico svg{width:23px;height:23px;}
+  .pa-nav__item.is-active{box-shadow:none;}  /* underline reads oddly under a lone icon */
+}
+
+/* Help footer now flows at the end of the content — no reserved space needed. */
+.pa-app{padding-bottom:0;}
+
+/* ── Fixed help footer (Questions about your booking?) ── */
+.pa-help-footer{max-width:640px;margin:0 auto;background:transparent;text-align:center;padding:22px 16px 28px;font-size:12px;color:var(--pa-muted);line-height:1.5;}
+.pa-help-footer strong{display:block;font-weight:600;color:var(--pa-ink);margin-bottom:1px;}
+.pa-help-footer a{color:var(--pa-teal);font-weight:500;text-decoration:none;}
+.pa-help-footer .sep{color:var(--pa-line);margin:0 7px;}
+@media (min-width:720px){.pa-help-footer{max-width:880px;}}
+
+/* ── Non-native <select> — shared enhancer (admin/assets/admin-select.js).
+   Native <select> stays in the DOM for no-JS submit; JS drives this styled UI. ── */
+.eselect{position:relative;display:inline-flex;max-width:100%;vertical-align:middle;}
+.eselect--block{display:flex;width:100%;}
+.pa-field .eselect,.pa-field .eselect--block{display:flex;width:100%;margin-top:4px;}
+.eselect__native{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);border:0;}
+.eselect__btn{display:inline-flex;align-items:center;justify-content:space-between;gap:10px;width:100%;padding:10px 12px;border:1px solid #d1d5db;border-radius:8px;background:#fff;color:var(--pa-ink);font-family:inherit;font-size:15px;font-weight:500;line-height:1.3;text-align:left;cursor:pointer;transition:border-color .15s,box-shadow .15s;}
+.eselect__btn:hover{border-color:var(--pa-teal);}
+.eselect.is-open .eselect__btn,.eselect__btn:focus-visible{outline:none;border-color:var(--pa-teal);box-shadow:0 0 0 3px rgba(30,92,107,.12);}
+.eselect__label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.eselect__chevron{flex:0 0 auto;color:var(--pa-muted);transition:transform .18s;}
+.eselect.is-open .eselect__chevron{transform:rotate(180deg);}
+.eselect__menu{position:fixed;z-index:900;top:-9999px;left:0;min-width:100%;list-style:none;margin:0;padding:6px;background:#fff;border:1px solid var(--pa-line);border-radius:10px;box-shadow:0 10px 30px rgba(16,47,58,.16);max-height:288px;overflow-y:auto;opacity:0;transform:translateY(-4px);pointer-events:none;transition:opacity .14s,transform .14s;}
+.eselect.is-open .eselect__menu{opacity:1;transform:translateY(0);pointer-events:auto;}
+.eselect__opt{display:flex;align-items:center;gap:8px;padding:9px 12px;border-radius:6px;font-size:15px;color:var(--pa-ink);cursor:pointer;white-space:nowrap;}
+.eselect__opt.is-active{background:var(--pa-cream);}
+.eselect__opt.is-selected{color:var(--pa-teal);font-weight:600;}
+.eselect__opt[aria-disabled="true"]{opacity:.5;cursor:not-allowed;}
+
+/* ── Underline tab bar (Activities category filter, admin-workspace style) ── */
+.pa-tabs{display:flex;gap:20px;overflow-x:auto;border-bottom:1px solid var(--pa-line);margin:0 0 16px;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+.pa-tabs::-webkit-scrollbar{display:none;}
+.pa-tab{white-space:nowrap;font:inherit;font-size:14px;font-weight:500;color:var(--pa-muted);background:none;border:0;border-bottom:2px solid transparent;padding:9px 1px;margin-bottom:-1px;cursor:pointer;transition:color .15s,border-color .15s;}
+.pa-tab:hover{color:var(--pa-ink);}
+.pa-tab.is-active{color:var(--pa-teal-d);border-bottom-color:var(--pa-teal-d);}
+.pa-tab:focus-visible{outline:2px solid var(--pa-gold);outline-offset:2px;}
+
+/* Category tabs + pager on one row (pager right, compact). */
+.pa-tabsrow{display:flex;align-items:center;gap:10px;border-bottom:1px solid var(--pa-line);margin:0 0 16px;}
+.pa-tabsrow .pa-tabs{border-bottom:0;margin:0;flex:1 1 auto;min-width:0;}
+.pa-pager--inline{margin:0 0 0 auto;flex:0 0 auto;gap:8px;}
+.pa-pager--inline .pa-pager__btn{width:30px;height:30px;}
+.pa-pager--inline .pa-pager__btn svg{width:16px;height:16px;}
+.pa-pager--inline .pa-pager__info{font-size:12px;min-width:38px;}
+
+/* ── Two-column form grid (Calendar "Add to plan" + Request forms) ── */
+.pa-formgrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 14px;}
+.pa-formgrid .pa-field{margin-bottom:12px;}
+.pa-formgrid .pa-field--full{grid-column:1 / -1;}
+
+/* ── Messages — chat area ── */
+.pa-chat__thread{display:flex;flex-direction:column;gap:8px;background:#fff;border:1px solid var(--pa-line);border-radius:14px;padding:14px;margin-bottom:14px;min-height:200px;}
+.pa-chat__composer{display:flex;align-items:flex-end;gap:8px;flex-wrap:wrap;background:#fff;border:1px solid var(--pa-line);border-radius:16px;padding:7px 7px 7px 14px;}
+.pa-chat__composer:focus-within{border-color:var(--pa-teal);box-shadow:0 0 0 3px rgba(30,92,107,.12);}
+.pa-chat__composer textarea{flex:1;min-width:0;border:0;resize:none;font-family:inherit;font-size:15px;line-height:1.5;padding:8px 0;max-height:120px;background:transparent;color:var(--pa-ink);}
+.pa-chat__composer textarea:focus{outline:none;}
+.pa-chat__send{flex:0 0 auto;width:42px;height:42px;border-radius:50%;background:var(--pa-teal-d);color:#fff;border:0;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:background .15s;}
+.pa-chat__send:hover{background:var(--pa-teal);}
+.pa-chat__send:disabled{opacity:.5;cursor:default;}
+.pa-chat__send svg{width:19px;height:19px;}
+.pa-chat__composer .bm-status{flex-basis:100%;margin:3px 0 0;font-size:13px;color:var(--pa-muted);}
