@@ -5,6 +5,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/icons.php';            // admin_icon() — needed in AJAX branch too
 require_once __DIR__ . '/../includes/pagination.php';
 require_once __DIR__ . '/../includes/admin-pagination.php';
+require_once __DIR__ . '/../includes/services.php';        // is_priced(), format_price()
 require_login();
 require_owner();
 
@@ -45,7 +46,10 @@ $meta  = paginate_meta($total, 1, 500);
 
 $tours = db_query(
     "SELECT t.*,
-        (SELECT filename FROM tour_images WHERE tour_id = t.id AND is_hero = TRUE LIMIT 1) AS hero_img
+        (SELECT filename FROM tour_images WHERE tour_id = t.id AND is_hero = TRUE LIMIT 1) AS hero_img,
+        (SELECT string_agg(v.name, ', ' ORDER BY v.name)
+           FROM tour_venues tv JOIN venues v ON v.id = tv.venue_id
+          WHERE tv.tour_id = t.id) AS venue_names
      FROM tours t $where
      ORDER BY t.sort_order ASC
      LIMIT {$meta['per']} OFFSET {$meta['offset']}",
@@ -82,7 +86,8 @@ ob_start(); ?>
             <th style="width:64px">Photo</th>
             <th>Name</th>
             <th>Category</th>
-            <th>Duration</th>
+            <th>Price</th>
+            <th>Offered at</th>
             <th>Published</th>
             <th style="width:1%;text-align:right">Actions</th>
           </tr>
@@ -102,7 +107,14 @@ ob_start(); ?>
             </td>
             <td><strong><?= e($tour['name']) ?></strong></td>
             <td><span class="badge badge--blue"><?= e(ucfirst($tour['category'])) ?></span></td>
-            <td class="text-muted"><?= e($tour['duration'] ?: '—') ?></td>
+            <td>
+              <?php if (is_priced($tour['price_amount'] ?? null)): ?>
+                <?= e(format_price((float)$tour['price_amount'])) ?><?php if (!empty($tour['price_per_person']) && $tour['price_per_person'] !== 'f'): ?> <span class="text-muted" style="font-size:12px">/pp</span><?php endif; ?>
+              <?php else: ?>
+                <span class="badge badge--orange">no price</span>
+              <?php endif; ?>
+            </td>
+            <td class="text-muted"><?= $tour['venue_names'] !== null ? e($tour['venue_names']) : 'All properties' ?></td>
             <td>
               <form method="POST" action="/admin/tours.php" style="display:inline">
                 <?= csrf_field() ?>
