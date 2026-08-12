@@ -66,6 +66,20 @@ if ($isLead) {
         $cols[] = 'arrival_note';    $vals[] = ':an'; $p[':an'] = $mode === 'other' ? $s('arrival_note')    : null;
     }
 
+    if (checkin_property_arrival_supported()) {
+        // Only meaningful in flight mode — in road/other, arrival_at already is
+        // the time the guest reaches us, so we do not store a duplicate.
+        // Must be a REAL clock time, not merely digit:digit — Postgres rejects
+        // '25:00'/'99:99' for a TIME column and the exception would abort this
+        // whole write. The wizard posts the entire form on every step save, so
+        // one bad value would otherwise lose the guest's transfer/dietary data
+        // too. Same 0-23:0-59 shape checkin_arrival_flag() parses.
+        $pa = $s('property_arrival_time');
+        if ($pa !== null && !preg_match('/^([01]?\d|2[0-3]):[0-5]\d$/', $pa)) $pa = null;
+        $cols[] = 'property_arrival_time'; $vals[] = ':pat';
+        $p[':pat'] = ($mode === 'flight') ? $pa : null;
+    }
+
     $sets = [];
     foreach ($cols as $i => $c) { $sets[] = "{$c}={$vals[$i]}"; }
 

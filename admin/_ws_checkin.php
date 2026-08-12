@@ -75,13 +75,19 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
   $__amOn  = checkin_arrival_mode_supported();
   $__mode  = $__amOn ? trim((string)($__ci['arrival_mode'] ?? '')) : '';
   $__modes = checkin_arrival_modes();
+  // Blank = a legacy row from the flight-only form (or a pre-migration read),
+  // which is why the field group below has always shown Airport + Flight for it.
+  // The timestamp label must follow the same rule or reception reads a landing
+  // time as "Arrival". Not the guest-side formula: nothing normalises a blank
+  // mode to 'flight' here, so $__mode stays '' even post-migration.
+  $__isFlight = ($__mode === '' || $__mode === 'flight');
 ?>
 <div class="card" style="margin-bottom:16px"><div class="card__body">
   <table class="data-table" style="max-width:600px">
     <?php if ($__amOn): ?>
     <tr><td class="text-muted">Arriving</td><td><?= $__mode !== '' ? e($__modes[$__mode] ?? $__mode) : '<span class="text-muted">—</span>' ?></td></tr>
     <?php endif; ?>
-    <?php if ($__mode === '' || $__mode === 'flight'): ?>
+    <?php if ($__isFlight): ?>
     <tr><td class="text-muted">Airport</td><td><?= $__fmt($__ci['arrival_airport'] ?? '') ?></td></tr>
     <tr><td class="text-muted">Flight</td><td><?= $__fmt($__ci['flight_number'] ?? '') ?></td></tr>
     <?php elseif ($__mode === 'road'): ?>
@@ -89,7 +95,13 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
     <?php else: ?>
     <tr><td class="text-muted">Arriving by</td><td><?= $__fmt($__ci['arrival_note'] ?? '') ?></td></tr>
     <?php endif; ?>
-    <tr><td class="text-muted">Arrival</td><td><?= $__fmt(($__ci['arrival_at'] ?? '') ? date('j M Y H:i', strtotime((string)$__ci['arrival_at'])) : '') ?></td></tr>
+    <tr><td class="text-muted"><?= $__isFlight ? 'Flight lands' : 'Arrival' ?></td><td><?= $__fmt(($__ci['arrival_at'] ?? '') ? date('j M Y H:i', strtotime((string)$__ci['arrival_at'])) : '') ?></td></tr>
+    <?php if (checkin_property_arrival_supported() && $__mode === 'flight'): ?>
+    <tr><td class="text-muted">Reaching us</td><td><?php
+      $__pat = trim((string)($__ci['property_arrival_time'] ?? ''));
+      echo $__pat !== '' ? e(substr($__pat, 0, 5)) : '<span class="text-muted">—</span>';
+    ?></td></tr>
+    <?php endif; ?>
     <tr><td class="text-muted">Transfer</td><td><?php $nt=$__ci['needs_transfer']??null; echo ($nt===null)?'—':(($nt===true||$nt==='t')?'Yes — '.e((string)($__ci['transfer_details']??'')):'No'); ?></td></tr>
     <tr><td class="text-muted">Dietary</td><td><?= $__fmt($__ci['dietary'] ?? '') ?></td></tr>
     <tr><td class="text-muted">Requests</td><td><?= $__fmt($__ci['special_requests'] ?? '') ?></td></tr>
