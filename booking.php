@@ -47,7 +47,13 @@ if (!$holdId && $gtoken !== '' && ($gc = verify_guest_pass_token($gtoken)) !== f
         } elseif (checkin_required($gHold)) {
             // Not shared yet, or still needs to check in → the check-in screen (unchanged).
             $hold = $gHold; $holdId = $gHoldId;
-            $page_title = 'Guest check-in · Tribal Sand'; $page_desc = 'Complete your check-in.';
+            // Same share preview as the portal — this is the link a lead sends a
+            // co-guest, so it is the one most often pasted into a chat.
+            $__vn = trim((string)($gHold['venue_name'] ?? ''));
+            $page_title = $__vn !== '' ? 'Check in for ' . $__vn . ' · Tribal Sand' : 'Guest check-in · Tribal Sand';
+            $page_desc  = $__vn !== '' ? 'Complete your check-in for ' . $__vn . '.' : 'Complete your check-in.';
+            $__sh = venue_share_image(isset($gHold['venue_id']) ? (int)$gHold['venue_id'] : null);
+            if ($__sh !== '') $page_image = $__sh;
             $page_url = site_url('booking'); $noindex = true;
             $hide_floating_chat = true; $portal_chrome = true;
             include __DIR__ . '/includes/head.php';
@@ -156,10 +162,20 @@ $view = in_array($_GET['view'] ?? '', $__views, true) ? $_GET['view'] : 'home';
 // flow and the message thread (escape hatch) are reachable.
 if ($checkin_gate && !in_array($view, ['checkin','messages'], true)) $view = 'checkin';
 
+// Share preview (WhatsApp / iMessage / Signal). og:image is served even though
+// the page is noindex, so a shared access link gets a real preview — show the
+// property the guest is actually staying at, not the site-wide default photo.
+// The title used to embed the booking ref, which put the access token itself
+// into the preview text of any chat the link was pasted into.
+$__venueName = trim((string)($hold['venue_name'] ?? ''));
 $page_title = $hold
-    ? 'Booking ' . e($ref) . ' · Tribal Sand'
+    ? ($__venueName !== '' ? 'Your stay at ' . $__venueName . ' · Tribal Sand' : 'Your booking · Tribal Sand')
     : 'Your Booking · Tribal Sand';
-$page_desc  = 'View and manage your Tribal Sand booking.';
+$page_desc  = $__venueName !== ''
+    ? 'View your booking at ' . $__venueName . ' — requests, messages and check-in.'
+    : 'View and manage your Tribal Sand booking.';
+$__share = $hold ? venue_share_image(isset($hold['venue_id']) ? (int)$hold['venue_id'] : null) : '';
+if ($__share !== '') $page_image = $__share;   // else head.php's site default
 $page_url   = site_url('booking');
 $noindex    = true; // private guest booking page — never index
 
