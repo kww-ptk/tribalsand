@@ -49,5 +49,14 @@ if ($hid) {
 
 db_query("DELETE FROM service_options WHERE id IN (:a,:b)", [':a'=>$activeId, ':b'=>$inactiveId]);
 
+// ── is_priced: one definition of "has a usable price" ───────────────────────
+check('is_priced null',        is_priced(null) === false);
+check('is_priced empty string', is_priced('') === false);
+check('is_priced zero int',    is_priced(0) === false);
+check('is_priced zero string', is_priced('0.00') === false);
+check('is_priced negative',    is_priced(-5) === false);
+check('is_priced positive',    is_priced(12.5) === true);
+check('is_priced numeric string', is_priced('2500.00') === true);
+
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);
