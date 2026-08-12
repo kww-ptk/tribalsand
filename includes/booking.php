@@ -643,6 +643,31 @@ function guest_joined_event(int $holdId, int $postId): bool {
  * Per-property stay info + location. Always returns the six keys as strings
  * (blank when the venue is null, missing, or the columns predate the migration).
  */
+/**
+ * Absolute URL of the image to show when a booking link is shared (WhatsApp,
+ * iMessage, Signal…). Uses the property's hero from venue_images, so it is
+ * already editable per property under admin → Edit Property.
+ *
+ * Returns '' when the booking has no venue, the venue has no hero, or the table
+ * predates the migration — the caller then leaves $page_image unset and
+ * includes/head.php applies the site-wide default.
+ *
+ * Must be absolute: og:image is fetched by a third-party crawler, so a
+ * root-relative path from storage_url() would not resolve.
+ */
+function venue_share_image(?int $venueId): string {
+    if ($venueId === null) return '';
+    try {
+        $f = (string) db_query(
+            'SELECT filename FROM venue_images WHERE venue_id = :v AND is_hero LIMIT 1',
+            [':v' => $venueId]
+        )->fetchColumn();
+    } catch (Throwable $e) { return ''; }
+    if ($f === '') return '';
+    $url = storage_url($f);
+    return str_starts_with($url, 'http') ? $url : site_url($url);
+}
+
 function fetch_venue_stay(?int $venueId): array {
     $blank = ['address'=>'','maps_url'=>'','stay_wifi'=>'','stay_checkout'=>'','stay_house_rules'=>'','stay_area_guide'=>''];
     if ($venueId === null) return $blank;
