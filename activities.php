@@ -1,6 +1,7 @@
 <?php
 require_once 'includes/schema.php';
 require_once 'includes/db.php';
+require_once 'includes/services.php';   // is_priced(), format_price() — price fallback below
 
 /* ── SEO ── */
 $page_title  = 'Activities & Experiences · Kenya Coast · Tribal Sand';
@@ -120,7 +121,19 @@ include 'includes/header.php';
             <p class="act-card__desc"><?= e($a['short_desc']) ?></p>
             <div class="act-card__meta">
               <?php if (!empty($a['duration'])): ?><span class="act-card__dur">⏱ <?= e($a['duration']) ?></span><?php endif; ?>
-              <?php if (!empty($a['price'])): ?><span class="act-card__price"><?= e($a['price']) ?></span><?php endif; ?>
+              <?php
+                // The legacy free-text price wins when set — it carries marketing
+                // nuance ("From $60 / person") a bare number can't. But admin no
+                // longer writes that column, so fall back to the numeric price the
+                // booking flow uses. Without this fallback a newly-priced tour
+                // would show a price in the guest app and none here.
+                $__pubPrice = trim((string)($a['price'] ?? ''));
+                if ($__pubPrice === '' && is_priced($a['price_amount'] ?? null)) {
+                    $__pubPrice = format_price((float)$a['price_amount'])
+                                . (!empty($a['price_per_person']) && $a['price_per_person'] !== 'f' ? ' / person' : '');
+                }
+              ?>
+              <?php if ($__pubPrice !== ''): ?><span class="act-card__price"><?= e($__pubPrice) ?></span><?php endif; ?>
             </div>
             <div class="act-card__ctas">
               <a class="act-card__cta" href="/enquire.php?tour=<?= e($a['slug']) ?>">Enquire →</a>
