@@ -266,5 +266,30 @@ check('bill_item_guest_supported is bool',     is_bool(bill_item_guest_supported
 check('message_sender_guest_supported is bool', is_bool(message_sender_guest_supported()));
 check('checkin_arrival_mode_supported is bool', is_bool(checkin_arrival_mode_supported()));
 
+// ── needs_transfer must never be bound as a PHP bool ────────────────────────
+// db() uses PDO::ATTR_EMULATE_PREPARES, which renders a bound PHP false as ''.
+// Postgres rejects '' for a boolean, so answering "No" to the transfer question
+// used to fatal in api/checkin-save.php. Assert the real column accepts what
+// that endpoint now binds, and rejects what it used to.
+if (checkin_supported()) {
+    db_query('CREATE TEMP TABLE zz_nt_check (b BOOLEAN)');
+    $ntBind = function ($v): string {
+        try { db_query('INSERT INTO zz_nt_check (b) VALUES (:b)', [':b' => $v]); return 'accepted'; }
+        catch (Throwable $e) { return 'rejected'; }
+    };
+    check('bool false is rejected by the driver', $ntBind(false) === 'rejected');
+    check("'FALSE' is accepted",                  $ntBind('FALSE') === 'accepted');
+    check("'TRUE' is accepted",                   $ntBind('TRUE')  === 'accepted');
+    check('null is accepted (unanswered)',        $ntBind(null)    === 'accepted');
+    // The exact expression api/checkin-save.php uses, for each posted answer.
+    $ntOf = fn(array $post) => array_key_exists('needs_transfer', $post) && $post['needs_transfer'] !== ''
+        ? ($post['needs_transfer'] === '1' ? 'TRUE' : 'FALSE') : null;
+    check('answer "yes" binds TRUE',   $ntOf(['needs_transfer' => '1']) === 'TRUE');
+    check('answer "no" binds FALSE',   $ntOf(['needs_transfer' => '0']) === 'FALSE');
+    check('unanswered binds null',     $ntOf([]) === null);
+    check('no bind is ever a PHP bool', !is_bool($ntOf(['needs_transfer' => '0'])));
+    db_query('DROP TABLE zz_nt_check');
+}
+
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);
