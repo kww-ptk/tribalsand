@@ -48,6 +48,91 @@
     btn.textContent = '+ Add adult (' + have + '/' + need + ')';
   }
 
+  // Mirrors checkin_arrival_flag() in includes/checkin.php. Kept in step with it
+  // by the same boundary rules: inside the window and anything unparseable are
+  // both "no warning" — a false alarm is worse than none.
+  function arrMins(t) {
+    var m = /^(\d{1,2}):(\d{2})(?::\d{2})?$/.exec((t || '').trim());
+    if (!m) return null;
+    var h = parseInt(m[1], 10), i = parseInt(m[2], 10);
+    if (h > 23 || i > 59) return null;
+    return h * 60 + i;
+  }
+  function arrFlag(at, from, to) {
+    var a = arrMins(at), f = arrMins(from), t = arrMins(to);
+    if (a === null || f === null || t === null) return '';
+    if (a < f) return 'early';
+    if (a > t) return 'late';
+    return '';
+  }
+
+  // .ci-arrwarn is this codebase's first HIDDEN aria-live region, so there is no
+  // local pattern to copy. `hidden` is display:none, which keeps the node out of
+  // the accessibility tree entirely — while hidden it is not being monitored.
+  // Unhiding it and writing its text in the SAME task is therefore a single
+  // insertion as far as the a11y tree is concerned, and NVDA/JAWS/VoiceOver
+  // typically register a region on insertion and announce only LATER mutations,
+  // so the warning would never be spoken. Hidden → visible must be a two-step:
+  // unhide, yield a frame, then write. requestAnimationFrame (not setTimeout) is
+  // the yield because it is tied to the paint that actually inserts the box, and
+  // because a background tab — where nothing is being announced anyway — simply
+  // defers it rather than firing into a page nobody is on.
+  //
+  // Two cases skip the defer deliberately:
+  //   • already visible → the region is already live, so a plain textContent
+  //     mutation is exactly what screen readers do announce. Deferring here
+  //     would only leave the previous (wrong) sentence on screen for a frame.
+  //   • hiding → nothing to announce; clear the text so a later re-show never
+  //     flashes a stale sentence before its own deferred write lands.
+  //
+  // Races: syncArrivalWarning() can fire many times in quick succession. Each
+  // call takes the next value of a monotonic counter and closes over it; the
+  // deferred write is a no-op unless that token is STILL the latest and the box
+  // is STILL visible. So a rapid early → late → inside sequence cannot land a
+  // stale string and cannot write into a box that has since been re-hidden. The
+  // write always targets the EXISTING .ci-arrwarn__t node — the .ci-arrwarn
+  // container is never replaced or re-inserted, which would tear out the live
+  // region. (Cancelling the pending frame instead of counting does NOT work
+  // unless the cancel is hoisted above both early returns, so it stays a count.)
+  var arrSeq = 0;
+
+  // Which time counts as "reaching us": the dedicated field in flight mode,
+  // otherwise the time part of the shared arrival datetime.
+  function syncArrivalWarning(sec) {
+    var times = sec.querySelector('.ci-times'); if (!times) return;
+    var box = sec.querySelector('.ci-arrwarn'); if (!box) return;
+    var body = box.querySelector('.ci-arrwarn__t'); if (!body) return;
+    var from = times.getAttribute('data-ci-from'), to = times.getAttribute('data-ci-to');
+    var modeEl = sec.querySelector('.ci-f-mode:checked');
+    var mode = modeEl ? modeEl.value : 'flight';
+    var t = '';
+    if (mode === 'flight') {
+      var pa = sec.querySelector('.ci-f-patime');
+      t = pa ? pa.value : '';
+    } else {
+      var at = sec.querySelector('[name="arrival_at"]');
+      t = at && at.value ? at.value.split('T')[1] || '' : '';
+    }
+    var flag = arrFlag(t, from, to);
+
+    var seq = ++arrSeq;
+
+    if (flag === '') { box.hidden = true; body.textContent = ''; return; }
+
+    var msg = flag === 'early'
+      ? 'You’ve told us you’ll arrive at ' + t + ', before check-in opens at ' + from
+        + '. Your room may still be occupied or being prepared, so it might not be ready when you get here.'
+      : 'You’ll arrive at ' + t + ', after check-in closes at ' + to
+        + '. Let us know so someone is there to meet you.';
+
+    if (!box.hidden) { body.textContent = msg; return; }   // already live: mutate in place
+    box.hidden = false;                                    // 1. unhide
+    window.requestAnimationFrame(function () {             // 2. yield one frame
+      if (seq !== arrSeq || box.hidden) return;            //    superseded, or re-hidden
+      body.textContent = msg;                              // 3. …then write
+    });
+  }
+
   function fieldVal(sec, name) {
     var el = sec.querySelector('[name="' + name + '"]');
     return el ? String(el.value).trim() : '';
@@ -207,6 +292,16 @@
       step.querySelectorAll('.ci-mode-fields').forEach(function (g) {
         g.hidden = g.getAttribute('data-mode') !== t.value;
       });
+      // The shared arrival field means different things per mode, so its label
+      // swaps too — .ci-mode-fields above does not cover a bare <label>.
+      step.querySelectorAll('[data-mode-label]').forEach(function (l) {
+        l.hidden = (l.getAttribute('data-mode-label') === 'flight') !== (t.value === 'flight');
+      });
+      syncArrivalWarning(step);
+      return;
+    }
+    if (t.classList.contains('ci-f-patime') || t.name === 'arrival_at') {
+      syncArrivalWarning(t.closest('.ci-step'));
       return;
     }
     if (t.classList.contains('ci-f-airport')) {
@@ -232,6 +327,13 @@
       .then(function () { state.innerHTML = 'Uploaded ✓'; wrap.setAttribute('data-has', '1'); })
       .catch(function () { state.textContent = 'Upload failed — try again'; });
   });
+
+  // Server renders the correct initial state; this keeps it right if the browser
+  // restored a value on back-navigation. It also fills .ci-arrwarn__t, which the
+  // server deliberately leaves empty so the two can never word the warning
+  // differently. Top-level, so every entry path (intro, edit, straight-in) gets it.
+  var arrStep = form.querySelector('.ci-step[data-key="arrival"]');
+  if (arrStep) syncArrivalWarning(arrStep);
 
   // Initial view: intro when there is one, else straight into the steps. The old
   // ?ci= resume parameter is gone with the reload that needed it.
