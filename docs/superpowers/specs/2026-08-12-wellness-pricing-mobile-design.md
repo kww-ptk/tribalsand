@@ -76,6 +76,7 @@ Both CHECK rewrites follow the existing `DROP CONSTRAINT IF EXISTS` / `ADD CONST
 | `admin/services.php:13` | `$SERVICES` gains `'wellness' => 'Wellness & spa'` — the whole editor (add / rename / price / activate / reorder) then works with no further change |
 | `includes/app/_services.php` | A `wellness` tile with an icon and a priced `<select>`, identical in shape to laundry |
 | `api/booking-addon.php:61` | `wellness` joins the `transfer`/`laundry` branch that validates the option id and snapshots its price |
+| `includes/booking.php` `_itin_map_kind()` | `wellness` maps to `activity`, not the `note` default, so a booked treatment appears properly on the guest's day plan |
 
 **One thing in that branch does not scale and must change.** It currently resolves the posted
 field name with a ternary:
@@ -92,7 +93,6 @@ and its kind:
 // Each priced tile posts its option id under its own field name.
 $OPTION_FIELD = ['laundry' => 'service', 'transfer' => 'transfer', 'wellness' => 'wellness'];
 ```
-| `includes/booking.php` `_itin_map_kind()` | `wellness` maps to `activity`, not the `note` default, so a booked treatment appears properly on the guest's day plan |
 
 `default_assignee_for()` has no wellness job type, so these requests stay unassigned for a manager
 to route — the same as `restaurant` today. No change needed.
