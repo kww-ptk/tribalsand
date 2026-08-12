@@ -299,6 +299,7 @@ check('sender label unknown = Guest', message_sender_label(['sender' => 'guest']
 check('bill_item_guest_supported is bool',     is_bool(bill_item_guest_supported()));
 check('message_sender_guest_supported is bool', is_bool(message_sender_guest_supported()));
 check('checkin_arrival_mode_supported is bool', is_bool(checkin_arrival_mode_supported()));
+check('checkin_property_arrival_supported is bool', is_bool(checkin_property_arrival_supported()));
 
 // ── needs_transfer must never be bound as a PHP bool ────────────────────────
 // db() uses PDO::ATTR_EMULATE_PREPARES, which renders a bound PHP false as ''.

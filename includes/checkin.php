@@ -105,6 +105,15 @@ function checkin_arrival_mode_supported(): bool {
     return $ok;
 }
 
+/** True once add_property_arrival_time.sql is applied. Cached per-request. */
+function checkin_property_arrival_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { db_query('SELECT property_arrival_time FROM booking_checkin LIMIT 1'); $ok = true; }
+    catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
 function checkin_required(array $hold): bool {
     return checkin_supported() && !empty($hold['require_checkin']);
 }
