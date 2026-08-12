@@ -35,7 +35,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
 
     if (!$error) {
         try {
-            $hold_id = create_hold_with_block($unit_id, null, $check_in, $check_out, $g_name, $g_email, 'confirmed');
+            // Pending, and no TTL: a booking staff typed in must not be expired by
+            // the cron overnight the way an unattended web enquiry is.
+            $hold_id = create_hold_with_block($unit_id, null, $check_in, $check_out, $g_name, $g_email, 'pending', null);
         } catch (Throwable $e) {
             error_log('[hold-new] create failed: ' . $e->getMessage());
             $error = 'Could not create the booking. Please try again.';
@@ -75,12 +77,12 @@ include __DIR__ . '/_layout.php';
 <?php endif; ?>
 
 <div class="card">
-  <div class="card__head"><span class="card__title">Create a confirmed booking</span></div>
+  <div class="card__head"><span class="card__title">Create a booking</span></div>
   <div class="card__body" style="padding:20px">
     <?php if (!$ru_options): ?>
       <p style="margin:0;color:var(--muted)">No availability units exist yet — add units to a room first (Rooms admin).</p>
     <?php else: ?>
-    <p style="margin:0 0 16px;font-size:13px;color:var(--muted)">Creates a confirmed booking, generates the guest's login code, and blocks the dates. Availability is not checked — you control overlaps.</p>
+    <p style="margin:0 0 16px;font-size:13px;color:var(--muted)">Creates a <strong>pending</strong> booking, generates the guest's login code, and blocks the dates. It will not expire — confirm it from Holds when you're ready. Availability is not checked — you control overlaps.</p>
     <form method="POST" action="/admin/hold-new.php">
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="create">
@@ -131,7 +133,7 @@ include __DIR__ . '/_layout.php';
         <?php endif; ?>
       </div>
       <button type="submit" class="btn-primary btn-sm" style="margin-top:16px"
-              onclick="return confirm('Create this confirmed booking?')">Create Booking</button>
+              onclick="return confirm('Create this pending booking?')">Create Booking</button>
     </form>
     <?php endif; ?>
   </div>

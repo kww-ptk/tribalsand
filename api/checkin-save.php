@@ -29,14 +29,45 @@ if ($isLead) {
     $arrivalAt = ($_POST['arrival_at'] ?? '') !== '' ? date('Y-m-d H:i:s', strtotime((string)$_POST['arrival_at'])) : null;
     $needsTransfer = array_key_exists('needs_transfer', $_POST) && $_POST['needs_transfer'] !== ''
         ? ($_POST['needs_transfer'] === '1') : null;
+
+    // Arrival mode: validated against the catalog, '' when unknown or unmigrated.
+    $mode = '';
+    if (checkin_arrival_mode_supported()) {
+        $posted = (string)($_POST['arrival_mode'] ?? '');
+        if (array_key_exists($posted, checkin_arrival_modes())) $mode = $posted;
+    }
+
+    // The airport select posts '__other' to reveal a free-text box; store the text.
+    $airport = $s('arrival_airport');
+    if ($airport === '__other') $airport = $s('arrival_airport_other');
+    $flight = $s('flight_number');
+    // Switching away from flying clears stale flight data so the transfer desk
+    // never sees a flight number for someone driving in.
+    if ($mode !== '' && $mode !== 'flight') { $airport = null; $flight = null; }
+
+    // Column list is composed so the write works pre- and post-migration —
+    // same approach as insert_booking_addon() in includes/booking.php.
+    $cols = ['arrival_airport', 'flight_number', 'arrival_at', 'needs_transfer',
+             'transfer_details', 'dietary', 'special_requests'];
+    $vals = [':aa', ':fn', ':at', ':nt', ':td', ':di', ':sr'];
+    $p = [':h'=>$holdId, ':aa'=>$airport, ':fn'=>$flight, ':at'=>$arrivalAt,
+          ':nt'=>$needsTransfer, ':td'=>$s('transfer_details'), ':di'=>$s('dietary'),
+          ':sr'=>$s('special_requests')];
+
+    if (checkin_arrival_mode_supported()) {
+        $cols[] = 'arrival_mode';    $vals[] = ':am'; $p[':am'] = $mode === '' ? null : $mode;
+        $cols[] = 'arrival_vehicle'; $vals[] = ':av'; $p[':av'] = $mode === 'road'  ? $s('arrival_vehicle') : null;
+        $cols[] = 'arrival_note';    $vals[] = ':an'; $p[':an'] = $mode === 'other' ? $s('arrival_note')    : null;
+    }
+
+    $sets = [];
+    foreach ($cols as $i => $c) { $sets[] = "{$c}={$vals[$i]}"; }
+
     db_query(
-        "INSERT INTO booking_checkin (hold_id, arrival_airport, flight_number, arrival_at, needs_transfer, transfer_details, dietary, special_requests, updated_at)
-         VALUES (:h,:aa,:fn,:at,:nt,:td,:di,:sr, now())
-         ON CONFLICT (hold_id) DO UPDATE SET
-           arrival_airport=:aa, flight_number=:fn, arrival_at=:at, needs_transfer=:nt,
-           transfer_details=:td, dietary=:di, special_requests=:sr, updated_at=now()",
-        [':h'=>$holdId, ':aa'=>$s('arrival_airport'), ':fn'=>$s('flight_number'), ':at'=>$arrivalAt,
-         ':nt'=>$needsTransfer, ':td'=>$s('transfer_details'), ':di'=>$s('dietary'), ':sr'=>$s('special_requests')]
+        'INSERT INTO booking_checkin (hold_id, ' . implode(', ', $cols) . ', updated_at)
+         VALUES (:h, ' . implode(', ', $vals) . ', now())
+         ON CONFLICT (hold_id) DO UPDATE SET ' . implode(', ', $sets) . ', updated_at=now()',
+        $p
     );
 }
 
@@ -50,21 +81,51 @@ db_query(
 
 // ── Per-guest waiver signature: self-sign only, requires a drawn signature ──
 $sig = (string)($_POST['waiver_signature'] ?? '');
-$targetIsLead = (bool) db_query('SELECT is_lead FROM checkin_guests WHERE id=:g AND hold_id=:h', [':g'=>$guestId, ':h'=>$holdId])->fetchColumn();
-if (checkin_signature_supported() && !empty($_POST['waiver_agree']) && $s('waiver_signed_name')
-    && checkin_can_sign_self($onlyGuestId, $targetIsLead)
-    && checkin_valid_signature($sig)) {
-    $terms  = checkin_waiver_text();
-    $method = checkin_signing_method((string)($_POST['via'] ?? ''));
-    db_query(
-        "UPDATE checkin_guests
-            SET waiver_signed_name=:n, waiver_signed_at=now(), waiver_signed_ip=:ip,
-                waiver_version=:v, waiver_signature=:sig, waiver_terms_snapshot=:terms,
-                waiver_signed_user_agent=:ua, waiver_signed_method=:m
-          WHERE id=:g AND hold_id=:h",
-        [':n'=>$s('waiver_signed_name'), ':ip'=>client_ip(), ':v'=>waiver_version($terms),
-         ':sig'=>$sig, ':terms'=>$terms, ':ua'=>substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 500),
-         ':m'=>$method, ':g'=>$guestId, ':h'=>$holdId]);
+$targetRow    = db_query('SELECT * FROM checkin_guests WHERE id=:g AND hold_id=:h', [':g'=>$guestId, ':h'=>$holdId])->fetch() ?: null;
+$targetIsLead = (bool)($targetRow['is_lead'] ?? false);
+
+// Did this request genuinely try to sign? The wizard posts the WHOLE form on every
+// per-step save, so a ticked box or a pre-filled name travels along with a save
+// from an unrelated step — those must not be read as a failed signing attempt, or
+// a half-filled consent step would reject the guest's transfer or dietary save.
+// A posted signature is a real attempt; so is the final submit.
+$triedConsent = $sig !== '' || ($_POST['do'] ?? 'save') === 'submit';
+
+if ($triedConsent && checkin_signature_supported() && checkin_can_sign_self($onlyGuestId, $targetIsLead)) {
+    $already = checkin_guest_waiver_signed($targetRow);
+    $missing = checkin_consent_missing(
+        !empty($_POST['waiver_agree']),
+        (string)($_POST['waiver_signed_name'] ?? ''),
+        $sig,
+        $already
+    );
+    if ($missing) {
+        // Previously this fell through silently, so a guest could finish the wizard
+        // with no agreement and no signature and never be told.
+        $msg = 'We could not record your signature — please ' . implode(', ', $missing) . '.';
+        if (($_POST['ajax'] ?? '') === '1') {
+            http_response_code(422);
+            header('Content-Type: application/json');
+            exit(json_encode(['ok'=>false, 'error'=>$msg]));
+        }
+        $_SESSION['ci_error'] = $msg;
+        header('Location: ' . $back); exit;
+    }
+    // A fresh drawing replaces the stored one; an untouched signed panel posts an
+    // empty value and leaves the existing signature alone.
+    if (checkin_valid_signature($sig)) {
+        $terms  = checkin_waiver_text();
+        $method = checkin_signing_method((string)($_POST['via'] ?? ''));
+        db_query(
+            "UPDATE checkin_guests
+                SET waiver_signed_name=:n, waiver_signed_at=now(), waiver_signed_ip=:ip,
+                    waiver_version=:v, waiver_signature=:sig, waiver_terms_snapshot=:terms,
+                    waiver_signed_user_agent=:ua, waiver_signed_method=:m
+              WHERE id=:g AND hold_id=:h",
+            [':n'=>$s('waiver_signed_name'), ':ip'=>client_ip(), ':v'=>waiver_version($terms),
+             ':sig'=>$sig, ':terms'=>$terms, ':ua'=>substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 500),
+             ':m'=>$method, ':g'=>$guestId, ':h'=>$holdId]);
+    }
 }
 
 $do = $_POST['do'] ?? 'save';

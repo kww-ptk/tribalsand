@@ -94,12 +94,28 @@
     });
   });
 
+  // Copy buttons for any .ci-linkrow outside the check-in form: the check-in
+  // confirmation card and the party roster on Home. booking-manage.js loads on
+  // every portal view; checkin-wizard.js only loads on the check-in view, so this
+  // cannot live there. In-form buttons are skipped — checkin-wizard.js owns those.
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (!t.classList || !t.classList.contains('ci-copy') || t.closest('#ciForm')) return;
+    e.preventDefault();
+    var row = t.closest('.ci-linkrow'); if (!row) return;
+    var inp = row.querySelector('input'); if (!inp) return;
+    inp.select();
+    try { navigator.clipboard.writeText(inp.value); } catch (_) { try { document.execCommand('copy'); } catch (__) {} }
+    var o = t.textContent; t.textContent = 'Copied ✓'; setTimeout(function () { t.textContent = o; }, 1500);
+  });
+
   // ── Live chat: append on send + poll for incoming (no page refresh) ──
   var thread = document.getElementById('bmThread');
   if (thread) {
     var lastId = parseInt(thread.dataset.last || '0', 10) || 0;
     var pollUrl = thread.dataset.pollUrl;
     var meSender = thread.dataset.me || 'guest';
+    var meGuest  = parseInt(thread.dataset.meGuest || '0', 10) || 0;
 
     function atBottom() {
       return (window.innerHeight + window.scrollY) >= (document.body.offsetHeight - 120);
@@ -107,6 +123,10 @@
     function appendMsg(m) {
       if (m.id && document.querySelector('[data-mid="' + m.id + '"]')) return; // dedupe
       var mine = m.sender === meSender;
+      // On a shared booking every guest message has sender='guest'. Alignment
+      // still keys on that; authorship needs the guest id. Matches the server
+      // render in includes/app/messages.php.
+      var authored = mine && (!meGuest || !m.guest_id || m.guest_id === meGuest);
       var empty = thread.querySelector('.bm-empty');
       if (empty) empty.style.display = 'none';
       var el = document.createElement('div');
@@ -118,7 +138,7 @@
       el.appendChild(document.createTextNode(m.body));
       var meta = document.createElement('div');
       meta.style.cssText = 'font-size:11px;margin-top:4px;' + (mine ? 'color:rgba(255,255,255,.7)' : 'color:var(--pa-muted)');
-      meta.textContent = (mine ? (m.sender_name || 'You') : 'Concierge') + ' · ' + m.time_label;
+      meta.textContent = (mine ? (authored ? 'You' : (m.sender_name || 'Guest')) : 'Concierge') + ' · ' + m.time_label;
       el.appendChild(meta);
       thread.appendChild(el);
       if (m.id && m.id > lastId) lastId = m.id;

@@ -13,6 +13,9 @@ try { $__homeBoard = fetch_guest_board($__venue); } catch (Throwable $e) { $__ho
 // "What's on" only appears when there are board posts, so no tab is ever empty:
 // the others always have content (stay details/soon, calendar days, request tiles).
 $__sectabs = ['stay' => 'Your stay'];
+// Party only when there is a party — a solo booking gets no empty tab.
+$__hasParty = max(1, (int)($hold['guest_count'] ?? 1)) > 1;
+if ($__hasParty) $__sectabs['party'] = 'Party';
 if ($__homeBoard) $__sectabs['whatson'] = "What's on";
 $__sectabs['calendar'] = 'Calendar';
 $__sectabs['requests'] = 'Requests';
@@ -43,6 +46,12 @@ $__sectabs['requests'] = 'Requests';
   </div>
   <?php endif; ?>
 </section>
+
+<?php if ($__hasParty): ?>
+<section class="pa-sec" data-sec="party" role="tabpanel">
+  <?php include __DIR__ . '/_party.php'; ?>
+</section>
+<?php endif; ?>
 
 <?php if (isset($__sectabs['whatson'])): ?>
 <section class="pa-sec" data-sec="whatson" role="tabpanel">

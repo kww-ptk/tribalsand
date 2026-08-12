@@ -70,7 +70,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $eventDate = $evRaw !== '' && strtotime($evRaw) !== false ? date('Y-m-d H:i:s', strtotime($evRaw)) : null;
         $priceRaw = $_POST['price_amount'] ?? '';
         $priceAmt = ($priceRaw === '' ) ? null : (float)$priceRaw;
-        // Date/price are events-only — keep them off other categories.
+        // Date/price are events-only. Previously a non-event silently nulled both,
+        // so an owner who filled them in without noticing the Category dropdown
+        // (which defaults to "Update" on a new post) lost the data and got a
+        // "Post created" flash. Refuse instead of discarding.
+        if ($category !== 'event' && ($evRaw !== '' || $priceRaw !== '')) {
+            $errs[] = 'Pick the Event category to set a date or price.';
+        }
         if ($category !== 'event') { $eventDate = null; $priceAmt = null; }
 
         if (!isset($CATS[$category])) $errs[] = 'Pick a category.';
@@ -221,13 +227,31 @@ include __DIR__ . '/_layout.php';
   <div class="card__head"><span class="card__title"><?= $edit ? 'Edit post' : 'New post' ?></span></div>
   <div class="card__body card__body--pad">
     <?php
-      $__evDate = !empty($edit['event_date']) ? date('Y-m-d', strtotime((string)$edit['event_date'])) : '';
-      $__evTime = !empty($edit['event_date']) ? date('H:i',   strtotime((string)$edit['event_date'])) : '';
+      // On a validation error the form re-opens. Repopulate it from what was posted
+      // so the owner isn't made to retype the whole post — rejecting their input is
+      // only an improvement on silently discarding it if we hand it back.
+      $src = $errs ? $_POST : ($edit ?? []);
+      $fv  = fn(string $k, $d = '') => $src[$k] ?? $d;
+
+      // Accepts both the posted 'Y-m-d\TH:i' and the stored 'Y-m-d H:i:s'.
+      $__evSrc  = trim((string)$fv('event_date'));
+      $__evTs   = $__evSrc !== '' ? strtotime($__evSrc) : false;
+      $__evDate = $__evTs ? date('Y-m-d', $__evTs) : '';
+      $__evTime = $__evTs ? date('H:i',   $__evTs) : '';
+
+      $__price = '';
+      if ($errs) {
+          $__price = (string)$fv('price_amount');
+      } elseif (isset($edit['price_amount']) && $edit['price_amount'] !== null) {
+          $__price = rtrim(rtrim(number_format((float)$edit['price_amount'], 2, '.', ''), '0'), '.');
+      }
+      $__isEvent = $fv('category') === 'event';
+      $__pub     = $errs ? !empty($_POST['is_published']) : (!$edit || !empty($edit['is_published']));
     ?>
     <form method="POST" enctype="multipart/form-data" id="gbForm">
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="save">
-      <input type="hidden" name="id" value="<?= (int)($edit['id'] ?? 0) ?>">
+      <input type="hidden" name="id" value="<?= (int)$fv('id', 0) ?>">
 
       <div class="form-row" style="max-width:520px">
         <div class="field">
@@ -235,7 +259,7 @@ include __DIR__ . '/_layout.php';
           <select name="venue_id" class="filter-select eselect--block" aria-label="Property">
             <option value="">All properties</option>
             <?php foreach ($venues as $v): ?>
-            <option value="<?= (int)$v['id'] ?>" <?= (isset($edit['venue_id']) && (int)$edit['venue_id']===(int)$v['id'])?'selected':'' ?>><?= e($v['name']) ?></option>
+            <option value="<?= (int)$v['id'] ?>" <?= ((string)$fv('venue_id') !== '' && (int)$fv('venue_id')===(int)$v['id'])?'selected':'' ?>><?= e($v['name']) ?></option>
             <?php endforeach; ?>
           </select>
         </div>
@@ -243,7 +267,7 @@ include __DIR__ . '/_layout.php';
           <label>Category</label>
           <select name="category" class="filter-select eselect--block" aria-label="Category">
             <?php foreach ($CATS as $ck=>$cl): ?>
-            <option value="<?= e($ck) ?>" <?= (($edit['category'] ?? '')===$ck)?'selected':'' ?>><?= e($cl) ?></option>
+            <option value="<?= e($ck) ?>" <?= ($fv('category')===$ck)?'selected':'' ?>><?= e($cl) ?></option>
             <?php endforeach; ?>
           </select>
         </div>
@@ -251,16 +275,16 @@ include __DIR__ . '/_layout.php';
 
       <div class="field" style="max-width:520px">
         <label for="gbTitle">Title</label>
-        <input id="gbTitle" type="text" name="title" class="inp" required value="<?= e($edit['title'] ?? '') ?>" placeholder="Enter title" style="width:100%">
+        <input id="gbTitle" type="text" name="title" class="inp" required value="<?= e((string)$fv('title')) ?>" placeholder="Enter title" style="width:100%">
       </div>
 
       <div class="field" style="max-width:520px">
         <label for="gbBody">Body</label>
-        <textarea id="gbBody" name="body" rows="3" class="inp" placeholder="Enter description" style="width:100%"><?= e($edit['body'] ?? '') ?></textarea>
+        <textarea id="gbBody" name="body" rows="3" class="inp" placeholder="Enter description" style="width:100%"><?= e((string)$fv('body')) ?></textarea>
       </div>
 
-      <div class="field">
-        <label>Event date &amp; time <span class="text-muted" style="font-weight:400">(events only)</span></label>
+      <div class="field gb-eventonly"<?= $__isEvent ? '' : ' hidden' ?>>
+        <label>Event date &amp; time</label>
         <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
           <button type="button" class="dp-btn" data-dp-target="gbEvDate" data-dp-placeholder="Select date"><?= $__evDate !== '' ? e(date('D j M Y', strtotime($__evDate))) : 'Select date' ?></button>
           <input type="hidden" id="gbEvDate" value="<?= e($__evDate) ?>">
@@ -276,13 +300,13 @@ include __DIR__ . '/_layout.php';
       </div>
 
       <div class="form-row" style="max-width:520px">
-        <div class="field">
-          <label for="gbPrice">Price <span class="text-muted" style="font-weight:400">(events only — blank = free)</span></label>
-          <input id="gbPrice" type="number" name="price_amount" class="inp inp--num no-spin" step="0.01" min="0" value="<?= e(isset($edit['price_amount']) && $edit['price_amount'] !== null ? rtrim(rtrim(number_format((float)$edit['price_amount'],2,'.',''),'0'),'.') : '') ?>" placeholder="0" style="width:100%">
+        <div class="field gb-eventonly"<?= $__isEvent ? '' : ' hidden' ?>>
+          <label for="gbPrice">Price <span class="text-muted" style="font-weight:400">(blank = free)</span></label>
+          <input id="gbPrice" type="number" name="price_amount" class="inp inp--num no-spin" step="0.01" min="0" value="<?= e($__price) ?>" placeholder="0" style="width:100%">
         </div>
         <div class="field">
           <label for="gbSort">Sort order <span class="text-muted" style="font-weight:400">(higher = pinned toward top)</span></label>
-          <input id="gbSort" type="number" name="sort_order" class="inp inp--num no-spin" value="<?= (int)($edit['sort_order'] ?? 0) ?>" placeholder="0" style="width:100%">
+          <input id="gbSort" type="number" name="sort_order" class="inp inp--num no-spin" value="<?= (int)$fv('sort_order', 0) ?>" placeholder="0" style="width:100%">
         </div>
       </div>
 
@@ -301,7 +325,7 @@ include __DIR__ . '/_layout.php';
       <?php endif; ?>
 
       <div class="field">
-        <label class="togglerow"><span class="toggle"><input type="checkbox" name="is_published" value="1" <?= (!$edit || !empty($edit['is_published']))?'checked':'' ?>><span class="toggle-slider"></span></span><span>Published</span></label>
+        <label class="togglerow"><span class="toggle"><input type="checkbox" name="is_published" value="1" <?= $__pub?'checked':'' ?>><span class="toggle-slider"></span></span><span>Published</span></label>
       </div>
 
       <button type="submit" class="btn-primary"><?= $edit ? 'Save changes' : 'Create post' ?></button>
@@ -325,6 +349,15 @@ include __DIR__ . '/_layout.php';
 
       var form = document.getElementById('gbForm');
       if (!form) return;
+      // The date and price fields belong to the Event category — show them only
+      // then, so the values can never be typed into a post that would drop them.
+      var gbCat = form.querySelector('select[name="category"]');
+      function gbSyncEventFields() {
+        var on = gbCat && gbCat.value === 'event';
+        form.querySelectorAll('.gb-eventonly').forEach(function (el) { el.hidden = !on; });
+      }
+      if (gbCat) gbCat.addEventListener('change', gbSyncEventFields);
+      gbSyncEventFields();
       // Compose the hidden event_date from the styled date picker + time select.
       var d = document.getElementById('gbEvDate'), t = document.getElementById('gbEvTime'), out = document.getElementById('gbEvOut');
       function compose() { out.value = (d.value ? d.value + (t.value ? 'T' + t.value : 'T00:00') : ''); }

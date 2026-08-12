@@ -291,5 +291,28 @@ if ($evHold) {
 
 db_query("DELETE FROM guest_board_posts WHERE id IN (:a,:b)", [':a'=>$evId, ':b'=>$promoId]);
 
+// ── Portal actor resolution (pure) ──────────────────────────────────────────
+$paLead  = ['id' => 7, 'passport_name' => 'Jessica Mwangi'];
+$paBlank = ['id' => 7, 'passport_name' => ''];
+$paCo    = ['id' => 9, 'passport_name' => 'Patrik Otieno'];
+
+$a = portal_actor($paLead, null, false, 'Jessica Booking');
+check('actor lead uses passport name', $a['name'] === 'Jessica Mwangi' && $a['first'] === 'Jessica');
+check('actor lead is_lead true',       $a['is_lead'] === true && $a['guest_id'] === 7);
+
+$a = portal_actor($paBlank, null, false, 'Jessica Booking');
+check('actor unnamed lead uses booking', $a['name'] === 'Jessica Booking' && $a['first'] === 'Jessica');
+
+$a = portal_actor(null, null, false, 'Jessica Booking');
+check('actor no lead row still names',  $a['name'] === 'Jessica Booking' && $a['guest_id'] === null);
+
+$a = portal_actor($paLead, $paCo, true, 'Jessica Booking');
+check('actor co-guest uses own name',   $a['name'] === 'Patrik Otieno' && $a['first'] === 'Patrik');
+check('actor co-guest is_lead false',   $a['is_lead'] === false && $a['guest_id'] === 9);
+
+$a = portal_actor($paLead, ['id' => 9, 'passport_name' => ''], true, 'Jessica Booking');
+check('actor unnamed co-guest stays blank', $a['name'] === '' && $a['first'] === '');
+check('actor unnamed co-guest not lead',    $a['is_lead'] === false);
+
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);

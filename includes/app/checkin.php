@@ -17,7 +17,8 @@ $stayLoc = trim(((string)($hold['venue_name'] ?? '')) . ' · ' . ((string)($hold
 $nights  = max(1, (int) round((strtotime((string)$hold['check_out']) - strtotime((string)$hold['check_in'])) / 86400));
 $hasProgress = !empty($data) || !empty($lead);
 
-// Party config: passport + waiver collapse into one "Your party" step.
+// Which identity/consent fields to render — used by the "Your details" step and
+// the intro checklist. The flow build below decides where those steps land.
 $showPassport = isset($cfg['passport']);
 $showWaiver   = isset($cfg['waiver']);
 $guests   = fetch_checkin_guests($holdId);
@@ -26,27 +27,54 @@ $kids     = [];
 foreach ($guests as $g) if (!empty($g['is_child'])) $kids[(int)($g['parent_guest_id'] ?? 0)][] = $g;
 $need     = max(1, (int)($hold['guest_count'] ?? 1));
 
-// Wizard flow: passport's slot becomes "party"; waiver folds in (dropped as its own step).
+// The lead has finished their own part but the party has not — acknowledge them
+// and show who is still outstanding. The portal itself is already unlocked for
+// them (booking.php lifts the gate on submitted_at), so this is information,
+// not a lock.
+// NB: $fullCfg is checkin_config() — every step with its enabled/required flags.
+// It is NOT the same as $cfg (checkin_enabled_steps()) already defined above:
+// checkin_guest_complete() reads $config['passport']['enabled'], so it needs the
+// full map, including disabled steps.
+$fullCfg      = checkin_config();
+$outstanding  = checkin_outstanding_adults($guests, $fullCfg);
+$unnamedSlots = max(0, $need - count($adults));   // adult slots never added to the roster
+$leadDone     = checkin_guest_complete($lead ?: null, $fullCfg)
+                && checkin_missing_steps($fullCfg, $data, $lead ?: null) === [];
+$leadWaiting  = !$done && $leadDone && ($outstanding || $unnamedSlots > 0);
+
+// Short labels for the sentence ("waiting on Patrik and Sarah"); the itemised
+// list below uses the full-name form of the same helper.
+$waitingNames = [];
+foreach ($outstanding as $__g) { $waitingNames[] = checkin_guest_label($__g, $adults, true); }
+$waitingLabel = checkin_waiting_on_label($waitingNames, $unnamedSlots);
+
+// Wizard flow: passport + waiver collapse into "Your details" — the lead's own
+// identity, consent and signature. Other adults get their own "Your party" step
+// so adding a guest can never disturb the lead's signature (the old combined
+// step reloaded the page and appeared to wipe it).
 $flow = [];
 foreach ($cfg as $key => $s) {
-    if ($key === 'passport') { $flow['party'] = ['label' => 'Your party', 'required' => true]; continue; }
-    if ($key === 'waiver')   { if (!isset($flow['party'])) $flow['party'] = ['label' => 'Your party', 'required' => true]; continue; }
+    if ($key === 'passport' || $key === 'waiver') {
+        if (!isset($flow['you'])) $flow['you'] = ['label' => 'Your details', 'required' => true];
+        continue;
+    }
     $flow[$key] = $s;
+}
+// "Your party" only exists when there is something to manage: more than one
+// adult, and at least one of passport/waiver enabled (so "you" was created).
+if (isset($flow['you']) && $need > 1) {
+    $rebuilt = [];
+    foreach ($flow as $k => $v) {
+        $rebuilt[$k] = $v;
+        if ($k === 'you') $rebuilt['party'] = ['label' => 'Your party', 'required' => true];
+    }
+    $flow = $rebuilt;
 }
 
 $needs = [];
 if ($showPassport)          $needs[] = ['&#128179;', 'A passport for every adult — a clear photo or PDF'];
 if (isset($cfg['arrival'])) $needs[] = ['&#9992;&#65039;', 'Flight number &amp; arrival time'];
 
-/** Render the waiver block for a guest card. $signed = the guest's waiver_signed_at (truthy = signed). $mode 'lead' uses name=, 'guest' uses data-field. */
-$waiverBlock = function (bool $signed) use ($waiverText) {
-    ob_start(); ?>
-    <div class="ci-waiver"><?= nl2br(e($waiverText)) ?></div>
-    <label class="ci-radio"><input type="checkbox" class="ci-f-agree" name="waiver_agree" value="1" <?= $signed ? 'checked' : '' ?>> I have read and agree to the terms</label>
-    <label class="ci-l">Type your full name to sign</label>
-    <input class="ci-in ci-f-signname" name="waiver_signed_name" placeholder="Full name">
-    <?php return ob_get_clean();
-};
 ?>
 <link rel="stylesheet" href="/css/portal-app.css?v=<?= @filemtime(__DIR__ . '/../../css/portal-app.css') ?: time() ?>">
 
@@ -55,6 +83,37 @@ $waiverBlock = function (bool $signed) use ($waiverText) {
   <div class="ci-done-card__check">&#10003;</div>
   <h2>You're all checked in</h2>
   <p>Thank you, <?= e($first) ?>. Everyone in your party is set — you can update details any time before arrival.</p>
+  <a class="pa-btn pa-btn--primary" href="/booking.php?ref=<?= e($ref) ?>&view=home">Continue to your stay &rarr;</a>
+  <?php if (checkin_guest_waiver_signed($lead)): ?>
+  <a class="pa-btn pa-btn--ghost" href="/admin/consent-print.php?hold=<?= $holdId ?>&guest=<?= (int)($lead['id'] ?? 0) ?>&ref=<?= e($ref) ?>" target="_blank">Download my signed waiver</a>
+  <?php endif; ?>
+  <button type="button" class="pa-btn pa-btn--ghost" id="ciEdit">Update my details</button>
+</div>
+<?php endif; ?>
+
+<?php if ($leadWaiting): ?>
+<div class="pa-card ci-done-card">
+  <div class="ci-done-card__check">&#10003;</div>
+  <h2>Thank you, <?= e($first) ?>. Your check-in is complete.</h2>
+  <p>
+    <?php if ($waitingLabel !== ''): ?>We&rsquo;re still waiting on <strong><?= e($waitingLabel) ?></strong>. <?php endif; ?>
+    Once everyone in your party has checked in, your reservation is fully confirmed.
+  </p>
+  <?php if ($outstanding): ?>
+  <div class="ci-others" style="text-align:left">
+    <p class="ci-need__title">Still to check in</p>
+    <?php foreach ($outstanding as $og): $ogid = (int)($og['id'] ?? 0); if (!$ogid) continue; ?>
+    <div class="ci-other__row">
+      <span><?= e(checkin_guest_label($og, $adults)) ?></span>
+      <span class="ci-chip">Pending</span>
+    </div>
+    <div class="ci-linkrow" style="margin-bottom:12px">
+      <input class="ci-in" readonly value="<?= e(make_guest_pass_url($holdId, $ogid)) ?>" onclick="this.select()">
+      <button type="button" class="pa-btn pa-btn--ghost ci-copy">Copy</button>
+    </div>
+    <?php endforeach; ?>
+  </div>
+  <?php endif; ?>
   <a class="pa-btn pa-btn--primary" href="/booking.php?ref=<?= e($ref) ?>&view=home">Continue to your stay &rarr;</a>
   <?php if (checkin_guest_waiver_signed($lead)): ?>
   <a class="pa-btn pa-btn--ghost" href="/admin/consent-print.php?hold=<?= $holdId ?>&guest=<?= (int)($lead['id'] ?? 0) ?>&ref=<?= e($ref) ?>" target="_blank">Download my signed waiver</a>
@@ -72,7 +131,7 @@ $waiverBlock = function (bool $signed) use ($waiverText) {
   <input type="hidden" name="ref" value="<?= e($ref) ?>">
   <input type="hidden" name="do" value="save">
 
-  <?php if (!$done): ?>
+  <?php if (!$done && !$leadWaiting): ?>
   <section class="ci-intro" id="ciIntro">
     <div class="ci-hero">
       <div class="ci-hero__eyebrow">Pre-arrival check-in</div>
@@ -99,14 +158,56 @@ $waiverBlock = function (bool $signed) use ($waiverText) {
     <div class="ci-progress"><div class="ci-progress__bar" id="ciBar"></div></div>
 
     <?php $i = 0; $n = count($flow); foreach ($flow as $key => $s): $i++; ?>
-    <section class="ci-step" data-step="<?= $i ?>" data-key="<?= e($key) ?>" hidden>
+    <section class="ci-step" data-step="<?= $i ?>" data-key="<?= e($key) ?>"<?= ($key === 'you' && $showPassport && !empty($cfg['passport']['required'])) ? ' data-passport-required' : '' ?> hidden>
       <div class="ci-step__h"><span class="ci-step__num">Step <?= $i ?> of <?= $n ?></span><h3><?= e($s['label']) ?><?= $s['required'] ? ' <span class="ci-req">*</span>' : '' ?></h3></div>
 
       <?php if ($key === 'arrival'): ?>
-        <label class="ci-l">Airport of arrival</label>
-        <input class="ci-in" name="arrival_airport" value="<?= $val('arrival_airport') ?>" placeholder="e.g. Moi Intl (MBA)">
-        <label class="ci-l">Flight number</label>
-        <input class="ci-in" name="flight_number" value="<?= $val('flight_number') ?>" placeholder="e.g. KQ610">
+        <?php
+          $amOn     = checkin_arrival_mode_supported();
+          $modes    = checkin_arrival_modes();
+          $airports = checkin_airports();
+          $mode     = $amOn ? trim((string)($data['arrival_mode'] ?? '')) : '';
+          if (!array_key_exists($mode, $modes)) $mode = $amOn ? 'flight' : '';
+          $savedAir = trim((string)($data['arrival_airport'] ?? ''));
+          // A saved airport that isn't in the catalog came from the "Other" box.
+          $airOther = $savedAir !== '' && !array_key_exists($savedAir, $airports);
+        ?>
+        <?php if ($amOn): ?>
+        <label class="ci-l">How will you arrive?</label>
+        <div class="ci-modes">
+          <?php foreach ($modes as $mk => $ml): ?>
+          <label class="ci-radio"><input type="radio" class="ci-f-mode" name="arrival_mode" value="<?= e($mk) ?>" <?= $mode === $mk ? 'checked' : '' ?>> <?= e($ml) ?></label>
+          <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+
+        <div class="ci-mode-fields" data-mode="flight"<?= ($amOn && $mode !== 'flight') ? ' hidden' : '' ?>>
+          <label class="ci-l">Airport of arrival</label>
+          <select class="ci-in ci-f-airport" name="arrival_airport">
+            <option value="">— select —</option>
+            <?php foreach ($airports as $av => $al): ?>
+            <option value="<?= e($av) ?>" <?= $savedAir === $av ? 'selected' : '' ?>><?= e($al) ?></option>
+            <?php endforeach; ?>
+            <option value="__other" <?= $airOther ? 'selected' : '' ?>>Other — I&rsquo;ll type it</option>
+          </select>
+          <div class="ci-airport-other"<?= $airOther ? '' : ' hidden' ?>>
+            <label class="ci-l">Which airport?</label>
+            <input class="ci-in" name="arrival_airport_other" value="<?= $airOther ? e($savedAir) : '' ?>" placeholder="e.g. Nairobi JKIA">
+          </div>
+          <label class="ci-l">Flight number</label>
+          <input class="ci-in" name="flight_number" value="<?= $val('flight_number') ?>" placeholder="e.g. KQ610">
+        </div>
+
+        <div class="ci-mode-fields" data-mode="road"<?= ($amOn && $mode === 'road') ? '' : ' hidden' ?>>
+          <label class="ci-l">Vehicle / number plate <span class="ci-opt">(optional)</span></label>
+          <input class="ci-in" name="arrival_vehicle" value="<?= $val('arrival_vehicle') ?>" placeholder="e.g. white Land Cruiser, KDD 123A">
+        </div>
+
+        <div class="ci-mode-fields" data-mode="other"<?= ($amOn && $mode === 'other') ? '' : ' hidden' ?>>
+          <label class="ci-l">How are you arriving?</label>
+          <input class="ci-in" name="arrival_note" value="<?= $val('arrival_note') ?>" placeholder="e.g. by boat, or dropped off by a tour operator">
+        </div>
+
         <label class="ci-l">Arrival date &amp; time</label>
         <input class="ci-in" type="datetime-local" name="arrival_at" value="<?= e($arrDate) ?>">
 
@@ -118,9 +219,7 @@ $waiverBlock = function (bool $signed) use ($waiverText) {
         <label class="ci-l">Transfer details (pickup point, pax, luggage)</label>
         <textarea class="ci-in" name="transfer_details" rows="3"><?= $val('transfer_details') ?></textarea>
 
-      <?php elseif ($key === 'party'): ?>
-        <p class="ci-party__head">Every adult needs <?= $showPassport ? 'their own passport' : '' ?><?= $showPassport && $showWaiver ? ' and ' : '' ?><?= $showWaiver ? 'to sign the waiver' : '' ?>. Add each guest, then fill their details or send them their own link.</p>
-
+      <?php elseif ($key === 'you'): ?>
         <!-- Lead card — part of #ciForm (no guest_id → the lead row) -->
         <div class="ci-guest ci-guest--lead">
           <div class="ci-guest__title"><span class="ci-guest__who">You (lead guest)</span>
@@ -140,18 +239,33 @@ $waiverBlock = function (bool $signed) use ($waiverText) {
             <span class="ci-upload__state"><?= !empty($lead['passport_file_key']) ? 'Uploaded &#10003;' : 'No file yet' ?></span>
           </div>
           <?php endif; ?>
-          <?php if ($showWaiver): ?>
+          <?php if ($showWaiver): $leadSigned = checkin_guest_waiver_signed($lead); ?>
           <div class="ci-waiver"><?= nl2br(e($waiverText)) ?></div>
-          <label class="ci-radio"><input type="checkbox" name="waiver_agree" value="1" <?= checkin_guest_waiver_signed($lead) ? 'checked' : '' ?>> I have read and agree to the terms</label>
+          <label class="ci-radio"><input type="checkbox" class="ci-agree" name="waiver_agree" value="1" <?= $leadSigned ? 'checked' : '' ?>> I have read and agree to the terms</label>
           <label class="ci-l">Type your full name to sign</label>
           <input class="ci-in" name="waiver_signed_name" value="<?= $val('waiver_signed_name', $lead) ?>" placeholder="Full name">
-          <label class="ci-l">Sign below with your finger</label>
-          <div class="ci-sign">
-            <button type="button" class="ci-sign-clear">Clear</button>
-            <canvas class="ci-sign-pad" data-target="#ciLeadSig"></canvas>
+          <!-- data-signed drives the client gate: an existing signature satisfies it
+               without the guest having to draw again. The hidden input stays empty
+               unless they re-sign, and api/checkin-save.php only overwrites a stored
+               signature when a valid new one is posted. -->
+          <div class="ci-signwrap" data-signed="<?= $leadSigned ? '1' : '0' ?>">
+            <?php if ($leadSigned): ?>
+            <div class="ci-signed">
+              <img class="ci-signed__img" src="<?= e((string)$lead['waiver_signature']) ?>" alt="Your signature">
+              <span class="ci-signed__meta">Signed by <?= e((string)$lead['waiver_signed_name']) ?><br><?= e(date('j M Y', strtotime((string)$lead['waiver_signed_at']))) ?></span>
+              <button type="button" class="ci-signed__redo" data-resign>Re-sign</button>
+            </div>
+            <?php endif; ?>
+            <div class="ci-signpad"<?= $leadSigned ? ' hidden' : '' ?>>
+              <label class="ci-l">Sign below with your finger</label>
+              <div class="ci-sign">
+                <button type="button" class="ci-sign-clear">Clear</button>
+                <canvas class="ci-sign-pad" data-target="#ciLeadSig"></canvas>
+              </div>
+              <p class="ci-sign-hint">Reception can fill your details, but you sign yourself.</p>
+            </div>
           </div>
           <input type="hidden" name="waiver_signature" id="ciLeadSig">
-          <p class="ci-sign-hint">Reception can fill your details, but you sign yourself.</p>
           <?php endif; ?>
           <div class="ci-kids" data-parent="<?= (int)($lead['id'] ?? 0) ?>">
             <?php foreach (($kids[(int)($lead['id'] ?? 0)] ?? []) as $c): ?>
@@ -160,6 +274,9 @@ $waiverBlock = function (bool $signed) use ($waiverText) {
             <button type="button" class="ci-addkid">+ Add child</button>
           </div>
         </div>
+
+      <?php elseif ($key === 'party'): ?>
+        <p class="ci-party__head">Every other adult needs <?= $showPassport ? 'their own passport' : '' ?><?= $showPassport && $showWaiver ? ' and ' : '' ?><?= $showWaiver ? 'to sign the waiver' : '' ?>. Add each guest, then fill their details or send them their own link.</p>
 
         <!-- Additional adult cards (data-field inputs → saved via per-guest AJAX, NOT the main submit) -->
         <?php foreach ($adults as $g): if (!empty($g['is_lead'])) continue; $gid = (int)$g['id'];
@@ -205,6 +322,49 @@ $waiverBlock = function (bool $signed) use ($waiverText) {
           </div>
         </div>
         <?php endforeach; ?>
+
+        <!-- Cloned by js/checkin-wizard.js when a new adult is added. Template
+             content is inert, so its inputs never post and never match a
+             document querySelectorAll. -->
+        <template id="ciGuestTpl">
+          <div class="ci-guest" data-guest-id="">
+            <div class="ci-guest__title">
+              <input class="ci-in ci-guest__name" data-field="passport_name" value="" placeholder="Guest full name">
+              <span class="ci-chip">Pending</span>
+              <button type="button" class="ci-guest__remove" aria-label="Remove guest">&times;</button>
+            </div>
+            <div class="ci-guest__modes">
+              <button type="button" class="ci-mode ci-guest__fill">Fill in for them</button>
+              <button type="button" class="ci-mode ci-guest__share">Send them a link</button>
+            </div>
+            <div class="ci-guest__inline" hidden>
+              <?php if ($showPassport): ?>
+              <label class="ci-l">Passport number</label>
+              <input class="ci-in" data-field="passport_number" value="">
+              <label class="ci-l">Nationality</label>
+              <input class="ci-in" data-field="nationality" value="">
+              <label class="ci-l">Passport expiry</label>
+              <input class="ci-in" type="date" data-field="passport_expiry" value="">
+              <label class="ci-l">Passport scan</label>
+              <div class="ci-upload" data-has="0">
+                <input type="file" accept="image/jpeg,image/png,application/pdf">
+                <span class="ci-upload__state">No file yet</span>
+              </div>
+              <?php endif; ?>
+              <?php if ($showWaiver): ?>
+              <p class="ci-hint">They sign the waiver themselves — use “Send them a link”, or “Sign on this device” from the admin check-in tab if they’re with you.</p>
+              <?php endif; ?>
+              <button type="button" class="pa-btn pa-btn--primary ci-guest__save">Save this guest</button>
+            </div>
+            <div class="ci-guest__link" hidden>
+              <label class="ci-l">Their private check-in link</label>
+              <div class="ci-linkrow"><input class="ci-in" readonly value="" onclick="this.select()"><button type="button" class="pa-btn pa-btn--ghost ci-copy">Copy</button></div>
+            </div>
+            <div class="ci-kids" data-parent="">
+              <button type="button" class="ci-addkid">+ Add child</button>
+            </div>
+          </div>
+        </template>
 
         <button type="button" class="pa-btn pa-btn--ghost ci-addguest" data-need="<?= $need ?>" <?= count($adults) >= $need ? 'hidden' : '' ?>>+ Add adult (<?= count($adults) ?>/<?= $need ?>)</button>
 

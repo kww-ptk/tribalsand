@@ -48,20 +48,98 @@
     btn.textContent = '+ Add adult (' + have + '/' + need + ')';
   }
 
+  function fieldVal(sec, name) {
+    var el = sec.querySelector('[name="' + name + '"]');
+    return el ? String(el.value).trim() : '';
+  }
+  function clearErr(sec) { var box = sec.querySelector('.ci-err'); if (box) box.hidden = true; }
+  function showErr(sec, items) {
+    var box = sec.querySelector('.ci-err');
+    if (!box) {
+      box = document.createElement('div');
+      box.className = 'ci-err';
+      box.setAttribute('role', 'alert');
+      sec.insertBefore(box, sec.querySelector('.ci-nav'));
+    }
+    box.textContent = 'Before you continue, please ' + items.join(', ') + '.';
+    box.hidden = false;
+    box.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  // "Your details" is the consent gate: terms + typed name + a signature, plus
+  // the passport fields when that step is configured as required. The wording
+  // mirrors checkin_consent_missing() in includes/checkin.php.
+  function validateStep(sec) {
+    if (!sec) return true;
+    clearErr(sec);
+    if (sec.getAttribute('data-key') !== 'you') return true;
+    var missing = [];
+    var agree = sec.querySelector('.ci-agree');
+    if (agree) {
+      if (!agree.checked) missing.push('agree to the terms');
+      if (fieldVal(sec, 'waiver_signed_name') === '') missing.push('type your full name');
+      var wrap = sec.querySelector('.ci-signwrap');
+      if (wrap && wrap.getAttribute('data-signed') !== '1') {
+        var sig = document.getElementById('ciLeadSig');
+        if (!sig || sig.value === '') missing.push('draw your signature');
+      }
+    }
+    if (sec.hasAttribute('data-passport-required')) {
+      if (fieldVal(sec, 'passport_name') === '')   missing.push('enter your passport name');
+      if (fieldVal(sec, 'passport_number') === '') missing.push('enter your passport number');
+      var up = sec.querySelector('.ci-upload');
+      if (up && up.getAttribute('data-has') !== '1') missing.push('upload your passport scan');
+    }
+    if (!missing.length) return true;
+    showErr(sec, missing);
+    return false;
+  }
+
   form.addEventListener('click', function (e) {
     var t = e.target;
 
-    if (t.classList.contains('ci-next')) { e.preventDefault(); saveThen(function () { show(cur + 1); }); return; }
+    if (t.hasAttribute('data-resign')) {   // swap the stored-signature panel for a blank pad
+      e.preventDefault();
+      var wrap = t.closest('.ci-signwrap');
+      wrap.setAttribute('data-signed', '0');
+      var panel = wrap.querySelector('.ci-signed'); if (panel) panel.hidden = true;
+      var pad   = wrap.querySelector('.ci-signpad'); if (pad) pad.hidden = false;
+      // The canvas was already in the DOM (just hidden) so it is initialised;
+      // this is idempotent and guards any future cloned markup.
+      if (window.ciSignInitAll) window.ciSignInitAll();
+      return;
+    }
+
+    if (t.classList.contains('ci-next')) {
+      e.preventDefault();
+      if (!validateStep(steps[cur])) return;
+      saveThen(function () { show(cur + 1); });
+      return;
+    }
     if (t.classList.contains('ci-back')) { e.preventDefault(); if (cur === 0) backToStart(); else show(cur - 1); return; }
 
-    if (t.classList.contains('ci-addguest')) {   // add adult → save lead, add slot, reload to the party step
-      e.preventDefault(); t.disabled = true; t.textContent = 'Adding…';
-      saveThen(function () {
-        apiPost('/api/checkin-guest.php', { action: 'add_adult' })
-          .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
-          .then(function () { location.href = '/booking.php?ref=' + encodeURIComponent(REF) + '&view=checkin&ci=party'; })
-          .catch(function () { t.disabled = false; t.textContent = '+ Add adult'; });
-      });
+    if (t.classList.contains('ci-addguest')) {   // add adult → append a card in place; never reload
+      e.preventDefault();
+      var addBtn = t; addBtn.disabled = true; addBtn.textContent = 'Adding…';
+      apiPost('/api/checkin-guest.php', { action: 'add_adult' })
+        .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+        .then(function (d) {
+          var tpl = document.getElementById('ciGuestTpl');
+          var card = tpl.content.firstElementChild.cloneNode(true);
+          card.setAttribute('data-guest-id', d.guest_id);
+          card.querySelector('.ci-kids').setAttribute('data-parent', d.guest_id);
+          var link = card.querySelector('.ci-guest__link input');
+          if (link) link.value = d.link || '';
+          addBtn.parentNode.insertBefore(card, addBtn);
+          addBtn.disabled = false;
+          updateAddBtn();
+          card.querySelector('.ci-guest__name').focus();
+        })
+        .catch(function () {   // tell the guest, then restore the real label — matches ci-guest__save
+          addBtn.disabled = false;
+          addBtn.textContent = 'Could not add — try again';
+          setTimeout(updateAddBtn, 2000);
+        });
       return;
     }
     if (t.classList.contains('ci-guest__remove')) {
@@ -120,6 +198,24 @@
     }
   });
 
+  // Arrival: show only the chosen mode's fields, and reveal the free-text
+  // airport box when "Other" is picked. First paint is server-rendered.
+  form.addEventListener('change', function (e) {
+    var t = e.target;
+    if (t.classList.contains('ci-f-mode')) {
+      var step = t.closest('.ci-step');
+      step.querySelectorAll('.ci-mode-fields').forEach(function (g) {
+        g.hidden = g.getAttribute('data-mode') !== t.value;
+      });
+      return;
+    }
+    if (t.classList.contains('ci-f-airport')) {
+      var box = t.closest('.ci-mode-fields').querySelector('.ci-airport-other');
+      if (box) box.hidden = t.value !== '__other';
+      return;
+    }
+  });
+
   // Delegated passport upload — any .ci-upload file input. guest_id from the enclosing card (absent → lead).
   form.addEventListener('change', function (e) {
     if (e.target.type !== 'file' || !e.target.closest('.ci-upload')) return;
@@ -137,10 +233,19 @@
       .catch(function () { state.textContent = 'Upload failed — try again'; });
   });
 
-  // Initial view: resume to a step after a roster reload; else land on intro/done.
-  var resume = new URLSearchParams(location.search).get('ci');
-  if (resume) {
-    var idx = -1; steps.forEach(function (s, i) { if (s.getAttribute('data-key') === resume) idx = i; });
-    if (idx >= 0) { openSteps(idx); }
-  } else if (!intro && !editBtn) { openSteps(0); }
+  // Initial view: intro when there is one, else straight into the steps. The old
+  // ?ci= resume parameter is gone with the reload that needed it.
+  if (!intro && !editBtn) openSteps(0);
+
+  // Final submit re-checks the consent step, so it cannot be skipped by jumping
+  // straight to the last step. The server enforces the same rule regardless.
+  form.addEventListener('submit', function (e) {
+    var you = form.querySelector('.ci-step[data-key="you"]');
+    if (you && !validateStep(you)) {
+      e.preventDefault();
+      var idx = steps.indexOf(you);
+      if (idx >= 0) openSteps(idx);
+    }
+  });
+
 })();

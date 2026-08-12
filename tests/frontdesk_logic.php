@@ -32,6 +32,39 @@ $hInhouse = $mk($d($A,-2),     $d($A, 2));   // staying across anchor
 $hDepart  = $mk($d($A,-3),     $A);          // departs on anchor
 $hWeekOut = $mk($d($A,10),     $d($A, 12));  // arrival outside the 7-day window
 
+// ── Staff-created bookings: pending, and never auto-expire ──────────────────
+$hNoExp = create_hold_with_block($unit, null, $d($A, 20), $d($A, 22), 'ZZ FD NoExpiry', 'zz-noexp@example.com', 'pending', null);
+$rowNE  = db_query("SELECT status, expires_at FROM holds WHERE id = :i", [':i' => $hNoExp])->fetch();
+check('null expiry stores NULL',        $rowNE['expires_at'] === null);
+check('null expiry keeps it pending',   $rowNE['status'] === 'pending');
+check('its availability block exists',  (int)db_query("SELECT COUNT(*) FROM availability_blocks WHERE hold_id = :i", [':i' => $hNoExp])->fetchColumn() > 0);
+// Assert the cron's PREDICATE rather than calling expire_stale_holds(): that
+// function sweeps every stale hold in the database, deletes their blocks and
+// EMAILS THEIR GUESTS. A test must never do that. NULL < NOW() is NULL, so the
+// predicate cannot match — which is exactly the property we depend on.
+$wouldExpire = (int)db_query(
+    "SELECT COUNT(*) FROM holds WHERE id = :i AND status = 'pending' AND expires_at < NOW()",
+    [':i' => $hNoExp]
+)->fetchColumn();
+check('expiry predicate cannot match it', $wouldExpire === 0);
+
+// ── Which pending holds are operational ─────────────────────────────────────
+// Staff-typed bookings (no TTL) belong on the board; speculative web enquiries
+// (24h TTL) do not, or the arrivals list fills with bookings that never convert.
+$mkPending = function(string $ci, string $co, ?int $ttl) use ($unit): int {
+    return create_hold_with_block($unit, null, $ci, $co, 'ZZ FD Pending', 'zz-p@example.com', 'pending', $ttl);
+};
+$hStaff   = $mkPending($A, $d($A, 2), null);   // staff-typed: no expiry
+$hEnquiry = $mkPending($A, $d($A, 2), 24);     // web enquiry: 24h TTL
+$dayP = frontdesk_day([$venue], $A);
+check('staff-created pending arrives',   in_array($hStaff,   ids($dayP['arriving']), true));
+check('web enquiry pending is excluded', !in_array($hEnquiry, ids($dayP['arriving']), true));
+check('confirmed still arrives',         in_array($hArrive,   ids($dayP['arriving']), true));
+check('rows carry status for badging',   array_key_exists('status', $dayP['arriving'][0]));
+db_query("UPDATE holds SET status='cancelled' WHERE id = :i", [':i' => $hStaff]);
+$dayC = frontdesk_day([$venue], $A);
+check('cancelled is excluded',           !in_array($hStaff, ids($dayC['arriving']), true));
+
 $day = frontdesk_day([$venue], $A);
 check('arrival is in "arriving"',      in_array($hArrive,  ids($day['arriving']),  true));
 check('continuing stay is "in house"', in_array($hInhouse, ids($day['inhouse']),   true));
@@ -60,7 +93,9 @@ check('badge: unread_msgs counted',   $arr && (int)$arr['unread_msgs']   >= 1);
 // Cleanup
 db_query("DELETE FROM booking_messages WHERE hold_id = :h", [':h'=>$hArrive]);
 db_query("DELETE FROM booking_addons  WHERE hold_id = :h", [':h'=>$hArrive]);
-db_query("DELETE FROM holds WHERE id IN (:a,:b,:c,:e)", [':a'=>$hArrive, ':b'=>$hInhouse, ':c'=>$hDepart, ':e'=>$hWeekOut]);
+db_query("DELETE FROM availability_blocks WHERE hold_id = :h", [':h'=>$hNoExp]);
+db_query("DELETE FROM availability_blocks WHERE hold_id IN (:g,:i)", [':g'=>$hStaff, ':i'=>$hEnquiry]);
+db_query("DELETE FROM holds WHERE id IN (:a,:b,:c,:e,:f,:g,:i)", [':a'=>$hArrive, ':b'=>$hInhouse, ':c'=>$hDepart, ':e'=>$hWeekOut, ':f'=>$hNoExp, ':g'=>$hStaff, ':i'=>$hEnquiry]);
 
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);

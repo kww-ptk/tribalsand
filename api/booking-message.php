@@ -69,9 +69,20 @@ try {
         );
     }
     $id = (int)db()->lastInsertId();
-    $__sn = db_query('SELECT passport_name FROM checkin_guests WHERE id=:g', [':g'=>(int)$actor['guest_id']])->fetchColumn();
+    // Same three attribution inputs the queries select, so the echoed bubble
+    // matches what a later poll or page load will render for this message.
+    // is_lead comes from $actor, which resolve_portal_actor() derived from which
+    // token matched — no need to re-read it here.
+    $__name = (string)db_query('SELECT passport_name FROM checkin_guests WHERE id=:g', [':g'=>(int)$actor['guest_id']])->fetchColumn();
     echo json_encode(['ok'=>true, 'message'=>message_payload([
-        'id'=>$id, 'sender'=>'guest', 'body'=>$body, 'created_at'=>'now', 'sender_name'=>$__sn ?: '',
+        'id'              => $id,
+        'sender'          => 'guest',
+        'body'            => $body,
+        'created_at'      => 'now',
+        'sender_name'     => $__name,
+        'sender_is_lead'  => !empty($actor['is_lead']),
+        'hold_guest_name' => (string)($hold['guest_name'] ?? ''),
+        'sender_guest_id' => (int)$actor['guest_id'],
     ])]);
 } catch (Throwable $e) {
     error_log('[booking-message] ' . $e->getMessage());

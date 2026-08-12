@@ -27,6 +27,16 @@ function format_price(float|int $amount, ?string $currency = null): string {
     return trim($currency . ' ' . $formatted);
 }
 
+/**
+ * Is this a usable price? The portal shows a price only when it is greater than
+ * zero, so admin's "no price" badge must use exactly the same rule or the two
+ * disagree about what counts as priced. NULL, '', 0 and negatives are all "no". Pure.
+ */
+function is_priced($amount): bool {
+    if ($amount === null || $amount === '') return false;
+    return (float)$amount > 0;
+}
+
 /** True if booking_addons has the price_amount snapshot column (memoised). False pre-migration. */
 function addon_price_supported(): bool {
     static $cached = null;

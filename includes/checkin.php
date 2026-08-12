@@ -17,6 +17,45 @@ function checkin_step_catalog(): array {
     ];
 }
 
+/** The three ways a guest can arrive. Array order = radio order in the wizard. */
+function checkin_arrival_modes(): array {
+    return [
+        'flight' => 'By air',
+        'road'   => 'By road',
+        'other'  => 'Something else',
+    ];
+}
+
+/**
+ * Airports offered in the arrival dropdown. Keys are the stored value (so the
+ * select round-trips), values are the guest-facing label. The wizard adds an
+ * "Other" choice that writes free text into the same arrival_airport column.
+ */
+function checkin_airports(): array {
+    return [
+        'Vipingo' => 'Vipingo',
+        'Malindi' => 'Malindi (MYD)',
+        'Mombasa' => 'Mombasa — Moi Intl (MBA)',
+    ];
+}
+
+/**
+ * Is the arrival step's required data present? Mode-aware:
+ *   flight      → airport + flight number + arrival time
+ *   road/other  → arrival time only
+ *   no mode set → the legacy rule (flight number + arrival time), so rows saved
+ *                 before add_checkin_arrival.sql keep their old behaviour.
+ * An unrecognised mode falls back to the legacy rule rather than passing. Pure.
+ */
+function checkin_arrival_complete(?array $data): bool {
+    $d    = $data ?? [];
+    $has  = fn($k) => trim((string)($d[$k] ?? '')) !== '';
+    $mode = trim((string)($d['arrival_mode'] ?? ''));
+    if ($mode === 'road' || $mode === 'other') return $has('arrival_at');
+    if ($mode === 'flight') return $has('arrival_airport') && $has('flight_number') && $has('arrival_at');
+    return $has('flight_number') && $has('arrival_at');
+}
+
 /** Merged config: catalog defaults overlaid with the `checkin_steps` setting (JSON). */
 function checkin_config(): array {
     $overrides = [];
@@ -53,6 +92,15 @@ function checkin_signature_supported(): bool {
     static $ok = null;
     if ($ok !== null) return $ok;
     try { db_query('SELECT waiver_signature FROM checkin_guests LIMIT 1'); $ok = true; }
+    catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/** True once add_checkin_arrival.sql is applied. Cached per-request. */
+function checkin_arrival_mode_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { db_query('SELECT arrival_mode FROM booking_checkin LIMIT 1'); $ok = true; }
     catch (Throwable $e) { $ok = false; }
     return $ok;
 }
@@ -131,7 +179,7 @@ function checkin_step_complete(string $key, ?array $data, ?array $lead): bool {
     $data = $data ?? [];
     $has = fn($k) => trim((string)($data[$k] ?? '')) !== '';
     switch ($key) {
-        case 'arrival':  return $has('flight_number') && !empty($data['arrival_at']);
+        case 'arrival':  return checkin_arrival_complete($data);
         case 'transfer':
             if (!array_key_exists('needs_transfer', $data) || $data['needs_transfer'] === null) return false;
             $wants = ($data['needs_transfer'] === true || $data['needs_transfer'] === 't' || $data['needs_transfer'] === '1' || $data['needs_transfer'] === 1);
@@ -196,6 +244,23 @@ function checkin_can_sign_self(?int $onlyGuestId, bool $targetIsLead): bool {
     return $onlyGuestId !== null || $targetIsLead;
 }
 
+/**
+ * Which pieces of consent a signing attempt is missing. [] = ready to sign.
+ * The returned strings are guest-facing sentence fragments ("agree to the
+ * terms"), used verbatim by both the wizard's inline error and the server's
+ * rejection message so the two can never drift apart.
+ *
+ * $alreadySigned = the guest already has a stored signature, so an empty
+ * $signature means "left the existing one alone", not "refused to sign". Pure.
+ */
+function checkin_consent_missing(bool $agreed, string $typedName, string $signature, bool $alreadySigned = false): array {
+    $missing = [];
+    if (!$agreed)                                                $missing[] = 'agree to the terms';
+    if (trim($typedName) === '')                                 $missing[] = 'type your full name';
+    if (!$alreadySigned && !checkin_valid_signature($signature)) $missing[] = 'draw your signature';
+    return $missing;
+}
+
 /** Is an ADULT guest fully done — passport (if that step is required) AND waiver (if required). */
 function checkin_guest_complete(?array $g, array $config): bool {
     if ($g === null || !empty($g['is_child'])) return false;
@@ -232,6 +297,53 @@ function checkin_party_complete_count(array $guests, array $config): int {
     $c = 0;
     foreach ($guests as $g) { if (empty($g['is_child']) && checkin_guest_complete($g, $config)) $c++; }
     return $c;
+}
+
+/**
+ * Adult guest rows that are not yet fully checked in, in roster order. Children
+ * are never included. The counterpart to checkin_party_complete_count(), which
+ * counts the same rows the other way round. Pure.
+ */
+function checkin_outstanding_adults(array $guests, array $config): array {
+    $out = [];
+    foreach ($guests as $g) {
+        if (!empty($g['is_child'])) continue;
+        if (!checkin_guest_complete($g, $config)) $out[] = $g;
+    }
+    return $out;
+}
+
+/**
+ * A guest's display label: their name, else "Guest N" by ROSTER position — never
+ * by position in a filtered list, which would number a guest who had already
+ * finished. $short returns the first word only, for sentences. Pure.
+ */
+function checkin_guest_label(?array $guest, array $adults, bool $short = false): string {
+    $g = $guest ?? [];
+    $n = trim((string)($g['passport_name'] ?? ''));
+    if ($n !== '') return $short ? explode(' ', $n)[0] : $n;
+    $gid = (int)($g['id'] ?? 0);
+    $pos = null;
+    if ($gid > 0) {
+        foreach (array_values($adults) as $i => $a) {
+            if ((int)($a['id'] ?? 0) === $gid) { $pos = $i; break; }
+        }
+    }
+    return 'Guest ' . ($pos === null ? count($adults) + 1 : $pos + 1);
+}
+
+/**
+ * Human list of who a party is still waiting on: named guests plus a count of
+ * adult slots that have not been added to the roster at all ("2 more guests").
+ * Returns '' when nothing is outstanding. Pure.
+ */
+function checkin_waiting_on_label(array $names, int $unnamedSlots): string {
+    $parts = array_values($names);
+    if ($unnamedSlots > 0) $parts[] = $unnamedSlots === 1 ? '1 more guest' : "{$unnamedSlots} more guests";
+    if (!$parts) return '';
+    if (count($parts) === 1) return $parts[0];
+    $last = array_pop($parts);
+    return implode(', ', $parts) . ' and ' . $last;
 }
 
 /**

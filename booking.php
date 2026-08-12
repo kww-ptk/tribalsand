@@ -31,6 +31,7 @@ if (!$holdId) {
 $gtoken = trim((string)($_GET['g'] ?? $_POST['g'] ?? ''));
 if ($gtoken === '' && $ref !== '' && verify_guest_ref($ref) === false) $gtoken = $ref; // internal nav carries the g-token in ref=
 $isCoGuest = false;
+$me        = null;   // the co-guest's checkin_guests row when one resolved
 if (!$holdId && $gtoken !== '' && ($gc = verify_guest_pass_token($gtoken)) !== false) {
     [$gHoldId, $gGuestId] = $gc;
     $gHold = fetch_hold_for_guest($gHoldId);
@@ -121,6 +122,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $hold && $can_cancel) {
     }
 }
 
+// ── Who is actually looking at this page? ───────────────────────────────────
+// booking.php resolves a BOOKING; until now it never resolved an ACTOR, which is
+// why a co-guest was greeted with the lead's name.
+// Deliberately NOT resolve_portal_actor(): that calls checkin_ensure_lead_guest_id(),
+// which INSERTs. Correct in a write endpoint, wrong on every page view — so this
+// reads the lead row if it exists and writes nothing.
+$actor = ['guest_id' => null, 'is_lead' => true, 'name' => '', 'first' => ''];
+if ($hold) {
+    $__leadRow = (!$isCoGuest && checkin_supported()) ? checkin_lead_guest($holdId) : null;
+    $actor = portal_actor($__leadRow, $me, $isCoGuest, (string)($hold['guest_name'] ?? ''));
+}
+
 // The lead's gate lifts once they've submitted their own part (submitted_at) even
 // if co-guests are still pending — the booking still isn't "fully checked in".
 $__ci = ($hold && checkin_supported()) ? fetch_checkin($holdId) : null;
@@ -130,7 +143,13 @@ $checkin_gate = $hold && !$isCoGuest && checkin_required($hold) && !checkin_is_c
 
 $status     = $hold['status'] ?? '';
 
-$__views = ['home','activities','messages','checkin'];
+// The check-in view is the LEAD's wizard — it renders the lead's passport number
+// and signature. A co-guest on a shared booking has finished their own check-in
+// via checkin-guest.php and has no business there, so it is not in their view set.
+// (Writing was already blocked: the form posts ref=<g-token>, which
+// checkin_auth_context() rejects. This closes the read side.)
+$__views = ['home','activities','messages'];
+if (!$isCoGuest) $__views[] = 'checkin';
 if (share_reservation_on($hold ?: [])) $__views[] = 'bill';
 $view = in_array($_GET['view'] ?? '', $__views, true) ? $_GET['view'] : 'home';
 // When check-in is outstanding, the portal is a hard gate: only the check-in
@@ -237,8 +256,7 @@ include __DIR__ . '/includes/head.php';
 
 <div class="pa-app">
   <?php
-    $__first = trim((string)($hold['guest_name'] ?? ''));
-    $__first = $__first !== '' ? explode(' ', $__first)[0] : 'guest';
+    $__first = $actor['first'] !== '' ? $actor['first'] : 'guest';
     $__titles = ['home'=>'Karibu, ' . $__first, 'activities'=>'Activities', 'messages'=>'Messages', 'checkin'=>'Check-in'];
     $__t = $hold ? ($__titles[$view] ?? ('Karibu, ' . $__first)) : 'Your booking';
   ?>

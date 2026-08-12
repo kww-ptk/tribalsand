@@ -92,9 +92,12 @@ $__active = in_array($status ?? '', ['pending','confirmed'], true);
   }
   document.querySelectorAll('.pa-card .act-toggle').forEach(function(btn){
     var form = btn.parentNode.querySelector('.act-form');
+    var card = btn.closest('.pa-card');
     btn.addEventListener('click', function(){
       var open = form.style.display !== 'none';
       form.style.display = open ? 'none' : 'block';
+      // The CSS keys on is-open to span the card across both mobile columns.
+      if (card) card.classList.toggle('is-open', !open);
       if(!open){ fmtTotal(form); form.scrollIntoView({behavior:'smooth',block:'nearest'}); }
     });
   });

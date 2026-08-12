@@ -34,7 +34,10 @@ $__cur    = setting('site_currency', 'USD');
           <input type="hidden" name="ref" value="<?= e($ref) ?>">
           <input type="hidden" name="kind" value="event">
           <input type="hidden" name="board_post_id" value="<?= (int)$p['id'] ?>">
-          <button type="submit" class="pa-btn pa-btn--primary"><?= $__evPriced ? 'Request · ' . e(format_price((float)$p['price_amount'], $__cur)) : 'Join event' ?></button>
+          <!-- The price already appears in the meta line above, so the button does
+               not repeat it: "Request · USD 12,500" wraps to two lines in a ~165px
+               two-up column, and the duplication bought nothing. -->
+          <button type="submit" class="pa-btn pa-btn--primary"><?= $__evPriced ? 'Request' : 'Join event' ?></button>
           <p class="bm-status" aria-live="polite" style="margin:8px 0 0;font-size:13px"></p>
         </form>
         <?php endif; ?>

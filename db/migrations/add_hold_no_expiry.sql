@@ -1,0 +1,11 @@
+-- Tribal Sand: let a hold have no expiry at all. Run via /admin/migrate.php. Idempotent.
+--
+-- holds.expires_at was NOT NULL (db/migrations/add_availability.sql:32) because every
+-- hold used to be a 24h web enquiry. Bookings typed in by staff via admin/hold-new.php
+-- are now created pending with NO expiry, so the cron in bin/ical-expire-holds.php
+-- cannot cancel them overnight and release the dates: expire_stale_holds() matches on
+-- `expires_at < NOW()`, which is NULL — and therefore never true — for these rows.
+--
+-- Dropping NOT NULL is a catalog-only change in Postgres: no table rewrite, no scan.
+-- Existing rows are unaffected, and web enquiries keep their 24h TTL.
+ALTER TABLE holds ALTER COLUMN expires_at DROP NOT NULL;

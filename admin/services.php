@@ -77,12 +77,13 @@ include __DIR__ . '/_layout.php';
 <p class="text-muted" style="margin:0 0 20px;font-size:13px">Guests see active options with their price when requesting laundry or transfers. A price of 0 shows the label only. Drag the handle to reorder.</p>
 
 <?php foreach ($SERVICES as $svc => $svcLabel):
-    $rows   = fetch_service_options($svc, false);
-    $active = array_sum(array_map(fn($r) => $r['is_active'] ? 1 : 0, $rows)); ?>
+    $rows     = fetch_service_options($svc, false);
+    $active   = array_sum(array_map(fn($r) => $r['is_active'] ? 1 : 0, $rows));
+    $unpriced = array_sum(array_map(fn($r) => is_priced($r['price_amount']) ? 0 : 1, $rows)); ?>
 <div class="card svc-card">
   <div class="card__head">
     <span class="card__title"><?= e($svcLabel) ?></span>
-    <span class="svc-count"><?= (int)$active ?> active · <?= count($rows) ?> total</span>
+    <span class="svc-count"><?= (int)$active ?> active · <?= count($rows) ?> total<?php if ($unpriced > 0): ?> · <span class="badge badge--orange"><?= (int)$unpriced ?> unpriced</span><?php endif; ?></span>
   </div>
   <div class="card__body">
     <div class="svc-list" id="svc-<?= e($svc) ?>" data-service="<?= e($svc) ?>">
@@ -98,6 +99,7 @@ include __DIR__ . '/_layout.php';
           <span class="inp-money__cur"><?= e($currency) ?></span>
           <input type="number" name="price_amount" class="inp inp--num no-spin svc-price" value="<?= e($fmt_price($r['price_amount'])) ?>" min="0" step="0.01" placeholder="0">
         </span>
+        <?php if (!is_priced($r['price_amount'])): ?><span class="badge badge--orange" data-tip="A price of 0 shows the label only — guests see no price">no price</span><?php endif; ?>
         <label class="toggle svc-toggle" data-tip="<?= $r['is_active'] ? 'Active — guests can pick this' : 'Hidden from guests' ?>">
           <input type="checkbox" name="is_active" value="1" <?= $r['is_active'] ? 'checked' : '' ?>>
           <span class="toggle-slider"></span>
