@@ -69,6 +69,14 @@ if ($isLead) {
     if (checkin_property_arrival_supported()) {
         // Only meaningful in flight mode — in road/other, arrival_at already is
         // the time the guest reaches us, so we do not store a duplicate.
+        //
+        // Pre-migration ($mode is forced to '' above) the legacy form was
+        // flight-only, so arrival_at holds a LANDING time and the wizard both
+        // SHOWS this field and warns on it (includes/app/checkin.php:185,233 —
+        // the same `$amOn ? … : true` fallback). Dropping the value here would
+        // ask the guest a question, warn them about the answer, and then throw
+        // it away.
+        $isFlight = $mode === 'flight' || !checkin_arrival_mode_supported();
         // Must be a REAL clock time, not merely digit:digit — Postgres rejects
         // '25:00'/'99:99' for a TIME column and the exception would abort this
         // whole write. The wizard posts the entire form on every step save, so
@@ -77,7 +85,7 @@ if ($isLead) {
         $pa = $s('property_arrival_time');
         if ($pa !== null && !preg_match('/^([01]?\d|2[0-3]):[0-5]\d$/', $pa)) $pa = null;
         $cols[] = 'property_arrival_time'; $vals[] = ':pat';
-        $p[':pat'] = ($mode === 'flight') ? $pa : null;
+        $p[':pat'] = $isFlight ? $pa : null;
     }
 
     $sets = [];
