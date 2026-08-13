@@ -40,19 +40,20 @@ function checkin_airports(): array {
 }
 
 /**
- * Is the arrival step's required data present? Mode-aware:
- *   flight      → airport + flight number + arrival time
- *   road/other  → arrival time only
- *   no mode set → the legacy rule (flight number + arrival time), so rows saved
- *                 before add_checkin_arrival.sql keep their old behaviour.
- * An unrecognised mode falls back to the legacy rule rather than passing. Pure.
+ * Is the arrival step complete? The step now asks only HOW the guest arrives —
+ * the airport and flight details moved to the transfer step, and the desired
+ * check-in time is deliberately optional (the guest is warned, never blocked).
+ * So choosing a mode is the whole requirement.
+ *
+ * A row with no mode is pre-add_checkin_arrival.sql and keeps its old rule, so
+ * an unmigrated deployment does not suddenly mark every arrival step incomplete.
+ * Pure.
  */
 function checkin_arrival_complete(?array $data): bool {
     $d    = $data ?? [];
-    $has  = fn($k) => trim((string)($d[$k] ?? '')) !== '';
     $mode = trim((string)($d['arrival_mode'] ?? ''));
-    if ($mode === 'road' || $mode === 'other') return $has('arrival_at');
-    if ($mode === 'flight') return $has('arrival_airport') && $has('flight_number') && $has('arrival_at');
+    if ($mode !== '') return array_key_exists($mode, checkin_arrival_modes());
+    $has = fn($k) => trim((string)($d[$k] ?? '')) !== '';
     return $has('flight_number') && $has('arrival_at');
 }
 
@@ -268,9 +269,31 @@ function checkin_step_complete(string $key, ?array $data, ?array $lead): bool {
     switch ($key) {
         case 'arrival':  return checkin_arrival_complete($data);
         case 'transfer':
-            if (!array_key_exists('needs_transfer', $data) || $data['needs_transfer'] === null) return false;
-            $wants = ($data['needs_transfer'] === true || $data['needs_transfer'] === 't' || $data['needs_transfer'] === '1' || $data['needs_transfer'] === 1);
-            return $wants ? trim((string)($data['transfer_details'] ?? '')) !== '' : true;
+            // pdo_pgsql returns native bools on PHP >= 8.1 (production is 8.2), so that
+            // is the shape that actually arrives here. 't'/'f' is kept for older stacks
+            // and '1'/'0' for anything reading straight from a form post.
+            // Both legs read through the same coercion.
+            $yes = function ($v): ?bool {
+                if ($v === null) return null;
+                if ($v === true  || $v === 't' || $v === '1' || $v === 1) return true;
+                if ($v === false || $v === 'f' || $v === '0' || $v === 0) return false;
+                return null;
+            };
+            $inb  = $yes($data['needs_transfer'] ?? null);
+            $outb = checkin_departure_transfer_supported()
+                ? $yes($data['needs_departure_transfer'] ?? null) : false;
+            if ($inb === null || $outb === null) return false;
+            if ($inb) {
+                // Flying: the airport, flight and landing time ARE the detail.
+                // Otherwise we need somewhere to collect them from.
+                $mode = trim((string)($data['arrival_mode'] ?? ''));
+                $ok = $mode === 'flight'
+                    ? ($has('arrival_airport') && $has('flight_number') && $has('arrival_at'))
+                    : $has('transfer_details');
+                if (!$ok) return false;
+            }
+            if ($outb && !($has('departure_destination') && $has('departure_time'))) return false;
+            return true;
         case 'passport': return checkin_guest_passport_complete($lead);
         case 'dietary':  return $has('dietary');
         case 'requests': return $has('special_requests');
