@@ -177,16 +177,36 @@
     if (submitter && submitter.name && !fd.has(submitter.name)) fd.append(submitter.name, submitter.value);
 
     wsPanel.classList.add('is-loading');
+    // The rejection handler is the SECOND argument to this .then, not a trailing
+    // .catch, and that placement is the whole point: it can only ever see fetch()
+    // itself failing — i.e. the request never completed, nothing was written, so
+    // re-submitting natively is safe and is the only way to finish the action.
+    //
+    // A trailing .catch would ALSO swallow anything thrown while rendering the
+    // response, and by then the server has already committed the POST. That is
+    // what doubled every "+ Add adult": applyDoc() ends in reenhance(), which
+    // calls seven optional enhancers, and one of them throwing re-POSTed a write
+    // that had already landed — two checkin_guests rows, two audit entries.
     fetch(action, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'fetch' }, credentials: 'same-origin' })
-      .then(function (r) { return r.text().then(function (text) { return { url: r.url, text: text }; }); })
+      .then(
+        function (r) { return r.text().then(function (text) { return { url: r.url, text: text }; }); },
+        function () { wsPanel.classList.remove('is-loading'); form.submit(); return null; }
+      )
       .then(function (res) {
-        var doc = new DOMParser().parseFromString(res.text, 'text/html');
-        if (!doc.querySelector('[data-ws-panel]')) { window.location.href = res.url || location.href; return; }
-        applyDoc(doc);
-        toastFlash(doc);
-        try { if (res.url) history.replaceState({ ws: 1 }, '', res.url); } catch (e) { /* non-fatal */ }
-      })
-      .catch(function () { wsPanel.classList.remove('is-loading'); form.submit(); });
+        if (!res) return;                 // the request failed; the fallback above already ran
+        try {
+          var doc = new DOMParser().parseFromString(res.text, 'text/html');
+          if (!doc.querySelector('[data-ws-panel]')) { window.location.href = res.url || location.href; return; }
+          applyDoc(doc);
+          toastFlash(doc);
+          try { if (res.url) history.replaceState({ ws: 1 }, '', res.url); } catch (e) { /* non-fatal */ }
+        } catch (err) {
+          // Post-commit: never re-submit. Fall back to a full navigation, which
+          // shows the guest the real server state instead of repeating the write.
+          wsPanel.classList.remove('is-loading');
+          window.location.href = res.url || location.href;
+        }
+      });
   }
 
   // Bind the workspace once per `[data-ws]` element (survives shell swaps).
