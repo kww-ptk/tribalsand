@@ -114,7 +114,7 @@ function checkin_property_arrival_supported(): bool {
     return $ok;
 }
 
-/** True once add_departure_transfer.sql is applied. Cached per-request. */
+/** True once add_departure_transfer.sql is applied (one atomic ALTER, so one column proves all three). Cached per-request. */
 function checkin_departure_transfer_supported(): bool {
     static $ok = null;
     if ($ok !== null) return $ok;
@@ -224,6 +224,32 @@ function checkin_arrival_flag(?string $hhmm, string $from, string $to): string {
     if ($at < $a) return 'early';
     if ($at > $b) return 'late';
     return '';
+}
+
+/**
+ * The guest's desired check-in time as HH:MM, or '' if unknown.
+ *
+ * This is both what the input field is rendered with and what the early/late
+ * warning is computed from, so the server render and the live JS read the same
+ * string and cannot contradict each other.
+ *
+ * Legacy healing: before the desired check-in time existed, a road/other guest's
+ * arrival_at WAS the time they wanted their room, so it is used to prefill the
+ * field. The next save then writes it into property_arrival_time and the row is
+ * healed. Never for flight, and never when no mode is set (the legacy form was
+ * flight-only) — arrival_at is a LANDING time there, hours before the guest
+ * reaches the property.
+ */
+function checkin_desired_time(?array $data): string {
+    $d  = $data ?? [];
+    $pa = trim((string)($d['property_arrival_time'] ?? ''));
+    if ($pa !== '') return substr($pa, 0, 5);
+
+    $mode = trim((string)($d['arrival_mode'] ?? ''));
+    if ($mode !== 'road' && $mode !== 'other') return '';
+
+    $at = trim((string)($d['arrival_at'] ?? ''));
+    return $at !== '' ? date('H:i', strtotime($at)) : '';
 }
 
 /** Owner, or a manager who manages this booking's venue, may view passport docs. */

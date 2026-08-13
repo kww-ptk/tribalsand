@@ -302,6 +302,25 @@ check('checkin_arrival_mode_supported is bool', is_bool(checkin_arrival_mode_sup
 check('checkin_property_arrival_supported is bool', is_bool(checkin_property_arrival_supported()));
 check('checkin_departure_transfer_supported is bool', is_bool(checkin_departure_transfer_supported()));
 
+// ── Desired check-in time, with legacy prefill ──────────────────────────────
+check('desired: uses property_arrival_time',
+    checkin_desired_time(['arrival_mode'=>'flight','property_arrival_time'=>'10:00:00']) === '10:00');
+check('desired: trims seconds',
+    checkin_desired_time(['property_arrival_time'=>'09:05:00']) === '09:05');
+check('desired: road falls back to arrival_at',
+    checkin_desired_time(['arrival_mode'=>'road','arrival_at'=>'2026-09-10 09:00:00+03']) === '09:00');
+check('desired: other falls back to arrival_at',
+    checkin_desired_time(['arrival_mode'=>'other','arrival_at'=>'2026-09-10 21:30:00+03']) === '21:30');
+check('desired: flight NEVER falls back to the landing time',
+    checkin_desired_time(['arrival_mode'=>'flight','arrival_at'=>'2026-09-10 10:00:00+03']) === '');
+check('desired: no mode NEVER falls back (legacy flight-only form)',
+    checkin_desired_time(['arrival_at'=>'2026-09-10 10:00:00+03']) === '');
+check('desired: set value beats the fallback',
+    checkin_desired_time(['arrival_mode'=>'road','arrival_at'=>'2026-09-10 09:00:00+03','property_arrival_time'=>'15:00:00']) === '15:00');
+check('desired: empty data',            checkin_desired_time([]) === '');
+check('desired: null data',             checkin_desired_time(null) === '');
+check('desired: road with no arrival_at', checkin_desired_time(['arrival_mode'=>'road']) === '');
+
 // ── needs_transfer must never be bound as a PHP bool ────────────────────────
 // db() uses PDO::ATTR_EMULATE_PREPARES, which renders a bound PHP false as ''.
 // Postgres rejects '' for a boolean, so answering "No" to the transfer question
