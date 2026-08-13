@@ -273,6 +273,13 @@
       var card = t.closest('.ci-guest'), gid = card.getAttribute('data-guest-id');
       var fd = new FormData();
       fd.append('ref', REF); fd.append('csrf_token', CSRF); fd.append('guest_id', gid); fd.append('ajax', '1');
+      // This posts ONE guest card, not the whole form — but it carries `ref`, so the
+      // endpoint would otherwise treat it as the lead saving the booking and
+      // overwrite every booking-level answer with the fields absent here (arrival,
+      // transfers, dietary, requests). `scope` says so explicitly; the endpoint
+      // skips its booking-level block when it sees this. Any future partial poster
+      // to checkin-save.php must set it too.
+      fd.append('scope', 'guest');
       card.querySelectorAll('[data-field]').forEach(function (el) {
         var f = el.getAttribute('data-field');
         if (el.type === 'checkbox') { if (el.checked) fd.append(f, '1'); } else fd.append(f, el.value);

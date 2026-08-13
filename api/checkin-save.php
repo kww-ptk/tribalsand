@@ -25,7 +25,16 @@ if (checkin_is_complete($hold) && strtotime((string)$hold['check_in']) < strtoti
 $s = fn($k) => (($v = trim((string)($_POST[$k] ?? ''))) === '') ? null : $v;
 
 // ── Booking-level fields (LEAD only — booking_checkin is hold-scoped) ───────
-if ($isLead) {
+// scope=guest means "this post carries ONE guest card, not the whole wizard form".
+// The per-guest save in js/checkin-wizard.js sends it. Without the marker that
+// request still carries `ref`, so $isLead is true and the upsert below would run
+// against a $_POST holding none of the booking-level fields — writing NULL over
+// every arrival, transfer, dietary and requests answer the guest already gave.
+// Silently: checkin_recompute_completion() only ever stamps checkin_completed_at
+// NULL→now(), never clears it, so the booking still reads "Checked in ✓" over an
+// emptied record. Explicit marker, not a "is some field missing?" sniff — a sniff
+// breaks the day a field is renamed, and this failure is invisible.
+if ($isLead && ($_POST['scope'] ?? '') !== 'guest') {
     $arrivalAt = ($_POST['arrival_at'] ?? '') !== '' ? date('Y-m-d H:i:s', strtotime((string)$_POST['arrival_at'])) : null;
     // Both booleans go through checkin_bool_param() — 'TRUE'/'FALSE'/null, never a
     // PHP bool. See its docblock for why that distinction took check-in down.
