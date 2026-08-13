@@ -1,5 +1,16 @@
 RewriteEngine On
 
+# --- A1: Lock down secret files ---------------------------------------------
+# On the live server, .env / *.sql / .git / /db/ etc. must never be downloadable
+# (a leaked .env = leaked database password). Deny them outright.
+Options -Indexes
+ErrorDocument 404 /404.php
+<FilesMatch "(^\.|\.env|\.sql$|\.md$|\.log$|^composer\.(json|lock)$|^package(-lock)?\.json$|^router\.php$)">
+  Require all denied
+</FilesMatch>
+RedirectMatch 404 (?i)/(\.git|logs|docs|deploy|db)(/|$)
+# ----------------------------------------------------------------------------
+
 # Serve POST/PUT/PATCH/DELETE to a .php URL DIRECTLY — never redirect. A 301 on a
 # form submission makes the browser re-issue it as GET and DROP the body (the CSRF
 # token + all fields), silently breaking every save/submit (guest check-in, admin,
@@ -17,6 +28,12 @@ RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_FILENAME}.php -f
 RewriteRule ^(.+)$ $1.php [L]
 
-# Proxy missing images/assets to live site (mirrors router.php behaviour)
+# Proxy missing images/assets to the live site so previews (localhost / *.onrender.com)
+# look complete while the full image library isn't in the repo checkout.
+# GUARDED to the production host: once tribalsand.com's DNS points at THIS server,
+# redirecting a missing image to https://tribalsand.com is a self-referential INFINITE
+# redirect loop. So skip the proxy when we already ARE tribalsand.com and let the asset
+# 404 cleanly instead. (Real fix before cutover: deploy the /images tree to R2.)
+RewriteCond %{HTTP_HOST} !(^|\.)tribalsand\.com$ [NC]
 RewriteCond %{REQUEST_FILENAME} !-f
 RewriteRule \.(jpg|jpeg|png|gif|webp|svg|ico|woff|woff2|pdf|mp4|mp3)$ https://tribalsand.com%{REQUEST_URI} [R=302,L]
