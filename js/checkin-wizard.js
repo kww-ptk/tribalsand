@@ -120,9 +120,9 @@
     if (flag === '') { box.hidden = true; body.textContent = ''; return; }
 
     var msg = flag === 'early'
-      ? 'You’ve told us you’ll arrive at ' + t + ', before check-in opens at ' + from
-        + '. Your room may still be occupied or being prepared, so it might not be ready when you get here.'
-      : 'You’ll arrive at ' + t + ', after check-in closes at ' + to
+      ? 'You’ve asked to check in at ' + t + ', before check-in opens at ' + from
+        + '. Your room may still be occupied or being prepared, so it might not be ready that early.'
+      : 'You’ve asked to check in at ' + t + ', after check-in closes at ' + to
         + '. Let us know so someone is there to meet you.';
 
     if (!box.hidden) { body.textContent = msg; return; }   // already live: mutate in place

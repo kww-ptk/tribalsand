@@ -67,8 +67,9 @@ if ($isLead) {
     }
 
     if (checkin_property_arrival_supported()) {
-        // Only meaningful in flight mode — in road/other, arrival_at already is
-        // the time the guest reaches us, so we do not store a duplicate.
+        // The guest's desired check-in time. Only meaningful in flight mode — in
+        // road/other, arrival_at is when they drive up, which is when they want
+        // in, so we do not store a duplicate.
         //
         // Pre-migration ($mode is forced to '' above) the legacy form was
         // flight-only, so arrival_at holds a LANDING time and the wizard both
