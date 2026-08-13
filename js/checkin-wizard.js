@@ -96,23 +96,18 @@
   // unless the cancel is hoisted above both early returns, so it stays a count.)
   var arrSeq = 0;
 
-  // Which time counts as "reaching us": the dedicated field in flight mode,
-  // otherwise the time part of the shared arrival datetime.
+  // Which time counts as "reaching us": the desired check-in time, asked of
+  // every mode. A flight's landing time is never checked against the window.
   function syncArrivalWarning(sec) {
     var times = sec.querySelector('.ci-times'); if (!times) return;
     var box = sec.querySelector('.ci-arrwarn'); if (!box) return;
     var body = box.querySelector('.ci-arrwarn__t'); if (!body) return;
     var from = times.getAttribute('data-ci-from'), to = times.getAttribute('data-ci-to');
-    var modeEl = sec.querySelector('.ci-f-mode:checked');
-    var mode = modeEl ? modeEl.value : 'flight';
-    var t = '';
-    if (mode === 'flight') {
-      var pa = sec.querySelector('.ci-f-patime');
-      t = pa ? pa.value : '';
-    } else {
-      var at = sec.querySelector('[name="arrival_at"]');
-      t = at && at.value ? at.value.split('T')[1] || '' : '';
-    }
+    // One field for every mode. The server prefills it via checkin_desired_time(),
+    // including the legacy road/other fallback, so this reads exactly the string
+    // the server flagged on — no mode branch, and no way for the two to disagree.
+    var pa = sec.querySelector('.ci-f-patime');
+    var t = pa ? pa.value : '';
     var flag = arrFlag(t, from, to);
 
     var seq = ++arrSeq;
@@ -131,6 +126,34 @@
       if (seq !== arrSeq || box.hidden) return;            //    superseded, or re-hidden
       body.textContent = msg;                              // 3. …then write
     });
+  }
+
+  // The arrival-transfer block depends on TWO answers that live on different
+  // steps: "do you want a transfer" (transfer step) and "how will you arrive"
+  // (arrival step). The mode radios stay the single source of truth — this
+  // re-reads them rather than copying the value into a hidden field, so the two
+  // steps cannot drift apart.
+  function syncTransferFields(root) {
+    var sec = root.querySelector('.ci-step[data-key="transfer"]');
+    if (!sec) return;
+    var inEl = sec.querySelector('.ci-f-tin:checked');
+    var wantsIn = !!inEl && inEl.value === '1';
+    var modeEl = root.querySelector('.ci-f-mode:checked');
+    // The radios own the answer whenever the arrival step is rendered. When it
+    // is switched off in checkin_steps they do not exist, and the stored mode
+    // reaches the page only as data-arrival-mode, which the server stamps from
+    // checkin_effective_mode() — same 'unset reads as flight' rule.
+    var mode = modeEl ? modeEl.value : (sec.getAttribute('data-arrival-mode') || 'flight');
+    var isFlight = mode === 'flight';
+
+    sec.querySelectorAll('.ci-tin-fields').forEach(function (g) {
+      var wantFlight = g.getAttribute('data-tmode') === 'flight';
+      g.hidden = !wantsIn || (wantFlight !== isFlight);
+    });
+
+    var outEl = sec.querySelector('.ci-f-tout:checked');
+    var outBox = sec.querySelector('.ci-tout-fields');
+    if (outBox) outBox.hidden = !outEl || outEl.value !== '1';
   }
 
   function fieldVal(sec, name) {
@@ -250,6 +273,13 @@
       var card = t.closest('.ci-guest'), gid = card.getAttribute('data-guest-id');
       var fd = new FormData();
       fd.append('ref', REF); fd.append('csrf_token', CSRF); fd.append('guest_id', gid); fd.append('ajax', '1');
+      // This posts ONE guest card, not the whole form — but it carries `ref`, so the
+      // endpoint would otherwise treat it as the lead saving the booking and
+      // overwrite every booking-level answer with the fields absent here (arrival,
+      // transfers, dietary, requests). `scope` says so explicitly; the endpoint
+      // skips its booking-level block when it sees this. Any future partial poster
+      // to checkin-save.php must set it too.
+      fd.append('scope', 'guest');
       card.querySelectorAll('[data-field]').forEach(function (el) {
         var f = el.getAttribute('data-field');
         if (el.type === 'checkbox') { if (el.checked) fd.append(f, '1'); } else fd.append(f, el.value);
@@ -283,8 +313,9 @@
     }
   });
 
-  // Arrival: show only the chosen mode's fields, and reveal the free-text
-  // airport box when "Other" is picked. First paint is server-rendered.
+  // Arrival: show only the chosen mode's fields. Transfer: show the leg the
+  // guest asked for, and reveal the free-text airport box when "Other" is
+  // picked. First paint is server-rendered.
   form.addEventListener('change', function (e) {
     var t = e.target;
     if (t.classList.contains('ci-f-mode')) {
@@ -292,20 +323,26 @@
       step.querySelectorAll('.ci-mode-fields').forEach(function (g) {
         g.hidden = g.getAttribute('data-mode') !== t.value;
       });
-      // The shared arrival field means different things per mode, so its label
-      // swaps too — .ci-mode-fields above does not cover a bare <label>.
-      step.querySelectorAll('[data-mode-label]').forEach(function (l) {
-        l.hidden = (l.getAttribute('data-mode-label') === 'flight') !== (t.value === 'flight');
-      });
-      syncArrivalWarning(step);
+      // The transfer step asks different things of a flier, and the mode lives
+      // on THIS step — so changing it has to re-run that step's toggle too.
+      syncTransferFields(form);
       return;
     }
-    if (t.classList.contains('ci-f-patime') || t.name === 'arrival_at') {
+    if (t.classList.contains('ci-f-patime')) {
       syncArrivalWarning(t.closest('.ci-step'));
       return;
     }
+    if (t.classList.contains('ci-f-tin') || t.classList.contains('ci-f-tout')) {
+      syncTransferFields(form);
+      return;
+    }
     if (t.classList.contains('ci-f-airport')) {
-      var box = t.closest('.ci-mode-fields').querySelector('.ci-airport-other');
+      // The select moved from .ci-mode-fields (arrival step) to .ci-tin-fields
+      // (transfer step) — its new wrapper, and the only node that holds the
+      // free-text box. Guarded, not widened: if the markup moves again this
+      // does nothing rather than toggling a box in an unrelated subtree.
+      var grp = t.closest('.ci-tin-fields');
+      var box = grp && grp.querySelector('.ci-airport-other');
       if (box) box.hidden = t.value !== '__other';
       return;
     }
@@ -334,6 +371,7 @@
   // differently. Top-level, so every entry path (intro, edit, straight-in) gets it.
   var arrStep = form.querySelector('.ci-step[data-key="arrival"]');
   if (arrStep) syncArrivalWarning(arrStep);
+  syncTransferFields(form);
 
   // Initial view: intro when there is one, else straight into the steps. The old
   // ?ci= resume parameter is gone with the reload that needed it.

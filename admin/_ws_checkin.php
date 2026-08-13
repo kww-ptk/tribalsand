@@ -81,15 +81,16 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
   // time as "Arrival". Not the guest-side formula: nothing normalises a blank
   // mode to 'flight' here, so $__mode stays '' even post-migration.
   $__isFlight = ($__mode === '' || $__mode === 'flight');
-  // Flag the time the guest actually reaches us against the check-in window, so
+  $__paOn  = checkin_property_arrival_supported();
+  // Flag the time the guest wants their room against the check-in window, so
   // reception reads "early"/"late" instead of comparing the clock themselves.
-  // Which field that is mirrors $flagTime in includes/app/checkin.php: the
-  // dedicated column in flight mode, otherwise arrival_at already IS it.
+  // The time comes from checkin_desired_time() — the same resolver the guest
+  // portal renders the field with (the dedicated column, else a legacy
+  // road/other arrival_at that already IS that time), so admin and the portal
+  // cannot disagree, and neither can this badge and the number it sits next to.
   $__T     = checkin_times();
-  $__pat   = (checkin_property_arrival_supported() && $__isFlight)
-               ? trim((string)($__ci['property_arrival_time'] ?? '')) : '';
-  $__atT   = !empty($__ci['arrival_at']) ? date('H:i', strtotime((string)$__ci['arrival_at'])) : '';
-  $__flag  = checkin_arrival_flag($__isFlight ? $__pat : $__atT, $__T['ci_from'], $__T['ci_to']);
+  $__pat   = checkin_desired_time($__ci);
+  $__flag  = checkin_arrival_flag($__pat, $__T['ci_from'], $__T['ci_to']);
   $__badge = $__flag === ''
     ? ''
     : ' <span class="badge ' . ($__flag === 'early' ? 'badge--orange' : 'badge--blue') . '">'
@@ -108,13 +109,37 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
     <?php else: ?>
     <tr><td class="text-muted">Arriving by</td><td><?= $__fmt($__ci['arrival_note'] ?? '') ?></td></tr>
     <?php endif; ?>
-    <tr><td class="text-muted"><?= $__isFlight ? 'Flight lands' : 'Arrival' ?></td><td><?= $__fmt(($__ci['arrival_at'] ?? '') ? date('j M Y H:i', strtotime((string)$__ci['arrival_at'])) : '') ?><?= $__isFlight ? '' : $__badge ?></td></tr>
-    <?php if (checkin_property_arrival_supported() && $__isFlight): ?>
+    <?php // Pre-migration there is no desired-time row, so a road/other arrival_at
+          // keeps carrying the badge here exactly as it always did. ?>
+    <tr><td class="text-muted"><?= $__isFlight ? 'Flight lands' : 'Arrival' ?></td><td><?= $__fmt(($__ci['arrival_at'] ?? '') ? date('j M Y H:i', strtotime((string)$__ci['arrival_at'])) : '') ?><?= (!$__isFlight && !$__paOn) ? $__badge : '' ?></td></tr>
+    <?php if ($__paOn): ?>
+    <?php // Asked of every mode since the arrival step was restructured, so it is
+          // shown for every mode — a road guest's answer is reception's too. ?>
     <tr><td class="text-muted">Wants to check in</td><td><?php
-      echo $__pat !== '' ? e(substr($__pat, 0, 5)) . $__badge : '<span class="text-muted">—</span>';
+      echo $__pat !== '' ? e($__pat) . $__badge : '<span class="text-muted">—</span>';
     ?></td></tr>
     <?php endif; ?>
-    <tr><td class="text-muted">Transfer</td><td><?php $nt=$__ci['needs_transfer']??null; echo ($nt===null)?'—':(($nt===true||$nt==='t')?'Yes — '.e((string)($__ci['transfer_details']??'')):'No'); ?></td></tr>
+    <?php // "Yes" with no detail is now the normal flier path — the pickup box only
+          // renders for a non-flier, so transfer_details is legitimately empty for
+          // everyone who flies. Only append the dash when there is something to show. ?>
+    <tr><td class="text-muted">Transfer</td><td><?php
+      $nt = $__ci['needs_transfer'] ?? null;
+      $__td = trim((string)($__ci['transfer_details'] ?? ''));
+      echo ($nt === null) ? '<span class="text-muted">—</span>'
+         : (($nt === true || $nt === 't') ? ($__td !== '' ? 'Yes — ' . e($__td) : 'Yes') : 'No');
+    ?></td></tr>
+    <?php if (checkin_departure_transfer_supported()): ?>
+    <tr><td class="text-muted">Check-out transfer</td><td><?php
+      $__dt = $__ci['needs_departure_transfer'] ?? null;
+      if ($__dt === null) { echo '<span class="text-muted">—</span>'; }
+      elseif ($__dt === true || $__dt === 't') {
+        $__dd = trim((string)($__ci['departure_destination'] ?? ''));
+        $__dp = trim((string)($__ci['departure_time'] ?? ''));
+        echo 'Yes — ' . ($__dd !== '' ? e($__dd) : '<span class="text-muted">no destination</span>')
+           . ($__dp !== '' ? ' at <strong>' . e(substr($__dp, 0, 5)) . '</strong>' : '');
+      } else { echo 'No'; }
+    ?></td></tr>
+    <?php endif; ?>
     <tr><td class="text-muted">Dietary</td><td><?= $__fmt($__ci['dietary'] ?? '') ?></td></tr>
     <tr><td class="text-muted">Requests</td><td><?= $__fmt($__ci['special_requests'] ?? '') ?></td></tr>
   </table>

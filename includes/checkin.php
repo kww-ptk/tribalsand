@@ -8,8 +8,8 @@ require_once __DIR__ . '/team.php';   // staff_can_hold()
 /** Fixed step catalog. Array order = wizard order. */
 function checkin_step_catalog(): array {
     return [
-        'arrival'  => ['label' => 'Arrival & flight',     'default_required' => false],
-        'transfer' => ['label' => 'Airport transfer',     'default_required' => false],
+        'arrival'  => ['label' => 'How you’ll arrive',    'default_required' => false],
+        'transfer' => ['label' => 'Transfers',            'default_required' => false],
         'passport' => ['label' => 'Passport & identity',  'default_required' => true],
         'dietary'  => ['label' => 'Dietary requirements', 'default_required' => false],
         'requests' => ['label' => 'Special requests',     'default_required' => false],
@@ -27,6 +27,18 @@ function checkin_arrival_modes(): array {
 }
 
 /**
+ * The arrival mode to reason with. A row whose arrival_mode is unset or
+ * unrecognised is pre-add_checkin_arrival.sql (or was never answered), and
+ * the form it came from was flight-only — so it reads as 'flight'. Note the
+ * guard is on the VALUE, not on the column existing: the migration adds the
+ * column with no backfill, so legacy rows have it present and NULL. Pure.
+ */
+function checkin_effective_mode(?array $data): string {
+    $mode = trim((string)(($data ?? [])['arrival_mode'] ?? ''));
+    return array_key_exists($mode, checkin_arrival_modes()) ? $mode : 'flight';
+}
+
+/**
  * Airports offered in the arrival dropdown. Keys are the stored value (so the
  * select round-trips), values are the guest-facing label. The wizard adds an
  * "Other" choice that writes free text into the same arrival_airport column.
@@ -40,19 +52,20 @@ function checkin_airports(): array {
 }
 
 /**
- * Is the arrival step's required data present? Mode-aware:
- *   flight      → airport + flight number + arrival time
- *   road/other  → arrival time only
- *   no mode set → the legacy rule (flight number + arrival time), so rows saved
- *                 before add_checkin_arrival.sql keep their old behaviour.
- * An unrecognised mode falls back to the legacy rule rather than passing. Pure.
+ * Is the arrival step complete? The step now asks only HOW the guest arrives —
+ * the airport and flight details moved to the transfer step, and the desired
+ * check-in time is deliberately optional (the guest is warned, never blocked).
+ * So choosing a mode is the whole requirement.
+ *
+ * A row with no mode is pre-add_checkin_arrival.sql and keeps its old rule, so
+ * an unmigrated deployment does not suddenly mark every arrival step incomplete.
+ * Pure.
  */
 function checkin_arrival_complete(?array $data): bool {
     $d    = $data ?? [];
-    $has  = fn($k) => trim((string)($d[$k] ?? '')) !== '';
     $mode = trim((string)($d['arrival_mode'] ?? ''));
-    if ($mode === 'road' || $mode === 'other') return $has('arrival_at');
-    if ($mode === 'flight') return $has('arrival_airport') && $has('flight_number') && $has('arrival_at');
+    if ($mode !== '') return array_key_exists($mode, checkin_arrival_modes());
+    $has = fn($k) => trim((string)($d[$k] ?? '')) !== '';
     return $has('flight_number') && $has('arrival_at');
 }
 
@@ -110,6 +123,15 @@ function checkin_property_arrival_supported(): bool {
     static $ok = null;
     if ($ok !== null) return $ok;
     try { db_query('SELECT property_arrival_time FROM booking_checkin LIMIT 1'); $ok = true; }
+    catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/** True once add_departure_transfer.sql is applied (one atomic ALTER, so one column proves all three). Cached per-request. */
+function checkin_departure_transfer_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { db_query('SELECT departure_time FROM booking_checkin LIMIT 1'); $ok = true; }
     catch (Throwable $e) { $ok = false; }
     return $ok;
 }
@@ -217,6 +239,63 @@ function checkin_arrival_flag(?string $hhmm, string $from, string $to): string {
     return '';
 }
 
+/**
+ * A posted yes/no answer as 'TRUE' | 'FALSE' | null (null = unanswered), ready to
+ * bind to a boolean column. NEVER returns a PHP bool: db() runs with
+ * PDO::ATTR_EMULATE_PREPARES, which renders a bound `false` as '', and Postgres
+ * rejects '' for a boolean ("invalid input syntax for type boolean"). Answering
+ * "No, I'll make my own way" fatalled the whole check-in in production this way
+ * (PR #56). Every boolean the check-in write binds must come from here. Pure.
+ */
+function checkin_bool_param(array $post, string $key): ?string {
+    if (!array_key_exists($key, $post) || $post[$key] === '') return null;
+    return $post[$key] === '1' ? 'TRUE' : 'FALSE';
+}
+
+/**
+ * A value safe to bind to a TIME column, or null. Strict on purpose: Postgres
+ * rejects '25:00'/'99:99' and the exception would abort the check-in upsert,
+ * which is atomic and carries the guest's whole form — one bad clock value would
+ * lose their transfer and dietary answers too.
+ *
+ * Deliberately stricter than checkin_arrival_flag()'s parser (and its JS mirror),
+ * which accepts stored 'HH:MM:SS' and is lenient because a missing early/late
+ * warning beats a false one. Reading is forgiving; writing is not. Do not merge
+ * the two. Pure.
+ */
+function checkin_clock_time(?string $v): ?string {
+    if ($v === null) return null;
+    $v = trim($v);
+    return preg_match('/^([01]?\d|2[0-3]):[0-5]\d$/', $v) ? $v : null;
+}
+
+/**
+ * The guest's desired check-in time as HH:MM, or '' if unknown.
+ *
+ * This is both what the input field is rendered with and what the early/late
+ * warning is computed from, so the server render and the live JS read the same
+ * string and cannot contradict each other.
+ *
+ * Legacy healing: before the desired check-in time existed, a road/other guest's
+ * arrival_at WAS the time they wanted their room, so it is used to prefill the
+ * field. The next save then writes it into property_arrival_time and the row is
+ * healed. Never for flight, and never when no mode is set (the legacy form was
+ * flight-only) — arrival_at is a LANDING time there, hours before the guest
+ * reaches the property.
+ */
+function checkin_desired_time(?array $data): string {
+    $d  = $data ?? [];
+    $pa = trim((string)($d['property_arrival_time'] ?? ''));
+    if ($pa !== '') return substr($pa, 0, 5);
+
+    $mode = trim((string)($d['arrival_mode'] ?? ''));
+    if ($mode !== 'road' && $mode !== 'other') return '';
+
+    $at = trim((string)($d['arrival_at'] ?? ''));
+    $ts = $at !== '' ? strtotime($at) : false;
+    return $ts !== false ? date('H:i', $ts) : '';
+}
+
 /** Owner, or a manager who manages this booking's venue, may view passport docs. */
 function can_view_guest_docs(int $holdId): bool {
     if (is_owner()) return true;
@@ -233,9 +312,31 @@ function checkin_step_complete(string $key, ?array $data, ?array $lead): bool {
     switch ($key) {
         case 'arrival':  return checkin_arrival_complete($data);
         case 'transfer':
-            if (!array_key_exists('needs_transfer', $data) || $data['needs_transfer'] === null) return false;
-            $wants = ($data['needs_transfer'] === true || $data['needs_transfer'] === 't' || $data['needs_transfer'] === '1' || $data['needs_transfer'] === 1);
-            return $wants ? trim((string)($data['transfer_details'] ?? '')) !== '' : true;
+            // pdo_pgsql returns native bools on PHP >= 8.1 (production is 8.2), so that
+            // is the shape that actually arrives here. 't'/'f' is kept for older stacks
+            // and '1'/'0' for anything reading straight from a form post.
+            // Both legs read through the same coercion.
+            $yes = function ($v): ?bool {
+                if ($v === null) return null;
+                if ($v === true  || $v === 't' || $v === '1' || $v === 1) return true;
+                if ($v === false || $v === 'f' || $v === '0' || $v === 0) return false;
+                return null;
+            };
+            $inb  = $yes($data['needs_transfer'] ?? null);
+            $outb = checkin_departure_transfer_supported()
+                ? $yes($data['needs_departure_transfer'] ?? null) : false;
+            if ($inb === null || $outb === null) return false;
+            if ($inb) {
+                // Flying: the airport, flight and landing time ARE the detail.
+                // Otherwise we need somewhere to collect them from. An unset
+                // mode reads as flight — see checkin_effective_mode().
+                $ok = checkin_effective_mode($data) === 'flight'
+                    ? ($has('arrival_airport') && $has('flight_number') && $has('arrival_at'))
+                    : $has('transfer_details');
+                if (!$ok) return false;
+            }
+            if ($outb && !($has('departure_destination') && $has('departure_time'))) return false;
+            return true;
         case 'passport': return checkin_guest_passport_complete($lead);
         case 'dietary':  return $has('dietary');
         case 'requests': return $has('special_requests');

@@ -92,9 +92,15 @@ if (checkin_supported()) {
 check('arrival incomplete when empty',   checkin_step_complete('arrival', [], null) === false);
 check('arrival complete w/ flight+time',  checkin_step_complete('arrival', ['flight_number' => 'KQ100', 'arrival_at' => '2026-09-01 14:00'], null) === true);
 check('transfer needs answer',            checkin_step_complete('transfer', [], null) === false);
-check('transfer no = complete',           checkin_step_complete('transfer', ['needs_transfer' => false], null) === true);
-check('transfer yes needs details',       checkin_step_complete('transfer', ['needs_transfer' => true], null) === false);
-check('transfer yes + details = complete',checkin_step_complete('transfer', ['needs_transfer' => true, 'transfer_details' => 'JKIA 2pm'], null) === true);
+// Real PHP bools — this is what pdo_pgsql actually hands back (PHP >= 8.1), so
+// these three are the only coverage of the real driver path. The 't'/'f' cases
+// in the transfer block below are the synthetic ones. Do not delete as dupes.
+check('transfer no = complete',           checkin_step_complete('transfer', ['needs_transfer' => false, 'needs_departure_transfer' => false], null) === true);
+// The mode is explicit here on purpose: a row with no mode reads as flight
+// (checkin_effective_mode()), for which transfer_details is NOT the detail —
+// these two are testing the road/pickup branch, so they must say so.
+check('transfer yes needs details',       checkin_step_complete('transfer', ['needs_transfer' => true, 'arrival_mode' => 'road', 'needs_departure_transfer' => false], null) === false);
+check('transfer yes + details = complete',checkin_step_complete('transfer', ['needs_transfer' => true, 'arrival_mode' => 'road', 'needs_departure_transfer' => false, 'transfer_details' => 'JKIA 2pm'], null) === true);
 check('passport needs name+num+file',     checkin_step_complete('passport', [], ['passport_name' => 'A', 'passport_number' => 'B']) === false);
 check('passport complete w/ file',        checkin_step_complete('passport', [], ['passport_name' => 'A', 'passport_number' => 'B', 'passport_file_key' => 'checkin/1/x.jpg']) === true);
 check('waiver needs signature',           checkin_step_complete('waiver', [], ['waiver_signed_name' => 'A']) === false);
@@ -103,16 +109,36 @@ check('waiver complete when signed',      checkin_step_complete('waiver', [], ['
 // ── Arrival modes (pure) ────────────────────────────────────────────────────
 check('arrival modes has three',          count(checkin_arrival_modes()) === 3);
 check('arrival modes keyed by value',     array_keys(checkin_arrival_modes()) === ['flight', 'road', 'other']);
+
+// ── checkin_effective_mode(): unset or unrecognised reads as flight ─────────
+// add_checkin_arrival.sql adds arrival_mode with NO backfill, so legacy rows
+// have the column PRESENT and NULL. Guarding on the column existing instead of
+// on the value made the transfer step paint the pickup textarea for a legacy
+// row while step 1 pre-checked Flight — a server render contradicting itself.
+check('effective mode: absent key',       checkin_effective_mode([]) === 'flight');
+check('effective mode: null value',       checkin_effective_mode(['arrival_mode' => null]) === 'flight');
+check('effective mode: empty string',     checkin_effective_mode(['arrival_mode' => '']) === 'flight');
+check('effective mode: whitespace only',  checkin_effective_mode(['arrival_mode' => '   ']) === 'flight');
+check('effective mode: unrecognised',     checkin_effective_mode(['arrival_mode' => 'zzz']) === 'flight');
+check('effective mode: null data',        checkin_effective_mode(null) === 'flight');
+check('effective mode: flight',           checkin_effective_mode(['arrival_mode' => 'flight']) === 'flight');
+check('effective mode: road',             checkin_effective_mode(['arrival_mode' => 'road']) === 'road');
+check('effective mode: other',            checkin_effective_mode(['arrival_mode' => 'other']) === 'other');
 check('airports has three',               count(checkin_airports()) === 3);
 check('arrival legacy needs flight+time', checkin_arrival_complete(['flight_number' => 'KQ100', 'arrival_at' => '2026-09-01 14:00']) === true);
 check('arrival legacy without flight',    checkin_arrival_complete(['arrival_at' => '2026-09-01 14:00']) === false);
-check('arrival flight needs airport',     checkin_arrival_complete(['arrival_mode' => 'flight', 'flight_number' => 'KQ100', 'arrival_at' => '2026-09-01 14:00']) === false);
-check('arrival flight needs flight no',   checkin_arrival_complete(['arrival_mode' => 'flight', 'arrival_airport' => 'Malindi', 'arrival_at' => '2026-09-01 14:00']) === false);
+// The airport/flight fields moved to the transfer step, so the arrival step no
+// longer demands them — the mode alone completes it.
+check('arrival flight w/o airport is ok', checkin_arrival_complete(['arrival_mode' => 'flight', 'flight_number' => 'KQ100', 'arrival_at' => '2026-09-01 14:00']) === true);
+check('arrival flight w/o flight no ok',  checkin_arrival_complete(['arrival_mode' => 'flight', 'arrival_airport' => 'Malindi', 'arrival_at' => '2026-09-01 14:00']) === true);
 check('arrival flight complete',          checkin_arrival_complete(['arrival_mode' => 'flight', 'arrival_airport' => 'Malindi', 'flight_number' => 'KQ100', 'arrival_at' => '2026-09-01 14:00']) === true);
-check('arrival road needs only time',     checkin_arrival_complete(['arrival_mode' => 'road', 'arrival_at' => '2026-09-01 14:00']) === true);
-check('arrival road without time',        checkin_arrival_complete(['arrival_mode' => 'road']) === false);
-check('arrival other needs only time',    checkin_arrival_complete(['arrival_mode' => 'other', 'arrival_at' => '2026-09-01 14:00']) === true);
-check('arrival unknown mode = legacy',    checkin_arrival_complete(['arrival_mode' => 'teleport', 'arrival_at' => '2026-09-01 14:00']) === false);
+check('arrival road + time still ok',     checkin_arrival_complete(['arrival_mode' => 'road', 'arrival_at' => '2026-09-01 14:00']) === true);
+check('arrival other + time still ok',    checkin_arrival_complete(['arrival_mode' => 'other', 'arrival_at' => '2026-09-01 14:00']) === true);
+// An unknown mode no longer falls back to the legacy rule — it fails outright.
+// The fixture carries flight_number + arrival_at so it would pass under the old
+// rule and fail under the new one, which is the whole point of the assertion.
+check('arrival unknown mode is incomplete',
+    checkin_arrival_complete(['arrival_mode' => 'teleport', 'flight_number' => 'KQ1', 'arrival_at' => '2026-09-10 10:00:00+03']) === false);
 check('arrival null data incomplete',     checkin_arrival_complete(null) === false);
 check('step_complete delegates to mode',  checkin_step_complete('arrival', ['arrival_mode' => 'road', 'arrival_at' => '2026-09-01 14:00'], null) === true);
 
@@ -300,12 +326,98 @@ check('bill_item_guest_supported is bool',     is_bool(bill_item_guest_supported
 check('message_sender_guest_supported is bool', is_bool(message_sender_guest_supported()));
 check('checkin_arrival_mode_supported is bool', is_bool(checkin_arrival_mode_supported()));
 check('checkin_property_arrival_supported is bool', is_bool(checkin_property_arrival_supported()));
+check('checkin_departure_transfer_supported is bool', is_bool(checkin_departure_transfer_supported()));
 
-// ── needs_transfer must never be bound as a PHP bool ────────────────────────
+// ── Desired check-in time, with legacy prefill ──────────────────────────────
+check('desired: uses property_arrival_time',
+    checkin_desired_time(['arrival_mode'=>'flight','property_arrival_time'=>'10:00:00']) === '10:00');
+check('desired: trims seconds',
+    checkin_desired_time(['property_arrival_time'=>'09:05:00']) === '09:05');
+check('desired: road falls back to arrival_at',
+    checkin_desired_time(['arrival_mode'=>'road','arrival_at'=>'2026-09-10 09:00:00+03']) === '09:00');
+check('desired: other falls back to arrival_at',
+    checkin_desired_time(['arrival_mode'=>'other','arrival_at'=>'2026-09-10 21:30:00+03']) === '21:30');
+check('desired: flight NEVER falls back to the landing time',
+    checkin_desired_time(['arrival_mode'=>'flight','arrival_at'=>'2026-09-10 10:00:00+03']) === '');
+check('desired: no mode NEVER falls back (legacy flight-only form)',
+    checkin_desired_time(['arrival_at'=>'2026-09-10 10:00:00+03']) === '');
+check('desired: set value beats the fallback',
+    checkin_desired_time(['arrival_mode'=>'road','arrival_at'=>'2026-09-10 09:00:00+03','property_arrival_time'=>'15:00:00']) === '15:00');
+check('desired: empty data',            checkin_desired_time([]) === '');
+check('desired: null data',             checkin_desired_time(null) === '');
+check('desired: road with no arrival_at', checkin_desired_time(['arrival_mode'=>'road']) === '');
+check('desired: unparseable arrival_at is blank, not a fatal',
+    checkin_desired_time(['arrival_mode'=>'road','arrival_at'=>'not a date']) === '');
+
+// ── Arrival step is complete once a mode is chosen ──────────────────────────
+check('arrival: flight alone is enough now',  checkin_arrival_complete(['arrival_mode'=>'flight']) === true);
+check('arrival: road alone is enough',        checkin_arrival_complete(['arrival_mode'=>'road'])   === true);
+check('arrival: other alone is enough',       checkin_arrival_complete(['arrival_mode'=>'other'])  === true);
+check('arrival: nothing chosen is incomplete',checkin_arrival_complete([])                          === false);
+check('arrival: unknown mode is incomplete',  checkin_arrival_complete(['arrival_mode'=>'zzz'])     === false);
+check('arrival: legacy no-mode row still passes on its old rule',
+    checkin_arrival_complete(['flight_number'=>'KQ610','arrival_at'=>'2026-09-10 10:00:00+03']) === true);
+
+// ── Transfer step covers both legs ──────────────────────────────────────────
+$tc = fn(array $d) => checkin_step_complete('transfer', $d, null);
+check('transfer: nothing answered',        $tc([]) === false);
+check('transfer: both no',
+    $tc(['needs_transfer'=>'f','needs_departure_transfer'=>'f']) === true);
+check('transfer: arrival yes + flying needs the flight fields',
+    $tc(['needs_transfer'=>'t','arrival_mode'=>'flight','needs_departure_transfer'=>'f']) === false);
+check('transfer: arrival yes + flying, fields given',
+    $tc(['needs_transfer'=>'t','arrival_mode'=>'flight','arrival_airport'=>'MBA',
+         'flight_number'=>'KQ610','arrival_at'=>'2026-09-10 10:00:00+03',
+         'needs_departure_transfer'=>'f']) === true);
+check('transfer: arrival yes + road needs a pickup point',
+    $tc(['needs_transfer'=>'t','arrival_mode'=>'road','needs_departure_transfer'=>'f']) === false);
+check('transfer: arrival yes + road, pickup given',
+    $tc(['needs_transfer'=>'t','arrival_mode'=>'road','transfer_details'=>'Likoni ferry',
+         'needs_departure_transfer'=>'f']) === true);
+
+// A legacy row came from the flight-only form, so "yes, arrange it" means the
+// flight fields ARE the detail and a pickup note is not a substitute. Asserted
+// both directions, and for both shapes a legacy row can take: the column
+// present-and-NULL (the real post-migration shape, no backfill) and the key
+// absent entirely (pre-migration). The absence of this pair is what let the
+// NULL-mode bug ship.
+check('transfer: legacy null mode is not satisfied by a pickup note',
+    $tc(['needs_transfer'=>'t','arrival_mode'=>null,'transfer_details'=>'Likoni ferry',
+         'needs_departure_transfer'=>'f']) === false);
+check('transfer: legacy null mode, flight fields given',
+    $tc(['needs_transfer'=>'t','arrival_mode'=>null,'arrival_airport'=>'MBA',
+         'flight_number'=>'KQ610','arrival_at'=>'2026-09-10 10:00:00+03',
+         'needs_departure_transfer'=>'f']) === true);
+check('transfer: absent mode key behaves identically',
+    $tc(['needs_transfer'=>'t','transfer_details'=>'Likoni ferry',
+         'needs_departure_transfer'=>'f']) === false);
+check('transfer: absent mode key, flight fields given',
+    $tc(['needs_transfer'=>'t','arrival_airport'=>'MBA','flight_number'=>'KQ610',
+         'arrival_at'=>'2026-09-10 10:00:00+03','needs_departure_transfer'=>'f']) === true);
+
+// The departure leg only exists once add_departure_transfer.sql is applied —
+// before that checkin_step_complete() forces the outbound answer to "no", so an
+// unanswered departure is legitimately complete and these would fail.
+if (checkin_departure_transfer_supported()) {
+    check('transfer: arrival answered, departure not',
+        $tc(['needs_transfer'=>'f']) === false);
+    check('transfer: departure yes needs a destination and a time',
+        $tc(['needs_transfer'=>'f','needs_departure_transfer'=>'t']) === false);
+    check('transfer: departure yes, destination only',
+        $tc(['needs_transfer'=>'f','needs_departure_transfer'=>'t','departure_destination'=>'MBA']) === false);
+    check('transfer: departure yes, both given',
+        $tc(['needs_transfer'=>'f','needs_departure_transfer'=>'t','departure_destination'=>'MBA',
+             'departure_time'=>'12:00:00']) === true);
+} else {
+    echo "SKIP  add_departure_transfer.sql not applied — departure leg forced complete\n";
+}
+
+// ── no boolean is ever bound as a PHP bool ─────────────────────────────────
 // db() uses PDO::ATTR_EMULATE_PREPARES, which renders a bound PHP false as ''.
 // Postgres rejects '' for a boolean, so answering "No" to the transfer question
-// used to fatal in api/checkin-save.php. Assert the real column accepts what
-// that endpoint now binds, and rejects what it used to.
+// used to fatal in api/checkin-save.php. This calls the REAL checkin_bool_param()
+// the endpoint calls — an earlier version of this test re-implemented the
+// expression, so a regression in the endpoint could not have failed it.
 if (checkin_supported()) {
     db_query('CREATE TEMP TABLE zz_nt_check (b BOOLEAN)');
     $ntBind = function ($v): string {
@@ -316,14 +428,56 @@ if (checkin_supported()) {
     check("'FALSE' is accepted",                  $ntBind('FALSE') === 'accepted');
     check("'TRUE' is accepted",                   $ntBind('TRUE')  === 'accepted');
     check('null is accepted (unanswered)',        $ntBind(null)    === 'accepted');
-    // The exact expression api/checkin-save.php uses, for each posted answer.
-    $ntOf = fn(array $post) => array_key_exists('needs_transfer', $post) && $post['needs_transfer'] !== ''
-        ? ($post['needs_transfer'] === '1' ? 'TRUE' : 'FALSE') : null;
-    check('answer "yes" binds TRUE',   $ntOf(['needs_transfer' => '1']) === 'TRUE');
-    check('answer "no" binds FALSE',   $ntOf(['needs_transfer' => '0']) === 'FALSE');
-    check('unanswered binds null',     $ntOf([]) === null);
-    check('no bind is ever a PHP bool', !is_bool($ntOf(['needs_transfer' => '0'])));
+    // Every boolean api/checkin-save.php binds, through the function it uses.
+    foreach (['needs_transfer', 'needs_departure_transfer'] as $k) {
+        check("{$k}: answer \"yes\" binds TRUE",  checkin_bool_param([$k => '1'], $k) === 'TRUE');
+        check("{$k}: answer \"no\" binds FALSE",  checkin_bool_param([$k => '0'], $k) === 'FALSE');
+        check("{$k}: unanswered binds null",      checkin_bool_param([], $k) === null);
+        check("{$k}: blank binds null",           checkin_bool_param([$k => ''], $k) === null);
+        // Each result also has to survive the real column, not just look right.
+        foreach (['1', '0', ''] as $posted) {
+            check("{$k}: posted '{$posted}' is accepted by a BOOLEAN column",
+                $ntBind(checkin_bool_param([$k => $posted], $k)) === 'accepted');
+        }
+        check("{$k}: no bind is ever a PHP bool", !array_filter(
+            ['1', '0', ''], fn($v) => is_bool(checkin_bool_param([$k => $v], $k))
+        ) && !is_bool(checkin_bool_param([], $k)));
+    }
     db_query('DROP TABLE zz_nt_check');
+}
+
+// ── checkin_clock_time(): a bad value must degrade to null, never reach a TIME ──
+// The check-in upsert is atomic and carries the whole form, so an exception on one
+// clock value would lose the guest's transfer and dietary answers with it.
+check("clock: '12:00' passes",       checkin_clock_time('12:00') === '12:00');
+check("clock: '09:15' passes",       checkin_clock_time('09:15') === '09:15');
+check("clock: '9:05' passes",        checkin_clock_time('9:05')  === '9:05');
+check("clock: '23:59' passes",       checkin_clock_time('23:59') === '23:59');
+check("clock: '00:00' passes",       checkin_clock_time('00:00') === '00:00');
+check("clock: ' 10:00 ' is trimmed", checkin_clock_time(' 10:00 ') === '10:00');
+check("clock: '99:99' → null",       checkin_clock_time('99:99') === null);
+check("clock: '25:00' → null",       checkin_clock_time('25:00') === null);
+check("clock: '12:60' → null",       checkin_clock_time('12:60') === null);
+check("clock: '24:00' → null",       checkin_clock_time('24:00') === null);
+check("clock: 'noon' → null",        checkin_clock_time('noon')  === null);
+check("clock: '' → null",            checkin_clock_time('')      === null);
+check('clock: null → null',          checkin_clock_time(null)    === null);
+// Stricter than the read-side parser on purpose — writing must not guess.
+check("clock: stored '12:00:00' → null (write-side is strict)", checkin_clock_time('12:00:00') === null);
+check("flag parser still accepts '12:00:00' (read-side is lenient)",
+    checkin_arrival_flag('12:00:00', '14:00', '20:00') === 'early');
+// Whatever it returns must survive a real TIME column.
+if (checkin_supported()) {
+    db_query('CREATE TEMP TABLE zz_ct_check (t TIME)');
+    $ctBind = function ($v): string {
+        try { db_query('INSERT INTO zz_ct_check (t) VALUES (:t)', [':t' => $v]); return 'accepted'; }
+        catch (Throwable $e) { return 'rejected'; }
+    };
+    check("raw '99:99' really is rejected by a TIME column", $ctBind('99:99') === 'rejected');
+    foreach (['12:00', '9:05', '99:99', '25:00', 'noon', '', '12:00:00'] as $v) {
+        check("clock: '{$v}' sanitised is accepted by a TIME column", $ctBind(checkin_clock_time($v)) === 'accepted');
+    }
+    db_query('DROP TABLE zz_ct_check');
 }
 
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
