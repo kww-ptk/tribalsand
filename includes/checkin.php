@@ -27,6 +27,18 @@ function checkin_arrival_modes(): array {
 }
 
 /**
+ * The arrival mode to reason with. A row whose arrival_mode is unset or
+ * unrecognised is pre-add_checkin_arrival.sql (or was never answered), and
+ * the form it came from was flight-only — so it reads as 'flight'. Note the
+ * guard is on the VALUE, not on the column existing: the migration adds the
+ * column with no backfill, so legacy rows have it present and NULL. Pure.
+ */
+function checkin_effective_mode(?array $data): string {
+    $mode = trim((string)(($data ?? [])['arrival_mode'] ?? ''));
+    return array_key_exists($mode, checkin_arrival_modes()) ? $mode : 'flight';
+}
+
+/**
  * Airports offered in the arrival dropdown. Keys are the stored value (so the
  * select round-trips), values are the guest-facing label. The wizard adds an
  * "Other" choice that writes free text into the same arrival_airport column.
@@ -286,9 +298,9 @@ function checkin_step_complete(string $key, ?array $data, ?array $lead): bool {
             if ($inb === null || $outb === null) return false;
             if ($inb) {
                 // Flying: the airport, flight and landing time ARE the detail.
-                // Otherwise we need somewhere to collect them from.
-                $mode = trim((string)($data['arrival_mode'] ?? ''));
-                $ok = $mode === 'flight'
+                // Otherwise we need somewhere to collect them from. An unset
+                // mode reads as flight — see checkin_effective_mode().
+                $ok = checkin_effective_mode($data) === 'flight'
                     ? ($has('arrival_airport') && $has('flight_number') && $has('arrival_at'))
                     : $has('transfer_details');
                 if (!$ok) return false;

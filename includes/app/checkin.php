@@ -211,11 +211,11 @@ if (isset($cfg['transfer'])) $needs[] = ['&#9992;&#65039;', 'If you&rsquo;d like
 
       <?php elseif ($key === 'transfer'): ?>
         <?php
-          $amOn2    = checkin_arrival_mode_supported();
-          $mode2    = $amOn2 ? trim((string)($data['arrival_mode'] ?? '')) : '';
-          // Same legacy rule as everywhere else: no mode column means the old
-          // flight-only form, so treat the guest as flying.
-          $isFlight2 = $amOn2 ? ($mode2 === 'flight') : true;
+          // Guard on the VALUE, not on the column existing: add_checkin_arrival.sql
+          // has no backfill, so the legacy rows this fallback is for have
+          // arrival_mode present and NULL. Reading it as flight keeps this step
+          // agreeing with the Flight radio step 1 pre-checks for the same row.
+          $isFlight2 = checkin_effective_mode($data) === 'flight';
           $airports2 = checkin_airports();
           $savedAir2 = trim((string)($data['arrival_airport'] ?? ''));
           $airOther2 = $savedAir2 !== '' && !array_key_exists($savedAir2, $airports2);

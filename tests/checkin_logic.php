@@ -96,8 +96,11 @@ check('transfer needs answer',            checkin_step_complete('transfer', [], 
 // these three are the only coverage of the real driver path. The 't'/'f' cases
 // in the transfer block below are the synthetic ones. Do not delete as dupes.
 check('transfer no = complete',           checkin_step_complete('transfer', ['needs_transfer' => false, 'needs_departure_transfer' => false], null) === true);
-check('transfer yes needs details',       checkin_step_complete('transfer', ['needs_transfer' => true, 'needs_departure_transfer' => false], null) === false);
-check('transfer yes + details = complete',checkin_step_complete('transfer', ['needs_transfer' => true, 'needs_departure_transfer' => false, 'transfer_details' => 'JKIA 2pm'], null) === true);
+// The mode is explicit here on purpose: a row with no mode reads as flight
+// (checkin_effective_mode()), for which transfer_details is NOT the detail —
+// these two are testing the road/pickup branch, so they must say so.
+check('transfer yes needs details',       checkin_step_complete('transfer', ['needs_transfer' => true, 'arrival_mode' => 'road', 'needs_departure_transfer' => false], null) === false);
+check('transfer yes + details = complete',checkin_step_complete('transfer', ['needs_transfer' => true, 'arrival_mode' => 'road', 'needs_departure_transfer' => false, 'transfer_details' => 'JKIA 2pm'], null) === true);
 check('passport needs name+num+file',     checkin_step_complete('passport', [], ['passport_name' => 'A', 'passport_number' => 'B']) === false);
 check('passport complete w/ file',        checkin_step_complete('passport', [], ['passport_name' => 'A', 'passport_number' => 'B', 'passport_file_key' => 'checkin/1/x.jpg']) === true);
 check('waiver needs signature',           checkin_step_complete('waiver', [], ['waiver_signed_name' => 'A']) === false);
@@ -106,6 +109,21 @@ check('waiver complete when signed',      checkin_step_complete('waiver', [], ['
 // ── Arrival modes (pure) ────────────────────────────────────────────────────
 check('arrival modes has three',          count(checkin_arrival_modes()) === 3);
 check('arrival modes keyed by value',     array_keys(checkin_arrival_modes()) === ['flight', 'road', 'other']);
+
+// ── checkin_effective_mode(): unset or unrecognised reads as flight ─────────
+// add_checkin_arrival.sql adds arrival_mode with NO backfill, so legacy rows
+// have the column PRESENT and NULL. Guarding on the column existing instead of
+// on the value made the transfer step paint the pickup textarea for a legacy
+// row while step 1 pre-checked Flight — a server render contradicting itself.
+check('effective mode: absent key',       checkin_effective_mode([]) === 'flight');
+check('effective mode: null value',       checkin_effective_mode(['arrival_mode' => null]) === 'flight');
+check('effective mode: empty string',     checkin_effective_mode(['arrival_mode' => '']) === 'flight');
+check('effective mode: whitespace only',  checkin_effective_mode(['arrival_mode' => '   ']) === 'flight');
+check('effective mode: unrecognised',     checkin_effective_mode(['arrival_mode' => 'zzz']) === 'flight');
+check('effective mode: null data',        checkin_effective_mode(null) === 'flight');
+check('effective mode: flight',           checkin_effective_mode(['arrival_mode' => 'flight']) === 'flight');
+check('effective mode: road',             checkin_effective_mode(['arrival_mode' => 'road']) === 'road');
+check('effective mode: other',            checkin_effective_mode(['arrival_mode' => 'other']) === 'other');
 check('airports has three',               count(checkin_airports()) === 3);
 check('arrival legacy needs flight+time', checkin_arrival_complete(['flight_number' => 'KQ100', 'arrival_at' => '2026-09-01 14:00']) === true);
 check('arrival legacy without flight',    checkin_arrival_complete(['arrival_at' => '2026-09-01 14:00']) === false);
@@ -356,6 +374,26 @@ check('transfer: arrival yes + road needs a pickup point',
 check('transfer: arrival yes + road, pickup given',
     $tc(['needs_transfer'=>'t','arrival_mode'=>'road','transfer_details'=>'Likoni ferry',
          'needs_departure_transfer'=>'f']) === true);
+
+// A legacy row came from the flight-only form, so "yes, arrange it" means the
+// flight fields ARE the detail and a pickup note is not a substitute. Asserted
+// both directions, and for both shapes a legacy row can take: the column
+// present-and-NULL (the real post-migration shape, no backfill) and the key
+// absent entirely (pre-migration). The absence of this pair is what let the
+// NULL-mode bug ship.
+check('transfer: legacy null mode is not satisfied by a pickup note',
+    $tc(['needs_transfer'=>'t','arrival_mode'=>null,'transfer_details'=>'Likoni ferry',
+         'needs_departure_transfer'=>'f']) === false);
+check('transfer: legacy null mode, flight fields given',
+    $tc(['needs_transfer'=>'t','arrival_mode'=>null,'arrival_airport'=>'MBA',
+         'flight_number'=>'KQ610','arrival_at'=>'2026-09-10 10:00:00+03',
+         'needs_departure_transfer'=>'f']) === true);
+check('transfer: absent mode key behaves identically',
+    $tc(['needs_transfer'=>'t','transfer_details'=>'Likoni ferry',
+         'needs_departure_transfer'=>'f']) === false);
+check('transfer: absent mode key, flight fields given',
+    $tc(['needs_transfer'=>'t','arrival_airport'=>'MBA','flight_number'=>'KQ610',
+         'arrival_at'=>'2026-09-10 10:00:00+03','needs_departure_transfer'=>'f']) === true);
 
 // The departure leg only exists once add_departure_transfer.sql is applied —
 // before that checkin_step_complete() forces the outbound answer to "no", so an
