@@ -253,6 +253,16 @@
 .ci-done-card .pa-btn{margin-bottom:9px}
 .ci-alert{max-width:520px;margin:0 auto 16px;background:#fbe6e6;border:1px solid #f0c2c2;color:#a12;border-radius:10px;padding:12px 16px;font-size:14px;line-height:1.5}
 .ci-err{background:#fbe6e6;border:1px solid #f0c2c2;color:#a12;border-radius:9px;padding:11px 14px;font-size:13.5px;line-height:1.55;margin:16px 0 0}
+/* Check-in window notice + the early/late arrival warning */
+/* .ci-l sets display:block, which beats the [hidden] UA rule — restore it so the
+   mode-specific arrival labels can actually hide. */
+.ci-l[hidden]{display:none}
+.ci-times{font-size:13px;color:var(--pa-muted);line-height:1.6;margin:14px 0 0}
+.ci-times strong{color:var(--pa-ink);font-weight:600}
+.ci-arrwarn{background:#fff7e6;border:1px solid #f0dcb4;border-radius:9px;padding:12px 14px;margin:12px 0 0}
+.ci-arrwarn__t{margin:0;font-size:13.5px;line-height:1.55;color:#8a5a00;font-weight:600}
+.ci-arrwarn__n{margin:6px 0 0;font-size:13px;line-height:1.55;color:#8a5a00}
+.ci-arrwarn__a{display:inline-block;margin-top:8px;font-size:13px;font-weight:600;color:var(--pa-teal)}
 
 .pa-btn--ghost{background:transparent;color:var(--pa-teal);border:1px solid var(--pa-line)}
 

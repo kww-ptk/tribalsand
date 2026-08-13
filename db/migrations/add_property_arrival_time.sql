@@ -1,0 +1,11 @@
+-- Tribal Sand: when the guest expects to reach the property. Run via
+-- /admin/migrate.php. Idempotent.
+--
+-- Distinct from booking_checkin.arrival_at, which in flight mode is the FLIGHT
+-- LANDING time — a flight landing at 10:00 in Mombasa puts the guest at the villa
+-- around 12:00-13:00. The check-in window is checked against this column, not
+-- against the landing time, so guests who are not actually early are not warned.
+--
+-- A TIME, not a timestamp: the date is already known (the check-in day), and a
+-- bare time is what the warning compares and what reception reads off.
+ALTER TABLE booking_checkin ADD COLUMN IF NOT EXISTS property_arrival_time TIME;

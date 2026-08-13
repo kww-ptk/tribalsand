@@ -105,6 +105,15 @@ function checkin_arrival_mode_supported(): bool {
     return $ok;
 }
 
+/** True once add_property_arrival_time.sql is applied. Cached per-request. */
+function checkin_property_arrival_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { db_query('SELECT property_arrival_time FROM booking_checkin LIMIT 1'); $ok = true; }
+    catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
 function checkin_required(array $hold): bool {
     return checkin_supported() && !empty($hold['require_checkin']);
 }
@@ -163,6 +172,49 @@ function checkin_waiver_text(): string {
     $w = trim((string) setting('checkin_waiver_text', ''));
     return $w !== '' ? $w
         : 'I confirm the information provided is accurate and accept the terms of stay, indemnity and insurance requirements.';
+}
+
+/**
+ * The property's check-in and check-out windows, plus the early/late policy note.
+ * Stored in the key-value settings table (no migration) and edited in
+ * admin/checkin-settings.php. Defaults apply to any unset key so the guest never
+ * sees a blank window.
+ */
+function checkin_times(): array {
+    $get = function (string $key, string $default): string {
+        $v = trim((string) setting($key, ''));
+        return $v !== '' ? $v : $default;
+    };
+    return [
+        'ci_from' => $get('checkin_time_from',  '14:00'),
+        'ci_to'   => $get('checkin_time_to',    '20:00'),
+        'co_from' => $get('checkout_time_from', '10:00'),
+        'co_to'   => $get('checkout_time_to',   '11:00'),
+        'note'    => $get('checkin_early_late_note',
+            'Early check-in and late check-out are available for a fee, subject to availability — just ask us.'),
+    ];
+}
+
+/**
+ * Is an expected arrival outside the check-in window? Returns 'early', 'late' or
+ * '' (inside, unknown, or unparseable). Boundaries count as inside.
+ *
+ * Compared as minutes-from-midnight rather than strings, so '9:05' and '09:05'
+ * behave the same. A malformed value returns '' — a false warning is worse than
+ * none. Pure.
+ */
+function checkin_arrival_flag(?string $hhmm, string $from, string $to): string {
+    $mins = function (?string $t): ?int {
+        if ($t === null || !preg_match('/^(\d{1,2}):(\d{2})(?::\d{2})?$/', trim($t), $m)) return null;
+        $h = (int)$m[1]; $i = (int)$m[2];
+        if ($h > 23 || $i > 59) return null;
+        return $h * 60 + $i;
+    };
+    $at = $mins($hhmm); $a = $mins($from); $b = $mins($to);
+    if ($at === null || $a === null || $b === null) return '';
+    if ($at < $a) return 'early';
+    if ($at > $b) return 'late';
+    return '';
 }
 
 /** Owner, or a manager who manages this booking's venue, may view passport docs. */

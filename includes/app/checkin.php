@@ -171,6 +171,20 @@ if (isset($cfg['arrival'])) $needs[] = ['&#9992;&#65039;', 'Flight number &amp; 
           $savedAir = trim((string)($data['arrival_airport'] ?? ''));
           // A saved airport that isn't in the catalog came from the "Other" box.
           $airOther = $savedAir !== '' && !array_key_exists($savedAir, $airports);
+          $T        = checkin_times();
+          $paOn     = checkin_property_arrival_supported();
+          // Flight mode captures the landing time in arrival_at, so the time the
+          // guest reaches us is a separate field. In road/other, arrival_at IS
+          // the time they reach us, so the flag reads its time part.
+          $paSaved  = $paOn ? trim((string)($data['property_arrival_time'] ?? '')) : '';
+          $paSaved  = $paSaved !== '' ? substr($paSaved, 0, 5) : '';
+          $atTime   = !empty($data['arrival_at']) ? date('H:i', strtotime((string)$data['arrival_at'])) : '';
+          // No arrival_mode column yet → the legacy form was flight-only, so arrival_at
+          // holds a LANDING time. Treat that as flight (same fallback as line 170 and
+          // checkin_arrival_complete()) or we would warn on the landing time itself.
+          $isFlight = $amOn ? ($mode === 'flight') : true;
+          $flagTime = $isFlight ? $paSaved : $atTime;
+          $flag     = checkin_arrival_flag($flagTime, $T['ci_from'], $T['ci_to']);
         ?>
         <?php if ($amOn): ?>
         <label class="ci-l">How will you arrive?</label>
@@ -208,8 +222,29 @@ if (isset($cfg['arrival'])) $needs[] = ['&#9992;&#65039;', 'Flight number &amp; 
           <input class="ci-in" name="arrival_note" value="<?= $val('arrival_note') ?>" placeholder="e.g. by boat, or dropped off by a tour operator">
         </div>
 
-        <label class="ci-l">Arrival date &amp; time</label>
+        <?php // $isFlight, not ($mode === 'flight'): identical whenever $amOn, but pre-migration
+              // ($amOn false, $mode '') arrival_at IS treated as a landing time and the flight
+              // field groups above ARE shown, so the label must say so too. ?>
+        <label class="ci-l" data-mode-label="flight"<?= $isFlight ? '' : ' hidden' ?>>Flight arrival <span class="ci-opt">(landing time)</span></label>
+        <label class="ci-l" data-mode-label="other"<?= $isFlight ? ' hidden' : '' ?>>When do you expect to reach us?</label>
         <input class="ci-in" type="datetime-local" name="arrival_at" value="<?= e($arrDate) ?>">
+
+        <?php if ($paOn): ?>
+        <div class="ci-mode-fields" data-mode="flight"<?= ($amOn && $mode !== 'flight') ? ' hidden' : '' ?>>
+          <label class="ci-l">What time do you expect to reach us?</label>
+          <input class="ci-in ci-f-patime" type="time" name="property_arrival_time" value="<?= e($paSaved) ?>">
+        </div>
+        <?php endif; ?>
+
+        <p class="ci-times" data-ci-from="<?= e($T['ci_from']) ?>" data-ci-to="<?= e($T['ci_to']) ?>">
+          Check-in is from <strong><?= e($T['ci_from']) ?></strong> to <strong><?= e($T['ci_to']) ?></strong>.
+          Check-out is between <strong><?= e($T['co_from']) ?></strong> and <strong><?= e($T['co_to']) ?></strong>.
+        </p>
+        <div class="ci-arrwarn" aria-live="polite"<?= $flag === '' ? ' hidden' : '' ?>>
+          <p class="ci-arrwarn__t"></p>
+          <p class="ci-arrwarn__n"><?= e($T['note']) ?></p>
+          <a class="ci-arrwarn__a" href="/booking.php?ref=<?= e($ref) ?>&amp;view=messages">Message the team &rarr;</a>
+        </div>
 
       <?php elseif ($key === 'transfer'): ?>
         <label class="ci-l">Would you like us to arrange your airport transfer?</label>
