@@ -191,7 +191,7 @@ function checkin_times(): array {
         'co_from' => $get('checkout_time_from', '10:00'),
         'co_to'   => $get('checkout_time_to',   '11:00'),
         'note'    => $get('checkin_early_late_note',
-            'Early check-in and late check-out are available for a fee, subject to availability — just ask us.'),
+            'Early check-in and late check-out are available for a fee, subject to availability. Ask us and we’ll check and confirm.'),
     ];
 }
 
