@@ -117,6 +117,20 @@ function resolve_booking_by_ref(string $ref): array|false {
 /** The hold's lead checkin_guests row id, seeding it if absent. Used by resolve_portal_actor. */
 function checkin_ensure_lead_guest_id(int $holdId): int {
     db_query("INSERT INTO checkin_guests (hold_id, is_lead) VALUES (:h, TRUE) ON CONFLICT (hold_id) WHERE is_lead DO NOTHING", [':h' => $holdId]);
+    // The lead guest IS the person who booked, so seed their name from the
+    // booking while it is still blank — reception gets a row they can edit
+    // instead of an empty roster. Two things this deliberately does NOT do:
+    // overwrite a name the guest has already given (the WHERE only matches a
+    // blank), and imply any progress — checkin_guest_passport_complete() also
+    // needs a passport number and an uploaded scan, so a seeded name cannot
+    // mark anyone checked in.
+    db_query(
+        "UPDATE checkin_guests g SET passport_name = NULLIF(TRIM(h.guest_name), '')
+           FROM holds h
+          WHERE h.id = g.hold_id AND g.hold_id = :h AND g.is_lead
+            AND COALESCE(TRIM(g.passport_name), '') = ''",
+        [':h' => $holdId]
+    );
     return (int) db_query('SELECT id FROM checkin_guests WHERE hold_id = :h AND is_lead', [':h' => $holdId])->fetchColumn();
 }
 
