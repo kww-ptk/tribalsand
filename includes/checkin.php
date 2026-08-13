@@ -114,6 +114,15 @@ function checkin_property_arrival_supported(): bool {
     return $ok;
 }
 
+/** True once add_departure_transfer.sql is applied. Cached per-request. */
+function checkin_departure_transfer_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { db_query('SELECT departure_time FROM booking_checkin LIMIT 1'); $ok = true; }
+    catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
 function checkin_required(array $hold): bool {
     return checkin_supported() && !empty($hold['require_checkin']);
 }
