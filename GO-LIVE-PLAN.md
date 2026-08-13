@@ -1,145 +1,126 @@
-# Tribal Sand — Go-Live Plan & Tawi Sync
+# Tribal Sand — Go-Live Plan (End-to-End)
 
-_Generated 2026-07-08. Compares Tribal Sand (`D:\TribalIsland`) against the newer
-sibling build **Tawi Watamu** (`github.com/kww-ptk/tawi-watamu`, private) and lists what
-must happen before Tribal Sand goes live._
+_Authoritative cutover plan. Last updated 2026-08-13. Supersedes the 2026-07-08 Tawi-comparison draft._
 
-Legend: 🔴 blocker (fix before launch) · 🟠 important · 🟡 polish · 🔵 optional feature
+**Goal in one line:** point `tribalsand.com` at THIS new site, keep every URL working, replace eZee, break nothing.
 
----
-
-## 0. Current status — the site works
-
-Local boot smoke test (via `router.php`) all green:
-
-| Route | Result |
-|-------|--------|
-| `/` (home) | HTTP 200 · 95 KB |
-| `/admin/login.php` | HTTP 200 |
-| `/booking.php` | HTTP 200 |
-| `/zuri.php` | HTTP 200 |
-
-- PHP lint clean on all modified room pages.
-- DB connected (Neon): 8 rooms, 7 venues, 4 holds, 5 submissions, 5 settings.
-- Admin login verified working: `julesalysa@gmail.com` (admin #3, created via SQL).
-
-**Nothing is broken locally.** The blockers below are production/`.htaccess`-level issues
-that a local PHP server does not exercise, plus deploy config.
+Legend: ✅ done · 🔴 launch blocker · 🟠 important · 🟡 polish (not blocking)
 
 ---
 
-## PART A — 🔴 GO-LIVE BLOCKERS (do these first)
+## The picture in plain words
 
-These all live in **`.htaccess`**. Tawi's `.htaccess` fixes every one of them; Tribal's is an
-older, thinner version. **Porting Tawi's `.htaccess` hardening is the single highest-value
-action.** Compare: [Tribal `.htaccess`](.htaccess) vs Tawi's (below).
+Moving your shop to a nicer building while keeping the same street address and sign.
+- **Address** = `tribalsand.com` — customers keep typing the same thing.
+- **Old building** = current brochure site on Namecheap (no database of its own).
+- **New building** = this repo, running on Render (its own booking system on a Neon/Postgres database).
 
-### 🔴 A1. Secrets & source are likely web-exposed
-Tribal's `.htaccess` has **no rule blocking sensitive files**. Tawi blocks them explicitly.
-Files confirmed present in web root with no deny rule:
+"Going live" = telling the address to point at the new building. Customers don't notice a move — they just walk into a nicer shop.
 
-- `/.env` — contains `DATABASE_URL`, `HCAPTCHA_SECRET_KEY`, `BOOKING_TOKEN_SECRET`.
-  If Apache serves it (dotfiles are not blocked by default beyond `.ht*`), the **entire
-  database credential leaks**.
-- `/.git/` — full source + commit history downloadable.
-- `/db/`, `*.sql`, `*.md` (this plan, `BRIEFING.md`, `CONTEXT.md`), `/router.php`.
+### Where data lives (old vs new)
+| | Old live site (Namecheap) | New site (this repo, Render) |
+|---|---|---|
+| Database | none of its own | PostgreSQL on **Neon** |
+| Bookings | **eZee/IPMS247** (`book.tribalsand.com`) | its own booking/hold system |
+| Leads | **GoHighLevel / LeadConnector** | GoHighLevel integration |
+| Email | Reservations@Tribalsand.com | unchanged |
+| Photos | on the Namecheap disk | **must go to Cloudflare R2** |
 
-**Fix:** add to `.htaccess` (from Tawi):
-```apache
-Options -Indexes
-ErrorDocument 404 /404.php
-
-<FilesMatch "(^\.|\.env|\.sql$|\.md$|\.log$|^composer\.(json|lock)$|^package(-lock)?\.json$|^router\.php$)">
-  Require all denied
-</FilesMatch>
-RedirectMatch 404 (?i)/(\.git|logs|docs|deploy|db)(/|$)
-```
-
-### 🔴 A2. POST to any `.php` URL under `/admin/` or `/api/` is silently broken
-Tribal's `.htaccess` 301-redirects **every** `.php` URL to its clean form — with **no
-exclusion for `/admin/` or `/api/`**:
-```apache
-RewriteCond %{THE_REQUEST} ^[A-Z]+\s/(.+)\.php[\s?] [NC]
-RewriteRule ^ /%1 [R=301,L]
-```
-A 301 on a POST makes the browser **re-issue as GET and drop the body**. Any form that
-posts to a real `.php` URL breaks in production. Confirmed offenders in Tribal:
-
-- [`api/submit-agency.php`](for-agents.php) — form posts `fetch('/api/submit-agency.php')` → **agency enquiries lost**.
-- `admin/forgot-password.php` and `admin/reset-password.php` — forms `action="/admin/forgot-password.php"` / `reset-password.php` → **password reset broken**.
-- (Note: most other admin forms post to *clean* URLs, e.g. `/admin/settings`, which happen
-  to work via the internal rewrite — but the mix is fragile.)
-
-**Fix (Tawi's approach):** exclude `/admin/` and `/api/` from the strip-`.php` redirect:
-```apache
-RewriteCond %{THE_REQUEST} \s/([^?\s]+)\.php[\s?] [NC]
-RewriteCond %{REQUEST_URI} !^/admin/ [NC]
-RewriteCond %{REQUEST_URI} !^/api/ [NC]
-RewriteRule ^ /%1 [R=301,L,QSA]
-```
-Then standardise all form/fetch targets so `/admin/` + `/api/` use **real `.php` URLs**
-(what Tawi did in its "Fix admin Save 404" commit).
-
-### 🔴 A3. Production mail is not configured
-`RESEND_API_KEY` is `sync:false` in [`render.yaml`](render.yaml) — it must be set manually
-in the Render dashboard. Until then **no emails send** (booking holds, hold-cancelled,
-password reset). `MAIL_FROM` = `noreply@tribalsand.com` must be a **Resend-verified domain**.
-
-**Fix:** in Render → set `RESEND_API_KEY`; verify the sending domain in Resend.
+Because the old site has **no database**, there is **no customer data to migrate.**
 
 ---
 
-## PART B — 🟠 Tawi capabilities Tribal is missing
-
-### 🟠 B1. Multi-admin with roles + Users management UI
-Tawi has `super_admin`/`staff` roles, `require_super_admin()`, and a full
-[`admin/users.php`](admin/users.php) (add / delete / change-role, with guardrails: can't
-delete the last super admin, can't demote yourself). **Tribal has none** — `admin_users`
-columns are only `id, email, password_hash, created_at, last_login_at`, and there is no
-users screen (which is why the new login had to be created via raw SQL).
-
-**Port:** add `role` column migration → copy `users.php` + `require_super_admin()` helper
-into `includes/auth.php`. ~1–2 h.
-
-### 🔵 B2. Optional feature systems (only if wanted)
-- **Offers/promotions** — `admin/offers.php`, `offer-edit.php`, public `offers.php`, `includes/offer-modal.php`
-- **Newsletter signup** — `api/submit-newsletter.php`
-- **Guest submission-status page** — `includes/submission-status.php`
-
-### ⛔ B3. DO NOT port
-- **Captcha provider** — Tawi uses **Cloudflare Turnstile**; Tribal deliberately uses
-  **hCaptcha**. Copying Tawi's `includes/turnstile.php` would swap providers and break
-  Tribal's `HCAPTCHA_*` env config. Leave as-is.
-- "properties" vs "venues" naming — divergence, not an upgrade.
+## Phase 0 — Decisions (locked)
+- ✅ **Same domain, same URLs** — no change visible to customers or Google.
+- ✅ **eZee: replaced.** The new site's own booking system takes over. Keep the eZee account + `book.` subdomain alive ONLY until already-booked future stays have checked out, then cancel.
+- ✅ **Captcha: Cloudflare Turnstile** (not hCaptcha). Wired in code, `render.yaml`, and the cookie notice as of 2026-08-13.
 
 ---
 
-## PART C — 🟡 Admin polish (from ADMIN_AUDIT.md, still open)
+## Phase 1 — Critical code / config blockers
 
-- 🔴 Undefined CSS: `.btn-secondary`, `.admin-table` (should be `.data-table`), `var(--surface)` — render unstyled. ~10 min.
-- 🟠 Room drag-reorder AJAX has no CSRF check ([rooms.php:18](admin/rooms.php)).
-- 🟠 Forgot-password has no rate limit / captcha ([forgot-password.php:11](admin/forgot-password.php)).
-- 🟠 Missing Post-Redirect-Get on settings/conflicts/holds → refresh re-submits.
-- 🔵 Confirm `admin/migrate.php` is auth-gated / removed in production.
-
----
-
-## PART D — Deploy / env checklist
-
-- [ ] **A1** `.htaccess` — add file-block + `-Indexes` + `ErrorDocument`.
-- [ ] **A2** `.htaccess` — exclude `/admin/` + `/api/` from strip-`.php`; standardise form targets.
-- [ ] **A3** Render — set `RESEND_API_KEY`; verify `MAIL_FROM` domain in Resend.
-- [ ] Confirm `DATABASE_URL`, `HCAPTCHA_SITE_KEY`, `HCAPTCHA_SECRET_KEY` set in Render (not just local `.env`).
-- [ ] `ICAL_SYNC_SECRET` — auto-generated by `render.yaml` (`generateValue`), OK.
-- [ ] TripAdvisor listing + Google Search Console sitemap (from CLAUDE.md "Still Pending").
-- [ ] Commit the 4 local room-page fixes (Book-button scroll) + this plan.
+- 🔴 **A1 — Lock down secret files.** `.htaccess` currently does NOT block `.env`, `.git/`, `*.sql`, `*.md`, `router.php`, `/db/`. On the live server these could be downloaded — **the database password would leak.** Add:
+  ```apache
+  Options -Indexes
+  ErrorDocument 404 /404.php
+  <FilesMatch "(^\.|\.env|\.sql$|\.md$|\.log$|^composer\.(json|lock)$|^package(-lock)?\.json$|^router\.php$)">
+    Require all denied
+  </FilesMatch>
+  RedirectMatch 404 (?i)/(\.git|logs|docs|deploy|db)(/|$)
+  ```
+- 🔴 **A3 — Turn on production email.** In Render: set `RESEND_API_KEY`; verify `noreply@tribalsand.com` in Resend. Until then no booking confirmations / password resets send.
+- 🔴 **Turnstile keys** — enter the real `TURNSTILE_SITE_KEY` + `TURNSTILE_SECRET_KEY` in Render (by hand; they are `sync:false`).
+- ✅ **A2 — POST to `/admin/` & `/api/` forms** — already fixed (current `.htaccess` serves POST directly, never redirects).
+- ✅ **Image self-loop landmine** — fixed 2026-08-13 (host-guarded the "borrow images from tribalsand.com" fallback so it can't loop once we ARE tribalsand.com).
 
 ---
 
-## Suggested order
+## Phase 2 — Content & data readiness
+- 🔴 **Images → Cloudflare R2.** Deploy the `/images/<venue>` photo library to R2 (set `R2_ACCOUNT_ID` + `R2_ACCESS_KEY` + `R2_SECRET_KEY` + `R2_PUBLIC_URL`). #1 "site looks broken" risk — photos currently only exist by borrowing from the old site.
+- 🔴 **Room pricing** — confirm every room has a price set in the Neon DB. Can't sell unpriced rooms.
+- 🟠 **Check-in file storage** — set `R2_CHECKIN_BUCKET` (private) so guest passport/waiver scans survive deploys.
+- 🟠 **`DATABASE_URL`** in Render points at the real Neon production DB.
 
-1. **A1 + A2** (`.htaccess`) — one file, closes the security holes and the broken-POST bug.
-2. **A3** — set Resend key so mail works.
-3. **B1** — roles + Users UI (stop managing admins via SQL).
-4. **Part C** admin polish (CSS quick wins first).
-5. **B2** optional features, if the business wants them.
+---
+
+## Phase 3 — URL parity (keep every page working)
+- ✅ Clean-URL scheme replicated; `/foo.php` → `/foo` redirects match the live site 1:1.
+- ✅ 3 missing pages ported: `retreats`, `zuri-menu`, `maya-kobe-breakfast`.
+- 🟠 **Google Search Console → Pages export** — diff against the repo to catch any old indexed URL nothing links to (the last ~5%). Any gap → port the page or add a 301 in `.htaccess`.
+
+---
+
+## Phase 4 — DNS cutover (the "go live" moment)
+1. Day before: lower DNS TTL to 300s (fast switch + fast rollback).
+2. In Render: add custom domains `tribalsand.com` + `www.tribalsand.com`.
+3. In Namecheap: point ONLY the web records (apex + `www`) at Render.
+   **Leave MX/email records AND the `book.` subdomain untouched.**
+4. Wait for Render to verify + auto-issue the HTTPS certificate.
+5. Keep the old Namecheap site switched on as a rollback safety net.
+
+Note: Namecheap DNS can't ALIAS the bare apex — either redirect apex→www, or move DNS to Cloudflare (CNAME flattening).
+
+---
+
+## Phase 5 — Verify on the live domain
+- Homepage + the 3 ported pages + a few blog URLs load over HTTPS (no cert warning).
+- Make a **test booking hold**, submit the **enquiry form** (Turnstile passes), **admin login**, images load, **email arrives**.
+- `book.tribalsand.com` still reaches eZee; email to Reservations@ still works.
+
+---
+
+## Phase 6 — After cutover
+- Monitor 24–48h. Rollback = revert the DNS web records (fast, thanks to low TTL).
+- Raise TTL back up; re-submit sitemap to Google Search Console; watch Coverage for new 404s.
+- **Wind down eZee** once the new site is proven AND all pre-existing eZee bookings have checked out.
+- Not blockers (do later): admin roles + Users UI, admin CSS polish, offers/newsletter features.
+
+---
+
+## The 5 true launch-blockers (everything else is done or non-blocking)
+1. 🔴 A1 — lock down secret files (`.htaccess`)
+2. 🔴 A3 — set `RESEND_API_KEY` + verify mail domain in Render
+3. 🔴 Turnstile keys in Render
+4. 🔴 Images → R2
+5. 🔴 Room pricing populated in the DB
+
+---
+
+## Deferred / post-launch backlog (NOT blockers — do after go-live)
+
+_Preserved from the 2026-07-08 Tawi-comparison review. None of these block launch, but they're real improvements worth tracking._
+
+### 🟠 Admin roles + Users management UI (B1)
+Currently `admin_users` has no roles UI, so new admins are created via raw SQL. Port a `role` column + an `admin/users.php` (add / delete / change-role, with guardrails: can't delete the last super admin, can't demote yourself) + a `require_super_admin()` helper. ~1–2 h.
+
+### 🟡 Admin polish (Part C)
+- Undefined CSS renders admin bits unstyled: `.btn-secondary`, `.admin-table` (should be `.data-table`), `var(--surface)`. ~10 min.
+- Room drag-reorder AJAX has no CSRF check (`admin/rooms.php`).
+- Forgot-password has no rate limit / captcha (`admin/forgot-password.php`).
+- Missing Post-Redirect-Get on settings/conflicts/holds → browser refresh re-submits.
+- Confirm `admin/migrate.php` is auth-gated or removed in production.
+
+### 🔵 Optional feature systems (only if the business wants them)
+- Offers/promotions — `admin/offers.php`, `offer-edit.php`, public `offers.php`, `includes/offer-modal.php`
+- Newsletter signup — `api/submit-newsletter.php`
+- Guest submission-status page — `includes/submission-status.php`
