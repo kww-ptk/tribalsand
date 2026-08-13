@@ -21,9 +21,9 @@ services:
         generateValue: true
       - key: ICAL_SYNC_SECRET
         generateValue: true
-      - key: HCAPTCHA_SITE_KEY
+      - key: TURNSTILE_SITE_KEY
         sync: false
-      - key: HCAPTCHA_SECRET_KEY
+      - key: TURNSTILE_SECRET_KEY
         sync: false
       - key: GHL_API_KEY
         sync: false

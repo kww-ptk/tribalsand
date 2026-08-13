@@ -329,7 +329,7 @@
 <!-- Cookie consent banner -->
 <div class="cookie-banner" id="cookieBanner" hidden role="region" aria-label="Cookie consent">
   <div class="cookie-banner__inner">
-    <p>We use cookies and third-party services (Google Fonts, hCaptcha, Google Maps) to improve your experience. See our <a href="/privacy_policy.php">Privacy Policy</a>.</p>
+    <p>We use cookies and third-party services (Google Fonts, Cloudflare Turnstile, Google Maps) to improve your experience. See our <a href="/privacy_policy.php">Privacy Policy</a>.</p>
     <div class="cookie-banner__actions">
       <button id="cookieAccept" class="btn--ck-accept">Accept</button>
       <button id="cookieDecline" class="btn--ck-decline">Decline</button>

@@ -46,7 +46,7 @@ if (!$data) {
     exit;
 }
 
-/* ── Honeypot + hCaptcha ── */
+/* ── Honeypot + Turnstile ── */
 if (!empty($data['website'])) { echo json_encode(['ok' => true]); exit; }
 require_once __DIR__ . '/includes/turnstile.php';
 if (!verify_captcha($data['cf-turnstile-response'] ?? '', client_ip())) {
