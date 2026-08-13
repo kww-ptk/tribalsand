@@ -119,7 +119,15 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
       echo $__pat !== '' ? e($__pat) . $__badge : '<span class="text-muted">—</span>';
     ?></td></tr>
     <?php endif; ?>
-    <tr><td class="text-muted">Transfer</td><td><?php $nt=$__ci['needs_transfer']??null; echo ($nt===null)?'—':(($nt===true||$nt==='t')?'Yes — '.e((string)($__ci['transfer_details']??'')):'No'); ?></td></tr>
+    <?php // "Yes" with no detail is now the normal flier path — the pickup box only
+          // renders for a non-flier, so transfer_details is legitimately empty for
+          // everyone who flies. Only append the dash when there is something to show. ?>
+    <tr><td class="text-muted">Transfer</td><td><?php
+      $nt = $__ci['needs_transfer'] ?? null;
+      $__td = trim((string)($__ci['transfer_details'] ?? ''));
+      echo ($nt === null) ? '<span class="text-muted">—</span>'
+         : (($nt === true || $nt === 't') ? ($__td !== '' ? 'Yes — ' . e($__td) : 'Yes') : 'No');
+    ?></td></tr>
     <?php if (checkin_departure_transfer_supported()): ?>
     <tr><td class="text-muted">Check-out transfer</td><td><?php
       $__dt = $__ci['needs_departure_transfer'] ?? null;
