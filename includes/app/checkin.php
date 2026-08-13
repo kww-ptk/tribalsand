@@ -72,8 +72,8 @@ if (isset($flow['you']) && $need > 1) {
 }
 
 $needs = [];
-if ($showPassport)          $needs[] = ['&#128179;', 'A passport for every adult — a clear photo or PDF'];
-if (isset($cfg['arrival'])) $needs[] = ['&#9992;&#65039;', 'Flight number &amp; arrival time'];
+if ($showPassport)           $needs[] = ['&#128179;', 'A passport for every adult — a clear photo or PDF'];
+if (isset($cfg['transfer'])) $needs[] = ['&#9992;&#65039;', 'If you&rsquo;d like us to collect you: your flight number &amp; landing time'];
 
 ?>
 <link rel="stylesheet" href="/css/portal-app.css?v=<?= @filemtime(__DIR__ . '/../../css/portal-app.css') ?: time() ?>">
@@ -210,12 +210,67 @@ if (isset($cfg['arrival'])) $needs[] = ['&#9992;&#65039;', 'Flight number &amp; 
         </div>
 
       <?php elseif ($key === 'transfer'): ?>
-        <label class="ci-l">Would you like us to arrange your airport transfer?</label>
-        <?php $nt = $data['needs_transfer'] ?? null; $ntYes = ($nt === true || $nt === 't' || $nt === '1'); $ntNo = ($nt === false || $nt === 'f' || $nt === '0'); ?>
-        <label class="ci-radio"><input type="radio" name="needs_transfer" value="1" <?= $ntYes ? 'checked' : '' ?>> Yes, please arrange it</label>
-        <label class="ci-radio"><input type="radio" name="needs_transfer" value="0" <?= $ntNo ? 'checked' : '' ?>> No, I'll make my own way</label>
-        <label class="ci-l">Transfer details (pickup point, pax, luggage)</label>
-        <textarea class="ci-in" name="transfer_details" rows="3"><?= $val('transfer_details') ?></textarea>
+        <?php
+          $amOn2    = checkin_arrival_mode_supported();
+          $mode2    = $amOn2 ? trim((string)($data['arrival_mode'] ?? '')) : '';
+          // Same legacy rule as everywhere else: no mode column means the old
+          // flight-only form, so treat the guest as flying.
+          $isFlight2 = $amOn2 ? ($mode2 === 'flight') : true;
+          $airports2 = checkin_airports();
+          $savedAir2 = trim((string)($data['arrival_airport'] ?? ''));
+          $airOther2 = $savedAir2 !== '' && !array_key_exists($savedAir2, $airports2);
+          $dtOn      = checkin_departure_transfer_supported();
+          $yn = function ($v): array {
+              return [($v === true  || $v === 't' || $v === '1'),
+                      ($v === false || $v === 'f' || $v === '0')];
+          };
+          [$ntYes, $ntNo] = $yn($data['needs_transfer'] ?? null);
+          [$dtYes, $dtNo] = $yn($data['needs_departure_transfer'] ?? null);
+          $depTime = $dtOn ? trim((string)($data['departure_time'] ?? '')) : '';
+          $depTime = $depTime !== '' ? substr($depTime, 0, 5) : '';
+        ?>
+        <label class="ci-l">Would you like us to arrange a transfer when you arrive?</label>
+        <label class="ci-radio"><input type="radio" class="ci-f-tin" name="needs_transfer" value="1" <?= $ntYes ? 'checked' : '' ?>> Yes, please arrange it</label>
+        <label class="ci-radio"><input type="radio" class="ci-f-tin" name="needs_transfer" value="0" <?= $ntNo ? 'checked' : '' ?>> No, I&rsquo;ll make my own way</label>
+
+        <?php // Both blocks stay in the DOM and are only hidden — a hidden input
+              // still submits, so nothing the guest already entered is silently
+              // dropped when they toggle. ?>
+        <div class="ci-tin-fields" data-tmode="flight"<?= ($ntYes && $isFlight2) ? '' : ' hidden' ?>>
+          <label class="ci-l">Airport of arrival</label>
+          <select class="ci-in ci-f-airport" name="arrival_airport">
+            <option value="">— select —</option>
+            <?php foreach ($airports2 as $av => $al): ?>
+            <option value="<?= e($av) ?>" <?= $savedAir2 === $av ? 'selected' : '' ?>><?= e($al) ?></option>
+            <?php endforeach; ?>
+            <option value="__other" <?= $airOther2 ? 'selected' : '' ?>>Other — I&rsquo;ll type it</option>
+          </select>
+          <div class="ci-airport-other"<?= $airOther2 ? '' : ' hidden' ?>>
+            <label class="ci-l">Which airport?</label>
+            <input class="ci-in" name="arrival_airport_other" value="<?= $airOther2 ? e($savedAir2) : '' ?>" placeholder="e.g. Nairobi JKIA">
+          </div>
+          <label class="ci-l">Flight number</label>
+          <input class="ci-in" name="flight_number" value="<?= $val('flight_number') ?>" placeholder="e.g. KQ610">
+          <label class="ci-l">Flight arrival <span class="ci-opt">(landing time)</span></label>
+          <input class="ci-in" type="datetime-local" name="arrival_at" value="<?= e($arrDate) ?>">
+        </div>
+
+        <div class="ci-tin-fields" data-tmode="other"<?= ($ntYes && !$isFlight2) ? '' : ' hidden' ?>>
+          <label class="ci-l">Where should we collect you?</label>
+          <textarea class="ci-in" name="transfer_details" rows="3" placeholder="e.g. Likoni ferry, or the Serena in Mombasa"><?= $val('transfer_details') ?></textarea>
+        </div>
+
+        <?php if ($dtOn): ?>
+        <label class="ci-l" style="margin-top:18px">Do you need a transfer when you check out?</label>
+        <label class="ci-radio"><input type="radio" class="ci-f-tout" name="needs_departure_transfer" value="1" <?= $dtYes ? 'checked' : '' ?>> Yes, please arrange it</label>
+        <label class="ci-radio"><input type="radio" class="ci-f-tout" name="needs_departure_transfer" value="0" <?= $dtNo ? 'checked' : '' ?>> No, thank you</label>
+        <div class="ci-tout-fields"<?= $dtYes ? '' : ' hidden' ?>>
+          <label class="ci-l">Where are we taking you?</label>
+          <input class="ci-in" name="departure_destination" value="<?= $val('departure_destination') ?>" placeholder="e.g. Moi International Airport">
+          <label class="ci-l">What time should we collect you?</label>
+          <input class="ci-in" type="time" name="departure_time" value="<?= e($depTime) ?>">
+        </div>
+        <?php endif; ?>
 
       <?php elseif ($key === 'you'): ?>
         <!-- Lead card — part of #ciForm (no guest_id → the lead row) -->
