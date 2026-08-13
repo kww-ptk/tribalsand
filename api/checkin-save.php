@@ -27,14 +27,10 @@ $s = fn($k) => (($v = trim((string)($_POST[$k] ?? ''))) === '') ? null : $v;
 // ── Booking-level fields (LEAD only — booking_checkin is hold-scoped) ───────
 if ($isLead) {
     $arrivalAt = ($_POST['arrival_at'] ?? '') !== '' ? date('Y-m-d H:i:s', strtotime((string)$_POST['arrival_at'])) : null;
-    // 'TRUE'/'FALSE' strings, not PHP booleans. db() runs with
-    // PDO::ATTR_EMULATE_PREPARES, which renders a bound PHP false as '' — and
-    // Postgres rejects '' for a boolean column ("invalid input syntax for type
-    // boolean"). Answering "No, I'll make my own way" used to fatal here. NULL
-    // still means unanswered. This matches the convention used everywhere else
-    // in the codebase (see includes/auth.php:153, admin/services.php:36).
-    $needsTransfer = array_key_exists('needs_transfer', $_POST) && $_POST['needs_transfer'] !== ''
-        ? ($_POST['needs_transfer'] === '1' ? 'TRUE' : 'FALSE') : null;
+    // Both booleans go through checkin_bool_param() — 'TRUE'/'FALSE'/null, never a
+    // PHP bool. See its docblock for why that distinction took check-in down.
+    $needsTransfer    = checkin_bool_param($_POST, 'needs_transfer');
+    $needsDepTransfer = checkin_bool_param($_POST, 'needs_departure_transfer');
 
     // Arrival mode: validated against the catalog, '' when unknown or unmigrated.
     $mode = '';
@@ -50,6 +46,20 @@ if ($isLead) {
     // Switching away from flying clears stale flight data so the transfer desk
     // never sees a flight number for someone driving in.
     if ($mode !== '' && $mode !== 'flight') { $airport = null; $flight = null; }
+    // The mirror of that clear, for the hidden pickup-location textarea: a guest who
+    // typed "Likoni ferry" on road and then switched to flying keeps posting it.
+    // A TRANSITION test (was non-flight, now flight), NOT a state test — pre-epic
+    // this column was a general box shown to everyone, so a legacy flier's
+    // "2 pax, 3 bags" must survive, and a NULL mode reads as flight. Only an actual
+    // switch makes the text stale; no stored row means no switch, so keep it.
+    // Rationale in docs/superpowers/specs/2026-08-13-transfer-step-restructure-design.md.
+    $transferDetails = $s('transfer_details');
+    $stored = fetch_checkin($holdId);
+    if ($stored !== null
+        && checkin_effective_mode($stored) !== 'flight'
+        && checkin_effective_mode(['arrival_mode' => $mode]) === 'flight') {
+        $transferDetails = null;
+    }
 
     // Column list is composed so the write works pre- and post-migration —
     // same approach as insert_booking_addon() in includes/booking.php.
@@ -57,7 +67,7 @@ if ($isLead) {
              'transfer_details', 'dietary', 'special_requests'];
     $vals = [':aa', ':fn', ':at', ':nt', ':td', ':di', ':sr'];
     $p = [':h'=>$holdId, ':aa'=>$airport, ':fn'=>$flight, ':at'=>$arrivalAt,
-          ':nt'=>$needsTransfer, ':td'=>$s('transfer_details'), ':di'=>$s('dietary'),
+          ':nt'=>$needsTransfer, ':td'=>$transferDetails, ':di'=>$s('dietary'),
           ':sr'=>$s('special_requests')];
 
     if (checkin_arrival_mode_supported()) {
@@ -67,26 +77,24 @@ if ($isLead) {
     }
 
     if (checkin_property_arrival_supported()) {
-        // The guest's desired check-in time. Only meaningful in flight mode — in
-        // road/other, arrival_at is when they drive up, which is when they want
-        // in, so we do not store a duplicate.
-        //
-        // Pre-migration ($mode is forced to '' above) the legacy form was
-        // flight-only, so arrival_at holds a LANDING time and the wizard both
-        // SHOWS this field and warns on it (includes/app/checkin.php:185,233 —
-        // the same `$amOn ? … : true` fallback). Dropping the value here would
-        // ask the guest a question, warn them about the answer, and then throw
-        // it away.
-        $isFlight = $mode === 'flight' || !checkin_arrival_mode_supported();
-        // Must be a REAL clock time, not merely digit:digit — Postgres rejects
-        // '25:00'/'99:99' for a TIME column and the exception would abort this
-        // whole write. The wizard posts the entire form on every step save, so
-        // one bad value would otherwise lose the guest's transfer/dietary data
-        // too. Same 0-23:0-59 shape checkin_arrival_flag() parses.
-        $pa = $s('property_arrival_time');
-        if ($pa !== null && !preg_match('/^([01]?\d|2[0-3]):[0-5]\d$/', $pa)) $pa = null;
+        // The guest's desired check-in time, asked of every arrival mode. The
+        // wizard prefills it from a legacy road/other arrival_at via
+        // checkin_desired_time(), so saving here is also what heals those rows.
+        // Asked of every mode now, so there is no mode branch to get wrong.
         $cols[] = 'property_arrival_time'; $vals[] = ':pat';
-        $p[':pat'] = $isFlight ? $pa : null;
+        $p[':pat'] = checkin_clock_time($s('property_arrival_time'));
+    }
+
+    if (checkin_departure_transfer_supported()) {
+        // Destination and time are only meaningful once the guest says yes;
+        // clearing them on "no" stops the driver seeing a stale pickup. Unlike
+        // transfer_details above this IS a state test, and correctly so: these
+        // columns are new in this migration, so there is no legacy content under
+        // them to protect — nothing can predate the question.
+        $wantsOut = $needsDepTransfer === 'TRUE';
+        $cols[] = 'needs_departure_transfer'; $vals[] = ':ndt'; $p[':ndt'] = $needsDepTransfer;
+        $cols[] = 'departure_destination';    $vals[] = ':dd';  $p[':dd']  = $wantsOut ? $s('departure_destination') : null;
+        $cols[] = 'departure_time';           $vals[] = ':dt';  $p[':dt']  = $wantsOut ? checkin_clock_time($s('departure_time')) : null;
     }
 
     $sets = [];

@@ -412,11 +412,12 @@ if (checkin_departure_transfer_supported()) {
     echo "SKIP  add_departure_transfer.sql not applied — departure leg forced complete\n";
 }
 
-// ── needs_transfer must never be bound as a PHP bool ────────────────────────
+// ── no boolean is ever bound as a PHP bool ─────────────────────────────────
 // db() uses PDO::ATTR_EMULATE_PREPARES, which renders a bound PHP false as ''.
 // Postgres rejects '' for a boolean, so answering "No" to the transfer question
-// used to fatal in api/checkin-save.php. Assert the real column accepts what
-// that endpoint now binds, and rejects what it used to.
+// used to fatal in api/checkin-save.php. This calls the REAL checkin_bool_param()
+// the endpoint calls — an earlier version of this test re-implemented the
+// expression, so a regression in the endpoint could not have failed it.
 if (checkin_supported()) {
     db_query('CREATE TEMP TABLE zz_nt_check (b BOOLEAN)');
     $ntBind = function ($v): string {
@@ -427,14 +428,56 @@ if (checkin_supported()) {
     check("'FALSE' is accepted",                  $ntBind('FALSE') === 'accepted');
     check("'TRUE' is accepted",                   $ntBind('TRUE')  === 'accepted');
     check('null is accepted (unanswered)',        $ntBind(null)    === 'accepted');
-    // The exact expression api/checkin-save.php uses, for each posted answer.
-    $ntOf = fn(array $post) => array_key_exists('needs_transfer', $post) && $post['needs_transfer'] !== ''
-        ? ($post['needs_transfer'] === '1' ? 'TRUE' : 'FALSE') : null;
-    check('answer "yes" binds TRUE',   $ntOf(['needs_transfer' => '1']) === 'TRUE');
-    check('answer "no" binds FALSE',   $ntOf(['needs_transfer' => '0']) === 'FALSE');
-    check('unanswered binds null',     $ntOf([]) === null);
-    check('no bind is ever a PHP bool', !is_bool($ntOf(['needs_transfer' => '0'])));
+    // Every boolean api/checkin-save.php binds, through the function it uses.
+    foreach (['needs_transfer', 'needs_departure_transfer'] as $k) {
+        check("{$k}: answer \"yes\" binds TRUE",  checkin_bool_param([$k => '1'], $k) === 'TRUE');
+        check("{$k}: answer \"no\" binds FALSE",  checkin_bool_param([$k => '0'], $k) === 'FALSE');
+        check("{$k}: unanswered binds null",      checkin_bool_param([], $k) === null);
+        check("{$k}: blank binds null",           checkin_bool_param([$k => ''], $k) === null);
+        // Each result also has to survive the real column, not just look right.
+        foreach (['1', '0', ''] as $posted) {
+            check("{$k}: posted '{$posted}' is accepted by a BOOLEAN column",
+                $ntBind(checkin_bool_param([$k => $posted], $k)) === 'accepted');
+        }
+        check("{$k}: no bind is ever a PHP bool", !array_filter(
+            ['1', '0', ''], fn($v) => is_bool(checkin_bool_param([$k => $v], $k))
+        ) && !is_bool(checkin_bool_param([], $k)));
+    }
     db_query('DROP TABLE zz_nt_check');
+}
+
+// ── checkin_clock_time(): a bad value must degrade to null, never reach a TIME ──
+// The check-in upsert is atomic and carries the whole form, so an exception on one
+// clock value would lose the guest's transfer and dietary answers with it.
+check("clock: '12:00' passes",       checkin_clock_time('12:00') === '12:00');
+check("clock: '09:15' passes",       checkin_clock_time('09:15') === '09:15');
+check("clock: '9:05' passes",        checkin_clock_time('9:05')  === '9:05');
+check("clock: '23:59' passes",       checkin_clock_time('23:59') === '23:59');
+check("clock: '00:00' passes",       checkin_clock_time('00:00') === '00:00');
+check("clock: ' 10:00 ' is trimmed", checkin_clock_time(' 10:00 ') === '10:00');
+check("clock: '99:99' → null",       checkin_clock_time('99:99') === null);
+check("clock: '25:00' → null",       checkin_clock_time('25:00') === null);
+check("clock: '12:60' → null",       checkin_clock_time('12:60') === null);
+check("clock: '24:00' → null",       checkin_clock_time('24:00') === null);
+check("clock: 'noon' → null",        checkin_clock_time('noon')  === null);
+check("clock: '' → null",            checkin_clock_time('')      === null);
+check('clock: null → null',          checkin_clock_time(null)    === null);
+// Stricter than the read-side parser on purpose — writing must not guess.
+check("clock: stored '12:00:00' → null (write-side is strict)", checkin_clock_time('12:00:00') === null);
+check("flag parser still accepts '12:00:00' (read-side is lenient)",
+    checkin_arrival_flag('12:00:00', '14:00', '20:00') === 'early');
+// Whatever it returns must survive a real TIME column.
+if (checkin_supported()) {
+    db_query('CREATE TEMP TABLE zz_ct_check (t TIME)');
+    $ctBind = function ($v): string {
+        try { db_query('INSERT INTO zz_ct_check (t) VALUES (:t)', [':t' => $v]); return 'accepted'; }
+        catch (Throwable $e) { return 'rejected'; }
+    };
+    check("raw '99:99' really is rejected by a TIME column", $ctBind('99:99') === 'rejected');
+    foreach (['12:00', '9:05', '99:99', '25:00', 'noon', '', '12:00:00'] as $v) {
+        check("clock: '{$v}' sanitised is accepted by a TIME column", $ctBind(checkin_clock_time($v)) === 'accepted');
+    }
+    db_query('DROP TABLE zz_ct_check');
 }
 
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";

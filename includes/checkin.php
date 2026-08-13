@@ -240,6 +240,36 @@ function checkin_arrival_flag(?string $hhmm, string $from, string $to): string {
 }
 
 /**
+ * A posted yes/no answer as 'TRUE' | 'FALSE' | null (null = unanswered), ready to
+ * bind to a boolean column. NEVER returns a PHP bool: db() runs with
+ * PDO::ATTR_EMULATE_PREPARES, which renders a bound `false` as '', and Postgres
+ * rejects '' for a boolean ("invalid input syntax for type boolean"). Answering
+ * "No, I'll make my own way" fatalled the whole check-in in production this way
+ * (PR #56). Every boolean the check-in write binds must come from here. Pure.
+ */
+function checkin_bool_param(array $post, string $key): ?string {
+    if (!array_key_exists($key, $post) || $post[$key] === '') return null;
+    return $post[$key] === '1' ? 'TRUE' : 'FALSE';
+}
+
+/**
+ * A value safe to bind to a TIME column, or null. Strict on purpose: Postgres
+ * rejects '25:00'/'99:99' and the exception would abort the check-in upsert,
+ * which is atomic and carries the guest's whole form — one bad clock value would
+ * lose their transfer and dietary answers too.
+ *
+ * Deliberately stricter than checkin_arrival_flag()'s parser (and its JS mirror),
+ * which accepts stored 'HH:MM:SS' and is lenient because a missing early/late
+ * warning beats a false one. Reading is forgiving; writing is not. Do not merge
+ * the two. Pure.
+ */
+function checkin_clock_time(?string $v): ?string {
+    if ($v === null) return null;
+    $v = trim($v);
+    return preg_match('/^([01]?\d|2[0-3]):[0-5]\d$/', $v) ? $v : null;
+}
+
+/**
  * The guest's desired check-in time as HH:MM, or '' if unknown.
  *
  * This is both what the input field is rendered with and what the early/late
