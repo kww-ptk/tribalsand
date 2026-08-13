@@ -173,9 +173,11 @@ if (isset($cfg['arrival'])) $needs[] = ['&#9992;&#65039;', 'Flight number &amp; 
           $airOther = $savedAir !== '' && !array_key_exists($savedAir, $airports);
           $T        = checkin_times();
           $paOn     = checkin_property_arrival_supported();
-          // Flight mode captures the landing time in arrival_at, so the time the
-          // guest reaches us is a separate field. In road/other, arrival_at IS
-          // the time they reach us, so the flag reads its time part.
+          // What the guest wants their room for, which is what the window is
+          // checked against. Flight mode captures the LANDING time in arrival_at,
+          // so the desired check-in time is a separate field. In road/other,
+          // arrival_at is when they drive up — which is when they want in — so
+          // the flag reads its time part.
           $paSaved  = $paOn ? trim((string)($data['property_arrival_time'] ?? '')) : '';
           $paSaved  = $paSaved !== '' ? substr($paSaved, 0, 5) : '';
           $atTime   = !empty($data['arrival_at']) ? date('H:i', strtotime((string)$data['arrival_at'])) : '';
@@ -231,7 +233,7 @@ if (isset($cfg['arrival'])) $needs[] = ['&#9992;&#65039;', 'Flight number &amp; 
 
         <?php if ($paOn): ?>
         <div class="ci-mode-fields" data-mode="flight"<?= ($amOn && $mode !== 'flight') ? ' hidden' : '' ?>>
-          <label class="ci-l">What time do you expect to reach us?</label>
+          <label class="ci-l">Desired check-in time</label>
           <input class="ci-in ci-f-patime" type="time" name="property_arrival_time" value="<?= e($paSaved) ?>">
         </div>
         <?php endif; ?>

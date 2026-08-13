@@ -110,7 +110,7 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
     <?php endif; ?>
     <tr><td class="text-muted"><?= $__isFlight ? 'Flight lands' : 'Arrival' ?></td><td><?= $__fmt(($__ci['arrival_at'] ?? '') ? date('j M Y H:i', strtotime((string)$__ci['arrival_at'])) : '') ?><?= $__isFlight ? '' : $__badge ?></td></tr>
     <?php if (checkin_property_arrival_supported() && $__isFlight): ?>
-    <tr><td class="text-muted">Reaching us</td><td><?php
+    <tr><td class="text-muted">Wants to check in</td><td><?php
       echo $__pat !== '' ? e(substr($__pat, 0, 5)) . $__badge : '<span class="text-muted">—</span>';
     ?></td></tr>
     <?php endif; ?>
