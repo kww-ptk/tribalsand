@@ -158,7 +158,7 @@ if (isset($cfg['transfer'])) $needs[] = ['&#9992;&#65039;', 'If you&rsquo;d like
     <div class="ci-progress"><div class="ci-progress__bar" id="ciBar"></div></div>
 
     <?php $i = 0; $n = count($flow); foreach ($flow as $key => $s): $i++; ?>
-    <section class="ci-step" data-step="<?= $i ?>" data-key="<?= e($key) ?>"<?= ($key === 'you' && $showPassport && !empty($cfg['passport']['required'])) ? ' data-passport-required' : '' ?> hidden>
+    <section class="ci-step" data-step="<?= $i ?>" data-key="<?= e($key) ?>"<?= ($key === 'you' && $showPassport && !empty($cfg['passport']['required'])) ? ' data-passport-required' : '' ?><?= $key === 'transfer' ? ' data-arrival-mode="' . e(checkin_effective_mode($data)) . '"' : '' ?> hidden>
       <div class="ci-step__h"><span class="ci-step__num">Step <?= $i ?> of <?= $n ?></span><h3><?= e($s['label']) ?><?= $s['required'] ? ' <span class="ci-req">*</span>' : '' ?></h3></div>
 
       <?php if ($key === 'arrival'): ?>
