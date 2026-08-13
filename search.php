@@ -91,6 +91,8 @@ include __DIR__ . '/includes/header.php';
 .rlist.open{display:block;}
 .rrow{display:flex;align-items:center;gap:1rem;padding:1rem 1.6rem;border-bottom:1px solid var(--border);}
 .rrow:last-child{border-bottom:none;}
+.rrow__img{flex-shrink:0;width:104px;height:78px;border-radius:6px;overflow:hidden;background:linear-gradient(135deg,#2f7a6b,#0d2b33);position:relative;}
+.rrow__img img{width:100%;height:100%;object-fit:cover;display:block;}
 .rrow__info{flex:1;min-width:0;}
 .rrow__name{font-size:.98rem;font-weight:600;color:var(--dark);}
 .rrow__desc{font-size:.8rem;color:var(--light);margin-top:.15rem;}
@@ -106,8 +108,12 @@ include __DIR__ . '/includes/header.php';
   .vcard__img{min-height:180px;}
   .srch-field{flex:1 1 45%;border-right:none;}
   .srch-form__btn{flex:1 1 100%;}
-  .rrow{flex-wrap:wrap;}
-  .rrow__price{text-align:left;}
+  .rrow{flex-wrap:wrap;align-items:center;gap:.7rem 1rem;padding:1.1rem 1.2rem;}
+  .rrow__img{width:100%;height:180px;}
+  .rrow__info{flex:1 1 100%;}
+  .rrow__desc{font-size:.85rem;line-height:1.45;}
+  .rrow__price{flex:1 1 auto;text-align:left;}
+  .rrow__btn{margin-left:auto;padding:.75rem 1.5rem;}
 }
 </style>
 
@@ -198,6 +204,7 @@ include __DIR__ . '/includes/header.php';
         <div class="rlist" id="rl-<?= (int)$v['id'] ?>">
           <?php foreach ($r['rooms'] as $room): ?>
           <div class="rrow">
+            <div class="rrow__img"><?php if (!empty($room['hero'])): ?><img src="<?= e($room['hero']) ?>" alt="<?= e($room['name']) ?>" loading="lazy"><?php endif; ?></div>
             <div class="rrow__info">
               <span class="rrow__name"><?= e($room['name']) ?><?php if ($room['tag']): ?><span class="rrow__tag"><?= e($room['tag']) ?></span><?php endif; ?></span>
               <div class="rrow__desc">
