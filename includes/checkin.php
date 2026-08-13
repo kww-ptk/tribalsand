@@ -8,8 +8,8 @@ require_once __DIR__ . '/team.php';   // staff_can_hold()
 /** Fixed step catalog. Array order = wizard order. */
 function checkin_step_catalog(): array {
     return [
-        'arrival'  => ['label' => 'Arrival & flight',     'default_required' => false],
-        'transfer' => ['label' => 'Airport transfer',     'default_required' => false],
+        'arrival'  => ['label' => 'How you’ll arrive',    'default_required' => false],
+        'transfer' => ['label' => 'Transfers',            'default_required' => false],
         'passport' => ['label' => 'Passport & identity',  'default_required' => true],
         'dietary'  => ['label' => 'Dietary requirements', 'default_required' => false],
         'requests' => ['label' => 'Special requests',     'default_required' => false],
@@ -250,7 +250,8 @@ function checkin_desired_time(?array $data): string {
     if ($mode !== 'road' && $mode !== 'other') return '';
 
     $at = trim((string)($d['arrival_at'] ?? ''));
-    return $at !== '' ? date('H:i', strtotime($at)) : '';
+    $ts = $at !== '' ? strtotime($at) : false;
+    return $ts !== false ? date('H:i', $ts) : '';
 }
 
 /** Owner, or a manager who manages this booking's venue, may view passport docs. */

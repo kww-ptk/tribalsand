@@ -328,6 +328,8 @@ check('desired: set value beats the fallback',
 check('desired: empty data',            checkin_desired_time([]) === '');
 check('desired: null data',             checkin_desired_time(null) === '');
 check('desired: road with no arrival_at', checkin_desired_time(['arrival_mode'=>'road']) === '');
+check('desired: unparseable arrival_at is blank, not a fatal',
+    checkin_desired_time(['arrival_mode'=>'road','arrival_at'=>'not a date']) === '');
 
 // ── Arrival step is complete once a mode is chosen ──────────────────────────
 check('arrival: flight alone is enough now',  checkin_arrival_complete(['arrival_mode'=>'flight']) === true);
