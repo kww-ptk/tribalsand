@@ -4,6 +4,11 @@
 <?php else: ?>
 <?php
 $__ci     = fetch_checkin($holdId);
+// Reception should be able to fill in the lead guest before that guest has ever
+// opened the portal, so make sure the row exists rather than showing an empty
+// roster. Idempotent (ON CONFLICT), and gated on check-in actually being
+// required so bookings that need no roster never get a stray row.
+if (checkin_required($hold)) checkin_ensure_lead_guest_id($holdId);
 $__guests = fetch_checkin_guests($holdId);
 $__adults = array_values(array_filter($__guests, fn($g) => empty($g['is_child'])));
 $__kidsByParent = [];
