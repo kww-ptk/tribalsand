@@ -225,9 +225,10 @@ include __DIR__ . '/_layout.php';
   <input type="hidden" name="per" value="<?= (int)$meta['per'] ?>">
   <select name="type" class="filter-select js-auto-submit" aria-label="Filter by type">
     <option value="">All types</option>
-    <option value="enquiry" <?= $type==='enquiry'?'selected':'' ?>>Enquiry</option>
-    <option value="contact" <?= $type==='contact'?'selected':'' ?>>Contact</option>
-    <option value="agency"  <?= $type==='agency' ?'selected':'' ?>>Agency</option>
+    <option value="enquiry"      <?= $type==='enquiry'     ?'selected':'' ?>>Enquiry</option>
+    <option value="contact"      <?= $type==='contact'     ?'selected':'' ?>>Contact</option>
+    <option value="agency"       <?= $type==='agency'      ?'selected':'' ?>>Agency</option>
+    <option value="availability" <?= $type==='availability'?'selected':'' ?>>Availability search</option>
   </select>
 
   <select name="room_id" class="filter-select js-auto-submit" aria-label="Filter by room">

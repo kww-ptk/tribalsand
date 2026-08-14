@@ -26,6 +26,7 @@
   let vy = today.getFullYear(), vm = today.getMonth();
   let selStart = null, selEnd = null;
   let mode = null;           // "single" | "ci" | "co"
+  let allowPast = false;     // single mode: permit dates before today (e.g. date of birth)
   let activeTrigger = null;
   // Range context
   let rCiBtn = null, rCoBtn = null, rCiIn = null, rCoIn = null;
@@ -92,7 +93,7 @@
       const date = new Date(vy, vm, d);
       const key  = ymd(date);
       let cls = "bk-cell";
-      if (date < today || (mode === "co" && selStart && date <= selStart)) {
+      if ((date < today && !(mode === "single" && allowPast)) || (mode === "co" && selStart && date <= selStart)) {
         cls += " bk-cell--blocked";
       } else if (selStart && key === ymd(selStart)) {
         cls += " bk-cell--start";
@@ -189,6 +190,7 @@
   function openSingle(btn) {
     sSingleIn     = document.getElementById(btn.dataset.dpTarget);
     mode          = "single";
+    allowPast     = btn.hasAttribute("data-dp-past");
     activeTrigger = btn;
     selStart      = sSingleIn?.value ? parseYmd(sSingleIn.value) : null;
     selEnd        = null;
@@ -212,6 +214,7 @@
     selEnd        = rCoIn?.value  ? parseYmd(rCoIn.value)  : null;
     if (role === "co" && !selStart) role = "ci"; // can't pick checkout first
     mode          = role;
+    allowPast     = false;
     activeTrigger = btn;
     vy = selStart ? selStart.getFullYear() : today.getFullYear();
     vm = selStart ? selStart.getMonth()    : today.getMonth();
@@ -226,6 +229,7 @@
   function closePopup() {
     pop.hidden    = true;
     mode          = null;
+    allowPast     = false;
     activeTrigger = null;
     rCiBtn = rCoBtn = rCiIn = rCoIn = sSingleIn = null;
   }

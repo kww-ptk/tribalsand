@@ -1234,3 +1234,30 @@ p {
   .sticky-cta-sub  { font-size: .78rem !important; }
   .sticky-cta-btn  { padding: .7rem 1rem !important; font-size: .72rem !important; }
 }
+
+/* ── Availability search — Step 2 lead-capture modal (hero search bar) ── */
+.savail-modal{position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px}
+.savail-modal[hidden]{display:none}
+.savail-modal__backdrop{position:absolute;inset:0;background:rgba(16,47,58,.55)}
+.savail-modal__panel{position:relative;background:#fff;border-radius:14px;box-shadow:0 24px 70px rgba(10,30,40,.35);width:100%;max-width:440px;padding:30px 28px 24px}
+.savail-modal__x{position:absolute;top:12px;right:14px;background:none;border:0;font-size:26px;line-height:1;color:#9aa39a;cursor:pointer;padding:2px 6px}
+.savail-modal__x:hover{color:#333}
+.savail-modal__eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#B8965A;font-weight:600}
+.savail-modal__title{font-family:'Cormorant Garamond',serif;font-weight:400;font-size:1.7rem;line-height:1.15;color:#141412;margin:8px 0 6px}
+.savail-modal__sub{font-size:.9rem;color:#6B6050;margin:0 0 18px}
+.savail-field{display:block;margin-bottom:12px}
+.savail-field__lbl{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6B6050;font-weight:600;margin-bottom:5px}
+.savail-field__lbl em{font-style:normal;font-weight:400;text-transform:none;letter-spacing:0;color:#A89880}
+.savail-field input{width:100%;box-sizing:border-box;padding:11px 13px;border:1px solid #d9d2c4;border-radius:9px;font-family:inherit;font-size:15px;color:#141412;background:#fff}
+.savail-field input:focus{outline:none;border-color:#1E5C6B;box-shadow:0 0 0 3px rgba(30,92,107,.12)}
+.savail-hp{position:absolute!important;left:-9999px;width:1px;height:1px;opacity:0}
+.savail-err{background:#fbe6e6;border:1px solid #f0c2c2;color:#a12;border-radius:8px;padding:9px 12px;font-size:13.5px;margin:0 0 12px}
+.savail-err[hidden]{display:none}
+.savail-actions{display:flex;align-items:center;gap:12px;margin-top:4px}
+.savail-back{background:none;border:0;color:#6B6050;font-family:inherit;font-size:14px;cursor:pointer;padding:8px 4px}
+.savail-back:hover{color:#141412}
+.savail-submit{flex:1;background:#102F3A;color:#fff;border:0;border-radius:9px;padding:13px 18px;font-family:inherit;font-size:14px;font-weight:600;letter-spacing:.04em;cursor:pointer;transition:background .2s}
+.savail-submit:hover{background:#1E5C6B}
+.savail-submit:disabled{opacity:.6;cursor:default}
+.savail-note{text-align:center;font-size:12px;color:#A89880;margin:14px 0 0}
+@media(max-width:480px){.savail-modal__panel{padding:24px 20px 20px}}

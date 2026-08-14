@@ -266,6 +266,34 @@
 
 .pa-btn--ghost{background:transparent;color:var(--pa-teal);border:1px solid var(--pa-line)}
 
+/* ── Check-in — two-column field grid (co-guest form) ──
+   Pairs the identity fields side by side; wide controls span both columns.
+   Collapses to one column on very narrow phones so nothing gets cramped. */
+.ci-grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;align-items:end}
+.ci-grid2 .ci-fld{min-width:0}
+.ci-grid2 .ci-span2{grid-column:1 / -1}
+@media (max-width:400px){.ci-grid2{grid-template-columns:1fr}}
+
+/* ── Check-in — two side-by-side widgets (co-guest: details | waiver+sign) ── */
+.ci-wizard--split{max-width:920px}
+.ci-cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+.ci-cols > .ci-wg{margin-bottom:0}
+.ci-wg__title{font-family:'Inter',system-ui,sans-serif;font-weight:600;font-size:16px;margin:0 0 6px;color:var(--pa-ink)}
+.ci-wg__intro{font-size:13px;color:var(--pa-muted);line-height:1.6;margin:0 0 14px}
+@media (max-width:760px){.ci-cols{grid-template-columns:1fr}}
+
+/* Styled (non-native) file button for the passport scan */
+.ci-filebtn{display:inline-flex;align-items:center;gap:8px;cursor:pointer;font:inherit;font-size:14px;font-weight:500;color:var(--pa-teal);background:#fff;border:1px solid var(--pa-line);border-radius:8px;padding:9px 14px}
+.ci-filebtn:hover{border-color:var(--pa-teal)}
+.ci-filebtn input[type=file]{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);border:0}
+
+/* Inline add-child field (replaces the native prompt dialog) */
+.ci-addkid-inline{display:inline-flex;align-items:center;gap:6px}
+.ci-addkid-inline[hidden]{display:none}
+.ci-addkid-name{width:auto;min-width:150px;padding:6px 10px;font-size:14px}
+.ci-addkid-save{font:inherit;font-size:13px;font-weight:600;color:#fff;background:var(--pa-teal);border:0;border-radius:999px;padding:6px 14px;cursor:pointer}
+.ci-addkid-cancel{background:none;border:0;font-size:18px;line-height:1;color:var(--pa-muted);cursor:pointer;padding:0 4px}
+
 /* ── Check-in — party roster (multi-guest) ── */
 .ci-party__head{font-size:14px;color:var(--pa-muted);line-height:1.6;margin:0 0 16px}
 .ci-guest{background:#fff;border:1px solid var(--pa-line);border-radius:12px;padding:14px 16px;margin-bottom:12px}
@@ -306,6 +334,7 @@
 /* ── Arrival modes ─────────────────────────────────────────────────────────── */
 .ci-modes{margin:4px 0 6px}
 .ci-opt{font-weight:400;text-transform:none;letter-spacing:0}
+.ci-l .ci-opt{font-size:9px;color:var(--pa-muted)}
 
 /* ── Signature pad ─────────────────────────────────────────────────────────── */
 .ci-sign { position: relative; margin: 6px 0 4px; }

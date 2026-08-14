@@ -889,6 +889,29 @@ include 'includes/head.php';
   <div class="reviewed-strip__note">Aggregated guest ratings across booking platforms · 1,300+ guests hosted</div>
 </section>
 
+<!-- Step 2 of the search bar: capture contact details as a lead, then show rooms -->
+<div class="savail-modal" id="savailModal" hidden>
+  <div class="savail-modal__backdrop" data-savail-close></div>
+  <div class="savail-modal__panel" role="dialog" aria-modal="true" aria-labelledby="savailTitle">
+    <button type="button" class="savail-modal__x" data-savail-close aria-label="Close">&times;</button>
+    <div class="savail-modal__eyebrow">Step 2 of 2</div>
+    <h2 class="savail-modal__title" id="savailTitle">Where should we send your availability?</h2>
+    <p class="savail-modal__sub" id="savailSummary"></p>
+    <form id="savailForm" class="savail-form" novalidate>
+      <input type="text" name="website" class="savail-hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <label class="savail-field"><span class="savail-field__lbl">Name</span><input type="text" name="name" required placeholder="Your full name"></label>
+      <label class="savail-field"><span class="savail-field__lbl">Email</span><input type="email" name="email" required placeholder="you@email.com"></label>
+      <label class="savail-field"><span class="savail-field__lbl">Phone <em>(optional)</em></span><input type="tel" name="phone" placeholder="e.g. +254 7…"></label>
+      <p class="savail-err" id="savailErr" hidden></p>
+      <div class="savail-actions">
+        <button type="button" class="savail-back" data-savail-close>&larr; Back</button>
+        <button type="submit" class="savail-submit">Check Availability</button>
+      </div>
+      <p class="savail-note">🔒 We'll only use this to help with your stay. No spam.</p>
+    </form>
+  </div>
+</div>
+
 <?php include 'includes/footer.php'; ?>
 
 <script>
@@ -958,25 +981,88 @@ include 'includes/head.php';
     });
   });
 
+  function currentSearch(){
+    return { checkin: ci.value, checkout: co.value,
+             adults: parseInt(adults.value,10) || 2, children: parseInt(kids.value,10) || 0 };
+  }
+  function resultsUrl(s){
+    return '/search?checkin=' + encodeURIComponent(s.checkin) +
+           '&checkout=' + encodeURIComponent(s.checkout) +
+           '&adults=' + encodeURIComponent(s.adults) +
+           '&children=' + encodeURIComponent(s.children);
+  }
+  function stash(s){ try { sessionStorage.setItem('ts_search', JSON.stringify(s)); } catch(_){} }
+
+  // Step 1 → validate dates, then open Step 2 (contact capture). We only reach
+  // the results page AFTER the lead is saved, so an abandoned search is still a lead.
   form.addEventListener('submit', function(e){
     e.preventDefault();
     if (!ci.value){ if (ciBtn) ciBtn.click(); return; }
     if (!co.value || co.value <= ci.value){ if (coBtn) coBtn.click(); return; }
-    // Also stash for property-page widgets, then go to the live results page
-    try {
-      sessionStorage.setItem('ts_search', JSON.stringify({
-        checkin:  ci.value,
-        checkout: co.value,
-        adults:   parseInt(adults.value,10),
-        children: parseInt(kids.value,10)
-      }));
-    } catch(_){}
-    var q = 'checkin=' + encodeURIComponent(ci.value) +
-            '&checkout=' + encodeURIComponent(co.value) +
-            '&adults=' + encodeURIComponent(adults.value) +
-            '&children=' + encodeURIComponent(kids.value);
-    window.location.href = '/search?' + q;
+    stash(currentSearch());
+    openLeadModal();
   });
+
+  // ── Step 2 modal: contact capture → lead → results ──
+  var modal    = document.getElementById('savailModal');
+  var leadForm = document.getElementById('savailForm');
+
+  function niceDate(ymd){
+    var d = new Date(ymd + 'T00:00');
+    return isNaN(d) ? ymd : d.toLocaleDateString('en-GB', { day:'numeric', month:'short' });
+  }
+  function openLeadModal(){
+    var s = currentSearch();
+    if (!modal || !leadForm){ window.location.href = resultsUrl(s); return; } // graceful fallback
+    var nights = Math.round((new Date(s.checkout) - new Date(s.checkin)) / 86400000);
+    var sum = document.getElementById('savailSummary');
+    if (sum) sum.textContent = niceDate(s.checkin) + ' → ' + niceDate(s.checkout) +
+      ' · ' + nights + ' night' + (nights !== 1 ? 's' : '') +
+      ' · ' + s.adults + ' adult' + (s.adults !== 1 ? 's' : '') +
+      (s.children ? ', ' + s.children + ' child' + (s.children !== 1 ? 'ren' : '') : '');
+    modal.hidden = false;
+    document.body.style.overflow = 'hidden';
+    var n = leadForm.querySelector('input[name=name]'); if (n) n.focus();
+  }
+  function closeLeadModal(){ if (modal){ modal.hidden = true; document.body.style.overflow = ''; } }
+
+  if (modal && leadForm){
+    modal.addEventListener('click', function(e){
+      if (e.target.hasAttribute('data-savail-close')){ e.preventDefault(); closeLeadModal(); }
+    });
+    document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && !modal.hidden) closeLeadModal(); });
+
+    var err = document.getElementById('savailErr');
+    function showErr(m){ if (err){ err.textContent = m; err.hidden = false; } }
+
+    leadForm.addEventListener('submit', function(e){
+      e.preventDefault();
+      var btn = leadForm.querySelector('.savail-submit');
+      var s   = currentSearch();
+      var body = {
+        name:  (leadForm.name.value  || '').trim(),
+        email: (leadForm.email.value || '').trim(),
+        phone: (leadForm.phone.value || '').trim(),
+        website: leadForm.website.value || '',
+        checkin: s.checkin, checkout: s.checkout, adults: s.adults, children: s.children
+      };
+      if (!body.name || !body.email){ showErr('Please enter your name and a valid email.'); return; }
+      if (err) err.hidden = true;
+      btn.disabled = true; btn.textContent = 'Checking…';
+      fetch('/api/search-lead.php', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        credentials: 'same-origin', body: JSON.stringify(body)
+      })
+      .then(function(r){ return r.json().catch(function(){ return { ok:false }; }); })
+      .then(function(j){
+        if (j && j.ok && j.redirect){ window.location.href = j.redirect; return; }
+        var msg = (j && j.errors) ? Object.keys(j.errors).map(function(k){ return j.errors[k]; })[0]
+                : (j && j.error) || 'Something went wrong. Please try again.';
+        showErr(msg); btn.disabled = false; btn.textContent = 'Check Availability';
+      })
+      .catch(function(){ showErr('Network error. Please try again.'); btn.disabled = false; btn.textContent = 'Check Availability'; });
+    });
+  }
 })();
 
 // Property filter

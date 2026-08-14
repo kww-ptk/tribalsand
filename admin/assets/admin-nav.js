@@ -124,6 +124,7 @@
     var ct = wsEl.querySelector('[data-ws-tabs]');
     if (nt && ct) ct.innerHTML = nt.innerHTML;
     wsPanel.classList.remove('is-loading');
+    runScripts(wsPanel);      // the panel's own inline scripts (check-in interactions…)
     reenhance(wsPanel);
   }
   function wsLoadTab(url, push) {
@@ -134,6 +135,7 @@
       .then(function (html) {
         wsPanel.innerHTML = html;
         wsPanel.classList.remove('is-loading');
+        runScripts(wsPanel);      // the panel's own inline scripts (check-in interactions…)
         reenhance(wsPanel);
         try { if (push) history.pushState({ ws: 1 }, '', url); } catch (e) { /* non-fatal */ }
       })

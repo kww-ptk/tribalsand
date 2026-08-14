@@ -25,9 +25,9 @@ $otherStatus = function (array $g) use ($showWaiver) {
 <link rel="stylesheet" href="/css/portal-app.css?v=<?= @filemtime(__DIR__ . '/../../css/portal-app.css') ?: time() ?>">
 <script src="/js/signature-pad.js?v=<?= @filemtime(__DIR__ . '/../../js/signature-pad.js') ?: time() ?>" defer></script>
 <div class="pa-app">
-  <div class="pa-topbar"><div class="pa-topbar__eyebrow">Tribal Sand</div><div class="pa-topbar__title">Guest check-in</div></div>
+  <div class="pa-topbar"><div class="pa-topbar__inner"><div class="pa-topbar__brand"><div class="pa-topbar__eyebrow">Tribal Sand</div><div class="pa-topbar__title">Guest check-in</div></div></div></div>
   <div class="pa-wrap" style="padding-top:16px">
-    <div class="ci-wizard">
+    <div class="ci-wizard<?= (!$done && $showWaiver) ? ' ci-wizard--split' : '' ?>">
 
     <?php if ($done): ?>
       <div class="pa-card ci-done-card">
@@ -47,67 +47,96 @@ $otherStatus = function (array $g) use ($showWaiver) {
       <div class="ci-alert"><?= e($_SESSION['ci_error']) ?></div>
       <?php unset($_SESSION['ci_error']); endif; ?>
 
-      <div class="ci-hero" style="padding:8px 6px 16px">
+      <div class="ci-hero" style="padding:8px 6px 12px">
         <div class="ci-hero__eyebrow">Your check-in</div>
         <h1 class="ci-hero__title">Welcome<?= $first !== 'there' ? ', ' . e($first) : '' ?></h1>
-        <p class="ci-hero__sub"><?php if ($state === 'review_sign'): ?>Your details are already on file for <strong><?= e($stayLoc) ?></strong> — just sign below to finish.<?php else: ?>You've been added to a booking at <strong><?= e($stayLoc) ?></strong> (<?= e(date('j M', strtotime((string)$hold['check_in']))) ?> – <?= e(date('j M', strtotime((string)$hold['check_out']))) ?>). Please add your passport<?= $showWaiver ? ' and sign the waiver' : '' ?>.<?php endif; ?></p>
+        <p class="ci-hero__sub"><?php if ($state === 'review_sign'): ?>Your details are already on file for <strong><?= e($stayLoc) ?></strong> (<?= e(date('j M', strtotime((string)$hold['check_in']))) ?> &ndash; <?= e(date('j M', strtotime((string)$hold['check_out']))) ?>) — just sign below to finish.<?php else: ?>You've been added to a booking at <strong><?= e($stayLoc) ?></strong> (<?= e(date('j M', strtotime((string)$hold['check_in']))) ?> &ndash; <?= e(date('j M', strtotime((string)$hold['check_out']))) ?>). Please add your passport<?= $showWaiver ? ' and sign the waiver' : '' ?>.<?php endif; ?></p>
       </div>
 
       <form id="ciGForm" method="post" action="/api/checkin-save.php" enctype="multipart/form-data">
         <?= csrf_field() ?>
         <input type="hidden" name="g" value="<?= e($gtoken) ?>">
         <input type="hidden" name="via" value="<?= e((string)($_GET['via'] ?? '')) ?>">
-        <div class="ci-guest ci-guest--lead">
-          <?php if ($showPassport): ?>
-          <?php if ($state === 'review_sign'): ?>
-          <details class="ci-review">
-            <summary>Your details are on file — tap to review or edit</summary>
-          <?php endif; ?>
-          <label class="ci-l">Full name (as on passport)</label>
-          <input class="ci-in" name="passport_name" value="<?= $v('passport_name') ?>">
-          <label class="ci-l">Passport number</label>
-          <input class="ci-in" name="passport_number" value="<?= $v('passport_number') ?>">
-          <label class="ci-l">Nationality</label>
-          <input class="ci-in" name="nationality" value="<?= $v('nationality') ?>">
-          <label class="ci-l">Passport expiry</label>
-          <input class="ci-in" type="date" name="passport_expiry" value="<?= $v('passport_expiry') ?>">
-          <label class="ci-l">Passport scan (photo or PDF)</label>
-          <div class="ci-upload" data-has="<?= !empty($me['passport_file_key']) ? '1' : '0' ?>">
-            <input type="file" id="ciGFile" accept="image/jpeg,image/png,application/pdf">
-            <span class="ci-upload__state"><?= !empty($me['passport_file_key']) ? 'Uploaded &#10003;' : 'No file yet' ?></span>
+        <div class="ci-cols">
+          <!-- LEFT widget — identity & party -->
+          <div class="ci-guest ci-guest--lead ci-wg">
+            <h3 class="ci-wg__title">Your details</h3>
+            <?php if ($showPassport): ?>
+            <?php if ($state === 'review_sign'): ?>
+            <details class="ci-review">
+              <summary>Your details are on file — tap to review or edit</summary>
+            <?php endif; ?>
+            <div class="ci-grid2">
+              <div class="ci-fld">
+                <label class="ci-l">Full name <span class="ci-opt">(as on passport)</span></label>
+                <input class="ci-in" name="passport_name" value="<?= $v('passport_name') ?>">
+              </div>
+              <div class="ci-fld">
+                <label class="ci-l">Passport number</label>
+                <input class="ci-in" name="passport_number" value="<?= $v('passport_number') ?>">
+              </div>
+              <div class="ci-fld">
+                <label class="ci-l">Nationality</label>
+                <input class="ci-in" name="nationality" value="<?= $v('nationality') ?>">
+              </div>
+              <div class="ci-fld">
+                <label class="ci-l">Passport expiry</label>
+                <input class="ci-in" type="date" name="passport_expiry" value="<?= $v('passport_expiry') ?>">
+              </div>
+              <div class="ci-fld ci-span2">
+                <label class="ci-l">Passport scan (photo or PDF)</label>
+                <div class="ci-upload" data-has="<?= !empty($me['passport_file_key']) ? '1' : '0' ?>">
+                  <label class="ci-filebtn"><span class="ci-filebtn__t">Choose file</span><input type="file" id="ciGFile" accept="image/jpeg,image/png,application/pdf"></label>
+                  <span class="ci-upload__state"><?= !empty($me['passport_file_key']) ? 'Uploaded &#10003;' : 'No file yet' ?></span>
+                </div>
+              </div>
+            </div>
+            <?php if ($state === 'review_sign'): ?></details><?php endif; ?>
+            <?php endif; ?>
+            <div class="ci-kids" data-parent="me">
+              <?php foreach ($myKids as $c): ?>
+              <span class="ci-kid" data-guest-id="<?= (int)$c['id'] ?>"><?= e((string)$c['passport_name']) ?><button type="button" class="ci-kid__x" aria-label="Remove">&times;</button></span>
+              <?php endforeach; ?>
+              <button type="button" class="ci-addkid">+ Add child</button>
+              <span class="ci-addkid-inline" hidden>
+                <input type="text" class="ci-in ci-addkid-name" placeholder="Child's full name">
+                <button type="button" class="ci-addkid-save">Add</button>
+                <button type="button" class="ci-addkid-cancel" aria-label="Cancel">&times;</button>
+              </span>
+            </div>
+            <?php if ($showWaiver): ?>
+            <label class="ci-l">Terms &amp; conditions</label>
+            <div class="ci-waiver"><?= nl2br(e($waiverText)) ?></div>
+            <h3 class="ci-wg__title" style="margin-top:18px">Agree &amp; sign</h3>
+            <label class="ci-radio"><input type="checkbox" name="waiver_agree" value="1" <?= checkin_guest_waiver_signed($me) ? 'checked' : '' ?>> I have read and agree to the terms</label>
+            <?php endif; ?>
           </div>
-          <?php if ($state === 'review_sign'): ?></details><?php endif; ?>
-          <?php endif; ?>
-          <?php if ($showWaiver): ?>
-          <div class="ci-waiver"><?= nl2br(e($waiverText)) ?></div>
-          <label class="ci-radio"><input type="checkbox" name="waiver_agree" value="1" <?= checkin_guest_waiver_signed($me) ? 'checked' : '' ?>> I have read and agree to the terms</label>
-          <label class="ci-l">Type your full name to sign</label>
-          <input class="ci-in" name="waiver_signed_name" value="<?= $v('waiver_signed_name') ?>" placeholder="Full name">
-          <label class="ci-l">Sign below with your finger</label>
-          <div class="ci-sign">
-            <button type="button" class="ci-sign-clear">Clear</button>
-            <canvas class="ci-sign-pad" data-target="#ciGSig"></canvas>
-          </div>
-          <input type="hidden" name="waiver_signature" id="ciGSig">
-          <?php endif; ?>
-          <div class="ci-kids" data-parent="me">
-            <?php foreach ($myKids as $c): ?>
-            <span class="ci-kid" data-guest-id="<?= (int)$c['id'] ?>"><?= e((string)$c['passport_name']) ?><button type="button" class="ci-kid__x" aria-label="Remove">&times;</button></span>
-            <?php endforeach; ?>
-            <button type="button" class="ci-addkid">+ Add child</button>
+
+          <!-- RIGHT widget — signature, who else is on this booking, and submit -->
+          <div class="ci-guest ci-guest--lead ci-wg">
+            <?php if ($showWaiver): ?>
+            <h3 class="ci-wg__title">Signature</h3>
+            <label class="ci-l">Type your full name to sign</label>
+            <input class="ci-in" name="waiver_signed_name" value="<?= $v('waiver_signed_name') ?>" placeholder="Full name">
+            <label class="ci-l">Sign below with your finger</label>
+            <div class="ci-sign">
+              <button type="button" class="ci-sign-clear">Clear</button>
+              <canvas class="ci-sign-pad" data-target="#ciGSig"></canvas>
+            </div>
+            <input type="hidden" name="waiver_signature" id="ciGSig">
+            <?php endif; ?>
+            <?php if ($others): ?>
+            <div class="ci-others">
+              <p class="ci-need__title">Others on this booking</p>
+              <?php foreach ($others as $g): ?>
+              <div class="ci-other__row"><span><?= e((string)($g['passport_name'] ?? 'Guest')) ?><?= !empty($g['is_lead']) ? ' (lead)' : '' ?></span><span class="ci-chip <?= checkin_guest_passport_complete($g) && (!$showWaiver || checkin_guest_waiver_signed($g)) ? 'ci-chip--ok' : '' ?>"><?= $otherStatus($g) ?></span></div>
+              <?php endforeach; ?>
+            </div>
+            <?php endif; ?>
+            <button type="submit" class="pa-btn pa-btn--primary" name="do" value="submit" style="margin-top:20px">Complete my check-in</button>
           </div>
         </div>
-        <button type="submit" class="pa-btn pa-btn--primary" name="do" value="submit" style="margin-top:20px">Complete my check-in</button>
       </form>
-
-      <?php if ($others): ?>
-      <div class="ci-others">
-        <p class="ci-need__title">Others on this booking</p>
-        <?php foreach ($others as $g): ?>
-        <div class="ci-other__row"><span><?= e((string)($g['passport_name'] ?? 'Guest')) ?><?= !empty($g['is_lead']) ? ' (lead)' : '' ?></span><span class="ci-chip <?= checkin_guest_passport_complete($g) && (!$showWaiver || checkin_guest_waiver_signed($g)) ? 'ci-chip--ok' : '' ?>"><?= $otherStatus($g) ?></span></div>
-        <?php endforeach; ?>
-      </div>
-      <?php endif; ?>
 
     <?php endif; ?>
 
@@ -136,17 +165,43 @@ $otherStatus = function (array $g) use ($showWaiver) {
   });
 
   function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+
+  // Reveal the inline add-child field for a given .ci-kids block.
+  function openAddKid(wrap){
+    var btn = wrap.querySelector('.ci-addkid'), inline = wrap.querySelector('.ci-addkid-inline');
+    if (!inline) return;
+    if (btn) btn.setAttribute('hidden','');
+    inline.removeAttribute('hidden');
+    var inp = inline.querySelector('.ci-addkid-name'); if (inp) { inp.value=''; inp.focus(); }
+  }
+  function closeAddKid(wrap){
+    var btn = wrap.querySelector('.ci-addkid'), inline = wrap.querySelector('.ci-addkid-inline');
+    if (inline) inline.setAttribute('hidden','');
+    if (btn) btn.removeAttribute('hidden');
+  }
+  // Save the typed child name via AJAX, append a chip, reset the inline field.
+  function saveAddKid(wrap){
+    var inline = wrap.querySelector('.ci-addkid-inline'), inp = wrap.querySelector('.ci-addkid-name');
+    var name = (inp && inp.value || '').trim(); if (!name) { if (inp) inp.focus(); return; }
+    var save = wrap.querySelector('.ci-addkid-save'); if (save) save.disabled = true;
+    fetch('/api/checkin-guest.php', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, credentials:'same-origin',
+      body: 'g=' + encodeURIComponent(GTOK) + '&csrf_token=' + encodeURIComponent(CSRF) + '&action=add_child&passport_name=' + encodeURIComponent(name) })
+      .then(function(r){ return r.ok ? r.json() : Promise.reject(); })
+      .then(function(d){
+        var c=document.createElement('span'); c.className='ci-kid'; c.setAttribute('data-guest-id', d.guest_id);
+        c.innerHTML=esc(name)+'<button type="button" class="ci-kid__x" aria-label="Remove">&times;</button>';
+        wrap.insertBefore(c, wrap.querySelector('.ci-addkid'));
+        closeAddKid(wrap);
+      })
+      .catch(function(){ /* leave the field open so the guest can retry */ })
+      .then(function(){ if (save) save.disabled = false; });
+  }
+
   form.addEventListener('click', function (e) {
     var t = e.target;
-    if (t.classList.contains('ci-addkid')) {
-      e.preventDefault();
-      var wrap = t.closest('.ci-kids'); var name = (window.prompt("Child's full name:") || '').trim(); if (!name) return;
-      fetch('/api/checkin-guest.php', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, credentials:'same-origin',
-        body: 'g=' + encodeURIComponent(GTOK) + '&csrf_token=' + encodeURIComponent(CSRF) + '&action=add_child&passport_name=' + encodeURIComponent(name) })
-        .then(function(r){ return r.ok ? r.json() : Promise.reject(); })
-        .then(function(d){ var c=document.createElement('span'); c.className='ci-kid'; c.setAttribute('data-guest-id', d.guest_id); c.innerHTML=esc(name)+'<button type="button" class="ci-kid__x" aria-label="Remove">&times;</button>'; wrap.insertBefore(c, t); });
-      return;
-    }
+    if (t.classList.contains('ci-addkid'))        { e.preventDefault(); openAddKid(t.closest('.ci-kids'));  return; }
+    if (t.classList.contains('ci-addkid-cancel')) { e.preventDefault(); closeAddKid(t.closest('.ci-kids')); return; }
+    if (t.classList.contains('ci-addkid-save'))   { e.preventDefault(); saveAddKid(t.closest('.ci-kids'));  return; }
     if (t.classList.contains('ci-kid__x')) {
       e.preventDefault(); var kc = t.closest('.ci-kid'), kid = kc.getAttribute('data-guest-id');
       fetch('/api/checkin-guest.php', { method:'POST', headers:{'Content-Type':'application/x-www-form-urlencoded'}, credentials:'same-origin',
@@ -154,6 +209,12 @@ $otherStatus = function (array $g) use ($showWaiver) {
         .then(function(){ kc.remove(); });
       return;
     }
+  });
+  // Enter in the inline name field saves; Escape cancels.
+  form.addEventListener('keydown', function (e) {
+    if (!e.target.classList || !e.target.classList.contains('ci-addkid-name')) return;
+    if (e.key === 'Enter') { e.preventDefault(); saveAddKid(e.target.closest('.ci-kids')); }
+    else if (e.key === 'Escape') { e.preventDefault(); closeAddKid(e.target.closest('.ci-kids')); }
   });
 })();
 </script>
