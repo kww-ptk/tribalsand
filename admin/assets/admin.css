@@ -648,6 +648,69 @@ tr.dt-rowlink a:hover { text-decoration: none; }
 .ci-badge--done{background:#dcfce7;color:#166534}
 .ci-badge--pending{background:#fef3c7;color:#92400e}
 
+/* ── Check-in tab layout (admin/_ws_checkin.php) ─────────────────────────────
+   Status header, the guest "facts" grid, and the full-width inline row editor.
+   All built on existing primitives (.ci-badge, .inp, .btn-*, .dp-btn, .filefield). */
+
+/* Status header — status on the left, actions on the right */
+.ci-head{display:flex;justify-content:space-between;align-items:center;gap:14px 24px;flex-wrap:wrap;padding:16px 20px}
+.ci-head__status{display:flex;align-items:center;gap:13px;min-width:0}
+.ci-head__icon{width:42px;height:42px;flex:0 0 auto;border-radius:50%;display:flex;align-items:center;justify-content:center}
+.ci-head__icon--done{background:#dcfce7;color:#166534}
+.ci-head__icon--pending{background:#fef3c7;color:#92400e}
+.ci-head__icon--none{background:#f1f1ef;color:var(--muted)}
+.ci-head__lines{min-width:0}
+.ci-head__title{font-weight:700;font-size:15px;color:var(--text);line-height:1.25}
+.ci-head__sub{font-size:12.5px;color:var(--muted);margin-top:2px}
+.ci-head__actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+/* Adults stepper-style field: label + number + inline save, framed as one control */
+.ci-adults{display:inline-flex;align-items:center;gap:8px;margin:0;padding:4px 5px 4px 12px;border:1.5px solid var(--border);border-radius:8px;background:var(--white)}
+.ci-adults__lbl{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700}
+.ci-adults .inp{width:48px}
+
+/* Guest "facts" grid — replaces the cramped max-width table. Fixed 2 columns. */
+.ci-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 28px;padding:6px 20px 12px}
+.ci-fact{display:flex;justify-content:space-between;align-items:baseline;gap:16px;padding:10px 0;border-bottom:1px solid var(--border)}
+.ci-fact__k{font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);white-space:nowrap}
+.ci-fact__v{font-weight:600;color:var(--text);text-align:right}
+.ci-fact__v .text-muted{font-weight:400}
+@media (max-width:640px){.ci-facts{grid-template-columns:1fr}}
+
+/* Guests table — icon-only Actions column (matches other admin list tables) */
+.ci-actions{white-space:nowrap}
+.ci-actions .btn-icon{margin:0 2px}
+.btn-icon.is-active{background:var(--brand);color:#fff;border-color:var(--brand)}
+
+/* Full-width inline row editor (toggled open under a guest row by the Actions icons) */
+.ci-editrow[hidden],.ci-childrow[hidden]{display:none}
+.ci-editcell{background:var(--bg-alt,#f7f7f5)!important;padding:0!important}
+.ci-editinner{position:relative;padding:14px 16px}
+.ci-editinner__title{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;margin:0 0 12px;padding-right:32px}
+.ci-edit__close{position:absolute;top:10px;right:12px}
+.ci-edit__grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px 16px;align-items:end}
+.ci-field{display:flex;flex-direction:column;gap:5px;min-width:0}
+.ci-field>label{font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);font-weight:700}
+.ci-field .inp,.ci-field .dp-btn{width:100%}
+.ci-field--action{justify-content:flex-end}
+/* Footer: file/upload on the left, remove + Save on the right */
+.ci-edit__foot{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
+.ci-edit__foot-left,.ci-edit__foot-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ci-upload-form{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0}
+/* dp-btn styled to sit inside .ci-field like an .inp (left-aligned, placeholder look) */
+.ci-field .dp-btn{text-align:left;color:var(--text);background:var(--white)}
+.ci-field .dp-btn:not(.dp-btn--active){color:var(--muted)}
+.ci-add__form{display:flex;gap:12px 16px;flex-wrap:wrap;align-items:flex-end}
+/* "+ Add adult" modal popup (button in the Guests card header opens it) */
+.ci-addadult-modal{position:fixed;inset:0;z-index:1000;display:flex;align-items:center;justify-content:center;padding:20px}
+.ci-addadult-modal[hidden]{display:none}
+.ci-addadult-back{position:absolute;inset:0;background:rgba(16,47,58,.45)}
+.ci-addadult-dialog{position:relative;background:var(--white);border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.25);max-width:420px;width:100%;padding:22px}
+.ci-addadult-dialog__title{font-size:16px;font-weight:700;color:var(--text);margin:0 0 14px}
+.ci-addadult-x{position:absolute;top:12px;right:12px}
+.ci-addadult-form{display:flex;flex-direction:column;gap:6px;margin:0}
+.ci-addadult-form__label{font-size:13px;font-weight:600;color:var(--text)}
+.ci-addadult-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+
 /* ═══════════════════════════════════════════════════════════════════════
    ADMIN & GUEST-PORTAL REDESIGN — Phases 1–3 (Aug 2026)
    Shared primitives: skeleton loading, tooltips, the booking-workspace shell,

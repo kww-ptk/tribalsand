@@ -77,43 +77,47 @@ include __DIR__ . '/includes/header.php';
 .vcard__name a{color:inherit;}
 .vcard__meta{font-size:.86rem;color:var(--light);margin-bottom:.9rem;}
 .vcard__status{display:flex;align-items:baseline;gap:.6rem;flex-wrap:wrap;margin-top:auto;}
-.vcard__avail{font-size:.82rem;font-weight:600;letter-spacing:.02em;}
-.vcard__avail.ok{color:#2D7A5F;}
-.vcard__avail.no{color:#9B3B2A;}
+.vcard__avail{display:inline-flex;align-items:center;gap:.4rem;font-size:.74rem;font-weight:600;letter-spacing:.01em;padding:.32rem .72rem;border-radius:999px;}
+.vcard__avail svg{flex-shrink:0;}
+.vcard__avail.ok{color:#0F6E56;background:#E1F5EE;}
+.vcard__avail.no{color:#7A2417;background:#F6D9CF;}
 .vcard__from{margin-left:auto;text-align:right;}
 .vcard__from small{display:block;font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--light);}
 .vcard__from b{font-family:'Cormorant Garamond',serif;font-weight:500;font-size:1.35rem;color:var(--dark);}
 .vcard__toggle{margin-top:1rem;align-self:flex-start;background:var(--sand);color:var(--teal-d);border:none;border-radius:4px;padding:.7rem 1.4rem;font-family:'Jost',sans-serif;font-size:.62rem;letter-spacing:.18em;text-transform:uppercase;font-weight:600;cursor:pointer;transition:background .2s;}
 .vcard__toggle:hover{background:var(--sand-lt);}
 .vcard__view{margin-top:1rem;align-self:flex-start;font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;color:var(--teal);border-bottom:1px solid var(--border);padding-bottom:2px;}
-/* room list */
+/* room list — image-forward card grid */
 .rlist{grid-column:1 / -1;border-top:1px solid var(--border);background:var(--sand-faint);display:none;}
 .rlist.open{display:block;}
-.rrow{display:flex;align-items:center;gap:1rem;padding:1rem 1.6rem;border-bottom:1px solid var(--border);}
-.rrow:last-child{border-bottom:none;}
-.rrow__img{flex-shrink:0;width:104px;height:78px;border-radius:6px;overflow:hidden;background:linear-gradient(135deg,#2f7a6b,#0d2b33);position:relative;}
-.rrow__img img{width:100%;height:100%;object-fit:cover;display:block;}
-.rrow__info{flex:1;min-width:0;}
-.rrow__name{font-size:.98rem;font-weight:600;color:var(--dark);}
-.rrow__desc{font-size:.8rem;color:var(--light);margin-top:.15rem;}
-.rrow__tag{display:inline-block;font-size:.54rem;letter-spacing:.14em;text-transform:uppercase;color:var(--sand);border:1px solid var(--border);padding:.12rem .5rem;margin-left:.4rem;vertical-align:middle;}
-.rrow__price{text-align:right;white-space:nowrap;}
-.rrow__price b{font-family:'Cormorant Garamond',serif;font-weight:500;font-size:1.15rem;color:var(--dark);}
-.rrow__price small{display:block;font-size:.68rem;color:var(--light);}
-.rrow__btn{flex-shrink:0;background:var(--teal-d);color:#fff;border:none;border-radius:4px;padding:.7rem 1.3rem;font-family:'Jost',sans-serif;font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;font-weight:600;cursor:pointer;transition:background .2s;}
-.rrow__btn:hover{background:var(--teal);}
+.rgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:1.1rem;padding:1.4rem 1.6rem;}
+.rcard{display:flex;flex-direction:column;background:#fff;border:1px solid var(--border);border-radius:10px;overflow:hidden;transition:box-shadow .2s,transform .2s;}
+.rcard:hover{box-shadow:0 12px 30px rgba(10,30,40,.10);transform:translateY(-2px);}
+.rcard__img{position:relative;aspect-ratio:16/10;background:linear-gradient(135deg,#2f7a6b,#0d2b33);}
+.rcard__img img{width:100%;height:100%;object-fit:cover;display:block;position:absolute;inset:0;}
+.rcard__tag{position:absolute;top:.6rem;left:.6rem;font-size:.55rem;letter-spacing:.12em;text-transform:uppercase;color:#fff;background:rgba(16,47,58,.82);padding:.22rem .55rem;border-radius:999px;font-weight:600;}
+.rcard__body{display:flex;flex-direction:column;flex:1;padding:.95rem 1.05rem 1.05rem;}
+.rcard__name{font-family:'Cormorant Garamond',serif;font-weight:500;font-size:1.28rem;line-height:1.1;color:var(--dark);}
+.rcard__desc{font-size:.82rem;color:var(--light);line-height:1.5;margin-top:.4rem;}
+.rcard__chips{display:flex;flex-wrap:wrap;gap:.4rem;margin-top:.55rem;}
+.rchip{display:inline-flex;align-items:center;gap:.32rem;font-size:.68rem;letter-spacing:.02em;color:#5C5340;background:#F1E9DA;border-radius:999px;padding:.28rem .6rem;}
+.rchip svg{color:var(--sand);flex-shrink:0;}
+.rcard__foot{display:flex;align-items:flex-end;justify-content:space-between;gap:.6rem;margin-top:auto;padding-top:.95rem;}
+.rcard__price b{display:block;font-family:'Cormorant Garamond',serif;font-weight:600;font-size:1.3rem;color:var(--dark);line-height:1;}
+.rcard__price small{display:block;font-size:.64rem;letter-spacing:.02em;color:var(--light);margin-top:.25rem;}
+.rcard__btn{flex-shrink:0;display:inline-flex;align-items:center;gap:.4rem;background:var(--teal-d);color:#fff;border:none;border-radius:6px;padding:.6rem 1.1rem;font-family:'Jost',sans-serif;font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;font-weight:600;cursor:pointer;transition:background .2s;}
+.rcard__btn svg{flex-shrink:0;}
+.rcard__btn:hover{background:var(--teal);}
 .srch-empty{text-align:center;padding:3rem 1rem;color:var(--mid);}
 @media(max-width:720px){
   .vcard{grid-template-columns:1fr;}
   .vcard__img{min-height:180px;}
   .srch-field{flex:1 1 45%;border-right:none;}
   .srch-form__btn{flex:1 1 100%;}
-  .rrow{flex-wrap:wrap;align-items:center;gap:.7rem 1rem;padding:1.1rem 1.2rem;}
-  .rrow__img{width:100%;height:180px;}
-  .rrow__info{flex:1 1 100%;}
-  .rrow__desc{font-size:.85rem;line-height:1.45;}
-  .rrow__price{flex:1 1 auto;text-align:left;}
-  .rrow__btn{margin-left:auto;padding:.75rem 1.5rem;}
+  .rgrid{grid-template-columns:1fr 1fr;gap:.8rem;padding:1rem 1.1rem;}
+}
+@media(max-width:460px){
+  .rgrid{grid-template-columns:1fr;}
 }
 </style>
 
@@ -188,7 +192,7 @@ include __DIR__ . '/includes/header.php';
             <?php if ($sold): ?>
               <span class="vcard__avail no">No availability for these dates</span>
             <?php else: ?>
-              <span class="vcard__avail ok"><?= e($avail_txt) ?></span>
+              <span class="vcard__avail ok"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg><?= e($avail_txt) ?></span>
               <span class="vcard__from"><small>From (<?= $nights ?> night<?= $nights !== 1 ? 's' : '' ?>)</small><b><?= e($money($r['from'], $r['currency'])) ?></b></span>
             <?php endif; ?>
           </div>
@@ -202,25 +206,34 @@ include __DIR__ . '/includes/header.php';
 
         <?php if (!$sold): ?>
         <div class="rlist" id="rl-<?= (int)$v['id'] ?>">
+          <div class="rgrid">
           <?php foreach ($r['rooms'] as $room): ?>
-          <div class="rrow">
-            <div class="rrow__img"><?php if (!empty($room['hero'])): ?><img src="<?= e($room['hero']) ?>" alt="<?= e($room['name']) ?>" loading="lazy"><?php endif; ?></div>
-            <div class="rrow__info">
-              <span class="rrow__name"><?= e($room['name']) ?><?php if ($room['tag']): ?><span class="rrow__tag"><?= e($room['tag']) ?></span><?php endif; ?></span>
-              <div class="rrow__desc">
-                <?php if ($room['capacity']): ?>Up to <?= (int)$room['capacity'] ?> guests<?php endif; ?>
-                <?php if ($room['short_desc']): ?><?= $room['capacity'] ? ' · ' : '' ?><?= e($room['short_desc']) ?><?php endif; ?>
+          <div class="rcard">
+            <div class="rcard__img">
+              <?php if (!empty($room['hero'])): ?><img src="<?= e($room['hero']) ?>" alt="<?= e($room['name']) ?>" loading="lazy"><?php endif; ?>
+              <?php if ($room['tag']): ?><span class="rcard__tag"><?= e($room['tag']) ?></span><?php endif; ?>
+            </div>
+            <div class="rcard__body">
+              <div class="rcard__name"><?= e($room['name']) ?></div>
+              <?php if ($room['capacity']): ?>
+              <div class="rcard__chips">
+                <span class="rchip"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>Up to <?= (int)$room['capacity'] ?> guests</span>
+              </div>
+              <?php endif; ?>
+              <?php if ($room['short_desc']): ?><div class="rcard__desc"><?= e($room['short_desc']) ?></div><?php endif; ?>
+              <div class="rcard__foot">
+                <div class="rcard__price">
+                  <b><?= e($money($room['total'], $room['currency'])) ?></b>
+                  <small><?= $room['nights'] ?> night<?= $room['nights'] !== 1 ? 's' : '' ?> · final price by email</small>
+                </div>
+                <button type="button" class="rcard__btn js-select-room"
+                        data-slug="<?= e($room['slug']) ?>" data-name="<?= e($v['name'] . ' — ' . $room['name']) ?>"
+                        data-price="<?= e($room['price']) ?>" data-currency="<?= e($room['currency']) ?>">Select <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></button>
               </div>
             </div>
-            <div class="rrow__price">
-              <b><?= e($money($room['total'], $room['currency'])) ?></b>
-              <small><?= $room['nights'] ?> night<?= $room['nights'] !== 1 ? 's' : '' ?> · final price by email</small>
-            </div>
-            <button type="button" class="rrow__btn js-select-room"
-                    data-slug="<?= e($room['slug']) ?>" data-name="<?= e($v['name'] . ' — ' . $room['name']) ?>"
-                    data-price="<?= e($room['price']) ?>" data-currency="<?= e($room['currency']) ?>">Select</button>
           </div>
           <?php endforeach; ?>
+          </div>
         </div>
         <?php endif; ?>
       </div>

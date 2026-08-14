@@ -29,22 +29,39 @@ foreach ($__adults as $__g) {
 $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdults);
 ?>
 
-<div class="card" style="margin-bottom:16px"><div class="card__body" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
-  <div>
-    <strong>Status:</strong>
-    <?php if ($__state === 'complete'): ?><span class="ci-badge ci-badge--done">Checked in ✓</span> <span class="text-muted"><?= e(date('j M Y H:i', strtotime((string)$hold['checkin_completed_at']))) ?></span>
-    <?php elseif ($__state === 'pending'): ?><span class="ci-badge ci-badge--pending"><?= (int)$__party['complete'] ?> of <?= (int)$__party['total'] ?> adults checked in</span>
-    <?php else: ?><span class="text-muted">Not required</span><?php endif; ?>
+<?php
+  // Status header descriptor — icon tint + headline + subline, one source of truth.
+  if ($__state === 'complete') {
+      $__hIcon = 'check'; $__hVar = 'done';
+      $__hTitle = 'Checked in';
+      $__hSub = 'Completed ' . e(date('j M Y \a\t H:i', strtotime((string)$hold['checkin_completed_at'])));
+  } elseif ($__state === 'pending') {
+      $__hIcon = 'clock'; $__hVar = 'pending';
+      $__hTitle = (int)$__party['complete'] . ' of ' . (int)$__party['total'] . ' adults checked in';
+      $__hSub = 'Check-in required — awaiting the rest of the party';
+  } else {
+      $__hIcon = 'ban'; $__hVar = 'none';
+      $__hTitle = 'Check-in not required';
+      $__hSub = 'This booking has no pre-arrival check-in';
+  }
+?>
+<div class="card" style="margin-bottom:16px"><div class="card__body ci-head">
+  <div class="ci-head__status">
+    <span class="ci-head__icon ci-head__icon--<?= $__hVar ?>"><?= admin_icon($__hIcon, 20) ?></span>
+    <div class="ci-head__lines">
+      <div class="ci-head__title"><?= $__hTitle ?></div>
+      <div class="ci-head__sub"><?= $__hSub ?></div>
+    </div>
   </div>
   <?php if ($__canDocs): ?>
-  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
-    <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" style="display:flex;align-items:center;gap:6px;margin:0">
+  <div class="ci-head__actions">
+    <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" class="ci-adults">
       <?= csrf_field() ?>
       <input type="hidden" name="hold_id" value="<?= $holdId ?>">
       <input type="hidden" name="action" value="guest_count_set">
-      <label class="text-muted" style="font-size:12px" for="ciGuestCount">Adults</label>
-      <input type="number" id="ciGuestCount" name="guest_count" min="1" max="12" value="<?= (int)($hold['guest_count'] ?? 1) ?>" class="inp inp--sm inp--num no-spin" style="width:64px" aria-label="Number of adults">
-      <button type="submit" class="btn-sm btn-outline">Save</button>
+      <label class="ci-adults__lbl" for="ciGuestCount">Adults</label>
+      <input type="number" id="ciGuestCount" name="guest_count" min="1" max="12" value="<?= (int)($hold['guest_count'] ?? 1) ?>" class="inp inp--sm inp--num no-spin" aria-label="Number of adults">
+      <button type="submit" class="btn-sm btn-primary">Save</button>
     </form>
     <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" style="margin:0">
       <?= csrf_field() ?>
@@ -101,40 +118,41 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
     : ' <span class="badge ' . ($__flag === 'early' ? 'badge--orange' : 'badge--blue') . '">'
       . $__flag . '</span>';
 ?>
-<div class="card" style="margin-bottom:16px"><div class="card__body">
-  <table class="data-table" style="max-width:600px">
+<div class="card" style="margin-bottom:16px">
+  <div class="card__head"><span class="card__title">Arrival &amp; preferences</span></div>
+  <div class="ci-facts">
     <?php if ($__amOn): ?>
-    <tr><td class="text-muted">Arriving</td><td><?= $__mode !== '' ? e($__modes[$__mode] ?? $__mode) : '<span class="text-muted">—</span>' ?></td></tr>
+    <div class="ci-fact"><span class="ci-fact__k">Arriving</span><span class="ci-fact__v"><?= $__mode !== '' ? e($__modes[$__mode] ?? $__mode) : '<span class="text-muted">—</span>' ?></span></div>
     <?php endif; ?>
     <?php if ($__isFlight): ?>
-    <tr><td class="text-muted">Airport</td><td><?= $__fmt($__ci['arrival_airport'] ?? '') ?></td></tr>
-    <tr><td class="text-muted">Flight</td><td><?= $__fmt($__ci['flight_number'] ?? '') ?></td></tr>
+    <div class="ci-fact"><span class="ci-fact__k">Airport</span><span class="ci-fact__v"><?= $__fmt($__ci['arrival_airport'] ?? '') ?></span></div>
+    <div class="ci-fact"><span class="ci-fact__k">Flight</span><span class="ci-fact__v"><?= $__fmt($__ci['flight_number'] ?? '') ?></span></div>
     <?php elseif ($__mode === 'road'): ?>
-    <tr><td class="text-muted">Vehicle</td><td><?= $__fmt($__ci['arrival_vehicle'] ?? '') ?></td></tr>
+    <div class="ci-fact"><span class="ci-fact__k">Vehicle</span><span class="ci-fact__v"><?= $__fmt($__ci['arrival_vehicle'] ?? '') ?></span></div>
     <?php else: ?>
-    <tr><td class="text-muted">Arriving by</td><td><?= $__fmt($__ci['arrival_note'] ?? '') ?></td></tr>
+    <div class="ci-fact"><span class="ci-fact__k">Arriving by</span><span class="ci-fact__v"><?= $__fmt($__ci['arrival_note'] ?? '') ?></span></div>
     <?php endif; ?>
     <?php // Pre-migration there is no desired-time row, so a road/other arrival_at
           // keeps carrying the badge here exactly as it always did. ?>
-    <tr><td class="text-muted"><?= $__isFlight ? 'Flight lands' : 'Arrival' ?></td><td><?= $__fmt(($__ci['arrival_at'] ?? '') ? date('j M Y H:i', strtotime((string)$__ci['arrival_at'])) : '') ?><?= (!$__isFlight && !$__paOn) ? $__badge : '' ?></td></tr>
+    <div class="ci-fact"><span class="ci-fact__k"><?= $__isFlight ? 'Flight lands' : 'Arrival' ?></span><span class="ci-fact__v"><?= $__fmt(($__ci['arrival_at'] ?? '') ? date('j M Y H:i', strtotime((string)$__ci['arrival_at'])) : '') ?><?= (!$__isFlight && !$__paOn) ? $__badge : '' ?></span></div>
     <?php if ($__paOn): ?>
     <?php // Asked of every mode since the arrival step was restructured, so it is
           // shown for every mode — a road guest's answer is reception's too. ?>
-    <tr><td class="text-muted">Wants to check in</td><td><?php
+    <div class="ci-fact"><span class="ci-fact__k">Wants to check in</span><span class="ci-fact__v"><?php
       echo $__pat !== '' ? e($__pat) . $__badge : '<span class="text-muted">—</span>';
-    ?></td></tr>
+    ?></span></div>
     <?php endif; ?>
     <?php // "Yes" with no detail is now the normal flier path — the pickup box only
           // renders for a non-flier, so transfer_details is legitimately empty for
           // everyone who flies. Only append the dash when there is something to show. ?>
-    <tr><td class="text-muted">Transfer</td><td><?php
+    <div class="ci-fact"><span class="ci-fact__k">Transfer</span><span class="ci-fact__v"><?php
       $nt = $__ci['needs_transfer'] ?? null;
       $__td = trim((string)($__ci['transfer_details'] ?? ''));
       echo ($nt === null) ? '<span class="text-muted">—</span>'
          : (($nt === true || $nt === 't') ? ($__td !== '' ? 'Yes — ' . e($__td) : 'Yes') : 'No');
-    ?></td></tr>
+    ?></span></div>
     <?php if (checkin_departure_transfer_supported()): ?>
-    <tr><td class="text-muted">Check-out transfer</td><td><?php
+    <div class="ci-fact"><span class="ci-fact__k">Check-out transfer</span><span class="ci-fact__v"><?php
       $__dt = $__ci['needs_departure_transfer'] ?? null;
       if ($__dt === null) { echo '<span class="text-muted">—</span>'; }
       elseif ($__dt === true || $__dt === 't') {
@@ -143,35 +161,25 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
         echo 'Yes — ' . ($__dd !== '' ? e($__dd) : '<span class="text-muted">no destination</span>')
            . ($__dp !== '' ? ' at <strong>' . e(substr($__dp, 0, 5)) . '</strong>' : '');
       } else { echo 'No'; }
-    ?></td></tr>
+    ?></span></div>
     <?php endif; ?>
-    <tr><td class="text-muted">Dietary</td><td><?= $__fmt($__ci['dietary'] ?? '') ?></td></tr>
-    <tr><td class="text-muted">Requests</td><td><?= $__fmt($__ci['special_requests'] ?? '') ?></td></tr>
-  </table>
-</div></div>
+    <div class="ci-fact"><span class="ci-fact__k">Dietary</span><span class="ci-fact__v"><?= $__fmt($__ci['dietary'] ?? '') ?></span></div>
+    <div class="ci-fact"><span class="ci-fact__k">Requests</span><span class="ci-fact__v"><?= $__fmt($__ci['special_requests'] ?? '') ?></span></div>
+  </div>
+</div>
 <?php endif; ?>
 
-<div class="card"><div class="card__head"><span class="card__title">Guests</span></div><div class="card__body" style="padding:0">
+<div class="card"><div class="card__head"><span class="card__title">Guests</span><?php if ($__canDocs): ?><button type="button" class="btn-sm btn-outline" data-ci-addadult><?= admin_icon('plus', 14) ?> Add adult</button><?php endif; ?></div><div class="card__body" style="padding:0">
   <?php if (!$__adults): ?>
-  <p class="text-muted" style="margin:0;padding:20px 20px 4px"><?= $__canDocs
-      ? 'Nothing captured yet — add each adult below, then fill in their passport details. They sign for themselves.'
+  <p class="text-muted" style="margin:0;padding:20px"><?= $__canDocs
+      ? 'Nothing captured yet — use “Add adult” above to add each adult, then fill in their passport details. They sign for themselves.'
       : 'No guest identity captured yet.' ?></p>
-  <?php if ($__canDocs): ?>
-  <div style="padding:12px">
-    <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0">
-      <?= csrf_field() ?>
-      <input type="hidden" name="action" value="guest_add_adult">
-      <input class="inp inp--sm" name="passport_name" placeholder="New adult's name (optional)">
-      <button type="submit" class="btn-sm btn-outline">+ Add adult</button>
-      <span class="text-muted" style="font-size:12px">Adding past the party size raises it automatically.</span>
-    </form>
-  </div>
-  <?php endif; ?>
   <?php else: ?>
+  <?php $__ncol = $__canDocs ? 7 : 6; ?>
   <div class="table-wrap">
   <table class="data-table">
     <thead>
-      <tr><th>Adult</th><th>Nationality</th><th>Passport #</th><th>Expiry</th><th>Waiver</th><th>Scan</th><th>Status</th></tr>
+      <tr><th>Adult</th><th>Nationality</th><th>Passport #</th><th>Waiver</th><th>Scan</th><th>Status</th><?php if ($__canDocs): ?><th>Actions</th><?php endif; ?></tr>
     </thead>
     <tbody>
       <?php foreach ($__adults as $g): ?>
@@ -184,77 +192,121 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
       <tr>
         <td><?= $__fmt($g['passport_name'] ?? '') ?><?php if (!empty($g['is_lead'])): ?> <span class="badge badge--blue">Lead</span><?php endif; ?></td>
         <td><?= $__fmt($g['nationality'] ?? '') ?></td>
-        <td><?= $__canDocs ? $__fmt($g['passport_number'] ?? '') : '<span class="text-muted">•••• (restricted)</span>' ?></td>
-        <td><?= $__fmt($g['passport_expiry'] ?? '') ?></td>
+        <td><?php if (!$__canDocs): ?><span class="text-muted">•••• (restricted)</span><?php else:
+              $__pn = trim((string)($g['passport_number'] ?? ''));
+              $__ex = trim((string)($g['passport_expiry'] ?? ''));
+              if ($__pn === '' && $__ex === ''): ?><span class="text-muted">—</span><?php else:
+                echo $__pn !== '' ? e($__pn) : '<span class="text-muted">—</span>'; ?>
+                <div class="text-muted" style="font-size:12px">Exp <?= $__ex !== '' ? e(date('j M Y', strtotime($__ex))) : '—' ?></div>
+              <?php endif; ?>
+        <?php endif; ?></td>
         <td>
           <?php if ($__waiverOk): ?>
             Signed by <?= e((string)$g['waiver_signed_name']) ?> on <?= e(date('j M Y', strtotime((string)$g['waiver_signed_at']))) ?>
-            <?php if ($__canDocs): ?><br><a href="/admin/consent-print.php?hold=<?= $holdId ?>&guest=<?= (int)$g['id'] ?>" target="_blank" class="btn-sm btn-outline" style="margin-top:4px">Download consent &rarr;</a><?php endif; ?>
+            <?php if ($__canDocs): ?><br><a href="/admin/consent-print.php?hold=<?= $holdId ?>&guest=<?= (int)$g['id'] ?>" target="_blank" class="btn-sm btn-outline" style="margin-top:4px"><?= admin_icon('download', 14) ?> Consent</a><?php endif; ?>
           <?php else: ?>
             <span class="text-muted">Not signed</span>
-            <?php $__signLink = make_guest_pass_url($holdId, (int)$g['id']); if ($__signLink !== ''): ?><br><a href="<?= e($__signLink) ?>&amp;via=reception" target="_blank" class="btn-sm btn-outline" style="margin-top:4px">Sign on this device &rarr;</a><?php endif; ?>
+            <?php $__signLink = make_guest_pass_url($holdId, (int)$g['id']); if ($__signLink !== ''): ?><br><a href="<?= e($__signLink) ?>&amp;via=reception" target="_blank" class="btn-sm btn-outline" style="margin-top:4px">Sign in</a><?php endif; ?>
           <?php endif; ?>
         </td>
         <td>
           <?php if (empty($g['passport_file_key'])): ?><span class="text-muted">—</span>
-          <?php elseif ($__canDocs): ?><a href="/admin/checkin-file.php?hold=<?= $holdId ?>&guest=<?= (int)$g['id'] ?>" target="_blank" class="btn-sm btn-outline">View scan →</a>
+          <?php elseif ($__canDocs): ?><a href="/admin/checkin-file.php?hold=<?= $holdId ?>&guest=<?= (int)$g['id'] ?>" target="_blank" class="btn-sm btn-outline">View scan</a>
           <?php else: ?>On file ✓ <span class="text-muted">(restricted)</span><?php endif; ?>
         </td>
         <td><span class="ci-badge <?= $__done ? 'ci-badge--done' : 'ci-badge--pending' ?>"><?= $__done ? 'Complete' : 'Incomplete' ?></span></td>
+        <?php if ($__canDocs): $__gid = (int)$g['id']; ?>
+        <td class="ci-actions">
+          <button type="button" class="btn-icon" data-ci-toggle="ciEdit<?= $__gid ?>" title="Edit details" aria-label="Edit details" aria-expanded="false"><?= admin_icon('edit') ?></button>
+          <button type="button" class="btn-icon" data-ci-toggle="ciChild<?= $__gid ?>" title="Add child" aria-label="Add child" aria-expanded="false"><?= admin_icon('plus') ?></button>
+        </td>
+        <?php endif; ?>
       </tr>
       <?php if ($__canDocs): ?>
-      <tr class="ci-admin-row">
-        <td colspan="7" style="background:var(--bg-alt,#f7f7f5);padding:10px 12px">
-          <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
-            <details>
-              <summary class="btn-sm btn-outline" style="cursor:pointer;display:inline-block">Edit details</summary>
-              <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" style="margin:10px 0 0;display:grid;gap:6px;max-width:320px">
-                <?= csrf_field() ?>
-                <input type="hidden" name="action" value="guest_fill">
-                <input type="hidden" name="guest_id" value="<?= (int)$g['id'] ?>">
-                <input class="inp inp--sm" name="passport_name" value="<?= e((string)($g['passport_name'] ?? '')) ?>" placeholder="Full name (as on passport)">
-                <input class="inp inp--sm" name="passport_number" value="<?= e((string)($g['passport_number'] ?? '')) ?>" placeholder="Passport number">
-                <input class="inp inp--sm" name="nationality" value="<?= e((string)($g['nationality'] ?? '')) ?>" placeholder="Nationality">
-                <input class="inp inp--sm" type="date" name="passport_expiry" value="<?= e((string)($g['passport_expiry'] ?? '')) ?>">
-                <button type="submit" class="btn-sm btn-primary">Save details</button>
-              </form>
-              <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" enctype="multipart/form-data" style="margin:10px 0 0;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+      <?php $__exp = substr((string)($g['passport_expiry'] ?? ''), 0, 10); ?>
+      <tr class="ci-editrow" id="ciEdit<?= $__gid ?>" hidden>
+        <td colspan="<?= $__ncol ?>" class="ci-editcell"><div class="ci-editinner">
+          <button type="button" class="ci-edit__close btn-icon" data-ci-toggle="ciEdit<?= $__gid ?>" title="Close" aria-label="Close"><?= admin_icon('x') ?></button>
+          <p class="ci-editinner__title">Edit details — <?= $__fmt($g['passport_name'] ?? '') ?: 'guest' ?></p>
+
+          <form id="ciFill<?= $__gid ?>" method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" class="ci-edit__grid">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="guest_fill">
+            <input type="hidden" name="guest_id" value="<?= $__gid ?>">
+            <div class="ci-field">
+              <label for="ciName<?= $__gid ?>">Full name (as on passport)</label>
+              <input id="ciName<?= $__gid ?>" class="inp inp--sm" name="passport_name" value="<?= e((string)($g['passport_name'] ?? '')) ?>" placeholder="Enter full name">
+            </div>
+            <div class="ci-field">
+              <label for="ciNum<?= $__gid ?>">Passport number</label>
+              <input id="ciNum<?= $__gid ?>" class="inp inp--sm" name="passport_number" value="<?= e((string)($g['passport_number'] ?? '')) ?>" placeholder="Enter passport number">
+            </div>
+            <div class="ci-field">
+              <label for="ciNat<?= $__gid ?>">Nationality</label>
+              <input id="ciNat<?= $__gid ?>" class="inp inp--sm" name="nationality" value="<?= e((string)($g['nationality'] ?? '')) ?>" placeholder="Enter nationality">
+            </div>
+            <div class="ci-field">
+              <label>Passport expiry</label>
+              <button type="button" class="dp-btn inp inp--sm" data-dp-target="ciExp<?= $__gid ?>" data-dp-placeholder="Select date">Select date</button>
+              <input type="hidden" id="ciExp<?= $__gid ?>" name="passport_expiry" value="<?= e($__exp) ?>">
+            </div>
+          </form>
+
+          <div class="ci-edit__foot">
+            <div class="ci-edit__foot-left">
+              <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" enctype="multipart/form-data" class="ci-upload-form">
                 <?= csrf_field() ?>
                 <input type="hidden" name="action" value="guest_upload">
-                <input type="hidden" name="guest_id" value="<?= (int)$g['id'] ?>">
-                <input type="file" name="passport" accept="image/jpeg,image/png,application/pdf" required>
+                <input type="hidden" name="guest_id" value="<?= $__gid ?>">
+                <div class="filefield">
+                  <label class="btn-outline btn-sm" style="cursor:pointer"><?= admin_icon('image', 15) ?> Choose file<input type="file" name="passport" accept="image/jpeg,image/png,application/pdf" data-file-input required></label>
+                  <span class="filefield__name" data-file-name>No file chosen</span>
+                </div>
                 <button type="submit" class="btn-sm btn-outline">Upload scan</button>
               </form>
-            </details>
-
-            <details>
-              <summary class="btn-sm btn-outline" style="cursor:pointer;display:inline-block">+ Add child</summary>
-              <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" style="margin:10px 0 0;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+            </div>
+            <div class="ci-edit__foot-right">
+              <?php if (empty($g['is_lead'])): ?>
+              <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" style="margin:0" onsubmit="return confirm('Remove this guest and their children from the booking?')">
                 <?= csrf_field() ?>
-                <input type="hidden" name="action" value="guest_add_child">
-                <input type="hidden" name="parent_guest_id" value="<?= (int)$g['id'] ?>">
-                <input class="inp inp--sm" name="passport_name" placeholder="Child's full name" required>
-                <input class="inp inp--sm" type="date" name="date_of_birth" aria-label="Date of birth">
-                <button type="submit" class="btn-sm btn-outline">Add child</button>
+                <input type="hidden" name="action" value="guest_remove">
+                <input type="hidden" name="guest_id" value="<?= $__gid ?>">
+                <button type="submit" class="btn-sm btn-danger"><?= admin_icon('trash', 14) ?> Remove</button>
               </form>
-            </details>
-
-            <?php if (empty($g['is_lead'])): ?>
-            <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" style="margin:0" onsubmit="return confirm('Remove this guest and their children from the booking?')">
-              <?= csrf_field() ?>
-              <input type="hidden" name="action" value="guest_remove">
-              <input type="hidden" name="guest_id" value="<?= (int)$g['id'] ?>">
-              <button type="submit" class="btn-sm btn-outline" style="color:#b23">Remove guest</button>
-            </form>
-            <?php endif; ?>
+              <?php endif; ?>
+              <button type="submit" form="ciFill<?= $__gid ?>" class="btn-sm btn-primary">Save</button>
+            </div>
           </div>
-        </td>
+        </div></td>
+      </tr>
+      <tr class="ci-childrow" id="ciChild<?= $__gid ?>" hidden>
+        <td colspan="<?= $__ncol ?>" class="ci-editcell"><div class="ci-editinner">
+          <button type="button" class="ci-edit__close btn-icon" data-ci-toggle="ciChild<?= $__gid ?>" title="Close" aria-label="Close"><?= admin_icon('x') ?></button>
+          <p class="ci-editinner__title">Add a child — <?= $__fmt($g['passport_name'] ?? '') ?: 'guest' ?></p>
+          <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" class="ci-add__form">
+            <?= csrf_field() ?>
+            <input type="hidden" name="action" value="guest_add_child">
+            <input type="hidden" name="parent_guest_id" value="<?= $__gid ?>">
+            <div class="ci-field">
+              <label for="ciKid<?= $__gid ?>">Child's full name</label>
+              <input id="ciKid<?= $__gid ?>" class="inp inp--sm" name="passport_name" placeholder="Enter child's name" required>
+            </div>
+            <div class="ci-field">
+              <label>Date of birth</label>
+              <button type="button" class="dp-btn inp inp--sm" data-dp-target="ciDob<?= $__gid ?>" data-dp-past data-dp-placeholder="Select date">Select date</button>
+              <input type="hidden" id="ciDob<?= $__gid ?>" name="date_of_birth">
+            </div>
+            <div class="ci-field ci-field--action">
+              <button type="submit" class="btn-sm btn-primary">Add child</button>
+            </div>
+          </form>
+        </div></td>
       </tr>
       <?php endif; ?>
       <?php if ($__kids): ?>
       <tr class="ci-children-row">
         <td></td>
-        <td colspan="6" style="padding-top:0;padding-bottom:12px">
+        <td colspan="<?= $__ncol - 1 ?>" style="padding-top:0;padding-bottom:12px">
           <div class="ci-children" style="padding:10px 12px;background:var(--bg-alt,#f7f7f5);border-radius:6px">
             <?php foreach ($__kids as $c): ?>
             <div style="font-size:13px;margin:4px 0">
@@ -270,22 +322,87 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
     </tbody>
   </table>
   </div>
-  <?php if ($__canDocs): ?>
-  <div style="padding:12px">
-    <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0">
-      <?= csrf_field() ?>
-      <input type="hidden" name="action" value="guest_add_adult">
-      <input class="inp inp--sm" name="passport_name" placeholder="New adult's name (optional)">
-      <button type="submit" class="btn-sm btn-outline">+ Add adult</button>
-      <span class="text-muted" style="font-size:12px">Adding past the party size raises it automatically.</span>
-    </form>
-  </div>
-  <?php endif; ?>
   <?php endif; ?>
 </div></div>
+
+<?php if ($__canDocs): ?>
+<div class="ci-addadult-modal" id="ciAddAdultModal" hidden>
+  <div class="ci-addadult-back" data-ci-addadult-cancel></div>
+  <div class="ci-addadult-dialog" role="dialog" aria-modal="true" aria-labelledby="ciAddAdultTitle">
+    <button type="button" class="ci-addadult-x btn-icon" data-ci-addadult-cancel title="Close" aria-label="Close"><?= admin_icon('x') ?></button>
+    <h3 class="ci-addadult-dialog__title" id="ciAddAdultTitle">Add adult</h3>
+    <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" class="ci-addadult-form">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="guest_add_adult">
+      <label class="ci-addadult-form__label" for="ciAddAdultName">New adult's name <span class="text-muted">(optional)</span></label>
+      <input id="ciAddAdultName" class="inp inp--sm" name="passport_name" placeholder="Full name">
+      <p class="text-muted" style="font-size:12px;margin:8px 0 0">Adding past the party size raises it automatically.</p>
+      <div class="ci-addadult-actions">
+        <button type="button" class="btn-sm btn-outline" data-ci-addadult-cancel>Cancel</button>
+        <button type="submit" class="btn-sm btn-primary">Add adult</button>
+      </div>
+    </form>
+  </div>
+</div>
+<?php endif; ?>
 
 <?php else: ?>
 <div class="card"><div class="card__body text-muted">Nothing submitted yet.</div></div>
 <?php endif; ?>
+
+<script>
+/* Check-in tab interactions. Delegated + guarded so they survive the booking-
+   workspace AJAX tab swaps and bind only once. */
+(function(){
+  if (window.__ciTabWired) return; window.__ciTabWired = true;
+
+  /* Styled file inputs (.filefield): reflect the chosen filename. */
+  document.addEventListener('change', function(e){
+    var fi = e.target && e.target.closest ? e.target.closest('[data-file-input]') : null;
+    if (!fi) return;
+    var box = fi.closest('.filefield'); if (!box) return;
+    var fn = box.querySelector('[data-file-name]'); if (!fn) return;
+    fn.textContent = (fi.files && fi.files.length) ? fi.files[0].name : 'No file chosen';
+  });
+
+  /* Actions column: the edit / add-child icons toggle the guest's inline row.
+     Single-open model — opening one panel closes any other. */
+  document.addEventListener('click', function(e){
+    var btn = e.target && e.target.closest ? e.target.closest('[data-ci-toggle]') : null;
+    if (!btn) return;
+    e.preventDefault();
+    var row = document.getElementById(btn.getAttribute('data-ci-toggle'));
+    if (!row) return;
+    var willOpen = row.hasAttribute('hidden');
+    document.querySelectorAll('.ci-editrow, .ci-childrow').forEach(function(r){ r.setAttribute('hidden',''); });
+    document.querySelectorAll('[data-ci-toggle]').forEach(function(b){ b.classList.remove('is-active'); b.setAttribute('aria-expanded','false'); });
+    if (willOpen) {
+      row.removeAttribute('hidden');
+      btn.classList.add('is-active'); btn.setAttribute('aria-expanded','true');
+      var f = row.querySelector('input:not([type=hidden]), .dp-btn'); if (f) try { f.focus(); } catch(_){}
+    }
+  });
+
+  /* "+ Add adult": open the modal popup; the backdrop, Cancel and × close it. */
+  function ciCloseAddAdult(){ var m = document.getElementById('ciAddAdultModal'); if (m) m.setAttribute('hidden',''); }
+  document.addEventListener('click', function(e){
+    var add = e.target && e.target.closest ? e.target.closest('[data-ci-addadult]') : null;
+    if (add){
+      e.preventDefault();
+      var modal = document.getElementById('ciAddAdultModal');
+      if (modal){ modal.removeAttribute('hidden');
+        var i = modal.querySelector('input[name=passport_name]'); if (i){ i.value=''; try { i.focus(); } catch(_){} } }
+      return;
+    }
+    if (e.target && e.target.closest && e.target.closest('[data-ci-addadult-cancel]')){
+      e.preventDefault(); ciCloseAddAdult(); return;
+    }
+  });
+  /* Escape closes the modal. */
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'Escape'){ var m = document.getElementById('ciAddAdultModal'); if (m && !m.hasAttribute('hidden')) ciCloseAddAdult(); }
+  });
+})();
+</script>
 
 <?php endif; ?>
