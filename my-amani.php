@@ -340,6 +340,10 @@ include __DIR__ . '/includes/property-gallery.php';
     <!-- Listing Header -->
     <div class="listing-eyebrow"><?= e(ts_venue_text('my-amani', 'tagline', 'Ultra-Luxury Private Beachfront Villa · Entire Property Only')) ?></div>
     <h1 class="listing-h1">My Amani · Luxury Private Beachfront Villa · <em>Vipingo</em></h1>
+    <div class="listing-accolade" style="display:inline-flex;align-items:center;gap:.45rem;margin:.15rem 0 .35rem;font-size:.62rem;letter-spacing:.18em;text-transform:uppercase;color:var(--sand);font-weight:600;">
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 2l2.9 6.26L21.6 9l-5 4.6L18 21l-6-3.6L6 21l1.4-7.4-5-4.6 6.7-.74z"/></svg>
+      Voted Kenya's Most Romantic Villa
+    </div>
     <div class="listing-sub">
       <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="6" r="2.5"/><path d="M8 1.5C5.24 1.5 3 3.74 3 6.5c0 4 5 8.5 5 8.5s5-4.5 5-8.5c0-2.76-2.24-5-5-5z"/></svg>
       Vipingo · Kilifi County · Kenya's North Coast
