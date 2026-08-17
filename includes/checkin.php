@@ -389,6 +389,99 @@ function checkin_signing_method(string $via): string {
     return $via === 'reception' ? 'reception' : 'own_link';
 }
 
+/** True once add_checkin_reference.sql is applied (reference ID + audit trail). Cached per-request. */
+function checkin_reference_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { db_query('SELECT waiver_reference FROM checkin_guests LIMIT 1'); $ok = true; }
+    catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/** True once the checkin_signing_audit table exists. Cached per-request. */
+function checkin_signing_audit_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { db_query('SELECT 1 FROM checkin_signing_audit LIMIT 1'); $ok = true; }
+    catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/**
+ * A unique, human-readable transaction/reference ID for one signed record.
+ * Format: TSR-<hold>-<guest>-<4 random chars>. The hold/guest pair is already
+ * unique per record; the random suffix makes the identifier unguessable so it
+ * is safe to print on the guest-facing document. Uses the CSPRNG alphabet.
+ */
+function checkin_make_reference(int $holdId, int $guestId): string {
+    return sprintf('TSR-%06d-%02d-%s', $holdId, $guestId, generate_access_code(4));
+}
+
+/**
+ * The reference for a signed guest row, minting and persisting one if the row
+ * predates the reference column (already-signed records get a controlled ID on
+ * first view). Returns '' when the feature is unmigrated.
+ */
+function checkin_ensure_reference(array $guest): string {
+    if (!checkin_reference_supported()) return '';
+    $existing = trim((string)($guest['waiver_reference'] ?? ''));
+    if ($existing !== '') return $existing;
+    $holdId  = (int)($guest['hold_id'] ?? 0);
+    $guestId = (int)($guest['id'] ?? 0);
+    if (!$holdId || !$guestId) return '';
+    // Retry on the (astronomically unlikely) unique collision on the random suffix.
+    for ($try = 0; $try < 5; $try++) {
+        $ref = checkin_make_reference($holdId, $guestId);
+        try {
+            db_query('UPDATE checkin_guests SET waiver_reference=:r WHERE id=:g AND hold_id=:h AND waiver_reference IS NULL',
+                [':r'=>$ref, ':g'=>$guestId, ':h'=>$holdId]);
+            $row = db_query('SELECT waiver_reference FROM checkin_guests WHERE id=:g', [':g'=>$guestId])->fetch();
+            $stored = trim((string)($row['waiver_reference'] ?? ''));
+            if ($stored !== '') return $stored;
+        } catch (Throwable $e) { /* try again */ }
+    }
+    return '';
+}
+
+/**
+ * Append one step to the tamper-evident signing audit trail. Best-effort and
+ * self-contained: guarded by the support check and wrapped so a logging failure
+ * can never break the guest's signing or a record view. $ctx keys: reference,
+ * hold_id, guest_id, waiver_version, personal_link, method, detail. IP and
+ * user-agent are captured from the request.
+ */
+function checkin_log_signing_step(string $step, array $ctx): void {
+    if (!checkin_signing_audit_supported()) return;
+    try {
+        db_query(
+            'INSERT INTO checkin_signing_audit
+                (reference, hold_id, guest_id, step, waiver_version, personal_link, ip, user_agent, method, detail)
+             VALUES (:ref, :h, :g, :step, :ver, :link, :ip, :ua, :m, :d)',
+            [':ref'  => ($ctx['reference'] ?? null) ?: null,
+             ':h'    => (int)($ctx['hold_id'] ?? 0) ?: null,
+             ':g'    => (int)($ctx['guest_id'] ?? 0) ?: null,
+             ':step' => $step,
+             ':ver'  => ($ctx['waiver_version'] ?? null) ?: null,
+             ':link' => ($ctx['personal_link'] ?? null) ?: null,
+             ':ip'   => client_ip(),
+             ':ua'   => substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 500),
+             ':m'    => ($ctx['method'] ?? null) ?: null,
+             ':d'    => ($ctx['detail'] ?? null) ?: null]
+        );
+    } catch (Throwable $e) { /* never let auditing break the flow */ }
+}
+
+/**
+ * The personal check-in link a guest used to reach the signing surface: the
+ * lead's ref link or a co-guest's g link. Recorded as evidence of the link
+ * issued. Returns '' when no token is known.
+ */
+function checkin_personal_link(?string $ref, ?string $gToken): string {
+    if (!empty($gToken)) return site_url('/booking.php?g=' . urlencode($gToken));
+    if (!empty($ref))    return site_url('/booking.php?ref=' . urlencode($ref) . '&view=checkin');
+    return '';
+}
+
 /**
  * Integrity: only the signer may sign. A co-guest (onlyGuestId set) always signs their
  * own row; the lead (null) may sign only the lead row. Pure.

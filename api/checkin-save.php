@@ -162,15 +162,41 @@ if ($triedConsent && checkin_signature_supported() && checkin_can_sign_self($onl
     if (checkin_valid_signature($sig)) {
         $terms  = checkin_waiver_text();
         $method = checkin_signing_method((string)($_POST['via'] ?? ''));
+        $ver    = waiver_version($terms);
         db_query(
             "UPDATE checkin_guests
                 SET waiver_signed_name=:n, waiver_signed_at=now(), waiver_signed_ip=:ip,
                     waiver_version=:v, waiver_signature=:sig, waiver_terms_snapshot=:terms,
                     waiver_signed_user_agent=:ua, waiver_signed_method=:m
               WHERE id=:g AND hold_id=:h",
-            [':n'=>$s('waiver_signed_name'), ':ip'=>client_ip(), ':v'=>waiver_version($terms),
+            [':n'=>$s('waiver_signed_name'), ':ip'=>client_ip(), ':v'=>$ver,
              ':sig'=>$sig, ':terms'=>$terms, ':ua'=>substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 500),
              ':m'=>$method, ':g'=>$guestId, ':h'=>$holdId]);
+
+        // Legal evidence: stamp a controlled reference ID + the personal link
+        // used, then append a 'signed' step to the tamper-evident audit trail.
+        // A re-sign keeps the original reference (COALESCE) but logs a new step.
+        $link = checkin_personal_link($isLead ? (string)$ref : null, $isLead ? null : (string)($_POST['g'] ?? ''));
+        $reference = '';
+        if (checkin_reference_supported()) {
+            $reference = checkin_make_reference($holdId, $guestId);
+            db_query(
+                "UPDATE checkin_guests
+                    SET waiver_reference = COALESCE(waiver_reference, :r), waiver_signed_link = :link
+                  WHERE id=:g AND hold_id=:h",
+                [':r'=>$reference, ':link'=>($link !== '' ? $link : null), ':g'=>$guestId, ':h'=>$holdId]);
+            $row = db_query('SELECT waiver_reference FROM checkin_guests WHERE id=:g', [':g'=>$guestId])->fetch();
+            $reference = trim((string)($row['waiver_reference'] ?? $reference));
+        }
+        checkin_log_signing_step('signed', [
+            'reference'      => $reference,
+            'hold_id'        => $holdId,
+            'guest_id'       => $guestId,
+            'waiver_version' => $ver,
+            'personal_link'  => $link,
+            'method'         => $method,
+            'detail'         => 'Signed by ' . trim((string)$s('waiver_signed_name')),
+        ]);
     }
 }
 

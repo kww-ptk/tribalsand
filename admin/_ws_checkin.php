@@ -203,7 +203,7 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
         <td>
           <?php if ($__waiverOk): ?>
             Signed by <?= e((string)$g['waiver_signed_name']) ?> on <?= e(date('j M Y', strtotime((string)$g['waiver_signed_at']))) ?>
-            <?php if ($__canDocs): ?><br><a href="/admin/consent-print.php?hold=<?= $holdId ?>&guest=<?= (int)$g['id'] ?>" target="_blank" class="btn-sm btn-outline" style="margin-top:4px"><?= admin_icon('download', 14) ?> Consent</a><?php endif; ?>
+            <?php if ($__canDocs): ?><br><a href="/record.php?hold=<?= $holdId ?>&guest=<?= (int)$g['id'] ?>" target="_blank" class="btn-sm btn-outline" style="margin-top:4px"><?= admin_icon('download', 14) ?> Consent</a><?php endif; ?>
           <?php else: ?>
             <span class="text-muted">Not signed</span>
             <?php $__signLink = make_guest_pass_url($holdId, (int)$g['id']); if ($__signLink !== ''): ?><br><a href="<?= e($__signLink) ?>&amp;via=reception" target="_blank" class="btn-sm btn-outline" style="margin-top:4px">Sign in</a><?php endif; ?>

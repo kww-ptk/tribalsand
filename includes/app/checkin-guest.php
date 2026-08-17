@@ -35,7 +35,7 @@ $otherStatus = function (array $g) use ($showWaiver) {
         <h2>You're all set<?= $first !== 'there' ? ', ' . e($first) : '' ?></h2>
         <p>Thanks — your check-in is complete. You can close this page.</p>
         <?php if (checkin_guest_waiver_signed($me)): ?>
-        <a class="pa-btn pa-btn--ghost" href="/admin/consent-print.php?hold=<?= $holdId ?>&guest=<?= (int)$me['id'] ?>&g=<?= e($gtoken) ?>" target="_blank" style="margin-top:12px">Download my signed waiver</a>
+        <a class="pa-btn pa-btn--ghost" href="/record.php?hold=<?= $holdId ?>&guest=<?= (int)$me['id'] ?>&g=<?= e($gtoken) ?>" target="_blank" style="margin-top:12px">Download my signed waiver</a>
         <?php endif; ?>
         <?php if (share_reservation_on($hold)): ?>
         <a class="pa-btn pa-btn--primary" href="/booking.php?g=<?= e($gtoken) ?>&view=home" style="margin-top:12px">Continue to your stay &rarr;</a>
