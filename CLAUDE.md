@@ -99,7 +99,8 @@ The electronic registration/waiver evidence document is served from **`/record.p
 ## Environment Variables Required
 ```
 DATABASE_URL=         # PostgreSQL connection string
-APP_URL=              # https://tribalsand.com (no trailing slash)
+APP_URL=              # https://tribalsand.com (no trailing slash) — page/canonical URLs, site_url()
+ASSET_URL=            # OPTIONAL asset origin for asset_url() (images/PDFs). Defaults to https://tribalsand.com. Set to the CDN/S3 origin at cutover.
 TURNSTILE_SITE_KEY=   # Cloudflare Turnstile public key
 TURNSTILE_SECRET_KEY= # Cloudflare Turnstile secret key
 ICAL_SYNC_SECRET=     # Random secret for iCal sync endpoint
