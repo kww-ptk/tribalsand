@@ -106,10 +106,13 @@ include __DIR__ . '/_layout.php';
   <h1>Settings</h1>
 </div>
 
-<p style="margin:0 0 16px"><a href="/admin/checkin-settings.php" class="btn-outline btn-sm">Pre-Check-in settings →</a></p>
+<nav class="tabs" aria-label="Settings sections">
+  <a href="/admin/settings.php" class="tab-btn is-active">General</a>
+  <a href="/admin/checkin-settings.php" class="tab-btn">Pre-Check-in</a>
+</nav>
 
-<?php if ($success): ?><div class="alert alert--success"><?= e($success) ?></div><?php endif; ?>
-<?php if ($error):   ?><div class="alert alert--error"><?= e($error) ?></div><?php endif; ?>
+<?php if ($success): ?><div class="alert alert--success is-flash"><?= e($success) ?></div><?php endif; ?>
+<?php if ($error):   ?><div class="alert alert--error is-flash"><?= e($error) ?></div><?php endif; ?>
 
 <!-- General settings -->
 <div class="card">
@@ -153,9 +156,24 @@ include __DIR__ . '/_layout.php';
 
       <div class="form-section">
         <div class="form-section__title">Currency</div>
-        <div class="field" style="max-width:160px">
-          <label>Default currency code</label>
-          <input type="text" name="site_currency" value="<?= e($site_currency) ?>" maxlength="10" placeholder="USD">
+        <?php
+          $__ccys = [
+            'USD'=>'USD — US Dollar', 'EUR'=>'EUR — Euro', 'GBP'=>'GBP — British Pound',
+            'KES'=>'KES — Kenyan Shilling', 'TZS'=>'TZS — Tanzanian Shilling', 'UGX'=>'UGX — Ugandan Shilling',
+            'ZAR'=>'ZAR — South African Rand', 'AED'=>'AED — UAE Dirham', 'CHF'=>'CHF — Swiss Franc',
+            'AUD'=>'AUD — Australian Dollar', 'CAD'=>'CAD — Canadian Dollar', 'JPY'=>'JPY — Japanese Yen',
+            'CNY'=>'CNY — Chinese Yuan', 'INR'=>'INR — Indian Rupee',
+          ];
+          // Keep an unlisted stored code selectable so saving never loses it.
+          if ($site_currency !== '' && !isset($__ccys[$site_currency])) $__ccys = [$site_currency=>$site_currency] + $__ccys;
+        ?>
+        <div class="field" style="max-width:280px">
+          <label for="site_currency">Default currency code</label>
+          <select id="site_currency" name="site_currency" class="inp">
+            <?php foreach ($__ccys as $code => $lbl): ?>
+            <option value="<?= e($code) ?>" <?= $site_currency === $code ? 'selected' : '' ?>><?= e($lbl) ?></option>
+            <?php endforeach; ?>
+          </select>
         </div>
       </div>
 
@@ -165,7 +183,7 @@ include __DIR__ . '/_layout.php';
           Sent to guests in the booking confirmation email. Leave blank to omit.
         </p>
         <div class="field">
-          <textarea name="checkin_instructions" rows="5" style="font-size:13px;line-height:1.6" placeholder="e.g. Check-in is from 14:00. Our reception is open 24 hours. Please WhatsApp us your flight details 48 hours before arrival..."><?= e($checkin_instructions) ?></textarea>
+          <textarea name="checkin_instructions" rows="5" class="inp inp--area" style="width:100%;min-height:120px" placeholder="e.g. Check-in is from 14:00. Our reception is open 24 hours. Please WhatsApp us your flight details 48 hours before arrival..."><?= e($checkin_instructions) ?></textarea>
         </div>
       </div>
 

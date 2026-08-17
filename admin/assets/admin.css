@@ -935,6 +935,25 @@ tr.is-unpriced td { background: #fff7ed; }
 .filefield__name { font-size: 13px; color: var(--muted); }
 
 /* A labeled switch row for a single boolean field. */
+/* Labeled settings row — title + description on the left, control on the right.
+   A soft tinted panel (never a bare white card) for standalone toggles. */
+.setting-row { display: flex; align-items: center; justify-content: space-between; gap: 20px;
+  padding: 16px 20px; border: 1px solid var(--border); border-radius: 12px;
+  background: linear-gradient(180deg, rgba(30,92,107,.05), rgba(30,92,107,.02)); }
+.setting-row__text { display: flex; flex-direction: column; gap: 3px; }
+.setting-row__title { font-weight: 600; font-size: 14px; color: var(--text); }
+.setting-row__desc { font-size: 12.5px; color: var(--muted); line-height: 1.45; max-width: 56ch; }
+@media (max-width: 560px) { .setting-row { flex-direction: column; align-items: flex-start; } }
+
+/* Modern multi-line text field — replaces the raw-looking native textarea.
+   Rounded, comfortable padding, clear focus ring, custom slim scrollbar.
+   Builds on .inp (border / background / focus ring). */
+.inp--area { padding: 13px 15px; line-height: 1.6; border-radius: 10px; resize: vertical;
+  box-shadow: inset 0 1px 2px rgba(20,20,18,.03); scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+.inp--area::-webkit-scrollbar { width: 12px; }
+.inp--area::-webkit-scrollbar-thumb { background: var(--border); border-radius: 8px; border: 3px solid var(--white); }
+.inp--area::-webkit-scrollbar-thumb:hover { background: var(--muted); }
+
 .togglerow { display: inline-flex; align-items: center; gap: 10px; font-size: 13.5px; color: var(--text); cursor: pointer; }
 .togglerow > span { user-select: none; }
 
