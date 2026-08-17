@@ -4,27 +4,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Why Kenya Coast Is the Best Luxury Destination in Africa | TribalSand</title>
+    <?php $article = 'why-kenya-coast-best-luxury-destination-africa'; include __DIR__ . '/includes/article-seo.php'; ?>
     <link rel="icon" href="images/favicon.png">
-    <link rel="canonical" href="https://tribalsand.com/why-kenya-coast-best-luxury-destination-africa.php.php" />
-    <meta name="description"
-        content="Discover why the Kenya Coast is becoming Africas most desirable luxury beach destination. 
-        Learn about safety, year round perfect weather, pristine beaches, 
-        rich wildlife and the best beachfront luxury properties by Tribal Sand in Watamu, Kilifi and Vipingo.">
-
-    <meta name="keywords"
+<meta name="keywords"
         content="Zuri Watamu, luxury retreat Kenya, beachfront retreat Watamu, TribalSand retreats, private retreat rental Watamu, group accommodation Watamu, eco-friendly retreat Watamu">
 
-    <meta property="og:title" content="Why Kenya Coast Is the Best Luxury Destination in Africa | TribalSand">
-    <meta property="og:description"
-        content="Discover why the Kenya Coast is considered Africa’s top luxury destination with pristine beaches, luxury resorts, and unforgettable coastal experiences.">
-
-    <meta property="og:url" content="https://tribalsand.com/why-kenya-coast-best-luxury-destination-africa">
-    <meta property="og:type" content="website">
-    <meta property="og:site_name" content="TribalSand">
-
-
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.1/font/bootstrap-icons.min.css"

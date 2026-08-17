@@ -4,38 +4,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>From Private Villa to Boutique Hotel</title>
+    <?php $article = 'transition-to-boutique-hotel'; include __DIR__ . '/includes/article-seo.php'; ?>
     <link rel="stylesheet" href="assets/css/boutique.css">
     <link rel="icon" href="images/favicon.png">
 
-    <link rel="canonical" href="https://tribalsand.com/transition-to-boutique-hotel.php" />
-
-    <meta name="description"
-        content="Discover Tribal Sand’s evolution from private villas to boutique hotels at Maya Kobe in Kilifi and Zuri in Watamu. Luxury suites, chef-led dining, and curated service designed for couples and honeymooners on the Kenya coast.">
-
-    <meta name="keywords"
+<meta name="keywords"
         content="Maya Kobe Kilifi, Zuri Watamu, Tribal Sand boutique hotel, luxury suites Kenya coast, honeymoon hotels Kenya, boutique hotel Watamu, Kilifi luxury stay, beachfront boutique hotel Kenya, Kenya honeymoon destinations">
 
-    <meta property="og:title"
-        content="From Private Villa to Boutique Hotel: A New Era for Tribal Sand at Maya Kobe and Zuri">
-
-    <meta property="og:description"
-        content="Explore how Tribal Sand evolved from private villas to boutique beachfront hotels offering luxury suites, chef-led dining, and personalized service for couples and honeymooners in Kilifi and Watamu.">
-
-    <meta property="og:url" content="https://tribalsand.com/private-villa-to-boutique-hotel-maya-kobe-zuri.php">
-
-    <meta property="og:type" content="article">
-    <meta property="og:site_name" content="TribalSand">
-
-    <meta property="og:image" content="https://tribalsand.com/images/zuri/Aerial/zuri-3.webp">
-
-    <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:title" content="From Private Villa to Boutique Hotel: Tribal Sand at Maya Kobe and Zuri">
-    <meta name="twitter:description"
-        content="Luxury suites, curated dining, and personalized hospitality for couples and honeymooners on the Kenya coast.">
-    <meta name="twitter:image" content="https://tribalsand.com/images/zuri/Aerial/zuri-3.webp">
-
-      <!-- <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css"> -->
+<!-- <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css"> -->
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.1/font/bootstrap-icons.min.css"

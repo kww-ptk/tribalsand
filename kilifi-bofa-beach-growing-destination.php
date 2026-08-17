@@ -4,22 +4,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kilifi and Bofa Beach A Growing Luxury Destination on the Kenya Coast | TribalSand</title>
+    <?php $article = 'kilifi-bofa-beach-growing-destination'; include __DIR__ . '/includes/article-seo.php'; ?>
     <link rel="icon" href="images/favicon.png">
-    <link rel="canonical" href="https://tribalsand.com/why-kenya-coast-best-luxury-destination-africa.php.php" />
-    <meta name="description" content="Discover why Kilifi and Bofa Beach are becoming top destinations on the Kenya Coast. Learn about digital nomad living family lifestyle kitesurfing and four beachfront luxury villas by Tribal Sand including Maya Kobe Maia Ilai Enkare and Sandbox.">
-    <meta name="keywords"
+<meta name="keywords"
         content="Zuri Watamu, luxury retreat Kenya, beachfront retreat Watamu, TribalSand retreats, private retreat rental Watamu, group accommodation Watamu, eco-friendly retreat Watamu">
 
-    <meta property="og:title" content="Kilifi and Bofa Beach A Growing Luxury Destination on the Kenya Coast | TribalSand">
-    <meta property="og:description"
-        content="Discover why Kilifi and Bofa Beach are becoming top destinations on the Kenya Coast. Learn about digital nomad living family lifestyle kitesurfing and four beachfront luxury villas by Tribal Sand including Maya Kobe Maia Ilai Enkare and Sandbox.">
-    <meta property="og:url" content="https://tribalsand.com/kilifi-bofa-beach-growing-destination">
-    <meta property="og:type" content="website">
-    <meta property="og:site_name" content="TribalSand">
-
-
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.1/font/bootstrap-icons.min.css"

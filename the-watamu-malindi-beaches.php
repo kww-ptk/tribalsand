@@ -4,13 +4,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Watamu Malindi Beaches | TribalSand Villas Kenya</title>
-     <meta name="description" content="Discover Watamu Malindi Beaches near TribalSand villas – famous for white sandy shores, turquoise waters, and world-class snorkeling, diving, and relaxation.">
-    
-    <link rel="icon" href="images/favicon.png">
+    <?php $article = 'the-watamu-malindi-beaches'; include __DIR__ . '/includes/article-seo.php'; ?>
+<link rel="icon" href="images/favicon.png">
     <!-- Canonical -->
-    <link rel="canonical" href="https://tribalsand.com/watamu-malindi-beaches" />
-    <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
+<link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/bootstrap-icons/1.11.1/font/bootstrap-icons.min.css"
