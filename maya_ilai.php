@@ -4,7 +4,7 @@
 $page_title   = 'Maya Ilai · Eco Resort · Kilifi Kenya · Tribal Sand';
 $page_desc    = 'Maya Ilai is a solar-powered eco resort within Tribal Dunes, Kilifi. 16 units including villas and studios. Communal pool. Adults 16+ only.';
 $page_url     = 'https://tribalsand.com/maya_ilai.php';
-$page_image   = 'https://tribalsand.com/images/maya_illai/Best1.jpg';
+$page_image   = asset_url('images/maya_illai/Best1.jpg');
 $page_preload = 'images/maya_illai/Best1.jpg';
 
 /* ═══ FAQS ═══ */
@@ -27,7 +27,7 @@ $page_schema .= ts_schema_lodging([
     'name'            => 'Maya Ilai Eco Retreat',
     'description'     => 'Solar-powered eco retreat compound within Tribal Dunes, Kilifi. 16 units (villas and studios), communal pool. Adults 16+ only.',
     'url'             => 'https://tribalsand.com/maya_ilai.php',
-    'image'           => ['https://tribalsand.com/images/maya_illai/Best1.jpg'],
+    'image'           => [asset_url('images/maya_illai/Best1.jpg')],
     'addressLocality' => 'Kilifi',
     'addressRegion'   => 'Kilifi County',
     'lat'             => -3.6340,

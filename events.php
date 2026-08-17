@@ -5,7 +5,7 @@ require_once 'includes/schema.php';
 $page_title  = 'Events · Weddings & Celebrations · Tribal Sand Kenya';
 $page_desc   = 'Host your wedding, celebration or corporate event on Kenya\'s North Coast with Tribal Sand. Beachfront venues in Kilifi and Watamu — full planning support.';
 $page_url    = 'https://tribalsand.com/events.php';
-$page_image  = 'https://tribalsand.com/images/Maya-Kobe-1-hero.webp';
+$page_image  = asset_url('images/Maya-Kobe-1-hero.webp');
 
 /* ── Structured Data ── */
 $page_schema =

@@ -23,7 +23,7 @@
             position: relative;
             height: 70vh;
             min-height: 600px;
-            background-image: url("https://tribalsand.com/wp-content/uploads/2024/10/IMAGE-3_Discover-Maya-Kobe-Where-Secluded-Luxury-Meets-the-Ocean-Breeze.webp");
+            background-image: url("<?= asset_url('wp-content/uploads/2024/10/IMAGE-3_Discover-Maya-Kobe-Where-Secluded-Luxury-Meets-the-Ocean-Breeze.webp') ?>");
             background-size: cover;
             background-position: center;
             color: white;
@@ -376,7 +376,7 @@
         </div>
         <div class="row">
             <div class="col-12 text-center">
-                <img src="https://tribalsand.com/wp-content/uploads/2024/10/IMAGE-1_Discover-Maya-Kobe-Where-Secluded-Luxury-Meets-the-Ocean-Breeze.webp"
+                <img src="<?= asset_url('wp-content/uploads/2024/10/IMAGE-1_Discover-Maya-Kobe-Where-Secluded-Luxury-Meets-the-Ocean-Breeze.webp') ?>"
                     alt="Maya Kobe Villa" class="img-fluid" />
             </div>
         </div>
@@ -395,7 +395,7 @@
 
         <div class="row mt-4">
             <div class="col-12 text-center">
-                <img src="https://tribalsand.com/wp-content/uploads/2024/10/IMAGE-2_Discover-Maya-Kobe-Where-Secluded-Luxury-Meets-the-Ocean-Breeze.webp"
+                <img src="<?= asset_url('wp-content/uploads/2024/10/IMAGE-2_Discover-Maya-Kobe-Where-Secluded-Luxury-Meets-the-Ocean-Breeze.webp') ?>"
                     alt="Maya Kobe Interiors" class="img-fluid" />
             </div>
         </div>

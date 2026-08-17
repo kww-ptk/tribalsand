@@ -5,7 +5,7 @@ require_once 'includes/schema.php';
 $page_title  = 'My Amani · Luxury Private Beachfront Villa · Vipingo Kenya · Tribal Sand';
 $page_desc   = 'Luxury private beachfront villa in Vipingo, Kenya. Five bedrooms, infinity pool, hot tub, private chef. Exclusive use only. Book direct.';
 $page_url    = 'https://tribalsand.com/my-amani.php';
-$page_image  = 'https://tribalsand.com/images/my-amani/Aerial/myamani-11.webp';
+$page_image  = asset_url('images/my-amani/Aerial/myamani-11.webp');
 $page_preload = 'images/my-amani/Aerial/myamani-11.webp';
 
 /* ── SCHEMA ── */
@@ -14,7 +14,7 @@ $page_schema .= ts_schema_lodging([
     'name'            => 'My Amani Private Villa',
     'description'     => 'Ultra-private five-bedroom beachfront villa in Vipingo, Kenya. Infinity pool, private hot tub, chef on request. Entire property rental only.',
     'url'             => 'https://tribalsand.com/my-amani.php',
-    'image'           => ['https://tribalsand.com/images/my-amani/Aerial/myamani-11.webp'],
+    'image'           => [asset_url('images/my-amani/Aerial/myamani-11.webp')],
     'addressLocality' => 'Vipingo',
     'addressRegion'   => 'Kilifi County',
     'lat'             => -3.8200,

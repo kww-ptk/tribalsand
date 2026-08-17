@@ -6,7 +6,7 @@ require_once 'includes/db.php';
 $page_title  = 'Enquire · Plan Your Stay · Tribal Sand';
 $page_desc   = 'Send an enquiry to Tribal Sand — tell us your dates and group size and we\'ll reply within 24 hours with availability and a tailored quote for our Kenya coast villas.';
 $page_url    = 'https://tribalsand.com/enquire.php';
-$page_image  = 'https://tribalsand.com/images/hero-maya-kobe.jpg';
+$page_image  = asset_url('images/hero-maya-kobe.jpg');
 $page_schema = ts_schema_org() . ts_schema_breadcrumb([
     ['name' => 'Home',    'url' => 'https://tribalsand.com/'],
     ['name' => 'Enquire', 'url' => 'https://tribalsand.com/enquire.php'],

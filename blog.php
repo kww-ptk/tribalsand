@@ -5,7 +5,7 @@ require_once 'includes/articles.php';
 $page_title  = 'Journal · Tribal Sand · Kenya Coast Stories';
 $page_desc   = 'Explore stories from Kenya\'s North Coast — travel guides, property features, conservation updates and inspiration from the Tribal Sand team.';
 $page_url    = 'https://tribalsand.com/blog.php';
-$page_image  = 'https://tribalsand.com/images/maya-kobe/Aerial/mayakobe-2.webp';
+$page_image  = asset_url('images/maya-kobe/Aerial/mayakobe-2.webp');
 
 $articles = ts_articles();
 

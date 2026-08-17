@@ -5,7 +5,7 @@ require_once 'includes/db.php';
 $page_title   = 'Tribal Sand · Luxury Beachfront Hotels & Villas · Kenya\'s North Coast';
 $page_desc    = 'Tribal Sand — luxury beachfront boutique hotels and private villas in Watamu, Kilifi and Vipingo, Kenya. Zuri, Maya Kobe, My Amani and more. Book direct.';
 $page_url     = 'https://tribalsand.com/';
-$page_image   = 'https://tribalsand.com/images/Maya-Kobe-1-hero.webp';
+$page_image   = asset_url('images/Maya-Kobe-1-hero.webp');
 $page_preload = 'images/New-hero-banner.jpg';
 
 $page_schema  = ts_schema_org();

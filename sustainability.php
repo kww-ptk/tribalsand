@@ -3,7 +3,7 @@
 $page_title  = 'Sustainable Hotels Kenya · Eco Luxury at Tribal Sand';
 $page_desc   = 'Discover how Tribal Sand powers Kenya\'s North Coast with solar energy, desalinated water and ocean conservation. 27.59 MWh generated · 21.88T CO₂ avoided.';
 $page_url    = 'https://tribalsand.com/sustainability.php';
-$page_image  = 'https://tribalsand.com/images/maya_illai/Best1.jpg';
+$page_image  = asset_url('images/maya_illai/Best1.jpg');
 
 $page_schema  = ts_schema_org();
 $page_schema .= ts_schema_breadcrumb([

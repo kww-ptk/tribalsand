@@ -710,7 +710,7 @@
     <section class="hero-section">
         <!-- Slideshow images -->
         <div class="slideshow-image active" style="
-          background-image: url('https://tribalsand.com/wp-content/uploads/2022/12/IMG-20220318-WA0078-min.jpg');
+          background-image: url("<?= asset_url('wp-content/uploads/2022/12/IMG-20220318-WA0078-min.jpg') ?>");
         "></div>
         <div class="slideshow-image" style="background-image: url('images/brown-bg-1')"></div>
         <div class="slideshow-image" style="

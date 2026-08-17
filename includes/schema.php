@@ -1,4 +1,5 @@
 <?php
+require_once __DIR__ . '/db.php'; // asset_url()/site_url() available to pages that require schema first
 /**
  * TRIBAL SAND · JSON-LD Structured Data Functions
  *
@@ -16,7 +17,7 @@ function ts_schema_org(): string {
         '@type'    => 'Organization',
         'name'     => 'Tribal Sand',
         'url'      => 'https://tribalsand.com',
-        'logo'     => 'https://tribalsand.com/images/whitelogo11.png',
+        'logo'     => asset_url('images/whitelogo11.png'),
         'description' => 'Luxury sustainable beachfront hospitality ecosystem on Kenya\'s North Coast. Boutique hotels and private villas in Watamu, Kilifi and Vipingo.',
         'telephone'   => '+254115115247',
         'email'       => 'reservations@tribalsand.com',
@@ -149,8 +150,8 @@ function ts_schema_local_business(): string {
         'name'        => 'Tribal Sand',
         'description' => 'Luxury beachfront boutique hotels and private villas on Kenya\'s North Coast — Watamu, Kilifi and Vipingo.',
         'url'         => 'https://tribalsand.com',
-        'logo'        => 'https://tribalsand.com/images/whitelogo11.png',
-        'image'       => 'https://tribalsand.com/images/Maya-Kobe-1-hero.webp',
+        'logo'        => asset_url('images/whitelogo11.png'),
+        'image'       => asset_url('images/Maya-Kobe-1-hero.webp'),
         'telephone'   => '+254115115247',
         'email'       => 'reservations@tribalsand.com',
         'address'     => [

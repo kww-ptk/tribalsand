@@ -414,7 +414,7 @@
             <div class="card">
               <div class="img-wrapper">
                 <img
-                  src="https://tribalsand.com/wp-content/uploads/2024/05/Copy-of-6.jpg.webp"
+                  src="<?= asset_url('wp-content/uploads/2024/05/Copy-of-6.jpg.webp') ?>"
                   class="card-img-top"
                   alt="My Amani Excursions"
                 />
@@ -422,7 +422,7 @@
               <div class="card-body">
                 <h2 class="card-title">My Amani<br />Excursions</h2>
                 <a
-                  href="https://docs.google.com/viewerng/viewer?url=https://tribalsand.com/wp-content/uploads/2024/05/TRIBAL-SAND-My-Amani-Excursions.pdf"
+                  href="https://docs.google.com/viewerng/viewer?url=<?= asset_url('wp-content/uploads/2024/05/TRIBAL-SAND-My-Amani-Excursions.pdf') ?>"
                   class="btn-learn"
                 >
                   Learn More
@@ -436,7 +436,7 @@
             <div class="card">
               <div class="img-wrapper">
                 <img
-                  src="https://tribalsand.com/wp-content/uploads/2024/05/Copy-of-5.jpg.webp"
+                  src="<?= asset_url('wp-content/uploads/2024/05/Copy-of-5.jpg.webp') ?>"
                   class="card-img-top"
                   alt="Maya Kobe Excursions"
                 />
@@ -444,7 +444,7 @@
               <div class="card-body">
                 <h2 class="card-title">Maya Kobe<br />Excursions</h2>
                 <a
-                  href="https://docs.google.com/viewerng/viewer?url=https://tribalsand.com/wp-content/uploads/2024/05/TRIBAL-SAND-Maya-Kobe-Excursions.pdf"
+                  href="https://docs.google.com/viewerng/viewer?url=<?= asset_url('wp-content/uploads/2024/05/TRIBAL-SAND-Maya-Kobe-Excursions.pdf') ?>"
                   class="btn-learn"
                 >
                   Learn More
@@ -458,7 +458,7 @@
             <div class="card">
               <div class="img-wrapper">
                 <img
-                  src="https://tribalsand.com/wp-content/uploads/2024/05/Copy-of-3.jpg.webp"
+                  src="<?= asset_url('wp-content/uploads/2024/05/Copy-of-3.jpg.webp') ?>"
                   class="card-img-top"
                   alt="Zuri Excursions"
                 />
@@ -466,7 +466,7 @@
               <div class="card-body">
                 <h2 class="card-title">Zuri<br />Excursions</h2>
                 <a
-                  href="https://docs.google.com/viewerng/viewer?url=https://tribalsand.com/wp-content/uploads/2024/05/TRIBAL-SAND-Zuri-Excursions.pdf"
+                  href="https://docs.google.com/viewerng/viewer?url=<?= asset_url('wp-content/uploads/2024/05/TRIBAL-SAND-Zuri-Excursions.pdf') ?>"
                   class="btn-learn"
                 >
                   Learn More

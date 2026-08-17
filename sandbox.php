@@ -3,7 +3,7 @@
 $page_title   = 'Sandbox · Beachfront Self-Catering Villa · Kilifi Kenya · Tribal Sand';
 $page_desc    = 'Sandbox is a self-catering beachfront villa on Kilifi\'s Bofa Road. Four bedrooms, sleeps 8, pool, direct beach access. Private and flexible.';
 $page_url     = 'https://tribalsand.com/sandbox.php';
-$page_image   = 'https://tribalsand.com/images/hero-sandbox.jpg';
+$page_image   = asset_url('images/hero-sandbox.jpg');
 $page_preload = 'images/hero-sandbox.jpg';
 
 $faqs = [
@@ -20,7 +20,7 @@ $page_schema =
         'name'            => 'Sandbox Villa',
         'description'     => 'Self-catering beachfront villa on Kilifi\'s Bofa Road. Four bedrooms, sleeps 8, pool and direct beach access.',
         'url'             => 'https://tribalsand.com/sandbox.php',
-        'image'           => ['https://tribalsand.com/images/hero-sandbox.jpg'],
+        'image'           => [asset_url('images/hero-sandbox.jpg')],
         'addressLocality' => 'Kilifi',
         'addressRegion'   => 'Kilifi County',
         'lat'             => -3.6340,

@@ -5,7 +5,7 @@ require_once 'includes/schema.php';
 $page_title   = 'Zuri · Beachfront Boutique Hotel · Garoda Beach Watamu · Tribal Sand';
 $page_desc    = 'Beachfront boutique hotel on Garoda Beach, Watamu. Six ocean-facing suites, private pool and direct beach access inside Watamu Marine National Park, Kenya.';
 $page_url     = 'https://tribalsand.com/zuri.php';
-$page_image   = 'https://tribalsand.com/images/hero-zuri.jpg';
+$page_image   = asset_url('images/hero-zuri.jpg');
 $page_preload = 'images/hero-zuri.jpg';
 
 /* ── FAQ data ── */
@@ -29,7 +29,7 @@ $page_schema =
         'name'            => 'Zuri Boutique Hotel',
         'description'     => 'Luxury beachfront boutique hotel in Watamu, Kenya. Six ocean-facing suites, private pool and chef-led dining on the Indian Ocean shoreline.',
         'url'             => 'https://tribalsand.com/zuri.php',
-        'image'           => ['https://tribalsand.com/images/hero-zuri.jpg'],
+        'image'           => [asset_url('images/hero-zuri.jpg')],
         'addressLocality' => 'Garoda Beach, Watamu',
         'addressRegion'   => 'Kilifi County',
         'lat'             => -3.3689,

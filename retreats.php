@@ -1,3 +1,4 @@
+<?php require_once __DIR__ . '/includes/db.php'; // asset_url() used in the head below ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -13,10 +14,10 @@
 <meta property="og:url" content="https://tribalsand.com/retreats.php">
 <meta property="og:title" content="Retreats in Kenya · Yoga, Wellness, Kitesurf & Corporate · Tribal Sand">
 <meta property="og:description" content="Beachfront retreat venues on Kenya's coast for groups up to 48+. Yoga, wellness, kitesurf camps and corporate offsites — fully arranged.">
-<meta property="og:image" content="https://tribalsand.com/images/maya_illai/Best1.jpg">
+<meta property="og:image" content="<?= asset_url('images/maya_illai/Best1.jpg') ?>">
 <meta name="twitter:card" content="summary_large_image">
 <meta name="twitter:title" content="Retreats in Kenya · Yoga, Wellness, Kitesurf & Corporate">
-<meta name="twitter:image" content="https://tribalsand.com/images/maya_illai/Best1.jpg">
+<meta name="twitter:image" content="<?= asset_url('images/maya_illai/Best1.jpg') ?>">
 
 <script type="application/ld+json">
 {
@@ -92,7 +93,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400;1,500&family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-<link rel="preload" as="image" href="https://tribalsand.com/images/maya_illai/Best1.jpg">
+<link rel="preload" as="image" href="<?= asset_url('images/maya_illai/Best1.jpg') ?>">
 
 <!-- Site-wide assets required by includes/header.php and includes/footer.php -->
 <link rel="icon" href="images/favicon.png">
@@ -562,7 +563,7 @@ body.ts-nav-transparent .ts-nav:not(.scrolled60):not(.nav-open){
         <a href="sustainability.php">Sustainability</a>
         <a href="blog.php">Blog</a>
         <div class="ts-drop-div"></div>
-        <a href="https://tribalsand.com/wp-content/uploads/2024/12/Watamu-Kenya-COMETA-2025.pdf" target="_blank">Press · Cometa</a>
+        <a href="<?= asset_url('wp-content/uploads/2024/12/Watamu-Kenya-COMETA-2025.pdf') ?>" target="_blank">Press · Cometa</a>
         <a href="for-agents.php">For Agents</a>
         <a href="contact.php">Contact Us</a>
       </div>
@@ -624,7 +625,7 @@ body.ts-nav-transparent .ts-nav:not(.scrolled60):not(.nav-open){
     <a href="tribalsandstory.php" class="ts-mob-link">Our Story <span class="ts-mob-arr">→</span></a>
     <a href="sustainability.php" class="ts-mob-link">Sustainability <span class="ts-mob-arr">→</span></a>
     <a href="blog.php" class="ts-mob-link">Blog <span class="ts-mob-arr">→</span></a>
-    <a href="https://tribalsand.com/wp-content/uploads/2024/12/Watamu-Kenya-COMETA-2025.pdf" class="ts-mob-link" target="_blank">Press <span class="ts-mob-arr">→</span></a>
+    <a href="<?= asset_url('wp-content/uploads/2024/12/Watamu-Kenya-COMETA-2025.pdf') ?>" class="ts-mob-link" target="_blank">Press <span class="ts-mob-arr">→</span></a>
     <a href="contact.php" class="ts-mob-link">Contact Us <span class="ts-mob-arr">→</span></a>
     <a href="for-agents.php" class="ts-mob-link">For Agents <span class="ts-mob-arr">→</span></a>
   </div>
@@ -707,7 +708,7 @@ window.gtranslateSettings = {
 
 <!-- HERO -->
 <section class="hero">
-  <div class="hero-bg"><img src="https://tribalsand.com/images/maya_illai/Best1.jpg" alt="Beachfront retreat venue on Kenya's coast — Maya Ilai, Kilifi" width="1920" height="1080" loading="eager"></div>
+  <div class="hero-bg"><img src="<?= asset_url('images/maya_illai/Best1.jpg') ?>" alt="Beachfront retreat venue on Kenya's coast — Maya Ilai, Kilifi" width="1920" height="1080" loading="eager"></div>
   <div class="hero-inner">
     <div class="hero-eyebrow">Retreats on Kenya's North Coast</div>
     <h1 class="hero-h1">Where Your Retreat<br><em>Comes to Life</em></h1>
@@ -741,14 +742,14 @@ window.gtranslateSettings = {
 
   <div class="types-grid">
     <div class="type-card">
-      <img class="type-img" src="https://tribalsand.com/images/activities/20-private-yoga-session.jpg" alt="Yoga retreat on Kenya's coast — private beachfront yoga session" width="400" height="200" loading="lazy">
+      <img class="type-img" src="<?= asset_url('images/activities/20-private-yoga-session.jpg') ?>" alt="Yoga retreat on Kenya's coast — private beachfront yoga session" width="400" height="200" loading="lazy">
       <div class="type-body">
         <div class="type-h">Yoga Retreats</div>
         <div class="type-p">Beachfront yoga decks, sunrise sessions by the ocean, and calm spaces for meditation. We arrange shalas, mats, instructors and nourishing plant-based menus.</div>
       </div>
     </div>
     <div class="type-card">
-      <img class="type-img" src="https://tribalsand.com/images/activities/22-in-house-wellness-treatment.jpeg" alt="Wellness retreat in Kenya — in-house spa and wellness treatment" width="400" height="200" loading="lazy">
+      <img class="type-img" src="<?= asset_url('images/activities/22-in-house-wellness-treatment.jpeg') ?>" alt="Wellness retreat in Kenya — in-house spa and wellness treatment" width="400" height="200" loading="lazy">
       <div class="type-body">
         <div class="type-h">Wellness Retreats</div>
         <div class="type-p">Spa treatments, sound healing, breathwork, ice baths and holistic programmes. Detox by the sea with healthy catering and a team that handles every detail.</div>
@@ -762,7 +763,7 @@ window.gtranslateSettings = {
       </div>
     </div>
     <div class="type-card">
-      <img class="type-img" src="https://tribalsand.com/images/maya_illai/Best1.jpg" alt="Corporate retreat and team offsite in Kenya — Maya Ilai beachfront group venue, Kilifi" width="400" height="200" loading="lazy">
+      <img class="type-img" src="<?= asset_url('images/maya_illai/Best1.jpg') ?>" alt="Corporate retreat and team offsite in Kenya — Maya Ilai beachfront group venue, Kilifi" width="400" height="200" loading="lazy">
       <div class="type-body">
         <div class="type-h">Corporate Retreats</div>
         <div class="type-p">Team offsites, strategy weeks and leadership escapes. Meeting spaces, reliable WiFi, team-building activities and full-board dining — productivity meets paradise.</div>
@@ -798,7 +799,7 @@ window.gtranslateSettings = {
 
   <!-- Maya Ilai -->
   <div class="venue">
-    <img class="venue-img" src="https://tribalsand.com/images/maya_illai/Best1.jpg" alt="Maya Ilai eco retreat compound — Kilifi, Kenya. 16 units for large group retreats." width="600" height="500" loading="lazy">
+    <img class="venue-img" src="<?= asset_url('images/maya_illai/Best1.jpg') ?>" alt="Maya Ilai eco retreat compound — Kilifi, Kenya. 16 units for large group retreats." width="600" height="500" loading="lazy">
     <div class="venue-body">
       <div class="venue-loc">Kilifi · Tribal Dunes</div>
       <div class="venue-name">Maya Ilai</div>
@@ -827,7 +828,7 @@ window.gtranslateSettings = {
 
   <!-- Zuri -->
   <div class="venue reverse">
-    <img class="venue-img" src="https://tribalsand.com/images/zuri/Aerial/zuri-3.webp" alt="Zuri boutique hotel — Watamu, Kenya. Beachfront retreat venue for up to 14 guests." width="600" height="500" loading="lazy">
+    <img class="venue-img" src="<?= asset_url('images/zuri/Aerial/zuri-3.webp') ?>" alt="Zuri boutique hotel — Watamu, Kenya. Beachfront retreat venue for up to 14 guests." width="600" height="500" loading="lazy">
     <div class="venue-body">
       <div class="venue-loc">Watamu · Kilifi County</div>
       <div class="venue-name">Zuri</div>
@@ -854,7 +855,7 @@ window.gtranslateSettings = {
 
   <!-- Maya Kobe -->
   <div class="venue">
-    <img class="venue-img" src="https://tribalsand.com/images/maya-kobe/Maya Kobe - Day Outdoor, Pool, Beach/Maya Kobe Best12.jpg" alt="Maya Kobe boutique hotel — Kilifi, Kenya. Luxury wellness retreat venue." width="600" height="500" loading="lazy">
+    <img class="venue-img" src="<?= asset_url('images/maya-kobe/Maya Kobe - Day Outdoor, Pool, Beach/Maya Kobe Best12.jpg') ?>" alt="Maya Kobe boutique hotel — Kilifi, Kenya. Luxury wellness retreat venue." width="600" height="500" loading="lazy">
     <div class="venue-body">
       <div class="venue-loc">Bofa Road · Kilifi</div>
       <div class="venue-name">Maya Kobe</div>
@@ -955,7 +956,7 @@ window.gtranslateSettings = {
 
 <!-- CTA -->
 <section class="cta-section" id="enquire">
-  <div class="cta-bg"><img src="https://tribalsand.com/images/updated-hero-banner.jpg" alt="Plan your retreat on Kenya's coast with Tribal Sand" width="1920" height="460" loading="lazy"></div>
+  <div class="cta-bg"><img src="<?= asset_url('images/updated-hero-banner.jpg') ?>" alt="Plan your retreat on Kenya's coast with Tribal Sand" width="1920" height="460" loading="lazy"></div>
   <div class="cta-inner">
     <div class="hero-eyebrow">Ready to Plan Your Retreat?</div>
     <h2 class="cta-h">Your Retreat <em>Begins Here</em></h2>

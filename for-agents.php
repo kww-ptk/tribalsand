@@ -3,7 +3,7 @@
 $page_title  = 'For Travel Agents · Tribal Sand Kenya · Commission & FAM';
 $page_desc   = 'Partner with Tribal Sand. Competitive commission for travel agents, complimentary FAM trips, dedicated support and quick response on all bookings.';
 $page_url    = 'https://tribalsand.com/for-agents.php';
-$page_image  = 'https://tribalsand.com/images/New-hero-banner.jpg';
+$page_image  = asset_url('images/New-hero-banner.jpg');
 $page_preload = 'images/New-hero-banner.jpg';
 
 $page_schema  = ts_schema_org();

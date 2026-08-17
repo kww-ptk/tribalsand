@@ -4,7 +4,7 @@
 $page_title   = 'Maya Kobe · Eco Beachfront Boutique Hotel · Kilifi · Tribal Sand';
 $page_desc    = 'Eco beachfront boutique hotel in Kilifi, Kenya. Five ocean suites, private pool, à la carte dining and direct beach access at Tribal Dunes, Bofa Beach.';
 $page_url     = 'https://tribalsand.com/maya-kobe.php';
-$page_image   = 'https://tribalsand.com/images/hero-maya-kobe.jpg';
+$page_image   = asset_url('images/hero-maya-kobe.jpg');
 $page_preload = 'images/hero-maya-kobe.jpg';
 
 /* ═══ FAQS ═══ */
@@ -27,7 +27,7 @@ $page_schema .= ts_schema_lodging([
     'name'            => 'Maya Kobe Boutique Hotel',
     'description'     => 'Balinese-inspired luxury beachfront boutique hotel within Tribal Dunes, Kilifi. Five ocean suites, 20m pool, chef-led dining on Bofa Beach.',
     'url'             => 'https://tribalsand.com/maya-kobe.php',
-    'image'           => ['https://tribalsand.com/images/hero-maya-kobe.jpg'],
+    'image'           => [asset_url('images/hero-maya-kobe.jpg')],
     'addressLocality' => 'Kilifi',
     'addressRegion'   => 'Kilifi County',
     'lat'             => -3.6340,

@@ -4,7 +4,7 @@ require_once 'includes/schema.php';
 $page_title   = 'Hotels in Watamu Kenya · Beachfront Boutique Hotel · Tribal Sand';
 $page_desc    = 'Stay at Zuri, Watamu\'s most intimate beachfront boutique hotel. Six ocean-facing suites on Kenya\'s North Coast, inside a marine national park, with direct beach access.';
 $page_url     = 'https://tribalsand.com/watamu.php';
-$page_image   = 'https://tribalsand.com/images/zuri/Aerial/zuri-3.webp';
+$page_image   = asset_url('images/zuri/Aerial/zuri-3.webp');
 
 $page_schema  = ts_schema_org();
 $page_schema .= ts_schema_breadcrumb([
@@ -434,7 +434,7 @@ include 'includes/head.php';
 <section class="loc-hero" aria-label="Watamu Kenya hotels and beachfront accommodation">
   <div class="loc-hero-bg">
     <img
-      src="https://tribalsand.com/images/zuri/Aerial/zuri-3.webp"
+      src="<?= asset_url('images/zuri/Aerial/zuri-3.webp') ?>"
       alt="Zuri beachfront hotel Watamu Kenya"
       width="1600" height="900"
       loading="eager"
@@ -518,7 +518,7 @@ include 'includes/head.php';
   <div class="loc-zuri-grid">
 
     <div class="loc-zuri-img-wrap">
-      <img class="loc-zuri-img" src="https://tribalsand.com/images/zuri/Aerial/zuri-3.webp" alt="Zuri boutique hotel Watamu aerial view" width="800" height="600" loading="lazy">
+      <img class="loc-zuri-img" src="<?= asset_url('images/zuri/Aerial/zuri-3.webp') ?>" alt="Zuri boutique hotel Watamu aerial view" width="800" height="600" loading="lazy">
       <span class="loc-zuri-tag">Watamu Marine National Park</span>
     </div>
 

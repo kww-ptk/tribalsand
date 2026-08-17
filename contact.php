@@ -4,7 +4,7 @@
 $page_title = 'Contact · Reservations · Tribal Sand Kenya';
 $page_desc  = 'Contact Tribal Sand for reservations, enquiries and trip planning. Phone, WhatsApp, email or use our Trip Builder for a personalised Kenya coast quote.';
 $page_url   = 'https://tribalsand.com/contact.php';
-$page_image = 'https://tribalsand.com/images/whitelogo11.png';
+$page_image = asset_url('images/whitelogo11.png');
 
 /* ═══ SCHEMA ═══ */
 $page_schema  = ts_schema_org();

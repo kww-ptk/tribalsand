@@ -1,3 +1,4 @@
+<?php require_once __DIR__ . '/db.php'; // nav uses asset_url(); ensure it's defined on every page ?>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
@@ -226,41 +227,41 @@
         <div class="ts-drop-col">
           <span class="ts-drop-lbl">Beachfront Boutique Hotels</span>
           <a href="zuri.php" class="ts-prop-row">
-            <img src="https://tribalsand.com/images/zuri/Aerial/zuri-3.webp" alt="Zuri">
+            <img src="<?= asset_url('images/zuri/Aerial/zuri-3.webp') ?>" alt="Zuri">
             <div><div class="ts-prop-name">Zuri</div><div class="ts-prop-loc">Watamu · 6 Suites</div></div>
           </a>
           <a href="maya-kobe.php" class="ts-prop-row">
-            <img src="https://tribalsand.com/images/Maya-Kobe-1-hero.webp" alt="Maya Kobe">
+            <img src="<?= asset_url('images/Maya-Kobe-1-hero.webp') ?>" alt="Maya Kobe">
             <div><div class="ts-prop-name">Maya Kobe</div><div class="ts-prop-loc">Kilifi · 5 Suites</div></div>
           </a>
         </div>
         <div class="ts-drop-col">
           <span class="ts-drop-lbl">Beachfront Private Villas</span>
           <a href="my-amani.php" class="ts-prop-row">
-            <img src="https://tribalsand.com/images/my-amani/Aerial/myamani-11.webp" alt="My Amani">
+            <img src="<?= asset_url('images/my-amani/Aerial/myamani-11.webp') ?>" alt="My Amani">
             <div><div class="ts-prop-name">My Amani</div><div class="ts-prop-loc">Vipingo · 5 Rooms</div></div>
           </a>
           <a href="enkare-bofa.php" class="ts-prop-row">
-            <img src="https://tribalsand.com/images/enkare-bofa/Outdoors/IMG-20251117-WA0032.jpg" alt="Enkare Bofa">
+            <img src="<?= asset_url('images/enkare-bofa/Outdoors/IMG-20251117-WA0032.jpg') ?>" alt="Enkare Bofa">
             <div><div class="ts-prop-name">Enkare Bofa</div><div class="ts-prop-loc">Kilifi · 5 Rooms</div></div>
           </a>
           <a href="sandbox.php" class="ts-prop-row">
-            <img src="https://tribalsand.com/images/Sandbox/outdoors/IMG-20251117-WA0091.jpg" alt="Sandbox">
+            <img src="<?= asset_url('images/Sandbox/outdoors/IMG-20251117-WA0091.jpg') ?>" alt="Sandbox">
             <div><div class="ts-prop-name">Sandbox</div><div class="ts-prop-loc">Kilifi · 4 Rooms</div></div>
           </a>
         </div>
         <div class="ts-drop-col">
           <span class="ts-drop-lbl">Tribal Dunes · Kilifi</span>
           <a href="maya-kobe.php" class="ts-prop-row">
-            <img src="https://tribalsand.com/images/Maya-Kobe-1-hero.webp" alt="Maya Kobe">
+            <img src="<?= asset_url('images/Maya-Kobe-1-hero.webp') ?>" alt="Maya Kobe">
             <div><div class="ts-prop-name">Maya Kobe</div><div class="ts-prop-loc">Boutique Hotel</div></div>
           </a>
           <a href="maya_ilai.php" class="ts-prop-row">
-            <img src="https://tribalsand.com/images/maya_illai/Best1.jpg" alt="Maya Ilai">
+            <img src="<?= asset_url('images/maya_illai/Best1.jpg') ?>" alt="Maya Ilai">
             <div><div class="ts-prop-name">Maya Ilai</div><div class="ts-prop-loc">Eco Compound</div></div>
           </a>
           <a href="off-duty.php" class="ts-prop-row">
-            <img src="https://tribalsand.com/images/maya_illai/Studios/Studio1.jpeg" alt="Off Duty">
+            <img src="<?= asset_url('images/maya_illai/Studios/Studio1.jpeg') ?>" alt="Off Duty">
             <div><div class="ts-prop-name">Off Duty</div><div class="ts-prop-loc">Coworking Hotel</div></div>
           </a>
         </div>
@@ -292,15 +293,15 @@
         <div class="ts-drop-col">
           <span class="ts-drop-lbl">Kilifi · Beachfront</span>
           <a href="maya-kobe.php" class="ts-prop-row">
-            <img src="https://tribalsand.com/images/Maya-Kobe-1-hero.webp" alt="Maya Kobe">
+            <img src="<?= asset_url('images/Maya-Kobe-1-hero.webp') ?>" alt="Maya Kobe">
             <div><div class="ts-prop-name">Maya Kobe</div><div class="ts-prop-loc">Boutique Hotel · Kilifi</div></div>
           </a>
           <a href="maya_ilai.php" class="ts-prop-row">
-            <img src="https://tribalsand.com/images/maya_illai/Best1.jpg" alt="Maya Ilai">
+            <img src="<?= asset_url('images/maya_illai/Best1.jpg') ?>" alt="Maya Ilai">
             <div><div class="ts-prop-name">Maya Ilai</div><div class="ts-prop-loc">Eco Compound · Kilifi</div></div>
           </a>
           <a href="off-duty.php" class="ts-prop-row">
-            <img src="https://tribalsand.com/images/maya_illai/Studios/Studio1.jpeg" alt="Off Duty">
+            <img src="<?= asset_url('images/maya_illai/Studios/Studio1.jpeg') ?>" alt="Off Duty">
             <div><div class="ts-prop-name">Off Duty</div><div class="ts-prop-loc">Coworking Hotel · Kilifi</div></div>
           </a>
           <div class="ts-drop-col-footer">
@@ -311,15 +312,15 @@
         <div class="ts-drop-col">
           <span class="ts-drop-lbl">Dining & Lifestyle</span>
           <a href="tribal-table.php" class="ts-prop-row">
-            <img src="https://tribalsand.com/images/maya-kobe/Maya Kobe - Day Outdoor, Pool, Beach/Maya Kobe Best4.jpg" alt="Tribal Table">
+            <img src="<?= asset_url('images/maya-kobe/Maya Kobe - Day Outdoor, Pool, Beach/Maya Kobe Best4.jpg') ?>" alt="Tribal Table">
             <div><div class="ts-prop-name">Tribal Table <span style="font-size:.54rem;color:rgba(184,150,90,.4);">— Soon</span></div><div class="ts-prop-loc">Restaurant & Bar · Kilifi</div></div>
           </a>
           <a href="somewhere-cafe.php" class="ts-prop-row">
-            <img src="https://tribalsand.com/images/maya_illai/best6.jpg" alt="Somewhere Cafe">
+            <img src="<?= asset_url('images/maya_illai/best6.jpg') ?>" alt="Somewhere Cafe">
             <div><div class="ts-prop-name">Somewhere Café <span style="font-size:.54rem;color:rgba(184,150,90,.4);">— Soon</span></div><div class="ts-prop-loc">Beachfront Café · Kilifi</div></div>
           </a>
           <a href="#" class="ts-prop-row">
-            <img src="https://tribalsand.com/images/34t.jpg" alt="Kite School">
+            <img src="<?= asset_url('images/34t.jpg') ?>" alt="Kite School">
             <div><div class="ts-prop-name">Kite & Watersport School <span style="font-size:.54rem;color:rgba(184,150,90,.4);">— Soon</span></div><div class="ts-prop-loc">Ocean Sports · Kilifi</div></div>
           </a>
           <div class="ts-drop-col-footer">
@@ -368,7 +369,7 @@
         <a href="kenya-coast-guide.php">Kenya Coast Guide</a>
         <a href="kenya-honeymoon.php">Honeymoon in Kenya</a>
         <div class="ts-drop-div"></div>
-        <a href="https://tribalsand.com/wp-content/uploads/2024/12/Watamu-Kenya-COMETA-2025.pdf" target="_blank">Press · Cometa</a>
+        <a href="<?= asset_url('wp-content/uploads/2024/12/Watamu-Kenya-COMETA-2025.pdf') ?>" target="_blank">Press · Cometa</a>
         <a href="for-agents.php">For Agents</a>
         <a href="contact.php">Contact Us</a>
       </div>
@@ -396,16 +397,16 @@
 
   <div>
     <span class="ts-mob-lbl">Boutique Hotels</span>
-    <a href="zuri.php" class="ts-mob-prop"><img src="https://tribalsand.com/images/zuri/Aerial/zuri-3.webp" alt="Zuri"><div><div class="ts-mob-prop-name">Zuri</div><div class="ts-mob-prop-loc">Watamu · 6 Suites</div></div></a>
-    <a href="maya-kobe.php" class="ts-mob-prop"><img src="https://tribalsand.com/images/Maya-Kobe-1-hero.webp" alt="Maya Kobe"><div><div class="ts-mob-prop-name">Maya Kobe</div><div class="ts-mob-prop-loc">Kilifi · 5 Suites</div></div></a>
-    <a href="maya_ilai.php" class="ts-mob-prop"><img src="https://tribalsand.com/images/maya_illai/Best1.jpg" alt="Maya Ilai"><div><div class="ts-mob-prop-name">Maya Ilai</div><div class="ts-mob-prop-loc">Kilifi · 16 Units</div></div></a>
+    <a href="zuri.php" class="ts-mob-prop"><img src="<?= asset_url('images/zuri/Aerial/zuri-3.webp') ?>" alt="Zuri"><div><div class="ts-mob-prop-name">Zuri</div><div class="ts-mob-prop-loc">Watamu · 6 Suites</div></div></a>
+    <a href="maya-kobe.php" class="ts-mob-prop"><img src="<?= asset_url('images/Maya-Kobe-1-hero.webp') ?>" alt="Maya Kobe"><div><div class="ts-mob-prop-name">Maya Kobe</div><div class="ts-mob-prop-loc">Kilifi · 5 Suites</div></div></a>
+    <a href="maya_ilai.php" class="ts-mob-prop"><img src="<?= asset_url('images/maya_illai/Best1.jpg') ?>" alt="Maya Ilai"><div><div class="ts-mob-prop-name">Maya Ilai</div><div class="ts-mob-prop-loc">Kilifi · 16 Units</div></div></a>
   </div>
 
   <div>
     <span class="ts-mob-lbl">Private Villas</span>
-    <a href="my-amani.php" class="ts-mob-prop"><img src="https://tribalsand.com/images/my-amani/Aerial/myamani-11.webp" alt="My Amani"><div><div class="ts-mob-prop-name">My Amani</div><div class="ts-mob-prop-loc">Vipingo · 5 Rooms</div></div></a>
-    <a href="enkare-bofa.php" class="ts-mob-prop"><img src="https://tribalsand.com/images/enkare-bofa/Outdoors/IMG-20251117-WA0032.jpg" alt="Enkare Bofa"><div><div class="ts-mob-prop-name">Enkare Bofa</div><div class="ts-mob-prop-loc">Kilifi · 5 Rooms</div></div></a>
-    <a href="sandbox.php" class="ts-mob-prop"><img src="https://tribalsand.com/images/Sandbox/outdoors/IMG-20251117-WA0091.jpg" alt="Sandbox"><div><div class="ts-mob-prop-name">Sandbox</div><div class="ts-mob-prop-loc">Kilifi · 4 Rooms</div></div></a>
+    <a href="my-amani.php" class="ts-mob-prop"><img src="<?= asset_url('images/my-amani/Aerial/myamani-11.webp') ?>" alt="My Amani"><div><div class="ts-mob-prop-name">My Amani</div><div class="ts-mob-prop-loc">Vipingo · 5 Rooms</div></div></a>
+    <a href="enkare-bofa.php" class="ts-mob-prop"><img src="<?= asset_url('images/enkare-bofa/Outdoors/IMG-20251117-WA0032.jpg') ?>" alt="Enkare Bofa"><div><div class="ts-mob-prop-name">Enkare Bofa</div><div class="ts-mob-prop-loc">Kilifi · 5 Rooms</div></div></a>
+    <a href="sandbox.php" class="ts-mob-prop"><img src="<?= asset_url('images/Sandbox/outdoors/IMG-20251117-WA0091.jpg') ?>" alt="Sandbox"><div><div class="ts-mob-prop-name">Sandbox</div><div class="ts-mob-prop-loc">Kilifi · 4 Rooms</div></div></a>
   </div>
 
   <div class="ts-mob-div"></div>
@@ -440,7 +441,7 @@
     <a href="watamu.php" class="ts-mob-link">Watamu Guide <span class="ts-mob-arr">→</span></a>
     <a href="kenya-coast-guide.php" class="ts-mob-link">Kenya Coast Guide <span class="ts-mob-arr">→</span></a>
     <a href="kenya-honeymoon.php" class="ts-mob-link">Honeymoon in Kenya <span class="ts-mob-arr">→</span></a>
-    <a href="https://tribalsand.com/wp-content/uploads/2024/12/Watamu-Kenya-COMETA-2025.pdf" class="ts-mob-link" target="_blank">Press <span class="ts-mob-arr">→</span></a>
+    <a href="<?= asset_url('wp-content/uploads/2024/12/Watamu-Kenya-COMETA-2025.pdf') ?>" class="ts-mob-link" target="_blank">Press <span class="ts-mob-arr">→</span></a>
     <a href="contact.php" class="ts-mob-link">Contact Us <span class="ts-mob-arr">→</span></a>
     <a href="for-agents.php" class="ts-mob-link">For Agents <span class="ts-mob-arr">→</span></a>
   </div>

@@ -4,7 +4,7 @@ require_once 'includes/schema.php';
 $page_title   = 'Hotels in Kilifi Kenya · Boutique Beach Accommodation · Tribal Sand';
 $page_desc    = 'Discover boutique hotels and private villas on Kilifi\'s Bofa Beach. Maya Kobe, Maya Ilai, Enkare Bofa, Sandbox and Off Duty — all within Tribal Dunes, Kenya\'s most exciting beachfront address.';
 $page_url     = 'https://tribalsand.com/kilifi.php';
-$page_image   = 'https://tribalsand.com/images/Maya-Kobe-1-hero.webp';
+$page_image   = asset_url('images/Maya-Kobe-1-hero.webp');
 
 $page_schema  = ts_schema_org();
 $page_schema .= ts_schema_breadcrumb([
@@ -449,7 +449,7 @@ include 'includes/head.php';
 <section class="loc-hero" aria-label="Kilifi Kenya hotels and beachfront accommodation">
   <div class="loc-hero-bg">
     <img
-      src="https://tribalsand.com/images/Maya-Kobe-1-hero.webp"
+      src="<?= asset_url('images/Maya-Kobe-1-hero.webp') ?>"
       alt="Bofa Beach Kilifi — Tribal Dunes beachfront"
       width="1600" height="900"
       loading="eager"
@@ -536,7 +536,7 @@ include 'includes/head.php';
     <!-- Maya Kobe -->
     <article class="prop-card">
       <div class="prop-card-img-wrap">
-        <img class="prop-card-img" src="https://tribalsand.com/images/Maya-Kobe-1-hero.webp" alt="Maya Kobe boutique hotel Kilifi" width="640" height="480" loading="lazy">
+        <img class="prop-card-img" src="<?= asset_url('images/Maya-Kobe-1-hero.webp') ?>" alt="Maya Kobe boutique hotel Kilifi" width="640" height="480" loading="lazy">
       </div>
       <div class="prop-card-body">
         <span class="prop-card-tag">Boutique Hotel &middot; 5 Suites</span>
@@ -549,7 +549,7 @@ include 'includes/head.php';
     <!-- Maya Ilai -->
     <article class="prop-card">
       <div class="prop-card-img-wrap">
-        <img class="prop-card-img" src="https://tribalsand.com/images/maya_illai/Best1.jpg" alt="Maya Ilai eco compound Kilifi" width="640" height="480" loading="lazy">
+        <img class="prop-card-img" src="<?= asset_url('images/maya_illai/Best1.jpg') ?>" alt="Maya Ilai eco compound Kilifi" width="640" height="480" loading="lazy">
       </div>
       <div class="prop-card-body">
         <span class="prop-card-tag">Eco Compound &middot; 16 Units</span>
@@ -562,7 +562,7 @@ include 'includes/head.php';
     <!-- Enkare Bofa -->
     <article class="prop-card">
       <div class="prop-card-img-wrap">
-        <img class="prop-card-img" src="https://tribalsand.com/images/enkare-bofa/Outdoors/IMG-20251117-WA0032.jpg" alt="Enkare Bofa private villa Kilifi" width="640" height="480" loading="lazy">
+        <img class="prop-card-img" src="<?= asset_url('images/enkare-bofa/Outdoors/IMG-20251117-WA0032.jpg') ?>" alt="Enkare Bofa private villa Kilifi" width="640" height="480" loading="lazy">
       </div>
       <div class="prop-card-body">
         <span class="prop-card-tag">Private Villa &middot; 5 Rooms</span>
@@ -575,7 +575,7 @@ include 'includes/head.php';
     <!-- Sandbox -->
     <article class="prop-card">
       <div class="prop-card-img-wrap">
-        <img class="prop-card-img" src="https://tribalsand.com/images/Sandbox/outdoors/IMG-20251117-WA0091.jpg" alt="Sandbox private villa Kilifi" width="640" height="480" loading="lazy">
+        <img class="prop-card-img" src="<?= asset_url('images/Sandbox/outdoors/IMG-20251117-WA0091.jpg') ?>" alt="Sandbox private villa Kilifi" width="640" height="480" loading="lazy">
       </div>
       <div class="prop-card-body">
         <span class="prop-card-tag">Private Villa &middot; 4 Rooms</span>

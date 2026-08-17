@@ -126,6 +126,20 @@ function site_url(string $path = ''): string {
     return $base . ($path ? '/' . ltrim($path, '/') : '');
 }
 
+/**
+ * URL for a static asset (image, PDF, media file).
+ *
+ * Assets may move to a CDN / object store (e.g. S3 + CloudFront) at the
+ * AWS cutover. Set the ASSET_URL env var to that origin and every asset
+ * link follows — no code changes. Until then it defaults to the current
+ * production host where the /images tree lives, so links never break.
+ */
+function asset_url(string $path = ''): string {
+    $env  = parse_env();
+    $base = rtrim($env['ASSET_URL'] ?? 'https://tribalsand.com', '/');
+    return $base . ($path ? '/' . ltrim($path, '/') : '');
+}
+
 function setting(string $key, string $default = ''): string {
     $row = db_query(
         'SELECT setting_value FROM settings WHERE setting_key = :key',

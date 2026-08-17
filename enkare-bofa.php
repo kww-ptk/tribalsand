@@ -3,7 +3,7 @@
 $page_title   = 'Enkare Bofa · Beachfront Villa · Bofa Road Kilifi · Tribal Sand';
 $page_desc    = 'Enkare Bofa is a five-bedroom beachfront private villa on Kilifi\'s Bofa Road, Kenya. In-house cook, pool, beach access. Ideal for families and groups.';
 $page_url     = 'https://tribalsand.com/enkare-bofa.php';
-$page_image   = 'https://tribalsand.com/images/hero-enkare-bofa.jpg';
+$page_image   = asset_url('images/hero-enkare-bofa.jpg');
 $page_preload = 'images/hero-enkare-bofa.jpg';
 
 $faqs = [
@@ -20,7 +20,7 @@ $page_schema =
         'name'            => 'Enkare Bofa Villa',
         'description'     => 'Five-bedroom beachfront private villa on Kilifi\'s Bofa Road. In-house cook, pool, direct beach access. Sleeps up to 10 guests.',
         'url'             => 'https://tribalsand.com/enkare-bofa.php',
-        'image'           => ['https://tribalsand.com/images/hero-enkare-bofa.jpg'],
+        'image'           => [asset_url('images/hero-enkare-bofa.jpg')],
         'addressLocality' => 'Kilifi',
         'addressRegion'   => 'Kilifi County',
         'lat'             => -3.6340,

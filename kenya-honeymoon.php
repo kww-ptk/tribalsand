@@ -5,7 +5,7 @@ require_once 'includes/schema.php';
 $page_title  = 'Kenya Honeymoon · Romantic Beachfront Hotels & Villas · Tribal Sand';
 $page_desc   = 'Plan the perfect Kenya honeymoon. Private beachfront villas and boutique hotels on the Indian Ocean — My Amani, Maya Kobe, Zuri and more. Concierge-led, ultra-private, unforgettable.';
 $page_url    = 'https://tribalsand.com/kenya-honeymoon.php';
-$page_image  = 'https://tribalsand.com/images/Maya-Kobe-1-hero.webp';
+$page_image  = asset_url('images/Maya-Kobe-1-hero.webp');
 $page_preload = 'images/Maya-Kobe-1-hero.webp';
 
 /* ── FAQ data ── */

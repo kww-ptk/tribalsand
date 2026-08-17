@@ -4,7 +4,7 @@
 $page_title  = 'Tribal Dunes · Kilifi\'s Beachfront Community · Kenya · Tribal Sand';
 $page_desc   = 'Tribal Dunes is Kilifi\'s integrated beachfront community — boutique hotel, eco retreat, coworking, restaurant, café and kite school on one solar-powered property.';
 $page_url    = 'https://tribalsand.com/tribal-dunes.php';
-$page_image  = 'https://tribalsand.com/images/maya-kobe/Aerial/mayakobe-2.webp';
+$page_image  = asset_url('images/maya-kobe/Aerial/mayakobe-2.webp');
 $page_preload = 'images/maya-kobe/Aerial/mayakobe-2.webp';
 
 /* ═══ SCHEMA ═══ */
