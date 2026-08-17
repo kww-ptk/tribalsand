@@ -1,206 +1,99 @@
- <?php
-require 'vendor/autoload.php';
+<?php
+require_once __DIR__ . '/includes/db.php';
+require_once __DIR__ . '/includes/mail.php';
 
-use PHPMailer\PHPMailer\PHPMailer;
-use PHPMailer\PHPMailer\Exception;
-
-
-// Initialize response message
+/**
+ * Google Ads trip-enquiry landing form (server-side PRG).
+ * Routes through the app's mail pipeline (Resend → notify_email, default
+ * reservations@tribalsand.com) and records the lead in `submissions`, matching
+ * api/submit-contact.php. Replaces a legacy PHPMailer/Gmail-SMTP handler that
+ * required a non-repo vendor/ dir (white-screen fatal — a dead paid-ads landing
+ * page) with hardcoded credentials and a third-party recipient.
+ */
 $responseMessage = '';
-// Handle form submission
-if ($_SERVER["REQUEST_METHOD"] == "POST") {
- 
-    $fname = $_POST['fname'] ?? '';
-    $lname = $_POST['lname'] ?? '';
-    $email = $_POST['email'] ?? '';
-    $phone = $_POST['phone'] ?? '';
-    $location = $_POST['location'] ?? '';
-    $adate = $_POST['adate'] ?? '';
-    $ddate = $_POST['ddate'] ?? '';
-    $adults = $_POST['adults'] ?? '';
-    $children = $_POST['children'] ?? '';
-    $questions = $_POST['questions'] ?? '';
+$hide = 0;
+if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+    if (session_status() === PHP_SESSION_NONE) session_start();
 
-    $mail = new PHPMailer(true);
+    $fname    = trim($_POST['fname']     ?? '');
+    $lname    = trim($_POST['lname']     ?? '');
+    $email    = trim($_POST['email']     ?? '');
+    $phone    = trim($_POST['phone']     ?? '');
+    $location = trim($_POST['location']  ?? '');
+    $adate    = trim($_POST['adate']     ?? '');
+    $ddate    = trim($_POST['ddate']     ?? '');
+    $adults   = trim($_POST['adults']    ?? '');
+    $children = trim($_POST['children']  ?? '');
+    $questions= trim($_POST['questions'] ?? '');
+    $name     = trim("$fname $lname");
 
-    if (empty($fname) || empty($email) || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+    if (!empty($_POST['website'])) {                     // honeypot
+        $responseMessage = '<div style="color:green;">Thank you! Your message has been sent successfully.</div>';
+        $hide = 1;
+    } elseif ($fname === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         $responseMessage = '<div style="color:red;">Invalid form data. Please check your inputs.</div>';
     } else {
+        $tracking = $_SESSION['tracking'] ?? [];
+        $message = trim(
+            ($location ? "Location: $location\n" : '')
+            . ($adate    ? "Arrival: $adate\n"    : '')
+            . ($ddate    ? "Departure: $ddate\n"  : '')
+            . ($adults   ? "Adults: $adults\n"    : '')
+            . ($children ? "Children: $children\n": '')
+            . ($questions ? "\n$questions" : '')
+        );
         try {
- 
-            // Create PHPMailer instance
-            $mail = new PHPMailer(true);
+            db_query(
+                "INSERT INTO submissions
+                    (type, guest_name, guest_email, guest_phone, message, payload_json,
+                     source_page, referrer, utm_source, utm_medium, utm_campaign, utm_term, utm_content,
+                     user_agent, ip_address)
+                 VALUES
+                    ('enquiry', :name, :email, :phone, :message, :payload,
+                     :source_page, :referrer, :utm_source, :utm_medium, :utm_campaign, :utm_term, :utm_content,
+                     :user_agent, :ip)",
+                [
+                    ':name' => $name, ':email' => $email, ':phone' => $phone, ':message' => $message,
+                    ':payload' => json_encode([
+                        'form' => 'adwords', 'location' => $location,
+                        'check_in' => $adate, 'check_out' => $ddate,
+                        'adults' => $adults, 'children' => $children,
+                        'submitted_from' => $_SERVER['HTTP_REFERER'] ?? 'adwords.php',
+                    ]),
+                    ':source_page' => $tracking['source_page'] ?? 'adwords.php',
+                    ':referrer'    => $tracking['referrer']    ?? '',
+                    ':utm_source'  => $tracking['utm_source']  ?? '',
+                    ':utm_medium'  => $tracking['utm_medium']  ?? '',
+                    ':utm_campaign'=> $tracking['utm_campaign']?? '',
+                    ':utm_term'    => $tracking['utm_term']    ?? '',
+                    ':utm_content' => $tracking['utm_content'] ?? '',
+                    ':user_agent'  => $tracking['user_agent']  ?? '',
+                    ':ip'          => client_ip(),
+                ]
+            );
+            $id = (int)db()->lastInsertId();
 
-            // Server settings
-            $mail->isSMTP();
-            $mail->Host = 'smtp.gmail.com';
-            $mail->SMTPAuth = true;
-            $mail->Username = 'generic.tribalsand@gmail.com';
-            $mail->Password = 'cpozxrtucvldttmc';
-            $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
-            $mail->Port = 587;
+            send_notification([
+                'id' => $id, 'type' => 'enquiry',
+                'guest_name' => $name, 'guest_email' => $email, 'guest_phone' => $phone,
+                'message' => $message, 'check_in' => $adate, 'check_out' => $ddate,
+                'guests_adults' => $adults, 'guests_children' => $children,
+                'created_at' => date('Y-m-d H:i:s'),
+            ] + $tracking);
 
-            // Send email to admin
-            $mail->setFrom($email, $fname);
-            $mail->addAddress('san@sevamedcare.com');
-            $mail->addAddress('spandey@sevamedcare.com');
-            $mail->addAddress('jp@tribalsand.com');
-            $mail->addAddress('info@tribalsand.com');
-            $mail->addAddress('reservations@tribalsand.com');
-            
-            $mail->isHTML(true);
-            $mail->Subject = 'New Form Submission';
- 
-            $mail->Body    = "
-                <!DOCTYPE html>
-            <html>
-            <head>
-                <meta charset='utf-8'>
-                <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-                <title>New Form Submission</title>
-                <style>
-                    body {
-                        font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-                        line-height: 1.6;
-                        color: #333333;
-                        background-color: #f5f5f5;
-                        margin: 0;
-                        padding: 0;
-                    }
-                    .container {
-                        max-width: 600px;
-                        margin: 0 auto;
-                        padding: 20px;
-                    }
-                    .email-header {
-                        background-color: #4a6fa5;
-                        color: white;
-                        padding: 20px;
-                        text-align: center;
-                        border-top-left-radius: 6px;
-                        border-top-right-radius: 6px;
-                    }
-                    .email-header h2 {
-                        margin: 0;
-                        font-weight: 500;
-                    }
-                    .content {
-                        background-color: #ffffff;
-                        padding: 30px;
-                        border-bottom-left-radius: 6px;
-                        border-bottom-right-radius: 6px;
-                        box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-                    }
-                    .info-item {
-                        margin-bottom: 15px;
-                        padding-bottom: 15px;
-                        border-bottom: 1px solid #eeeeee;
-                    }
-                    .info-item:last-child {
-                        margin-bottom: 0;
-                        padding-bottom: 0;
-                        border-bottom: none;
-                    }
-                    .info-label {
-                        font-weight: 600;
-                        display: block;
-                        margin-bottom: 5px;
-                        color: #4a6fa5;
-                    }
-                    .info-value {
-                        display: block;
-                        font-size: 16px;
-                    }
-                    .footer {
-                        text-align: center;
-                        margin-top: 20px;
-                        font-size: 12px;
-                        color: #999999;
-                    }
-                    @media only screen and (max-width: 480px) {
-                        .container {
-                            width: 100%;
-                            padding: 10px;
-                        }
-                        .email-header {
-                            padding: 15px;
-                        }
-                        .content {
-                            padding: 20px;
-                        }
-                    }
-                </style>
-            </head>
-            <body>
-                <div class='container'>
-                    <div class='email-header'>
-                        <h2>New Form Submission</h2>
-                    </div>
-                    <div class='content'>
-                        <div class='info-item'>
-                            <span class='info-label'>First Name</span>
-                            <span class='info-value'>{$fname}</span>
-                        </div>
-                        <div class='info-item'>
-                            <span class='info-label'>Last Name</span>
-                            <span class='info-value'>{$lname}</span>
-                        </div>
-                        <div class='info-item'>
-                            <span class='info-label'>Email</span>
-                            <span class='info-value'>{$email}</span>
-                        </div>
-                        <div class='info-item'>
-                            <span class='info-label'>Phone</span>
-                            <span class='info-value'>" . htmlspecialchars($phone) . "</span>
-                        </div>
-                        <div class='info-item'>
-                            <span class='info-label'>Location</span>
-                            <span class='info-value'>{$location}</span>
-                        </div>
-                        <div class='info-item'>
-                            <span class='info-label'>Arrival Date</span>
-                            <span class='info-value'>{$adate}</span>
-                        </div>
+            send_guest_acknowledgement([
+                'kind' => 'enquiry', 'guest_name' => $name ?: $fname, 'guest_email' => $email,
+                'check_in' => $adate, 'check_out' => $ddate, 'message' => $message,
+            ]);
 
-                        <div class='info-item'>
-                            <span class='info-label'>Departure Date</span>
-                            <span class='info-value'>{$ddate}</span>
-                        </div>
-
-                        <div class='info-item'>
-                            <span class='info-label'>Adults</span>
-                            <span class='info-value'>{$adults}</span>
-                        </div>
-
-                        <div class='info-item'>
-                            <span class='info-label'>Children</span>
-                            <span class='info-value'>{$children}</span>
-                        </div>
-
-                        <div class='info-item'>
-                            <span class='info-label'>Message / Questions</span>
-                            <span class='info-value'>{$questions}</span>
-                        </div>
-
-                    </div>
-                    <div class='footer'></br>
-                    NOTE :  This is an automated notification from adwords. Please do not reply to this email.
-                    </div>
-                </div>
-            </body>
-            </html>
-            ";
-                    // echo"<pre>";
-                    // print_r($mail->Body);
-                    // exit;
-                    $mail->send();
-                    $responseMessage = '<div style="color:green;">Thank you! Your message has been sent successfully.</div>';
-                    $hide = 1;
-                } catch (Exception $e) {
-                    $responseMessage = '<div style="color:red;">Mailer Error: ' . $mail->ErrorInfo . '</div>';
-                }
-            }
+            $responseMessage = '<div style="color:green;">Thank you! Your message has been sent successfully.</div>';
+            $hide = 1;
+        } catch (Throwable $e) {
+            log_mail_error('adwords.php enquiry failed: ' . $e->getMessage());
+            $responseMessage = '<div style="color:red;">Sorry, something went wrong. Please email reservations@tribalsand.com.</div>';
         }
+    }
+}
 
 ?>
 
