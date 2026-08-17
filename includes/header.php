@@ -252,10 +252,6 @@
         </div>
         <div class="ts-drop-col">
           <span class="ts-drop-lbl">Tribal Dunes · Kilifi</span>
-          <a href="maya-kobe.php" class="ts-prop-row">
-            <img src="<?= asset_url('images/Maya-Kobe-1-hero.webp') ?>" alt="Maya Kobe">
-            <div><div class="ts-prop-name">Maya Kobe</div><div class="ts-prop-loc">Boutique Hotel</div></div>
-          </a>
           <a href="maya_ilai.php" class="ts-prop-row">
             <img src="<?= asset_url('images/maya_illai/Best1.jpg') ?>" alt="Maya Ilai">
             <div><div class="ts-prop-name">Maya Ilai</div><div class="ts-prop-loc">Eco Compound</div></div>
@@ -399,7 +395,6 @@
     <span class="ts-mob-lbl">Boutique Hotels</span>
     <a href="zuri.php" class="ts-mob-prop"><img src="<?= asset_url('images/zuri/Aerial/zuri-3.webp') ?>" alt="Zuri"><div><div class="ts-mob-prop-name">Zuri</div><div class="ts-mob-prop-loc">Watamu · 6 Suites</div></div></a>
     <a href="maya-kobe.php" class="ts-mob-prop"><img src="<?= asset_url('images/Maya-Kobe-1-hero.webp') ?>" alt="Maya Kobe"><div><div class="ts-mob-prop-name">Maya Kobe</div><div class="ts-mob-prop-loc">Kilifi · 5 Suites</div></div></a>
-    <a href="maya_ilai.php" class="ts-mob-prop"><img src="<?= asset_url('images/maya_illai/Best1.jpg') ?>" alt="Maya Ilai"><div><div class="ts-mob-prop-name">Maya Ilai</div><div class="ts-mob-prop-loc">Kilifi · 16 Units</div></div></a>
   </div>
 
   <div>
@@ -407,6 +402,12 @@
     <a href="my-amani.php" class="ts-mob-prop"><img src="<?= asset_url('images/my-amani/Aerial/myamani-11.webp') ?>" alt="My Amani"><div><div class="ts-mob-prop-name">My Amani</div><div class="ts-mob-prop-loc">Vipingo · 5 Rooms</div></div></a>
     <a href="enkare-bofa.php" class="ts-mob-prop"><img src="<?= asset_url('images/enkare-bofa/Outdoors/IMG-20251117-WA0032.jpg') ?>" alt="Enkare Bofa"><div><div class="ts-mob-prop-name">Enkare Bofa</div><div class="ts-mob-prop-loc">Kilifi · 5 Rooms</div></div></a>
     <a href="sandbox.php" class="ts-mob-prop"><img src="<?= asset_url('images/Sandbox/outdoors/IMG-20251117-WA0091.jpg') ?>" alt="Sandbox"><div><div class="ts-mob-prop-name">Sandbox</div><div class="ts-mob-prop-loc">Kilifi · 4 Rooms</div></div></a>
+  </div>
+
+  <div>
+    <span class="ts-mob-lbl">Tribal Dunes</span>
+    <a href="maya_ilai.php" class="ts-mob-prop"><img src="<?= asset_url('images/maya_illai/Best1.jpg') ?>" alt="Maya Ilai"><div><div class="ts-mob-prop-name">Maya Ilai</div><div class="ts-mob-prop-loc">Kilifi · Eco Compound</div></div></a>
+    <a href="off-duty.php" class="ts-mob-prop"><img src="<?= asset_url('images/maya_illai/Studios/Studio1.jpeg') ?>" alt="Off Duty"><div><div class="ts-mob-prop-name">Off Duty</div><div class="ts-mob-prop-loc">Kilifi · Coworking Hotel</div></div></a>
   </div>
 
   <div class="ts-mob-div"></div>
