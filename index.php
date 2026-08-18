@@ -62,8 +62,23 @@ include 'includes/head.php';
    instead of pushing them down. Carries the top gap so its box == the bar's box. */
 .hero-search-wrap { position:relative; width:100%; max-width:860px; margin:2rem auto 0; }
 .hero-search { margin-top:0; display:flex; align-items:stretch; gap:0; background:rgba(255,255,255,.96); border-radius:6px; box-shadow:0 18px 50px rgba(10,30,40,.35); padding:.5rem; width:100%; max-width:860px; }
-/* Step 2 floats directly under the bar — absolute so siblings don't reflow. */
-.hero-search-wrap .savail-inline { position:absolute; top:calc(100% + .55rem); left:0; right:0; width:auto; max-width:none; margin:0; z-index:40; }
+/* Step 2 REPLACES the search bar in place (Step 1 is hidden while it's open),
+   so it sits centred in the hero on every screen — no off-screen drop on mobile. */
+.hero.is-step2 .hero-search { display:none; }
+.hero-search-wrap .savail-inline { position:relative; margin:0 auto; width:100%; max-width:560px; z-index:40; }
+/* Compact panel for the hero — a touch smaller than the standalone lead form. */
+.hero-search-wrap .savail-inline__panel { padding:14px 20px 16px; }
+.hero-search-wrap .savail-inline__title { font-size:1.2rem; margin:4px 0 3px; }
+.hero-search-wrap .savail-inline__sub { font-size:.82rem; margin-bottom:12px; }
+.hero-search-wrap .savail-fields { gap:9px; }
+.hero-search-wrap .savail-field input { padding:9px 12px; font-size:14px; }
+.hero-search-wrap .savail-actions { margin-top:12px; }
+.hero-search-wrap .savail-submit { padding:11px 16px; }
+.hero-search-wrap .savail-note { margin-top:10px; }
+/* Back button — top-left, returns to Step 1 */
+.savail-inline__back { display:inline-flex; align-items:center; gap:3px; margin:0 0 6px -6px; background:none; border:0; padding:4px 6px; font-family:'Jost',sans-serif; font-size:13px; font-weight:600; letter-spacing:.01em; color:var(--sand,#6B6050); cursor:pointer; border-radius:6px; transition:color .15s, background .15s; }
+.savail-inline__back:hover { color:var(--dark,#141412); background:rgba(0,0,0,.045); }
+.savail-inline__back svg { flex-shrink:0; }
 .hero-search__field { flex:1; display:flex; flex-direction:column; justify-content:center; padding:.55rem 1.1rem; text-align:left; position:relative; min-width:0; }
 .hero-search__field--guests { flex:1.1; }
 .hero-search__lbl { font-size:.62rem; letter-spacing:.16em; text-transform:uppercase; color:var(--sand); font-weight:600; margin-bottom:.25rem; }
@@ -104,6 +119,14 @@ include 'includes/head.php';
   .hero-guests-pop { right:0; left:auto; }
   .hero-trust__sep { display:none; }
   .hero-trust { gap:.5rem 1.2rem; }
+  /* Step 2 open on mobile: focus the form — hide the hero copy above/below and
+     centre the panel so the whole contact step fits on screen (no scroll). */
+  .hero.is-step2 .hero-eyebrow,
+  .hero.is-step2 .hero-h1,
+  .hero.is-step2 .hero-sub,
+  .hero.is-step2 .hero-search-note,
+  .hero.is-step2 .hero-trust { display:none; }
+  .hero.is-step2 .hero-inner { justify-content:center; }
 }
 /* Dot indicators */
 .hero-indicators { position:absolute; bottom:3.2rem; left:50%; transform:translateX(-50%); display:flex; gap:.55rem; z-index:3; }
@@ -370,10 +393,13 @@ include 'includes/head.php';
       </button>
     </form>
 
-    <!-- Step 2 of the search — contact capture, floats under the bar (overlays note/trust, no reflow) -->
+    <!-- Step 2 of the search — contact capture. Replaces the search bar in place; Back returns to Step 1. -->
     <div class="savail-inline" id="savailModal" hidden>
       <div class="savail-inline__panel" role="group" aria-labelledby="savailTitle">
-        <button type="button" class="savail-inline__x" data-savail-close aria-label="Close">&times;</button>
+        <button type="button" class="savail-inline__back" data-savail-close aria-label="Back to search">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+          <span>Back</span>
+        </button>
         <div class="savail-inline__eyebrow">Step 2 of 2</div>
         <h2 class="savail-inline__title" id="savailTitle">Where should we send your availability?</h2>
         <p class="savail-inline__sub" id="savailSummary"></p>
@@ -1032,15 +1058,21 @@ include 'includes/head.php';
       ' · ' + nights + ' night' + (nights !== 1 ? 's' : '') +
       ' · ' + s.adults + ' adult' + (s.adults !== 1 ? 's' : '') +
       (s.children ? ', ' + s.children + ' child' + (s.children !== 1 ? 'ren' : '') : '');
-    // Floating expansion under the bar — overlays the note/trust, no layout shift.
+    // Step 2 replaces Step 1 in place: hide the search bar, show the contact panel.
+    var hero = document.querySelector('.hero');
+    if (hero) hero.classList.add('is-step2');
     modal.hidden = false;
-    var n = leadForm.querySelector('input[name=name]'); if (n) n.focus();
+    var n = leadForm.querySelector('input[name=name]'); if (n) n.focus({ preventScroll: true });
   }
-  function closeLeadModal(){ if (modal){ modal.hidden = true; } }
+  function closeLeadModal(){
+    if (modal) modal.hidden = true;
+    var hero = document.querySelector('.hero');
+    if (hero) hero.classList.remove('is-step2'); // Back → restore Step 1 search bar
+  }
 
   if (modal && leadForm){
     modal.addEventListener('click', function(e){
-      if (e.target.hasAttribute('data-savail-close')){ e.preventDefault(); closeLeadModal(); }
+      if (e.target.closest('[data-savail-close]')){ e.preventDefault(); closeLeadModal(); }
     });
     document.addEventListener('keydown', function(e){ if (e.key === 'Escape' && !modal.hidden) closeLeadModal(); });
 
