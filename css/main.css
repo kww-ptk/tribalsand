@@ -1236,10 +1236,12 @@ p {
 }
 
 /* ── Availability search — Step 2 lead-capture, inline under the hero bar ── */
-.savail-inline{max-width:860px;width:100%;margin:.55rem auto 0;animation:savailDown .34s cubic-bezier(.22,1,.36,1) both}
+.savail-inline{position:relative;z-index:30;max-width:860px;width:100%;margin:.55rem auto 0;animation:savailDown .34s cubic-bezier(.22,1,.36,1) both}
 .savail-inline[hidden]{display:none}
 @keyframes savailDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
-.savail-inline__panel{position:relative;background:rgba(255,255,255,.97);border-radius:6px;box-shadow:0 18px 50px rgba(10,30,40,.35);padding:20px 24px 18px;text-align:left}
+/* Solid white, opaque — the panel floats over the section below (it overflows the
+   fixed-height hero), so any translucency lets that content bleed through. */
+.savail-inline__panel{position:relative;background:#fff;border-radius:6px;box-shadow:0 18px 50px rgba(10,30,40,.35);padding:20px 24px 18px;text-align:left}
 .savail-inline__x{position:absolute;top:10px;right:12px;background:none;border:0;font-size:24px;line-height:1;color:#9aa39a;cursor:pointer;padding:2px 6px}
 .savail-inline__x:hover{color:#333}
 .savail-inline__eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#B8965A;font-weight:600}
@@ -1255,7 +1257,7 @@ p {
 .savail-hp{position:absolute!important;left:-9999px;width:1px;height:1px;opacity:0}
 .savail-err{background:#fbe6e6;border:1px solid #f0c2c2;color:#a12;border-radius:8px;padding:9px 12px;font-size:13.5px;margin:0 0 12px}
 .savail-err[hidden]{display:none}
-.savail-actions{display:flex;align-items:center;gap:12px;margin-top:4px}
+.savail-actions{display:flex;align-items:center;gap:12px;margin-top:16px}
 .savail-back{background:none;border:0;color:#6B6050;font-family:inherit;font-size:14px;cursor:pointer;padding:8px 4px}
 .savail-back:hover{color:#141412}
 .savail-submit{flex:1;background:#102F3A;color:#fff;border:0;border-radius:9px;padding:13px 18px;font-family:inherit;font-size:14px;font-weight:600;letter-spacing:.04em;cursor:pointer;transition:background .2s}

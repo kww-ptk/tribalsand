@@ -9,6 +9,35 @@ require_once __DIR__ . '/db.php'; // asset_url()/site_url() available to pages t
  */
 
 /**
+ * TripAdvisor listing URL — SINGLE SOURCE OF TRUTH.
+ *
+ * Once the listing is approved at tripadvisor.com/GetListedNew, paste the
+ * canonical listing URL between the quotes below (NOT a search URL) and every
+ * consumer updates at once: the JSON-LD `sameAs` on Organization + LocalBusiness
+ * (via ts_sameas()) and all three homepage badges (via ts_tripadvisor_badge_url()).
+ * Leave empty until approved.
+ */
+function ts_tripadvisor_url(): string {
+    return ''; // e.g. 'https://www.tripadvisor.com/Hotel_Review-gXXXXXX-dXXXXXXX-Reviews-Tribal_Sand-Kilifi.html'
+}
+
+/**
+ * Badge link target. Uses the real listing once approved; until then a search
+ * link so the homepage badges still lead somewhere sensible. (Schema `sameAs`
+ * must be the canonical entity URL, so it stays empty until approved — never a search.)
+ */
+function ts_tripadvisor_badge_url(): string {
+    return ts_tripadvisor_url() ?: 'https://www.tripadvisor.com/Search?q=Tribal+Sand+Kenya';
+}
+
+/** Append the TripAdvisor listing URL to a social sameAs[] list, only once approved. */
+function ts_sameas(array $base): array {
+    $ta = ts_tripadvisor_url();
+    if ($ta !== '') { $base[] = $ta; }
+    return $base;
+}
+
+/**
  * Organization schema — use on every page alongside page-specific schema.
  */
 function ts_schema_org(): string {
@@ -27,13 +56,11 @@ function ts_schema_org(): string {
             'addressRegion'   => 'Kilifi County',
             'addressCountry'  => 'KE',
         ],
-        'sameAs' => [
+        'sameAs' => ts_sameas([
             'https://www.instagram.com/tribalsand/',
             'https://www.facebook.com/tribalsand/',
             'https://www.youtube.com/@tribalsand7436',
-            // TODO: replace with real TripAdvisor listing URL once approved at tripadvisor.com/GetListedNew
-            // 'https://www.tripadvisor.com/Hotel_Review-gXXXXXX-dXXXXXXX-Reviews-Tribal_Sand-Kilifi.html',
-        ],
+        ]), // TripAdvisor added automatically once ts_tripadvisor_url() is set
         'contactPoint' => [
             '@type'             => 'ContactPoint',
             'telephone'         => '+254-115-115-247',
@@ -173,12 +200,10 @@ function ts_schema_local_business(): string {
                 'closes'    => '20:00',
             ],
         ],
-        'sameAs' => [
+        'sameAs' => ts_sameas([
             'https://www.instagram.com/tribalsand/',
             'https://www.facebook.com/tribalsand/',
-            // TODO: add TripAdvisor URL once listing is approved
-            // 'https://www.tripadvisor.com/Hotel_Review-gXXXXXX-dXXXXXXX-Reviews-Tribal_Sand-Kilifi.html',
-        ],
+        ]), // TripAdvisor added automatically once ts_tripadvisor_url() is set
     ];
     return '<script type="application/ld+json">' . json_encode($schema, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT) . '</script>' . "\n";
 }

@@ -42,7 +42,11 @@ include 'includes/head.php';
 /* Overlay */
 .hero-overlay { position:absolute; inset:0; z-index:1; background:linear-gradient(to bottom,rgba(10,30,40,.38) 0%,rgba(10,30,40,.52) 55%,rgba(10,30,40,.84) 100%); pointer-events:none; }
 /* Inner */
-.hero-inner { position:relative; z-index:2; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; padding-top:68px; padding-bottom:5vh; text-align:center; padding-left:20px; padding-right:20px; }
+/* z-index 4 keeps the whole inner (incl. the expanded Step-2 panel) ABOVE the hero
+   decorations (indicators/progress/prop are z-index:3) so they can't overlay the
+   panel. They're all non-interactive and the inner is transparent, so they still
+   show normally — only the opaque panel covers them when Step 2 is open. */
+.hero-inner { position:relative; z-index:4; height:100%; display:flex; flex-direction:column; align-items:center; justify-content:center; padding-top:68px; padding-bottom:5vh; text-align:center; padding-left:20px; padding-right:20px; }
 /* Text animations */
 .hero-eyebrow { animation:heroUp .6s cubic-bezier(.22,1,.36,1) .1s both; letter-spacing:.2em; }
 .hero-eyebrow .sep { color:rgba(184,150,90,.5); margin:0 .5em; font-weight:400; }
@@ -54,7 +58,12 @@ include 'includes/head.php';
 @keyframes heroUp { from{opacity:0;transform:translateY(24px);} to{opacity:1;transform:translateY(0);} }
 
 /* ── HERO SEARCH BAR ── */
-.hero-search { margin-top:2rem; display:flex; align-items:stretch; gap:0; background:rgba(255,255,255,.96); border-radius:6px; box-shadow:0 18px 50px rgba(10,30,40,.35); padding:.5rem; width:100%; max-width:860px; }
+/* Wrap anchors the floating Step-2 panel so it overlays the note/trust below
+   instead of pushing them down. Carries the top gap so its box == the bar's box. */
+.hero-search-wrap { position:relative; width:100%; max-width:860px; margin:2rem auto 0; }
+.hero-search { margin-top:0; display:flex; align-items:stretch; gap:0; background:rgba(255,255,255,.96); border-radius:6px; box-shadow:0 18px 50px rgba(10,30,40,.35); padding:.5rem; width:100%; max-width:860px; }
+/* Step 2 floats directly under the bar — absolute so siblings don't reflow. */
+.hero-search-wrap .savail-inline { position:absolute; top:calc(100% + .55rem); left:0; right:0; width:auto; max-width:none; margin:0; z-index:40; }
 .hero-search__field { flex:1; display:flex; flex-direction:column; justify-content:center; padding:.55rem 1.1rem; text-align:left; position:relative; min-width:0; }
 .hero-search__field--guests { flex:1.1; }
 .hero-search__lbl { font-size:.62rem; letter-spacing:.16em; text-transform:uppercase; color:var(--sand); font-weight:600; margin-bottom:.25rem; }
@@ -314,6 +323,7 @@ include 'includes/head.php';
     <p class="hero-sub">Boutique hotels, private villas, lifestyle venues and unique experiences on the Kenyan coast, Africa.</p>
 
     <!-- Booking search bar -->
+    <div class="hero-search-wrap">
     <form class="hero-search" id="heroSearch" aria-label="Search availability">
       <div class="hero-search__field">
         <label class="hero-search__lbl">Check-in</label>
@@ -360,7 +370,7 @@ include 'includes/head.php';
       </button>
     </form>
 
-    <!-- Step 2 of the search — contact capture, expands inline right under the bar -->
+    <!-- Step 2 of the search — contact capture, floats under the bar (overlays note/trust, no reflow) -->
     <div class="savail-inline" id="savailModal" hidden>
       <div class="savail-inline__panel" role="group" aria-labelledby="savailTitle">
         <button type="button" class="savail-inline__x" data-savail-close aria-label="Close">&times;</button>
@@ -376,13 +386,13 @@ include 'includes/head.php';
           </div>
           <p class="savail-err" id="savailErr" hidden></p>
           <div class="savail-actions">
-            <button type="button" class="savail-back" data-savail-close>&larr; Back</button>
             <button type="submit" class="savail-submit">Check Availability</button>
           </div>
           <p class="savail-note">🔒 We'll only use this to help with your stay. No spam.</p>
         </form>
       </div>
     </div>
+    </div><!-- /.hero-search-wrap -->
 
     <div class="hero-search-note">No payment now &nbsp;·&nbsp; Free 24-hour hold &nbsp;·&nbsp; Reply within 24h &nbsp;·&nbsp; <a href="enquire.php">Send an enquiry &rarr;</a> &nbsp;·&nbsp; <a href="trip-builder.php">Plan your trip &rarr;</a></div>
 
@@ -433,7 +443,7 @@ include 'includes/head.php';
 
 <!-- ═══ TRIPADVISOR BADGE ═══ -->
 <div style="display:flex;justify-content:center;padding:.75rem 5vw;background:var(--off);border-bottom:1px solid var(--border);">
-  <a href="https://www.tripadvisor.com/Search?q=Tribal+Sand+Kenya" target="_blank" rel="noopener" aria-label="Tribal Sand on TripAdvisor">
+  <a href="<?= e(ts_tripadvisor_badge_url()) ?>" target="_blank" rel="noopener" aria-label="Tribal Sand on TripAdvisor">
     <img src="/images/tripadvisor.jpg" alt="TripAdvisor Travellers' Choice" style="height:52px;width:auto;object-fit:contain;display:block;">
   </a>
 </div>
@@ -808,7 +818,7 @@ include 'includes/head.php';
     <div class="eyebrow">Guest Reviews</div>
     <h2 class="sec-h" id="reviews-heading">What Our <em>Guests Say</em></h2>
     <div class="sec-rule" style="margin:0 auto 1rem;"></div>
-    <a href="https://www.tripadvisor.com/Search?q=Tribal+Sand+Kenya" target="_blank" rel="noopener" aria-label="See our TripAdvisor reviews" style="display:inline-block;">
+    <a href="<?= e(ts_tripadvisor_badge_url()) ?>" target="_blank" rel="noopener" aria-label="See our TripAdvisor reviews" style="display:inline-block;">
       <img src="/images/tripadvisor.jpg" alt="TripAdvisor Travellers' Choice" style="height:38px;width:auto;object-fit:contain;vertical-align:middle;">
     </a>
   </div>
@@ -877,9 +887,9 @@ include 'includes/head.php';
     </div>
   </div>
   <div class="trust-divider"></div>
-  <!-- TripAdvisor badge — update href once listing is approved at tripadvisor.com/GetListedNew -->
+  <!-- TripAdvisor badge — links auto-update once ts_tripadvisor_url() is set in includes/schema.php (approve at tripadvisor.com/GetListedNew) -->
   <div class="trust-item trust-item--ta">
-    <a href="https://www.tripadvisor.com/Search?q=Tribal+Sand+Kenya" target="_blank" rel="noopener" aria-label="Tribal Sand on TripAdvisor">
+    <a href="<?= e(ts_tripadvisor_badge_url()) ?>" target="_blank" rel="noopener" aria-label="Tribal Sand on TripAdvisor">
       <img src="/images/tripadvisor.jpg" alt="TripAdvisor Travellers' Choice" class="trust-item__ta-badge">
     </a>
   </div>
@@ -1022,9 +1032,8 @@ include 'includes/head.php';
       ' · ' + nights + ' night' + (nights !== 1 ? 's' : '') +
       ' · ' + s.adults + ' adult' + (s.adults !== 1 ? 's' : '') +
       (s.children ? ', ' + s.children + ' child' + (s.children !== 1 ? 'ren' : '') : '');
-    // Inline expansion under the bar — no overlay, no scroll-lock.
+    // Floating expansion under the bar — overlays the note/trust, no layout shift.
     modal.hidden = false;
-    try { modal.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch(_){}
     var n = leadForm.querySelector('input[name=name]'); if (n) n.focus();
   }
   function closeLeadModal(){ if (modal){ modal.hidden = true; } }

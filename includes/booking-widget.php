@@ -3,7 +3,7 @@
  * Tribal Sand booking widget.
  *
  * Usage on a property/room page (before including this file):
- *   $booking_slug = 'maya-kobe-cottages';   // must match a rooms.slug
+ *   $booking_slug = 'maya-kobe-prestige';   // must match a rooms.slug
  *   include __DIR__ . '/includes/booking-widget.php';
  *
  * Form mode is read from the room record (rooms.form_mode):

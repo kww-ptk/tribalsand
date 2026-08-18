@@ -393,14 +393,30 @@ body-swap on list pages.
   workspace/data-table layers). All 19 sidebar targets verified to emit a clean
   fragment; full render byte-identical without `?shell=1`. Interactive
   (logged-in) confirmation still pending.
-- **Stage 2 — in-content action forms (NEXT, the risky slice).** Generalise the
-  workspace's fetch-submit → follow-PRG → swap → toast so Settings/Rooms/Staff/
-  Services/Conflicts-resolve saves don't full-reload. Must coexist with the
-  styled-confirm path + the double-submit guard + file-upload forms, and keep the
-  no-JS fallback. Roll out page-by-page behind an opt-in marker.
-- **Stage 3 — in-content links + real skeletons on list swaps.** Extend shell
-  interception to safe in-content `/admin/` links (row "View", back links), and
-  retire `admin-table.js`'s opacity fade for the `data-skeleton` templates.
+- **Stage 2 — in-content action forms. ✅ MECHANISM BUILT + enabled on Settings
+  (opt-in).** `admin-nav.js` gained `shellSubmit`: any POST form marked
+  `[data-shell-form]` inside `.admin-content` submits via fetch → follows the PRG /
+  inline re-render → swaps `.admin-content` from the response → toasts the flash
+  (and strips the now-redundant inline banner). Bound in the **capture phase** on
+  document so it precedes the bubble-phase site-wide double-submit guard +
+  styled-confirm listeners in `_layout_end.php` (both early-return on
+  `e.defaultPrevented`, so no collision). Reuses the workspace submit's exact
+  post-commit safety (rejection handler as the 2nd `.then` arg = fetch-failure only
+  → safe native resubmit; try/catch around rendering → full-nav, never resubmit) +
+  its own in-flight guard (double-click safe). No-JS fallback intact (plain POST).
+  **Enabled on `admin/settings.php`'s two save forms** (`save_general`,
+  `change_password`); the CSV-export form is deliberately left as a full submit
+  (it streams a download). Rollout to Rooms/Staff/Services/Conflicts = add
+  `data-shell-form` to each PRG save form (never to file-download/streaming forms).
+  ⚠️ **Interactive logged-in confirmation still pending** (no local admin login /
+  prod DB) — see the test steps handed to the owner.
+- **Stage 3 — in-content links + real skeletons on list swaps. ◐ PARTIAL.** The
+  shell click interception now also catches opt-in in-content links
+  (`a[data-shell-link]`, `/admin/` GET) → `shellNavigate`, so pages can bring row
+  "View" / back links into the shell page-by-page (mechanism live, dormant until a
+  link opts in). **Deferred:** retiring `admin-table.js`'s opacity fade for
+  `data-skeleton` templates — that touches the list-swap owner and the plan warns
+  against double-binding it; left for a pass that can be interactively verified.
 
 ---
 

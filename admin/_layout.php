@@ -84,9 +84,12 @@ if ($__shellFrag) { ob_start(); return; }
       $__chev = '<svg class="navgroup__chev" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
       $__navgroup = function (string $key, string $title, string $items) use ($__chev) {
           if (trim($items) === '') return;
-          // Only Operations is open by default; every other group starts closed.
-          // (A user can expand/collapse; a collapse of Operations is remembered.)
-          $open = ($key === 'operations') ? ' open' : '';
+          // Open a group by default when (a) it's Operations, or (b) it contains the
+          // active page's link — so the current page's section is never collapsed out
+          // of view on a full load. (A user can still expand/collapse; a collapse is
+          // remembered, but the active group is always re-opened — see the script below.)
+          $__hasActive = strpos($items, 'is-active') !== false;
+          $open = ($key === 'operations' || $__hasActive) ? ' open' : '';
           echo '<details class="navgroup" data-group="' . e($key) . '"' . $open . '>'
              . '<summary class="navgroup__head"><span>' . e($title) . '</span>' . $__chev . '</summary>'
              . '<div class="navgroup__items">' . $items . '</div>'
@@ -211,10 +214,13 @@ if ($__shellFrag) { ob_start(); return; }
     (function () {
       var KEY = 'ts_nav_v2', saved = {};   // v2: discards the old always-restore state
       try { saved = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) {}
-      // Default (server-rendered): only Operations open, others closed. On load we
-      // honor a remembered COLLAPSE only — expanding another group never persists,
-      // so every group but Operations is closed by default on a fresh load.
+      // Default (server-rendered): Operations + the active page's group open, others
+      // closed. On load we honor a remembered COLLAPSE only — EXCEPT for the group
+      // that holds the active page, which is always kept open so the current page is
+      // never hidden inside a collapsed section (that was the "open Settings → its
+      // dropdown closes" bug). Expanding another group never persists.
       document.querySelectorAll('.navgroup[data-group]').forEach(function (g) {
+        if (g.querySelector('.sidebar__link.is-active')) { g.open = true; return; }
         if (saved[g.getAttribute('data-group')] === true) g.open = false;
       });
       document.addEventListener('toggle', function (e) {

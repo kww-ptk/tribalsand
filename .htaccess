@@ -17,6 +17,15 @@ RedirectMatch 404 (?i)/(\.git|logs|docs|deploy|db)(/|$)
 RewriteRule ^sitemap\.xml$ sitemap.php [L]
 # ----------------------------------------------------------------------------
 
+# --- Legacy cutover redirects (non-.php paths) ------------------------------
+# Old-site ranked URLs with NO file on the new site. Page-slug legacy URLs are
+# handled by per-file 301 stubs (they resolve via strip-.php); only paths that
+# can't be a .php stub live here. Single 301 → closest live page (never home).
+# Placed BEFORE the image/asset proxy so the PDF resolves to its 301, not a proxy.
+# Old inventory diffed in docs/redirects-map.csv. Keep both in sync.
+RewriteRule ^content/Watamu-Kenya-COMETA-2025\.pdf$ /watamu [R=301,L]
+# ----------------------------------------------------------------------------
+
 # Serve POST/PUT/PATCH/DELETE to a .php URL DIRECTLY — never redirect. A 301 on a
 # form submission makes the browser re-issue it as GET and DROP the body (the CSRF
 # token + all fields), silently breaking every save/submit (guest check-in, admin,

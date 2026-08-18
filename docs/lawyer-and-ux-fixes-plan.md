@@ -1,7 +1,8 @@
 # Fix Plan — Legal-integrity + UX tasks (Aug 2026)
 
-Status: **PLAN ONLY — nothing implemented yet.** Audited against current code before writing.
-Owner: dev. Prepared for review before we start.
+Status: **A, B, D, C implemented.** (A+B+D: commit `80f0e79`. C: this pass — see below.)
+Remaining: only the at-cutover re-crawl of C, plus the §5 backlog.
+Owner: dev. Audited against current code before writing.
 
 ---
 
@@ -123,6 +124,20 @@ The current live site (tribalsand.com, Namecheap brochure) has an indexed URL st
 ### Deliverable
 A `redirects-map.csv` (old URL → new URL → status) + the `.htaccess` additions, checked against a re-crawl before flipping DNS.
 
+### ✅ Implemented (this pass)
+The blocker resolved itself: the old-site inventory was already in the repo as **`sitemap-tribalsand.xml`** (Namecheap brochure, lastmod 2025-03-19, 43 indexed URLs). Diffed against the new routes (`sitemap.php` core list + `includes/articles.php` manifest):
+
+- **35 of 43 resolve natively (200)** — same clean URL is served by a `.php` page via `.htaccess` strip-`.php`. No redirect, no equity loss.
+- **8 need a 301**, all single-hop to the closest live page (never home):
+  - `/cultural-immersion-…` → `/exploring-the-local-markets-of-kilifi-…` (new `.php` stub — closest surviving cultural article).
+  - `/the-kuruwitu-conservancy`, `/the-kitesurfing`, `/the-skydiving`, `/the-dolphin-safari`, `/the-deep-sea-fishing` → `/activities` (new `.php` stubs — retired orphaned old-design brochure pages; content preserved in git history). `tribal-dunes.php`'s "kite school" link repointed to `/activities`.
+  - `/content/Watamu-Kenya-COMETA-2025.pdf` → `/watamu` (`.htaccess` RewriteRule + `router.php` mirror — non-`.php` path).
+  - `/my-amani-voted-…` → `/my-amani` (pre-existing stub).
+- **De-chained all 14 pre-existing stubs**: targets changed from `/x.php` to `/x` so each is a *single* 301 (previously `/old` → `/x.php` → `/x` was a 2-hop chain via the strip-`.php` rule).
+- **Deliverable:** `docs/redirects-map.csv` (full 43-row diff). Verified locally via `router.php`: every old URL returns 200 or 301, every 301 is single-hop → 200, no chains/loops.
+
+**Remaining (at cutover):** re-crawl the live domain after DNS flip to confirm no new indexed URLs appeared since the 2025-03-19 sitemap; leave MX + `book.` records untouched.
+
 ---
 
 ## D. Homepage search bar — make step 2 inline (not a popup)
@@ -155,10 +170,10 @@ Step 2 should feel like a **seamless continuation of the search bar**, not a pop
 
 ### 🟡 Go-live cutover (AWS-GOLIVE-PLAN.md)
 4. AWS stack migration (App Runner + RDS + S3 + SES + CloudFront/Route53); storage/mail drivers already support it; includes rewriting stored image URLs R2→CloudFront.
-5. `render.yaml` still lists `HCAPTCHA_*` — reconcile to `TURNSTILE_*`.
+5. ✅ **DONE (already clean).** `render.yaml` already uses `TURNSTILE_SITE_KEY`/`TURNSTILE_SECRET_KEY`; no `HCAPTCHA_*` anywhere in the repo. Nothing to reconcile.
 6. Submit new sitemap to Search Console after deploy (ties into C).
 
 ### 🟢 Content / functionality
-7. Legacy standalone per-room pages (`my-amani-*-single/twin`, `maya-kobe-main-house.php`, `maya-kobe-cottages.php`) render **blank booking widgets** (slugs don't exist in DB). Linked from maya-kobe.php, reservation.php, adwords.php.
-8. Admin redesign #18 Stages 2 & 3 (in-content forms, link swaps, real skeletons) + the interactive logged-in browser check for the shell.
-9. TripAdvisor listing + swap real URL into schema `sameAs` once approved.
+7. ✅ **DONE.** The `my-amani-*-single/twin` pages were already 301 stubs → `/my-amani` (de-chained in the C pass). `maya-kobe-main-house.php` + `maya-kobe-cottages.php` were old-design orphans with a defunct booking slug (blank widget) — retired to 301 stubs → `/maya-kobe` this pass. The `reservation.php`/`adwords.php` references are `<select>` option *values*, not page links, so they're unaffected. Fixed a dead-slug example in `includes/booking-widget.php`'s doc comment. Content preserved in git history.
+8. Admin redesign #18 — **Stage 2 built + enabled on Settings; Stage 3 link mechanism added (this pass).** See `redesign-plan.md` §18 stage breakdown. `admin-nav.js` `shellSubmit` AJAX-swaps opt-in `[data-shell-form]` saves (live on Settings' two save forms), capture-phase to coexist with the site-wide submit guard, reusing the workspace's post-commit-safe pattern. Also fixed the sidebar bug where the active page's nav group collapsed on load (`_layout.php`: server opens the group holding the active link; the load script keeps it open, overriding saved-collapse). **Remaining:** interactive logged-in verification, per-page Stage 2 rollout, and the list-swap skeleton retrofit (deferred).
+9. TripAdvisor listing — **code side prepped (this pass).** All 5 consumers now read one source of truth, `ts_tripadvisor_url()` in `includes/schema.php` (currently `''`): the JSON-LD `sameAs` on Organization + LocalBusiness (via `ts_sameas()`, added only when set — never a search URL) and the 3 homepage badges (via `ts_tripadvisor_badge_url()`, which falls back to a TripAdvisor search link until approved). Verified both states render correctly. **Remaining (you):** claim the listing at tripadvisor.com/GetListedNew (2–5 day approval), then paste me the URL — swap = one line in `ts_tripadvisor_url()`.

@@ -267,12 +267,79 @@
       .catch(function () { window.location.href = url; });
   }
 
+  // ── Stage 2 (#18): generalised in-content action forms ──────────────────────
+  // Any POST form inside `.admin-content` that opts in with [data-shell-form]
+  // submits via fetch → follows the PRG redirect → swaps `.admin-content` from the
+  // response → toasts the flash, so Settings/Rooms/Staff/… saves don't full-reload.
+  //
+  // Bound in the CAPTURE phase on document so it runs BEFORE the site-wide
+  // double-submit guard + styled-confirm listeners in _layout_end.php (both bubble
+  // on document): our preventDefault() makes those cleanly skip (they early-return
+  // on e.defaultPrevented). Reuses the workspace submit's exact double-submit
+  // safety — a rejection handler as the SECOND .then arg can only see fetch()
+  // itself failing (request never completed → nothing written → native resubmit is
+  // safe); a try/catch around RENDERING never resubmits post-commit, it falls back
+  // to a full navigation. The form still works with no JS (plain POST + PRG).
+  function shellSubmit(e) {
+    if (e.defaultPrevented) return;
+    var form = e.target;
+    if (!(form instanceof HTMLFormElement)) return;
+    if (!form.matches || !form.matches('[data-shell-form]')) return;
+    if (!content || !content.contains(form)) return;
+    if (form.closest('[data-ws-panel]')) return;                 // workspace owns its own forms
+    if ((form.getAttribute('method') || 'get').toLowerCase() !== 'post') return;
+
+    e.preventDefault();
+    // In-flight guard: because we preventDefault, the site-wide double-submit guard
+    // in _layout_end.php (which early-returns on e.defaultPrevented) won't fire — so
+    // block a second submit here until this one resolves (or replaces the form).
+    if (form.dataset.shellBusy) return;
+    form.dataset.shellBusy = '1';
+    var action = form.getAttribute('action') || location.href;
+    var fd = new FormData(form);
+    var submitter = e.submitter;
+    if (submitter && submitter.name && !fd.has(submitter.name)) fd.append(submitter.name, submitter.value);
+
+    content.classList.add('is-swapping');
+    fetch(action, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'fetch' }, credentials: 'same-origin' })
+      .then(
+        function (r) { return r.text().then(function (text) { return { url: r.url, text: text }; }); },
+        function () { content.classList.remove('is-swapping'); form.submit(); return null; } // request never completed → safe native resubmit
+      )
+      .then(function (res) {
+        if (!res) return;                    // the request failed; the fallback above already ran
+        try {
+          var doc = new DOMParser().parseFromString(res.text, 'text/html');
+          var next = doc.querySelector('.admin-content');
+          if (!next) { window.location.href = res.url || location.href; return; }  // login redirect / unexpected shape
+          content.innerHTML = next.innerHTML;
+          content.classList.remove('is-swapping');
+          if (doc.title) document.title = doc.title;
+          try { if (res.url) history.replaceState({ shell: 1 }, '', res.url); } catch (e) { /* non-fatal */ }
+          try { shellPath = new URL(res.url || location.href, location.href).pathname; } catch (e) { /* non-fatal */ }
+          setActiveNav(res.url || location.href);
+          // Surface the server flash as a toast (matches the initial-load behaviour
+          // in _layout_end.php) and drop the now-redundant inline banner.
+          content.querySelectorAll('.alert.is-flash').forEach(function (al) { al.remove(); });
+          toastFlash(doc);
+          runScripts(content);
+          reenhance(content);
+          initWorkspace(content);
+        } catch (err) {
+          // Post-commit: never resubmit. Show the real server state via a full load.
+          content.classList.remove('is-swapping');
+          window.location.href = res.url || location.href;
+        }
+      });
+  }
+
   if (content) {
-    // Intercept sidebar links → shell navigation. In-content links keep doing a
+    // Intercept sidebar links (always) + opt-in in-content links (Stage 3,
+    // [data-shell-link]) → shell navigation. Other in-content links keep doing a
     // full navigation (safe); they can be brought in page-by-page later.
     document.addEventListener('click', function (e) {
       if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-      var a = e.target.closest ? e.target.closest('a.sidebar__link') : null;
+      var a = e.target.closest ? e.target.closest('a.sidebar__link, a[data-shell-link]') : null;
       if (!a) return;
       var href = a.getAttribute('href') || '';
       if (!/^\/admin\//.test(href)) return;
@@ -293,6 +360,9 @@
       if (burger) burger.setAttribute('aria-expanded', 'false');
       shellNavigate(href, true);
     });
+
+    // Stage 2 (#18): capture-phase so it precedes the bubble-phase guards.
+    document.addEventListener('submit', shellSubmit, true);
 
     // Cross-page back/forward → shell re-swap. Same-path pops (workspace tabs,
     // data-table query strings) are left to those layers' own popstate handlers.

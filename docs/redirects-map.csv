@@ -1,0 +1,48 @@
+old_url,new_url,http_status,mechanism,notes
+# Source of old URLs: sitemap-tribalsand.xml (old Namecheap brochure site, lastmod 2025-03-19).
+# 43 indexed URLs diffed against the new app's routes (sitemap.php core list + includes/articles.php manifest).
+# "200 native" = same clean URL is served by a .php page via .htaccess strip-.php (no redirect, no ranking loss).
+# All 301s are single-hop to the closest relevant live page (never blanket-to-home). Re-crawl before flipping DNS.
+/,/,200,native,index.php
+/contact,/contact,200,native,contact.php
+/my-amani,/my-amani,200,native,my-amani.php
+/maya-kobe,/maya-kobe,200,native,maya-kobe.php
+/zuri,/zuri,200,native,zuri.php
+/enkare-bofa,/enkare-bofa,200,native,enkare-bofa.php
+/sandbox,/sandbox,200,native,sandbox.php
+/activities,/activities,200,native,activities.php
+/events,/events,200,native,events.php
+/for-agents,/for-agents,200,native,for-agents.php
+/blog,/blog,200,native,blog.php
+/my-amani-gallery,/my-amani-gallery,200,native,my-amani-gallery.php
+/maya-kobe-gallery,/maya-kobe-gallery,200,native,maya-kobe-gallery.php
+/zuri-gallery,/zuri-gallery,200,native,zuri-gallery.php
+/events-gallery,/events-gallery,200,native,events-gallery.php
+/discover-the-best-of-both-worlds-on-the-kenya-coast-with-tribal-sand,/discover-the-best-of-both-worlds-on-the-kenya-coast-with-tribal-sand,200,native,manifest article
+/a-day-in-paradise-experiencing-my-amanis-luxuries,/a-day-in-paradise-experiencing-my-amanis-luxuries,200,native,manifest article
+/the-magic-of-maya-kobe-bofa-beach,/the-magic-of-maya-kobe-bofa-beach,200,native,manifest article
+/restoration-of-riparian-habitat-on-maya-kobe-beachfront-bofa-beach-kilifi-kenya,/restoration-of-riparian-habitat-on-maya-kobe-beachfront-bofa-beach-kilifi-kenya,200,native,manifest article
+/bioluminescent-algae-kilifi-creek-indulge-in-coastal-beauty-and-luxury-stays-with-tribalsand-in-kenya,/bioluminescent-algae-kilifi-creek-indulge-in-coastal-beauty-and-luxury-stays-with-tribalsand-in-kenya,200,native,manifest article
+/the-ultimate-guide-to-luxury-travel-in-kenya,/the-ultimate-guide-to-luxury-travel-in-kenya,200,native,manifest article
+/unforgettable-coastal-getaways-exploring-kenyas-pristine-beaches,/unforgettable-coastal-getaways-exploring-kenyas-pristine-beaches,200,native,manifest article
+/cultural-immersion-luxury-travel-with-a-touch-of-authentic-kenyan-culture,/exploring-the-local-markets-of-kilifi-a-cultural-journey-like-no-other,301,php-stub,new — no port; redirected to closest surviving cultural article
+/eco-luxury-sustainable-travel-experiences-in-kenya,/eco-luxury-sustainable-travel-experiences-in-kenya,200,native,manifest article
+/high-end-adventure-sports-in-kenya-for-the-luxury-thrill-seeker,/high-end-adventure-sports-in-kenya-for-the-luxury-thrill-seeker,200,native,manifest article
+/top-luxury-travel-trends-in-kenya-for-2024,/top-luxury-travel-trends-in-kenya-for-2024,200,native,manifest article
+/exploring-the-local-markets-of-kilifi-a-cultural-journey-like-no-other,/exploring-the-local-markets-of-kilifi-a-cultural-journey-like-no-other,200,native,manifest article
+/how-to-plan-a-group-vacation-on-the-kenyan-coast-a-perfect-guide-for-unforgettable-moments,/how-to-plan-a-group-vacation-on-the-kenyan-coast-a-perfect-guide-for-unforgettable-moments,200,native,manifest article
+/the-best-time-to-visit-my-amani-in-kilifi,/the-best-time-to-visit-my-amani-in-kilifi,200,native,manifest article
+/a-day-in-watamu-exploring-around-zuri,/a-day-in-watamu-exploring-around-zuri,200,native,manifest article
+/discover-maya-kobe-where-secluded-luxury-meets-the-ocean-breeze,/discover-maya-kobe-where-secluded-luxury-meets-the-ocean-breeze,200,native,manifest article
+/my-amani-voted-kenyas-most-romantic-villa,/my-amani,301,php-stub,pre-existing stub — de-chained to clean URL this pass
+/the-pga-baobab-golf-course,/the-pga-baobab-golf-course,200,native,manifest article
+/the-kuruwitu-conservancy,/activities,301,php-stub,new — retired legacy brochure page
+/the-kitesurfing,/activities,301,php-stub,new — retired legacy brochure page; tribal-dunes.php link repointed to /activities
+/the-skydiving,/activities,301,php-stub,new — retired legacy brochure page
+/the-traditional-swahili-dhow-cruise,/the-traditional-swahili-dhow-cruise,200,native,manifest article
+/the-arabuko-sokoke-national-reserve,/the-arabuko-sokoke-national-reserve,200,native,manifest article
+/the-watamu-malindi-beaches,/the-watamu-malindi-beaches,200,native,manifest article
+/the-dolphin-safari,/activities,301,php-stub,new — retired legacy brochure page
+/the-seasonal-whale-watching,/the-seasonal-whale-watching,200,native,manifest article
+/the-deep-sea-fishing,/activities,301,php-stub,new — retired legacy brochure page
+/content/Watamu-Kenya-COMETA-2025.pdf,/watamu,301,htaccess,new — PDF absent on new site; .htaccess + router.php rule

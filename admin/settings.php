@@ -118,7 +118,7 @@ include __DIR__ . '/_layout.php';
 <div class="card">
   <div class="card__head"><span class="card__title">General</span></div>
   <div class="card__body" style="padding:20px">
-    <form method="POST" action="/admin/settings">
+    <form method="POST" action="/admin/settings" data-shell-form>
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="save_general">
 
@@ -217,7 +217,7 @@ include __DIR__ . '/_layout.php';
 <div class="card">
   <div class="card__head"><span class="card__title">Change Password</span></div>
   <div class="card__body" style="padding:20px">
-    <form method="POST" action="/admin/settings" style="max-width:400px">
+    <form method="POST" action="/admin/settings" data-shell-form style="max-width:400px">
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="change_password">
 

@@ -555,7 +555,7 @@ a:hover{text-decoration:underline;}
         <div class="td-callout-ico"><span class="map-ico">S</span></div>
         <div class="td-callout-h">Kitesurfers</div>
         <p class="td-callout-p">The kite school is at the beach. Off Duty is directly behind it. Somewhere Café is between them. The entire rhythm of the day — water, food, work, water, food, sunset — is already built in.</p>
-        <a href="the-kitesurfing.php" class="td-callout-link">About the kite school →</a>
+        <a href="activities.php" class="td-callout-link">About the kite school →</a>
       </div>
       <div class="td-callout-item">
         <div class="td-callout-ico"><span class="map-ico">E</span></div>
