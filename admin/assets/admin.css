@@ -748,6 +748,12 @@ tr.dt-rowlink a:hover { text-decoration: none; }
 .sk-pagehdr { padding: 4px 2px 22px; }
 .sk-pagehdr .sk-bar { height: 26px; width: 220px; max-width: 60%; }
 .admin-content.is-swapping { min-height: 60vh; }
+/* In-content form save (#18 Stage 2): the fragment is fetched while the form stays
+   on screen (no skeleton), so give a busy cue instead of blanking it — dim, block
+   interaction, and show a progress cursor until the swap replaces the content.
+   Scoped to .is-saving so the link-nav skeleton (is-swapping only) isn't dimmed. */
+.admin-content.is-saving { opacity: .6; pointer-events: none; cursor: progress; transition: opacity .12s ease; }
+@media (prefers-reduced-motion: reduce) { .admin-content.is-saving { transition: none; } }
 
 /* ── Booking workspace shell (Phase 1 #1, Phase 2 #4) ── */
 .ws { margin-bottom: 24px; }

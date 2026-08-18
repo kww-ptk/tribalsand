@@ -98,7 +98,7 @@ ob_start(); ?>
               <?php endif; ?>
             </td>
             <td>
-              <form method="POST" action="/admin/properties.php" style="display:inline">
+              <form method="POST" action="/admin/properties.php" style="display:inline" data-shell-form>
                 <?= csrf_field() ?>
                 <input type="hidden" name="toggle_publish" value="1">
                 <input type="hidden" name="property_id" value="<?= e($p['id']) ?>">

@@ -300,11 +300,11 @@
     var submitter = e.submitter;
     if (submitter && submitter.name && !fd.has(submitter.name)) fd.append(submitter.name, submitter.value);
 
-    content.classList.add('is-swapping');
+    content.classList.add('is-swapping', 'is-saving');   // is-saving = dim/busy cue (form stays on screen, no skeleton)
     fetch(action, { method: 'POST', body: fd, headers: { 'X-Requested-With': 'fetch' }, credentials: 'same-origin' })
       .then(
         function (r) { return r.text().then(function (text) { return { url: r.url, text: text }; }); },
-        function () { content.classList.remove('is-swapping'); form.submit(); return null; } // request never completed → safe native resubmit
+        function () { content.classList.remove('is-swapping', 'is-saving'); form.submit(); return null; } // request never completed → safe native resubmit
       )
       .then(function (res) {
         if (!res) return;                    // the request failed; the fallback above already ran
@@ -313,7 +313,7 @@
           var next = doc.querySelector('.admin-content');
           if (!next) { window.location.href = res.url || location.href; return; }  // login redirect / unexpected shape
           content.innerHTML = next.innerHTML;
-          content.classList.remove('is-swapping');
+          content.classList.remove('is-swapping', 'is-saving');
           if (doc.title) document.title = doc.title;
           try { if (res.url) history.replaceState({ shell: 1 }, '', res.url); } catch (e) { /* non-fatal */ }
           try { shellPath = new URL(res.url || location.href, location.href).pathname; } catch (e) { /* non-fatal */ }
@@ -327,7 +327,7 @@
           initWorkspace(content);
         } catch (err) {
           // Post-commit: never resubmit. Show the real server state via a full load.
-          content.classList.remove('is-swapping');
+          content.classList.remove('is-swapping', 'is-saving');
           window.location.href = res.url || location.href;
         }
       });

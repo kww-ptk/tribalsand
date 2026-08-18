@@ -301,12 +301,12 @@ include __DIR__ . '/_layout.php';
   </div>
 </div>
 
-<?php if ($flash): ?><div class="alert alert--<?= e($flashType) ?>"><?= e($flash) ?></div><?php endif; ?>
+<?php if ($flash): ?><div class="alert alert--<?= e($flashType) ?> is-flash"><?= e($flash) ?></div><?php endif; ?>
 
 <div class="card" style="margin-bottom:24px" id="createCard" <?= $__openCreate ? '' : 'hidden' ?>>
   <div class="card__head"><span class="card__title">Add an account</span></div>
   <div class="card__body card__body--pad">
-    <form method="POST" id="createForm">
+    <form method="POST" id="createForm" data-shell-form>
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="create">
 

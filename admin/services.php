@@ -112,7 +112,7 @@ include __DIR__ . '/_layout.php';
       <?php endforeach; endif; ?>
     </div>
 
-    <form method="POST" action="/admin/services.php" class="ws-addform svc-add">
+    <form method="POST" action="/admin/services.php" class="ws-addform svc-add" data-shell-form>
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="add">
       <input type="hidden" name="service" value="<?= e($svc) ?>">

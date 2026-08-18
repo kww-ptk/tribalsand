@@ -227,8 +227,8 @@ include __DIR__ . '/_layout.php';
   </div>
 </div>
 
-<?php if ($success): ?><div class="alert alert--success"><?= e($success) ?></div><?php endif; ?>
-<?php if ($error):   ?><div class="alert alert--error"><?= e($error) ?></div><?php endif; ?>
+<?php if ($success): ?><div class="alert alert--success is-flash"><?= e($success) ?></div><?php endif; ?>
+<?php if ($error):   ?><div class="alert alert--error is-flash"><?= e($error) ?></div><?php endif; ?>
 
 <!-- Tabs -->
 <div class="tabs">
@@ -242,7 +242,7 @@ include __DIR__ . '/_layout.php';
 
 <!-- ── TAB: Details ── -->
 <div class="tab-panel is-active" id="tab-details">
-<form method="POST" action="/admin/property-edit<?= $id ? "?id={$id}" : '' ?>">
+<form method="POST" action="/admin/property-edit<?= $id ? "?id={$id}" : '' ?>" data-shell-form>
   <?= csrf_field() ?>
   <input type="hidden" name="action" value="save_details">
 

@@ -116,7 +116,7 @@ ob_start(); ?>
             </td>
             <td class="text-muted"><?= $tour['venue_names'] !== null ? e($tour['venue_names']) : 'All properties' ?></td>
             <td>
-              <form method="POST" action="/admin/tours.php" style="display:inline">
+              <form method="POST" action="/admin/tours.php" style="display:inline" data-shell-form>
                 <?= csrf_field() ?>
                 <input type="hidden" name="toggle_publish" value="1">
                 <input type="hidden" name="tour_id" value="<?= e($tour['id']) ?>">

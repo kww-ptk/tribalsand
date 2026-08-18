@@ -81,7 +81,7 @@ include __DIR__ . '/_layout.php';
 <?php endif; ?>
 <?php if ($flash): ?><div class="alert alert--success is-flash"><?= e($flash) ?></div><?php endif; ?>
 
-<form method="POST" action="/admin/checkin-settings.php">
+<form method="POST" action="/admin/checkin-settings.php" data-shell-form>
   <?= csrf_field() ?>
   <div class="setting-row" style="margin-bottom:16px">
     <div class="setting-row__text">

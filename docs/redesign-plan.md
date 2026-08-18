@@ -406,10 +406,22 @@ body-swap on list pages.
   its own in-flight guard (double-click safe). No-JS fallback intact (plain POST).
   **Enabled on `admin/settings.php`'s two save forms** (`save_general`,
   `change_password`); the CSV-export form is deliberately left as a full submit
-  (it streams a download). Rollout to Rooms/Staff/Services/Conflicts = add
-  `data-shell-form` to each PRG save form (never to file-download/streaming forms).
+  (it streams a download).
+  **✅ ROLLED OUT to the core config CRUD pages** (this pass): the main
+  non-destructive save form on `room-edit`, `tour-edit`, `property-edit`,
+  `venue-edit`, `checkin-settings`, the `services` add-option form, the `staff`
+  create form, and the publish-toggle forms on the `rooms`/`tours`/`properties`
+  lists. **Only `[data-shell-form]`-safe forms were tagged** — never a
+  `data-confirm` / `onsubmit=confirm` form (capture-phase would POST before the
+  dialog), never a `multipart/form-data` image-upload or file-download/streaming
+  form, and never an inline delete/toggle-with-confirm row form. The tagged edit
+  pages had `is-flash` added to their success/error banners so shell saves toast
+  consistently (matching Settings/Check-in). Busy feedback: `shellSubmit` now adds
+  `is-saving` (dim + block interaction + progress cursor via `admin.css`) while the
+  fragment loads, since a form save keeps the form on screen (no skeleton).
   ⚠️ **Interactive logged-in confirmation still pending** (no local admin login /
-  prod DB) — see the test steps handed to the owner.
+  prod DB) — verified lint-clean + 302-to-login (no fatal errors); click-through
+  save/toast/no-reload check handed to the owner.
 - **Stage 3 — in-content links + real skeletons on list swaps. ◐ PARTIAL.** The
   shell click interception now also catches opt-in in-content links
   (`a[data-shell-link]`, `/admin/` GET) → `shellNavigate`, so pages can bring row

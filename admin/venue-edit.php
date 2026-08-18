@@ -183,8 +183,8 @@ include __DIR__ . '/_layout.php';
   </div>
 </div>
 
-<?php if ($success): ?><div class="alert alert--success"><?= e($success) ?></div><?php endif; ?>
-<?php if ($error): ?><div class="alert alert--error"><?= e($error) ?></div><?php endif; ?>
+<?php if ($success): ?><div class="alert alert--success is-flash"><?= e($success) ?></div><?php endif; ?>
+<?php if ($error): ?><div class="alert alert--error is-flash"><?= e($error) ?></div><?php endif; ?>
 
 <!-- Tabs -->
 <div class="tabs">
@@ -203,7 +203,7 @@ include __DIR__ . '/_layout.php';
   <div class="card">
     <div class="card__head"><span class="card__title">Details</span></div>
     <div class="card__body" style="padding:20px">
-      <form method="POST" action="/admin/venue-edit<?= $id ? '?id=' . $id : '' ?>">
+      <form method="POST" action="/admin/venue-edit<?= $id ? '?id=' . $id : '' ?>" data-shell-form>
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="save_details">
 
