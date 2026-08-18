@@ -229,7 +229,7 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
           <button type="button" class="ci-edit__close btn-icon" data-ci-toggle="ciEdit<?= $__gid ?>" title="Close" aria-label="Close"><?= admin_icon('x') ?></button>
           <p class="ci-editinner__title">Edit details — <?= $__fmt($g['passport_name'] ?? '') ?: 'guest' ?></p>
 
-          <form id="ciFill<?= $__gid ?>" method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" class="ci-edit__grid">
+          <form id="ciFill<?= $__gid ?>" method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=checkin" class="ci-edit__grid"<?php if ($__waiverOk): ?> onsubmit="return confirm('This guest has already signed the waiver. Saving changes to their passport details will void that signature and require a new one. Continue?')"<?php endif; ?>>
             <?= csrf_field() ?>
             <input type="hidden" name="action" value="guest_fill">
             <input type="hidden" name="guest_id" value="<?= $__gid ?>">

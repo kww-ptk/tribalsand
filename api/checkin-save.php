@@ -119,6 +119,18 @@ if ($isLead && ($_POST['scope'] ?? '') !== 'guest') {
 
 // ── Passport identity for the target guest (lead: any guest; co-guest: own) ─
 $guestId = checkin_target_guest_id($holdId, $onlyGuestId);
+
+// Editing a material identity field after signing voids the signature — the guest
+// must re-consent to their corrected details. Compare only the identity fields the
+// request actually carried (the wizard re-posts them on every step, so comparing a
+// field that wasn't posted would falsely read as "changed to empty" and void a
+// valid signature). MUST run BEFORE the UPDATE below overwrites the stored values.
+$idNew = [];
+foreach (checkin_identity_material_fields() as $f) {
+    if (array_key_exists($f, $_POST)) $idNew[$f] = $s($f);
+}
+if ($idNew) checkin_void_signature_if_identity_changed($holdId, $guestId, $idNew, 'guest');
+
 db_query(
     "UPDATE checkin_guests SET passport_name=:n, passport_number=:num, nationality=:nat, passport_expiry=:exp
      WHERE id=:g AND hold_id=:h",
@@ -163,15 +175,29 @@ if ($triedConsent && checkin_signature_supported() && checkin_can_sign_self($onl
         $terms  = checkin_waiver_text();
         $method = checkin_signing_method((string)($_POST['via'] ?? ''));
         $ver    = waiver_version($terms);
-        db_query(
-            "UPDATE checkin_guests
-                SET waiver_signed_name=:n, waiver_signed_at=now(), waiver_signed_ip=:ip,
-                    waiver_version=:v, waiver_signature=:sig, waiver_terms_snapshot=:terms,
-                    waiver_signed_user_agent=:ua, waiver_signed_method=:m
-              WHERE id=:g AND hold_id=:h",
-            [':n'=>$s('waiver_signed_name'), ':ip'=>client_ip(), ':v'=>$ver,
-             ':sig'=>$sig, ':terms'=>$terms, ':ua'=>substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 500),
-             ':m'=>$method, ':g'=>$guestId, ':h'=>$holdId]);
+
+        $sigSet = "waiver_signed_name=:n, waiver_signed_at=now(), waiver_signed_ip=:ip,
+                   waiver_version=:v, waiver_signature=:sig, waiver_terms_snapshot=:terms,
+                   waiver_signed_user_agent=:ua, waiver_signed_method=:m";
+        $sigP = [':n'=>$s('waiver_signed_name'), ':ip'=>client_ip(), ':v'=>$ver,
+                 ':sig'=>$sig, ':terms'=>$terms, ':ua'=>substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 500),
+                 ':m'=>$method, ':g'=>$guestId, ':h'=>$holdId];
+
+        // Freeze the guest's identity as it stands at signing so the record document
+        // is immutable regardless of later edits (which themselves void the signature
+        // and force a fresh snapshot). $targetRow was read after the identity UPDATE
+        // above, so it holds the values the guest is consenting to right now.
+        if (checkin_identity_snapshot_supported()) {
+            $exp = substr((string)($targetRow['passport_expiry'] ?? ''), 0, 10);
+            $sigSet .= ", waiver_name_snapshot=:snn, waiver_passport_snapshot=:snp,
+                         waiver_nationality_snapshot=:snnat, waiver_passport_expiry_snapshot=:snexp";
+            $sigP[':snn']   = ($targetRow['passport_name'] ?? null)   ?: null;
+            $sigP[':snp']   = ($targetRow['passport_number'] ?? null) ?: null;
+            $sigP[':snnat'] = ($targetRow['nationality'] ?? null)     ?: null;
+            $sigP[':snexp'] = $exp !== '' ? $exp : null;
+        }
+
+        db_query("UPDATE checkin_guests SET $sigSet WHERE id=:g AND hold_id=:h", $sigP);
 
         // Legal evidence: stamp a controlled reference ID + the personal link
         // used, then append a 'signed' step to the tamper-evident audit trail.

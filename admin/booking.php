@@ -170,10 +170,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if ($act === 'guest_fill' && $gid > 0) {
+            // Editing a signed guest's material identity voids their signature (they
+            // must re-consent) and must not silently change the signed record. Runs
+            // BEFORE the UPDATE so it can compare the stored values against the edit.
+            $voided = checkin_void_signature_if_identity_changed($holdId, $gid, [
+                'passport_name'   => $gs('passport_name'),
+                'passport_number' => $gs('passport_number'),
+                'nationality'     => $gs('nationality'),
+                'passport_expiry' => $gs('passport_expiry'),
+            ], 'admin');
             db_query("UPDATE checkin_guests SET passport_name=:n, passport_number=:num, nationality=:nat, passport_expiry=:exp WHERE id=:g AND hold_id=:h",
                 [':n'=>$gs('passport_name'), ':num'=>$gs('passport_number'), ':nat'=>$gs('nationality'), ':exp'=>$gs('passport_expiry'), ':g'=>$gid, ':h'=>$holdId]);
             audit_log('checkin.guest_fill', 'hold', $holdId, 'guest ' . $gid);
-            $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Guest details saved.'];
+            $_SESSION['hold_flash'] = $voided
+                ? ['type'=>'success','msg'=>'Guest details saved. Their previous signature was voided — a new signature is required.']
+                : ['type'=>'success','msg'=>'Guest details saved.'];
 
         } elseif ($act === 'guest_upload' && $gid > 0) {
             require_once __DIR__ . '/../includes/storage.php';

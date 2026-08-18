@@ -407,6 +407,24 @@ function checkin_signing_audit_supported(): bool {
     return $ok;
 }
 
+/** True once the audit hash-chain columns exist (add_checkin_record_integrity.sql). Cached per-request. */
+function checkin_audit_hash_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { db_query('SELECT prev_hash, row_hash FROM checkin_signing_audit LIMIT 1'); $ok = true; }
+    catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/** True once the identity-at-signing snapshot columns exist (add_checkin_record_integrity.sql). Cached per-request. */
+function checkin_identity_snapshot_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { db_query('SELECT waiver_name_snapshot FROM checkin_guests LIMIT 1'); $ok = true; }
+    catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
 /**
  * A unique, human-readable transaction/reference ID for one signed record.
  * Format: TSR-<hold>-<guest>-<4 random chars>. The hold/guest pair is already
@@ -444,31 +462,168 @@ function checkin_ensure_reference(array $guest): string {
 }
 
 /**
+ * The exact string an audit row is hashed over: its payload columns joined with a
+ * unit separator. Excludes id and created_at so a stored row re-verifies from its
+ * own payload alone. The field order is FIXED — changing it invalidates every
+ * existing row_hash. Pure.
+ */
+function checkin_audit_canonical(array $r): string {
+    $f = fn($k) => (string)($r[$k] ?? '');
+    return implode("\x1f", [
+        $f('reference'), $f('hold_id'), $f('guest_id'), $f('step'),
+        $f('waiver_version'), $f('personal_link'), $f('ip'),
+        $f('user_agent'), $f('method'), $f('detail'),
+    ]);
+}
+
+/**
  * Append one step to the tamper-evident signing audit trail. Best-effort and
  * self-contained: guarded by the support check and wrapped so a logging failure
  * can never break the guest's signing or a record view. $ctx keys: reference,
  * hold_id, guest_id, waiver_version, personal_link, method, detail. IP and
  * user-agent are captured from the request.
+ *
+ * When the hash-chain columns exist, each row also stores prev_hash (the previous
+ * row's row_hash, or a 64-zero genesis) and row_hash = sha256(prev_hash||payload),
+ * so any later deletion or edit breaks the chain — see checkin_audit_verify().
  */
 function checkin_log_signing_step(string $step, array $ctx): void {
     if (!checkin_signing_audit_supported()) return;
     try {
-        db_query(
-            'INSERT INTO checkin_signing_audit
-                (reference, hold_id, guest_id, step, waiver_version, personal_link, ip, user_agent, method, detail)
-             VALUES (:ref, :h, :g, :step, :ver, :link, :ip, :ua, :m, :d)',
-            [':ref'  => ($ctx['reference'] ?? null) ?: null,
-             ':h'    => (int)($ctx['hold_id'] ?? 0) ?: null,
-             ':g'    => (int)($ctx['guest_id'] ?? 0) ?: null,
-             ':step' => $step,
-             ':ver'  => ($ctx['waiver_version'] ?? null) ?: null,
-             ':link' => ($ctx['personal_link'] ?? null) ?: null,
-             ':ip'   => client_ip(),
-             ':ua'   => substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 500),
-             ':m'    => ($ctx['method'] ?? null) ?: null,
-             ':d'    => ($ctx['detail'] ?? null) ?: null]
-        );
+        $row = [
+            'reference'      => ($ctx['reference'] ?? null) ?: null,
+            'hold_id'        => (int)($ctx['hold_id'] ?? 0) ?: null,
+            'guest_id'       => (int)($ctx['guest_id'] ?? 0) ?: null,
+            'step'           => $step,
+            'waiver_version' => ($ctx['waiver_version'] ?? null) ?: null,
+            'personal_link'  => ($ctx['personal_link'] ?? null) ?: null,
+            'ip'             => client_ip(),
+            'user_agent'     => substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 500),
+            'method'         => ($ctx['method'] ?? null) ?: null,
+            'detail'         => ($ctx['detail'] ?? null) ?: null,
+        ];
+
+        if (checkin_audit_hash_supported()) {
+            $genesis  = str_repeat('0', 64);
+            $prev     = db_query('SELECT row_hash FROM checkin_signing_audit WHERE row_hash IS NOT NULL ORDER BY id DESC LIMIT 1')->fetchColumn();
+            $prevHash = ($prev !== false && $prev !== null && $prev !== '') ? (string)$prev : $genesis;
+            $rowHash  = hash('sha256', $prevHash . "\x1e" . checkin_audit_canonical($row));
+            db_query(
+                'INSERT INTO checkin_signing_audit
+                    (reference, hold_id, guest_id, step, waiver_version, personal_link, ip, user_agent, method, detail, prev_hash, row_hash)
+                 VALUES (:ref, :h, :g, :step, :ver, :link, :ip, :ua, :m, :d, :ph, :rh)',
+                [':ref'=>$row['reference'], ':h'=>$row['hold_id'], ':g'=>$row['guest_id'], ':step'=>$row['step'],
+                 ':ver'=>$row['waiver_version'], ':link'=>$row['personal_link'], ':ip'=>$row['ip'], ':ua'=>$row['user_agent'],
+                 ':m'=>$row['method'], ':d'=>$row['detail'], ':ph'=>$prevHash, ':rh'=>$rowHash]);
+        } else {
+            db_query(
+                'INSERT INTO checkin_signing_audit
+                    (reference, hold_id, guest_id, step, waiver_version, personal_link, ip, user_agent, method, detail)
+                 VALUES (:ref, :h, :g, :step, :ver, :link, :ip, :ua, :m, :d)',
+                [':ref'=>$row['reference'], ':h'=>$row['hold_id'], ':g'=>$row['guest_id'], ':step'=>$row['step'],
+                 ':ver'=>$row['waiver_version'], ':link'=>$row['personal_link'], ':ip'=>$row['ip'], ':ua'=>$row['user_agent'],
+                 ':m'=>$row['method'], ':d'=>$row['detail']]);
+        }
     } catch (Throwable $e) { /* never let auditing break the flow */ }
+}
+
+/**
+ * Walk the hash-chained audit trail in insertion order and confirm each row's
+ * row_hash still equals sha256(prev_hash || payload), and (on the unfiltered
+ * walk) that each row links to the previous one. Returns
+ * ['ok'=>bool, 'checked'=>int, 'bad_id'=>?int]. Rows predating the chain
+ * (NULL row_hash) are skipped. Read-only — never writes. Powers an admin
+ * integrity check / certification of the record.
+ */
+function checkin_audit_verify(?int $holdId = null): array {
+    if (!checkin_audit_hash_supported()) return ['ok'=>true, 'checked'=>0, 'bad_id'=>null];
+    $genesis = str_repeat('0', 64);
+    $sql = 'SELECT * FROM checkin_signing_audit WHERE row_hash IS NOT NULL';
+    $p = [];
+    if ($holdId !== null) { $sql .= ' AND hold_id = :h'; $p[':h'] = $holdId; }
+    $sql .= ' ORDER BY id ASC';
+    try { $rows = db_query($sql, $p)->fetchAll(); }
+    catch (Throwable $e) { return ['ok'=>true, 'checked'=>0, 'bad_id'=>null]; }
+
+    $checked = 0; $expectedPrev = $genesis;
+    foreach ($rows as $r) {
+        $recomputed = hash('sha256', (string)$r['prev_hash'] . "\x1e" . checkin_audit_canonical($r));
+        if (!hash_equals((string)$r['row_hash'], $recomputed)) return ['ok'=>false, 'checked'=>$checked, 'bad_id'=>(int)$r['id']];
+        // Chain linkage only holds across the full trail (a per-hold filter skips
+        // rows in between), so enforce it on the unfiltered walk only.
+        if ($holdId === null) {
+            if (!hash_equals((string)$r['prev_hash'], $expectedPrev)) return ['ok'=>false, 'checked'=>$checked, 'bad_id'=>(int)$r['id']];
+            $expectedPrev = (string)$r['row_hash'];
+        }
+        $checked++;
+    }
+    return ['ok'=>true, 'checked'=>$checked, 'bad_id'=>null];
+}
+
+/** Passport identity fields whose change AFTER signing invalidates a signature. */
+function checkin_identity_material_fields(): array {
+    return ['passport_name', 'passport_number', 'nationality', 'passport_expiry'];
+}
+
+/**
+ * Enforce re-consent after a material identity edit. If guest $guestId is already
+ * signed and any material passport field in $new differs from the stored value,
+ * void the signature: clear the signing evidence (KEEPING the reference and the
+ * append-only audit history), reopen the booking's completion, and append a
+ * 'signature_voided' audit step. Returns true iff a signature was voided.
+ *
+ * Compare-before-void is essential: the guest wizard re-posts the passport fields
+ * on every per-step save, so voiding on any write would nuke a guest's own
+ * signature when they save an unrelated step. Only a REAL change voids.
+ *
+ * MUST be called BEFORE the caller writes the new identity — it needs the stored
+ * (old) values to compare. $new maps field => posted value; a field absent from
+ * $new is left out of the comparison. $actor ('admin'|'guest') is recorded.
+ */
+function checkin_void_signature_if_identity_changed(int $holdId, int $guestId, array $new, string $actor): bool {
+    if (!checkin_signature_supported() || $guestId <= 0) return false;
+    $g = db_query('SELECT * FROM checkin_guests WHERE id=:g AND hold_id=:h', [':g'=>$guestId, ':h'=>$holdId])->fetch();
+    if (!$g || !checkin_guest_waiver_signed($g)) return false;
+
+    $norm = fn($v) => trim((string)($v ?? ''));
+    $changed = [];
+    foreach (checkin_identity_material_fields() as $f) {
+        if (!array_key_exists($f, $new)) continue;
+        $old = $norm($g[$f] ?? '');
+        $cur = $norm($new[$f] ?? '');
+        if ($f === 'passport_expiry') { $old = substr($old, 0, 10); $cur = substr($cur, 0, 10); }
+        if ($old !== $cur) $changed[] = $f;
+    }
+    if (!$changed) return false;
+
+    // Clear the signing evidence so the guest must re-sign (a re-sign re-snapshots
+    // the corrected identity). Reference + audit rows are deliberately preserved.
+    $clear = 'waiver_signed_at=NULL, waiver_signed_name=NULL, waiver_signature=NULL,
+              waiver_terms_snapshot=NULL, waiver_version=NULL, waiver_signed_ip=NULL,
+              waiver_signed_user_agent=NULL, waiver_signed_method=NULL';
+    if (checkin_identity_snapshot_supported()) {
+        $clear .= ', waiver_name_snapshot=NULL, waiver_passport_snapshot=NULL,
+                    waiver_nationality_snapshot=NULL, waiver_passport_expiry_snapshot=NULL';
+    }
+    db_query("UPDATE checkin_guests SET $clear WHERE id=:g AND hold_id=:h", [':g'=>$guestId, ':h'=>$holdId]);
+
+    // A signed→unsigned transition must lift a completed booking back to pending,
+    // or it would read "Checked in ✓" over a guest who now needs to re-sign.
+    db_query('UPDATE holds SET checkin_completed_at=NULL WHERE id=:h', [':h'=>$holdId]);
+
+    checkin_log_signing_step('signature_voided', [
+        'reference'      => (string)($g['waiver_reference'] ?? ''),
+        'hold_id'        => $holdId,
+        'guest_id'       => $guestId,
+        'waiver_version' => (string)($g['waiver_version'] ?? ''),
+        'personal_link'  => (string)($g['waiver_signed_link'] ?? ''),
+        'method'         => $actor,
+        'detail'         => 'Signature voided — identity changed after signing: ' . implode(', ', $changed),
+    ]);
+    if (function_exists('audit_log')) {
+        audit_log('checkin.signature_void', 'hold', $holdId, 'guest ' . $guestId . ' (' . implode(',', $changed) . ')');
+    }
+    return true;
 }
 
 /**

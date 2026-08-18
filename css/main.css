@@ -1235,16 +1235,18 @@ p {
   .sticky-cta-btn  { padding: .7rem 1rem !important; font-size: .72rem !important; }
 }
 
-/* ── Availability search — Step 2 lead-capture modal (hero search bar) ── */
-.savail-modal{position:fixed;inset:0;z-index:2000;display:flex;align-items:center;justify-content:center;padding:20px}
-.savail-modal[hidden]{display:none}
-.savail-modal__backdrop{position:absolute;inset:0;background:rgba(16,47,58,.55)}
-.savail-modal__panel{position:relative;background:#fff;border-radius:14px;box-shadow:0 24px 70px rgba(10,30,40,.35);width:100%;max-width:440px;padding:30px 28px 24px}
-.savail-modal__x{position:absolute;top:12px;right:14px;background:none;border:0;font-size:26px;line-height:1;color:#9aa39a;cursor:pointer;padding:2px 6px}
-.savail-modal__x:hover{color:#333}
-.savail-modal__eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#B8965A;font-weight:600}
-.savail-modal__title{font-family:'Cormorant Garamond',serif;font-weight:400;font-size:1.7rem;line-height:1.15;color:#141412;margin:8px 0 6px}
-.savail-modal__sub{font-size:.9rem;color:#6B6050;margin:0 0 18px}
+/* ── Availability search — Step 2 lead-capture, inline under the hero bar ── */
+.savail-inline{max-width:860px;width:100%;margin:.55rem auto 0;animation:savailDown .34s cubic-bezier(.22,1,.36,1) both}
+.savail-inline[hidden]{display:none}
+@keyframes savailDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:none}}
+.savail-inline__panel{position:relative;background:rgba(255,255,255,.97);border-radius:6px;box-shadow:0 18px 50px rgba(10,30,40,.35);padding:20px 24px 18px;text-align:left}
+.savail-inline__x{position:absolute;top:10px;right:12px;background:none;border:0;font-size:24px;line-height:1;color:#9aa39a;cursor:pointer;padding:2px 6px}
+.savail-inline__x:hover{color:#333}
+.savail-inline__eyebrow{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#B8965A;font-weight:600}
+.savail-inline__title{font-family:'Cormorant Garamond',serif;font-weight:400;font-size:1.45rem;line-height:1.15;color:#141412;margin:6px 0 4px}
+.savail-inline__sub{font-size:.88rem;color:#6B6050;margin:0 0 16px}
+.savail-fields{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px}
+.savail-fields .savail-field{margin-bottom:0}
 .savail-field{display:block;margin-bottom:12px}
 .savail-field__lbl{display:block;font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:#6B6050;font-weight:600;margin-bottom:5px}
 .savail-field__lbl em{font-style:normal;font-weight:400;text-transform:none;letter-spacing:0;color:#A89880}
@@ -1260,4 +1262,5 @@ p {
 .savail-submit:hover{background:#1E5C6B}
 .savail-submit:disabled{opacity:.6;cursor:default}
 .savail-note{text-align:center;font-size:12px;color:#A89880;margin:14px 0 0}
-@media(max-width:480px){.savail-modal__panel{padding:24px 20px 20px}}
+@media(max-width:640px){.savail-fields{grid-template-columns:1fr;gap:10px}}
+@media(max-width:480px){.savail-inline__panel{padding:18px 16px 16px}}

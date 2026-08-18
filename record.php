@@ -59,7 +59,17 @@ checkin_log_signing_step('record_viewed', [
     'detail'         => 'Record viewed',
 ]);
 
-$ppNum  = trim((string)($guest['passport_number'] ?? ''));
+// Identity is rendered from the frozen at-signing SNAPSHOT so the record can never
+// change after signing. Live columns are used only as a fallback for legacy records
+// signed before the snapshot existed (those are additionally protected because any
+// later identity edit voids the signature via checkin_void_signature_if_identity_changed()).
+$snap     = checkin_identity_snapshot_supported();
+$dispName = ($snap && trim((string)($guest['waiver_name_snapshot'] ?? '')) !== '')
+          ? (string)$guest['waiver_name_snapshot'] : (string)($guest['passport_name'] ?? '');
+$dispNat  = ($snap && trim((string)($guest['waiver_nationality_snapshot'] ?? '')) !== '')
+          ? (string)$guest['waiver_nationality_snapshot'] : (string)($guest['nationality'] ?? '');
+$ppNum    = ($snap && trim((string)($guest['waiver_passport_snapshot'] ?? '')) !== '')
+          ? trim((string)$guest['waiver_passport_snapshot']) : trim((string)($guest['passport_number'] ?? ''));
 $ppMask = $ppNum === '' ? '—' : (strlen($ppNum) <= 2 ? str_repeat('•', strlen($ppNum))
           : substr($ppNum, 0, 1) . str_repeat('•', max(1, strlen($ppNum) - 2)) . substr($ppNum, -1));
 $stayLoc     = trim(((string)($hold['venue_name'] ?? '')) . ' · ' . ((string)($hold['room_name'] ?? '')), ' ·');
@@ -72,7 +82,7 @@ $methodLabel = ((string)($guest['waiver_signed_method'] ?? '') === 'reception')
 <html lang="en"><head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Signed consent · <?= e((string)($guest['passport_name'] ?: 'Guest')) ?></title>
+<title>Signed consent · <?= e($dispName !== '' ? $dispName : 'Guest') ?></title>
 <style>
   html{background:#e9ebef}
   body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#1c1c1c;max-width:720px;margin:22px auto;background:#fff;box-shadow:0 6px 24px rgba(0,0,0,.15)}
@@ -107,9 +117,9 @@ $methodLabel = ((string)($guest['waiver_signed_method'] ?? '') === 'reception')
 
   <div class="sec">1 · Signatory</div>
   <table>
-    <tr><td class="k">Full name</td><td><strong><?= e((string)($guest['passport_name'] ?: '—')) ?></strong></td></tr>
+    <tr><td class="k">Full name</td><td><strong><?= e($dispName !== '' ? $dispName : '—') ?></strong></td></tr>
     <tr><td class="k">Role</td><td><?= !empty($guest['is_lead']) ? 'Lead guest' : 'Adult guest' ?></td></tr>
-    <tr><td class="k">Nationality</td><td><?= e((string)($guest['nationality'] ?: '—')) ?></td></tr>
+    <tr><td class="k">Nationality</td><td><?= e($dispNat !== '' ? $dispNat : '—') ?></td></tr>
     <tr><td class="k">Passport</td><td>No. <?= e($ppMask) ?><?= !empty($guest['passport_file_key']) ? ' · scan on file' : '' ?></td></tr>
   </table>
 

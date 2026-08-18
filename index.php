@@ -359,6 +359,31 @@ include 'includes/head.php';
         <span>Search Stays</span>
       </button>
     </form>
+
+    <!-- Step 2 of the search — contact capture, expands inline right under the bar -->
+    <div class="savail-inline" id="savailModal" hidden>
+      <div class="savail-inline__panel" role="group" aria-labelledby="savailTitle">
+        <button type="button" class="savail-inline__x" data-savail-close aria-label="Close">&times;</button>
+        <div class="savail-inline__eyebrow">Step 2 of 2</div>
+        <h2 class="savail-inline__title" id="savailTitle">Where should we send your availability?</h2>
+        <p class="savail-inline__sub" id="savailSummary"></p>
+        <form id="savailForm" class="savail-form" novalidate>
+          <input type="text" name="website" class="savail-hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+          <div class="savail-fields">
+            <label class="savail-field"><span class="savail-field__lbl">Name</span><input type="text" name="name" required placeholder="Your full name"></label>
+            <label class="savail-field"><span class="savail-field__lbl">Email</span><input type="email" name="email" required placeholder="you@email.com"></label>
+            <label class="savail-field"><span class="savail-field__lbl">Phone <em>(optional)</em></span><input type="tel" name="phone" placeholder="e.g. +254 7…"></label>
+          </div>
+          <p class="savail-err" id="savailErr" hidden></p>
+          <div class="savail-actions">
+            <button type="button" class="savail-back" data-savail-close>&larr; Back</button>
+            <button type="submit" class="savail-submit">Check Availability</button>
+          </div>
+          <p class="savail-note">🔒 We'll only use this to help with your stay. No spam.</p>
+        </form>
+      </div>
+    </div>
+
     <div class="hero-search-note">No payment now &nbsp;·&nbsp; Free 24-hour hold &nbsp;·&nbsp; Reply within 24h &nbsp;·&nbsp; <a href="enquire.php">Send an enquiry &rarr;</a> &nbsp;·&nbsp; <a href="trip-builder.php">Plan your trip &rarr;</a></div>
 
     <!-- Trust signals -->
@@ -889,29 +914,6 @@ include 'includes/head.php';
   <div class="reviewed-strip__note">Aggregated guest ratings across booking platforms · 1,300+ guests hosted</div>
 </section>
 
-<!-- Step 2 of the search bar: capture contact details as a lead, then show rooms -->
-<div class="savail-modal" id="savailModal" hidden>
-  <div class="savail-modal__backdrop" data-savail-close></div>
-  <div class="savail-modal__panel" role="dialog" aria-modal="true" aria-labelledby="savailTitle">
-    <button type="button" class="savail-modal__x" data-savail-close aria-label="Close">&times;</button>
-    <div class="savail-modal__eyebrow">Step 2 of 2</div>
-    <h2 class="savail-modal__title" id="savailTitle">Where should we send your availability?</h2>
-    <p class="savail-modal__sub" id="savailSummary"></p>
-    <form id="savailForm" class="savail-form" novalidate>
-      <input type="text" name="website" class="savail-hp" tabindex="-1" autocomplete="off" aria-hidden="true">
-      <label class="savail-field"><span class="savail-field__lbl">Name</span><input type="text" name="name" required placeholder="Your full name"></label>
-      <label class="savail-field"><span class="savail-field__lbl">Email</span><input type="email" name="email" required placeholder="you@email.com"></label>
-      <label class="savail-field"><span class="savail-field__lbl">Phone <em>(optional)</em></span><input type="tel" name="phone" placeholder="e.g. +254 7…"></label>
-      <p class="savail-err" id="savailErr" hidden></p>
-      <div class="savail-actions">
-        <button type="button" class="savail-back" data-savail-close>&larr; Back</button>
-        <button type="submit" class="savail-submit">Check Availability</button>
-      </div>
-      <p class="savail-note">🔒 We'll only use this to help with your stay. No spam.</p>
-    </form>
-  </div>
-</div>
-
 <?php include 'includes/footer.php'; ?>
 
 <script>
@@ -1020,11 +1022,12 @@ include 'includes/head.php';
       ' · ' + nights + ' night' + (nights !== 1 ? 's' : '') +
       ' · ' + s.adults + ' adult' + (s.adults !== 1 ? 's' : '') +
       (s.children ? ', ' + s.children + ' child' + (s.children !== 1 ? 'ren' : '') : '');
+    // Inline expansion under the bar — no overlay, no scroll-lock.
     modal.hidden = false;
-    document.body.style.overflow = 'hidden';
+    try { modal.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); } catch(_){}
     var n = leadForm.querySelector('input[name=name]'); if (n) n.focus();
   }
-  function closeLeadModal(){ if (modal){ modal.hidden = true; document.body.style.overflow = ''; } }
+  function closeLeadModal(){ if (modal){ modal.hidden = true; } }
 
   if (modal && leadForm){
     modal.addEventListener('click', function(e){
