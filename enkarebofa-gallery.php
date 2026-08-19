@@ -3,6 +3,7 @@
 $page_title = 'Enkare Bofa Gallery · Kilifi Villa · Tribal Sand';
 $page_desc  = 'Browse photos of Enkare Villa on Bofa Beach, Kilifi. 5 bedrooms, private pool and in-house cook included.';
 $page_url   = 'https://tribalsand.com/enkarebofa-gallery.php';
+$page_image = asset_url('images/hero-enkare-bofa.jpg');
 $page_schema = ts_schema_org() . ts_schema_breadcrumb([
     ['name'=>'Home','url'=>'https://tribalsand.com/'],
     ['name'=>'Enkare Bofa','url'=>'https://tribalsand.com/enkare-bofa.php'],

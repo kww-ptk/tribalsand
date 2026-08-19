@@ -3,6 +3,7 @@
 $page_title = 'Maya Kobe Gallery · Kilifi Boutique Hotel · Tribal Sand';
 $page_desc  = 'Browse photos of Maya Kobe Boutique Hotel — Balinese-inspired luxury on Bofa Beach, Kilifi. 5 suites, 20m pool, ocean views.';
 $page_url   = 'https://tribalsand.com/maya-kobe-gallery.php';
+$page_image = asset_url('images/hero-maya-kobe.jpg');
 $page_schema = ts_schema_org() . ts_schema_breadcrumb([
     ['name'=>'Home','url'=>'https://tribalsand.com/'],
     ['name'=>'Maya Kobe','url'=>'https://tribalsand.com/maya-kobe.php'],

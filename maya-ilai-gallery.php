@@ -3,6 +3,7 @@
 $page_title = 'Maya Ilai Gallery · Kilifi Eco Compound · Tribal Sand';
 $page_desc  = 'Browse photos of Maya Ilai — Kilifi\'s adults-only eco compound. 8 three-bedroom villas, 8 studios, solar powered and beachfront.';
 $page_url   = 'https://tribalsand.com/maya-ilai-gallery.php';
+$page_image = asset_url('images/maya_illai/Best1.jpg');
 $page_schema = ts_schema_org() . ts_schema_breadcrumb([
     ['name'=>'Home','url'=>'https://tribalsand.com/'],
     ['name'=>'Maya Ilai','url'=>'https://tribalsand.com/maya_ilai.php'],

@@ -3,6 +3,7 @@
 $page_title = 'Events Gallery · Private Events Kenya · Tribal Sand';
 $page_desc  = 'Photos from private events, birthdays, NYE celebrations and African nights hosted at Tribal Sand properties on Kenya\'s North Coast.';
 $page_url   = 'https://tribalsand.com/events-gallery.php';
+$page_image = asset_url('images/Maya-Kobe-1-hero.webp');
 $page_schema = ts_schema_org() . ts_schema_breadcrumb([
     ['name'=>'Home','url'=>'https://tribalsand.com/'],
     ['name'=>'Events','url'=>'https://tribalsand.com/events.php'],

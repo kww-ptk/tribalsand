@@ -3,6 +3,7 @@
 $page_title = 'Sandbox Villa Gallery · Kilifi · Tribal Sand';
 $page_desc  = 'Browse photos of Sandbox Villa in Kilifi — 4 bedrooms, private pool, self-catering. Perfect for families and small groups.';
 $page_url   = 'https://tribalsand.com/sandbox-gallery.php';
+$page_image = asset_url('images/hero-sandbox.jpg');
 $page_schema = ts_schema_org() . ts_schema_breadcrumb([
     ['name'=>'Home','url'=>'https://tribalsand.com/'],
     ['name'=>'Sandbox','url'=>'https://tribalsand.com/sandbox.php'],

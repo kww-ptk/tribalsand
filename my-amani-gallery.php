@@ -3,6 +3,7 @@
 $page_title = 'My Amani Gallery · Vipingo Beachfront Villa · Tribal Sand';
 $page_desc  = 'Browse photos of My Amani villa — Kenya\'s most romantic beachfront villa in Vipingo. Infinity pool, hot tub, 5 bedrooms and private chef.';
 $page_url   = 'https://tribalsand.com/my-amani-gallery.php';
+$page_image = asset_url('images/my-amani/Aerial/myamani-11.webp');
 $page_schema = ts_schema_org() . ts_schema_breadcrumb([
     ['name'=>'Home','url'=>'https://tribalsand.com/'],
     ['name'=>'My Amani','url'=>'https://tribalsand.com/my-amani.php'],

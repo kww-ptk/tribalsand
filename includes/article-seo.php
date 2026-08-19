@@ -69,7 +69,7 @@ $__full_title = $__title . ' · Tribal Sand · Kenya';
     '@type'    => 'BreadcrumbList',
     'itemListElement' => [
         ['@type' => 'ListItem', 'position' => 1, 'name' => 'Home',    'item' => $__base],
-        ['@type' => 'ListItem', 'position' => 2, 'name' => 'Journal', 'item' => $__base . 'blog.php'],
+        ['@type' => 'ListItem', 'position' => 2, 'name' => 'Journal', 'item' => $__base . 'blog'],
         ['@type' => 'ListItem', 'position' => 3, 'name' => $__title,  'item' => $__url],
     ],
 ], JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT) ?>

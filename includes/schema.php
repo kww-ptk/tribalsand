@@ -9,6 +9,17 @@ require_once __DIR__ . '/db.php'; // asset_url()/site_url() available to pages t
  */
 
 /**
+ * Canonical hygiene for structured-data URLs. The server 301-redirects
+ * /foo.php → /foo, so every URL emitted in JSON-LD (breadcrumb items, ItemList
+ * entries, LodgingBusiness url) must be the clean, final form — never the .php
+ * variant that redirects. Mirrors the same normalisation done for the canonical
+ * <link> in includes/head.php, so page URL and structured data always agree.
+ */
+function ts_seo_clean_url(string $url): string {
+    return preg_replace('~\.php(?=$|[?#])~i', '', $url);
+}
+
+/**
  * TripAdvisor listing URL — SINGLE SOURCE OF TRUTH.
  *
  * Once the listing is approved at tripadvisor.com/GetListedNew, paste the
@@ -84,7 +95,7 @@ function ts_schema_lodging(array $data): string {
         '@type'       => 'LodgingBusiness',
         'name'        => $data['name']        ?? '',
         'description' => $data['description'] ?? '',
-        'url'         => $data['url']         ?? '',
+        'url'         => ts_seo_clean_url($data['url'] ?? ''),
         'image'       => $data['image']       ?? [],
         'telephone'   => '+254115115247',
         'email'       => 'reservations@tribalsand.com',
@@ -130,7 +141,7 @@ function ts_schema_breadcrumb(array $items): string {
             'name'     => $item['name'],
         ];
         if (!empty($item['url'])) {
-            $entry['item'] = $item['url'];
+            $entry['item'] = ts_seo_clean_url($item['url']);
         }
         $list[] = $entry;
     }
@@ -218,7 +229,7 @@ function ts_schema_item_list(array $items): string {
             '@type'    => 'ListItem',
             'position' => $pos + 1,
             'name'     => $item['name'],
-            'url'      => $item['url'],
+            'url'      => ts_seo_clean_url($item['url']),
         ];
     }
     $schema = [

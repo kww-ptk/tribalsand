@@ -3,6 +3,7 @@
 $page_title = 'Zuri Gallery · Watamu Boutique Hotel · Tribal Sand';
 $page_desc  = 'Browse photos of Zuri Boutique Hotel in Watamu — 6 suites, beachfront pool, lush gardens and Kenya\'s most pristine marine park coast.';
 $page_url   = 'https://tribalsand.com/zuri-gallery.php';
+$page_image = asset_url('images/hero-zuri.jpg');
 $page_schema = ts_schema_org() . ts_schema_breadcrumb([
     ['name'=>'Home','url'=>'https://tribalsand.com/'],
     ['name'=>'Zuri','url'=>'https://tribalsand.com/zuri.php'],

@@ -92,7 +92,7 @@ $enq_today     = date('Y-m-d');
 
   <div class="enqms__head">
     <div class="enqms__eyebrow">Tribal Sand · Kenya’s North Coast</div>
-    <h2 class="enqms__title"><?= e($enq_heading) ?></h2>
+    <h1 class="enqms__title"><?= e($enq_heading) ?></h1>
     <p class="enqms__intro"><?= e($enq_intro) ?><?php if ($enq_subject_name): ?> <strong style="color:var(--e-teal)"><?= e($enq_subject_name) ?></strong><?php endif; ?></p>
   </div>
 
