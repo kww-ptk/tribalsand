@@ -449,10 +449,10 @@ a{text-decoration:none;color:inherit;}
   <div class="ev-hero-inner">
     <h1 class="ev-hero-h1">Weddings &amp; Celebrations on <em>Kenya's Coast</em></h1>
     <div class="ev-eyebrow">Watamu &middot; Kilifi &middot; Vipingo &middot; Kenya</div>
-    <h1 class="ev-h1">Events &amp; Celebrations &middot; <em>Kenya's North Coast</em></h1>
+    <h2 class="ev-h1">Events &amp; Celebrations &middot; <em>Kenya's North Coast</em></h2>
     <p class="ev-sub">From intimate beachfront weddings to corporate retreats and private celebrations — Tribal Sand's concierge team handles every detail on Kenya's most beautiful coastline.</p>
     <div class="ev-hero-ctas">
-      <a href="trip-builder.html" class="btn-sand">Tell Us About Your Event &rarr;</a>
+      <a href="trip-builder" class="btn-sand">Tell Us About Your Event &rarr;</a>
       <a href="contact.php" class="btn-outline">Contact the Team</a>
     </div>
   </div>
@@ -513,28 +513,28 @@ a{text-decoration:none;color:inherit;}
         <div class="ev-card-icon"></div>
         <div class="ev-card-title">Destination Weddings</div>
         <p class="ev-card-desc">Boutique beachfront weddings on Kenya's North Coast. Barefoot ceremonies in the sand, candlelit dinners under the stars, intimate settings for 10 to 50+ guests. <a href="zuri.php" style="color:var(--teal);border-bottom:1px solid rgba(30,92,107,.18);">Zuri</a>, <a href="maya-kobe.php" style="color:var(--teal);border-bottom:1px solid rgba(30,92,107,.18);">Maya Kobe</a> and <a href="my-amani.php" style="color:var(--teal);border-bottom:1px solid rgba(30,92,107,.18);">My Amani</a> all offer full property buyouts with dedicated event support.</p>
-        <a href="trip-builder.html" class="ev-card-link">Enquire about weddings &rarr;</a>
+        <a href="trip-builder" class="ev-card-link">Enquire about weddings &rarr;</a>
       </div>
 
       <div class="ev-card">
         <div class="ev-card-icon"></div>
         <div class="ev-card-title">Corporate Retreats</div>
         <p class="ev-card-desc">Off-site meetings, leadership retreats, product launches and team building on the Kenya coast. <a href="maya_ilai.php" style="color:var(--teal);border-bottom:1px solid rgba(30,92,107,.18);">Maya Ilai eco compound</a> is ideal for larger groups; <a href="my-amani.php" style="color:var(--teal);border-bottom:1px solid rgba(30,92,107,.18);">My Amani</a> for executive retreats requiring complete privacy. Reliable connectivity and event space throughout.</p>
-        <a href="trip-builder.html" class="ev-card-link">Enquire about retreats &rarr;</a>
+        <a href="trip-builder" class="ev-card-link">Enquire about retreats &rarr;</a>
       </div>
 
       <div class="ev-card">
         <div class="ev-card-icon"></div>
         <div class="ev-card-title">Private Celebrations</div>
         <p class="ev-card-desc">Milestone birthdays, anniversaries, family reunions and surprise parties. Full decoration coordination, custom menus, personalised styling and entertainment — all arranged by your concierge with complete discretion.</p>
-        <a href="trip-builder.html" class="ev-card-link">Enquire about celebrations &rarr;</a>
+        <a href="trip-builder" class="ev-card-link">Enquire about celebrations &rarr;</a>
       </div>
 
       <div class="ev-card">
         <div class="ev-card-icon"></div>
         <div class="ev-card-title">Honeymoons</div>
         <p class="ev-card-desc">Curated honeymoon packages across Tribal Sand properties — private beach dinners, in-villa massage, sunset dhow cruises on Kilifi Creek, champagne arrivals and complete seclusion. Kenya's coast is one of Africa's most romantic destinations.</p>
-        <a href="trip-builder.html" class="ev-card-link">Plan your honeymoon &rarr;</a>
+        <a href="trip-builder" class="ev-card-link">Plan your honeymoon &rarr;</a>
       </div>
 
       <div class="ev-card">
@@ -548,7 +548,7 @@ a{text-decoration:none;color:inherit;}
         <div class="ev-card-icon"></div>
         <div class="ev-card-title">Private Dining Events</div>
         <p class="ev-card-desc">Beach dinners with white-linen service and the Indian Ocean at your feet. Swahili feasts, sunset cocktail receptions on Kilifi Creek, rooftop starlight suppers. The Tribal Table concept — coming soon — will offer elevated private dining experiences across all locations.</p>
-        <a href="trip-builder.html" class="ev-card-link">Arrange a dinner &rarr;</a>
+        <a href="trip-builder" class="ev-card-link">Arrange a dinner &rarr;</a>
       </div>
 
     </div>
@@ -681,7 +681,7 @@ a{text-decoration:none;color:inherit;}
     <p class="ev-cta-p">Whether your plans are firm or still forming — reach out. We respond within 24 hours with venue options, availability and a full proposal tailored to your occasion.</p>
     <div class="ev-cta-note">No payment required at the enquiry stage.</div>
     <div class="ev-cta-btns">
-      <a href="trip-builder.html" class="btn-teal">Plan Your Event &rarr;</a>
+      <a href="trip-builder" class="btn-teal">Plan Your Event &rarr;</a>
       <a href="contact.php" class="btn-teal-ghost">Contact Us</a>
     </div>
     <a href="https://wa.me/254115115247" class="ev-cta-wa" target="_blank" rel="noopener noreferrer">

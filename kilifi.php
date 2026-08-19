@@ -2,7 +2,7 @@
 require_once 'includes/schema.php';
 
 $page_title   = 'Hotels in Kilifi Kenya · Boutique Beach Accommodation · Tribal Sand';
-$page_desc    = 'Discover boutique hotels and private villas on Kilifi\'s Bofa Beach. Maya Kobe, Maya Ilai, Enkare Bofa, Sandbox and Off Duty — all within Tribal Dunes, Kenya\'s most exciting beachfront address.';
+$page_desc    = 'Boutique hotels and private villas on Kilifi\'s Bofa Beach — Maya Kobe, Maya Ilai, Enkare Bofa, Sandbox and Off Duty, all within Tribal Dunes, Kenya.';
 $page_url     = 'https://tribalsand.com/kilifi.php';
 $page_image   = asset_url('images/Maya-Kobe-1-hero.webp');
 

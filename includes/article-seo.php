@@ -22,7 +22,7 @@ $__a      = ts_article($__a_slug);
 $__base   = 'https://tribalsand.com/';
 $__title  = $__a['title'] ?? 'Journal';
 $__desc   = $__a['desc']  ?? 'Stories from Kenya\'s North Coast by Tribal Sand.';
-$__url    = $__base . $__a_slug . '.php';
+$__url    = $__base . $__a_slug; // clean URL — the server 301s /slug.php → /slug, so the canonical must be the final form
 $__img    = $__base . ltrim($__a['image'] ?? 'images/Maya-Kobe-1-hero.webp', '/');
 $__cat    = $__a['category'] ?? 'Journal';
 

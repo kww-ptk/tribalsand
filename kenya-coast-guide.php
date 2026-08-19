@@ -3,7 +3,7 @@ require_once 'includes/schema.php';
 
 /* ── SEO ── */
 $page_title  = 'Kenya Coast Travel Guide · Watamu · Kilifi · Vipingo · Tribal Sand';
-$page_desc   = 'The complete travel guide to Kenya\'s North Coast. Explore Watamu, Kilifi and Vipingo — the best beaches, hotels, activities and travel tips from the team at Tribal Sand.';
+$page_desc   = 'The complete travel guide to Kenya\'s North Coast — Watamu, Kilifi and Vipingo. The best beaches, hotels, activities and travel tips from Tribal Sand.';
 $page_url    = 'https://tribalsand.com/kenya-coast-guide.php';
 $page_image  = asset_url('images/zuri/Aerial/zuri-3.webp');
 $page_preload = 'images/zuri/Aerial/zuri-3.webp';

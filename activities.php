@@ -5,7 +5,7 @@ require_once 'includes/services.php';   // is_priced(), format_price() — price
 
 /* ── SEO ── */
 $page_title  = 'Activities & Experiences · Kenya Coast · Tribal Sand';
-$page_desc   = 'Things to do on Kenya\'s North Coast — snorkelling & diving in Watamu Marine Park, kitesurfing Kilifi, deep sea fishing, dhow cruises, safaris, golf and wellness. Arranged by your concierge.';
+$page_desc   = 'Things to do on Kenya\'s North Coast — snorkelling and diving in Watamu Marine Park, kitesurfing, deep-sea fishing, dhow cruises, safaris and golf.';
 $page_url    = 'https://tribalsand.com/activities.php';
 $page_image  = asset_url('images/hero-maya-kobe.jpg');
 $page_schema = ts_schema_org() . ts_schema_breadcrumb([

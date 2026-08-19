@@ -1,7 +1,7 @@
 <?php require_once 'includes/schema.php'; ?>
 <?php
 $page_title  = 'Plan Your Trip · Tribal Sand Kenya · Bespoke Holiday Planner';
-$page_desc   = 'Build your perfect Kenya coast holiday in 7 steps. Choose your property, activities, travel details and special touches. Our concierge team responds within 24 hours.';
+$page_desc   = 'Build your perfect Kenya coast holiday in 7 steps — choose your property, activities and travel details. Our concierge team responds within 24 hours.';
 $page_url    = 'https://tribalsand.com/trip-builder.php';
 $page_schema = ts_schema_org() . ts_schema_breadcrumb([
     ['name'=>'Home','url'=>'https://tribalsand.com/'],

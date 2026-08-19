@@ -2,7 +2,7 @@
 require_once 'includes/schema.php';
 
 $page_title   = 'Hotels in Watamu Kenya · Beachfront Boutique Hotel · Tribal Sand';
-$page_desc    = 'Stay at Zuri, Watamu\'s most intimate beachfront boutique hotel. Six ocean-facing suites on Kenya\'s North Coast, inside a marine national park, with direct beach access.';
+$page_desc    = 'Stay at Zuri, Watamu\'s most intimate beachfront boutique hotel. Six ocean-facing suites on Kenya\'s North Coast, inside a marine park with beach access.';
 $page_url     = 'https://tribalsand.com/watamu.php';
 $page_image   = asset_url('images/zuri/Aerial/zuri-3.webp');
 

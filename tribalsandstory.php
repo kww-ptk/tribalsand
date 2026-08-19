@@ -1,7 +1,7 @@
 <?php require_once 'includes/schema.php'; ?>
 <?php
 $page_title  = 'Our Story · Tribal Sand · Kenya\'s Sustainable Coast';
-$page_desc   = 'Tribal Sand is a sustainable coastal hospitality ecosystem across Watamu, Kilifi and Vipingo, Kenya. Luxury boutique hotels, private villas and the Tribal Dunes eco village.';
+$page_desc   = 'Tribal Sand is a sustainable coastal hospitality ecosystem across Watamu, Kilifi and Vipingo — luxury boutique hotels, private villas and an eco village.';
 $page_url    = 'https://tribalsand.com/tribalsandstory.php';
 $page_image  = asset_url('images/New-hero-banner.jpg');
 $page_preload = 'images/New-hero-banner.jpg';

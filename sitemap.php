@@ -77,14 +77,18 @@ echo '<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">' . "\n\n";
 
 echo "  <!-- Core pages -->\n";
 foreach ($core as [$path, $pri, $freq]) {
-    $loc = site_url($path) . ($path === '' ? '/' : ''); // keep homepage trailing slash (matches its canonical)
+    // Emit the clean, final URL — the server 301-redirects /foo.php → /foo, so listing
+    // the .php form would send every crawl through a needless redirect hop and mismatch
+    // the page's own canonical. Strip .php; keep the homepage trailing slash.
+    $clean = ($path === '') ? '' : preg_replace('#\.php$#', '', $path);
+    $loc   = site_url($clean) . ($path === '' ? '/' : '');
     echo ts_sitemap_url($loc, $pri, $freq);
 }
 
 echo "\n  <!-- Journal articles -->\n";
 foreach (ts_articles() as $slug => $a) {
     $pri = ($slug === 'why-kenya-coast-best-luxury-destination-africa') ? '0.7' : '0.6';
-    echo ts_sitemap_url(site_url($slug . '.php'), $pri, 'monthly');
+    echo ts_sitemap_url(site_url($slug), $pri, 'monthly'); // clean URL, no .php
 }
 
 echo "\n</urlset>\n";

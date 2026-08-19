@@ -23,6 +23,17 @@ $page_type   = $page_type   ?? 'website';
 $page_schema = $page_schema ?? '';
 $page_preload = $page_preload ?? '';
 $noindex     = $noindex     ?? false; // set truthy on private pages (e.g. guest booking management) to block indexing
+
+/*
+ * Canonical hygiene. The server 301-redirects /foo.php → /foo (see .htaccess), so
+ * the canonical URL — and every meta URL derived from it (og:url, twitter, hreflang) —
+ * must be the clean, final form, never the .php variant that immediately redirects.
+ * A self-referencing canonical that points at a 301 is a soft SEO error; normalise it
+ * once here so every page is correct without touching each page's $page_url.
+ * Homepage ('https://…/') has no .php and is unaffected.
+ */
+$page_url = preg_replace('~\.php(?=$|[?#])~i', '', $page_url);
+
 require_once __DIR__ . '/turnstile.php'; // captcha_site_key() available on every page that has a form
 $__ts_currency = current_currency();     // resolve early so a ?cur= choice can set its cookie before output
 ?>
