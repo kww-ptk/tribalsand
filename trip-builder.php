@@ -22,14 +22,15 @@ require_once 'includes/head.php';
 .tb-page-h1{font-family:'Cormorant Garamond',serif;font-size:clamp(1.8rem,4vw,3rem);font-weight:300;color:var(--dark,#141412);line-height:1.15;margin:0 0 .5rem;text-align:center;}
 .tb-page-h1 em{font-style:italic;color:var(--sand,#B8965A);}
 .prog-wrap{position:fixed;top:var(--nav-h,72px);left:0;right:0;z-index:299;background:var(--teal-d);border-bottom:1px solid rgba(184,150,90,.1);padding:0 20px;}
-.prog-inner{display:flex;align-items:center;gap:0;height:48px;}
+.prog-inner{display:flex;align-items:center;gap:0;height:56px;}
 .prog-step{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;position:relative;padding:0 4px;}
 .prog-step::after{content:'';position:absolute;right:0;top:50%;transform:translateY(-50%);width:1px;height:18px;background:rgba(184,150,90,.12);}
 .prog-step:last-child::after{display:none;}
-.prog-num{width:20px;height:20px;border-radius:50%;border:1px solid rgba(184,150,90,.2);display:flex;align-items:center;justify-content:center;font-size:.52rem;color:rgba(184,150,90,.3);margin-bottom:3px;transition:all .25s;flex-shrink:0;}
+.prog-num{width:26px;height:26px;border-radius:50%;border:1px solid rgba(184,150,90,.2);display:flex;align-items:center;justify-content:center;font-size:.72rem;color:rgba(184,150,90,.35);margin-bottom:4px;transition:all .25s;flex-shrink:0;}
+.prog-num svg{width:13px;height:13px;}
 .prog-step.active .prog-num{background:var(--sand);border-color:var(--sand);color:var(--teal-d);}
-.prog-step.done .prog-num{background:var(--teal-m);border-color:var(--teal-m);color:#fff;font-size:.6rem;}
-.prog-lbl{font-size:.44rem;letter-spacing:.12em;text-transform:uppercase;color:rgba(184,150,90,.25);white-space:nowrap;}
+.prog-step.done .prog-num{background:var(--teal-m);border-color:var(--teal-m);color:#fff;font-size:.72rem;}
+.prog-lbl{font-size:.56rem;letter-spacing:.1em;text-transform:uppercase;color:rgba(184,150,90,.3);white-space:nowrap;}
 .prog-step.active .prog-lbl{color:rgba(184,150,90,.65);}
 .prog-step.done .prog-lbl{color:rgba(184,150,90,.35);}
 .prog-bar{position:absolute;bottom:0;left:0;height:2px;background:var(--sand);transition:width .35s ease;}
@@ -38,28 +39,26 @@ require_once 'includes/head.php';
 .step.active{display:block;}
 @keyframes fadeUp{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
 .step-inner{max-width:600px;margin:0 auto;padding:28px 20px 0;}
-.step-eyebrow{font-size:.52rem;letter-spacing:.38em;text-transform:uppercase;color:var(--sand);margin-bottom:.5rem;display:flex;align-items:center;gap:.6rem;}
+.step-eyebrow{font-size:.62rem;letter-spacing:.34em;text-transform:uppercase;color:var(--sand);margin-bottom:.6rem;display:flex;align-items:center;gap:.6rem;}
 .step-eyebrow::before{content:'';width:16px;height:1px;background:var(--sand);}
 .step-h{font-family:'Cormorant Garamond',serif;font-size:clamp(2rem,6vw,2.8rem);font-weight:300;line-height:1.05;color:var(--dark);margin-bottom:.4rem;}
 .step-h em{font-style:italic;color:var(--teal);}
 .step-rule{width:28px;height:1px;background:var(--sand);margin-bottom:1.4rem;}
-.step-hint{font-size:.76rem;color:var(--mid);line-height:1.85;margin-bottom:1.8rem;}
-.field{margin-bottom:1rem;}
-.lbl{display:block;font-size:.58rem;letter-spacing:.18em;text-transform:uppercase;color:var(--mid);margin-bottom:.4rem;}
+.step-hint{font-size:.9rem;color:var(--mid);line-height:1.8;margin-bottom:1.8rem;}
+.field{margin-bottom:1.1rem;}
+.lbl{display:block;font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;color:var(--mid);margin-bottom:.5rem;}
 .req{color:var(--sand);}
 .inp,.sel,.ta{width:100%;padding:.85rem 1rem;border:1px solid var(--border);background:#fff;font-size:1rem;color:var(--dark);border-radius:0;transition:border-color .2s,box-shadow .2s;-webkit-appearance:none;}
 .inp:focus,.sel:focus,.ta:focus{border-color:var(--teal);box-shadow:0 0 0 3px rgba(30,92,107,.08);outline:none;}
 .inp::placeholder,.ta::placeholder{color:rgba(107,96,80,.3);}
 .ta{resize:none;min-height:90px;line-height:1.65;}
-.sw{position:relative;}
-.sw::after{content:'▾';position:absolute;right:1rem;top:50%;transform:translateY(-50%);color:var(--light);pointer-events:none;}
 .g2{display:grid;grid-template-columns:1fr 1fr;gap:.85rem;}
 .divider{height:1px;background:var(--border);margin:1.6rem 0;}
-.section-lbl{font-size:.54rem;letter-spacing:.28em;text-transform:uppercase;color:var(--sand);margin-bottom:.9rem;display:flex;align-items:center;gap:.5rem;}
+.section-lbl{font-size:.66rem;letter-spacing:.24em;text-transform:uppercase;color:var(--sand);margin-bottom:1rem;display:flex;align-items:center;gap:.5rem;}
 .section-lbl::before{content:'';width:12px;height:1px;background:var(--sand);}
-.counter-row{display:flex;align-items:center;justify-content:space-between;padding:1rem 1.1rem;background:#fff;border:1px solid var(--border);margin-bottom:.55rem;}
-.counter-label{font-size:.82rem;color:var(--dark);}
-.counter-sub{font-size:.65rem;color:var(--light);margin-top:.1rem;}
+.counter-row{display:flex;align-items:center;justify-content:space-between;padding:1.1rem 1.2rem;background:#fff;border:1px solid var(--border);margin-bottom:.6rem;}
+.counter-label{font-size:.96rem;color:var(--dark);}
+.counter-sub{font-size:.74rem;color:var(--light);margin-top:.15rem;}
 .counter-ctrl{display:flex;align-items:center;gap:.85rem;}
 .counter-btn{width:36px;height:36px;border-radius:50%;border:1px solid var(--border);background:#fff;display:flex;align-items:center;justify-content:center;font-size:1.1rem;cursor:pointer;color:var(--teal);transition:all .18s;flex-shrink:0;}
 .counter-btn:hover{border-color:var(--teal);background:rgba(30,92,107,.05);}
@@ -69,39 +68,43 @@ require_once 'includes/head.php';
 .choice-card{border:1px solid var(--border);padding:1.1rem .85rem;text-align:center;cursor:pointer;transition:all .2s;background:#fff;position:relative;user-select:none;}
 .choice-card:active{transform:scale(.97);}
 .choice-card.on{border-color:var(--teal);background:rgba(30,92,107,.05);}
-.choice-card.on::after{content:'\2713';position:absolute;top:.35rem;right:.5rem;font-size:.5rem;color:var(--teal);font-weight:700;}
+.choice-card.on::after{content:'';position:absolute;top:.4rem;right:.45rem;width:14px;height:14px;background:no-repeat center/14px url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231E5C6B' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6 9 17l-5-5'/%3E%3C/svg%3E");}
 .cc-ico{font-size:1.5rem;margin-bottom:.38rem;}
-.cc-lbl{font-size:.7rem;font-weight:500;color:var(--dark);line-height:1.3;}
-.cc-hint{font-size:.58rem;color:var(--light);margin-top:.12rem;}
+.cc-ico:empty{display:none;}
+.cc-lbl{font-size:.86rem;font-weight:500;color:var(--dark);line-height:1.3;}
+.cc-hint{font-size:.66rem;color:var(--light);margin-top:.18rem;}
 .prop-list{display:flex;flex-direction:column;gap:.5rem;margin-bottom:1.4rem;}
-.prop-card{display:flex;align-items:center;gap:.9rem;padding:1rem 1.1rem;border:1px solid var(--border);cursor:pointer;background:#fff;transition:all .2s;position:relative;}
+.prop-card{display:flex;flex-direction:row;align-items:center;text-align:left;gap:1rem;padding:.85rem 1rem;border:1px solid var(--border);cursor:pointer;background:#fff;transition:all .2s;position:relative;}
 .prop-card:active{transform:scale(.99);}
-.prop-card.on{border-color:var(--teal);background:rgba(30,92,107,.04);}
-.prop-radio{width:18px;height:18px;border-radius:50%;border:1.5px solid var(--border);flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:all .2s;}
-.prop-card.on .prop-radio{background:var(--teal);border-color:var(--teal);}
-.prop-card.on .prop-radio::after{content:'';width:6px;height:6px;border-radius:50%;background:#fff;}
-.prop-ico{font-size:1.4rem;flex-shrink:0;}
-.prop-name{font-size:.82rem;font-weight:500;color:var(--dark);}
-.prop-meta{font-size:.62rem;color:var(--light);margin-top:.12rem;line-height:1.4;}
-.prop-type{font-size:.52rem;letter-spacing:.14em;text-transform:uppercase;color:var(--sand);margin-left:auto;flex-shrink:0;}
+.prop-card.on{border-color:var(--teal);background:rgba(30,92,107,.04);box-shadow:0 4px 18px rgba(30,92,107,.1);}
+.prop-ico{width:120px;height:88px;flex-shrink:0;border-radius:8px;overflow:hidden;background:var(--sand-faint,#FAF6EE);}
+.prop-ico img{width:100%;height:100%;object-fit:cover;display:block;}
+.prop-ico:empty,.prop-ico.is-ext{display:flex;align-items:center;justify-content:center;color:var(--light);}
+.prop-check{position:absolute;top:.5rem;right:.6rem;width:22px;height:22px;border-radius:50%;background:var(--teal);display:none;align-items:center;justify-content:center;}
+.prop-check svg{width:13px;height:13px;stroke:#fff;}
+.prop-card.on .prop-check{display:flex;}
+.prop-name{font-size:.98rem;font-weight:500;color:var(--dark);}
+.prop-meta{font-size:.72rem;color:var(--light);margin-top:.18rem;line-height:1.5;}
+.prop-type{font-size:.58rem;letter-spacing:.14em;text-transform:uppercase;color:var(--sand);margin-left:auto;flex-shrink:0;padding-left:.5rem;}
 .pill-row{display:flex;flex-wrap:wrap;gap:.45rem;margin-bottom:1.2rem;}
-.pill{padding:.55rem 1rem;border:1px solid var(--border);background:#fff;font-size:.72rem;cursor:pointer;transition:all .18s;user-select:none;}
+.pill{padding:.6rem 1.1rem;border:1px solid var(--border);background:#fff;font-size:.82rem;cursor:pointer;transition:all .18s;user-select:none;}
 .pill.on{background:var(--teal);border-color:var(--teal);color:#fff;}
 .pill:active{transform:scale(.96);}
 .contact-card{background:#fff;border:1px solid var(--border);padding:1.4rem;margin-bottom:1.2rem;border-left:3px solid var(--teal);}
 .mode-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.5rem;margin-bottom:1.2rem;}
-.mode-card{border:1px solid var(--border);padding:.85rem .6rem;text-align:center;cursor:pointer;transition:all .2s;background:#fff;}
-.mode-card.on{border-color:var(--teal);background:rgba(30,92,107,.05);}
+.mode-card{border:1px solid var(--border);padding:.95rem .6rem;text-align:center;cursor:pointer;transition:all .2s;background:#fff;position:relative;}
+.mode-card.on{border-color:var(--teal);background:rgba(30,92,107,.05);box-shadow:0 3px 12px rgba(30,92,107,.08);}
 .mode-ico{font-size:1.3rem;margin-bottom:.3rem;}
-.mode-lbl{font-size:.62rem;color:var(--dark);line-height:1.3;}
+.mode-ico:empty{display:none;}
+.mode-lbl{font-size:.74rem;color:var(--dark);line-height:1.35;}
 .itin-empty{text-align:center;padding:2rem 1rem;font-size:.76rem;color:var(--light);font-style:italic;border:1px dashed var(--border);margin-bottom:1.2rem;}
 .day-scroll{display:flex;gap:.5rem;overflow-x:auto;padding-bottom:.5rem;margin-bottom:1.2rem;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
 .day-scroll::-webkit-scrollbar{display:none;}
 .day-btn{flex-shrink:0;display:flex;flex-direction:column;align-items:center;padding:.65rem .85rem;border:1px solid var(--border);background:#fff;cursor:pointer;transition:all .2s;min-width:72px;position:relative;}
 .day-btn.on{border-color:var(--teal);background:var(--teal);}
-.day-btn-n{font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:var(--light);margin-bottom:.18rem;}
+.day-btn-n{font-size:.66rem;letter-spacing:.1em;text-transform:uppercase;color:var(--light);margin-bottom:.2rem;}
 .day-btn.on .day-btn-n{color:rgba(255,255,255,.6);}
-.day-btn-d{font-size:.72rem;font-weight:500;color:var(--dark);}
+.day-btn-d{font-size:.84rem;font-weight:500;color:var(--dark);}
 .day-btn.on .day-btn-d{color:#fff;}
 .day-btn-cnt{position:absolute;top:-5px;right:-5px;width:18px;height:18px;border-radius:50%;background:var(--sand);color:#fff;font-size:.5rem;display:none;align-items:center;justify-content:center;}
 .day-btn-cnt.show{display:flex;}
@@ -115,8 +118,8 @@ require_once 'includes/head.php';
 .slot-item:last-child{border-bottom:none;}
 .slot-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
 .slot-ico{font-size:1rem;flex-shrink:0;}
-.slot-name{flex:1;font-size:.78rem;color:var(--dark);line-height:1.3;}
-.slot-time{font-size:.62rem;color:var(--light);}
+.slot-name{flex:1;font-size:.88rem;color:var(--dark);line-height:1.35;}
+.slot-time{font-size:.72rem;color:var(--light);}
 .slot-del{width:28px;height:28px;border:none;background:none;color:rgba(168,152,128,.4);cursor:pointer;font-size:.7rem;flex-shrink:0;display:flex;align-items:center;justify-content:center;}
 .slot-del:hover{color:var(--dark);}
 .no-slots{font-size:.72rem;color:rgba(168,152,128,.45);font-style:italic;padding:.65rem 0;}
@@ -135,18 +138,23 @@ require_once 'includes/head.php';
 .act-item:last-child{border-bottom:none;}
 .act-item:hover{background:rgba(30,92,107,.04);}
 .act-ico{font-size:1.1rem;flex-shrink:0;}
-.act-name{flex:1;font-size:.78rem;color:var(--dark);line-height:1.3;}
-.act-price{font-size:.62rem;color:var(--light);flex-shrink:0;}
-.time-row{display:flex;align-items:center;gap:.65rem;padding:.75rem 1rem;border-top:1px solid var(--border);background:var(--sand-faint,#FAF6EE);}
-.time-row-lbl{font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;color:var(--mid);flex-shrink:0;}
-.time-inp{width:130px;flex-shrink:0;}
-.time-note{flex:1;}
+.act-name{flex:1;font-size:.9rem;color:var(--dark);line-height:1.35;}
+.act-price{font-size:.72rem;color:var(--light);flex-shrink:0;}
+.time-row{display:flex;align-items:center;gap:.65rem;padding:.75rem 1rem;border-top:1px solid var(--border);background:var(--sand-faint,#FAF6EE);flex-wrap:wrap;}
+.time-row-lbl{font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;color:var(--mid);flex-shrink:0;}
+.time-inp{width:150px;flex-shrink:0;}
+.time-note{flex:1;min-width:140px;}
+/* Styled HH:MM time field (no native time input) */
+.tb-timewrap{position:relative;display:inline-block;}
+.tb-timewrap svg{position:absolute;left:.85rem;top:50%;transform:translateY(-50%);width:16px;height:16px;stroke:var(--light);pointer-events:none;}
+.tb-time{padding-left:2.4rem!important;}
+.cat-picker-close svg,.slot-del svg{width:15px;height:15px;}
 .review-card{border:1px solid var(--border);background:#fff;margin-bottom:.85rem;overflow:hidden;}
 .review-head{display:flex;align-items:center;justify-content:space-between;padding:.8rem 1rem;background:var(--sand-faint,#FAF6EE);border-bottom:1px solid var(--border);}
 .review-title{font-size:.62rem;letter-spacing:.15em;text-transform:uppercase;font-weight:500;color:var(--dark);}
 .review-edit{font-size:.58rem;letter-spacing:.12em;text-transform:uppercase;color:var(--sand);background:none;border:none;cursor:pointer;}
 .review-body{padding:.9rem 1rem;}
-.review-row{display:flex;justify-content:space-between;align-items:flex-start;padding:.35rem 0;border-bottom:1px solid rgba(184,150,90,.07);font-size:.76rem;}
+.review-row{display:flex;justify-content:space-between;align-items:flex-start;padding:.4rem 0;border-bottom:1px solid rgba(184,150,90,.07);font-size:.86rem;}
 .review-row:last-child{border-bottom:none;}
 .review-k{color:var(--mid);}
 .review-v{color:var(--dark);font-weight:500;text-align:right;max-width:58%;}
@@ -181,6 +189,17 @@ require_once 'includes/head.php';
 .succ-ref{font-size:.58rem;letter-spacing:.18em;text-transform:uppercase;color:rgba(184,150,90,.4);margin-bottom:2rem;}
 .succ-p{font-size:.76rem;color:rgba(212,196,172,.4);max-width:380px;line-height:1.9;margin-bottom:2.2rem;}
 .btn-succ{font-size:.62rem;letter-spacing:.22em;text-transform:uppercase;padding:.85rem 2.2rem;background:var(--sand);color:var(--teal-d);border:none;cursor:pointer;}
+/* Airport selector — styled chips replacing native <select> */
+.apt-grid{display:grid;grid-template-columns:1fr 1fr;gap:.5rem;}
+.apt-chip{display:flex;align-items:center;gap:.55rem;padding:.7rem .9rem;border:1px solid var(--border);background:#fff;font-size:.82rem;color:var(--dark);cursor:pointer;text-align:left;transition:all .18s;user-select:none;line-height:1.25;}
+.apt-chip:hover{border-color:var(--teal);}
+.apt-chip.on{border-color:var(--teal);background:rgba(30,92,107,.05);color:var(--teal);font-weight:500;}
+.apt-chip:active{transform:scale(.98);}
+@media(max-width:460px){.apt-grid{grid-template-columns:1fr;}.prop-ico{width:92px;height:70px;}.prop-card{gap:.75rem;}}
+.apt-tick{width:16px;height:16px;flex-shrink:0;border-radius:50%;border:1.5px solid var(--border);display:flex;align-items:center;justify-content:center;transition:all .18s;}
+.apt-chip.on .apt-tick{background:var(--teal);border-color:var(--teal);}
+.apt-tick svg{width:10px;height:10px;stroke:#fff;opacity:0;}
+.apt-chip.on .apt-tick svg{opacity:1;}
 .hidden{display:none!important;}
 @media(min-width:640px){
   .choice-grid{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));}
@@ -264,13 +283,16 @@ require_once 'includes/head.php';
     <div class="step-rule"></div>
     <p class="step-hint">Pick your property, then tell us what kind of trip this is.</p>
 
+<?php
+    $tb_check = '<div class="prop-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></div>';
+    ?>
     <div class="prop-list" id="gProp">
-      <div class="prop-card on" data-v="zuri"><div class="prop-radio"></div><div class="prop-ico"></div><div style="flex:1"><div class="prop-name">Zuri Boutique Hotel</div><div class="prop-meta">Watamu · 6 suites · Up to 14 guests · Beachfront</div></div><div class="prop-type">Hotel</div></div>
-      <div class="prop-card" data-v="mayakobe"><div class="prop-radio"></div><div class="prop-ico"></div><div style="flex:1"><div class="prop-name">Maya Kobe Boutique Hotel</div><div class="prop-meta">Kilifi · 5 suites · Up to 12 guests · Creek views</div></div><div class="prop-type">Hotel</div></div>
-      <div class="prop-card" data-v="amani"><div class="prop-radio"></div><div class="prop-ico"></div><div style="flex:1"><div class="prop-name">My Amani Villa</div><div class="prop-meta">Vipingo · 5 beds · 10 guests · Chef · Infinity pool</div></div><div class="prop-type">Villa</div></div>
-      <div class="prop-card" data-v="enkare"><div class="prop-radio"></div><div class="prop-ico"></div><div style="flex:1"><div class="prop-name">Enkare Villa</div><div class="prop-meta">Kilifi · 5 beds · 10 guests · In-house cook</div></div><div class="prop-type">Villa</div></div>
-      <div class="prop-card" data-v="sandbox"><div class="prop-radio"></div><div class="prop-ico"></div><div style="flex:1"><div class="prop-name">Sandbox Villa</div><div class="prop-meta">Kilifi · 4 beds · 8 guests · Self-catering</div></div><div class="prop-type">Villa</div></div>
-      <div class="prop-card" data-v="ext"><div class="prop-radio"></div><div class="prop-ico"></div><div style="flex:1"><div class="prop-name">Staying elsewhere</div><div class="prop-meta">External accommodation — we still arrange everything</div></div></div>
+      <div class="prop-card on" data-v="zuri"><div class="prop-ico"><img src="<?= e(venue_hero_url('zuri','images/hero-zuri.jpg')) ?>" alt="Zuri Boutique Hotel" loading="lazy"></div><div style="flex:1"><div class="prop-name">Zuri Boutique Hotel</div><div class="prop-meta">Watamu · 6 suites · Up to 14 guests · Beachfront</div></div><div class="prop-type">Hotel</div><?= $tb_check ?></div>
+      <div class="prop-card" data-v="mayakobe"><div class="prop-ico"><img src="<?= e(venue_hero_url('maya-kobe','images/hero-maya-kobe.jpg')) ?>" alt="Maya Kobe Boutique Hotel" loading="lazy"></div><div style="flex:1"><div class="prop-name">Maya Kobe Boutique Hotel</div><div class="prop-meta">Kilifi · 5 suites · Up to 12 guests · Creek views</div></div><div class="prop-type">Hotel</div><?= $tb_check ?></div>
+      <div class="prop-card" data-v="amani"><div class="prop-ico"><img src="<?= e(venue_hero_url('my-amani','images/my-amani/Aerial/myamani-11.webp')) ?>" alt="My Amani Villa" loading="lazy"></div><div style="flex:1"><div class="prop-name">My Amani Villa</div><div class="prop-meta">Vipingo · 5 beds · 10 guests · Chef · Infinity pool</div></div><div class="prop-type">Villa</div><?= $tb_check ?></div>
+      <div class="prop-card" data-v="enkare"><div class="prop-ico"><img src="<?= e(venue_hero_url('enkare-bofa','images/hero-enkare-bofa.jpg')) ?>" alt="Enkare Villa" loading="lazy"></div><div style="flex:1"><div class="prop-name">Enkare Villa</div><div class="prop-meta">Kilifi · 5 beds · 10 guests · In-house cook</div></div><div class="prop-type">Villa</div><?= $tb_check ?></div>
+      <div class="prop-card" data-v="sandbox"><div class="prop-ico"><img src="<?= e(venue_hero_url('sandbox','images/hero-sandbox.jpg')) ?>" alt="Sandbox Villa" loading="lazy"></div><div style="flex:1"><div class="prop-name">Sandbox Villa</div><div class="prop-meta">Kilifi · 4 beds · 8 guests · Self-catering</div></div><div class="prop-type">Villa</div><?= $tb_check ?></div>
+      <div class="prop-card" data-v="ext"><div class="prop-ico is-ext"><svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 21V7l8-4v18M19 21V11l-6-4"/><path d="M9 9v.01M9 12v.01M9 15v.01M9 18v.01"/></svg></div><div style="flex:1"><div class="prop-name">Staying elsewhere</div><div class="prop-meta">External accommodation — we still arrange everything</div></div><?= $tb_check ?></div>
     </div>
     <div class="field hidden" id="extRow"><label class="lbl">Accommodation name &amp; location</label><input type="text" class="inp" id="extName" placeholder="e.g. Hemingways Watamu…"></div>
 
@@ -313,15 +335,15 @@ require_once 'includes/head.php';
       <div class="cat-picker hidden" id="catPicker">
         <div class="cat-picker-head">
           <span class="cat-picker-title">Choose an activity</span>
-          <button class="cat-picker-close" id="catPickerClose">✕</button>
+          <button class="cat-picker-close" id="catPickerClose" aria-label="Close"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
         </div>
         <div class="cat-tabs" id="catTabs"></div>
         <div class="act-list" id="actList"></div>
         <div class="time-row hidden" id="timeRow">
           <span class="time-row-lbl">Time</span>
-          <input type="time" class="inp time-inp" id="actTime">
+          <div class="tb-timewrap time-inp"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg><input type="text" inputmode="numeric" maxlength="5" class="inp tb-time" id="actTime" placeholder="HH:MM" autocomplete="off" style="width:100%"></div>
           <input type="text" class="inp time-note" id="actNote" placeholder="Note (optional)">
-          <button class="btn-next" id="addActConfirm" style="padding:.65rem 1.1rem;font-size:.58rem;">Add</button>
+          <button class="btn-next" id="addActConfirm" style="padding:.7rem 1.2rem;font-size:.66rem;">Add</button>
         </div>
       </div>
     </div>
@@ -344,17 +366,34 @@ require_once 'includes/head.php';
       <div class="mode-card" data-v="road"><div class="mode-ico"></div><div class="mode-lbl">Road / Self-Drive</div></div>
       <div class="mode-card" data-v="here"><div class="mode-ico"></div><div class="mode-lbl">Already in Kenya</div></div>
     </div>
+<?php
+    // Airport chip group builder — styled replacement for native <select>.
+    // Backs a hidden <input id="$for"> so the existing JS (.value reads) is unchanged.
+    $tb_airports = ['Malindi Airport (MYD)', 'Mombasa · Moi International (MBA)', 'Nairobi · JKIA (NBO)', 'Wilson Airport (WIL)'];
+    $tb_apt_chips = function (string $for) use ($tb_airports): string {
+        $h = '<input type="hidden" id="' . $for . '"><div class="apt-grid" data-apt-for="' . $for . '">';
+        foreach ($tb_airports as $a) {
+            $h .= '<button type="button" class="apt-chip" data-apt="' . e($a) . '">'
+                . '<span class="apt-tick"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>'
+                . e($a) . '</button>';
+        }
+        return $h . '</div>';
+    };
+    $tb_time_field = function (string $id): string {
+        return '<div class="tb-timewrap" style="width:100%">'
+            . '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>'
+            . '<input type="text" inputmode="numeric" maxlength="5" class="inp tb-time" id="' . $id . '" placeholder="HH:MM" autocomplete="off" style="width:100%"></div>';
+    };
+    ?>
     <div id="flightBlock">
+      <div class="field"><label class="lbl">Arrival Airport</label>
+        <?= $tb_apt_chips('arrApt') ?>
+      </div>
       <div class="g2">
         <div class="field"><label class="lbl">Flight Number</label><input type="text" class="inp" id="fltNum" placeholder="e.g. KQ101"></div>
-        <div class="field"><label class="lbl">Arrival Airport</label>
-          <div class="sw"><select class="sel" id="arrApt"><option value="">Select…</option><option>Malindi Airport (MYD)</option><option>Mombasa · Moi International (MBA)</option><option>Nairobi · JKIA (NBO)</option><option>Wilson Airport (WIL)</option></select></div>
-        </div>
+        <div class="field"><label class="lbl">Landing Time</label><?= $tb_time_field('arrTime') ?></div>
       </div>
-      <div class="g2">
-        <div class="field"><label class="lbl">Landing Time</label><input type="time" class="inp" id="arrTime"></div>
-        <div class="field"><label class="lbl">Flying From</label><input type="text" class="inp" id="fromCity" placeholder="e.g. London Heathrow"></div>
-      </div>
+      <div class="field"><label class="lbl">Flying From</label><input type="text" class="inp" id="fromCity" placeholder="e.g. London Heathrow"></div>
     </div>
     <div class="section-lbl" style="margin-top:1rem">Arrival Transfer</div>
     <div class="choice-grid" id="gTrans" style="grid-template-columns:repeat(3,1fr)">
@@ -376,16 +415,14 @@ require_once 'includes/head.php';
     <div class="divider"></div>
     <div class="section-lbl">Departure</div>
 
+    <div class="field"><label class="lbl">Departure Airport</label>
+      <?= $tb_apt_chips('depApt') ?>
+    </div>
     <div class="g2">
       <div class="field"><label class="lbl">Departure Flight</label><input type="text" class="inp" id="depFlt" placeholder="e.g. KQ102"></div>
-      <div class="field"><label class="lbl">Departure Airport</label>
-        <div class="sw"><select class="sel" id="depApt"><option value="">Select…</option><option>Malindi Airport (MYD)</option><option>Mombasa · Moi International (MBA)</option><option>Nairobi · JKIA (NBO)</option><option>Wilson Airport (WIL)</option></select></div>
-      </div>
+      <div class="field"><label class="lbl">Departure Time</label><?= $tb_time_field('depTime') ?></div>
     </div>
-    <div class="g2">
-      <div class="field"><label class="lbl">Departure Time</label><input type="time" class="inp" id="depTime"></div>
-      <div class="field"><label class="lbl">Flying To</label><input type="text" class="inp" id="depDest" placeholder="e.g. London…"></div>
-    </div>
+    <div class="field"><label class="lbl">Flying To</label><input type="text" class="inp" id="depDest" placeholder="e.g. London…"></div>
 
     <div class="divider"></div>
     <div class="section-lbl">Departure Transfer</div>
@@ -573,7 +610,7 @@ function goStep(n){
     if(g===n)el.classList.add('active');
     else if(g<n)el.classList.add('done');
     var num=el.querySelector('.prog-num');
-    if(num)num.innerHTML=g<n?'✓':String(g);
+    if(num)num.innerHTML=g<n?'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>':String(g);
   });
   document.getElementById('stepLbl').textContent='Step '+n+' of 7';
   document.getElementById('btnBack').style.visibility=n===1?'hidden':'visible';
@@ -672,6 +709,35 @@ document.addEventListener('click',function(e){
   p.classList.toggle('on');
 });
 
+/* ── AIRPORT CHIPS (styled replacement for native <select>) ── */
+document.querySelectorAll('.apt-grid').forEach(function(grid){
+  var target=document.getElementById(grid.getAttribute('data-apt-for'));
+  grid.addEventListener('click',function(e){
+    var chip=e.target.closest('.apt-chip');if(!chip)return;
+    grid.querySelectorAll('.apt-chip').forEach(function(x){x.classList.remove('on');});
+    chip.classList.add('on');
+    if(target)target.value=chip.getAttribute('data-apt');
+  });
+});
+
+/* ── TIME FIELDS (HH:MM mask — no native time input) ── */
+document.querySelectorAll('.tb-time').forEach(function(inp){
+  inp.addEventListener('input',function(){
+    var d=inp.value.replace(/[^0-9]/g,'').slice(0,4);
+    inp.value=d.length>=3?d.slice(0,2)+':'+d.slice(2):d;
+  });
+  inp.addEventListener('blur',function(){
+    var d=inp.value.replace(/[^0-9]/g,'').slice(0,4);
+    if(!d){inp.value='';return;}
+    var hh,mm;
+    if(d.length<=2){hh=parseInt(d,10);mm=0;}
+    else if(d.length===3){hh=parseInt(d.slice(0,1),10);mm=parseInt(d.slice(1),10);}
+    else{hh=parseInt(d.slice(0,2),10);mm=parseInt(d.slice(2),10);}
+    hh=Math.min(23,hh);mm=Math.min(59,mm);
+    inp.value=(hh<10?'0':'')+hh+':'+(mm<10?'0':'')+mm;
+  });
+});
+
 /* ── DATE INPUTS ── */
 function rebuildDays(){
   if(!S.arrDate||!S.depDate)return;
@@ -739,7 +805,7 @@ function renderDayPanel(){
         '<div class="slot-ico">'+s.icon+'</div>'+
         '<div class="slot-name">'+s.name+'</div>'+
         '<div class="slot-time">'+(s.time||'')+' </div>'+
-        '<button class="slot-del" data-si="'+si+'">✕</button>'+
+        '<button class="slot-del" data-si="'+si+'" aria-label="Remove"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button>'+
       '</div>';
     }).join('');
   } else {
@@ -1183,7 +1249,7 @@ function submit(){
     console.error(err);
   })
   .finally(function(){
-    btn.innerHTML='Send My Trip &#x27E1;';
+    btn.innerHTML='Send My Trip <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8h10M9 4l4 4-4 4"/></svg>';
     btn.disabled=false;
   });
 }
