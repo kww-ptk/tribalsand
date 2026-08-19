@@ -28,6 +28,22 @@
     return sym + Math.round(amount).toLocaleString('en-US');
   }
 
+  // Public: format a base amount in the visitor's current currency (falls back to
+  // the original currency if the rate is missing). For JS-computed prices.
+  window.tsMoney = function (amount, from) {
+    from = (from || '').toUpperCase();
+    var out = convert(amount, from, window.TS_CUR);
+    return (out === null) ? format(amount, from) : format(out, window.TS_CUR);
+  };
+
+  // Public: an HTML <span class="ts-price"> for a base amount — embed inside larger
+  // strings (e.g. "2 nights · <span>…</span>"). renderAll() reformats it on switch.
+  window.tsPriceSpan = function (amount, from) {
+    from = (from || '').toUpperCase();
+    return '<span class="ts-price" data-base-amount="' + amount + '" data-base-cur="' + from + '">'
+         + window.tsMoney(amount, from) + '</span>';
+  };
+
   // Re-render one <span class="ts-price" data-base-amount data-base-cur>
   function render(el, to) {
     var base = parseFloat(el.getAttribute('data-base-amount'));

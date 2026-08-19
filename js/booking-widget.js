@@ -158,6 +158,17 @@
       datesHint.textContent  = text;
       datesHint.dataset.tone = tone || "neutral";
     }
+    // As setHint but the text contains a .ts-price span (currency-aware).
+    function setHintHtml(html, tone) {
+      datesHint.innerHTML    = html;
+      datesHint.dataset.tone = tone || "neutral";
+    }
+    // Currency-aware price span (converts to the visitor's currency + re-renders on
+    // switch). Falls back to the room's base currency if currency.js isn't present.
+    function priceSpan(amount, cur) {
+      if (typeof window.tsPriceSpan === "function") return window.tsPriceSpan(amount, cur);
+      return (amount || 0).toLocaleString("en-US", { style: "currency", currency: cur || currency });
+    }
 
     // ── Live availability check ──────────────────────────────────
     async function checkAvailability() {
@@ -172,10 +183,11 @@
         availOk = !!data.available;
         if (data.available) {
           const nights   = data.nights || Math.round((selEnd - selStart) / 86400000);
-          const totalFmt = (data.total || 0).toLocaleString("en-US", { style: "currency", currency: data.currency || currency });
-          setHint(`✓ Available — ${nights} night${nights > 1 ? "s" : ""} · ${totalFmt}`, "ok");
+          const cur      = data.currency || currency;
+          const total    = data.total || 0;
+          setHintHtml(`✓ Available — ${nights} night${nights > 1 ? "s" : ""} · ${priceSpan(total, cur)}`, "ok");
           totalLabel.textContent = `${nights} night${nights > 1 ? "s" : ""}`;
-          totalPrice.textContent = totalFmt;
+          totalPrice.innerHTML   = priceSpan(total, cur);
           totalCard.hidden = false;
         } else {
           setHint("✗ Sorry — no availability for these dates. Try different ones.", "bad");
@@ -216,8 +228,8 @@
       if (!selStart || !selEnd) { totalCard.hidden = true; return; }
       const nights = Math.round((selEnd - selStart) / 86400000);
       const total  = defPrice * nights;
-      totalLabel.textContent = `${nights} night${nights > 1 ? "s" : ""} · ${defPrice ? defPrice.toLocaleString("en-US", { style: "currency", currency }) : "rate"} / night`;
-      totalPrice.textContent = total > 0 ? total.toLocaleString("en-US", { style: "currency", currency }) : "—";
+      totalLabel.innerHTML = `${nights} night${nights > 1 ? "s" : ""} · ${defPrice ? priceSpan(defPrice, currency) : "rate"} / night`;
+      totalPrice.innerHTML = total > 0 ? priceSpan(total, currency) : "—";
       totalCard.hidden = false;
     }
 

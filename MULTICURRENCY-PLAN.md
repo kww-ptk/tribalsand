@@ -6,10 +6,11 @@
 ## Progress
 - **Phase 1 — DONE.** Helpers in `includes/db.php` (`TS_CURRENCIES`, `fx_rates()`, `current_currency()`/`resolve_currency()`, `convert_price()`, `format_money()`, `money_html()`), seed rates, `tests/currency_logic.php` (33 pass).
 - **Phase 3 — DONE.** Switcher in `includes/header.php` (desktop nav + mobile drawer chips), `js/currency.js` (instant re-render + cookie), globals injected in `includes/head.php`. `?cur=` also switches server-side.
-- **Phase 4 — PARTIAL.** Wired (server-rendered, instant-switch): `search.php` results + `includes/rooms-and-rates.php` suite cards. **Still to wire:**
-  - `includes/booking-widget.php` availability sidebar — the live per-night/total quote is computed in `js/booking-widget.js`; make it currency-aware via `window.TS_FX` + re-run on `tsSetCurrency`.
-  - `includes/booking-modal.php` — price display (`js/booking-modal.js`), plus the "final price confirmed in <real cur>" note.
-  - `activities.php` — mostly legacy free-text prices (`format_price()`); low priority / optional.
+- **Phase 4 — DONE (core).** All primary guest price surfaces convert + re-render live on switch:
+  - `search.php` results + `includes/rooms-and-rates.php` suite cards (server-rendered via `money_html()`).
+  - `js/booking-widget.js` availability sidebar (live per-night + total) — emits `.ts-price` spans via `window.tsPriceSpan`; `renderAll()` reformats on switch. Booking still holds in the room's real `price_currency` (data-price untouched).
+  - `includes/booking-modal.php` — reuses the same `#bkTotal*` elements, so it's covered by the widget change (verified: $3,101 ↔ KES 400,000 ↔ €2,853). Existing "final price confirmed by email" note communicates indicative pricing.
+  - **Optional remainder:** `activities.php` legacy free-text prices (`format_price()`) — low priority.
 - **Phase 2 (rate automation) & Phase 5 (polish) — NOT STARTED.** Seed rates are live in the meantime.
 
 ---
