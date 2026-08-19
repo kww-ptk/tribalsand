@@ -157,6 +157,147 @@ function set_setting(string $key, string $value): void {
     );
 }
 
+// ── Multi-currency (display-only) ───────────────────────────────
+// Guests can VIEW prices in their currency; every booking still settles in the
+// property's real price_currency. Rates are USD-based, cached in settings['fx_rates'],
+// auto-refreshed daily (api/fx-sync.php) with per-rate admin overrides. Conversion is
+// indicative only — never a source of truth. See MULTICURRENCY-PLAN.md.
+
+/** Supported display currencies. `round` = nearest N to round a *converted* figure to. */
+const TS_CURRENCIES = [
+    'USD' => ['symbol' => '$',    'name' => 'US Dollar',       'round' => 1],
+    'EUR' => ['symbol' => '€',    'name' => 'Euro',            'round' => 1],
+    'GBP' => ['symbol' => '£',    'name' => 'British Pound',   'round' => 1],
+    'KES' => ['symbol' => 'KES ', 'name' => 'Kenyan Shilling', 'round' => 100],
+];
+const TS_CURRENCY_DEFAULT = 'USD';
+
+/** True when $code is a currency we support for display. */
+function is_supported_currency(string $code): bool {
+    return isset(TS_CURRENCIES[strtoupper(trim($code))]);
+}
+
+/** Seed rates (USD-based) — used before the first live sync, or if the setting is unreadable. */
+function fx_rates_seed(): array {
+    return [
+        'base'       => 'USD',
+        'fetched_at' => null,
+        'rates'      => ['USD' => 1.0, 'KES' => 129.0, 'EUR' => 0.92, 'GBP' => 0.79],
+        'locked'     => [],
+    ];
+}
+
+/**
+ * The cached FX rate table (USD-based), or the seed when unset/unparseable. Never
+ * throws — a broken settings row (or a DB blip) must not take prices down. Any
+ * missing/non-positive per-currency rate is backfilled from the seed.
+ */
+function fx_rates(): array {
+    static $cache = null;
+    if ($cache !== null) return $cache;
+    $seed = fx_rates_seed();
+    try {
+        $raw = setting('fx_rates', '');
+        $dec = $raw !== '' ? json_decode($raw, true) : null;
+        if (is_array($dec) && !empty($dec['rates']) && is_array($dec['rates'])) {
+            foreach (array_keys(TS_CURRENCIES) as $c) {
+                if (!isset($dec['rates'][$c]) || (float)$dec['rates'][$c] <= 0) {
+                    $dec['rates'][$c] = $seed['rates'][$c] ?? null;
+                }
+            }
+            $dec['base']   = $dec['base']   ?? 'USD';
+            $dec['locked'] = is_array($dec['locked'] ?? null) ? $dec['locked'] : [];
+            return $cache = $dec;
+        }
+    } catch (Throwable $e) { /* fall through to seed */ }
+    return $cache = $seed;
+}
+
+/**
+ * Pure currency resolver (side-effect free, so it's unit-testable): pick a
+ * supported currency from the given request param + cookie, else the default.
+ */
+function resolve_currency(?string $param, ?string $cookie): string {
+    $p = strtoupper(trim((string)$param));
+    if ($p !== '' && is_supported_currency($p)) return $p;
+    $c = strtoupper(trim((string)$cookie));
+    return is_supported_currency($c) ? $c : TS_CURRENCY_DEFAULT;
+}
+
+/**
+ * The visitor's chosen display currency (request-cached). Resolution order:
+ * valid ?cur= (also persisted as a 1-year cookie) → ts_currency cookie → default.
+ */
+function current_currency(): string {
+    static $cur = null;
+    if ($cur !== null) return $cur;
+
+    $param = $_GET['cur'] ?? '';
+    $cur   = resolve_currency($param, $_COOKIE['ts_currency'] ?? '');
+
+    // Persist an explicit, valid choice so it survives navigation. Guarded — some
+    // render paths (and CLI/tests) have already sent headers; never fatal.
+    $p = strtoupper(trim((string)$param));
+    if ($p !== '' && $p === $cur) {
+        if (!headers_sent() && PHP_SAPI !== 'cli') {
+            setcookie('ts_currency', $cur, [
+                'expires' => time() + 31536000, 'path' => '/', 'samesite' => 'Lax',
+            ]);
+        }
+        $_COOKIE['ts_currency'] = $cur;
+    }
+    return $cur;
+}
+
+/**
+ * Convert an amount between currencies (USD-based table). $to defaults to the
+ * visitor's current currency. Returns ['amount','currency','converted']. If either
+ * rate is missing, returns the ORIGINAL amount+currency (converted=false) so a
+ * price is never rendered broken.
+ */
+function convert_price(float $amount, string $from, ?string $to = null): array {
+    $from = strtoupper(trim($from)) ?: TS_CURRENCY_DEFAULT;
+    $to   = strtoupper(trim((string)($to ?? current_currency())));
+    if (!is_supported_currency($to)) $to = TS_CURRENCY_DEFAULT;
+
+    if ($from === $to) {
+        return ['amount' => $amount, 'currency' => $from, 'converted' => true];
+    }
+
+    $rates = fx_rates()['rates'];
+    $rf = isset($rates[$from]) ? (float)$rates[$from] : 0.0;
+    $rt = isset($rates[$to])   ? (float)$rates[$to]   : 0.0;
+    if ($rf <= 0 || $rt <= 0) {
+        return ['amount' => $amount, 'currency' => $from, 'converted' => false];
+    }
+
+    $out   = ($amount / $rf) * $rt;                 // → USD base → target
+    $round = TS_CURRENCIES[$to]['round'] ?? 1;
+    $out   = $round > 1 ? round($out / $round) * $round : round($out);
+
+    return ['amount' => (float)$out, 'currency' => $to, 'converted' => true];
+}
+
+/** Format a bare amount with its currency symbol + thousands grouping (no decimals). */
+function format_money(float $amount, string $currency): string {
+    $currency = strtoupper(trim($currency));
+    $sym = TS_CURRENCIES[$currency]['symbol'] ?? ($currency . ' ');
+    return $sym . number_format($amount, 0);
+}
+
+/**
+ * A price rendered in the visitor's current currency, wrapped so js/currency.js can
+ * re-render it instantly on switch (no reload). Carries the ORIGINAL base amount +
+ * currency as data-* so the client re-converts from source, not from a rounded value.
+ */
+function money_html(float $amount, string $from): string {
+    $from = strtoupper(trim($from)) ?: TS_CURRENCY_DEFAULT;
+    $c = convert_price($amount, $from);
+    return '<span class="ts-price" data-base-amount="' . e((string)$amount)
+         . '" data-base-cur="' . e($from) . '">'
+         . e(format_money($c['amount'], $c['currency'])) . '</span>';
+}
+
 // ── Availability helpers ────────────────────────────────────────
 
 function fetch_units_by_room(int $room_id): array {
