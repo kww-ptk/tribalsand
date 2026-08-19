@@ -3,6 +3,15 @@
 > Self-contained spec. A fresh session can execute this without prior context.
 > Approved 2026-08-19.
 
+## Progress
+- **Phase 1 — DONE.** Helpers in `includes/db.php` (`TS_CURRENCIES`, `fx_rates()`, `current_currency()`/`resolve_currency()`, `convert_price()`, `format_money()`, `money_html()`), seed rates, `tests/currency_logic.php` (33 pass).
+- **Phase 3 — DONE.** Switcher in `includes/header.php` (desktop nav + mobile drawer chips), `js/currency.js` (instant re-render + cookie), globals injected in `includes/head.php`. `?cur=` also switches server-side.
+- **Phase 4 — PARTIAL.** Wired (server-rendered, instant-switch): `search.php` results + `includes/rooms-and-rates.php` suite cards. **Still to wire:**
+  - `includes/booking-widget.php` availability sidebar — the live per-night/total quote is computed in `js/booking-widget.js`; make it currency-aware via `window.TS_FX` + re-run on `tsSetCurrency`.
+  - `includes/booking-modal.php` — price display (`js/booking-modal.js`), plus the "final price confirmed in <real cur>" note.
+  - `activities.php` — mostly legacy free-text prices (`format_price()`); low priority / optional.
+- **Phase 2 (rate automation) & Phase 5 (polish) — NOT STARTED.** Seed rates are live in the meantime.
+
 ---
 
 ## 0. Ground rules (READ FIRST)

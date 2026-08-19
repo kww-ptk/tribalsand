@@ -75,7 +75,7 @@ if ($__roomIds) {
           <?php if ($meta): ?><div class="suite-card-meta"><?= e($meta) ?></div><?php endif; ?>
           <div class="suite-card-price">
             <?php if ($price > 0): ?>
-            <span class="suite-card-price__amt"><?= e($r['price_currency']) ?> <?= e(number_format($price, 0)) ?></span>
+            <span class="suite-card-price__amt"><?= money_html($price, $r['price_currency']) ?></span>
             <?php if ($unit !== ''): ?><span class="suite-card-price__unit"><?= e($unit) ?></span><?php endif; ?>
             <?php else: ?>
             <span class="suite-card-price__amt suite-card-price__amt--soft">Price on request</span>

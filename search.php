@@ -236,7 +236,7 @@ include __DIR__ . '/includes/header.php';
               <span class="vcard__avail no">No availability for these dates</span>
             <?php else: ?>
               <span class="vcard__avail ok"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg><?= e($avail_txt) ?></span>
-              <span class="vcard__from"><small>From (<?= $nights ?> night<?= $nights !== 1 ? 's' : '' ?>)</small><b><?= e($money($r['from'], $r['currency'])) ?></b></span>
+              <span class="vcard__from"><small>From (<?= $nights ?> night<?= $nights !== 1 ? 's' : '' ?>)</small><b><?= money_html((float)$r['from'], $r['currency']) ?></b></span>
             <?php endif; ?>
           </div>
 
@@ -266,7 +266,7 @@ include __DIR__ . '/includes/header.php';
               <?php if ($room['short_desc']): ?><div class="rcard__desc"><?= e($room['short_desc']) ?></div><?php endif; ?>
               <div class="rcard__foot">
                 <div class="rcard__price">
-                  <b><?= e($money($room['total'], $room['currency'])) ?></b>
+                  <b><?= money_html((float)$room['total'], $room['currency']) ?></b>
                   <small><?= $room['nights'] ?> night<?= $room['nights'] !== 1 ? 's' : '' ?> · final price by email</small>
                 </div>
                 <button type="button" class="rcard__btn js-select-room"
