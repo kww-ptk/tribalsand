@@ -174,8 +174,6 @@ a{text-decoration:none;color:inherit;}
 /* ── FAQ ── */
 .faq-item{border-bottom:1px solid var(--border);}
 .faq-q{display:flex;justify-content:space-between;align-items:center;padding:1rem 0;font-size:1rem;font-weight:400;color:var(--dark);cursor:pointer;user-select:none;gap:1rem;}
-.faq-ico{color:var(--sand);font-size:1.1rem;transition:transform .22s;flex-shrink:0;}
-.faq-item.open .faq-ico{transform:rotate(45deg);}
 .faq-a{display:none;padding:0 0 1rem;font-size:1rem;color:var(--mid);line-height:1.88;font-weight:400;}
 .faq-item.open .faq-a{display:block;}
 
@@ -253,7 +251,7 @@ select.book-inp{-webkit-appearance:none;background-image:url("data:image/svg+xml
 .enq-back-btn:hover{color:var(--teal);}
 input[type="date"].book-inp{cursor:pointer;}
 select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right .75rem center;padding-right:2rem;}
-.book-features{padding:.9rem 1.4rem;border-top:1px solid var(--border);background:var(--sand-faint);display:flex;flex-direction:column;gap:.38rem;}
+.book-features{padding:1rem 1.6rem 1rem 1.7rem;border-top:1px solid var(--border);background:var(--sand-faint);display:flex;flex-direction:column;gap:.42rem;}
 .book-feat{display:flex;align-items:center;gap:.55rem;font-size:1rem;color:var(--mid);font-weight:400;}
 .book-feat-ico{color:var(--teal);font-size:.65rem;flex-shrink:0;width:14px;text-align:center;}
 .book-whatsapp{display:flex;align-items:center;justify-content:center;gap:.6rem;padding:.85rem 1.4rem;border-top:1px solid var(--border);background:var(--white);font-size:1rem;color:var(--teal);font-weight:500;transition:background .2s;}
@@ -543,32 +541,32 @@ include __DIR__ . '/includes/property-gallery.php';
       <div class="sec-rule"></div>
 
       <div class="faq-item">
-        <div class="faq-q">Can I book My Amani for a partial group? <span class="faq-ico" aria-hidden="true">+</span></div>
+        <div class="faq-q">Can I book My Amani for a partial group?</div>
         <div class="faq-a">No. My Amani is available as an entire property only — all 5 bedrooms for up to 10 guests. This ensures complete privacy for every stay.</div>
       </div>
 
       <div class="faq-item">
-        <div class="faq-q">Is a private chef included at My Amani? <span class="faq-ico" aria-hidden="true">+</span></div>
+        <div class="faq-q">Is a private chef included at My Amani?</div>
         <div class="faq-a">A private chef is available on request at an additional cost. The villa also has a fully-equipped kitchen for self-catering.</div>
       </div>
 
       <div class="faq-item">
-        <div class="faq-q">What is the conservation project at My Amani? <span class="faq-ico" aria-hidden="true">+</span></div>
+        <div class="faq-q">What is the conservation project at My Amani?</div>
         <div class="faq-a">My Amani's beach is an active nesting ground for endangered sea turtles. The property operates a year-round conservation programme with protected nesting areas and regular beach cleanups.</div>
       </div>
 
       <div class="faq-item">
-        <div class="faq-q">How far is Vipingo Ridge Golf Course from My Amani? <span class="faq-ico" aria-hidden="true">+</span></div>
+        <div class="faq-q">How far is Vipingo Ridge Golf Course from My Amani?</div>
         <div class="faq-a">Vipingo Ridge — an 18-hole PGA-accredited course — is approximately 5 minutes from My Amani. We can arrange tee times through our concierge team.</div>
       </div>
 
       <div class="faq-item">
-        <div class="faq-q">What is the security deposit for My Amani? <span class="faq-ico" aria-hidden="true">+</span></div>
+        <div class="faq-q">What is the security deposit for My Amani?</div>
         <div class="faq-a">A refundable security deposit of USD 500 applies to all bookings. Check-in is 2:00 PM and check-out is 10:00 AM.</div>
       </div>
 
       <div class="faq-item">
-        <div class="faq-q">What is the minimum stay at My Amani? <span class="faq-ico" aria-hidden="true">+</span></div>
+        <div class="faq-q">What is the minimum stay at My Amani?</div>
         <div class="faq-a">The standard minimum stay is 2 nights. During peak season a 5-night minimum applies. My Amani is a non-smoking property throughout.</div>
       </div>
     </div>
@@ -635,7 +633,7 @@ include __DIR__ . '/includes/property-gallery.php';
 
       <!-- Policy accordion -->
       <div class="book-pol-toggle">
-        <button class="book-pol-btn" id="polBtn">Property Policies <span class="pol-chevron">▾</span></button>
+        <button class="book-pol-btn" id="polBtn">Property Policies <span class="pol-chevron"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span></button>
         <div class="book-pol-body" id="polBody">
           <div class="book-pol-row"><span class="book-pol-k">Check-in</span><span class="book-pol-v">From 2:00 PM</span></div>
           <div class="book-pol-row"><span class="book-pol-k">Check-out</span><span class="book-pol-v">By 10:00 AM</span></div>
@@ -755,82 +753,8 @@ document.querySelectorAll('.exp-row,.review-card,.other-card,.amenity,.faq-item,
   obs.observe(el);
 });
 
-// GHL enquiry submit
+// ── Policy accordion (sidebar) ──
 (function(){
-  // ── Step navigation ──
-  var step1 = document.getElementById('enqStep1');
-  var step2 = document.getElementById('enqStep2');
-  var nextBtn = document.getElementById('enqNext');
-  var backBtn = document.getElementById('enqBack');
-  if (!step1 || !step2) return;
-
-  nextBtn.addEventListener('click', function(){
-    step1.style.display = 'none';
-    step2.style.display = '';
-    document.getElementById('enqName').focus();
-  });
-  backBtn.addEventListener('click', function(){
-    step2.style.display = 'none';
-    step1.style.display = '';
-  });
-
-  // ── Submit ──
-  document.getElementById('btnEnquire').addEventListener('click', function(){
-    var name    = (document.getElementById('enqName').value    || '').trim();
-    var email   = (document.getElementById('enqEmail').value   || '').trim();
-    var phone   = (document.getElementById('enqPhone').value   || '').trim();
-    var message = (document.getElementById('enqMessage').value || '').trim();
-    var arrival   = (document.getElementById('enqArrival')   ? document.getElementById('enqArrival').value   : '');
-    var departure = (document.getElementById('enqDeparture') ? document.getElementById('enqDeparture').value : '');
-    var adults    = (document.getElementById('enqAdults')    ? document.getElementById('enqAdults').value    : '');
-    var children  = (document.getElementById('enqChildren')  ? document.getElementById('enqChildren').value  : '');
-    var rooms     = (document.getElementById('enqRooms')     ? document.getElementById('enqRooms').value     : '');
-    var msgEl     = document.getElementById('enqMsg');
-
-    if (!name || !email) {
-      msgEl.className = 'book-enq-msg show error';
-      msgEl.textContent = 'Please enter your name and email.';
-      return;
-    }
-    var btn = document.getElementById('btnEnquire');
-    btn.textContent = 'Sending…'; btn.disabled = true;
-    msgEl.className = 'book-enq-msg'; msgEl.textContent = '';
-
-    var parts = name.split(' ');
-    var noteLines = ['My Amani Enquiry'];
-    if (arrival)   noteLines.push('Arrival: '   + arrival);
-    if (departure) noteLines.push('Departure: ' + departure);
-    if (adults)    noteLines.push('Adults: '    + adults);
-    if (children)  noteLines.push('Children: '  + children);
-    if (rooms)     noteLines.push('Rooms/Unit: '+ rooms);
-    if (phone)     noteLines.push('Phone: '     + phone);
-    if (message)   noteLines.push('\nMessage:\n' + message);
-
-    fetch('/ghl-submit', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({
-      guest:   { firstName: parts[0]||name, lastName: parts.slice(1).join(' ')||'', email: email, phone: phone },
-      trip:    { prop: 'My Amani', arrival: arrival, departure: departure, adults: adults, children: children, rooms: rooms },
-      message: message,
-      tags:    ['website-enquiry', 'my-amani-enquiry'],
-      opportunity: { source: 'Website - My Amani' },
-      note:    noteLines.join('\n'),
-      ref:     'WEB-' + Date.now()
-    })})
-    .then(function(r){ return r.json(); })
-    .then(function(r){
-      if (r.ok) {
-        msgEl.className = 'book-enq-msg show success';
-        msgEl.textContent = 'Thank you — we\'ll be in touch within 24 hours.';
-        btn.textContent = 'Enquiry Sent';
-      } else { throw new Error(r.error || 'error'); }
-    })
-    .catch(function(){
-      msgEl.className = 'book-enq-msg show error';
-      msgEl.textContent = 'Something went wrong — please WhatsApp us on +254 115 115 247';
-      btn.textContent = 'Send Enquiry →'; btn.disabled = false;
-    });
-  });
-
-  // ── Policy accordion ──
   var polBtn  = document.getElementById('polBtn');
   var polBody = document.getElementById('polBody');
   var polChev = polBtn ? polBtn.querySelector('.pol-chevron') : null;

@@ -158,8 +158,6 @@ a{text-decoration:none;color:inherit;}
 /* ── FAQ ── */
 .faq-item{border-bottom:1px solid var(--border);}
 .faq-q{display:flex;justify-content:space-between;align-items:center;padding:1rem 0;font-size:1rem;font-weight:400;color:var(--dark);cursor:pointer;user-select:none;gap:1rem;}
-.faq-ico{color:var(--sand);font-size:1.1rem;transition:transform .22s;flex-shrink:0;}
-.faq-item.open .faq-ico{transform:rotate(45deg);}
 .faq-a{display:none;padding:0 0 1rem;font-size:1rem;color:var(--mid);line-height:1.88;font-weight:400;}
 .faq-item.open .faq-a{display:block;}
 
@@ -234,7 +232,7 @@ select.book-inp{-webkit-appearance:none;background-image:url("data:image/svg+xml
 input[type="date"].book-inp{cursor:pointer;}
 select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23888' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right .75rem center;padding-right:2rem;}
 
-.book-features{padding:.9rem 1.4rem;border-top:1px solid var(--border);background:var(--sand-faint);display:flex;flex-direction:column;gap:.38rem;}
+.book-features{padding:1rem 1.6rem 1rem 1.7rem;border-top:1px solid var(--border);background:var(--sand-faint);display:flex;flex-direction:column;gap:.42rem;}
 .book-feat{display:flex;align-items:center;gap:.55rem;font-size:1rem;color:var(--mid);font-weight:400;}
 .book-feat-ico{color:var(--teal);font-size:.75rem;flex-shrink:0;width:14px;text-align:center;}
 .book-feat a{color:var(--teal);}
@@ -478,7 +476,7 @@ include __DIR__ . '/includes/property-gallery.php';
 
       <?php foreach ($faqs as $faq): ?>
       <div class="faq-item">
-        <div class="faq-q"><?= htmlspecialchars($faq['q']) ?> <span class="faq-ico">+</span></div>
+        <div class="faq-q"><?= htmlspecialchars($faq['q']) ?></div>
         <div class="faq-a"><?= htmlspecialchars($faq['a']) ?></div>
       </div>
       <?php endforeach; ?>
@@ -551,7 +549,7 @@ include __DIR__ . '/includes/property-gallery.php';
 
       <!-- Policy accordion -->
       <div class="book-pol-toggle">
-        <button class="book-pol-btn" id="polBtn">Property Policies <span class="pol-chevron">▾</span></button>
+        <button class="book-pol-btn" id="polBtn">Property Policies <span class="pol-chevron"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span></button>
         <div class="book-pol-body" id="polBody">
           <div class="book-pol-row"><span class="book-pol-k">Check-in</span><span class="book-pol-v">2:00 PM</span></div>
           <div class="book-pol-row"><span class="book-pol-k">Check-out</span><span class="book-pol-v">10:00 AM</span></div>
