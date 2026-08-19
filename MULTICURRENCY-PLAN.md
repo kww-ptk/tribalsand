@@ -12,7 +12,9 @@
   - `includes/booking-modal.php` — reuses the same `#bkTotal*` elements, so it's covered by the widget change (verified: $3,101 ↔ KES 400,000 ↔ €2,853). Existing "final price confirmed by email" note communicates indicative pricing.
   - **Optional remainder:** `activities.php` legacy free-text prices (`format_price()`) — low priority.
 - **Phase 2 — DONE.** `api/fx-sync.php` (Bearer `FX_SYNC_SECRET`, legacy `?secret=`) + `fx_sync_rates()`/`fx_save()` in `includes/db.php` (open.er-api.com, USD base, locked-rate preservation, last-good on failure). Admin **Settings → Display Currency Rates** card: per-rate edit + lock + "Sync now". **Live rates fetched & stored** (replaced seed). Add `FX_SYNC_SECRET` to prod env + a daily cron hitting `api/fx-sync.php`.
-- **Phase 5 (polish) — NOT STARTED.** Geo-default, "≈ approx." affordance, analytics.
+- **Phase 5 — DONE (core).** `geo_default_currency()` (Cloudflare `CF-IPCountry`: KE→KES, GB→GBP, eurozone→EUR, else USD) feeds `current_currency()` as the first-visit guess (overridable). `money_html()` + `currency.js` prefix "≈" only when a real conversion happened (base-currency prices stay exact). Analytics on currency choice — not done (optional).
+
+**Feature complete.** Remaining optional: `activities.php` free-text prices; currency-choice analytics.
 
 ---
 

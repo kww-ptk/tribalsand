@@ -29,11 +29,14 @@
   }
 
   // Public: format a base amount in the visitor's current currency (falls back to
-  // the original currency if the rate is missing). For JS-computed prices.
+  // the original currency if the rate is missing). Prefixes "≈" when an actual
+  // conversion happened. For JS-computed prices.
   window.tsMoney = function (amount, from) {
     from = (from || '').toUpperCase();
-    var out = convert(amount, from, window.TS_CUR);
-    return (out === null) ? format(amount, from) : format(out, window.TS_CUR);
+    var to = window.TS_CUR;
+    var out = convert(amount, from, to);
+    if (out === null) return format(amount, from);
+    return (from !== to ? '≈ ' : '') + format(out, to);
   };
 
   // Public: an HTML <span class="ts-price"> for a base amount — embed inside larger
@@ -50,7 +53,8 @@
     var from = (el.getAttribute('data-base-cur') || '').toUpperCase();
     if (isNaN(base) || !from) return;
     var out = convert(base, from, to);
-    el.textContent = (out === null) ? format(base, from) : format(out, to);
+    el.textContent = (out === null) ? format(base, from)
+                                    : (from !== to ? '≈ ' : '') + format(out, to);
   }
 
   function renderAll(to) {

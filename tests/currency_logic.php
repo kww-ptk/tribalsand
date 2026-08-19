@@ -71,5 +71,32 @@ check('money_html carries base amount',       str_contains($html, 'data-base-amo
 check('money_html carries base currency',     str_contains($html, 'data-base-cur="KES"'));
 check('money_html renders a formatted price', (bool)preg_match('/>[^<]*\d{1,3}(,\d{3})*[^<]*<\/span>/', $html));
 
+// ── resolve_currency $default arg (geo injection) ──────────────────────────
+check('default arg used when nothing else',   resolve_currency('', '', 'EUR') === 'EUR');
+check('cookie beats default',                 resolve_currency('', 'GBP', 'EUR') === 'GBP');
+check('param beats default',                  resolve_currency('KES', '', 'EUR') === 'KES');
+check('invalid default → TS_CURRENCY_DEFAULT', resolve_currency('', '', 'JPY') === TS_CURRENCY_DEFAULT);
+
+// ── geo_default_currency (from CF-IPCountry) ───────────────────────────────
+$geo = function (string $cc): string {
+    $_SERVER['HTTP_CF_IPCOUNTRY'] = $cc;
+    return geo_default_currency();
+};
+check('KE → KES', $geo('KE') === 'KES');
+check('GB → GBP', $geo('GB') === 'GBP');
+check('FR → EUR', $geo('FR') === 'EUR');
+check('DE → EUR', $geo('DE') === 'EUR');
+check('US → USD', $geo('US') === 'USD');
+check('unknown → default', $geo('ZZ') === TS_CURRENCY_DEFAULT);
+check('empty header → default', $geo('') === TS_CURRENCY_DEFAULT);
+unset($_SERVER['HTTP_CF_IPCOUNTRY']);
+
+// ── "≈" approximate marker ─────────────────────────────────────────────────
+// current_currency() in CLI (no ?cur, no cookie, no CF header) → TS_CURRENCY_DEFAULT (USD).
+$approxHtml = money_html(200000, 'KES');   // KES shown in USD → converted → approx
+check('converted price is marked ≈', str_contains($approxHtml, '≈'));
+$exactHtml = money_html(200, 'USD');       // USD shown in USD → exact → no ≈
+check('base-currency price has no ≈', !str_contains($exactHtml, '≈'));
+
 echo "\n" . ($failures === 0 ? "ALL PASS\n" : "{$failures} FAILURE(S)\n");
 exit($failures === 0 ? 0 : 1);

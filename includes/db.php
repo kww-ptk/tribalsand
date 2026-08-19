@@ -215,25 +215,46 @@ function fx_rates(bool $fresh = false): array {
 
 /**
  * Pure currency resolver (side-effect free, so it's unit-testable): pick a
- * supported currency from the given request param + cookie, else the default.
+ * supported currency from the given request param + cookie, else $default (which
+ * itself defaults to TS_CURRENCY_DEFAULT). $default lets the caller inject a
+ * geo-guess for first-time visitors without breaking the pure signature.
  */
-function resolve_currency(?string $param, ?string $cookie): string {
+function resolve_currency(?string $param, ?string $cookie, ?string $default = null): string {
     $p = strtoupper(trim((string)$param));
     if ($p !== '' && is_supported_currency($p)) return $p;
     $c = strtoupper(trim((string)$cookie));
-    return is_supported_currency($c) ? $c : TS_CURRENCY_DEFAULT;
+    if (is_supported_currency($c)) return $c;
+    $d = strtoupper(trim((string)$default));
+    return is_supported_currency($d) ? $d : TS_CURRENCY_DEFAULT;
+}
+
+/**
+ * First-visit currency guess from the visitor's country (Cloudflare's CF-IPCountry
+ * header, set in front of Render). Only ever returns a supported currency; unknown
+ * or missing → TS_CURRENCY_DEFAULT. A guess only — the guest can always override.
+ */
+function geo_default_currency(): string {
+    $cc = strtoupper(trim($_SERVER['HTTP_CF_IPCOUNTRY'] ?? ''));
+    if ($cc === '' || $cc === 'XX') return TS_CURRENCY_DEFAULT;
+    if ($cc === 'KE') return 'KES';
+    if ($cc === 'GB') return 'GBP';
+    static $eurozone = ['AT','BE','CY','EE','FI','FR','DE','GR','IE','IT','LV','LT',
+                        'LU','MT','NL','PT','SK','SI','ES','HR'];
+    if (in_array($cc, $eurozone, true)) return 'EUR';
+    return TS_CURRENCY_DEFAULT; // USD for everyone else
 }
 
 /**
  * The visitor's chosen display currency (request-cached). Resolution order:
- * valid ?cur= (also persisted as a 1-year cookie) → ts_currency cookie → default.
+ * valid ?cur= (also persisted as a 1-year cookie) → ts_currency cookie →
+ * country geo-guess (first visit only) → default.
  */
 function current_currency(): string {
     static $cur = null;
     if ($cur !== null) return $cur;
 
     $param = $_GET['cur'] ?? '';
-    $cur   = resolve_currency($param, $_COOKIE['ts_currency'] ?? '');
+    $cur   = resolve_currency($param, $_COOKIE['ts_currency'] ?? '', geo_default_currency());
 
     // Persist an explicit, valid choice so it survives navigation. Guarded — some
     // render paths (and CLI/tests) have already sent headers; never fatal.
@@ -293,9 +314,13 @@ function format_money(float $amount, string $currency): string {
 function money_html(float $amount, string $from): string {
     $from = strtoupper(trim($from)) ?: TS_CURRENCY_DEFAULT;
     $c = convert_price($amount, $from);
+    // Mark as approximate only when a real conversion happened (displayed currency
+    // differs from the price's own currency). Exact when shown in its base currency
+    // or when a missing rate forced the original through.
+    $approx = ($c['converted'] && $c['currency'] !== $from) ? '≈ ' : '';
     return '<span class="ts-price" data-base-amount="' . e((string)$amount)
          . '" data-base-cur="' . e($from) . '">'
-         . e(format_money($c['amount'], $c['currency'])) . '</span>';
+         . e($approx . format_money($c['amount'], $c['currency'])) . '</span>';
 }
 
 /** Persist the FX rate table (USD-based). Resets the request cache so later reads see it. */
