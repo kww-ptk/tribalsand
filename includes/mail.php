@@ -19,7 +19,8 @@ function send_notification(array $sub): void {
         ? "[{$type}] {$room_name} — {$guest} — {$date}"
         : "[{$type}] {$guest} — {$date}";
 
-    $body = build_email_body($sub, $site_url);
+    $body = build_email_body($sub, $site_url);          // plain-text fallback part
+    $html = _notify_html($sub, $site_url);              // designed HTML part
 
     $headers  = "From: {$from}\r\n";
     $headers .= "Reply-To: {$sub['guest_email']}\r\n";
@@ -27,7 +28,7 @@ function send_notification(array $sub): void {
     $headers .= "MIME-Version: 1.0\r\n";
 
     if (!empty($env['RESEND_API_KEY'])) {
-        send_resend($to, $subject, $body, $from, $sub['guest_email'] ?? '', $env['RESEND_API_KEY']);
+        send_resend($to, $subject, $body, $from, $sub['guest_email'] ?? '', $env['RESEND_API_KEY'], $html);
     } elseif ($driver === 'smtp') {
         send_smtp($to, $subject, $body, $headers, $env);
     } elseif ($driver === 'log') {
@@ -71,6 +72,37 @@ function build_email_body(array $sub, string $site_url): string {
     }
 
     return implode("\n", $lines);
+}
+
+/** Designed HTML for the staff enquiry notification (all enquiry types funnel here). */
+function _notify_html(array $sub, string $site): string {
+    $type = ucfirst($sub['type'] ?? 'enquiry');
+    $rows = [
+        ['Name',         $sub['guest_name']  ?? ''],
+        ['Email',        $sub['guest_email'] ?? ''],
+        ['Phone',        $sub['guest_phone'] ?? ''],
+        ['Villa / Room', $sub['room_name']   ?? ''],
+        ['Check-in',     $sub['check_in']    ?? ''],
+        ['Check-out',    $sub['check_out']   ?? ''],
+        ['Adults',       !empty($sub['guests_adults'])   ? $sub['guests_adults']   : ''],
+        ['Children',     !empty($sub['guests_children']) ? $sub['guests_children'] : ''],
+    ];
+    $track = [
+        ['Source page',  $sub['source_page']  ?? ''],
+        ['Referrer',     $sub['referrer']     ?? ''],
+        ['UTM source',   $sub['utm_source']   ?? ''],
+        ['UTM medium',   $sub['utm_medium']   ?? ''],
+        ['UTM campaign', $sub['utm_campaign'] ?? ''],
+    ];
+    $btn = !empty($sub['id'])
+        ? _email_button('View in dashboard', rtrim($site, '/') . '/admin/submission-view.php?id=' . (int)$sub['id'])
+        : '';
+    $inner = _email_lead('A new ' . strtolower($type) . ' has come in through the website.')
+        . _email_detail_block($rows, $type . ' details')
+        . _email_message_block((string)($sub['message'] ?? ''), 'Message')
+        . _email_detail_block($track, 'Tracking')
+        . $btn;
+    return _email_shell('New ' . $type . ' enquiry', $inner, $site);
 }
 
 function send_resend(string $to, string $subject, string $text, string $from, string $reply_to, string $api_key, string $html = ''): void {
@@ -773,35 +805,122 @@ function send_admin_guest_cancelled(array $hold): void {
         "View holds: {$site}/admin/holds.php",
     ]);
 
-    _dispatch_mail($to, $subject, $body, $from, $hold['guest_email'] ?? $from, $env);
+    $inner = _email_lead('A guest has cancelled their own booking. The dates have been freed and the guest has been notified.')
+        . _email_detail_block([
+            ['Guest',     $hold['guest_name']  ?? ''],
+            ['Email',     $hold['guest_email'] ?? ''],
+            ['Room',      $hold['room_name']   ?? ''],
+            ['Check-in',  $hold['check_in']    ?? ''],
+            ['Check-out', $hold['check_out']   ?? ''],
+        ], 'Cancelled booking')
+        . _email_button('View holds', $site . '/admin/holds.php');
+    $html = _email_shell('Guest cancelled a booking', $inner, $site);
+
+    _dispatch_mail($to, $subject, $body, $from, $hold['guest_email'] ?? $from, $env, $html);
 }
 
 function send_hold_cancelled(array $hold, string $reason = 'cancelled'): void {
-    $env  = parse_env();
-    $from = $env['MAIL_FROM'] ?? 'noreply@tribalsand.com';
+    $env   = parse_env();
+    $from  = $env['MAIL_FROM'] ?? 'noreply@tribalsand.com';
+    $site  = rtrim($env['SITE_URL'] ?? $env['APP_URL'] ?? 'https://tribalsand.com', '/');
+    $reply = setting('notify_email', 'reservations@tribalsand.com');
 
     $is_expired = $reason === 'expired';
     $subject    = $is_expired
         ? "Hold Expired — {$hold['room_name']} — {$hold['check_in']}"
         : "Hold Cancelled — {$hold['room_name']} — {$hold['check_in']}";
 
+    $intro = $is_expired
+        ? "Unfortunately we were unable to confirm your hold request for {$hold['room_name']} within the 24-hour window."
+        : "Your hold request for {$hold['room_name']} has been cancelled.";
+
     $body = implode("\n", [
         "Dear {$hold['guest_name']},",
         '',
-        $is_expired
-            ? "Unfortunately we were unable to confirm your hold request for {$hold['room_name']} within the 24-hour window."
-            : "Your hold request for {$hold['room_name']} has been cancelled.",
+        $intro,
         '',
         "Dates: {$hold['check_in']} to {$hold['check_out']}",
         '',
         'Please contact us to check alternative availability:',
-        'Email: reservations@tribalsand.com',
+        "Email: {$reply}",
         '',
         'Warm regards,',
         'Tribal Sand',
     ]);
 
-    _dispatch_mail($hold['guest_email'], $subject, $body, $from, $from, $env);
+    $inner = '<p style="margin:0 0 18px;font-size:15px">Dear <strong>' . _email_esc($hold['guest_name'] ?? 'Guest') . '</strong>,</p>'
+        . _email_lead($intro)
+        . _email_detail_block([
+            ['Villa / Room', $hold['room_name'] ?? ''],
+            ['Check-in',     $hold['check_in']  ?? ''],
+            ['Check-out',    $hold['check_out'] ?? ''],
+        ], 'Your dates')
+        . '<p style="font-size:14px;color:#333;line-height:1.7;margin:18px 0 0">We’d love to help you find alternative dates — just reply to this email or write to '
+            . '<a href="mailto:' . _email_esc($reply) . '" style="color:#1E5C6B">' . _email_esc($reply) . '</a>.</p>'
+        . '<p style="font-size:14px;margin:24px 0 0">Warm regards,<br><strong>Tribal Sand</strong></p>';
+    $html = _email_shell($is_expired ? 'We couldn’t confirm your dates' : 'Your hold has been cancelled', $inner, $site);
+
+    _dispatch_mail($hold['guest_email'], $subject, $body, $from, $from, $env, $html);
+}
+
+// ── Shared HTML email template (teal header + card + footer) ─────
+// Reused by every notification/transactional email so guest AND staff messages
+// share the Tribal Sand design system (never plain-text). Keep in step with the
+// guest-acknowledgement / trip-builder templates above.
+
+function _email_esc(mixed $v): string { return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8'); }
+
+/** Wrap inner HTML in the branded card shell (teal header, sand accent, footer). */
+function _email_shell(string $heading, string $inner, string $site = '', string $sub = 'Tribal Sand — Kenya’s North Coast'): string {
+    $site = rtrim($site, '/');
+    return '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>'
+        . '<body style="margin:0;padding:0;background:#f0f4f5;font-family:Arial,Helvetica,sans-serif">'
+        . '<div style="max-width:600px;margin:32px auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1)">'
+          . '<div style="background:#102F3A;padding:24px 32px">'
+            . '<h1 style="margin:0;color:#fff;font-size:20px;font-weight:700">' . _email_esc($heading) . '</h1>'
+            . '<p style="margin:6px 0 0;color:#B8965A;font-size:14px">' . _email_esc($sub) . '</p>'
+          . '</div>'
+          . '<div style="padding:32px">' . $inner . '</div>'
+          . '<div style="background:#f9fafb;padding:16px 32px;text-align:center;font-size:12px;color:#aaa">'
+            . '<a href="' . _email_esc($site ?: '#') . '" style="color:#1E5C6B;text-decoration:none">tribalsand.com</a>'
+          . '</div>'
+        . '</div></body></html>';
+}
+
+/** A labelled detail table (rows are [label, value]; blanks are skipped). */
+function _email_detail_block(array $rows, string $title = 'Details'): string {
+    $tr = '';
+    foreach ($rows as [$k, $v]) {
+        if ($v === '' || $v === null) continue;
+        $tr .= '<tr><td style="padding:7px 0;color:#777;font-size:13px;width:140px;vertical-align:top">' . _email_esc($k) . '</td>'
+             . '<td style="padding:7px 0;font-size:14px;color:#222;font-weight:600">' . _email_esc($v) . '</td></tr>';
+    }
+    if ($tr === '') return '';
+    return '<div style="background:#f4f0e8;border-radius:6px;padding:18px 22px;margin:20px 0">'
+        . '<p style="margin:0 0 10px;font-size:12px;font-weight:700;text-transform:uppercase;color:#1E5C6B;letter-spacing:.5px">' . _email_esc($title) . '</p>'
+        . '<table style="width:100%;border-collapse:collapse">' . $tr . '</table></div>';
+}
+
+/** A free-text block (e.g. the guest's message), with a sand left rule. */
+function _email_message_block(string $text, string $label = 'Message'): string {
+    if (trim($text) === '') return '';
+    return '<div style="margin:20px 0">'
+        . '<p style="margin:0 0 8px;font-size:12px;font-weight:700;text-transform:uppercase;color:#777;letter-spacing:.5px">' . _email_esc($label) . '</p>'
+        . '<div style="background:#f9fafb;border-left:3px solid #B8965A;padding:14px 18px;border-radius:0 4px 4px 0;font-size:14px;color:#333;line-height:1.7">'
+        . nl2br(_email_esc($text)) . '</div></div>';
+}
+
+/** A primary call-to-action button (e.g. "Review in admin"). */
+function _email_button(string $label, string $url): string {
+    if (trim($url) === '') return '';
+    return '<div style="text-align:center;margin:24px 0">'
+        . '<a href="' . _email_esc($url) . '" style="display:inline-block;background:#102F3A;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;font-size:14px">'
+        . _email_esc($label) . '</a></div>';
+}
+
+/** A short lead paragraph. */
+function _email_lead(string $text): string {
+    return '<p style="margin:0 0 4px;font-size:15px;line-height:1.6;color:#333">' . nl2br(_email_esc($text)) . '</p>';
 }
 
 function _dispatch_mail(string $to, string $subject, string $body, string $from, string $reply_to, array $env, string $html = ''): void {
@@ -849,7 +968,15 @@ function send_change_request_notification(array $hold, array $req): void {
         "Review in admin: {$admin}",
     ];
     $text = implode("\n", $lines);
-    $html = '<p>' . nl2br(htmlspecialchars($text)) . '</p>';
+    $inner = _email_lead("{$hold['guest_name']} ({$hold['guest_email']}) requested a change to hold #{$hold['id']} — {$hold['room_name']}.")
+        . _email_detail_block([
+            ['New check-in',  ($req['check_in']  ?? '') !== '' ? $req['check_in']  : '—'],
+            ['New check-out', ($req['check_out'] ?? '') !== '' ? $req['check_out'] : '—'],
+            ['Guests',        (int)($req['guests'] ?? 0) > 0 ? (int)$req['guests'] : '—'],
+            ['Note',          ($req['note'] ?? '') !== '' ? $req['note'] : '—'],
+        ], 'Requested change')
+        . _email_button('Review in admin', $admin);
+    $html = _email_shell('Guest change request', $inner, $site);
     _dispatch_mail($to, $subject, $text, $from, $to, $env, $html);
 }
 
@@ -869,7 +996,13 @@ function send_addon_request_notification(array $hold, array $addon): void {
         "Review in admin: {$admin}",
     ];
     $text = implode("\n", $lines);
-    $html = '<p>' . nl2br(htmlspecialchars($text)) . '</p>';
+    $inner = _email_lead("{$hold['guest_name']} ({$hold['guest_email']}) added a {$addon['kind']} to hold #{$hold['id']} — {$hold['room_name']}.")
+        . _email_detail_block([
+            ['Add-on',  $addon['kind'] ?? ''],
+            ['Details', ($addon['details'] ?? '') !== '' ? $addon['details'] : '—'],
+        ], 'Add-on request')
+        . _email_button('Review in admin', $admin);
+    $html = _email_shell('Guest add-on request', $inner, $site);
     _dispatch_mail($to, $subject, $text, $from, $to, $env, $html);
 }
 
@@ -889,8 +1022,22 @@ function send_checkin_completed(array $hold, ?array $data): void {
         'Dietary: ' . (string)($data['dietary'] ?? ''),
         'Requests: ' . (string)($data['special_requests'] ?? ''),
     ];
-    $body = "Guest completed pre-check-in.\n\n" . implode("\n", $lines)
-          . "\n\n" . site_url('/admin/booking.php?hold=' . (int)$hold['id'] . '&tab=checkin');
-    try { send_resend($to, 'Pre-check-in complete — ' . ($hold['guest_name'] ?? ''), $body, $from, $from, $key); }
+    $adminUrl = site_url('/admin/booking.php?hold=' . (int)$hold['id'] . '&tab=checkin');
+    $body = "Guest completed pre-check-in.\n\n" . implode("\n", $lines) . "\n\n" . $adminUrl;
+
+    $inner = _email_lead('A guest has completed their pre-check-in.')
+        . _email_detail_block([
+            ['Guest',    $hold['guest_name'] ?? ''],
+            ['Room',     $hold['room_name']  ?? ''],
+            ['Flight',   trim((string)($data['flight_number'] ?? '') . ' ' . (string)($data['arrival_airport'] ?? ''))],
+            ['Arrival',  (string)($data['arrival_at'] ?? '')],
+            ['Transfer', ($data['needs_transfer'] ?? null) ? ('Yes — ' . (string)($data['transfer_details'] ?? '')) : 'No'],
+            ['Dietary',  (string)($data['dietary'] ?? '')],
+            ['Requests', (string)($data['special_requests'] ?? '')],
+        ], 'Check-in details')
+        . _email_button('Open in admin', $adminUrl);
+    $html = _email_shell('Pre-check-in complete', $inner, rtrim($env['SITE_URL'] ?? $env['APP_URL'] ?? 'https://tribalsand.com', '/'));
+
+    try { send_resend($to, 'Pre-check-in complete — ' . ($hold['guest_name'] ?? ''), $body, $from, $from, $key, $html); }
     catch (Throwable $e) { error_log('[checkin] send_resend: ' . $e->getMessage()); }
 }
