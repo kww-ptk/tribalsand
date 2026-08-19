@@ -266,6 +266,266 @@ function _guest_ack_html(array $d): string {
         . '</div></body></html>';
 }
 
+// ── Trip Builder itinerary emails ───────────────────────────────
+// Rich, dedicated guest acknowledgement + staff notification for the
+// multi-step Trip Builder. $d is the full JSON payload posted to
+// api/trip-builder.php: guest{}, trip{}, departure{}, special{}, itinerary[].
+
+function _tb_prop_name(string $slug): string {
+    $m = [
+        'zuri'     => 'Zuri Boutique Hotel · Watamu',
+        'mayakobe' => 'Maya Kobe · Kilifi',
+        'amani'    => 'My Amani Villa · Vipingo',
+        'enkare'   => 'Enkare Villa · Kilifi',
+        'sandbox'  => 'Sandbox Villa · Kilifi',
+        'ext'      => 'External accommodation',
+    ];
+    return $m[$slug] ?? ($slug !== '' ? $slug : '—');
+}
+
+function _tb_nights(array $t): int {
+    $a = strtotime((string)($t['arrDate'] ?? ''));
+    $b = strtotime((string)($t['depDate'] ?? ''));
+    return ($a && $b && $b > $a) ? (int)round(($b - $a) / 86400) : 0;
+}
+
+function _tb_party(array $t): string {
+    $ad = (int)($t['adults'] ?? 0); $ch = (int)($t['children'] ?? 0); $inf = (int)($t['infants'] ?? 0);
+    $p = [max(1, $ad) . ' adult' . ($ad === 1 ? '' : 's')];
+    if ($ch)  $p[] = $ch . ' child' . ($ch === 1 ? '' : 'ren');
+    if ($inf) $p[] = $inf . ' infant' . ($inf === 1 ? '' : 's');
+    return implode(' · ', $p);
+}
+
+function send_trip_builder_emails(array $d, int $id): void {
+    $env   = parse_env();
+    $from  = $env['MAIL_FROM'] ?? 'Tribal Sand <noreply@tribalsand.com>';
+    $reply = setting('notify_email', 'reservations@tribalsand.com');
+    $site  = rtrim($env['SITE_URL'] ?? $env['APP_URL'] ?? 'https://tribalsand.com', '/');
+
+    $g     = $d['guest'] ?? [];
+    $email = trim((string)($g['email'] ?? ''));
+    $name  = trim(((string)($g['firstName'] ?? '')) . ' ' . ((string)($g['lastName'] ?? '')));
+    $ref   = 'TSB-' . $id;
+
+    // Guest acknowledgement
+    if (filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $subject = 'Your Kenya coast trip plan — Tribal Sand (' . $ref . ')';
+        _dispatch_mail(
+            $email, $subject,
+            _trip_builder_text($d, 'guest', $ref, $site),
+            $from, $reply, $env,
+            _trip_builder_html($d, 'guest', $ref, $site)
+        );
+    }
+
+    // Staff notification
+    $subjectS = '[Trip Builder] ' . ($name !== '' ? $name : 'Guest') . ' — ' . _tb_prop_name((string)($d['trip']['prop'] ?? '')) . ' — ' . $ref;
+    _dispatch_mail(
+        $reply, $subjectS,
+        _trip_builder_text($d, 'staff', $ref, $site, $id),
+        $from, $email !== '' ? $email : $reply, $env,
+        _trip_builder_html($d, 'staff', $ref, $site, $id)
+    );
+}
+
+function _trip_builder_html(array $d, string $audience, string $ref, string $site, int $id = 0): string {
+    $esc = fn($v) => htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
+    $t = $d['trip'] ?? []; $dep = $d['departure'] ?? []; $sp = $d['special'] ?? []; $g = $d['guest'] ?? [];
+    $amL = ['flight'=>'International Flight','domestic'=>'Domestic Flight','road'=>'Road / Self-Drive','charter'=>'Charter / Private','here'=>'Already in Kenya'];
+    $tfL = ['yes'=>'Arranged by Tribal Sand','no'=>'Guest will manage','tbc'=>'To confirm'];
+
+    $block = function (string $title, array $rows) use ($esc): string {
+        $body = '';
+        foreach ($rows as [$k, $v]) {
+            if ($v === '' || $v === null) continue;
+            $body .= '<tr><td style="padding:7px 0;color:#A89880;font-size:13px;width:130px;vertical-align:top;font-family:Arial,Helvetica,sans-serif">' . $esc($k) . '</td>'
+                   . '<td style="padding:7px 0;font-size:14px;color:#141412;font-weight:600;font-family:Arial,Helvetica,sans-serif">' . $esc($v) . '</td></tr>';
+        }
+        if ($body === '') return '';
+        return '<div style="background:#f4f0e8;border-radius:6px;padding:18px 22px;margin:0 0 16px">'
+             . '<p style="margin:0 0 8px;font-size:12px;font-weight:700;text-transform:uppercase;color:#1E5C6B;letter-spacing:.5px;font-family:Arial,Helvetica,sans-serif">' . $esc($title) . '</p>'
+             . '<table style="width:100%;border-collapse:collapse">' . $body . '</table></div>';
+    };
+
+    $fmtDate = fn($v) => ($v && ($ts = strtotime((string)$v))) ? date('D, j M Y', $ts) : '';
+
+    $stay = $block('Your stay', [
+        ['Property',  _tb_prop_name((string)($t['prop'] ?? ''))],
+        ['Arrival',   $fmtDate($t['arrDate'] ?? '')],
+        ['Departure', $fmtDate($t['depDate'] ?? '')],
+        ['Duration',  _tb_nights($t) ? (_tb_nights($t) . ' night' . (_tb_nights($t) === 1 ? '' : 's')) : ''],
+        ['Party',     _tb_party($t)],
+        ['Trip type', $t['purpose'] ?? ''],
+    ]);
+    $arr = $block('Arrival', [
+        ['Arriving by',  $amL[$t['arrMode'] ?? ''] ?? ($t['arrMode'] ?? '')],
+        ['Flight',       $t['flightNum'] ?? ''],
+        ['Airport',      $t['airport'] ?? ''],
+        ['Landing time', $t['arrTime'] ?? ''],
+        ['Flying from',  $t['fromCity'] ?? ''],
+        ['Transfer',     $tfL[$t['transfer'] ?? ''] ?? ''],
+    ]);
+    $depB = $block('Departure', [
+        ['Flight',         $dep['flight'] ?? ''],
+        ['Airport',        $dep['airport'] ?? ''],
+        ['Departure time', $dep['time'] ?? ''],
+        ['Transfer',       $tfL[$dep['transfer'] ?? ''] ?? ''],
+        ['Final requests', $dep['notes'] ?? ''],
+    ]);
+
+    $itin = '';
+    foreach (($d['itinerary'] ?? []) as $day) {
+        $slots = $day['slots'] ?? [];
+        if (!$slots) continue;
+        $itin .= '<p style="margin:14px 0 4px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#B8965A;font-family:Arial,Helvetica,sans-serif">' . $esc($day['label'] ?? '') . '</p>';
+        foreach ($slots as $s) {
+            $tm = ($s['time'] ?? '') ? ' <span style="color:#B8965A">· ' . $esc($s['time']) . '</span>' : '';
+            $itin .= '<p style="margin:0 0 3px 12px;font-size:13px;color:#6B6050;font-family:Arial,Helvetica,sans-serif">' . $esc($s['name'] ?? '') . $tm . '</p>';
+        }
+    }
+    $itinBlock = $itin
+        ? '<div style="background:#FAF8F4;border-radius:6px;padding:18px 22px;margin:0 0 16px"><p style="margin:0 0 4px;font-size:12px;font-weight:700;text-transform:uppercase;color:#1E5C6B;letter-spacing:.5px;font-family:Arial,Helvetica,sans-serif">Your itinerary</p>' . $itin . '</div>'
+        : '';
+
+    $occ = array_values(array_filter((array)($sp['occasions'] ?? []), fn($o) => $o && $o !== 'none'));
+    $special = $block('Special touches', [
+        ['Occasions',     $occ ? implode(', ', $occ) : ''],
+        ['Dietary',       ($sp['diet'] ?? []) ? implode(', ', (array)$sp['diet']) : ''],
+        ['Accessibility', ($sp['mobility'] ?? []) ? implode(', ', (array)$sp['mobility']) : ''],
+        ['Trip pace',     $sp['pace'] ?? ''],
+        ['Notes',         $sp['extraNotes'] ?? ''],
+    ]);
+
+    if ($audience === 'staff') {
+        $headTitle = 'New Trip Builder Request';
+        $lead = '<p style="margin:0 0 18px;font-size:15px;color:#6B6050;line-height:1.7;font-family:Arial,Helvetica,sans-serif">A guest has submitted a bespoke itinerary through the Trip Builder. Full details below.</p>';
+        $extra = $block('Guest', [
+            ['Name',        trim(((string)($g['firstName'] ?? '')) . ' ' . ((string)($g['lastName'] ?? '')))],
+            ['Email',       $g['email'] ?? ''],
+            ['Phone',       $g['phone'] ?? ''],
+            ['Nationality', $g['nationality'] ?? ''],
+            ['Residence',   $g['country'] ?? ''],
+        ]);
+        $footerLink = $id
+            ? '<div style="text-align:center;margin:8px 0 4px"><a href="' . $esc($site . '/admin/submission-view.php?id=' . $id) . '" style="display:inline-block;background:#102F3A;color:#fff;text-decoration:none;padding:12px 24px;border-radius:8px;font-weight:600;font-family:Arial,Helvetica,sans-serif">Open in dashboard</a></div>'
+            : '';
+    } else {
+        $headTitle = 'Your Trip Plan';
+        $first = trim((string)($g['firstName'] ?? '')) ?: 'Guest';
+        $lead = '<p style="margin:0 0 14px;font-size:15px;font-family:Arial,Helvetica,sans-serif">Dear <strong>' . $esc($first) . '</strong>,</p>'
+              . '<p style="margin:0 0 8px;font-size:15px;color:#6B6050;line-height:1.75;font-family:Arial,Helvetica,sans-serif">Thank you for planning your Kenya coast escape with us. Our concierge team will personally review everything below and reply within <strong style="color:#141412">24 hours</strong> with a tailored quote. <strong>No payment is taken at this stage.</strong></p>';
+        $extra = '';
+        $footerLink = '';
+    }
+
+    $refBar = '<table width="100%" cellpadding="0" cellspacing="0" style="background:#F2E8D6"><tr>'
+            . '<td style="padding:12px 32px;font-size:11px;letter-spacing:.22em;color:#B8965A;text-transform:uppercase;font-family:Arial,Helvetica,sans-serif">Reference</td>'
+            . '<td align="right" style="padding:12px 32px;font-size:14px;color:#141412;font-family:Arial,Helvetica,sans-serif;font-weight:700">' . $esc($ref) . '</td>'
+            . '</tr></table>';
+
+    $contactLine = $audience === 'guest'
+        ? ' or write to <a href="mailto:' . $esc(setting('notify_email', 'reservations@tribalsand.com')) . '" style="color:#1E5C6B">' . $esc(setting('notify_email', 'reservations@tribalsand.com')) . '</a>'
+        : '';
+
+    return '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>'
+        . '<body style="margin:0;padding:0;background:#f0f4f5;font-family:Arial,Helvetica,sans-serif">'
+        . '<div style="max-width:600px;margin:32px auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1)">'
+          . '<div style="background:#102F3A;padding:24px 32px">'
+            . '<h1 style="margin:0;color:#fff;font-size:20px;font-weight:700">' . $esc($headTitle) . '</h1>'
+            . '<p style="margin:6px 0 0;color:#B8965A;font-size:14px">Tribal Sand &mdash; Kenya&rsquo;s North Coast</p>'
+          . '</div>'
+          . $refBar
+          . '<div style="padding:32px">'
+            . $lead
+            . $extra
+            . $stay . $arr . $depB . $itinBlock . $special
+            . $footerLink
+            . '<p style="font-size:13px;color:#777;line-height:1.6;margin-top:20px;font-family:Arial,Helvetica,sans-serif">Questions? Reply to this email' . $contactLine . '.</p>'
+            . ($audience === 'guest' ? '<p style="font-size:14px;margin:20px 0 0;font-family:Arial,Helvetica,sans-serif">Warm regards,<br><strong>Tribal Sand</strong></p>' : '')
+          . '</div>'
+          . '<div style="background:#f9fafb;padding:16px 32px;text-align:center;font-size:12px;color:#aaa">'
+            . '<a href="' . $esc($site ?: '#') . '" style="color:#1E5C6B;text-decoration:none">tribalsand.com</a>'
+          . '</div>'
+        . '</div></body></html>';
+}
+
+function _trip_builder_text(array $d, string $audience, string $ref, string $site, int $id = 0): string {
+    $t = $d['trip'] ?? []; $dep = $d['departure'] ?? []; $sp = $d['special'] ?? []; $g = $d['guest'] ?? [];
+    $amL = ['flight'=>'International Flight','domestic'=>'Domestic Flight','road'=>'Road / Self-Drive','charter'=>'Charter / Private','here'=>'Already in Kenya'];
+    $tfL = ['yes'=>'Arranged','no'=>'Guest will manage','tbc'=>'To confirm'];
+    $L = [];
+    if ($audience === 'staff') {
+        $L[] = 'NEW TRIP BUILDER REQUEST';
+    } else {
+        $L[] = 'Dear ' . (trim((string)($g['firstName'] ?? '')) ?: 'Guest') . ',';
+        $L[] = '';
+        $L[] = 'Thank you for planning your trip with Tribal Sand. Our concierge team will reply within 24 hours with a tailored quote. No payment is taken at this stage.';
+    }
+    $L[] = '';
+    $L[] = 'Reference: ' . $ref;
+    if ($audience === 'staff') {
+        $L[] = '';
+        $L[] = 'GUEST';
+        $L[] = '  Name:  ' . trim(((string)($g['firstName'] ?? '')) . ' ' . ((string)($g['lastName'] ?? '')));
+        $L[] = '  Email: ' . ($g['email'] ?? '');
+        $L[] = '  Phone: ' . ($g['phone'] ?? '');
+        if (!empty($g['nationality'])) $L[] = '  Nationality: ' . $g['nationality'];
+        if (!empty($g['country']))     $L[] = '  Residence:   ' . $g['country'];
+    }
+    $L[] = '';
+    $L[] = 'YOUR STAY';
+    $L[] = '  Property:  ' . _tb_prop_name((string)($t['prop'] ?? ''));
+    $L[] = '  Arrival:   ' . (($t['arrDate'] ?? '') ?: '—');
+    $L[] = '  Departure: ' . (($t['depDate'] ?? '') ?: '—');
+    $L[] = '  Duration:  ' . _tb_nights($t) . ' nights';
+    $L[] = '  Party:     ' . _tb_party($t);
+    if (!empty($t['purpose'])) $L[] = '  Trip type: ' . $t['purpose'];
+    $L[] = '';
+    $L[] = 'ARRIVAL';
+    $L[] = '  Mode:     ' . ($amL[$t['arrMode'] ?? ''] ?? (($t['arrMode'] ?? '') ?: '—'));
+    if (!empty($t['flightNum'])) $L[] = '  Flight:   ' . $t['flightNum'];
+    if (!empty($t['airport']))   $L[] = '  Airport:  ' . $t['airport'];
+    if (!empty($t['arrTime']))   $L[] = '  Landing:  ' . $t['arrTime'];
+    if (!empty($t['fromCity']))  $L[] = '  From:     ' . $t['fromCity'];
+    $L[] = '  Transfer: ' . ($tfL[$t['transfer'] ?? ''] ?? '—');
+    $L[] = '';
+    $L[] = 'DEPARTURE';
+    if (!empty($dep['flight']))  $L[] = '  Flight:   ' . $dep['flight'];
+    if (!empty($dep['airport'])) $L[] = '  Airport:  ' . $dep['airport'];
+    if (!empty($dep['time']))    $L[] = '  Time:     ' . $dep['time'];
+    $L[] = '  Transfer: ' . ($tfL[$dep['transfer'] ?? ''] ?? '—');
+    if (!empty($dep['notes']))   $L[] = '  Notes:    ' . $dep['notes'];
+    $itinLines = [];
+    foreach (($d['itinerary'] ?? []) as $day) {
+        $slots = $day['slots'] ?? [];
+        if (!$slots) continue;
+        $itinLines[] = '  ' . ($day['label'] ?? '');
+        foreach ($slots as $s) {
+            $itinLines[] = '    - ' . ($s['name'] ?? '') . (($s['time'] ?? '') ? ' (' . $s['time'] . ')' : '');
+        }
+    }
+    if ($itinLines) { $L[] = ''; $L[] = 'ITINERARY'; foreach ($itinLines as $il) $L[] = $il; }
+    $occ = array_values(array_filter((array)($sp['occasions'] ?? []), fn($o) => $o && $o !== 'none'));
+    $spLines = [];
+    if ($occ)                     $spLines[] = '  Occasions: ' . implode(', ', $occ);
+    if (!empty($sp['diet']))      $spLines[] = '  Dietary:   ' . implode(', ', (array)$sp['diet']);
+    if (!empty($sp['mobility']))  $spLines[] = '  Access:    ' . implode(', ', (array)$sp['mobility']);
+    if (!empty($sp['pace']))      $spLines[] = '  Pace:      ' . $sp['pace'];
+    if (!empty($sp['extraNotes'])) $spLines[] = '  Notes:     ' . $sp['extraNotes'];
+    if ($spLines) { $L[] = ''; $L[] = 'SPECIAL TOUCHES'; foreach ($spLines as $sl) $L[] = $sl; }
+    $L[] = '';
+    if ($audience === 'staff' && $id) {
+        $L[] = 'View in dashboard: ' . $site . '/admin/submission-view.php?id=' . $id;
+    } else {
+        $L[] = 'Warm regards,';
+        $L[] = 'Tribal Sand';
+        $L[] = 'Kenya\'s North Coast';
+        if ($site) $L[] = $site;
+    }
+    return implode("\n", $L);
+}
+
 // ── Hold notifications ──────────────────────────────────────────
 
 function send_hold_notification(array $hold): void {

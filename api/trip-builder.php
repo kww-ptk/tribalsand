@@ -45,8 +45,8 @@ try {
             ':email'    => $email,
             ':phone'    => trim($guest['phone'] ?? ''),
             ':msg'      => 'Trip Builder request — see payload for full itinerary.',
-            ':ci'       => ($trip['arrival']   ?? '') ?: null,
-            ':co'       => ($trip['departure'] ?? '') ?: null,
+            ':ci'       => ($trip['arrDate']   ?? '') ?: null,
+            ':co'       => ($trip['depDate']   ?? '') ?: null,
             ':adults'   => (int)($trip['adults']   ?? 1),
             ':children' => (int)($trip['children'] ?? 0),
             ':payload'  => json_encode($data, JSON_UNESCAPED_SLASHES),
@@ -65,29 +65,10 @@ try {
 }
 $new_id = (int)db()->lastInsertId();
 
-// Notify admin + acknowledge the guest (best-effort; never blocks the response)
+// Dedicated Trip Builder itinerary emails — rich guest acknowledgement + staff
+// notification laid out from the full payload (best-effort; never blocks the response).
 try {
-    send_notification([
-        'id'          => $new_id,
-        'type'        => 'enquiry',
-        'room_name'   => 'Trip Builder itinerary',
-        'guest_name'  => $name,
-        'guest_email' => $email,
-        'guest_phone' => trim($guest['phone'] ?? ''),
-        'message'     => 'Trip Builder request — see the submission in admin for the full itinerary.',
-        'check_in'    => ($trip['arrival']   ?? '') ?: '',
-        'check_out'   => ($trip['departure'] ?? '') ?: '',
-        'guests_adults'   => (int)($trip['adults']   ?? 1),
-        'guests_children' => (int)($trip['children'] ?? 0),
-        'created_at'  => date('Y-m-d H:i:s'),
-    ]);
-    send_guest_acknowledgement([
-        'kind'        => 'enquiry',
-        'guest_name'  => $name,
-        'guest_email' => $email,
-        'check_in'    => ($trip['arrival']   ?? '') ?: '',
-        'check_out'   => ($trip['departure'] ?? '') ?: '',
-    ]);
+    send_trip_builder_emails($data, $new_id);
 } catch (Throwable $e) {
     error_log('[trip-builder] mail failed: ' . $e->getMessage());
 }
