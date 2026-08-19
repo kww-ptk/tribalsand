@@ -24,6 +24,7 @@ $page_schema = $page_schema ?? '';
 $page_preload = $page_preload ?? '';
 $noindex     = $noindex     ?? false; // set truthy on private pages (e.g. guest booking management) to block indexing
 require_once __DIR__ . '/turnstile.php'; // captcha_site_key() available on every page that has a form
+$__ts_currency = current_currency();     // resolve early so a ?cur= choice can set its cookie before output
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -85,6 +86,14 @@ require_once __DIR__ . '/turnstile.php'; // captcha_site_key() available on ever
 
 <!-- ── GLOBAL CSS ── -->
 <link rel="stylesheet" href="css/main.css?v=<?= filemtime(__DIR__ . '/../css/main.css') ?>">
+
+<!-- ── MULTI-CURRENCY (display-only) ── -->
+<script>
+window.TS_FX = <?= json_encode(['base' => fx_rates()['base'] ?? 'USD', 'rates' => fx_rates()['rates']], JSON_UNESCAPED_SLASHES) ?>;
+window.TS_CUR = <?= json_encode($__ts_currency) ?>;
+window.TS_CUR_META = <?= json_encode(array_map(fn($m) => ['symbol' => $m['symbol'], 'round' => $m['round']], TS_CURRENCIES), JSON_UNESCAPED_SLASHES) ?>;
+</script>
+<script src="js/currency.js?v=<?= filemtime(__DIR__ . '/../js/currency.js') ?>" defer></script>
 
 <?php if (captcha_site_key()): ?>
 <!-- ── Cloudflare Turnstile (loaded site-wide so every form's widget works) ── -->

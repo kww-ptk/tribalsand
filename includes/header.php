@@ -190,9 +190,59 @@
 .ts-mob-btn-book:hover{background:var(--ts-sand-lt);}
 
 
+/* ── CURRENCY SWITCHER ── */
+.ts-cur{position:relative;flex-shrink:0;}
+.ts-cur-btn{
+  display:inline-flex;align-items:center;gap:.3rem;
+  font-family:'Jost',sans-serif;font-size:.58rem;letter-spacing:.12em;text-transform:uppercase;
+  color:rgba(255,255,255,.75);
+  background:transparent;border:1px solid rgba(184,150,90,.3);border-radius:3px;
+  padding:.42rem .55rem;cursor:pointer;transition:border-color .2s,background .2s,color .2s;white-space:nowrap;
+}
+.ts-cur-btn:hover{border-color:rgba(184,150,90,.7);background:rgba(184,150,90,.08);color:#fff;}
+.ts-cur-chev{width:9px;height:9px;opacity:.55;transition:transform .2s;flex-shrink:0;}
+.ts-cur.open .ts-cur-chev{transform:rotate(180deg);opacity:.85;}
+.ts-cur-menu{
+  position:absolute;top:calc(100% + 8px);right:0;
+  background:rgba(10,32,42,.98);backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+  border:1px solid rgba(184,150,90,.18);border-top:2px solid var(--ts-sand);border-radius:0 0 4px 4px;
+  min-width:190px;padding:.3rem 0;
+  opacity:0;visibility:hidden;transform:translateY(-8px);
+  transition:opacity .2s,transform .2s,visibility .2s;pointer-events:none;
+  box-shadow:0 20px 50px rgba(0,0,0,.45);z-index:100000;
+}
+.ts-cur.open .ts-cur-menu{opacity:1;visibility:visible;transform:none;pointer-events:all;}
+.ts-cur-head{
+  display:block;font-family:'Jost',sans-serif;font-size:.5rem;letter-spacing:.3em;text-transform:uppercase;
+  color:rgba(184,150,90,.6);padding:.5rem 1rem .3rem;
+}
+.ts-cur-opt{
+  display:flex;align-items:baseline;justify-content:space-between;gap:.75rem;
+  padding:.55rem 1rem;font-family:'Jost',sans-serif;text-decoration:none;
+  transition:color .15s,background .15s;
+}
+.ts-cur-opt:hover{background:rgba(184,150,90,.1);}
+.ts-cur-opt-code{font-size:.72rem;letter-spacing:.06em;color:rgba(212,196,172,.9);white-space:nowrap;}
+.ts-cur-opt-name{font-size:.58rem;letter-spacing:.04em;color:rgba(184,150,90,.55);white-space:nowrap;}
+.ts-cur-opt:hover .ts-cur-opt-code{color:#fff;}
+.ts-cur-opt.on .ts-cur-opt-code{color:var(--ts-sand-lt);}
+.ts-cur-opt.on{background:rgba(184,150,90,.06);}
+/* Drawer chips (mobile) */
+.ts-cur-chips{display:flex;flex-wrap:wrap;gap:.45rem;}
+.ts-cur-chip{
+  font-family:'Jost',sans-serif;font-size:.66rem;letter-spacing:.08em;
+  color:rgba(212,196,172,.82);text-decoration:none;
+  border:1px solid rgba(184,150,90,.28);border-radius:3px;padding:.5rem .8rem;
+  transition:color .18s,background .18s,border-color .18s;
+}
+.ts-cur-chip:hover{color:#fff;background:rgba(184,150,90,.1);}
+.ts-cur-chip.on{color:#102F3A;background:var(--ts-sand);border-color:var(--ts-sand);font-weight:500;}
+
 /* ── RESPONSIVE ── */
 @media(max-width:1100px){
   .ts-links{display:none;}
+  /* Currency lives in the drawer footer on mobile; keep the nav clear */
+  .ts-actions #tsCur{display:none;}
   .ts-burger{display:block!important;position:relative;z-index:3;}
   .ts-drawer{display:block;}
   .ts-social,.ts-tel{display:none!important;}
@@ -379,6 +429,24 @@
     <a href="tel:+254115115247" class="ts-tel">+254 115 115 247</a>
     <a href="trip-builder.php" class="ts-btn-plan">Plan Your Trip</a>
     <a href="/#properties" class="ts-btn-book">Book Now</a>
+    <!-- Currency switcher -->
+    <?php $__cur = current_currency(); ?>
+    <div class="ts-cur" id="tsCur">
+      <button type="button" class="ts-cur-btn" id="tsCurBtn" aria-haspopup="true" aria-expanded="false" aria-label="Change currency">
+        <span data-cur-active-sym><?= e(trim(TS_CURRENCIES[$__cur]['symbol'])) ?></span>
+        <span data-cur-active-code><?= e($__cur) ?></span>
+        <svg class="ts-cur-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+      </button>
+      <div class="ts-cur-menu" role="menu">
+        <span class="ts-cur-head">Currency</span>
+        <?php foreach (TS_CURRENCIES as $code => $meta): ?>
+        <a href="?cur=<?= e($code) ?>" class="ts-cur-opt<?= $code === $__cur ? ' on' : '' ?>" data-cur-set="<?= e($code) ?>" role="menuitem">
+          <span class="ts-cur-opt-code"><?= e(trim($meta['symbol'])) ?> <?= e($code) ?></span>
+          <span class="ts-cur-opt-name"><?= e($meta['name']) ?></span>
+        </a>
+        <?php endforeach; ?>
+      </div>
+    </div>
     <!-- Language switcher -->
     <div class="gtranslate_wrapper" id="gtranslate_wrapper"></div>
     <button class="ts-burger" id="tsBurger" aria-label="Menu">
@@ -451,6 +519,14 @@
     <a href="trip-builder.php" class="ts-mob-btn ts-mob-btn-plan">Plan Your Trip</a>
     <a href="/#properties" class="ts-mob-btn ts-mob-btn-book">Book Now</a>
     <a href="tel:+254115115247" style="display:block;text-align:center;font-family:'Jost',sans-serif;font-size:.64rem;color:rgba(184,150,90,.5);letter-spacing:.1em;margin-top:.4rem;">+254 115 115 247</a>
+    <div style="margin-top:.9rem;padding-top:.8rem;border-top:1px solid rgba(184,150,90,.09);">
+      <span style="display:block;font-family:'Jost',sans-serif;font-size:.54rem;letter-spacing:.22em;text-transform:uppercase;color:rgba(184,150,90,.5);margin-bottom:.5rem;">Currency</span>
+      <div class="ts-cur-chips">
+        <?php foreach (TS_CURRENCIES as $code => $meta): ?>
+        <a href="?cur=<?= e($code) ?>" class="ts-cur-chip<?= $code === current_currency() ? ' on' : '' ?>" data-cur-set="<?= e($code) ?>"><?= e(trim($meta['symbol'])) ?> <?= e($code) ?></a>
+        <?php endforeach; ?>
+      </div>
+    </div>
     <div style="margin-top:.9rem;padding-top:.8rem;border-top:1px solid rgba(184,150,90,.09);">
       <span style="display:block;font-family:'Jost',sans-serif;font-size:.54rem;letter-spacing:.22em;text-transform:uppercase;color:rgba(184,150,90,.5);margin-bottom:.5rem;">Language</span>
       <div class="gtranslate_wrapper" id="gtranslate_drawer_wrapper"></div>
