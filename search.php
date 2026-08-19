@@ -33,6 +33,13 @@ $total_available = array_sum(array_map(fn($r) => $r['count'] > 0 ? 1 : 0, $resul
 $fmt_date = fn($d) => $d ? date('D, j M Y', strtotime($d)) : '';
 $money = fn($n, $cur) => (float)$n > 0 ? number_format((float)$n, 0) . ' ' . e($cur) : '';
 
+/* Property type per venue (mirrors the homepage "Our Properties" filters). */
+$venue_type = [
+    'maya-kobe' => 'hotel', 'zuri' => 'hotel', 'maya_ilai' => 'hotel',
+    'my-amani'  => 'villa', 'enkare-bofa' => 'villa', 'sandbox' => 'villa',
+];
+$loc_slug = fn($loc) => strtolower(trim(preg_split('/[·,]/', (string)$loc)[0] ?? ''));
+
 /* ── Page meta ── */
 $page_title = 'Search Availability · Tribal Sand';
 $page_desc  = 'Check live availability across Tribal Sand\'s beachfront hotels and villas on the Kenyan coast.';
@@ -109,6 +116,18 @@ include __DIR__ . '/includes/header.php';
 .rcard__btn svg{flex-shrink:0;}
 .rcard__btn:hover{background:var(--teal);}
 .srch-empty{text-align:center;padding:3rem 1rem;color:var(--mid);}
+/* filter + sort toolbar */
+.srch-tools{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:1rem 1.4rem;margin-bottom:1.6rem;padding-bottom:1.2rem;border-bottom:1px solid var(--border);}
+.srch-filters{display:flex;flex-wrap:wrap;gap:.5rem;}
+.srch-chip{font-family:'Jost',sans-serif;font-size:.66rem;letter-spacing:.12em;text-transform:uppercase;font-weight:600;color:var(--mid);background:#fff;border:1px solid var(--border);border-radius:999px;padding:.5rem 1rem;cursor:pointer;transition:all .18s;}
+.srch-chip:hover{border-color:var(--sand);color:var(--teal-d);}
+.srch-chip.on{background:var(--teal-d);border-color:var(--teal-d);color:#fff;}
+.srch-sort{display:flex;flex-wrap:wrap;align-items:center;gap:.4rem;}
+.srch-sort__lbl{font-size:.58rem;letter-spacing:.18em;text-transform:uppercase;color:var(--sand);font-weight:600;margin-right:.2rem;}
+.srch-sortbtn{font-family:'Jost',sans-serif;font-size:.66rem;letter-spacing:.06em;color:var(--mid);background:none;border:1px solid transparent;border-radius:999px;padding:.42rem .8rem;cursor:pointer;transition:all .18s;}
+.srch-sortbtn:hover{color:var(--teal-d);}
+.srch-sortbtn.on{color:var(--teal-d);background:var(--sand-faint);border-color:var(--border);font-weight:600;}
+@media(max-width:720px){.srch-tools{flex-direction:column;align-items:flex-start;}}
 @media(max-width:720px){
   .vcard{grid-template-columns:1fr;}
   .vcard__img{min-height:180px;}
@@ -164,12 +183,32 @@ include __DIR__ . '/includes/header.php';
       </div>
     <?php else: ?>
       <div class="srch-summary">
-        <strong><?= $total_available ?></strong> propert<?= $total_available === 1 ? 'y' : 'ies' ?> available &nbsp;·&nbsp;
+        <strong id="srchCount"><?= $total_available ?></strong> <span id="srchNoun">propert<?= $total_available === 1 ? 'y' : 'ies' ?></span> available &nbsp;·&nbsp;
         <?= e($fmt_date($checkin)) ?> → <?= e($fmt_date($checkout)) ?> &nbsp;·&nbsp;
         <?= $nights ?> night<?= $nights !== 1 ? 's' : '' ?> &nbsp;·&nbsp;
         <?= $adults ?> adult<?= $adults !== 1 ? 's' : '' ?><?= $children ? ' · ' . $children . ' child' . ($children !== 1 ? 'ren' : '') : '' ?>
       </div>
 
+      <?php if (count($results) > 1): ?>
+      <div class="srch-tools">
+        <div class="srch-filters" role="group" aria-label="Filter properties">
+          <button type="button" class="srch-chip on" data-filter="all">All Properties</button>
+          <button type="button" class="srch-chip" data-filter="type:hotel">Boutique Hotels</button>
+          <button type="button" class="srch-chip" data-filter="type:villa">Private Villas</button>
+          <button type="button" class="srch-chip" data-filter="loc:watamu">Watamu</button>
+          <button type="button" class="srch-chip" data-filter="loc:kilifi">Kilifi</button>
+          <button type="button" class="srch-chip" data-filter="loc:vipingo">Vipingo</button>
+        </div>
+        <div class="srch-sort" role="group" aria-label="Sort results">
+          <span class="srch-sort__lbl">Sort</span>
+          <button type="button" class="srch-sortbtn on" data-sort="rec">Recommended</button>
+          <button type="button" class="srch-sortbtn" data-sort="price-asc">Price: Low to High</button>
+          <button type="button" class="srch-sortbtn" data-sort="price-desc">Price: High to Low</button>
+        </div>
+      </div>
+      <?php endif; ?>
+
+      <div class="srch-results" id="srchResults">
       <?php foreach ($results as $r):
       $v = $r['venue']; $sold = $r['count'] === 0;
       $room_count  = count(array_filter($r['rooms'], fn($x) => empty($x['entire'])));
@@ -179,7 +218,11 @@ include __DIR__ . '/includes/header.php';
       elseif ($room_count>0) { $avail_txt = $room_count . ' room' . ($room_count !== 1 ? 's' : '') . ' available' . ($has_entire ? ' · or the whole villa' : ''); $cta_txt = 'Select a room →'; }
       else                   { $avail_txt = 'Available'; $cta_txt = 'Select →'; }
       ?>
-      <div class="vcard<?= $sold ? ' is-sold' : '' ?>">
+      <div class="vcard<?= $sold ? ' is-sold' : '' ?>"
+           data-type="<?= e($venue_type[$v['slug']] ?? '') ?>"
+           data-loc="<?= e($loc_slug($v['location'] ?? '')) ?>"
+           data-avail="<?= $sold ? '0' : '1' ?>"
+           data-from="<?= $sold ? '' : (float)($r['from'] ?? 0) ?>">
         <a class="vcard__img" href="/<?= e($v['slug']) ?>" aria-label="<?= e($v['name']) ?>">
           <?php if ($r['hero']): ?><img src="<?= e($r['hero']) ?>" alt="<?= e($v['name']) ?>" loading="lazy"><?php endif; ?>
         </a>
@@ -238,6 +281,12 @@ include __DIR__ . '/includes/header.php';
         <?php endif; ?>
       </div>
       <?php endforeach; ?>
+      </div><!-- /.srch-results -->
+
+      <div class="srch-empty srch-nomatch" id="srchNoMatch" hidden>
+        <p style="font-family:'Cormorant Garamond',serif;font-size:1.4rem;color:var(--teal);margin-bottom:.3rem">No properties match this filter</p>
+        <p style="color:var(--light)">Try a different property type or location.</p>
+      </div>
 
       <?php if (!$results): ?>
         <div class="srch-empty"><p style="color:var(--light)">No properties are set up yet. Please check back soon.</p></div>
@@ -276,6 +325,61 @@ include __DIR__ . '/includes/header.php';
       }
     });
   });
+
+  // Filter + sort the property results
+  var wrap = document.getElementById('srchResults');
+  if (wrap) {
+    var cards = Array.prototype.slice.call(wrap.querySelectorAll('.vcard'));
+    cards.forEach(function(c, i){ c.dataset.order = i; }); // remember curated order
+    var noMatch = document.getElementById('srchNoMatch');
+    var countEl = document.getElementById('srchCount');
+    var nounEl  = document.getElementById('srchNoun');
+    var filter = 'all', sort = 'rec';
+
+    function apply(){
+      var shown = 0, avail = 0;
+      cards.forEach(function(c){
+        var ok = true;
+        if (filter !== 'all') {
+          var p = filter.split(':');           // e.g. "type:villa" | "loc:watamu"
+          ok = (c.dataset[p[0]] || '') === p[1];
+        }
+        c.style.display = ok ? '' : 'none';
+        if (ok) { shown++; if (c.dataset.avail === '1') avail++; }
+      });
+
+      var vis = cards.filter(function(c){ return c.style.display !== 'none'; });
+      vis.sort(function(a, b){
+        var av = a.dataset.avail === '1', bv = b.dataset.avail === '1';
+        if (av !== bv) return av ? -1 : 1;      // bookable properties always first
+        if (sort === 'rec') return (+a.dataset.order) - (+b.dataset.order);
+        var ap = parseFloat(a.dataset.from) || 0, bp = parseFloat(b.dataset.from) || 0;
+        return sort === 'price-asc' ? ap - bp : bp - ap;
+      });
+      vis.forEach(function(c){ wrap.appendChild(c); });
+
+      if (noMatch) noMatch.hidden = shown !== 0;
+      if (countEl) countEl.textContent = avail;
+      if (nounEl)  nounEl.textContent = avail === 1 ? 'property' : 'properties';
+    }
+
+    document.querySelectorAll('.srch-chip').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        document.querySelectorAll('.srch-chip').forEach(function(b){ b.classList.remove('on'); });
+        btn.classList.add('on');
+        filter = btn.dataset.filter;
+        apply();
+      });
+    });
+    document.querySelectorAll('.srch-sortbtn').forEach(function(btn){
+      btn.addEventListener('click', function(){
+        document.querySelectorAll('.srch-sortbtn').forEach(function(b){ b.classList.remove('on'); });
+        btn.classList.add('on');
+        sort = btn.dataset.sort;
+        apply();
+      });
+    });
+  }
 })();
 </script>
 
