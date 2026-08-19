@@ -67,6 +67,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    if ($action === 'fx_sync') {
+        $r = fx_sync_rates();
+        if (!empty($r['ok'])) {
+            audit_log('settings.fx_sync', '', 0, implode(',', $r['updated'] ?? []));
+            $success = 'Exchange rates refreshed'
+                     . (!empty($r['updated']) ? ' (' . implode(', ', $r['updated']) . ').' : '.');
+        } else {
+            $error = $r['message'] ?? 'Rate sync failed.';
+        }
+    }
+
+    if ($action === 'save_fx_rates') {
+        $postRates  = $_POST['rate']   ?? [];
+        $postLocked = $_POST['locked'] ?? [];
+        $rates  = fx_rates()['rates'];
+        $locked = [];
+        $bad    = false;
+        foreach (array_keys(TS_CURRENCIES) as $c) {
+            if ($c === 'USD') { $rates['USD'] = 1.0; continue; } // base fixed
+            $v = (float) str_replace(',', '', (string)($postRates[$c] ?? ''));
+            if ($v > 0) { $rates[$c] = $v; } else { $bad = true; }
+            if (!empty($postLocked[$c])) $locked[$c] = true;
+        }
+        if ($bad) {
+            $error = 'Every exchange rate must be a positive number.';
+        } else {
+            fx_save($rates, $locked);
+            audit_log('settings.save_fx_rates');
+            $success = 'Exchange rates saved.';
+        }
+    }
+
     if ($action === 'change_password') {
         $current  = $_POST['current_password']  ?? '';
         $new      = $_POST['new_password']       ?? '';
@@ -96,6 +128,11 @@ $notify_email         = setting('notify_email',         '');
 $site_currency        = setting('site_currency',        'USD');
 $checkin_instructions = setting('checkin_instructions', '');
 $unit_assignment      = setting('unit_assignment',      'auto');
+
+$fx           = fx_rates(true); // fresh read so a just-saved/synced value shows immediately
+$fx_rates_map = $fx['rates']  ?? [];
+$fx_locked    = is_array($fx['locked'] ?? null) ? $fx['locked'] : [];
+$fx_fetched   = $fx['fetched_at'] ?? null;
 
 $pageTitle  = 'Settings';
 $activeMenu = 'settings';
@@ -209,6 +246,61 @@ include __DIR__ . '/_layout.php';
       </div>
 
       <button type="submit" class="btn-primary">Save Settings</button>
+    </form>
+  </div>
+</div>
+
+<!-- Display currency rates -->
+<div class="card">
+  <div class="card__head"><span class="card__title">Display Currency Rates</span></div>
+  <div class="card__body" style="padding:20px">
+    <p style="font-size:13px;color:var(--muted);margin-bottom:8px">
+      Rates guests see when they switch currency on the public site. <strong>Display only</strong> — every booking still settles in the property's real price. Base is USD.
+    </p>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:16px">
+      Last updated: <strong><?= $fx_fetched ? e(date('j M Y, H:i', strtotime($fx_fetched))) : 'never — using built-in seed rates' ?></strong>
+    </p>
+
+    <form method="POST" action="/admin/settings" style="margin-bottom:18px">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="save_fx_rates">
+      <table style="border-collapse:collapse;margin-bottom:16px">
+        <thead><tr>
+          <th style="text-align:left;padding:6px 16px 8px 0;font-size:12px;color:var(--muted)">Currency</th>
+          <th style="text-align:left;padding:6px 16px 8px;font-size:12px;color:var(--muted)">Rate (per 1 USD)</th>
+          <th style="text-align:center;padding:6px 16px 8px;font-size:12px;color:var(--muted)">Lock</th>
+        </tr></thead>
+        <tbody>
+        <?php foreach (TS_CURRENCIES as $code => $meta): ?>
+          <tr>
+            <td style="padding:6px 16px 6px 0"><strong><?= e($code) ?></strong> <span class="text-muted" style="font-size:12px"><?= e($meta['name']) ?></span></td>
+            <td style="padding:6px 16px">
+              <?php if ($code === 'USD'): ?>
+                <input type="text" value="1.0000" class="inp" style="width:130px" disabled>
+              <?php else: $__rv = rtrim(rtrim(number_format((float)($fx_rates_map[$code] ?? 0), 4, '.', ''), '0'), '.'); ?>
+                <input type="text" name="rate[<?= e($code) ?>]" value="<?= e($__rv) ?>" class="inp" style="width:130px" inputmode="decimal">
+              <?php endif; ?>
+            </td>
+            <td style="padding:6px 16px;text-align:center">
+              <?php if ($code === 'USD'): ?>
+                <span class="text-muted">—</span>
+              <?php else: ?>
+                <input type="checkbox" name="locked[<?= e($code) ?>]" value="1" <?= !empty($fx_locked[$code]) ? 'checked' : '' ?>>
+              <?php endif; ?>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+      <button type="submit" class="btn-primary">Save Rates</button>
+      <span class="field-hint" style="display:block;margin-top:10px">A <strong>locked</strong> rate is never overwritten by the daily auto-sync — use it to pin a rate you set by hand.</span>
+    </form>
+
+    <form method="POST" action="/admin/settings" style="border-top:1px solid var(--border);padding-top:16px">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="fx_sync">
+      <button type="submit" class="btn-outline">Sync now — fetch latest rates</button>
+      <span class="field-hint" style="display:block;margin-top:10px">Pulls live rates from open.er-api.com. Unlocked currencies update; locked ones stay as set.</span>
     </form>
   </div>
 </div>

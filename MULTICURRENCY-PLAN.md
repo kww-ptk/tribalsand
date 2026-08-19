@@ -11,7 +11,8 @@
   - `js/booking-widget.js` availability sidebar (live per-night + total) — emits `.ts-price` spans via `window.tsPriceSpan`; `renderAll()` reformats on switch. Booking still holds in the room's real `price_currency` (data-price untouched).
   - `includes/booking-modal.php` — reuses the same `#bkTotal*` elements, so it's covered by the widget change (verified: $3,101 ↔ KES 400,000 ↔ €2,853). Existing "final price confirmed by email" note communicates indicative pricing.
   - **Optional remainder:** `activities.php` legacy free-text prices (`format_price()`) — low priority.
-- **Phase 2 (rate automation) & Phase 5 (polish) — NOT STARTED.** Seed rates are live in the meantime.
+- **Phase 2 — DONE.** `api/fx-sync.php` (Bearer `FX_SYNC_SECRET`, legacy `?secret=`) + `fx_sync_rates()`/`fx_save()` in `includes/db.php` (open.er-api.com, USD base, locked-rate preservation, last-good on failure). Admin **Settings → Display Currency Rates** card: per-rate edit + lock + "Sync now". **Live rates fetched & stored** (replaced seed). Add `FX_SYNC_SECRET` to prod env + a daily cron hitting `api/fx-sync.php`.
+- **Phase 5 (polish) — NOT STARTED.** Geo-default, "≈ approx." affordance, analytics.
 
 ---
 

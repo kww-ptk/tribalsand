@@ -110,6 +110,7 @@ ASSET_URL=            # OPTIONAL asset origin for asset_url() (images/PDFs). Def
 TURNSTILE_SITE_KEY=   # Cloudflare Turnstile public key
 TURNSTILE_SECRET_KEY= # Cloudflare Turnstile secret key
 ICAL_SYNC_SECRET=     # Random secret for iCal sync endpoint
+FX_SYNC_SECRET=       # Random secret for the display-currency rate sync endpoint (api/fx-sync.php)
 RESEND_API_KEY=       # Resend.com API key for emails
 MAIL_FROM=            # noreply@yourdomain.com (must be Resend-verified domain)
 ```

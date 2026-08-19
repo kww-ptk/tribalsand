@@ -192,9 +192,9 @@ function fx_rates_seed(): array {
  * throws — a broken settings row (or a DB blip) must not take prices down. Any
  * missing/non-positive per-currency rate is backfilled from the seed.
  */
-function fx_rates(): array {
+function fx_rates(bool $fresh = false): array {
     static $cache = null;
-    if ($cache !== null) return $cache;
+    if ($cache !== null && !$fresh) return $cache;
     $seed = fx_rates_seed();
     try {
         $raw = setting('fx_rates', '');
@@ -296,6 +296,56 @@ function money_html(float $amount, string $from): string {
     return '<span class="ts-price" data-base-amount="' . e((string)$amount)
          . '" data-base-cur="' . e($from) . '">'
          . e(format_money($c['amount'], $c['currency'])) . '</span>';
+}
+
+/** Persist the FX rate table (USD-based). Resets the request cache so later reads see it. */
+function fx_save(array $rates, array $locked = []): void {
+    $rates['USD'] = 1.0; // base is always exactly 1
+    set_setting('fx_rates', json_encode([
+        'base'       => 'USD',
+        'fetched_at' => date('c'),
+        'rates'      => $rates,
+        'locked'     => $locked,
+    ], JSON_UNESCAPED_SLASHES));
+}
+
+/**
+ * Refresh rates from the free open.er-api.com feed (USD base, no key). Locked
+ * currencies are never overwritten. On any fetch/parse failure the last-good
+ * rates are kept untouched. Callable from the cron endpoint or the admin button.
+ * Returns a status array; never throws.
+ */
+function fx_sync_rates(): array {
+    $cur    = fx_rates();
+    $locked = is_array($cur['locked'] ?? null) ? $cur['locked'] : [];
+
+    $ctx = stream_context_create(['http' => [
+        'timeout' => 15, 'ignore_errors' => true, 'user_agent' => 'TribalSand/1.0 FXSync',
+    ]]);
+    $raw  = @file_get_contents('https://open.er-api.com/v6/latest/USD', false, $ctx);
+    $data = $raw ? json_decode($raw, true) : null;
+
+    if (!is_array($data) || ($data['result'] ?? '') !== 'success' || empty($data['rates']) || !is_array($data['rates'])) {
+        return ['ok' => false, 'stale' => true,
+                'message' => 'FX fetch failed — kept last-good rates.',
+                'rates' => $cur['rates']];
+    }
+
+    $newRates = $cur['rates'];
+    $updated  = [];
+    foreach (array_keys(TS_CURRENCIES) as $c) {
+        if (!empty($locked[$c])) continue;                      // never overwrite a locked rate
+        if (isset($data['rates'][$c]) && (float)$data['rates'][$c] > 0) {
+            $newRates[$c] = (float)$data['rates'][$c];
+            $updated[]    = $c;
+        }
+    }
+    fx_save($newRates, $locked);
+
+    return ['ok' => true, 'fetched_at' => date('c'),
+            'updated' => $updated,
+            'locked'  => array_keys(array_filter($locked)),
+            'rates'   => $newRates];
 }
 
 // ── Availability helpers ────────────────────────────────────────
