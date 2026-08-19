@@ -171,6 +171,8 @@ try {
             'room_name'   => $room ? $room['name'] : '',
             'check_in'    => $checkin,
             'check_out'   => $checkout,
+            'guests_adults'   => max(1, (int)($data['adults']   ?? 1)),
+            'guests_children' => max(0, (int)($data['children'] ?? 0)),
             'message'     => trim($data['message'] ?? ''),
             'hold_id'     => $hold_id,
             'access_code' => $hold_row['access_code'] ?? '',
@@ -199,6 +201,8 @@ try {
             'tour_name'   => $tour ? $tour['name'] : '',
             'check_in'    => $checkin,
             'check_out'   => $checkout,
+            'guests_adults'   => max(1, (int)($data['adults']   ?? 1)),
+            'guests_children' => max(0, (int)($data['children'] ?? 0)),
             'message'     => trim($data['message'] ?? ''),
         ]);
         echo json_encode(['ok' => true, 'id' => $id, 'mode' => 'enquiry']);

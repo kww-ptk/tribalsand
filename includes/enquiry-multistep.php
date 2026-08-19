@@ -56,6 +56,10 @@ $enq_today     = date('Y-m-d');
   .enqms__field input,.enqms__field textarea{font-family:'Jost',sans-serif;font-size:.98rem;color:var(--e-dark);background:var(--e-off);border:1px solid var(--e-border);border-radius:7px;padding:.75rem .85rem;width:100%;transition:border-color .2s,box-shadow .2s;}
   .enqms__field input:focus,.enqms__field textarea:focus{outline:none;border-color:var(--e-sand);box-shadow:0 0 0 3px rgba(184,150,90,.14);}
   .enqms__field input.is-invalid{border-color:#c0392b;box-shadow:0 0 0 3px rgba(192,57,43,.12);}
+  /* Styled datepicker trigger (dp-btn) — match the enqms input look, override booking.css */
+  .enqms .dp-btn{font-family:'Jost',sans-serif;font-size:.98rem;color:var(--e-light);background:var(--e-off);border:1px solid var(--e-border);border-radius:7px;padding:.75rem .85rem;width:100%;text-align:left;cursor:pointer;transition:border-color .2s,box-shadow .2s;}
+  .enqms .dp-btn:hover,.enqms .dp-btn:focus{outline:none;border-color:var(--e-sand);box-shadow:0 0 0 3px rgba(184,150,90,.14);}
+  .enqms .dp-btn--active{color:var(--e-dark);font-weight:500;}
   /* guests */
   .enqms__guests{border:1px solid var(--e-border);border-radius:7px;background:var(--e-off);padding:.2rem .95rem;}
   .enqms__grow{display:flex;align-items:center;justify-content:space-between;padding:.8rem 0;border-bottom:1px solid var(--e-border);}
@@ -114,12 +118,14 @@ $enq_today     = date('Y-m-d');
         <div class="enqms__grid">
           <div class="enqms__row2">
             <div class="enqms__field">
-              <label for="<?= $enq_uid ?>_ci">Check in</label>
-              <input type="date" id="<?= $enq_uid ?>_ci" name="checkin" min="<?= e($enq_today) ?>">
+              <span>Check in</span>
+              <button type="button" class="dp-btn" data-dp-role="ci" data-dp-pair="<?= $enq_uid ?>" data-dp-target="<?= $enq_uid ?>_ci" data-dp-placeholder="Check-in date">Check-in date</button>
+              <input type="hidden" id="<?= $enq_uid ?>_ci" name="checkin">
             </div>
             <div class="enqms__field">
-              <label for="<?= $enq_uid ?>_co">Check out</label>
-              <input type="date" id="<?= $enq_uid ?>_co" name="checkout" min="<?= e($enq_today) ?>">
+              <span>Check out</span>
+              <button type="button" class="dp-btn" data-dp-role="co" data-dp-pair="<?= $enq_uid ?>" data-dp-target="<?= $enq_uid ?>_co" data-dp-placeholder="Check-out date">Check-out date</button>
+              <input type="hidden" id="<?= $enq_uid ?>_co" name="checkout">
             </div>
           </div>
           <div class="enqms__field">

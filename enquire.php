@@ -44,6 +44,11 @@ if ($enq_room_name) {
 }
 
 include 'includes/head.php';
+?>
+<!-- Reusable styled datepicker (dp-btn) for the enquiry form's dates -->
+<link rel="stylesheet" href="css/booking.css?v=<?= filemtime(__DIR__ . '/css/booking.css') ?>">
+<script src="js/datepicker.js?v=<?= filemtime(__DIR__ . '/js/datepicker.js') ?>" defer></script>
+<?php
 include 'includes/header.php';
 ?>
 <style>

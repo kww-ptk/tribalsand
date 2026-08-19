@@ -135,11 +135,25 @@ function send_guest_acknowledgement(array $a): void {
                       'Thank you for your enquiry. We’ve received your message and a member of our reservations team will get back to you within 24 hours.'],
     };
 
+    // Friendly guest-count summary (e.g. "2 adults · 1 child") for enquiry/hold acks
+    if (isset($a['guests_adults']) || isset($a['guests_children'])) {
+        $ga = max(1, (int)($a['guests_adults'] ?? 1));
+        $gc = max(0, (int)($a['guests_children'] ?? 0));
+        $parts = [$ga . ' ' . ($ga === 1 ? 'adult' : 'adults')];
+        if ($gc) $parts[] = $gc . ' ' . ($gc === 1 ? 'child' : 'children');
+        $a['guests'] = implode(' · ', $parts);
+    }
+
     $rows = [];
     foreach (['room_name' => 'Villa / Room', 'tour_name' => 'Experience',
               'check_in' => 'Check-in', 'check_out' => 'Check-out',
-              'agency_name' => 'Agency', 'subject' => 'Subject'] as $key => $label) {
-        if (!empty($a[$key])) $rows[] = [$label, (string)$a[$key]];
+              'guests' => 'Guests', 'agency_name' => 'Agency', 'subject' => 'Subject'] as $key => $label) {
+        if (empty($a[$key])) continue;
+        $val = (string)$a[$key];
+        if (($key === 'check_in' || $key === 'check_out') && ($ts = strtotime($val))) {
+            $val = date('D, j M Y', $ts);   // e.g. "Fri, 22 Aug 2026"
+        }
+        $rows[] = [$label, $val];
     }
 
     $manage_url  = '';
