@@ -127,13 +127,20 @@ include 'includes/header.php';
                 // longer writes that column, so fall back to the numeric price the
                 // booking flow uses. Without this fallback a newly-priced tour
                 // would show a price in the guest app and none here.
-                $__pubPrice = trim((string)($a['price'] ?? ''));
-                if ($__pubPrice === '' && is_priced($a['price_amount'] ?? null)) {
-                    $__pubPrice = format_price((float)$a['price_amount'])
-                                . (!empty($a['price_per_person']) && $a['price_per_person'] !== 'f' ? ' / person' : '');
+                // Both paths run through the display-currency converters so tour
+                // prices switch currency like everything else ($-amounts only;
+                // "On Request" etc. pass through). Tour numeric prices are USD.
+                $__txt = trim((string)($a['price'] ?? ''));
+                if ($__txt !== '') {
+                    $__priceHtml = money_text_html($__txt);
+                } elseif (is_priced($a['price_amount'] ?? null)) {
+                    $__priceHtml = money_html((float)$a['price_amount'], 'USD')
+                                 . (!empty($a['price_per_person']) && $a['price_per_person'] !== 'f' ? ' / person' : '');
+                } else {
+                    $__priceHtml = '';
                 }
               ?>
-              <?php if ($__pubPrice !== ''): ?><span class="act-card__price"><?= e($__pubPrice) ?></span><?php endif; ?>
+              <?php if ($__priceHtml !== ''): ?><span class="act-card__price"><?= $__priceHtml ?></span><?php endif; ?>
             </div>
             <div class="act-card__ctas">
               <a class="act-card__cta" href="/enquire.php?tour=<?= e($a['slug']) ?>">Enquire →</a>

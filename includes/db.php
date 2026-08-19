@@ -323,6 +323,20 @@ function money_html(float $amount, string $from): string {
          . e($approx . format_money($c['amount'], $c['currency'])) . '</span>';
 }
 
+/**
+ * Convert the "$1,234" tokens inside a free-text price string (e.g. tour prices
+ * like "From $60 / person", "$840 / boat", "On Request") into currency-aware
+ * spans, leaving the surrounding words intact. "$" is read as USD. Anything with
+ * no "$amount" token (e.g. "On Request") passes through unchanged. Output is HTML.
+ */
+function money_text_html(string $text): string {
+    $safe = e($text); // escape the words first; htmlspecialchars leaves "$60" intact
+    return preg_replace_callback('/\$\s?([\d,]+(?:\.\d{1,2})?)/', function ($m) {
+        $amt = (float) str_replace(',', '', $m[1]);
+        return $amt > 0 ? money_html($amt, 'USD') : $m[0];
+    }, $safe);
+}
+
 /** Persist the FX rate table (USD-based). Resets the request cache so later reads see it. */
 function fx_save(array $rates, array $locked = []): void {
     $rates['USD'] = 1.0; // base is always exactly 1

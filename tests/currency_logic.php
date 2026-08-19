@@ -98,5 +98,16 @@ check('converted price is marked ≈', str_contains($approxHtml, '≈'));
 $exactHtml = money_html(200, 'USD');       // USD shown in USD → exact → no ≈
 check('base-currency price has no ≈', !str_contains($exactHtml, '≈'));
 
+// ── money_text_html (free-text tour prices) ────────────────────────────────
+$t1 = money_text_html('From $60 / person');
+check('free-text keeps surrounding words', str_contains($t1, 'From') && str_contains($t1, '/ person'));
+check('free-text $ amount becomes a ts-price span', str_contains($t1, 'data-base-amount="60"') && str_contains($t1, 'data-base-cur="USD"'));
+$t2 = money_text_html('From $1,200 / boat');
+check('free-text strips thousands separator', str_contains($t2, 'data-base-amount="1200"'));
+$t3 = money_text_html('On Request');
+check('non-numeric free-text passes through', $t3 === 'On Request');
+$t4 = money_text_html('Great value <script>'); // no price, must stay escaped
+check('free-text is html-escaped', str_contains($t4, '&lt;script&gt;'));
+
 echo "\n" . ($failures === 0 ? "ALL PASS\n" : "{$failures} FAILURE(S)\n");
 exit($failures === 0 ? 0 : 1);

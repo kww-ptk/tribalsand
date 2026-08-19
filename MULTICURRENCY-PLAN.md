@@ -14,7 +14,9 @@
 - **Phase 2 — DONE.** `api/fx-sync.php` (Bearer `FX_SYNC_SECRET`, legacy `?secret=`) + `fx_sync_rates()`/`fx_save()` in `includes/db.php` (open.er-api.com, USD base, locked-rate preservation, last-good on failure). Admin **Settings → Display Currency Rates** card: per-rate edit + lock + "Sync now". **Live rates fetched & stored** (replaced seed). Add `FX_SYNC_SECRET` to prod env + a daily cron hitting `api/fx-sync.php`.
 - **Phase 5 — DONE (core).** `geo_default_currency()` (Cloudflare `CF-IPCountry`: KE→KES, GB→GBP, eurozone→EUR, else USD) feeds `current_currency()` as the first-visit guess (overridable). `money_html()` + `currency.js` prefix "≈" only when a real conversion happened (base-currency prices stay exact). Analytics on currency choice — not done (optional).
 
-**Feature complete.** Remaining optional: `activities.php` free-text prices; currency-choice analytics.
+**Feature complete.**
+- **Activities — DONE.** `money_text_html()` wraps the `$amount` token inside free-text tour prices ("From $60 / person" → "From ≈ €52 / person") in a converting span; "On Request" and other non-`$` strings pass through. Numeric tour prices (USD) go through `money_html()`. Verified live across USD/EUR/KES.
+- Remaining optional: currency-choice analytics only.
 
 ---
 
