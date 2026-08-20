@@ -21,6 +21,10 @@ $__navMessages  = $__isOwner || $__isManager || $__isFrontdeskStaff;  // ops & s
 $__navTasks     = $__isOwner || $__isManager;
 $__navGate      = $__isOwner || $__isManager || $__isSecurity;
 $__navMyWork    = $__isOps;
+$__navRestaurant = ($__isOwner || $__isManager || $__isFrontdeskStaff) && (function (): bool {
+    require_once __DIR__ . '/../includes/restaurant.php';
+    return restaurant_supported();
+})();
 
 // Chip shown under the logo for non-owner accounts.
 $__roleBadge = $__isManager ? 'Manager' : (is_staff() ? ucfirst((string)$__job) : '');
@@ -135,6 +139,21 @@ if ($__shellFrag) { ob_start(); return; }
         </a>
         <?php endif; ?>
       <?php $__navgroup('operations', 'Operations', ob_get_clean()); ?>
+
+      <?php ob_start(); ?>
+        <?php if ($__navRestaurant): ?>
+        <a href="/admin/restaurant.php"   class="sidebar__link <?= ($activeMenu??'')==='restaurant'   ? 'is-active':'' ?>">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7a3 3 0 0 0 6 0V2M6 2v20M17 2c-1.7 1.2-2.5 3.3-2.5 6s.8 4.3 2.5 5v9"/></svg>
+          Reservations
+        </a>
+        <?php endif; ?>
+        <?php if ($__navRestaurant && ($__isOwner || $__isManager)): ?>
+        <a href="/admin/restaurant-hours.php" class="sidebar__link <?= ($activeMenu??'')==='restaurant_hours' ? 'is-active':'' ?>">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>
+          Service hours
+        </a>
+        <?php endif; ?>
+      <?php $__navgroup('restaurant', 'Restaurant', ob_get_clean()); ?>
 
       <?php if ($__isOwner): ?>
       <?php ob_start(); ?>
