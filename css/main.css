@@ -875,14 +875,21 @@ p {
      "5 BEDROOMS / 10 GUESTS" clipped to "10 GUE" while one reading "SUITES" fit,
      so it failed only on some cards. The CTA drops to its own full-width row
      instead — nothing truncates and the tap target gets bigger, not smaller. */
-  .prop-footer { border-top: none; padding: 0 0.85rem 0.7rem; gap: 0.45rem; flex-wrap: wrap; }
+  /* Stats then CTA, stacked. The CTA stays on its own row — inline beside the
+     stats it truncated "GUESTS" to "GUE" on the cards with the longer
+     "BEDROOMS" label — but it is no longer stretched full-width, which made it
+     dominate the card. */
+  .prop-footer { border-top: none; padding: 0 0.85rem 0.7rem; gap: 0.4rem;
+                 flex-direction: column; align-items: stretch; }
   .prop-stats  { gap: 0.85rem; flex-shrink: 0; }
   .prop-stat-n { font-size: 0.9rem; }
   .prop-stat-l { font-size: 0.58rem; letter-spacing: 0.04em; margin-top: 0; white-space: nowrap; }
   /* min-height 44px: shrinking the padding to fit the row had dropped the tap
      target to 32px, below the reliable-touch minimum. Width may shrink, height may not. */
-  .prop-btn    { font-size: 0.62rem; letter-spacing: 0.1em; padding: 0.5rem 0.7rem;
-                 flex: 1 1 100%; min-height: 44px; display: inline-flex;
+  /* Auto width, right-aligned. min-height stays 44px: trimming padding to shrink
+     it had once put the tap target at 32px, under the reliable-touch minimum. */
+  .prop-btn    { font-size: 0.58rem; letter-spacing: 0.06em; padding: 0.5rem 0.85rem;
+                 align-self: flex-end; min-height: 44px; display: inline-flex;
                  align-items: center; justify-content: center; }
 
   /* The badge overlays a 122px-wide image — shrink it so it stays legible. */
