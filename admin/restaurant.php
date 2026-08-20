@@ -224,6 +224,52 @@ require __DIR__ . '/_layout.php';
             <?php endif; ?>
           </td>
         </tr>
+        <?php if (in_array($r['status'], ['pending', 'confirmed'], true)): ?>
+        <tr class="resv-edit">
+          <td colspan="8">
+            <details>
+              <summary class="btn-sm btn-outline" style="display:inline-block;cursor:pointer">Edit</summary>
+              <form method="post" action="/admin/restaurant-action.php" style="display:flex;flex-wrap:wrap;gap:.6rem;align-items:flex-end;margin-top:.6rem">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="id" value="<?= e($r['id']) ?>">
+                <input type="hidden" name="action" value="edit">
+                <div class="filter-field">
+                  <label for="ed-date-<?= e($r['id']) ?>">Date</label>
+                  <input type="date" id="ed-date-<?= e($r['id']) ?>" name="date" value="<?= e($r['reserved_on']) ?>" required>
+                </div>
+                <div class="filter-field">
+                  <label for="ed-time-<?= e($r['id']) ?>">Time</label>
+                  <input type="time" id="ed-time-<?= e($r['id']) ?>" name="time" value="<?= e($fmtTime($r['reserved_at'])) ?>" step="60" required>
+                </div>
+                <div class="filter-field">
+                  <label for="ed-party-<?= e($r['id']) ?>">Party</label>
+                  <input type="number" id="ed-party-<?= e($r['id']) ?>" name="party_size" value="<?= e($r['party_size']) ?>"
+                         min="<?= RESTAURANT_PARTY_MIN ?>" max="<?= RESTAURANT_PARTY_MAX ?>" required>
+                </div>
+                <div class="filter-field">
+                  <label for="ed-occ-<?= e($r['id']) ?>">Occasion</label>
+                  <select id="ed-occ-<?= e($r['id']) ?>" name="occasion">
+                    <option value="">—</option>
+                    <?php foreach (restaurant_occasions() as $o): ?>
+                    <option value="<?= e($o) ?>"<?= $r['occasion'] === $o ? ' selected' : '' ?>><?= e(ucfirst($o)) ?></option>
+                    <?php endforeach; ?>
+                  </select>
+                </div>
+                <div class="filter-field" style="flex:1 1 220px">
+                  <label for="ed-notes-<?= e($r['id']) ?>">Guest notes</label>
+                  <input type="text" id="ed-notes-<?= e($r['id']) ?>" name="notes" value="<?= e($r['notes'] ?? '') ?>">
+                </div>
+                <div class="filter-field" style="flex:1 1 220px">
+                  <label for="ed-staff-<?= e($r['id']) ?>">Internal notes</label>
+                  <input type="text" id="ed-staff-<?= e($r['id']) ?>" name="staff_notes" value="<?= e($r['staff_notes'] ?? '') ?>"
+                         placeholder="Not shown to the guest">
+                </div>
+                <button type="submit" class="btn-sm btn-primary">Save</button>
+              </form>
+            </details>
+          </td>
+        </tr>
+        <?php endif; ?>
       <?php endforeach; ?>
       </tbody>
     </table>
