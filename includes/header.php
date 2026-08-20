@@ -1,7 +1,9 @@
 <?php
 require_once __DIR__ . '/db.php';   // nav uses asset_url(); ensure it's defined on every page
 require_once __DIR__ . '/menu.php'; // Restaurant dropdown — published property menus (pre-migration-safe)
-$__navMenus = fetch_published_menus();
+require_once __DIR__ . '/reservations.php'; // "Reserve a Table" link (pre-migration-safe)
+$__navMenus   = fetch_published_menus();
+$__navReserve = reservations_supported() && (bool) fetch_reservable_venues();
 ?>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -392,17 +394,23 @@ $__navMenus = fetch_published_menus();
       </div>
     </div>
 
-    <?php if ($__navMenus): ?>
+    <?php if ($__navMenus || $__navReserve): ?>
     <!-- Restaurant -->
     <div class="ts-item">
       <button class="ts-link">Restaurant
         <svg viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 1l4 4 4-4"/></svg>
       </button>
       <div class="ts-drop">
+        <?php if ($__navMenus): ?>
         <span class="ts-drop-lbl">Menus</span>
         <?php foreach ($__navMenus as $__m): ?>
         <a href="menu.php?m=<?= e($__m['slug']) ?>" target="_blank" rel="noopener"><?= e($__m['title']) ?><?php if ($__m['subtitle']): ?> <span style="font-size:.58rem;color:rgba(184,150,90,.55);">· <?= e(strip_tags($__m['subtitle'])) ?></span><?php endif; ?></a>
         <?php endforeach; ?>
+        <?php endif; ?>
+        <?php if ($__navReserve): ?>
+        <?php if ($__navMenus): ?><div class="ts-drop-div"></div><?php endif; ?>
+        <a href="reserve.php">Reserve a Table</a>
+        <?php endif; ?>
       </div>
     </div>
     <?php endif; ?>
@@ -518,12 +526,15 @@ $__navMenus = fetch_published_menus();
     <a href="interactive-site-map.php" class="ts-mob-link">Interactive Site Map <span class="ts-mob-arr">→</span></a>
   </div>
 
-  <?php if ($__navMenus): ?>
+  <?php if ($__navMenus || $__navReserve): ?>
   <div>
-    <span class="ts-mob-lbl">Restaurant Menus</span>
+    <span class="ts-mob-lbl">Restaurant</span>
     <?php foreach ($__navMenus as $__m): ?>
     <a href="menu.php?m=<?= e($__m['slug']) ?>" class="ts-mob-link" target="_blank" rel="noopener"><?= e($__m['title']) ?><?php if ($__m['subtitle']): ?> <span style="font-size:.62rem;color:rgba(184,150,90,.55);">· <?= e(strip_tags($__m['subtitle'])) ?></span><?php endif; ?> <span class="ts-mob-arr">→</span></a>
     <?php endforeach; ?>
+    <?php if ($__navReserve): ?>
+    <a href="reserve.php" class="ts-mob-link">Reserve a Table <span class="ts-mob-arr">→</span></a>
+    <?php endif; ?>
   </div>
   <?php endif; ?>
 

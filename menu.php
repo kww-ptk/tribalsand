@@ -10,6 +10,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/includes/db.php';
 require_once __DIR__ . '/includes/menu.php';
+require_once __DIR__ . '/includes/reservations.php';   // "Reserve a Table" CTA (pre-migration-safe)
 
 $slug = preg_replace('/[^a-z0-9\-]/', '', strtolower($_GET['m'] ?? ''));
 $menu = $slug !== '' ? fetch_menu_by_slug($slug) : null;
@@ -22,6 +23,17 @@ if (!$menu) {
 
 $cats     = fetch_menu_categories((int)$menu['id'], false);   // public: visible cats, available items
 $curLabel = $menu['currency_label'] ?: 'Kes';
+
+// "Reserve a Table" CTA — only when this menu is tied to a published venue and
+// reservations are live. Resolves the venue slug for the deep link.
+$reserveSlug = '';
+if (!empty($menu['venue_id']) && reservations_supported()) {
+    $rv = db_query(
+        'SELECT slug FROM venues WHERE id = :id AND is_published = TRUE',
+        [':id' => (int)$menu['venue_id']]
+    )->fetchColumn();
+    if ($rv) $reserveSlug = (string)$rv;
+}
 
 $food   = array_values(array_filter($cats, fn($c) => $c['section'] === 'food'));
 $drinks = array_values(array_filter($cats, fn($c) => $c['section'] === 'drinks'));
@@ -119,6 +131,10 @@ body{font-family:'Jost',sans-serif;background:var(--off);color:var(--dark);-webk
 .drink-desc{font-size:.84rem;color:var(--light);line-height:1.65;margin-bottom:.2rem;}
 .drink-price{font-family:'Cormorant Garamond',serif;font-size:1.08rem;color:var(--teal);}
 
+.menu-reserve{background:var(--cream);padding:1.6rem 1.5rem;text-align:center;border-top:1px solid var(--border);}
+.menu-reserve-note{font-size:.78rem;color:var(--light);letter-spacing:.04em;margin-bottom:.8rem;font-style:italic;font-family:'Cormorant Garamond',serif;}
+.menu-reserve-btn{display:inline-block;background:var(--teal);color:#fff;text-decoration:none;font-size:.66rem;letter-spacing:.22em;text-transform:uppercase;font-weight:500;padding:.85rem 2rem;transition:background .2s;}
+.menu-reserve-btn:active{background:var(--teal-d);}
 .menu-footer{background:var(--teal-d);padding:2rem 1.5rem;text-align:center;margin-top:.5rem;}
 .footer-text{font-family:'Cormorant Garamond',serif;font-size:1.14rem;font-style:italic;color:rgba(212,196,172,.65);line-height:1.7;margin-bottom:.65rem;}
 .footer-thank{font-family:'Cormorant Garamond',serif;font-size:1.8rem;font-weight:300;color:rgba(255,255,255,.55);margin:.75rem 0 .25rem;}
@@ -222,6 +238,13 @@ $renderSection = function(string $key, array $sectionCats, bool $on, string $cur
 $renderSection('food',   $food,   $hasFood, $curLabel);
 $renderSection('drinks', $drinks, $hasDrinks && !$hasFood, $curLabel);
 ?>
+
+<?php if ($reserveSlug !== ''): ?>
+<div class="menu-reserve">
+  <div class="menu-reserve-note">Join us for a meal</div>
+  <a class="menu-reserve-btn" href="/reserve.php?venue=<?= e($reserveSlug) ?>">Reserve a Table</a>
+</div>
+<?php endif; ?>
 
 <div class="menu-footer">
   <?php if ($menu['footer_note']): ?><div class="footer-text"><?= e($menu['footer_note']) ?></div><?php endif; ?>

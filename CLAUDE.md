@@ -57,6 +57,11 @@ Digital restaurant menus live in the DB (migration: `add_menus.sql`), not in sta
 - **Admin:** `admin/menus.php` (list) + `admin/menu-edit.php` (single-page editor, all PRG). Gated by **`require_manager()`** (owner **or** house manager) and **scoped by `admin_venue_ids()`** — a manager only sees/edits menus whose `venue_id` is in their set. Every mutation re-checks ownership (`menu_editable()` on the menu, `catOwned`/`itemCat` on category/item rows) so a scoped manager can't touch another property's menu by posting a foreign id. Sidebar "Restaurant" group is owner+manager only. Reorder uses ↑/↓ glyph buttons (the `admin_icon()` set has **no** arrow-up/down paths — don't call them).
 - **Seed:** `db/seeds/seed_menus.php` (idempotent CLI: wipes each menu by slug, re-inserts) seeds Zuri (food+drinks) + Maya Kobe (breakfast). The local `.env` points at the **production Neon DB**, so migration + seed run once against live data — a deploy only ships the PHP.
 
+### Restaurant reservations — request model, per property, manager-scoped
+Table reservations live in the DB (migration: `add_reservations.sql`, after `add_menus.sql`). **Request model:** guest submits → `pending` → staff **confirm**/**cancel**. **v1 has no table-capacity / double-booking logic** — staff eyeball availability. Enabled for **all published venues**. Helpers in **`includes/reservations.php`**; every read is pre-migration-safe (`reservations_supported()`). Model: `reservations` (venue-scoped, optional `menu_id` soft-link to the venue's first published menu, `reference` `TSR-<venue>-<rand>` minted on insert, `status` pending|confirmed|cancelled).
+- **Public:** `reserve.php?venue=<slug>` — a `noindex`, mobile-first branded page (header/footer + `$page_booking` for the styled datepicker). Property = styled select of published venues; date = **styled datepicker** (`.dp-btn`, never a native date input); time = 30-min slots 12:00–22:00 (`reservation_slots()`); party = stepper. Posts to **`api/submit-reservation.php`** — Turnstile fail-closed + IP rate-limit (5/10min) + CSRF, **PRG**: success → `reserve.php?ok=<reference>` (success modal), validation errors flash to the session and re-render per-field. No-JS still submits. `send_reservation_received()` sends the guest ack ("pending confirmation") **and** the staff alert.
+- **Admin:** `admin/reservations.php` — gated by **`require_manager()`** (owner + house manager), **scoped by `admin_venue_ids()`**. Today/Upcoming/Pending KPI cards + the `dt_*` toolkit (search + status/property/date filters + pager, AJAX-swappable body). Confirm/Cancel are PRG + CSRF with a **per-row ownership re-check** (`reservation_editable()`) so a scoped manager can't act on another venue's row by posting a foreign id. Confirming calls `send_reservation_confirmed()` (guest email; no-op when the guest left no email). Nav entries: site "Restaurant" dropdown + `menu.php` CTA (only when the menu has a `venue_id`) → `reserve.php`; admin "Reservations" in the Restaurant sidebar group (owner+manager). Tests: `php tests/reservations_logic.php` (pure logic + DB assertions in a rolled-back transaction). Mail (`send_reservation_received` / `send_reservation_confirmed`) uses the branded `_email_shell()` template.
+
 ## File Map
 
 | File | Purpose |
@@ -78,6 +83,9 @@ Digital restaurant menus live in the DB (migration: `add_menus.sql`), not in sta
 | `includes/menu.php` | Restaurant menu helpers (DB-driven, per property, pre-migration-safe) |
 | `menu.php` | Public digital menu page (`?m=<slug>`) |
 | `admin/menus.php` · `admin/menu-edit.php` | Menu manager (list + editor, manager-scoped) |
+| `includes/reservations.php` | Reservation helpers (request model, pre-migration-safe) |
+| `reserve.php` · `api/submit-reservation.php` | Public "Reserve a Table" form + PRG submit handler |
+| `admin/reservations.php` | Reservation manager (dashboard + confirm/cancel, manager-scoped) |
 | `css/main.css` | Global stylesheet (brand tokens, layout, components) |
 | `js/booking-widget.js` | Booking date picker widget |
 | `manifest.json` | PWA web app manifest |
@@ -110,7 +118,7 @@ Digital restaurant menus live in the DB (migration: `add_menus.sql`), not in sta
 - TripAdvisor listing — claim at tripadvisor.com/GetListedNew (2–5 day approval). Badge already in trust bar on `index.php` and placeholder `sameAs` comments in `includes/schema.php` — just swap in the real URL once approved.
 - Google Search Console — submit sitemap after SEO changes deploy
 - Per-room reviews DB table (future — currently hardcoded testimonials in room-reviews.php)
-- Restaurant reservations (Phase 3) — a simple per-property table-booking system (like tribaltablekenya). The menu system (above) is Phase 2 and done; reservations not started.
+- Restaurant reservations (Phase 3) — **built & verified** (request model; see "Restaurant reservations" above). Migration applied to Neon, 32/32 tests pass, full smoke test passed. Awaiting the owner's commit/push.
 
 ## Environment Variables Required
 ```

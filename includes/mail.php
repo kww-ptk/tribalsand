@@ -1006,6 +1006,145 @@ function send_addon_request_notification(array $hold, array $addon): void {
     _dispatch_mail($to, $subject, $text, $from, $to, $env, $html);
 }
 
+// ── Restaurant reservation emails ───────────────────────────────
+// Request model: guest submits → pending. send_reservation_received() sends the
+// guest acknowledgement AND the staff alert. send_reservation_confirmed() goes to
+// the guest when staff approve. $res is a reservations row joined with venue_name.
+
+/** Friendly "Fri, 22 Aug 2026 · 7:30 PM" label for a reservation's date + time. */
+function _reservation_when(array $res): string {
+    $d = strtotime((string)($res['reservation_date'] ?? ''));
+    $t = strtotime((string)($res['reservation_time'] ?? ''));
+    $parts = [];
+    if ($d) $parts[] = date('D, j M Y', $d);
+    if ($t) $parts[] = date('g:i A', $t);
+    return implode(' · ', $parts);
+}
+
+/** Shared [label,value] detail rows for a reservation. */
+function _reservation_rows(array $res): array {
+    $party = max(1, (int)($res['party_size'] ?? 1));
+    return [
+        ['Property',  $res['venue_name'] ?? ''],
+        ['Date',      ($d = strtotime((string)($res['reservation_date'] ?? ''))) ? date('D, j M Y', $d) : ''],
+        ['Time',      ($t = strtotime((string)($res['reservation_time'] ?? ''))) ? date('g:i A', $t) : ''],
+        ['Party',     $party . ' ' . ($party === 1 ? 'guest' : 'guests')],
+        ['Name',      $res['guest_name']  ?? ''],
+        ['Reference', $res['reference']   ?? ''],
+    ];
+}
+
+/** Guest acknowledgement ("request received, pending confirmation") + staff alert. */
+function send_reservation_received(array $res): void {
+    $env   = parse_env();
+    $from  = $env['MAIL_FROM'] ?? 'noreply@tribalsand.com';
+    $reply = setting('notify_email', 'reservations@tribalsand.com');
+    $site  = rtrim($env['SITE_URL'] ?? $env['APP_URL'] ?? 'https://tribalsand.com', '/');
+
+    $venue = (string)($res['venue_name'] ?? 'Tribal Sand');
+    $when  = _reservation_when($res);
+    $ref   = (string)($res['reference'] ?? '');
+    $rows  = _reservation_rows($res);
+
+    // ── Guest acknowledgement ──
+    $guestEmail = trim((string)($res['guest_email'] ?? ''));
+    if (filter_var($guestEmail, FILTER_VALIDATE_EMAIL)) {
+        $name    = trim((string)($res['guest_name'] ?? '')) ?: 'Guest';
+        $subject = 'We’ve received your table request — ' . $venue;
+
+        $textLines = [
+            "Dear {$name},",
+            '',
+            "Thank you for your table request at {$venue}. It’s pending confirmation — a member of our team will be in touch shortly to confirm your reservation.",
+            '',
+            'YOUR REQUEST',
+        ];
+        foreach ($rows as [$k, $v]) if ($v !== '') $textLines[] = "  {$k}: {$v}";
+        $textLines[] = '';
+        if (($res['notes'] ?? '') !== '') { $textLines[] = 'Your note:'; $textLines[] = (string)$res['notes']; $textLines[] = ''; }
+        $textLines[] = "If you need to change anything, reply to this email or write to {$reply}.";
+        $textLines[] = '';
+        $textLines[] = 'Warm regards,';
+        $textLines[] = 'Tribal Sand';
+        $text = implode("\n", $textLines);
+
+        $inner = '<p style="margin:0 0 18px;font-size:15px">Dear <strong>' . _email_esc($name) . '</strong>,</p>'
+            . _email_lead("Thank you for your table request at {$venue}. It’s <strong>pending confirmation</strong> — a member of our team will be in touch shortly to confirm your reservation.")
+            . _email_detail_block($rows, 'Your request')
+            . _email_message_block((string)($res['notes'] ?? ''), 'Your note')
+            . '<p style="font-size:13px;color:#777;line-height:1.6;margin-top:24px">Need to change anything? Simply reply to this email, or write to '
+                . '<a href="mailto:' . _email_esc($reply) . '" style="color:#1E5C6B">' . _email_esc($reply) . '</a>.</p>'
+            . '<p style="font-size:14px;margin:24px 0 0">Warm regards,<br><strong>Tribal Sand</strong></p>';
+        $html = _email_shell('Table request received', $inner, $site);
+
+        _dispatch_mail($guestEmail, $subject, $text, $from, $reply, $env, $html);
+    }
+
+    // ── Staff alert ──
+    $to = $reply;
+    $subjectS = "[Reservation] {$venue} — " . trim((string)($res['guest_name'] ?? 'Guest')) . ($when ? " — {$when}" : '');
+    $adminUrl = $site . '/admin/reservations.php';
+
+    $staffRows = array_merge($rows, [
+        ['Phone', $res['guest_phone'] ?? ''],
+        ['Email', $res['guest_email'] ?? ''],
+    ]);
+    $textS = implode("\n", array_merge(
+        ['NEW TABLE RESERVATION REQUEST', str_repeat('-', 40)],
+        array_map(fn($r) => $r[1] !== '' ? "{$r[0]}: {$r[1]}" : '', $staffRows),
+        ['', 'Note: ' . (($res['notes'] ?? '') !== '' ? $res['notes'] : '—'), '', "Review: {$adminUrl}"]
+    ));
+    $innerS = _email_lead('A new table reservation request has come in through the website. It’s pending — please confirm or cancel.')
+        . _email_detail_block($staffRows, 'Reservation')
+        . _email_message_block((string)($res['notes'] ?? ''), 'Guest note')
+        . _email_button('Review reservations', $adminUrl);
+    $htmlS = _email_shell('New reservation request', $innerS, $site);
+
+    _dispatch_mail($to, $subjectS, $textS, $from, $guestEmail !== '' ? $guestEmail : $to, $env, $htmlS);
+}
+
+/** Guest confirmation email when staff approve a reservation. */
+function send_reservation_confirmed(array $res): void {
+    $to = trim((string)($res['guest_email'] ?? ''));
+    if (!filter_var($to, FILTER_VALIDATE_EMAIL)) return;   // no guest email → nothing to send
+
+    $env   = parse_env();
+    $from  = $env['MAIL_FROM'] ?? 'noreply@tribalsand.com';
+    $reply = setting('notify_email', 'reservations@tribalsand.com');
+    $site  = rtrim($env['SITE_URL'] ?? $env['APP_URL'] ?? 'https://tribalsand.com', '/');
+
+    $venue = (string)($res['venue_name'] ?? 'Tribal Sand');
+    $name  = trim((string)($res['guest_name'] ?? '')) ?: 'Guest';
+    $rows  = _reservation_rows($res);
+
+    $subject = "Your table is confirmed — {$venue}";
+
+    $textLines = [
+        "Dear {$name},",
+        '',
+        "We’re delighted to confirm your table at {$venue}. We look forward to welcoming you.",
+        '',
+        'YOUR RESERVATION',
+    ];
+    foreach ($rows as [$k, $v]) if ($v !== '') $textLines[] = "  {$k}: {$v}";
+    $textLines[] = '';
+    $textLines[] = "If your plans change, please reply to this email or write to {$reply}.";
+    $textLines[] = '';
+    $textLines[] = 'Warm regards,';
+    $textLines[] = 'Tribal Sand';
+    $text = implode("\n", $textLines);
+
+    $inner = '<p style="margin:0 0 18px;font-size:15px">Dear <strong>' . _email_esc($name) . '</strong>,</p>'
+        . _email_lead("We’re delighted to confirm your table at {$venue}. We look forward to welcoming you.")
+        . _email_detail_block($rows, 'Your reservation')
+        . '<p style="font-size:13px;color:#777;line-height:1.6;margin-top:24px">If your plans change, simply reply to this email, or write to '
+            . '<a href="mailto:' . _email_esc($reply) . '" style="color:#1E5C6B">' . _email_esc($reply) . '</a>.</p>'
+        . '<p style="font-size:14px;margin:24px 0 0">Warm regards,<br><strong>Tribal Sand</strong></p>';
+    $html = _email_shell('Table confirmed', $inner, $site);
+
+    _dispatch_mail($to, $subject, $text, $from, $reply, $env, $html);
+}
+
 /** Best-effort front-desk notice on check-in completion. No-ops if mail is unconfigured. */
 function send_checkin_completed(array $hold, ?array $data): void {
     $env = parse_env();
