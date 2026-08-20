@@ -45,20 +45,42 @@ if ($venueIds !== null) {
 }
 
 // ── Filters ──
-$fStatus = trim((string)($_GET['status'] ?? ''));
-$fFrom   = trim((string)($_GET['from'] ?? ''));
-$fTo     = trim((string)($_GET['to'] ?? ''));
+// Array-valued GET params (e.g. ?from[]=x) must never reach trim()/(string) —
+// that emits an "Array to string conversion" warning above the <!DOCTYPE>,
+// leaking the absolute server path with display_errors on in production.
+$fStatus = is_string($_GET['status'] ?? null) ? trim($_GET['status']) : '';
+$fFrom   = is_string($_GET['from']   ?? null) ? trim($_GET['from'])   : '';
+$fTo     = is_string($_GET['to']     ?? null) ? trim($_GET['to'])     : '';
 $filterSql  = '';
 $filterArgs = [];
 if (in_array($fStatus, ['pending', 'confirmed', 'declined', 'cancelled'], true)) {
     $filterSql .= ' AND r.status = :status';
     $filterArgs[':status'] = $fStatus;
 }
-if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $fFrom)) { $filterSql .= ' AND r.reserved_on >= :from'; $filterArgs[':from'] = $fFrom; }
-if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $fTo))   { $filterSql .= ' AND r.reserved_on <= :to';   $filterArgs[':to']   = $fTo; }
 
-$SELECT = 'SELECT r.*, v.name AS venue_name FROM restaurant_reservations r
-           JOIN venues v ON v.id = r.venue_id WHERE TRUE';
+// A regex-only check accepts calendar-invalid dates (2026-13-45, 2026-02-30,
+// 0000-00-00); Postgres throws on those and the uncaught PDOException fires
+// before _layout.php runs, so display_errors=on in production dumps the SQL,
+// stack trace and container paths straight to the browser. checkdate() closes
+// that off — same pattern as admin/hold-new.php. An invalid value is cleared
+// rather than kept, so the filter bar reflects the query that actually ran.
+$isYmd = static fn(string $d): bool =>
+    preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $d, $m) === 1
+    && checkdate((int)$m[2], (int)$m[3], (int)$m[1]);
+if ($fFrom !== '' && !$isYmd($fFrom)) { $fFrom = ''; }
+if ($fTo   !== '' && !$isYmd($fTo))   { $fTo   = ''; }
+
+// An explicit "from" means the manager is deliberately looking back, so it
+// replaces (rather than adds to) the default lower bound applied to the
+// upcoming list below — otherwise a pending request whose date has already
+// passed would be invisible forever (both lists otherwise only look forward).
+$hasFrom = $fFrom !== '';
+if ($hasFrom)    { $filterSql .= ' AND r.reserved_on >= :from'; $filterArgs[':from'] = $fFrom; }
+if ($fTo !== '') { $filterSql .= ' AND r.reserved_on <= :to';   $filterArgs[':to']   = $fTo; }
+
+// r.* is sufficient — venue_name was selected but never displayed, and every
+// reservation is Zuri today. Whoever adds a second venue adds the join back.
+$SELECT = 'SELECT r.* FROM restaurant_reservations r WHERE TRUE';
 
 // ── Counters ──
 $countToday = (int) db_query(
@@ -81,9 +103,13 @@ $today = db_query(
 )->fetchAll();
 
 // Cap the filtered list. If it truncates, say so rather than silently hiding rows.
+// Default view is deliberately forward-looking (reserved_on >= CURRENT_DATE);
+// an explicit "from" filter above already supplies its own lower bound, so it
+// is not added again here — see $hasFrom.
 $LIMIT = 200;
+$boundSql = $hasFrom ? '' : ' AND r.reserved_on >= CURRENT_DATE';
 $upcoming = db_query(
-    $SELECT . $scopeSql . $filterSql . ' AND r.reserved_on >= CURRENT_DATE
+    $SELECT . $scopeSql . $filterSql . $boundSql . '
     ORDER BY r.reserved_on, r.reserved_at LIMIT ' . ($LIMIT + 1),
     $scopeArgs + $filterArgs
 )->fetchAll();
@@ -97,7 +123,7 @@ require __DIR__ . '/_layout.php';
 ?>
 
 <?php if ($flash): ?>
-<div class="alert is-flash alert--<?= $flash['type'] === 'error' ? 'error' : 'success' ?>"><?= e($flash['msg']) ?></div>
+<div class="alert alert--<?= e($flash['type'] ?? 'success') ?> is-flash"><?= e($flash['msg'] ?? '') ?></div>
 <?php endif; ?>
 
 <div class="kpi-grid">
@@ -182,16 +208,20 @@ require __DIR__ . '/_layout.php';
           <td><?= e($r['reference']) ?></td>
           <td><span class="badge <?= e(restaurant_status_badge_class($r['status'])) ?>"><?= e(ucfirst($r['status'])) ?></span></td>
           <td>
-            <form method="post" action="/admin/restaurant-action.php" style="display:flex;gap:.35rem">
-              <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
-              <input type="hidden" name="id" value="<?= e($r['id']) ?>">
-              <?php if ($r['status'] === 'pending'): ?>
+            <?php if ($r['status'] === 'pending'): ?>
+              <form method="post" action="/admin/restaurant-action.php" style="display:flex;gap:.35rem">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="id" value="<?= e($r['id']) ?>">
                 <button type="submit" name="action" value="confirm" class="btn-sm btn-primary">Confirm</button>
                 <button type="submit" name="action" value="decline" class="btn-sm btn-outline" data-confirm="Decline this table request?">Decline</button>
-              <?php elseif ($r['status'] === 'confirmed'): ?>
+              </form>
+            <?php elseif ($r['status'] === 'confirmed'): ?>
+              <form method="post" action="/admin/restaurant-action.php" style="display:flex;gap:.35rem">
+                <input type="hidden" name="csrf_token" value="<?= e(csrf_token()) ?>">
+                <input type="hidden" name="id" value="<?= e($r['id']) ?>">
                 <button type="submit" name="action" value="cancel" class="btn-sm btn-outline" data-confirm="Cancel this confirmed table?">Cancel</button>
-              <?php endif; ?>
-            </form>
+              </form>
+            <?php endif; ?>
           </td>
         </tr>
       <?php endforeach; ?>
