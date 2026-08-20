@@ -269,6 +269,19 @@ check('large party told to call',          str_contains(strtolower($big['party_s
 
 check('unknown occasion rejected',         isset(restaurant_validate(['occasion' => 'wedding'] + $valid, $cfg, $today)['occasion']));
 check('empty occasion allowed',            restaurant_validate(['occasion' => ''] + $valid, $cfg, $today) === []);
+
+// 2026-08-19 + 120 days = 2026-12-17. Test the exact boundary, not a far date.
+check('exact 120-day horizon accepted',  !isset(restaurant_validate(['date' => '2026-12-17'] + $valid, $cfg, $today)['date']));
+check('121 days out rejected',            isset(restaurant_validate(['date' => '2026-12-18'] + $valid, $cfg, $today)['date']));
+$closedCfg = ['days' => [0,1,2,3,5,6], 'from' => '18:00', 'to' => '22:00', 'step' => 30];  // no Thursday
+check('closed weekday rejected on date',  isset(restaurant_validate($valid, $closedCfg, $today)['date']));
+check('array name rejected',              isset(restaurant_validate(['name' => ['a','b']] + $valid, $cfg, $today)['name']));
+check('bool name rejected',               isset(restaurant_validate(['name' => true] + $valid, $cfg, $today)['name']));
+check('array date rejected',              isset(restaurant_validate(['date' => []] + $valid, $cfg, $today)['date']));
+check('bool party size rejected',         isset(restaurant_validate(['party_size' => true] + $valid, $cfg, $today)['party_size']));
+check('non-numeric party size rejected',  isset(restaurant_validate(['party_size' => 'abc'] + $valid, $cfg, $today)['party_size']));
+check('over-long name rejected',          isset(restaurant_validate(['name' => str_repeat('a', 121)] + $valid, $cfg, $today)['name']));
+check('CRLF in name rejected',            isset(restaurant_validate(['name' => "Dan\r\nBcc: x@y.z"] + $valid, $cfg, $today)['name']));
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -284,6 +297,84 @@ Append to `includes/restaurant.php`:
 /** Occasions offered on the booking form. Empty/absent is allowed. */
 function restaurant_occasions(): array {
     return ['romantic', 'birthday', 'anniversary', 'business', 'other'];
+}
+
+/**
+ * Validate a booking request against a venue's hours.
+ * Returns a field => message map; an empty array means valid.
+ *
+ * $todayYmd is injected rather than read from date() so this stays pure and
+ * the tests do not rot. Callers pass date('Y-m-d') (Nairobi-local).
+ */
+function restaurant_validate(array $in, array $cfg, string $todayYmd): array {
+    // Pure only while $todayYmd parses. Not reachable from request data (callers
+    // pass date('Y-m-d')), but guard anyway rather than silently reading the
+    // real clock or throwing a TypeError under strict_types.
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $todayYmd)) $todayYmd = date('Y-m-d');
+
+    $err = [];
+
+    // json_decode() can hand us any type. Casting an array to string yields the
+    // literal "Array" (which passes a non-empty check) AND emits a warning that
+    // corrupts the JSON response body, so reject non-scalars outright.
+    $str = static fn($v) => (is_string($v) || is_int($v) || is_float($v)) ? trim((string)$v) : '';
+
+    $name  = $str($in['name']  ?? '');
+    $email = $str($in['email'] ?? '');
+    if ($name === '')                               $err['name']  = 'Your name is required.';
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $err['email'] = 'A valid email address is required.';
+
+    // Names/emails feed straight into mail headers (Task 5), so cap length and
+    // reject CR/LF here — the single choke point — to prevent header injection.
+    if ($name !== '' && (mb_strlen($name) > 120 || preg_match('/[\r\n]/', $name))) {
+        $err['name'] = 'Please enter your name as plain text, up to 120 characters.';
+    }
+    if ($email !== '' && (mb_strlen($email) > 120 || preg_match('/[\r\n]/', $email))) {
+        $err['email'] = 'Please enter your email as plain text, up to 120 characters.';
+    }
+
+    // is_numeric is false for bool, array and null, so party_size: true doesn't
+    // silently become 1, and party_size: "20abc" doesn't silently become 20.
+    $party = is_numeric($in['party_size'] ?? null) ? (int)$in['party_size'] : 0;
+    if ($party < RESTAURANT_PARTY_MIN) {
+        $err['party_size'] = 'Please tell us how many are dining.';
+    } elseif ($party > RESTAURANT_PARTY_MAX) {
+        $err['party_size'] = 'For parties over ' . RESTAURANT_PARTY_MAX
+                           . ', please call us so we can look after you properly.';
+    }
+
+    $date = $str($in['date'] ?? '');
+    $time = $str($in['time'] ?? '');
+
+    // Same strict calendar check restaurant_slots_for() already uses, so a
+    // regex-valid but impossible date (e.g. 2026-09-31) gets one honest message
+    // instead of a misleading "closed that day" / "beyond horizon" one.
+    $parsed = DateTimeImmutable::createFromFormat('!Y-m-d', $date);
+    $dateOk = $parsed !== false && $parsed->format('Y-m-d') === $date;
+    if (!$dateOk) {
+        $err['date'] = 'Please choose a date.';
+    } elseif ($date < $todayYmd) {
+        $err['date'] = 'That date has already passed.';
+    } elseif ($date > date('Y-m-d', strtotime($todayYmd . ' +' . RESTAURANT_HORIZON_DAYS . ' days'))) {
+        $err['date'] = 'We take bookings up to ' . RESTAURANT_HORIZON_DAYS . ' days ahead.';
+    }
+
+    // Only check the time once the date is sound — slots depend on the weekday.
+    if (!isset($err['date'])) {
+        $slots = restaurant_slots_for($date, $cfg);
+        if (!$slots) {
+            $err['date'] = 'We are closed that day. Please choose another date.';
+        } elseif (!in_array($time, $slots, true)) {
+            $err['time'] = 'Please choose one of the available times.';
+        }
+    }
+
+    $occasion = $str($in['occasion'] ?? '');
+    if ($occasion !== '' && !in_array($occasion, restaurant_occasions(), true)) {
+        $err['occasion'] = 'Please choose one of the listed occasions.';
+    }
+
+    return $err;
 }
 
 /**
