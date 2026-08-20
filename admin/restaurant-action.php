@@ -22,9 +22,15 @@ $fail = function (string $msg) use ($back): never {
 };
 
 $id     = (int)($_POST['id'] ?? 0);
-$action = (string)($_POST['action'] ?? '');
+// Array-valued action would reach the string concatenation on the failure/audit
+// paths below and warn (same array-to-string hazard $postStr guards against
+// further down) — check is_string() first rather than blindly casting.
+$action = is_string($_POST['action'] ?? null) ? $_POST['action'] : '';
 $map = ['confirm' => 'confirmed', 'decline' => 'declined', 'cancel' => 'cancelled'];
-if (!$id || ($action !== 'edit' && !isset($map[$action]))) $fail('Unknown action.');
+// Clamp id to the Postgres int4 PK range — an unbounded (int) cast on a huge
+// numeric string saturates to PHP_INT_MAX, which Postgres then rejects with an
+// uncaught 22003 PDOException (stack trace to the browser, display_errors on).
+if ($id < 1 || $id > 2147483647 || ($action !== 'edit' && !isset($map[$action]))) $fail('Unknown action.');
 $to = $action === 'edit' ? null : $map[$action];
 
 $r = db_query(
@@ -55,21 +61,37 @@ if ($action === 'edit') {
     // (same hazard the GET filters in restaurant.php already guard against).
     $postStr = static fn(string $k): string => is_string($_POST[$k] ?? null) ? trim($_POST[$k]) : '';
 
+    // party_size and notes are passed RAW (not pre-cast) so restaurant_validate()
+    // sees the real input and its is_numeric()/$str() type-checks actually run.
+    // Pre-coercing here (e.g. (int) on party_size, or collapsing notes to '' via
+    // $postStr) would launder a non-scalar into a value the validator can never
+    // reject: party_size[]=6 silently became int 1, notes[]=x silently became ''
+    // and NULLed the guest's note — both with a success flash. date/time/occasion
+    // /staff_notes are fine through $postStr — collapsing those to '' is benign
+    // and fails validation (or is unset for time) rather than corrupting data.
     $in = [
         'name'       => $r['guest_name'],   // unchanged, but restaurant_validate() requires them
         'email'      => $r['guest_email'],
-        'party_size' => (int)($_POST['party_size'] ?? 0),
+        'party_size' => $_POST['party_size'] ?? null,
         'date'       => $postStr('date'),
         'time'       => $postStr('time'),
         'occasion'   => $postStr('occasion'),
-        'notes'      => $postStr('notes'),
+        'notes'      => $_POST['notes'] ?? null,
     ];
 
-    // Staff may move a booking to any time the venue is open — but the date,
-    // party bounds and notes cap are the same rules the public form obeys.
+    // Staff overrides must be total: unset('time') below already allows an
+    // off-grid time, but restaurant_validate() reports a closed weekday under
+    // 'date' too — so a manager taking a private-event booking on a normally
+    // dark day would otherwise be blocked with "We are closed that day."
+    // Validate against a copy of the venue's hours with every weekday open,
+    // which drops only the closed-day/off-grid restrictions; horizon, past-date,
+    // party bounds, notes cap and null-byte checks all still run unchanged.
+    $hours = restaurant_hours($r['venue_slug']);
+    $hours['days'] = [0, 1, 2, 3, 4, 5, 6];
+
     // This is a second writer to the same rows the public endpoint writes, so
     // it goes through the same choke point rather than re-deriving the rules.
-    $errors = restaurant_validate($in, restaurant_hours($r['venue_slug']), date('Y-m-d'));
+    $errors = restaurant_validate($in, $hours, date('Y-m-d'));
     unset($errors['time']);   // an off-grid time is a deliberate staff override
     if ($errors) $fail(reset($errors));
 
@@ -95,9 +117,12 @@ if ($action === 'edit') {
         [
             ':d'        => $in['date'],
             ':t'        => $in['time'],
-            ':party'    => $in['party_size'],
+            // Bind the CLEANED values, only after validation above has passed —
+            // $in['party_size']/['notes'] were left raw for the validator, so
+            // cast/trim them here rather than trusting a pre-validation shape.
+            ':party'    => (int)$in['party_size'],
             ':occasion' => $in['occasion'] !== '' ? $in['occasion'] : null,
-            ':notes'    => $in['notes'] !== '' ? $in['notes'] : null,
+            ':notes'    => is_string($_POST['notes'] ?? null) && trim($_POST['notes']) !== '' ? trim($_POST['notes']) : null,
             ':staff'    => $staffNotes !== '' ? $staffNotes : null,
             ':id'       => $id,
         ]
