@@ -95,5 +95,31 @@ check('non-numeric party size rejected',  isset(restaurant_validate(['party_size
 check('over-long name rejected',          isset(restaurant_validate(['name' => str_repeat('a', 121)] + $valid, $cfg, $today)['name']));
 check('CRLF in name rejected',            isset(restaurant_validate(['name' => "Dan\r\nBcc: x@y.z"] + $valid, $cfg, $today)['name']));
 
+// ── restaurant_can_transition ──────────────────────────────────────────────
+check('pending → confirmed',        restaurant_can_transition('pending', 'confirmed'));
+check('pending → declined',         restaurant_can_transition('pending', 'declined'));
+check('confirmed → cancelled',      restaurant_can_transition('confirmed', 'cancelled'));
+check('pending → cancelled blocked', !restaurant_can_transition('pending', 'cancelled'));
+check('confirmed → declined blocked',!restaurant_can_transition('confirmed', 'declined'));
+check('declined is terminal',       !restaurant_can_transition('declined', 'confirmed'));
+check('cancelled is terminal',      !restaurant_can_transition('cancelled', 'confirmed'));
+check('no-op transition blocked',   !restaurant_can_transition('pending', 'pending'));
+check('unknown status blocked',     !restaurant_can_transition('pending', 'seated'));
+
+// ── restaurant_make_reference ──────────────────────────────────────────────
+$ref = restaurant_make_reference();
+check('reference matches ZR-XXXXX',     preg_match('/^ZR-[23456789A-HJ-NP-Z]{5}$/', $ref) === 1);
+check('reference avoids 0/O/1/I',       preg_match('/[01OI]/', substr($ref, 3)) === 0);
+$many = [];
+for ($i = 0; $i < 200; $i++) { $many[restaurant_make_reference()] = true; }
+check('references vary',                count($many) > 190);
+
+// ── restaurant_status_badge_class ──────────────────────────────────────────
+check('pending badge is orange',    restaurant_status_badge_class('pending')   === 'badge--orange');
+check('confirmed badge is green',   restaurant_status_badge_class('confirmed') === 'badge--green');
+check('declined badge is red',      restaurant_status_badge_class('declined')  === 'badge--red');
+check('cancelled badge is grey',    restaurant_status_badge_class('cancelled') === 'badge--grey');
+check('unknown badge is grey',      restaurant_status_badge_class('wat')       === 'badge--grey');
+
 echo "\n" . ($failures === 0 ? "ALL PASS\n" : "{$failures} FAILURE(S)\n");
 exit($failures === 0 ? 0 : 1);

@@ -161,3 +161,37 @@ function restaurant_validate(array $in, array $cfg, string $todayYmd): array {
 
     return $err;
 }
+
+/** Reference alphabet: no 0/O or 1/I, so a code survives being read over the phone. */
+const RESTAURANT_REF_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+
+/** The only legal status moves. Anything else — including a no-op — is refused. */
+function restaurant_can_transition(string $from, string $to): bool {
+    $allowed = [
+        'pending'   => ['confirmed', 'declined'],
+        'confirmed' => ['cancelled'],
+        'declined'  => [],
+        'cancelled' => [],
+    ];
+    return in_array($to, $allowed[$from] ?? [], true);
+}
+
+/** Generate a guest-quotable reference, e.g. ZR-8F3K2. Uniqueness is the DB's job. */
+function restaurant_make_reference(): string {
+    $out = '';
+    $max = strlen(RESTAURANT_REF_ALPHABET) - 1;
+    for ($i = 0; $i < 5; $i++) {
+        $out .= RESTAURANT_REF_ALPHABET[random_int(0, $max)];
+    }
+    return 'ZR-' . $out;
+}
+
+/** Admin badge colour for a status — reuses the existing .badge--* classes. */
+function restaurant_status_badge_class(string $status): string {
+    return match ($status) {
+        'pending'   => 'badge--orange',
+        'confirmed' => 'badge--green',
+        'declined'  => 'badge--red',
+        default     => 'badge--grey',
+    };
+}
