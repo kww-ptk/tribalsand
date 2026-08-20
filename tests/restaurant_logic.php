@@ -82,5 +82,18 @@ check('large party told to call',          str_contains(strtolower($big['party_s
 check('unknown occasion rejected',         isset(restaurant_validate(['occasion' => 'wedding'] + $valid, $cfg, $today)['occasion']));
 check('empty occasion allowed',            restaurant_validate(['occasion' => ''] + $valid, $cfg, $today) === []);
 
+// 2026-08-19 + 120 days = 2026-12-17. Test the exact boundary, not a far date.
+check('exact 120-day horizon accepted',  !isset(restaurant_validate(['date' => '2026-12-17'] + $valid, $cfg, $today)['date']));
+check('121 days out rejected',            isset(restaurant_validate(['date' => '2026-12-18'] + $valid, $cfg, $today)['date']));
+$closedCfg = ['days' => [0,1,2,3,5,6], 'from' => '18:00', 'to' => '22:00', 'step' => 30];  // no Thursday
+check('closed weekday rejected on date',  isset(restaurant_validate($valid, $closedCfg, $today)['date']));
+check('array name rejected',              isset(restaurant_validate(['name' => ['a','b']] + $valid, $cfg, $today)['name']));
+check('bool name rejected',               isset(restaurant_validate(['name' => true] + $valid, $cfg, $today)['name']));
+check('array date rejected',              isset(restaurant_validate(['date' => []] + $valid, $cfg, $today)['date']));
+check('bool party size rejected',         isset(restaurant_validate(['party_size' => true] + $valid, $cfg, $today)['party_size']));
+check('non-numeric party size rejected',  isset(restaurant_validate(['party_size' => 'abc'] + $valid, $cfg, $today)['party_size']));
+check('over-long name rejected',          isset(restaurant_validate(['name' => str_repeat('a', 121)] + $valid, $cfg, $today)['name']));
+check('CRLF in name rejected',            isset(restaurant_validate(['name' => "Dan\r\nBcc: x@y.z"] + $valid, $cfg, $today)['name']));
+
 echo "\n" . ($failures === 0 ? "ALL PASS\n" : "{$failures} FAILURE(S)\n");
 exit($failures === 0 ? 0 : 1);
