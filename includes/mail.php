@@ -1041,3 +1041,121 @@ function send_checkin_completed(array $hold, ?array $data): void {
     try { send_resend($to, 'Pre-check-in complete — ' . ($hold['guest_name'] ?? ''), $body, $from, $from, $key, $html); }
     catch (Throwable $e) { error_log('[checkin] send_resend: ' . $e->getMessage()); }
 }
+
+/* ── Restaurant reservations ─────────────────────────────────────────────── */
+
+/** "Thursday 20 August 2026 at 18:30" — one phrasing used by every restaurant email. */
+function _restaurant_when(array $r): string {
+    $ts = strtotime($r['reserved_on'] . ' ' . $r['reserved_at']);
+    return $ts ? date('l j F Y', $ts) . ' at ' . date('H:i', $ts)
+               : $r['reserved_on'] . ' at ' . $r['reserved_at'];
+}
+
+/** Label => value pairs shown in the body of every restaurant email. */
+function _restaurant_rows(array $r): array {
+    $rows = [
+        'Reference' => $r['reference'],
+        'When'      => _restaurant_when($r),
+        'Party'     => $r['party_size'] . ' ' . ((int)$r['party_size'] === 1 ? 'guest' : 'guests'),
+    ];
+    if (!empty($r['occasion'])) $rows['Occasion'] = ucfirst((string)$r['occasion']);
+    if (!empty($r['notes']))    $rows['Notes']    = (string)$r['notes'];
+    return $rows;
+}
+
+/** Branded HTML shell for restaurant mail, matching the rest of includes/mail.php. */
+function _restaurant_html(string $heading, string $intro, array $rows, string $footnote): string {
+    $esc = fn(string $v) => htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
+
+    $cells = '';
+    foreach ($rows as $label => $value) {
+        $cells .= '<tr>'
+                . '<td style="padding:6px 14px 6px 0;color:#8C7A60;font-size:13px;white-space:nowrap">' . $esc((string)$label) . '</td>'
+                . '<td style="padding:6px 0;color:#141412;font-size:15px">' . $esc((string)$value) . '</td>'
+                . '</tr>';
+    }
+
+    return '<div style="font-family:Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#FAF8F4">'
+         . '<div style="font-size:12px;letter-spacing:.28em;text-transform:uppercase;color:#B8965A;margin-bottom:10px">Zuri &middot; Watamu</div>'
+         . '<h1 style="font-family:Georgia,serif;font-weight:400;font-size:26px;color:#102F3A;margin:0 0 14px">' . $esc($heading) . '</h1>'
+         . '<p style="font-size:15px;line-height:1.65;color:#5a4a38;margin:0 0 22px">' . $esc($intro) . '</p>'
+         . '<table style="border-collapse:collapse;margin:0 0 22px">' . $cells . '</table>'
+         . '<p style="font-size:13px;line-height:1.7;color:#8C7A60;margin:0">' . $esc($footnote) . '</p>'
+         . '</div>';
+}
+
+/**
+ * Fired when a guest submits a booking request: acknowledgement to the guest,
+ * alert to the restaurant inbox. The guest copy is deliberately explicit that
+ * this is NOT yet a confirmed table.
+ */
+function send_restaurant_request(array $r): void {
+    require_once __DIR__ . '/restaurant.php';
+
+    $env  = parse_env();
+    $from = $env['MAIL_FROM'] ?? 'noreply@tribalsand.com';
+    $site = rtrim($env['APP_URL'] ?? $env['SITE_URL'] ?? '', '/');
+    $when = _restaurant_when($r);
+    $rows = _restaurant_rows($r);
+
+    // ── Guest acknowledgement ──
+    $gSubject = "We've received your table request — {$r['venue_name']} — {$r['reference']}";
+    $gIntro   = 'Thank you — we have your request and will confirm within 24 hours. '
+              . 'This is not yet a confirmed table; you will get a second email once it is.';
+    $gText    = "Dear {$r['guest_name']},\n\n{$gIntro}\n\n"
+              . "Reference: {$r['reference']}\nWhen:      {$when}\n"
+              . "Party:     {$r['party_size']}\n\n"
+              . "Warm regards,\n{$r['venue_name']} — Tribal Sand\nreservations@tribalsand.com";
+    $gHtml    = _restaurant_html(
+        'Your table request',
+        $gIntro,
+        $rows,
+        'Need to change something? Reply to this email and quote your reference.'
+    );
+    _dispatch_mail($r['guest_email'], $gSubject, $gText, $from, $from, $env, $gHtml);
+
+    // ── Staff alert ──
+    $inbox    = restaurant_inbox($r['venue_slug']);
+    $link     = $site . '/admin/restaurant.php';
+    $sSubject = "New table request — {$when} — {$r['party_size']} guests — {$r['reference']}";
+    $sRows    = $rows + [
+        'Guest' => $r['guest_name'],
+        'Email' => $r['guest_email'],
+        'Phone' => $r['guest_phone'] !== '' ? $r['guest_phone'] : '—',
+    ];
+    $sText    = "New table request at {$r['venue_name']}.\n\n"
+              . "Reference: {$r['reference']}\nWhen:      {$when}\n"
+              . "Party:     {$r['party_size']}\nGuest:     {$r['guest_name']}\n"
+              . "Email:     {$r['guest_email']}\nPhone:     " . ($r['guest_phone'] ?: '—') . "\n\n"
+              . "Confirm or decline: {$link}";
+    $sHtml    = _restaurant_html(
+        'New table request',
+        "A guest has requested a table at {$r['venue_name']}. Confirm or decline it in the admin.",
+        $sRows,
+        $link
+    );
+    _dispatch_mail($inbox, $sSubject, $sText, $from, $r['guest_email'], $env, $sHtml);
+}
+
+/** Fired when a manager confirms. The table is now real. */
+function send_restaurant_confirmed(array $r): void {
+    $env  = parse_env();
+    $from = $env['MAIL_FROM'] ?? 'noreply@tribalsand.com';
+    $when = _restaurant_when($r);
+
+    $subject = "Your table is confirmed — {$r['venue_name']} — {$when}";
+    $intro   = 'Your table is confirmed. We look forward to welcoming you.';
+    $text    = "Dear {$r['guest_name']},\n\n{$intro}\n\n"
+             . "Reference: {$r['reference']}\nWhen:      {$when}\n"
+             . "Party:     {$r['party_size']}\n\n"
+             . "To change or cancel, reply to this email or call us and quote your reference.\n\n"
+             . "Warm regards,\n{$r['venue_name']} — Tribal Sand\nreservations@tribalsand.com";
+    $html    = _restaurant_html(
+        'Your table is confirmed',
+        $intro,
+        _restaurant_rows($r),
+        'To change or cancel, reply to this email or call us and quote your reference.'
+    );
+
+    _dispatch_mail($r['guest_email'], $subject, $text, $from, $from, $env, $html);
+}
