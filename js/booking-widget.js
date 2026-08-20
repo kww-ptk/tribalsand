@@ -39,6 +39,36 @@
     const submitBtn  = form.querySelector(".bk-submit");
     const submitLbl  = submitBtn.querySelector(".bk-submit__label");
 
+    // ── Guest memory ────────────────────────────────────────────
+    // Carry the guest's name/email/phone across properties so they don't retype
+    // it on every enquiry. Stored client-side only (localStorage) — never sent
+    // anywhere new; the enquiry POST already carries these fields.
+    const GKEY   = "ts_guest";
+    const gName  = form.querySelector("[name=name]");
+    const gEmail = form.querySelector("[name=email]");
+    const gPhone = form.querySelector("[name=phone]");
+    function loadGuest() {
+      try { return JSON.parse(localStorage.getItem(GKEY) || "{}") || {}; } catch { return {}; }
+    }
+    function saveGuest() {
+      try {
+        const cur  = loadGuest();
+        const next = {
+          name:  (gName  && gName.value.trim())  || cur.name  || "",
+          email: (gEmail && gEmail.value.trim()) || cur.email || "",
+          phone: (gPhone && gPhone.value.trim()) || cur.phone || "",
+        };
+        if (next.name || next.email || next.phone) localStorage.setItem(GKEY, JSON.stringify(next));
+      } catch {}
+    }
+    function prefillGuest() {
+      const g = loadGuest();
+      if (gName  && !gName.value.trim()  && g.name)  gName.value  = g.name;
+      if (gEmail && !gEmail.value.trim() && g.email) gEmail.value = g.email;
+      if (gPhone && !gPhone.value.trim() && g.phone) gPhone.value = g.phone;
+    }
+    prefillGuest();   // fill from a previous property (only empty fields)
+
     // State
     let fullyBlocked = [];
     let viewYear, viewMonth;
@@ -272,6 +302,9 @@
 
     // ── Bind events (once only) ──────────────────────────────────
     if (!bound) {
+      // Remember name/email/phone as the guest fills them (fires on blur).
+      [gName, gEmail, gPhone].forEach(el => el && el.addEventListener("change", saveGuest));
+
       prevBtn.addEventListener("click", () => {
         viewMonth--; if (viewMonth < 0) { viewMonth = 11; viewYear--; } renderCal();
       });
@@ -347,6 +380,8 @@
           "cf-turnstile-response":  form.querySelector("[name='cf-turnstile-response']")?.value || "",
         };
 
+        saveGuest();   // persist for the next property they look at
+
         try {
           const res  = await fetch("/api/submit-enquiry", {
             method:  "POST",
@@ -413,6 +448,7 @@
       wrap.dataset.slug = slug; wrap.dataset.price = defPrice; wrap.dataset.currency = currency;
       selStart = null; selEnd = null; availOk = null; fullyBlocked = [];
       clearError();
+      prefillGuest();   // carry name/email/phone when the modal reopens for a new room
       updateDateFields(); updateTotal(); renderCal();
 
       // Fall back to a hero/home search stored this session (dates + guests)
