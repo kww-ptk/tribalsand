@@ -201,6 +201,9 @@ function restaurant_status_badge_class(string $status): string {
     };
 }
 
+// ── Everything below this line touches the database. Everything above it ──
+// must stay pure (no DB, no I/O) so tests/restaurant_logic.php keeps running
+// with no database. Append new pure helpers above this banner, not below it.
 require_once __DIR__ . '/db.php';
 
 /**
