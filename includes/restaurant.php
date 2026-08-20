@@ -32,6 +32,14 @@ function restaurant_normalise_hours(?array $cfg): array {
 
     $from = $isTime($cfg['from'] ?? null) ? $cfg['from'] : $def['from'];
     $to   = $isTime($cfg['to']   ?? null) ? $cfg['to']   : $def['to'];
+
+    // Both are zero-padded 'HH:MM' strings, so a plain string comparison
+    // sorts them the same as comparing minutes-since-midnight would — no
+    // helper needed. An inverted or zero-length window (from >= to) must
+    // fall back to BOTH defaults together, not just one field: replacing
+    // only $from or only $to here could still leave an inverted pair.
+    if ($from >= $to) { $from = $def['from']; $to = $def['to']; }
+
     $step = (isset($cfg['step']) && is_numeric($cfg['step']) && (int)$cfg['step'] > 0)
           ? (int)$cfg['step'] : $def['step'];
 
@@ -55,9 +63,9 @@ function restaurant_normalise_hours(?array $cfg): array {
 function restaurant_slots_for(string $ymd, array $cfg): array {
     $cfg = restaurant_normalise_hours($cfg);
 
-    $ts = strtotime($ymd . ' 00:00:00');
-    if ($ts === false) return [];
-    if (!in_array((int)date('w', $ts), $cfg['days'], true)) return [];
+    $d = DateTimeImmutable::createFromFormat('!Y-m-d', $ymd);
+    if ($d === false || $d->format('Y-m-d') !== $ymd) return [];
+    if (!in_array((int)$d->format('w'), $cfg['days'], true)) return [];
 
     [$fh, $fm] = array_map('intval', explode(':', $cfg['from']));
     [$th, $tm] = array_map('intval', explode(':', $cfg['to']));

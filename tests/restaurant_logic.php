@@ -36,5 +36,13 @@ check('60-min steps give 3 slots',          $hourly === ['18:00', '19:00', '20:0
 $closed = restaurant_slots_for('2026-08-20', ['days' => [0,1,2,3,5,6], 'from' => '18:00', 'to' => '22:00', 'step' => 30]);
 check('closed day yields no slots',         $closed === []);
 
+// ── regression: inverted windows and impossible dates ──────────────────────
+check('inverted window falls back to defaults', restaurant_slots_for('2026-08-20', ['days'=>[0,1,2,3,4,5,6],'from'=>'22:00','to'=>'18:00','step'=>30]) !== []);
+check('from == to falls back to defaults',      restaurant_slots_for('2026-08-20', ['days'=>[0,1,2,3,4,5,6],'from'=>'18:00','to'=>'18:00','step'=>30]) !== []);
+check('impossible date rejected',               restaurant_slots_for('2026-02-30', $cfg) === []);
+check('relative date string rejected',          restaurant_slots_for('tomorrow', $cfg) === []);
+check('empty date rejected',                    restaurant_slots_for('', $cfg) === []);
+check('partial config keeps its closing time',  restaurant_normalise_hours(['from'=>'12:00','to'=>'15:00','step'=>60,'days'=>[1,2,3]])['to'] === '15:00');
+
 echo "\n" . ($failures === 0 ? "ALL PASS\n" : "{$failures} FAILURE(S)\n");
 exit($failures === 0 ? 0 : 1);
