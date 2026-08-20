@@ -92,20 +92,37 @@ $__navReserve = reservations_supported() && (bool) fetch_reservable_venues();
 .ts-drop-div{height:1px;background:rgba(184,150,90,.1);margin:.35rem 0;}
 
 /* Wide dropdown */
-.ts-drop.wide{min-width:680px;display:grid;grid-template-columns:1fr 1fr 1fr;}
+.ts-drop.wide{min-width:780px;display:grid;grid-template-columns:1fr 1fr 1fr;}
 .ts-drop.wide-2{min-width:560px;display:grid;grid-template-columns:1fr 1fr;}
 .ts-drop-col{padding:.6rem 0;display:flex;flex-direction:column;}
 .ts-drop-col:first-child{border-right:1px solid rgba(184,150,90,.08);}
 .ts-drop-col-footer{margin-top:auto;}
+/* "Not sure yet?" prompt + outline CTA, pinned to the bottom of the last column.
+   Selectors are .ts-drop-scoped because `.ts-drop a` (0,1,1) sets display:flex and
+   a hover background that would otherwise beat a bare class and repaint the button. */
+.ts-drop-cta{padding:.5rem 1.2rem .7rem;}
+.ts-drop-cta__note{
+  display:block;font-family:'Jost',sans-serif;font-size:.66rem;
+  letter-spacing:.04em;color:rgba(212,196,172,.6);margin-bottom:.5rem;
+}
+.ts-drop .ts-drop-cta__btn{
+  display:inline-block;padding:.5rem 1rem;
+  font-family:'Jost',sans-serif;font-size:.6rem;letter-spacing:.14em;text-transform:uppercase;
+  background:none;border:1px solid rgba(184,150,90,.38);color:var(--ts-sand-lt);
+  transition:background .22s,border-color .22s,color .22s;
+}
+.ts-drop .ts-drop-cta__btn:hover{
+  background:rgba(184,150,90,.12);border-color:var(--ts-sand);color:#fff;
+}
 
 /* Property rows with thumbnail */
 .ts-prop-row{
-  display:flex;align-items:center;gap:.85rem;
-  padding:.6rem 1.3rem;
+  display:flex;align-items:center;gap:.9rem;
+  padding:.5rem 1.3rem;
   transition:background .18s;cursor:pointer;
 }
 .ts-prop-row:hover{background:rgba(184,150,90,.07);}
-.ts-prop-row img{width:46px;height:36px;object-fit:cover;flex-shrink:0;opacity:.78;transition:opacity .2s;border:1px solid rgba(184,150,90,.1);}
+.ts-prop-row img{width:76px;height:58px;object-fit:cover;flex-shrink:0;opacity:.78;transition:opacity .2s;border:1px solid rgba(184,150,90,.1);}
 .ts-prop-row:hover img{opacity:1;}
 .ts-prop-name{font-family:'Jost',sans-serif;font-size:.72rem;letter-spacing:.05em;color:rgba(212,196,172,.9);line-height:1.2;white-space:nowrap;}
 .ts-prop-loc{font-size:.6rem;letter-spacing:.08em;color:rgba(184,150,90,.65);margin-top:.06rem;}
@@ -316,6 +333,13 @@ $__navReserve = reservations_supported() && (bool) fetch_reservable_venues();
             <img src="<?= asset_url('images/maya_illai/Studios/Studio1.jpeg') ?>" alt="Off Duty">
             <div><div class="ts-prop-name">Off Duty</div><div class="ts-prop-loc">Coworking Hotel</div></div>
           </a>
+          <div class="ts-drop-col-footer">
+            <div class="ts-drop-div"></div>
+            <div class="ts-drop-cta">
+              <span class="ts-drop-cta__note">Not sure yet?</span>
+              <a href="enquire.php" class="ts-drop-cta__btn">Enquire Now &rarr;</a>
+            </div>
+          </div>
         </div>
       </div>
     </div>
