@@ -886,11 +886,33 @@ p {
   .prop-stat-l { font-size: 0.58rem; letter-spacing: 0.04em; margin-top: 0; white-space: nowrap; }
   /* min-height 44px: shrinking the padding to fit the row had dropped the tap
      target to 32px, below the reliable-touch minimum. Width may shrink, height may not. */
-  /* Auto width, right-aligned. min-height stays 44px: trimming padding to shrink
-     it had once put the tap target at 32px, under the reliable-touch minimum. */
-  .prop-btn    { font-size: 0.58rem; letter-spacing: 0.06em; padding: 0.5rem 0.85rem;
-                 align-self: flex-end; min-height: 44px; display: inline-flex;
-                 align-items: center; justify-content: center; }
+  /* A text link rather than a solid block: the filled button dominated a card
+     this size. Left-aligned under the stats, underlined, with an arrow.
+     min-height stays 44px — the target must stay thumb-sized even though the
+     ink is lighter. Padding is inset-free on the left so the text lines up with
+     the stats column above it. */
+  .prop-btn {
+    align-self: flex-start;
+    background: none;
+    color: var(--teal);
+    font-size: 0.68rem;
+    letter-spacing: 0.08em;
+    padding: 0.4rem 0.2rem 0.4rem 0;
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    gap: 0;
+    text-decoration: underline;
+    text-underline-offset: 4px;
+    text-decoration-thickness: 1px;
+    text-decoration-color: rgba(30,92,107,.4);
+  }
+  /* nbsp + arrow, and gap:0 above, so the underline runs continuously under both.
+     text-decoration cannot be switched off by a child, so a flex gap here left a
+     bare underline segment floating under the arrow. */
+  .prop-btn::after { content: '\00a0\2192'; font-size: 0.85rem; }
+  /* Override the global filled-button hover, which would repaint it as a block. */
+  .prop-btn:hover { background: none; color: var(--teal-d); text-decoration-color: var(--teal-d); }
 
   /* The badge overlays a 122px-wide image — shrink it so it stays legible. */
   .prop-type-badge {
