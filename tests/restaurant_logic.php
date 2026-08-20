@@ -94,6 +94,16 @@ check('bool party size rejected',         isset(restaurant_validate(['party_size
 check('non-numeric party size rejected',  isset(restaurant_validate(['party_size' => 'abc'] + $valid, $cfg, $today)['party_size']));
 check('over-long name rejected',          isset(restaurant_validate(['name' => str_repeat('a', 121)] + $valid, $cfg, $today)['name']));
 check('CRLF in name rejected',            isset(restaurant_validate(['name' => "Dan\r\nBcc: x@y.z"] + $valid, $cfg, $today)['name']));
+check('name with null byte rejected',     isset(restaurant_validate(['name' => "Null\0Byte"] + $valid, $cfg, $today)['name']));
+
+// ── phone ───────────────────────────────────────────────────────────────
+check('over-long phone rejected',         isset(restaurant_validate(['phone' => str_repeat('5', 41)] + $valid, $cfg, $today)['phone']));
+check('40-char phone accepted',           !isset(restaurant_validate(['phone' => str_repeat('5', 40)] + $valid, $cfg, $today)['phone']));
+check('CRLF phone rejected',              isset(restaurant_validate(['phone' => "0700\r\nBcc: x@y.z"] + $valid, $cfg, $today)['phone']));
+check('array phone rejected',             isset(restaurant_validate(['phone' => ['a','b']] + $valid, $cfg, $today)['phone']));
+check('normal phone accepted',            !isset(restaurant_validate(['phone' => '+254 700 000 000'] + $valid, $cfg, $today)['phone']));
+check('empty phone accepted',             restaurant_validate(['phone' => ''] + $valid, $cfg, $today) === []);
+check('absent phone accepted',            restaurant_validate($valid, $cfg, $today) === []);
 
 // ── notes ───────────────────────────────────────────────────────────────
 check('array notes rejected',             isset(restaurant_validate(['notes' => ['a','b']] + $valid, $cfg, $today)['notes']));
@@ -103,6 +113,7 @@ check('exactly 2000-char notes accepted', !isset(restaurant_validate(['notes' =>
 check('normal notes accepted',            !isset(restaurant_validate(['notes' => 'Window table please'] + $valid, $cfg, $today)['notes']));
 check('empty notes accepted',             restaurant_validate(['notes' => ''] + $valid, $cfg, $today) === []);
 check('absent notes accepted',            restaurant_validate($valid, $cfg, $today) === []);
+check('notes with null byte rejected',    isset(restaurant_validate(['notes' => "Table\0Nine"] + $valid, $cfg, $today)['notes']));
 
 // ── restaurant_can_transition ──────────────────────────────────────────────
 check('pending → confirmed',        restaurant_can_transition('pending', 'confirmed'));

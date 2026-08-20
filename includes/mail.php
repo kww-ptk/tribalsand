@@ -952,7 +952,12 @@ function _dispatch_mail(string $to, string $subject, string $body, string $from,
 function log_mail_error(string $message): void {
     $log = __DIR__ . '/../logs/mail.log';
     $line = '[' . date('Y-m-d H:i:s') . '] ' . $message . PHP_EOL;
-    file_put_contents($log, $line, FILE_APPEND | LOCK_EX);
+    // A missing logs/ dir (production creates it in the Dockerfile, so this is
+    // only a local-dev/latent risk) would otherwise emit a Warning that is not
+    // a Throwable — it can't be caught by api/restaurant-book.php's try/catch
+    // and would print ahead of the JSON response body. Suppress it; a failed
+    // log write must never take the response down with it.
+    @file_put_contents($log, $line, FILE_APPEND | LOCK_EX);
 }
 
 /** Notify admin of a guest change request. */
@@ -1133,13 +1138,25 @@ function _restaurant_html(string $heading, string $intro, array $rows, string $f
  * Fired when a guest submits a booking request: acknowledgement to the guest,
  * alert to the restaurant inbox. The guest copy is deliberately explicit that
  * this is NOT yet a confirmed table.
+ *
+ * Split into the two halves below so api/restaurant-book.php can re-fire just
+ * the staff alert on its own — when a guest corrects a pending request inside
+ * the double-submit window (different party size, added notes, ...), the
+ * kitchen needs the new numbers but the guest doesn't need a second "we've
+ * received your request" email for their own edit.
  */
 function send_restaurant_request(array $r): void {
+    require_once __DIR__ . '/restaurant.php';
+    _send_restaurant_guest_ack($r);
+    send_restaurant_staff_alert($r);
+}
+
+/** Guest-facing half of send_restaurant_request(). */
+function _send_restaurant_guest_ack(array $r): void {
     require_once __DIR__ . '/restaurant.php';
 
     $env  = parse_env();
     $from = $env['MAIL_FROM'] ?? 'noreply@tribalsand.com';
-    $site = rtrim($env['APP_URL'] ?? $env['SITE_URL'] ?? 'https://tribalsand.com', '/');
     $when = _restaurant_when($r);
     $rows = _restaurant_rows($r);
 
@@ -1148,14 +1165,12 @@ function send_restaurant_request(array $r): void {
     $party      = (int)($r['party_size']     ?? 0);
     $guestName  = (string)($r['guest_name']  ?? '');
     $guestEmail = (string)($r['guest_email'] ?? '');
-    $guestPhone = (string)($r['guest_phone'] ?? '');
 
     $eyebrow = _restaurant_eyebrow($r);
     // House pattern: replies from a guest email must land on a real, monitored
     // inbox, not the noreply From address (see send_guest_acknowledgement()).
     $inbox   = restaurant_inbox((string)($r['venue_slug'] ?? ''));
 
-    // ── Guest acknowledgement ──
     $gSubject = "We've received your table request — {$venueName} — {$ref}";
     $gIntro   = 'Thank you — we have your request and will confirm within 24 hours. '
               . 'This is not yet a confirmed table; you will get a second email once it is.';
@@ -1185,8 +1200,32 @@ function send_restaurant_request(array $r): void {
         $eyebrow
     );
     _dispatch_mail($guestEmail, $gSubject, $gText, $from, $inbox, $env, $gHtml);
+}
 
-    // ── Staff alert ──
+/**
+ * Staff-facing half of send_restaurant_request() — also called on its own
+ * from api/restaurant-book.php's double-submit guard when a guest's
+ * resubmission actually changes something (see the doc comment above).
+ */
+function send_restaurant_staff_alert(array $r): void {
+    require_once __DIR__ . '/restaurant.php';
+
+    $env  = parse_env();
+    $from = $env['MAIL_FROM'] ?? 'noreply@tribalsand.com';
+    $site = rtrim($env['APP_URL'] ?? $env['SITE_URL'] ?? 'https://tribalsand.com', '/');
+    $when = _restaurant_when($r);
+    $rows = _restaurant_rows($r);
+
+    $venueName  = (string)($r['venue_name']  ?? '');
+    $ref        = (string)($r['reference']   ?? '');
+    $party      = (int)($r['party_size']     ?? 0);
+    $guestName  = (string)($r['guest_name']  ?? '');
+    $guestEmail = (string)($r['guest_email'] ?? '');
+    $guestPhone = (string)($r['guest_phone'] ?? '');
+
+    $eyebrow = _restaurant_eyebrow($r);
+    $inbox   = restaurant_inbox((string)($r['venue_slug'] ?? ''));
+
     $link     = $site . '/admin/restaurant.php';
     $sSubject = "New table request — {$when} — {$party} guests — {$ref}";
     $sRows    = $rows + [

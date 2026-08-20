@@ -101,8 +101,14 @@ function restaurant_validate(array $in, array $cfg, string $todayYmd): array {
 
     // json_decode() can hand us any type. Casting an array to string yields the
     // literal "Array" (which passes a non-empty check) AND emits a warning that
-    // corrupts the JSON response body, so reject non-scalars outright.
-    $str = static fn($v) => (is_string($v) || is_int($v) || is_float($v)) ? trim((string)$v) : '';
+    // corrupts the JSON response body, so reject non-scalars outright. A string
+    // containing a null byte is rejected the same way: under emulated prepares
+    // (required behind Neon's pooler, see includes/db.php) libpq truncates the
+    // bound parameter at the first \0, so "Null\0Byte" would silently become
+    // "Null" in the database while the full string still went out in email —
+    // refuse it here instead of storing a mangled value.
+    $str = static fn($v) => (is_string($v) || is_int($v) || is_float($v)) && !str_contains((string)$v, "\0")
+        ? trim((string)$v) : '';
 
     $name  = $str($in['name']  ?? '');
     $email = $str($in['email'] ?? '');
@@ -159,17 +165,33 @@ function restaurant_validate(array $in, array $cfg, string $todayYmd): array {
         $err['occasion'] = 'Please choose one of the listed occasions.';
     }
 
+    // phone: optional, but it lands in the staff-alert email body verbatim, so
+    // it gets the same treatment as notes below rather than being trusted
+    // blind. $str() already rejects non-scalars and null bytes and collapses
+    // them to '' — array_key_exists()+not-null+not-'' on the RAW value is what
+    // tells "actually invalid" apart from "legitimately absent/empty" (phone
+    // stays optional either way).
+    if (array_key_exists('phone', $in) && $in['phone'] !== null && $in['phone'] !== '') {
+        $phoneVal = $str($in['phone']);
+        if ($phoneVal === '') {
+            $err['phone'] = 'Phone must be plain text.';
+        } elseif (mb_strlen($phoneVal) > 40 || preg_match('/[\r\n]/', $phoneVal)) {
+            $err['phone'] = 'Please enter your phone number as plain text, up to 40 characters.';
+        }
+    }
+
     // notes: optional free text, but json_decode() can still hand us any type
     // here. An array cast to string emits the "Array to string conversion"
     // warning that corrupts a JSON response body (same hazard $str() guards
     // against above), and with no cap an anonymous caller could write
-    // megabytes into a single request. Reject non-scalars outright rather than
-    // silently coercing them to '' — unlike occasion, an array here is not a
-    // benign "nothing chosen".
+    // megabytes into a single request. Reject non-scalars (and null bytes)
+    // outright rather than silently coercing them to '' — unlike occasion, an
+    // array here is not a benign "nothing chosen".
     if (array_key_exists('notes', $in) && $in['notes'] !== null && $in['notes'] !== '') {
-        if (!is_string($in['notes']) && !is_int($in['notes']) && !is_float($in['notes'])) {
+        $notesVal = $str($in['notes']);
+        if ($notesVal === '') {
             $err['notes'] = 'Notes must be plain text.';
-        } elseif (mb_strlen(trim((string)$in['notes'])) > 2000) {
+        } elseif (mb_strlen($notesVal) > 2000) {
             $err['notes'] = 'Please keep notes under 2000 characters, or call us for anything longer.';
         }
     }
