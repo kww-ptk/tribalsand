@@ -118,7 +118,7 @@ Table reservations live in the DB (migration: `add_reservations.sql`, after `add
 - TripAdvisor listing — claim at tripadvisor.com/GetListedNew (2–5 day approval). Badge already in trust bar on `index.php` and placeholder `sameAs` comments in `includes/schema.php` — just swap in the real URL once approved.
 - Google Search Console — submit sitemap after SEO changes deploy
 - Per-room reviews DB table (future — currently hardcoded testimonials in room-reviews.php)
-- Restaurant reservations (Phase 3) — **built & verified** (request model; see "Restaurant reservations" above). Migration applied to Neon, 32/32 tests pass, full smoke test passed. Awaiting the owner's commit/push.
+- ~~Restaurant reservations (Phase 3)~~ — **DONE & shipped** (request model; commit `13a13fc` on master). Migration applied to Neon, 32/32 tests pass, full smoke test passed.
 
 ## Environment Variables Required
 ```
