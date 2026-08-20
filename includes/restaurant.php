@@ -78,3 +78,61 @@ function restaurant_slots_for(string $ymd, array $cfg): array {
     }
     return $slots;
 }
+
+/** Occasions offered on the booking form. Empty/absent is allowed. */
+function restaurant_occasions(): array {
+    return ['romantic', 'birthday', 'anniversary', 'business', 'other'];
+}
+
+/**
+ * Validate a booking request against a venue's hours.
+ * Returns a field => message map; an empty array means valid.
+ *
+ * $todayYmd is injected rather than read from date() so this stays pure and
+ * the tests do not rot. Callers pass date('Y-m-d') (Nairobi-local).
+ */
+function restaurant_validate(array $in, array $cfg, string $todayYmd): array {
+    $err = [];
+
+    $name  = trim((string)($in['name']  ?? ''));
+    $email = trim((string)($in['email'] ?? ''));
+    if ($name === '')                               $err['name']  = 'Your name is required.';
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) $err['email'] = 'A valid email address is required.';
+
+    $party = (int)($in['party_size'] ?? 0);
+    if ($party < RESTAURANT_PARTY_MIN) {
+        $err['party_size'] = 'Please tell us how many are dining.';
+    } elseif ($party > RESTAURANT_PARTY_MAX) {
+        $err['party_size'] = 'For parties over ' . RESTAURANT_PARTY_MAX
+                           . ', please call us so we can look after you properly.';
+    }
+
+    $date = trim((string)($in['date'] ?? ''));
+    $time = trim((string)($in['time'] ?? ''));
+
+    $dateOk = preg_match('/^\d{4}-\d{2}-\d{2}$/', $date) === 1;
+    if (!$dateOk) {
+        $err['date'] = 'Please choose a date.';
+    } elseif ($date < $todayYmd) {
+        $err['date'] = 'That date has already passed.';
+    } elseif ($date > date('Y-m-d', strtotime($todayYmd . ' +' . RESTAURANT_HORIZON_DAYS . ' days'))) {
+        $err['date'] = 'We take bookings up to ' . RESTAURANT_HORIZON_DAYS . ' days ahead.';
+    }
+
+    // Only check the time once the date is sound — slots depend on the weekday.
+    if (!isset($err['date'])) {
+        $slots = restaurant_slots_for($date, $cfg);
+        if (!$slots) {
+            $err['date'] = 'We are closed that day. Please choose another date.';
+        } elseif (!in_array($time, $slots, true)) {
+            $err['time'] = 'Please choose one of the available times.';
+        }
+    }
+
+    $occasion = trim((string)($in['occasion'] ?? ''));
+    if ($occasion !== '' && !in_array($occasion, restaurant_occasions(), true)) {
+        $err['occasion'] = 'Please choose one of the listed occasions.';
+    }
+
+    return $err;
+}
