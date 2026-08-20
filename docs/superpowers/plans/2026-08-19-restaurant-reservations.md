@@ -739,27 +739,64 @@ Append to `includes/mail.php`:
 ```php
 /* ── Restaurant reservations ─────────────────────────────────────────────── */
 
-/** "Thursday 20 August 2026 at 18:30" — one phrasing used by every restaurant email. */
+/**
+ * "Thursday 20 August 2026 at 18:30" — one phrasing used by every restaurant
+ * email. strtotime(' ') returns the CURRENT time (not false), so a loose
+ * `strtotime(...) ?:` guard silently invents a date for a missing/malformed
+ * row instead of degrading safely. This does a strict round-trip parse
+ * instead — the same approach restaurant_slots_for() and
+ * restaurant_validate() already use in includes/restaurant.php.
+ */
 function _restaurant_when(array $r): string {
-    $ts = strtotime($r['reserved_on'] . ' ' . $r['reserved_at']);
-    return $ts ? date('l j F Y', $ts) . ' at ' . date('H:i', $ts)
-               : $r['reserved_on'] . ' at ' . $r['reserved_at'];
+    $on = trim((string)($r['reserved_on'] ?? ''));
+    $at = trim((string)($r['reserved_at'] ?? ''));
+
+    if ($on !== '' && $at !== '') {
+        $d = DateTimeImmutable::createFromFormat('!Y-m-d H:i', "$on $at");
+        if ($d !== false && $d->format('Y-m-d H:i') === "$on $at") {
+            return $d->format('l j F Y') . ' at ' . $d->format('H:i');
+        }
+        // reserved_at may arrive as Postgres's 'HH:MM:SS' rather than 'HH:MM'
+        // — try that shape too before falling back to the raw string.
+        $d = DateTimeImmutable::createFromFormat('!Y-m-d H:i:s', "$on $at");
+        if ($d !== false && $d->format('Y-m-d H:i:s') === "$on $at") {
+            return $d->format('l j F Y') . ' at ' . $d->format('H:i');
+        }
+    }
+    return ($on !== '' || $at !== '') ? trim("$on at $at") : 'date to be confirmed';
 }
 
 /** Label => value pairs shown in the body of every restaurant email. */
 function _restaurant_rows(array $r): array {
-    $rows = [
-        'Reference' => $r['reference'],
+    $party = (int)($r['party_size'] ?? 0);
+    $rows  = [
+        'Reference' => (string)($r['reference'] ?? ''),
         'When'      => _restaurant_when($r),
-        'Party'     => $r['party_size'] . ' ' . ((int)$r['party_size'] === 1 ? 'guest' : 'guests'),
+        'Party'     => $party . ' ' . ($party === 1 ? 'guest' : 'guests'),
     ];
-    if (!empty($r['occasion'])) $rows['Occasion'] = ucfirst((string)$r['occasion']);
-    if (!empty($r['notes']))    $rows['Notes']    = (string)$r['notes'];
+    if ((string)($r['occasion'] ?? '') !== '') $rows['Occasion'] = ucfirst((string)$r['occasion']);
+    if ((string)($r['notes']    ?? '') !== '') $rows['Notes']    = (string)$r['notes'];
     return $rows;
 }
 
-/** Branded HTML shell for restaurant mail, matching the rest of includes/mail.php. */
-function _restaurant_html(string $heading, string $intro, array $rows, string $footnote): string {
+/**
+ * Venue eyebrow for the branded HTML shell, e.g. "Zuri · Watamu". No venue
+ * is hardcoded — venues are threaded through from day one (see design doc).
+ */
+function _restaurant_eyebrow(array $r): string {
+    $name  = trim((string)($r['venue_name'] ?? '')) ?: 'Tribal Sand';
+    $slug  = trim((string)($r['venue_slug'] ?? ''));
+    $venue = $slug !== '' ? restaurant_venue($slug) : false;
+    $loc   = ($venue && !empty($venue['location'])) ? trim((string)$venue['location']) : '';
+    return $loc !== '' ? "{$name} · {$loc}" : $name;
+}
+
+/**
+ * Branded HTML shell for restaurant mail, matching the rest of includes/mail.php.
+ * $cta is pre-rendered HTML (e.g. the output of _email_button()) inserted as-is
+ * — never escaped — so callers must not pass raw guest input through it.
+ */
+function _restaurant_html(string $heading, string $intro, array $rows, string $footnote, string $eyebrow, string $cta = ''): string {
     $esc = fn(string $v) => htmlspecialchars($v, ENT_QUOTES, 'UTF-8');
 
     $cells = '';
@@ -771,11 +808,12 @@ function _restaurant_html(string $heading, string $intro, array $rows, string $f
     }
 
     return '<div style="font-family:Helvetica,Arial,sans-serif;max-width:560px;margin:0 auto;padding:32px 24px;background:#FAF8F4">'
-         . '<div style="font-size:12px;letter-spacing:.28em;text-transform:uppercase;color:#B8965A;margin-bottom:10px">Zuri &middot; Watamu</div>'
+         . '<div style="font-size:12px;letter-spacing:.28em;text-transform:uppercase;color:#B8965A;margin-bottom:10px">' . $esc($eyebrow) . '</div>'
          . '<h1 style="font-family:Georgia,serif;font-weight:400;font-size:26px;color:#102F3A;margin:0 0 14px">' . $esc($heading) . '</h1>'
          . '<p style="font-size:15px;line-height:1.65;color:#5a4a38;margin:0 0 22px">' . $esc($intro) . '</p>'
          . '<table style="border-collapse:collapse;margin:0 0 22px">' . $cells . '</table>'
-         . '<p style="font-size:13px;line-height:1.7;color:#8C7A60;margin:0">' . $esc($footnote) . '</p>'
+         . ($footnote !== '' ? '<p style="font-size:13px;line-height:1.7;color:#8C7A60;margin:0">' . $esc($footnote) . '</p>' : '')
+         . $cta
          . '</div>';
 }
 ```
@@ -795,72 +833,162 @@ function send_restaurant_request(array $r): void {
 
     $env  = parse_env();
     $from = $env['MAIL_FROM'] ?? 'noreply@tribalsand.com';
-    $site = rtrim($env['APP_URL'] ?? $env['SITE_URL'] ?? '', '/');
+    $site = rtrim($env['APP_URL'] ?? $env['SITE_URL'] ?? 'https://tribalsand.com', '/');
     $when = _restaurant_when($r);
     $rows = _restaurant_rows($r);
 
+    $venueName  = (string)($r['venue_name']  ?? '');
+    $ref        = (string)($r['reference']   ?? '');
+    $party      = (int)($r['party_size']     ?? 0);
+    $guestName  = (string)($r['guest_name']  ?? '');
+    $guestEmail = (string)($r['guest_email'] ?? '');
+    $guestPhone = (string)($r['guest_phone'] ?? '');
+
+    $eyebrow = _restaurant_eyebrow($r);
+    // House pattern: replies from a guest email must land on a real, monitored
+    // inbox, not the noreply From address (see send_guest_acknowledgement()).
+    $inbox   = restaurant_inbox((string)($r['venue_slug'] ?? ''));
+
     // ── Guest acknowledgement ──
-    $gSubject = "We've received your table request — {$r['venue_name']} — {$r['reference']}";
+    $gSubject = "We've received your table request — {$venueName} — {$ref}";
     $gIntro   = 'Thank you — we have your request and will confirm within 24 hours. '
               . 'This is not yet a confirmed table; you will get a second email once it is.';
-    $gText    = "Dear {$r['guest_name']},\n\n{$gIntro}\n\n"
-              . "Reference: {$r['reference']}\nWhen:      {$when}\n"
-              . "Party:     {$r['party_size']}\n\n"
-              . "Warm regards,\n{$r['venue_name']} — Tribal Sand\nreservations@tribalsand.com";
-    $gHtml    = _restaurant_html(
+
+    $gLines = [
+        "Dear {$guestName},",
+        '',
+        $gIntro,
+        '',
+        "Reference: {$ref}",
+        "When:      {$when}",
+        "Party:     {$party}",
+    ];
+    if (isset($rows['Occasion'])) $gLines[] = "Occasion:  {$rows['Occasion']}";
+    if (isset($rows['Notes']))    $gLines[] = "Notes:     {$rows['Notes']}";
+    $gLines[] = '';
+    $gLines[] = 'Warm regards,';
+    $gLines[] = "{$venueName} — Tribal Sand";
+    $gLines[] = setting('notify_email', 'reservations@tribalsand.com');
+    $gText = implode("\n", $gLines);
+
+    $gHtml = _restaurant_html(
         'Your table request',
         $gIntro,
         $rows,
-        'Need to change something? Reply to this email and quote your reference.'
+        'Need to change something? Reply to this email and quote your reference.',
+        $eyebrow
     );
-    _dispatch_mail($r['guest_email'], $gSubject, $gText, $from, $from, $env, $gHtml);
+    _dispatch_mail($guestEmail, $gSubject, $gText, $from, $inbox, $env, $gHtml);
 
     // ── Staff alert ──
-    $inbox    = restaurant_inbox($r['venue_slug']);
     $link     = $site . '/admin/restaurant.php';
-    $sSubject = "New table request — {$when} — {$r['party_size']} guests — {$r['reference']}";
+    $sSubject = "New table request — {$when} — {$party} guests — {$ref}";
     $sRows    = $rows + [
-        'Guest' => $r['guest_name'],
-        'Email' => $r['guest_email'],
-        'Phone' => $r['guest_phone'] !== '' ? $r['guest_phone'] : '—',
+        'Guest' => $guestName,
+        'Email' => $guestEmail,
+        'Phone' => ($guestPhone !== '' ? $guestPhone : '—'),
     ];
-    $sText    = "New table request at {$r['venue_name']}.\n\n"
-              . "Reference: {$r['reference']}\nWhen:      {$when}\n"
-              . "Party:     {$r['party_size']}\nGuest:     {$r['guest_name']}\n"
-              . "Email:     {$r['guest_email']}\nPhone:     " . ($r['guest_phone'] ?: '—') . "\n\n"
-              . "Confirm or decline: {$link}";
-    $sHtml    = _restaurant_html(
+
+    $sLines = [
+        "New table request at {$venueName}.",
+        '',
+        "Reference: {$ref}",
+        "When:      {$when}",
+        "Party:     {$party}",
+        "Guest:     {$guestName}",
+        "Email:     {$guestEmail}",
+        "Phone:     " . ($guestPhone !== '' ? $guestPhone : '—'),
+    ];
+    if (isset($rows['Occasion'])) $sLines[] = "Occasion:  {$rows['Occasion']}";
+    if (isset($rows['Notes']))    $sLines[] = "Notes:     {$rows['Notes']}";
+    $sLines[] = '';
+    $sLines[] = "Confirm or decline: {$link}";
+    $sText = implode("\n", $sLines);
+
+    $sHtml = _restaurant_html(
         'New table request',
-        "A guest has requested a table at {$r['venue_name']}. Confirm or decline it in the admin.",
+        "A guest has requested a table at {$venueName}. Confirm or decline it in the admin.",
         $sRows,
-        $link
+        'Confirm or decline this request in the admin.',
+        $eyebrow,
+        _email_button('Open in admin', $link)
     );
-    _dispatch_mail($inbox, $sSubject, $sText, $from, $r['guest_email'], $env, $sHtml);
+    _dispatch_mail($inbox, $sSubject, $sText, $from, $guestEmail, $env, $sHtml);
 }
 
 /** Fired when a manager confirms. The table is now real. */
 function send_restaurant_confirmed(array $r): void {
+    require_once __DIR__ . '/restaurant.php';
+
     $env  = parse_env();
     $from = $env['MAIL_FROM'] ?? 'noreply@tribalsand.com';
     $when = _restaurant_when($r);
+    $rows = _restaurant_rows($r);
 
-    $subject = "Your table is confirmed — {$r['venue_name']} — {$when}";
+    $venueName  = (string)($r['venue_name']  ?? '');
+    $ref        = (string)($r['reference']   ?? '');
+    $party      = (int)($r['party_size']     ?? 0);
+    $guestName  = (string)($r['guest_name']  ?? '');
+    $guestEmail = (string)($r['guest_email'] ?? '');
+
+    $eyebrow = _restaurant_eyebrow($r);
+    // Same house pattern as the request email: reply goes to a monitored
+    // inbox, not the noreply From address.
+    $inbox   = restaurant_inbox((string)($r['venue_slug'] ?? ''));
+
+    $subject = "Your table is confirmed — {$venueName} — {$when}";
     $intro   = 'Your table is confirmed. We look forward to welcoming you.';
-    $text    = "Dear {$r['guest_name']},\n\n{$intro}\n\n"
-             . "Reference: {$r['reference']}\nWhen:      {$when}\n"
-             . "Party:     {$r['party_size']}\n\n"
-             . "To change or cancel, reply to this email or call us and quote your reference.\n\n"
-             . "Warm regards,\n{$r['venue_name']} — Tribal Sand\nreservations@tribalsand.com";
-    $html    = _restaurant_html(
+
+    $lines = [
+        "Dear {$guestName},",
+        '',
+        $intro,
+        '',
+        "Reference: {$ref}",
+        "When:      {$when}",
+        "Party:     {$party}",
+    ];
+    if (isset($rows['Occasion'])) $lines[] = "Occasion:  {$rows['Occasion']}";
+    if (isset($rows['Notes']))    $lines[] = "Notes:     {$rows['Notes']}";
+    $lines[] = '';
+    $lines[] = 'To change or cancel, reply to this email or call us and quote your reference.';
+    $lines[] = '';
+    $lines[] = 'Warm regards,';
+    $lines[] = "{$venueName} — Tribal Sand";
+    $lines[] = setting('notify_email', 'reservations@tribalsand.com');
+    $text = implode("\n", $lines);
+
+    $html = _restaurant_html(
         'Your table is confirmed',
         $intro,
-        _restaurant_rows($r),
-        'To change or cancel, reply to this email or call us and quote your reference.'
+        $rows,
+        'To change or cancel, reply to this email or call us and quote your reference.',
+        $eyebrow
     );
 
-    _dispatch_mail($r['guest_email'], $subject, $text, $from, $from, $env, $html);
+    _dispatch_mail($guestEmail, $subject, $text, $from, $inbox, $env, $html);
 }
 ```
+
+- [ ] **Step 2b: Harden the shared mail dispatcher against header injection**
+
+PHP's `mail()` collapses CR/LF in the subject, but does **not** sanitise
+`additional_headers` — a newline in `$reply_to` injects a real `Bcc:`. The staff alert
+feeds the guest's email straight into that parameter. Task 2's validation closes it
+today, but Task 10 adds a second writer. Add a choke-point guard at the top of
+`_dispatch_mail()` (`includes/mail.php`):
+
+```php
+    // Header params must never carry CRLF. PHP sanitises the subject but NOT
+    // additional_headers, so a newline in reply_to/from injects a real header.
+    // Belt-and-braces: validation upstream is the primary defence.
+    $subject  = preg_replace('/[\r\n]+/', ' ', $subject);
+    $from     = preg_replace('/[\r\n]+/', '',  $from);
+    $reply_to = preg_replace('/[\r\n]+/', '',  $reply_to);
+```
+
+This function is shared by every email in the app. Verify it is a no-op for inputs
+containing no CR/LF before moving on.
 
 - [ ] **Step 3: Verify both functions parse and are callable**
 
