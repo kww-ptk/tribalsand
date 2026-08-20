@@ -92,7 +92,7 @@ $__navReserve = reservations_supported() && (bool) fetch_reservable_venues();
 .ts-drop-div{height:1px;background:rgba(184,150,90,.1);margin:.35rem 0;}
 
 /* Wide dropdown */
-.ts-drop.wide{min-width:680px;display:grid;grid-template-columns:1fr 1fr 1fr;}
+.ts-drop.wide{min-width:780px;display:grid;grid-template-columns:1fr 1fr 1fr;}
 .ts-drop.wide-2{min-width:560px;display:grid;grid-template-columns:1fr 1fr;}
 .ts-drop-col{padding:.6rem 0;display:flex;flex-direction:column;}
 .ts-drop-col:first-child{border-right:1px solid rgba(184,150,90,.08);}
@@ -100,12 +100,12 @@ $__navReserve = reservations_supported() && (bool) fetch_reservable_venues();
 
 /* Property rows with thumbnail */
 .ts-prop-row{
-  display:flex;align-items:center;gap:.85rem;
-  padding:.6rem 1.3rem;
+  display:flex;align-items:center;gap:.9rem;
+  padding:.5rem 1.3rem;
   transition:background .18s;cursor:pointer;
 }
 .ts-prop-row:hover{background:rgba(184,150,90,.07);}
-.ts-prop-row img{width:46px;height:36px;object-fit:cover;flex-shrink:0;opacity:.78;transition:opacity .2s;border:1px solid rgba(184,150,90,.1);}
+.ts-prop-row img{width:76px;height:58px;object-fit:cover;flex-shrink:0;opacity:.78;transition:opacity .2s;border:1px solid rgba(184,150,90,.1);}
 .ts-prop-row:hover img{opacity:1;}
 .ts-prop-name{font-family:'Jost',sans-serif;font-size:.72rem;letter-spacing:.05em;color:rgba(212,196,172,.9);line-height:1.2;white-space:nowrap;}
 .ts-prop-loc{font-size:.6rem;letter-spacing:.08em;color:rgba(184,150,90,.65);margin-top:.06rem;}
