@@ -1,8 +1,8 @@
 <?php require_once 'includes/schema.php'; ?>
 <?php
 /* ═══ SEO ═══ */
-$page_title = 'Tribal Table · Beachfront Dining Restaurant · Kilifi · Coming Soon · Tribal Sand';
-$page_desc  = 'Beachfront dining restaurant in Kilifi, Kenya. Locally sourced coastal cuisine, craft cocktails and a sunset terrace at Tribal Dunes, Bofa Beach. Coming soon.';
+$page_title = 'Tribal Table · Beachfront Dining Restaurant · Kilifi · Now Open · Tribal Sand';
+$page_desc  = 'Beachfront dining restaurant in Kilifi, Kenya. Locally sourced coastal cuisine, craft cocktails and a sunset terrace at Tribal Dunes, Bofa Beach. Now open — book a table at tribaltablekenya.com.';
 $page_url   = 'https://tribalsand.com/tribal-table.php';
 
 /* ═══ SCHEMA ═══ */
@@ -31,18 +31,12 @@ $page_schema .= ts_schema_breadcrumb([
 .cs-rule{width:40px;height:1px;background:rgba(184,150,90,.5);margin:0 auto 2.5rem;}
 .cs-pillars{display:flex;flex-wrap:wrap;gap:.5rem;justify-content:center;margin-bottom:2.5rem;}
 .cs-pill{font-size:.6rem;letter-spacing:.12em;text-transform:uppercase;padding:.45rem 1rem;border:1px solid rgba(184,150,90,.45);color:rgba(212,196,172,.88);}
-.cs-form-label{font-size:.58rem;letter-spacing:.25em;text-transform:uppercase;color:rgba(184,150,90,.9);margin-bottom:1rem;display:block;}
-.cs-form{display:flex;gap:.5rem;max-width:440px;margin:0 auto 1rem;}
-.cs-inp{flex:1;padding:.9rem 1.1rem;border:1px solid rgba(184,150,90,.4);background:rgba(255,255,255,.08);color:#fff;font-size:.9rem;font-family:'Jost',sans-serif;outline:none;transition:border-color .2s;}
-.cs-inp::placeholder{color:rgba(255,255,255,.4);}
-.cs-inp:focus{border-color:rgba(184,150,90,.8);}
-.cs-btn{padding:.9rem 1.6rem;background:var(--sand,#B8965A);color:var(--teal-d,#102F3A);border:none;font-size:.6rem;letter-spacing:.2em;text-transform:uppercase;cursor:pointer;font-family:'Jost',sans-serif;font-weight:500;white-space:nowrap;transition:background .2s;flex-shrink:0;}
-.cs-btn:hover{background:var(--sand-lt,#D4B07A);}
-.cs-note{font-size:.6rem;color:rgba(184,150,90,.6);margin-bottom:2.5rem;}
-.cs-success{display:none;font-size:.8rem;color:rgba(212,196,172,.9);border:1px solid rgba(184,150,90,.3);padding:1rem 1.5rem;margin-bottom:1rem;}
+.cs-cta{display:inline-block;padding:.95rem 2.2rem;background:var(--sand,#B8965A);color:var(--teal-d,#102F3A);text-decoration:none;font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;font-weight:500;transition:background .2s;}
+.cs-cta:hover{background:var(--sand-lt,#D4B07A);}
+@media(max-width:480px){.cs-cta{display:block;}}
+.cs-cta-note{font-size:.62rem;letter-spacing:.04em;color:rgba(212,196,172,.7);margin:1rem auto 2.5rem;max-width:420px;}
 .cs-back{font-size:.58rem;letter-spacing:.15em;text-transform:uppercase;color:rgba(184,150,90,.65);text-decoration:none;transition:color .2s;}
 .cs-back:hover{color:rgba(184,150,90,1);}
-@media(max-width:480px){.cs-form{flex-direction:column;}.cs-btn{width:100%;}}
 </style>
 <body class="ts-nav-transparent">
 <?php include 'includes/header.php'; ?>
@@ -52,7 +46,7 @@ $page_schema .= ts_schema_breadcrumb([
 
   <div class="cs-content">
 
-    <div class="cs-badge">Coming Soon</div>
+    <div class="cs-badge">Now Open</div>
 
     <p class="cs-eyebrow">Tribal Dunes · Kilifi · Kenya</p>
 
@@ -76,16 +70,9 @@ $page_schema .= ts_schema_breadcrumb([
       <span class="cs-pill">Private Events</span>
     </div>
 
-    <label class="cs-form-label" for="csEmail">Be first to book a table when we open.</label>
+    <a class="cs-cta" href="https://www.tribaltablekenya.com" target="_blank" rel="noopener">Visit Tribal Table &rarr;</a>
 
-    <form class="cs-form" id="csForm" novalidate>
-      <input class="cs-inp" type="email" id="csEmail" name="email" placeholder="your@email.com" required>
-      <button class="cs-btn" type="submit" id="csBtn">Reserve My Spot</button>
-    </form>
-
-    <p class="cs-success" id="csSuccess">&#10022; &nbsp; You're on the reservation list. We'll be in touch soon.</p>
-
-    <p class="cs-note">No spam. Just a heads-up when doors open.</p>
+    <p class="cs-cta-note">Menus, opening hours and table bookings live on the restaurant's own site, tribaltablekenya.com.</p>
 
     <a class="cs-back" href="tribal-dunes.php">&larr; Back to Tribal Dunes</a>
 
@@ -94,32 +81,4 @@ $page_schema .= ts_schema_breadcrumb([
 
 <?php include 'includes/footer.php'; ?>
 
-<script>
-document.getElementById('csForm').addEventListener('submit', function(e) {
-  e.preventDefault();
-  var email = document.getElementById('csEmail').value.trim();
-  if (!email) return;
-  var btn = document.getElementById('csBtn');
-  btn.textContent = '…';
-  btn.disabled = true;
-  fetch('https://services.leadconnectorhq.com/hooks/cBTrngnK5Q4lTkFUwhlo/webhook-trigger/ad7f1a2d-9c2a-4f9a-9049-c30b144643e5', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({
-      email: email,
-      source: 'tribal-table-waitlist',
-      tags: ['tribal-table-waitlist', 'coming-soon'],
-      note: 'Tribal Table waitlist signup from tribalsand.com/tribal-table.php'
-    })
-  })
-  .then(function() {
-    document.getElementById('csForm').style.display = 'none';
-    document.getElementById('csSuccess').style.display = 'block';
-  })
-  .catch(function() {
-    btn.textContent = 'Reserve My Spot';
-    btn.disabled = false;
-  });
-});
-</script>
 </body>
