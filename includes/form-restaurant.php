@@ -12,15 +12,26 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/restaurant.php';
 require_once __DIR__ . '/turnstile.php';
 
-$__rSlug  = 'zuri';
-$__rHours = restaurant_hours($__rSlug);
+$__rSlug = 'zuri';
+// restaurant_hours() -> setting() -> db_query() can throw (pooler hiccup, DB
+// blip). Unguarded, that throws mid-render after the page shell is already
+// flushed to the browser, leaving a half-rendered page with no form at all.
+// Fall back to the same defaults restaurant_hours() itself would use for a
+// missing/blank setting — the form still renders and the server re-validates
+// on submit regardless (see includes/cross-sell-tours.php for the same
+// pattern).
+try {
+    $__rHours = restaurant_hours($__rSlug);
+} catch (Throwable $e) {
+    $__rHours = restaurant_default_hours();
+}
 ?>
 <form class="rbook" id="rbookForm" novalidate>
   <input type="text" name="website" class="rbook__hp" tabindex="-1" autocomplete="off" aria-hidden="true">
 
   <div class="rbook__row">
     <div class="rbook__field">
-      <label class="rbook__lbl" for="rbookDateBtn">Date</label>
+      <span class="rbook__lbl">Date</span>
       <button type="button" class="dp-btn rbook__input" id="rbookDateBtn" data-dp-target="rbookDate">Choose a date</button>
       <input type="hidden" id="rbookDate" name="date">
     </div>
@@ -36,7 +47,7 @@ $__rHours = restaurant_hours($__rSlug);
 
   <div class="rbook__field">
     <span class="rbook__lbl">Time</span>
-    <div class="rbook__slots" id="rbookSlots" role="radiogroup" aria-label="Available times">
+    <div class="rbook__slots" id="rbookSlots" role="group" aria-label="Available times">
       <p class="rbook__hint">Choose a date to see available times.</p>
     </div>
     <input type="hidden" id="rbookTime" name="time">
@@ -77,7 +88,7 @@ $__rHours = restaurant_hours($__rSlug);
   <div class="cf-turnstile" data-sitekey="<?= e(captcha_site_key()) ?>"></div>
   <?php endif; ?>
 
-  <p class="rbook__err" id="rbookErr" hidden></p>
+  <p class="rbook__err" id="rbookErr" role="alert" hidden></p>
   <button type="submit" class="rbook__submit">Request a Table</button>
   <p class="rbook__note">We confirm every table by email within 24 hours. No payment now.</p>
 </form>
@@ -100,6 +111,7 @@ $__rHours = restaurant_hours($__rSlug);
 .rbook__err[hidden]{display:none}
 .rbook__field-err{color:#a12;font-size:.78rem;margin:.35rem 0 0}
 .rbook__input.is-err{border-color:#c94747}
+.rbook__slots.is-err{border:1px solid #c94747;border-radius:4px;padding:.5rem}
 .rbook__submit{width:100%;background:var(--teal-d,#102F3A);color:#fff;border:0;border-radius:4px;padding:.95rem 1.2rem;font-family:inherit;font-size:.82rem;letter-spacing:.08em;text-transform:uppercase;font-weight:600;cursor:pointer;transition:background .2s}
 .rbook__submit:hover{background:var(--teal,#1E5C6B)}
 .rbook__submit:disabled{opacity:.6;cursor:default}
@@ -117,7 +129,7 @@ $__rHours = restaurant_hours($__rSlug);
   var slots  = document.getElementById('rbookSlots');
   var err    = document.getElementById('rbookErr');
 
-  // Field-level error hookup: label -> input element, so a per-field message
+  // Field-level error hookup: key -> input element, so a per-field message
   // from the server can be shown right where the guest needs to fix it.
   var FIELD_INPUTS = {
     name: form.querySelector('[name="name"]'),
@@ -130,29 +142,60 @@ $__rHours = restaurant_hours($__rSlug);
     notes: form.querySelector('[name="notes"]')
   };
 
+  // Selects on the generic `.is-err` marker (not `.rbook__input.is-err`) so it
+  // also catches the time field, whose target is #rbookSlots — a
+  // `.rbook__slots`, not a `.rbook__input`. Also drops the aria-invalid /
+  // aria-describedby pair set below so a resolved error stops being announced.
   function clearFieldErrs() {
     form.querySelectorAll('.rbook__field-err').forEach(function (n) { n.remove(); });
-    form.querySelectorAll('.rbook__input.is-err').forEach(function (n) { n.classList.remove('is-err'); });
+    form.querySelectorAll('.is-err').forEach(function (n) {
+      n.classList.remove('is-err');
+      n.removeAttribute('aria-invalid');
+      n.removeAttribute('aria-describedby');
+    });
   }
 
+  // Returns the {key, msg} pairs for any error key with no FIELD_INPUTS
+  // mapping, so the caller can still surface them (in the banner) instead of
+  // letting them silently render nowhere.
   function showFieldErrs(errors) {
     clearFieldErrs();
+    var unmapped = [];
     Object.keys(errors).forEach(function (key) {
+      var msg = errors[key];
       var target = FIELD_INPUTS[key];
-      if (!target) return;
-      if (target.classList) target.classList.add('is-err');
+      if (!target) { unmapped.push(msg); return; }
+      var id = 'rbookFieldErr_' + key;
+      target.classList.add('is-err');
+      target.setAttribute('aria-invalid', 'true');
+      target.setAttribute('aria-describedby', id);
       var p = document.createElement('p');
       p.className = 'rbook__field-err';
-      p.textContent = errors[key];
+      p.id = id;
+      p.textContent = msg;
       target.parentNode.insertBefore(p, target.nextSibling);
     });
+    return unmapped;
+  }
+
+  function fmtLocal(d) {
+    return d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
   }
 
   // Mirrors restaurant_slots_for() in includes/restaurant.php: `from` inclusive,
   // `to` exclusive. Convenience only — the server re-derives this set.
   function slotsFor(ymd) {
     var d = new Date(ymd + 'T00:00:00');
-    if (isNaN(d) || HOURS.days.indexOf(d.getDay()) === -1) return [];
+    // Round-trip through LOCAL Y/M/D (never toISOString, which is UTC and
+    // would shift the date for any timezone east of UTC — including this
+    // site's own Africa/Nairobi) so an impossible date such as 2026-02-30
+    // (silently rolled over by the Date constructor to March 2) is rejected
+    // here exactly as restaurant_slots_for() rejects it server-side, instead
+    // of quietly returning slots for the rolled-over date. Both sides of the
+    // comparison stay in local time, so no timezone conversion happens at all.
+    if (isNaN(d) || fmtLocal(d) !== ymd) return [];
+    if (HOURS.days.indexOf(d.getDay()) === -1) return [];
+    if (!(HOURS.step > 0)) return []; // guard a malformed 0/negative step config
     var f = HOURS.from.split(':'), t = HOURS.to.split(':');
     var start = (+f[0]) * 60 + (+f[1]), end = (+t[0]) * 60 + (+t[1]), out = [];
     for (var m = start; m < end; m += HOURS.step) {
@@ -170,12 +213,16 @@ $__rHours = restaurant_hours($__rSlug);
     list.forEach(function (t) {
       var b = document.createElement('button');
       b.type = 'button'; b.className = 'rbook__slot'; b.textContent = t;
-      b.setAttribute('role', 'radio'); b.setAttribute('aria-checked', 'false');
+      // Plain toggle buttons, not a radiogroup: there is no roving-tabindex /
+      // arrow-key navigation here, so role="radio" would announce a keyboard
+      // contract this widget doesn't implement. aria-pressed describes what
+      // it actually is — a set of independently focusable toggle buttons.
+      b.setAttribute('aria-pressed', 'false');
       b.addEventListener('click', function () {
         slots.querySelectorAll('.rbook__slot').forEach(function (o) {
-          o.classList.remove('is-on'); o.setAttribute('aria-checked', 'false');
+          o.classList.remove('is-on'); o.setAttribute('aria-pressed', 'false');
         });
-        b.classList.add('is-on'); b.setAttribute('aria-checked', 'true');
+        b.classList.add('is-on'); b.setAttribute('aria-pressed', 'true');
         timeIn.value = t;
       });
       slots.appendChild(b);
@@ -218,16 +265,52 @@ $__rHours = restaurant_hours($__rSlug);
     .then(function (r) { return r.json().catch(function () { return { ok: false }; }); })
     .then(function (j) {
       if (j && j.ok) {
-        form.innerHTML = '<div style="text-align:center;padding:1.5rem 0">'
-          + '<p style="font-family:Cormorant Garamond,serif;font-size:1.6rem;color:#102F3A;margin:0 0 .5rem">Thank you</p>'
-          + '<p style="font-size:.95rem;color:#5a4a38;line-height:1.7;margin:0">We have your request and will confirm by email within 24 hours.<br>Your reference is <strong>' + (j.reference || '') + '</strong>.</p>'
-          + '</div>';
+        // Built with createElement/textContent rather than innerHTML: j.reference
+        // is server data and must never be treated as trusted markup, even
+        // though the only writer today (restaurant_make_reference()) uses a
+        // restricted alphabet — that guarantee lives three files away from
+        // this sink and nothing here should depend on it holding forever.
+        var wrap = document.createElement('div');
+        wrap.style.textAlign = 'center';
+        wrap.style.padding = '1.5rem 0';
+
+        var heading = document.createElement('p');
+        heading.style.fontFamily = "'Cormorant Garamond', serif";
+        heading.style.fontSize = '1.6rem';
+        heading.style.color = '#102F3A';
+        heading.style.margin = '0 0 .5rem';
+        heading.textContent = 'Thank you';
+
+        var body_ = document.createElement('p');
+        body_.style.fontSize = '.95rem';
+        body_.style.color = '#5a4a38';
+        body_.style.lineHeight = '1.7';
+        body_.style.margin = '0';
+        body_.appendChild(document.createTextNode('We have your request and will confirm by email within 24 hours.'));
+        body_.appendChild(document.createElement('br'));
+        body_.appendChild(document.createTextNode('Your reference is '));
+        var strong = document.createElement('strong');
+        strong.textContent = j.reference || '';
+        body_.appendChild(strong);
+        body_.appendChild(document.createTextNode('.'));
+
+        wrap.appendChild(heading);
+        wrap.appendChild(body_);
+        form.innerHTML = '';
+        form.appendChild(wrap);
         return;
       }
       if (j && j.errors && typeof j.errors === 'object') {
-        showFieldErrs(j.errors);
-        var first = Object.keys(j.errors).map(function (k) { return j.errors[k]; })[0];
-        showErr(first || 'Please check the highlighted fields.');
+        var unmapped = showFieldErrs(j.errors);
+        // An unmapped key would otherwise only surface if it happened to be
+        // first in the object — join any unmapped messages into the banner
+        // so a future field added to the endpoint can't fail silently.
+        if (unmapped.length) {
+          showErr(unmapped.join(' '));
+        } else {
+          var first = Object.keys(j.errors).map(function (k) { return j.errors[k]; })[0];
+          showErr(first || 'Please check the highlighted fields.');
+        }
       } else {
         showErr((j && j.error) || 'Something went wrong. Please try again.');
       }
@@ -237,6 +320,7 @@ $__rHours = restaurant_hours($__rSlug);
     .catch(function () {
       showErr('Network error. Please try again.');
       btn.disabled = false; btn.textContent = 'Request a Table';
+      if (window.turnstile) window.turnstile.reset();
     });
   });
 })();
