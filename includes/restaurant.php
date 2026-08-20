@@ -200,3 +200,37 @@ function restaurant_status_badge_class(string $status): string {
         default     => 'badge--grey',
     };
 }
+
+require_once __DIR__ . '/db.php';
+
+/**
+ * Is the reservations table present? The live DB migrates separately through
+ * /admin/migrate.php, so there is a real window where this code is deployed and
+ * the table is not. Callers use this to hide the nav item instead of 500ing.
+ */
+function restaurant_supported(): bool {
+    static $c = null;
+    if ($c !== null) return $c;
+    try { return $c = (bool) db_query("SELECT to_regclass('public.restaurant_reservations')")->fetchColumn(); }
+    catch (Throwable $e) { return $c = false; }
+}
+
+/** Service hours for a venue slug, falling back to the defaults. */
+function restaurant_hours(string $venueSlug): array {
+    $raw = setting('restaurant_hours_' . $venueSlug, '');
+    $cfg = $raw !== '' ? json_decode($raw, true) : null;
+    return restaurant_normalise_hours(is_array($cfg) ? $cfg : null);
+}
+
+/** Where staff alerts for a venue go. Falls back to a global key, then MAIL_FROM. */
+function restaurant_inbox(string $venueSlug): string {
+    $to = setting('restaurant_inbox_' . $venueSlug, '') ?: setting('restaurant_inbox', '');
+    if ($to !== '') return $to;
+    $env = parse_env();
+    return $env['MAIL_FROM'] ?? 'reservations@tribalsand.com';
+}
+
+/** Venue row by slug (id + name + location), or false. */
+function restaurant_venue(string $slug): array|false {
+    return db_query('SELECT id, slug, name, location FROM venues WHERE slug = :s', [':s' => $slug])->fetch();
+}
