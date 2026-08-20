@@ -97,6 +97,15 @@ check('60-min steps give 3 slots',          $hourly === ['18:00', '19:00', '20:0
 $closed = restaurant_slots_for('2026-08-20', ['days' => [0,1,2,3,5,6], 'from' => '18:00', 'to' => '22:00', 'step' => 30]);
 check('closed day yields no slots',         $closed === []);
 
+// A config that silently closes the restaurant is the worst failure mode here,
+// so an inverted window must degrade to the defaults, not to zero slots.
+check('inverted window falls back to defaults', restaurant_slots_for('2026-08-20', ['days'=>[0,1,2,3,4,5,6],'from'=>'22:00','to'=>'18:00','step'=>30]) !== []);
+check('from == to falls back to defaults',      restaurant_slots_for('2026-08-20', ['days'=>[0,1,2,3,4,5,6],'from'=>'18:00','to'=>'18:00','step'=>30]) !== []);
+check('impossible date rejected',               restaurant_slots_for('2026-02-30', $cfg) === []);
+check('relative date string rejected',          restaurant_slots_for('tomorrow', $cfg) === []);
+check('empty date rejected',                    restaurant_slots_for('', $cfg) === []);
+check('partial config keeps its closing time',  restaurant_normalise_hours(['from'=>'12:00','to'=>'15:00','step'=>60,'days'=>[1,2,3]])['to'] === '15:00');
+
 echo "\n" . ($failures === 0 ? "ALL PASS\n" : "{$failures} FAILURE(S)\n");
 exit($failures === 0 ? 0 : 1);
 ```
@@ -145,6 +154,13 @@ function restaurant_normalise_hours(?array $cfg): array {
 
     $from = $isTime($cfg['from'] ?? null) ? $cfg['from'] : $def['from'];
     $to   = $isTime($cfg['to']   ?? null) ? $cfg['to']   : $def['to'];
+
+    // An inverted window passes both field checks above but yields zero slots on
+    // every date — the restaurant silently closed forever. Both fields fall back
+    // together, since replacing only one can land on another inverted pair.
+    // Plain string comparison is correct here: both are zero-padded 'HH:MM'.
+    if ($from >= $to) { $from = $def['from']; $to = $def['to']; }
+
     $step = (isset($cfg['step']) && is_numeric($cfg['step']) && (int)$cfg['step'] > 0)
           ? (int)$cfg['step'] : $def['step'];
 
@@ -168,9 +184,13 @@ function restaurant_normalise_hours(?array $cfg): array {
 function restaurant_slots_for(string $ymd, array $cfg): array {
     $cfg = restaurant_normalise_hours($cfg);
 
-    $ts = strtotime($ymd . ' 00:00:00');
-    if ($ts === false) return [];
-    if (!in_array((int)date('w', $ts), $cfg['days'], true)) return [];
+    // strtotime() only fails on strings it cannot parse at all: it accepts relative
+    // expressions ('tomorrow'), treats '' as today, and rolls impossible dates over
+    // (2026-02-30 becomes 2026-03-02). The round-trip comparison rejects all of them,
+    // and DateTimeImmutable drops the ambient-timezone dependency.
+    $d = DateTimeImmutable::createFromFormat('!Y-m-d', $ymd);
+    if ($d === false || $d->format('Y-m-d') !== $ymd) return [];
+    if (!in_array((int)$d->format('w'), $cfg['days'], true)) return [];
 
     [$fh, $fm] = array_map('intval', explode(':', $cfg['from']));
     [$th, $tm] = array_map('intval', explode(':', $cfg['to']));
