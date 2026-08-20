@@ -159,6 +159,21 @@ function restaurant_validate(array $in, array $cfg, string $todayYmd): array {
         $err['occasion'] = 'Please choose one of the listed occasions.';
     }
 
+    // notes: optional free text, but json_decode() can still hand us any type
+    // here. An array cast to string emits the "Array to string conversion"
+    // warning that corrupts a JSON response body (same hazard $str() guards
+    // against above), and with no cap an anonymous caller could write
+    // megabytes into a single request. Reject non-scalars outright rather than
+    // silently coercing them to '' — unlike occasion, an array here is not a
+    // benign "nothing chosen".
+    if (array_key_exists('notes', $in) && $in['notes'] !== null && $in['notes'] !== '') {
+        if (!is_string($in['notes']) && !is_int($in['notes']) && !is_float($in['notes'])) {
+            $err['notes'] = 'Notes must be plain text.';
+        } elseif (mb_strlen(trim((string)$in['notes'])) > 2000) {
+            $err['notes'] = 'Please keep notes under 2000 characters, or call us for anything longer.';
+        }
+    }
+
     return $err;
 }
 

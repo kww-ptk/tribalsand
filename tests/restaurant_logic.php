@@ -95,6 +95,15 @@ check('non-numeric party size rejected',  isset(restaurant_validate(['party_size
 check('over-long name rejected',          isset(restaurant_validate(['name' => str_repeat('a', 121)] + $valid, $cfg, $today)['name']));
 check('CRLF in name rejected',            isset(restaurant_validate(['name' => "Dan\r\nBcc: x@y.z"] + $valid, $cfg, $today)['name']));
 
+// ── notes ───────────────────────────────────────────────────────────────
+check('array notes rejected',             isset(restaurant_validate(['notes' => ['a','b']] + $valid, $cfg, $today)['notes']));
+check('bool notes rejected',              isset(restaurant_validate(['notes' => true] + $valid, $cfg, $today)['notes']));
+check('over-long notes rejected',         isset(restaurant_validate(['notes' => str_repeat('a', 2001)] + $valid, $cfg, $today)['notes']));
+check('exactly 2000-char notes accepted', !isset(restaurant_validate(['notes' => str_repeat('a', 2000)] + $valid, $cfg, $today)['notes']));
+check('normal notes accepted',            !isset(restaurant_validate(['notes' => 'Window table please'] + $valid, $cfg, $today)['notes']));
+check('empty notes accepted',             restaurant_validate(['notes' => ''] + $valid, $cfg, $today) === []);
+check('absent notes accepted',            restaurant_validate($valid, $cfg, $today) === []);
+
 // ── restaurant_can_transition ──────────────────────────────────────────────
 check('pending → confirmed',        restaurant_can_transition('pending', 'confirmed'));
 check('pending → declined',         restaurant_can_transition('pending', 'declined'));
