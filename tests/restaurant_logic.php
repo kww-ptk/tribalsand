@@ -105,14 +105,22 @@ check('declined is terminal',       !restaurant_can_transition('declined', 'conf
 check('cancelled is terminal',      !restaurant_can_transition('cancelled', 'confirmed'));
 check('no-op transition blocked',   !restaurant_can_transition('pending', 'pending'));
 check('unknown status blocked',     !restaurant_can_transition('pending', 'seated'));
+check('unknown from-status refused', !restaurant_can_transition('seated', 'confirmed'));
+check('empty from-status refused',   !restaurant_can_transition('', 'confirmed'));
 
 // ── restaurant_make_reference ──────────────────────────────────────────────
 $ref = restaurant_make_reference();
-check('reference matches ZR-XXXXX',     preg_match('/^ZR-[23456789A-HJ-NP-Z]{5}$/', $ref) === 1);
+check('reference matches ZR-XXXXX',     preg_match('/^ZR-[23456789A-HJKMNP-Z]{5}$/', $ref) === 1);
 check('reference avoids 0/O/1/I',       preg_match('/[01OI]/', substr($ref, 3)) === 0);
 $many = [];
 for ($i = 0; $i < 200; $i++) { $many[restaurant_make_reference()] = true; }
 check('references vary',                count($many) > 190);
+
+// Three broken generators pass the assertions above (off-by-one dropping the
+// last char, a fixed character, a predictable RNG). This catches the first two.
+$hit = [];
+for ($i = 0; $i < 5000; $i++) { foreach (str_split(substr(restaurant_make_reference(), 3)) as $c) $hit[$c] = true; }
+check('every alphabet char is reachable', count($hit) === strlen(RESTAURANT_REF_ALPHABET));
 
 // ── restaurant_status_badge_class ──────────────────────────────────────────
 check('pending badge is orange',    restaurant_status_badge_class('pending')   === 'badge--orange');

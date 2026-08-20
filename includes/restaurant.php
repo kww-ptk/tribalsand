@@ -162,8 +162,13 @@ function restaurant_validate(array $in, array $cfg, string $todayYmd): array {
     return $err;
 }
 
-/** Reference alphabet: no 0/O or 1/I, so a code survives being read over the phone. */
-const RESTAURANT_REF_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
+/**
+ * Reference alphabet: excludes 0/O/1/I/L, so a code survives being read over
+ * the phone. Mirrors generate_access_code() in includes/db.php — same
+ * unambiguous set, kept as a separate constant here to preserve this file's
+ * no-DB isolation (see tests/restaurant_logic.php).
+ */
+const RESTAURANT_REF_ALPHABET = '23456789ABCDEFGHJKMNPQRSTUVWXYZ';
 
 /** The only legal status moves. Anything else — including a no-op — is refused. */
 function restaurant_can_transition(string $from, string $to): bool {
