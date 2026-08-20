@@ -12,6 +12,14 @@ function db(): PDO {
     static $pdo = null;
     if ($pdo !== null) return $pdo;
 
+    // Neon is serverless and scales to zero when idle; the first connect after a
+    // pause has to wake the compute, which can take tens of seconds. The PHP CLI
+    // built-in dev server defaults to a 30s max_execution_time, so a cold start
+    // kills the page mid-connect (the `connect_timeout` below caps unreachable
+    // hosts, but not the post-handshake wait while Neon wakes). Give the dev
+    // server room to ride out the wake; production keeps its configured limit.
+    if (PHP_SAPI === 'cli-server') @set_time_limit(90);
+
     $env = parse_env();
 
     // Render (and most PaaS) provide a single DATABASE_URL
@@ -36,9 +44,20 @@ function db(): PDO {
         $pass = $env['DB_PASS'] ?? '';
     }
 
-    $pdo = new PDO($dsn, $user, $pass, [
+    // Bound the connection attempt. Neon is serverless and scales to zero when
+    // idle, so the first connect after a pause has to wake the compute — that can
+    // hang long enough to blow PHP's max_execution_time and kill the page at
+    // `new PDO(...)`. libpq's connect_timeout caps each attempt (PDO::ATTR_TIMEOUT
+    // is NOT reliably honored for the pgsql *connection*), and we retry a couple of
+    // times because the DB is usually awake by the second try. Tunable via env.
+    $connectTimeout = max(2, (int)($env['DB_CONNECT_TIMEOUT'] ?? 6));   // seconds per attempt
+    $maxAttempts    = max(1, (int)($env['DB_CONNECT_RETRIES']  ?? 3));  // total attempts
+    $dsn .= ';connect_timeout=' . $connectTimeout;
+
+    $options = [
         PDO::ATTR_ERRMODE            => PDO::ERRMODE_EXCEPTION,
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+        PDO::ATTR_TIMEOUT            => $connectTimeout,
         // Emulated prepares send plain SQL rather than server-side prepared
         // statements. Required behind Neon's PgBouncer pooler: real prepares there
         // cache query plans in pooled backend connections that survive app
@@ -46,7 +65,20 @@ function db(): PDO {
         // "cached plan must not change result type" and an app redeploy can't
         // clear it. No bound LIMIT/OFFSET params exist, so this mode is safe here.
         PDO::ATTR_EMULATE_PREPARES   => true,
-    ]);
+    ];
+
+    $attempt = 0;
+    while (true) {
+        try {
+            $pdo = new PDO($dsn, $user, $pass, $options);
+            break;
+        } catch (PDOException $e) {
+            // Retry only the transient cold-start case; give up (rethrow) once the
+            // attempt budget is spent so a real misconfig still surfaces loudly.
+            if (++$attempt >= $maxAttempts) throw $e;
+            usleep(400000);   // 0.4s backoff, then let the woken compute answer
+        }
+    }
 
     // Align the DB session with the app's Nairobi timezone (above). Makes NOW(),
     // CURRENT_DATE, ::date casts and timestamptz rendering all Nairobi-local.

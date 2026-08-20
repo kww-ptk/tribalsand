@@ -51,6 +51,12 @@ The electronic registration/waiver evidence document is served from **`/record.p
 
 **Tamper-evident audit chain.** `checkin_signing_audit` also carries `prev_hash`/`row_hash` (same migration): each new row stores `sha256(prev_hash || payload)` over `checkin_audit_canonical()` (fixed field order — never reorder, it invalidates every stored hash). `checkin_audit_verify(?holdId)` walks the chain and returns `['ok','checked','bad_id']`; any later edit/delete of a row is detectable. Rows written before the migration have NULL hashes and sit outside the chain. Tests: `php tests/checkin_consent.php` (runs inside a rolled-back transaction).
 
+### Restaurant menus — DB-driven, per property, manager-editable
+Digital restaurant menus live in the DB (migration: `add_menus.sql`), not in static pages. Model: `menus` (per property, keyed by URL `slug`, optional `venue_id`) → `menu_categories` (`section` food|drinks, `is_visible`) → `menu_items` (`price` NUMERIC KES, 7 badge booleans, `is_available` = the "Hidden" toggle, `sort_order`). Helpers in **`includes/menu.php`**; every read is pre-migration-safe (`menus_supported()`).
+- **Public:** `menu.php?m=<slug>` — a standalone, `noindex`, mobile-first page (reuses the original zuri-menu design). Legacy `zuri-menu.php` + `maya-kobe-breakfast.php` are now **conditional 301 redirects** to it (redirect only when the DB menu exists — never a blank page). The site nav "Restaurant" dropdown (`includes/header.php`, `fetch_published_menus()`) lists published menus.
+- **Admin:** `admin/menus.php` (list) + `admin/menu-edit.php` (single-page editor, all PRG). Gated by **`require_manager()`** (owner **or** house manager) and **scoped by `admin_venue_ids()`** — a manager only sees/edits menus whose `venue_id` is in their set. Every mutation re-checks ownership (`menu_editable()` on the menu, `catOwned`/`itemCat` on category/item rows) so a scoped manager can't touch another property's menu by posting a foreign id. Sidebar "Restaurant" group is owner+manager only. Reorder uses ↑/↓ glyph buttons (the `admin_icon()` set has **no** arrow-up/down paths — don't call them).
+- **Seed:** `db/seeds/seed_menus.php` (idempotent CLI: wipes each menu by slug, re-inserts) seeds Zuri (food+drinks) + Maya Kobe (breakfast). The local `.env` points at the **production Neon DB**, so migration + seed run once against live data — a deploy only ships the PHP.
+
 ## File Map
 
 | File | Purpose |
@@ -69,6 +75,9 @@ The electronic registration/waiver evidence document is served from **`/record.p
 | `api/submit-agency.php` | Trade/agent enquiry |
 | `api/sync-ical.php` | Pull OTA iCal feeds, import availability blocks |
 | `admin/gantt.php` | Gantt calendar + iCal sync |
+| `includes/menu.php` | Restaurant menu helpers (DB-driven, per property, pre-migration-safe) |
+| `menu.php` | Public digital menu page (`?m=<slug>`) |
+| `admin/menus.php` · `admin/menu-edit.php` | Menu manager (list + editor, manager-scoped) |
 | `css/main.css` | Global stylesheet (brand tokens, layout, components) |
 | `js/booking-widget.js` | Booking date picker widget |
 | `manifest.json` | PWA web app manifest |
@@ -101,6 +110,7 @@ The electronic registration/waiver evidence document is served from **`/record.p
 - TripAdvisor listing — claim at tripadvisor.com/GetListedNew (2–5 day approval). Badge already in trust bar on `index.php` and placeholder `sameAs` comments in `includes/schema.php` — just swap in the real URL once approved.
 - Google Search Console — submit sitemap after SEO changes deploy
 - Per-room reviews DB table (future — currently hardcoded testimonials in room-reviews.php)
+- Restaurant reservations (Phase 3) — a simple per-property table-booking system (like tribaltablekenya). The menu system (above) is Phase 2 and done; reservations not started.
 
 ## Environment Variables Required
 ```

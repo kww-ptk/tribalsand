@@ -136,6 +136,15 @@ if ($__shellFrag) { ob_start(); return; }
         <?php endif; ?>
       <?php $__navgroup('operations', 'Operations', ob_get_clean()); ?>
 
+      <?php if ($__isOwner || $__isManager): ?>
+      <?php ob_start(); ?>
+        <a href="/admin/menus.php" class="sidebar__link <?= ($activeMenu??'')==='menus' ? 'is-active':'' ?>">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h0a2 2 0 0 0 2-2V2"/><path d="M5 2v20"/><path d="M17 2v20"/><path d="M17 8c0-3 1.5-6 3-6v20"/></svg>
+          Menus
+        </a>
+      <?php $__navgroup('restaurant', 'Restaurant', ob_get_clean()); ?>
+      <?php endif; ?>
+
       <?php if ($__isOwner): ?>
       <?php ob_start(); ?>
         <a href="/admin/holds.php"        class="sidebar__link <?= ($activeMenu??'')==='holds'        ? 'is-active':'' ?>">

@@ -1,4 +1,8 @@
-<?php require_once __DIR__ . '/db.php'; // nav uses asset_url(); ensure it's defined on every page ?>
+<?php
+require_once __DIR__ . '/db.php';   // nav uses asset_url(); ensure it's defined on every page
+require_once __DIR__ . '/menu.php'; // Restaurant dropdown — published property menus (pre-migration-safe)
+$__navMenus = fetch_published_menus();
+?>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
@@ -379,8 +383,29 @@
 
     <!-- Events -->
     <div class="ts-item">
-      <a href="events.php" class="ts-link">Events</a>
+      <button class="ts-link">Events
+        <svg viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 1l4 4 4-4"/></svg>
+      </button>
+      <div class="ts-drop">
+        <a href="events.php">Weddings</a>
+        <a href="retreats.php">Retreats</a>
+      </div>
     </div>
+
+    <?php if ($__navMenus): ?>
+    <!-- Restaurant -->
+    <div class="ts-item">
+      <button class="ts-link">Restaurant
+        <svg viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 1l4 4 4-4"/></svg>
+      </button>
+      <div class="ts-drop">
+        <span class="ts-drop-lbl">Menus</span>
+        <?php foreach ($__navMenus as $__m): ?>
+        <a href="menu.php?m=<?= e($__m['slug']) ?>" target="_blank" rel="noopener"><?= e($__m['title']) ?><?php if ($__m['subtitle']): ?> <span style="font-size:.58rem;color:rgba(184,150,90,.55);">· <?= e(strip_tags($__m['subtitle'])) ?></span><?php endif; ?></a>
+        <?php endforeach; ?>
+      </div>
+    </div>
+    <?php endif; ?>
 
     <!-- Gallery -->
     <div class="ts-item">
@@ -484,13 +509,23 @@
     <span class="ts-mob-lbl">Explore</span>
     <a href="activities.php" class="ts-mob-link">Activities <span class="ts-mob-arr">→</span></a>
     <a href="http://tribalkiteschool.com/" class="ts-mob-link" target="_blank">Kite School <span class="ts-mob-arr">→</span></a>
-    <a href="events.php" class="ts-mob-link">Events <span class="ts-mob-arr">→</span></a>
+    <a href="events.php" class="ts-mob-link">Weddings <span class="ts-mob-arr">→</span></a>
+    <a href="retreats.php" class="ts-mob-link">Retreats <span class="ts-mob-arr">→</span></a>
     <a href="tribal-dunes.php" class="ts-mob-link">Tribal Dunes <span class="ts-mob-arr">→</span></a>
     <a href="off-duty.php" class="ts-mob-link">Off Duty <span class="ts-mob-arr">→</span></a>
     <a href="tribal-table.php" class="ts-mob-link">Tribal Table <span class="ts-mob-arr">→</span></a>
     <a href="somewhere-cafe.php" class="ts-mob-link">Somewhere Café <span class="ts-mob-arr">→</span></a>
     <a href="interactive-site-map.php" class="ts-mob-link">Interactive Site Map <span class="ts-mob-arr">→</span></a>
   </div>
+
+  <?php if ($__navMenus): ?>
+  <div>
+    <span class="ts-mob-lbl">Restaurant Menus</span>
+    <?php foreach ($__navMenus as $__m): ?>
+    <a href="menu.php?m=<?= e($__m['slug']) ?>" class="ts-mob-link" target="_blank" rel="noopener"><?= e($__m['title']) ?><?php if ($__m['subtitle']): ?> <span style="font-size:.62rem;color:rgba(184,150,90,.55);">· <?= e(strip_tags($__m['subtitle'])) ?></span><?php endif; ?> <span class="ts-mob-arr">→</span></a>
+    <?php endforeach; ?>
+  </div>
+  <?php endif; ?>
 
   <div>
     <span class="ts-mob-lbl">Gallery</span>
