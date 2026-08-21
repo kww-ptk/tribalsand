@@ -142,7 +142,7 @@ a{text-decoration:none;color:inherit;}
 
       <div class="rz-field <?= isset($errors['venue_id']) ? 'rz-field--bad' : '' ?>">
         <label for="rzVenue">Property <span class="rz-req">*</span></label>
-        <select class="rz-select" id="rzVenue" name="venue_id" required>
+        <select class="rz-select" id="rzVenue" name="venue_id" data-nice required>
           <option value="">Choose a property…</option>
           <?php foreach ($venues as $v): ?>
           <option value="<?= (int)$v['id'] ?>" <?= (int)($old['venue_id'] ?? 0) === (int)$v['id'] ? 'selected' : '' ?>>
@@ -162,7 +162,7 @@ a{text-decoration:none;color:inherit;}
         </div>
         <div class="rz-field <?= isset($errors['reservation_time']) ? 'rz-field--bad' : '' ?>">
           <label for="rzTime">Time <span class="rz-req">*</span></label>
-          <select class="rz-select" id="rzTime" name="reservation_time" required>
+          <select class="rz-select" id="rzTime" name="reservation_time" data-nice required>
             <option value="">Select time…</option>
             <?php foreach ($slots as $val => $label): ?>
             <option value="<?= e($val) ?>" <?= ($old['reservation_time'] ?? '') === $val ? 'selected' : '' ?>><?= e($label) ?></option>

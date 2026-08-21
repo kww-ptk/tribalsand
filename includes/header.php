@@ -15,6 +15,7 @@ $__navMenuMeta = [
         'name'   => 'Zuri Restaurant',
         'sub'    => 'Boutique Hotel · Watamu',
         'status' => 'open',
+        'href'   => 'zuri-restaurant.php',   // dedicated landing page (menu + book + gallery), not the raw menu
     ],
     'maya-kobe-breakfast' => [
         'town'  => 'Kilifi',
@@ -47,7 +48,11 @@ if (!function_exists('ts_nav_menu_row')) {
         $img    = !empty($meta['thumb'])
                 ? '<img src="' . e(asset_url($meta['thumb'])) . '" alt="' . e($name) . '">'
                 : '';
-        return '<a href="menu.php?m=' . e($m['slug']) . '" target="_blank" rel="noopener" class="ts-prop-row">'
+        // A meta `href` points at a dedicated landing page (same tab); otherwise
+        // link straight to the raw menu page in a new tab.
+        $href   = !empty($meta['href']) ? $meta['href'] : ('menu.php?m=' . $m['slug']);
+        $tgt    = empty($meta['href']) ? ' target="_blank" rel="noopener"' : '';
+        return '<a href="' . e($href) . '"' . $tgt . ' class="ts-prop-row">'
              . $img
              . '<div><div class="ts-prop-name">' . e($name) . $tag . '</div>'
              . ($sub !== '' ? '<div class="ts-prop-loc">' . e($sub) . '</div>' : '')
@@ -625,8 +630,8 @@ if (!function_exists('ts_nav_menu_row')) {
     <a href="tribal-table.php" class="ts-mob-link">Tribal Table <span class="ts-tag ts-tag-open">· Now Open</span> <span class="ts-mob-arr">→</span></a>
     <a href="somewhere-cafe.php" class="ts-mob-link">Somewhere Café <span class="ts-tag ts-tag-soon">— Soon</span> <span class="ts-mob-arr">→</span></a>
     <?php foreach (['Kilifi', 'Watamu', ''] as $__town): foreach ($__navMenusByTown[$__town] as $__m): ?>
-    <?php $__mMeta = $__m['_meta'] ?? []; $__mName = $__mMeta['name'] ?? $__m['title']; $__mSub = $__mMeta['sub'] ?? ($__m['subtitle'] ? strip_tags($__m['subtitle']) : ''); ?>
-    <a href="menu.php?m=<?= e($__m['slug']) ?>" class="ts-mob-link" target="_blank" rel="noopener"><?= e($__mName) ?><?php if (($__mMeta['status'] ?? '') === 'open'): ?> <span class="ts-tag ts-tag-open">· Now Open</span><?php elseif ($__mSub !== ''): ?> <span style="font-size:.62rem;color:rgba(184,150,90,.55);">· <?= e($__mSub) ?></span><?php endif; ?> <span class="ts-mob-arr">→</span></a>
+    <?php $__mMeta = $__m['_meta'] ?? []; $__mName = $__mMeta['name'] ?? $__m['title']; $__mSub = $__mMeta['sub'] ?? ($__m['subtitle'] ? strip_tags($__m['subtitle']) : ''); $__mHref = !empty($__mMeta['href']) ? $__mMeta['href'] : ('menu.php?m=' . $__m['slug']); $__mBlank = empty($__mMeta['href']); ?>
+    <a href="<?= e($__mHref) ?>" class="ts-mob-link"<?= $__mBlank ? ' target="_blank" rel="noopener"' : '' ?>><?= e($__mName) ?><?php if (($__mMeta['status'] ?? '') === 'open'): ?> <span class="ts-tag ts-tag-open">· Now Open</span><?php elseif ($__mSub !== ''): ?> <span style="font-size:.62rem;color:rgba(184,150,90,.55);">· <?= e($__mSub) ?></span><?php endif; ?> <span class="ts-mob-arr">→</span></a>
     <?php endforeach; endforeach; ?>
     <?php if ($__navReserve): ?>
     <a href="reserve.php" class="ts-mob-link">Reserve a Table <span class="ts-mob-arr">→</span></a>

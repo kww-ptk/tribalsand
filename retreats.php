@@ -309,7 +309,7 @@ a{text-decoration:none;color:inherit;}
       </div>
     </div>
     <div class="type-card">
-      <img class="type-img" src="https://pkskitesurf.it/wp-content/uploads/2024/09/PKS-Garoda2-Watamu-15-1024x649.jpg" alt="Kitesurf camp in Watamu Kenya — kiteboarding on the Indian Ocean" width="400" height="200" loading="lazy">
+      <img class="type-img" src="https://tribalsand.com/images/kitesurfing-watamu.jpg" alt="Kitesurf camp in Watamu Kenya — kiteboarding on the Indian Ocean" width="400" height="200" loading="lazy">
       <div class="type-body">
         <div class="type-h">Kitesurf Camps</div>
         <div class="type-p">World-class kite conditions in the Kaskazi and Kusi seasons. We work with Tribal Kite School for lessons, gear, safety cover and downwinders for all levels.</div>
@@ -324,7 +324,7 @@ a{text-decoration:none;color:inherit;}
     </div>
 
     <div class="type-card">
-      <img class="type-img" src="https://www.acacamps.org/sites/default/files/styles/uncropped_1700/public/2025-04/liberty-lake-camp-friends-group-hug.jpg?itok=1DUnVUhT" alt="International summer camp in Kenya — youth group at a beach summer camp" width="400" height="200" loading="lazy">
+      <img class="type-img" src="https://tribalsand.com/images/IMAGE-3_How-to-Plan-a-Group-Vacation-on-the-Kenyan-Coast-A-Perfect-Guide-for-Unforgettable-Moments.webp" alt="International summer camp in Kenya — youth group at a beach summer camp" width="400" height="200" loading="lazy">
       <div class="type-body">
         <div class="type-h">Summer Camps</div>
         <div class="type-p">Safe, supervised beachfront camps for international youth groups. Ocean activities, cultural immersion, sports and adventure — a Kenyan summer children remember for life.</div>
@@ -332,7 +332,7 @@ a{text-decoration:none;color:inherit;}
     </div>
 
     <div class="type-card">
-      <img class="type-img" src="https://www.educationunlimited.com/img/CampSessions/Camps/marine-science-6-8/MS%202.jpg" alt="Marine biology and education camp in Kenya — students studying marine science and coral" width="400" height="200" loading="lazy">
+      <img class="type-img" src="https://tribalsand.com/images/marine-park.jpg" alt="Marine biology and education camp in Kenya — students studying marine science and coral" width="400" height="200" loading="lazy">
       <div class="type-body">
         <div class="type-h">Education & Marine Biology Camps</div>
         <div class="type-p">Hands-on conservation programmes on a living coastline. Coral restoration, beach cleanups, marine surveys and sustainability education — learning by doing, right on the reef.</div>

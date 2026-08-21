@@ -111,8 +111,9 @@ a{text-decoration:none;color:inherit;}
   width:42px;height:42px;flex-shrink:0;
   background:rgba(43,107,122,.08);
   display:flex;align-items:center;justify-content:center;
-  font-size:1.1rem;
+  font-size:1rem;color:var(--teal);
 }
+a.ct-card:hover .ct-card-ico{background:rgba(43,107,122,.14);}
 .ct-card-body{flex:1;min-width:0;}
 .ct-card-label{
   font-size:.52rem;letter-spacing:.2em;text-transform:uppercase;
@@ -310,7 +311,7 @@ a.ct-card:hover .ct-card-arrow{opacity:1;}
     <div class="ct-cards">
 
       <a href="tel:+254115115247" class="ct-card">
-        <div class="ct-card-ico"></div>
+        <div class="ct-card-ico"><i class="fa-solid fa-phone" aria-hidden="true"></i></div>
         <div class="ct-card-body">
           <div class="ct-card-label">Phone</div>
           <div class="ct-card-value">+254 115 115 247</div>
@@ -320,7 +321,7 @@ a.ct-card:hover .ct-card-arrow{opacity:1;}
       </a>
 
       <a href="https://wa.me/254115115247" target="_blank" rel="noopener" class="ct-card">
-        <div class="ct-card-ico"></div>
+        <div class="ct-card-ico"><i class="fa-brands fa-whatsapp" aria-hidden="true"></i></div>
         <div class="ct-card-body">
           <div class="ct-card-label">WhatsApp</div>
           <div class="ct-card-value">+254 115 115 247</div>
@@ -330,7 +331,7 @@ a.ct-card:hover .ct-card-arrow{opacity:1;}
       </a>
 
       <a href="mailto:reservations@tribalsand.com" class="ct-card">
-        <div class="ct-card-ico"></div>
+        <div class="ct-card-ico"><i class="fa-solid fa-envelope" aria-hidden="true"></i></div>
         <div class="ct-card-body">
           <div class="ct-card-label">Email</div>
           <div class="ct-card-value">reservations@tribalsand.com</div>
@@ -340,7 +341,7 @@ a.ct-card:hover .ct-card-arrow{opacity:1;}
       </a>
 
       <a href="/booking" class="ct-card">
-        <div class="ct-card-ico"></div>
+        <div class="ct-card-ico"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i></div>
         <div class="ct-card-body">
           <div class="ct-card-label">Book Online</div>
           <div class="ct-card-value">tribalsand.com/booking</div>
@@ -422,8 +423,8 @@ a.ct-card:hover .ct-card-arrow{opacity:1;}
             <input type="tel" id="ct_phone" name="phone" placeholder="+44 7700 000000" autocomplete="tel">
           </div>
           <div class="ct-field">
-            <label for="ct_property">Property of Interest</label>
-            <select id="ct_property" name="property">
+            <label for="ct_property" id="ct_property-lbl">Property of Interest</label>
+            <select id="ct_property" name="property" data-nice>
               <option value="">All Properties</option>
               <option value="Maya Kobe">Maya Kobe — Boutique Hotel, Kilifi</option>
               <option value="Maya Ilai">Maya Ilai — Eco Compound, Kilifi</option>
