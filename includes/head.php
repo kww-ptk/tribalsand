@@ -40,6 +40,7 @@ $__ts_currency = current_currency();     // resolve early so a ?cur= choice can 
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<!-- ts-build: <?= date('Y-m-d H:i T', filemtime(__FILE__)) ?> · deploy-check-1 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1.0">
 
