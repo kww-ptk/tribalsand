@@ -87,17 +87,18 @@ function storage_delete(string $stored): void {
  */
 function _storage_cfg(array $env, bool $private): ?array {
     // --- Amazon S3 (preferred once S3_REGION is set) ---
-    if (!empty($env['S3_REGION']) &&
-        (!empty($env['S3_ACCESS_KEY']) || !empty($env['AWS_ACCESS_KEY_ID']))) {
+    if (!empty($env['S3_REGION'])) {
         $region = $env['S3_REGION'];
         $bucket = $private ? ($env['S3_CHECKIN_BUCKET'] ?? '') : ($env['S3_BUCKET'] ?? '');
         if ($bucket === '') return null;   // private role with no private bucket → local fallback
+        $creds = _s3_resolve_credentials($env);
+        if ($creds === null) return null;  // S3 named but no usable credentials → fall through
         return [
             'host'       => "s3.{$region}.amazonaws.com",   // path-style: host/bucket/key
             'region'     => $region,
-            'access'     => $env['S3_ACCESS_KEY']   ?? $env['AWS_ACCESS_KEY_ID']     ?? '',
-            'secret'     => $env['S3_SECRET_KEY']   ?? $env['AWS_SECRET_ACCESS_KEY'] ?? '',
-            'token'      => $env['S3_SESSION_TOKEN'] ?? $env['AWS_SESSION_TOKEN']    ?? '',
+            'access'     => $creds['access'],
+            'secret'     => $creds['secret'],
+            'token'      => $creds['token'],
             'bucket'     => $bucket,
             'public_url' => rtrim($env['S3_PUBLIC_URL'] ?? '', '/'),
         ];
@@ -123,6 +124,52 @@ function _storage_cfg(array $env, bool $private): ?array {
 
 function _r2_configured(array $env): bool {
     return !empty($env['R2_ACCOUNT_ID']) && !empty($env['R2_ACCESS_KEY']) && !empty($env['R2_SECRET_KEY']);
+}
+
+/**
+ * Resolve S3 credentials, in order of preference:
+ *   1. Explicit S3_ACCESS_KEY / S3_SECRET_KEY (+ optional S3_SESSION_TOKEN).
+ *   2. Standard AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY (+ AWS_SESSION_TOKEN).
+ *   3. The App Runner / ECS instance role, fetched from the container
+ *      credentials endpoint — no keys stored anywhere (preferred in production).
+ * Returns ['access','secret','token'] or null when none are available.
+ */
+function _s3_resolve_credentials(array $env): ?array {
+    if (!empty($env['S3_ACCESS_KEY']) && !empty($env['S3_SECRET_KEY'])) {
+        return ['access' => $env['S3_ACCESS_KEY'], 'secret' => $env['S3_SECRET_KEY'],
+                'token' => (string)($env['S3_SESSION_TOKEN'] ?? '')];
+    }
+    if (!empty($env['AWS_ACCESS_KEY_ID']) && !empty($env['AWS_SECRET_ACCESS_KEY'])) {
+        return ['access' => $env['AWS_ACCESS_KEY_ID'], 'secret' => $env['AWS_SECRET_ACCESS_KEY'],
+                'token' => (string)($env['AWS_SESSION_TOKEN'] ?? '')];
+    }
+    return _s3_container_credentials($env);
+}
+
+/**
+ * Fetch temporary credentials from the ECS/App Runner container credentials
+ * endpoint (the instance role). Cached in-process until shortly before expiry.
+ */
+function _s3_container_credentials(array $env): ?array {
+    static $cache = null;
+    static $cache_exp = 0;
+    if ($cache !== null && time() < $cache_exp - 60) return $cache;
+
+    $rel  = $env['AWS_CONTAINER_CREDENTIALS_RELATIVE_URI'] ?? (getenv('AWS_CONTAINER_CREDENTIALS_RELATIVE_URI') ?: '');
+    $full = $env['AWS_CONTAINER_CREDENTIALS_FULL_URI']     ?? (getenv('AWS_CONTAINER_CREDENTIALS_FULL_URI') ?: '');
+    if ($rel !== '')       $url = 'http://169.254.170.2' . $rel;
+    elseif ($full !== '')  $url = $full;
+    else                   return null;
+
+    $ctx  = stream_context_create(['http' => ['method' => 'GET', 'timeout' => 2, 'ignore_errors' => true]]);
+    $json = @file_get_contents($url, false, $ctx);
+    if ($json === false) return null;
+    $d = json_decode($json, true);
+    if (!is_array($d) || empty($d['AccessKeyId']) || empty($d['SecretAccessKey'])) return null;
+
+    $cache     = ['access' => $d['AccessKeyId'], 'secret' => $d['SecretAccessKey'], 'token' => (string)($d['Token'] ?? '')];
+    $cache_exp = !empty($d['Expiration']) ? (int)strtotime($d['Expiration']) : time() + 300;
+    return $cache;
 }
 
 /** Derive the SigV4 signature for a string-to-sign. */
