@@ -180,6 +180,15 @@
   function validateStep(sec) {
     if (!sec) return true;
     clearErr(sec);
+    // Deposit: when the step is required, the card image must be on file.
+    if (sec.getAttribute('data-key') === 'deposit') {
+      var dep = sec.querySelector('.ci-deposit');
+      if (dep && dep.hasAttribute('data-deposit-required')) {
+        var du = sec.querySelector('.ci-upload');
+        if (du && du.getAttribute('data-has') !== '1') { showErr(sec, ['upload a photo of your credit card']); return false; }
+      }
+      return true;
+    }
     if (sec.getAttribute('data-key') !== 'you') return true;
     var missing = [];
     var agree = sec.querySelector('.ci-agree');
@@ -348,17 +357,25 @@
     }
   });
 
-  // Delegated passport upload — any .ci-upload file input. guest_id from the enclosing card (absent → lead).
+  // Delegated file upload — any .ci-upload file input. A wrap tagged
+  // data-kind="deposit" uploads the booking-level credit-card image; every other
+  // .ci-upload is a per-guest passport scan (guest_id from the enclosing card,
+  // absent → lead).
   form.addEventListener('change', function (e) {
     if (e.target.type !== 'file' || !e.target.closest('.ci-upload')) return;
     var input = e.target, card = input.closest('[data-guest-id]');
     var f = input.files && input.files[0]; if (!f) return;
     var wrap = input.closest('.ci-upload'), state = wrap.querySelector('.ci-upload__state');
+    var isDeposit = wrap.getAttribute('data-kind') === 'deposit';
     state.textContent = 'Uploading…';
     var fd = new FormData();
     fd.append('ref', REF); fd.append('csrf_token', CSRF);
-    if (card) fd.append('guest_id', card.getAttribute('data-guest-id'));
-    fd.append('passport', f);
+    if (isDeposit) {
+      fd.append('deposit_card', f);
+    } else {
+      if (card) fd.append('guest_id', card.getAttribute('data-guest-id'));
+      fd.append('passport', f);
+    }
     fetch('/api/checkin-upload.php', { method: 'POST', body: fd, credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
       .then(function () { state.innerHTML = 'Uploaded ✓'; wrap.setAttribute('data-has', '1'); })
