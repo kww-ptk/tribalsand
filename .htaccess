@@ -43,12 +43,12 @@ RewriteCond %{REQUEST_FILENAME} !-d
 RewriteCond %{REQUEST_FILENAME}.php -f
 RewriteRule ^(.+)$ $1.php [L]
 
-# Proxy missing images/assets to the live site so previews (localhost / *.onrender.com)
-# look complete while the full image library isn't in the repo checkout.
-# GUARDED to the production host: once tribalsand.com's DNS points at THIS server,
-# redirecting a missing image to https://tribalsand.com is a self-referential INFINITE
-# redirect loop. So skip the proxy when we already ARE tribalsand.com and let the asset
-# 404 cleanly instead. (Real fix before cutover: deploy the /images tree to R2.)
-RewriteCond %{HTTP_HOST} !(^|\.)tribalsand\.com$ [NC]
+# Serve any static asset not present in THIS container from the CloudFront CDN
+# (origin = the S3 tribalsand-images bucket, which holds the full /images tree plus
+# every uploaded photo). This catches DB root-relative "/images/..." values and any
+# hardcoded https://tribalsand.com/images/... refs once tribalsand.com points here.
+# Redirecting to a DIFFERENT host (CloudFront) is loop-safe even when this server IS
+# tribalsand.com, so no host guard is needed. asset_url()-based refs bypass this and
+# hit CloudFront directly via the ASSET_URL env var.
 RewriteCond %{REQUEST_FILENAME} !-f
-RewriteRule \.(jpg|jpeg|png|gif|webp|svg|ico|woff|woff2|pdf|mp4|mp3)$ https://tribalsand.com%{REQUEST_URI} [R=302,L]
+RewriteRule \.(jpg|jpeg|png|gif|webp|svg|ico|woff|woff2|pdf|mp4|mp3)$ https://d38di21ab22p6u.cloudfront.net%{REQUEST_URI} [R=302,L]
