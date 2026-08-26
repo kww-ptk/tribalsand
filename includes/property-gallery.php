@@ -3,7 +3,10 @@
  * DB-driven property hero gallery + lightbox.
  * Usage: $pg_venue_slug = 'zuri'; include __DIR__ . '/includes/property-gallery.php';
  * Renders nothing if the venue has no images (page can keep a fallback gallery).
+ * Optional: $pg_fallback (list of 'path.jpg' or ['src'=>…,'alt'=>…]) and
+ * $pg_fallback_badge — used only when the venue has no images in the DB.
  */
+require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/property-gallery-data.php';
 
 $pg_venue_slug = $pg_venue_slug ?? '';
