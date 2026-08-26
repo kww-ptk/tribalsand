@@ -251,16 +251,6 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
 .sticky-cta-sub{font-size:1rem;color:var(--light);font-weight:400;}
 .sticky-cta-btn{font-size:.82rem;letter-spacing:.2em;text-transform:uppercase;padding:.75rem 1.4rem;background:var(--sand);color:var(--teal-d);border:none;cursor:pointer;font-family:'Jost',sans-serif;font-weight:500;white-space:nowrap;}
 
-/* ── LIGHTBOX ── */
-.lb{display:none;position:fixed;inset:0;z-index:9999;background:rgba(5,15,20,.96);flex-direction:column;align-items:center;justify-content:center;}
-.lb.show{display:flex;}
-.lb-close{position:absolute;top:1.4rem;right:1.8rem;font-size:1.4rem;color:rgba(255,255,255,.5);cursor:pointer;background:none;border:none;}
-.lb-img{max-width:92vw;max-height:84vh;object-fit:contain;}
-.lb-nav{display:flex;gap:1.2rem;margin-top:1.2rem;}
-.lb-btn{font-size:.75rem;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.45);background:none;border:1px solid rgba(255,255,255,.12);padding:.5rem 1.2rem;cursor:pointer;transition:all .2s;font-family:'Jost',sans-serif;font-weight:400;}
-.lb-btn:hover{color:#fff;border-color:rgba(255,255,255,.4);}
-.lb-count{font-size:1rem;color:rgba(255,255,255,.25);margin-top:.6rem;letter-spacing:.12em;font-weight:400;}
-
 /* ── SUITES ── */
 .suites-grid{display:grid;grid-template-columns:1fr 1fr;gap:1.6rem;margin-bottom:1.4rem;}
 .suite-card{border:1px solid var(--border);background:var(--white);overflow:hidden;transition:box-shadow .3s;}
@@ -407,20 +397,13 @@ include __DIR__ . '/includes/property-gallery.php';
 
     <div class="divider"></div>
 
-    <!-- Photo Grid -->
-    <div class="sec">
-      <div class="sec-label">Photo Gallery</div>
-      <h2 class="sec-h">Explore <em>Zuri</em></h2>
-      <div class="sec-rule"></div>
-      <div class="photo-grid">
-        <img src="images/hero-zuri.jpg" alt="Zuri aerial — beachfront, Watamu" onclick="openLb(0)">
-        <img src="images/hero-zuri.jpg" alt="Zuri ocean-facing suites" onclick="openLb(1)">
-        <img src="images/hero-zuri.jpg" alt="Zuri private pool and Indian Ocean" onclick="openLb(2)">
-      </div>
-      <div class="photo-grid-cap">Tap any photo to enlarge · Zuri · Watamu, Kenya</div>
-    </div>
-
-    <div class="divider"></div>
+<?php
+// Photo Gallery — photos come from Admin → Venues → Zuri → Gallery
+$pg_venue_slug       = 'zuri';                     // same venue as the hero gallery above
+$pgrid_heading       = 'Explore <em>Zuri</em>';
+$pgrid_caption_extra = ' · Zuri · Watamu, Kenya';
+include __DIR__ . '/includes/property-photo-grid.php';
+?>
 
     <!-- Nearby Experiences -->
     <div class="sec">
@@ -597,46 +580,12 @@ include __DIR__ . '/includes/sticky-book-bar.php';
   <a href="#book" class="sticky-cta-btn">Book Now →</a>
 </div>
 
-<!-- ═══ LIGHTBOX ═══ -->
-<div class="lb" id="lb">
-  <button class="lb-close" onclick="closeLb()">✕</button>
-  <img class="lb-img" id="lbImg" src="" alt="">
-  <div class="lb-nav">
-    <button class="lb-btn" onclick="lbPrev()">← Prev</button>
-    <button class="lb-btn" onclick="lbNext()">Next →</button>
-  </div>
-  <div class="lb-count" id="lbCount"></div>
-</div>
-
 <script>
 // ── FAQ accordion ──
 document.querySelectorAll('.faq-q').forEach(function(q){
   q.addEventListener('click', function(){
     q.closest('.faq-item').classList.toggle('open');
   });
-});
-
-// ── Lightbox ──
-var IMGS = [
-  'images/hero-zuri.jpg',
-  'images/hero-zuri.jpg',
-  'images/hero-zuri.jpg',
-];
-var lbIdx = 0;
-function openLb(i){
-  lbIdx = i;
-  document.getElementById('lbImg').src = IMGS[i];
-  document.getElementById('lbCount').textContent = (i + 1) + ' / ' + IMGS.length;
-  document.getElementById('lb').classList.add('show');
-}
-function closeLb(){ document.getElementById('lb').classList.remove('show'); }
-function lbNext(){ lbIdx = (lbIdx + 1) % IMGS.length; openLb(lbIdx); }
-function lbPrev(){ lbIdx = (lbIdx - 1 + IMGS.length) % IMGS.length; openLb(lbIdx); }
-document.getElementById('lb').addEventListener('click', function(e){ if(e.target === this) closeLb(); });
-document.addEventListener('keydown', function(e){
-  if(e.key === 'ArrowRight') lbNext();
-  if(e.key === 'ArrowLeft')  lbPrev();
-  if(e.key === 'Escape')     closeLb();
 });
 
 // ── Scroll reveal ──

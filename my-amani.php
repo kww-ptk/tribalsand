@@ -146,7 +146,7 @@ a{text-decoration:none;color:inherit;}
 
 /* ── PHOTO GRID ── */
 .photo-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:3px;margin-bottom:.5rem;}
-.photo-grid img{width:100%;aspect-ratio:4/3;cursor:pointer;transition:opacity .25s,transform .4s;}
+.photo-grid img{width:100%;aspect-ratio:4/3;object-fit:cover;cursor:pointer;transition:opacity .25s,transform .4s;}
 .photo-grid img:hover{opacity:.88;transform:scale(1.02);}
 .photo-grid-cap{font-size:.55rem;letter-spacing:.14em;text-transform:uppercase;color:var(--light);text-align:right;margin-bottom:2rem;}
 
@@ -268,16 +268,6 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
 .sticky-cta-info{font-family:'Cormorant Garamond',serif;font-size:1rem;font-weight:300;color:var(--dark);}
 .sticky-cta-sub{font-size:.6rem;color:var(--light);}
 .sticky-cta-btn{font-size:.6rem;letter-spacing:.2em;text-transform:uppercase;padding:.75rem 1.4rem;background:var(--sand);color:var(--teal-d);border:none;cursor:pointer;font-family:'Jost',sans-serif;font-weight:500;white-space:nowrap;display:inline-block;}
-
-/* ── LIGHTBOX ── */
-.lb{display:none;position:fixed;inset:0;z-index:9999;background:rgba(5,15,20,.96);flex-direction:column;align-items:center;justify-content:center;}
-.lb.show{display:flex;}
-.lb-close{position:absolute;top:1.4rem;right:1.8rem;font-size:1.4rem;color:rgba(255,255,255,.5);cursor:pointer;background:none;border:none;}
-.lb-img{max-width:92vw;max-height:84vh;object-fit:contain;}
-.lb-nav{display:flex;gap:1.2rem;margin-top:1.2rem;}
-.lb-btn{font-size:.58rem;letter-spacing:.18em;text-transform:uppercase;color:rgba(255,255,255,.45);background:none;border:1px solid rgba(255,255,255,.12);padding:.5rem 1.2rem;cursor:pointer;transition:all .2s;font-family:'Jost',sans-serif;}
-.lb-btn:hover{color:#fff;border-color:rgba(255,255,255,.4);}
-.lb-count{font-size:.56rem;color:rgba(255,255,255,.22);margin-top:.6rem;letter-spacing:.12em;}
 
 /* ── RESPONSIVE ── */
 @media(max-width:1100px){
@@ -431,21 +421,12 @@ include __DIR__ . '/includes/property-gallery.php';
 
     <div class="divider"></div>
 
-    <!-- Photo Gallery -->
-    <div class="sec">
-      <div class="sec-label">Photo Gallery</div>
-      <h2 class="sec-h">Explore <em>My Amani</em></h2>
-      <div class="sec-rule"></div>
-      <div class="photo-grid">
-        <img src="images/my-amani/My Amani - Outdoor/My Amani Outdoor Day/My Amani Best21.jpg" alt="My Amani outdoor garden" onclick="openLb(3)" loading="lazy">
-        <img src="images/my-amani/My Amani - Outdoor/My Amani Outdoor Day/My Amani Best25.jpg" alt="My Amani pool deck" onclick="openLb(4)" loading="lazy">
-        <img src="images/my-amani/My Amani - Outdoor/My Amani Outdoor Day/My Amani Best31.jpg" alt="My Amani outdoor terrace" onclick="openLb(5)" loading="lazy">
-        <img src="images/my-amani/My Amani - Bedrooms/Bedroom 1/My Amani Best47.jpg" alt="My Amani master bedroom" onclick="openLb(6)" loading="lazy">
-      </div>
-      <div class="photo-grid-cap">Tap any photo to enlarge · More photos in the gallery</div>
-    </div>
-
-    <div class="divider"></div>
+<?php
+// Photo Gallery — photos come from Admin → Venues → My Amani → Gallery
+$pg_venue_slug = 'my-amani';                     // same venue as the hero gallery above
+$pgrid_heading = 'Explore <em>My Amani</em>';
+include __DIR__ . '/includes/property-photo-grid.php';
+?>
 
     <!-- Nearby Experiences -->
     <div class="sec">
@@ -682,58 +663,12 @@ include __DIR__ . '/includes/sticky-book-bar.php';
   <a href="#book" class="sticky-cta-btn">Request →</a>
 </div>
 
-<!-- ═══ LIGHTBOX ═══ -->
-<div class="lb" id="lb" role="dialog" aria-modal="true" aria-label="Photo lightbox">
-  <button class="lb-close" onclick="closeLb()" aria-label="Close lightbox">✕</button>
-  <img class="lb-img" id="lbImg" src="" alt="">
-  <div class="lb-nav">
-    <button class="lb-btn" onclick="lbPrev()">← Prev</button>
-    <button class="lb-btn" onclick="lbNext()">Next →</button>
-  </div>
-  <div class="lb-count" id="lbCount"></div>
-</div>
-
 <script>
 // ── FAQ accordion ──
 document.querySelectorAll('.faq-q').forEach(function(q){
   q.addEventListener('click', function(){
     q.closest('.faq-item').classList.toggle('open');
   });
-});
-
-// ── Lightbox ──
-var IMGS = [
-  'images/my-amani/Aerial/myamani-11.webp',
-  'images/my-amani/My Amani - Outdoor/My Amani Outdoor Day/My Amani Best18.jpg',
-  'images/my-amani/My Amani - Outdoor/My Amani Outdoor Day/My Amani Best20.jpg',
-  'images/my-amani/My Amani - Outdoor/My Amani Outdoor Day/My Amani Best21.jpg',
-  'images/my-amani/My Amani - Outdoor/My Amani Outdoor Day/My Amani Best25.jpg',
-  'images/my-amani/My Amani - Outdoor/My Amani Outdoor Day/My Amani Best31.jpg',
-  'images/my-amani/My Amani - Bedrooms/Bedroom 1/My Amani Best47.jpg',
-];
-var lbIdx = 0;
-
-function openLb(i) {
-  lbIdx = i;
-  document.getElementById('lbImg').src = IMGS[i];
-  document.getElementById('lbCount').textContent = (i + 1) + ' / ' + IMGS.length;
-  document.getElementById('lb').classList.add('show');
-  document.body.style.overflow = 'hidden';
-}
-function closeLb() {
-  document.getElementById('lb').classList.remove('show');
-  document.body.style.overflow = '';
-}
-function lbNext() { lbIdx = (lbIdx + 1) % IMGS.length; openLb(lbIdx); }
-function lbPrev() { lbIdx = (lbIdx - 1 + IMGS.length) % IMGS.length; openLb(lbIdx); }
-
-document.getElementById('lb').addEventListener('click', function(e) {
-  if (e.target === this) closeLb();
-});
-document.addEventListener('keydown', function(e) {
-  if (e.key === 'ArrowRight') lbNext();
-  if (e.key === 'ArrowLeft')  lbPrev();
-  if (e.key === 'Escape')     closeLb();
 });
 
 // ── Scroll reveal ──
