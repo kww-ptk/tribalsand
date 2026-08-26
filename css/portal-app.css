@@ -238,6 +238,13 @@
 .ci-waiver{max-height:210px;overflow:auto;background:#fff;border:1px solid var(--pa-line);border-radius:10px;padding:14px 16px;font-size:14px;line-height:1.65;margin-bottom:14px;color:var(--pa-ink)}
 .ci-upload{display:flex;align-items:center;gap:10px;margin-top:6px;flex-wrap:wrap}
 .ci-upload__state{font-size:13px;color:var(--pa-muted)}
+
+/* ── Check-in — security deposit step ─────────────────────────── */
+.ci-deposit__amt{display:flex;justify-content:space-between;align-items:baseline;gap:14px;background:#fff;border:1px solid var(--pa-line);border-radius:12px;padding:16px 18px}
+.ci-deposit__amt-k{font-size:11px;letter-spacing:.06em;text-transform:uppercase;color:var(--pa-muted);font-weight:700}
+.ci-deposit__amt-v{font-family:'Inter',system-ui,sans-serif;font-weight:600;font-size:26px;color:var(--pa-ink);line-height:1}
+.ci-deposit__amt-v--tbc{font-size:15px;font-weight:500;color:var(--pa-muted)}
+.ci-deposit__note{background:#fff7e6;border:1px solid #f0dcb4;border-radius:10px;padding:13px 15px;margin:14px 0 2px;font-size:14px;line-height:1.6;color:#8a5a00}
 .ci-nav{display:flex;gap:12px;margin-top:26px}
 .ci-nav .pa-btn{width:auto}
 .ci-nav .ci-back{flex:0 0 auto;padding-left:18px;padding-right:18px}

@@ -165,6 +165,16 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
     <?php endif; ?>
     <div class="ci-fact"><span class="ci-fact__k">Dietary</span><span class="ci-fact__v"><?= $__fmt($__ci['dietary'] ?? '') ?></span></div>
     <div class="ci-fact"><span class="ci-fact__k">Requests</span><span class="ci-fact__v"><?= $__fmt($__ci['special_requests'] ?? '') ?></span></div>
+    <?php if (checkin_deposit_supported()): $__dep = checkin_venue_deposit($hold); $__depCard = checkin_deposit_card_on_file($__ci); ?>
+    <div class="ci-fact"><span class="ci-fact__k">Security deposit</span><span class="ci-fact__v">
+      <?= $__dep['formatted'] !== '' ? '<strong>' . e($__dep['formatted']) . '</strong> · taken at property' : '<span class="text-muted">no amount set</span>' ?>
+    </span></div>
+    <div class="ci-fact"><span class="ci-fact__k">Card image</span><span class="ci-fact__v">
+      <?php if ($__depCard && $__canDocs): ?><a href="/admin/checkin-file.php?hold=<?= $holdId ?>&kind=deposit" target="_blank" class="btn-sm btn-outline">View card</a>
+      <?php elseif ($__depCard): ?>On file ✓ <span class="text-muted">(restricted)</span>
+      <?php else: ?><span class="text-muted">Not uploaded</span><?php endif; ?>
+    </span></div>
+    <?php endif; ?>
   </div>
 </div>
 <?php endif; ?>

@@ -13,6 +13,7 @@ function checkin_step_catalog(): array {
         'passport' => ['label' => 'Passport & identity',  'default_required' => true],
         'dietary'  => ['label' => 'Dietary requirements', 'default_required' => false],
         'requests' => ['label' => 'Special requests',     'default_required' => false],
+        'deposit'  => ['label' => 'Security deposit',      'default_required' => false],
         'waiver'   => ['label' => 'Waiver & indemnity',   'default_required' => true],
     ];
 }
@@ -134,6 +135,66 @@ function checkin_departure_transfer_supported(): bool {
     try { db_query('SELECT departure_time FROM booking_checkin LIMIT 1'); $ok = true; }
     catch (Throwable $e) { $ok = false; }
     return $ok;
+}
+
+/** True once add_checkin_deposit.sql is applied (security-deposit step). Cached per-request. */
+function checkin_deposit_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { db_query('SELECT deposit_card_file_key FROM booking_checkin LIMIT 1'); $ok = true; }
+    catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/**
+ * The guest-facing instruction shown on the deposit step. Editable in Admin →
+ * Pre-Check-in; the default carries the required wording: bring the card, payment
+ * happens at the property. Legal/UX critical — the deposit is charged on site, not
+ * online, so the copy must never imply an online charge.
+ */
+function checkin_deposit_note(): string {
+    $n = trim((string) setting('checkin_deposit_note', ''));
+    return $n !== '' ? $n
+        : 'Please bring this credit card with you — payment will be done at the location on arrival, never charged online. Uploading a photo now just lets us check you in faster.';
+}
+
+/**
+ * Format a deposit figure for display. Pure. Returns '' when there is no amount
+ * (NULL or 0), so callers can decide whether to show a figure at all. USD renders
+ * with a leading $; any other ISO code renders as "CODE 1,234".
+ */
+function checkin_format_deposit(?float $amount, string $currency): string {
+    if ($amount === null || $amount <= 0) return '';
+    $cur = strtoupper(trim($currency)) ?: 'USD';
+    $num = number_format($amount, 0);
+    return $cur === 'USD' ? '$' . $num : $cur . ' ' . $num;
+}
+
+/**
+ * The security deposit for a hold's property: ['amount'=>?float, 'currency'=>string,
+ * 'formatted'=>string]. Reads the per-venue columns (add_checkin_deposit.sql); the
+ * amount is NULL when unset or unmigrated, in which case the deposit step still
+ * shows the "bring your card" copy but names no figure.
+ */
+function checkin_venue_deposit(array $hold): array {
+    $currency = 'USD'; $amount = null;
+    $vid = (int)($hold['venue_id'] ?? 0);
+    if ($vid > 0) {
+        try {
+            $row = db_query('SELECT deposit_amount, deposit_currency FROM venues WHERE id = :v', [':v' => $vid])->fetch();
+            if ($row) {
+                if ($row['deposit_amount'] !== null && $row['deposit_amount'] !== '') $amount = (float)$row['deposit_amount'];
+                $c = strtoupper(trim((string)($row['deposit_currency'] ?? '')));
+                if ($c !== '') $currency = $c;
+            }
+        } catch (Throwable $e) { /* pre-migration → no figure */ }
+    }
+    return ['amount' => $amount, 'currency' => $currency, 'formatted' => checkin_format_deposit($amount, $currency)];
+}
+
+/** True once a booking-checkin row has a credit-card image on file for the deposit. */
+function checkin_deposit_card_on_file(?array $data): bool {
+    return checkin_deposit_supported() && trim((string)(($data ?? [])['deposit_card_file_key'] ?? '')) !== '';
 }
 
 function checkin_required(array $hold): bool {
@@ -340,6 +401,9 @@ function checkin_step_complete(string $key, ?array $data, ?array $lead): bool {
         case 'passport': return checkin_guest_passport_complete($lead);
         case 'dietary':  return $has('dietary');
         case 'requests': return $has('special_requests');
+        // Complete once the lead has uploaded a credit-card image. The deposit is
+        // charged at the property, so the upload is the only thing to "provide".
+        case 'deposit':  return checkin_deposit_card_on_file($data);
         case 'waiver':   return checkin_guest_waiver_signed($lead);   // per-guest (moved off booking_checkin)
         default:         return false;
     }

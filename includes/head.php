@@ -106,6 +106,7 @@ window.TS_CUR = <?= json_encode($__ts_currency) ?>;
 window.TS_CUR_META = <?= json_encode(array_map(fn($m) => ['symbol' => $m['symbol'], 'round' => $m['round']], TS_CURRENCIES), JSON_UNESCAPED_SLASHES) ?>;
 </script>
 <script src="js/currency.js?v=<?= filemtime(__DIR__ . '/../js/currency.js') ?>" defer></script>
+<script src="js/nice-select.js?v=<?= filemtime(__DIR__ . '/../js/nice-select.js') ?>" defer></script>
 
 <?php if (captcha_site_key()): ?>
 <!-- ── Cloudflare Turnstile (loaded site-wide so every form's widget works) ── -->

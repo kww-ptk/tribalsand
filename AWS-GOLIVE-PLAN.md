@@ -84,14 +84,14 @@ The app is already close to AWS-native. Required changes:
 ## Phase 2 — Provision infrastructure (order matters)
 
 1. 🔴 **ECR** — create repo `tribalsand`. Build the existing Dockerfile, push `:latest`.
-2. 🔴 **RDS PostgreSQL** `db.t4g.micro` — private subnet, security group allows only App Runner's VPC connector. Enable automated backups (7-day). Note the connection string for `DATABASE_URL`.
+2. 🔴 **RDS PostgreSQL** `db.t4g.micro`, **Multi-AZ from creation** (a synchronous standby in a second AZ; ~60–120s auto-failover, no data loss — this is the reliability floor, not a later upgrade) — private subnet, security group allows only App Runner's VPC connector. Enable automated backups (7-day). Note the connection string for `DATABASE_URL`. Instance size stays `micro`: resizing up (`small`/`medium`) is a one-click ~2-min operation done **reactively** when the CloudWatch alarms below fire — don't over-provision now.
 3. 🔴 **S3** — two buckets: `tribalsand-images` (public-read via CloudFront OAC, **Block Public Access on**, served through CloudFront) and `tribalsand-checkin` (fully private; app presigns reads).
 4. 🔴 **SES** — verify `tribalsand.com` domain (DKIM + SPF + DMARC records in Route 53), verify `noreply@tribalsand.com` / `reservations@`, then **request production access** (exits the sandbox; can take ~24h — do this early). Generate SMTP credentials.
 5. 🔴 **SSM Parameter Store** — store as SecureString: `DATABASE_URL`, `S3_*`, SES SMTP user/pass, `TURNSTILE_*`, `ICAL_SYNC_SECRET`, `APP_URL`, `MAIL_FROM`, `MAIL_DRIVER=smtp`.
 6. 🔴 **App Runner** — service from the ECR image; attach a **VPC connector** to reach RDS; instance role granting S3 (both buckets) + SSM read + SES send; inject env from SSM; health check `/`. Note the default `*.awsapprunner.com` URL.
 7. 🟠 **CloudFront + ACM** — request an ACM cert for `tribalsand.com` + `www` (in **us-east-1** for CloudFront). Distribution: default origin = App Runner URL; a `/images/*` (and other static) behavior → S3 origin with OAC. Attach the cert + alternate domain names.
 8. 🟠 **EventBridge Scheduler + Lambda** — schedule (e.g. hourly) → small Lambda that `POST`s `https://tribalsand.com/api/sync-ical.php` with `Authorization: Bearer <ICAL_SYNC_SECRET>`. (Keeps the header-based secret; never the query param.)
-9. 🟡 **CloudWatch** — log groups for App Runner + Lambda; alarms on 5xx rate, RDS CPU/free-storage, App Runner unhealthy.
+9. 🟠 **CloudWatch** — log groups for App Runner + Lambda; alarms (set up at launch, not later — they tell you *when* to bump the DB before guests notice): **RDS `CPUCreditBalance`** (burstable-CPU exhaustion), **`DatabaseConnections`** (approaching the ~100 cap on 1 GB), **`FreeStorageSpace`**, plus App Runner 5xx rate + unhealthy.
 
 ## Phase 3 — Data migration
 
@@ -120,7 +120,7 @@ _Follows the same DNS-safety discipline as `GO-LIVE-PLAN.md` Phase 4._
 ## Phase 7 — After cutover
 - Monitor 24–48h via CloudWatch. Rollback = revert the DNS records (fast, low TTL).
 - Decommission Render, Neon, R2, Resend **only after** the AWS stack is proven and data is confirmed migrated.
-- Consider RDS Multi-AZ + S3 lifecycle rules + a WAF web ACL as hardening later.
+- Genuinely-later, optional add-ons (leaving these out does **not** make the launch less solid): RDS **read replica**, S3 lifecycle rules, a **WAF** web ACL, aggressive CloudFront cache tuning. (Multi-AZ is **not** here — it's baked into Phase 2 from creation.)
 
 ---
 
@@ -129,13 +129,13 @@ _Follows the same DNS-safety discipline as `GO-LIVE-PLAN.md` Phase 4._
 | Service | Estimate |
 |---|---|
 | App Runner (1 vCPU / 2 GB, low min instances) | ~$25–45 |
-| RDS `db.t4g.micro` + 20 GB storage | ~$15–18 |
+| RDS `db.t4g.micro` **Multi-AZ** + 20 GB storage | ~$30–36 |
 | S3 (both buckets, low volume) | ~$1–3 |
 | CloudFront | ~$1–5 (often near free-tier) |
 | SES | ~$0.10 / 1,000 emails → negligible |
 | Route 53 | ~$0.50 zone + queries ≈ $1 |
 | ECR / EventBridge / Lambda / SSM (standard) | ~$0–2 |
-| **Total** | **~$45–75 / month** |
+| **Total** | **~$60–90 / month** (Multi-AZ included) |
 
 (vs. Render + Neon + R2 + Resend today — likely comparable or slightly higher, in exchange for a single-vendor stack.)
 

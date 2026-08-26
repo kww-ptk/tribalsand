@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/checkin.php';   // checkin_deposit_supported()
 require_login();
 require_owner();
 
@@ -81,6 +82,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $sort     = (int)($_POST['sort_order'] ?? 0);
         if (!$name) $error = 'Name is required.';
 
+        // Security deposit (per-property) — only when the column exists.
+        $depSupported = checkin_deposit_supported();
+        $depRaw = trim((string)($_POST['deposit_amount'] ?? ''));
+        $depAmt = $depRaw === '' ? null : (float)preg_replace('/[^0-9.]/', '', $depRaw);
+        if ($depAmt !== null && $depAmt <= 0) $depAmt = null;
+        $depCur = strtoupper(preg_replace('/[^A-Za-z]/', '', (string)($_POST['deposit_currency'] ?? 'USD')));
+        if ($depCur === '') $depCur = 'USD';
+
         if (!$error && $isNew) {
             // Slug is editable ONLY when creating a new property (no live page exists yet).
             $slug = preg_replace('/[^a-z0-9_-]/', '', strtolower(trim($_POST['slug'] ?? '')));
@@ -90,10 +99,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $error = 'That slug is already in use.';
             }
             if (!$error) {
-                db_query(
-                    'INSERT INTO venues (slug, name, location, sort_order, is_published) VALUES (:slug,:name,:loc,:sort,TRUE)',
-                    [':slug' => $slug, ':name' => $name, ':loc' => $location, ':sort' => $sort]
-                );
+                if ($depSupported) {
+                    db_query(
+                        'INSERT INTO venues (slug, name, location, sort_order, is_published, deposit_amount, deposit_currency)
+                         VALUES (:slug,:name,:loc,:sort,TRUE,:damt,:dcur)',
+                        [':slug' => $slug, ':name' => $name, ':loc' => $location, ':sort' => $sort, ':damt' => $depAmt, ':dcur' => $depCur]
+                    );
+                } else {
+                    db_query(
+                        'INSERT INTO venues (slug, name, location, sort_order, is_published) VALUES (:slug,:name,:loc,:sort,TRUE)',
+                        [':slug' => $slug, ':name' => $name, ':loc' => $location, ':sort' => $sort]
+                    );
+                }
                 $id = (int)db()->lastInsertId();
                 audit_log('venue.create', 'venue', $id, $name);
                 header("Location: /admin/venue-edit.php?id={$id}&saved=1");
@@ -101,10 +118,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
         } elseif (!$error) {
             // Existing property: slug is READ-ONLY (protects the ranking URL) — never updated here.
-            db_query(
-                'UPDATE venues SET name=:name, location=:loc, sort_order=:sort, updated_at=NOW() WHERE id=:id',
-                [':name' => $name, ':loc' => $location, ':sort' => $sort, ':id' => $id]
-            );
+            if ($depSupported) {
+                db_query(
+                    'UPDATE venues SET name=:name, location=:loc, sort_order=:sort,
+                            deposit_amount=:damt, deposit_currency=:dcur, updated_at=NOW() WHERE id=:id',
+                    [':name' => $name, ':loc' => $location, ':sort' => $sort, ':damt' => $depAmt, ':dcur' => $depCur, ':id' => $id]
+                );
+            } else {
+                db_query(
+                    'UPDATE venues SET name=:name, location=:loc, sort_order=:sort, updated_at=NOW() WHERE id=:id',
+                    [':name' => $name, ':loc' => $location, ':sort' => $sort, ':id' => $id]
+                );
+            }
             audit_log('venue.update', 'venue', $id, $name);
             header("Location: /admin/venue-edit.php?id={$id}&saved=1");
             exit;
@@ -235,6 +260,27 @@ include __DIR__ . '/_layout.php';
             <span class="field-hint">Lower numbers show first in listings.</span>
           </div>
         </div>
+
+        <?php if (checkin_deposit_supported()): $__dcur = strtoupper(trim((string)($venue['deposit_currency'] ?? 'USD'))) ?: 'USD'; ?>
+        <div class="form-row">
+          <div class="field">
+            <label>Security deposit amount <span class="text-muted">(per property)</span></label>
+            <input type="number" name="deposit_amount" min="0" step="1" value="<?= $venue && $venue['deposit_amount'] !== null && $venue['deposit_amount'] !== '' ? e(number_format((float)$venue['deposit_amount'], 0, '.', '')) : '' ?>" placeholder="e.g. 500">
+            <span class="field-hint">Shown to guests at check-in. Leave blank if there is no fixed amount. Charged at the property, never online.</span>
+          </div>
+          <div class="field">
+            <label>Deposit currency</label>
+            <select name="deposit_currency" class="inp">
+              <?php foreach (['USD','EUR','GBP','KES'] as $__c): ?>
+              <option value="<?= $__c ?>"<?= $__dcur === $__c ? ' selected' : '' ?>><?= $__c ?></option>
+              <?php endforeach; ?>
+              <?php if (!in_array($__dcur, ['USD','EUR','GBP','KES'], true)): ?>
+              <option value="<?= e($__dcur) ?>" selected><?= e($__dcur) ?></option>
+              <?php endif; ?>
+            </select>
+          </div>
+        </div>
+        <?php endif; ?>
 
         <button type="submit" class="btn-primary btn-sm" data-tip="Save name, location & sort order">Save Property</button>
       </form>

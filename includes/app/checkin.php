@@ -21,6 +21,10 @@ $hasProgress = !empty($data) || !empty($lead);
 // the intro checklist. The flow build below decides where those steps land.
 $showPassport = isset($cfg['passport']);
 $showWaiver   = isset($cfg['waiver']);
+$showDeposit  = isset($cfg['deposit']);
+$deposit      = checkin_venue_deposit($hold);   // ['amount','currency','formatted']
+$depositNote  = checkin_deposit_note();
+$depositOnFile = checkin_deposit_card_on_file($data);
 $guests   = fetch_checkin_guests($holdId);
 $adults   = array_values(array_filter($guests, fn($g) => empty($g['is_child'])));
 $kids     = [];
@@ -74,6 +78,9 @@ if (isset($flow['you']) && $need > 1) {
 $needs = [];
 if ($showPassport)           $needs[] = ['&#128179;', 'A passport for every adult — a clear photo or PDF'];
 if (isset($cfg['transfer'])) $needs[] = ['&#9992;&#65039;', 'If you&rsquo;d like us to collect you: your flight number &amp; landing time'];
+if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — for the security deposit'
+                                . ($deposit['formatted'] !== '' ? ' (' . e($deposit['formatted']) . ')' : '')
+                                . ', paid at the property on arrival'];
 
 ?>
 <link rel="stylesheet" href="/css/portal-app.css?v=<?= @filemtime(__DIR__ . '/../../css/portal-app.css') ?: time() ?>">
@@ -428,6 +435,28 @@ if (isset($cfg['transfer'])) $needs[] = ['&#9992;&#65039;', 'If you&rsquo;d like
       <?php elseif ($key === 'requests'): ?>
         <label class="ci-l">Anything to make your stay special?</label>
         <textarea class="ci-in" name="special_requests" rows="4" placeholder="Birthday surprise, a bottle of wine in the room…"><?= $val('special_requests') ?></textarea>
+
+      <?php elseif ($key === 'deposit'): ?>
+        <div class="ci-deposit"<?= ($showDeposit && !empty($cfg['deposit']['required'])) ? ' data-deposit-required' : '' ?>>
+          <?php if ($deposit['formatted'] !== ''): ?>
+          <div class="ci-deposit__amt">
+            <span class="ci-deposit__amt-k">Security deposit</span>
+            <span class="ci-deposit__amt-v"><?= e($deposit['formatted']) ?></span>
+          </div>
+          <?php else: ?>
+          <div class="ci-deposit__amt">
+            <span class="ci-deposit__amt-k">Security deposit</span>
+            <span class="ci-deposit__amt-v ci-deposit__amt-v--tbc">Confirmed at arrival</span>
+          </div>
+          <?php endif; ?>
+          <p class="ci-deposit__note"><?= nl2br(e($depositNote)) ?></p>
+          <label class="ci-l">Photo of your credit card <span class="ci-opt">(front only — card you&rsquo;ll pay with)</span></label>
+          <div class="ci-upload" data-kind="deposit" data-has="<?= $depositOnFile ? '1' : '0' ?>">
+            <label class="ci-filebtn"><?= '&#128247;' ?> Choose photo<input type="file" accept="image/jpeg,image/png"></label>
+            <span class="ci-upload__state"><?= $depositOnFile ? 'Uploaded &#10003;' : 'No photo yet' ?></span>
+          </div>
+          <p class="ci-hint">Your card image is private, encrypted at rest and shared only with the Tribal Sand front desk. We never charge it online.</p>
+        </div>
       <?php endif; ?>
 
       <div class="ci-nav">

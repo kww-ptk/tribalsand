@@ -8,13 +8,23 @@ require_login();
 
 $holdId  = (int)($_GET['hold'] ?? 0);
 $guestId = (int)($_GET['guest'] ?? 0);
+$kind    = ($_GET['kind'] ?? '') === 'deposit' ? 'deposit' : 'passport';
 if (!$holdId || !can_view_guest_docs($holdId)) { http_response_code(403); exit('Forbidden'); }
 
-$row = db_query('SELECT passport_file_key FROM checkin_guests WHERE id = :g AND hold_id = :h', [':g' => $guestId, ':h' => $holdId])->fetch();
-$key = $row['passport_file_key'] ?? '';
-if ($key === '') { http_response_code(404); exit('No file'); }
-
-audit_log('checkin.file_view', 'hold', $holdId, 'guest ' . $guestId);
+if ($kind === 'deposit') {
+    // Booking-level credit-card image (add_checkin_deposit.sql).
+    $row = checkin_deposit_supported()
+        ? db_query('SELECT deposit_card_file_key FROM booking_checkin WHERE hold_id = :h', [':h' => $holdId])->fetch()
+        : null;
+    $key = $row['deposit_card_file_key'] ?? '';
+    if ($key === '') { http_response_code(404); exit('No file'); }
+    audit_log('checkin.file_view', 'hold', $holdId, 'deposit card');
+} else {
+    $row = db_query('SELECT passport_file_key FROM checkin_guests WHERE id = :g AND hold_id = :h', [':g' => $guestId, ':h' => $holdId])->fetch();
+    $key = $row['passport_file_key'] ?? '';
+    if ($key === '') { http_response_code(404); exit('No file'); }
+    audit_log('checkin.file_view', 'hold', $holdId, 'guest ' . $guestId);
+}
 
 $ext = strtolower(pathinfo($key, PATHINFO_EXTENSION));
 $ct  = ['jpg' => 'image/jpeg', 'png' => 'image/png', 'pdf' => 'application/pdf'][$ext] ?? 'application/octet-stream';
@@ -46,6 +56,6 @@ if ($signed !== '') {
 }
 
 header('Content-Type: ' . $ct);
-header('Content-Disposition: inline; filename="passport.' . $ext . '"');
+header('Content-Disposition: inline; filename="' . $kind . '.' . $ext . '"');
 header('Cache-Control: private, no-store');
 echo $data;

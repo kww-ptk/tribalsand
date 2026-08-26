@@ -15,11 +15,28 @@ require_once __DIR__ . '/../includes/mail.php';
 
 session_init();
 
+/**
+ * Where to send the guest back to. Defaults to /reserve.php, but an embedded
+ * form (e.g. a per-property restaurant landing page) may post a `redirect` to
+ * keep the guest on its own page. Whitelisted to a same-site "/<slug>.php" file
+ * that actually exists — never an off-site or path-traversal target (no open
+ * redirect). Resolved once at request start.
+ */
+function _reserve_base(): string {
+    static $base = null;
+    if ($base !== null) return $base;
+    $r = trim((string)($_POST['redirect'] ?? ''));
+    if ($r !== '' && preg_match('~^/[a-z0-9\-]+\.php$~', $r) && is_file(__DIR__ . '/..' . $r)) {
+        return $base = $r;
+    }
+    return $base = '/reserve.php';
+}
+
 /** Flash errors + old input back to the form and stop. */
 function _reserve_fail(array $errors, array $old, string $venueSlug = ''): void {
     $_SESSION['reserve_flash'] = ['errors' => $errors, 'old' => $old];
     $q = $venueSlug !== '' ? ('?venue=' . urlencode($venueSlug)) : '';
-    header('Location: /reserve.php' . $q . '#reserve-form');
+    header('Location: ' . _reserve_base() . $q . '#reserve-form');
     exit;
 }
 
@@ -32,7 +49,7 @@ verify_csrf();
 
 // Honeypot — silently accept and redirect as if OK (don't tip off bots).
 if (!empty($_POST['website'])) {
-    header('Location: /reserve.php?ok=1');
+    header('Location: ' . _reserve_base() . '?ok=1');
     exit;
 }
 
@@ -132,5 +149,5 @@ try { send_reservation_received($res); }
 catch (Throwable $e) { error_log('[reservation] mail: ' . $e->getMessage()); }
 
 unset($_SESSION['reserve_flash']);
-header('Location: /reserve.php?ok=' . urlencode((string)($res['reference'] ?? '1')) . ($venueSlug !== '' ? '&venue=' . urlencode($venueSlug) : ''));
+header('Location: ' . _reserve_base() . '?ok=' . urlencode((string)($res['reference'] ?? '1')) . ($venueSlug !== '' ? '&venue=' . urlencode($venueSlug) : ''));
 exit;

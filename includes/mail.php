@@ -30,7 +30,7 @@ function send_notification(array $sub): void {
     if (!empty($env['RESEND_API_KEY'])) {
         send_resend($to, $subject, $body, $from, $sub['guest_email'] ?? '', $env['RESEND_API_KEY'], $html);
     } elseif ($driver === 'smtp') {
-        send_smtp($to, $subject, $body, $headers, $env);
+        send_smtp($to, $subject, $body, $headers, $env, $html);
     } elseif ($driver === 'log') {
         log_mail_error("[DEV] To: {$to} | Subject: {$subject}\n{$body}");
     } else {
@@ -136,11 +136,128 @@ function send_resend(string $to, string $subject, string $text, string $from, st
     }
 }
 
-function send_smtp(string $to, string $subject, string $body, string $headers, array $env): void {
-    log_mail_error('SMTP driver selected but not implemented. Set RESEND_API_KEY instead.');
-    if (!mail($to, $subject, $body, $headers)) {
-        log_mail_error("mail() fallback also failed for: {$to}");
+/**
+ * Send via SMTP — implemented for Amazon SES (also works with any SMTP relay).
+ * STARTTLS on 587 (SMTP_SECURITY=tls, default) or implicit TLS on 465 (=ssl),
+ * AUTH LOGIN with SES SMTP credentials. Builds a multipart/alternative message
+ * so the branded HTML part (when present) and the plain-text fallback both go
+ * out. Any failure logs and, as a last resort, falls back to PHP mail().
+ *
+ * Env: SMTP_HOST (or derived email-smtp.<S3_REGION>.amazonaws.com), SMTP_PORT,
+ *      SMTP_USER, SMTP_PASS, SMTP_SECURITY (tls|ssl), SMTP_EHLO, MAIL_FROM.
+ */
+function send_smtp(string $to, string $subject, string $body, string $headers, array $env, string $html = ''): void {
+    $host = trim((string)($env['SMTP_HOST'] ?? ''));
+    if ($host === '' && !empty($env['S3_REGION'])) {
+        $host = "email-smtp.{$env['S3_REGION']}.amazonaws.com";   // SES default endpoint for the region
     }
+    $port   = (int)($env['SMTP_PORT'] ?? 587);
+    $user   = trim((string)($env['SMTP_USER'] ?? ''));
+    $pass   = (string)($env['SMTP_PASS'] ?? '');
+    $secure = strtolower(trim((string)($env['SMTP_SECURITY'] ?? 'tls')));   // tls = STARTTLS, ssl = implicit
+
+    if ($host === '' || $user === '' || $pass === '') {
+        log_mail_error('SMTP not configured (need SMTP_HOST/SMTP_USER/SMTP_PASS). Falling back to mail().');
+        if (!@mail($to, $subject, $body, $headers)) log_mail_error("mail() fallback failed for: {$to}");
+        return;
+    }
+
+    $fromHeader = _smtp_header_val($headers, 'From') ?: (string)($env['MAIL_FROM'] ?? 'noreply@tribalsand.com');
+    $replyTo    = _smtp_header_val($headers, 'Reply-To');
+    $fromAddr   = _smtp_addr($fromHeader);
+    $toAddr     = _smtp_addr($to);
+    $eol        = "\r\n";
+
+    // Assemble the message (headers + body).
+    $h = [
+        'From: ' . $fromHeader,
+        'To: ' . $to,
+        'Subject: ' . _smtp_encode_subject($subject),
+    ];
+    if ($replyTo !== '') $h[] = 'Reply-To: ' . $replyTo;
+    $h[] = 'Date: ' . date('r');
+    $h[] = 'MIME-Version: 1.0';
+    $dom  = preg_replace('~^.*@~', '', $fromAddr) ?: 'tribalsand.com';
+    $h[]  = 'Message-ID: <' . bin2hex(random_bytes(16)) . '@' . $dom . '>';
+
+    if ($html !== '') {
+        $boundary = 'bnd_' . bin2hex(random_bytes(12));
+        $h[]  = 'Content-Type: multipart/alternative; boundary="' . $boundary . '"';
+        $msg  = '--' . $boundary . $eol
+              . 'Content-Type: text/plain; charset=UTF-8' . $eol
+              . 'Content-Transfer-Encoding: base64' . $eol . $eol
+              . chunk_split(base64_encode($body)) . $eol
+              . '--' . $boundary . $eol
+              . 'Content-Type: text/html; charset=UTF-8' . $eol
+              . 'Content-Transfer-Encoding: base64' . $eol . $eol
+              . chunk_split(base64_encode($html)) . $eol
+              . '--' . $boundary . '--' . $eol;
+    } else {
+        $h[] = 'Content-Type: text/plain; charset=UTF-8';
+        $h[] = 'Content-Transfer-Encoding: base64';
+        $msg = chunk_split(base64_encode($body));
+    }
+    $data = implode($eol, $h) . $eol . $eol . $msg;
+    $data = preg_replace('~^\.~m', '..', $data);   // dot-stuffing (RFC 5321 §4.5.2)
+
+    // Open the connection.
+    $transport = ($secure === 'ssl') ? "ssl://{$host}:{$port}" : "tcp://{$host}:{$port}";
+    $fp = @stream_socket_client($transport, $errno, $errstr, 20, STREAM_CLIENT_CONNECT, stream_context_create());
+    if (!$fp) { log_mail_error("SMTP connect failed to {$host}:{$port} — {$errno} {$errstr}"); return; }
+    stream_set_timeout($fp, 20);
+
+    $read = function () use ($fp): int {
+        $line = '';
+        do { $line = fgets($fp, 515); if ($line === false) return 0; }
+        while (strlen($line) >= 4 && $line[3] === '-');   // consume multiline replies
+        return (int)substr($line, 0, 3);
+    };
+    $send = function (string $c) use ($fp): void { fwrite($fp, $c . "\r\n"); };
+    $fail = function (string $why) use ($fp): void { log_mail_error($why); @fwrite($fp, "QUIT\r\n"); fclose($fp); };
+
+    if ($read() !== 220) { $fail('SMTP: no 220 greeting'); return; }
+    $ehlo = 'EHLO ' . (string)($env['SMTP_EHLO'] ?? $dom);
+    $send($ehlo); if ($read() !== 250) { $fail('SMTP: EHLO rejected'); return; }
+
+    if ($secure === 'tls') {
+        $send('STARTTLS'); if ($read() !== 220) { $fail('SMTP: STARTTLS rejected'); return; }
+        $crypto = STREAM_CRYPTO_METHOD_TLS_CLIENT;
+        if (defined('STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT')) $crypto |= STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT;
+        if (!@stream_socket_enable_crypto($fp, true, $crypto)) { $fail('SMTP: TLS handshake failed'); return; }
+        $send($ehlo); if ($read() !== 250) { $fail('SMTP: EHLO after STARTTLS rejected'); return; }
+    }
+
+    $send('AUTH LOGIN');        if ($read() !== 334) { $fail('SMTP: AUTH LOGIN rejected'); return; }
+    $send(base64_encode($user)); if ($read() !== 334) { $fail('SMTP: username rejected'); return; }
+    $send(base64_encode($pass)); if ($read() !== 235) { $fail('SMTP: authentication failed'); return; }
+
+    $send("MAIL FROM:<{$fromAddr}>"); if ($read() !== 250) { $fail('SMTP: MAIL FROM rejected'); return; }
+    $send("RCPT TO:<{$toAddr}>");     if (!in_array($read(), [250, 251], true)) { $fail('SMTP: RCPT TO rejected'); return; }
+    $send('DATA');                    if ($read() !== 354) { $fail('SMTP: DATA rejected'); return; }
+
+    fwrite($fp, $data . "\r\n.\r\n");
+    if ($read() !== 250) { $fail('SMTP: message not accepted'); return; }
+
+    $send('QUIT');
+    fclose($fp);
+}
+
+/** Pull a single header's value out of a CRLF header block. */
+function _smtp_header_val(string $headers, string $name): string {
+    if (preg_match('~^' . preg_quote($name, '~') . ':\s*(.+)$~mi', $headers, $m)) return trim($m[1]);
+    return '';
+}
+
+/** Bare email address from a "Name <addr>" or plain "addr" string. */
+function _smtp_addr(string $s): string {
+    if (preg_match('~<([^>]+)>~', $s, $m)) return trim($m[1]);
+    return trim($s);
+}
+
+/** RFC 2047 encode a subject only when it contains non-ASCII bytes. */
+function _smtp_encode_subject(string $s): string {
+    if (preg_match('~[\x80-\xFF]~', $s)) return '=?UTF-8?B?' . base64_encode($s) . '?=';
+    return $s;
 }
 
 // ── Guest acknowledgement (auto-reply to the customer/sender) ────
@@ -932,7 +1049,7 @@ function _dispatch_mail(string $to, string $subject, string $body, string $from,
     if (!empty($env['RESEND_API_KEY'])) {
         send_resend($to, $subject, $body, $from, $reply_to, $env['RESEND_API_KEY'], $html);
     } elseif (($env['MAIL_DRIVER'] ?? '') === 'smtp') {
-        send_smtp($to, $subject, $body, $headers, $env);
+        send_smtp($to, $subject, $body, $headers, $env, $html);
     } elseif (($env['MAIL_DRIVER'] ?? '') === 'log') {
         log_mail_error("[DEV] To: {$to} | Subject: {$subject}\n{$body}");
     } else {

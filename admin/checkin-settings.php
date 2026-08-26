@@ -25,6 +25,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         set_setting($__tk, trim((string)($_POST[$__tk] ?? '')));
     }
     set_setting('checkin_early_late_note', trim((string)($_POST['early_late_note'] ?? '')));
+    set_setting('checkin_deposit_note', trim((string)($_POST['deposit_note'] ?? '')));
     set_setting('checkin_welcome', trim((string)($_POST['welcome'] ?? '')));
     audit_log('checkin.config_change', 'settings', 0, '');
     $_SESSION['hold_flash'] = ['type' => 'success', 'msg' => 'Check-in settings saved.'];
@@ -37,6 +38,7 @@ $default  = setting('checkin_required_default', '0') === '1';
 $waiver   = setting('checkin_waiver_text', '');
 $times    = checkin_times();   // defaults applied, so the inputs are never blank
 $welcome  = setting('checkin_welcome', '');
+$depNote  = checkin_deposit_note();   // default applied
 
 // Time fields render as styled <select>s (auto-enhanced into a non-native
 // dropdown with a Lucide chevron by admin-select.js) — no native time input,
@@ -135,6 +137,14 @@ include __DIR__ . '/_layout.php';
     <div class="card__head"><span class="card__title">Waiver / indemnity terms</span></div>
     <div class="card__body card__body--pad">
       <textarea name="waiver_text" rows="8" class="inp inp--area" style="width:100%;min-height:220px" placeholder="Indemnity and insurance waiver the guest agrees to…"><?= e($waiver) ?></textarea>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="card__head"><span class="card__title">Security deposit</span></div>
+    <div class="card__body card__body--pad">
+      <p class="text-muted" style="margin:0 0 12px;font-size:13px">The per-property deposit <strong>amount</strong> is set on each property (Properties → Edit → Details). This is the message guests see on the deposit step — make it clear the deposit is taken at the property, never charged online.</p>
+      <textarea name="deposit_note" rows="3" class="inp inp--area" style="width:100%;min-height:96px" placeholder="e.g. Please bring this credit card with you — payment will be done at the location on arrival."><?= e($depNote) ?></textarea>
     </div>
   </div>
 

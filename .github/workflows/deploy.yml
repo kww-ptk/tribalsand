@@ -1,0 +1,44 @@
+name: Build and push image to Amazon ECR
+
+# Builds the Apache/PHP Docker image and pushes it to ECR on every commit to
+# master (and on-demand via the Actions "Run workflow" button). App Runner is
+# configured to auto-deploy whenever the :latest tag changes, so a push here
+# rolls out to the live service automatically.
+
+on:
+  push:
+    branches: [ master ]
+  workflow_dispatch:
+
+env:
+  AWS_REGION: eu-west-1
+  ECR_REPOSITORY: tribalsand
+  IMAGE_TAG: latest
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout the code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Log in to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push the image
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          IMAGE="$REGISTRY/$ECR_REPOSITORY"
+          docker build -t "$IMAGE:$IMAGE_TAG" -t "$IMAGE:${GITHUB_SHA::7}" .
+          docker push "$IMAGE:$IMAGE_TAG"
+          docker push "$IMAGE:${GITHUB_SHA::7}"
+          echo "Pushed $IMAGE:$IMAGE_TAG and $IMAGE:${GITHUB_SHA::7}"

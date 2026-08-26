@@ -17,11 +17,12 @@ function check(string $label, bool $cond): void {
 
 // ── Config defaults (no override set) ──────────────────────────────────────
 $cfg = checkin_config();
-check('config has 6 steps',            count($cfg) === 6);
+check('config has 7 steps',            count($cfg) === 7);
 check('passport enabled by default',   $cfg['passport']['enabled'] === true);
 check('passport required by default',  $cfg['passport']['required'] === true);
 check('waiver required by default',    $cfg['waiver']['required'] === true);
 check('arrival optional by default',   $cfg['arrival']['required'] === false);
+check('deposit present, optional',     ($cfg['deposit']['enabled'] === true) && ($cfg['deposit']['required'] === false));
 check('order: arrival before waiver',  array_search('arrival', array_keys($cfg), true) < array_search('waiver', array_keys($cfg), true));
 
 // ── Config override merge (does not persist — restore after) ───────────────
