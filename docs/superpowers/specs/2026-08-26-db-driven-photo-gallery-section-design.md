@@ -209,4 +209,5 @@ the right image, and no console errors from the removed `openLb`.
 | Deleting the legacy lightbox breaks another feature | Verified `openLb()` has no call sites outside the bottom photo-grid on all six pages. |
 | Bottom grid grows long on image-rich venues | Accepted — "all images" is the chosen rule. A cap can be added later if it reads poorly. |
 | Hero's first 3 photos repeat further down the page | Accepted deliberately in the decisions table. |
-| Live DB is the production Neon instance | All new *application* code paths are read-only. The tests write fixture rows only inside a transaction that is rolled back. |
+| Local DB is not the production DB | `.env` points at a **local Postgres.app** instance (`DB_HOST`/`DB_NAME`, no `DATABASE_URL`) — CLAUDE.md's "local .env points at the production Neon DB" note is stale. Local verification therefore proves the *code* works, not that production has photos. Tests still write fixture rows only inside a rolled-back transaction. |
+| Local DB is only partially seeded | `db/seed_venue_images.sql` gives Zuri 7 images; the local DB has 1. Bottom grids will look sparse locally. **The live section will only be as full as `venue_images` in the production DB** — confirm that before/after deploy. |

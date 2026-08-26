@@ -426,6 +426,12 @@ Delete from the comment line `// ── Lightbox ──` through the closing `})
 
 Delete the eight rules `.lb{…}`, `.lb.show{…}`, `.lb-close{…}`, `.lb-img{…}`, `.lb-nav{…}`, `.lb-btn{…}`, `.lb-btn:hover{…}`, `.lb-count{…}`. Leave every `.pg-lb*` rule alone — those belong to the shared lightbox and are defined in the include, not here.
 
+**Also in this step — add the missing `object-fit`.** This page's `.photo-grid img` rule sets `aspect-ratio:4/3` with no `object-fit`, so it inherits the default `object-fit: fill`. That is invisible today only because the hand-coded tiles are hand-picked landscape crops. Once the grid renders every `venue_images` row, the first portrait photo a manager uploads will render horizontally squashed. Add `object-fit:cover;` to that rule, matching what `enkare-bofa.php` and `sandbox.php` already do:
+
+```css
+.photo-grid img{width:100%;aspect-ratio:4/3;object-fit:cover;cursor:pointer;transition:opacity .25s,transform .4s;}
+```
+
 - [ ] **Step 5: Verify**
 
 ```bash
@@ -474,6 +480,12 @@ Delete from the comment line `// Lightbox images` through the closing `});` of t
 - [ ] **Step 4: Delete the legacy lightbox CSS**
 
 Delete the eight rules `.lb{…}`, `.lb.show{…}`, `.lb-close{…}`, `.lb-img{…}`, `.lb-nav{…}`, `.lb-btn{…}`, `.lb-btn:hover{…}`, `.lb-count{…}`. Leave every `.pg-lb*` rule alone.
+
+**Also in this step — add the missing `object-fit`.** This page's `.photo-grid img` rule sets `aspect-ratio:4/3` with no `object-fit`, so it inherits the default `object-fit: fill`. That is invisible today only because the hand-coded tiles are hand-picked landscape crops. Once the grid renders every `venue_images` row, the first portrait photo a manager uploads will render horizontally squashed. Add `object-fit:cover;` to that rule, matching what `enkare-bofa.php` and `sandbox.php` already do:
+
+```css
+.photo-grid img{width:100%;aspect-ratio:4/3;object-fit:cover;cursor:pointer;transition:opacity .25s,transform .4s;}
+```
 
 - [ ] **Step 5: Verify**
 
@@ -524,6 +536,12 @@ Delete from the comment line `// ── Lightbox ──` through the closing `})
 - [ ] **Step 4: Delete the legacy lightbox CSS**
 
 Delete the eight rules `.lb{…}`, `.lb.show{…}`, `.lb-close{…}`, `.lb-img{…}`, `.lb-nav{…}`, `.lb-btn{…}`, `.lb-btn:hover{…}`, `.lb-count{…}`. Leave every `.pg-lb*` rule alone.
+
+**Also in this step — add the missing `object-fit`.** This page's `.photo-grid img` rule sets `aspect-ratio:4/3` with no `object-fit`, so it inherits the default `object-fit: fill`. That is invisible today only because the hand-coded tiles are hand-picked landscape crops. Once the grid renders every `venue_images` row, the first portrait photo a manager uploads will render horizontally squashed. Add `object-fit:cover;` to that rule, matching what `enkare-bofa.php` and `sandbox.php` already do:
+
+```css
+.photo-grid img{width:100%;aspect-ratio:4/3;object-fit:cover;cursor:pointer;transition:opacity .25s,transform .4s;}
+```
 
 - [ ] **Step 5: Verify**
 
@@ -676,6 +694,12 @@ Delete from the comment line `// Lightbox images` through the closing `});` of t
 - [ ] **Step 4: Delete the legacy lightbox CSS**
 
 Delete the eight rules `.lb{…}`, `.lb.show{…}`, `.lb-close{…}`, `.lb-img{…}`, `.lb-nav{…}`, `.lb-btn{…}`, `.lb-btn:hover{…}`, `.lb-count{…}`. Leave every `.pg-lb*` rule alone.
+
+**Also in this step — add the missing `object-fit`.** This page's `.photo-grid img` rule sets `aspect-ratio:4/3` with no `object-fit`, so it inherits the default `object-fit: fill`. That is invisible today only because the hand-coded tiles are hand-picked landscape crops. Once the grid renders every `venue_images` row, the first portrait photo a manager uploads will render horizontally squashed. Add `object-fit:cover;` to that rule, matching what `enkare-bofa.php` and `sandbox.php` already do:
+
+```css
+.photo-grid img{width:100%;aspect-ratio:4/3;object-fit:cover;cursor:pointer;transition:opacity .25s,transform .4s;}
+```
 
 - [ ] **Step 5: Verify**
 
