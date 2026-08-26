@@ -171,15 +171,20 @@ addresses the correct image in the shared lightbox.
 
 **`tests/property_gallery.php`** (NEW), matching the existing `tests/*_logic.php` style
 (`check(label, cond)`, `php tests/property_gallery.php`):
-- a seeded venue slug returns a non-empty list, each entry having `url` and `alt`
+- a fixture venue's images come back in `is_hero DESC, sort_order ASC` order, each entry having `url` and `alt`
 - URLs are resolved through `storage_url()` (root-relative `/images/…` passes through unchanged)
+- empty `alt_text` falls back to the venue name; badge is `"{name} · {location}"`
 - unknown slug → empty `images`, and the supplied fallback is used when one is given
 - unknown slug with **no** fallback → empty `images` (the hide-the-section path)
 - fallback is ignored when the DB has rows
-- fallback accepts both the string and `['src'=>…,'alt'=>…]` shapes
+- fallback accepts both the string and `['src'=>…,'alt'=>…]` shapes, and drops entries with no URL
 - calling twice for the same slug returns identical data (memoization)
+- **the memoization trap:** for a venue with zero images, a call *with* a fallback (the hero) must
+  not poison the cache for the later call *without* one (the grid) — the second call still returns empty
 
-Read-only queries against the configured DB; no writes, so no transaction wrapper is needed.
+Tests insert their own fixture venues rather than depending on whatever rows production happens to
+hold, so the DB assertions run inside ONE transaction that is ROLLED BACK at the end — matching
+`tests/reservations_logic.php` and `tests/checkin_consent.php`. No rows survive the run.
 
 **Render smoke test:** serve locally with PHP 8.5.4 and load all six pages, confirming for each:
 top gallery unchanged, bottom section present with the full venue set, tiles open the lightbox at
@@ -204,4 +209,4 @@ the right image, and no console errors from the removed `openLb`.
 | Deleting the legacy lightbox breaks another feature | Verified `openLb()` has no call sites outside the bottom photo-grid on all six pages. |
 | Bottom grid grows long on image-rich venues | Accepted — "all images" is the chosen rule. A cap can be added later if it reads poorly. |
 | Hero's first 3 photos repeat further down the page | Accepted deliberately in the decisions table. |
-| Live DB is the production Neon instance | All new code paths are read-only; tests perform no writes. |
+| Live DB is the production Neon instance | All new *application* code paths are read-only. The tests write fixture rows only inside a transaction that is rolled back. |
