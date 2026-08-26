@@ -42,7 +42,7 @@ $__more   = max(0, $__count - 3);
   <?php endforeach; ?>
 </div>
 
-<div class="pg-lb" id="pgLb" role="dialog" aria-modal="true" aria-label="Photo gallery" hidden>
+<div class="pg-lb" id="pgLb" role="dialog" aria-label="Photo gallery" hidden>
   <button class="pg-lb__close" type="button" data-pg-close aria-label="Close">&times;</button>
   <button class="pg-lb__nav pg-lb__prev" type="button" data-pg-prev aria-label="Previous">&#8249;</button>
   <figure class="pg-lb__stage"><img id="pgLbImg" alt=""></figure>

@@ -414,8 +414,8 @@ include __DIR__ . '/includes/property-gallery.php';
 
     <div class="divider"></div>
 
-    <!-- Photo Gallery — photos come from Admin → Venues → Maya Kobe → Gallery -->
 <?php
+// Photo Gallery — photos come from Admin → Venues → Maya Kobe → Gallery
 $pg_venue_slug = 'maya-kobe';                     // same venue as the hero gallery above
 $pgrid_heading = 'Explore <em>Maya Kobe</em>';
 include __DIR__ . '/includes/property-photo-grid.php';

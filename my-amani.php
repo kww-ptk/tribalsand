@@ -421,8 +421,8 @@ include __DIR__ . '/includes/property-gallery.php';
 
     <div class="divider"></div>
 
-    <!-- Photo Gallery — photos come from Admin → Venues → My Amani → Gallery -->
 <?php
+// Photo Gallery — photos come from Admin → Venues → My Amani → Gallery
 $pg_venue_slug = 'my-amani';                     // same venue as the hero gallery above
 $pgrid_heading = 'Explore <em>My Amani</em>';
 include __DIR__ . '/includes/property-photo-grid.php';

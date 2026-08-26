@@ -397,8 +397,8 @@ include __DIR__ . '/includes/property-gallery.php';
 
     <div class="divider"></div>
 
-    <!-- Photo Gallery — photos come from Admin → Venues → Zuri → Gallery -->
 <?php
+// Photo Gallery — photos come from Admin → Venues → Zuri → Gallery
 $pg_venue_slug       = 'zuri';                     // same venue as the hero gallery above
 $pgrid_heading       = 'Explore <em>Zuri</em>';
 $pgrid_caption_extra = ' · Zuri · Watamu, Kenya';

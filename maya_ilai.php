@@ -671,8 +671,8 @@ include __DIR__ . '/includes/property-gallery.php';
 
     <div class="divider"></div>
 
-    <!-- Photo Gallery — photos come from Admin → Venues → Maya Ilai → Gallery -->
 <?php
+// Photo Gallery — photos come from Admin → Venues → Maya Ilai → Gallery
 $pg_venue_slug       = 'maya_ilai';                     // same venue as the hero gallery above (underscore, not a hyphen)
 $pgrid_heading       = 'Explore <em>Maya Ilai</em>';
 $pgrid_caption_extra = ' · <a href="maya-ilai-gallery.php" style="color:var(--teal);">View full gallery →</a>';

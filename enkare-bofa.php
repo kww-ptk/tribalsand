@@ -349,8 +349,8 @@ include __DIR__ . '/includes/property-gallery.php';
 
     <div class="divider"></div>
 
-    <!-- Photo gallery — photos come from Admin → Venues → Enkare Bofa → Gallery -->
 <?php
+// Photo Gallery — photos come from Admin → Venues → Enkare Bofa → Gallery
 $pg_venue_slug = 'enkare-bofa';                     // same venue as the hero gallery above
 $pgrid_heading = 'Explore <em>Enkare Bofa</em>';
 include __DIR__ . '/includes/property-photo-grid.php';

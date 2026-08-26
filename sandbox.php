@@ -359,8 +359,8 @@ include __DIR__ . '/includes/property-gallery.php';
 
     <div class="divider"></div>
 
-    <!-- Photo gallery — photos come from Admin → Venues → Sandbox → Gallery -->
 <?php
+// Photo Gallery — photos come from Admin → Venues → Sandbox → Gallery
 $pg_venue_slug = 'sandbox';                     // same venue as the hero gallery above
 $pgrid_heading = 'Explore <em>Sandbox</em>';
 include __DIR__ . '/includes/property-photo-grid.php';
