@@ -51,6 +51,10 @@ function pg_gallery(string $slug, array $fallback = [], string $badge = ''): arr
     if (!$fallback)              return $cache[$slug];
 
     // DB gave us nothing — fall back to the page's static list for this call only.
+    // Note: the original inline code used `$pg_fallback_badge ?? 'Property photo'`
+    // (only a *missing* badge fell back). Here that coalesce is deliberately
+    // loosened to `?:` (an explicit '' badge also falls back). Inert today — all
+    // six property pages pass a non-empty badge — kept intentional, not a bug.
     $images = [];
     foreach ($fallback as $fb) {
         if (is_string($fb)) {

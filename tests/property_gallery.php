@@ -31,23 +31,37 @@ $g = pg_gallery('__pg_missing_d__', ['', ['src' => 'images/z.jpg', 'alt' => 'Zed
 check('fallback drops empty urls',           count($g['images']) === 1 && $g['images'][0]['url'] === 'images/z.jpg');
 
 // ── DB-backed venue (rolled back) ───────────────────────────────────────────
+try {
+    db()->query('SELECT 1');
+} catch (Throwable $e) {
+    echo "\nSKIP  DB assertions (database unreachable)\n";
+    echo ($failures ? "\n{$failures} FAILURE(S)\n" : "\nAll passed\n");
+    exit($failures ? 1 : 0);
+}
+
 db()->beginTransaction();
 try {
     db_query("INSERT INTO venues (slug, name, location, sort_order) VALUES ('__pg_test__', 'Test Venue', 'Testland', 999)");
     $vid = (int) db_query("SELECT id FROM venues WHERE slug = '__pg_test__'")->fetch()['id'];
     db_query(
         "INSERT INTO venue_images (venue_id, filename, alt_text, is_hero, sort_order) VALUES
-           (:v, '/images/a.jpg', 'Alpha', TRUE,  0),
-           (:v, '/images/b.jpg', '',      FALSE, 1)",
+           (:v, '/images/a.jpg',  'Alpha', TRUE,  5),
+           (:v, '/images/b.jpg',  '',      FALSE, 0),
+           (:v, 'gallery/c.jpg',  'Cee',   FALSE, 2)",
         [':v' => $vid]
     );
 
+    // Hero row is given the HIGHEST sort_order on purpose: if the resolver ever
+    // regressed to ordering by sort_order alone (dropping `is_hero DESC`), the
+    // hero row would sort LAST, not first — so this can only pass when is_hero
+    // genuinely wins the ordering.
     $g = pg_gallery('__pg_test__');
-    check('DB → two images',                 count($g['images']) === 2);
+    check('DB → three images',               count($g['images']) === 3);
     check('DB → hero first',                 $g['images'][0]['url'] === '/images/a.jpg');
     check('DB → alt_text used',              $g['images'][0]['alt'] === 'Alpha');
     check('storage_url passes /images/ through', $g['images'][1]['url'] === '/images/b.jpg');
     check('empty alt_text → venue name',     $g['images'][1]['alt'] === 'Test Venue');
+    check('storage_url maps bare keys',      $g['images'][2]['url'] === '/assets/img/gallery/c.jpg');
     check('badge = name · location',         $g['badge'] === 'Test Venue · Testland');
 
     check('memoized: identical on 2nd call', pg_gallery('__pg_test__') === $g);
