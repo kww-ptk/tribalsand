@@ -699,6 +699,14 @@ function e(mixed $val): string {
 // Seeded images: stored as "hero.jpg" → /assets/img/hero.jpg
 function storage_url(string $filename): string {
     if (empty($filename)) return '';
+    // Legacy Cloudflare R2 uploads: the bucket contents were migrated to S3/CloudFront
+    // under the SAME object keys, but old DB rows still hold the now-dead pub-*.r2.dev
+    // host (the R2 domain no longer resolves, so every such image 404s). Repoint them to
+    // the current asset origin (ASSET_URL → CloudFront), preserving the object key. New
+    // uploads already store S3 URLs, so no fresh r2.dev values are ever created.
+    if (preg_match('#^https?://[^/]*\.r2\.dev/(.+)$#', $filename, $m)) {
+        return rtrim(asset_url(''), '/') . '/' . $m[1];
+    }
     if (str_starts_with($filename, 'http')) return $filename;
     if ($filename[0] === '/') return $filename;            // already a root-relative URL (e.g. /images/...)
     return '/assets/img/' . $filename;
