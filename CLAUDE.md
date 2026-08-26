@@ -58,6 +58,14 @@ A `deposit` step in the check-in wizard (migration: `add_checkin_deposit.sql`, a
 - **Card image storage mirrors the passport scan**: private only. Uploaded via `api/checkin-upload.php` (the `deposit_card` file field → booking-level key `checkin/<hold>/deposit/…`, lead-only, images only — no PDF), stored with `storage_put_private()`, and served **only** through `admin/checkin-file.php?hold=<id>&kind=deposit`. Never a public URL. The wizard's delegated uploader (`js/checkin-wizard.js`) routes a `.ci-upload[data-kind="deposit"]` input to the `deposit_card` field; every other `.ci-upload` stays a passport scan.
 - **Completion:** `checkin_step_complete('deposit', $data, …)` is true once the card image is on file (`checkin_deposit_card_on_file()`). When the admin marks the step required, both the client (`validateStep`, gated on `data-deposit-required`) and the server (`checkin_missing_steps` → the submit gate in `api/checkin-save.php`) block finishing until the image is uploaded. Admin `_ws_checkin.php` shows the amount + a "View card" link. Test: `php tests/checkin_logic.php`.
 
+### Property photo galleries — DB-driven, admin-editable
+Both galleries on a property page come from **`venue_images`**, edited in Admin → Venues → *property* → **Gallery** (upload / set-main / reorder / delete, `admin/venue-edit.php`). Nothing about a property page's photos is hand-coded any more.
+- **One resolver, one query.** `pg_gallery($slug, $fallback = [], $badge = '')` in `includes/property-gallery-data.php` returns `['badge','images'=>[['url','alt'],…]]`. It memoizes **only the DB-derived result** — `$fallback` is applied per call. That split is load-bearing: the hero calls it *with* a static fallback and the bottom grid calls it *without* one, and caching the fallback would make the grid render stale photos instead of hiding. Don't "simplify" it into a single cached return.
+- **Two partials, one lightbox.** `includes/property-gallery.php` (hero) and `includes/property-photo-grid.php` (bottom section) consume the same ordered list, so grid tile `i` addresses image `i` in the shared `pgOpenLb` lightbox. Never slice, re-sort or filter one and not the other. The per-page `openLb`/`#lb` lightboxes were deleted — don't reintroduce one.
+- **The bottom section renders all images and hides when there are none** (no static fallback, deliberately). The trailing `<div class="divider">` lives *inside* the partial so a hidden section doesn't leave two stacked dividers.
+- `$pgrid_heading` / `$pgrid_caption_extra` are echoed as **raw HTML** (they carry `<em>` and `<a>`); they are page-authored config and must never receive user or DB input. Image `url`/`alt` are DB values and go through `e()`.
+- Test: `php tests/property_gallery.php`. Seed: `db/seed_venue_images.sql`.
+
 ### Restaurant menus — DB-driven, per property, manager-editable
 Digital restaurant menus live in the DB (migration: `add_menus.sql`), not in static pages. Model: `menus` (per property, keyed by URL `slug`, optional `venue_id`) → `menu_categories` (`section` food|drinks, `is_visible`) → `menu_items` (`price` NUMERIC KES, 7 badge booleans, `is_available` = the "Hidden" toggle, `sort_order`). Helpers in **`includes/menu.php`**; every read is pre-migration-safe (`menus_supported()`).
 - **Public:** `menu.php?m=<slug>` — a standalone, `noindex`, mobile-first page (reuses the original zuri-menu design). Legacy `zuri-menu.php` + `maya-kobe-breakfast.php` are now **conditional 301 redirects** to it (redirect only when the DB menu exists — never a blank page). The site nav "Restaurants" mega-menu (`includes/header.php`, `fetch_published_menus()`) lists published menus alongside the static Tribal Table / Somewhere Café venue links; the two columns are **Kilifi** and **Watamu**, driven by the `$__navMenuMeta` slug map at the top of `header.php` (town / thumbnail / display name / `open`|`soon` status tag) and rendered by `ts_nav_menu_row()`. A published menu with no entry in that map still appears — it falls through to a "More Menus" group so nothing silently drops out of the nav.
@@ -87,6 +95,9 @@ Table reservations live in the DB (migration: `add_reservations.sql`, after `add
 | `api/submit-agency.php` | Trade/agent enquiry |
 | `api/sync-ical.php` | Pull OTA iCal feeds, import availability blocks |
 | `admin/gantt.php` | Gantt calendar + iCal sync |
+| `includes/property-gallery-data.php` | `pg_gallery()` — memoized venue-slug → gallery-image resolver, shared by both gallery partials |
+| `includes/property-gallery.php` | Top hero gallery partial + the shared `pgOpenLb` lightbox |
+| `includes/property-photo-grid.php` | Bottom "Photo Gallery" section partial — DB-driven, hides when the venue has no images |
 | `includes/menu.php` | Restaurant menu helpers (DB-driven, per property, pre-migration-safe) |
 | `menu.php` | Public digital menu page (`?m=<slug>`) |
 | `admin/menus.php` · `admin/menu-edit.php` | Menu manager (list + editor, manager-scoped) |
