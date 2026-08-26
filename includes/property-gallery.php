@@ -4,36 +4,17 @@
  * Usage: $pg_venue_slug = 'zuri'; include __DIR__ . '/includes/property-gallery.php';
  * Renders nothing if the venue has no images (page can keep a fallback gallery).
  */
-require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/property-gallery-data.php';
+
 $pg_venue_slug = $pg_venue_slug ?? '';
 
-// ── Gather images from the DB (primary) ───────────────────────────────
-$__pgv  = false;
-$__imgs = [];
-try {
-    $__pgv  = $pg_venue_slug ? db_query('SELECT * FROM venues WHERE slug = :s', [':s' => $pg_venue_slug])->fetch() : false;
-    $__imgs = $__pgv ? fetch_venue_images((int)$__pgv['id']) : [];
-} catch (Throwable $e) {
-    $__pgv = false; $__imgs = [];
-}
-
-// ── Build a unified [url, alt] list — DB first, else static fallback ───
-$__gallery = [];
-$__badge   = '';
-if ($__imgs) {
-    $__badge = trim(($__pgv['name'] ?? '') . (!empty($__pgv['location']) ? ' · ' . $__pgv['location'] : ''));
-    foreach ($__imgs as $im) {
-        $__gallery[] = ['url' => storage_url($im['filename']), 'alt' => ($im['alt_text'] ?: ($__pgv['name'] ?? ''))];
-    }
-} elseif (!empty($pg_fallback) && is_array($pg_fallback)) {
-    // Static fallback so the gallery hero renders without the DB (Render-safe)
-    $__badge = $pg_fallback_badge ?? '';
-    foreach ($pg_fallback as $fb) {
-        if (is_string($fb))      $__gallery[] = ['url' => $fb, 'alt' => ($pg_fallback_badge ?? 'Property photo')];
-        elseif (is_array($fb))   $__gallery[] = ['url' => $fb['src'] ?? ($fb['url'] ?? ''), 'alt' => $fb['alt'] ?? ($pg_fallback_badge ?? 'Property photo')];
-    }
-    $__gallery = array_values(array_filter($__gallery, fn($g) => $g['url'] !== ''));
-}
+$__pg      = pg_gallery(
+    $pg_venue_slug,
+    (!empty($pg_fallback) && is_array($pg_fallback)) ? $pg_fallback : [],
+    $pg_fallback_badge ?? ''
+);
+$__badge   = $__pg['badge'];
+$__gallery = $__pg['images'];
 
 if (!$__gallery) { return; }
 
