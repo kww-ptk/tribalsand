@@ -1,9 +1,17 @@
-name: Build and push image to Amazon ECR
+name: Build, push, and deploy to ECS
 
-# Builds the Apache/PHP Docker image and pushes it to ECR on every commit to
-# master (and on-demand via the Actions "Run workflow" button). App Runner is
-# configured to auto-deploy whenever the :latest tag changes, so a push here
-# rolls out to the live service automatically.
+# Builds the Apache/PHP Docker image, pushes it to ECR on every commit to
+# master (and on-demand via the Actions "Run workflow" button), then forces a
+# new ECS Express Mode deployment so the live service re-pulls :latest.
+#
+# NOTE: ECS Express Mode does NOT auto-deploy on an ECR tag change (unlike the
+# now-defunct App Runner). The `deploy` job below is what actually rolls new
+# code out to the live site — without it, pushes only sit in ECR.
+#
+# The deploy job requires the GitHub deploy IAM user to hold ecs:UpdateService
+# + ecs:DescribeServices on the tribalsand service (in addition to its existing
+# ECR power-user access). If those perms are missing the deploy job fails loudly
+# (which is the intended signal) while the build/push job still succeeds.
 
 on:
   push:
@@ -14,6 +22,8 @@ env:
   AWS_REGION: eu-west-1
   ECR_REPOSITORY: tribalsand
   IMAGE_TAG: latest
+  ECS_CLUSTER: default
+  ECS_SERVICE: tribalsand
 
 jobs:
   build-and-push:
@@ -42,3 +52,36 @@ jobs:
           docker push "$IMAGE:$IMAGE_TAG"
           docker push "$IMAGE:${GITHUB_SHA::7}"
           echo "Pushed $IMAGE:$IMAGE_TAG and $IMAGE:${GITHUB_SHA::7}"
+
+  # Rolls the freshly-pushed :latest image out to the live ECS Express Mode
+  # service. Separate job so a deploy-permission failure is isolated from the
+  # build/push success and easy to spot in the Actions run.
+  deploy:
+    needs: build-and-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Force a new ECS deployment (re-pull :latest)
+        run: |
+          aws ecs update-service \
+            --cluster "$ECS_CLUSTER" \
+            --service "$ECS_SERVICE" \
+            --force-new-deployment \
+            --region "$AWS_REGION" \
+            --no-cli-pager \
+            --query 'service.{name:serviceName,status:status,desired:desiredCount}' \
+            --output table
+
+      - name: Wait for the service to stabilise
+        run: |
+          aws ecs wait services-stable \
+            --cluster "$ECS_CLUSTER" \
+            --services "$ECS_SERVICE" \
+            --region "$AWS_REGION"
+          echo "ECS service $ECS_SERVICE is stable on the new deployment."
