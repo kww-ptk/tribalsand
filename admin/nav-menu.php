@@ -4,6 +4,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/nav-data.php';
+require_once __DIR__ . '/../includes/storage.php';   // storage_put() for nav thumbnails
 require_login();
 require_owner();   // site-wide navigation = owner only
 
