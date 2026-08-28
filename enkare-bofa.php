@@ -234,7 +234,7 @@ select.book-inp{cursor:pointer;appearance:none;background-image:url("data:image/
   body{padding-bottom:72px;}
 }
 @media(max-width:768px){
-  .gallery{grid-template-columns:1fr;height:60vw;max-height:380px;}
+  .gallery{grid-template-columns:1fr;grid-template-rows:1fr;height:60vw;max-height:380px;}
   .gallery-main{grid-row:span 1;}
   .gallery-thumb{display:none;}
   .breadcrumb{padding:.75rem 20px;}

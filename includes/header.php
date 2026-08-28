@@ -60,6 +60,77 @@ if (!function_exists('ts_nav_menu_row')) {
     }
 }
 ?>
+<?php
+// ── Admin-editable mega menu ─────────────────────────────────────────────
+// Render the top nav + drawer from the DB (nav_items/groups/links) when seeded;
+// fall back to the hardcoded markup below otherwise (pre-migration-safe).
+require_once __DIR__ . '/nav-data.php';
+$__navTree = nav_supported() ? fetch_nav_tree() : [];
+
+// Restaurants stays auto-driven (live published menus + Reserve link). Capture
+// its desktop dropdown AND drawer section once, so both the DB-rendered nav and
+// the hardcoded fallback splice in the very same markup (no duplication).
+ob_start(); ?>
+    <!-- Restaurants -->
+    <div class="ts-item">
+      <button class="ts-link">Restaurants
+        <svg viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 1l4 4 4-4"/></svg>
+      </button>
+      <div class="ts-drop wide-2">
+
+        <div class="ts-drop-col">
+          <span class="ts-drop-lbl">Kilifi</span>
+          <a href="tribal-table.php" class="ts-prop-row">
+            <img src="<?= asset_url('images/maya-kobe/Maya Kobe - Day Outdoor, Pool, Beach/Maya Kobe Best4.jpg') ?>" alt="Tribal Table">
+            <div><div class="ts-prop-name">Tribal Table <span class="ts-tag ts-tag-open">· Now Open</span></div><div class="ts-prop-loc">Restaurant &amp; Bar · Kilifi</div></div>
+          </a>
+          <a href="somewhere-cafe.php" class="ts-prop-row">
+            <img src="<?= asset_url('images/maya_illai/best6.jpg') ?>" alt="Somewhere Cafe">
+            <div><div class="ts-prop-name">Somewhere Café <span class="ts-tag ts-tag-soon">— Soon</span></div><div class="ts-prop-loc">Beachfront Café · Kilifi</div></div>
+          </a>
+          <?php foreach ($__navMenusByTown['Kilifi'] as $__m): ?>
+          <?= ts_nav_menu_row($__m) ?>
+          <?php endforeach; ?>
+        </div>
+
+        <div class="ts-drop-col">
+          <span class="ts-drop-lbl">Watamu</span>
+          <?php foreach ($__navMenusByTown['Watamu'] as $__m): ?>
+          <?= ts_nav_menu_row($__m) ?>
+          <?php endforeach; ?>
+          <?php if ($__navMenusByTown['']): ?>
+          <div class="ts-drop-div"></div>
+          <span class="ts-drop-lbl">More Menus</span>
+          <?php foreach ($__navMenusByTown[''] as $__m): ?>
+          <?= ts_nav_menu_row($__m) ?>
+          <?php endforeach; ?>
+          <?php endif; ?>
+          <?php if ($__navReserve): ?>
+          <div class="ts-drop-col-footer">
+            <div class="ts-drop-div"></div>
+            <a href="reserve.php" style="font-size:.62rem;letter-spacing:.12em;color:rgba(184,150,90,.6);padding:.55rem 1.2rem;display:block;transition:color .2s;" onmouseover="this.style.color='#D4B07A'" onmouseout="this.style.color='rgba(184,150,90,.6)'">Reserve a Table →</a>
+          </div>
+          <?php endif; ?>
+        </div>
+
+      </div>
+    </div>
+<?php $__restoDesktop = ob_get_clean();
+
+ob_start(); ?>
+  <div>
+    <span class="ts-mob-lbl">Restaurants</span>
+    <a href="tribal-table.php" class="ts-mob-link">Tribal Table <span class="ts-tag ts-tag-open">· Now Open</span> <span class="ts-mob-arr">→</span></a>
+    <a href="somewhere-cafe.php" class="ts-mob-link">Somewhere Café <span class="ts-tag ts-tag-soon">— Soon</span> <span class="ts-mob-arr">→</span></a>
+    <?php foreach (['Kilifi', 'Watamu', ''] as $__town): foreach ($__navMenusByTown[$__town] as $__m): ?>
+    <?php $__mMeta = $__m['_meta'] ?? []; $__mName = $__mMeta['name'] ?? $__m['title']; $__mSub = $__mMeta['sub'] ?? ($__m['subtitle'] ? strip_tags($__m['subtitle']) : ''); $__mHref = !empty($__mMeta['href']) ? $__mMeta['href'] : ('menu.php?m=' . $__m['slug']); $__mBlank = empty($__mMeta['href']); ?>
+    <a href="<?= e($__mHref) ?>" class="ts-mob-link"<?= $__mBlank ? ' target="_blank" rel="noopener"' : '' ?>><?= e($__mName) ?><?php if (($__mMeta['status'] ?? '') === 'open'): ?> <span class="ts-tag ts-tag-open">· Now Open</span><?php elseif ($__mSub !== ''): ?> <span style="font-size:.62rem;color:rgba(184,150,90,.55);">· <?= e($__mSub) ?></span><?php endif; ?> <span class="ts-mob-arr">→</span></a>
+    <?php endforeach; endforeach; ?>
+    <?php if ($__navReserve): ?>
+    <a href="reserve.php" class="ts-mob-link">Reserve a Table <span class="ts-mob-arr">→</span></a>
+    <?php endif; ?>
+  </div>
+<?php $__restoDrawer = ob_get_clean(); ?>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
@@ -348,6 +419,9 @@ if (!function_exists('ts_nav_menu_row')) {
 
   <!-- Desktop links -->
   <div class="ts-links">
+<?php if ($__navTree): ?>
+    <?= nav_desktop_html($__navTree, $__restoDesktop) ?>
+<?php else: ?>
 
     <!-- Accommodations -->
     <div class="ts-item">
@@ -413,50 +487,7 @@ if (!function_exists('ts_nav_menu_row')) {
       </div>
     </div>
 
-    <!-- Restaurants -->
-    <div class="ts-item">
-      <button class="ts-link">Restaurants
-        <svg viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 1l4 4 4-4"/></svg>
-      </button>
-      <div class="ts-drop wide-2">
-
-        <div class="ts-drop-col">
-          <span class="ts-drop-lbl">Kilifi</span>
-          <a href="tribal-table.php" class="ts-prop-row">
-            <img src="<?= asset_url('images/maya-kobe/Maya Kobe - Day Outdoor, Pool, Beach/Maya Kobe Best4.jpg') ?>" alt="Tribal Table">
-            <div><div class="ts-prop-name">Tribal Table <span class="ts-tag ts-tag-open">· Now Open</span></div><div class="ts-prop-loc">Restaurant &amp; Bar · Kilifi</div></div>
-          </a>
-          <a href="somewhere-cafe.php" class="ts-prop-row">
-            <img src="<?= asset_url('images/maya_illai/best6.jpg') ?>" alt="Somewhere Cafe">
-            <div><div class="ts-prop-name">Somewhere Café <span class="ts-tag ts-tag-soon">— Soon</span></div><div class="ts-prop-loc">Beachfront Café · Kilifi</div></div>
-          </a>
-          <?php foreach ($__navMenusByTown['Kilifi'] as $__m): ?>
-          <?= ts_nav_menu_row($__m) ?>
-          <?php endforeach; ?>
-        </div>
-
-        <div class="ts-drop-col">
-          <span class="ts-drop-lbl">Watamu</span>
-          <?php foreach ($__navMenusByTown['Watamu'] as $__m): ?>
-          <?= ts_nav_menu_row($__m) ?>
-          <?php endforeach; ?>
-          <?php if ($__navMenusByTown['']): ?>
-          <div class="ts-drop-div"></div>
-          <span class="ts-drop-lbl">More Menus</span>
-          <?php foreach ($__navMenusByTown[''] as $__m): ?>
-          <?= ts_nav_menu_row($__m) ?>
-          <?php endforeach; ?>
-          <?php endif; ?>
-          <?php if ($__navReserve): ?>
-          <div class="ts-drop-col-footer">
-            <div class="ts-drop-div"></div>
-            <a href="reserve.php" style="font-size:.62rem;letter-spacing:.12em;color:rgba(184,150,90,.6);padding:.55rem 1.2rem;display:block;transition:color .2s;" onmouseover="this.style.color='#D4B07A'" onmouseout="this.style.color='rgba(184,150,90,.6)'">Reserve a Table →</a>
-          </div>
-          <?php endif; ?>
-        </div>
-
-      </div>
-    </div>
+    <?= $__restoDesktop ?>
 
     <!-- Tribal Dunes -->
     <div class="ts-item">
@@ -522,12 +553,12 @@ if (!function_exists('ts_nav_menu_row')) {
         <svg viewBox="0 0 10 6" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M1 1l4 4 4-4"/></svg>
       </button>
       <div class="ts-drop">
-        <a href="my-amani-gallery.php">My Amani</a>
-        <a href="maya-kobe-gallery.php">Maya Kobe</a>
-        <a href="maya-ilai-gallery.php">Maya Ilai</a>
-        <a href="zuri-gallery.php">Zuri</a>
-        <a href="enkarebofa-gallery.php">Enkare Bofa</a>
-        <a href="sandbox-gallery.php">Sandbox</a>
+        <a href="gallery.php?venue=my-amani">My Amani</a>
+        <a href="gallery.php?venue=maya-kobe">Maya Kobe</a>
+        <a href="gallery.php?venue=maya_ilai">Maya Ilai</a>
+        <a href="gallery.php?venue=zuri">Zuri</a>
+        <a href="gallery.php?venue=enkare-bofa">Enkare Bofa</a>
+        <a href="gallery.php?venue=sandbox">Sandbox</a>
         <div class="ts-drop-div"></div>
         <a href="events-gallery.php">Events Gallery</a>
       </div>
@@ -554,7 +585,7 @@ if (!function_exists('ts_nav_menu_row')) {
         <a href="contact.php">Contact Us</a>
       </div>
     </div>
-
+<?php endif; ?>
   </div>
 
   <!-- Right actions -->
@@ -592,6 +623,9 @@ if (!function_exists('ts_nav_menu_row')) {
 
 <!-- Mobile drawer -->
 <div class="ts-drawer" id="tsDrawer">
+<?php if ($__navTree): ?>
+  <?= nav_drawer_html($__navTree, $__restoDrawer) ?>
+<?php else: ?>
 
   <div>
     <span class="ts-mob-lbl">Boutique Hotels</span>
@@ -625,25 +659,16 @@ if (!function_exists('ts_nav_menu_row')) {
     <a href="interactive-site-map.php" class="ts-mob-link">Interactive Site Map <span class="ts-mob-arr">→</span></a>
   </div>
 
-  <div>
-    <span class="ts-mob-lbl">Restaurants</span>
-    <a href="tribal-table.php" class="ts-mob-link">Tribal Table <span class="ts-tag ts-tag-open">· Now Open</span> <span class="ts-mob-arr">→</span></a>
-    <a href="somewhere-cafe.php" class="ts-mob-link">Somewhere Café <span class="ts-tag ts-tag-soon">— Soon</span> <span class="ts-mob-arr">→</span></a>
-    <?php foreach (['Kilifi', 'Watamu', ''] as $__town): foreach ($__navMenusByTown[$__town] as $__m): ?>
-    <?php $__mMeta = $__m['_meta'] ?? []; $__mName = $__mMeta['name'] ?? $__m['title']; $__mSub = $__mMeta['sub'] ?? ($__m['subtitle'] ? strip_tags($__m['subtitle']) : ''); $__mHref = !empty($__mMeta['href']) ? $__mMeta['href'] : ('menu.php?m=' . $__m['slug']); $__mBlank = empty($__mMeta['href']); ?>
-    <a href="<?= e($__mHref) ?>" class="ts-mob-link"<?= $__mBlank ? ' target="_blank" rel="noopener"' : '' ?>><?= e($__mName) ?><?php if (($__mMeta['status'] ?? '') === 'open'): ?> <span class="ts-tag ts-tag-open">· Now Open</span><?php elseif ($__mSub !== ''): ?> <span style="font-size:.62rem;color:rgba(184,150,90,.55);">· <?= e($__mSub) ?></span><?php endif; ?> <span class="ts-mob-arr">→</span></a>
-    <?php endforeach; endforeach; ?>
-    <?php if ($__navReserve): ?>
-    <a href="reserve.php" class="ts-mob-link">Reserve a Table <span class="ts-mob-arr">→</span></a>
-    <?php endif; ?>
-  </div>
+  <?= $__restoDrawer ?>
 
   <div>
     <span class="ts-mob-lbl">Gallery</span>
-    <a href="my-amani-gallery.php" class="ts-mob-link">My Amani <span class="ts-mob-arr">→</span></a>
-    <a href="maya-kobe-gallery.php" class="ts-mob-link">Maya Kobe <span class="ts-mob-arr">→</span></a>
-    <a href="zuri-gallery.php" class="ts-mob-link">Zuri <span class="ts-mob-arr">→</span></a>
-    <a href="enkarebofa-gallery.php" class="ts-mob-link">Enkare Bofa <span class="ts-mob-arr">→</span></a>
+    <a href="gallery.php?venue=my-amani" class="ts-mob-link">My Amani <span class="ts-mob-arr">→</span></a>
+    <a href="gallery.php?venue=maya-kobe" class="ts-mob-link">Maya Kobe <span class="ts-mob-arr">→</span></a>
+    <a href="gallery.php?venue=maya_ilai" class="ts-mob-link">Maya Ilai <span class="ts-mob-arr">→</span></a>
+    <a href="gallery.php?venue=zuri" class="ts-mob-link">Zuri <span class="ts-mob-arr">→</span></a>
+    <a href="gallery.php?venue=enkare-bofa" class="ts-mob-link">Enkare Bofa <span class="ts-mob-arr">→</span></a>
+    <a href="gallery.php?venue=sandbox" class="ts-mob-link">Sandbox <span class="ts-mob-arr">→</span></a>
     <a href="events-gallery.php" class="ts-mob-link">Events <span class="ts-mob-arr">→</span></a>
   </div>
 
@@ -660,7 +685,7 @@ if (!function_exists('ts_nav_menu_row')) {
     <a href="contact.php" class="ts-mob-link">Contact Us <span class="ts-mob-arr">→</span></a>
     <a href="for-agents.php" class="ts-mob-link">For Agents <span class="ts-mob-arr">→</span></a>
   </div>
-
+<?php endif; ?>
   <div class="ts-mob-actions">
     <a href="trip-builder.php" class="ts-mob-btn ts-mob-btn-plan">Plan Your Trip</a>
     <a href="/#properties" class="ts-mob-btn ts-mob-btn-book">Book Now</a>

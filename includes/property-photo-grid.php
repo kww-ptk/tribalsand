@@ -29,6 +29,14 @@ unset($pgrid_heading, $pgrid_caption_extra); // read once above; cleared immedia
 $__pgrid = pg_gallery($pg_venue_slug);
 if (!$__pgrid['images']) { return; }
 
+// Listing section shows at most the first 15 photos; the rest live on the full
+// gallery page (gallery.php?venue=<slug>). The slice keeps 0-based indices intact,
+// so tile i still addresses image i in the shared pgOpenLb lightbox (which holds
+// the FULL ordered list) — never re-sort or filter here, only truncate the tail.
+$__pgrid_total = count($__pgrid['images']);
+$__pgrid_shown = array_slice($__pgrid['images'], 0, 15);
+$__pgrid_more  = $__pgrid_total > 15;
+
 // $__pgrid_heading is either trusted page-authored HTML, or (when unset) the
 // venue name alone from "Name · Location" — escaped here, once, so the raw
 // echo below always means "already-safe HTML," never "escape me first."
@@ -44,11 +52,16 @@ $__pgrid_h = $__pgrid_heading !== ''
 <?php endif; ?>
       <div class="sec-rule"></div>
       <div class="photo-grid">
-<?php foreach ($__pgrid['images'] as $__i => $__im): ?>
+<?php foreach ($__pgrid_shown as $__i => $__im): ?>
         <img src="<?= e($__im['url']) ?>" alt="<?= e($__im['alt']) ?>" onclick="pgOpenLb(<?= $__i ?>)" loading="lazy">
 <?php endforeach; ?>
       </div>
       <div class="photo-grid-cap">Tap any photo to enlarge<?= $__pgrid_caption_extra ?></div>
+<?php if ($__pgrid_more): ?>
+      <div style="text-align:center;margin:.4rem 0 2rem;">
+        <a href="gallery.php?venue=<?= e($pg_venue_slug) ?>" style="display:inline-flex;align-items:center;gap:.5rem;padding:.7rem 1.6rem;border:1px solid var(--sand,#B8965A);color:var(--teal,#1E5C6B);font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;transition:background .2s,color .2s;" onmouseover="this.style.background='var(--teal,#1E5C6B)';this.style.color='#fff';" onmouseout="this.style.background='transparent';this.style.color='var(--teal,#1E5C6B)';">See all <?= $__pgrid_total ?> photos &rarr;</a>
+      </div>
+<?php endif; ?>
     </div>
 
     <div class="divider"></div>
