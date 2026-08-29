@@ -1,9 +1,24 @@
+<?php require_once __DIR__ . '/includes/db.php'; // asset_url() for the og:image below ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Tribal Sand | From Safari to Sea</title>
+    <title>Kenya Itinerary · From Safari to Sea · Tribal Sand</title>
+    <meta name="description" content="A curated Kenya itinerary pairing a Tsavo or Maasai Mara safari with beachfront days on the North Coast — bush and ocean in one unforgettable trip, planned by Tribal Sand.">
+    <link rel="canonical" href="https://tribalsand.com/kenya-itinerary">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Tribal Sand">
+    <meta property="og:url" content="https://tribalsand.com/kenya-itinerary">
+    <meta property="og:title" content="Kenya Itinerary · From Safari to Sea · Tribal Sand">
+    <meta property="og:description" content="Pair a Tsavo or Maasai Mara safari with beachfront days on Kenya's North Coast — bush and ocean in one trip, planned by Tribal Sand.">
+    <meta property="og:image" content="<?= asset_url('images/Maya-Kobe-1-hero.webp') ?>">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Kenya Itinerary · From Safari to Sea · Tribal Sand">
+    <meta name="twitter:description" content="Pair a safari with beachfront days on Kenya's North Coast — bush and ocean in one trip, planned by Tribal Sand.">
+    <meta name="twitter:image" content="<?= asset_url('images/Maya-Kobe-1-hero.webp') ?>">
     
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.1/font/bootstrap-icons.css">

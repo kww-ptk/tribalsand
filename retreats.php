@@ -7,11 +7,11 @@
 
 <title>Retreats in Kenya · Yoga, Wellness & Kitesurf · Tribal Sand</title>
 <meta name="description" content="Beachfront retreat venues in Watamu & Kilifi, Kenya. Yoga, wellness, kitesurf, corporate, summer & marine biology camps for groups up to 48+.">
-<link rel="canonical" href="https://tribalsand.com/retreats.php">
+<link rel="canonical" href="https://tribalsand.com/retreats">
 
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="Tribal Sand">
-<meta property="og:url" content="https://tribalsand.com/retreats.php">
+<meta property="og:url" content="https://tribalsand.com/retreats">
 <meta property="og:title" content="Retreats in Kenya · Yoga, Wellness, Kitesurf & Corporate · Tribal Sand">
 <meta property="og:description" content="Beachfront retreat venues on Kenya's coast for groups up to 48+. Yoga, wellness, kitesurf camps and corporate offsites — fully arranged.">
 <meta property="og:image" content="<?= asset_url('images/maya_illai/Best1.jpg') ?>">

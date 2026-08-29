@@ -80,7 +80,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TribalSand | Properties</title>
+    <title>Property for Sale on Kenya's Coast · Beachfront Homes &amp; Land · Tribal Sand</title>
+    <meta name="description" content="Beachfront homes, villas and land for sale on Kenya's North Coast — Watamu, Kilifi and Vipingo. Invest in your dream coastal property with Tribal Sand.">
+    <link rel="canonical" href="https://tribalsand.com/properties">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Tribal Sand">
+    <meta property="og:url" content="https://tribalsand.com/properties">
+    <meta property="og:title" content="Property for Sale on Kenya's Coast · Tribal Sand">
+    <meta property="og:description" content="Beachfront homes, villas and land for sale in Watamu, Kilifi and Vipingo on Kenya's North Coast.">
+    <meta property="og:image" content="<?= asset_url('images/Maya-Kobe-1-hero.webp') ?>">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Property for Sale on Kenya's Coast · Tribal Sand">
+    <meta name="twitter:description" content="Beachfront homes, villas and land for sale in Watamu, Kilifi and Vipingo on Kenya's North Coast.">
+    <meta name="twitter:image" content="<?= asset_url('images/Maya-Kobe-1-hero.webp') ?>">
     <link rel="icon" href="images/favicon.png">
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">

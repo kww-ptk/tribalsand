@@ -48,6 +48,7 @@ $page_title   = 'Zuri Restaurant · Beachfront Dining · Garoda Beach Watamu · 
 $page_desc    = 'Zuri is now open to the public, by reservation only. Coastal à la carte dining on Garoda Beach, Watamu. View the menu and request your table.';
 $page_url     = 'https://tribalsand.com/zuri-restaurant.php';
 $page_image   = asset_url('images/hero-zuri.jpg');
+$page_schema  = '{"@context":"https://schema.org","@type":"Restaurant","name":"Zuri Restaurant","servesCuisine":["Coastal","Swahili"],"address":{"@type":"PostalAddress","addressLocality":"Watamu","addressRegion":"Kilifi County","addressCountry":"KE"},"telephone":"+254115115247","url":"https://tribalsand.com/zuri-restaurant","acceptsReservations":"True","image":"' . asset_url('images/hero-zuri.jpg') . '","parentOrganization":{"@type":"Organization","name":"Tribal Sand","url":"https://tribalsand.com"}}';
 $page_booking = true;   // loads booking.css (datepicker styling) + datepicker.js
 ?>
 <?php include __DIR__ . '/includes/head.php'; ?>

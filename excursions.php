@@ -1,10 +1,25 @@
+<?php require_once __DIR__ . '/includes/db.php'; // asset_url() for the og:image below ?>
 <!DOCTYPE html>
 <html lang="en">
 
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TribalSand</title>
+    <title>Excursions &amp; Day Tours in Kenya · Safaris, Dhow Cruises &amp; Fishing · Tribal Sand</title>
+    <meta name="description" content="Curated Kenya coast excursions from your Tribal Sand stay — Tsavo safaris, dolphin and Swahili dhow cruises, deep-sea fishing, kitesurfing, skydiving and cultural tours.">
+    <link rel="canonical" href="https://tribalsand.com/excursions">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Tribal Sand">
+    <meta property="og:url" content="https://tribalsand.com/excursions">
+    <meta property="og:title" content="Excursions &amp; Day Tours in Kenya · Tribal Sand">
+    <meta property="og:description" content="Tsavo safaris, dolphin and dhow cruises, deep-sea fishing, kitesurfing and cultural tours along Kenya's North Coast — arranged around your stay.">
+    <meta property="og:image" content="<?= asset_url('images/Maya-Kobe-1-hero.webp') ?>">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Excursions &amp; Day Tours in Kenya · Tribal Sand">
+    <meta name="twitter:description" content="Tsavo safaris, dolphin and dhow cruises, deep-sea fishing, kitesurfing and cultural tours along Kenya's North Coast.">
+    <meta name="twitter:image" content="<?= asset_url('images/Maya-Kobe-1-hero.webp') ?>">
     <link rel="icon" href="images/favicon.png">
     <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.3.1/css/bootstrap.min.css">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">

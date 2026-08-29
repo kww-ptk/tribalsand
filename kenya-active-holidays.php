@@ -1,3 +1,4 @@
+<?php require_once __DIR__ . '/includes/db.php'; // asset_url() for the og:image below ?>
 <!DOCTYPE html>
 <html lang="en">
 
@@ -8,6 +9,19 @@
     <title>Kenya Active Holidays | Tribal Sand</title>
     <meta name="description"
         content="Discover why Kenya is the perfect destination for active travellers. Golf, kitesurfing, scuba diving and luxury coastal living.">
+    <link rel="canonical" href="https://tribalsand.com/kenya-active-holidays">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Tribal Sand">
+    <meta property="og:url" content="https://tribalsand.com/kenya-active-holidays">
+    <meta property="og:title" content="Kenya Active Holidays · Golf, Kitesurf &amp; Diving · Tribal Sand">
+    <meta property="og:description" content="Kenya for active travellers — golf, kitesurfing, scuba diving and luxury coastal living on the North Coast.">
+    <meta property="og:image" content="<?= asset_url('images/Maya-Kobe-1-hero.webp') ?>">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="Kenya Active Holidays · Golf, Kitesurf &amp; Diving · Tribal Sand">
+    <meta name="twitter:description" content="Kenya for active travellers — golf, kitesurfing, scuba diving and luxury coastal living on the North Coast.">
+    <meta name="twitter:image" content="<?= asset_url('images/Maya-Kobe-1-hero.webp') ?>">
 
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css">
 
