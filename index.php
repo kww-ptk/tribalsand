@@ -447,6 +447,8 @@ include 'includes/head.php';
 
 </section>
 
+<?php include 'includes/promo-offers.php'; ?>
+
 <!-- ═══ INTRO STRIP ═══ -->
 <div class="intro-strip">
   <div class="intro-left">

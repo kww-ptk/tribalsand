@@ -192,6 +192,10 @@ if ($__shellFrag) { ob_start(); return; }
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 21v-6h6v6"/></svg>
           For Sale Listings
         </a>
+        <a href="/admin/offers.php"       class="sidebar__link <?= ($activeMenu??'')==='offers'       ? 'is-active':'' ?>">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+          Offers
+        </a>
         <a href="/admin/tours.php"        class="sidebar__link <?= ($activeMenu??'')==='tours'        ? 'is-active':'' ?>">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h1m17 0h-1M5.6 5.6l.7.7m11.4-.7-.7.7M12 3v1m0 17v-1M7 17l-2 2m14-2 2 2"/><circle cx="12" cy="12" r="4"/></svg>
           Tours
