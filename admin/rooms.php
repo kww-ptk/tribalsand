@@ -47,7 +47,7 @@ $total = (int) db_query("SELECT COUNT(*) $base", $params)->fetchColumn();
 $meta  = paginate_meta($total, 1, 500);
 
 $rooms = db_query(
-    "SELECT r.*, v.name AS venue_name,
+    "SELECT r.*, v.name AS venue_name, v.slug AS venue_slug,
         (SELECT filename FROM room_images WHERE room_id = r.id AND is_hero = TRUE LIMIT 1) AS hero_img
      $base
      ORDER BY r.sort_order ASC
@@ -119,7 +119,13 @@ ob_start(); ?>
             <td style="text-align:right">
               <span class="dt-actions">
                 <a href="/admin/room-edit.php?id=<?= e($room['id']) ?>" class="btn-icon btn-icon--outline" title="Edit" aria-label="Edit"><?= admin_icon('edit') ?></a>
-                <a href="/<?= e($room['slug']) ?>" class="btn-icon btn-icon--outline" title="View live" aria-label="View live" target="_blank" rel="noopener"><?= admin_icon('external-link') ?></a>
+<?php // Rooms have no per-room page — they render on their venue's property page. Link there, anchored to the room card.
+                    $roomLive = !empty($room['venue_slug']) ? '/' . rawurlencode($room['venue_slug']) . '#room-' . rawurlencode($room['slug']) : ''; ?>
+                <?php if ($roomLive !== ''): ?>
+                <a href="<?= e($roomLive) ?>" class="btn-icon btn-icon--outline" title="View live" aria-label="View live" target="_blank" rel="noopener"><?= admin_icon('external-link') ?></a>
+                <?php else: ?>
+                <span class="btn-icon btn-icon--outline" title="No live page (room has no property)" aria-label="No live page" style="opacity:.4;cursor:not-allowed"><?= admin_icon('external-link') ?></span>
+                <?php endif; ?>
               </span>
             </td>
           </tr>

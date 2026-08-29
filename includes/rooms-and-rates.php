@@ -56,7 +56,7 @@ if ($__roomIds) {
         $price = (float)$r['price_amount'];
         $unit  = trim((string)($r['price_unit'] ?? ''));
       ?>
-      <article class="suite-card rr-card"
+      <article class="suite-card rr-card" id="room-<?= e($r['slug']) ?>"
                data-room-slug="<?= e($r['slug']) ?>" data-room-name="<?= e($r['name']) ?>"
                data-price="<?= e($price) ?>" data-currency="<?= e($r['price_currency']) ?>">
         <div class="suite-card-img<?= empty($r['hero']) && !$hasPhotos ? ' suite-card-img--placeholder' : '' ?>"<?= empty($r['hero']) && !$hasPhotos ? ' data-placeholder="1"' : '' ?>

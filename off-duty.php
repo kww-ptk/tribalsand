@@ -3,6 +3,7 @@
 $page_title = 'Off Duty · Beachfront Active Coworking Hotel · Kilifi · Coming Soon · Tribal Sand';
 $page_desc  = 'Beachfront active coworking hotel in Kilifi, Kenya. Fast WiFi, private desks, kitesurf beach, pool and solar power at Tribal Dunes. Join the waitlist.';
 $page_url   = 'https://tribalsand.com/off-duty.php';
+$page_image = asset_url('images/maya-kobe/Aerial/mayakobe-2.webp');
 $page_schema = ts_schema_org() . ts_schema_breadcrumb([
     ['name'=>'Home','url'=>'https://tribalsand.com/'],
     ['name'=>'Tribal Dunes','url'=>'https://tribalsand.com/tribal-dunes.php'],

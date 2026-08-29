@@ -465,11 +465,49 @@ function menu_badge_checkboxes(?array $it): void {
 .menu-inline{position:relative;display:inline-block}
 .menu-inline > summary{cursor:pointer}
 .menu-inline > summary::-webkit-details-marker{display:none}
-.menu-inline-form{margin-top:10px;padding:16px;border:1px solid var(--border);border-radius:8px;background:var(--surface,#fff);min-width:min(560px,86vw)}
+.menu-inline-form{position:relative;margin-top:10px;padding:16px;border:1px solid var(--border);border-radius:8px;background:var(--surface,#fff);min-width:min(560px,86vw)}
+/* JS-injected close (X) button, top-right of each panel. */
+.mi-close{position:absolute;top:8px;right:8px;z-index:3}
 /* Inline edit panels inside the actions column pop over to the right so the table doesn't jump. */
 td .menu-inline[open]{position:static}
 td .menu-inline[open] .menu-inline-form{position:absolute;right:20px;z-index:20;box-shadow:0 18px 50px rgba(0,0,0,.18)}
 </style>
+
+<script>
+// Menu edit popovers: open one closes the rest; outside-click / Esc / X all close.
+// Progressive enhancement over the native <details> (which still toggles without JS).
+(function () {
+  var panels = Array.prototype.slice.call(document.querySelectorAll('details.menu-inline'));
+  if (!panels.length) return;
+  var xSvg = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+  function closeAll(except) {
+    panels.forEach(function (d) { if (d !== except && d.open) d.open = false; });
+  }
+  panels.forEach(function (d) {
+    var form = d.querySelector('.menu-inline-form');
+    if (form && !form.querySelector('.mi-close')) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'btn-icon btn-icon--outline mi-close';
+      btn.title = 'Close';
+      btn.setAttribute('aria-label', 'Close');
+      btn.innerHTML = xSvg;
+      btn.addEventListener('click', function () { d.open = false; });
+      form.appendChild(btn);
+    }
+    // Opening one panel auto-closes any other open panel.
+    d.addEventListener('toggle', function () { if (d.open) closeAll(d); });
+  });
+  // Click/tap outside any open panel closes it (mousedown = before focus).
+  document.addEventListener('mousedown', function (e) {
+    if (!e.target.closest('details.menu-inline')) closeAll(null);
+  });
+  // Escape closes any open panel.
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') closeAll(null);
+  });
+})();
+</script>
 
 <?php endif; ?>
 

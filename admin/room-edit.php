@@ -6,7 +6,7 @@ require_login();
 require_owner();
 
 $id   = isset($_GET['id']) ? (int)$_GET['id'] : 0;
-$room = $id ? db_query('SELECT * FROM rooms WHERE id = :id', [':id' => $id])->fetch() : null;
+$room = $id ? db_query('SELECT r.*, v.slug AS venue_slug FROM rooms r LEFT JOIN venues v ON v.id = r.venue_id WHERE r.id = :id', [':id' => $id])->fetch() : null;
 $images = $id ? fetch_room_images($id) : [];
 $units  = $id ? fetch_units_by_room($id) : [];
 $isNew  = !$room;
@@ -67,7 +67,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $data
                 );
                 $id   = (int)db()->lastInsertId();
-                $room = db_query('SELECT * FROM rooms WHERE id = :id', [':id' => $id])->fetch();
+                $room = db_query('SELECT r.*, v.slug AS venue_slug FROM rooms r LEFT JOIN venues v ON v.id = r.venue_id WHERE r.id = :id', [':id' => $id])->fetch();
                 $isNew = false;
                 $success = 'Room created.';
                 header("Location: /admin/room-edit.php?id={$id}&saved=1");
@@ -253,6 +253,10 @@ if (isset($_GET['saved'])) $success = 'Room created successfully.';
 $features_text = implode("\n", json_decode($room['features_json'] ?? '[]', true) ?: []);
 $faqs_data     = json_decode($room['faqs_json'] ?? '[]', true) ?: [];
 $venues        = db_query("SELECT id, name FROM venues ORDER BY sort_order")->fetchAll();
+// Rooms have no per-room page — the live view is the venue's property page, anchored to the room card.
+$roomVenueSlug = $room['venue_slug'] ?? '';
+$roomLiveUrl   = $roomVenueSlug !== '' ? '/' . rawurlencode($roomVenueSlug) . '#room-' . rawurlencode($room['slug'] ?? '') : '';
+$roomLiveDisp  = $roomVenueSlug !== '' ? 'tribalsand.com/' . $roomVenueSlug : 'tribalsand.com';
 $pageTitle  = $isNew ? 'Add Room' : 'Edit: ' . ($room['name'] ?? '');
 $activeMenu = 'rooms';
 
@@ -264,7 +268,9 @@ include __DIR__ . '/_layout.php';
   <div class="actions">
     <a href="/admin/rooms.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Rooms</a>
     <?php if (!$isNew): ?>
-    <a href="/<?= e($room['slug']) ?>" class="btn-outline btn-sm" target="_blank">View on site</a>
+    <?php if ($roomLiveUrl !== ''): ?>
+    <a href="<?= e($roomLiveUrl) ?>" class="btn-outline btn-sm" target="_blank" rel="noopener">View on site</a>
+    <?php endif; ?>
     <a href="/admin/gantt.php?room=<?= (int)$id ?>" class="btn-outline btn-sm">Manage availability</a>
     <?php endif; ?>
   </div>
@@ -305,7 +311,7 @@ include __DIR__ . '/_layout.php';
           <span class="field-hint">Lowercase letters, numbers and hyphens only.</span>
           <?php else: ?>
           <input type="text" value="<?= e($room['slug']) ?>" readonly disabled style="background:var(--surface);color:var(--muted)">
-          <small style="display:block;color:var(--muted);margin-top:4px">Locked — live URL <code>/<?= e($room['slug']) ?></code>.</small>
+          <small style="display:block;color:var(--muted);margin-top:4px">Locked. <?php if ($roomLiveUrl !== ''): ?>Live on <code><?= e($roomLiveDisp) ?></code> (shown on its property page).<?php else: ?>Assign a property to give this room a live page.<?php endif; ?></small>
           <?php endif; ?>
         </div>
       </div>
@@ -648,7 +654,7 @@ include __DIR__ . '/_layout.php';
         <div class="form-section__title">Google Preview</div>
         <div style="border:1px solid var(--border);border-radius:6px;padding:16px;background:#fff;font-family:Arial,sans-serif">
           <div id="gTitle" style="font-size:18px;color:#1a0dab;margin-bottom:2px"><?= e($room['seo_title'] ?: $room['name']) ?></div>
-          <div style="font-size:13px;color:#006621;margin-bottom:4px">tribalsand.com/<?= e($room['slug']) ?></div>
+          <div style="font-size:13px;color:#006621;margin-bottom:4px"><?= e($roomLiveDisp) ?></div>
           <div id="gDesc" style="font-size:13px;color:#545454;line-height:1.5"><?= e($room['seo_description'] ?? '') ?></div>
         </div>
       </div>

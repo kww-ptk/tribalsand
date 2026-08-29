@@ -4,6 +4,7 @@
 $page_title = 'Somewhere Café · Beachfront Café & Co-working · Kilifi · Coming Soon';
 $page_desc  = 'Somewhere Café is a beachfront café at Tribal Dunes, Kilifi — healthy food, wood-fired pizza, great coffee, live music, pool access and WiFi. Coming soon.';
 $page_url   = 'https://tribalsand.com/somewhere-cafe.php';
+$page_image = asset_url('images/maya-kobe/Aerial/mayakobe-2.webp');
 
 /* ═══ SCHEMA ═══ */
 $page_schema  = ts_schema_org();

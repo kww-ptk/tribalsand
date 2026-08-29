@@ -31,7 +31,7 @@ if (empty($cross_tours)) return; // Hide section if no tours in DB
       <?php foreach ($cross_tours as $tour):
         $img = !empty($tour['hero_img']) ? storage_url($tour['hero_img']) : '/images/Maya-Kobe-1-hero.webp';
       ?>
-      <a class="ts-tour-card" href="/excursions.php#<?= e($tour['slug']) ?>">
+      <a class="ts-tour-card" href="/activities#tour-<?= e(rawurlencode($tour['slug'])) ?>">
         <div class="ts-tour-card__img-wrap">
           <img src="<?= e($img) ?>" alt="<?= e($tour['name']) ?>" loading="lazy">
           <?php if (!empty($tour['tag_label'])): ?>

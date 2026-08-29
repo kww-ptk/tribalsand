@@ -20,6 +20,10 @@ $CATS = [
   'nature'      => ['label' => 'Nature & Culture',  'icon' => '🌿', 'grad' => 'linear-gradient(135deg,#4a6b3a,#1d2b16)'],
   'wellness'    => ['label' => 'Wellness',          'icon' => '🧘', 'grad' => 'linear-gradient(135deg,#8a6d3b,#3a2c14)'],
   'golf'        => ['label' => 'Golf',              'icon' => '⛳', 'grad' => 'linear-gradient(135deg,#5a7d52,#233318)'],
+  // Safari categories (admin "Safaris" optgroup) — rendered here too so every published tour has a live home + anchor.
+  'classic'     => ['label' => 'Classic Safari',    'icon' => '🦁', 'grad' => 'linear-gradient(135deg,#8a6a3a,#3a2a12)'],
+  'custom'      => ['label' => 'Custom Journeys',   'icon' => '🧭', 'grad' => 'linear-gradient(135deg,#7d5a34,#2f2010)'],
+  'excursion'   => ['label' => 'Day Excursions',    'icon' => '🚙', 'grad' => 'linear-gradient(135deg,#6b5230,#241a0c)'],
 ];
 
 /* ── Load activities from the DB (managed in admin → Tours) ── */
@@ -27,7 +31,7 @@ try {
     $__acts = db_query(
         "SELECT t.*, (SELECT filename FROM tour_images WHERE tour_id = t.id AND is_hero = TRUE LIMIT 1) AS hero
          FROM tours t
-         WHERE t.is_published = TRUE AND t.category IN ('marine','watersports','nature','wellness','golf')
+         WHERE t.is_published = TRUE AND t.category IN ('marine','watersports','nature','wellness','golf','classic','custom','excursion')
          ORDER BY t.sort_order ASC"
     )->fetchAll();
 } catch (Throwable $e) {
@@ -111,7 +115,7 @@ include 'includes/header.php';
           $img = !empty($a['hero']) ? storage_url($a['hero']) : '';
           $wa  = 'https://wa.me/254115115247?text=' . rawurlencode("Hi Tribal Sand, I'd like to enquire about: " . $a['name']);
         ?>
-        <article class="act-card">
+        <article class="act-card" id="tour-<?= e($a['slug']) ?>">
           <div class="act-card__img" style="background:<?= e($c['grad']) ?>">
             <?php if ($img): ?><img src="<?= e($img) ?>" alt="<?= e($a['name']) ?>" loading="lazy"><?php else: ?><span class="act-card__icon"><?= $c['icon'] ?></span><?php endif; ?>
             <?php if (!empty($a['tag_label'])): ?><span class="act-card__tag"><?= e($a['tag_label']) ?></span><?php endif; ?>

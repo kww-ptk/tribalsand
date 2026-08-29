@@ -206,7 +206,7 @@ include __DIR__ . '/_layout.php';
   <div class="actions">
     <a href="/admin/tours.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Tours</a>
     <?php if (!$isNew): ?>
-    <a href="/tour.php?slug=<?= e($tour['slug']) ?>" class="btn-outline btn-sm" target="_blank">View on site</a>
+    <a href="/activities#tour-<?= e(rawurlencode($tour['slug'])) ?>" class="btn-outline btn-sm" target="_blank" rel="noopener">View on site</a>
     <?php endif; ?>
   </div>
 </div>

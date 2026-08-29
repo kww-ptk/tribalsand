@@ -105,6 +105,11 @@ include __DIR__ . '/_layout.php';
 .fd-dot{width:9px;height:9px;border-radius:50%}
 .fd-dot--arr{background:#2563eb}.fd-dot--in{background:#16a34a}.fd-dot--dep{background:#d97706}
 .fd-empty{color:var(--muted);font-size:13px;margin:2px 0}
+/* Centered empty state — shared by the week tab and a fully-empty day. */
+.fd-empty-state{text-align:center;max-width:420px;margin:24px auto;padding:48px 20px}
+.fd-empty-state__icon{width:56px;height:56px;margin:0 auto 16px;display:flex;align-items:center;justify-content:center;border-radius:15px;background:var(--bg-alt,#f6f4f0);border:1px solid var(--border,#e7ded7);color:#b3aa9c}
+.fd-empty-state__h{font-size:16px;font-weight:700;color:#3a352d;margin:0 0 4px}
+.fd-empty-state__p{font-size:13px;color:var(--muted);margin:0}
 /* Whole card is the booking link (F1/F5) — no side rule, no Open button. */
 .fd-card{display:block;background:#fff;border:1px solid var(--border,#e7ded7);border-radius:10px;padding:11px 13px;margin-bottom:8px;cursor:pointer;text-decoration:none;color:inherit;transition:box-shadow .15s,border-color .15s}
 .fd-card:last-child{margin-bottom:0}
@@ -157,7 +162,11 @@ include __DIR__ . '/_layout.php';
 <?php if ($when === 'week'): ?>
 
   <?php if (!$weekRows): ?>
-    <div class="card"><div class="card__body"><p class="fd-empty" style="margin:0">No arrivals in the next 7 days.</p></div></div>
+    <div class="fd-empty-state">
+      <div class="fd-empty-state__icon"><?= admin_icon('calendar', 26) ?></div>
+      <p class="fd-empty-state__h">No arrivals this week</p>
+      <p class="fd-empty-state__p">Nothing scheduled in the next 7 days.</p>
+    </div>
   <?php else:
     $byDay = [];
     foreach ($weekRows as $r) { $byDay[(string)$r['check_in']][] = $r; }
@@ -176,6 +185,13 @@ include __DIR__ . '/_layout.php';
     <div class="fd-kpi fd-kpi--dep"><div class="n"><?= count($dayData['departing']) ?></div><div class="l">Departing</div></div>
   </div>
 
+  <?php if (!$dayData['arriving'] && !$dayData['inhouse'] && !$dayData['departing']): ?>
+  <div class="fd-empty-state">
+    <div class="fd-empty-state__icon"><?= admin_icon('calendar', 26) ?></div>
+    <p class="fd-empty-state__h">Nothing scheduled <?= $when === 'today' ? 'today' : 'tomorrow' ?></p>
+    <p class="fd-empty-state__p">No arrivals, stay-overs or departures for <?= e($dayLabel) ?>.</p>
+  </div>
+  <?php else: ?>
   <div class="fd-kanban">
     <?php
       $cols = [
@@ -191,6 +207,7 @@ include __DIR__ . '/_layout.php';
       </div>
     <?php endforeach; ?>
   </div>
+  <?php endif; ?>
 
 <?php endif; ?>
 

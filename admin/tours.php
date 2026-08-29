@@ -129,7 +129,7 @@ ob_start(); ?>
             <td style="text-align:right">
               <span class="dt-actions">
                 <a href="/admin/tour-edit.php?id=<?= e($tour['id']) ?>" class="btn-icon btn-icon--outline" title="Edit" aria-label="Edit"><?= admin_icon('edit') ?></a>
-                <a href="/tour.php?slug=<?= e($tour['slug']) ?>" class="btn-icon btn-icon--outline" title="View live" aria-label="View live" target="_blank" rel="noopener"><?= admin_icon('external-link') ?></a>
+                <a href="/activities#tour-<?= e(rawurlencode($tour['slug'])) ?>" class="btn-icon btn-icon--outline" title="View live" aria-label="View live" target="_blank" rel="noopener"><?= admin_icon('external-link') ?></a>
               </span>
             </td>
           </tr>

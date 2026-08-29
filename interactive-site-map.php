@@ -3,6 +3,7 @@
 $page_title  = 'Tribal Dunes Interactive Site Map · Kilifi · Tribal Sand';
 $page_desc   = 'Explore the full grounds of Tribal Dunes in Kilifi, Kenya. Tap any marker to discover accommodation, pools, dining, sports and wellness facilities.';
 $page_url    = 'https://tribalsand.com/interactive-site-map.php';
+$page_image  = asset_url('images/tribal-dunes-map.jpg');
 $page_schema = ts_schema_org() . ts_schema_breadcrumb([
     ['name'=>'Home','url'=>'https://tribalsand.com/'],
     ['name'=>'Tribal Dunes','url'=>'https://tribalsand.com/tribal-dunes.php'],

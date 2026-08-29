@@ -4,6 +4,7 @@
 $page_title = 'Tribal Table · Beachfront Dining Restaurant · Kilifi · Now Open · Tribal Sand';
 $page_desc  = 'Beachfront dining restaurant in Kilifi, Kenya. Locally sourced coastal cuisine, craft cocktails and a sunset terrace at Tribal Dunes, Bofa Beach. Now open — book a table at tribaltablekenya.com.';
 $page_url   = 'https://tribalsand.com/tribal-table.php';
+$page_image = asset_url('images/maya-kobe/Aerial/mayakobe-2.webp');
 
 /* ═══ SCHEMA ═══ */
 $page_schema  = ts_schema_org();
