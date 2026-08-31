@@ -3,14 +3,14 @@
 ## Tech Stack
 - PHP 8.2 — no framework, vanilla PHP only
 - PostgreSQL via PDO — prepared statements only (`db_query()` helper in `includes/db.php`)
-- Apache on Render (Docker) — auto-deploy from GitHub
+- Apache on AWS ECS (Docker) — auto-deploy from GitHub via GitHub Actions (build → ECR → ECS)
 - Vanilla JS and CSS — no build system, no npm dependencies
 - Local dev: `D:\php84\php.exe -S localhost:8765` (Neon cloud DB via `.env`)
 
 ## Key Conventions
 
 ### IP detection — always use `client_ip()`
-Render runs behind a load balancer. `$_SERVER['REMOTE_ADDR']` is always the proxy IP.
+The app runs behind a load balancer. `$_SERVER['REMOTE_ADDR']` is always the proxy IP.
 **Never use `$_SERVER['REMOTE_ADDR']` directly** — always call `client_ip()` (defined in `includes/db.php`).
 Affects: rate limiting, audit logs, tracking.
 

@@ -3,7 +3,7 @@
 /**
  * Hold expiry cron — expires pending holds past their 24h TTL.
  *
- * Run every 5 minutes via Render Cron:
+ * Run every 5 minutes via a scheduled task (ECS scheduled task / cron):
  *   php bin/ical-expire-holds.php
  *
  * What it does:

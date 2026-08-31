@@ -7,7 +7,7 @@
  *   php bin/migrate.php db/migrations/add_tours.sql  # runs one specific file
  *
  * Uses the same DB connection as the app (reads .env or DATABASE_URL env var).
- * Works locally and on Render (via the web service Shell tab).
+ * Works locally and on the host (via an ECS exec / one-off task shell).
  */
 
 declare(strict_types=1);

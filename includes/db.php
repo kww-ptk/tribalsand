@@ -22,7 +22,7 @@ function db(): PDO {
 
     $env = parse_env();
 
-    // Render (and most PaaS) provide a single DATABASE_URL
+    // Many hosts provide a single DATABASE_URL connection string
     if (!empty($env['DATABASE_URL'])) {
         $u = parse_url($env['DATABASE_URL']);
         $dsn = sprintf(
@@ -93,7 +93,7 @@ function parse_env(): array {
     static $env = null;
     if ($env !== null) return $env;
 
-    // Render and other hosts inject env vars directly — use those first
+    // The host injects env vars directly — use those first
     $env = $_ENV + $_SERVER;
 
     // Fall back to .env file for local dev
@@ -262,7 +262,7 @@ function resolve_currency(?string $param, ?string $cookie, ?string $default = nu
 
 /**
  * First-visit currency guess from the visitor's country (Cloudflare's CF-IPCountry
- * header, set in front of Render). Only ever returns a supported currency; unknown
+ * header, set by the CDN/edge in front of the app). Only ever returns a supported currency; unknown
  * or missing → TS_CURRENCY_DEFAULT. A guess only — the guest can always override.
  */
 function geo_default_currency(): string {

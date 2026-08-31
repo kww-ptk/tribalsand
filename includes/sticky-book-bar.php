@@ -1,7 +1,7 @@
 <?php
 /**
  * Static sticky booking bar for property listing pages.
- * Does NOT touch the database — always renders, so it shows on Render
+ * Does NOT touch the database — always renders, so it shows in production
  * even when the DB-driven gallery/booking widget are empty.
  *
  * Usage (before including):
