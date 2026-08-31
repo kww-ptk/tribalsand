@@ -90,7 +90,7 @@ The app is already close to AWS-native. Required changes:
 5. 🔴 **SSM Parameter Store** — store as SecureString: `DATABASE_URL`, `S3_*`, SES SMTP user/pass, `TURNSTILE_*`, `ICAL_SYNC_SECRET`, `APP_URL`, `MAIL_FROM`, `MAIL_DRIVER=smtp`.
 6. 🔴 **App Runner** — service from the ECR image; attach a **VPC connector** to reach RDS; instance role granting S3 (both buckets) + SSM read + SES send; inject env from SSM; health check `/`. Note the default `*.awsapprunner.com` URL.
 7. 🟠 **CloudFront + ACM** — request an ACM cert for `tribalsand.com` + `www` (in **us-east-1** for CloudFront). Distribution: default origin = App Runner URL; a `/images/*` (and other static) behavior → S3 origin with OAC. Attach the cert + alternate domain names.
-8. 🟠 **EventBridge Scheduler + Lambda** — schedule (e.g. hourly) → small Lambda that `POST`s `https://tribalsand.com/api/sync-ical.php` with `Authorization: Bearer <ICAL_SYNC_SECRET>`. (Keeps the header-based secret; never the query param.)
+8. ✅ **Periodic jobs — handled in-container, no EventBridge/Lambda needed.** `docker/entrypoint.sh` starts `docker/scheduler.sh` (background loop) alongside Apache; it calls the app's own endpoints over loopback (`api/sync-ical.php` hourly, `api/fx-sync.php` daily) plus `bin/ical-expire-holds.php` every 5 min. Deploys through the normal GitHub→ECS pipeline. Requires `ICAL_SYNC_SECRET` + `FX_SYNC_SECRET` in the ECS task-def env. (Original plan was EventBridge Scheduler + Lambda — dropped in favour of zero extra AWS infra for a non-technical owner.)
 9. 🟠 **CloudWatch** — log groups for App Runner + Lambda; alarms (set up at launch, not later — they tell you *when* to bump the DB before guests notice): **RDS `CPUCreditBalance`** (burstable-CPU exhaustion), **`DatabaseConnections`** (approaching the ~100 cap on 1 GB), **`FreeStorageSpace`**, plus App Runner 5xx rate + unhealthy.
 
 ## Phase 3 — Data migration
@@ -149,7 +149,7 @@ _Follows the same DNS-safety discipline as `GO-LIVE-PLAN.md` Phase 4._
 5. 🔴 Secrets in SSM wired into App Runner (no secrets in the image)
 6. 🔴 `.htaccess` secret-file lockdown carried over
 7. 🟠 Stored image URLs rewritten R2 → CloudFront
-8. 🟠 iCal cron firing on schedule
+8. ✅ iCal cron — now runs in-container (`docker/scheduler.sh`); needs `ICAL_SYNC_SECRET` in ECS env + a deploy
 
 ---
 

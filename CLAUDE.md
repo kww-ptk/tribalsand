@@ -29,6 +29,9 @@ All CSS/JS `<link>`/`<script>` tags in `includes/head.php` use `?v=<?= filemtime
 ### iCal sync secret
 `api/sync-ical.php` — secret is passed via `Authorization: Bearer` header. Legacy `?secret=` query param still works for external crons but the admin Gantt "Sync Now" button uses the header. Never revert to query-param-only (it logs the secret in plaintext).
 
+### Periodic jobs — in-container scheduler (AWS)
+There is **no external cron service** (the Render cron in `render.yaml` is gone). Scheduled jobs run **inside the app container**: `docker/entrypoint.sh` starts `docker/scheduler.sh` in the background, then execs `apache2-foreground`. The scheduler is a plain bash loop (not crond — crond doesn't inherit container env; a loop launched from the entrypoint does, so the PHP scripts and loopback calls all see `DATABASE_URL`/`*_SYNC_SECRET`). It calls the app's **existing** endpoints over loopback (`127.0.0.1`, `?secret=` param) rather than duplicating logic — never fork the sync logic into the scheduler. Jobs: hold expiry every 5 min (`bin/ical-expire-holds.php`; also runs inline via `expire_stale_holds()`), OTA iCal import hourly (`api/sync-ical.php`, needs `ICAL_SYNC_SECRET` in the ECS env), FX rates daily (`api/fx-sync.php`, needs `FX_SYNC_SECRET`). All three are idempotent, so multiple ECS tasks running the loop is harmless. `*.sh` are pinned to LF (`.gitattributes` + a `sed` CR-strip in the Dockerfile) so Windows checkouts don't break the shebang.
+
 ### Team roles & job types
 `admin_users.role` is `owner | manager | staff` (extended from the old owner/staff binary via `db/migrations/add_team_roles.sql`). Gate with the role helpers in `includes/auth.php`, never a raw `admin_role()` string compare:
 - `is_owner()` — full access. `require_owner()` (pricing/settings/staff/bookings config) bounces **everyone but the owner**, so it now blocks managers too.
