@@ -179,7 +179,7 @@ ob_start(); ?>
           <td class="text-muted"><?= e($row['guest_email']) ?></td>
           <td class="text-muted"><?= e($row['room_name'] ?: ($row['tour_name'] ? 'Tour: ' . $row['tour_name'] : '—')) ?></td>
           <td class="text-muted"><?= $row['check_in'] ? e(date('d M Y', strtotime($row['check_in']))) : '—' ?></td>
-          <td class="text-muted"><?= e(date('d M Y', strtotime($row['created_at']))) ?></td>
+          <td class="text-muted" style="white-space:nowrap"><?= e(date('d M Y, H:i', strtotime($row['created_at']))) ?></td>
           <td>
             <div class="row-actions" style="justify-content:flex-end">
               <a href="/admin/submission-view.php?id=<?= e($row['id']) ?>" class="btn-icon btn-icon--outline" title="View" aria-label="View submission"><?= admin_icon('message') ?></a>

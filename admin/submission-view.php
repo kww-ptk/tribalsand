@@ -27,6 +27,7 @@ if (!$sub) {
 require_once __DIR__ . '/../includes/booking.php'; // make_manage_url()
 require_once __DIR__ . '/../includes/copy-link.php'; // copy_link_control()
 require_once __DIR__ . '/../includes/submission-notes.php'; // internal notes thread (#15)
+require_once __DIR__ . '/../includes/submission-payload.php'; // payload → display rows/sections
 
 // Flash (set by the convert handler on redirect)
 $flash = $_SESSION['sub_flash'] ?? null;
@@ -120,6 +121,12 @@ $badge = match($sub['type']) {
 $payload = json_decode($sub['payload_json'] ?? '{}', true) ?: [];
 $notes   = fetch_submission_notes($id);
 
+// Trip Builder posts a nested document (guest/trip/departure/special/itinerary);
+// every other form posts a flat scalar map. They render differently.
+$is_trip_builder = submission_is_trip_builder($payload);
+$tb_sections     = $is_trip_builder ? trip_builder_sections($payload)  : [];
+$tb_itinerary    = $is_trip_builder ? trip_builder_itinerary($payload) : [];
+
 $pageTitle  = 'Submission #' . $id;
 $activeMenu = 'submissions';
 include __DIR__ . '/_layout.php';
@@ -206,13 +213,43 @@ include __DIR__ . '/_layout.php';
       </div>
       <?php endif; ?>
 
-      <?php foreach ($payload as $k => $v): ?>
+      <?php if (!$is_trip_builder): foreach (submission_payload_rows($payload) as [$pl_label, $pl_value]): ?>
       <div>
-        <div class="detail-item__label"><?= e(ucwords(str_replace('_', ' ', $k))) ?></div>
-        <div class="detail-item__value"><?= e($v) ?></div>
+        <div class="detail-item__label"><?= e($pl_label) ?></div>
+        <div class="detail-item__value"><?= e($pl_value) ?: '—' ?></div>
       </div>
-      <?php endforeach; ?>
+      <?php endforeach; endif; ?>
     </div>
+
+    <?php foreach ($tb_sections as $sec): ?>
+    <div style="margin-top:22px">
+      <div class="detail-item__label" style="margin-bottom:10px;color:var(--teal,#1E5C6B);font-weight:700"><?= e($sec['title']) ?></div>
+      <div class="detail-grid">
+        <?php foreach ($sec['rows'] as [$sec_label, $sec_value]): ?>
+        <div>
+          <div class="detail-item__label"><?= e($sec_label) ?></div>
+          <div class="detail-item__value" style="white-space:pre-wrap"><?= e($sec_value) ?></div>
+        </div>
+        <?php endforeach; ?>
+      </div>
+    </div>
+    <?php endforeach; ?>
+
+    <?php if ($tb_itinerary): ?>
+    <div style="margin-top:22px">
+      <div class="detail-item__label" style="margin-bottom:10px;color:var(--teal,#1E5C6B);font-weight:700">Itinerary</div>
+      <div style="background:var(--bg);border-radius:6px;padding:14px 16px">
+        <?php foreach ($tb_itinerary as $tb_day): ?>
+        <div style="margin-bottom:12px">
+          <div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:5px"><?= e($tb_day['label']) ?></div>
+          <?php foreach ($tb_day['items'] as $tb_item): ?>
+          <div style="font-size:13.5px;line-height:1.65;padding-left:12px"><?= e($tb_item) ?></div>
+          <?php endforeach; ?>
+        </div>
+        <?php endforeach; ?>
+      </div>
+    </div>
+    <?php endif; ?>
 
     <?php if ($sub['message']): ?>
     <div style="margin-top:20px">
