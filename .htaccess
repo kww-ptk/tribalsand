@@ -33,6 +33,24 @@ RewriteRule ^content/Watamu-Kenya-COMETA-2025\.pdf$ /watamu [R=301,L]
 RewriteCond %{REQUEST_METHOD} !^(?:GET|HEAD)$
 RewriteRule \.php$ - [L]
 
+# Directory requested WITHOUT a trailing slash (e.g. /admin). Apache's mod_dir
+# would 301 to add the slash, but behind CloudFront it derives that redirect from
+# the origin Host over http (→ http://…on.aws/admin/), which the browser cannot
+# reach (the origin only answers https, via CloudFront) — so the visitor dead-ends
+# on a "Not Found". Pre-empt mod_dir and issue the slash redirect on the canonical
+# https host ourselves (same fix as the .php rules below). GET/HEAD only so a POST
+# body is never dropped. Keep a path-only fallback so local dev / other hosts work.
+RewriteCond %{HTTP_HOST} (?:\.on\.aws|tribalsand\.com)$ [NC]
+RewriteCond %{REQUEST_METHOD} ^(?:GET|HEAD)$
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteCond %{REQUEST_URI} !/$
+RewriteRule ^ https://tribalsand.com%{REQUEST_URI}/ [R=301,L]
+
+RewriteCond %{REQUEST_METHOD} ^(?:GET|HEAD)$
+RewriteCond %{REQUEST_FILENAME} -d
+RewriteCond %{REQUEST_URI} !/$
+RewriteRule ^ %{REQUEST_URI}/ [R=301,L]
+
 # Redirect /foo.php → /foo only when a browser NAVIGATES to .php (GET/HEAD).
 # Behind CloudFront the app sees Host = the .on.aws origin (over http), so a
 # bare path-only redirect (Apache derives the Location host/scheme from
