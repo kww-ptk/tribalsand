@@ -34,6 +34,16 @@ RewriteCond %{REQUEST_METHOD} !^(?:GET|HEAD)$
 RewriteRule \.php$ - [L]
 
 # Redirect /foo.php → /foo only when a browser NAVIGATES to .php (GET/HEAD).
+# Behind CloudFront the app sees Host = the .on.aws origin (over http), so a
+# bare path-only redirect (Apache derives the Location host/scheme from
+# HTTP_HOST) bounces visitors onto the ugly http://…on.aws origin. On the
+# production hosts, force the canonical https://tribalsand.com so clean-URL
+# links keep the visitor on the real domain. Keep a path-only fallback so
+# local dev (localhost) and any other host still work.
+RewriteCond %{HTTP_HOST} (?:\.on\.aws|tribalsand\.com)$ [NC]
+RewriteCond %{THE_REQUEST} ^(?:GET|HEAD)\s/(.+)\.php[\s?] [NC]
+RewriteRule ^ https://tribalsand.com/%1 [R=301,L]
+
 RewriteCond %{THE_REQUEST} ^(?:GET|HEAD)\s/(.+)\.php[\s?] [NC]
 RewriteRule ^ /%1 [R=301,L]
 
