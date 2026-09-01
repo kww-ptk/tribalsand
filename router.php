@@ -21,6 +21,15 @@ if ($uri !== '/' && file_exists($file) && !is_dir($file)) {
     return false;
 }
 
+// Directory requested without a trailing slash (e.g. /admin): mirror the .htaccess
+// slash redirect so DirectoryIndex (admin/index.php) resolves and local dev matches
+// production. On prod .htaccess forces the canonical https host; here a path-only
+// redirect keeps localhost working.
+if ($uri !== '/' && is_dir($file) && substr($uri, -1) !== '/') {
+    header('Location: ' . $uri . '/', true, 301);
+    exit;
+}
+
 // Strip-.php emulation: live server serves /foo from foo.php — do the same locally
 if ($uri !== '/' && file_exists($file . '.php') && pathinfo($uri, PATHINFO_EXTENSION) === '') {
     $_SERVER['SCRIPT_FILENAME'] = $file . '.php';
