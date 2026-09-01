@@ -45,6 +45,9 @@ $venue_type = [
     'maya-kobe' => 'hotel', 'zuri' => 'hotel', 'maya_ilai' => 'hotel',
     'my-amani'  => 'villa', 'enkare-bofa' => 'villa', 'sandbox' => 'villa',
 ];
+/* Shown on each result card. Wording matches the filter chips above the list,
+   so "Private Villas" as a filter and "Private Villa" on the card agree. */
+$venue_type_label = ['hotel' => 'Boutique Hotel', 'villa' => 'Private Villa'];
 $loc_slug = fn($loc) => strtolower(trim(preg_split('/[·,]/', (string)$loc)[0] ?? ''));
 
 /* ── Page meta ── */
@@ -87,6 +90,7 @@ include __DIR__ . '/includes/header.php';
 .vcard__img img{width:100%;height:100%;object-fit:cover;display:block;position:absolute;inset:0;}
 .vcard__body{padding:1.4rem 1.6rem;display:flex;flex-direction:column;}
 .vcard__loc{font-size:.56rem;letter-spacing:.2em;text-transform:uppercase;color:var(--sand);margin-bottom:.3rem;}
+.vcard__type{color:var(--teal);font-weight:600;}
 .vcard__name{font-family:'Cormorant Garamond',serif;font-weight:400;font-size:1.7rem;color:var(--dark);line-height:1.05;margin-bottom:.3rem;}
 .vcard__name a{color:inherit;}
 .vcard__meta{font-size:.86rem;color:var(--light);margin-bottom:.9rem;}
@@ -280,7 +284,8 @@ include __DIR__ . '/includes/header.php';
           <?php if ($r['hero']): ?><img src="<?= e($r['hero']) ?>" alt="<?= e($v['name']) ?>" loading="lazy"><?php endif; ?>
         </a>
         <div class="vcard__body">
-          <div class="vcard__loc"><?= e($v['location'] ?? '') ?></div>
+          <?php $__vtype = $venue_type_label[$venue_type[$v['slug']] ?? ''] ?? ''; ?>
+          <div class="vcard__loc"><?= e($v['location'] ?? '') ?><?= $__vtype ? ' &middot; <span class="vcard__type">' . e($__vtype) . '</span>' : '' ?></div>
           <div class="vcard__name"><a href="/<?= e($v['slug']) ?>"><?= e($v['name']) ?></a></div>
           <div class="vcard__meta"><?= $r['count'] > 0 ? (int)$r['count'] . ' option' . ($r['count'] !== 1 ? 's' : '') . ' match your dates' : 'View property' ?></div>
 
