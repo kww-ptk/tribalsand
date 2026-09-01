@@ -109,5 +109,19 @@ check('non-numeric free-text passes through', $t3 === 'On Request');
 $t4 = money_text_html('Great value <script>'); // no price, must stay escaped
 check('free-text is html-escaped', str_contains($t4, '&lt;script&gt;'));
 
+// ── Switcher labels (shared by the header, the drawer chips and search.php) ──
+// KES's symbol IS "KES", so printing symbol + code gave "KES KES".
+check('prefix: $ for USD',            currency_symbol_prefix('USD') === '$');
+check('prefix: empty when sym = code', currency_symbol_prefix('KES') === '');
+check('prefix: case-insensitive',      currency_symbol_prefix('kes') === '');
+check('prefix: unknown code → empty',  currency_symbol_prefix('ZZZ') === '');
+check('label: USD reads "$ USD"',      currency_label('USD') === '$ USD');
+check('label: KES reads "KES" once',   currency_label('KES') === 'KES');
+check('label: never doubles the code', substr_count(currency_label('KES'), 'KES') === 1);
+check('label: no stray whitespace',    currency_label('KES') === trim(currency_label('KES')));
+foreach (array_keys(TS_CURRENCIES) as $__c) {
+    check("label: {$__c} ends with its code", str_ends_with(currency_label($__c), $__c));
+}
+
 echo "\n" . ($failures === 0 ? "ALL PASS\n" : "{$failures} FAILURE(S)\n");
 exit($failures === 0 ? 0 : 1);

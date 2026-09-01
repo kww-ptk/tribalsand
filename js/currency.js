@@ -70,7 +70,9 @@
   function reflect(code) {
     var meta = window.TS_CUR_META[code] || {};
     document.querySelectorAll('[data-cur-active-sym]').forEach(function (n) {
-      n.textContent = (meta.symbol || code).trim();
+      // '' when the symbol IS the code (KES), else the button reads "KES KES"
+      var sym = (meta.symbol || '').trim();
+      n.textContent = sym.toUpperCase() === code.toUpperCase() ? '' : sym;
     });
     document.querySelectorAll('[data-cur-active-code]').forEach(function (n) {
       n.textContent = code;

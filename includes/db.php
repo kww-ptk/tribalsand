@@ -204,6 +204,22 @@ const TS_CURRENCIES = [
 ];
 const TS_CURRENCY_DEFAULT = 'USD';
 
+/**
+ * Symbol to print before a currency code in switcher chrome — '' when the
+ * symbol IS the code (KES), which otherwise renders as "KES KES".
+ */
+function currency_symbol_prefix(string $code): string {
+    $code = strtoupper(trim($code));
+    $sym  = trim(TS_CURRENCIES[$code]['symbol'] ?? '');
+    return ($sym === '' || strcasecmp($sym, $code) === 0) ? '' : $sym;
+}
+
+/** "$ USD" / "KES" — the switcher's label for one currency. */
+function currency_label(string $code): string {
+    $code = strtoupper(trim($code));
+    return trim(currency_symbol_prefix($code) . ' ' . $code);
+}
+
 /** True when $code is a currency we support for display. */
 function is_supported_currency(string $code): bool {
     return isset(TS_CURRENCIES[strtoupper(trim($code))]);
