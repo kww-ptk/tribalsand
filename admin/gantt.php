@@ -142,16 +142,31 @@ $filterRoomName = $filterRoom
 
 $units = db_query(
     "SELECT u.*, r.name AS room_name, r.id AS room_db_id,
+            v.id AS venue_id, v.name AS venue_name, v.location AS venue_location,
             u.feed_token,
             COALESCE(f.feed_count,0) AS feed_count
      FROM units u
      JOIN rooms r ON r.id = u.room_id
+     -- LEFT so a room with no venue still appears (grouped under 'Unassigned')
+     LEFT JOIN venues v ON v.id = r.venue_id
      LEFT JOIN (
          SELECT unit_id, COUNT(*) AS feed_count FROM ical_feeds GROUP BY unit_id
      ) f ON f.unit_id = u.id
      WHERE u.is_active = TRUE" . ($filterRoom ? " AND u.room_id = ".$filterRoom : "") . "
-     ORDER BY r.sort_order ASC, u.sort_order ASC"
+     -- Group by property first; unassigned rooms sort last. The id tiebreaks are
+     -- load-bearing: several rooms share a sort_order, and without them Postgres
+     -- returns ties in an arbitrary order, so a room's units could be split apart
+     -- and the row order changed between page loads.
+     ORDER BY (v.id IS NULL) ASC, v.sort_order ASC, v.name ASC, v.id ASC,
+              r.sort_order ASC, r.id ASC, u.sort_order ASC, u.id ASC"
 )->fetchAll();
+
+/* Units grouped by property — drives the calendar's per-property sections. */
+$units_by_venue = [];
+foreach ($units as $__u) {
+    $__k = trim((string)($__u['venue_name'] ?? '')) ?: 'Unassigned';
+    $units_by_venue[$__k][] = $__u;
+}
 
 $blocks = db_query(
     "SELECT ab.*, u.room_id
@@ -215,6 +230,12 @@ include __DIR__ . '/_layout.php';
 .gantt-label { width: 150px; min-width: 150px; padding: 6px 10px; font-size: 11.5px; font-weight: 600; border-right: 2px solid var(--border); position: sticky; left: 0; background: inherit; z-index: 5; }
 .gantt-row .gantt-label { background: #fff; font-weight: 500; display: flex; flex-direction: column; justify-content: center; border-bottom: 1px solid var(--border); }
 .gantt-row .gantt-label small { font-size: 10px; color: var(--muted); font-weight: 400; }
+/* Property group header — one band per venue, so the grid reads as sections */
+.gantt-grow { display: flex; min-width: max-content; background: #eaf0f3; border-top: 2px solid var(--border); border-bottom: 1px solid var(--border); }
+.gantt-grow__lbl { width: 150px; min-width: 150px; padding: 7px 10px; position: sticky; left: 0; background: #eaf0f3; z-index: 6; border-right: 2px solid var(--border);
+  font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #102F3A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.gantt-grow__bar { display: flex; align-items: center; gap: 8px; padding: 7px 10px; font-size: 10.5px; color: var(--muted); white-space: nowrap; }
+.gantt-grow__loc { color: #102F3A; font-weight: 600; }
 .gantt-days { display: flex; flex: 1; }
 /* Month sub-header */
 .gantt-months { display: flex; min-width: max-content; border-bottom: 1px solid var(--border); }
@@ -358,14 +379,30 @@ include __DIR__ . '/_layout.php';
     </div>
   </div>
 
-  <!-- Unit rows -->
+  <!-- Unit rows, grouped by property -->
   <?php
-  $prev_room = '';
+  $prev_room  = '';
+  $prev_venue = null;
+  $grid_w     = count($days) * 28;   // day cells are 28px wide (see block maths below)
   foreach ($units as $unit):
     $unit_blocks = $blocks_by_unit[(int)$unit['id']] ?? [];
     $view_start_ts = strtotime($start_str);
     $view_end_ts   = strtotime($end_str);
+    $venue_name = trim((string)($unit['venue_name'] ?? '')) ?: 'Unassigned';
+    if ($venue_name !== $prev_venue):
+      $prev_venue = $venue_name;
+      $prev_room  = '';           // reprint the room label at the top of each property
+      $v_units    = count($units_by_venue[$venue_name] ?? []);
+      $v_loc      = trim((string)($unit['venue_location'] ?? ''));
   ?>
+  <div class="gantt-grow">
+    <div class="gantt-grow__lbl" title="<?= e($venue_name) ?>"><?= e($venue_name) ?></div>
+    <div class="gantt-grow__bar" style="width:<?= (int)$grid_w ?>px">
+      <?php if ($v_loc !== ''): ?><span class="gantt-grow__loc"><?= e($v_loc) ?></span> ·<?php endif; ?>
+      <span><?= (int)$v_units ?> unit<?= $v_units === 1 ? '' : 's' ?></span>
+    </div>
+  </div>
+  <?php endif; ?>
   <div class="gantt-row">
     <div class="gantt-label">
       <?php if ($unit['room_name'] !== $prev_room): $prev_room = $unit['room_name']; ?>
@@ -425,6 +462,9 @@ include __DIR__ . '/_layout.php';
   <div class="card" style="margin-bottom:12px">
     <div class="card__head">
       <span class="card__title"><?= e($mu['room_name']) ?> — <?= e($mu['name']) ?></span>
+      <?php $__mv = trim((string)($mu['venue_name'] ?? '')); if ($__mv !== ''): ?>
+      <span class="text-muted" style="font-size:11.5px"><?= e($__mv) ?></span>
+      <?php endif; ?>
     </div>
     <div class="card__body" style="padding:12px 16px">
       <?php foreach ($mu_blocks as $mb): ?>
@@ -540,10 +580,11 @@ include __DIR__ . '/_layout.php';
     <div style="margin-bottom:20px">
       <div class="form-section__title">Your iCal feed URLs (share with OTAs to export your calendar)</div>
       <table class="data-table" style="margin-top:8px">
-        <thead><tr><th>Room</th><th>Unit</th><th>Feed URL</th></tr></thead>
+        <thead><tr><th>Property</th><th>Room</th><th>Unit</th><th>Feed URL</th></tr></thead>
         <tbody>
         <?php foreach ($units as $u): ?>
         <tr>
+          <td><?= e(trim((string)($u['venue_name'] ?? '')) ?: '—') ?></td>
           <td><?= e($u['room_name']) ?></td>
           <td><?= e($u['name']) ?></td>
           <td>
@@ -567,8 +608,12 @@ include __DIR__ . '/_layout.php';
       <div class="field" style="margin:0">
         <label>Unit</label>
         <select name="feed_unit_id" required>
-          <?php foreach ($units as $u): ?>
-          <option value="<?= e($u['id']) ?>"><?= e($u['room_name'] . ' — ' . $u['name']) ?></option>
+          <?php foreach ($units_by_venue as $__vname => $__vunits): ?>
+          <optgroup label="<?= e($__vname) ?>">
+            <?php foreach ($__vunits as $u): ?>
+            <option value="<?= e($u['id']) ?>"><?= e($u['room_name'] . ' — ' . $u['name']) ?></option>
+            <?php endforeach; ?>
+          </optgroup>
           <?php endforeach; ?>
         </select>
       </div>
