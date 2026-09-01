@@ -3,8 +3,9 @@
 $page_title  = 'Our Story · Tribal Sand · Kenya\'s Sustainable Coast';
 $page_desc   = 'Tribal Sand is a sustainable coastal hospitality ecosystem across Watamu, Kilifi and Vipingo — luxury boutique hotels, private villas and an eco village.';
 $page_url    = 'https://tribalsand.com/tribalsandstory.php';
-$page_image  = asset_url('images/New-hero-banner.jpg');
-$page_preload = 'images/New-hero-banner.jpg';
+require_once __DIR__ . '/includes/page-content.php'; // editable slots (Admin → Page Content)
+$page_image  = page_image('our-story','og_image');
+$page_preload = 'images/New-hero-banner.jpg'; // preload stays on the shipped hero
 
 $page_schema  = ts_schema_org();
 $page_schema .= ts_schema_breadcrumb([
@@ -20,7 +21,8 @@ require_once 'includes/head.php';
 /* HERO */
 .story-hero{
   position:relative;height:100vh;min-height:600px;
-  background:#0a1c24 url('images/New-hero-banner.jpg') center center / cover no-repeat;
+  /* image comes from the inline style below so it can be changed in admin */
+  background:#0a1c24 center center / cover no-repeat;
   display:flex;align-items:flex-end;
   padding:0 6vw 10vh;
   overflow:hidden;
@@ -188,11 +190,11 @@ require_once 'includes/head.php';
 <?php include 'includes/header.php'; ?>
 
 <!-- HERO -->
-<section class="story-hero">
+<section class="story-hero" style="background-image:url('<?= e(page_image('our-story','hero_image')) ?>')">
   <div class="story-hero-content">
-    <p class="story-hero-eyebrow">Tribal Sand</p>
-    <h1>Kenya as It Was <em>Meant to Be</em></h1>
-    <p class="story-hero-sub">Our story begins at the edge of the Indian Ocean.</p>
+    <p class="story-hero-eyebrow"><?= page_text('our-story','hero_eyebrow') ?></p>
+    <h1><?= page_html('our-story','hero_title') ?></h1>
+    <p class="story-hero-sub"><?= page_text('our-story','hero_sub') ?></p>
   </div>
 </section>
 

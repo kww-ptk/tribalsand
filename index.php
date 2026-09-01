@@ -18,6 +18,7 @@ $page_schema .= ts_schema_item_list([
     ['name' => 'Maya Ilai Eco Compound',    'url' => 'https://tribalsand.com/maya_ilai.php'],
 ]);
 
+require_once 'includes/page-content.php'; // editable slots (Admin → Content → Pages)
 include 'includes/head.php';
 ?>
 
@@ -176,6 +177,9 @@ include 'includes/head.php';
 .tribal-venue-ico { font-size:1rem; flex-shrink:0; width:1.4rem; text-align:center; }
 .tribal-venue-name { font-size:.9rem; color:rgba(212,196,172,.9); }
 .tribal-venue-tag { font-size:.75rem; letter-spacing:.1em; text-transform:uppercase; color:rgba(184,150,90,.7); margin-left:auto; }
+.tribal-venue--link { text-decoration:none; transition:background .2s; }
+.tribal-venue--link:hover { background:rgba(184,150,90,.06); }
+.tribal-venue--link:hover .tribal-venue-tag { color:var(--sand); }
 
 /* ── HOW IT WORKS ── */
 .how-section { padding:88px 5vw; background:var(--white); }
@@ -316,24 +320,24 @@ include 'includes/head.php';
 
   <div class="hero-bg">
     <div class="hero-slide active" data-prop="Tribal Dunes · Kilifi">
-      <img src="images/New-hero-banner.jpg"
+      <img src="<?= e(page_image('home','hero_image')) ?>"
            alt="Tribal Dunes — beachfront community, Bofa Beach, Kilifi Kenya"
            width="1920" height="1080" loading="eager" decoding="sync">
     </div>
     <div class="hero-slide" data-prop="Maya Kobe · Kilifi">
-      <img src="images/hero-maya-kobe.jpg"
+      <img src="<?= e(page_image('home','hero_image2')) ?>"
            alt="Maya Kobe — eco beachfront boutique hotel, Kilifi Kenya" loading="lazy">
     </div>
     <div class="hero-slide" data-prop="Zuri · Watamu">
-      <img src="images/hero-zuri.jpg"
+      <img src="<?= e(page_image('home','hero_image3')) ?>"
            alt="Zuri — beachfront boutique hotel, Garoda Beach, Watamu Kenya" loading="lazy">
     </div>
     <div class="hero-slide" data-prop="My Amani · Vipingo">
-      <img src="images/my-amani/Aerial/myamani-11.webp"
+      <img src="<?= e(page_image('home','hero_image4')) ?>"
            alt="My Amani — luxury private beachfront villa, Vipingo Kenya" loading="lazy">
     </div>
     <div class="hero-slide" data-prop="Enkare Bofa · Kilifi">
-      <img src="images/hero-enkare-bofa.jpg"
+      <img src="<?= e(page_image('home','hero_image5')) ?>"
            alt="Enkare Bofa — beachfront villa, Bofa Road, Kilifi Kenya" loading="lazy">
     </div>
   </div>
@@ -341,9 +345,9 @@ include 'includes/head.php';
   <div class="hero-overlay"></div>
 
   <div class="hero-inner">
-    <div class="hero-eyebrow">Kenya's North Coast <span class="sep">·</span> Watamu <span class="sep">·</span> Kilifi <span class="sep">·</span> Vipingo</div>
-    <h1 class="hero-h1">Luxury Beachfront<br><em>Hotels &amp; Villas</em><br>in Kenya</h1>
-    <p class="hero-sub">Boutique hotels, private villas, lifestyle venues and unique experiences on the Kenyan coast, Africa.</p>
+    <div class="hero-eyebrow"><?= page_html('home','hero_eyebrow') ?></div>
+    <h1 class="hero-h1"><?= page_html('home','hero_title') ?></h1>
+    <p class="hero-sub"><?= page_text('home','hero_sub') ?></p>
 
     <!-- Booking search bar -->
     <div class="hero-search-wrap">
@@ -452,15 +456,15 @@ include 'includes/head.php';
 <!-- ═══ INTRO STRIP ═══ -->
 <div class="intro-strip">
   <div class="intro-left">
-    <div class="intro-tagline">"Kenya as it was meant to be experienced."</div>
-    <div class="intro-sub">Watamu &nbsp;·&nbsp; Kilifi &nbsp;·&nbsp; Vipingo &nbsp;&nbsp;·&nbsp;&nbsp; Boutique hotels, private villas and an integrated beachfront ecosystem on Kenya's North Coast.</div>
+    <div class="intro-tagline"><?= page_text('home','intro_tagline') ?></div>
+    <div class="intro-sub"><?= page_html('home','intro_sub') ?></div>
   </div>
   <div class="intro-right">
     <div class="intro-stats">
-      <div class="stat"><div class="stat-n">6</div><div class="stat-l">Properties</div></div>
-      <div class="stat"><div class="stat-n">3</div><div class="stat-l">Locations</div></div>
-      <div class="stat"><div class="stat-n">100%</div><div class="stat-l">Solar · Tribal Dunes</div></div>
-      <div class="stat"><div class="stat-n">24h</div><div class="stat-l">Concierge</div></div>
+      <div class="stat"><div class="stat-n"><?= page_text('home','stat1_num') ?></div><div class="stat-l"><?= page_text('home','stat1_lbl') ?></div></div>
+      <div class="stat"><div class="stat-n"><?= page_text('home','stat2_num') ?></div><div class="stat-l"><?= page_text('home','stat2_lbl') ?></div></div>
+      <div class="stat"><div class="stat-n"><?= page_text('home','stat3_num') ?></div><div class="stat-l"><?= page_text('home','stat3_lbl') ?></div></div>
+      <div class="stat"><div class="stat-n"><?= page_text('home','stat4_num') ?></div><div class="stat-l"><?= page_text('home','stat4_lbl') ?></div></div>
     </div>
     <div class="intro-trust">
       <div class="intro-trust-dot"></div>
@@ -474,7 +478,7 @@ include 'includes/head.php';
   <div class="props-header">
     <div>
       <div class="eyebrow">Our Properties</div>
-      <h2 class="sec-h" id="props-heading">Exclusive Stays Along<br><em>Kenya's Coastline</em></h2>
+      <h2 class="sec-h" id="props-heading"><?= page_html('home','props_title') ?></h2>
       <div class="sec-rule"></div>
     </div>
     <a href="/booking" class="btn-primary" style="flex-shrink:0;">View All Properties</a>
@@ -662,23 +666,23 @@ include 'includes/head.php';
 <section class="tribal-section" aria-labelledby="tribal-heading">
   <div class="tribal-grid">
     <div class="tribal-img-stack">
-      <img class="tribal-img-main" src="images/maya-kobe/Aerial/mayakobe-2.webp"
+      <img class="tribal-img-main" src="<?= e(page_image('home','dunes_img_main')) ?>"
            alt="Tribal Dunes beachfront village aerial view — Bofa Beach, Kilifi, Kenya"
            width="700" height="525" loading="lazy" decoding="async">
-      <img class="tribal-img-accent" src="images/maya_illai/best6.jpg"
+      <img class="tribal-img-accent" src="<?= e(page_image('home','dunes_img_accent')) ?>"
            alt="Tribal Dunes lifestyle — Kilifi, Kenya"
            width="360" height="270" loading="lazy" decoding="async">
     </div>
     <div class="tribal-content">
       <div class="eyebrow" style="color:var(--sand);">Kilifi · Kenya</div>
-      <h2 class="sec-h sec-h--light" id="tribal-heading">Tribal Dunes —<br><em>One Address,<br>Many Reasons to Stay</em></h2>
+      <h2 class="sec-h sec-h--light" id="tribal-heading"><?= page_html('home','dunes_title') ?></h2>
       <div class="sec-rule" style="background:rgba(184,150,90,.35);"></div>
       <p class="sec-p sec-p--light" style="margin-bottom:1.6rem;">One large beachfront property in Kilifi where a boutique hotel, an eco compound, a coworking hotel, a restaurant, a café and a kite school all share the same shore. Fully solar powered. Desalinated ocean water. Built for like-minded people.</p>
       <div class="tribal-venues" role="list">
         <div class="tribal-venue" role="listitem"><span class="tribal-venue-ico"><span class="map-ico">H</span></span><span class="tribal-venue-name">Maya Kobe</span><span class="tribal-venue-tag">Boutique Hotel</span></div>
         <div class="tribal-venue" role="listitem"><span class="tribal-venue-ico"><span class="map-ico">W</span></span><span class="tribal-venue-name">Maya Ilai</span><span class="tribal-venue-tag">Eco Compound</span></div>
-        <div class="tribal-venue" role="listitem"><span class="tribal-venue-ico"><span class="map-ico">WK</span></span><span class="tribal-venue-name">Off Duty</span><span class="tribal-venue-tag">Coworking Hotel</span></div>
-        <div class="tribal-venue" role="listitem"><span class="tribal-venue-ico"><span class="map-ico">F</span></span><span class="tribal-venue-name">Tribal Table</span><span class="tribal-venue-tag">Coming Soon</span></div>
+        <div class="tribal-venue" role="listitem"><span class="tribal-venue-ico"><span class="map-ico">WK</span></span><span class="tribal-venue-name">Off Duty</span><span class="tribal-venue-tag">Coming Soon</span></div>
+        <a class="tribal-venue tribal-venue--link" role="listitem" href="https://www.tribaltablekenya.com" target="_blank" rel="noopener"><span class="tribal-venue-ico"><span class="map-ico">F</span></span><span class="tribal-venue-name">Tribal Table</span><span class="tribal-venue-tag">Now Open &rarr;</span></a>
         <div class="tribal-venue" role="listitem"><span class="tribal-venue-ico"><span class="map-ico">C</span></span><span class="tribal-venue-name">Somewhere Café</span><span class="tribal-venue-tag">Coming Soon</span></div>
         <div class="tribal-venue" role="listitem"><span class="tribal-venue-ico"><span class="map-ico">S</span></span><span class="tribal-venue-name">Tribal Kite School</span><span class="tribal-venue-tag">Ocean Sports</span></div>
       </div>
@@ -691,16 +695,16 @@ include 'includes/head.php';
 <section class="how-section" aria-labelledby="how-heading">
   <div class="how-grid">
     <div class="how-img-wrap">
-      <img class="how-img" src="images/My-Amani-8.jpg"
+      <img class="how-img" src="<?= e(page_image('home','how_img_main')) ?>"
            alt="Tribal Sand concierge service — Kenya coast"
            width="600" height="750" loading="lazy" decoding="async">
-      <img class="how-img-accent" src="https://d38di21ab22p6u.cloudfront.net/da8332ef15c50327eedc.jpg"
+      <img class="how-img-accent" src="<?= e(page_image('home','how_img_accent')) ?>"
            alt="A Tribal Sand host setting a table for guests — Kenya coast"
            width="320" height="240" loading="lazy" decoding="async">
     </div>
     <div>
       <div class="eyebrow">How It Works</div>
-      <h2 class="sec-h" id="how-heading">We Handle<br><em>Every Detail</em></h2>
+      <h2 class="sec-h" id="how-heading"><?= page_html('home','how_title') ?></h2>
       <div class="sec-rule"></div>
       <p class="sec-p">Navigating a Kenya coast holiday can feel overwhelming — logistics, pricing, activities, transfers. Our concierge team takes care of everything so you arrive and simply enjoy.</p>
       <div class="how-steps">
@@ -826,11 +830,11 @@ include 'includes/head.php';
 
 <!-- ═══ GALLERY STRIP ═══ -->
 <div class="gallery-strip" role="complementary" aria-label="Property photo gallery">
-  <img class="gal-img" src="images/Maya-Kobe-1.jpeg" alt="Maya Kobe boutique hotel — Kilifi, Kenya" width="400" height="310" loading="lazy" decoding="async">
-  <img class="gal-img" src="images/My-Amani-5.jpg"   alt="My Amani beachfront villa — Vipingo, Kenya" width="400" height="310" loading="lazy" decoding="async">
-  <img class="gal-img" src="images/updated-hero-banner.jpg" alt="Tribal Sand Kenya coast" width="400" height="310" loading="lazy" decoding="async">
-  <img class="gal-img" src="images/My-Amani-1.jpg"   alt="My Amani pool — Vipingo, Kenya" width="400" height="310" loading="lazy" decoding="async">
-  <img class="gal-img" src="images/34t.jpg"           alt="Kenya coast activities — Tribal Sand" width="400" height="310" loading="lazy" decoding="async">
+  <img class="gal-img" src="<?= e(page_image('home','gal_1')) ?>" alt="Maya Kobe boutique hotel — Kilifi, Kenya" width="400" height="310" loading="lazy" decoding="async">
+  <img class="gal-img" src="<?= e(page_image('home','gal_2')) ?>"   alt="My Amani beachfront villa — Vipingo, Kenya" width="400" height="310" loading="lazy" decoding="async">
+  <img class="gal-img" src="<?= e(page_image('home','gal_3')) ?>" alt="Tribal Sand Kenya coast" width="400" height="310" loading="lazy" decoding="async">
+  <img class="gal-img" src="<?= e(page_image('home','gal_4')) ?>"   alt="My Amani pool — Vipingo, Kenya" width="400" height="310" loading="lazy" decoding="async">
+  <img class="gal-img" src="<?= e(page_image('home','gal_5')) ?>"           alt="Kenya coast activities — Tribal Sand" width="400" height="310" loading="lazy" decoding="async">
 </div>
 
 <!-- ═══ REVIEWS ═══ -->
@@ -908,7 +912,7 @@ include 'includes/head.php';
   <!-- TripAdvisor badge — links auto-update once ts_tripadvisor_url() is set in includes/schema.php (approve at tripadvisor.com/GetListedNew) -->
   <div class="trust-item trust-item--ta">
     <a href="<?= e(ts_tripadvisor_badge_url()) ?>" target="_blank" rel="noopener" aria-label="Tribal Sand on TripAdvisor">
-      <img src="/images/tripadvisor.jpg" alt="TripAdvisor Travellers' Choice" class="trust-item__ta-badge">
+      <img src="<?= e(page_image('home','ta_badge')) ?>" alt="TripAdvisor Travellers' Choice" class="trust-item__ta-badge">
     </a>
   </div>
 </div>
@@ -916,7 +920,7 @@ include 'includes/head.php';
 <!-- ═══ CTA ═══ -->
 <section class="cta-section" aria-label="Book your Kenya holiday with Tribal Sand">
   <div class="cta-bg">
-    <img src="images/D8.jpg" alt="Tribal Sand Kenya beachfront" width="1920" height="490" loading="lazy" decoding="async">
+    <img src="<?= e(page_image('home','cta_image')) ?>" alt="Tribal Sand Kenya beachfront" width="1920" height="490" loading="lazy" decoding="async">
   </div>
   <div class="cta-inner">
     <div class="cta-eyebrow">Ready to Experience Kenya?</div>

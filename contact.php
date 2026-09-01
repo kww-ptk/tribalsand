@@ -4,7 +4,8 @@
 $page_title = 'Contact · Reservations · Tribal Sand Kenya';
 $page_desc  = 'Contact Tribal Sand for reservations, enquiries and trip planning. Phone, WhatsApp, email or use our Trip Builder for a personalised Kenya coast quote.';
 $page_url   = 'https://tribalsand.com/contact.php';
-$page_image = asset_url('images/whitelogo11.png');
+require_once __DIR__ . '/includes/page-content.php'; // editable slots (Admin → Page Content)
+$page_image = page_image('contact','og_image');
 
 /* ═══ SCHEMA ═══ */
 $page_schema  = ts_schema_org();
@@ -280,11 +281,12 @@ a.ct-card:hover .ct-card-arrow{opacity:1;}
 <?php include 'includes/header.php'; ?>
 
 <!-- ═══════════════════════════════════════════════ HERO -->
-<section class="ct-hero">
+<?php $__ctHero = page_image('contact','hero_image'); ?>
+<section class="ct-hero"<?= $__ctHero !== '' ? ' style="background-image:url(\'' . e($__ctHero) . '\');background-size:cover;background-position:center"' : '' ?>>
   <div class="ct-hero-pattern"></div>
   <div class="ct-hero-content">
-    <div class="ct-hero-eyebrow">Reservations & Enquiries · Tribal Sand Kenya</div>
-    <h1>Get in Touch · <em>We Respond Within 24 Hours</em></h1>
+    <div class="ct-hero-eyebrow"><?= page_text('contact','hero_eyebrow') ?></div>
+    <h1><?= page_html('contact','hero_title') ?></h1>
   </div>
 </section>
 
@@ -302,9 +304,9 @@ a.ct-card:hover .ct-card-arrow{opacity:1;}
   <div class="ct-left">
 
     <div class="ct-left-head">
-      <div class="ct-left-label">Contact Tribal Sand</div>
-      <h2 class="ct-left-h">We're here to help you plan the right trip.</h2>
-      <p class="ct-left-p">Whether you're ready to book or just starting to explore, our team will put together a personalised quote covering transfers, activities and accommodations across any of our Kenya coast properties. No pressure at enquiry stage.</p>
+      <div class="ct-left-label"><?= page_text('contact','left_label') ?></div>
+      <h2 class="ct-left-h"><?= page_text('contact','left_title') ?></h2>
+      <p class="ct-left-p"><?= page_text('contact','left_body') ?></p>
     </div>
 
     <!-- CONTACT CARDS -->
@@ -391,9 +393,9 @@ a.ct-card:hover .ct-card-arrow{opacity:1;}
   <div class="ct-right">
     <div class="ct-form-wrap">
       <div class="ct-form-head">
-        <div class="ct-form-label-top">Send an Enquiry</div>
-        <h2 class="ct-form-h">Tell us about your trip</h2>
-        <p class="ct-form-p">Fill in what you know — we'll work out the rest and come back to you within 24 hours.</p>
+        <div class="ct-form-label-top"><?= page_text('contact','form_label') ?></div>
+        <h2 class="ct-form-h"><?= page_text('contact','form_title') ?></h2>
+        <p class="ct-form-p"><?= page_text('contact','form_body') ?></p>
       </div>
 
       <form class="ct-form" id="ctForm">
