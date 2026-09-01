@@ -1,5 +1,6 @@
 <?php require_once 'includes/schema.php'; ?>
 <?php
+require_once __DIR__ . '/includes/map-icons.php'; // plain line icons for the map dots + legend
 $page_title  = 'Tribal Dunes Interactive Site Map · Kilifi · Tribal Sand';
 $page_desc   = 'Explore the full grounds of Tribal Dunes in Kilifi, Kenya. Tap any marker to discover accommodation, pools, dining, sports and wellness facilities.';
 $page_url    = 'https://tribalsand.com/interactive-site-map.php';
@@ -138,7 +139,12 @@ if (!file_exists($mapImg)) {
   background: var(--teal, #1E5C6B);
   border-color: var(--teal, #1E5C6B);
 }
-.filter-btn .f-ico { font-size: 1.05rem; line-height: 1; flex-shrink: 0; }
+.filter-btn .f-ico { font-size: 1.05rem; line-height: 1; flex-shrink: 0; display: flex; align-items: center; justify-content: center; width: 20px; }
+/* Line icons replaced the old single-letter badges. They use currentColor, so
+   the legend follows the button's text colour and the map dots force white —
+   every dot background (#7B3A1E / #1E5C6B / #2A6B2A / #3A4A58) is dark. */
+.filter-btn .f-ico svg { display: block; }
+.dot > svg.map-ico { color: #fff; display: block; pointer-events: none; }
 .filter-count {
   font-size: .58rem;
   font-weight: 500;
@@ -368,37 +374,37 @@ if (!file_exists($mapImg)) {
       <span class="sidebar-title">Filter by</span>
 
       <button class="filter-btn on" data-cat="all">
-        <span class="f-ico"><span class="map-ico">M</span></span>
+        <span class="f-ico"><?= map_icon('grid', 17) ?></span>
         <span class="filter-label">All</span>
         <span class="filter-count">28</span>
       </button>
       <button class="filter-btn" data-cat="accommodation">
-        <span class="f-ico"><span class="map-ico">H</span></span>
+        <span class="f-ico"><?= map_icon('bed', 17) ?></span>
         <span class="filter-label">Accommodation</span>
         <span class="filter-count">4</span>
       </button>
       <button class="filter-btn" data-cat="pool">
-        <span class="f-ico"><span class="map-ico">P</span></span>
+        <span class="f-ico"><?= map_icon('waves', 17) ?></span>
         <span class="filter-label">Pools</span>
         <span class="filter-count">4</span>
       </button>
       <button class="filter-btn" data-cat="sport">
-        <span class="f-ico"><span class="map-ico">S</span></span>
+        <span class="f-ico"><?= map_icon('dumbbell', 17) ?></span>
         <span class="filter-label">Sport &amp; Wellness</span>
         <span class="filter-count">6</span>
       </button>
       <button class="filter-btn" data-cat="food">
-        <span class="f-ico"><span class="map-ico">F</span></span>
+        <span class="f-ico"><?= map_icon('utensils', 17) ?></span>
         <span class="filter-label">Food &amp; Drink</span>
         <span class="filter-count">4</span>
       </button>
       <button class="filter-btn" data-cat="facilities">
-        <span class="f-ico"><span class="map-ico">PK</span></span>
+        <span class="f-ico"><?= map_icon('building', 17) ?></span>
         <span class="filter-label">Facilities</span>
         <span class="filter-count">6</span>
       </button>
       <button class="filter-btn" data-cat="propfacilities">
-        <span class="f-ico"><span class="map-ico">M</span></span>
+        <span class="f-ico"><?= map_icon('cog', 17) ?></span>
         <span class="filter-label">Property Facilities</span>
         <span class="filter-count">4</span>
       </button>
@@ -418,44 +424,44 @@ if (!file_exists($mapImg)) {
       <div class="dev-coords" id="devCoords"></div>
 
       <!-- DOTS — Accommodation -->
-      <div class="dot" style="background:#7B3A1E;left:17.8%;top:36.6%;" data-id="0" data-cat="accommodation"><span class="dot-lbl">Maya Ilai</span></div>
-      <div class="dot" style="background:#7B3A1E;left:71.5%;top:52.8%;" data-id="1" data-cat="accommodation"><span class="dot-lbl">Maya Kobe</span></div>
-      <div class="dot" style="background:#7B3A1E;left:57.7%;top:67.6%;" data-id="2" data-cat="accommodation"><span class="dot-lbl">MK Prestige Suite</span></div>
-      <div class="dot" style="background:#7B3A1E;left:80.7%;top:22.8%;" data-id="3" data-cat="accommodation"><span class="dot-lbl">Off Duty</span></div>
+      <div class="dot" style="background:#7B3A1E;left:17.8%;top:36.6%;" data-id="0" data-cat="accommodation"><?= map_icon('bed') ?><span class="dot-lbl">Maya Ilai</span></div>
+      <div class="dot" style="background:#7B3A1E;left:71.5%;top:52.8%;" data-id="1" data-cat="accommodation"><?= map_icon('bed') ?><span class="dot-lbl">Maya Kobe</span></div>
+      <div class="dot" style="background:#7B3A1E;left:57.7%;top:67.6%;" data-id="2" data-cat="accommodation"><?= map_icon('bed') ?><span class="dot-lbl">MK Prestige Suite</span></div>
+      <div class="dot" style="background:#7B3A1E;left:80.7%;top:22.8%;" data-id="3" data-cat="accommodation"><?= map_icon('bed') ?><span class="dot-lbl">Off Duty</span></div>
 
       <!-- DOTS — Pools -->
-      <div class="dot" style="background:#1E5C6B;left:19.5%;top:61.2%;" data-id="4" data-cat="pool"><span class="map-ico">P</span><span class="dot-lbl">Maya Ilai Pool</span></div>
-      <div class="dot" style="background:#1E5C6B;left:63.8%;top:68.4%;" data-id="6" data-cat="pool"><span class="map-ico">P</span><span class="dot-lbl">Private Pool</span></div>
-      <div class="dot" style="background:#1E5C6B;left:77.0%;top:58.0%;" data-id="7" data-cat="pool"><span class="map-ico">P</span><span class="dot-lbl">Main Pool</span></div>
-      <div class="dot" style="background:#1E5C6B;left:87.1%;top:25.1%;" data-id="8" data-cat="pool"><span class="map-ico">P</span><span class="dot-lbl">Off Duty Pool</span></div>
+      <div class="dot" style="background:#1E5C6B;left:19.5%;top:61.2%;" data-id="4" data-cat="pool"><?= map_icon('waves') ?><span class="dot-lbl">Maya Ilai Pool</span></div>
+      <div class="dot" style="background:#1E5C6B;left:63.8%;top:68.4%;" data-id="6" data-cat="pool"><?= map_icon('waves') ?><span class="dot-lbl">Private Pool</span></div>
+      <div class="dot" style="background:#1E5C6B;left:77.0%;top:58.0%;" data-id="7" data-cat="pool"><?= map_icon('waves') ?><span class="dot-lbl">Main Pool</span></div>
+      <div class="dot" style="background:#1E5C6B;left:87.1%;top:25.1%;" data-id="8" data-cat="pool"><?= map_icon('waves') ?><span class="dot-lbl">Off Duty Pool</span></div>
 
       <!-- DOTS — Sport & Wellness -->
-      <div class="dot" style="background:#2A6B2A;left:36.2%;top:42.7%;" data-id="9" data-cat="sport"><span class="map-ico">S</span><span class="dot-lbl">Pickleball Court</span></div>
-      <div class="dot" style="background:#2A6B2A;left:89.5%;top:38.5%;" data-id="10" data-cat="sport"><span class="map-ico">S</span><span class="dot-lbl">Kite &amp; Water Sport</span></div>
-      <div class="dot" style="background:#2A6B2A;left:82.5%;top:51.5%;" data-id="11" data-cat="sport"><span class="map-ico">S</span><span class="dot-lbl">Beach Volley Court</span></div>
-      <div class="dot" style="background:#2A6B2A;left:84.0%;top:31.0%;" data-id="12" data-cat="sport"><span class="map-ico">S</span><span class="dot-lbl">Yoga Deck</span></div>
-      <div class="dot" style="background:#2A6B2A;left:75.4%;top:27.7%;" data-id="13" data-cat="sport"><span class="map-ico">S</span><span class="dot-lbl">Gym, Spa &amp; Shops</span></div>
-      <div class="dot" style="background:#2A6B2A;left:57.3%;top:40.0%;" data-id="37" data-cat="sport"><span class="map-ico">S</span><span class="dot-lbl">Coral Restoration Lab</span></div>
+      <div class="dot" style="background:#2A6B2A;left:36.2%;top:42.7%;" data-id="9" data-cat="sport"><?= map_icon('dumbbell') ?><span class="dot-lbl">Pickleball Court</span></div>
+      <div class="dot" style="background:#2A6B2A;left:89.5%;top:38.5%;" data-id="10" data-cat="sport"><?= map_icon('dumbbell') ?><span class="dot-lbl">Kite &amp; Water Sport</span></div>
+      <div class="dot" style="background:#2A6B2A;left:82.5%;top:51.5%;" data-id="11" data-cat="sport"><?= map_icon('dumbbell') ?><span class="dot-lbl">Beach Volley Court</span></div>
+      <div class="dot" style="background:#2A6B2A;left:84.0%;top:31.0%;" data-id="12" data-cat="sport"><?= map_icon('dumbbell') ?><span class="dot-lbl">Yoga Deck</span></div>
+      <div class="dot" style="background:#2A6B2A;left:75.4%;top:27.7%;" data-id="13" data-cat="sport"><?= map_icon('dumbbell') ?><span class="dot-lbl">Gym, Spa &amp; Shops</span></div>
+      <div class="dot" style="background:#2A6B2A;left:57.3%;top:40.0%;" data-id="37" data-cat="sport"><?= map_icon('dumbbell') ?><span class="dot-lbl">Coral Restoration Lab</span></div>
 
       <!-- DOTS — Facilities -->
-      <div class="dot" style="background:#3A4A58;left:28%;top:11%;" data-id="19" data-cat="facilities"><span class="map-ico">PK</span><span class="dot-lbl">Parking A</span></div>
-      <div class="dot" style="background:#3A4A58;left:54%;top:10%;" data-id="20" data-cat="facilities"><span class="map-ico">PK</span><span class="dot-lbl">Parking B</span></div>
-      <div class="dot" style="background:#3A4A58;left:58.8%;top:27.8%;" data-id="21" data-cat="facilities"><span class="map-ico">PK</span><span class="dot-lbl">Main Entrance</span></div>
-      <div class="dot" style="background:#3A4A58;left:26.5%;top:77.3%;" data-id="30" data-cat="facilities"><span class="map-ico">PK</span><span class="dot-lbl">Maya Kobe Gate</span></div>
-      <div class="dot" style="background:#3A4A58;left:37.1%;top:22.5%;" data-id="31" data-cat="facilities"><span class="map-ico">H</span><span class="dot-lbl">Welcome Desk</span></div>
-      <div class="dot" style="background:#3A4A58;left:64.7%;top:26.0%;" data-id="32" data-cat="facilities"><span class="map-ico">AD</span><span class="dot-lbl">Admin Office</span></div>
+      <div class="dot" style="background:#3A4A58;left:28%;top:11%;" data-id="19" data-cat="facilities"><?= map_icon('car') ?><span class="dot-lbl">Parking A</span></div>
+      <div class="dot" style="background:#3A4A58;left:54%;top:10%;" data-id="20" data-cat="facilities"><?= map_icon('car') ?><span class="dot-lbl">Parking B</span></div>
+      <div class="dot" style="background:#3A4A58;left:58.8%;top:27.8%;" data-id="21" data-cat="facilities"><?= map_icon('door') ?><span class="dot-lbl">Main Entrance</span></div>
+      <div class="dot" style="background:#3A4A58;left:26.5%;top:77.3%;" data-id="30" data-cat="facilities"><?= map_icon('door') ?><span class="dot-lbl">Maya Kobe Gate</span></div>
+      <div class="dot" style="background:#3A4A58;left:37.1%;top:22.5%;" data-id="31" data-cat="facilities"><?= map_icon('bell') ?><span class="dot-lbl">Welcome Desk</span></div>
+      <div class="dot" style="background:#3A4A58;left:64.7%;top:26.0%;" data-id="32" data-cat="facilities"><?= map_icon('briefcase') ?><span class="dot-lbl">Admin Office</span></div>
 
       <!-- DOTS — Food & Drink -->
-      <div class="dot" style="background:#9C7A2A;left:70.3%;top:32.3%;" data-id="15" data-cat="food"><span class="map-ico">F</span><span class="dot-lbl">Tribal Table</span></div>
-      <div class="dot" style="background:#9C7A2A;left:90.0%;top:20.9%;" data-id="16" data-cat="food"><span class="map-ico">F</span><span class="dot-lbl">Somewhere Cafe</span></div>
-      <div class="dot" style="background:#9C7A2A;left:32.6%;top:35.5%;" data-id="17" data-cat="food"><span class="map-ico">F</span><span class="dot-lbl">Agora Boatel Bar</span></div>
-      <div class="dot" style="background:#9C7A2A;left:18.0%;top:47.5%;" data-id="18" data-cat="food"><span class="map-ico">F</span><span class="dot-lbl">Moon Bar</span></div>
+      <div class="dot" style="background:#9C7A2A;left:70.3%;top:32.3%;" data-id="15" data-cat="food"><?= map_icon('utensils') ?><span class="dot-lbl">Tribal Table</span></div>
+      <div class="dot" style="background:#9C7A2A;left:90.0%;top:20.9%;" data-id="16" data-cat="food"><?= map_icon('cup') ?><span class="dot-lbl">Somewhere Cafe</span></div>
+      <div class="dot" style="background:#9C7A2A;left:32.6%;top:35.5%;" data-id="17" data-cat="food"><?= map_icon('glass') ?><span class="dot-lbl">Agora Boatel Bar</span></div>
+      <div class="dot" style="background:#9C7A2A;left:18.0%;top:47.5%;" data-id="18" data-cat="food"><?= map_icon('glass') ?><span class="dot-lbl">Moon Bar</span></div>
 
       <!-- DOTS — Property Facilities -->
-      <div class="dot" style="background:#5A3A6A;left:40.3%;top:65.1%;" data-id="33" data-cat="propfacilities"><span class="map-ico">M</span><span class="dot-lbl">Staff House</span></div>
-      <div class="dot" style="background:#5A3A6A;left:43.3%;top:55.1%;" data-id="34" data-cat="propfacilities"><span class="map-ico">L</span><span class="dot-lbl">Laundry</span></div>
-      <div class="dot" style="background:#5A3A6A;left:8.0%;top:45.1%;" data-id="35" data-cat="propfacilities"><span class="map-ico">S</span><span class="dot-lbl">Energy &amp; Water Hub</span></div>
-      <div class="dot" style="background:#5A3A6A;left:36.2%;top:52.4%;" data-id="36" data-cat="propfacilities"><span class="map-ico">SC</span><span class="dot-lbl">Security Control Room</span></div>
+      <div class="dot" style="background:#5A3A6A;left:40.3%;top:65.1%;" data-id="33" data-cat="propfacilities"><?= map_icon('home') ?><span class="dot-lbl">Staff House</span></div>
+      <div class="dot" style="background:#5A3A6A;left:43.3%;top:55.1%;" data-id="34" data-cat="propfacilities"><?= map_icon('shirt') ?><span class="dot-lbl">Laundry</span></div>
+      <div class="dot" style="background:#5A3A6A;left:8.0%;top:45.1%;" data-id="35" data-cat="propfacilities"><?= map_icon('bolt') ?><span class="dot-lbl">Energy &amp; Water Hub</span></div>
+      <div class="dot" style="background:#5A3A6A;left:36.2%;top:52.4%;" data-id="36" data-cat="propfacilities"><?= map_icon('shield') ?><span class="dot-lbl">Security Control Room</span></div>
 
       <!-- POPUP -->
       <div class="popup" id="popup">
