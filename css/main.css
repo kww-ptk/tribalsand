@@ -1465,7 +1465,7 @@ p {
 .offer-slide:hover .offer-slide__cta { color: var(--teal); }
 
 /* Request-this-offer modal */
-.offer-modal { position: fixed; inset: 0; z-index: 8500; display: flex; align-items: center; justify-content: center; padding: 1.25rem; }
+.offer-modal { position: fixed; inset: 0; z-index: 9500; display: flex; align-items: center; justify-content: center; padding: 1.25rem; }
 .offer-modal[hidden] { display: none; }
 .offer-modal__overlay { position: absolute; inset: 0; background: rgba(10,30,40,.62);
   -webkit-backdrop-filter: blur(5px); backdrop-filter: blur(5px); }
@@ -1504,4 +1504,15 @@ p {
   border: 1px solid rgba(178,59,59,.25); border-radius: 3px; padding: .55rem .8rem; }
 .offer-form__submit { margin-top: .3rem; text-align: center; }
 @media (max-width: 520px) { .offer-form__row { grid-template-columns: 1fr; } }
-@media (max-width: 767px) { .offer-slide { flex-basis: 268px; width: 268px; } }
+@media (max-width: 767px) {
+  .offer-slide { flex-basis: 268px; width: 268px; }
+  /* Compact the offer modal on phones so it clears the fixed header and the
+     close button stays inside the viewport. */
+  .offer-modal { padding: .85rem; }
+  .offer-modal__card { padding: 1.65rem 1.15rem 1.35rem; max-height: 86vh; border-radius: 12px; }
+  .offer-modal__close { top: .5rem; right: .5rem; width: 32px; height: 32px; font-size: 1.35rem; }
+  .offer-modal__eyebrow { margin-bottom: .35rem; }
+  .offer-modal__title { font-size: 1.55rem; }
+  .offer-modal__offer { margin-bottom: 1rem; }
+  .offer-form { gap: .7rem; }
+}
