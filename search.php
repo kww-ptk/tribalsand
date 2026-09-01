@@ -33,6 +33,13 @@ $total_available = array_sum(array_map(fn($r) => $r['count'] > 0 ? 1 : 0, $resul
 $fmt_date = fn($d) => $d ? date('D, j M Y', strtotime($d)) : '';
 $money = fn($n, $cur) => (float)$n > 0 ? number_format((float)$n, 0) . ' ' . e($cur) : '';
 
+/* No-JS currency links: keep the whole search query (dates, guests, filters) and
+   only swap `cur`. The header's plain "?cur=CODE" would drop the search. */
+$cur_url = function (string $code): string {
+    $q = $_GET; $q['cur'] = $code;
+    return '?' . http_build_query($q);
+};
+
 /* Property type per venue (mirrors the homepage "Our Properties" filters). */
 $venue_type = [
     'maya-kobe' => 'hotel', 'zuri' => 'hotel', 'maya_ilai' => 'hotel',
@@ -127,6 +134,22 @@ include __DIR__ . '/includes/header.php';
 .srch-sortbtn{font-family:'Jost',sans-serif;font-size:.66rem;letter-spacing:.06em;color:var(--mid);background:none;border:1px solid transparent;border-radius:999px;padding:.42rem .8rem;cursor:pointer;transition:all .18s;}
 .srch-sortbtn:hover{color:var(--teal-d);}
 .srch-sortbtn.on{color:var(--teal-d);background:var(--sand-faint);border-color:var(--border);font-weight:600;}
+.srch-tools__right{display:flex;flex-wrap:wrap;align-items:center;gap:.5rem 1.2rem;margin-left:auto;}
+.srch-cur{display:flex;align-items:center;gap:.4rem;}
+/* Currency switcher, light-theme. Base .ts-cur* styles live in includes/header.php
+   and are built for the dark nav; these re-skin the same markup for this page.
+   Classes and data-attributes are unchanged so js/currency.js binds it as-is. */
+.srch-cur .ts-cur-btn{color:var(--mid);background:#fff;border:1px solid var(--border);border-radius:999px;padding:.44rem .9rem;font-size:.64rem;}
+.srch-cur .ts-cur-btn:hover{color:var(--teal-d);border-color:var(--sand);background:#fff;}
+.srch-cur .ts-cur-chev{opacity:.7;}
+.srch-cur .ts-cur-menu{background:#fff;backdrop-filter:none;-webkit-backdrop-filter:none;border:1px solid var(--border);border-top:2px solid var(--sand);border-radius:0 0 6px 6px;box-shadow:0 18px 40px rgba(20,20,18,.14);}
+.srch-cur .ts-cur-head{color:var(--sand);}
+.srch-cur .ts-cur-opt:hover{background:var(--sand-faint);}
+.srch-cur .ts-cur-opt-code{color:var(--dark);}
+.srch-cur .ts-cur-opt-name{color:var(--light);}
+.srch-cur .ts-cur-opt:hover .ts-cur-opt-code{color:var(--teal-d);}
+.srch-cur .ts-cur-opt.on{background:var(--sand-faint);}
+.srch-cur .ts-cur-opt.on .ts-cur-opt-code{color:var(--teal-d);font-weight:600;}
 @media(max-width:720px){.srch-tools{flex-direction:column;align-items:flex-start;}}
 @media(max-width:720px){
   .vcard{grid-template-columns:1fr;}
@@ -189,8 +212,9 @@ include __DIR__ . '/includes/header.php';
         <?= $adults ?> adult<?= $adults !== 1 ? 's' : '' ?><?= $children ? ' · ' . $children . ' child' . ($children !== 1 ? 'ren' : '') : '' ?>
       </div>
 
-      <?php if (count($results) > 1): ?>
+      <?php if ($results): $__multi = count($results) > 1; $__cur = current_currency(); ?>
       <div class="srch-tools">
+        <?php if ($__multi): ?>
         <div class="srch-filters" role="group" aria-label="Filter properties">
           <button type="button" class="srch-chip on" data-filter="all">All Properties</button>
           <button type="button" class="srch-chip" data-filter="type:hotel">Boutique Hotels</button>
@@ -199,17 +223,45 @@ include __DIR__ . '/includes/header.php';
           <button type="button" class="srch-chip" data-filter="loc:kilifi">Kilifi</button>
           <button type="button" class="srch-chip" data-filter="loc:vipingo">Vipingo</button>
         </div>
-        <div class="srch-sort" role="group" aria-label="Sort results">
-          <span class="srch-sort__lbl">Sort</span>
-          <button type="button" class="srch-sortbtn on" data-sort="rec">Recommended</button>
-          <button type="button" class="srch-sortbtn" data-sort="price-asc">Price: Low to High</button>
-          <button type="button" class="srch-sortbtn" data-sort="price-desc">Price: High to Low</button>
+        <?php endif; ?>
+        <div class="srch-tools__right">
+          <?php if ($__multi): ?>
+          <div class="srch-sort" role="group" aria-label="Sort results">
+            <span class="srch-sort__lbl">Sort</span>
+            <button type="button" class="srch-sortbtn on" data-sort="rec">Recommended</button>
+            <button type="button" class="srch-sortbtn" data-sort="price-asc">Price: Low to High</button>
+            <button type="button" class="srch-sortbtn" data-sort="price-desc">Price: High to Low</button>
+          </div>
+          <?php endif; ?>
+          <!-- Currency switcher. Same markup contract as the header instance
+               (.ts-cur-btn / [data-cur-active-*] / [data-cur-set]) so the shared
+               js/currency.js drives it and reprices every .ts-price on the page.
+               No id= here: the header already owns #tsCur / #tsCurBtn. -->
+          <div class="srch-cur">
+            <span class="srch-sort__lbl">Currency</span>
+            <div class="ts-cur">
+              <button type="button" class="ts-cur-btn" aria-haspopup="true" aria-expanded="false" aria-label="Change currency">
+                <span data-cur-active-sym><?= e(currency_symbol_prefix($__cur)) ?></span>
+                <span data-cur-active-code><?= e($__cur) ?></span>
+                <svg class="ts-cur-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+              </button>
+              <div class="ts-cur-menu" role="menu">
+                <span class="ts-cur-head">Currency</span>
+                <?php foreach (TS_CURRENCIES as $code => $meta): ?>
+                <a href="<?= e($cur_url($code)) ?>" class="ts-cur-opt<?= $code === $__cur ? ' on' : '' ?>" data-cur-set="<?= e($code) ?>" role="menuitem">
+                  <span class="ts-cur-opt-code"><?= e(currency_label($code)) ?></span>
+                  <span class="ts-cur-opt-name"><?= e($meta['name']) ?></span>
+                </a>
+                <?php endforeach; ?>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
       <?php endif; ?>
 
       <div class="srch-results" id="srchResults">
-      <?php foreach ($results as $r):
+      <?php foreach ($results as $__rank => $r):
       $v = $r['venue']; $sold = $r['count'] === 0;
       $room_count  = count(array_filter($r['rooms'], fn($x) => empty($x['entire'])));
       $has_entire  = (bool) array_filter($r['rooms'], fn($x) => !empty($x['entire']));
@@ -219,6 +271,7 @@ include __DIR__ . '/includes/header.php';
       else                   { $avail_txt = 'Available'; $cta_txt = 'Select →'; }
       ?>
       <div class="vcard<?= $sold ? ' is-sold' : '' ?>"
+           data-order="<?= (int)$__rank ?>"
            data-type="<?= e($venue_type[$v['slug']] ?? '') ?>"
            data-loc="<?= e($loc_slug($v['location'] ?? '')) ?>"
            data-avail="<?= $sold ? '0' : '1' ?>"
