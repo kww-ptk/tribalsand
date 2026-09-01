@@ -118,8 +118,6 @@ ob_start(); ?>
 <?php $__restoDesktop = ob_get_clean();
 
 ob_start(); ?>
-  <div>
-    <span class="ts-mob-lbl">Restaurants</span>
     <a href="tribal-table.php" class="ts-mob-link">Tribal Table <span class="ts-tag ts-tag-open">· Now Open</span> <span class="ts-mob-arr">→</span></a>
     <a href="somewhere-cafe.php" class="ts-mob-link">Somewhere Café <span class="ts-tag ts-tag-soon">— Soon</span> <span class="ts-mob-arr">→</span></a>
     <?php foreach (['Kilifi', 'Watamu', ''] as $__town): foreach ($__navMenusByTown[$__town] as $__m): ?>
@@ -129,8 +127,13 @@ ob_start(); ?>
     <?php if ($__navReserve): ?>
     <a href="reserve.php" class="ts-mob-link">Reserve a Table <span class="ts-mob-arr">→</span></a>
     <?php endif; ?>
-  </div>
-<?php $__restoDrawer = ob_get_clean(); ?>
+<?php
+// Rows only: the DB-driven drawer wraps these in its own collapsible <details>
+// section. The hardcoded fallback drawer is still a flat list, so it needs the
+// original label + wrapper — composed here so both branches keep working.
+$__restoDrawerRows = ob_get_clean();
+$__restoDrawer     = '<div><span class="ts-mob-lbl">Restaurants</span>' . $__restoDrawerRows . '</div>';
+?>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500&display=swap" rel="stylesheet">
@@ -327,9 +330,43 @@ ob_start(); ?>
   transition:background .18s;
 }
 .ts-mob-prop:hover{background:rgba(184,150,90,.06);}
-.ts-mob-prop img{width:46px;height:36px;object-fit:cover;opacity:.72;}
+.ts-mob-prop img{width:66px;height:50px;object-fit:cover;opacity:.95;border-radius:2px;flex:0 0 auto;}
 .ts-mob-prop-name{font-family:'Jost',sans-serif;font-size:.78rem;color:rgba(212,196,172,.92);}
 .ts-mob-prop-loc{font-size:.62rem;color:rgba(184,150,90,.65);margin-top:.06rem;}
+
+/* Collapsible sections. <details name="ts-mob"> is a native one-open-at-a-time
+   accordion — no JS, and keyboard + screen-reader behaviour comes for free.
+   Browsers without `name` support just allow several open, which is still far
+   shorter than the old always-expanded list. */
+.ts-mob-sec{border-bottom:1px solid rgba(184,150,90,.09);}
+.ts-mob-sum{
+  display:flex;align-items:center;gap:.55rem;
+  padding:1.05rem 1.5rem;cursor:pointer;list-style:none;
+  font-family:'Jost',sans-serif;font-size:.8rem;letter-spacing:.13em;text-transform:uppercase;
+  color:rgba(212,196,172,.88);transition:color .18s,background .18s;
+}
+.ts-mob-sum::-webkit-details-marker{display:none;}
+.ts-mob-sum::marker{content:'';}
+.ts-mob-sum-l{flex:1 1 auto;}
+.ts-mob-n{font-size:.56rem;letter-spacing:.1em;color:rgba(184,150,90,.5);}
+.ts-mob-chev{font-size:.7rem;color:rgba(184,150,90,.6);transition:transform .28s;}
+.ts-mob-sec[open]>.ts-mob-sum{color:#fff;background:rgba(184,150,90,.07);}
+.ts-mob-sec[open]>.ts-mob-sum .ts-mob-chev{transform:rotate(180deg);}
+.ts-mob-panel{background:rgba(0,0,0,.14);padding-bottom:.35rem;}
+
+/* Two-column photo grid for picture-led sections (Accommodations, Tribal Dunes) */
+.ts-mob-grid{display:grid;grid-template-columns:1fr 1fr;gap:.55rem;padding:.7rem .8rem .8rem;}
+.ts-mob-card{position:relative;display:block;overflow:hidden;border-radius:3px;background:#12303c;}
+.ts-mob-card img{width:100%;aspect-ratio:4/3;object-fit:cover;display:block;}
+.ts-mob-card-t{
+  position:absolute;left:0;right:0;bottom:0;padding:1.9rem .55rem .5rem;
+  /* Deep, tall scrim: property photos run bright (pools, sky, white walls) and
+     the sand-coloured sublabel loses contrast without it. */
+  background:linear-gradient(to top,rgba(6,20,26,.97) 0%,rgba(6,20,26,.86) 42%,rgba(6,20,26,0) 100%);
+}
+.ts-mob-card-n{display:block;font-family:'Jost',sans-serif;font-size:.72rem;line-height:1.25;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.55);}
+.ts-mob-card-s{display:block;font-size:.58rem;color:var(--ts-sand-lt);margin-top:.1rem;text-shadow:0 1px 3px rgba(0,0,0,.55);}
+@media (prefers-reduced-motion:reduce){.ts-mob-chev{transition:none;}}
 .ts-mob-div{height:1px;background:rgba(184,150,90,.09);margin:.5rem 1.5rem;}
 .ts-mob-actions{padding:1.4rem 1.5rem 0;display:flex;flex-direction:column;gap:.6rem;}
 .ts-mob-btn{
@@ -352,6 +389,7 @@ ob_start(); ?>
   padding:.42rem .55rem;cursor:pointer;transition:border-color .2s,background .2s,color .2s;white-space:nowrap;
 }
 .ts-cur-btn:hover{border-color:rgba(184,150,90,.7);background:rgba(184,150,90,.08);color:#fff;}
+.ts-cur-btn span:empty{display:none;}
 .ts-cur-chev{width:9px;height:9px;opacity:.55;transition:transform .2s;flex-shrink:0;}
 .ts-cur.open .ts-cur-chev{transform:rotate(180deg);opacity:.85;}
 .ts-cur-menu{
@@ -598,7 +636,7 @@ ob_start(); ?>
     <?php $__cur = current_currency(); ?>
     <div class="ts-cur" id="tsCur">
       <button type="button" class="ts-cur-btn" id="tsCurBtn" aria-haspopup="true" aria-expanded="false" aria-label="Change currency">
-        <span data-cur-active-sym><?= e(trim(TS_CURRENCIES[$__cur]['symbol'])) ?></span>
+        <span data-cur-active-sym><?= e(currency_symbol_prefix($__cur)) ?></span>
         <span data-cur-active-code><?= e($__cur) ?></span>
         <svg class="ts-cur-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
       </button>
@@ -606,7 +644,7 @@ ob_start(); ?>
         <span class="ts-cur-head">Currency</span>
         <?php foreach (TS_CURRENCIES as $code => $meta): ?>
         <a href="?cur=<?= e($code) ?>" class="ts-cur-opt<?= $code === $__cur ? ' on' : '' ?>" data-cur-set="<?= e($code) ?>" role="menuitem">
-          <span class="ts-cur-opt-code"><?= e(trim($meta['symbol'])) ?> <?= e($code) ?></span>
+          <span class="ts-cur-opt-code"><?= e(currency_label($code)) ?></span>
           <span class="ts-cur-opt-name"><?= e($meta['name']) ?></span>
         </a>
         <?php endforeach; ?>
@@ -624,7 +662,7 @@ ob_start(); ?>
 <!-- Mobile drawer -->
 <div class="ts-drawer" id="tsDrawer">
 <?php if ($__navTree): ?>
-  <?= nav_drawer_html($__navTree, $__restoDrawer) ?>
+  <?= nav_drawer_html($__navTree, $__restoDrawerRows) ?>
 <?php else: ?>
 
   <div>
@@ -694,7 +732,7 @@ ob_start(); ?>
       <span style="display:block;font-family:'Jost',sans-serif;font-size:.54rem;letter-spacing:.22em;text-transform:uppercase;color:rgba(184,150,90,.5);margin-bottom:.5rem;">Currency</span>
       <div class="ts-cur-chips">
         <?php foreach (TS_CURRENCIES as $code => $meta): ?>
-        <a href="?cur=<?= e($code) ?>" class="ts-cur-chip<?= $code === current_currency() ? ' on' : '' ?>" data-cur-set="<?= e($code) ?>"><?= e(trim($meta['symbol'])) ?> <?= e($code) ?></a>
+        <a href="?cur=<?= e($code) ?>" class="ts-cur-chip<?= $code === current_currency() ? ' on' : '' ?>" data-cur-set="<?= e($code) ?>"><?= e(currency_label($code)) ?></a>
         <?php endforeach; ?>
       </div>
     </div>

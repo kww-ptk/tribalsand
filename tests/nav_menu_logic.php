@@ -32,6 +32,13 @@ $tree = [
         ]],
     ]],
     ['id' => 2, 'label' => 'Eat', 'layout' => 'simple', 'auto_source' => 'restaurants', 'groups' => []],
+    ['id' => 4, 'label' => 'Photos', 'layout' => 'wide2', 'auto_source' => null, 'groups' => [
+        ['id' => 40, 'label' => null, 'links' => [
+            ['id' => 400, 'label' => 'Villa A', 'href' => 'a.php', 'sublabel' => 'Kilifi', 'image_key' => 'images/a.jpg', 'tag' => '', 'role' => 'row', 'cta_note' => null, 'target_blank' => false],
+            ['id' => 401, 'label' => 'Villa B', 'href' => 'b.php', 'sublabel' => 'Watamu', 'image_key' => 'images/b.jpg', 'tag' => '', 'role' => 'row', 'cta_note' => null, 'target_blank' => false],
+            ['id' => 402, 'label' => 'All stays', 'href' => 'all.php', 'sublabel' => null, 'image_key' => null, 'tag' => '', 'role' => 'row', 'cta_note' => null, 'target_blank' => false],
+        ]],
+    ]],
     ['id' => 3, 'label' => 'More', 'layout' => 'simple', 'auto_source' => null, 'groups' => [
         ['id' => 30, 'label' => null, 'links' => [
             ['id' => 300, 'label' => 'Blog', 'href' => 'blog.php', 'sublabel' => null, 'image_key' => null, 'tag' => '', 'role' => 'row', 'cta_note' => null, 'target_blank' => false],
@@ -53,10 +60,41 @@ check('desktop: Destinations-style label', str_contains($desktop, '>Guides<'));
 check('desktop: external target_blank',    str_contains($desktop, 'target="_blank"'));
 
 $drawer = nav_drawer_html($tree, '<!--RESTO-DRAWER-->');
-check('drawer: section label Stay',        str_contains($drawer, 'ts-mob-lbl') && str_contains($drawer, '>Stay<'));
+check('drawer: section label Stay',        str_contains($drawer, 'ts-mob-sum') && str_contains($drawer, '>Stay<'));
 check('drawer: thumb prop row',            str_contains($drawer, 'ts-mob-prop'));
 check('drawer: auto splices drawer resto', str_contains($drawer, '<!--RESTO-DRAWER-->'));
 check('drawer: CTA is omitted from drawer', !str_contains($drawer, 'Not sure?'));
+
+// ── Collapsible sections (the mobile-menu accordion) ────────────────────────
+check('drawer: sections are <details>',    str_contains($drawer, '<details class="ts-mob-sec"'));
+check('drawer: native one-open-at-a-time', str_contains($drawer, 'name="ts-mob"'));
+check('drawer: sections start collapsed',  !str_contains($drawer, '<details class="ts-mob-sec" name="ts-mob" open'));
+check('drawer: one <details> per section', substr_count($drawer, '<details') === 4);
+check('drawer: every section is closed',   substr_count($drawer, '</details>') === substr_count($drawer, '<details'));
+check('drawer: restaurants gets a section',
+      str_contains($drawer, '>Eat<') && str_contains($drawer, '<!--RESTO-DRAWER-->'));
+check('drawer: link count badge shown',    str_contains($drawer, 'ts-mob-n'));
+
+// ── Photo sections become a two-column card grid ────────────────────────────
+check('cards: >=2 images → grid',          str_contains($drawer, 'ts-mob-grid'));
+check('cards: both photos are cards',      substr_count($drawer, 'ts-mob-card"') === 2);
+check('cards: card carries its sublabel',  str_contains($drawer, 'ts-mob-card-s'));
+check('cards: 1 image → stays a thumb row', // Stay has a single image link
+      str_contains($drawer, 'ts-mob-prop') && substr_count($drawer, 'ts-mob-grid') === 1);
+check('cards: text link in a photo section still renders',
+      str_contains($drawer, '>All stays'));
+check('rule: 2+ images → cards',           nav_drawer_uses_cards([
+      ['image_key'=>'images/a.jpg'], ['image_key'=>'images/b.jpg']]) === true);
+check('rule: 1 image → no cards',          nav_drawer_uses_cards([
+      ['image_key'=>'images/a.jpg'], ['image_key'=>null]]) === false);
+check('rule: no images → no cards',        nav_drawer_uses_cards([['image_key'=>null]]) === false);
+
+// ── Nothing is lost in the restructure ──────────────────────────────────────
+$hrefs = ['zuri.php', 'a.php', 'b.php', 'all.php', 'blog.php', 'https://x'];
+$missing = array_values(array_filter($hrefs, fn($h) => !str_contains($drawer, 'href="' . $h . '"')));
+check('drawer: every link still present',  $missing === []);
+check('drawer: external keeps target',     str_contains($drawer, 'target="_blank"'));
+check('drawer: empty section is skipped',  nav_drawer_section('X', '', 0) === '');
 
 // ── DB: nav_supported + tree fetch + mutations (rolled back) ─────────────────
 try { db()->query('SELECT 1'); }

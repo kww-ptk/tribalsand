@@ -182,34 +182,101 @@ function nav_desktop_html(array $tree, string $restaurantsHtml = ''): string {
 }
 
 /** Mobile drawer sections for the tree. $restaurantsHtml is the auto item's drawer markup. */
-function nav_drawer_html(array $tree, string $restaurantsHtml = ''): string {
+/** One drawer row — a thumbnail row when the link carries an image, else a text link. */
+function nav_drawer_row(array $l): string {
+    $href = $l['href'] ?: '#';
+    $tgt  = !empty($l['target_blank']) ? ' target="_blank" rel="noopener"' : '';
+    $img  = nav_img_url($l['image_key'] ?? '');
+    if ($img !== '') {
+        // alt="" — the label sits right beside it, so the image is decorative.
+        return '<a href="' . e($href) . '"' . $tgt . ' class="ts-mob-prop">'
+             . '<img src="' . e($img) . '" alt="" loading="lazy" decoding="async">'
+             . '<div><div class="ts-mob-prop-name">' . e($l['label']) . '</div>'
+             . ($l['sublabel'] ? '<div class="ts-mob-prop-loc">' . e($l['sublabel']) . '</div>' : '')
+             . '</div></a>';
+    }
+    return '<a href="' . e($href) . '"' . $tgt . ' class="ts-mob-link">' . e($l['label'])
+         . nav_tag_html($l['tag'] ?? '') . ' <span class="ts-mob-arr">&rarr;</span></a>';
+}
+
+/** A photo card for the two-column grid. */
+function nav_drawer_card(array $l): string {
+    $href = $l['href'] ?: '#';
+    $tgt  = !empty($l['target_blank']) ? ' target="_blank" rel="noopener"' : '';
+    return '<a href="' . e($href) . '"' . $tgt . ' class="ts-mob-card">'
+         . '<img src="' . e(nav_img_url($l['image_key'] ?? '')) . '" alt="" loading="lazy" decoding="async">'
+         . '<span class="ts-mob-card-t"><span class="ts-mob-card-n">' . e($l['label']) . '</span>'
+         . ($l['sublabel'] ? '<span class="ts-mob-card-s">' . e($l['sublabel']) . '</span>' : '')
+         . '</span></a>';
+}
+
+/**
+ * One collapsible drawer section. `name="ts-mob"` makes <details> a native
+ * one-open-at-a-time accordion; browsers without that support simply allow
+ * several open, which is still shorter than the old always-open list.
+ * No JS — collapse, keyboard and screen-reader behaviour all come from <details>.
+ */
+function nav_drawer_section(string $label, string $body, int $count): string {
+    if (trim($body) === '') return '';
+    return '<details class="ts-mob-sec" name="ts-mob">'
+         . '<summary class="ts-mob-sum"><span class="ts-mob-sum-l">' . e($label) . '</span>'
+         . ($count > 0 ? '<span class="ts-mob-n">' . $count . '</span>' : '')
+         . '<span class="ts-mob-chev" aria-hidden="true">&#9662;</span></summary>'
+         . '<div class="ts-mob-panel">' . $body . '</div></details>';
+}
+
+/**
+ * A section switches to the two-column photo grid once at least two of its
+ * links carry an image. Data-driven on purpose: no extra admin field, and it
+ * follows along as thumbnails are added or removed in Admin → Site Menu.
+ */
+function nav_drawer_uses_cards(array $links): bool {
+    $n = 0;
+    foreach ($links as $l) {
+        if (nav_img_url($l['image_key'] ?? '') !== '') $n++;
+    }
+    return $n >= 2;
+}
+
+/**
+ * Mobile drawer. Each top-level item becomes a collapsed <details> section, so
+ * the drawer opens at one screen of section headers instead of every link at
+ * once. $restaurantsRows is the pre-rendered Restaurants link list (rows only,
+ * no wrapper/label) — it is spliced in verbatim and never parsed.
+ */
+function nav_drawer_html(array $tree, string $restaurantsRows = ''): string {
     $html = '';
     foreach ($tree as $item) {
-        if (($item['auto_source'] ?? '') === 'restaurants') { $html .= $restaurantsHtml; continue; }
+        if (($item['auto_source'] ?? '') === 'restaurants') {
+            $html .= nav_drawer_section(
+                (string)($item['label'] ?? 'Restaurants'),
+                $restaurantsRows,
+                substr_count($restaurantsRows, 'ts-mob-link') // cosmetic count only
+            );
+            continue;
+        }
 
-        $rows = '';
+        $links = [];
         foreach ($item['groups'] as $g) {
             foreach ($g['links'] as $l) {
-                $role = $l['role'] ?? 'row';
-                if ($role === 'cta_button') continue;   // CTAs live in the drawer footer, not the link list
-                $href = $l['href'] ?: '#';
-                $tgt  = !empty($l['target_blank']) ? ' target="_blank" rel="noopener"' : '';
-                $img  = nav_img_url($l['image_key'] ?? '');
-                $tag  = nav_tag_html($l['tag'] ?? '');
-                if ($img !== '') {
-                    $rows .= '<a href="' . e($href) . '"' . $tgt . ' class="ts-mob-prop">'
-                           . '<img src="' . e($img) . '" alt="' . e($l['label']) . '">'
-                           . '<div><div class="ts-mob-prop-name">' . e($l['label']) . '</div>'
-                           . ($l['sublabel'] ? '<div class="ts-mob-prop-loc">' . e($l['sublabel']) . '</div>' : '')
-                           . '</div></a>';
-                } else {
-                    $rows .= '<a href="' . e($href) . '"' . $tgt . ' class="ts-mob-link">' . e($l['label']) . $tag . ' <span class="ts-mob-arr">→</span></a>';
-                }
+                if (($l['role'] ?? 'row') === 'cta_button') continue; // CTAs live in the drawer footer
+                $links[] = $l;
             }
         }
-        if ($rows !== '') {
-            $html .= '<div><span class="ts-mob-lbl">' . e($item['label']) . '</span>' . $rows . '</div>';
+        if (!$links) continue;
+
+        $body = '';
+        if (nav_drawer_uses_cards($links)) {
+            $cards = ''; $rest = '';
+            foreach ($links as $l) {
+                if (nav_img_url($l['image_key'] ?? '') !== '') $cards .= nav_drawer_card($l);
+                else                                           $rest  .= nav_drawer_row($l);
+            }
+            $body = '<div class="ts-mob-grid">' . $cards . '</div>' . $rest;
+        } else {
+            foreach ($links as $l) $body .= nav_drawer_row($l);
         }
+        $html .= nav_drawer_section((string)$item['label'], $body, count($links));
     }
     return $html;
 }
