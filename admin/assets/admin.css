@@ -127,6 +127,7 @@ input, select, textarea, button, code, kbd, samp { font-family: inherit; }
 .badge--red    { background: #fdecea; color: var(--red); }
 .badge--blue   { background: #e3f2fd; color: #1565c0; }
 .badge--orange { background: #fff3e0; color: #e65100; }
+.badge--purple { background: #ede9fe; color: #6d28d9; }
 .badge--grey   { background: #f0f0f0; color: #555; }
 
 /* ── Buttons ── */

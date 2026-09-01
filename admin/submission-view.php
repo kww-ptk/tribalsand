@@ -115,6 +115,7 @@ $badge = match($sub['type']) {
     'enquiry' => 'badge--blue',
     'contact' => 'badge--green',
     'agency'  => 'badge--orange',
+    'event'   => 'badge--purple',
     default   => 'badge--grey',
 };
 

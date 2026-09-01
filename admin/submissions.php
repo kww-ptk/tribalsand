@@ -165,6 +165,7 @@ ob_start(); ?>
               'enquiry' => 'badge--blue',
               'contact' => 'badge--green',
               'agency'  => 'badge--orange',
+              'event'   => 'badge--purple',
               default   => 'badge--grey',
             }; ?>
             <span class="badge <?= $badge ?>"><?= e($row['type']) ?></span>
