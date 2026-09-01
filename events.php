@@ -547,7 +547,7 @@ a{text-decoration:none;color:inherit;}
       <div class="ev-card">
         <div class="ev-card-icon"></div>
         <div class="ev-card-title">Private Dining Events</div>
-        <p class="ev-card-desc">Beach dinners with white-linen service and the Indian Ocean at your feet. Swahili feasts, sunset cocktail receptions on Kilifi Creek, rooftop starlight suppers. The Tribal Table concept — coming soon — will offer elevated private dining experiences across all locations.</p>
+        <p class="ev-card-desc">Beach dinners with white-linen service and the Indian Ocean at your feet. Swahili feasts, sunset cocktail receptions on Kilifi Creek, rooftop starlight suppers. The Tribal Table concept — now open in Kilifi — offers elevated private dining experiences across all locations.</p>
         <a href="trip-builder" class="ev-card-link">Arrange a dinner &rarr;</a>
       </div>
 

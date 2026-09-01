@@ -12,7 +12,7 @@ $faqs = [
     ['q' => 'What is the Prestige Suite at Maya Kobe?',
      'a' => 'The Prestige Suite is a private two-bedroom suite with its own pool and open-air bathtub, sleeping up to 4 guests. It can be booked independently or as part of a full property buyout.'],
     ['q' => 'Is Maya Kobe part of Tribal Dunes?',
-     'a' => 'Yes. Maya Kobe sits at the heart of Tribal Dunes — Kilifi\'s beachfront community. Guests have walking access to Off Duty coworking hotel, Tribal Table restaurant (coming soon), Somewhere Café (coming soon) and the Tribal Kite School.'],
+     'a' => 'Yes. Maya Kobe sits at the heart of Tribal Dunes — Kilifi\'s beachfront community. Guests have walking access to Off Duty coworking hotel (coming soon), Tribal Table restaurant (now open), Somewhere Café (coming soon) and the Tribal Kite School.'],
     ['q' => 'Can I book just one suite at Maya Kobe?',
      'a' => 'Yes. Individual suite bookings are available for couples and small groups. The full property can also be bought out for up to 12 guests (16 with the Prestige Suite).'],
     ['q' => 'What is the nearest airport to Maya Kobe Kilifi?',
@@ -172,6 +172,9 @@ a{text-decoration:none;color:inherit;}
 .td-node-name{font-size:.82rem;font-weight:500;color:rgba(255,255,255,.82);margin-bottom:.12rem;}
 .td-node-tag{font-size:.75rem;color:rgba(184,150,90,.55);letter-spacing:.05em;}
 .td-node-soon{font-size:.75rem;color:rgba(184,150,90,.4);letter-spacing:.1em;}
+.td-node-open{font-size:.75rem;color:var(--sand,#B8965A);letter-spacing:.1em;font-weight:600;}
+.td-node-open a{color:inherit;text-decoration:none;border-bottom:1px solid rgba(184,150,90,.35);}
+.td-node-open a:hover{color:#fff;border-bottom-color:#fff;}
 .td-link{display:inline-flex;align-items:center;gap:.5rem;margin-top:1.2rem;font-size:.75rem;letter-spacing:.18em;text-transform:uppercase;color:var(--sand-lt);border:1px solid rgba(184,150,90,.3);padding:.6rem 1.2rem;transition:all .22s;}
 .td-link:hover{background:rgba(184,150,90,.12);border-color:var(--sand);}
 
@@ -444,12 +447,12 @@ include __DIR__ . '/includes/property-photo-grid.php';
           <div class="td-node">
             <div class="td-node-ico"><span class="map-ico">WK</span></div>
             <div class="td-node-name">Off Duty</div>
-            <div class="td-node-tag">Coworking Hotel · Kilifi</div>
+            <div class="td-node-tag"><span class="td-node-soon">Coming Soon</span></div>
           </div>
           <div class="td-node">
             <div class="td-node-ico"><span class="map-ico">F</span></div>
             <div class="td-node-name">Tribal Table</div>
-            <div class="td-node-tag"><span class="td-node-soon">Coming Soon</span></div>
+            <div class="td-node-tag"><span class="td-node-open"><a href="https://www.tribaltablekenya.com" target="_blank" rel="noopener">Now Open &rarr;</a></span></div>
           </div>
           <div class="td-node">
             <div class="td-node-ico"><span class="map-ico">C</span></div>

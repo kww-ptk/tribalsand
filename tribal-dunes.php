@@ -401,7 +401,7 @@ a:hover{text-decoration:underline;}
         <div class="td-venue-body">
           <div class="td-venue-header">
             <div class="td-venue-name">Off Duty</div>
-            <span class="td-venue-status active">Active</span>
+            <span class="td-venue-status soon">Coming Soon</span>
           </div>
           <p class="td-venue-desc">A beachfront coworking hotel built around people who work well and live actively. Strong Wi-Fi, well-designed rooms, direct beach access. The coworking space is open to non-hotel guests — local entrepreneurs and remote workers in Kilifi use it daily. The Tribal Kite School is thirty metres from the front door.</p>
           <div class="td-venue-tags">
@@ -433,13 +433,14 @@ a:hover{text-decoration:underline;}
         <div class="td-venue-body">
           <div class="td-venue-header">
             <div class="td-venue-name">Tribal Table</div>
-            <span class="td-venue-status soon">Coming Soon</span>
+            <span class="td-venue-status active">Now Open</span>
           </div>
           <p class="td-venue-desc">An elevated restaurant and cocktail bar beside Maya Kobe. Open to the public. Local ingredients, considered design and the kind of setting that makes a Tuesday feel like a reason to dress well. A destination in its own right — the dining anchor for Tribal Dunes and the wider Kilifi community.</p>
           <div class="td-venue-tags">
             <span class="td-venue-tag">Restaurant & Bar</span>
             <span class="td-venue-tag">Open to Public</span>
           </div>
+          <a href="https://www.tribaltablekenya.com" class="td-callout-link" target="_blank" rel="noopener">Visit tribaltablekenya.com &rarr;</a>
         </div>
       </div>
 
