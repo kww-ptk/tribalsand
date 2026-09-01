@@ -469,13 +469,6 @@ include 'includes/head.php';
   </div>
 </div>
 
-<!-- ═══ TRIPADVISOR BADGE ═══ -->
-<div style="display:flex;justify-content:center;padding:.75rem 5vw;background:var(--off);border-bottom:1px solid var(--border);">
-  <a href="<?= e(ts_tripadvisor_badge_url()) ?>" target="_blank" rel="noopener" aria-label="Tribal Sand on TripAdvisor">
-    <img src="/images/tripadvisor.jpg" alt="TripAdvisor Travellers' Choice" style="height:52px;width:auto;object-fit:contain;display:block;">
-  </a>
-</div>
-
 <!-- ═══ PROPERTIES ═══ -->
 <section class="props-section" id="properties" aria-labelledby="props-heading">
   <div class="props-header">
@@ -701,8 +694,8 @@ include 'includes/head.php';
       <img class="how-img" src="images/My-Amani-8.jpg"
            alt="Tribal Sand concierge service — Kenya coast"
            width="600" height="750" loading="lazy" decoding="async">
-      <img class="how-img-accent" src="images/Pool-Image_Edited.jpg"
-           alt="Tribal Sand pool — Kenya"
+      <img class="how-img-accent" src="https://d38di21ab22p6u.cloudfront.net/da8332ef15c50327eedc.jpg"
+           alt="A Tribal Sand host setting a table for guests — Kenya coast"
            width="320" height="240" loading="lazy" decoding="async">
     </div>
     <div>
@@ -846,9 +839,6 @@ include 'includes/head.php';
     <div class="eyebrow">Guest Reviews</div>
     <h2 class="sec-h" id="reviews-heading">What Our <em>Guests Say</em></h2>
     <div class="sec-rule" style="margin:0 auto 1rem;"></div>
-    <a href="<?= e(ts_tripadvisor_badge_url()) ?>" target="_blank" rel="noopener" aria-label="See our TripAdvisor reviews" style="display:inline-block;">
-      <img src="/images/tripadvisor.jpg" alt="TripAdvisor Travellers' Choice" style="height:38px;width:auto;object-fit:contain;vertical-align:middle;">
-    </a>
   </div>
   <div class="reviews-grid">
     <div class="review-card">
