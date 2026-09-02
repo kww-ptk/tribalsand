@@ -293,12 +293,66 @@
     }
 
     // ── Form error feedback ─────────────────────────────────────
-    function showError(msg) {
-      feedback.hidden = false;
-      feedback.textContent = msg;
-      feedback.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    // Each step carries its own slot: the form is stepped now, so writing every
+    // message to the details step would hide date errors behind a panel the
+    // guest isn't looking at.
+    function feedbackSlot() {
+      const open = form.querySelector("[data-bk-step]:not([hidden]) [data-bk-feedback]");
+      return open || feedback;
     }
-    function clearError() { feedback.hidden = true; feedback.textContent = ""; }
+    function showError(msg) {
+      const el = feedbackSlot();
+      el.hidden = false;
+      el.textContent = msg;
+      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }
+    function clearError() {
+      form.querySelectorAll("[data-bk-feedback]").forEach(el => { el.hidden = true; el.textContent = ""; });
+    }
+
+    // ── Steps ────────────────────────────────────────────────────
+    // Dates → (Extras) → Details. The Extras step only exists when this
+    // property offers add-ons, so the numbers come from the server rather than
+    // being hard-coded here.
+    const stepsBar  = document.getElementById("bkSteps");
+    const stepEls   = Array.from(form.querySelectorAll("[data-bk-step]"));
+    const dotEls    = stepsBar ? Array.from(stepsBar.querySelectorAll("[data-bk-dot]")) : [];
+    const S_EXTRAS  = stepsBar ? parseInt(stepsBar.dataset.extras  || "0", 10) : 0;
+    const S_DETAILS = stepsBar ? parseInt(stepsBar.dataset.details || "2", 10) : 2;
+
+    function showStep(n) {
+      stepEls.forEach(el => { el.hidden = parseInt(el.dataset.bkStep, 10) !== n; });
+      dotEls.forEach(d => {
+        const i = parseInt(d.dataset.bkDot, 10);
+        d.classList.toggle("is-active", i === n);
+        d.classList.toggle("is-done",   i <  n);
+      });
+      closeAllPops();
+      // Keep the widget in view when the panel height changes between steps.
+      if (wrap.getBoundingClientRect().top < 0) wrap.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    // Leaving the dates step needs the same two checks the submit does — no
+    // point walking someone to the contact form for dates we can't hold.
+    function datesReady() {
+      if (!ciHidden.value || !coHidden.value) {
+        showError("Please pick your check-in and check-out dates.");
+        openDatePop(ciHidden.value ? coBtn : ciBtn);
+        return false;
+      }
+      if (availOk === false) {
+        showError("Those dates aren't available. Please pick a different range.");
+        openDatePop(ciBtn);
+        return false;
+      }
+      clearError();
+      return true;
+    }
+
+    /** Which step a given step's Continue leads to. */
+    function nextFrom(n) { return n === 1 ? (S_EXTRAS || S_DETAILS) : S_DETAILS; }
+    /** ...and its Back. */
+    function prevFrom(n) { return n === S_DETAILS ? (S_EXTRAS || 1) : 1; }
 
     // ── Bind events (once only) ──────────────────────────────────
     if (!bound) {
@@ -348,18 +402,29 @@
         });
       });
 
+      form.querySelectorAll("[data-bk-next]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const cur = parseInt(btn.closest("[data-bk-step]").dataset.bkStep, 10);
+          if (cur === 1 && !datesReady()) return;
+          showStep(nextFrom(cur));
+        });
+      });
+      form.querySelectorAll("[data-bk-back]").forEach(btn => {
+        btn.addEventListener("click", () => {
+          clearError();
+          showStep(prevFrom(parseInt(btn.closest("[data-bk-step]").dataset.bkStep, 10)));
+        });
+      });
+
       form.addEventListener("submit", async e => {
         e.preventDefault();
         clearError();
 
-        if (!ciHidden.value || !coHidden.value) {
-          showError("Please pick your check-in and check-out dates.");
-          openDatePop(ciHidden.value ? coBtn : ciBtn);
-          return;
-        }
-        if (availOk === false) {
-          showError("Those dates aren't available. Please pick a different range.");
-          openDatePop(ciBtn);
+        // Dates live on step 1, so a date problem has to take the guest back
+        // there — the fields that fix it aren't on screen otherwise.
+        if (!ciHidden.value || !coHidden.value || availOk === false) {
+          showStep(1);
+          datesReady();
           return;
         }
 

@@ -73,12 +73,31 @@ if ($__form_mode !== 'availability') {
 
   <div class="bk-room-label" id="bkRoomLabel"><?= e($room_name) ?></div>
 
+  <?php
+    // Step numbers stay dynamic: the Extras step only exists when this property
+    // offers add-ons, and the details step shifts accordingly.
+    $BK_EXTRAS  = $__upsells ? 2 : 0;
+    $BK_DETAILS = $__upsells ? 3 : 2;
+  ?>
+  <div class="bk-steps" id="bkSteps" data-extras="<?= (int)$BK_EXTRAS ?>" data-details="<?= (int)$BK_DETAILS ?>">
+    <span class="bk-steps__dot is-active" data-bk-dot="1"><i>1</i> Dates</span>
+    <?php if ($__upsells): ?>
+    <span class="bk-steps__bar"></span>
+    <span class="bk-steps__dot" data-bk-dot="<?= $BK_EXTRAS ?>"><i><?= $BK_EXTRAS ?></i> Extras</span>
+    <?php endif; ?>
+    <span class="bk-steps__bar"></span>
+    <span class="bk-steps__dot" data-bk-dot="<?= $BK_DETAILS ?>"><i><?= $BK_DETAILS ?></i> Details</span>
+  </div>
+
   <form id="availForm" class="bk-form" novalidate data-room-slug="<?= e($room_slug) ?>">
     <input type="text" name="website" style="display:none" tabindex="-1" autocomplete="off">
     <input type="hidden" name="checkin"  id="availCheckin">
     <input type="hidden" name="checkout" id="availCheckout">
     <input type="hidden" name="adults"   id="availAdults"   value="2">
     <input type="hidden" name="children" id="availChildren" value="0">
+
+    <!-- ── STEP 1: dates + guests ── -->
+    <div class="bk-step" data-bk-step="1">
 
     <!-- Check-in / Check-out triggers -->
     <div class="bk-dates-row">
@@ -159,8 +178,15 @@ if ($__form_mode !== 'availability') {
       <div class="bk-total__hint">Final price confirmed by email</div>
     </div>
 
+    <div class="bk-feedback" data-bk-feedback hidden></div>
+    <div class="bk-nav">
+      <button type="button" class="bk-next" data-bk-next>Continue <span aria-hidden="true">&rsaquo;</span></button>
+    </div>
+    </div><!-- /step 1 -->
+
     <?php if ($__upsells): ?>
-    <!-- Optional add-ons -->
+    <!-- ── STEP: optional add-ons ── -->
+    <div class="bk-step" data-bk-step="<?= $BK_EXTRAS ?>" hidden>
     <div class="bk-ups">
       <div class="bk-ups__head">Add to your stay <span>optional</span></div>
       <?php foreach ($__upsells as $__bu): $__bpl = upsell_price_label($__bu); ?>
@@ -178,9 +204,15 @@ if ($__form_mode !== 'availability') {
       <?php endforeach; ?>
       <p class="bk-ups__note">Nothing is charged now &mdash; we&rsquo;ll confirm availability and pricing by email.</p>
     </div>
+    <div class="bk-nav">
+      <button type="button" class="bk-back" data-bk-back>&lsaquo; Back</button>
+      <button type="button" class="bk-next" data-bk-next>Continue <span aria-hidden="true">&rsaquo;</span></button>
+    </div>
+    </div><!-- /extras step -->
     <?php endif; ?>
 
-    <!-- Guest details -->
+    <!-- ── STEP: guest details ── -->
+    <div class="bk-step" data-bk-step="<?= $BK_DETAILS ?>" hidden>
     <div class="bk-fields">
       <label class="bk-field"><span>Your name</span><input type="text" name="name" placeholder="Full name" required></label>
       <label class="bk-field"><span>Email</span><input type="email" name="email" placeholder="you@example.com" required></label>
@@ -188,7 +220,7 @@ if ($__form_mode !== 'availability') {
       <label class="bk-field"><span>Message <small>(optional)</small></span><textarea name="message" rows="2" placeholder="Special requests, arrival time, etc."></textarea></label>
     </div>
 
-    <div class="bk-feedback" id="availFeedback" hidden></div>
+    <div class="bk-feedback" id="availFeedback" data-bk-feedback hidden></div>
     <?php if (captcha_site_key()): ?>
     <div class="cf-turnstile" data-sitekey="<?= e(captcha_site_key()) ?>"></div>
     <?php endif; ?>
@@ -197,5 +229,9 @@ if ($__form_mode !== 'availability') {
       <svg class="bk-submit__arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
     </button>
     <p class="bk-hold-note">Dates are held for 24 hours pending confirmation</p>
+    <div class="bk-nav bk-nav--back">
+      <button type="button" class="bk-back" data-bk-back>&lsaquo; Back</button>
+    </div>
+    </div><!-- /details step -->
   </form>
 </div>

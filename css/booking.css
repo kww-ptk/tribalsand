@@ -571,3 +571,33 @@
 .bk-up__name { font-size: 14px; font-weight: 500; }
 .bk-up__meta { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; opacity: .7; }
 .bk-up__price { color: #1E5C6B; font-weight: 600; opacity: 1; }
+
+/* ── Booking widget: step chrome ──────────────────────────────────────── */
+.bk-steps { display: flex; align-items: center; gap: 6px; margin: 0 0 14px; }
+.bk-steps__dot { display: inline-flex; align-items: center; gap: 6px; font-family: 'Jost', sans-serif; font-size: 10px; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; color: rgba(0,0,0,.38); white-space: nowrap; }
+.bk-steps__dot i { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; border: 1.5px solid rgba(0,0,0,.16); font-style: normal; font-size: 10px; line-height: 1; transition: background .18s, border-color .18s, color .18s; }
+.bk-steps__dot.is-active { color: var(--bk-teal, #1E5C6B); }
+.bk-steps__dot.is-active i { background: var(--bk-teal, #1E5C6B); border-color: var(--bk-teal, #1E5C6B); color: #fff; }
+.bk-steps__dot.is-done i { background: rgba(30,92,107,.12); border-color: rgba(30,92,107,.3); color: var(--bk-teal, #1E5C6B); }
+.bk-steps__bar { flex: 1; height: 1px; background: rgba(0,0,0,.12); min-width: 8px; }
+.bk-step[hidden] { display: none; }
+.bk-nav { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
+.bk-nav--back { margin-top: 10px; justify-content: flex-start; }
+.bk-next {
+  flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;
+  background: var(--bk-teal, #1E5C6B); color: #fff; border: 0; padding: 16px 20px;
+  font-family: 'Jost', sans-serif; font-size: 10px; font-weight: 600;
+  letter-spacing: .22em; text-transform: uppercase; cursor: pointer;
+  transition: background .18s var(--ease, ease);
+}
+.bk-next:hover { background: var(--bk-teal-d, #102F3A); }
+.bk-back {
+  background: none; border: 0; padding: 10px 4px; cursor: pointer;
+  font-family: 'Jost', sans-serif; font-size: 11px; font-weight: 600;
+  letter-spacing: .12em; text-transform: uppercase; color: rgba(0,0,0,.5);
+  transition: color .18s;
+}
+.bk-back:hover { color: var(--bk-teal, #1E5C6B); }
+@media (max-width: 380px) {
+  .bk-steps__dot span, .bk-steps__dot { font-size: 9px; letter-spacing: .1em; }
+}
