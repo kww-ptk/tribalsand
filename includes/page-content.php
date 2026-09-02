@@ -289,6 +289,58 @@ function page_content_registry(): array {
                 ],
             ],
         ],
+        'zuri-restaurant' => [
+            'label' => 'Zuri Restaurant',
+            'url'   => '/zuri-restaurant.php',
+            'groups' => [
+                'Hero' => [
+                    'hero_image' => ['type'=>'image', 'label'=>'Hero photo',
+                        'hint'=>'Full-width photo behind the heading, with a dark gradient over it.',
+                        'default'=>'images/hero-zuri.jpg'],
+                    'hero_badge' => ['type'=>'text', 'label'=>'Status badge',
+                        'hint'=>'The pill above the heading.',
+                        'default'=>'Now Open to the Public'],
+                    'hero_eyebrow' => ['type'=>'text', 'label'=>'Eyebrow',
+                        'default'=>'Garoda Beach · Watamu · Kenya'],
+                    'hero_title' => ['type'=>'html', 'label'=>'Headline (H1)',
+                        'hint'=>'&lt;em&gt; makes the italic gold part.',
+                        'default'=>'Zuri <em>Restaurant</em>'],
+                    'hero_sub' => ['type'=>'html', 'label'=>'Sub-heading',
+                        'hint'=>'Accepts HTML — the &lt;strong&gt; sets "by reservation only" in white.',
+                        'default'=>'Coastal à la carte dining on the Indian Ocean shoreline — now open to the public, <strong style="color:#fff;font-weight:500;">by reservation only</strong>.'],
+                ],
+                'Dine with us' => [
+                    'info_eyebrow' => ['type'=>'text', 'label'=>'Eyebrow',
+                        'default'=>'Open to the Public · By Reservation Only'],
+                    'info_title' => ['type'=>'html', 'label'=>'Heading',
+                        'default'=>'Dine with us at <em>Zuri</em>'],
+                    'info_body' => ['type'=>'html', 'label'=>'Paragraph',
+                        'hint'=>'Accepts HTML so "by reservation only" can stay bold.',
+                        'default'=>'Our beachfront kitchen is now open to outside guests, not just those staying with us. Settle in for a relaxed lunch by the pool or a candlelit dinner steps from the sand. Because seating is intimate, we welcome guests <strong>by reservation only</strong> — send us your details below and our team will confirm your table within 24 hours.'],
+                ],
+                'Gallery' => [
+                    'gal_eyebrow' => ['type'=>'text', 'label'=>'Eyebrow', 'default'=>'A Taste of the Setting'],
+                    'gal_title'   => ['type'=>'html', 'label'=>'Heading',  'default'=>'The Zuri Table'],
+                    'gal_1' => ['type'=>'image','label'=>'Gallery photo 1','default'=>'images/zuri/Beach/zuri.watamu.beach.webp'],
+                    'gal_2' => ['type'=>'image','label'=>'Gallery photo 2','default'=>'images/zuri/Garden/zuri.watamu.morning.pool-10.webp'],
+                    'gal_3' => ['type'=>'image','label'=>'Gallery photo 3','default'=>'images/zuri/Aerial/zuri-3.webp'],
+                    'gal_4' => ['type'=>'image','label'=>'Gallery photo 4','default'=>'images/zuri/Garden/zuri.watamu.entryoutdoor.garden-2.webp'],
+                    'gal_5' => ['type'=>'image','label'=>'Gallery photo 5','default'=>'images/zuri/Beach/zuri.watamu.beach-2.webp'],
+                    'gal_6' => ['type'=>'image','label'=>'Gallery photo 6','default'=>'images/zuri/Garden/zuri.watamu.morning.pool-17.webp'],
+                ],
+                'Reservation block' => [
+                    'res_eyebrow' => ['type'=>'text', 'label'=>'Eyebrow', 'default'=>'Reserve a Table'],
+                    'res_title'   => ['type'=>'html', 'label'=>'Heading',  'default'=>'Book Your <em>Table</em>'],
+                    'res_body'    => ['type'=>'textarea', 'label'=>'Intro line',
+                        'default'=>'This is a request — we confirm within 24 hours. No payment is taken at this stage.'],
+                ],
+                'Sharing' => [
+                    'og_image' => ['type'=>'image', 'label'=>'Social share image',
+                        'hint'=>'Shown when the page is shared. Not visible on the page itself.',
+                        'default'=>'images/hero-zuri.jpg'],
+                ],
+            ],
+        ],
     ];
 }
 

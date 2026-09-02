@@ -12,6 +12,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/includes/db.php';
 require_once __DIR__ . '/includes/auth.php';          // csrf_field(), session
 require_once __DIR__ . '/includes/reservations.php';
+require_once __DIR__ . '/includes/page-content.php'; // editable slots (Admin → Page Content)
 
 session_init();
 
@@ -35,19 +36,24 @@ $slots  = reservation_slots();
 $ov     = fn(string $k, $d = '') => e((string)($old[$k] ?? $d));
 
 /* ── Gallery (placeholder photos — swap freely) ── */
+// Gallery tiles are editable in Admin → Page Content (Zuri Restaurant).
+// Slot keys, not paths — page_image() resolves each one. Clearing a field in
+// admin RESTORES that tile's default photo (it does not remove the tile); the
+// empty-string guard in the loop below is only a safety net for a slot that
+// resolves to nothing, so the page never renders a broken image.
 $gallery = [
-    ['images/zuri/Beach/zuri.watamu.beach.webp',                 'Beachfront dining at Zuri, Watamu'],
-    ['images/zuri/Garden/zuri.watamu.morning.pool-10.webp',      'Poolside terrace at Zuri'],
-    ['images/zuri/Aerial/zuri-3.webp',                           'Aerial view of Zuri on Garoda Beach'],
-    ['images/zuri/Garden/zuri.watamu.entryoutdoor.garden-2.webp','Garden dining setting at Zuri'],
-    ['images/zuri/Beach/zuri.watamu.beach-2.webp',               'Indian Ocean shoreline at Zuri'],
-    ['images/zuri/Garden/zuri.watamu.morning.pool-17.webp',      'Evening ambience at Zuri restaurant'],
+    ['gal_1', 'Beachfront dining at Zuri, Watamu'],
+    ['gal_2', 'Poolside terrace at Zuri'],
+    ['gal_3', 'Aerial view of Zuri on Garoda Beach'],
+    ['gal_4', 'Garden dining setting at Zuri'],
+    ['gal_5', 'Indian Ocean shoreline at Zuri'],
+    ['gal_6', 'Evening ambience at Zuri restaurant'],
 ];
 
 $page_title   = 'Zuri Restaurant · Beachfront Dining · Garoda Beach Watamu · Tribal Sand';
 $page_desc    = 'Zuri is now open to the public, by reservation only. Coastal à la carte dining on Garoda Beach, Watamu. View the menu and request your table.';
 $page_url     = 'https://tribalsand.com/zuri-restaurant.php';
-$page_image   = asset_url('images/hero-zuri.jpg');
+$page_image   = page_image('zuri-restaurant','og_image');
 $page_schema  = '<script type="application/ld+json">{"@context":"https://schema.org","@type":"Restaurant","name":"Zuri Restaurant","servesCuisine":["Coastal","Swahili"],"address":{"@type":"PostalAddress","addressLocality":"Watamu","addressRegion":"Kilifi County","addressCountry":"KE"},"telephone":"+254115115247","url":"https://tribalsand.com/zuri-restaurant","acceptsReservations":"True","image":"' . asset_url('images/hero-zuri.jpg') . '","parentOrganization":{"@type":"Organization","name":"Tribal Sand","url":"https://tribalsand.com"}}</script>';
 $page_booking = true;   // loads booking.css (datepicker styling) + datepicker.js
 ?>
@@ -155,12 +161,12 @@ img{display:block;object-fit:cover;}
 
 <!-- ═══ HERO ═══ -->
 <section class="zr-hero">
-  <div class="zr-hero-bg"><img src="<?= asset_url('images/hero-zuri.jpg') ?>" alt="Zuri beachfront restaurant on Garoda Beach, Watamu" width="1920" height="1080" loading="eager"></div>
+  <div class="zr-hero-bg"><img src="<?= e(page_image('zuri-restaurant','hero_image')) ?>" alt="Zuri beachfront restaurant on Garoda Beach, Watamu" width="1920" height="1080" loading="eager"></div>
   <div class="zr-hero-in">
-    <div class="zr-badge">Now Open to the Public</div>
-    <div class="zr-eyebrow">Garoda Beach · Watamu · Kenya</div>
-    <h1>Zuri <em>Restaurant</em></h1>
-    <p class="zr-hero-sub">Coastal à la carte dining on the Indian Ocean shoreline — now open to the public, <strong style="color:#fff;font-weight:500;">by reservation only</strong>.</p>
+    <div class="zr-badge"><?= page_text('zuri-restaurant','hero_badge') ?></div>
+    <div class="zr-eyebrow"><?= page_text('zuri-restaurant','hero_eyebrow') ?></div>
+    <h1><?= page_html('zuri-restaurant','hero_title') ?></h1>
+    <p class="zr-hero-sub"><?= page_html('zuri-restaurant','hero_sub') ?></p>
     <div class="zr-cta">
       <a href="<?= e(site_url('menu.php?m=' . ZR_MENU)) ?>" class="zr-btn zr-btn--gold" target="_blank" rel="noopener"><i class="fa-solid fa-book-open" aria-hidden="true"></i> View Menu</a>
       <a href="#reserve" class="zr-btn zr-btn--ghost"><i class="fa-solid fa-calendar-check" aria-hidden="true"></i> Book a Table</a>
@@ -170,9 +176,9 @@ img{display:block;object-fit:cover;}
 
 <!-- ═══ INFO ═══ -->
 <section class="zr-info">
-  <div class="zr-info-eyebrow">Open to the Public · By Reservation Only</div>
-  <h2>Dine with us at <em>Zuri</em></h2>
-  <p>Our beachfront kitchen is now open to outside guests, not just those staying with us. Settle in for a relaxed lunch by the pool or a candlelit dinner steps from the sand. Because seating is intimate, we welcome guests <strong>by reservation only</strong> — send us your details below and our team will confirm your table within 24 hours.</p>
+  <div class="zr-info-eyebrow"><?= page_text('zuri-restaurant','info_eyebrow') ?></div>
+  <h2><?= page_html('zuri-restaurant','info_title') ?></h2>
+  <p><?= page_html('zuri-restaurant','info_body') ?></p>
   <div class="zr-facts">
     <span class="zr-fact">À La Carte</span>
     <span class="zr-fact">Beachfront Terrace</span>
@@ -185,13 +191,13 @@ img{display:block;object-fit:cover;}
 <!-- ═══ GALLERY ═══ -->
 <section class="zr-gallery">
   <div class="zr-gallery-head">
-    <div class="zr-info-eyebrow">A Taste of the Setting</div>
-    <h2>The Zuri Table</h2>
+    <div class="zr-info-eyebrow"><?= page_text('zuri-restaurant','gal_eyebrow') ?></div>
+    <h2><?= page_html('zuri-restaurant','gal_title') ?></h2>
   </div>
   <div class="zr-grid">
-    <?php foreach ($gallery as [$src, $alt]): ?>
-    <a href="<?= e(asset_url($src)) ?>" target="_blank" rel="noopener">
-      <img src="<?= e(asset_url($src)) ?>" alt="<?= e($alt) ?>" loading="lazy">
+    <?php foreach ($gallery as [$slot, $alt]): $__u = page_image('zuri-restaurant', $slot); if ($__u === '') continue; ?>
+    <a href="<?= e($__u) ?>" target="_blank" rel="noopener">
+      <img src="<?= e($__u) ?>" alt="<?= e($alt) ?>" loading="lazy">
     </a>
     <?php endforeach; ?>
   </div>
@@ -201,9 +207,9 @@ img{display:block;object-fit:cover;}
 <section class="zr-reserve" id="reserve">
   <div class="zr-reserve-in">
     <div class="zr-reserve-head">
-      <div class="zr-info-eyebrow">Reserve a Table</div>
-      <h2>Book Your <em>Table</em></h2>
-      <p>This is a request — we confirm within 24 hours. No payment is taken at this stage.</p>
+      <div class="zr-info-eyebrow"><?= page_text('zuri-restaurant','res_eyebrow') ?></div>
+      <h2><?= page_html('zuri-restaurant','res_title') ?></h2>
+      <p><?= page_text('zuri-restaurant','res_body') ?></p>
     </div>
 
     <?php if (!$venue): ?>
