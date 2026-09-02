@@ -17,7 +17,7 @@ function check(string $label, bool $cond): void {
 
 // ── Config defaults (no override set) ──────────────────────────────────────
 $cfg = checkin_config();
-check('config has 7 steps',            count($cfg) === 7);
+check('config has 8 steps',            count($cfg) === 8);   // + 'upsell' (add_upsells)
 check('passport enabled by default',   $cfg['passport']['enabled'] === true);
 check('passport required by default',  $cfg['passport']['required'] === true);
 check('waiver required by default',    $cfg['waiver']['required'] === true);

@@ -22,6 +22,13 @@ $hasProgress = !empty($data) || !empty($lead);
 $showPassport = isset($cfg['passport']);
 $showWaiver   = isset($cfg['waiver']);
 $showDeposit  = isset($cfg['deposit']);
+
+// Optional add-ons for this property, minus anything already on the booking —
+// so something picked during the enquiry is never offered a second time here.
+require_once __DIR__ . '/../upsells.php';
+$ciUpsells = isset($cfg['upsell'])
+    ? fetch_upsell_items(((int)($hold['venue_id'] ?? 0)) ?: null, 'checkin', $holdId)
+    : [];
 $deposit      = checkin_venue_deposit($hold);   // ['amount','currency','formatted']
 $depositNote  = checkin_deposit_note();
 $depositOnFile = checkin_deposit_card_on_file($data);
@@ -62,6 +69,9 @@ foreach ($cfg as $key => $s) {
         if (!isset($flow['you'])) $flow['you'] = ['label' => 'Your details', 'required' => true];
         continue;
     }
+    // Nothing left to offer (property switched off, none placed here, or the
+    // guest already took them all at enquiry) → no empty step in the wizard.
+    if ($key === 'upsell' && !$ciUpsells) continue;
     $flow[$key] = $s;
 }
 // "Your party" only exists when there is something to manage: more than one
@@ -241,6 +251,27 @@ if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — for 
           <p class="ci-arrwarn__t"></p>
           <p class="ci-arrwarn__n"><?= e($T['note']) ?></p>
           <a class="ci-arrwarn__a" data-ci-leave href="/booking.php?ref=<?= e($ref) ?>&amp;view=messages">Message the team &rarr;</a>
+        </div>
+
+      <?php elseif ($key === 'upsell'): ?>
+        <p class="ci-note">Optional extras we can arrange for your stay. Nothing is charged now &mdash; we&rsquo;ll confirm each one with you.</p>
+        <div class="ci-ups">
+          <?php foreach ($ciUpsells as $__cu): $__cpl = upsell_price_label($__cu); ?>
+          <label class="ci-up">
+            <input type="checkbox" name="upsell[]" value="<?= (int)$__cu['id'] ?>">
+            <span class="ci-up__tick" aria-hidden="true"></span>
+            <span class="ci-up__body">
+              <span class="ci-up__name"><?= e((string)$__cu['name']) ?></span>
+              <?php if (trim((string)($__cu['short_desc'] ?? '')) !== ''): ?>
+              <span class="ci-up__desc"><?= e(mb_strimwidth(trim((string)$__cu['short_desc']), 0, 120, '…')) ?></span>
+              <?php endif; ?>
+              <span class="ci-up__meta">
+                <?php if (trim((string)($__cu['duration'] ?? '')) !== ''): ?><span><?= e((string)$__cu['duration']) ?></span><?php endif; ?>
+                <?php if ($__cpl !== ''): ?><span class="ci-up__price"><?= e($__cpl) ?></span><?php endif; ?>
+              </span>
+            </span>
+          </label>
+          <?php endforeach; ?>
         </div>
 
       <?php elseif ($key === 'transfer'): ?>

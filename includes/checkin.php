@@ -13,6 +13,10 @@ function checkin_step_catalog(): array {
         'passport' => ['label' => 'Passport & identity',  'default_required' => true],
         'dietary'  => ['label' => 'Dietary requirements', 'default_required' => false],
         'requests' => ['label' => 'Special requests',     'default_required' => false],
+        // Optional add-ons for this property. Never blocks: checkin_step_complete()
+        // always reports it done, so even ticking Required in Check-in Settings
+        // can't strand a guest who simply doesn't want to buy anything.
+        'upsell'   => ['label' => 'Add to your stay',      'default_required' => false],
         'deposit'  => ['label' => 'Security deposit',      'default_required' => false],
         'waiver'   => ['label' => 'Waiver & indemnity',   'default_required' => true],
     ];
@@ -401,6 +405,9 @@ function checkin_step_complete(string $key, ?array $data, ?array $lead): bool {
         case 'passport': return checkin_guest_passport_complete($lead);
         case 'dietary':  return $has('dietary');
         case 'requests': return $has('special_requests');
+        // Purely an offer — always "complete", so it can never block a submit
+        // or hold the wizard's resume point.
+        case 'upsell':   return true;
         // Complete once the lead has uploaded a credit-card image. The deposit is
         // charged at the property, so the upload is the only thing to "provide".
         case 'deposit':  return checkin_deposit_card_on_file($data);

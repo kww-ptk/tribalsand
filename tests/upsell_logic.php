@@ -6,6 +6,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/upsells.php';
 require_once __DIR__ . '/../includes/submission-payload.php';
+require_once __DIR__ . '/../includes/checkin.php';
 
 $failures = 0;
 function check(string $label, bool $cond): void {
@@ -139,6 +140,15 @@ try {
         submission_upsells(['upsells' => 'nope']) === [] && submission_upsells([]) === []);
     check('generic payload rows skip upsells',
         !in_array('Upsells', array_column(submission_payload_rows(['upsells' => [$row], 'submitted_from' => '/x']), 0), true));
+
+    // ── The check-in step never blocks a guest ─────────────────────────────
+    $cat = checkin_step_catalog();
+    check('upsell is in the step catalog', array_key_exists('upsell', $cat));
+    check('upsell is not required by default', $cat['upsell']['default_required'] === false);
+    check('upsell step always reads complete', checkin_step_complete('upsell', null, null) === true);
+    // Even if an admin ticks Required, an offer can never strand someone.
+    $forced = ['upsell' => ['label' => 'x', 'enabled' => true, 'required' => true]];
+    check('upsell never appears in missing steps', checkin_missing_steps($forced, null, null) === []);
 
 } finally {
     db()->rollBack();

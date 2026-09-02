@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/upsells.php';
 require_once __DIR__ . '/../includes/booking.php';
 require_once __DIR__ . '/../includes/checkin.php';
 require_once __DIR__ . '/../includes/mail.php';
@@ -223,6 +224,28 @@ if ($triedConsent && checkin_signature_supported() && checkin_can_sign_self($onl
             'method'         => $method,
             'detail'         => 'Signed by ' . trim((string)$s('waiver_signed_name')),
         ]);
+    }
+}
+
+// ── Optional add-ons ───────────────────────────────────────────────────────
+// The wizard re-posts the whole form on every "Save & continue", so this runs
+// on each step; upsell_attach_to_hold() is idempotent per tour, so a repeat
+// can't duplicate a request. Ids are re-validated against what this booking's
+// property actually offers on the check-in surface, with anything already
+// attached excluded — a posted id is never trusted.
+//
+// Unticking does not detach: once requested, the team has seen it. The guest
+// cancels it from the portal like any other addon, and an attached item stops
+// being offered here anyway (fetch_upsell_items excludes it).
+if (!empty($_POST['upsell']) && is_array($_POST['upsell'])) {
+    try {
+        $__items = upsell_validate_ids(
+            $_POST['upsell'], ((int)($hold['venue_id'] ?? 0)) ?: null, 'checkin', $holdId
+        );
+        upsell_attach_to_hold($holdId, $__items, max(1, (int)($hold['guest_count'] ?? 1)));
+    } catch (Throwable $e) {
+        // An add-on must never break a check-in save.
+        error_log('[checkin-save] upsell attach failed for hold ' . $holdId . ': ' . $e->getMessage());
     }
 }
 

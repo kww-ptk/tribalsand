@@ -463,3 +463,21 @@ a.pa-topbar__brand:hover .pa-topbar__title{opacity:.92;}
 .pa-chat__send:disabled{opacity:.5;cursor:default;}
 .pa-chat__send svg{width:19px;height:19px;}
 .pa-chat__composer .bm-status{flex-basis:100%;margin:3px 0 0;font-size:13px;color:var(--pa-muted);}
+
+/* ── Check-in: optional add-ons step ─────────────────────────────────── */
+.ci-note{font-size:14px;line-height:1.5;color:var(--pa-muted);margin:0 0 14px}
+.ci-ups{display:grid;gap:10px}
+.ci-up{position:relative;display:flex;align-items:flex-start;gap:12px;padding:14px;border:1px solid var(--pa-line);border-radius:12px;background:#fff;cursor:pointer;transition:border-color .15s,background .15s}
+.ci-up:hover{border-color:var(--pa-teal)}
+.ci-up input{position:absolute;opacity:0;width:0;height:0}
+.ci-up__tick{flex:0 0 auto;width:22px;height:22px;margin-top:1px;border:1.5px solid var(--pa-line);border-radius:6px;display:grid;place-items:center;transition:background .15s,border-color .15s}
+.ci-up__tick::after{content:'';width:11px;height:6px;border-left:2.5px solid #fff;border-bottom:2.5px solid #fff;transform:rotate(-45deg) scale(0);transition:transform .15s}
+.ci-up input:checked ~ .ci-up__tick{background:var(--pa-teal-d);border-color:var(--pa-teal-d)}
+.ci-up input:checked ~ .ci-up__tick::after{transform:rotate(-45deg) scale(1)}
+.ci-up:has(input:checked){border-color:var(--pa-teal-d);background:var(--pa-cream)}
+.ci-up input:focus-visible ~ .ci-up__tick{outline:3px solid var(--pa-gold);outline-offset:2px}
+.ci-up__body{display:flex;flex-direction:column;gap:3px;min-width:0}
+.ci-up__name{font-weight:600;color:var(--pa-ink)}
+.ci-up__desc{font-size:13px;line-height:1.45;color:var(--pa-muted)}
+.ci-up__meta{display:flex;flex-wrap:wrap;gap:12px;font-size:13px;color:var(--pa-muted);margin-top:2px}
+.ci-up__price{color:var(--pa-teal);font-weight:600}
