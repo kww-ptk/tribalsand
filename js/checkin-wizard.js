@@ -21,7 +21,13 @@
   }
   function openSteps(i) { if (intro) intro.hidden = true; if (stepsWrap) stepsWrap.hidden = false; show(i || 0); }
   function backToStart() { if (stepsWrap) stepsWrap.hidden = true; if (intro) intro.hidden = false; window.scrollTo(0, 0); }
-  if (startBtn) startBtn.addEventListener('click', function () { openSteps(0); });
+  // Where the guest left off, computed server-side from what is already stored.
+  // "Continue check-in" resumes there; "Update my details" is a deliberate
+  // review of everything, so it still starts from the top.
+  var resumeIdx = parseInt((stepsWrap && stepsWrap.getAttribute('data-resume')) || '0', 10);
+  if (!(resumeIdx >= 0 && resumeIdx < steps.length)) resumeIdx = 0;
+
+  if (startBtn) startBtn.addEventListener('click', function () { openSteps(resumeIdx); });
   if (editBtn)  editBtn.addEventListener('click', function () { openSteps(0); });
 
   // Save the lead's main-form fields via AJAX, then continue.
@@ -31,6 +37,18 @@
     fetch(form.action, { method: 'POST', body: fd, credentials: 'same-origin' })
       .then(function () { next(); }).catch(function () { next(); });
   }
+
+  // Leaving the wizard mid-step — "Message the team" — must not lose what is
+  // typed on the current step: the form only autosaves on Save & continue.
+  // Save first, then follow the link. saveThen() invokes its callback even when
+  // the request fails, so a save problem can never trap the guest on this page.
+  document.addEventListener('click', function (e) {
+    var a = e.target && e.target.closest ? e.target.closest('a[data-ci-leave]') : null;
+    if (!a || !a.href) return;
+    e.preventDefault();
+    var href = a.href;
+    saveThen(function () { window.location.href = href; });
+  });
 
   // Form-encoded POST with ref + csrf + extra fields.
   function apiPost(url, fields) {
@@ -390,9 +408,11 @@
   if (arrStep) syncArrivalWarning(arrStep);
   syncTransferFields(form);
 
-  // Initial view: intro when there is one, else straight into the steps. The old
-  // ?ci= resume parameter is gone with the reload that needed it.
-  if (!intro && !editBtn) openSteps(0);
+  // Initial view: ?resume=1 (the Resume button on Messages) drops straight back
+  // in at the step the guest left off on; otherwise the intro when there is one,
+  // else straight into the steps.
+  if (stepsWrap && stepsWrap.getAttribute('data-autoresume') === '1') openSteps(resumeIdx);
+  else if (!intro && !editBtn) openSteps(0);
 
   // Final submit re-checks the consent step, so it cannot be skipped by jumping
   // straight to the last step. The server enforces the same rule regardless.

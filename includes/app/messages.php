@@ -10,6 +10,15 @@ if ($__threadParam === null):
 ?>
 <h2 class="pa-h2">Messages</h2>
 <p class="pa-sub">Chat with our team about your requests.</p>
+<?php if (!empty($checkin_gate)): /* set in booking.php — check-in still owed */ ?>
+<div class="pa-card" style="margin-bottom:14px">
+  <div class="pa-card__body">
+    <p class="pa-card__title">Your check-in isn’t finished</p>
+    <p class="pa-card__meta" style="display:block;margin:3px 0 10px">Nothing you’ve filled in is lost — pick up exactly where you left off.</p>
+    <a class="pa-btn pa-btn--primary" href="/booking.php?ref=<?= urlencode($ref) ?>&amp;view=checkin&amp;resume=1">Resume check-in &rarr;</a>
+  </div>
+</div>
+<?php endif; ?>
 <?php foreach ($__threads as $__th):
     $__tid   = $__th['addon_id'] === null ? 'general' : (int)$__th['addon_id'];
     $__title = thread_title($__th);
@@ -37,7 +46,12 @@ if ($__threadParam === null):
     mark_thread_read_by_guest($__hid, $__addonId);
     $__msgs = fetch_thread_messages($__hid, $__addonId);
 ?>
-<p style="margin:0 0 14px"><a href="<?= $__u ?>" class="pa-back">&larr; All messages</a></p>
+<p style="margin:0 0 14px;display:flex;gap:14px;flex-wrap:wrap;align-items:center">
+  <a href="<?= $__u ?>" class="pa-back">&larr; All messages</a>
+  <?php if (!empty($checkin_gate)): /* keep the way back to an unfinished check-in */ ?>
+  <a href="/booking.php?ref=<?= urlencode($ref) ?>&amp;view=checkin&amp;resume=1" class="pa-back">Resume check-in &rarr;</a>
+  <?php endif; ?>
+</p>
 <?php if ($__addonId !== null && ($__addon = fetch_addon_for_thread($__hid, $__addonId))): ?>
 <div class="pa-card" style="margin-bottom:14px">
   <div class="pa-card__body">

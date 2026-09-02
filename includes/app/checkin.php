@@ -75,6 +75,33 @@ if (isset($flow['you']) && $need > 1) {
     $flow = $rebuilt;
 }
 
+// ── Resume position ────────────────────────────────────────────────────────
+// The first step the guest still has to deal with, derived entirely from what
+// is already stored — so "Continue check-in", and the Resume button on the
+// Messages tab, land where they left off instead of back at step 1. Nothing
+// extra is persisted, so it survives a device switch and can never go stale
+// against a changed step config.
+//
+// Only a REQUIRED step can hold the resume point: a deliberately blank optional
+// step (dietary, special requests) is "incomplete" forever, and resuming there
+// every time would trap the guest on a question they already chose to skip.
+// Once everything required is done we land on the last step, which carries the
+// Complete check-in button.
+$flowComplete = function (string $key) use ($data, $lead, $fullCfg, $guests): bool {
+    if ($key === 'you')   return checkin_guest_complete($lead ?: null, $fullCfg);
+    if ($key === 'party') return checkin_outstanding_adults($guests, $fullCfg) === [];
+    return checkin_step_complete($key, $data, $lead ?: null);
+};
+$flowKeys  = array_keys($flow);
+$resumeIdx = 0;
+foreach ($flowKeys as $idx => $fk) {
+    $resumeIdx = $idx;
+    if (!empty($flow[$fk]['required']) && !$flowComplete($fk)) break;
+    $resumeIdx = min($idx + 1, max(0, count($flowKeys) - 1));
+}
+// ?resume=1 (the Messages button) skips the intro and drops straight back in.
+$autoResume = ($_GET['resume'] ?? '') === '1';
+
 $needs = [];
 if ($showPassport)           $needs[] = ['&#128179;', 'A passport for every adult — a clear photo or PDF'];
 if (isset($cfg['transfer'])) $needs[] = ['&#9992;&#65039;', 'If you&rsquo;d like us to collect you: your flight number &amp; landing time'];
@@ -161,7 +188,7 @@ if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — for 
   </section>
   <?php endif; ?>
 
-  <div class="ci-steps" id="ciSteps" hidden>
+  <div class="ci-steps" id="ciSteps" data-resume="<?= (int)$resumeIdx ?>"<?= $autoResume ? ' data-autoresume="1"' : '' ?> hidden>
     <div class="ci-progress"><div class="ci-progress__bar" id="ciBar"></div></div>
 
     <?php $i = 0; $n = count($flow); foreach ($flow as $key => $s): $i++; ?>
@@ -213,7 +240,7 @@ if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — for 
         <div class="ci-arrwarn" aria-live="polite"<?= $flag === '' ? ' hidden' : '' ?>>
           <p class="ci-arrwarn__t"></p>
           <p class="ci-arrwarn__n"><?= e($T['note']) ?></p>
-          <a class="ci-arrwarn__a" href="/booking.php?ref=<?= e($ref) ?>&amp;view=messages">Message the team &rarr;</a>
+          <a class="ci-arrwarn__a" data-ci-leave href="/booking.php?ref=<?= e($ref) ?>&amp;view=messages">Message the team &rarr;</a>
         </div>
 
       <?php elseif ($key === 'transfer'): ?>
@@ -471,7 +498,7 @@ if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — for 
     <?php endforeach; ?>
   </div>
 
-  <p class="ci-help"><a href="/booking.php?ref=<?= e($ref) ?>&view=messages">Message the team</a> if you need help.</p>
+  <p class="ci-help"><a data-ci-leave href="/booking.php?ref=<?= e($ref) ?>&view=messages">Message the team</a> if you need help.</p>
 </form>
 <script src="/js/signature-pad.js?v=<?= @filemtime(__DIR__ . '/../../js/signature-pad.js') ?: time() ?>" defer></script>
 <script src="/js/checkin-wizard.js?v=<?= @filemtime(__DIR__ . '/../../js/checkin-wizard.js') ?: time() ?>" defer></script>
