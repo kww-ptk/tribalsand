@@ -378,6 +378,10 @@
           children:              parseInt(childrenH.value, 10),
           message:               form.querySelector("[name=message]")?.value.trim() || "",
           "cf-turnstile-response":  form.querySelector("[name='cf-turnstile-response']")?.value || "",
+          // Optional add-ons the guest ticked. Sent as an array of tour ids; the
+          // server re-validates each against what this room's property offers.
+          upsell: Array.from(form.querySelectorAll("[data-bk-upsell]:checked"))
+                       .map(function (c) { return parseInt(c.value, 10); }),
         };
 
         saveGuest();   // persist for the next property they look at

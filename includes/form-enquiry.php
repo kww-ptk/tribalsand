@@ -39,6 +39,26 @@ $room_name = $room['name'] ?? '';
     <input type="hidden" name="children" value="0">
   </div>
 
+  <?php if (!empty($upsells)): ?>
+  <div class="bk-ups">
+    <div class="bk-ups__head">Add to your stay <span>optional</span></div>
+    <?php foreach ($upsells as $__fu): $__fpl = upsell_price_label($__fu); ?>
+    <label class="bk-up">
+      <input type="checkbox" name="upsell[]" value="<?= (int)$__fu['id'] ?>" data-bk-upsell>
+      <span class="bk-up__tick" aria-hidden="true"></span>
+      <span class="bk-up__body">
+        <span class="bk-up__name"><?= e((string)$__fu['name']) ?></span>
+        <span class="bk-up__meta">
+          <?php if (trim((string)($__fu['duration'] ?? '')) !== ''): ?><span><?= e((string)$__fu['duration']) ?></span><?php endif; ?>
+          <?php if ($__fpl !== ''): ?><span class="bk-up__price"><?= e($__fpl) ?></span><?php endif; ?>
+        </span>
+      </span>
+    </label>
+    <?php endforeach; ?>
+    <p class="bk-ups__note">Nothing is charged now &mdash; we&rsquo;ll confirm availability and pricing by email.</p>
+  </div>
+  <?php endif; ?>
+
   <label class="booking-field">
     <span>Your name</span>
     <input type="text" name="name" placeholder="Full name" required>

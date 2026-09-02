@@ -552,3 +552,22 @@
   .bk-field input, .bk-field select, .bk-field textarea,
   .book-body .bk-field input, .book-body .bk-field select, .book-body .bk-field textarea { font-size: 16px; }
 }
+
+/* ── Booking widget: optional add-ons ─────────────────────────────────── */
+.bk-ups { margin: 6px 0 12px; }
+.bk-ups__head { display: flex; align-items: baseline; gap: 8px; font-size: 13px; font-weight: 600; letter-spacing: .02em; margin-bottom: 8px; }
+.bk-ups__head span { font-size: 11px; font-weight: 400; text-transform: uppercase; letter-spacing: .08em; opacity: .55; }
+.bk-ups__note { font-size: 12px; line-height: 1.45; opacity: .65; margin: 8px 0 0; }
+.bk-up { position: relative; display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid rgba(0,0,0,.12); border-radius: 8px; cursor: pointer; margin-bottom: 7px; transition: border-color .15s, background .15s; }
+.bk-up:hover { border-color: rgba(0,0,0,.28); }
+.bk-up input { position: absolute; opacity: 0; width: 0; height: 0; }
+.bk-up__tick { flex: 0 0 auto; width: 19px; height: 19px; margin-top: 1px; border: 1.5px solid rgba(0,0,0,.22); border-radius: 5px; display: grid; place-items: center; transition: background .15s, border-color .15s; }
+.bk-up__tick::after { content: ''; width: 9px; height: 5px; border-left: 2px solid #fff; border-bottom: 2px solid #fff; transform: rotate(-45deg) scale(0); transition: transform .15s; }
+.bk-up input:checked ~ .bk-up__tick { background: #1E5C6B; border-color: #1E5C6B; }
+.bk-up input:checked ~ .bk-up__tick::after { transform: rotate(-45deg) scale(1); }
+.bk-up:has(input:checked) { border-color: #1E5C6B; background: rgba(30,92,107,.04); }
+.bk-up input:focus-visible ~ .bk-up__tick { outline: 2px solid #D4B07A; outline-offset: 2px; }
+.bk-up__body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.bk-up__name { font-size: 14px; font-weight: 500; }
+.bk-up__meta { display: flex; flex-wrap: wrap; gap: 10px; font-size: 12px; opacity: .7; }
+.bk-up__price { color: #1E5C6B; font-weight: 600; opacity: 1; }

@@ -45,6 +45,12 @@ if ($__form_mode === 'availability') {
     }
 }
 
+// Booking-flow add-ons offered by this room's property (empty unless the
+// property's master switch is on and activities are placed on the enquiry
+// surface). Resolved for both form modes below.
+require_once __DIR__ . '/upsells.php';
+$__upsells = fetch_upsell_items(((int)($__room['venue_id'] ?? 0)) ?: null, 'enquiry');
+
 $room_slug  = $__room['slug'];
 $room_name  = $__room['name'];
 $room_price = (float)($__room['price_amount'] ?? 0);
@@ -53,6 +59,7 @@ $room_curr  = $__room['price_currency'] ?? 'USD';
 // ── ENQUIRY MODE ──────────────────────────────────────────────────────────────
 if ($__form_mode !== 'availability') {
     $room = $__room; // form-enquiry.php expects $room
+    $upsells = $__upsells;
     include __DIR__ . '/form-enquiry.php';
     return;
 }
@@ -151,6 +158,27 @@ if ($__form_mode !== 'availability') {
       </div>
       <div class="bk-total__hint">Final price confirmed by email</div>
     </div>
+
+    <?php if ($__upsells): ?>
+    <!-- Optional add-ons -->
+    <div class="bk-ups">
+      <div class="bk-ups__head">Add to your stay <span>optional</span></div>
+      <?php foreach ($__upsells as $__bu): $__bpl = upsell_price_label($__bu); ?>
+      <label class="bk-up">
+        <input type="checkbox" name="upsell[]" value="<?= (int)$__bu['id'] ?>" data-bk-upsell>
+        <span class="bk-up__tick" aria-hidden="true"></span>
+        <span class="bk-up__body">
+          <span class="bk-up__name"><?= e((string)$__bu['name']) ?></span>
+          <span class="bk-up__meta">
+            <?php if (trim((string)($__bu['duration'] ?? '')) !== ''): ?><span><?= e((string)$__bu['duration']) ?></span><?php endif; ?>
+            <?php if ($__bpl !== ''): ?><span class="bk-up__price"><?= e($__bpl) ?></span><?php endif; ?>
+          </span>
+        </span>
+      </label>
+      <?php endforeach; ?>
+      <p class="bk-ups__note">Nothing is charged now &mdash; we&rsquo;ll confirm availability and pricing by email.</p>
+    </div>
+    <?php endif; ?>
 
     <!-- Guest details -->
     <div class="bk-fields">
