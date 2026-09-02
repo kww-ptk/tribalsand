@@ -5,6 +5,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/nav-data.php';
 require_once __DIR__ . '/../includes/storage.php';   // storage_put() for nav thumbnails
+require_once __DIR__ . '/../includes/admin-media-picker.php';   // "pick from library" for thumbnails
 require_login();
 require_owner();   // site-wide navigation = owner only
 
@@ -30,7 +31,7 @@ function nav_upload_thumb(array $file): string {
     if (!$src) throw new RuntimeException('Could not read that image.');
     $w = imagesx($src); $h = imagesy($src);
     if ($w > 600) { $nh = (int) round($h * 600 / $w); $dst = imagecreatetruecolor(600, $nh); imagecopyresampled($dst, $src, 0, 0, 0, 0, 600, $nh, $w, $h); imagedestroy($src); $src = $dst; }
-    $filename = bin2hex(random_bytes(10)) . '.jpg';
+    $filename = seo_filename((string)($file['name'] ?? ''), 'nav');
     $tmp_out  = sys_get_temp_dir() . '/' . $filename;
     imagejpeg($src, $tmp_out, 86); imagedestroy($src);
     $stored = storage_put($tmp_out, $filename); @unlink($tmp_out);
@@ -177,6 +178,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && nav_supported()) {
                 db_query("UPDATE nav_links SET image_key = NULL WHERE id = :i", [':i' => $lid]);
                 nav_flash('success', 'Thumbnail removed.');
             }
+        } elseif ($action === 'link_set_image') {
+            // Thumbnail chosen from the media library (picker posts a storage key).
+            $lid = (int) ($_POST['link_id'] ?? 0);
+            if ($lid && !$itemIsAuto($linkItemId($lid))) {
+                $key = trim((string) ($_POST['image_key'] ?? ''));
+                db_query("UPDATE nav_links SET image_key = :k WHERE id = :i",
+                         [':k' => $key !== '' ? $key : null, ':i' => $lid]);
+                nav_flash('success', $key !== '' ? 'Thumbnail updated.' : 'Thumbnail removed.');
+            }
         }
     } catch (Throwable $e) {
         nav_flash('error', $e->getMessage());
@@ -216,6 +226,11 @@ function nv_render_link(array $l, string $csrf, array $TAGS, array $ROLES, strin
             <span class="btn-outline btn-sm"><?= admin_icon('image', 13) ?> <?= $img ? 'Replace' : 'Add image' ?></span>
             <input type="file" name="thumb" accept="image/jpeg,image/png,image/webp" data-nv-thumb>
           </label>
+        </form>
+        <form method="post" action="/admin/nav-menu.php" class="nv-mpform">
+          <?= $csrf ?><input type="hidden" name="action" value="link_set_image"><input type="hidden" name="link_id" value="<?= $lid ?>">
+          <input type="hidden" id="navmp<?= $lid ?>" name="image_key" value="<?= e($l['image_key'] ?? '') ?>">
+          <button type="button" class="btn-outline btn-sm" data-mp-open="navmp<?= $lid ?>"><?= admin_icon('image', 13) ?> Library</button>
         </form>
         <?php if ($img): ?>
           <button class="btn-icon btn-icon--danger" type="submit" form="rmimg<?= $lid ?>" data-confirm="Remove this thumbnail?" data-tip="Remove image" aria-label="Remove image"><?= admin_icon('trash', 14) ?></button>
@@ -303,6 +318,8 @@ function nv_render_link(array $l, string $csrf, array $TAGS, array $ROLES, strin
 .nv-link__side{display:flex;flex-direction:column;align-items:center;gap:10px;flex:0 0 auto;width:90px}
 .nv-upload{margin:2px 0 0}
 .nv-upload .btn-outline{cursor:pointer;white-space:nowrap;padding:7px 12px;gap:6px}
+.nv-mpform{margin:0}
+.nv-mpform .btn-outline{cursor:pointer;white-space:nowrap;padding:7px 12px;gap:6px}
 .nv-thumb{width:72px;height:52px;object-fit:cover;border:1px solid var(--border);border-radius:6px;background:var(--bg)}
 .nv-thumb--empty{display:flex;align-items:center;justify-content:center;color:var(--muted)}
 .nv-link__foot{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:12px}
@@ -473,8 +490,16 @@ function nv_render_link(array $l, string $csrf, array $TAGS, array $ROLES, strin
   document.querySelectorAll('[data-nv-thumb]').forEach(function (inp) {
     inp.addEventListener('change', function () { if (inp.files && inp.files.length) inp.form.submit(); });
   });
+
+  // Library pick: the media picker writes the chosen key into the row's hidden
+  // input and fires 'change' — submit that row's form (PRG re-renders the thumb).
+  document.querySelectorAll('.nv-mpform input[name="image_key"]').forEach(function (inp) {
+    inp.addEventListener('change', function () { if (inp.form) inp.form.submit(); });
+  });
 })();
 </script>
+
+<?php media_picker_modal(); ?>
 
 <?php endif; ?>
 

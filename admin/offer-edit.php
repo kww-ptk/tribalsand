@@ -22,7 +22,7 @@ function offer_upload_image(array $file): string {
     if (!$src) throw new RuntimeException('Could not read that image.');
     $w = imagesx($src); $h = imagesy($src);
     if ($w > 1000) { $nh = (int) round($h * 1000 / $w); $dst = imagecreatetruecolor(1000, $nh); imagecopyresampled($dst, $src, 0, 0, 0, 0, 1000, $nh, $w, $h); imagedestroy($src); $src = $dst; }
-    $filename = 'offer-' . bin2hex(random_bytes(8)) . '.jpg';
+    $filename = seo_filename((string)($file['name'] ?? ''), 'offer');
     $tmp_out  = sys_get_temp_dir() . '/' . $filename;
     imagejpeg($src, $tmp_out, 86); imagedestroy($src);
     $stored = storage_put($tmp_out, $filename, 'image/jpeg', 'offers'); @unlink($tmp_out);
@@ -62,8 +62,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && offers_supported()) {
         if ($title === '')                          $error = 'Title is required.';
         if (!$error && !array_key_exists($cat, offer_categories())) $error = 'Pick a valid category.';
 
-        // Image (optional) — process before writing so a failed upload aborts the save.
+        // Image (optional). The media picker posts a storage key in image_key
+        // (an existing library image, or one it just uploaded via admin/media.php).
         $imageKey = $offer['image_key'] ?? null;
+        if (isset($_POST['image_key'])) {
+            $picked   = trim((string)$_POST['image_key']);
+            $imageKey = $picked !== '' ? $picked : null;   // '' = reset to no image
+        }
+        // Legacy direct file upload still supported (takes precedence if a file was sent).
         if (!$error) {
             try {
                 $up = offer_upload_image($_FILES['image'] ?? []);
@@ -222,17 +228,12 @@ include __DIR__ . '/_layout.php';
   <div class="card" style="margin-top:14px">
     <div class="card__head"><span class="card__title">Image</span></div>
     <div class="card__body" style="padding:20px">
-      <?php $imgUrl = offer_img_url($offer['image_key'] ?? ''); ?>
-      <?php if ($imgUrl): ?>
-      <div style="margin-bottom:14px">
-        <img src="<?= e($imgUrl) ?>" alt="Offer image" style="max-width:260px;width:100%;border-radius:6px;border:1px solid var(--border)">
-      </div>
-      <?php endif; ?>
-      <div class="field">
-        <label><?= $imgUrl ? 'Replace image' : 'Upload image' ?> <span class="text-muted">(JPG/PNG/WebP, max 6MB — 16:10 looks best)</span></label>
-        <input type="file" name="image" accept="image/jpeg,image/png,image/webp">
-        <span class="field-hint">Saved when you press <strong>Save</strong> below.</span>
-      </div>
+      <?php
+        require_once __DIR__ . '/../includes/admin-media-picker.php';
+        media_picker_field('image_key', (string)$val('image_key'), 'Offer image',
+                           'Choose an existing image or upload a new one (JPG/PNG/WebP). 16:10 looks best.');
+      ?>
+      <span class="field-hint" style="margin-top:8px;display:block">Saved when you press <strong>Save</strong> below.</span>
     </div>
   </div>
 
@@ -258,5 +259,7 @@ include __DIR__ . '/_layout.php';
   </form>
 </div>
 <?php endif; ?>
+
+<?php media_picker_modal(); ?>
 
 <?php include __DIR__ . '/_layout_end.php'; ?>

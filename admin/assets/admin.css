@@ -1004,3 +1004,14 @@ tr.is-unpriced td { background: #fff7ed; }
   .gallery-bulkbar { gap: 8px; }
   .gallery-bulkbar__spacer { flex-basis: 100%; height: 0; }
 }
+
+/* iOS Safari auto-zooms any focused field with a font-size under 16px. Bump
+   fields to 16px on mobile only, so the desktop admin keeps its compact
+   13–14px density. The bare-element selectors also catch inline-styled inputs
+   (Convert-to-Hold name/email, status/room selects) that set no font-size. */
+@media (max-width: 768px) {
+  .inp, .field input, .field select, .field textarea,
+  .filters input, .filters select, .cell-select,
+  input:not([type=checkbox]):not([type=radio]):not([type=range]),
+  select, textarea { font-size: 16px; }
+}

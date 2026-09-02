@@ -117,6 +117,47 @@ function media_library_items(string $search = '', int $limit = 500): array {
     return $out;
 }
 
+/** Gallery tables the picker may append to → their owner FK column. */
+const MEDIA_GALLERY_TABLES = [
+    'venue_images'    => 'venue_id',
+    'room_images'     => 'room_id',
+    'tour_images'     => 'tour_id',
+    'property_images' => 'property_id',
+];
+
+/**
+ * Append an existing library image key as a new gallery row, mirroring each
+ * page's own upload INSERT (filename, alt_text, is_hero, sort_order). The
+ * table/FK pair is whitelisted so a caller can't target an arbitrary table.
+ * Becomes the hero only when the gallery is currently empty. Returns true when
+ * a row was inserted; false when the key is blank/private, already in this
+ * gallery, or on error.
+ */
+function media_attach_to_gallery(string $table, string $fkCol, int $ownerId, string $key, string $alt = ''): bool {
+    $key = trim($key);
+    if ($key === '' || $ownerId <= 0 || media_is_private($key)) return false;
+    if ((MEDIA_GALLERY_TABLES[$table] ?? null) !== $fkCol)       return false;   // whitelist guard
+    try {
+        // Don't add the same file twice to one gallery.
+        if (db_query("SELECT 1 FROM {$table} WHERE {$fkCol} = :o AND filename = :f LIMIT 1",
+                     [':o' => $ownerId, ':f' => $key])->fetchColumn()) {
+            return false;
+        }
+        $count = (int) db_query("SELECT COUNT(*) FROM {$table} WHERE {$fkCol} = :o", [':o' => $ownerId])->fetchColumn();
+        $max   = (int) db_query("SELECT COALESCE(MAX(sort_order),0) FROM {$table} WHERE {$fkCol} = :o", [':o' => $ownerId])->fetchColumn();
+        db_query(
+            "INSERT INTO {$table} ({$fkCol}, filename, alt_text, is_hero, sort_order)
+             VALUES (:o, :f, :alt, :hero, :ord)",
+            [':o' => $ownerId, ':f' => $key, ':alt' => $alt,
+             ':hero' => $count === 0 ? 'TRUE' : 'FALSE', ':ord' => $max + 1]
+        );
+        return true;
+    } catch (Throwable $e) {
+        error_log('[media] attach to ' . $table . ' failed: ' . $e->getMessage());
+        return false;
+    }
+}
+
 /** Record a library upload. Returns the storage key, or '' on failure. */
 function media_record(string $storageKey, string $originalName = '', ?int $adminId = null,
                       ?int $bytes = null, ?int $w = null, ?int $h = null): string {

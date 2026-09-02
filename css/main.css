@@ -1516,3 +1516,15 @@ p {
   .offer-modal__offer { margin-bottom: 1rem; }
   .offer-form { gap: .7rem; }
 }
+
+/* iOS Safari auto-zooms any focused field with a font-size under 16px. Bump
+   form fields to 16px on mobile only (desktop density is unaffected). The
+   class-scoped selectors below (offer-enquiry modal) need listing explicitly —
+   their specificity beats the bare-element rule. Contact-page .ct-form fields
+   are handled in contact.php's own inline stylesheet (loaded after this file). */
+@media (max-width: 768px) {
+  input:not([type=checkbox]):not([type=radio]):not([type=range]),
+  select, textarea,
+  .offer-form__field input, .offer-form__field select, .offer-form__field textarea { font-size: 16px; }
+}
+.savail-field input { font-size: 16px; } /* was 15px — 16px is safe on desktop too */

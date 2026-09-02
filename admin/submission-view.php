@@ -26,8 +26,10 @@ if (!$sub) {
 
 require_once __DIR__ . '/../includes/booking.php'; // make_manage_url()
 require_once __DIR__ . '/../includes/copy-link.php'; // copy_link_control()
-require_once __DIR__ . '/../includes/submission-notes.php'; // internal notes thread (#15)
+require_once __DIR__ . '/../includes/submission-notes.php'; // conversation thread (notes + replies)
+require_once __DIR__ . '/../includes/submission-status.php'; // lead status pipeline
 require_once __DIR__ . '/../includes/submission-payload.php'; // payload → display rows/sections
+require_once __DIR__ . '/../includes/mail.php'; // send_admin_reply()
 
 // Flash (set by the convert handler on redirect)
 $flash = $_SESSION['sub_flash'] ?? null;
@@ -36,18 +38,57 @@ unset($_SESSION['sub_flash']);
 // Is this submission already converted to a hold?
 $linked_hold = fetch_hold_by_submission($id);
 
-// Add internal note (staff-only conversation log)
+// Update lead status
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'set_status') {
+    verify_csrf();
+    $new = (string)($_POST['status'] ?? '');
+    if (!submission_status_supported()) {
+        $_SESSION['sub_flash'] = ['type' => 'error', 'msg' => 'Status tracking is unavailable — run the add_submission_status migration.'];
+    } elseif (!submission_status_valid($new)) {
+        $_SESSION['sub_flash'] = ['type' => 'error', 'msg' => 'Pick a valid status.'];
+    } else {
+        db_query('UPDATE submissions SET status = :st WHERE id = :id', [':st' => $new, ':id' => $id]);
+        $_SESSION['sub_flash'] = ['type' => 'success', 'msg' => 'Status updated to “' . submission_status_label($new) . '”.'];
+    }
+    header('Location: /admin/submission-view?id=' . $id . '#thread');
+    exit;
+}
+
+// Add a thread entry (internal note or a reply logged/sent to the guest)
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'add_note') {
     verify_csrf();
-    $body = trim((string)($_POST['body'] ?? ''));
+    $body      = trim((string)($_POST['body'] ?? ''));
+    $kind      = ($_POST['kind'] ?? 'note') === 'reply' ? 'reply' : 'note';
+    $sendEmail = !empty($_POST['send_email']) && $kind === 'reply';
+
     if ($body === '') {
-        $_SESSION['sub_flash'] = ['type' => 'error', 'msg' => 'Note is empty.'];
+        $_SESSION['sub_flash'] = ['type' => 'error', 'msg' => 'The message is empty.'];
     } elseif (!submission_notes_supported()) {
-        $_SESSION['sub_flash'] = ['type' => 'error', 'msg' => 'Notes are unavailable — run the add_submission_notes migration.'];
-    } elseif (!add_submission_note($id, $_SESSION['admin_id'] ?? null, $body)) {
-        $_SESSION['sub_flash'] = ['type' => 'error', 'msg' => 'Could not save the note. Please try again.'];
+        $_SESSION['sub_flash'] = ['type' => 'error', 'msg' => 'The thread is unavailable — run the add_submission_notes migration.'];
+    } else {
+        // Email the guest first (if asked) so a send failure is reflected in what we store + flash.
+        $emailed = false; $emailErr = '';
+        if ($sendEmail) {
+            $res     = send_admin_reply($sub, $body);
+            $emailed = !empty($res['ok']);
+            $emailErr = (string)($res['error'] ?? '');
+        }
+
+        $admin      = current_admin();
+        $authorName = $admin ? (trim((string)($admin['name'] ?? '')) ?: (string)($admin['email'] ?? '')) : 'Admin';
+        $storedBody = $emailed ? "📧 Emailed to guest:\n" . $body : $body;
+
+        if (!add_submission_note($id, $_SESSION['admin_id'] ?? null, $storedBody, $kind, $authorName)) {
+            $_SESSION['sub_flash'] = ['type' => 'error', 'msg' => 'Could not save to the thread. Please try again.'];
+        } elseif ($sendEmail && $emailed) {
+            $_SESSION['sub_flash'] = ['type' => 'success', 'msg' => 'Reply saved and emailed to ' . ($sub['guest_email'] ?: 'the guest') . '.'];
+        } elseif ($sendEmail && !$emailed) {
+            $_SESSION['sub_flash'] = ['type' => 'error', 'msg' => 'Reply saved to the thread, but email NOT sent: ' . $emailErr];
+        } else {
+            $_SESSION['sub_flash'] = ['type' => 'success', 'msg' => $kind === 'reply' ? 'Reply logged to the thread.' : 'Note added.'];
+        }
     }
-    header('Location: /admin/submission-view?id=' . $id . '#notes');
+    header('Location: /admin/submission-view?id=' . $id . '#thread');
     exit;
 }
 
@@ -121,6 +162,7 @@ $badge = match($sub['type']) {
 
 $payload = json_decode($sub['payload_json'] ?? '{}', true) ?: [];
 $notes   = fetch_submission_notes($id);
+$status  = submission_status_supported() ? ((string)($sub['status'] ?? '') ?: submission_status_default()) : '';
 
 // Trip Builder posts a nested document (guest/trip/departure/special/itinerary);
 // every other form posts a flat scalar map. They render differently.
@@ -140,7 +182,10 @@ include __DIR__ . '/_layout.php';
 <?php endif; ?>
 
 <div class="page-header">
-  <h1>Submission #<?= e($id) ?> <span class="badge <?= $badge ?>" style="vertical-align:middle"><?= e($sub['type']) ?></span></h1>
+  <h1>Submission #<?= e($id) ?>
+    <span class="badge <?= $badge ?>" style="vertical-align:middle"><?= e($sub['type']) ?></span>
+    <?php if ($status !== ''): ?><span class="badge <?= submission_status_badge($status) ?>" style="vertical-align:middle"><?= e(submission_status_label($status)) ?></span><?php endif; ?>
+  </h1>
   <div class="actions">
     <a href="/admin/submissions.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Inbox</a>
     <a href="mailto:<?= e($sub['guest_email']) ?>?subject=Re: Your enquiry — Tribal Sand"
@@ -261,43 +306,104 @@ include __DIR__ . '/_layout.php';
   </div>
 </div>
 
-<!-- Internal notes (staff-only conversation log, #15) -->
-<div class="card" id="notes">
+<!-- Lead status + conversation thread (staff notes and replies to the guest) -->
+<div class="card" id="thread">
   <div class="card__head">
-    <span class="card__title">Internal Notes</span>
-    <span class="text-muted" style="font-size:12px">Staff only — never shown to the guest<?= $notes ? ' · ' . count($notes) . ' note' . (count($notes) === 1 ? '' : 's') : '' ?></span>
+    <span class="card__title">Lead Status &amp; Conversation</span>
+    <span class="text-muted" style="font-size:12px"><?= $notes ? count($notes) . ' entr' . (count($notes) === 1 ? 'y' : 'ies') : 'No entries yet' ?></span>
   </div>
   <div class="card__body" style="padding:20px">
-    <?php if (!submission_notes_supported()): ?>
-      <p class="text-muted" style="margin:0;font-size:13px">Notes are unavailable on this deployment. Run the <code>add_submission_notes.sql</code> migration to enable them.</p>
-    <?php else: ?>
-      <div class="notes-thread">
-        <?php if (!$notes): ?>
-          <p class="notes-empty">No notes yet. Add the first one below — useful for logging calls, follow-ups and internal context.</p>
-        <?php else: foreach ($notes as $n):
-          $author = trim((string)($n['author_name'] ?? '')) ?: (trim((string)($n['author_email'] ?? '')) ?: 'Unknown');
-          $initial = strtoupper(mb_substr($author, 0, 1)); ?>
-        <div class="note">
-          <div class="note__avatar" aria-hidden="true"><?= e($initial) ?></div>
-          <div class="note__main">
-            <div class="note__head">
-              <span class="note__author"><?= e($author) ?></span>
-              <span class="note__time"><?= e(date('d M Y, H:i', strtotime($n['created_at']))) ?></span>
-            </div>
-            <div class="note__body"><?= nl2br(e($n['body'])) ?></div>
-          </div>
-        </div>
-        <?php endforeach; endif; ?>
-      </div>
 
-      <form method="POST" action="/admin/submission-view?id=<?= $id ?>" class="notes-composer">
+    <!-- Status selector -->
+    <?php if (!submission_status_supported()): ?>
+      <p class="text-muted" style="margin:0 0 18px;font-size:13px">Lead status is unavailable. Run the <code>add_submission_status.sql</code> migration to enable the pipeline.</p>
+    <?php else: ?>
+    <form method="POST" action="/admin/submission-view?id=<?= $id ?>" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:22px">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="set_status">
+      <label class="detail-item__label" style="margin:0">Status</label>
+      <select name="status" class="inp" style="min-width:190px;max-width:220px">
+        <?php foreach (submission_statuses() as $slug => $label): ?>
+        <option value="<?= e($slug) ?>" <?= $status === $slug ? 'selected' : '' ?>><?= e($label) ?></option>
+        <?php endforeach; ?>
+      </select>
+      <button type="submit" class="btn-primary btn-sm">Update status</button>
+    </form>
+    <?php endif; ?>
+
+    <?php if (!submission_notes_supported()): ?>
+      <p class="text-muted" style="margin:0;font-size:13px">The conversation thread is unavailable. Run the <code>add_submission_notes.sql</code> migration to enable it.</p>
+    <?php else: ?>
+      <div class="detail-item__label" style="margin-bottom:10px">Conversation &amp; Notes</div>
+      <?php if (!$notes): ?>
+        <p class="text-muted" style="font-size:13px;margin:0 0 18px">No entries yet. Leave a note for the team, or log / send a reply to the guest.</p>
+      <?php else: ?>
+      <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:20px">
+        <?php foreach ($notes as $n):
+          [$nColor, $nBadge, $nLabel, $nGuest] = match ($n['kind'] ?? 'note') {
+              'reply'       => ['var(--green,#16a34a)', 'badge--green', 'reply',       false], // staff → guest
+              'guest_reply' => ['#0b6273',              'badge--blue',  'guest reply', true],  // guest → us
+              default       => ['var(--border,#e5e7eb)', 'badge--grey', 'note',        false],
+          };
+          $author = trim((string)($n['frozen_author'] ?? ''))
+                 ?: (trim((string)($n['author_name'] ?? ''))
+                 ?: (trim((string)($n['author_email'] ?? '')) ?: ($nGuest ? 'Guest' : 'Admin')));
+        ?>
+        <div style="background:<?= $nGuest ? '#f0f9fa' : 'var(--bg,#f9fafb)' ?>;border-radius:6px;padding:12px 14px;border-left:3px solid <?= $nColor ?>">
+          <div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:6px;font-size:12px;color:var(--muted)">
+            <span>
+              <strong style="color:var(--text,#222)"><?= e($author) ?></strong>
+              <span class="badge <?= $nBadge ?>" style="margin-left:6px"><?= e($nLabel) ?></span>
+            </span>
+            <span style="white-space:nowrap"><?= e(date('d M Y, H:i', strtotime($n['created_at']))) ?></span>
+          </div>
+          <div style="font-size:13.5px;line-height:1.6;white-space:pre-wrap"><?= e($n['body']) ?></div>
+        </div>
+        <?php endforeach; ?>
+      </div>
+      <?php endif; ?>
+
+      <form method="POST" action="/admin/submission-view?id=<?= $id ?>">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="add_note">
-        <textarea name="body" rows="2" class="inp" placeholder="Add an internal note — a call summary, follow-up, or context for the team…" required></textarea>
-        <div class="notes-composer__actions">
-          <button type="submit" class="btn-primary btn-sm"><?= admin_icon('plus', 15) ?> Add note</button>
+        <textarea name="body" rows="4" class="inp inp--area" required
+                  style="width:100%;box-sizing:border-box;min-height:104px;resize:vertical"
+                  placeholder="Add a note for the team, or paste / write the reply to send the guest…"></textarea>
+        <div style="display:flex;gap:16px;align-items:center;margin-top:10px;flex-wrap:wrap">
+          <label style="font-size:13px;display:flex;align-items:center;gap:6px">
+            <input type="radio" name="kind" value="note" checked id="kindNote"> Internal note
+          </label>
+          <label style="font-size:13px;display:flex;align-items:center;gap:6px">
+            <input type="radio" name="kind" value="reply" id="kindReply"> Reply sent to guest
+          </label>
+          <label style="font-size:13px;display:flex;align-items:center;gap:6px;color:var(--muted)" id="sendEmailLabel">
+            <input type="checkbox" name="send_email" value="1" id="sendEmail" disabled>
+            📧 Also email this reply to <?= e($sub['guest_email'] ?: 'the guest') ?>
+          </label>
+          <button type="submit" class="btn-primary btn-sm" style="margin-left:auto"><?= admin_icon('plus', 15) ?> Add to thread</button>
         </div>
       </form>
+
+      <script>
+        // The "email the guest" checkbox only applies to a reply, so enable it
+        // only when "Reply sent to guest" is selected.
+        (function () {
+          var note = document.getElementById('kindNote');
+          var reply = document.getElementById('kindReply');
+          var cb = document.getElementById('sendEmail');
+          var lbl = document.getElementById('sendEmailLabel');
+          if (!note || !reply || !cb || !lbl) return;
+          function sync() {
+            var on = reply.checked;
+            cb.disabled = !on;
+            if (!on) cb.checked = false;
+            lbl.style.opacity = on ? '1' : '0.5';
+          }
+          note.addEventListener('change', sync);
+          reply.addEventListener('change', sync);
+          sync();
+        })();
+      </script>
     <?php endif; ?>
   </div>
 </div>

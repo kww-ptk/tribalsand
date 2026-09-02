@@ -146,7 +146,7 @@ function send_resend(string $to, string $subject, string $text, string $from, st
  * Env: SMTP_HOST (or derived email-smtp.<S3_REGION>.amazonaws.com), SMTP_PORT,
  *      SMTP_USER, SMTP_PASS, SMTP_SECURITY (tls|ssl), SMTP_EHLO, MAIL_FROM.
  */
-function send_smtp(string $to, string $subject, string $body, string $headers, array $env, string $html = ''): void {
+function send_smtp(string $to, string $subject, string $body, string $headers, array $env, string $html = ''): bool {
     $host = trim((string)($env['SMTP_HOST'] ?? ''));
     if ($host === '' && !empty($env['S3_REGION'])) {
         $host = "email-smtp.{$env['S3_REGION']}.amazonaws.com";   // SES default endpoint for the region
@@ -158,8 +158,9 @@ function send_smtp(string $to, string $subject, string $body, string $headers, a
 
     if ($host === '' || $user === '' || $pass === '') {
         log_mail_error('SMTP not configured (need SMTP_HOST/SMTP_USER/SMTP_PASS). Falling back to mail().');
-        if (!@mail($to, $subject, $body, $headers)) log_mail_error("mail() fallback failed for: {$to}");
-        return;
+        $ok = @mail($to, $subject, $body, $headers);
+        if (!$ok) log_mail_error("mail() fallback failed for: {$to}");
+        return $ok;
     }
 
     $fromHeader = _smtp_header_val($headers, 'From') ?: (string)($env['MAIL_FROM'] ?? 'noreply@tribalsand.com');
@@ -203,7 +204,7 @@ function send_smtp(string $to, string $subject, string $body, string $headers, a
     // Open the connection.
     $transport = ($secure === 'ssl') ? "ssl://{$host}:{$port}" : "tcp://{$host}:{$port}";
     $fp = @stream_socket_client($transport, $errno, $errstr, 20, STREAM_CLIENT_CONNECT, stream_context_create());
-    if (!$fp) { log_mail_error("SMTP connect failed to {$host}:{$port} — {$errno} {$errstr}"); return; }
+    if (!$fp) { log_mail_error("SMTP connect failed to {$host}:{$port} — {$errno} {$errstr}"); return false; }
     stream_set_timeout($fp, 20);
 
     $read = function () use ($fp): int {
@@ -213,33 +214,34 @@ function send_smtp(string $to, string $subject, string $body, string $headers, a
         return (int)substr($line, 0, 3);
     };
     $send = function (string $c) use ($fp): void { fwrite($fp, $c . "\r\n"); };
-    $fail = function (string $why) use ($fp): void { log_mail_error($why); @fwrite($fp, "QUIT\r\n"); fclose($fp); };
+    $fail = function (string $why) use ($fp): bool { log_mail_error($why); @fwrite($fp, "QUIT\r\n"); fclose($fp); return false; };
 
-    if ($read() !== 220) { $fail('SMTP: no 220 greeting'); return; }
+    if ($read() !== 220) { return $fail('SMTP: no 220 greeting'); }
     $ehlo = 'EHLO ' . (string)($env['SMTP_EHLO'] ?? $dom);
-    $send($ehlo); if ($read() !== 250) { $fail('SMTP: EHLO rejected'); return; }
+    $send($ehlo); if ($read() !== 250) { return $fail('SMTP: EHLO rejected'); }
 
     if ($secure === 'tls') {
-        $send('STARTTLS'); if ($read() !== 220) { $fail('SMTP: STARTTLS rejected'); return; }
+        $send('STARTTLS'); if ($read() !== 220) { return $fail('SMTP: STARTTLS rejected'); }
         $crypto = STREAM_CRYPTO_METHOD_TLS_CLIENT;
         if (defined('STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT')) $crypto |= STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT;
-        if (!@stream_socket_enable_crypto($fp, true, $crypto)) { $fail('SMTP: TLS handshake failed'); return; }
-        $send($ehlo); if ($read() !== 250) { $fail('SMTP: EHLO after STARTTLS rejected'); return; }
+        if (!@stream_socket_enable_crypto($fp, true, $crypto)) { return $fail('SMTP: TLS handshake failed'); }
+        $send($ehlo); if ($read() !== 250) { return $fail('SMTP: EHLO after STARTTLS rejected'); }
     }
 
-    $send('AUTH LOGIN');        if ($read() !== 334) { $fail('SMTP: AUTH LOGIN rejected'); return; }
-    $send(base64_encode($user)); if ($read() !== 334) { $fail('SMTP: username rejected'); return; }
-    $send(base64_encode($pass)); if ($read() !== 235) { $fail('SMTP: authentication failed'); return; }
+    $send('AUTH LOGIN');        if ($read() !== 334) { return $fail('SMTP: AUTH LOGIN rejected'); }
+    $send(base64_encode($user)); if ($read() !== 334) { return $fail('SMTP: username rejected'); }
+    $send(base64_encode($pass)); if ($read() !== 235) { return $fail('SMTP: authentication failed'); }
 
-    $send("MAIL FROM:<{$fromAddr}>"); if ($read() !== 250) { $fail('SMTP: MAIL FROM rejected'); return; }
-    $send("RCPT TO:<{$toAddr}>");     if (!in_array($read(), [250, 251], true)) { $fail('SMTP: RCPT TO rejected'); return; }
-    $send('DATA');                    if ($read() !== 354) { $fail('SMTP: DATA rejected'); return; }
+    $send("MAIL FROM:<{$fromAddr}>"); if ($read() !== 250) { return $fail('SMTP: MAIL FROM rejected'); }
+    $send("RCPT TO:<{$toAddr}>");     if (!in_array($read(), [250, 251], true)) { return $fail('SMTP: RCPT TO rejected'); }
+    $send('DATA');                    if ($read() !== 354) { return $fail('SMTP: DATA rejected'); }
 
     fwrite($fp, $data . "\r\n.\r\n");
-    if ($read() !== 250) { $fail('SMTP: message not accepted'); return; }
+    if ($read() !== 250) { return $fail('SMTP: message not accepted'); }
 
     $send('QUIT');
     fclose($fp);
+    return true;
 }
 
 /** Pull a single header's value out of a CRLF header block. */
@@ -1040,7 +1042,13 @@ function _email_lead(string $text): string {
     return '<p style="margin:0 0 4px;font-size:15px;line-height:1.6;color:#333">' . nl2br(_email_esc($text)) . '</p>';
 }
 
-function _dispatch_mail(string $to, string $subject, string $body, string $from, string $reply_to, array $env, string $html = ''): void {
+/**
+ * Dispatch one message through the active driver. Returns whether it was handed
+ * off successfully — the SMTP path reports the real SES result; Resend/log are
+ * best-effort (true) and log their own failures. Existing callers ignore the
+ * return; send_admin_reply() uses it to report "saved but not emailed".
+ */
+function _dispatch_mail(string $to, string $subject, string $body, string $from, string $reply_to, array $env, string $html = ''): bool {
     $headers  = "From: {$from}\r\n";
     $headers .= "Reply-To: {$reply_to}\r\n";
     $headers .= "Content-Type: text/plain; charset=UTF-8\r\n";
@@ -1048,15 +1056,60 @@ function _dispatch_mail(string $to, string $subject, string $body, string $from,
 
     if (!empty($env['RESEND_API_KEY'])) {
         send_resend($to, $subject, $body, $from, $reply_to, $env['RESEND_API_KEY'], $html);
+        return true;
     } elseif (($env['MAIL_DRIVER'] ?? '') === 'smtp') {
-        send_smtp($to, $subject, $body, $headers, $env, $html);
+        return send_smtp($to, $subject, $body, $headers, $env, $html);
     } elseif (($env['MAIL_DRIVER'] ?? '') === 'log') {
         log_mail_error("[DEV] To: {$to} | Subject: {$subject}\n{$body}");
+        return true;
     } else {
-        if (!@mail($to, $subject, $body, $headers)) {
-            log_mail_error("mail() failed sending '{$subject}' to {$to}");
-        }
+        $ok = @mail($to, $subject, $body, $headers);
+        if (!$ok) log_mail_error("mail() failed sending '{$subject}' to {$to}");
+        return $ok;
     }
+}
+
+/**
+ * Send a team member's reply to the enquirer, through the site's normal mail
+ * dispatch (SES SMTP in production — never Resend here). Branded with
+ * _email_shell(); Reply-To is the monitored reservations@ mailbox so a guest's
+ * reply reaches a human. A TSR-<id>-<hash> ref is appended to the subject so a
+ * future inbound poller (or a person) can thread the reply back.
+ *
+ * Returns ['ok'=>bool, 'error'=>string] so the caller always logs the thread
+ * entry and can report "saved, but email not sent" when SES can't yet deliver.
+ */
+function send_admin_reply(array $sub, string $message): array {
+    $message = trim($message);
+    if ($message === '') return ['ok' => false, 'error' => 'The reply is empty.'];
+
+    $to = trim((string)($sub['guest_email'] ?? ''));
+    if (!filter_var($to, FILTER_VALIDATE_EMAIL)) {
+        return ['ok' => false, 'error' => 'The guest has no valid email address on file.'];
+    }
+
+    require_once __DIR__ . '/booking.php';   // make_submission_ref()
+    $env   = parse_env();
+    $from  = $env['MAIL_FROM'] ?? 'Tribal Sand <noreply@tribalsand.com>';
+    $reply = setting('notify_email', 'reservations@tribalsand.com');
+    $site  = rtrim($env['SITE_URL'] ?? $env['APP_URL'] ?? 'https://tribalsand.com', '/');
+    $guest = trim((string)($sub['guest_name'] ?? ''));
+    $tag   = !empty($sub['id']) ? ' [' . make_submission_ref((int)$sub['id']) . ']' : '';
+    $subject  = 'Re: Your enquiry — Tribal Sand' . $tag;
+    $greeting = $guest !== '' ? "Dear {$guest}," : 'Hello,';
+
+    $text = $greeting . "\n\n" . $message . "\n\n"
+          . "Warm regards,\nTribal Sand\nKenya’s North Coast\n" . $reply;
+
+    $inner = _email_lead($greeting)
+           . _email_message_block($message, 'Our reply')
+           . '<p style="font-size:14px;margin:22px 0 0;color:#333">Warm regards,<br><strong>Tribal Sand</strong></p>';
+    $html  = _email_shell('A reply to your enquiry', $inner, $site);
+
+    $ok = _dispatch_mail($to, $subject, $text, $from, $reply, $env, $html);
+    return $ok
+        ? ['ok' => true, 'error' => '']
+        : ['ok' => false, 'error' => 'The mail server could not send the message (check the SES / SMTP settings). The reply was still saved to the thread.'];
 }
 
 function log_mail_error(string $message): void {
