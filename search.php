@@ -165,6 +165,8 @@ include __DIR__ . '/includes/header.php';
 @media(max-width:460px){
   .rgrid{grid-template-columns:1fr;}
 }
+/* iOS Safari zooms a focused field under 16px; these sit at .95rem. */
+@media(max-width:768px){.srch-field input,.srch-field select{font-size:16px;}}
 </style>
 
 <div class="srch">

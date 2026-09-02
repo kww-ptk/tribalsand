@@ -51,6 +51,29 @@ function verify_guest_ref(string $ref): int|false {
     return hash_equals($expected, $m[2]) ? $holdId : false;
 }
 
+/**
+ * Submission reference tag (e.g. TSR-34-a1b2c3) embedded in the subject of
+ * replies we send to enquirers, so a later inbound poller (or a human) can match
+ * a guest's reply back to its submission. The 6-char hex suffix is an HMAC for
+ * integrity; falls back to a plain hash if BOOKING_TOKEN_SECRET is unset.
+ */
+function make_submission_ref(int $submissionId): string {
+    $secret = parse_env()['BOOKING_TOKEN_SECRET'] ?? '';
+    $hash   = $secret
+        ? substr(hash_hmac('sha256', "sub:{$submissionId}", $secret), 0, 6)
+        : substr(md5("sub:{$submissionId}"), 0, 6);
+    return "TSR-{$submissionId}-{$hash}";
+}
+
+/**
+ * Find a submission reference anywhere in a string (e.g. an email subject) and
+ * return the submission ID, or false if none is present. Tolerant of casing.
+ */
+function parse_submission_ref(string $text): int|false {
+    if (!preg_match('/TSR-(\d+)-[0-9a-fA-F]{6}/', $text, $m)) return false;
+    return (int) $m[1];
+}
+
 /** Absolute URL to the guest manage page for a hold (magic link). '' if secret unset. */
 function make_manage_url(int $holdId): string {
     $ref = make_guest_ref($holdId);

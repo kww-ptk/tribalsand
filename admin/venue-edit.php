@@ -11,6 +11,7 @@ $venue = $id ? db_query('SELECT * FROM venues WHERE id = :id', [':id' => $id])->
 $isNew = !$venue;
 
 require_once __DIR__ . '/../includes/storage.php';
+require_once __DIR__ . '/../includes/admin-media-picker.php';   // "choose from library" for the gallery
 $images = $id ? fetch_venue_images($id) : [];
 
 $success = '';
@@ -29,7 +30,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['gallery_upload']) &&
         if (!$src) { $errs[] = 'Could not process image.'; continue; }
         $w = imagesx($src); $h = imagesy($src);
         if ($w > 2000) { $nh = (int)round($h * 2000 / $w); $dst = imagecreatetruecolor(2000, $nh); imagecopyresampled($dst, $src, 0,0,0,0, 2000,$nh,$w,$h); imagedestroy($src); $src = $dst; }
-        $filename = bin2hex(random_bytes(10)) . '.jpg';
+        $filename = seo_filename((string)($_FILES['gallery_upload']['name'][$i] ?? ''), 'venue');
         $tmp_out = sys_get_temp_dir() . '/' . $filename;
         imagejpeg($src, $tmp_out, 88); imagedestroy($src);
         $stored = storage_put($tmp_out, $filename); @unlink($tmp_out);
@@ -68,6 +69,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['gallery_action']) && 
             db_query('UPDATE venue_images SET sort_order=:o WHERE id=:id AND venue_id=:v', [':o'=>$o, ':id'=>(int)$iid, ':v'=>$id]);
         }
         header('Content-Type: application/json'); exit(json_encode(['ok'=>true]));
+    } elseif ($act === 'add_library') {
+        // Attach one or more existing library images (picker posts storage keys).
+        $keys = (array)($_POST['image_keys'] ?? []);
+        if (isset($_POST['image_key'])) $keys[] = (string)$_POST['image_key'];
+        $added = 0;
+        foreach ($keys as $k) {
+            if (media_attach_to_gallery('venue_images', 'venue_id', $id, (string)$k, $venue['name'] ?? '')) $added++;
+        }
+        if ($added) { audit_log('venue.gallery_library','venue',$id,"+{$added}"); $success = "{$added} image(s) added from the library."; }
+        else        { $error = 'No new image added — already in this gallery, or invalid.'; }
     }
     $images = fetch_venue_images($id);
 }
@@ -408,6 +419,15 @@ include __DIR__ . '/_layout.php';
           <button type="submit" class="btn-primary btn-sm" data-tip="Upload the selected photos">Upload selected</button>
         </div>
       </form>
+      <div style="margin-top:14px;padding-top:14px;border-top:1px dashed var(--border)">
+        <p class="text-muted" style="margin:0 0 10px;font-size:13px">…or reuse a photo already on the site:</p>
+        <form method="POST" action="/admin/venue-edit?id=<?= $id ?>" class="gallery-libform">
+          <?= csrf_field() ?>
+          <input type="hidden" name="gallery_action" value="add_library">
+          <input type="hidden" id="venueLibKey" name="image_key" value="">
+          <button type="button" class="btn-outline btn-sm" data-mp-open="venueLibKey"><?= admin_icon('image', 15) ?> Choose from library</button>
+        </form>
+      </div>
     </div>
   </div>
 
@@ -531,6 +551,15 @@ include __DIR__ . '/_layout.php';
     if (hint && !fi.files.length) hint.innerHTML = hintText;
   });
 })();
+
+// Library pick → submit the add-from-library form (PRG reload shows the photo).
+(function () {
+  document.querySelectorAll('.gallery-libform input[name="image_key"]').forEach(function (inp) {
+    inp.addEventListener('change', function () { if (inp.value && inp.form) inp.form.submit(); });
+  });
+})();
 </script>
+
+<?php media_picker_modal(); ?>
 
 <?php include __DIR__ . '/_layout_end.php'; ?>

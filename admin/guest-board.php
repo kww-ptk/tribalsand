@@ -43,7 +43,7 @@ function gb_handle_image(array &$errs): ?string {
         imagecopyresampled($dst, $src, 0, 0, 0, 0, 2000, $nh, $w, $h);
         imagedestroy($src); $src = $dst;
     }
-    $filename = bin2hex(random_bytes(10)) . '.jpg';
+    $filename = seo_filename((string)($_FILES['image']['name'] ?? ''), 'board');
     $tmp_out  = sys_get_temp_dir() . '/' . $filename;
     imagejpeg($src, $tmp_out, 88);
     imagedestroy($src);

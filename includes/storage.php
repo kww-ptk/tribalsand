@@ -43,6 +43,23 @@ function storage_put(string $local_path, string $filename, string $content_type 
     return false;
 }
 
+/**
+ * SEO-friendly, collision-safe storage filename for a PUBLIC upload.
+ * e.g. seo_filename('Maya Kobe Pool.JPG', 'villa') → "TribalSand_website_official_villa-maya-kobe-pool-9f3a2c.jpg"
+ *
+ * The 8-hex suffix keeps keys unique so two "pool.jpg" uploads never collide.
+ * Never use this for private check-in scans (their opaque names are a feature).
+ */
+function seo_filename(string $originalName = '', string $context = '', string $ext = 'jpg'): string {
+    $base    = strtolower(pathinfo($originalName, PATHINFO_FILENAME));
+    $base    = trim((string) preg_replace('/[^a-z0-9]+/', '-', $base), '-');
+    $slugCtx = trim((string) preg_replace('/[^a-z0-9]+/', '-', strtolower($context)), '-');
+    $parts   = array_values(array_filter([$slugCtx, $base]));   // brand prefix is always present
+    $stub    = 'TribalSand_website_official' . ($parts ? '_' . implode('-', $parts) : '');
+    $stub    = substr($stub, 0, 90);                            // keep keys sane
+    return $stub . '-' . bin2hex(random_bytes(4)) . '.' . ltrim($ext, '.');
+}
+
 /** Presigned GET URL (default 5 min) for a private object key. '' if no private bucket configured. */
 function storage_signed_get_url(string $key, int $ttl = 300): string {
     $env = parse_env();

@@ -154,6 +154,8 @@ img{display:block;object-fit:cover;}
   .zr-card{padding:1.8rem 1.4rem;}
   .zr-row{grid-template-columns:1fr;}
 }
+/* iOS Safari zooms a focused field under 16px; these sit at .9rem. */
+@media(max-width:768px){.zr-input,.zr-select,.zr-textarea{font-size:16px;}}
 </style>
 <body class="ts-nav-transparent">
 

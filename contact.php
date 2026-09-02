@@ -275,6 +275,13 @@ a.ct-card:hover .ct-card-arrow{opacity:1;}
   .ct-form-wrap{padding:1.8rem 1.4rem;}
   .ct-form-row{grid-template-columns:1fr;}
 }
+/* iOS Safari zooms a focused field under 16px; the form fields sit at .88rem,
+   so bump them to 16px on mobile (unchanged on desktop). */
+@media(max-width:768px){
+  .ct-form input,
+  .ct-form select,
+  .ct-form textarea{font-size:16px;}
+}
 </style>
 <body>
 

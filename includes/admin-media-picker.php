@@ -120,12 +120,19 @@ function media_picker_modal(): void {
 
       function apply(key, url){
         if (!target) return;
-        var field = target.closest('[data-mp-field]');
         target.value = key;
-        var thumb = field.querySelector('[data-mp-thumb]');
-        thumb.innerHTML = '<img src="' + url + '" alt="">';
-        field.querySelector('[data-mp-key]').textContent = key;
-        var clear = field.querySelector('[data-mp-clear]'); if (clear) clear.hidden = false;
+        // The full field slot (thumbnail + key label + clear) is optional: a
+        // caller may point data-mp-open straight at a bare hidden input (e.g. a
+        // compact per-row picker) with no [data-mp-field] wrapper.
+        var field = target.closest('[data-mp-field]');
+        if (field) {
+          var thumb = field.querySelector('[data-mp-thumb]');
+          if (thumb) thumb.innerHTML = '<img src="' + url + '" alt="">';
+          var keyEl = field.querySelector('[data-mp-key]'); if (keyEl) keyEl.textContent = key;
+          var clear = field.querySelector('[data-mp-clear]'); if (clear) clear.hidden = false;
+        }
+        // Let hosts react (e.g. auto-submit the row form). Harmless where unused.
+        target.dispatchEvent(new Event('change', { bubbles: true }));
         close();
       }
 

@@ -110,6 +110,10 @@ a{text-decoration:none;color:inherit;}
   .rz-card{padding:1.8rem 1.4rem;}
   .rz-row{grid-template-columns:1fr;}
 }
+/* iOS Safari zooms a focused field under 16px; these sit at .9rem. */
+@media(max-width:768px){
+  .rz-input,.rz-select,.rz-textarea{font-size:16px;}
+}
 </style>
 <body>
 

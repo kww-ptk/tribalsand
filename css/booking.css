@@ -544,3 +544,11 @@
 .book-body .bk-total   { padding: .65rem .8rem; margin-bottom: 0; }
 .book-body .bk-submit  { padding: .8rem; }
 .book-body .bk-hold-note { font-size: 10px; }
+
+/* iOS Safari zooms a focused field under 16px. The booking widget fields sit at
+   13–14px, so bump them to 16px on mobile only. Selectors mirror (and out-order)
+   the compact rules above so they win without raising desktop density. */
+@media (max-width: 768px) {
+  .bk-field input, .bk-field select, .bk-field textarea,
+  .book-body .bk-field input, .book-body .bk-field select, .book-body .bk-field textarea { font-size: 16px; }
+}

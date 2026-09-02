@@ -88,6 +88,8 @@ $enq_today     = date('Y-m-d');
   .enqms__done h3{font-family:'Cormorant Garamond',serif;font-weight:400;font-size:1.7rem;color:var(--e-dark);margin:0 0 .5rem;}
   .enqms__done p{font-family:'Jost',sans-serif;color:var(--e-mid);line-height:1.7;margin:0;}
   @media(max-width:520px){.enqms__row2{grid-template-columns:1fr;}.enqms__card{padding:1.5rem 1.15rem;}}
+  /* iOS Safari zooms a focused field under 16px; these sit at .98rem. */
+  @media(max-width:768px){.enqms__field input,.enqms__field select,.enqms__field textarea{font-size:16px;}}
   </style>
 
   <div class="enqms__head">

@@ -38,7 +38,7 @@ function media_handle_upload(array $file, ?int $adminId): array {
         imagecopyresampled($dst, $src, 0, 0, 0, 0, 2000, $nh, $w, $h);
         imagedestroy($src); $src = $dst; $w = 2000; $h = $nh;
     }
-    $filename = bin2hex(random_bytes(10)) . '.jpg';
+    $filename = seo_filename((string)($file['name'] ?? ''), 'media');
     $tmp_out  = sys_get_temp_dir() . '/' . $filename;
     imagejpeg($src, $tmp_out, 88);
     imagedestroy($src);

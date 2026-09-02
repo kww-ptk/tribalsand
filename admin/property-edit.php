@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/admin-media-picker.php';   // "choose from library" for the gallery
 require_login();
 require_owner();
 
@@ -143,7 +144,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_FILES['gallery_upload'])) {
             $src = $dst;
         }
 
-        $filename = bin2hex(random_bytes(10)) . '.jpg';
+        $filename = seo_filename((string)($_FILES['gallery_upload']['name'][$i] ?? ''), 'property');
         $tmp_out  = sys_get_temp_dir() . '/' . $filename;
         imagejpeg($src, $tmp_out, 88);
         imagedestroy($src);
@@ -199,6 +200,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['gallery_action'])) {
         }
         header('Content-Type: application/json');
         exit(json_encode(['ok'=>true]));
+    }
+    if ($act === 'add_library') {
+        $keys = (array)($_POST['image_keys'] ?? []);
+        if (isset($_POST['image_key'])) $keys[] = (string)$_POST['image_key'];
+        $added = 0;
+        foreach ($keys as $k) {
+            if (media_attach_to_gallery('property_images', 'property_id', $id, (string)$k, $property['title'] ?? '')) $added++;
+        }
+        $success = $added ? "{$added} image(s) added from the library." : '';
+        if (!$added) $error = 'No new image added — already in this gallery, or invalid.';
     }
     $images = db_query('SELECT * FROM property_images WHERE property_id = :id ORDER BY sort_order ASC, id ASC', [':id' => $id])->fetchAll();
 }
@@ -384,6 +395,15 @@ include __DIR__ . '/_layout.php';
           <button type="submit" class="btn-primary btn-sm">Upload selected</button>
         </div>
       </form>
+      <div style="margin:0 16px 16px;padding-top:14px;border-top:1px dashed var(--border)">
+        <p class="text-muted" style="margin:0 0 10px;font-size:13px">…or reuse a photo already on the site:</p>
+        <form method="POST" action="/admin/property-edit?id=<?= $id ?>" class="gallery-libform">
+          <?= csrf_field() ?>
+          <input type="hidden" name="gallery_action" value="add_library">
+          <input type="hidden" id="propLibKey" name="image_key" value="">
+          <button type="button" class="btn-outline btn-sm" data-mp-open="propLibKey"><?= admin_icon('image', 15) ?> Choose from library</button>
+        </form>
+      </div>
     </div>
   </div>
 
@@ -584,6 +604,13 @@ if (grid) {
     fetch('/admin/property-edit.php?id=<?= $id ?>', { method: 'POST', body: fd });
   }
 }
+
+// Library pick → submit the add-from-library form (PRG reload shows the photo).
+document.querySelectorAll('.gallery-libform input[name="image_key"]').forEach(function (inp) {
+  inp.addEventListener('change', function () { if (inp.value && inp.form) inp.form.submit(); });
+});
 </script>
+
+<?php media_picker_modal(); ?>
 
 <?php include __DIR__ . '/_layout_end.php'; ?>
