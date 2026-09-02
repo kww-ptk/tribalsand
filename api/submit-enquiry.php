@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/upsells.php';
 require_once __DIR__ . '/../includes/mail.php';
 require_once __DIR__ . '/../includes/ghl.php';
 
@@ -67,6 +68,19 @@ $room      = $slug ? fetch_room_by_slug($slug) : false;
 $tourSlug  = trim($data['tour_slug'] ?? '');
 $tour      = $tourSlug ? fetch_tour_by_slug($tourSlug) : false;
 
+// Booking-flow add-ons the guest ticked. The posted ids are re-checked against
+// what this room's property actually offers on the enquiry surface, so a
+// tampered form cannot attach another property's activity, an unpublished one,
+// or one that is only meant for the check-in surface.
+$upsellItems = [];
+if (!empty($data['upsell']) && is_array($data['upsell']) && $room) {
+    $upsellItems = upsell_validate_ids(
+        $data['upsell'],
+        ((int)($room['venue_id'] ?? 0)) ?: null,
+        'enquiry'
+    );
+}
+
 // Check form mode — availability mode creates a 24h hold
 // Per-room override takes precedence over the global setting
 $form_mode = ($room && !empty($room['form_mode']))
@@ -121,7 +135,12 @@ try {
             ':checkout'    => $checkout ?: null,
             ':adults'      => max(1, (int)($data['adults'] ?? 1)),
             ':children'    => max(0, (int)($data['children'] ?? 0)),
-            ':payload'     => json_encode(['submitted_from' => $_SERVER['HTTP_REFERER'] ?? '']),
+            ':payload'     => json_encode(array_filter([
+                                  'submitted_from' => $_SERVER['HTTP_REFERER'] ?? '',
+                                  // Price snapshot at the moment of enquiry, so a later
+                                  // price change never rewrites what the guest was shown.
+                                  'upsells'        => array_map('upsell_payload_row', $upsellItems),
+                              ], fn($v) => $v !== [] && $v !== null)),
             ':source_page' => $tracking['source_page'] ?? '',
             ':referrer'    => $tracking['referrer']    ?? '',
             ':utm_source'  => $tracking['utm_source']  ?? '',

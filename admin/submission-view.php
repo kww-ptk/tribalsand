@@ -31,6 +31,7 @@ require_once __DIR__ . '/../includes/copy-link.php'; // copy_link_control()
 require_once __DIR__ . '/../includes/submission-notes.php'; // conversation thread (notes + replies)
 require_once __DIR__ . '/../includes/submission-status.php'; // lead status pipeline
 require_once __DIR__ . '/../includes/submission-payload.php'; // payload → display rows/sections
+require_once __DIR__ . '/../includes/upsells.php';             // booking-flow add-ons
 require_once __DIR__ . '/../includes/mail.php'; // send_admin_reply()
 
 // Flash (set by the convert handler on redirect)
@@ -143,14 +144,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'conve
         $_SESSION['sub_flash'] = ['type' => 'error', 'msg' => 'Could not create the hold. Please try again.'];
         header('Location: ' . $redirect); exit;
     }
-    // Hold created — an audit-log failure must NOT be reported as a creation failure.
+    // Hold created — nothing below may report a failure of the hold itself.
+    //
+    // Add-ons the guest ticked during the enquiry become addon requests on the
+    // new booking, so they show up in the guest portal and on the front desk.
+    // Re-validated against what the room's property actually offers, so an
+    // activity that has since been unpublished or moved is quietly dropped
+    // rather than attached. upsell_attach_to_hold() never throws.
+    $addonsMade = 0;
+    try {
+        $__payload = json_decode($sub['payload_json'] ?? '{}', true) ?: [];
+        $__picked  = array_column(is_array($__payload['upsells'] ?? null) ? $__payload['upsells'] : [], 'id');
+        if ($__picked) {
+            $__venueId = (int)db_query(
+                'SELECT r.venue_id FROM units u JOIN rooms r ON r.id = u.room_id WHERE u.id = :u',
+                [':u' => $unit_id]
+            )->fetchColumn();
+            $__items = upsell_validate_ids($__picked, $__venueId ?: null, 'enquiry');
+            $addonsMade = upsell_attach_to_hold($hold_id, $__items, max(1, (int)($sub['guests_adults'] ?? 1)));
+        }
+    } catch (Throwable $e) {
+        error_log('[convert-to-hold] upsell attach failed: ' . $e->getMessage());
+    }
+
     try {
         audit_log('hold.create_from_submission', 'hold', $hold_id,
-                  "from submission #{$id} — {$g_name} {$check_in}→{$check_out}");
+                  "from submission #{$id} — {$g_name} {$check_in}→{$check_out}"
+                  . ($addonsMade ? " (+{$addonsMade} add-on" . ($addonsMade === 1 ? '' : 's') . ')' : ''));
     } catch (Throwable $e) {
         error_log('[convert-to-hold] audit failed: ' . $e->getMessage());
     }
-    $_SESSION['sub_flash'] = ['type' => 'success', 'msg' => "Hold #{$hold_id} created from this enquiry."];
+    $_SESSION['sub_flash'] = ['type' => 'success', 'msg' => "Hold #{$hold_id} created from this enquiry."
+        . ($addonsMade ? " {$addonsMade} add-on" . ($addonsMade === 1 ? '' : 's') . ' carried over.' : '')];
     header('Location: ' . $redirect); exit;
 }
 
@@ -268,6 +293,19 @@ include __DIR__ . '/_layout.php';
       </div>
       <?php endforeach; endif; ?>
     </div>
+
+    <?php $__ups = submission_upsells($payload); if ($__ups): ?>
+    <div style="margin-top:22px">
+      <div class="detail-item__label" style="margin-bottom:10px;color:var(--teal,#1E5C6B);font-weight:700">
+        Add-ons requested<?= $linked_hold ? '' : ' <span class="text-muted" style="font-weight:400">(attached to the booking when you convert this enquiry)</span>' ?>
+      </div>
+      <ul style="margin:0;padding-left:18px">
+        <?php foreach ($__ups as $__u): ?>
+        <li style="margin-bottom:4px"><?= e($__u['name']) ?><?= $__u['price'] !== '' ? ' <span class="text-muted">— ' . e($__u['price']) . '</span>' : '' ?></li>
+        <?php endforeach; ?>
+      </ul>
+    </div>
+    <?php endif; ?>
 
     <?php foreach ($tb_sections as $sec): ?>
     <div style="margin-top:22px">

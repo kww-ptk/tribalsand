@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
+require_once __DIR__ . '/../includes/upsells.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/booking.php';
 require_once __DIR__ . '/../includes/admin-media-picker.php';   // "choose from library" for the gallery
@@ -52,6 +53,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ':whats_included'=> trim($_POST['whats_included'] ?? ''),
             ];
 
+            // Booking-flow placement — only when the column exists, and only a
+            // value from the catalog (a posted junk value falls back to 'none').
+            $upsPlace = null;
+            if (upsells_supported()) {
+                $p = (string)($_POST['upsell_placement'] ?? 'none');
+                $upsPlace = array_key_exists($p, UPSELL_PLACEMENTS) ? $p : 'none';
+            }
+
             if ($isNew) {
                 db_query(
                     "INSERT INTO tours (name,slug,category,tag_label,duration,short_desc,long_desc,highlights_json,
@@ -61,6 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $data
                 );
                 $id   = (int)db()->lastInsertId();
+                if ($upsPlace !== null) db_query('UPDATE tours SET upsell_placement = :p WHERE id = :id', [':p' => $upsPlace, ':id' => $id]);
                 sync_tour_venues($id, (array)($_POST['venue_ids'] ?? []));   // helper defined in Step 2
                 audit_log('tour.save', 'tour', $id, $data[':name']);
                 $tour = db_query('SELECT * FROM tours WHERE id = :id', [':id' => $id])->fetch();
@@ -76,6 +86,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                      updated_at=NOW() WHERE id=:id",
                     $data
                 );
+                if ($upsPlace !== null) db_query('UPDATE tours SET upsell_placement = :p WHERE id = :id', [':p' => $upsPlace, ':id' => $id]);
                 sync_tour_venues($id, (array)($_POST['venue_ids'] ?? []));
                 audit_log('tour.save', 'tour', $id, $data[':name']);
                 $success = 'Details saved.';
@@ -323,6 +334,22 @@ include __DIR__ . '/_layout.php';
         </label>
         <?php endforeach; ?>
       </div>
+
+      <?php if (upsells_supported()): $__place = (string)($tour['upsell_placement'] ?? 'none'); ?>
+      <div style="margin:14px 0">
+        <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:6px">Offer as a booking add-on</label>
+        <select name="upsell_placement" class="inp" style="max-width:320px">
+          <?php foreach (UPSELL_PLACEMENTS as $__pk => $__pl): ?>
+          <option value="<?= e($__pk) ?>"<?= $__place === $__pk ? ' selected' : '' ?>><?= e($__pl) ?></option>
+          <?php endforeach; ?>
+        </select>
+        <span style="display:block;font-size:12px;color:var(--muted);margin-top:5px">
+          Where guests can add this while booking. Only takes effect at properties with
+          &ldquo;Offer add-ons in the booking flow&rdquo; ticked (Properties &rarr; Edit &rarr; Details),
+          and only at the properties selected above.
+        </span>
+      </div>
+      <?php endif; ?>
 
       <div class="field" style="margin-top:16px">
         <label>Short description <span class="text-muted">(shown on listing cards)</span></label>

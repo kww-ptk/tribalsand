@@ -2,7 +2,8 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
-require_once __DIR__ . '/../includes/checkin.php';   // checkin_deposit_supported()
+require_once __DIR__ . '/../includes/checkin.php';
+require_once __DIR__ . '/../includes/upsells.php';   // checkin_deposit_supported()
 require_login();
 require_owner();
 
@@ -101,6 +102,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $depCur = strtoupper(preg_replace('/[^A-Za-z]/', '', (string)($_POST['deposit_currency'] ?? 'USD')));
         if ($depCur === '') $depCur = 'USD';
 
+        // Booking-flow add-ons master switch for this property.
+        $upsOn = upsells_supported() ? isset($_POST['upsell_enabled']) : null;
+
         if (!$error && $isNew) {
             // Slug is editable ONLY when creating a new property (no live page exists yet).
             $slug = preg_replace('/[^a-z0-9_-]/', '', strtolower(trim($_POST['slug'] ?? '')));
@@ -123,6 +127,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     );
                 }
                 $id = (int)db()->lastInsertId();
+                if ($upsOn !== null) {
+                    db_query('UPDATE venues SET upsell_enabled = :u WHERE id = :id',
+                             [':u' => $upsOn ? 'TRUE' : 'FALSE', ':id' => $id]);
+                }
                 audit_log('venue.create', 'venue', $id, $name);
                 header("Location: /admin/venue-edit.php?id={$id}&saved=1");
                 exit;
@@ -140,6 +148,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     'UPDATE venues SET name=:name, location=:loc, sort_order=:sort, updated_at=NOW() WHERE id=:id',
                     [':name' => $name, ':loc' => $location, ':sort' => $sort, ':id' => $id]
                 );
+            }
+            if ($upsOn !== null) {
+                db_query('UPDATE venues SET upsell_enabled = :u WHERE id = :id',
+                         [':u' => $upsOn ? 'TRUE' : 'FALSE', ':id' => $id]);
             }
             audit_log('venue.update', 'venue', $id, $name);
             header("Location: /admin/venue-edit.php?id={$id}&saved=1");
@@ -290,6 +302,16 @@ include __DIR__ . '/_layout.php';
               <?php endif; ?>
             </select>
           </div>
+        </div>
+        <?php endif; ?>
+
+        <?php if (upsells_supported()): ?>
+        <div class="field">
+          <label class="ckwrap" style="display:inline-flex;align-items:center;gap:8px">
+            <input type="checkbox" name="upsell_enabled" value="1"<?= !empty($venue['upsell_enabled']) ? ' checked' : '' ?>><span class="ck"></span>
+            <span>Offer add-ons in the booking flow</span>
+          </label>
+          <span class="field-hint">Lets guests add activities to this property&rsquo;s enquiry and pre-arrival check-in. Which activities appear &mdash; and on which of the two &mdash; is set per activity under <a href="/admin/tours.php">Tours</a>.</span>
         </div>
         <?php endif; ?>
 

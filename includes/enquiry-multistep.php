@@ -27,6 +27,26 @@ $enq_intro     = $enq_intro     ?? 'Tell us your dates and we’ll reply within 
 // What the guest is enquiring about (villa takes precedence over tour for the label)
 $enq_subject_name = $enq_room_name ?: $enq_tour_name;
 $enq_uid       = 'enqms_' . substr(md5($enq_room_slug . microtime()), 0, 6);
+
+// ── Booking-flow add-ons ───────────────────────────────────────────────────
+// Resolved from the targeted room's property. Empty unless that property has
+// the master switch on AND has activities placed on the enquiry surface, so
+// every other page keeps the original three-step flow untouched.
+require_once __DIR__ . '/upsells.php';
+$enq_venue_id = null;
+if ($enq_room_slug !== '') {
+    try {
+        $__enqRoom = fetch_room_by_slug($enq_room_slug);
+        if ($__enqRoom) $enq_venue_id = ((int)($__enqRoom['venue_id'] ?? 0)) ?: null;
+    } catch (Throwable $e) { $enq_venue_id = null; }
+}
+$enq_upsells = fetch_upsell_items($enq_venue_id, 'enquiry');
+$enq_hasUps  = $enq_upsells !== [];
+
+// Step numbers stay dynamic so the no-add-on flow is byte-for-byte what it was.
+$S_EXTRAS  = $enq_hasUps ? 2 : 0;
+$S_DETAILS = $enq_hasUps ? 3 : 2;
+$S_DONE    = $enq_hasUps ? 4 : 3;
 $enq_today     = date('Y-m-d');
 ?>
 <section class="enqms" id="<?= e($enq_uid) ?>" aria-label="Enquiry form">
@@ -79,6 +99,23 @@ $enq_today     = date('Y-m-d');
   .enqms__back:hover{color:var(--e-teal);}
   .enqms__back svg{width:15px;height:15px;}
   .enqms__error{font-family:'Jost',sans-serif;font-size:.85rem;color:#c0392b;background:rgba(192,57,43,.07);border:1px solid rgba(192,57,43,.2);border-radius:6px;padding:.6rem .8rem;margin-bottom:.9rem;}
+  /* Optional add-ons step */
+  .enqms__upslead{font-family:'Jost',sans-serif;font-size:1rem;color:var(--e-dark);margin:0 0 1rem;}
+  .enqms__ups{display:grid;gap:.7rem;}
+  .enqms__up{position:relative;display:flex;align-items:flex-start;gap:.8rem;padding:.9rem 1rem;border:1.5px solid var(--e-border);border-radius:8px;cursor:pointer;transition:.18s;background:var(--e-white);}
+  .enqms__up:hover{border-color:var(--e-sand);}
+  .enqms__up input{position:absolute;opacity:0;width:0;height:0;}
+  .enqms__up-tick{flex:0 0 auto;width:20px;height:20px;margin-top:2px;border:1.5px solid var(--e-border);border-radius:4px;display:grid;place-items:center;transition:.18s;}
+  .enqms__up-tick::after{content:'';width:10px;height:6px;border-left:2px solid #fff;border-bottom:2px solid #fff;transform:rotate(-45deg) scale(0);transition:.18s;}
+  .enqms__up input:checked ~ .enqms__up-tick{background:var(--e-teal-d);border-color:var(--e-teal-d);}
+  .enqms__up input:checked ~ .enqms__up-tick::after{transform:rotate(-45deg) scale(1);}
+  .enqms__up:has(input:checked){border-color:var(--e-teal-d);background:rgba(0,0,0,.015);}
+  .enqms__up input:focus-visible ~ .enqms__up-tick{outline:2px solid var(--e-teal);outline-offset:2px;}
+  .enqms__up-body{display:flex;flex-direction:column;gap:.18rem;min-width:0;}
+  .enqms__up-name{font-family:'Jost',sans-serif;font-weight:600;color:var(--e-dark);}
+  .enqms__up-desc{font-size:.85rem;color:#6b7280;line-height:1.45;}
+  .enqms__up-meta{display:flex;flex-wrap:wrap;gap:.7rem;font-family:'Jost',sans-serif;font-size:.8rem;color:#6b7280;margin-top:.15rem;}
+  .enqms__up-price{color:var(--e-teal-d);font-weight:600;}
   .enqms__note{font-family:'Jost',sans-serif;font-size:.72rem;color:var(--e-light);text-align:center;margin-top:.9rem;}
   .enqms .cf-turnstile{margin:0 0 1rem;}
   /* done */
@@ -102,9 +139,13 @@ $enq_today     = date('Y-m-d');
     <div class="enqms__steps" data-enq-progress>
       <span class="enqms__dot is-active" data-dot="1"><i>1</i> Dates</span>
       <span class="enqms__bar"></span>
-      <span class="enqms__dot" data-dot="2"><i>2</i> Details</span>
+      <?php if ($enq_hasUps): ?>
+      <span class="enqms__dot" data-dot="<?= $S_EXTRAS ?>"><i><?= $S_EXTRAS ?></i> Extras</span>
       <span class="enqms__bar"></span>
-      <span class="enqms__dot" data-dot="3"><i>&#10003;</i> Done</span>
+      <?php endif; ?>
+      <span class="enqms__dot" data-dot="<?= $S_DETAILS ?>"><i><?= $S_DETAILS ?></i> Details</span>
+      <span class="enqms__bar"></span>
+      <span class="enqms__dot" data-dot="<?= $S_DONE ?>"><i>&#10003;</i> Done</span>
     </div>
 
     <form class="enqms__form" data-enq-form novalidate
@@ -156,11 +197,43 @@ $enq_today     = date('Y-m-d');
         </div>
       </div>
 
-      <!-- ── STEP 2: contact + captcha ── -->
-      <div class="enqms__step" data-step="2" hidden>
-        <button type="button" class="enqms__back" data-enq-back>
+      <?php if ($enq_hasUps): ?>
+      <!-- ── STEP: optional add-ons ── -->
+      <div class="enqms__step" data-step="<?= $S_EXTRAS ?>" hidden>
+        <button type="button" class="enqms__back" data-enq-xback>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
           Back to dates
+        </button>
+        <p class="enqms__upslead">Would you like to add anything to your stay?</p>
+        <div class="enqms__ups">
+          <?php foreach ($enq_upsells as $__u): $__pl = upsell_price_label($__u); ?>
+          <label class="enqms__up">
+            <input type="checkbox" name="upsell[]" value="<?= (int)$__u['id'] ?>" data-enq-upsell>
+            <span class="enqms__up-tick" aria-hidden="true"></span>
+            <span class="enqms__up-body">
+              <span class="enqms__up-name"><?= e((string)$__u['name']) ?></span>
+              <?php if (trim((string)($__u['short_desc'] ?? '')) !== ''): ?>
+              <span class="enqms__up-desc"><?= e(mb_strimwidth(trim((string)$__u['short_desc']), 0, 110, '…')) ?></span>
+              <?php endif; ?>
+              <span class="enqms__up-meta">
+                <?php if (trim((string)($__u['duration'] ?? '')) !== ''): ?><span><?= e((string)$__u['duration']) ?></span><?php endif; ?>
+                <?php if ($__pl !== ''): ?><span class="enqms__up-price"><?= e($__pl) ?></span><?php endif; ?>
+              </span>
+            </span>
+          </label>
+          <?php endforeach; ?>
+        </div>
+        <p class="enqms__note" style="text-align:left;margin-top:.9rem">Nothing is charged now &mdash; we&rsquo;ll confirm availability and pricing when we reply.</p>
+        <div class="enqms__error" data-enq-error hidden></div>
+        <button type="button" class="enqms__btn enqms__btn--primary" data-enq-xnext>Continue <span aria-hidden="true">&rsaquo;</span></button>
+      </div>
+      <?php endif; ?>
+
+      <!-- ── STEP: contact + captcha ── -->
+      <div class="enqms__step" data-step="<?= $S_DETAILS ?>" hidden>
+        <button type="button" class="enqms__back" data-enq-back>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="15 18 9 12 15 6"/></svg>
+          <?= $enq_hasUps ? 'Back to extras' : 'Back to dates' ?>
         </button>
         <div class="enqms__grid">
           <div class="enqms__row2">
@@ -190,8 +263,8 @@ $enq_today     = date('Y-m-d');
         <p class="enqms__note">No payment now · Free 24-hour hold · We reply within 24 hours</p>
       </div>
 
-      <!-- ── STEP 3: thank you ── -->
-      <div class="enqms__step" data-step="3" hidden>
+      <!-- ── STEP: thank you ── -->
+      <div class="enqms__step" data-step="<?= $S_DONE ?>" hidden>
         <div class="enqms__done">
           <div class="enqms__done-ico">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
@@ -209,6 +282,10 @@ $enq_today     = date('Y-m-d');
   var root = document.getElementById('<?= $enq_uid ?>');
   if (!root || root.dataset.enqInit) return;
   root.dataset.enqInit = '1';
+
+  // Step numbers come from PHP: the extras step only exists when the property
+  // offers add-ons, and the details/done steps shift accordingly.
+  var S_DATES = 1, S_EXTRAS = <?= (int)$S_EXTRAS ?>, S_DETAILS = <?= (int)$S_DETAILS ?>, S_DONE = <?= (int)$S_DONE ?>;
 
   var form   = root.querySelector('[data-enq-form]');
   var steps  = root.querySelectorAll('.enqms__step');
@@ -246,16 +323,24 @@ $enq_today     = date('Y-m-d');
     });
   });
 
-  // Step 1 → 2 (dates optional but if both set, checkout must be after checkin)
+  // Dates → next (dates optional, but if both set, checkout must be after checkin)
   form.querySelector('[data-enq-next]').addEventListener('click', function(){
     var ci = form.querySelector('[name=checkin]').value;
     var co = form.querySelector('[name=checkout]').value;
-    if (ci && co && co <= ci){ err(1, 'Check-out must be after check-in.'); return; }
-    err(1, '');
-    show(2);
+    if (ci && co && co <= ci){ err(S_DATES, 'Check-out must be after check-in.'); return; }
+    err(S_DATES, '');
+    show(S_EXTRAS || S_DETAILS);
   });
 
-  form.querySelector('[data-enq-back]').addEventListener('click', function(){ err(2,''); show(1); });
+  form.querySelector('[data-enq-back]').addEventListener('click', function(){
+    err(S_DETAILS, ''); show(S_EXTRAS || S_DATES);
+  });
+
+  // Extras step nav — nothing is mandatory here, so Continue never validates.
+  var xNext = form.querySelector('[data-enq-xnext]');
+  var xBack = form.querySelector('[data-enq-xback]');
+  if (xNext) xNext.addEventListener('click', function(){ err(S_EXTRAS,''); show(S_DETAILS); });
+  if (xBack) xBack.addEventListener('click', function(){ err(S_EXTRAS,''); show(S_DATES); });
 
   function resetCaptcha(){
     try { if (window.turnstile) window.turnstile.reset(); } catch(e){}
@@ -263,17 +348,17 @@ $enq_today     = date('Y-m-d');
 
   form.addEventListener('submit', function(e){
     e.preventDefault();
-    err(2, '');
+    err(S_DETAILS, '');
     var name  = form.querySelector('[name=name]');
     var email = form.querySelector('[name=email]');
     name.classList.remove('is-invalid'); email.classList.remove('is-invalid');
 
-    if (!name.value.trim()){ name.classList.add('is-invalid'); err(2,'Please enter your name.'); name.focus(); return; }
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.value.trim())){ email.classList.add('is-invalid'); err(2,'Please enter a valid email.'); email.focus(); return; }
+    if (!name.value.trim()){ name.classList.add('is-invalid'); err(S_DETAILS,'Please enter your name.'); name.focus(); return; }
+    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email.value.trim())){ email.classList.add('is-invalid'); err(S_DETAILS,'Please enter a valid email.'); email.focus(); return; }
 
     var tokenEl = form.querySelector("[name='cf-turnstile-response']");
     if (form.querySelector('.cf-turnstile') && (!tokenEl || !tokenEl.value)){
-      err(2, 'Please complete the security check.');
+      err(S_DETAILS, 'Please complete the security check.');
       return;
     }
 
@@ -284,6 +369,11 @@ $enq_today     = date('Y-m-d');
     new FormData(form).forEach(function(v,k){ payload[k] = v; });
     payload.adults   = parseInt(adultsH.value,10);
     payload.children = parseInt(childH.value,10);
+    // FormData.forEach flattens repeated keys, so upsell[] has to be gathered
+    // on its own — otherwise only the last ticked add-on would survive.
+    payload.upsell = Array.prototype.slice
+      .call(form.querySelectorAll('[data-enq-upsell]:checked'))
+      .map(function(c){ return parseInt(c.value, 10); });
 
     fetch('/api/submit-enquiry.php', {
       method:'POST',
@@ -292,16 +382,16 @@ $enq_today     = date('Y-m-d');
     })
     .then(function(r){ return r.json().catch(function(){ return {ok:false}; }); })
     .then(function(json){
-      if (json && json.ok){ show(3); return; }
+      if (json && json.ok){ show(S_DONE); return; }
       resetCaptcha();
       btn.disabled = false; btn.innerHTML = 'Send Enquiry <span aria-hidden="true">&rsaquo;</span>';
       var msg = (json && (json.error || (json.errors && Object.values(json.errors).filter(Boolean).join(' ')))) || 'Something went wrong. Please try again.';
-      err(2, msg);
+      err(S_DETAILS, msg);
     })
     .catch(function(){
       resetCaptcha();
       btn.disabled = false; btn.innerHTML = 'Send Enquiry <span aria-hidden="true">&rsaquo;</span>';
-      err(2, 'Network error. Please check your connection and try again.');
+      err(S_DETAILS, 'Network error. Please check your connection and try again.');
     });
   });
 })();

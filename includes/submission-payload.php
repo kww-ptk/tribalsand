@@ -24,6 +24,35 @@ function submission_is_trip_builder(array $payload): bool {
     return isset($payload['trip']) || isset($payload['itinerary']);
 }
 
+/**
+ * Payload keys that have their own bespoke block in the submission view, so the
+ * generic label/value list must not also render them as a flattened string.
+ */
+function submission_payload_own_render_keys(): array {
+    return ['upsells'];
+}
+
+/** Booking add-ons the guest ticked during the enquiry, newest shape first. */
+function submission_upsells(array $payload): array {
+    $rows = $payload['upsells'] ?? null;
+    if (!is_array($rows)) return [];
+    $out = [];
+    foreach ($rows as $r) {
+        if (!is_array($r)) continue;
+        $name = trim((string)($r['name'] ?? ''));
+        if ($name === '') continue;
+        $out[] = [
+            'id'    => (int)($r['id'] ?? 0),
+            'name'  => $name,
+            'price' => ($r['price_amount'] ?? null) !== null
+                ? '$' . number_format((float)$r['price_amount'], ((float)$r['price_amount'] == floor((float)$r['price_amount'])) ? 0 : 2)
+                  . (!empty($r['price_per_person']) ? ' pp' : '')
+                : '',
+        ];
+    }
+    return $out;
+}
+
 /** `agency_name` / `firstName` → `Agency Name` / `First Name`. */
 function submission_payload_label(string $key): string {
     $s = str_replace(['_', '-'], ' ', $key);
@@ -57,7 +86,7 @@ function submission_payload_value(mixed $v): string {
  * @return list<array{0:string,1:string}>
  */
 function submission_payload_rows(array $payload): array {
-    $hidden = submission_payload_hidden_keys();
+    $hidden = array_merge(submission_payload_hidden_keys(), submission_payload_own_render_keys());
     $rows   = [];
     foreach ($payload as $k => $v) {
         $key = (string)$k;
