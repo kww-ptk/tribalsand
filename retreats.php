@@ -1,4 +1,5 @@
-<?php require_once __DIR__ . '/includes/db.php'; // asset_url() used in the head below ?>
+<?php require_once __DIR__ . '/includes/db.php'; // asset_url() used in the head below
+require_once __DIR__ . '/includes/page-content.php'; // editable slots (Admin → Page Content) ?>
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -51,6 +52,16 @@
 }
 </script>
 
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "itemListElement": [
+    { "@type": "ListItem", "position": 1, "name": "Home",     "item": "https://tribalsand.com/" },
+    { "@type": "ListItem", "position": 2, "name": "Retreats", "item": "https://tribalsand.com/retreats" }
+  ]
+}
+</script>
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
@@ -251,6 +262,42 @@ a{text-decoration:none;color:inherit;}
   .venue-body{padding:2rem;}
   .intro-stats{gap:2rem;}
 }
+
+/* ── RETREAT ENQUIRY FORM ── */
+.rt-form-sec{background:#102F3A;padding:5rem 5vw;}
+.rt-form-wrap{max-width:1080px;margin:0 auto;display:grid;grid-template-columns:1fr 1.15fr;gap:3rem;align-items:start;}
+.rt-form-h{font-family:'Cormorant Garamond',serif;font-weight:300;font-size:clamp(1.9rem,3.4vw,2.7rem);color:#fff;line-height:1.14;margin-bottom:.9rem;}
+.rt-form-h em{font-style:italic;color:#B8965A;}
+.rt-form-p{color:rgba(212,196,172,.82);font-size:.95rem;line-height:1.75;margin-bottom:1.4rem;}
+.rt-form-list{list-style:none;padding:0;margin:0 0 1.5rem;}
+.rt-form-list li{color:rgba(212,196,172,.75);font-size:.86rem;padding:.4rem 0 .4rem 1.3rem;position:relative;}
+.rt-form-list li::before{content:'';position:absolute;left:0;top:.95rem;width:6px;height:6px;border-radius:50%;background:#B8965A;}
+.rt-form-wa{display:inline-block;font-size:.72rem;letter-spacing:.14em;text-transform:uppercase;color:#B8965A;border-bottom:1px solid rgba(184,150,90,.35);padding-bottom:2px;}
+.rt-form-cross{margin-top:1.4rem;font-size:.86rem;color:rgba(212,196,172,.6);}
+.rt-form-cross a{color:#B8965A;border-bottom:1px solid rgba(184,150,90,.3);}
+.rt-form{background:#fff;border-radius:10px;padding:1.9rem;box-shadow:0 24px 60px rgba(0,0,0,.28);}
+.rt-f-row{display:grid;grid-template-columns:1fr 1fr;gap:.9rem;}
+.rt-f{margin-bottom:.9rem;display:flex;flex-direction:column;}
+.rt-f label{font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;color:#6B6050;margin-bottom:.4rem;}
+.rt-f label span{color:#B8965A;}
+.rt-opt{color:rgba(107,96,80,.5)!important;letter-spacing:.08em;text-transform:none;font-size:.66rem;}
+.rt-f input,.rt-f select,.rt-f textarea{
+  width:100%;padding:.72rem .85rem;border:1px solid rgba(184,150,90,.28);border-radius:5px;
+  font-family:'Jost',sans-serif;font-size:.95rem;color:#141412;background:#fff;
+  transition:border-color .2s,box-shadow .2s;-webkit-appearance:none;appearance:none;}
+.rt-f select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='8' viewBox='0 0 12 8'%3E%3Cpath d='M1 1l5 5 5-5' stroke='%23B8965A' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right .85rem center;padding-right:2rem;}
+.rt-f input:focus,.rt-f select:focus,.rt-f textarea:focus{outline:none;border-color:#1E5C6B;box-shadow:0 0 0 3px rgba(30,92,107,.09);}
+.rt-f input.err,.rt-f textarea.err{border-color:#c0392b;}
+.rt-hp{position:absolute!important;left:-9999px!important;width:1px!important;height:1px!important;opacity:0!important;}
+.rt-f-btn{width:100%;margin-top:.5rem;background:#B8965A;color:#102F3A;border:none;border-radius:5px;padding:.95rem;
+  font-family:'Jost',sans-serif;font-size:.72rem;letter-spacing:.2em;text-transform:uppercase;font-weight:600;cursor:pointer;transition:background .2s;}
+.rt-f-btn:hover{background:#C9A86A;}
+.rt-f-btn[disabled]{opacity:.6;cursor:default;}
+.rt-f-note{text-align:center;font-size:.72rem;color:rgba(107,96,80,.7);margin-top:.7rem;}
+.rt-f-msg{margin-top:.8rem;font-size:.86rem;text-align:center;}
+.rt-f-msg.ok{color:#1E7A4C;}
+.rt-f-msg.bad{color:#c0392b;}
+@media(max-width:860px){.rt-form-wrap{grid-template-columns:1fr;gap:2rem;}.rt-f-row{grid-template-columns:1fr;}}
 </style>
 </head>
 <body>
@@ -260,13 +307,13 @@ a{text-decoration:none;color:inherit;}
 <!-- HERO -->
 <div>
 <section class="hero">
-  <div class="hero-bg"><img src="https://tribalsand.com/images/maya_illai/Best1.jpg" alt="Beachfront retreat venue on Kenya's coast — Maya Ilai, Kilifi" width="1920" height="1080" loading="eager"></div>
+  <div class="hero-bg"><img src="<?= e(page_image('retreats','hero_image')) ?>" alt="Beachfront retreat venue on Kenya's coast — Maya Ilai, Kilifi" width="1920" height="1080" loading="eager"></div>
   <div class="hero-inner">
-    <div class="hero-eyebrow">Retreats on Kenya's North Coast</div>
-    <h1 class="hero-h1">Where Your Retreat<br><em>Comes to Life</em></h1>
+    <div class="hero-eyebrow"><?= page_text('retreats','hero_eyebrow') ?></div>
+    <h1 class="hero-h1"><?= page_html('retreats','hero_title') ?></h1>
     <p class="hero-sub">Beachfront venues in Watamu and Kilifi for yoga and wellness retreats, kitesurf camps, corporate offsites, summer camps and marine biology programmes. From intimate groups to 48+. Everything arranged.</p>
     <div class="hero-btns">
-      <a href="contact.php" class="btn-primary">Plan Your Retreat</a>
+      <a href="#enquiry-form" class="btn-primary">Plan Your Retreat</a>
       <a href="#venues" class="btn-ghost">View Venues</a>
     </div>
   </div>
@@ -288,35 +335,35 @@ a{text-decoration:none;color:inherit;}
 <section class="section">
   <div class="center-head">
     <div class="eyebrow center">What We Host</div>
-    <h2 class="sec-h">Retreats of <em>Every Kind</em></h2>
+    <h2 class="sec-h"><?= page_html('retreats','types_title') ?></h2>
     <div class="sec-rule"></div>
     <p class="sec-p">Whether you are leading a wellness group, a kite camp, a corporate team or a class of young marine biologists, our beachfront venues on Kenya's coast are built for immersive, restorative and transformative gatherings.</p>
   </div>
 
   <div class="types-grid">
     <div class="type-card">
-      <img class="type-img" src="https://tribalsand.com/images/activities/20-private-yoga-session.jpg" alt="Yoga retreat on Kenya's coast — private beachfront yoga session" width="400" height="200" loading="lazy">
+      <img class="type-img" src="<?= e(page_image('retreats','img_yoga')) ?>" alt="Yoga retreat on Kenya's coast — private beachfront yoga session" width="400" height="200" loading="lazy">
       <div class="type-body">
         <div class="type-h">Yoga Retreats</div>
         <div class="type-p">Beachfront yoga decks, sunrise sessions by the ocean, and calm spaces for meditation. We arrange shalas, mats, instructors and nourishing plant-based menus.</div>
       </div>
     </div>
     <div class="type-card">
-      <img class="type-img" src="https://tribalsand.com/images/activities/22-in-house-wellness-treatment.jpeg" alt="Wellness retreat in Kenya — in-house spa and wellness treatment" width="400" height="200" loading="lazy">
+      <img class="type-img" src="<?= e(page_image('retreats','img_wellness')) ?>" alt="Wellness retreat in Kenya — in-house spa and wellness treatment" width="400" height="200" loading="lazy">
       <div class="type-body">
         <div class="type-h">Wellness Retreats</div>
         <div class="type-p">Spa treatments, sound healing, breathwork, ice baths and holistic programmes. Detox by the sea with healthy catering and a team that handles every detail.</div>
       </div>
     </div>
     <div class="type-card">
-      <img class="type-img" src="https://tribalsand.com/images/kitesurfing-watamu.jpg" alt="Kitesurf camp in Watamu Kenya — kiteboarding on the Indian Ocean" width="400" height="200" loading="lazy">
+      <img class="type-img" src="<?= e(page_image('retreats','img_kitesurf')) ?>" alt="Kitesurf camp in Watamu Kenya — kiteboarding on the Indian Ocean" width="400" height="200" loading="lazy">
       <div class="type-body">
         <div class="type-h">Kitesurf Camps</div>
         <div class="type-p">World-class kite conditions in the Kaskazi and Kusi seasons. We work with Tribal Kite School for lessons, gear, safety cover and downwinders for all levels.</div>
       </div>
     </div>
     <div class="type-card">
-      <img class="type-img" src="https://tribalsand.com/images/maya_illai/Best1.jpg" alt="Corporate retreat and team offsite in Kenya — Maya Ilai beachfront group venue, Kilifi" width="400" height="200" loading="lazy">
+      <img class="type-img" src="<?= e(page_image('retreats','img_corporate')) ?>" alt="Corporate retreat and team offsite in Kenya — Maya Ilai beachfront group venue, Kilifi" width="400" height="200" loading="lazy">
       <div class="type-body">
         <div class="type-h">Corporate Retreats</div>
         <div class="type-p">Team offsites, strategy weeks and leadership escapes. Meeting spaces, reliable WiFi, team-building activities and full-board dining — productivity meets paradise.</div>
@@ -324,7 +371,7 @@ a{text-decoration:none;color:inherit;}
     </div>
 
     <div class="type-card">
-      <img class="type-img" src="https://tribalsand.com/images/IMAGE-3_How-to-Plan-a-Group-Vacation-on-the-Kenyan-Coast-A-Perfect-Guide-for-Unforgettable-Moments.webp" alt="International summer camp in Kenya — youth group at a beach summer camp" width="400" height="200" loading="lazy">
+      <img class="type-img" src="<?= e(page_image('retreats','img_summer')) ?>" alt="International summer camp in Kenya — youth group at a beach summer camp" width="400" height="200" loading="lazy">
       <div class="type-body">
         <div class="type-h">Summer Camps</div>
         <div class="type-p">Safe, supervised beachfront camps for international youth groups. Ocean activities, cultural immersion, sports and adventure — a Kenyan summer children remember for life.</div>
@@ -332,7 +379,7 @@ a{text-decoration:none;color:inherit;}
     </div>
 
     <div class="type-card">
-      <img class="type-img" src="https://tribalsand.com/images/marine-park.jpg" alt="Marine biology and education camp in Kenya — students studying marine science and coral" width="400" height="200" loading="lazy">
+      <img class="type-img" src="<?= e(page_image('retreats','img_marine')) ?>" alt="Marine biology and education camp in Kenya — students studying marine science and coral" width="400" height="200" loading="lazy">
       <div class="type-body">
         <div class="type-h">Education & Marine Biology Camps</div>
         <div class="type-p">Hands-on conservation programmes on a living coastline. Coral restoration, beach cleanups, marine surveys and sustainability education — learning by doing, right on the reef.</div>
@@ -345,14 +392,14 @@ a{text-decoration:none;color:inherit;}
 <section class="section" id="venues" style="background:var(--sand-faint);">
   <div class="center-head">
     <div class="eyebrow center">Our Retreat Venues</div>
-    <h2 class="sec-h">Three Beachfront <em>Locations</em></h2>
+    <h2 class="sec-h"><?= page_html('retreats','venues_title') ?></h2>
     <div class="sec-rule"></div>
     <p class="sec-p">Choose the intimate exclusivity of Zuri in Watamu, the luxury and wellbeing of Maya Kobe in Kilifi, or the large-group capacity of Maya Ilai. All private, beachfront and fully serviced.</p>
   </div>
 
   <!-- Maya Ilai -->
   <div class="venue">
-    <img class="venue-img" src="https://tribalsand.com/images/maya_illai/Best1.jpg" alt="Maya Ilai eco retreat compound — Kilifi, Kenya. 16 units for large group retreats." width="600" height="500" loading="lazy">
+    <img class="venue-img" src="<?= e(page_image('retreats','venue_img_1')) ?>" alt="Maya Ilai eco retreat compound — Kilifi, Kenya. 16 units for large group retreats." width="600" height="500" loading="lazy">
     <div class="venue-body">
       <div class="venue-loc">Kilifi · Tribal Dunes</div>
       <div class="venue-name">Maya Ilai</div>
@@ -381,7 +428,7 @@ a{text-decoration:none;color:inherit;}
 
   <!-- Zuri -->
   <div class="venue reverse">
-    <img class="venue-img" src="https://tribalsand.com/images/zuri/Aerial/zuri-3.webp" alt="Zuri boutique hotel — Watamu, Kenya. Beachfront retreat venue for up to 14 guests." width="600" height="500" loading="lazy">
+    <img class="venue-img" src="<?= e(page_image('retreats','venue_img_2')) ?>" alt="Zuri boutique hotel — Watamu, Kenya. Beachfront retreat venue for up to 14 guests." width="600" height="500" loading="lazy">
     <div class="venue-body">
       <div class="venue-loc">Watamu · Kilifi County</div>
       <div class="venue-name">Zuri</div>
@@ -408,7 +455,7 @@ a{text-decoration:none;color:inherit;}
 
   <!-- Maya Kobe -->
   <div class="venue">
-    <img class="venue-img" src="https://tribalsand.com/images/maya-kobe/Maya Kobe - Day Outdoor, Pool, Beach/Maya Kobe Best12.jpg" alt="Maya Kobe boutique hotel — Kilifi, Kenya. Luxury wellness retreat venue." width="600" height="500" loading="lazy">
+    <img class="venue-img" src="<?= e(page_image('retreats','venue_img_3')) ?>" alt="Maya Kobe boutique hotel — Kilifi, Kenya. Luxury wellness retreat venue." width="600" height="500" loading="lazy">
     <div class="venue-body">
       <div class="venue-loc">Bofa Road · Kilifi</div>
       <div class="venue-name">Maya Kobe</div>
@@ -507,15 +554,91 @@ a{text-decoration:none;color:inherit;}
   </div>
 </section>
 
+
+<!-- ═══ ENQUIRY FORM — the page copy promises "the enquiry form below" ═══ -->
+<section class="rt-form-sec" id="enquiry-form">
+  <div class="rt-form-wrap">
+    <div class="rt-form-aside">
+      <div class="hero-eyebrow">Plan Your Retreat</div>
+      <h2 class="rt-form-h"><?= page_html('retreats','form_title') ?></h2>
+      <p class="rt-form-p"><?= page_text('retreats','form_body') ?></p>
+      <ul class="rt-form-list">
+        <li>Reply within 24 hours</li>
+        <li>No payment at enquiry stage</li>
+        <li>Exclusive use of the whole venue</li>
+        <li>Groups from 10 to 48+</li>
+      </ul>
+      <a href="https://wa.me/254115115247" class="rt-form-wa" target="_blank" rel="noopener noreferrer">Prefer WhatsApp? Message the team &rarr;</a>
+      <p class="rt-form-cross">Planning a wedding instead? See our <a href="events.php">beachfront wedding venues &rarr;</a></p>
+    </div>
+
+    <form class="rt-form" id="rtForm" novalidate>
+      <div class="rt-f-row">
+        <div class="rt-f"><label for="rt_name">Your name <span>*</span></label>
+          <input type="text" id="rt_name" name="name" required autocomplete="name"></div>
+        <div class="rt-f"><label for="rt_email">Email <span>*</span></label>
+          <input type="email" id="rt_email" name="email" required autocomplete="email"></div>
+      </div>
+      <div class="rt-f-row">
+        <div class="rt-f"><label for="rt_phone">Phone / WhatsApp</label>
+          <input type="tel" id="rt_phone" name="phone" autocomplete="tel"></div>
+        <div class="rt-f"><label for="rt_type">Retreat type</label>
+          <select id="rt_type" name="event_type">
+            <option value="Yoga / wellness retreat">Yoga / wellness retreat</option>
+            <option value="Kitesurf camp">Kitesurf camp</option>
+            <option value="Corporate retreat / offsite">Corporate retreat / offsite</option>
+            <option value="Summer camp">Summer camp</option>
+            <option value="Marine biology / educational camp">Marine biology / educational camp</option>
+            <option value="Fitness / sports camp">Fitness / sports camp</option>
+            <option value="Other">Other</option>
+          </select></div>
+      </div>
+      <div class="rt-f-row">
+        <div class="rt-f"><label for="rt_date">Preferred dates</label>
+          <input type="text" id="rt_date" name="event_date" placeholder="e.g. Feb 2027, or flexible"></div>
+        <div class="rt-f"><label for="rt_guests">Group size</label>
+          <input type="text" id="rt_guests" name="guest_count" inputmode="numeric" placeholder="e.g. 24"></div>
+      </div>
+      <div class="rt-f-row">
+        <div class="rt-f"><label for="rt_venue">Venue of interest</label>
+          <select id="rt_venue" name="venue">
+            <option value="">Not sure yet — advise me</option>
+            <option value="Maya Ilai · Kilifi">Maya Ilai &middot; Kilifi (largest)</option>
+            <option value="Maya Kobe · Kilifi">Maya Kobe &middot; Kilifi</option>
+            <option value="Zuri · Watamu">Zuri &middot; Watamu</option>
+            <option value="My Amani · Vipingo">My Amani &middot; Vipingo</option>
+          </select></div>
+        <div class="rt-f"><label for="rt_budget">Budget range <span class="rt-opt">optional</span></label>
+          <select id="rt_budget" name="budget">
+            <option value="">Prefer not to say</option>
+            <option value="Under $5,000">Under $5,000</option>
+            <option value="$5,000 – $15,000">$5,000 &ndash; $15,000</option>
+            <option value="$15,000 – $30,000">$15,000 &ndash; $30,000</option>
+            <option value="$30,000+">$30,000+</option>
+          </select></div>
+      </div>
+      <div class="rt-f"><label for="rt_msg">Tell us more <span class="rt-opt">optional</span></label>
+        <textarea id="rt_msg" name="message" rows="3" placeholder="Daily schedule, dietary needs, activities, arrival airport…"></textarea></div>
+
+      <input type="text" name="website" class="rt-hp" tabindex="-1" autocomplete="off" aria-hidden="true">
+      <div class="cf-turnstile" data-sitekey="<?= e(captcha_site_key()) ?>" style="margin:.4rem 0 .2rem"></div>
+
+      <button type="submit" class="rt-f-btn" id="rtSubmit">Send Enquiry &rarr;</button>
+      <div class="rt-f-note">We reply within 24 hours. No payment is taken at this stage.</div>
+      <div class="rt-f-msg" id="rtMsg" role="status" aria-live="polite"></div>
+    </form>
+  </div>
+</section>
+
 <!-- CTA -->
 <section class="cta-section" id="enquire">
-  <div class="cta-bg"><img src="https://tribalsand.com/images/updated-hero-banner.jpg" alt="Plan your retreat on Kenya's coast with Tribal Sand" width="1920" height="460" loading="lazy"></div>
+  <div class="cta-bg"><img src="<?= e(page_image('retreats','cta_image')) ?>" alt="Plan your retreat on Kenya's coast with Tribal Sand" width="1920" height="460" loading="lazy"></div>
   <div class="cta-inner">
     <div class="hero-eyebrow">Ready to Plan Your Retreat?</div>
-    <h2 class="cta-h">Your Retreat <em>Begins Here</em></h2>
+    <h2 class="cta-h"><?= page_html('retreats','cta_title') ?></h2>
     <p class="cta-p">Tell us your vision and we will design it. Our team responds within 24 hours with a tailored proposal — no payment required to enquire.</p>
     <div class="hero-btns">
-      <a href="contact.php" class="btn-primary">Plan Your Retreat</a>
+      <a href="#enquiry-form" class="btn-primary">Plan Your Retreat</a>
       <a href="https://wa.me/254115115247" class="btn-ghost">WhatsApp Us</a>
     </div>
   </div>
@@ -524,6 +647,60 @@ a{text-decoration:none;color:inherit;}
 <?php include 'includes/footer.php'; ?>
 
 <script>
+
+/* ── RETREAT ENQUIRY FORM ── */
+(function(){
+  var form = document.getElementById('rtForm');
+  if (!form) return;
+  var btn = document.getElementById('rtSubmit'), msg = document.getElementById('rtMsg');
+  var val = function(n){ var el = form.querySelector('[name="'+n+'"]'); return el ? el.value.trim() : ''; };
+  function say(t,c){ msg.textContent = t; msg.className = 'rt-f-msg ' + (c||''); }
+
+  form.addEventListener('submit', function(e){
+    e.preventDefault(); say('','');
+    var bad = [];
+    ['name','email'].forEach(function(n){
+      var el = form.querySelector('[name="'+n+'"]');
+      var ok = el.value.trim() !== '' && (n !== 'email' || /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(el.value.trim()));
+      el.classList.toggle('err', !ok); if (!ok) bad.push(el);
+    });
+    if (bad.length) { bad[0].focus(); say('Please add your name and a valid email.','bad'); return; }
+
+    var original = btn.textContent;
+    btn.textContent = 'Sending…'; btn.disabled = true;
+    fetch('/api/submit-event.php', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({
+        context:'Retreat',
+        name:val('name'), email:val('email'), phone:val('phone'),
+        event_type:val('event_type'), event_date:val('event_date'),
+        guest_count:val('guest_count'), venue:val('venue'),
+        budget:val('budget'), message:val('message'), website:val('website'),
+        'cf-turnstile-response': (form.querySelector("[name='cf-turnstile-response']")||{}).value || ''
+      })
+    })
+    .then(function(r){ return r.json(); })
+    .then(function(r){
+      btn.textContent = original; btn.disabled = false;
+      if (!r || !r.ok) {
+        var first = r && r.errors ? r.errors[Object.keys(r.errors)[0]] : null;
+        throw new Error(first || (r && r.error) || 'error');
+      }
+      form.reset();
+      if (window.turnstile && typeof window.turnstile.reset === 'function') window.turnstile.reset();
+      if (typeof window.showSuccessModal === 'function') {
+        window.showSuccessModal('Enquiry Sent',
+          'Thank you — our team will come back to you within 24 hours with venue options and availability.', false);
+      } else { say('Thank you — we will reply within 24 hours.','ok'); }
+    })
+    .catch(function(err){
+      btn.textContent = original; btn.disabled = false;
+      say(err.message && err.message !== 'error' ? err.message
+          : 'Something went wrong. Please try again, or WhatsApp us on +254 115 115 247.','bad');
+    });
+  });
+})();
+
 document.querySelectorAll('.faq-q').forEach(function(q){
   q.addEventListener('click',function(){q.closest('.faq-item').classList.toggle('open');});
 });
