@@ -58,9 +58,27 @@ if ($inThread) { mark_thread_read_by_admin($holdId, $addonId); }
 if (!$inThread) {
     $pg           = paginate_params();          // page / per (default 10) / q / offset / ajax
     $filterUnread = ($_GET['view'] ?? '') === 'unread';
+    $fVenue       = (int)($_GET['venue'] ?? 0);
 
     $allThreads = fetch_admin_threads(admin_venue_ids());
 
+    // Property options come from the UNFILTERED list, so the dropdown offers
+    // exactly the properties that actually have conversations and its choices
+    // don't vanish as you narrow the other filters.
+    $venueOpts = [];
+    foreach ($allThreads as $t) {
+        $vid = (int)($t['venue_id'] ?? 0);
+        if ($vid > 0 && !isset($venueOpts[$vid])) $venueOpts[$vid] = (string)($t['venue_name'] ?? '');
+    }
+    asort($venueOpts, SORT_NATURAL | SORT_FLAG_CASE);
+    if ($fVenue > 0 && !isset($venueOpts[$fVenue])) $fVenue = 0;   // stale/foreign id → All
+
+    if ($fVenue > 0) {
+        $allThreads = array_values(array_filter(
+            $allThreads,
+            static fn($t) => (int)($t['venue_id'] ?? 0) === $fVenue
+        ));
+    }
     if ($filterUnread) {
         $allThreads = array_values(array_filter($allThreads, static fn($t) => (int)$t['unread_admin'] > 0));
     }
@@ -76,7 +94,7 @@ if (!$inThread) {
     $total   = count($allThreads);
     $meta    = paginate_meta($total, $pg['page'], $pg['per']);
     $threads = array_slice($allThreads, $meta['offset'], $meta['per']);
-    $filtered = ($pg['q'] !== '' || $filterUnread);
+    $filtered = ($pg['q'] !== '' || $filterUnread || $fVenue > 0);
 
     ob_start(); ?>
     <div class="card"><div class="card__body" style="padding:0">
@@ -85,17 +103,15 @@ if (!$inThread) {
       <?php else: ?>
       <div class="table-wrap">
         <table class="data-table">
-          <thead><tr><th>Guest</th><th>Thread</th><th>Latest</th><th>Unread</th></tr></thead>
+          <thead><tr><th>Guest</th><th>Property</th><th>Thread</th><th>Latest</th><th>Unread</th></tr></thead>
           <tbody>
             <?php foreach ($threads as $t):
               $tid  = $t['addon_id'] === null ? 'general' : (int)$t['addon_id'];
               $href = '/admin/messages.php?hold=' . (int)$t['hold_id'] . '&thread=' . $tid;
             ?>
             <tr class="dt-rowlink<?= (int)$t['unread_admin'] > 0 ? ' is-unread' : '' ?>" data-href="<?= e($href) ?>">
-              <td>
-                <strong class="thread-guest"><?= e($t['guest_name'] ?: 'Guest') ?></strong>
-                <?php if (!empty($t['venue_name'])): ?><br><span class="text-muted" style="font-size:12px"><?= e($t['venue_name']) ?></span><?php endif; ?>
-              </td>
+              <td><strong class="thread-guest"><?= e($t['guest_name'] ?: 'Guest') ?></strong></td>
+              <td class="text-muted"><?= e($t['venue_name'] ?: '—') ?></td>
               <td><a href="<?= e($href) ?>"><?= e(thread_title($t)) ?></a></td>
               <td class="text-muted" style="font-size:13px;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><?= e((string)($t['last_body'] ?? '')) ?></td>
               <td><?php if ((int)$t['unread_admin'] > 0): ?><span class="badge badge--orange"><?= (int)$t['unread_admin'] ?></span><?php else: ?>—<?php endif; ?></td>
@@ -140,7 +156,18 @@ include __DIR__ . '/_layout.php';
           <option value="unread" <?= $filterUnread ? 'selected' : '' ?>>Unread only</option>
         </select>
       </div>
-      <?php if ($filterUnread): ?>
+      <?php if (count($venueOpts) > 1): ?>
+      <div class="filter-field">
+        <span>Property</span>
+        <select name="venue" class="filter-select" aria-label="Filter by property" onchange="this.form.submit()">
+          <option value="0">All properties</option>
+          <?php foreach ($venueOpts as $vid => $vname): ?>
+          <option value="<?= (int)$vid ?>" <?= $fVenue === (int)$vid ? 'selected' : '' ?>><?= e($vname) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+      <?php endif; ?>
+      <?php if ($filterUnread || $fVenue > 0): ?>
       <a href="/admin/messages.php" class="btn-outline btn-sm" style="align-self:flex-end"><?= admin_icon('x', 14) ?> Clear</a>
       <?php endif; ?>
     </form>
@@ -151,10 +178,24 @@ include __DIR__ . '/_layout.php';
 
 <?php else:
   $msgs = fetch_thread_messages($holdId, $addonId);
-  $ctx  = db_query("SELECT h.guest_name FROM holds h WHERE h.id=:h", [':h'=>$holdId])->fetch();
+  // Name the property in the header too — with every conversation in one
+  // inbox, the guest name alone doesn't say which house you're replying about.
+  $ctx  = db_query(
+      "SELECT h.guest_name, r.name AS room_name, v.name AS venue_name
+         FROM holds h
+         JOIN units u ON u.id = h.unit_id
+         JOIN rooms r ON r.id = u.room_id
+         LEFT JOIN venues v ON v.id = r.venue_id
+        WHERE h.id = :h",
+      [':h'=>$holdId]
+  )->fetch();
 ?>
 <div class="card"><div class="card__body" style="padding:20px">
-  <p style="margin:0 0 12px;font-weight:600"><?= e($ctx['guest_name'] ?? 'Guest') ?></p>
+  <p style="margin:0 0 12px;font-weight:600"><?= e($ctx['guest_name'] ?? 'Guest') ?>
+    <?php if (!empty($ctx['venue_name'])): ?>
+    <span class="text-muted" style="font-weight:400">· <?= e($ctx['venue_name']) ?><?= !empty($ctx['room_name']) ? ' — ' . e($ctx['room_name']) : '' ?></span>
+    <?php endif; ?>
+  </p>
   <?php $lastId = $msgs ? (int)$msgs[count($msgs)-1]['id'] : 0; ?>
   <div id="amThread" class="am-thread"
        data-poll-url="/admin/messages-poll"

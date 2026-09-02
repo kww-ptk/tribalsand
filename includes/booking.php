@@ -491,7 +491,7 @@ function fetch_admin_threads(?array $venueIds = null): array {
     }
     return db_query(
         "SELECT m.hold_id, m.addon_id,
-                h.guest_name, v.name AS venue_name,
+                h.guest_name, v.id AS venue_id, v.name AS venue_name,
                 ba.kind, ba.details, ba.status, t.name AS tour_name,
                 MAX(m.created_at) AS last_at,
                 SUM(CASE WHEN m.sender='guest' AND m.read_by_admin=FALSE THEN 1 ELSE 0 END) AS unread_admin,
@@ -504,7 +504,7 @@ function fetch_admin_threads(?array $venueIds = null): array {
          LEFT JOIN booking_addons ba ON ba.id = m.addon_id
          LEFT JOIN tours t ON t.id = ba.tour_id
          WHERE 1=1{$venueSql}
-         GROUP BY m.hold_id, m.addon_id, h.guest_name, v.name, ba.kind, ba.details, ba.status, t.name
+         GROUP BY m.hold_id, m.addon_id, h.guest_name, v.id, v.name, ba.kind, ba.details, ba.status, t.name
          ORDER BY unread_admin DESC, last_at DESC",
         $params
     )->fetchAll();
