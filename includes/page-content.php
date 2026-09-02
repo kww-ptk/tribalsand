@@ -107,7 +107,7 @@ function page_content_registry(): array {
                         'default'=>'images/My-Amani-8.jpg'],
                     'how_img_accent' => ['type'=>'image', 'label'=>'Accent image (overlaps the main one)',
                         'hint'=>'Renders 4:3 landscape.',
-                        'default'=>'https://d38di21ab22p6u.cloudfront.net/da8332ef15c50327eedc.jpg'],
+                        'default'=>'https://images.tribalsand.com/da8332ef15c50327eedc.jpg'],
                 ],
                 'Photo strip' => [
                     'gal_1' => ['type'=>'image','label'=>'Photo 1','default'=>'images/Maya-Kobe-1.jpeg'],
