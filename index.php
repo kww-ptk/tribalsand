@@ -481,7 +481,7 @@ include 'includes/head.php';
       <h2 class="sec-h" id="props-heading"><?= page_html('home','props_title') ?></h2>
       <div class="sec-rule"></div>
     </div>
-    <a href="/booking" class="btn-primary" style="flex-shrink:0;">View All Properties</a>
+    <a href="/search" class="btn-primary" style="flex-shrink:0;">View All Properties</a>
   </div>
 
   <div class="prop-filters" role="group" aria-label="Filter properties">
