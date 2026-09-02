@@ -4,7 +4,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/checkin.php';
 require_login();
-require_owner();
+require_bookings();
 
 $checkin_default = checkin_supported() && setting('checkin_required_default', '0') === '1';
 $want_checkin    = ($_SERVER['REQUEST_METHOD'] === 'POST') ? isset($_POST['require_checkin']) : $checkin_default;
@@ -25,7 +25,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
             'guest_name' => $g_name, 'guest_email' => $g_email, 'guest_count' => $g_count];
 
     $is_date  = fn($d) => preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $d, $m) && checkdate((int)$m[2], (int)$m[3], (int)$m[1]);
-    $unit_ok  = $unit_id > 0 && db_query("SELECT 1 FROM units WHERE id = :id AND is_active = TRUE", [':id' => $unit_id])->fetchColumn();
+    // Property scope — a scoped account (reception) may only create a hold on a
+    // unit belonging to one of its own venues, whatever it posts.
+    $unitScope = venue_scope_sql('r.venue_id');
+    $unit_ok  = $unit_id > 0 && db_query(
+        "SELECT 1 FROM units u JOIN rooms r ON r.id = u.room_id
+          WHERE u.id = :id AND u.is_active = TRUE" . ($unitScope !== '' ? " AND {$unitScope}" : ''),
+        [':id' => $unit_id]
+    )->fetchColumn();
 
     if (!$unit_ok)                                        $error = 'Please choose a valid room / unit.';
     elseif (!$is_date($check_in) || !$is_date($check_out)) $error = 'Please enter valid check-in and check-out dates.';
@@ -60,6 +67,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
 }
 
 $ru_options = fetch_room_unit_options();
+$ruScope    = admin_venue_ids();          // null = owner (all venues)
+if ($ruScope !== null) {
+    $ru_options = array_values(array_filter(
+        $ru_options,
+        fn($o) => in_array((int)($o['venue_id'] ?? 0), $ruScope, true)
+    ));
+}
 
 $pageTitle  = 'New Booking';
 $activeMenu = 'holds';

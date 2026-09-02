@@ -5,7 +5,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/booking.php';
 require_login();
-require_owner();
+require_bookings();
 
 $pageTitle  = 'Itinerary';
 $activeMenu = 'holds';
@@ -21,7 +21,9 @@ $hold = $holdId ? db_query(
 $flash = null;
 if (!empty($_SESSION['hold_flash'])) { $flash = $_SESSION['hold_flash']; unset($_SESSION['hold_flash']); }
 
-if (!$hold) { $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Booking not found.']; header('Location: /admin/holds.php'); exit; }
+// Property scope — a scoped account (reception) only edits its own venues'
+// itineraries. This sits above every POST handler below.
+if (!$hold || !staff_can_hold($holdId)) { $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Booking not found.']; header('Location: /admin/holds.php'); exit; }
 
 $__days = [];
 for ($d = new DateTime((string)$hold['check_in']); $d <= new DateTime((string)$hold['check_out']); $d->modify('+1 day')) {

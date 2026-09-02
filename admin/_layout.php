@@ -10,20 +10,22 @@ $admin = current_admin();
 // surface for their job (frontdesk → Front Desk, ops → My Work, security → Gate).
 $__isOwner          = is_owner();
 $__isManager        = is_manager();
-$__job              = admin_job();               // null for owner/manager; specialty for staff
+$__isReception      = is_reception();             // front of house: Operations + Bookings + Reservations
+$__job              = admin_job();               // null for owner/manager/reception; specialty for staff
 $__isOps            = job_is_ops($__job);         // housekeeping / maintenance / gardening / driver
 $__isSecurity       = ($__job === 'security');
 $__isFrontdeskStaff = is_staff() && !$__isOps && !$__isSecurity;   // frontdesk or job-less staff
 
-$__navFrontdesk = $__isOwner || $__isManager || $__isFrontdeskStaff;
-$__navConcierge = $__isOwner || $__isManager || $__isFrontdeskStaff;
-$__navMessages  = $__isOwner || $__isManager || $__isFrontdeskStaff;  // ops & security get no messaging
-$__navTasks     = $__isOwner || $__isManager;
-$__navGate      = $__isOwner || $__isManager || $__isSecurity;
-$__navMyWork    = $__isOps;
+$__navFrontdesk = $__isOwner || $__isManager || $__isReception || $__isFrontdeskStaff;
+$__navConcierge = $__isOwner || $__isManager || $__isReception || $__isFrontdeskStaff;
+$__navMessages  = $__isOwner || $__isManager || $__isReception || $__isFrontdeskStaff;  // ops & security get no messaging
+$__navTasks     = $__isOwner || $__isManager || $__isReception;
+$__navGate      = $__isOwner || $__isManager || $__isReception || $__isSecurity;
+$__navMyWork    = $__isOps   || $__isReception;
+$__navBookings  = $__isOwner || $__isReception;   // holds / calendar / submissions / conflicts
 
 // Chip shown under the logo for non-owner accounts.
-$__roleBadge = $__isManager ? 'Manager' : (is_staff() ? ucfirst((string)$__job) : '');
+$__roleBadge = $__isManager ? 'Manager' : ($__isReception ? 'Reception' : (is_staff() ? ucfirst((string)$__job) : ''));
 
 // ── No-flicker shell (#18) ────────────────────────────────────────────────
 // On a `?shell=1` GET we skip ALL chrome (doctype/head/sidebar/topbar) and just
@@ -72,7 +74,7 @@ if ($__shellFrag) { ob_start(); return; }
       <img src="/images/whitelogo11.png" alt="Tribal Sand">
     </div>
     <?php if (!$__isOwner && ($admin || $__roleBadge)): ?>
-    <div style="padding:8px 12px;font-size:12px;color:#9ca3af"><?= e($admin['name'] ?? ($__isManager ? 'Manager' : 'Staff')) ?> <?php if ($__roleBadge): ?><span class="badge <?= $__isManager ? 'badge--green' : 'badge--blue' ?>" style="font-size:10px"><?= e($__roleBadge) ?></span><?php endif; ?></div>
+    <div style="padding:8px 12px;font-size:12px;color:#9ca3af"><?= e($admin['name'] ?? ($__isManager ? 'Manager' : ($__isReception ? 'Reception' : 'Staff'))) ?> <?php if ($__roleBadge): ?><span class="badge <?= $__isManager ? 'badge--green' : ($__isReception ? 'badge--orange' : 'badge--blue') ?>" style="font-size:10px"><?= e($__roleBadge) ?></span><?php endif; ?></div>
     <?php endif; ?>
     <nav class="sidebar__nav">
       <?php
@@ -136,12 +138,14 @@ if ($__shellFrag) { ob_start(); return; }
         <?php endif; ?>
       <?php $__navgroup('operations', 'Operations', ob_get_clean()); ?>
 
-      <?php if ($__isOwner || $__isManager): ?>
+      <?php if ($__isOwner || $__isManager || $__isReception): ?>
       <?php ob_start(); ?>
+        <?php if ($__isOwner || $__isManager): /* menu editing is content — reception is excluded */ ?>
         <a href="/admin/menus.php" class="sidebar__link <?= ($activeMenu??'')==='menus' ? 'is-active':'' ?>">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h0a2 2 0 0 0 2-2V2"/><path d="M5 2v20"/><path d="M17 2v20"/><path d="M17 8c0-3 1.5-6 3-6v20"/></svg>
           Menus
         </a>
+        <?php endif; ?>
         <a href="/admin/reservations.php" class="sidebar__link <?= ($activeMenu??'')==='reservations' ? 'is-active':'' ?>">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></svg>
           Reservations
@@ -149,7 +153,7 @@ if ($__shellFrag) { ob_start(); return; }
       <?php $__navgroup('restaurant', 'Restaurant', ob_get_clean()); ?>
       <?php endif; ?>
 
-      <?php if ($__isOwner): ?>
+      <?php if ($__navBookings): ?>
       <?php ob_start(); ?>
         <a href="/admin/holds.php"        class="sidebar__link <?= ($activeMenu??'')==='holds'        ? 'is-active':'' ?>">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
@@ -164,9 +168,22 @@ if ($__shellFrag) { ob_start(); return; }
           Submissions
         </a>
         <?php
+          // Scoped to the account's venues — reception must not see a count
+          // covering conflicts it cannot open. null = owner (all venues).
           $__conflict_count = 0;
           try {
-            $__conflict_count = (int)db_query("SELECT COUNT(*) FROM channel_conflicts WHERE status='pending'")->fetchColumn();
+            $__cfVids = admin_venue_ids();
+            if ($__cfVids === null) {
+              $__conflict_count = (int)db_query("SELECT COUNT(*) FROM channel_conflicts WHERE status='pending'")->fetchColumn();
+            } elseif ($__cfVids) {
+              $__cfIn = implode(',', array_map('intval', $__cfVids));
+              $__conflict_count = (int)db_query(
+                "SELECT COUNT(*) FROM channel_conflicts c
+                   JOIN units u ON u.id = c.unit_id
+                   JOIN rooms r ON r.id = u.room_id
+                  WHERE c.status='pending' AND r.venue_id IN ($__cfIn)"
+              )->fetchColumn();
+            }
           } catch (\Throwable $e) { /* table may not exist yet on older deploys */ }
         ?>
         <a href="/admin/conflicts.php"    class="sidebar__link <?= ($activeMenu??'')==='conflicts'    ? 'is-active':'' ?>">
@@ -174,7 +191,9 @@ if ($__shellFrag) { ob_start(); return; }
           Conflicts<?php if ($__conflict_count > 0): ?> <span style="background:#dc2626;color:#fff;font-size:10px;padding:1px 5px;border-radius:8px;margin-left:4px;font-weight:700"><?= $__conflict_count ?></span><?php endif; ?>
         </a>
       <?php $__navgroup('bookings', 'Bookings', ob_get_clean()); ?>
+      <?php endif; ?>
 
+      <?php if ($__isOwner): /* Catalog + Admin stay owner-only */ ?>
       <?php ob_start(); ?>
         <a href="/admin/rooms.php"        class="sidebar__link <?= ($activeMenu??'')==='rooms'        ? 'is-active':'' ?>">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18V8h13a5 5 0 0 1 5 5v5M3 14h18M3 18v2M21 18v2"/><path d="M6 12h4a2 2 0 0 1 2 2"/></svg>

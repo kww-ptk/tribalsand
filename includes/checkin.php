@@ -357,10 +357,10 @@ function checkin_desired_time(?array $data): string {
     return $ts !== false ? date('H:i', $ts) : '';
 }
 
-/** Owner, or a manager who manages this booking's venue, may view passport docs. */
+/** Owner, or a manager/reception account scoped to this booking's venue, may view passport docs. */
 function can_view_guest_docs(int $holdId): bool {
     if (is_owner()) return true;
-    return is_manager() && staff_can_hold($holdId);
+    return (is_manager() || is_reception()) && staff_can_hold($holdId);
 }
 
 /**

@@ -8,7 +8,7 @@ require_once __DIR__ . '/../includes/admin-pagination.php';
 require_once __DIR__ . '/../includes/reservations.php';
 require_once __DIR__ . '/../includes/mail.php';
 require_login();
-require_manager();                 // owner or house manager
+require_reception();                 // owner or house manager
 
 $scope = admin_venue_ids();        // null = owner (all); array = manager's venues
 

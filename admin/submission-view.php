@@ -3,7 +3,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_login();
-require_owner();
+require_bookings();
 
 $id  = (int)($_GET['id'] ?? 0);
 $sub = db_query(
@@ -15,7 +15,9 @@ $sub = db_query(
     [':id' => $id]
 )->fetch();
 
-if (!$sub) {
+// Out of scope reads as "not found" — the gate sits above every POST handler
+// below, so status changes, notes, replies and convert are all covered by it.
+if (!$sub || !submission_in_scope($id)) {
     http_response_code(404);
     $pageTitle = '404'; $activeMenu = 'submissions';
     include __DIR__ . '/_layout.php';

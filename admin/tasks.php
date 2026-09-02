@@ -12,7 +12,7 @@ require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/pagination.php';
 require_once __DIR__ . '/../includes/admin-pagination.php';
 require_login();
-require_manager();
+require_reception();
 
 $pageTitle  = 'Tasks';
 $activeMenu = 'tasks';

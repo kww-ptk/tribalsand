@@ -61,6 +61,33 @@ function is_manager(): bool { return admin_role() === 'manager'; }
 function is_staff(): bool   { return admin_role() === 'staff'; }
 
 /**
+ * Front-of-house tier: sees everything the owner sees EXCEPT the Catalog group,
+ * the Admin group and site-content editing — i.e. all of Operations, the whole
+ * Bookings group and restaurant Reservations, scoped to its assigned venues.
+ * Not a staff job type: reception logs in with email + password, never an
+ * access code (login_staff() hard-codes role='staff').
+ */
+function is_reception(): bool { return admin_role() === 'reception'; }
+
+/**
+ * True once add_reception_role.sql has widened the role CHECK constraint.
+ * Used to hide the account type in the create form pre-migration; the INSERT
+ * would be rejected by the constraint anyway, so this fails closed.
+ */
+function reception_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try {
+        $ok = (bool) db_query(
+            "SELECT 1 FROM pg_constraint
+              WHERE conname = 'admin_users_role_check'
+                AND pg_get_constraintdef(oid) LIKE '%reception%'"
+        )->fetchColumn();
+    } catch (\Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/**
  * Current staff member's operational specialty. A NULL job_type is treated as
  * 'frontdesk' (backward-compatible with pre-extension staff). Owner/manager
  * accounts are not job-driven, so they return null.
@@ -110,6 +137,32 @@ function require_manager(): void {
 }
 
 /**
+ * Reception tier — owner, manager or reception. Guards the surfaces managers
+ * already had and reception now joins: Tasks and restaurant Reservations.
+ * (Menus stays require_manager() — reception does no content editing.)
+ */
+function require_reception(): void {
+    require_login();
+    if (!is_owner() && !is_manager() && !is_reception()) {
+        $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'That area is only available to managers.'];
+        header('Location: ' . admin_home_url()); exit;
+    }
+}
+
+/**
+ * Bookings gate — owner or reception. Guards holds, the calendar, submissions,
+ * conflicts and itineraries. Deliberately NOT open to managers: this replaces
+ * require_owner() on those pages and must not widen anyone else's access.
+ */
+function require_bookings(): void {
+    require_login();
+    if (!is_owner() && !is_reception()) {
+        $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'That area is only available to the owner and reception.'];
+        header('Location: ' . admin_home_url()); exit;
+    }
+}
+
+/**
  * Messages gate — owner, manager, or front-desk staff. Ops staff (housekeeping,
  * maintenance, gardening, driver) and gate-security get a focused interface with
  * no guest messaging, so they are bounced to their own home.
@@ -126,10 +179,26 @@ function require_frontdesk(): void {
 /** Gate access — owner, manager, or gate-security staff. Others are bounced home. */
 function require_gate(): void {
     require_login();
-    if (!is_owner() && !is_manager() && !(is_staff() && admin_job() === 'security')) {
+    if (!is_owner() && !is_manager() && !is_reception() && !(is_staff() && admin_job() === 'security')) {
         $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'The gate isn’t available for your account.'];
         header('Location: ' . admin_home_url()); exit;
     }
+}
+
+/**
+ * SQL fragment restricting a query to the venues the current admin may see.
+ * '' for the owner (unrestricted); a never-true clause for an account assigned
+ * no venues — an empty scope means NOTHING, never everything.
+ *
+ * $col must be a trusted, literal column expression written by us (e.g.
+ * 'r.venue_id'). It is interpolated, so it must NEVER carry user input. The ids
+ * themselves are cast through intval() before interpolation.
+ */
+function venue_scope_sql(string $col): string {
+    $vids = admin_venue_ids();
+    if ($vids === null) return '';        // owner: every venue
+    if (!$vids)         return '1=0';     // assigned nowhere: nothing
+    return $col . ' IN (' . implode(',', array_map('intval', $vids)) . ')';
 }
 
 /** True if current admin may act on this hold (owner: always; manager/staff: hold's venue in scope). */
@@ -138,6 +207,28 @@ function staff_can_hold(int $holdId): bool {
     $vids = admin_venue_ids();
     if (!$vids) return false;
     $v = db_query('SELECT r.venue_id FROM holds h JOIN units u ON u.id=h.unit_id JOIN rooms r ON r.id=u.room_id WHERE h.id=:id', [':id'=>$holdId])->fetchColumn();
+    return $v !== false && $v !== null && in_array((int)$v, $vids, true);
+}
+
+/**
+ * True if the current admin may view or act on this submission.
+ *
+ * Owner: always. A scoped account (reception) may act on an enquiry whose room
+ * belongs to one of its venues. A submission with NO room — contact and agency
+ * enquiries — is not property-specific, so it stays visible to every account;
+ * this mirrors the list predicate in admin/submissions.php exactly, including
+ * for an account assigned no venues at all.
+ */
+function submission_in_scope(int $submissionId): bool {
+    if (is_owner()) return true;
+    if ($submissionId <= 0) return false;
+    $vids = admin_venue_ids();
+    if ($vids === null) return true;
+    $row = db_query('SELECT room_id FROM submissions WHERE id = :id', [':id' => $submissionId])->fetch();
+    if (!$row) return false;
+    if ($row['room_id'] === null) return true;   // no property attached
+    if (!$vids) return false;                    // assigned nowhere
+    $v = db_query('SELECT venue_id FROM rooms WHERE id = :id', [':id' => (int)$row['room_id']])->fetchColumn();
     return $v !== false && $v !== null && in_array((int)$v, $vids, true);
 }
 

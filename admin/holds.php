@@ -10,7 +10,7 @@ require_once __DIR__ . '/../includes/admin-pagination.php';
 require_once __DIR__ . '/../includes/checkin.php';
 require_once __DIR__ . '/../includes/copy-link.php';
 require_login();
-require_owner();
+require_bookings();
 
 // Lazy-expire stale holds on every page load
 expire_stale_holds();
@@ -82,6 +82,10 @@ if ($room_filter) {
     $params[':room_id'] = $room_filter;
 }
 
+// Property scope: '' for the owner, a venue IN (…) clause for reception.
+$vscope = venue_scope_sql('r.venue_id');
+if ($vscope !== '') $conditions[] = $vscope;
+
 // Free-text search + pagination.
 $pg = paginate_params(25);
 $sw = search_where(['h.guest_name', "COALESCE(h.guest_email,'')", 'r.name', "COALESCE(h.access_code,'')"], $pg['q'], $params);
@@ -123,13 +127,20 @@ $candsFor = function (int $vid) use (&$venueCandCache) {
     return $venueCandCache[$vid];
 };
 
-// KPIs
-$kpi_pending   = db_query("SELECT COUNT(*) FROM holds WHERE status='pending'")->fetchColumn();
-$kpi_confirmed = db_query("SELECT COUNT(*) FROM holds WHERE status='confirmed'")->fetchColumn();
-$kpi_today     = db_query("SELECT COUNT(*) FROM holds WHERE created_at::date = CURRENT_DATE")->fetchColumn();
+// KPIs — joined through to rooms so the same venue scope applies; a scoped
+// account must not see counts covering properties it cannot open.
+$kpiFrom  = "FROM holds h JOIN units u ON u.id = h.unit_id JOIN rooms r ON r.id = u.room_id";
+$kpiScope = $vscope !== '' ? " AND {$vscope}" : '';
+$kpi_pending   = db_query("SELECT COUNT(*) {$kpiFrom} WHERE h.status='pending'{$kpiScope}")->fetchColumn();
+$kpi_confirmed = db_query("SELECT COUNT(*) {$kpiFrom} WHERE h.status='confirmed'{$kpiScope}")->fetchColumn();
+$kpi_today     = db_query("SELECT COUNT(*) {$kpiFrom} WHERE h.created_at::date = CURRENT_DATE{$kpiScope}")->fetchColumn();
 
-// Room list for filter dropdown
-$rooms = db_query("SELECT id, name FROM rooms ORDER BY sort_order ASC")->fetchAll();
+// Room list for filter dropdown — scoped too, so the filter can't name a
+// property the account has no access to.
+$roomScope = venue_scope_sql('venue_id');
+$rooms = db_query(
+    "SELECT id, name FROM rooms" . ($roomScope !== '' ? " WHERE {$roomScope}" : '') . " ORDER BY sort_order ASC"
+)->fetchAll();
 
 $pageTitle  = 'Holds & Bookings';
 $activeMenu = 'holds';

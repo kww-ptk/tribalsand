@@ -3,9 +3,36 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_login();
-require_owner();
+require_bookings();
 
 $msg = $err = '';
+
+// ── Property scope ───────────────────────────────────────────────
+// null = owner (every venue). A scoped account (reception) may only read and
+// mutate rows belonging to its own venues, whatever ids it posts.
+$gScope   = admin_venue_ids();
+$gVenueOk = venue_scope_sql('r.venue_id');          // '' for the owner
+// Sub-selects that narrow a delete/update to in-scope rows. Empty for the owner.
+$gUnitIds = $gVenueOk === '' ? '' : "SELECT u2.id FROM units u2 JOIN rooms r ON r.id = u2.room_id WHERE {$gVenueOk}";
+$gRoomIds = $gVenueOk === '' ? '' : "SELECT id FROM rooms r WHERE {$gVenueOk}";
+
+/** Is this unit inside the current account's venues? */
+$unitInScope = function (int $unitId) use ($gScope): bool {
+    if ($gScope === null) return true;
+    if (!$gScope || $unitId <= 0) return false;
+    $v = db_query(
+        "SELECT r.venue_id FROM units u JOIN rooms r ON r.id = u.room_id WHERE u.id = :id",
+        [':id' => $unitId]
+    )->fetchColumn();
+    return $v !== false && $v !== null && in_array((int)$v, $gScope, true);
+};
+/** Is this room inside the current account's venues? */
+$roomInScope = function (int $roomId) use ($gScope): bool {
+    if ($gScope === null) return true;
+    if (!$gScope || $roomId <= 0) return false;
+    $v = db_query('SELECT venue_id FROM rooms WHERE id = :id', [':id' => $roomId])->fetchColumn();
+    return $v !== false && $v !== null && in_array((int)$v, $gScope, true);
+};
 
 // ── POST handlers ────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -21,7 +48,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // date_to from modal is the last blocked night (inclusive) — add 1 day for exclusive DB storage
         $date_to_excl = $date_to ? date('Y-m-d', strtotime($date_to . ' +1 day')) : '';
-        if ($unit_id && $date_from && $date_to_excl && $date_from < $date_to_excl) {
+        if ($unit_id && !$unitInScope($unit_id)) {
+            $err = 'That unit isn’t one of your properties.';
+        } elseif ($unit_id && $date_from && $date_to_excl && $date_from < $date_to_excl) {
             db_query(
                 "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, notes)
                  VALUES (:uid, :df, :dt, :type, :notes)",
@@ -38,7 +67,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $block_id = (int)($_POST['block_id'] ?? 0);
         // Don't delete hold-type blocks here (managed via holds.php)
         db_query(
-            "DELETE FROM availability_blocks WHERE id = :id AND block_type != 'hold'",
+            "DELETE FROM availability_blocks WHERE id = :id AND block_type != 'hold'"
+            . ($gUnitIds !== '' ? " AND unit_id IN ({$gUnitIds})" : ''),
             [':id' => $block_id]
         );
         $msg = 'Block removed.';
@@ -54,7 +84,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // date_to from form is inclusive last night — add 1 day for exclusive DB storage
         $date_to_excl = $date_to ? date('Y-m-d', strtotime($date_to . ' +1 day')) : '';
 
-        if ($room_id && $date_from && $date_to_excl && $price > 0 && $date_from < $date_to_excl) {
+        if ($room_id && !$roomInScope($room_id)) {
+            $err = 'That room isn’t one of your properties.';
+        } elseif ($room_id && $date_from && $date_to_excl && $price > 0 && $date_from < $date_to_excl) {
             db_query(
                 "INSERT INTO rates (room_id, date_from, date_to, price_amount, label)
                  VALUES (:rid, :df, :dt, :price, :label)",
@@ -68,7 +100,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'delete_rate') {
-        db_query('DELETE FROM rates WHERE id = :id', [':id' => (int)($_POST['rate_id'] ?? 0)]);
+        db_query(
+            'DELETE FROM rates WHERE id = :id' . ($gRoomIds !== '' ? " AND room_id IN ({$gRoomIds})" : ''),
+            [':id' => (int)($_POST['rate_id'] ?? 0)]
+        );
         $msg = 'Rate removed.';
     }
 
@@ -79,12 +114,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $date_to   = $_POST['date_to']   ?? ''; // exclusive
         $ok = $block_id && $unit_id && $date_from && $date_to && $date_from < $date_to
               && preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_from)
-              && preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_to);
+              && preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_to)
+              // Both ends must be in scope: the block being moved and its destination unit.
+              && $unitInScope($unit_id);
         if ($ok) {
             db_query(
                 "UPDATE availability_blocks
                  SET unit_id=:uid, date_from=:df, date_to=:dt
-                 WHERE id=:id AND block_type != 'hold'",
+                 WHERE id=:id AND block_type != 'hold'"
+                . ($gUnitIds !== '' ? " AND unit_id IN ({$gUnitIds})" : ''),
                 [':uid' => $unit_id, ':df' => $date_from, ':dt' => $date_to, ':id' => $block_id]
             );
             audit_log('gantt.move_block', 'availability_block', $block_id, "unit={$unit_id} {$date_from}→{$date_to}");
@@ -100,7 +138,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $unit_id   = (int)($_POST['feed_unit_id'] ?? 0);
         $label     = trim($_POST['feed_label']    ?? '');
         $feed_url  = trim($_POST['feed_url']      ?? '');
-        if ($unit_id && $feed_url && filter_var($feed_url, FILTER_VALIDATE_URL)) {
+        if ($unit_id && !$unitInScope($unit_id)) {
+            $err = 'That unit isn’t one of your properties.';
+        } elseif ($unit_id && $feed_url && filter_var($feed_url, FILTER_VALIDATE_URL)) {
             db_query(
                 "INSERT INTO ical_feeds (unit_id, label, feed_url) VALUES (:uid, :label, :url)",
                 [':uid' => $unit_id, ':label' => $label, ':url' => $feed_url]
@@ -112,7 +152,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($action === 'delete_ical_feed') {
-        db_query('DELETE FROM ical_feeds WHERE id = :id', [':id' => (int)($_POST['feed_id'] ?? 0)]);
+        db_query(
+            'DELETE FROM ical_feeds WHERE id = :id' . ($gUnitIds !== '' ? " AND unit_id IN ({$gUnitIds})" : ''),
+            [':id' => (int)($_POST['feed_id'] ?? 0)]
+        );
         $msg = 'iCal feed removed.';
     }
 }
@@ -137,7 +180,10 @@ $day_index  = array_flip($days); // date→index for fast lookup
 // ── Load data ────────────────────────────────────────────────────
 $filterRoom = isset($_GET['room']) ? (int)$_GET['room'] : 0;
 $filterRoomName = $filterRoom
-    ? (db_query('SELECT name FROM rooms WHERE id = :id', [':id' => $filterRoom])->fetchColumn() ?: '')
+    ? (db_query(
+        'SELECT name FROM rooms r WHERE id = :id' . ($gVenueOk !== '' ? " AND {$gVenueOk}" : ''),
+        [':id' => $filterRoom]
+      )->fetchColumn() ?: '')
     : '';
 
 $units = db_query(
@@ -152,7 +198,8 @@ $units = db_query(
      LEFT JOIN (
          SELECT unit_id, COUNT(*) AS feed_count FROM ical_feeds GROUP BY unit_id
      ) f ON f.unit_id = u.id
-     WHERE u.is_active = TRUE" . ($filterRoom ? " AND u.room_id = ".$filterRoom : "") . "
+     WHERE u.is_active = TRUE" . ($filterRoom ? " AND u.room_id = ".$filterRoom : "")
+       . ($gVenueOk !== '' ? " AND {$gVenueOk}" : "") . "
      -- Group by property first; unassigned rooms sort last. The id tiebreaks are
      -- load-bearing: several rooms share a sort_order, and without them Postgres
      -- returns ties in an arbitrary order, so a room's units could be split apart
@@ -212,7 +259,9 @@ $ical_feeds = db_query(
      ORDER BY r.sort_order ASC, f.id ASC"
 )->fetchAll();
 
-$rooms       = db_query("SELECT id, name FROM rooms ORDER BY sort_order ASC")->fetchAll();
+$rooms       = db_query(
+    "SELECT id, name FROM rooms r" . ($gVenueOk !== '' ? " WHERE {$gVenueOk}" : '') . " ORDER BY sort_order ASC"
+)->fetchAll();
 $env         = parse_env();
 $site_url    = rtrim($env['SITE_URL'] ?? 'https://tribalsand.com', '/');
 $sync_secret = $env['ICAL_SYNC_SECRET'] ?? '';

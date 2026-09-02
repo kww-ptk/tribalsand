@@ -31,7 +31,7 @@ if (!in_array($status, ['todo','in_progress','done','cancelled'], true)) {
 $meId       = (int)($_SESSION['admin_id'] ?? 0);
 $venueIds   = admin_venue_ids();                       // null = owner (all)
 $inScope    = $venueIds === null || in_array((int)$task['venue_id'], $venueIds, true);
-$canManage  = is_owner() || (is_manager() && $inScope);
+$canManage  = is_owner() || ((is_manager() || is_reception()) && $inScope);
 $isAssignee = (int)($task['assigned_to'] ?? 0) === $meId && $meId > 0;
 
 if (!$canManage && !$isAssignee) {

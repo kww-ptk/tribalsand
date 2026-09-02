@@ -6,10 +6,15 @@ require_once __DIR__ . '/../includes/mail.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/admin-pagination.php';
 require_login();
-require_owner();
+require_bookings();
 
 $success = '';
 $error   = '';
+
+// Property scope — '' for the owner, a venue clause for a scoped account
+// (reception). Every read AND the resolve handler's own fetch use it, so a
+// foreign conflict id simply resolves to "not found".
+$cScope = venue_scope_sql('r.venue_id');
 
 // ── POST: resolve a conflict ─────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -26,7 +31,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
              JOIN units u ON u.id = c.unit_id
              JOIN rooms r ON r.id = u.room_id
              LEFT JOIN ical_feeds f ON f.id = c.ical_feed_id
-             WHERE c.id = :id AND c.status = 'pending'",
+             WHERE c.id = :id AND c.status = 'pending'"
+             . ($cScope !== '' ? " AND {$cScope}" : ''),
             [':id' => $conflict_id]
         )->fetch();
 
@@ -100,6 +106,7 @@ $where = match($status_filter) {
     'resolved' => "WHERE c.status != 'pending'",
     default    => "WHERE c.status = 'pending'",
 };
+if ($cScope !== '') $where .= " AND {$cScope}";
 
 $conflicts = db_query(
     "SELECT c.*,
@@ -121,7 +128,10 @@ $conflicts = db_query(
 )->fetchAll();
 
 $pending_count = (int)db_query(
-    "SELECT COUNT(*) FROM channel_conflicts WHERE status='pending'"
+    "SELECT COUNT(*) FROM channel_conflicts c
+        JOIN units u ON u.id = c.unit_id
+        JOIN rooms r ON r.id = u.room_id
+      WHERE c.status='pending'" . ($cScope !== '' ? " AND {$cScope}" : '')
 )->fetchColumn();
 
 $pageTitle  = 'Channel Conflicts';

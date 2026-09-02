@@ -1,7 +1,7 @@
 <?php
 /** Workspace Requests tab. Expects $hold, $holdId, $__addons, $__changes. */
 $__asgOn     = addon_assigned_supported();
-$__canAssign = $__asgOn && (is_owner() || is_manager());
+$__canAssign = $__asgOn && (is_owner() || is_manager() || is_reception());
 $__cands     = $__canAssign ? assignable_team_for_venue(isset($hold['venue_id']) ? (int)$hold['venue_id'] : null) : [];
 $__cols      = $__asgOn ? 5 : 4;
 ?>

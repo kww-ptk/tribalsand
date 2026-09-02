@@ -33,7 +33,7 @@ $kindKey = $_GET['kind'] ?? 'all';
 if ($kindKey !== 'all' && !in_array($kindKey, $KINDS, true)) $kindKey = 'all';
 
 $asgOn    = addon_assigned_supported();          // assignment column present?
-$canAssign = $asgOn && (is_owner() || is_manager());
+$canAssign = $asgOn && (is_owner() || is_manager() || is_reception());
 $meId     = (int)($_SESSION['admin_id'] ?? 0);
 $asgKey   = $asgOn ? ($_GET['assignee'] ?? 'all') : 'all';
 if (!in_array($asgKey, ['all','me','unassigned'], true)) $asgKey = 'all';

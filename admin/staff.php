@@ -2,13 +2,16 @@
 /**
  * Admin: team account management (owner-only).
  *
- * Two kinds of non-owner account:
- *   • manager — email + password, per-property ops tier (assign work, tasks, gate).
- *   • staff   — access code, with an operational job type that drives their home
- *               (frontdesk → Front Desk, ops → My Work, security → Gate).
+ * Three kinds of non-owner account:
+ *   • manager   — email + password, per-property ops tier (assign work, tasks, gate).
+ *   • reception — email + password, front of house: everything the owner sees
+ *                 except Catalog, Admin and site content (Operations, Bookings,
+ *                 Reservations), scoped to its assigned properties.
+ *   • staff     — access code, with an operational job type that drives their home
+ *                 (frontdesk → Front Desk, ops → My Work, security → Gate).
  *
- * Every mutating action guards to role IN ('manager','staff') so the owner
- * account can never be edited, deactivated or deleted from here.
+ * Every mutating action guards to role IN ('manager','reception','staff') so the
+ * owner account can never be edited, deactivated or deleted from here.
  */
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
@@ -62,29 +65,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $action = $_POST['action'] ?? '';
 
     if ($action === 'create') {
-        $type = ($_POST['account_type'] ?? 'staff') === 'manager' ? 'manager' : 'staff';
+        $posted = $_POST['account_type'] ?? 'staff';
+        // Reception needs the widened role CHECK; without the migration the
+        // INSERT would be rejected, so fall back rather than 500.
+        if ($posted === 'reception' && !reception_supported()) {
+            staff_flash('Reception accounts need the add_reception_role migration — run it first.', 'error');
+        }
+        $type = in_array($posted, ['manager', 'reception'], true) ? $posted : 'staff';
         $name = trim((string)($_POST['name'] ?? ''));
         if ($name === '') staff_flash('Please enter a name.', 'error');
 
-        if ($type === 'manager') {
+        if ($type === 'manager' || $type === 'reception') {
+            // Both are email + password accounts scoped by admin_user_venues.
+            $label = $type === 'manager' ? 'Manager' : 'Reception';
             $email = strtolower(trim((string)($_POST['email'] ?? '')));
             $pass  = (string)($_POST['password'] ?? '');
-            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) staff_flash('Enter a valid email for the manager.', 'error');
-            if (strlen($pass) < 10)                          staff_flash('Manager password must be at least 10 characters.', 'error');
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) staff_flash("Enter a valid email for the " . strtolower($label) . " account.", 'error');
+            if (strlen($pass) < 10)                          staff_flash("{$label} password must be at least 10 characters.", 'error');
             if (db_query('SELECT 1 FROM admin_users WHERE email = :e', [':e' => $email])->fetchColumn()) {
                 staff_flash('An account with that email already exists.', 'error');
             }
             $hash = password_hash($pass, PASSWORD_BCRYPT, ['cost' => 12]);
             db_query(
-                "INSERT INTO admin_users (name, email, password_hash, role, is_active) VALUES (:n, :e, :h, 'manager', TRUE)",
-                [':n' => $name, ':e' => $email, ':h' => $hash]
+                "INSERT INTO admin_users (name, email, password_hash, role, is_active) VALUES (:n, :e, :h, :r, TRUE)",
+                [':n' => $name, ':e' => $email, ':h' => $hash, ':r' => $type]
             );
             $newId = (int)db()->lastInsertId();
             foreach (staff_posted_venue_ids($venueIds) as $vid) {
                 db_query('INSERT INTO admin_user_venues (admin_user_id, venue_id) VALUES (:s, :v)', [':s' => $newId, ':v' => $vid]);
             }
-            audit_log('staff_create', 'admin_user', $newId, "manager: {$name}");
-            staff_flash('Manager account created.');
+            audit_log('staff_create', 'admin_user', $newId, "{$type}: {$name}");
+            staff_flash("{$label} account created.");
         } else {
             $job = $_POST['job_type'] ?? 'frontdesk';
             if (!array_key_exists($job, STAFF_JOB_TYPES)) $job = 'frontdesk';
@@ -101,7 +112,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } elseif ($action === 'venues') {
         $sid = (int)($_POST['staff_id'] ?? 0);
-        $ok  = db_query("SELECT 1 FROM admin_users WHERE id = :s AND role IN ('manager','staff')", [':s' => $sid])->fetchColumn();
+        $ok  = db_query("SELECT 1 FROM admin_users WHERE id = :s AND role IN ('manager','reception','staff')", [':s' => $sid])->fetchColumn();
         if ($ok) {
             db_query('DELETE FROM admin_user_venues WHERE admin_user_id = :s', [':s' => $sid]);
             foreach (staff_posted_venue_ids($venueIds) as $vid) {
@@ -121,12 +132,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         staff_flash('No change.', 'error');
     } elseif ($action === 'setpw') {
-        // Reset a manager's password (managers only — staff use access codes).
+        // Reset a manager/reception password (staff use access codes instead).
         $sid  = (int)($_POST['staff_id'] ?? 0);
         $pass = (string)($_POST['password'] ?? '');
         if (strlen($pass) < 10) staff_flash('Password must be at least 10 characters.', 'error');
         $hash = password_hash($pass, PASSWORD_BCRYPT, ['cost' => 12]);
-        $n = db_query("UPDATE admin_users SET password_hash = :h WHERE id = :s AND role = 'manager'", [':h' => $hash, ':s' => $sid])->rowCount();
+        $n = db_query("UPDATE admin_users SET password_hash = :h WHERE id = :s AND role IN ('manager','reception')", [':h' => $hash, ':s' => $sid])->rowCount();
         if ($n) { audit_log('staff_setpw', 'admin_user', $sid, ''); staff_flash('Password updated.'); }
         staff_flash('No change.', 'error');
     } elseif ($action === 'regen') {
@@ -136,12 +147,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         staff_flash('No change.', 'error');
     } elseif ($action === 'toggle') {
         $sid = (int)($_POST['staff_id'] ?? 0);
-        $n = db_query("UPDATE admin_users SET is_active = NOT is_active WHERE id = :s AND role IN ('manager','staff')", [':s' => $sid])->rowCount();
+        $n = db_query("UPDATE admin_users SET is_active = NOT is_active WHERE id = :s AND role IN ('manager','reception','staff')", [':s' => $sid])->rowCount();
         if ($n) { audit_log('staff_toggle', 'admin_user', $sid, ''); staff_flash('Account status updated.'); }
         staff_flash('No change.', 'error');
     } elseif ($action === 'delete') {
         $sid = (int)($_POST['staff_id'] ?? 0);
-        $n = db_query("DELETE FROM admin_users WHERE id = :s AND role IN ('manager','staff')", [':s' => $sid])->rowCount();
+        $n = db_query("DELETE FROM admin_users WHERE id = :s AND role IN ('manager','reception','staff')", [':s' => $sid])->rowCount();
         if ($n) { audit_log('staff_delete', 'admin_user', $sid, ''); staff_flash('Account removed.'); }
         staff_flash('No change.', 'error');
     }
@@ -157,7 +168,7 @@ if (!empty($_SESSION['hold_flash']) && is_string($_SESSION['hold_flash'])) {
 // Search + pagination.
 $pg = paginate_params(25);
 $teamParams = [];
-$teamWhere  = "WHERE role IN ('manager','staff')";
+$teamWhere  = "WHERE role IN ('manager','reception','staff')";
 $sw = search_where(['name', "COALESCE(email,'')", "COALESCE(access_code,'')"], $pg['q'], $teamParams);
 if ($sw !== '') $teamWhere .= " AND $sw";
 
@@ -189,11 +200,15 @@ ob_start(); ?>
         <?php if (!$team): ?>
         <tr><td colspan="6" style="padding:0"><?php dt_empty($pg['q'] !== '' ? 'No accounts match your search.' : 'No accounts yet.'); ?></td></tr>
         <?php else: foreach ($team as $s):
-          $sid       = (int)$s['id'];
-          $isManager = ($s['role'] ?? '') === 'manager';
-          $job       = $s['job_type'] ?? null;
-          $jobEff    = $job ?: 'frontdesk';
-          $jobLabel  = $isManager ? '—' : (array_key_exists($jobEff, STAFF_JOB_TYPES) ? STAFF_JOB_TYPES[$jobEff] : STAFF_JOB_TYPES['frontdesk']);
+          $sid         = (int)$s['id'];
+          $isManager   = ($s['role'] ?? '') === 'manager';
+          $isReception = ($s['role'] ?? '') === 'reception';
+          // Manager and reception are both email + password accounts: they share
+          // the sign-in cell, the password form, and have no access code or job.
+          $isPwAcct    = $isManager || $isReception;
+          $job         = $s['job_type'] ?? null;
+          $jobEff      = $job ?: 'frontdesk';
+          $jobLabel    = $isPwAcct ? '—' : (array_key_exists($jobEff, STAFF_JOB_TYPES) ? STAFF_JOB_TYPES[$jobEff] : STAFF_JOB_TYPES['frontdesk']);
           $assigned  = $assignMap[$sid] ?? [];
           $names     = array_values(array_filter(array_map(fn($vid) => $venueNames[$vid] ?? null, $assigned)));
         ?>
@@ -202,12 +217,14 @@ ob_start(); ?>
           <td>
             <?php if ($isManager): ?>
               <span class="badge badge--green">Manager</span>
+            <?php elseif ($isReception): ?>
+              <span class="badge badge--orange">Reception</span>
             <?php else: ?>
               <span class="badge badge--blue">Staff</span> <span class="text-muted"><?= e($jobLabel) ?></span>
             <?php endif; ?>
           </td>
           <td>
-            <?php if ($isManager): ?>
+            <?php if ($isPwAcct): ?>
               <span class="text-muted"><?= e($s['email'] ?? '') ?></span>
             <?php else: ?>
               <code><?= e($s['access_code'] ?? '') ?></code>
@@ -226,7 +243,7 @@ ob_start(); ?>
           </td>
           <td>
             <div class="dt-actions">
-              <?php if (!$isManager): ?>
+              <?php if (!$isPwAcct): ?>
               <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="regen"><input type="hidden" name="staff_id" value="<?= $sid ?>"><button class="btn-icon btn-icon--outline" data-tip="Regenerate access code" aria-label="Regenerate access code"><?= admin_icon('rotate') ?></button></form>
               <?php endif; ?>
               <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="toggle"><input type="hidden" name="staff_id" value="<?= $sid ?>"><button class="btn-icon btn-icon--outline" data-tip="<?= !empty($s['is_active']) ? 'Deactivate account' : 'Activate account' ?>" aria-label="<?= !empty($s['is_active']) ? 'Deactivate account' : 'Activate account' ?>"><?= admin_icon(!empty($s['is_active']) ? 'ban' : 'check') ?></button></form>
@@ -252,7 +269,7 @@ ob_start(); ?>
                 <button class="btn-outline btn-sm">Save properties</button>
               <?php endif; ?>
             </form>
-            <?php if (!$isManager): ?>
+            <?php if (!$isPwAcct): ?>
             <form method="POST" style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap">
               <?= csrf_field() ?>
               <input type="hidden" name="action" value="job">
@@ -294,7 +311,7 @@ include __DIR__ . '/_layout.php';
 
 <?php $__openCreate = ($flash !== '' && $flashType === 'error'); ?>
 <div class="page-header">
-  <h1>Staff &amp; managers</h1>
+  <h1>Team</h1>
   <div class="actions">
     <button type="button" class="btn-primary btn-sm" id="addAccountBtn" aria-controls="createCard" aria-expanded="<?= $__openCreate ? 'true' : 'false' ?>"><?= admin_icon('plus', 15) ?> Add account</button>
     <a href="/admin/dashboard.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Dashboard</a>
@@ -315,7 +332,13 @@ include __DIR__ . '/_layout.php';
         <div class="optset">
           <label class="optchip"><input type="radio" name="account_type" value="staff" checked> Staff (access code)</label>
           <label class="optchip"><input type="radio" name="account_type" value="manager"> Manager (email + password)</label>
+          <?php if (reception_supported()): ?>
+          <label class="optchip"><input type="radio" name="account_type" value="reception"> Reception (email + password)</label>
+          <?php endif; ?>
         </div>
+        <?php if (!reception_supported()): ?>
+        <span class="field-hint">Reception accounts appear here once the <code>add_reception_role</code> migration has run.</span>
+        <?php endif; ?>
       </div>
 
       <div class="field" style="max-width:360px">
@@ -343,7 +366,7 @@ include __DIR__ . '/_layout.php';
         <div class="field" style="max-width:360px">
           <label for="stPass">Password <small class="text-muted">(min. 10 chars)</small></label>
           <input id="stPass" type="password" name="password" class="inp" minlength="10" autocomplete="new-password" placeholder="Enter a password (min. 10 characters)" style="width:100%">
-          <span class="field-hint">Managers assign work, create tasks and run the gate — for their properties only. They can’t touch pricing, settings or accounts.</span>
+          <span class="field-hint">Managers assign work, create tasks and run the gate — for their properties only. Reception additionally gets holds, the calendar, submissions and conflicts. Neither can touch pricing, site content, settings or accounts.</span>
         </div>
       </div>
 
@@ -388,13 +411,14 @@ include __DIR__ . '/_layout.php';
   var form = document.getElementById('createForm');
   if (!form) return;
   function sync() {
-    var isMgr = form.querySelector('input[name=account_type]:checked').value === 'manager';
-    form.querySelectorAll('.acct-manager').forEach(function (el) { el.style.display = isMgr ? '' : 'none'; });
-    form.querySelectorAll('.acct-staff').forEach(function (el) { el.style.display = isMgr ? 'none' : ''; });
+    // Manager and reception are both email + password accounts; only staff get a job type.
+    var isPw = form.querySelector('input[name=account_type]:checked').value !== 'staff';
+    form.querySelectorAll('.acct-manager').forEach(function (el) { el.style.display = isPw ? '' : 'none'; });
+    form.querySelectorAll('.acct-staff').forEach(function (el) { el.style.display = isPw ? 'none' : ''; });
     // Only require the fields that are visible, so the hidden set doesn't block submit.
     var email = form.querySelector('input[name=email]'), pw = form.querySelector('input[name=password]');
-    if (email) email.required = isMgr;
-    if (pw)    pw.required    = isMgr;
+    if (email) email.required = isPw;
+    if (pw)    pw.required    = isPw;
   }
   form.querySelectorAll('input[name=account_type]').forEach(function (r) { r.addEventListener('change', sync); });
   sync();

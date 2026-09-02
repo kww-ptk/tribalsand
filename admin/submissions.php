@@ -8,13 +8,13 @@ require_once __DIR__ . '/../includes/admin-pagination.php';
 require_once __DIR__ . '/../includes/submission-notes.php';   // note-count badges (#15)
 require_once __DIR__ . '/../includes/submission-status.php';   // lead-status filter + badge
 require_login();
-require_owner();
+require_bookings();
 
 // ── Delete (POST) ────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete') {
     verify_csrf();
     $delete_id = (int)($_POST['id'] ?? 0);
-    if ($delete_id > 0) {
+    if ($delete_id > 0 && submission_in_scope($delete_id)) {
         db_query('DELETE FROM submissions WHERE id = :id', [':id' => $delete_id]);
     }
     // Preserve filters/page when redirecting back (never carry ajax through a redirect)
@@ -43,9 +43,20 @@ $preserve_qs = http_build_query(array_filter(
 // The full current view (minus ajax) so a delete redirect lands back where the user was.
 $view_qs = http_build_query(array_filter($_GET, fn($k) => $k !== 'ajax', ARRAY_FILTER_USE_KEY));
 
+// ── Property scope ───────────────────────────────────────────────
+// submissions has no venue column. An enquiry reaches a property through
+// room_id → rooms.venue_id; contact and agency rows carry no property at all,
+// so they stay visible to every scoped account — otherwise a general
+// "do you have availability?" message would reach nobody at the desk.
+$sVenue = venue_scope_sql('r.venue_id');
+$sScope = $sVenue === ''
+    ? ''
+    : "(s.room_id IS NULL OR EXISTS (SELECT 1 FROM rooms r WHERE r.id = s.room_id AND {$sVenue}))";
+
 // ── Build WHERE clause ───────────────────────────────────────────
 $where  = ['1=1'];
 $params = [];
+if ($sScope !== '') $where[] = $sScope;
 
 if ($type)      { $where[] = 's.type = :type';                    $params[':type']      = $type; }
 if ($status && submission_status_supported() && submission_status_valid($status)) {
@@ -112,7 +123,9 @@ $rows = db_query(
 $note_counts = submission_note_counts(array_column($rows, 'id'));
 
 // ── Room list for filter dropdown ────────────────────────────────
-$rooms = db_query('SELECT id, name FROM rooms ORDER BY sort_order')->fetchAll();
+$rooms = db_query(
+    'SELECT id, name FROM rooms r' . ($sVenue !== '' ? " WHERE {$sVenue}" : '') . ' ORDER BY sort_order'
+)->fetchAll();
 
 $pageTitle  = 'Submissions';
 $activeMenu = 'submissions';

@@ -91,8 +91,8 @@ if ($type === 'addon' && in_array($status, ['confirmed', 'declined', 'cancelled'
     audit_log('booking_change.' . $status, 'booking_change_request', $id, 'admin action');
     $ok = true;
 } elseif ($type === 'assign' && $id) {
-    // (Re)assign a request to a team member — owner/manager only.
-    if (!is_owner() && !is_manager()) {
+    // (Re)assign a request to a team member — owner/manager/reception only.
+    if (!is_owner() && !is_manager() && !is_reception()) {
         $_SESSION['hold_flash'] = ['type' => 'error', 'msg' => 'Only managers can assign requests.'];
         header('Location: ' . $returnTo); exit;
     }

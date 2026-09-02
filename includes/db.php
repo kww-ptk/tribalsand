@@ -450,7 +450,7 @@ function fetch_units_by_room(int $room_id): array {
  */
 function fetch_room_unit_options(): array {
     return db_query(
-        "SELECT u.id AS unit_id, u.name AS unit_name, r.id AS room_id, r.name AS room_name
+        "SELECT u.id AS unit_id, u.name AS unit_name, r.id AS room_id, r.name AS room_name, r.venue_id AS venue_id
          FROM units u
          JOIN rooms r ON r.id = u.room_id
          WHERE u.is_active = TRUE

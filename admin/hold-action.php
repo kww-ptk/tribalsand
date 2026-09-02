@@ -14,7 +14,7 @@ if (empty($_SESSION['admin_id'])) {
 }
 
 require_login();
-require_owner();
+require_bookings();
 
 $id     = (int)($_GET['id']     ?? 0);
 $action = trim($_GET['action']  ?? '');
@@ -48,6 +48,14 @@ $hold = db_query(
 
 if (!$hold) {
     $_SESSION['hold_flash'] = ['type' => 'error', 'msg' => "Hold #{$id} not found."];
+    header('Location: /admin/holds.php');
+    exit;
+}
+
+// Property scope — a scoped account (reception) must not act on another
+// property's hold by posting a foreign id. Owner passes unconditionally.
+if (!staff_can_hold($id)) {
+    $_SESSION['hold_flash'] = ['type' => 'error', 'msg' => "Hold #{$id} isn’t one of your properties."];
     header('Location: /admin/holds.php');
     exit;
 }
