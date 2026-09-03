@@ -19,6 +19,7 @@ $page_schema .= ts_schema_item_list([
 ]);
 
 require_once 'includes/page-content.php'; // editable slots (Admin → Content → Pages)
+require_once 'includes/sustainability.php'; // live metrics (Admin → Sustainability)
 include 'includes/head.php';
 ?>
 
@@ -662,6 +663,18 @@ include 'includes/head.php';
   </div>
 </section>
 
+<!-- ═══ SUSTAINABILITY FILM ═══ -->
+<?php
+$vf_video_id   = 'XVCGDVbm3oo';
+$vf_heading    = 'Sustainability is at the heart of <em>everything we do</em>';
+$vf_sub        = "From solar arrays that power every villa to the reef we replant and the beaches we walk clean each week — see what living lightly on Kenya's North Coast actually looks like.";
+$vf_caption    = "Tribal Sand · Kenya's North Coast";
+$vf_title      = 'TribalSand | Sustainable Luxury on the Kenyan Coast';
+$vf_poster_alt = "Tribal Sand sustainability film — solar power, ocean water and reef conservation on Kenya's North Coast";
+$vf_class      = 'vfeat--rule-top';
+include 'includes/video-feature.php';
+?>
+
 <!-- ═══ TRIBAL DUNES ═══ -->
 <section class="tribal-section" aria-labelledby="tribal-heading">
   <div class="tribal-grid">
@@ -777,29 +790,27 @@ include 'includes/head.php';
           <div class="sustain-pillar-p">Active coral growing garden and reef restoration project along the Kilifi coastline.</div>
         </div>
       </div>
+      <?php
+      /* Same rows the sustainability page reads — edit once in Admin → Sustainability. */
+      $hm     = sus_metrics();
+      $hmCo2  = $hm['co2_tonnes'] ?? null;
+      $hTrees = number_format((int) round(sus_metric_number($hmCo2) * 68.7));
+      $hCards = [
+          ['m'=>$hm['solar_mwh']       ?? null, 'label'=>'Solar Energy Produced', 'live'=>true,  'note'=>null],
+          ['m'=>$hmCo2,                         'label'=>'CO₂ Emissions Reduced', 'live'=>true,  'note'=>'= ' . $hTrees . ' trees equivalent'],
+          ['m'=>$hm['beach_kg_weekly'] ?? null, 'label'=>'Beach Trash Collected', 'live'=>false, 'note'=>null],
+          ['m'=>$hm['desal_pct']       ?? null, 'label'=>'Desalinated Water',     'live'=>false, 'note'=>null],
+      ];
+      ?>
       <div class="sustain-data-row">
+        <?php foreach ($hCards as $c): if (!$c['m']) continue; ?>
         <div class="sustain-data-card">
-          <div class="sustain-live"><div class="sustain-live-dot"></div><span class="sustain-live-lbl">Live Data</span></div>
-          <div class="sustain-data-n">27.59 <span>MWh</span></div>
-          <div class="sustain-data-l">Solar Energy Produced</div>
-          <div class="sustain-data-note">Tribal Dunes · updated weekly</div>
+          <?php if ($c['live']): ?><div class="sustain-live"><div class="sustain-live-dot"></div><span class="sustain-live-lbl">Live Data</span></div><?php endif; ?>
+          <div class="sustain-data-n"><?= e(sus_metric_display($c['m'])) ?> <span><?= e(sus_metric_unit($c['m'])) ?></span></div>
+          <div class="sustain-data-l"><?= e($c['label']) ?></div>
+          <div class="sustain-data-note"><?= e($c['note'] ?? $c['m']['note']) ?></div>
         </div>
-        <div class="sustain-data-card">
-          <div class="sustain-live"><div class="sustain-live-dot"></div><span class="sustain-live-lbl">Live Data</span></div>
-          <div class="sustain-data-n">21.88 <span>T</span></div>
-          <div class="sustain-data-l">CO₂ Emissions Reduced</div>
-          <div class="sustain-data-note">= 1,503 trees equivalent</div>
-        </div>
-        <div class="sustain-data-card">
-          <div class="sustain-data-n">~30 <span>kg</span></div>
-          <div class="sustain-data-l">Beach Trash Collected</div>
-          <div class="sustain-data-note">Per week · every week</div>
-        </div>
-        <div class="sustain-data-card">
-          <div class="sustain-data-n">100 <span>%</span></div>
-          <div class="sustain-data-l">Desalinated Water</div>
-          <div class="sustain-data-note">No freshwater depletion</div>
-        </div>
+        <?php endforeach; ?>
       </div>
     </div>
   </div>

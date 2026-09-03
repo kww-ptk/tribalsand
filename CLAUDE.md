@@ -91,6 +91,22 @@ Table reservations live in the DB (migration: `add_reservations.sql`, after `add
 - **Public:** `reserve.php?venue=<slug>` — a `noindex`, mobile-first branded page (header/footer + `$page_booking` for the styled datepicker). Property = styled select of published venues; date = **styled datepicker** (`.dp-btn`, never a native date input); time = 30-min slots 12:00–22:00 (`reservation_slots()`); party = stepper. Posts to **`api/submit-reservation.php`** — Turnstile fail-closed + IP rate-limit (5/10min) + CSRF, **PRG**: success → `reserve.php?ok=<reference>` (success modal), validation errors flash to the session and re-render per-field. No-JS still submits. `send_reservation_received()` sends the guest ack ("pending confirmation") **and** the staff alert.
 - **Admin:** `admin/reservations.php` — gated by **`require_manager()`** (owner + house manager), **scoped by `admin_venue_ids()`**. Today/Upcoming/Pending KPI cards + the `dt_*` toolkit (search + status/property/date filters + pager, AJAX-swappable body). Confirm/Cancel are PRG + CSRF with a **per-row ownership re-check** (`reservation_editable()`) so a scoped manager can't act on another venue's row by posting a foreign id. Confirming calls `send_reservation_confirmed()` (guest email; no-op when the guest left no email). Nav entries: site "Restaurant" dropdown + `menu.php` CTA (only when the menu has a `venue_id`) → `reserve.php`; admin "Reservations" in the Restaurant sidebar group (owner+manager). Tests: `php tests/reservations_logic.php` (pure logic + DB assertions in a rolled-back transaction). Mail (`send_reservation_received` / `send_reservation_confirmed`) uses the branded `_email_shell()` template.
 
+### Sustainability metrics — live, owner-editable, time-accruing
+The figures on `sustainability.php` and the home page's "Live Data" cards come from **`sustainability_metrics`** (migration: `add_sustainability_metrics.sql`), edited in **Admin → Sustainability** (`admin/sustainability.php`, **`require_owner()`** — site-wide config). Helpers in **`includes/sustainability.php`**; every read is pre-migration-safe (`sustainability_supported()`).
+- **The stored `value` is a reading, not the displayed number.** Each row holds the last known-true reading (`value` taken at `baseline_at`) plus an optional `growth_per_day`; the page derives `current = min(value + growth_per_day × days_since(baseline_at), max_value)` at render. **Nothing increments `value` on a schedule** — don't add a cron for it. That split is load-bearing: the stored figure stays a number the owner can defend, and `sus_metric_save()` **re-bases `baseline_at` whenever the value actually changes**, so re-entering a corrected meter reading never compounds on an already-accrued one. Editing only the label/note/rate leaves an in-flight accrual alone.
+- Elapsed days are **fractional and Nairobi-local** (figures creep through the day rather than jumping at midnight) and clamped at ≥ 0, so a future `baseline_at` can never render below the stored reading.
+- **`solar_mwh` and `co2_tonnes` seed with `growth_per_day = 0` deliberately.** These are public environmental claims and 27.59 MWh reads as a 2024 annual total — auto-incrementing it changes what the site asserts. The rate is an admin field the owner opts into per metric. `beach_kg_total` accrues at 30/7 kg/day because that restates the weekly rate the page already publishes. `desal_pct` is capped at 100 via `max_value`.
+- **Pre-migration the helpers return `sus_fallback_metrics()`** — the exact figures the templates shipped with — so a missing migration renders the current page, never zeros. Keep that list in step with the migration's seed block.
+- Front-end: the stats strip, the solar card and the beach ring count up on scroll (IntersectionObserver). The count-up **never paints over the server-rendered value on its first frame** and skips animating when `document.hidden` — a paused rAF in a background tab would otherwise leave a 0 on screen. `prefers-reduced-motion` gets the final value immediately.
+- Hero photo + section headings are editable through the `sustainability` entry in `page_content_registry()` (Admin → Content → Pages). Test: `php tests/sustainability_logic.php`.
+
+### Video feature sections — one partial, click-to-load
+`includes/video-feature.php` renders the "watch the film" section used on `index.php` (after the property cards) and `sustainability.php`. Config via `$vf_video_id` / `$vf_heading` / `$vf_sub` / `$vf_caption` / `$vf_title` / `$vf_poster_alt` / `$vf_class` set before the include.
+- **Click-to-load facade.** Nothing loads from YouTube on page view except the poster thumbnail; the iframe is injected on click, pointed at `youtube-nocookie.com` with **`cc_load_policy=0`** (captions off), `iv_load_policy=3`, `rel=0`, `modestbranding=1`, `playsinline=1`. Don't replace it with a static iframe — that reinstates third-party cookies and the page weight on every visit.
+- CSS/JS emit **once per page** even when the partial is included twice (`$GLOBALS['__vf_assets_done']`), and the play handler is delegated, so multiple instances work.
+- `$vf_heading` is echoed **raw** (it carries `<em>`) — page-authored config, never user or DB input. Everything else goes through `e()`.
+- `vfeat--rule-top` / `vfeat--rule-bottom` add the hairline needed when a neighbouring section is also white.
+
 ## File Map
 
 | File | Purpose |
@@ -121,6 +137,9 @@ Table reservations live in the DB (migration: `add_reservations.sql`, after `add
 | `includes/reservations.php` | Reservation helpers (request model, pre-migration-safe) |
 | `reserve.php` · `api/submit-reservation.php` | Public "Reserve a Table" form + PRG submit handler |
 | `admin/reservations.php` | Reservation manager (dashboard + confirm/cancel, manager-scoped) |
+| `includes/sustainability.php` | Live metric helpers — accrual, formatting, re-baselining (pre-migration-safe) |
+| `admin/sustainability.php` | Live metrics editor (owner-only) — reading, rate, cap, small print |
+| `includes/video-feature.php` | Shared click-to-load video section (home + sustainability) |
 | `css/main.css` | Global stylesheet (brand tokens, layout, components) |
 | `js/booking-widget.js` | Booking date picker widget |
 | `manifest.json` | PWA web app manifest |
