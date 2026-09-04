@@ -188,3 +188,61 @@ function rates_apply_ranges(int $roomId, array $ranges, float $price, ?string $l
         throw $e;
     }
 }
+
+/** Every override on one room, earliest first. */
+function rates_for_room(int $roomId): array {
+    return db_query(
+        'SELECT * FROM rates WHERE room_id = :rid ORDER BY date_from ASC, id ASC',
+        [':rid' => $roomId]
+    )->fetchAll();
+}
+
+/** Every override across one property's rooms, grouped by room then date. */
+function rates_for_venue(int $venueId): array {
+    return db_query(
+        'SELECT r.*, rm.name AS room_name
+           FROM rates r JOIN rooms rm ON rm.id = r.room_id
+          WHERE rm.venue_id = :vid
+          ORDER BY rm.sort_order ASC, rm.id ASC, r.date_from ASC',
+        [':vid' => $venueId]
+    )->fetchAll();
+}
+
+/**
+ * Delete one override. $venueScope of null means unscoped (owner); otherwise the
+ * row's room must belong to one of those venues, so a scoped account cannot
+ * delete another property's rate by posting a foreign id.
+ */
+function rates_delete(int $rateId, ?array $venueScope): bool {
+    if ($rateId <= 0) return false;
+    $vid = db_query(
+        'SELECT rm.venue_id FROM rates r JOIN rooms rm ON rm.id = r.room_id WHERE r.id = :id',
+        [':id' => $rateId]
+    )->fetchColumn();
+    if ($vid === false) return false;
+    if ($venueScope !== null && !in_array((int)$vid, array_map('intval', $venueScope), true)) return false;
+    db_query('DELETE FROM rates WHERE id = :id', [':id' => $rateId]);
+    return true;
+}
+
+/**
+ * Parse the rate form's parallel range_from[] / range_to[] arrays into
+ * [from, toExcl] pairs.
+ *
+ * The form's "To" field is the LAST NIGHT (inclusive) — the wording the old
+ * Price Overrides form used — so a day is added here for exclusive storage.
+ */
+function rates_ranges_from_post(array $post): array {
+    $from = $post['range_from'] ?? [];
+    $to   = $post['range_to']   ?? [];
+    if (!is_array($from) || !is_array($to)) return [];
+
+    $out = [];
+    foreach ($from as $i => $f) {
+        $f = trim((string)$f);
+        $t = trim((string)($to[$i] ?? ''));
+        if ($f === '' || $t === '') continue;
+        $out[] = [$f, date('Y-m-d', strtotime($t . ' +1 day'))];
+    }
+    return $out;
+}

@@ -135,6 +135,38 @@ try {
                 ON a.room_id = b.room_id AND a.id <> b.id
                AND a.date_from < b.date_to AND a.date_to > b.date_from
              WHERE a.room_id = :r", [':r' => $roomId])->fetchColumn() === 0);
+
+    // ── listing / delete / POST parsing ────────────────────────────────────
+    db_query('DELETE FROM rates WHERE room_id = :r', [':r' => $roomId]);
+    rates_apply_ranges($roomId, [['2099-06-01', '2099-06-05']], 400.0, 'Listed');
+    $listed = rates_for_room($roomId);
+    check('for_room: returns the row',        count($listed) === 1);
+    check('for_room: carries the label',      ($listed[0]['label'] ?? '') === 'Listed');
+
+    $venueId = (int) db_query('SELECT venue_id FROM rooms WHERE id = :r', [':r' => $roomId])->fetchColumn();
+    if ($venueId) {
+        $vrows = rates_for_venue($venueId);
+        check('for_venue: includes the row',  count($vrows) >= 1);
+        check('for_venue: joins room name',   isset($vrows[0]['room_name']));
+    }
+
+    $rateId = (int)$listed[0]['id'];
+    check('delete: refused outside scope',    rates_delete($rateId, [-1]) === false);
+    check('delete: still present after refusal',
+        (int) db_query('SELECT COUNT(*) FROM rates WHERE id = :i', [':i' => $rateId])->fetchColumn() === 1);
+    check('delete: allowed for owner (null scope)', rates_delete($rateId, null) === true);
+    check('delete: row is gone',
+        (int) db_query('SELECT COUNT(*) FROM rates WHERE id = :i', [':i' => $rateId])->fetchColumn() === 0);
+    check('delete: unknown id → false',       rates_delete(0, null) === false);
+
+    // The form posts the LAST NIGHT; storage is exclusive, so parsing adds a day.
+    check('post parse: last night → exclusive',
+        rates_ranges_from_post(['range_from' => ['2099-06-10'], 'range_to' => ['2099-06-14']])
+            === [['2099-06-10', '2099-06-15']]);
+    check('post parse: skips incomplete rows',
+        rates_ranges_from_post(['range_from' => ['2099-06-10', ''], 'range_to' => ['2099-06-14', '2099-07-01']])
+            === [['2099-06-10', '2099-06-15']]);
+    check('post parse: missing keys → empty',  rates_ranges_from_post([]) === []);
 } finally {
     db()->rollBack();
 }
