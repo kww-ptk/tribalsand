@@ -26,6 +26,16 @@ $check_out = trim($_GET['check_out'] ?? '');
 
 // ── Specific date check (used when guest selects a range) ────────
 if ($check_in && $check_out) {
+    // Public endpoint: validate before quoting. A string compare alone lets a
+    // non-canonical date like '2099-9-01' through, and it sorts ABOVE
+    // '2099-09-15' — which used to mis-clamp the rate window and quote override
+    // nights the rate never covered.
+    $check_in  = rates_window_ymd($check_in)  ?? '';
+    $check_out = rates_window_ymd($check_out) ?? '';
+    if ($check_in === '' || $check_out === '') {
+        http_response_code(422);
+        exit(json_encode(['error' => 'Dates must be valid and formatted YYYY-MM-DD']));
+    }
     if ($check_in >= $check_out) {
         http_response_code(422);
         exit(json_encode(['error' => 'Check-out must be after check-in']));
@@ -33,24 +43,12 @@ if ($check_in && $check_out) {
 
     $unit = find_available_unit($room['id'], $check_in, $check_out);
 
-    $nights = max(1, (int)((strtotime($check_out) - strtotime($check_in)) / 86400));
-
-    // Same resolver as room_stay_quote() and the admin rates calendar.
-    // Overridden nights only — the sum below falls back to $default_price for
-    // every night this map does not hold.
-    $rate_by_night = [];
-    foreach (rates_nightly_map((int)$room['id'], (float)$room['price_amount'], $check_in, $check_out) as $ymd => $n) {
-        if ($n['is_override']) $rate_by_night[$ymd] = $n['price'];
-    }
-
-    $default_price = (float)$room['price_amount'];
-    $total = 0.0;
-    $d = new DateTime($check_in);
-    $end_dt = new DateTime($check_out);
-    while ($d < $end_dt) {
-        $total += $rate_by_night[$d->format('Y-m-d')] ?? $default_price;
-        $d->modify('+1 day');
-    }
+    // One quoting path for the whole app. This endpoint used to re-implement
+    // room_stay_quote() line for line; two summations over the same nightly map
+    // is exactly how two guests end up quoted two prices for one night.
+    $quote  = room_stay_quote((int)$room['id'], (float)$room['price_amount'], $check_in, $check_out);
+    $nights = $quote['nights'];
+    $total  = $quote['total'];
 
     exit(json_encode([
         'available'       => (bool)$unit,

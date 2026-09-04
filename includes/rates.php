@@ -60,6 +60,22 @@ function rates_merge_ranges(array $ranges): array {
 }
 
 /**
+ * Canonical Y-m-d for a READ window, or null if the input is not a real date.
+ *
+ * Deliberately more forgiving than rates_ymd(): it repairs a recoverable date
+ * ('2099-9-1' -> '2099-09-01') instead of rejecting it. Writes stay strict —
+ * a malformed date there is a bug worth surfacing — but a read window comes
+ * from $_GET on a public endpoint, and dropping it entirely would leave the
+ * caller with an empty map, which sums to a FREE stay. Repair, don't discard.
+ */
+function rates_window_ymd(string $s): ?string {
+    $s = trim($s);
+    if (!preg_match('/^(\d{4})-(\d{1,2})-(\d{1,2})$/', $s, $m)) return null;
+    [, $y, $mo, $d] = array_map('intval', $m);
+    return checkdate($mo, $d, $y) ? sprintf('%04d-%02d-%02d', $y, $mo, $d) : null;
+}
+
+/**
  * ymd => ['price','label','rate_id','is_override'] for every night in
  * [$fromYmd, $toExclYmd).
  *
@@ -75,10 +91,20 @@ function rates_merge_ranges(array $ranges): array {
  * Call pattern: call this ONCE PER ROOM with the widest date window the page
  * needs, then slice the result in the view. Do not call it inside a nested
  * month/room loop — that turns one page render into N×M queries.
+ *
+ * The window is normalised here rather than trusted. Every comparison below is
+ * a STRING comparison — chronological only for zero-padded dates — and one
+ * caller (api/check-availability.php) is a public endpoint fed from $_GET. A
+ * non-canonical date such as '2099-9-01' sorts ABOVE '2099-09-15', so an
+ * un-normalised window makes max()/min() clamp to the wrong day and quote a
+ * guest the override price for nights it never covered. Bad input yields an
+ * empty map, and callers fall back to the room's default price.
  */
 function rates_nightly_map(int $roomId, float $default, string $fromYmd, string $toExclYmd): array {
     $out = [];
-    if ($fromYmd >= $toExclYmd) return $out;
+    $fromYmd    = rates_window_ymd($fromYmd);
+    $toExclYmd  = rates_window_ymd($toExclYmd);
+    if ($fromYmd === null || $toExclYmd === null || $fromYmd >= $toExclYmd) return $out;
 
     $rows = db_query(
         "SELECT id, date_from, date_to, price_amount, label

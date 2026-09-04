@@ -811,14 +811,24 @@ function generate_access_code(int $len = 8): string {
  * shown in Admin can never differ from the price a guest is quoted.
  */
 function room_stay_quote(int $room_id, float $default_price, string $check_in, string $check_out): array {
-    $nights = max(1, (int)((strtotime($check_out) - strtotime($check_in)) / 86400));
-
     // Required here, not at file scope: rates.php requires this file, so a
     // file-scope require would be a load-order cycle.
     require_once __DIR__ . '/rates.php';
 
+    // A window we cannot parse is not a $0 stay, and it is not a 47,000-night
+    // stay either — strtotime() returns false for garbage, which silently
+    // becomes epoch. It is simply not a quote. Say so, and let the caller
+    // decide; every caller must reject nights === 0 before displaying a price.
+    $ci = rates_window_ymd($check_in);
+    $co = rates_window_ymd($check_out);
+    if ($ci === null || $co === null || $ci >= $co) return ['nights' => 0, 'total' => 0.0];
+
+    $nights = max(1, (int)((strtotime($co) - strtotime($ci)) / 86400));
+
+    // A valid window always yields a full map (defaults included), so this can
+    // never sum to zero.
     $total = 0.0;
-    foreach (rates_nightly_map($room_id, $default_price, $check_in, $check_out) as $night) {
+    foreach (rates_nightly_map($room_id, $default_price, $ci, $co) as $night) {
         $total += $night['price'];
     }
     return ['nights' => $nights, 'total' => round($total, 2)];

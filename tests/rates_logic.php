@@ -297,6 +297,62 @@ try {
         room_stay_quote($roomId, 100.0, '2099-06-10', '2099-06-15')['total'] === 2500.0);
     check('quote: nights count unchanged',
         room_stay_quote($roomId, 100.0, '2099-06-10', '2099-06-15')['nights'] === 5);
+
+    // ── the window is normalised, not trusted ──────────────────────────────
+    // api/check-availability.php feeds this straight from $_GET. Every compare
+    // below is a STRING compare, and '2099-9-01' sorts ABOVE '2099-09-15', so an
+    // un-normalised window clamps to the wrong day and over-claims override
+    // nights — a wrong price quoted to a guest.
+    db_query('DELETE FROM rates WHERE room_id = :r', [':r' => $roomId]);
+    db_query("INSERT INTO rates (room_id,date_from,date_to,price_amount)
+              VALUES (:r,'2099-09-15','2099-09-20',500)", [':r' => $roomId]);
+
+    $overrides = fn(array $m): int => count(array_filter($m, fn($n) => $n['is_override']));
+    check('window: canonical claims exactly the covered nights',
+        $overrides(rates_nightly_map($roomId, 100.0, '2099-09-01', '2099-09-30')) === 5);
+    check('window: non-canonical from is repaired, not mis-clamped',
+        $overrides(rates_nightly_map($roomId, 100.0, '2099-9-01', '2099-09-30')) === 5);
+    check('window: non-canonical to is repaired',
+        $overrides(rates_nightly_map($roomId, 100.0, '2099-09-01', '2099-9-30')) === 5);
+    check('window: a repaired window quotes the same as a canonical one',
+        room_stay_quote($roomId, 100.0, '2099-9-01', '2099-09-30')['total']
+            === room_stay_quote($roomId, 100.0, '2099-09-01', '2099-09-30')['total']);
+    check('window: real garbage yields an empty map',
+        rates_nightly_map($roomId, 100.0, 'not-a-date', '2099-09-30') === []);
+    check('window: an impossible date yields an empty map',
+        rates_nightly_map($roomId, 100.0, '2099-02-31', '2099-09-30') === []);
+
+    // An unparseable window is not a quote. strtotime() returns false for
+    // garbage, which becomes epoch — so an unguarded night count runs to ~47,000
+    // and an unguarded sum runs to $0. Both are wrong; nights === 0 is the
+    // signal callers check before showing a price.
+    $garbage = room_stay_quote($roomId, 100.0, 'not-a-date', '2099-09-30');
+    check('quote: garbage window returns no quote, not a free stay',
+        $garbage === ['nights' => 0, 'total' => 0.0]);
+    check('quote: garbage window does not invent 47,000 nights',
+        $garbage['nights'] === 0);
+    check('quote: inverted window returns no quote',
+        room_stay_quote($roomId, 100.0, '2099-09-30', '2099-09-01') === ['nights' => 0, 'total' => 0.0]);
+    check('quote: a valid window still quotes normally',
+        room_stay_quote($roomId, 100.0, '2099-09-01', '2099-09-30')['nights'] === 29);
+
+    // ── the id DESC tiebreak: the one intended behavioural delta ───────────
+    // Two rows sharing a created_at previously resolved arbitrarily. Without an
+    // explicit tiebreak Postgres may return either, so this is what makes the
+    // admin calendar and the guest quote agree on legacy overlapping rows.
+    db_query('DELETE FROM rates WHERE room_id = :r', [':r' => $roomId]);
+    db_query("INSERT INTO rates (room_id,date_from,date_to,price_amount,created_at)
+              VALUES (:r,'2099-06-01','2099-06-10',111,'2020-05-05 10:00:00')", [':r' => $roomId]);
+    db_query("INSERT INTO rates (room_id,date_from,date_to,price_amount,created_at)
+              VALUES (:r,'2099-06-01','2099-06-10',222,'2020-05-05 10:00:00')", [':r' => $roomId]);
+    $tie = rates_nightly_map($roomId, 100.0, '2099-06-01', '2099-06-10');
+    $hiId = (float) db_query('SELECT price_amount FROM rates WHERE room_id = :r
+                              ORDER BY id DESC LIMIT 1', [':r' => $roomId])->fetchColumn();
+    check('tiebreak: same created_at resolves to the higher id',
+        $tie['2099-06-05']['price'] === $hiId);
+    check('tiebreak: resolution is stable across calls',
+        rates_nightly_map($roomId, 100.0, '2099-06-01', '2099-06-10')['2099-06-05']['price'] === $hiId);
+
 } finally {
     db()->rollBack();
 }
