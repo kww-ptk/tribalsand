@@ -616,12 +616,25 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 
 ---
 
-## Task 5: Point `room_stay_quote()` at the shared resolver
+## Task 5: Point every rate resolver at `rates_nightly_map()`
 
-This is the one change that can move guest-facing numbers. The signature, return shape and rounding stay identical.
+This is the one change that can move guest-facing numbers. Signatures, return shapes and rounding stay identical.
+
+**There are THREE live copies of the resolution loop, not one.** A code review of Task 1-4
+found two more beyond the one the spec named. All three must move in the same release: the
+new helper adds an `id DESC` tiebreak, so leaving a copy behind means the admin rates
+calendar and the live booking widget can disagree on a night whose rows share a
+`created_at` (exactly the legacy overlapping rows this is supposed to keep stable).
+
+| Call site | What it does |
+|---|---|
+| `includes/db.php:812` `room_stay_quote()` | prices a stay — used by `/search` and the availability API |
+| `api/check-availability.php:40` | prices a stay again, inline — **the guest booking widget's endpoint** |
+| `api/check-availability.php:82` | builds the "which nights are overridden" map for the guest calendar |
 
 **Files:**
 - Modify: `includes/db.php:809-825`
+- Modify: `api/check-availability.php` (both loops)
 - Modify: `tests/rates_logic.php`
 
 - [ ] **Step 1: Write the failing test**
@@ -678,6 +691,33 @@ Update its docblock to say the resolution now lives in `rates_nightly_map()`.
 
 `require_once` sits inside the function, not at the top of `db.php`: `rates.php` requires `db.php`, and requiring it back at file scope would be a load-order cycle.
 
+Then in `api/check-availability.php`, add `require_once __DIR__ . '/../includes/rates.php';`
+beside its existing requires and replace both loops.
+
+Replace the `$overlap_rates` query and the `$rate_by_night` loop that follows it (~lines
+38-57) with a single call, keeping whatever variable name the code below already consumes:
+
+```php
+    // Same resolver as room_stay_quote() and the admin rates calendar.
+    $rate_by_night = [];
+    foreach (rates_nightly_map((int)$room['id'], (float)$room['price_amount'], $check_in, $check_out) as $ymd => $n) {
+        if ($n['is_override']) $rate_by_night[$ymd] = $n['price'];
+    }
+```
+
+Read the surrounding code first and preserve its exact downstream contract — if the code
+below expects every night present rather than only overrides, drop the `is_override` test
+and assign `$n['price']` for every night.
+
+Replace the `$rate_rows` query and `$rate_dates_map` loop (~lines 81-92) with:
+
+```php
+$rate_dates_map = [];
+foreach (rates_nightly_map((int)$room['id'], (float)$room['price_amount'], $from, $to) as $ymd => $n) {
+    if ($n['is_override']) $rate_dates_map[$ymd] = true;
+}
+```
+
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `php tests/rates_logic.php`
@@ -685,8 +725,11 @@ Expected: 44 `PASS` lines, then `ALL PASS`, exit 0.
 
 Then check nothing else regressed:
 
-Run: `php -l includes/db.php && php -l includes/rates.php`
-Expected: `No syntax errors detected` twice.
+Run: `php -l includes/db.php && php -l includes/rates.php && php -l api/check-availability.php`
+Expected: `No syntax errors detected` three times.
+
+Run: `grep -n "FROM rates" includes/db.php api/check-availability.php`
+Expected: no output — every copy of the resolution query is gone.
 
 - [ ] **Step 5: Commit**
 
