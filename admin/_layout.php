@@ -86,12 +86,21 @@ if ($__shellFrag) { ob_start(); return; }
       $__chev = '<svg class="navgroup__chev" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
       $__navgroup = function (string $key, string $title, string $items) use ($__chev) {
           if (trim($items) === '') return;
-          // Open a group by default when (a) it's Operations, or (b) it contains the
-          // active page's link — so the current page's section is never collapsed out
-          // of view on a full load. (A user can still expand/collapse; a collapse is
-          // remembered, but the active group is always re-opened — see the script below.)
+          // Open a group by default when it is a primary work area (Operations,
+          // Bookings) or it contains the active page's link, so the current
+          // section is never collapsed out of view on a full load.
+          //
+          // Bookings is default-open because it is where reception actually
+          // works. Their home is Front desk, which lives in Operations, so with
+          // Operations alone open they landed on a page where Holds, Calendar,
+          // Rates, Submissions and Conflicts were all present in the markup but
+          // hidden behind a collapsed header — and reported having no access.
+          //
+          // NOTE: expand/collapse is NOT persisted (there is no localStorage for
+          // these groups), so every full page load returns to exactly this
+          // default. A group that is closed here is closed on every single load.
           $__hasActive = strpos($items, 'is-active') !== false;
-          $open = ($key === 'operations' || $__hasActive) ? ' open' : '';
+          $open = (in_array($key, ['operations', 'bookings'], true) || $__hasActive) ? ' open' : '';
           echo '<details class="navgroup" data-group="' . e($key) . '"' . $open . '>'
              . '<summary class="navgroup__head"><span>' . e($title) . '</span>' . $__chev . '</summary>'
              . '<div class="navgroup__items">' . $items . '</div>'
@@ -162,6 +171,10 @@ if ($__shellFrag) { ob_start(); return; }
         <a href="/admin/gantt.php"         class="sidebar__link <?= ($activeMenu??'')==='gantt'         ? 'is-active':'' ?>">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="4" x2="8" y2="10"/><line x1="16" y1="4" x2="16" y2="10"/><line x1="7" y1="15" x2="13" y2="15"/><line x1="7" y1="18" x2="11" y2="18"/></svg>
           Calendar
+        </a>
+        <a href="/admin/rates.php"         class="sidebar__link <?= ($activeMenu??'')==='rates'         ? 'is-active':'' ?>">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          Rates
         </a>
         <a href="/admin/submissions.php"  class="sidebar__link <?= ($activeMenu??'')==='submissions'  ? 'is-active':'' ?>">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 9v11"/></svg>
@@ -270,7 +283,12 @@ if ($__shellFrag) { ob_start(); return; }
     <script>
     /* Nav groups (#17): restore collapsed state; keep the active group open. */
     (function () {
-      var KEY = 'ts_nav_v2', saved = {};   // v2: discards the old always-restore state
+      // v3 discards every remembered collapse from v2. A stored collapse WINS over
+      // the server-rendered default (see below), so reception accounts that had
+      // Bookings collapsed would keep it hidden even now that it defaults open —
+      // the fix would silently not reach the people who reported the problem.
+      // Bump this key whenever a group's default changes.
+      var KEY = 'ts_nav_v3', saved = {};
       try { saved = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) {}
       // Default (server-rendered): Operations + the active page's group open, others
       // closed. On load we honor a remembered COLLAPSE only — EXCEPT for the group

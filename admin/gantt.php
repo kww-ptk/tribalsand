@@ -26,14 +26,6 @@ $unitInScope = function (int $unitId) use ($gScope): bool {
     )->fetchColumn();
     return $v !== false && $v !== null && in_array((int)$v, $gScope, true);
 };
-/** Is this room inside the current account's venues? */
-$roomInScope = function (int $roomId) use ($gScope): bool {
-    if ($gScope === null) return true;
-    if (!$gScope || $roomId <= 0) return false;
-    $v = db_query('SELECT venue_id FROM rooms WHERE id = :id', [':id' => $roomId])->fetchColumn();
-    return $v !== false && $v !== null && in_array((int)$v, $gScope, true);
-};
-
 // ── POST handlers ────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
@@ -72,39 +64,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             [':id' => $block_id]
         );
         $msg = 'Block removed.';
-    }
-
-    if ($action === 'set_rate') {
-        $room_id   = (int)($_POST['room_id']    ?? 0);
-        $date_from = $_POST['rate_from']  ?? '';
-        $date_to   = $_POST['rate_to']    ?? '';
-        $price     = (float)($_POST['price']    ?? 0);
-        $label     = trim($_POST['rate_label']  ?? '');
-
-        // date_to from form is inclusive last night — add 1 day for exclusive DB storage
-        $date_to_excl = $date_to ? date('Y-m-d', strtotime($date_to . ' +1 day')) : '';
-
-        if ($room_id && !$roomInScope($room_id)) {
-            $err = 'That room isn’t one of your properties.';
-        } elseif ($room_id && $date_from && $date_to_excl && $price > 0 && $date_from < $date_to_excl) {
-            db_query(
-                "INSERT INTO rates (room_id, date_from, date_to, price_amount, label)
-                 VALUES (:rid, :df, :dt, :price, :label)",
-                [':rid' => $room_id, ':df' => $date_from, ':dt' => $date_to_excl,
-                 ':price' => $price, ':label' => $label]
-            );
-            $msg = 'Rate override added.';
-        } else {
-            $err = 'Invalid rate data — check all fields are filled and dates are valid.';
-        }
-    }
-
-    if ($action === 'delete_rate') {
-        db_query(
-            'DELETE FROM rates WHERE id = :id' . ($gRoomIds !== '' ? " AND room_id IN ({$gRoomIds})" : ''),
-            [':id' => (int)($_POST['rate_id'] ?? 0)]
-        );
-        $msg = 'Rate removed.';
     }
 
     if ($action === 'update_block') {
@@ -228,9 +187,12 @@ $blocks_by_unit = [];
 foreach ($blocks as $b) $blocks_by_unit[(int)$b['unit_id']][] = $b;
 
 $rates = db_query(
-    "SELECT r.*, rm.name AS room_name
-     FROM rates r JOIN rooms rm ON rm.id = r.room_id
-     ORDER BY r.date_from ASC LIMIT 100"
+    "SELECT date_from, date_to, room_id
+     FROM rates r
+     WHERE date_from < :end AND date_to > :start"
+     . ($gRoomIds !== '' ? " AND room_id IN ({$gRoomIds})" : '') . "
+     ORDER BY date_from ASC",
+    [':start' => $start_str, ':end' => $end_str]
 )->fetchAll();
 
 // Build rate-date lookups scoped correctly:
@@ -259,9 +221,6 @@ $ical_feeds = db_query(
      ORDER BY r.sort_order ASC, f.id ASC"
 )->fetchAll();
 
-$rooms       = db_query(
-    "SELECT id, name FROM rooms r" . ($gVenueOk !== '' ? " WHERE {$gVenueOk}" : '') . " ORDER BY sort_order ASC"
-)->fetchAll();
 $env         = parse_env();
 $site_url    = rtrim($env['SITE_URL'] ?? 'https://tribalsand.com', '/');
 $sync_secret = $env['ICAL_SYNC_SECRET'] ?? '';
@@ -285,6 +244,18 @@ include __DIR__ . '/_layout.php';
   font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #102F3A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gantt-grow__bar { display: flex; align-items: center; gap: 8px; padding: 7px 10px; font-size: 10.5px; color: var(--muted); white-space: nowrap; }
 .gantt-grow__loc { color: #102F3A; font-weight: 600; }
+/* Collapse / expand one property's rooms. The grid is a flat list of sibling
+   rows, so a group "owns" its rows by sharing data-venue-key. */
+.gantt-grow { cursor: pointer; user-select: none; }
+.gantt-grow:hover, .gantt-grow:hover .gantt-grow__lbl { background: #dfe8ed; }
+.gantt-grow:focus-visible { outline: 2px solid #0369a1; outline-offset: -2px; }
+.gantt-grow__lbl { display: flex; align-items: center; gap: 5px; }
+.gantt-grow__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gantt-grow__caret { display: inline-flex; flex: none; color: #4a6b78; transition: transform .15s ease; }
+.gantt-grow.is-collapsed .gantt-grow__caret { transform: rotate(-90deg); }
+.gantt-grow__hint { display: none; font-style: italic; }
+.gantt-grow.is-collapsed .gantt-grow__hint { display: inline; }
+.gantt-row.is-hidden-venue { display: none; }
 .gantt-days { display: flex; flex: 1; }
 /* Month sub-header */
 .gantt-months { display: flex; min-width: max-content; border-bottom: 1px solid var(--border); }
@@ -438,21 +409,29 @@ include __DIR__ . '/_layout.php';
     $view_start_ts = strtotime($start_str);
     $view_end_ts   = strtotime($end_str);
     $venue_name = trim((string)($unit['venue_name'] ?? '')) ?: 'Unassigned';
+    // Stable per property name — the same value that groups the rows above ties
+    // the header to its unit rows, and keeps the collapsed state across reloads.
+    $v_key      = 'v' . substr(md5($venue_name), 0, 8);
     if ($venue_name !== $prev_venue):
       $prev_venue = $venue_name;
       $prev_room  = '';           // reprint the room label at the top of each property
       $v_units    = count($units_by_venue[$venue_name] ?? []);
       $v_loc      = trim((string)($unit['venue_location'] ?? ''));
   ?>
-  <div class="gantt-grow">
-    <div class="gantt-grow__lbl" title="<?= e($venue_name) ?>"><?= e($venue_name) ?></div>
+  <div class="gantt-grow" data-venue-key="<?= e($v_key) ?>" role="button" tabindex="0"
+       aria-expanded="true" aria-label="Collapse or expand <?= e($venue_name) ?>">
+    <div class="gantt-grow__lbl" title="<?= e($venue_name) ?>">
+      <span class="gantt-grow__name"><?= e($venue_name) ?></span>
+      <span class="gantt-grow__caret" aria-hidden="true"><?= admin_icon('chevron-down', 13) ?></span>
+    </div>
     <div class="gantt-grow__bar" style="width:<?= (int)$grid_w ?>px">
       <?php if ($v_loc !== ''): ?><span class="gantt-grow__loc"><?= e($v_loc) ?></span> ·<?php endif; ?>
       <span><?= (int)$v_units ?> unit<?= $v_units === 1 ? '' : 's' ?></span>
+      <span class="gantt-grow__hint">· collapsed</span>
     </div>
   </div>
   <?php endif; ?>
-  <div class="gantt-row">
+  <div class="gantt-row" data-venue-key="<?= e($v_key) ?>">
     <div class="gantt-label">
       <?php if ($unit['room_name'] !== $prev_room): $prev_room = $unit['room_name']; ?>
       <small><?= e($unit['room_name']) ?></small>
@@ -552,68 +531,13 @@ include __DIR__ . '/_layout.php';
 
 <?php endif; // end if units ?>
 
-<!-- ── Rate overrides ── -->
+<!-- ── Rate overrides moved ── -->
 <div class="card" style="margin-bottom:24px">
-  <div class="card__head">
-    <span class="card__title">Price Overrides</span>
-    <span class="text-muted" style="font-size:12px">Set a nightly rate for a date range (overrides default room price)</span>
-  </div>
-  <div class="card__body" style="padding:20px">
-    <form method="POST" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:20px">
-      <?= csrf_field() ?>
-      <input type="hidden" name="action" value="set_rate">
-      <div class="field" style="margin:0">
-        <label>Room</label>
-        <select name="room_id" required>
-          <?php foreach ($rooms as $r): ?><option value="<?= e($r['id']) ?>"><?= e($r['name']) ?></option><?php endforeach; ?>
-        </select>
-      </div>
-      <div class="field" style="margin:0">
-        <label>From (first night)</label>
-        <div class="dp" style="min-width:140px">
-          <div class="dp__display" id="dpRateFromDisplay" tabindex="0">Pick a date</div>
-          <input type="hidden" name="rate_from" id="dpRateFromVal">
-          <div class="dp__pop is-hidden" id="dpRateFromPop"></div>
-        </div>
-      </div>
-      <div class="field" style="margin:0">
-        <label>To (last night)</label>
-        <div class="dp" style="min-width:140px">
-          <div class="dp__display" id="dpRateToDisplay" tabindex="0">Pick a date</div>
-          <input type="hidden" name="rate_to" id="dpRateToVal">
-          <div class="dp__pop is-hidden" id="dpRateToPop"></div>
-        </div>
-      </div>
-      <div class="field" style="margin:0"><label>Price / night</label><input type="number" name="price" step="0.01" min="1" placeholder="450" required style="width:90px"></div>
-      <div class="field" style="margin:0"><label>Label</label><input type="text" name="rate_label" placeholder="Peak Season" style="width:130px"></div>
-      <button type="submit" class="btn-primary btn-sm">Add Override</button>
-    </form>
-    <?php if ($rates): ?>
-    <table class="data-table">
-      <thead><tr><th>Room</th><th>From</th><th>To</th><th>Price/night</th><th>Label</th><th></th></tr></thead>
-      <tbody>
-      <?php foreach ($rates as $rate): ?>
-      <tr>
-        <td><?= e($rate['room_name']) ?></td>
-        <td><?= e($rate['date_from']) ?></td>
-        <td><?= e($rate['date_to']) ?></td>
-        <td><?= e($rate['price_amount']) ?></td>
-        <td><?= e($rate['label'] ?? '') ?></td>
-        <td>
-          <form method="POST" style="display:inline">
-            <?= csrf_field() ?>
-            <input type="hidden" name="action"  value="delete_rate">
-            <input type="hidden" name="rate_id" value="<?= e($rate['id']) ?>">
-            <button type="submit" class="btn-danger btn-sm" onclick="return confirm('Remove this rate?')">Remove</button>
-          </form>
-        </td>
-      </tr>
-      <?php endforeach; ?>
-      </tbody>
-    </table>
-    <?php else: ?>
-    <p style="color:var(--muted);font-size:13px">No rate overrides. Default room prices apply.</p>
-    <?php endif; ?>
+  <div class="card__body" style="padding:16px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+    <span class="text-muted" style="font-size:13px">
+      Nightly rates are edited on each property and room, and shown as a calendar on the Rates page.
+    </span>
+    <a href="/admin/rates.php" class="btn-sm btn-outline">Open Rates <?= admin_icon('chevron-right', 14) ?></a>
   </div>
 </div>
 
@@ -786,6 +710,7 @@ const days       = <?= json_encode(array_values($days)) ?>;
 const dayIndex   = <?= json_encode($day_index) ?>;
 const csrfToken  = () => document.querySelector('input[name="csrf_token"]')?.value ?? '';
 const CELL_W     = 28;
+const roomFilter = <?= $filterRoom ? 'true' : 'false' ?>;
 
 // ── Modal helpers ────────────────────────────────────────────────
 const blockModal  = document.getElementById('blockModal');
@@ -803,6 +728,52 @@ function addDays(ymd, n) {
 function dateDiff(from, to) {
   return Math.round((new Date(to+'T00:00') - new Date(from+'T00:00')) / 86400000);
 }
+
+// ── Property groups: collapse / expand ────────────────────────────
+// Rows are flat siblings of their property header, so a group is addressed by a
+// shared data-venue-key rather than by containment. State is remembered per
+// property: every block edit is a PRG reload, and a calendar that re-expands
+// every property on each save would be unusable.
+const COLLAPSE_KEY = 'ganttCollapsedVenues';
+
+function loadCollapsed() {
+  try { return new Set(JSON.parse(localStorage.getItem(COLLAPSE_KEY) || '[]')); }
+  catch (e) { return new Set(); }
+}
+function saveCollapsed(set) {
+  try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...set])); } catch (e) {}
+}
+function setVenueCollapsed(key, collapsed) {
+  const sel = '[data-venue-key="' + key + '"]';
+  document.querySelectorAll('.gantt-grow' + sel).forEach(h => {
+    h.classList.toggle('is-collapsed', collapsed);
+    h.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  });
+  document.querySelectorAll('.gantt-row' + sel).forEach(r => {
+    r.classList.toggle('is-hidden-venue', collapsed);
+  });
+}
+
+(function initVenueCollapse() {
+  // A room filter already narrows the grid to one property — restoring a
+  // collapsed state there would render a header with nothing under it.
+  if (!roomFilter) loadCollapsed().forEach(key => setVenueCollapsed(key, true));
+
+  document.querySelectorAll('.gantt-grow[data-venue-key]').forEach(header => {
+    const key = header.dataset.venueKey;
+    const toggle = () => {
+      const collapsed = !header.classList.contains('is-collapsed');
+      setVenueCollapsed(key, collapsed);
+      const set = loadCollapsed();
+      collapsed ? set.add(key) : set.delete(key);
+      saveCollapsed(set);
+    };
+    header.addEventListener('click', toggle);
+    header.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    });
+  });
+})();
 
 // ── Block drag-move / resize ──────────────────────────────────────
 let dragState = null; // { block, mode, blockId, unitId, dateFrom, dateTo, duration, dayOffset, startX, moved, highlights }
@@ -1115,8 +1086,6 @@ function makePicker(popId, hiddenId, displayId) {
 
 const dpFrom     = makePicker('dpFromPop',     'm_date_from',  'dpFromDisplay');
 const dpTo       = makePicker('dpToPop',       'm_date_to',    'dpToDisplay');
-const dpRateFrom = makePicker('dpRateFromPop', 'dpRateFromVal','dpRateFromDisplay');
-const dpRateTo   = makePicker('dpRateToPop',   'dpRateToVal',  'dpRateToDisplay');
 </script>
 
 <?php include __DIR__ . '/_layout_end.php'; ?>
