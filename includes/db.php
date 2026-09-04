@@ -805,22 +805,22 @@ function generate_access_code(int $len = 8): string {
  * overrides in the `rates` table and falling back to the room's default price.
  * Returns ['nights' => int, 'total' => float]. Shared by the availability API
  * and the search results page so quotes never drift.
+ *
+ * The per-night resolution itself lives in rates_nightly_map() (includes/rates.php)
+ * — the single source of truth the admin rates calendar renders from — so a price
+ * shown in Admin can never differ from the price a guest is quoted.
  */
 function room_stay_quote(int $room_id, float $default_price, string $check_in, string $check_out): array {
     $nights = max(1, (int)((strtotime($check_out) - strtotime($check_in)) / 86400));
-    $overlap = db_query(
-        "SELECT date_from, date_to, price_amount FROM rates
-         WHERE room_id = :rid AND date_from < :co AND date_to > :ci
-         ORDER BY created_at DESC",
-        [':rid' => $room_id, ':ci' => $check_in, ':co' => $check_out]
-    )->fetchAll();
-    $by_night = [];
-    foreach ($overlap as $r) {
-        $d = new DateTime($r['date_from']); $end = new DateTime($r['date_to']);
-        while ($d < $end) { $k = $d->format('Y-m-d'); if (!isset($by_night[$k])) $by_night[$k] = (float)$r['price_amount']; $d->modify('+1 day'); }
+
+    // Required here, not at file scope: rates.php requires this file, so a
+    // file-scope require would be a load-order cycle.
+    require_once __DIR__ . '/rates.php';
+
+    $total = 0.0;
+    foreach (rates_nightly_map($room_id, $default_price, $check_in, $check_out) as $night) {
+        $total += $night['price'];
     }
-    $total = 0.0; $d = new DateTime($check_in); $end = new DateTime($check_out);
-    while ($d < $end) { $total += $by_night[$d->format('Y-m-d')] ?? $default_price; $d->modify('+1 day'); }
     return ['nights' => $nights, 'total' => round($total, 2)];
 }
 

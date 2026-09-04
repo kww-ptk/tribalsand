@@ -276,6 +276,27 @@ try {
             'range_from' => ['not-a-date', '2099-06-10'],
             'range_to'   => ['2099-06-14', '2099-06-14'],
         ]) === [['2099-06-10', '2099-06-15']]);
+
+    // ── the calendar and the guest quote must agree ────────────────────────
+    db_query('DELETE FROM rates WHERE room_id = :r', [':r' => $roomId]);
+    rates_apply_ranges($roomId, [['2099-06-10', '2099-06-15']], 500.0, 'Peak');
+
+    $sumMap = function (string $ci, string $co) use ($roomId): float {
+        $t = 0.0;
+        foreach (rates_nightly_map($roomId, 100.0, $ci, $co) as $n) $t += $n['price'];
+        return round($t, 2);
+    };
+
+    check('quote: matches the map across an override',
+        room_stay_quote($roomId, 100.0, '2099-06-08', '2099-06-18')['total'] === $sumMap('2099-06-08', '2099-06-18'));
+    check('quote: matches the map with no override at all',
+        room_stay_quote($roomId, 100.0, '2099-01-08', '2099-01-12')['total'] === $sumMap('2099-01-08', '2099-01-12'));
+    check('quote: 4 default nights = 400',
+        room_stay_quote($roomId, 100.0, '2099-01-08', '2099-01-12')['total'] === 400.0);
+    check('quote: 5 override nights = 2500',
+        room_stay_quote($roomId, 100.0, '2099-06-10', '2099-06-15')['total'] === 2500.0);
+    check('quote: nights count unchanged',
+        room_stay_quote($roomId, 100.0, '2099-06-10', '2099-06-15')['nights'] === 5);
 } finally {
     db()->rollBack();
 }
