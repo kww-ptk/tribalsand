@@ -167,6 +167,115 @@ try {
         rates_ranges_from_post(['range_from' => ['2099-06-10', ''], 'range_to' => ['2099-06-14', '2099-07-01']])
             === [['2099-06-10', '2099-06-15']]);
     check('post parse: missing keys → empty',  rates_ranges_from_post([]) === []);
+
+    // ── new coverage ────────────────────────────────────────────────────────
+
+    // 1. Resolution rule: overlapping rows resolve to the NEWER created_at.
+    db_query('DELETE FROM rates WHERE room_id = :r', [':r' => $roomId]);
+    db_query(
+        "INSERT INTO rates (room_id, date_from, date_to, price_amount, label, created_at)
+         VALUES (:r, '2099-06-01', '2099-06-20', 500, 'Old', '2020-01-01 00:00:00')",
+        [':r' => $roomId]
+    );
+    db_query(
+        "INSERT INTO rates (room_id, date_from, date_to, price_amount, label, created_at)
+         VALUES (:r, '2099-06-10', '2099-06-15', 700, 'New', '2021-01-01 00:00:00')",
+        [':r' => $roomId]
+    );
+    $resMap = rates_nightly_map($roomId, 100.0, '2099-06-01', '2099-06-20');
+    check('resolution: contested night goes to newer created_at',
+        $resMap['2099-06-12']['price'] === 700.0 && $resMap['2099-06-12']['label'] === 'New');
+    check('resolution: uncontested night keeps the older row',
+        $resMap['2099-06-01']['price'] === 500.0 && $resMap['2099-06-01']['label'] === 'Old');
+
+    // 2. Split preserves created_at on both surviving halves.
+    db_query('DELETE FROM rates WHERE room_id = :r', [':r' => $roomId]);
+    db_query(
+        "INSERT INTO rates (room_id, date_from, date_to, price_amount, label, created_at)
+         VALUES (:r, '2099-06-01', '2099-07-01', 500, 'Wide', '2020-05-05 12:00:00')",
+        [':r' => $roomId]
+    );
+    rates_apply_ranges($roomId, [['2099-06-10', '2099-06-15']], 300.0, 'Inner');
+    $splitRows = db_query(
+        "SELECT date_from, date_to, price_amount, created_at FROM rates
+          WHERE room_id = :r ORDER BY date_from ASC", [':r' => $roomId]
+    )->fetchAll();
+    check('split: exactly three rows result', count($splitRows) === 3);
+    check('split: left half keeps original created_at',
+        count($splitRows) === 3
+        && (string)$splitRows[0]['date_from'] === '2099-06-01'
+        && (string)$splitRows[0]['created_at'] === '2020-05-05 12:00:00');
+    check('split: right half keeps original created_at',
+        count($splitRows) === 3
+        && (string)$splitRows[2]['date_from'] === '2099-06-15'
+        && (string)$splitRows[2]['created_at'] === '2020-05-05 12:00:00');
+
+    // 3. Adjacent-but-not-overlapping ranges are left alone.
+    db_query('DELETE FROM rates WHERE room_id = :r', [':r' => $roomId]);
+    rates_apply_ranges($roomId, [['2099-06-01', '2099-06-10']], 500.0, null);
+    rates_apply_ranges($roomId, [['2099-06-10', '2099-06-15']], 300.0, null);
+    check('adjacent: first row untouched, exactly two rows',
+        $rows() === [
+            ['2099-06-01', '2099-06-10', 500.0],
+            ['2099-06-10', '2099-06-15', 300.0],
+        ]);
+
+    // 4. Exact-equality replacement.
+    db_query('DELETE FROM rates WHERE room_id = :r', [':r' => $roomId]);
+    rates_apply_ranges($roomId, [['2099-06-01', '2099-06-10']], 500.0, null);
+    rates_apply_ranges($roomId, [['2099-06-01', '2099-06-10']], 300.0, null);
+    check('exact replace: exactly one row at the new price',
+        $rows() === [['2099-06-01', '2099-06-10', 300.0]]);
+
+    // 5. rates_for_venue() excludes other venues (skip gracefully if no second venue with rooms).
+    $otherVenueId = (int) db_query(
+        'SELECT venue_id FROM rooms WHERE venue_id IS NOT NULL AND venue_id <> :v LIMIT 1',
+        [':v' => $venueId]
+    )->fetchColumn();
+    $otherRoomId = $otherVenueId ? (int) db_query(
+        'SELECT id FROM rooms WHERE venue_id = :v LIMIT 1', [':v' => $otherVenueId]
+    )->fetchColumn() : 0;
+    if ($otherVenueId && $otherRoomId) {
+        db_query('DELETE FROM rates WHERE room_id = :r', [':r' => $roomId]);
+        db_query('DELETE FROM rates WHERE room_id = :r', [':r' => $otherRoomId]);
+        rates_apply_ranges($roomId, [['2099-06-01', '2099-06-05']], 400.0, 'Mine');
+        rates_apply_ranges($otherRoomId, [['2099-06-01', '2099-06-05']], 400.0, 'Theirs');
+        $scoped = rates_for_venue($venueId);
+        $scopedRoomIds = array_map(fn($r) => (int)$r['room_id'], $scoped);
+        check('for_venue: excludes other venues rates',
+            in_array($roomId, $scopedRoomIds, true) && !in_array($otherRoomId, $scopedRoomIds, true));
+        db_query('DELETE FROM rates WHERE room_id = :r', [':r' => $otherRoomId]);
+    } else {
+        echo "SKIP  for_venue: excludes other venues rates (no second venue with rooms)\n";
+    }
+
+    // 6. rates_delete() succeeds inside a scope that contains the row's own venue.
+    db_query('DELETE FROM rates WHERE room_id = :r', [':r' => $roomId]);
+    rates_apply_ranges($roomId, [['2099-06-01', '2099-06-05']], 400.0, 'Scoped');
+    $scopedRateId = (int) db_query(
+        'SELECT id FROM rates WHERE room_id = :r LIMIT 1', [':r' => $roomId]
+    )->fetchColumn();
+    check('delete: succeeds when scope includes the row\'s own venue',
+        rates_delete($scopedRateId, [$venueId]) === true);
+    check('delete: row is gone after in-scope delete',
+        (int) db_query('SELECT COUNT(*) FROM rates WHERE id = :i', [':i' => $scopedRateId])->fetchColumn() === 0);
+
+    // 7. rates_nightly_map() with from >= to returns [].
+    check('map: from >= to returns empty array',
+        rates_nightly_map($roomId, 100.0, '2099-06-10', '2099-06-10') === []);
+    check('map: from > to returns empty array',
+        rates_nightly_map($roomId, 100.0, '2099-06-15', '2099-06-10') === []);
+
+    // 8. rates_ranges_from_post() drops malformed dates instead of throwing.
+    check('post parse: drops unparseable date',
+        rates_ranges_from_post(['range_from' => ['not-a-date'], 'range_to' => ['2099-06-14']]) === []);
+    check('post parse: drops non-canonical date (single-digit month/day)',
+        rates_ranges_from_post(['range_from' => ['2099-6-1'], 'range_to' => ['2099-06-14']]) === []);
+    check('post parse: keeps valid rows alongside dropped malformed ones',
+        rates_ranges_from_post([
+            'range_from' => ['not-a-date', '2099-06-10'],
+            'range_to'   => ['2099-06-14', '2099-06-14'],
+        ]) === [['2099-06-10', '2099-06-15']]);
 } finally {
     db()->rollBack();
 }

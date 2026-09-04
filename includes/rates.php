@@ -15,6 +15,17 @@ declare(strict_types=1);
 require_once __DIR__ . '/db.php';
 
 /**
+ * A strictly canonical Y-m-d, or null. Every comparison in this file is a string
+ * comparison, which is only chronological for zero-padded dates — so anything
+ * entering the library goes through here first.
+ */
+function rates_ymd(string $s): ?string {
+    $s = trim($s);
+    $d = DateTime::createFromFormat('!Y-m-d', $s);
+    return ($d && $d->format('Y-m-d') === $s) ? $s : null;
+}
+
+/**
  * Normalise a list of [from, toExcl] ranges: drop invalid ones, sort by start,
  * and merge any that overlap or abut. Pure — no DB.
  *
@@ -27,9 +38,9 @@ require_once __DIR__ . '/db.php';
 function rates_merge_ranges(array $ranges): array {
     $clean = [];
     foreach ($ranges as $r) {
-        $from = trim((string)($r[0] ?? ''));
-        $to   = trim((string)($r[1] ?? ''));
-        if ($from === '' || $to === '' || $from >= $to) continue;
+        $from = rates_ymd((string)($r[0] ?? ''));
+        $to   = rates_ymd((string)($r[1] ?? ''));
+        if ($from === null || $to === null || $from >= $to) continue;
         $clean[] = [$from, $to];
     }
     if (!$clean) return [];
@@ -60,6 +71,10 @@ function rates_merge_ranges(array $ranges): array {
  * hold overlapping rows written by the old Gantt form, and they must keep
  * resolving exactly as they did. (`id DESC` is only a tiebreak for rows sharing
  * a created_at — previously those resolved arbitrarily.)
+ *
+ * Call pattern: call this ONCE PER ROOM with the widest date window the page
+ * needs, then slice the result in the view. Do not call it inside a nested
+ * month/room loop — that turns one page render into N×M queries.
  */
 function rates_nightly_map(int $roomId, float $default, string $fromYmd, string $toExclYmd): array {
     $out = [];
@@ -151,7 +166,8 @@ function rates_clear_span(int $roomId, string $from, string $toExcl): void {
 }
 
 /**
- * Write one price + label across N date ranges. Returns the rows inserted.
+ * Write one price + label across N date ranges. Returns the number of rows
+ * inserted.
  *
  * Ranges are merged first, then each one clears the nights it claims before its
  * own row is inserted, so every night ends up owned by exactly one row.
@@ -159,6 +175,10 @@ function rates_clear_span(int $roomId, string $from, string $toExcl): void {
  * Runs in a transaction — but only opens one if the caller has not already
  * (tests wrap everything in a transaction they roll back, and PDO/pgsql cannot
  * nest).
+ *
+ * No venue/account scoping here — this function will price any room id it is
+ * given. The caller MUST verify the room belongs to the acting account's
+ * venues before calling; this function deliberately does not check.
  */
 function rates_apply_ranges(int $roomId, array $ranges, float $price, ?string $label): int {
     $merged = rates_merge_ranges($ranges);
@@ -197,7 +217,13 @@ function rates_for_room(int $roomId): array {
     )->fetchAll();
 }
 
-/** Every override across one property's rooms, grouped by room then date. */
+/**
+ * Every override across one property's rooms, grouped by room then date.
+ *
+ * `rooms.venue_id` is nullable — an orphaned room's overrides are invisible
+ * here (and to any venue-scoped delete), effectively owner-only. Accepted
+ * behaviour, not a bug.
+ */
 function rates_for_venue(int $venueId): array {
     return db_query(
         'SELECT r.*, rm.name AS room_name
@@ -239,9 +265,9 @@ function rates_ranges_from_post(array $post): array {
 
     $out = [];
     foreach ($from as $i => $f) {
-        $f = trim((string)$f);
-        $t = trim((string)($to[$i] ?? ''));
-        if ($f === '' || $t === '') continue;
+        $f = rates_ymd((string)$f);
+        $t = rates_ymd((string)($to[$i] ?? ''));
+        if ($f === null || $t === null) continue;
         $out[] = [$f, date('Y-m-d', strtotime($t . ' +1 day'))];
     }
     return $out;
