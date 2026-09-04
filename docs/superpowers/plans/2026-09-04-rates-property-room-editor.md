@@ -603,7 +603,7 @@ function rates_ranges_from_post(array $post): array {
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `php tests/rates_logic.php`
-Expected: 40 `PASS` lines, then `ALL PASS`, exit 0.
+Expected: 39 `PASS` lines, then `ALL PASS`, exit 0.
 
 - [ ] **Step 5: Commit**
 
@@ -681,7 +681,7 @@ Update its docblock to say the resolution now lives in `rates_nightly_map()`.
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `php tests/rates_logic.php`
-Expected: 45 `PASS` lines, then `ALL PASS`, exit 0.
+Expected: 44 `PASS` lines, then `ALL PASS`, exit 0.
 
 Then check nothing else regressed:
 
