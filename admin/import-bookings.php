@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 /**
- * Zuri channel-manager booking importer (Ezee sheet → calendar blocks).
+ * Channel-manager booking importer (Ezee sheet → calendar blocks), per property.
  *
  * Upload the channel manager's export (.csv / .tsv / .xlsx), review a mandatory
  * dry-run preview, then commit. Accepted rows become availability_blocks
@@ -9,7 +9,9 @@ declare(strict_types=1);
  * double-booking and appear on the Gantt. Overlaps with existing website holds
  * are recorded as channel_conflicts, never silently overwritten. Idempotent.
  *
- * Owner + house manager only, scoped to Zuri (every mapped room is a Zuri room).
+ * Owner + house manager, scoped by admin_venue_ids(): the property is chosen up
+ * front and validated against the account's own list, and a row whose mapped room
+ * belongs to another property is blocked rather than imported.
  */
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
@@ -18,10 +20,26 @@ require_once __DIR__ . '/../includes/booking-import.php';
 require_login();
 require_manager();               // owner or house manager
 
-// ── Zuri scoping ─────────────────────────────────────────────────────
-$zuriId = (int) db_query("SELECT id FROM venues WHERE slug = 'zuri' LIMIT 1")->fetchColumn();
-$scope  = admin_venue_ids();     // null = owner (all); array = manager's venues
-$canImport = ($scope === null) || ($zuriId && in_array($zuriId, array_map('intval', $scope), true));
+// ── Property scoping ─────────────────────────────────────────────────
+// The import is per property: one Ezee export covers one property, so the
+// venue is chosen up front and every row is resolved against it.
+$scope    = admin_venue_ids();     // null = owner (all); array = manager's venues
+$venues   = $scope === null
+    ? db_query("SELECT id, name FROM venues ORDER BY sort_order ASC, name ASC")->fetchAll()
+    : ($scope
+        ? db_query("SELECT id, name FROM venues WHERE id IN (" . implode(',', array_map('intval', $scope)) . ")
+                    ORDER BY sort_order ASC, name ASC")->fetchAll()
+        : []);
+$allowedVenueIds = array_map(fn($v) => (int)$v['id'], $venues);
+
+/** The venue this request acts on — always validated against the account's own list. */
+$importVenueId = (int)($_POST['venue_id'] ?? $_GET['venue'] ?? 0);
+if ($importVenueId && !in_array($importVenueId, $allowedVenueIds, true)) $importVenueId = 0;
+if (!$importVenueId && $allowedVenueIds) $importVenueId = $allowedVenueIds[0];
+
+$canImport   = $importVenueId > 0;
+$importVenue = null;
+foreach ($venues as $v) if ((int)$v['id'] === $importVenueId) { $importVenue = $v; break; }
 
 $MAX_BYTES = 4 * 1024 * 1024;
 $ALLOWED   = ['csv', 'tsv', 'xlsx'];
@@ -44,10 +62,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canImport) {
 
     if ($action === 'save_room_map') {
         // Zip the parallel ezee[]/slug[] rows into a map; keep only rows with a
-        // name AND a slug that is a real Zuri room (an unknown/blank slug drops
-        // the row, so its Ezee name becomes "unmapped" and blocks its bookings).
+        // name AND a slug that is a real room IN THIS PROPERTY (an unknown or
+        // blank slug drops the row, so its Ezee name becomes "unmapped" and
+        // blocks its bookings rather than being guessed). Re-querying per venue
+        // is also what stops a posted slug from another property being saved.
         $allowed = db_query(
-            "SELECT slug FROM rooms WHERE venue_id = :v", [':v' => $zuriId]
+            "SELECT slug FROM rooms WHERE venue_id = :v", [':v' => $importVenueId]
         )->fetchAll(PDO::FETCH_COLUMN);
         $names = (array)($_POST['ezee'] ?? []);
         $slugs = (array)($_POST['slug'] ?? []);
@@ -57,8 +77,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canImport) {
             $sl = trim((string)($slugs[$i] ?? ''));
             if ($nm !== '' && $sl !== '' && in_array($sl, $allowed, true)) $map[$nm] = $sl;
         }
-        zuri_room_map_save($map);
-        header('Location: /admin/import-bookings.php?mapsaved=1');
+        import_room_map_save($importVenueId, $map);
+        header('Location: /admin/import-bookings.php?venue=' . $importVenueId . '&mapsaved=1');
         exit;
     }
 
@@ -75,7 +95,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canImport) {
             } else {
                 try {
                     $parsed   = import_read_file($f['tmp_name'], $ext);
-                    $resolved = import_resolve_all($parsed['rows']);
+                    $resolved = import_resolve_all($parsed['rows'], $importVenueId);
                     if (!$resolved) {
                         $error = 'No booking rows were found in that file. Is the header row present?';
                     } else {
@@ -83,9 +103,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canImport) {
                             'fields'   => $parsed['fields'],
                             'resolved' => $resolved,
                             'filename' => (string)$f['name'],
+                            'venue_id' => $importVenueId,
                         ];
                         unset($_SESSION['import_report']);
-                        header('Location: /admin/import-bookings.php?step=preview');
+                        header('Location: /admin/import-bookings.php?venue=' . $importVenueId . '&step=preview');
                         exit;
                     }
                 } catch (Throwable $e) {
@@ -102,7 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canImport) {
             $error = 'Nothing to import — please upload a file first.';
         } else {
             $report = import_commit($pv['resolved']);
-            audit_log('bookings.import', 'venue', $zuriId,
+            audit_log('bookings.import', 'venue', (int)($pv['venue_id'] ?? $importVenueId),
                 sprintf('imported=%d dup=%d conflict=%d unmapped=%d bad=%d',
                     $report['imported'], $report['duplicate'], $report['conflict'],
                     $report['unmapped'], $report['bad_dates']));
@@ -141,14 +162,31 @@ $chip = function (string $s): string {
 ?>
 
 <div class="page-header">
-  <h1 style="display:inline-flex;align-items:center;gap:10px"><?= admin_icon('download', 22) ?> Import Bookings <span class="text-muted" style="font-weight:400">· Zuri</span></h1>
+  <h1 style="display:inline-flex;align-items:center;gap:10px"><?= admin_icon('download', 22) ?> Import Bookings<?php if ($importVenue): ?> <span class="text-muted" style="font-weight:400">· <?= e($importVenue['name']) ?></span><?php endif; ?></h1>
+  <?php if (count($venues) > 1): ?>
+  <form method="GET" style="display:flex;gap:8px;align-items:center;margin:0">
+    <label class="text-muted" style="font-size:12.5px">Property</label>
+    <select name="venue" class="eselect" onchange="this.form.submit()">
+      <?php foreach ($venues as $v): ?>
+      <option value="<?= (int)$v['id'] ?>"<?= (int)$v['id'] === $importVenueId ? ' selected' : '' ?>><?= e($v['name']) ?></option>
+      <?php endforeach; ?>
+    </select>
+  </form>
+  <?php endif; ?>
 </div>
+<?php if ($importVenue): ?>
+<p class="text-muted" style="font-size:12.5px;margin:-6px 0 16px;max-width:70ch">
+  One export covers one property. Everything below — the room mapping and the rows you
+  import — applies to <strong><?= e($importVenue['name']) ?></strong> only, and a mapping
+  that points at another property's room is blocked rather than imported.
+</p>
+<?php endif; ?>
 
 <?php if ($flash): ?><div class="alert alert--success is-flash"><?= e($flash) ?></div><?php endif; ?>
 <?php if ($error): ?><div class="alert alert--error is-flash"><?= e($error) ?></div><?php endif; ?>
 
 <?php if (!$canImport): ?>
-  <div class="alert alert--error">You don't have access to Zuri, so you can't import its bookings.</div>
+  <div class="alert alert--error">No properties are assigned to your account, so there is nothing to import into.</div>
   <?php include __DIR__ . '/_layout_end.php'; return; ?>
 <?php endif; ?>
 
@@ -261,6 +299,7 @@ $chip = function (string $s): string {
       <form method="POST" enctype="multipart/form-data">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="preview">
+        <input type="hidden" name="venue_id" value="<?= (int)$importVenueId ?>">
         <div class="field">
           <label>Bookings file <span class="text-muted">(.csv, .tsv or .xlsx — max 4 MB)</span></label>
           <label class="filefield">
@@ -279,10 +318,10 @@ $chip = function (string $s): string {
     <div class="card__head"><span class="card__title" style="display:inline-flex;align-items:center;gap:8px"><?= admin_icon('settings', 16) ?> How it works</span></div>
     <div class="card__body" style="padding:20px">
       <div style="display:grid;gap:12px;margin:0 0 18px;max-width:70ch">
-        <div style="display:flex;gap:10px;align-items:flex-start"><span style="flex:0 0 auto;color:var(--accent)"><?= admin_icon('calendar', 16) ?></span><span class="text-muted">Each accepted booking becomes a calendar <strong>block</strong> on the matching Zuri room, so those dates can't be double-booked and show on the Calendar.</span></div>
+        <div style="display:flex;gap:10px;align-items:flex-start"><span style="flex:0 0 auto;color:var(--accent)"><?= admin_icon('calendar', 16) ?></span><span class="text-muted">Each accepted booking becomes a calendar <strong>block</strong> on the matching room in this property, so those dates can't be double-booked and show on the Calendar.</span></div>
         <div style="display:flex;gap:10px;align-items:flex-start"><span style="flex:0 0 auto;color:var(--accent)"><?= admin_icon('ban', 16) ?></span><span class="text-muted">Rows that overlap an existing website booking are flagged as <strong>conflicts</strong> and sent to the Conflicts page — never overwritten.</span></div>
         <div style="display:flex;gap:10px;align-items:flex-start"><span style="flex:0 0 auto;color:var(--accent)"><?= admin_icon('check-check', 16) ?></span><span class="text-muted">Re-uploading the same sheet is safe: already-imported rows are detected and skipped.</span></div>
-        <div style="display:flex;gap:10px;align-items:flex-start"><span style="flex:0 0 auto;color:var(--accent)"><?= admin_icon('home', 16) ?></span><span class="text-muted">An <strong>“Entire Retreat Buyout”</strong> row blocks every Zuri suite for its dates.</span></div>
+        <div style="display:flex;gap:10px;align-items:flex-start"><span style="flex:0 0 auto;color:var(--accent)"><?= admin_icon('home', 16) ?></span><span class="text-muted">A row mapped to a <strong>whole-property</strong> room blocks every room in that property for its dates.</span></div>
       </div>
       <p style="margin:0 0 4px;font-weight:600;font-size:13px;display:inline-flex;align-items:center;gap:6px"><?= admin_icon('link', 14) ?> Room name mapping</p>
       <p class="text-muted" style="margin:0 0 12px;font-size:12.5px;max-width:70ch">
@@ -292,10 +331,10 @@ $chip = function (string $s): string {
         that appear in future exports.
       </p>
       <?php
-        $__map      = zuri_room_map();
-        $__zuriRooms = db_query(
+        $__map      = import_room_map($importVenueId);
+        $__venueRooms = db_query(
           "SELECT slug, name FROM rooms WHERE venue_id = :v ORDER BY sort_order, name",
-          [':v' => $zuriId]
+          [':v' => $importVenueId]
         )->fetchAll();
         // Existing map rows, then a few blanks to add new names.
         $__rows = [];
@@ -305,6 +344,7 @@ $chip = function (string $s): string {
       <form method="post" action="/admin/import-bookings.php" data-shell-form>
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="save_room_map">
+        <input type="hidden" name="venue_id" value="<?= (int)$importVenueId ?>">
         <div class="rmap">
           <?php foreach ($__rows as $__r): ?>
           <div class="rmap__row">
@@ -312,7 +352,7 @@ $chip = function (string $s): string {
             <span class="rmap__arrow"><?= admin_icon('arrow-right', 15) ?></span>
             <select name="slug[]" aria-label="Website room">
               <option value="">— Block (no match) —</option>
-              <?php foreach ($__zuriRooms as $__wr): ?>
+              <?php foreach ($__venueRooms as $__wr): ?>
               <option value="<?= e($__wr['slug']) ?>" <?= $__wr['slug'] === $__r['slug'] ? 'selected' : '' ?>><?= e($__wr['name']) ?></option>
               <?php endforeach; ?>
             </select>

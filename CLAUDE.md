@@ -100,6 +100,30 @@ The figures on `sustainability.php` and the home page's "Live Data" cards come f
 - Front-end: the stats strip, the solar card and the beach ring count up on scroll (IntersectionObserver). The count-up **never paints over the server-rendered value on its first frame** and skips animating when `document.hidden` — a paused rAF in a background tab would otherwise leave a 0 on screen. `prefers-reduced-motion` gets the final value immediately.
 - Hero photo + section headings are editable through the `sustainability` entry in `page_content_registry()` (Admin → Content → Pages). Test: `php tests/sustainability_logic.php`.
 
+### Channel-manager import — per property, mapping is per property too
+`admin/import-bookings.php` turns an Ezee export (CSV/TSV/XLSX) into calendar blocks.
+Engine in **`includes/booking-import.php`**. **No migration** — it stores its mapping in
+the `ezee_room_maps` setting.
+- **One export covers one property.** The venue is chosen up front and validated against
+  `admin_venue_ids()`, so a posted `venue_id` outside the account's own list is ignored
+  rather than honoured. Owner + manager; a manager sees only their properties (and no
+  picker at all when they have one).
+- **Room maps are per property**, stored as `{"<venue_id>": {ezee_name: slug}}`. A saved
+  map is authoritative for that venue — it fully replaces the seed, so deleting a row
+  really unmaps that name. An unmapped name **blocks** its row; it is never guessed.
+- **Legacy fallback:** before multi-property support there was one flat `zuri_room_map`
+  setting. A venue with no saved map that IS Zuri reads that old setting, then falls back
+  to `ZURI_ROOM_MAP`. Every other property starts empty. Don't delete that fallback until
+  production has re-saved Zuri's map through the new UI.
+- **A mapped room in another property is blocked, not imported** (`import_resolve_row()`
+  compares `rooms.venue_id` to the chosen venue) — importing it would drop a booking into
+  the wrong property's calendar.
+- **"No website room for slug X" has two causes** and the message distinguishes them: the
+  room does not exist, or it exists with **no active unit** (`import_room_unit()` joins
+  `units ON is_active = TRUE`). The second is the one that wastes debugging time.
+- Test: `php tests/booking_import_logic.php`. Note one pre-existing failure on a DB with
+  no `zuri-buyout` room — the seed map references a slug that install may not have.
+
 ### Nightly rates — per room, edited on the property and the room
 Rate overrides live in `rates` (`room_id, date_from, date_to, price_amount, label`) — **no
 migration**, the table predates the editors. Helpers in **`includes/rates.php`**.

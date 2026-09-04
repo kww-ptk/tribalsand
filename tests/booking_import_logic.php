@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
-// Zuri Ezee booking importer — parse, map, resolve, commit.
-// Run: D:\php84\php.exe tests/booking_import_logic.php
+// Ezee booking importer — parse, map (per property), resolve, commit.
+// Run: php tests/booking_import_logic.php
 // DB writes run inside a rolled-back transaction — nothing persists.
 require_once __DIR__ . '/../includes/booking-import.php';
 
@@ -13,11 +13,20 @@ function check(string $label, bool $cond): void {
 
 // ── Pure helpers ──
 check('norm collapses + lowercases', import_norm("  Master   DOUBLE  Suite ") === 'master double suite');
-check('map exact',        import_map_room_slug('Standard Garden View Suite') === 'zuri-maji');
-check('map buyout',       import_map_room_slug('Entire Retreat Buyout') === 'zuri-buyout');
-check('map twin→mwezi',   import_map_room_slug('Tropical Pool View Twin Suite') === 'zuri-mwezi');
-check('map is tolerant',  import_map_room_slug('  master double suite ') === 'zuri-anga');
-check('unmapped → null',  import_map_room_slug('Presidential Yacht') === null);
+
+// Maps are per property now. Zuri keeps the built-in seed; every other property
+// starts empty, so nothing can be imported into it until it is mapped.
+$zuriV  = import_zuri_venue_id();
+$otherV = (int) db_query("SELECT id FROM venues WHERE id <> :z ORDER BY id LIMIT 1", [':z' => $zuriV])->fetchColumn();
+
+check('map exact',        import_map_room_slug('Standard Garden View Suite', $zuriV) === 'zuri-maji');
+check('map buyout',       import_map_room_slug('Entire Retreat Buyout', $zuriV) === 'zuri-buyout');
+check('map twin→mwezi',   import_map_room_slug('Tropical Pool View Twin Suite', $zuriV) === 'zuri-mwezi');
+check('map is tolerant',  import_map_room_slug('  master double suite ', $zuriV) === 'zuri-anga');
+check('unmapped → null',  import_map_room_slug('Presidential Yacht', $zuriV) === null);
+check('another property starts unmapped',
+      !$otherV || import_map_room_slug('Standard Garden View Suite', $otherV) === null);
+check('venue 0 maps nothing', import_map_room_slug('Standard Garden View Suite', 0) === null);
 
 check('date DD/MM/YYYY',  import_parse_date('05/09/2026') === '2026-09-05');
 check('date D/M/YYYY',    import_parse_date('5/9/2026') === '2026-09-05');
@@ -55,21 +64,47 @@ db()->beginTransaction();
 try {
     // ── Editable room map (setting override; rolled back with the tx) ──
     // Remap Twin → Ua, add a brand-new Ezee name, and drop a default row.
-    zuri_room_map_save([
+    import_room_map_save($zuriV, [
         'Tropical Pool View Twin Suite' => 'zuri-ua',   // changed from mwezi
         'Sunset Villa'                  => 'zuri-anga',  // new name
         'Standard Garden View Suite'    => 'zuri-maji',  // keep
     ]);
-    check('override: twin now → ua',   import_map_room_slug('Tropical Pool View Twin Suite') === 'zuri-ua');
-    check('override: new name maps',   import_map_room_slug('Sunset Villa') === 'zuri-anga');
-    check('override: dropped row unmaps', import_map_room_slug('Master Double Suite') === null);
-    zuri_room_map_save(['Only Valid' => 'zuri-ua', 'Blank Slug' => '']);
+    check('override: twin now → ua',   import_map_room_slug('Tropical Pool View Twin Suite', $zuriV) === 'zuri-ua');
+    check('override: new name maps',   import_map_room_slug('Sunset Villa', $zuriV) === 'zuri-anga');
+    check('override: dropped row unmaps', import_map_room_slug('Master Double Suite', $zuriV) === null);
+    import_room_map_save($zuriV, ['Only Valid' => 'zuri-ua', 'Blank Slug' => '']);
     check('save drops blank-slug rows',
-        import_map_room_slug('Only Valid') === 'zuri-ua' && !array_key_exists('blank slug', zuri_room_map()));
-    // Restore the default map for the remaining resolve/commit assertions.
+        import_map_room_slug('Only Valid', $zuriV) === 'zuri-ua'
+        && !array_key_exists('blank slug', import_room_map($zuriV)));
+
+    // Saving one property's map must not disturb another's.
+    if ($otherV) {
+        import_room_map_save($otherV, ['Shared Name' => 'zuri-maji']);
+        check('per-property maps are independent',
+            import_map_room_slug('Only Valid', $zuriV) === 'zuri-ua'
+            && import_map_room_slug('Only Valid', $otherV) === null);
+    }
+
+    // Restore the seed for the remaining resolve/commit assertions.
+    set_setting('ezee_room_maps', '');
     set_setting('zuri_room_map', '');
-    unset($GLOBALS['__zuri_room_map_cache']);
-    check('cleared setting → back to default', import_map_room_slug('Tropical Pool View Twin Suite') === 'zuri-mwezi');
+    unset($GLOBALS['__ezee_map_cache']);
+    check('cleared setting → back to seed', import_map_room_slug('Tropical Pool View Twin Suite', $zuriV) === 'zuri-mwezi');
+
+    // A map row pointing at another property's room must BLOCK, never import —
+    // otherwise a booking silently lands in the wrong property's calendar.
+    if ($otherV) {
+        import_room_map_save($otherV, ['Cross Property' => 'zuri-maji']);
+        $x = import_resolve_row([
+            'guest' => 'X', 'arrival_raw' => '01/11/2030', 'dept_raw' => '03/11/2030',
+            'room_raw' => 'Cross Property', 'unit_label' => '', 'agent' => '-', 'booking_date' => '',
+        ], $otherV);
+        check('cross-property mapping is blocked', $x['status'] === 'unmapped');
+        check('cross-property reason names the property',
+            str_contains((string)$x['detail'], 'different property'));
+        set_setting('ezee_room_maps', '');
+        unset($GLOBALS['__ezee_map_cache']);
+    }
 
     // Pre-existing 'blocked' block → makes a duplicate for zuri-maji 20-22 Oct.
     db_query("INSERT INTO availability_blocks (unit_id,date_from,date_to,block_type,notes)
@@ -88,7 +123,7 @@ try {
         $mk('Unknown Fancy Room','01/10/2030','03/10/2030','Bad Room'),               // unmapped
         $mk('Family Garden View Suite','bogus','also bad','Bad Dates'),               // bad_dates
     ];
-    $resolved = import_resolve_all($rows);
+    $resolved = import_resolve_all($rows, $zuriV);
     $st = array_column($resolved, 'status');
     check('resolve: clean row ok',        $st[0] === 'ok');
     check('resolve: duplicate detected',  $st[1] === 'duplicate');
@@ -111,7 +146,7 @@ try {
 
     // Buyout mutual-exclusion: a suite hold makes a Buyout row conflict.
     create_hold_with_block($juaUnit, null, '2030-12-01', '2030-12-03', 'Suite Guest', 's@x.com', 'pending', 24);
-    $buyout = import_resolve_row($mk('Entire Retreat Buyout','01/12/2030','03/12/2030','Whole Place'));
+    $buyout = import_resolve_row($mk('Entire Retreat Buyout','01/12/2030','03/12/2030','Whole Place'), $zuriV);
     check('buyout conflicts with a booked suite', $buyout['status'] === 'conflict');
 } finally {
     if (db()->inTransaction()) db()->rollBack();

@@ -16,11 +16,14 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/booking.php';
 
 /**
- * Default Ezee "Room" name (normalised) → website rooms.slug.
- * This is the SEED only — the live map is owner-editable and stored in the
- * `zuri_room_map` setting (Admin → Import bookings). An unmapped Ezee room
- * BLOCKS its row (never guessed) and is surfaced in the dry-run preview. "Twin"
- * defaults to the Double suite (same physical room, twin config) per owner sign-off.
+ * Seed map for ZURI ONLY — the first property onboarded, kept so an existing
+ * install keeps working with no setup. Every other property starts with an empty
+ * map and is filled in through Admin → Import bookings.
+ *
+ * Live maps are per property and owner-editable (see import_room_map()). An
+ * unmapped Ezee room BLOCKS its row — never guessed — and is surfaced in the
+ * dry-run preview. "Twin" defaults to the Double suite (same physical room,
+ * twin config) per owner sign-off.
  */
 const ZURI_ROOM_MAP = [
     'standard garden view suite'       => 'zuri-maji',
@@ -38,45 +41,78 @@ function import_norm(string $s): string {
 }
 
 /**
- * The effective, owner-editable Ezee→slug map: the `zuri_room_map` setting when
- * present (authoritative — a saved map fully replaces the default so removing a
- * row really unmaps it), otherwise ZURI_ROOM_MAP. Keys are normalised. Memoised
- * per request; zuri_room_map_save() busts the cache.
+ * The effective Ezee→slug map for ONE property.
+ *
+ * Stored in the `ezee_room_maps` setting as { "<venue_id>": { name: slug } }.
+ * A saved map for a venue is authoritative — it fully replaces the seed, so
+ * removing a row really unmaps that name rather than falling back to a default.
+ *
+ * Maps are per property because the import is per property: you pick the venue,
+ * upload its export, and only that venue's names are consulted. Two properties
+ * may therefore reuse an Ezee room name without colliding.
+ *
+ * Legacy fallback: before multi-property support there was a single flat
+ * `zuri_room_map` setting. When a venue has no entry yet and it IS Zuri, that
+ * old setting is read so an existing hand-edited mapping keeps working; Zuri
+ * with neither falls back to ZURI_ROOM_MAP. Any other venue starts empty —
+ * an unmapped name BLOCKS its row, it is never guessed.
+ *
+ * Memoised per request per venue; import_room_map_save() busts the cache.
  */
-function zuri_room_map(): array {
-    if (isset($GLOBALS['__zuri_room_map_cache'])) return $GLOBALS['__zuri_room_map_cache'];
-    $map = ZURI_ROOM_MAP;
-    $raw = setting('zuri_room_map', '');
-    if ($raw !== '') {
-        $decoded = json_decode($raw, true);
-        if (is_array($decoded)) {
-            $clean = [];
-            foreach ($decoded as $ezee => $slug) {
-                $k = import_norm((string)$ezee);
-                $v = trim((string)$slug);
-                if ($k !== '' && $v !== '') $clean[$k] = $v;
-            }
-            if ($clean) $map = $clean;
+function import_room_map(int $venueId): array {
+    if ($venueId <= 0) return [];
+    if (isset($GLOBALS['__ezee_map_cache'][$venueId])) return $GLOBALS['__ezee_map_cache'][$venueId];
+
+    $all = json_decode((string)setting('ezee_room_maps', ''), true);
+    $mine = (is_array($all) && isset($all[(string)$venueId]) && is_array($all[(string)$venueId]))
+        ? $all[(string)$venueId]
+        : null;
+
+    if ($mine === null) {
+        // No per-venue map saved yet.
+        if ($venueId === import_zuri_venue_id()) {
+            $legacy = json_decode((string)setting('zuri_room_map', ''), true);
+            $mine = is_array($legacy) && $legacy ? $legacy : ZURI_ROOM_MAP;
+        } else {
+            $mine = [];
         }
     }
-    return $GLOBALS['__zuri_room_map_cache'] = $map;
+
+    $clean = [];
+    foreach ($mine as $ezee => $slug) {
+        $k = import_norm((string)$ezee);
+        $v = trim((string)$slug);
+        if ($k !== '' && $v !== '') $clean[$k] = $v;
+    }
+    return $GLOBALS['__ezee_map_cache'][$venueId] = $clean;
 }
 
-/** Persist an Ezee→slug map (keys normalised, blanks dropped) and bust the memo. */
-function zuri_room_map_save(array $map): void {
+/** Zuri's venue id, for the legacy single-map fallback only. 0 if absent. */
+function import_zuri_venue_id(): int {
+    if (isset($GLOBALS['__ezee_zuri_id'])) return $GLOBALS['__ezee_zuri_id'];
+    return $GLOBALS['__ezee_zuri_id'] =
+        (int) db_query("SELECT id FROM venues WHERE slug = 'zuri' LIMIT 1")->fetchColumn();
+}
+
+/** Persist one property's map (keys normalised, blanks dropped) and bust the memo. */
+function import_room_map_save(int $venueId, array $map): void {
+    if ($venueId <= 0) return;
     $clean = [];
     foreach ($map as $ezee => $slug) {
         $k = import_norm((string)$ezee);
         $v = trim((string)$slug);
         if ($k !== '' && $v !== '') $clean[$k] = $v;
     }
-    set_setting('zuri_room_map', json_encode($clean, JSON_UNESCAPED_UNICODE));
-    unset($GLOBALS['__zuri_room_map_cache']);
+    $all = json_decode((string)setting('ezee_room_maps', ''), true);
+    if (!is_array($all)) $all = [];
+    $all[(string)$venueId] = $clean;
+    set_setting('ezee_room_maps', json_encode($all, JSON_UNESCAPED_UNICODE));
+    unset($GLOBALS['__ezee_map_cache'][$venueId]);
 }
 
-/** Map an Ezee room name to a website slug, or null when unmapped. */
-function import_map_room_slug(string $ezeeRoom): ?string {
-    return zuri_room_map()[import_norm($ezeeRoom)] ?? null;
+/** Map an Ezee room name to a website slug within one property, or null. */
+function import_map_room_slug(string $ezeeRoom, int $venueId): ?string {
+    return import_room_map($venueId)[import_norm($ezeeRoom)] ?? null;
 }
 
 /**
@@ -245,7 +281,7 @@ function import_read_file(string $path, string $ext): array {
  *   ok | unmapped | bad_dates | duplicate | conflict
  * Never writes. $conflictHoldId is set when status === 'conflict'.
  */
-function import_resolve_row(array $row): array {
+function import_resolve_row(array $row, int $venueId): array {
     $out = $row + [
         'slug' => null, 'room_id' => null, 'unit_id' => null, 'room_name' => null,
         'arrival' => null, 'dept' => null, 'status' => 'ok', 'detail' => '',
@@ -253,16 +289,30 @@ function import_resolve_row(array $row): array {
     ];
     $out['key'] = import_row_key($row['guest'], $row['arrival_raw'], $row['dept_raw'], $row['room_raw']);
 
-    $slug = import_map_room_slug($row['room_raw']);
+    $slug = import_map_room_slug($row['room_raw'], $venueId);
     if ($slug === null) {
         $out['status'] = 'unmapped';
-        $out['detail'] = 'Unknown room "' . $row['room_raw'] . '"';
+        $out['detail'] = 'Unknown room "' . $row['room_raw'] . '" — add it to this property’s room mapping';
         return $out;
     }
     $ru = import_room_unit($slug);
     if (!$ru) {
+        // Two different causes, and naming the wrong one costs real debugging
+        // time: the room may not exist, or it may exist with no ACTIVE unit
+        // (import_room_unit() joins units ON is_active = TRUE).
+        $roomExists = (int) db_query('SELECT COUNT(*) FROM rooms WHERE slug = :s', [':s' => $slug])->fetchColumn() > 0;
         $out['status'] = 'unmapped';
-        $out['detail'] = 'No website room for slug "' . $slug . '"';
+        $out['detail'] = $roomExists
+            ? 'Room "' . $slug . '" has no active unit — add one under Rooms → Units'
+            : 'No website room with slug "' . $slug . '"';
+        return $out;
+    }
+    if ((int)$ru['venue_id'] !== $venueId) {
+        // The map is per property, so this only happens if a map row points at
+        // another property's room. Blocking is the safe call — importing it
+        // would drop a booking into the wrong property's calendar.
+        $out['status'] = 'unmapped';
+        $out['detail'] = 'Room "' . $slug . '" belongs to a different property';
         return $out;
     }
     $out['slug']      = $slug;
@@ -296,8 +346,8 @@ function import_resolve_row(array $row): array {
 }
 
 /** Resolve every extracted row. */
-function import_resolve_all(array $rows): array {
-    return array_map('import_resolve_row', $rows);
+function import_resolve_all(array $rows, int $venueId): array {
+    return array_map(fn(array $r) => import_resolve_row($r, $venueId), $rows);
 }
 
 /** A short human note stored on the availability block / conflict. */
