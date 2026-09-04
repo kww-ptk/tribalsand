@@ -103,22 +103,24 @@ include __DIR__ . '/_layout.php';
 
 // status → chip colour
 $chip = function (string $s): string {
+    // [.badge modifier, admin_icon name, label] — reuse the house badge component.
     $map = [
-        'ok'        => ['#137a3f', '#e6f4ec', 'Will import'],
-        'imported'  => ['#137a3f', '#e6f4ec', 'Imported'],
-        'duplicate' => ['#6b6050', '#f1ede4', 'Already imported'],
-        'conflict'  => ['#b45309', '#fdf0dd', 'Conflict'],
-        'unmapped'  => ['#b91c1c', '#fbe6e6', 'Unmapped room'],
-        'bad_dates' => ['#b91c1c', '#fbe6e6', 'Bad dates'],
+        'ok'        => ['green',  'check',       'Will import'],
+        'imported'  => ['green',  'check',       'Imported'],
+        'duplicate' => ['grey',   'check-check', 'Already imported'],
+        'conflict'  => ['orange', 'ban',         'Conflict'],
+        'unmapped'  => ['red',    'x',           'Unmapped room'],
+        'bad_dates' => ['red',    'x',           'Bad dates'],
     ];
-    [$fg, $bg, $label] = $map[$s] ?? ['#333', '#eee', $s];
-    return '<span style="display:inline-block;font-size:11px;font-weight:700;color:' . $fg
-         . ';background:' . $bg . ';padding:2px 8px;border-radius:10px">' . e($label) . '</span>';
+    [$color, $icon, $label] = $map[$s] ?? ['grey', 'variant', $s];
+    return '<span style="display:inline-flex;align-items:center;gap:6px">'
+         . admin_icon($icon, 14)
+         . '<span class="badge badge--' . $color . '">' . e($label) . '</span></span>';
 };
 ?>
 
 <div class="page-header">
-  <h1>Import Bookings <span class="text-muted" style="font-weight:400">· Zuri</span></h1>
+  <h1 style="display:inline-flex;align-items:center;gap:10px"><?= admin_icon('download', 22) ?> Import Bookings <span class="text-muted" style="font-weight:400">· Zuri</span></h1>
 </div>
 
 <?php if ($error): ?><div class="alert alert--error is-flash"><?= e($error) ?></div><?php endif; ?>
@@ -131,7 +133,7 @@ $chip = function (string $s): string {
 <?php if ($step === 'done' && $report): ?>
   <!-- ── Report ── -->
   <div class="card">
-    <div class="card__head"><span class="card__title">Import complete</span></div>
+    <div class="card__head"><span class="card__title" style="display:inline-flex;align-items:center;gap:8px"><?= admin_icon('check-check', 16) ?> Import complete</span></div>
     <div class="card__body" style="padding:20px">
       <p style="margin:0 0 14px">
         <strong><?= (int)$report['imported'] ?></strong> imported ·
@@ -160,8 +162,8 @@ $chip = function (string $s): string {
         </table>
       </div>
       <div style="margin-top:18px;display:flex;gap:10px">
-        <a href="/admin/import-bookings.php" class="btn-primary">Import another file</a>
-        <a href="/admin/gantt.php" class="btn-outline">Open the calendar</a>
+        <a href="/admin/import-bookings.php" class="btn-primary"><?= admin_icon('download', 15) ?> Import another file</a>
+        <a href="/admin/gantt.php" class="btn-outline"><?= admin_icon('calendar', 15) ?> Open the calendar</a>
       </div>
     </div>
   </div>
@@ -175,7 +177,7 @@ $chip = function (string $s): string {
     $willImport = $counts['ok'];
   ?>
   <div class="card">
-    <div class="card__head"><span class="card__title">Preview — <?= e($preview['filename']) ?></span></div>
+    <div class="card__head"><span class="card__title" style="display:inline-flex;align-items:center;gap:8px"><?= admin_icon('eye', 16) ?> Preview — <?= e($preview['filename']) ?></span></div>
     <div class="card__body" style="padding:20px">
       <p style="margin:0 0 6px">
         <strong><?= $willImport ?></strong> row(s) will be imported.
@@ -217,13 +219,13 @@ $chip = function (string $s): string {
           <?= csrf_field() ?>
           <input type="hidden" name="action" value="commit">
           <button type="submit" class="btn-primary" <?= $willImport ? '' : 'disabled' ?>>
-            Import <?= $willImport ?> booking<?= $willImport === 1 ? '' : 's' ?>
+            <?= admin_icon('check', 15) ?> Import <?= $willImport ?> booking<?= $willImport === 1 ? '' : 's' ?>
           </button>
         </form>
         <form method="POST" style="display:inline">
           <?= csrf_field() ?>
           <input type="hidden" name="action" value="cancel">
-          <button type="submit" class="btn-outline">Cancel</button>
+          <button type="submit" class="btn-outline"><?= admin_icon('x', 15) ?> Cancel</button>
         </form>
       </div>
     </div>
@@ -232,31 +234,35 @@ $chip = function (string $s): string {
 <?php else: ?>
   <!-- ── Upload ── -->
   <div class="card">
-    <div class="card__head"><span class="card__title">Upload the Ezee export</span></div>
+    <div class="card__head"><span class="card__title" style="display:inline-flex;align-items:center;gap:8px"><?= admin_icon('download', 16) ?> Upload the Ezee export</span></div>
     <div class="card__body" style="padding:20px">
       <form method="POST" enctype="multipart/form-data">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="preview">
         <div class="field">
           <label>Bookings file <span class="text-muted">(.csv, .tsv or .xlsx — max 4 MB)</span></label>
-          <input type="file" name="sheet" accept=".csv,.tsv,.xlsx" required>
-          <span class="field-hint">Tip: in Ezee, export the bookings sheet as CSV or XLSX. You'll see a preview before anything is saved.</span>
+          <label class="filefield">
+            <span class="btn-outline btn-sm"><?= admin_icon('download', 14) ?> Choose file</span>
+            <input type="file" name="sheet" accept=".csv,.tsv,.xlsx" data-import-file>
+            <span class="filefield__name" data-import-filename>No file chosen</span>
+          </label>
+          <span class="field-hint" style="display:block;margin-top:8px">Tip: in Ezee, export the bookings sheet as CSV or XLSX. You'll see a preview before anything is saved.</span>
         </div>
-        <button type="submit" class="btn-primary" style="margin-top:14px">Upload &amp; preview</button>
+        <button type="submit" class="btn-primary" style="margin-top:14px" data-import-submit disabled><?= admin_icon('eye', 15) ?> Upload &amp; preview</button>
       </form>
     </div>
   </div>
 
   <div class="card" style="margin-top:16px">
-    <div class="card__head"><span class="card__title">How it works</span></div>
+    <div class="card__head"><span class="card__title" style="display:inline-flex;align-items:center;gap:8px"><?= admin_icon('settings', 16) ?> How it works</span></div>
     <div class="card__body" style="padding:20px">
-      <ul class="text-muted" style="margin:0 0 16px;padding-left:18px;line-height:1.8">
-        <li>Each accepted booking becomes a calendar <strong>block</strong> on the matching Zuri room, so those dates can't be double-booked and show on the Gantt.</li>
-        <li>Rows that overlap an existing website booking are flagged as <strong>conflicts</strong> and sent to the Conflicts page — never overwritten.</li>
-        <li>Re-uploading the same sheet is safe: already-imported rows are detected and skipped.</li>
-        <li>An <strong>“Entire Retreat Buyout”</strong> row blocks every Zuri suite for its dates.</li>
-      </ul>
-      <p style="margin:0 0 8px;font-weight:600;font-size:13px">Room name mapping</p>
+      <div style="display:grid;gap:12px;margin:0 0 18px;max-width:70ch">
+        <div style="display:flex;gap:10px;align-items:flex-start"><span style="flex:0 0 auto;color:var(--accent)"><?= admin_icon('calendar', 16) ?></span><span class="text-muted">Each accepted booking becomes a calendar <strong>block</strong> on the matching Zuri room, so those dates can't be double-booked and show on the Calendar.</span></div>
+        <div style="display:flex;gap:10px;align-items:flex-start"><span style="flex:0 0 auto;color:var(--accent)"><?= admin_icon('ban', 16) ?></span><span class="text-muted">Rows that overlap an existing website booking are flagged as <strong>conflicts</strong> and sent to the Conflicts page — never overwritten.</span></div>
+        <div style="display:flex;gap:10px;align-items:flex-start"><span style="flex:0 0 auto;color:var(--accent)"><?= admin_icon('check-check', 16) ?></span><span class="text-muted">Re-uploading the same sheet is safe: already-imported rows are detected and skipped.</span></div>
+        <div style="display:flex;gap:10px;align-items:flex-start"><span style="flex:0 0 auto;color:var(--accent)"><?= admin_icon('home', 16) ?></span><span class="text-muted">An <strong>“Entire Retreat Buyout”</strong> row blocks every Zuri suite for its dates.</span></div>
+      </div>
+      <p style="margin:0 0 8px;font-weight:600;font-size:13px;display:inline-flex;align-items:center;gap:6px"><?= admin_icon('link', 14) ?> Room name mapping</p>
       <div style="overflow-x:auto">
         <table class="data-table" style="width:auto;font-size:13px">
           <thead><tr><th>Ezee room name</th><th>→ Website room</th></tr></thead>
@@ -274,5 +280,20 @@ $chip = function (string $s): string {
     </div>
   </div>
 <?php endif; ?>
+
+<script>
+// Styled file field: reflect the chosen filename + enable the submit button.
+(function () {
+  var inp  = document.querySelector('[data-import-file]');
+  var name = document.querySelector('[data-import-filename]');
+  var btn  = document.querySelector('[data-import-submit]');
+  if (!inp) return;
+  inp.addEventListener('change', function () {
+    var f = inp.files && inp.files[0];
+    if (name) name.textContent = f ? f.name : 'No file chosen';
+    if (btn)  btn.disabled = !f;
+  });
+})();
+</script>
 
 <?php include __DIR__ . '/_layout_end.php'; ?>
