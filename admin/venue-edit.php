@@ -4,6 +4,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/checkin.php';
 require_once __DIR__ . '/../includes/upsells.php';   // checkin_deposit_supported()
+require_once __DIR__ . '/../includes/rates.php';
 require_login();
 require_owner();
 
@@ -212,9 +213,60 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
 if (isset($_GET['saved'])) $success = 'Saved.';
 
+// ── POST: rate overrides ────────────────────────────────────────────────────
+// Owner-only page, so no venue scoping is needed on the write — but the room
+// must belong to THIS property, or a posted foreign room_id would price
+// somebody else's room from this page.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'rates_save' && $id) {
+    verify_csrf();
+    $rt_room = (int)($_POST['room_id'] ?? 0);
+    $rt_own  = $rt_room
+        ? (int) db_query('SELECT COUNT(*) FROM rooms WHERE id = :r AND venue_id = :v',
+              [':r' => $rt_room, ':v' => $id])->fetchColumn()
+        : 0;
+    if (!$rt_own) {
+        $error = 'That room is not in this property.';
+    } else {
+        $rt_n = rates_apply_ranges(
+            $rt_room,
+            rates_ranges_from_post($_POST),
+            (float)($_POST['price'] ?? 0),
+            trim((string)($_POST['rate_label'] ?? ''))
+        );
+        if ($rt_n) {
+            audit_log('rates.save', 'room', $rt_room, "{$rt_n} range(s)");
+            header("Location: /admin/venue-edit.php?id={$id}&rate_room={$rt_room}&saved=1");
+            exit;
+        }
+        $error = 'Nothing saved — check the dates and that the price is above zero.';
+    }
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'rate_delete' && $id) {
+    verify_csrf();
+    $rt_room = (int)($_POST['room_id'] ?? 0);
+    if (rates_delete((int)($_POST['rate_id'] ?? 0), null)) {
+        audit_log('rates.delete', 'venue', $id, '');
+    }
+    header("Location: /admin/venue-edit.php?id={$id}&rate_room={$rt_room}&saved=1");
+    exit;
+}
+
 $rooms = $id
     ? db_query('SELECT id, name, slug, price_amount, price_currency, is_published FROM rooms WHERE venue_id = :id ORDER BY sort_order', [':id' => $id])->fetchAll()
     : [];
+
+// Rates tab: which room's calendar to draw, and which month.
+$rateRoomId = isset($_GET['rate_room']) ? (int)$_GET['rate_room'] : 0;
+$rateRoom   = null;
+foreach ($rooms as $__r) {
+    if ($rateRoomId && (int)$__r['id'] === $rateRoomId) { $rateRoom = $__r; break; }
+}
+if (!$rateRoom && $rooms) $rateRoom = $rooms[0];        // default to the first room
+$rateMonth  = isset($_GET['rate_month']) && strtotime($_GET['rate_month'] . '-01')
+    ? substr((string)$_GET['rate_month'], 0, 7)
+    : date('Y-m');
+$venueRates = $id ? rates_for_venue($id) : [];
 
 $pageTitle  = $isNew ? 'New Property' : 'Edit Property';
 $activeMenu = 'venues';
@@ -241,6 +293,7 @@ include __DIR__ . '/_layout.php';
   <button class="tab-btn" data-tab="content">Content</button>
   <button class="tab-btn" data-tab="stay">Stay</button>
   <button class="tab-btn" data-tab="rooms">Rooms<?php if ($rooms): ?> <span class="tab-btn__count"><?= count($rooms) ?></span><?php endif; ?></button>
+  <button class="tab-btn" data-tab="rates">Rates<?php if ($venueRates): ?> <span class="tab-btn__count"><?= count($venueRates) ?></span><?php endif; ?></button>
   <button class="tab-btn" data-tab="gallery">Gallery<?php if ($images): ?> <span class="tab-btn__count"><?= count($images) ?></span><?php endif; ?></button>
   <button class="tab-btn" data-tab="publish">Publish</button>
   <?php endif; ?>
@@ -422,6 +475,92 @@ include __DIR__ . '/_layout.php';
       <?php endif; ?>
     </div>
   </div>
+</div>
+
+<!-- ── TAB: Rates ── -->
+<div class="tab-panel" id="tab-rates">
+  <?php if (!$rooms): ?>
+  <div class="card"><div class="card__body">
+    <p style="padding:24px;text-align:center;color:var(--muted)">Add a room to this property before setting rates.</p>
+  </div></div>
+  <?php else: ?>
+
+  <div class="card" style="margin-bottom:20px">
+    <div class="card__head">
+      <span class="card__title">Set a rate</span>
+      <span class="text-muted" style="font-size:12px">One price and label across as many date ranges as you need</span>
+    </div>
+    <div class="card__body" style="padding:20px">
+      <?php
+        $rf_room_id = null;                     // property page → show the room selector
+        $rf_rooms   = $rooms;
+        $rf_action  = '/admin/venue-edit.php?id=' . (int)$id;
+        include __DIR__ . '/../includes/rate-form.php';
+      ?>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:20px">
+    <div class="card__head">
+      <span class="card__title">Calendar — <?= e($rateRoom['name']) ?></span>
+      <form method="GET" style="display:flex;gap:8px;align-items:center;margin:0">
+        <input type="hidden" name="id" value="<?= (int)$id ?>">
+        <input type="hidden" name="rate_month" value="<?= e($rateMonth) ?>">
+        <select name="rate_room" class="eselect" onchange="this.form.submit()">
+          <?php foreach ($rooms as $r): ?>
+          <option value="<?= (int)$r['id'] ?>"<?= (int)$r['id'] === (int)$rateRoom['id'] ? ' selected' : '' ?>><?= e($r['name']) ?></option>
+          <?php endforeach; ?>
+        </select>
+      </form>
+    </div>
+    <div class="card__body" style="padding:20px">
+      <?php
+        $rc_room_id       = (int)$rateRoom['id'];
+        $rc_default_price = (float)$rateRoom['price_amount'];
+        $rc_currency      = (string)$rateRoom['price_currency'];
+        $rc_month         = $rateMonth;
+        $rc_base_url      = '/admin/venue-edit.php?id=' . (int)$id . '&rate_room=' . (int)$rateRoom['id'];
+        include __DIR__ . '/../includes/rate-calendar.php';
+      ?>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card__head"><span class="card__title">All overrides in this property</span></div>
+    <div class="card__body" style="padding:0">
+      <?php if (!$venueRates): ?>
+      <p style="padding:24px;text-align:center;color:var(--muted)">No overrides yet. Default room prices apply.</p>
+      <?php else: ?>
+      <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Room</th><th>First night</th><th>Last night</th><th>Price/night</th><th>Label</th><th></th></tr></thead>
+        <tbody>
+          <?php foreach ($venueRates as $rt): ?>
+          <tr>
+            <td><strong><?= e($rt['room_name']) ?></strong></td>
+            <td><?= e(date('j M Y', strtotime((string)$rt['date_from']))) ?></td>
+            <td><?= e(date('j M Y', strtotime((string)$rt['date_to'] . ' -1 day'))) ?></td>
+            <td><?= e(number_format((float)$rt['price_amount'], 0)) ?></td>
+            <td><?= e((string)($rt['label'] ?? '')) ?></td>
+            <td style="text-align:right">
+              <form method="POST" style="display:inline" onsubmit="return confirm('Remove this rate?')">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action"  value="rate_delete">
+                <input type="hidden" name="rate_id" value="<?= (int)$rt['id'] ?>">
+                <input type="hidden" name="room_id" value="<?= (int)$rt['room_id'] ?>">
+                <button type="submit" class="btn-icon" title="Remove this rate"><?= admin_icon('trash', 15) ?></button>
+              </form>
+            </td>
+          </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+      </div>
+      <?php endif; ?>
+    </div>
+  </div>
+
+  <?php endif; ?>
 </div>
 
 <!-- ── TAB: Gallery ── -->
