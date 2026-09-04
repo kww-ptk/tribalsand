@@ -142,8 +142,12 @@ migration**, the table predates the editors. Helpers in **`includes/rates.php`**
   `require_login()` only, so it let reception set prices, against the rule that pricing is owner
   business.
 - Partials: `includes/rate-form.php` (N ranges, one price, one label) and
-  `includes/rate-calendar.php` (read-only month grid; an unset room price renders "—", never
-  "0"). Both use the shared `js/datepicker.js` loaded by `admin/_layout.php`. **Range rows are
+  `includes/rate-calendar.php` (read-only, **3 compact months by default** via `$rc_months`;
+  an unset room price renders "—", never "0", and compact cells abbreviate thousands as `61.5k`
+  with the full figure in the tooltip). The calendar resolves the WHOLE span in one
+  `rates_nightly_map()` call and slices per month in the view — `admin/rates.php` renders one
+  per room, so a per-month call would make an 8-room property fire 24 queries. Its CSS is
+  emitted once per page (`$GLOBALS['__rc_css_done']`) for the same reason. Both use the shared `js/datepicker.js` loaded by `admin/_layout.php`. **Range rows are
   cloned from a `<template>`, never from a live row** — `datepicker.js` marks bound buttons
   `data-dp-bound` and skips them, so a clone of a live row would look right and never open.
 - Test: `php tests/rates_logic.php` (71 assertions, DB work in a rolled-back transaction).
