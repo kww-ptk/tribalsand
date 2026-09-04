@@ -78,6 +78,7 @@ $__rcCell = function (float $v) use ($rc_compact, $__rcMoney): string {
 .rcal__cell--rate .rcal__price { color:#92400e; }
 .rcal__lbl { font-size:9px; color:#92400e; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .rcal__legend { font-size:11px; color:var(--muted); margin-top:12px; }
+.rcal.is-loading { opacity:.45; pointer-events:none; transition:opacity .1s; }
 
 /* Compact: several months side by side. Labels drop to the tooltip. */
 .rcal--sm .rcal__grid { gap:2px; }
@@ -89,7 +90,12 @@ $__rcCell = function (float $v) use ($rc_compact, $__rcMoney): string {
 </style>
 <?php endif; ?>
 
-<div class="rcal<?= $rc_compact ? ' rcal--sm' : '' ?>">
+<div class="rcal<?= $rc_compact ? ' rcal--sm' : '' ?>"
+     data-rcal
+     data-room-id="<?= (int)$rc_room_id ?>"
+     data-months="<?= (int)$rc_months ?>"
+     data-compact="<?= $rc_compact ? '1' : '0' ?>"
+     data-base="<?= e($rc_base_url) ?>">
   <div class="rcal__head">
     <span class="rcal__title"><?php
       $__lastName = date('M Y', strtotime($__rcEndEx . ' -1 day'));
@@ -98,10 +104,12 @@ $__rcCell = function (float $v) use ($rc_compact, $__rcMoney): string {
           : date('F Y', strtotime($__rcStart)));
     ?></span>
     <span style="display:flex;gap:6px">
-      <a class="btn-sm btn-outline" href="<?= e($rc_base_url . $__rcSep . 'rate_month=' . $__rcPrev) ?>">
+      <a class="btn-sm btn-outline rcal__nav" data-month="<?= e($__rcPrev) ?>"
+         href="<?= e($rc_base_url . $__rcSep . 'rate_month=' . $__rcPrev) ?>">
         <?= admin_icon('chevron-left', 14) ?> Prev
       </a>
-      <a class="btn-sm btn-outline" href="<?= e($rc_base_url . $__rcSep . 'rate_month=' . $__rcNext) ?>">
+      <a class="btn-sm btn-outline rcal__nav" data-month="<?= e($__rcNext) ?>"
+         href="<?= e($rc_base_url . $__rcSep . 'rate_month=' . $__rcNext) ?>">
         Next <?= admin_icon('chevron-right', 14) ?>
       </a>
     </span>
@@ -167,3 +175,55 @@ $__rcCell = function (float $v) use ($rc_compact, $__rcMoney): string {
     <?php endif; ?>
   </p>
 </div>
+
+<?php if (empty($GLOBALS['__rc_js_done'])): $GLOBALS['__rc_js_done'] = true; ?>
+<script>
+/* Prev/Next swap just the calendar instead of reloading the admin page.
+   Delegated once per page: admin/rates.php renders one calendar per room, and
+   each must step independently.
+
+   The links stay real URLs on purpose — with JS off, or if the fetch fails, the
+   browser follows them and the calendar still works. That fallback is why this
+   is an enhancement rather than a rewrite of the navigation. */
+(function () {
+  if (window.__rcalSwapBound) return;      // survives an admin shell content swap
+  window.__rcalSwapBound = true;
+
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest && e.target.closest('a.rcal__nav');
+    if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+
+    var cal = a.closest('[data-rcal]');
+    if (!cal || !cal.dataset.roomId) return;   // no data to re-request with — let the link navigate
+
+    e.preventDefault();
+    if (cal.classList.contains('is-loading')) return;
+    cal.classList.add('is-loading');
+
+    var qs = new URLSearchParams({
+      room:    cal.dataset.roomId,
+      month:   a.dataset.month || '',
+      months:  cal.dataset.months  || '3',
+      compact: cal.dataset.compact || '1',
+      base:    cal.dataset.base    || ''
+    });
+
+    fetch('/admin/rate-calendar-frag.php?' + qs.toString(), {
+      credentials: 'same-origin',
+      headers: { 'X-Requested-With': 'fetch' }
+    })
+      .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
+      .then(function (html) {
+        var tmp = document.createElement('div');
+        tmp.innerHTML = html;
+        var fresh = tmp.querySelector('[data-rcal]');
+        if (!fresh) throw new Error('no calendar in response');
+        cal.replaceWith(fresh);
+      })
+      .catch(function () {
+        window.location.href = a.href;   // session expired, offline, 404 — fall back to a real load
+      });
+  });
+})();
+</script>
+<?php endif; ?>

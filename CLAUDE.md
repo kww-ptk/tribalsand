@@ -147,7 +147,13 @@ migration**, the table predates the editors. Helpers in **`includes/rates.php`**
   with the full figure in the tooltip). The calendar resolves the WHOLE span in one
   `rates_nightly_map()` call and slices per month in the view — `admin/rates.php` renders one
   per room, so a per-month call would make an 8-room property fire 24 queries. Its CSS is
-  emitted once per page (`$GLOBALS['__rc_css_done']`) for the same reason. Both use the shared `js/datepicker.js` loaded by `admin/_layout.php`. **Range rows are
+  emitted once per page (`$GLOBALS['__rc_css_done']`) for the same reason.
+  **Prev/Next swap only the calendar**, via `admin/rate-calendar-frag.php` — the admin
+  shell only intercepts `a.sidebar__link` / `a[data-shell-link]`, so these links used to do
+  a full page load. They are still real URLs and the handler falls back to following them
+  when the fetch fails (expired session, offline), so the calendar works with JS off. The
+  fragment endpoint re-reads price and currency from the room and re-checks the room
+  against `admin_venue_ids()` — the room id comes from the client and is never trusted. Both use the shared `js/datepicker.js` loaded by `admin/_layout.php`. **Range rows are
   cloned from a `<template>`, never from a live row** — `datepicker.js` marks bound buttons
   `data-dp-bound` and skips them, so a clone of a live row would look right and never open.
 - Test: `php tests/rates_logic.php` (71 assertions, DB work in a rolled-back transaction).
