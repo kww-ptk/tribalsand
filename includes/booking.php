@@ -604,6 +604,28 @@ function activity_venue_ids(int $tourId): array {
     } catch (Throwable $e) { return []; }
 }
 
+/** The location filter's allowed values (matches the homepage property filter + "all"). */
+const TOUR_LOCATIONS = ['all', 'watamu', 'kilifi', 'vipingo'];
+
+/** Coerce a posted/stored tour location to a valid value, defaulting to 'all'. */
+function tour_normalize_location(?string $loc): string {
+    $loc = strtolower(trim((string)$loc));
+    return in_array($loc, TOUR_LOCATIONS, true) ? $loc : 'all';
+}
+
+/** True once add_tour_favourite_location.sql is applied (memoised). Pre-migration: false. */
+function tours_favloc_supported(): bool {
+    static $cached = null;
+    if ($cached !== null) return $cached;
+    try {
+        $r = db_query(
+            "SELECT 1 FROM information_schema.columns
+             WHERE table_name = 'tours' AND column_name = 'location' LIMIT 1"
+        )->fetch();
+        return $cached = (bool) $r;
+    } catch (Throwable $e) { return $cached = false; }
+}
+
 /** Booking total for an activity given pax: per-person × pax, or the flat amount; null when unpriced. */
 function activity_price_total(array $tour, int $pax): ?float {
     if (!isset($tour['price_amount']) || $tour['price_amount'] === null || $tour['price_amount'] === '') return null;

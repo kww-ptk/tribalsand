@@ -61,6 +61,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $upsPlace = array_key_exists($p, UPSELL_PLACEMENTS) ? $p : 'none';
             }
 
+            // Guest Favourite + Location — written via a separate, pre-migration-safe
+            // UPDATE (mirrors the upsell_placement pattern) so saving a tour never
+            // 500s on a deploy where add_tour_favourite_location.sql isn't applied yet.
+            $favVal = isset($_POST['is_guest_favourite']) ? 'TRUE' : 'FALSE';
+            $locVal = tour_normalize_location($_POST['location'] ?? 'all');
+            $applyFavLoc = function (int $tid) use ($favVal, $locVal) {
+                if (tours_favloc_supported()) {
+                    db_query('UPDATE tours SET is_guest_favourite = :f, location = :l WHERE id = :id',
+                        [':f' => $favVal, ':l' => $locVal, ':id' => $tid]);
+                }
+            };
+
             if ($isNew) {
                 db_query(
                     "INSERT INTO tours (name,slug,category,tag_label,duration,short_desc,long_desc,highlights_json,
@@ -71,6 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 );
                 $id   = (int)db()->lastInsertId();
                 if ($upsPlace !== null) db_query('UPDATE tours SET upsell_placement = :p WHERE id = :id', [':p' => $upsPlace, ':id' => $id]);
+                $applyFavLoc($id);
                 sync_tour_venues($id, (array)($_POST['venue_ids'] ?? []));   // helper defined in Step 2
                 audit_log('tour.save', 'tour', $id, $data[':name']);
                 $tour = db_query('SELECT * FROM tours WHERE id = :id', [':id' => $id])->fetch();
@@ -87,6 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     $data
                 );
                 if ($upsPlace !== null) db_query('UPDATE tours SET upsell_placement = :p WHERE id = :id', [':p' => $upsPlace, ':id' => $id]);
+                $applyFavLoc($id);
                 sync_tour_venues($id, (array)($_POST['venue_ids'] ?? []));
                 audit_log('tour.save', 'tour', $id, $data[':name']);
                 $success = 'Details saved.';
@@ -294,6 +308,22 @@ include __DIR__ . '/_layout.php';
           <label>Duration</label>
           <input type="text" name="duration" value="<?= e($tour['duration'] ?? '') ?>" placeholder="e.g. 3 days / 2 nights">
         </div>
+        <div class="field">
+          <label>Location <span class="text-muted">(activities-page filter)</span></label>
+          <?php $__loc = tour_normalize_location($tour['location'] ?? 'all'); ?>
+          <select name="location">
+            <option value="all"     <?= $__loc === 'all'     ? 'selected' : '' ?>>All Locations</option>
+            <option value="watamu"  <?= $__loc === 'watamu'  ? 'selected' : '' ?>>Watamu</option>
+            <option value="kilifi"  <?= $__loc === 'kilifi'  ? 'selected' : '' ?>>Kilifi</option>
+            <option value="vipingo" <?= $__loc === 'vipingo' ? 'selected' : '' ?>>Vipingo</option>
+          </select>
+        </div>
+      </div>
+      <div style="margin:4px 0 2px">
+        <label class="toggle-row" style="display:inline-flex;align-items:center;gap:8px;font-size:13px">
+          <input type="checkbox" name="is_guest_favourite" value="1" <?= (($tour['is_guest_favourite'] ?? false) && ($tour['is_guest_favourite'] ?? 'f') !== 'f') ? 'checked' : '' ?>>
+          <span>Guest Favourite <span class="text-muted">(badges the card + shows in the Guest Favourites filter)</span></span>
+        </label>
       </div>
 
       <div style="margin:14px 0">
