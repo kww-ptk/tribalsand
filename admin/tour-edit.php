@@ -319,61 +319,69 @@ include __DIR__ . '/_layout.php';
           </select>
         </div>
       </div>
-      <div style="margin:4px 0 2px">
-        <label class="toggle-row" style="display:inline-flex;align-items:center;gap:8px;font-size:13px">
-          <input type="checkbox" name="is_guest_favourite" value="1" <?= (($tour['is_guest_favourite'] ?? false) && ($tour['is_guest_favourite'] ?? 'f') !== 'f') ? 'checked' : '' ?>>
-          <span>Guest Favourite <span class="text-muted">(badges the card + shows in the Guest Favourites filter)</span></span>
-        </label>
+      <label class="ckwrap" style="margin:2px 0 4px">
+        <input type="checkbox" name="is_guest_favourite" value="1" <?= (($tour['is_guest_favourite'] ?? false) && ($tour['is_guest_favourite'] ?? 'f') !== 'f') ? 'checked' : '' ?>>
+        <span class="ck"></span>
+        <span>Guest Favourite <span class="text-muted">(badges the card + shows in the Guest Favourites filter)</span></span>
+      </label>
+
+      <div class="form-row" style="margin-top:14px">
+        <div class="field" style="margin-bottom:0">
+          <label>Price <span class="text-muted">(shown on the guest card, and charged on the bill)</span></label>
+          <input type="number" class="inp inp--num" name="price_amount" step="0.01" min="0" value="<?= e($tour['price_amount'] ?? '') ?>" placeholder="0.00" style="max-width:200px">
+          <?php
+            // Until this tour is priced numerically, surface whatever was typed into
+            // the old free-text Price field. That column is now written by nothing and
+            // read by nothing else — this is the only way the owner sees it again. It
+            // is NOT auto-converted: "From $60 / person" would mean guessing a currency
+            // and per-person, then silently charging a guest that number.
+            $__legacyPrice = trim((string)($tour['price'] ?? ''));
+          ?>
+          <?php if ($__legacyPrice !== '' && !is_priced($tour['price_amount'] ?? null)): ?>
+          <span class="field-hint">Previously entered as text: <strong><?= e($__legacyPrice) ?></strong> — retype it above as a number to use it.</span>
+          <?php endif; ?>
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <label>Max pax <span class="text-muted">(optional)</span></label>
+          <input type="number" class="inp inp--num" name="max_pax" min="1" value="<?= e($tour['max_pax'] ?? '') ?>" placeholder="No limit" style="max-width:140px">
+        </div>
+      </div>
+      <label class="ckwrap" style="margin:12px 0 2px">
+        <input type="checkbox" name="price_per_person" value="1" <?= (($tour['price_per_person'] ?? true) && ($tour['price_per_person'] ?? 't') !== 'f') ? 'checked' : '' ?>>
+        <span class="ck"></span>
+        <span>Price is per person</span>
+      </label>
+
+      <div class="field" style="margin-top:16px">
+        <label>What’s included</label>
+        <textarea class="inp inp--area" name="whats_included" rows="3" placeholder="e.g. Return transfers, guide, entrance fees, bottled water"><?= e($tour['whats_included'] ?? '') ?></textarea>
       </div>
 
-      <div style="margin:14px 0">
-        <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">Price <span style="color:var(--muted);font-weight:400">(shown on the guest card, and charged on the bill)</span></label>
-        <input type="number" name="price_amount" step="0.01" min="0" value="<?= e($tour['price_amount'] ?? '') ?>" placeholder="Enter price" style="width:160px;padding:8px 10px">
-        <?php
-          // Until this tour is priced numerically, show whatever was typed into the
-          // old free-text Price field. That column is written by nothing now and read
-          // by nothing ever — this is the only way the owner sees it again. It is NOT
-          // auto-converted: "From $60 / person" would mean guessing a currency and
-          // guessing per-person, then silently charging a guest that number.
-          $__legacyPrice = trim((string)($tour['price'] ?? ''));
-        ?>
-        <?php if ($__legacyPrice !== '' && !is_priced($tour['price_amount'] ?? null)): ?>
-        <p class="text-muted" style="margin:6px 0 0;font-size:12.5px">
-          Previously entered as text: <strong><?= e($__legacyPrice) ?></strong> — retype it above as a number to use it.
-        </p>
-        <?php endif; ?>
-        <label style="margin-left:14px;font-size:13px"><input type="checkbox" name="price_per_person" value="1" <?= (($tour['price_per_person'] ?? true) && ($tour['price_per_person'] ?? 't') !== 'f') ? 'checked' : '' ?>> Price is per person</label>
-        <label style="margin-left:14px;font-size:13px">Max pax <input type="number" name="max_pax" min="1" value="<?= e($tour['max_pax'] ?? '') ?>" placeholder="Enter max guests" style="width:80px;padding:8px 10px"></label>
-      </div>
-
-      <div style="margin:14px 0">
-        <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:4px">What’s included</label>
-        <textarea name="whats_included" rows="3" style="width:100%;max-width:640px;padding:8px 10px" placeholder="e.g. Return transfers, guide, entrance fees, bottled water"><?= e($tour['whats_included'] ?? '') ?></textarea>
-      </div>
-
-      <div style="margin:14px 0">
-        <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:6px">Available at <span style="color:var(--muted);font-weight:400">(none ticked = shown at every property)</span></label>
+      <div class="field" style="margin-top:16px">
+        <label>Available at <span class="text-muted">(none ticked = shown at every property)</span></label>
         <?php
           $__assigned = $id ? activity_venue_ids((int)$id) : [];
           $__venues   = db_query("SELECT id, name FROM venues ORDER BY sort_order, name")->fetchAll();
-          foreach ($__venues as $__v):
         ?>
-        <label style="display:inline-flex;align-items:center;gap:6px;margin:0 14px 8px 0;font-size:13px">
-          <input type="checkbox" name="venue_ids[]" value="<?= (int)$__v['id'] ?>" <?= in_array((int)$__v['id'], $__assigned, true) ? 'checked' : '' ?>>
-          <?= e($__v['name']) ?>
-        </label>
-        <?php endforeach; ?>
+        <div class="optset">
+          <?php foreach ($__venues as $__v): ?>
+          <label class="optchip">
+            <input type="checkbox" name="venue_ids[]" value="<?= (int)$__v['id'] ?>" <?= in_array((int)$__v['id'], $__assigned, true) ? 'checked' : '' ?>>
+            <?= e($__v['name']) ?>
+          </label>
+          <?php endforeach; ?>
+        </div>
       </div>
 
       <?php if (upsells_supported()): $__place = (string)($tour['upsell_placement'] ?? 'none'); ?>
-      <div style="margin:14px 0">
-        <label style="display:block;font-size:13px;color:var(--muted);margin-bottom:6px">Offer as a booking add-on</label>
-        <select name="upsell_placement" class="inp" style="max-width:320px">
+      <div class="field" style="margin-top:16px">
+        <label>Offer as a booking add-on</label>
+        <select name="upsell_placement" style="max-width:320px">
           <?php foreach (UPSELL_PLACEMENTS as $__pk => $__pl): ?>
           <option value="<?= e($__pk) ?>"<?= $__place === $__pk ? ' selected' : '' ?>><?= e($__pl) ?></option>
           <?php endforeach; ?>
         </select>
-        <span style="display:block;font-size:12px;color:var(--muted);margin-top:5px">
+        <span class="field-hint">
           Where guests can add this while booking. Only takes effect at properties with
           &ldquo;Offer add-ons in the booking flow&rdquo; ticked (Properties &rarr; Edit &rarr; Details),
           and only at the properties selected above.
@@ -383,15 +391,15 @@ include __DIR__ . '/_layout.php';
 
       <div class="field" style="margin-top:16px">
         <label>Short description <span class="text-muted">(shown on listing cards)</span></label>
-        <textarea name="short_desc" rows="3" placeholder="One or two sentences about this tour."><?= e($tour['short_desc'] ?? '') ?></textarea>
+        <textarea class="inp inp--area" name="short_desc" rows="3" placeholder="One or two sentences about this tour."><?= e($tour['short_desc'] ?? '') ?></textarea>
       </div>
       <div class="field" style="margin-top:16px">
         <label>Full description <span class="text-muted">(shown on the tour detail page)</span></label>
-        <textarea name="long_desc" rows="6" placeholder="Full itinerary, what's included, etc."><?= e($tour['long_desc'] ?? '') ?></textarea>
+        <textarea class="inp inp--area" name="long_desc" rows="6" placeholder="Full itinerary, what's included, etc."><?= e($tour['long_desc'] ?? '') ?></textarea>
       </div>
       <div class="field" style="margin-top:16px">
         <label>Highlights <span class="text-muted">(one per line)</span></label>
-        <textarea name="highlights" rows="5" placeholder="Game drive at sunrise&#10;Visit the Tsavo river crossing&#10;Overnight at camp"><?= e($highlights_text) ?></textarea>
+        <textarea class="inp inp--area" name="highlights" rows="5" placeholder="Game drive at sunrise&#10;Visit the Tsavo river crossing&#10;Overnight at camp"><?= e($highlights_text) ?></textarea>
       </div>
     </div>
   </div>
@@ -413,7 +421,11 @@ include __DIR__ . '/_layout.php';
         <?= csrf_field() ?>
         <div class="field">
           <label>Upload images <span class="text-muted">(JPEG, PNG or WebP, max 5 MB each)</span></label>
-          <input type="file" name="gallery_upload[]" multiple accept="image/jpeg,image/png,image/webp">
+          <label class="filefield">
+            <span class="btn-outline btn-sm"><?= admin_icon('image', 14) ?> Choose images</span>
+            <input type="file" name="gallery_upload[]" multiple accept="image/jpeg,image/png,image/webp" data-ff-input>
+            <span class="filefield__name" data-ff-name>No files selected</span>
+          </label>
         </div>
         <button type="submit" class="btn-primary" style="margin-top:12px">Upload</button>
       </form>
@@ -490,8 +502,9 @@ include __DIR__ . '/_layout.php';
       <form method="POST" action="/admin/tour-edit?id=<?= $id ?>">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="save_publish">
-        <label class="toggle-row">
+        <label class="ckwrap">
           <input type="checkbox" name="is_published" value="1" <?= ($tour['is_published'] ?? false) ? 'checked' : '' ?>>
+          <span class="ck"></span>
           <span>Published (visible on the site)</span>
         </label>
         <button type="submit" class="btn-primary" style="margin-top:16px">Update</button>
@@ -520,6 +533,18 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
 // Library pick → submit the add-from-library form (PRG reload shows the photo).
 document.querySelectorAll('.gallery-libform input[name="image_key"]').forEach(function (inp) {
   inp.addEventListener('change', function () { if (inp.value && inp.form) inp.form.submit(); });
+});
+
+// Styled file field → reflect the chosen file names next to the button.
+document.querySelectorAll('[data-ff-input]').forEach(function (inp) {
+  var out = inp.parentNode.querySelector('[data-ff-name]');
+  if (!out) return;
+  inp.addEventListener('change', function () {
+    var n = inp.files ? inp.files.length : 0;
+    out.textContent = n === 0 ? 'No files selected'
+      : n === 1 ? inp.files[0].name
+      : n + ' files selected';
+  });
 });
 </script>
 
