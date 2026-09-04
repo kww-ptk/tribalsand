@@ -86,12 +86,21 @@ if ($__shellFrag) { ob_start(); return; }
       $__chev = '<svg class="navgroup__chev" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
       $__navgroup = function (string $key, string $title, string $items) use ($__chev) {
           if (trim($items) === '') return;
-          // Open a group by default when (a) it's Operations, or (b) it contains the
-          // active page's link — so the current page's section is never collapsed out
-          // of view on a full load. (A user can still expand/collapse; a collapse is
-          // remembered, but the active group is always re-opened — see the script below.)
+          // Open a group by default when it is a primary work area (Operations,
+          // Bookings) or it contains the active page's link, so the current
+          // section is never collapsed out of view on a full load.
+          //
+          // Bookings is default-open because it is where reception actually
+          // works. Their home is Front desk, which lives in Operations, so with
+          // Operations alone open they landed on a page where Holds, Calendar,
+          // Rates, Submissions and Conflicts were all present in the markup but
+          // hidden behind a collapsed header — and reported having no access.
+          //
+          // NOTE: expand/collapse is NOT persisted (there is no localStorage for
+          // these groups), so every full page load returns to exactly this
+          // default. A group that is closed here is closed on every single load.
           $__hasActive = strpos($items, 'is-active') !== false;
-          $open = ($key === 'operations' || $__hasActive) ? ' open' : '';
+          $open = (in_array($key, ['operations', 'bookings'], true) || $__hasActive) ? ' open' : '';
           echo '<details class="navgroup" data-group="' . e($key) . '"' . $open . '>'
              . '<summary class="navgroup__head"><span>' . e($title) . '</span>' . $__chev . '</summary>'
              . '<div class="navgroup__items">' . $items . '</div>'
@@ -274,7 +283,12 @@ if ($__shellFrag) { ob_start(); return; }
     <script>
     /* Nav groups (#17): restore collapsed state; keep the active group open. */
     (function () {
-      var KEY = 'ts_nav_v2', saved = {};   // v2: discards the old always-restore state
+      // v3 discards every remembered collapse from v2. A stored collapse WINS over
+      // the server-rendered default (see below), so reception accounts that had
+      // Bookings collapsed would keep it hidden even now that it defaults open —
+      // the fix would silently not reach the people who reported the problem.
+      // Bump this key whenever a group's default changes.
+      var KEY = 'ts_nav_v3', saved = {};
       try { saved = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) {}
       // Default (server-rendered): Operations + the active page's group open, others
       // closed. On load we honor a remembered COLLAPSE only — EXCEPT for the group
