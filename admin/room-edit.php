@@ -5,6 +5,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_login();
 require_owner();
 require_once __DIR__ . '/../includes/admin-media-picker.php';   // "choose from library" for the gallery
+require_once __DIR__ . '/../includes/rates.php';
 
 $id   = isset($_GET['id']) ? (int)$_GET['id'] : 0;
 $room = $id ? db_query('SELECT r.*, v.slug AS venue_slug FROM rooms r LEFT JOIN venues v ON v.id = r.venue_id WHERE r.id = :id', [':id' => $id])->fetch() : null;
@@ -15,6 +16,34 @@ $preselect_venue = ($isNew && isset($_GET['venue'])) ? (int)$_GET['venue'] : (in
 
 $success = '';
 $error   = '';
+
+// ── POST: rate overrides ────────────────────────────────────────────────────
+// Owner-only page. room_id is forced to THIS room, so a posted foreign id
+// cannot price another room from here.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'rates_save' && $id) {
+    verify_csrf();
+    $rt_n = rates_apply_ranges(
+        $id,
+        rates_ranges_from_post($_POST),
+        (float)($_POST['price'] ?? 0),
+        trim((string)($_POST['rate_label'] ?? ''))
+    );
+    if ($rt_n) {
+        audit_log('rates.save', 'room', $id, "{$rt_n} range(s)");
+        header("Location: /admin/room-edit.php?id={$id}&saved=1");
+        exit;
+    }
+    $error = 'Nothing saved — check the dates and that the price is above zero.';
+}
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'rate_delete' && $id) {
+    verify_csrf();
+    if (rates_delete((int)($_POST['rate_id'] ?? 0), null)) {
+        audit_log('rates.delete', 'room', $id, '');
+    }
+    header("Location: /admin/room-edit.php?id={$id}&saved=1");
+    exit;
+}
 
 // ── POST: save details / seo / publish ──────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
@@ -269,6 +298,10 @@ $roomVenueSlug = $room['venue_slug'] ?? '';
 $roomLiveUrl   = $roomVenueSlug !== '' ? '/' . rawurlencode($roomVenueSlug) . '#room-' . rawurlencode($room['slug'] ?? '') : '';
 $roomLiveDisp  = $roomVenueSlug !== '' ? 'tribalsand.com/' . $roomVenueSlug : 'tribalsand.com';
 $pageTitle  = $isNew ? 'Add Room' : 'Edit: ' . ($room['name'] ?? '');
+$roomRates = $id ? rates_for_room($id) : [];
+$rateMonth = isset($_GET['rate_month']) && strtotime($_GET['rate_month'] . '-01')
+    ? substr((string)$_GET['rate_month'], 0, 7)
+    : date('Y-m');
 $activeMenu = 'rooms';
 
 include __DIR__ . '/_layout.php';
@@ -296,6 +329,7 @@ include __DIR__ . '/_layout.php';
   <?php if (!$isNew): ?>
   <button class="tab-btn" data-tab="gallery">Gallery</button>
   <button class="tab-btn" data-tab="units">Units</button>
+  <button class="tab-btn" data-tab="rates">Rates<?php if ($roomRates): ?> <span class="tab-btn__count"><?= count($roomRates) ?></span><?php endif; ?></button>
   <button class="tab-btn" data-tab="seo">SEO</button>
   <button class="tab-btn" data-tab="publish">Publish</button>
   <?php endif; ?>
@@ -643,6 +677,71 @@ include __DIR__ . '/_layout.php';
     <strong>How units work:</strong> A room type (e.g. "Standard Room") can have multiple physical units (e.g. Unit A, Unit B).
     When availability mode is active, the system automatically assigns an available unit when a guest requests a hold.
     View and manage holds at <a href="/admin/holds.php">Holds &amp; Bookings</a>.
+  </div>
+</div>
+
+<!-- ── TAB: Rates ── -->
+<div class="tab-panel" id="tab-rates">
+  <div class="card" style="margin-bottom:20px">
+    <div class="card__head">
+      <span class="card__title">Set a rate</span>
+      <span class="text-muted" style="font-size:12px">One price and label across as many date ranges as you need</span>
+    </div>
+    <div class="card__body" style="padding:20px">
+      <?php
+        $rf_room_id = (int)$id;                 // room page → no selector
+        $rf_rooms   = [];
+        $rf_action  = '/admin/room-edit.php?id=' . (int)$id;
+        include __DIR__ . '/../includes/rate-form.php';
+      ?>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:20px">
+    <div class="card__head"><span class="card__title">Calendar</span></div>
+    <div class="card__body" style="padding:20px">
+      <?php
+        $rc_room_id       = (int)$id;
+        $rc_default_price = (float)($room['price_amount'] ?? 0);
+        $rc_currency      = (string)($room['price_currency'] ?? 'USD');
+        $rc_month         = $rateMonth;
+        $rc_base_url      = '/admin/room-edit.php?id=' . (int)$id;
+        include __DIR__ . '/../includes/rate-calendar.php';
+      ?>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card__head"><span class="card__title">Overrides on this room</span></div>
+    <div class="card__body" style="padding:0">
+      <?php if (!$roomRates): ?>
+      <p style="padding:24px;text-align:center;color:var(--muted)">No overrides yet. The default room price applies.</p>
+      <?php else: ?>
+      <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>First night</th><th>Last night</th><th>Price/night</th><th>Label</th><th></th></tr></thead>
+        <tbody>
+          <?php foreach ($roomRates as $rt): ?>
+          <tr>
+            <td><?= e(date('j M Y', strtotime((string)$rt['date_from']))) ?></td>
+            <td><?= e(date('j M Y', strtotime((string)$rt['date_to'] . ' -1 day'))) ?></td>
+            <td><?= e(number_format((float)$rt['price_amount'], 0)) ?></td>
+            <td><?= e((string)($rt['label'] ?? '')) ?></td>
+            <td style="text-align:right">
+              <form method="POST" style="display:inline" onsubmit="return confirm('Remove this rate?')">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action"  value="rate_delete">
+                <input type="hidden" name="rate_id" value="<?= (int)$rt['id'] ?>">
+                <button type="submit" class="btn-icon" title="Remove this rate"><?= admin_icon('trash', 15) ?></button>
+              </form>
+            </td>
+          </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+      </div>
+      <?php endif; ?>
+    </div>
   </div>
 </div>
 
