@@ -48,6 +48,7 @@ $__rcMoney = function (float $v): string {
 .rcal__cell--today { box-shadow:inset 0 0 0 2px #0369a1; }
 .rcal__day { font-size:10px; color:var(--muted); }
 .rcal__price { font-size:12px; font-weight:700; color:#102F3A; }
+.rcal__price--unset { color:#b6c2c8; font-weight:600; }
 .rcal__cell--rate .rcal__price { color:#92400e; }
 .rcal__lbl { font-size:9px; color:#92400e; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .rcal__legend { font-size:11px; color:var(--muted); margin-top:10px; }
@@ -85,7 +86,11 @@ $__rcMoney = function (float $v): string {
     ?>
       <div class="<?= $__cls ?>" title="<?= e(date('D j M', strtotime($__ymd)) . ' · ' . $__title) ?>">
         <div class="rcal__day"><?= (int)date('j', strtotime($__ymd)) ?></div>
-        <div class="rcal__price"><?= e($__rcMoney((float)$__n['price'])) ?></div>
+        <div class="rcal__price<?= (float)$__n['price'] <= 0 ? ' rcal__price--unset' : '' ?>"><?php
+          // A room with no default price would otherwise render "0" on every
+          // night, which reads as broken rather than as "nothing set yet".
+          echo (float)$__n['price'] > 0 ? e($__rcMoney((float)$__n['price'])) : '—';
+        ?></div>
         <?php if ($__n['label'] !== null): ?>
           <div class="rcal__lbl"><?= e($__n['label']) ?></div>
         <?php endif; ?>
@@ -94,7 +99,13 @@ $__rcMoney = function (float $v): string {
   </div>
 
   <p class="rcal__legend">
-    Prices in <?= e($rc_currency) ?> per night. Yellow nights are overrides; the rest
-    use the room's default price of <?= e($rc_currency) ?> <?= e($__rcMoney($rc_default_price)) ?>.
+    <?php if ($rc_default_price > 0): ?>
+      Prices in <?= e($rc_currency) ?> per night. Yellow nights are overrides; the rest
+      use the room's default price of <?= e($rc_currency) ?> <?= e($__rcMoney($rc_default_price)) ?>.
+    <?php else: ?>
+      Yellow nights are overrides. This room has <strong>no default price</strong>, so every
+      other night shows “—” — set one under the room's <strong>Details</strong> tab, or these
+      nights will quote as free.
+    <?php endif; ?>
   </p>
 </div>
