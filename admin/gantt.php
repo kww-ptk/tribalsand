@@ -74,39 +74,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $msg = 'Block removed.';
     }
 
-    if ($action === 'set_rate') {
-        $room_id   = (int)($_POST['room_id']    ?? 0);
-        $date_from = $_POST['rate_from']  ?? '';
-        $date_to   = $_POST['rate_to']    ?? '';
-        $price     = (float)($_POST['price']    ?? 0);
-        $label     = trim($_POST['rate_label']  ?? '');
-
-        // date_to from form is inclusive last night — add 1 day for exclusive DB storage
-        $date_to_excl = $date_to ? date('Y-m-d', strtotime($date_to . ' +1 day')) : '';
-
-        if ($room_id && !$roomInScope($room_id)) {
-            $err = 'That room isn’t one of your properties.';
-        } elseif ($room_id && $date_from && $date_to_excl && $price > 0 && $date_from < $date_to_excl) {
-            db_query(
-                "INSERT INTO rates (room_id, date_from, date_to, price_amount, label)
-                 VALUES (:rid, :df, :dt, :price, :label)",
-                [':rid' => $room_id, ':df' => $date_from, ':dt' => $date_to_excl,
-                 ':price' => $price, ':label' => $label]
-            );
-            $msg = 'Rate override added.';
-        } else {
-            $err = 'Invalid rate data — check all fields are filled and dates are valid.';
-        }
-    }
-
-    if ($action === 'delete_rate') {
-        db_query(
-            'DELETE FROM rates WHERE id = :id' . ($gRoomIds !== '' ? " AND room_id IN ({$gRoomIds})" : ''),
-            [':id' => (int)($_POST['rate_id'] ?? 0)]
-        );
-        $msg = 'Rate removed.';
-    }
-
     if ($action === 'update_block') {
         $block_id  = (int)($_POST['block_id']  ?? 0);
         $unit_id   = (int)($_POST['unit_id']   ?? 0);
@@ -228,9 +195,12 @@ $blocks_by_unit = [];
 foreach ($blocks as $b) $blocks_by_unit[(int)$b['unit_id']][] = $b;
 
 $rates = db_query(
-    "SELECT r.*, rm.name AS room_name
-     FROM rates r JOIN rooms rm ON rm.id = r.room_id
-     ORDER BY r.date_from ASC LIMIT 100"
+    "SELECT date_from, date_to, room_id
+     FROM rates r
+     WHERE date_from < :end AND date_to > :start"
+     . ($gRoomIds !== '' ? " AND room_id IN ({$gRoomIds})" : '') . "
+     ORDER BY date_from ASC",
+    [':start' => $start_str, ':end' => $end_str]
 )->fetchAll();
 
 // Build rate-date lookups scoped correctly:
@@ -572,68 +542,13 @@ include __DIR__ . '/_layout.php';
 
 <?php endif; // end if units ?>
 
-<!-- ── Rate overrides ── -->
+<!-- ── Rate overrides moved ── -->
 <div class="card" style="margin-bottom:24px">
-  <div class="card__head">
-    <span class="card__title">Price Overrides</span>
-    <span class="text-muted" style="font-size:12px">Set a nightly rate for a date range (overrides default room price)</span>
-  </div>
-  <div class="card__body" style="padding:20px">
-    <form method="POST" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:20px">
-      <?= csrf_field() ?>
-      <input type="hidden" name="action" value="set_rate">
-      <div class="field" style="margin:0">
-        <label>Room</label>
-        <select name="room_id" required>
-          <?php foreach ($rooms as $r): ?><option value="<?= e($r['id']) ?>"><?= e($r['name']) ?></option><?php endforeach; ?>
-        </select>
-      </div>
-      <div class="field" style="margin:0">
-        <label>From (first night)</label>
-        <div class="dp" style="min-width:140px">
-          <div class="dp__display" id="dpRateFromDisplay" tabindex="0">Pick a date</div>
-          <input type="hidden" name="rate_from" id="dpRateFromVal">
-          <div class="dp__pop is-hidden" id="dpRateFromPop"></div>
-        </div>
-      </div>
-      <div class="field" style="margin:0">
-        <label>To (last night)</label>
-        <div class="dp" style="min-width:140px">
-          <div class="dp__display" id="dpRateToDisplay" tabindex="0">Pick a date</div>
-          <input type="hidden" name="rate_to" id="dpRateToVal">
-          <div class="dp__pop is-hidden" id="dpRateToPop"></div>
-        </div>
-      </div>
-      <div class="field" style="margin:0"><label>Price / night</label><input type="number" name="price" step="0.01" min="1" placeholder="450" required style="width:90px"></div>
-      <div class="field" style="margin:0"><label>Label</label><input type="text" name="rate_label" placeholder="Peak Season" style="width:130px"></div>
-      <button type="submit" class="btn-primary btn-sm">Add Override</button>
-    </form>
-    <?php if ($rates): ?>
-    <table class="data-table">
-      <thead><tr><th>Room</th><th>From</th><th>To</th><th>Price/night</th><th>Label</th><th></th></tr></thead>
-      <tbody>
-      <?php foreach ($rates as $rate): ?>
-      <tr>
-        <td><?= e($rate['room_name']) ?></td>
-        <td><?= e($rate['date_from']) ?></td>
-        <td><?= e($rate['date_to']) ?></td>
-        <td><?= e($rate['price_amount']) ?></td>
-        <td><?= e($rate['label'] ?? '') ?></td>
-        <td>
-          <form method="POST" style="display:inline">
-            <?= csrf_field() ?>
-            <input type="hidden" name="action"  value="delete_rate">
-            <input type="hidden" name="rate_id" value="<?= e($rate['id']) ?>">
-            <button type="submit" class="btn-danger btn-sm" onclick="return confirm('Remove this rate?')">Remove</button>
-          </form>
-        </td>
-      </tr>
-      <?php endforeach; ?>
-      </tbody>
-    </table>
-    <?php else: ?>
-    <p style="color:var(--muted);font-size:13px">No rate overrides. Default room prices apply.</p>
-    <?php endif; ?>
+  <div class="card__body" style="padding:16px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
+    <span class="text-muted" style="font-size:13px">
+      Nightly rates are edited on each property and room, and shown as a calendar on the Rates page.
+    </span>
+    <a href="/admin/rates.php" class="btn-sm btn-outline">Open Rates <?= admin_icon('chevron-right', 14) ?></a>
   </div>
 </div>
 
@@ -1182,8 +1097,6 @@ function makePicker(popId, hiddenId, displayId) {
 
 const dpFrom     = makePicker('dpFromPop',     'm_date_from',  'dpFromDisplay');
 const dpTo       = makePicker('dpToPop',       'm_date_to',    'dpToDisplay');
-const dpRateFrom = makePicker('dpRateFromPop', 'dpRateFromVal','dpRateFromDisplay');
-const dpRateTo   = makePicker('dpRateToPop',   'dpRateToVal',  'dpRateToDisplay');
 </script>
 
 <?php include __DIR__ . '/_layout_end.php'; ?>
