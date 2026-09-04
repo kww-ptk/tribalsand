@@ -26,14 +26,6 @@ $unitInScope = function (int $unitId) use ($gScope): bool {
     )->fetchColumn();
     return $v !== false && $v !== null && in_array((int)$v, $gScope, true);
 };
-/** Is this room inside the current account's venues? */
-$roomInScope = function (int $roomId) use ($gScope): bool {
-    if ($gScope === null) return true;
-    if (!$gScope || $roomId <= 0) return false;
-    $v = db_query('SELECT venue_id FROM rooms WHERE id = :id', [':id' => $roomId])->fetchColumn();
-    return $v !== false && $v !== null && in_array((int)$v, $gScope, true);
-};
-
 // ── POST handlers ────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
@@ -229,9 +221,6 @@ $ical_feeds = db_query(
      ORDER BY r.sort_order ASC, f.id ASC"
 )->fetchAll();
 
-$rooms       = db_query(
-    "SELECT id, name FROM rooms r" . ($gVenueOk !== '' ? " WHERE {$gVenueOk}" : '') . " ORDER BY sort_order ASC"
-)->fetchAll();
 $env         = parse_env();
 $site_url    = rtrim($env['SITE_URL'] ?? 'https://tribalsand.com', '/');
 $sync_secret = $env['ICAL_SYNC_SECRET'] ?? '';
