@@ -12,12 +12,12 @@ function db(): PDO {
     static $pdo = null;
     if ($pdo !== null) return $pdo;
 
-    // Neon is serverless and scales to zero when idle; the first connect after a
-    // pause has to wake the compute, which can take tens of seconds. The PHP CLI
-    // built-in dev server defaults to a 30s max_execution_time, so a cold start
-    // kills the page mid-connect (the `connect_timeout` below caps unreachable
-    // hosts, but not the post-handshake wait while Neon wakes). Give the dev
-    // server room to ride out the wake; production keeps its configured limit.
+    // The first connection after an idle period can be slow (pooler/backend
+    // spin-up, network latency). The PHP CLI built-in dev server defaults to a
+    // 30s max_execution_time, so a slow first connect can kill the page
+    // mid-connect (the `connect_timeout` below caps unreachable hosts, but not a
+    // slow post-handshake wait). Give the dev server room to ride it out;
+    // production keeps its configured limit.
     if (PHP_SAPI === 'cli-server') @set_time_limit(90);
 
     $env = parse_env();
@@ -44,12 +44,11 @@ function db(): PDO {
         $pass = $env['DB_PASS'] ?? '';
     }
 
-    // Bound the connection attempt. Neon is serverless and scales to zero when
-    // idle, so the first connect after a pause has to wake the compute — that can
+    // Bound the connection attempt. A slow first connect after an idle period can
     // hang long enough to blow PHP's max_execution_time and kill the page at
     // `new PDO(...)`. libpq's connect_timeout caps each attempt (PDO::ATTR_TIMEOUT
     // is NOT reliably honored for the pgsql *connection*), and we retry a couple of
-    // times because the DB is usually awake by the second try. Tunable via env.
+    // times because the DB usually answers by the second try. Tunable via env.
     $connectTimeout = max(2, (int)($env['DB_CONNECT_TIMEOUT'] ?? 6));   // seconds per attempt
     $maxAttempts    = max(1, (int)($env['DB_CONNECT_RETRIES']  ?? 3));  // total attempts
     $dsn .= ';connect_timeout=' . $connectTimeout;
@@ -59,11 +58,12 @@ function db(): PDO {
         PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
         PDO::ATTR_TIMEOUT            => $connectTimeout,
         // Emulated prepares send plain SQL rather than server-side prepared
-        // statements. Required behind Neon's PgBouncer pooler: real prepares there
-        // cache query plans in pooled backend connections that survive app
-        // restarts, so a migration that adds columns (e.g. SELECT h.*) triggers
-        // "cached plan must not change result type" and an app redeploy can't
-        // clear it. No bound LIMIT/OFFSET params exist, so this mode is safe here.
+        // statements. This matters behind a transaction pooler (PgBouncer /
+        // RDS Proxy): real prepares cache query plans in pooled backend
+        // connections that survive app restarts, so a migration that adds columns
+        // (e.g. SELECT h.*) triggers "cached plan must not change result type" and
+        // an app redeploy can't clear it. No bound LIMIT/OFFSET params exist, so
+        // this mode is safe here.
         PDO::ATTR_EMULATE_PREPARES   => true,
     ];
 
@@ -82,7 +82,7 @@ function db(): PDO {
 
     // Align the DB session with the app's Nairobi timezone (above). Makes NOW(),
     // CURRENT_DATE, ::date casts and timestamptz rendering all Nairobi-local.
-    // Neon's PgBouncer tracks the TimeZone session parameter, so this persists
+    // A transaction pooler tracks the TimeZone session parameter, so this persists
     // across pooled statements within the connection.
     $pdo->exec("SET TIME ZONE 'Africa/Nairobi'");
 
@@ -748,6 +748,42 @@ function client_ip(): string {
         if (filter_var($ip, FILTER_VALIDATE_IP)) return $ip;
     }
     return $_SERVER['REMOTE_ADDR'] ?? '127.0.0.1';
+}
+
+/**
+ * Short-window idempotency guard for lead forms. Returns the id of an identical
+ * submission created in the last $seconds (same type + email + check-in/out), or
+ * 0 if none. Shared by api/search-lead.php and api/submit-enquiry.php to
+ * neutralise double-submits (double-tap on mobile, retry, re-fired POST) without
+ * blocking a legitimate repeat enquiry a minute later. Fails open (returns 0) so
+ * a query error never blocks a real submission.
+ */
+function find_recent_duplicate_submission(string $type, string $email,
+                                          ?string $checkin = null, ?string $checkout = null,
+                                          int $seconds = 30): int {
+    $email = trim($email);
+    if ($email === '') return 0;
+    try {
+        $row = db_query(
+            "SELECT id FROM submissions
+             WHERE type = :type AND lower(guest_email) = lower(:email)
+               AND COALESCE(check_in::text,  '') = :ci
+               AND COALESCE(check_out::text, '') = :co
+               AND created_at > :win
+             ORDER BY id DESC LIMIT 1",
+            [
+                ':type'  => $type,
+                ':email' => $email,
+                ':ci'    => (string)($checkin  ?? ''),
+                ':co'    => (string)($checkout ?? ''),
+                ':win'   => date('Y-m-d H:i:s', time() - $seconds),
+            ]
+        )->fetch();
+        return $row ? (int)$row['id'] : 0;
+    } catch (Throwable $e) {
+        error_log('[lead-dedupe] check failed: ' . $e->getMessage());
+        return 0;
+    }
 }
 
 /**

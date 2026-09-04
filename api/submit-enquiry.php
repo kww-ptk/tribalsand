@@ -111,6 +111,18 @@ if ($form_mode === 'availability' && $room) {
 if (session_status() === PHP_SESSION_NONE) session_start();
 $tracking = $_SESSION['tracking'] ?? [];
 
+// Idempotency guard — for the plain-enquiry path (no hold), a double-submit
+// within 30s reuses the existing lead instead of inserting a duplicate + firing
+// a second email. The availability/hold path is deliberately left alone so hold
+// creation logic is never short-circuited.
+if ($form_mode !== 'availability') {
+    $dupId = find_recent_duplicate_submission('enquiry', $email, $checkin ?: null, $checkout ?: null);
+    if ($dupId) {
+        echo json_encode(['ok' => true, 'id' => $dupId, 'mode' => 'enquiry', 'dedupe' => true]);
+        exit;
+    }
+}
+
 // Insert + GHL push + hold/enquiry response — wrapped so any DB/GHL failure returns clean JSON
 try {
     db_query(

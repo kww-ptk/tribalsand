@@ -63,7 +63,10 @@ function fetch_submission_notes(int $submission_id): array {
              ORDER BY n.created_at ASC, n.id ASC",
             [':sid' => $submission_id]
         )->fetchAll();
-    } catch (Throwable $e) { return []; }
+    } catch (Throwable $e) {
+        error_log('[submission-notes] fetch failed: ' . $e->getMessage());
+        return [];
+    }
 }
 
 /**
@@ -93,7 +96,10 @@ function add_submission_note(int $submission_id, ?int $admin_id, string $body,
             );
         }
         return (int) db()->lastInsertId();
-    } catch (Throwable $e) { return 0; }
+    } catch (Throwable $e) {
+        error_log('[submission-notes] add failed: ' . $e->getMessage());
+        return 0;
+    }
 }
 
 /**
@@ -114,5 +120,8 @@ function submission_note_counts(array $ids): array {
         $out = [];
         foreach ($rows as $r) $out[(int)$r['submission_id']] = (int)$r['cnt'];
         return $out;
-    } catch (Throwable $e) { return []; }
+    } catch (Throwable $e) {
+        error_log('[submission-notes] counts failed: ' . $e->getMessage());
+        return [];
+    }
 }

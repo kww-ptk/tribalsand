@@ -73,7 +73,23 @@ $message = "Availability search: {$checkin} → {$checkout} ({$nights} night" . 
 if (session_status() === PHP_SESSION_NONE) session_start();
 $tracking = $_SESSION['tracking'] ?? [];
 
+// The page the client should now open — the live available-rooms results.
+$redirect = '/search?checkin=' . urlencode($checkin)
+          . '&checkout=' . urlencode($checkout)
+          . '&adults=' . urlencode((string)$adults)
+          . '&children=' . urlencode((string)$children);
+
+// Idempotency guard — a double-tap / retry within 30s reuses the existing lead
+// instead of inserting a duplicate. Legitimate repeat searches (a minute later)
+// are unaffected.
+$dupId = find_recent_duplicate_submission('availability', $email, $checkin, $checkout);
+if ($dupId) {
+    echo json_encode(['ok' => true, 'id' => $dupId, 'redirect' => $redirect, 'dedupe' => true]);
+    exit;
+}
+
 // ── Insert the lead ──
+try {
 db_query(
     "INSERT INTO submissions
         (type, guest_name, guest_email, guest_phone, message,
@@ -110,6 +126,11 @@ db_query(
     ]
 );
 $id = (int) db()->lastInsertId();
+} catch (Throwable $e) {
+    error_log('[search-lead] insert failed: ' . $e->getMessage());
+    http_response_code(500);
+    exit(json_encode(['ok' => false, 'error' => 'Something went wrong saving your search. Please try again or contact us directly.']));
+}
 
 // Notify staff of the new lead (best-effort — never block the redirect).
 try {
@@ -123,11 +144,5 @@ try {
         'created_at'  => date('Y-m-d H:i:s'),
     ] + $tracking);
 } catch (Throwable $e) { error_log('[search-lead] notify: ' . $e->getMessage()); }
-
-// The page the client should now open — the live available-rooms results.
-$redirect = '/search?checkin=' . urlencode($checkin)
-          . '&checkout=' . urlencode($checkout)
-          . '&adults=' . urlencode((string)$adults)
-          . '&children=' . urlencode((string)$children);
 
 echo json_encode(['ok' => true, 'id' => $id, 'redirect' => $redirect]);
