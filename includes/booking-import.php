@@ -16,9 +16,11 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/booking.php';
 
 /**
- * Ezee "Room" name (normalised) → website rooms.slug.
- * Editable here — an unmapped Ezee room BLOCKS its row (never guessed). "Twin"
- * maps to the Double suite (same physical room, twin config) per owner sign-off.
+ * Default Ezee "Room" name (normalised) → website rooms.slug.
+ * This is the SEED only — the live map is owner-editable and stored in the
+ * `zuri_room_map` setting (Admin → Import bookings). An unmapped Ezee room
+ * BLOCKS its row (never guessed) and is surfaced in the dry-run preview. "Twin"
+ * defaults to the Double suite (same physical room, twin config) per owner sign-off.
  */
 const ZURI_ROOM_MAP = [
     'standard garden view suite'       => 'zuri-maji',
@@ -35,9 +37,46 @@ function import_norm(string $s): string {
     return trim(preg_replace('/\s+/u', ' ', mb_strtolower($s)));
 }
 
+/**
+ * The effective, owner-editable Ezee→slug map: the `zuri_room_map` setting when
+ * present (authoritative — a saved map fully replaces the default so removing a
+ * row really unmaps it), otherwise ZURI_ROOM_MAP. Keys are normalised. Memoised
+ * per request; zuri_room_map_save() busts the cache.
+ */
+function zuri_room_map(): array {
+    if (isset($GLOBALS['__zuri_room_map_cache'])) return $GLOBALS['__zuri_room_map_cache'];
+    $map = ZURI_ROOM_MAP;
+    $raw = setting('zuri_room_map', '');
+    if ($raw !== '') {
+        $decoded = json_decode($raw, true);
+        if (is_array($decoded)) {
+            $clean = [];
+            foreach ($decoded as $ezee => $slug) {
+                $k = import_norm((string)$ezee);
+                $v = trim((string)$slug);
+                if ($k !== '' && $v !== '') $clean[$k] = $v;
+            }
+            if ($clean) $map = $clean;
+        }
+    }
+    return $GLOBALS['__zuri_room_map_cache'] = $map;
+}
+
+/** Persist an Ezee→slug map (keys normalised, blanks dropped) and bust the memo. */
+function zuri_room_map_save(array $map): void {
+    $clean = [];
+    foreach ($map as $ezee => $slug) {
+        $k = import_norm((string)$ezee);
+        $v = trim((string)$slug);
+        if ($k !== '' && $v !== '') $clean[$k] = $v;
+    }
+    set_setting('zuri_room_map', json_encode($clean, JSON_UNESCAPED_UNICODE));
+    unset($GLOBALS['__zuri_room_map_cache']);
+}
+
 /** Map an Ezee room name to a website slug, or null when unmapped. */
 function import_map_room_slug(string $ezeeRoom): ?string {
-    return ZURI_ROOM_MAP[import_norm($ezeeRoom)] ?? null;
+    return zuri_room_map()[import_norm($ezeeRoom)] ?? null;
 }
 
 /**

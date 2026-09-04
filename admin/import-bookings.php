@@ -29,6 +29,7 @@ $ALLOWED   = ['csv', 'tsv', 'xlsx'];
 if (session_status() === PHP_SESSION_NONE) session_start();
 
 $error = $flash = '';
+if (isset($_GET['mapsaved'])) $flash = 'Room mapping saved.';
 
 // ── POST handlers ────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canImport) {
@@ -38,6 +39,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canImport) {
     if ($action === 'cancel') {
         unset($_SESSION['import_preview'], $_SESSION['import_report']);
         header('Location: /admin/import-bookings.php');
+        exit;
+    }
+
+    if ($action === 'save_room_map') {
+        // Zip the parallel ezee[]/slug[] rows into a map; keep only rows with a
+        // name AND a slug that is a real Zuri room (an unknown/blank slug drops
+        // the row, so its Ezee name becomes "unmapped" and blocks its bookings).
+        $allowed = db_query(
+            "SELECT slug FROM rooms WHERE venue_id = :v", [':v' => $zuriId]
+        )->fetchAll(PDO::FETCH_COLUMN);
+        $names = (array)($_POST['ezee'] ?? []);
+        $slugs = (array)($_POST['slug'] ?? []);
+        $map   = [];
+        foreach ($names as $i => $nm) {
+            $nm = trim((string)$nm);
+            $sl = trim((string)($slugs[$i] ?? ''));
+            if ($nm !== '' && $sl !== '' && in_array($sl, $allowed, true)) $map[$nm] = $sl;
+        }
+        zuri_room_map_save($map);
+        header('Location: /admin/import-bookings.php?mapsaved=1');
         exit;
     }
 
@@ -123,6 +144,7 @@ $chip = function (string $s): string {
   <h1 style="display:inline-flex;align-items:center;gap:10px"><?= admin_icon('download', 22) ?> Import Bookings <span class="text-muted" style="font-weight:400">· Zuri</span></h1>
 </div>
 
+<?php if ($flash): ?><div class="alert alert--success is-flash"><?= e($flash) ?></div><?php endif; ?>
 <?php if ($error): ?><div class="alert alert--error is-flash"><?= e($error) ?></div><?php endif; ?>
 
 <?php if (!$canImport): ?>
@@ -262,21 +284,43 @@ $chip = function (string $s): string {
         <div style="display:flex;gap:10px;align-items:flex-start"><span style="flex:0 0 auto;color:var(--accent)"><?= admin_icon('check-check', 16) ?></span><span class="text-muted">Re-uploading the same sheet is safe: already-imported rows are detected and skipped.</span></div>
         <div style="display:flex;gap:10px;align-items:flex-start"><span style="flex:0 0 auto;color:var(--accent)"><?= admin_icon('home', 16) ?></span><span class="text-muted">An <strong>“Entire Retreat Buyout”</strong> row blocks every Zuri suite for its dates.</span></div>
       </div>
-      <p style="margin:0 0 8px;font-weight:600;font-size:13px;display:inline-flex;align-items:center;gap:6px"><?= admin_icon('link', 14) ?> Room name mapping</p>
-      <div style="overflow-x:auto">
-        <table class="data-table" style="width:auto;font-size:13px">
-          <thead><tr><th>Ezee room name</th><th>→ Website room</th></tr></thead>
-          <tbody>
-            <?php foreach (ZURI_ROOM_MAP as $ezee => $slug):
-              $ru = import_room_unit($slug); ?>
-            <tr>
-              <td><?= e(ucwords($ezee)) ?></td>
-              <td><?= $ru ? e($ru['room_name']) : '<span class="text-muted">'.e($slug).' (missing)</span>' ?></td>
-            </tr>
-            <?php endforeach; ?>
-          </tbody>
-        </table>
-      </div>
+      <p style="margin:0 0 4px;font-weight:600;font-size:13px;display:inline-flex;align-items:center;gap:6px"><?= admin_icon('link', 14) ?> Room name mapping</p>
+      <p class="text-muted" style="margin:0 0 12px;font-size:12.5px;max-width:70ch">
+        How each Ezee room name maps to a website room. Leave a row's room set to
+        <em>Block (no match)</em> to unmap it — an unmatched Ezee name is never guessed;
+        it blocks that booking and is flagged in the preview. Add new rows for names
+        that appear in future exports.
+      </p>
+      <?php
+        $__map      = zuri_room_map();
+        $__zuriRooms = db_query(
+          "SELECT slug, name FROM rooms WHERE venue_id = :v ORDER BY sort_order, name",
+          [':v' => $zuriId]
+        )->fetchAll();
+        // Existing map rows, then a few blanks to add new names.
+        $__rows = [];
+        foreach ($__map as $__ezee => $__slug) $__rows[] = ['ezee' => ucwords($__ezee), 'slug' => $__slug];
+        for ($__b = 0; $__b < 3; $__b++) $__rows[] = ['ezee' => '', 'slug' => ''];
+      ?>
+      <form method="post" action="/admin/import-bookings.php" data-shell-form>
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="save_room_map">
+        <div class="rmap">
+          <?php foreach ($__rows as $__r): ?>
+          <div class="rmap__row">
+            <input type="text" class="inp inp--sm" name="ezee[]" value="<?= e($__r['ezee']) ?>" placeholder="Ezee room name">
+            <span class="rmap__arrow"><?= admin_icon('arrow-right', 15) ?></span>
+            <select name="slug[]" aria-label="Website room">
+              <option value="">— Block (no match) —</option>
+              <?php foreach ($__zuriRooms as $__wr): ?>
+              <option value="<?= e($__wr['slug']) ?>" <?= $__wr['slug'] === $__r['slug'] ? 'selected' : '' ?>><?= e($__wr['name']) ?></option>
+              <?php endforeach; ?>
+            </select>
+          </div>
+          <?php endforeach; ?>
+        </div>
+        <button type="submit" class="btn-primary btn-sm" style="margin-top:14px"><?= admin_icon('check', 14) ?> Save mapping</button>
+      </form>
     </div>
   </div>
 <?php endif; ?>

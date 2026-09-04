@@ -53,6 +53,24 @@ $juaUnit   = (int) db_query("SELECT u.id FROM units u JOIN rooms r ON r.id=u.roo
 
 db()->beginTransaction();
 try {
+    // ── Editable room map (setting override; rolled back with the tx) ──
+    // Remap Twin → Ua, add a brand-new Ezee name, and drop a default row.
+    zuri_room_map_save([
+        'Tropical Pool View Twin Suite' => 'zuri-ua',   // changed from mwezi
+        'Sunset Villa'                  => 'zuri-anga',  // new name
+        'Standard Garden View Suite'    => 'zuri-maji',  // keep
+    ]);
+    check('override: twin now → ua',   import_map_room_slug('Tropical Pool View Twin Suite') === 'zuri-ua');
+    check('override: new name maps',   import_map_room_slug('Sunset Villa') === 'zuri-anga');
+    check('override: dropped row unmaps', import_map_room_slug('Master Double Suite') === null);
+    zuri_room_map_save(['Only Valid' => 'zuri-ua', 'Blank Slug' => '']);
+    check('save drops blank-slug rows',
+        import_map_room_slug('Only Valid') === 'zuri-ua' && !array_key_exists('blank slug', zuri_room_map()));
+    // Restore the default map for the remaining resolve/commit assertions.
+    set_setting('zuri_room_map', '');
+    unset($GLOBALS['__zuri_room_map_cache']);
+    check('cleared setting → back to default', import_map_room_slug('Tropical Pool View Twin Suite') === 'zuri-mwezi');
+
     // Pre-existing 'blocked' block → makes a duplicate for zuri-maji 20-22 Oct.
     db_query("INSERT INTO availability_blocks (unit_id,date_from,date_to,block_type,notes)
               VALUES (:u,'2030-10-20','2030-10-22','blocked','prior import')", [':u'=>$majiUnit]);
