@@ -100,6 +100,54 @@ The figures on `sustainability.php` and the home page's "Live Data" cards come f
 - Front-end: the stats strip, the solar card and the beach ring count up on scroll (IntersectionObserver). The count-up **never paints over the server-rendered value on its first frame** and skips animating when `document.hidden` — a paused rAF in a background tab would otherwise leave a 0 on screen. `prefers-reduced-motion` gets the final value immediately.
 - Hero photo + section headings are editable through the `sustainability` entry in `page_content_registry()` (Admin → Content → Pages). Test: `php tests/sustainability_logic.php`.
 
+### Nightly rates — per room, edited on the property and the room
+Rate overrides live in `rates` (`room_id, date_from, date_to, price_amount, label`) — **no
+migration**, the table predates the editors. Helpers in **`includes/rates.php`**.
+- **`date_to` is EXCLUSIVE** — the checkout morning, not the last night. Both forms label it
+  "To (last night)" and `rates_ranges_from_post()` adds the day; the override tables render
+  `date_to - 1 day` so a rate reads back the way it was typed. Never reinterpret the column —
+  it would silently reprice every stored override.
+- **One resolver, and it is the only one.** `rates_nightly_map()` decides what a night costs.
+  There were **three** copies of that loop before this work (`room_stay_quote()` in
+  `includes/db.php`, plus two in `api/check-availability.php` — the guest booking widget's own
+  endpoint); all three now call it. Don't reintroduce a second nightly loop: two summations
+  over one map is how two guests get quoted two prices for the same night. `admin/gantt.php`
+  keeps its own *day-tinting* loop, which is a "does any rate touch this day" highlight and
+  never resolves a price.
+- **Two date validators, deliberately different.** `rates_ymd()` is strict and guards
+  **writes** — a malformed date there is a bug worth surfacing. `rates_window_ymd()` repairs a
+  recoverable **read** window (`2099-9-1` → `2099-09-01`). The split is load-bearing: every
+  comparison in the file is a STRING comparison, chronological only for zero-padded dates, and
+  `'2099-9-01'` sorts **above** `'2099-09-15'`. An un-normalised window made `max()`/`min()`
+  clamp to the wrong day and quoted a guest override nights the rate never covered.
+- **`room_stay_quote()` returns `nights => 0` for a window it cannot parse** — that is "not a
+  quote", and callers must check it before displaying a price. Neither alternative is safe:
+  summing an empty map quotes a **free stay**, and `strtotime()` returns `false` for garbage
+  (which becomes epoch), so an unguarded night count runs to ~47,000. `api/check-availability.php`
+  is public, so it validates and 422s before quoting at all.
+- **Writes leave no overlaps.** `rates_apply_ranges()` merges the submitted ranges, then
+  `rates_clear_span()` trims, splits or deletes whatever already covers those nights. The
+  **spans** case must be tested before the two one-sided cases — a row covering the new range on
+  both sides satisfies both, so checking those first swallows it instead of splitting around it.
+  It opens a transaction only when the caller has not (`db()->inTransaction()`); the tests wrap
+  everything in one they roll back, and PDO/pgsql cannot nest. Reads still resolve
+  `created_at DESC, id DESC` so legacy overlapping rows keep behaving as they did.
+- **`rates_apply_ranges()` does NO scoping** — the caller must verify the room belongs to the
+  acting account. `rates_delete()` does take a venue scope. That asymmetry is intentional but
+  easy to trip over.
+- **Editing is owner-only** (`admin/venue-edit.php` and `admin/room-edit.php` Rates tabs, both
+  already `require_owner()`). `admin/rates.php` is read-only, `require_login()` + scoped by
+  `admin_venue_ids()`, with `?venue=` validated against the account's own list — reception can
+  quote from it. The Gantt's Price Overrides form is **gone**; don't reinstate it. It was
+  `require_login()` only, so it let reception set prices, against the rule that pricing is owner
+  business.
+- Partials: `includes/rate-form.php` (N ranges, one price, one label) and
+  `includes/rate-calendar.php` (read-only month grid; an unset room price renders "—", never
+  "0"). Both use the shared `js/datepicker.js` loaded by `admin/_layout.php`. **Range rows are
+  cloned from a `<template>`, never from a live row** — `datepicker.js` marks bound buttons
+  `data-dp-bound` and skips them, so a clone of a live row would look right and never open.
+- Test: `php tests/rates_logic.php` (71 assertions, DB work in a rolled-back transaction).
+
 ### Video feature sections — one partial, click-to-load
 `includes/video-feature.php` renders the "watch the film" section used on `index.php` (after the property cards) and `sustainability.php`. Config via `$vf_video_id` / `$vf_heading` / `$vf_sub` / `$vf_caption` / `$vf_title` / `$vf_poster_alt` / `$vf_class` set before the include.
 - **Click-to-load facade.** Nothing loads from YouTube on page view except the poster thumbnail; the iframe is injected on click, pointed at `youtube-nocookie.com` with **`cc_load_policy=0`** (captions off), `iv_load_policy=3`, `rel=0`, `modestbranding=1`, `playsinline=1`. Don't replace it with a static iframe — that reinstates third-party cookies and the page weight on every visit.
@@ -139,6 +187,9 @@ The figures on `sustainability.php` and the home page's "Live Data" cards come f
 | `admin/reservations.php` | Reservation manager (dashboard + confirm/cancel, manager-scoped) |
 | `includes/sustainability.php` | Live metric helpers — accrual, formatting, re-baselining (pre-migration-safe) |
 | `admin/sustainability.php` | Live metrics editor (owner-only) — reading, rate, cap, small print |
+| `includes/rates.php` | Nightly rate helpers — merge, resolve, trim/split writes, scoped delete |
+| `includes/rate-form.php` · `includes/rate-calendar.php` | Multi-range rate entry + read-only month grid partials |
+| `admin/rates.php` | Site-wide read-only rates calendar (scoped, reception-visible) |
 | `includes/video-feature.php` | Shared click-to-load video section (home + sustainability) |
 | `css/main.css` | Global stylesheet (brand tokens, layout, components) |
 | `js/booking-widget.js` | Booking date picker widget |
