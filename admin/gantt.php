@@ -285,6 +285,18 @@ include __DIR__ . '/_layout.php';
   font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #102F3A; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .gantt-grow__bar { display: flex; align-items: center; gap: 8px; padding: 7px 10px; font-size: 10.5px; color: var(--muted); white-space: nowrap; }
 .gantt-grow__loc { color: #102F3A; font-weight: 600; }
+/* Collapse / expand one property's rooms. The grid is a flat list of sibling
+   rows, so a group "owns" its rows by sharing data-venue-key. */
+.gantt-grow { cursor: pointer; user-select: none; }
+.gantt-grow:hover, .gantt-grow:hover .gantt-grow__lbl { background: #dfe8ed; }
+.gantt-grow:focus-visible { outline: 2px solid #0369a1; outline-offset: -2px; }
+.gantt-grow__lbl { display: flex; align-items: center; gap: 5px; }
+.gantt-grow__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gantt-grow__caret { display: inline-flex; flex: none; color: #4a6b78; transition: transform .15s ease; }
+.gantt-grow.is-collapsed .gantt-grow__caret { transform: rotate(-90deg); }
+.gantt-grow__hint { display: none; font-style: italic; }
+.gantt-grow.is-collapsed .gantt-grow__hint { display: inline; }
+.gantt-row.is-hidden-venue { display: none; }
 .gantt-days { display: flex; flex: 1; }
 /* Month sub-header */
 .gantt-months { display: flex; min-width: max-content; border-bottom: 1px solid var(--border); }
@@ -438,21 +450,29 @@ include __DIR__ . '/_layout.php';
     $view_start_ts = strtotime($start_str);
     $view_end_ts   = strtotime($end_str);
     $venue_name = trim((string)($unit['venue_name'] ?? '')) ?: 'Unassigned';
+    // Stable per property name — the same value that groups the rows above ties
+    // the header to its unit rows, and keeps the collapsed state across reloads.
+    $v_key      = 'v' . substr(md5($venue_name), 0, 8);
     if ($venue_name !== $prev_venue):
       $prev_venue = $venue_name;
       $prev_room  = '';           // reprint the room label at the top of each property
       $v_units    = count($units_by_venue[$venue_name] ?? []);
       $v_loc      = trim((string)($unit['venue_location'] ?? ''));
   ?>
-  <div class="gantt-grow">
-    <div class="gantt-grow__lbl" title="<?= e($venue_name) ?>"><?= e($venue_name) ?></div>
+  <div class="gantt-grow" data-venue-key="<?= e($v_key) ?>" role="button" tabindex="0"
+       aria-expanded="true" aria-label="Collapse or expand <?= e($venue_name) ?>">
+    <div class="gantt-grow__lbl" title="<?= e($venue_name) ?>">
+      <span class="gantt-grow__name"><?= e($venue_name) ?></span>
+      <span class="gantt-grow__caret" aria-hidden="true"><?= admin_icon('chevron-down', 13) ?></span>
+    </div>
     <div class="gantt-grow__bar" style="width:<?= (int)$grid_w ?>px">
       <?php if ($v_loc !== ''): ?><span class="gantt-grow__loc"><?= e($v_loc) ?></span> ·<?php endif; ?>
       <span><?= (int)$v_units ?> unit<?= $v_units === 1 ? '' : 's' ?></span>
+      <span class="gantt-grow__hint">· collapsed</span>
     </div>
   </div>
   <?php endif; ?>
-  <div class="gantt-row">
+  <div class="gantt-row" data-venue-key="<?= e($v_key) ?>">
     <div class="gantt-label">
       <?php if ($unit['room_name'] !== $prev_room): $prev_room = $unit['room_name']; ?>
       <small><?= e($unit['room_name']) ?></small>
@@ -786,6 +806,7 @@ const days       = <?= json_encode(array_values($days)) ?>;
 const dayIndex   = <?= json_encode($day_index) ?>;
 const csrfToken  = () => document.querySelector('input[name="csrf_token"]')?.value ?? '';
 const CELL_W     = 28;
+const roomFilter = <?= $filterRoom ? 'true' : 'false' ?>;
 
 // ── Modal helpers ────────────────────────────────────────────────
 const blockModal  = document.getElementById('blockModal');
@@ -803,6 +824,52 @@ function addDays(ymd, n) {
 function dateDiff(from, to) {
   return Math.round((new Date(to+'T00:00') - new Date(from+'T00:00')) / 86400000);
 }
+
+// ── Property groups: collapse / expand ────────────────────────────
+// Rows are flat siblings of their property header, so a group is addressed by a
+// shared data-venue-key rather than by containment. State is remembered per
+// property: every block edit is a PRG reload, and a calendar that re-expands
+// every property on each save would be unusable.
+const COLLAPSE_KEY = 'ganttCollapsedVenues';
+
+function loadCollapsed() {
+  try { return new Set(JSON.parse(localStorage.getItem(COLLAPSE_KEY) || '[]')); }
+  catch (e) { return new Set(); }
+}
+function saveCollapsed(set) {
+  try { localStorage.setItem(COLLAPSE_KEY, JSON.stringify([...set])); } catch (e) {}
+}
+function setVenueCollapsed(key, collapsed) {
+  const sel = '[data-venue-key="' + key + '"]';
+  document.querySelectorAll('.gantt-grow' + sel).forEach(h => {
+    h.classList.toggle('is-collapsed', collapsed);
+    h.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+  });
+  document.querySelectorAll('.gantt-row' + sel).forEach(r => {
+    r.classList.toggle('is-hidden-venue', collapsed);
+  });
+}
+
+(function initVenueCollapse() {
+  // A room filter already narrows the grid to one property — restoring a
+  // collapsed state there would render a header with nothing under it.
+  if (!roomFilter) loadCollapsed().forEach(key => setVenueCollapsed(key, true));
+
+  document.querySelectorAll('.gantt-grow[data-venue-key]').forEach(header => {
+    const key = header.dataset.venueKey;
+    const toggle = () => {
+      const collapsed = !header.classList.contains('is-collapsed');
+      setVenueCollapsed(key, collapsed);
+      const set = loadCollapsed();
+      collapsed ? set.add(key) : set.delete(key);
+      saveCollapsed(set);
+    };
+    header.addEventListener('click', toggle);
+    header.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
+    });
+  });
+})();
 
 // ── Block drag-move / resize ──────────────────────────────────────
 let dragState = null; // { block, mode, blockId, unitId, dateFrom, dateTo, duration, dayOffset, startX, moved, highlights }
