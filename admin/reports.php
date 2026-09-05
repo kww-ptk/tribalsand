@@ -110,9 +110,11 @@ $monthLabel = fn(string $ym): string => $ym === '' ? '—' : date('M Y', strtoti
 .rp-kpi--rev .n{color:#1E5C6B}
 .rp-curblock{margin-bottom:22px}
 .rp-curblock__cur{font-size:12px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
-.rp-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.rp-grid{display:grid;grid-template-columns:1fr;gap:16px}
+.rp-grid>.card{min-width:0}
+.rp-grid .table-wrap{overflow-x:auto}
 .rp-filters{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:0 0 18px}
-@media(max-width:900px){.rp-kpis{grid-template-columns:1fr 1fr}.rp-grid{grid-template-columns:1fr}}
+@media(max-width:900px){.rp-kpis{grid-template-columns:1fr 1fr}}
 </style>
 
 <div class="page-header">
