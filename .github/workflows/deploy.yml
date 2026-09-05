@@ -24,6 +24,10 @@ env:
   IMAGE_TAG: latest
   ECS_CLUSTER: default
   ECS_SERVICE: tribalsand
+  # CloudFront fronts tribalsand.com — new code sits in ECS but the CDN keeps
+  # serving cached HTML until this distribution is invalidated on each deploy.
+  # The deploy IAM user needs cloudfront:CreateInvalidation for the step below.
+  CLOUDFRONT_DISTRIBUTION_ID: E2F10XNOH43OQW
 
 jobs:
   build-and-push:
@@ -85,3 +89,14 @@ jobs:
             --services "$ECS_SERVICE" \
             --region "$AWS_REGION"
           echo "ECS service $ECS_SERVICE is stable on the new deployment."
+
+      # New code is on ECS now, but CloudFront keeps serving cached HTML until the
+      # distribution is invalidated — this is what makes a push actually appear on
+      # the live site instead of after the CDN TTL expires.
+      - name: Invalidate the CloudFront cache
+        run: |
+          ID=$(aws cloudfront create-invalidation \
+            --distribution-id "$CLOUDFRONT_DISTRIBUTION_ID" \
+            --paths "/*" \
+            --query 'Invalidation.Id' --output text)
+          echo "Created CloudFront invalidation $ID on $CLOUDFRONT_DISTRIBUTION_ID"
