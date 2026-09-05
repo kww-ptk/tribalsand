@@ -4,6 +4,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/booking.php';
+require_once __DIR__ . '/../includes/bookings.php';   // financial ledger snapshot
 require_once __DIR__ . '/../includes/mail.php';
 require_once __DIR__ . '/../includes/checkin.php';
 require_once __DIR__ . '/../includes/icons.php';            // admin_icon() — used while buffering the AJAX panel (before _layout.php loads it)
@@ -43,6 +44,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($act === 'confirm' && $hold['status'] === 'pending') {
         db_query("UPDATE holds SET status='confirmed', confirmed_at=NOW() WHERE id=:id", [':id'=>$holdId]);
         db_query("UPDATE availability_blocks SET block_type='booked' WHERE hold_id=:hid", [':hid'=>$holdId]);
+        bookings_sync_hold($holdId);   // snapshot revenue at confirm
         if ($hold['guest_email']) send_hold_confirmed($hold);
         audit_log('hold.confirm', 'hold', $holdId, "{$hold['guest_name']}");
         $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Confirmed — guest notified.'];
@@ -51,6 +53,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($act === 'cancel' && in_array($hold['status'], ['pending','confirmed'], true)) {
         db_query("UPDATE holds SET status='cancelled', cancelled_at=NOW() WHERE id=:id", [':id'=>$holdId]);
         db_query("DELETE FROM availability_blocks WHERE hold_id=:hid", [':hid'=>$holdId]);
+        bookings_mark_hold_cancelled($holdId);
         if ($hold['guest_email']) send_hold_cancelled($hold, 'cancelled');
         audit_log('hold.cancel', 'hold', $holdId, "{$hold['guest_name']}");
         $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Cancelled — dates freed, guest notified.'];

@@ -36,6 +36,16 @@ check('date invalid',     import_parse_date('not a date') === null);
 check('date impossible',  import_parse_date('31/02/2026') === null);
 check('date empty',       import_parse_date('') === null);
 
+// ── Amount parsing ──
+check('amount plain',        import_parse_amount('1500') === 1500.0);
+check('amount thousands',    import_parse_amount('12,500') === 12500.0);
+check('amount currency code', import_parse_amount('KES 12,500') === 12500.0);
+check('amount symbol+decimals', import_parse_amount('$1,234.50') === 1234.50);
+check('amount euro style',    import_parse_amount('1.200,00') === 1200.0);
+check('amount blank → null',  import_parse_amount('') === null);
+check('amount dash → null',   import_parse_amount('-') === null);
+check('amount junk → null',   import_parse_amount('n/a') === null);
+
 // ── Header-mapped extraction (CSV via a temp file) ──
 $tmp = sys_get_temp_dir() . '/ts_import_test_' . getmypid() . '.csv';
 file_put_contents($tmp,
@@ -50,6 +60,8 @@ check('extract row count', count($parsed['rows']) === 2);
 check('extract guest value', $parsed['rows'][0]['guest'] === 'Jane Doe');
 check('extract unit sub-name', $parsed['rows'][1]['unit_label'] === 'Anga Suite');
 check('extract agent value', $parsed['rows'][1]['agent'] === 'Booking.com');
+check('extract found amount column', $parsed['fields']['amount'] === true);
+check('extract amount raw value', ($parsed['rows'][0]['amount_raw'] ?? '') === '1');
 
 // ── Resolution + commit (rolled-back transaction) ──
 $zuri = (int) db_query("SELECT id FROM venues WHERE slug='zuri'")->fetchColumn();
@@ -131,11 +143,27 @@ try {
     check('resolve: unmapped detected',   $st[3] === 'unmapped');
     check('resolve: bad dates detected',  $st[4] === 'bad_dates');
 
+    $resolved[0]['amount'] = 750.0;   // simulate a staff-typed amount in the preview
     $report = import_commit($resolved);
     check('commit counts',
         $report['imported']===1 && $report['duplicate']===1 && $report['conflict']===1
         && $report['unmapped']===1 && $report['bad_dates']===1);
     check('commit wrote the ok block', import_block_exists($uaUnit, '2030-10-01', '2030-10-03'));
+
+    // Financial ledger: the imported block gets a bookings row carrying the amount
+    // (only when the migration is applied — otherwise this path is a safe no-op).
+    if (bookings_supported()) {
+        $b = db_query(
+            "SELECT b.* FROM bookings b JOIN availability_blocks a ON a.id=b.block_id
+             WHERE a.unit_id=:u AND a.date_from='2030-10-01'", [':u'=>$uaUnit]
+        )->fetch();
+        check('import wrote a bookings ledger row', (bool)$b);
+        check('ledger captured the typed amount', $b && (float)$b['gross_amount'] === 750.0);
+        check('ledger source is ota (no agent)', $b && $b['source'] === 'ota');
+        check('ledger nights computed', $b && (int)$b['nights'] === 2);
+    } else {
+        echo "SKIP  bookings ledger (add_bookings_finance not applied)\n";
+    }
     check('commit recorded a channel_conflict',
         (int)db_query("SELECT COUNT(*) FROM channel_conflicts WHERE unit_id=:u AND date_from='2030-10-20'",[':u'=>$mweziUnit])->fetchColumn() === 1);
 

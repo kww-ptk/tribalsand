@@ -122,6 +122,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canImport) {
         if (!$pv || empty($pv['resolved'])) {
             $error = 'Nothing to import — please upload a file first.';
         } else {
+            // Merge the amounts staff entered/adjusted in the preview (keyed by
+            // row index) over the parsed values before committing.
+            $postedAmts = (array)($_POST['amount'] ?? []);
+            foreach ($pv['resolved'] as $i => &$__row) {
+                if (array_key_exists((string)$i, $postedAmts) || array_key_exists($i, $postedAmts)) {
+                    $raw = (string)($postedAmts[$i] ?? $postedAmts[(string)$i] ?? '');
+                    $__row['amount'] = $raw === '' ? 0.0 : max(0.0, (float)$raw);
+                }
+            }
+            unset($__row);
             $report = import_commit($pv['resolved']);
             audit_log('bookings.import', 'venue', (int)($pv['venue_id'] ?? $importVenueId),
                 sprintf('imported=%d dup=%d conflict=%d unmapped=%d bad=%d',
@@ -251,15 +261,25 @@ $chip = function (string $s): string {
       <?php if ((int)$counts['unmapped'] > 0): ?>
       <p class="text-muted" style="margin:6px 0 0;font-size:13px">Unmapped rooms are never guessed — fix the sheet's room name (or the mapping in <code>includes/booking-import.php</code>) and re-upload.</p>
       <?php endif; ?>
+      <p class="text-muted" style="margin:6px 0 0;font-size:13px">
+        <?= !empty($preview['fields']['amount'])
+              ? 'An amount column was detected — figures are pre-filled below. Adjust any before importing.'
+              : 'No amount column was found in the sheet — type each booking&rsquo;s total below (leave 0 to import it unpriced).' ?>
+        Amounts feed the <a href="/admin/reports.php">financial reports</a>.
+      </p>
 
+      <!-- The amount inputs live INSIDE the commit form so they post with it. -->
+      <form method="POST" id="import-commit-form">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="commit">
       <div style="overflow-x:auto;margin-top:16px">
         <table class="data-table" style="width:100%">
           <thead><tr>
             <th>Guest</th><th>Ezee room</th><th>→ Website room</th>
-            <th>Arrival</th><th>Departure</th><th>Agent</th><th>Status</th>
+            <th>Arrival</th><th>Departure</th><th>Agent</th><th>Amount</th><th>Status</th>
           </tr></thead>
           <tbody>
-            <?php foreach ($rows as $r): ?>
+            <?php foreach ($rows as $i => $r): ?>
             <tr>
               <td><?= e($r['guest']) ?></td>
               <td><?= e($r['room_raw']) ?><?php if (!empty($r['unit_label'])): ?> <span class="text-muted">(<?= e($r['unit_label']) ?>)</span><?php endif; ?></td>
@@ -267,6 +287,19 @@ $chip = function (string $s): string {
               <td><?= $r['arrival'] ? e($r['arrival']) : '<span class="text-muted">'.e($r['arrival_raw']).'</span>' ?></td>
               <td><?= $r['dept'] ? e($r['dept']) : '<span class="text-muted">'.e($r['dept_raw']).'</span>' ?></td>
               <td class="text-muted"><?= e($r['agent'] === '-' ? '' : $r['agent']) ?></td>
+              <td>
+                <?php if ($r['status'] === 'ok'): ?>
+                <span style="display:inline-flex;align-items:center;gap:6px">
+                  <span class="text-muted" style="font-size:11px"><?= e((string)($r['currency'] ?? 'USD')) ?></span>
+                  <input type="number" min="0" step="0.01" class="inp inp--sm" style="width:110px"
+                         name="amount[<?= (int)$i ?>]"
+                         value="<?= $r['amount'] !== null ? e((string) round((float)$r['amount'], 2)) : '' ?>"
+                         placeholder="0">
+                </span>
+                <?php else: ?>
+                <span class="text-muted">—</span>
+                <?php endif; ?>
+              </td>
               <td><?= $chip($r['status']) ?><?php if (!empty($r['detail']) && $r['status']!=='ok'): ?><br><span class="text-muted" style="font-size:11px"><?= e($r['detail']) ?></span><?php endif; ?></td>
             </tr>
             <?php endforeach; ?>
@@ -275,13 +308,10 @@ $chip = function (string $s): string {
       </div>
 
       <div style="margin-top:20px;display:flex;gap:10px;align-items:center">
-        <form method="POST" style="display:inline">
-          <?= csrf_field() ?>
-          <input type="hidden" name="action" value="commit">
           <button type="submit" class="btn-primary" <?= $willImport ? '' : 'disabled' ?>>
             <?= admin_icon('check', 15) ?> Import <?= $willImport ?> booking<?= $willImport === 1 ? '' : 's' ?>
           </button>
-        </form>
+      </form>
         <form method="POST" style="display:inline">
           <?= csrf_field() ?>
           <input type="hidden" name="action" value="cancel">

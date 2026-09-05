@@ -14,6 +14,7 @@ declare(strict_types=1);
  */
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/booking.php';
+require_once __DIR__ . '/bookings.php';   // financial ledger row per imported block
 
 /**
  * Seed map for ZURI ONLY — the first property onboarded, kept so an existing
@@ -143,6 +144,30 @@ function import_parse_date(string $raw): ?string {
     return null;
 }
 
+/**
+ * Parse a money cell to a float, or null when blank/non-numeric. Tolerant of
+ * currency symbols, thousands separators and trailing codes ("KES 12,500",
+ * "$1,234.50", "1.200,00"→ best-effort). Returns null (not 0) for an empty or
+ * unreadable cell so callers can tell "no amount" from "zero".
+ */
+function import_parse_amount(string $raw): ?float {
+    $raw = trim($raw);
+    if ($raw === '' || $raw === '-') return null;
+    // Drop everything but digits, separators and sign.
+    $s = preg_replace('/[^0-9.,\-]/', '', $raw);
+    if ($s === '' || $s === '-') return null;
+    // If both separators appear, the last one is the decimal point.
+    if (str_contains($s, ',') && str_contains($s, '.')) {
+        if (strrpos($s, ',') > strrpos($s, '.')) { $s = str_replace('.', '', $s); $s = str_replace(',', '.', $s); }
+        else                                      { $s = str_replace(',', '', $s); }
+    } else {
+        // Only commas → thousands separators (Ezee exports use "12,500").
+        $s = str_replace(',', '', $s);
+    }
+    if (!is_numeric($s)) return null;
+    return (float)$s;
+}
+
 /** Stable dedupe key for a source row (used only for reporting/audit). */
 function import_row_key(string $guest, string $arrival, string $dept, string $room): string {
     return substr(sha1(import_norm($guest) . '|' . $arrival . '|' . $dept . '|' . import_norm($room)), 0, 16);
@@ -152,6 +177,7 @@ function import_row_key(string $guest, string $arrival, string $dept, string $ro
 function import_room_unit(string $slug): ?array {
     $row = db_query(
         "SELECT r.id AS room_id, r.name AS room_name, r.venue_id, r.is_entire_place,
+                r.price_currency,
                 u.id AS unit_id
          FROM rooms r
          JOIN units u ON u.room_id = r.id AND u.is_active = TRUE
@@ -218,12 +244,18 @@ function import_extract_rows(array $raw): array {
     if ($iRoom === null) $iRoom = $find(fn($h) => str_contains($h, 'room') && !str_contains($h, 'rate'));
     $iAgent = $find(fn($h) => str_contains($h, 'travelagent') || str_contains($h, 'agent'));
     $iBook  = $find(fn($h) => str_contains($h, 'booking'));
+    // Amount/total column — tolerant match. Prefer an explicit total over a
+    // per-night "rate" when both are present (we store the booking's gross).
+    $iAmt = $find(fn($h) => str_contains($h, 'grandtotal') || str_contains($h, 'totalamount') || $h === 'total')
+        ?? $find(fn($h) => str_contains($h, 'total') || str_contains($h, 'amount')
+                        || str_contains($h, 'revenue') || str_contains($h, 'payable'))
+        ?? $find(fn($h) => str_contains($h, 'rate') || str_contains($h, 'tariff') || str_contains($h, 'price'));
     $iUnit  = ($iRoom !== null) ? $iRoom + 1 : null;   // optional unit/sub-name column
 
     $fields = [
         'guest' => $iGuest !== null, 'arrival' => $iArr !== null,
         'dept'  => $iDept !== null,  'room'    => $iRoom !== null,
-        'agent' => $iAgent !== null,
+        'agent' => $iAgent !== null, 'amount'  => $iAmt !== null,
     ];
 
     $rows = [];
@@ -236,7 +268,7 @@ function import_extract_rows(array $raw): array {
         // Skip fully-blank trailing rows.
         if ($guest === '' && $room === '' && $cell($iArr) === '') continue;
         $unit = '';
-        if ($iUnit !== null && $iUnit !== $iAgent) {
+        if ($iUnit !== null && $iUnit !== $iAgent && $iUnit !== $iAmt) {
             $u = $cell($iUnit);
             // Only treat it as a unit label if it isn't obviously the rate/agent column.
             if ($u !== '' && import_norm($u) !== import_norm($room)) $unit = $u;
@@ -249,6 +281,7 @@ function import_extract_rows(array $raw): array {
             'unit_label'   => $unit,
             'agent'        => $cell($iAgent),
             'booking_date' => $cell($iBook),
+            'amount_raw'   => $cell($iAmt),
         ];
     }
     return ['fields' => $fields, 'rows' => $rows];
@@ -286,6 +319,10 @@ function import_resolve_row(array $row, int $venueId): array {
         'slug' => null, 'room_id' => null, 'unit_id' => null, 'room_name' => null,
         'arrival' => null, 'dept' => null, 'status' => 'ok', 'detail' => '',
         'conflict_hold_id' => 0,
+        // Money: amount parsed from the sheet (null when the sheet has none —
+        // staff type it in the preview); currency defaults, set from the room below.
+        'amount' => import_parse_amount((string)($row['amount_raw'] ?? '')),
+        'currency' => 'USD',
     ];
     $out['key'] = import_row_key($row['guest'], $row['arrival_raw'], $row['dept_raw'], $row['room_raw']);
 
@@ -319,6 +356,7 @@ function import_resolve_row(array $row, int $venueId): array {
     $out['room_id']   = (int)$ru['room_id'];
     $out['unit_id']   = (int)$ru['unit_id'];
     $out['room_name'] = $ru['room_name'];
+    $out['currency']  = strtoupper(trim((string)($ru['price_currency'] ?? 'USD'))) ?: 'USD';
 
     $ci = import_parse_date($row['arrival_raw']);
     $co = import_parse_date($row['dept_raw']);
@@ -409,11 +447,24 @@ function import_commit(array $resolved): array {
             continue;
         }
 
-        db_query(
+        $blockId = (int) db_query(
             "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, notes)
-             VALUES (:u, :f, :t, 'blocked', :n)",
+             VALUES (:u, :f, :t, 'blocked', :n) RETURNING id",
             [':u' => $unitId, ':f' => $ci, ':t' => $co, ':n' => import_block_note($r)]
-        );
+        )->fetchColumn();
+
+        // Financial ledger row alongside the calendar block (pre-migration-safe —
+        // no-op until add_bookings_finance is applied). Amount comes from the sheet
+        // or from what staff typed in the preview; 0 is a valid (unpriced) import.
+        bookings_import_upsert($blockId, [
+            'venue_id'     => $ru['venue_id'], 'room_id' => (int)$r['room_id'], 'unit_id' => $unitId,
+            'guest_name'   => $r['guest'],     'agent'   => (string)($r['agent'] ?? ''),
+            'check_in'     => $ci,             'check_out' => $co,
+            'gross_amount' => (float)($r['amount'] ?? 0),
+            'currency'     => (string)($r['currency'] ?? 'USD'),
+            'external_ref' => (string)($r['booking_date'] ?? ''),
+        ]);
+
         $res['imported']++;
         $res['rows'][] = ['guest' => $r['guest'], 'room' => $r['room_name'], 'outcome' => 'imported',
                           'detail' => $ci . ' → ' . $co];

@@ -23,6 +23,7 @@ $__navTasks     = $__isOwner || $__isManager || $__isReception;
 $__navGate      = $__isOwner || $__isManager || $__isReception || $__isSecurity;
 $__navMyWork    = $__isOps   || $__isReception;
 $__navBookings  = $__isOwner || $__isReception;   // holds / calendar / submissions / conflicts
+$__navReports   = $__isOwner || $__isManager;     // financial reports (scoped to their venues)
 
 // Chip shown under the logo for non-owner accounts.
 $__roleBadge = $__isManager ? 'Manager' : ($__isReception ? 'Reception' : (is_staff() ? ucfirst((string)$__job) : ''));
@@ -210,6 +211,15 @@ if ($__shellFrag) { ob_start(); return; }
         </a>
         <?php endif; ?>
       <?php $__navgroup('bookings', 'Bookings', ob_get_clean()); ?>
+      <?php endif; ?>
+
+      <?php if ($__navReports): ?>
+      <?php ob_start(); ?>
+        <a href="/admin/reports.php"      class="sidebar__link <?= ($activeMenu??'')==='reports'      ? 'is-active':'' ?>">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          Reports
+        </a>
+      <?php $__navgroup('reports', 'Reports', ob_get_clean()); ?>
       <?php endif; ?>
 
       <?php if ($__isOwner): /* Catalog + Admin stay owner-only */ ?>
