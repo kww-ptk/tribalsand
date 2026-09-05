@@ -10,6 +10,9 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/storage.php';
 require_once __DIR__ . '/../includes/media.php';
+require_once __DIR__ . '/../includes/icons.php';            // admin_icon() — needed in the AJAX branch too
+require_once __DIR__ . '/../includes/pagination.php';       // paginate_params/meta
+require_once __DIR__ . '/../includes/admin-pagination.php'; // dt_toolbar / dt_pager / dt_empty
 require_login();
 require_owner();                       // site-wide content, same tier as Site Menu
 
@@ -65,62 +68,31 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     else             { $error = $err; }
 }
 
-$search = trim((string)($_GET['q'] ?? ''));
-$items  = media_library_items($search);
+// ── List state: search + server-side pagination (reusable dt_* toolkit) ──
+$pg    = paginate_params(25);                 // page / per / q / offset / ajax
+$all   = media_library_items($pg['q'], 2000); // full filtered set (library + every gallery)
+$total = count($all);
+$meta  = paginate_meta($total, $pg['page'], $pg['per']);
+$items = array_slice($all, $meta['offset'], $meta['per']);
 
-$pageTitle  = 'Media Library';
-$activeMenu = 'media';
-include __DIR__ . '/_layout.php';
-?>
-<div class="page-header">
-  <h1>Media Library</h1>
-</div>
-
-<?php if ($error): ?><div class="card" style="border-left:4px solid var(--red,#dc2626);margin-bottom:16px"><div class="card__body" style="padding:14px 18px;font-size:14px"><?= e($error) ?></div></div><?php endif; ?>
-<?php if ($success): ?><div class="card" style="border-left:4px solid var(--green,#16a34a);margin-bottom:16px"><div class="card__body" style="padding:14px 18px;font-size:14px"><?= e($success) ?></div></div><?php endif; ?>
-
-<?php if (!media_supported()): ?>
-<div class="card"><div class="card__body" style="padding:20px;font-size:14px">
-  Uploads are unavailable until the <code>add_media.sql</code> migration is applied.
-  Images already attached to a venue, room or tour gallery are still listed below.
-</div></div>
-<?php endif; ?>
-
+// ── Body fragment (grid + pager) — shared by the full render and the AJAX swap ──
+ob_start(); ?>
 <div class="card">
-  <div class="card__head">
-    <span class="card__title">Upload</span>
-    <span class="text-muted" style="font-size:12px">JPG, PNG or WebP · max 5MB · resized to 2000px wide</span>
-  </div>
   <div class="card__body" style="padding:20px">
-    <form method="POST" enctype="multipart/form-data" action="/admin/media.php">
-      <?= csrf_field() ?>
-      <input type="file" name="image" accept="image/jpeg,image/png,image/webp" required>
-      <button type="submit" class="btn-primary btn-sm" style="margin-left:10px">Upload</button>
-    </form>
-  </div>
-</div>
-
-<div class="card">
-  <div class="card__head">
-    <span class="card__title">All images</span>
-    <span class="text-muted" style="font-size:12px"><?= count($items) ?> image<?= count($items) === 1 ? '' : 's' ?> · library plus every venue, room and tour gallery</span>
-  </div>
-  <div class="card__body" style="padding:20px">
-    <form method="GET" action="/admin/media.php" style="margin-bottom:16px">
-      <input type="search" name="q" value="<?= e($search) ?>" placeholder="Search filename…" class="inp" style="max-width:280px;padding:8px 10px">
-      <button type="submit" class="btn-outline btn-sm">Search</button>
-      <?php if ($search !== ''): ?><a href="/admin/media.php" class="btn-outline btn-sm">Clear</a><?php endif; ?>
-    </form>
     <?php if (!$items): ?>
-      <p class="text-muted" style="margin:0;font-size:13px">No images<?= $search !== '' ? ' match that search' : ' yet' ?>.</p>
+      <?php dt_empty($pg['q'] !== '' ? 'No images match that search.' : 'No images yet — upload one above.', 'image'); ?>
     <?php else: ?>
-    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px">
+    <div class="ml-grid">
       <?php foreach ($items as $it): ?>
-      <figure style="margin:0;border:1px solid var(--border,#e5e7eb);border-radius:7px;overflow:hidden;background:var(--bg,#f9fafb)">
-        <img src="<?= e($it['url']) ?>" alt="" loading="lazy" decoding="async" style="width:100%;aspect-ratio:4/3;object-fit:cover;display:block">
-        <figcaption style="padding:6px 8px;font:10.5px/1.35 ui-monospace,Menlo,monospace;color:var(--muted,#6b7280);word-break:break-all">
-          <span style="font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--sand,#B8965A)"><?= e($it['source']) ?></span><br>
-          <?= e($it['key']) ?>
+      <figure class="ml-card">
+        <div class="ml-thumb">
+          <img src="<?= e($it['url']) ?>" alt="" loading="lazy" decoding="async"
+               onerror="this.closest('.ml-thumb').classList.add('is-broken')">
+          <span class="ml-thumb__fb" aria-hidden="true"><?= admin_icon('image', 24) ?><small>Unavailable</small></span>
+        </div>
+        <figcaption class="ml-cap">
+          <span class="ml-badge"><?= e($it['source']) ?></span>
+          <span class="ml-key" title="<?= e($it['key']) ?>"><?= e($it['key']) ?></span>
         </figcaption>
       </figure>
       <?php endforeach; ?>
@@ -128,4 +100,87 @@ include __DIR__ . '/_layout.php';
     <?php endif; ?>
   </div>
 </div>
+<?php dt_pager($meta); ?>
+<?php
+$dtBody = ob_get_clean();
+// AJAX (search / paging / per-page): return ONLY the body fragment.
+if ($pg['ajax'] && $_SERVER['REQUEST_METHOD'] === 'GET') { echo $dtBody; exit; }
+
+$pageTitle  = 'Media Library';
+$activeMenu = 'media';
+include __DIR__ . '/_layout.php';
+?>
+<div class="page-header">
+  <h1 style="display:inline-flex;align-items:center;gap:10px"><?= admin_icon('image', 22) ?> Media Library</h1>
+</div>
+
+<?php if ($error): ?><div class="alert alert--error is-flash" style="margin-bottom:16px"><?= e($error) ?></div><?php endif; ?>
+<?php if ($success): ?><div class="alert alert--success is-flash" style="margin-bottom:16px"><?= e($success) ?></div><?php endif; ?>
+
+<?php if (!media_supported()): ?>
+<div class="alert alert--error" style="margin-bottom:16px">
+  Uploads are unavailable until the <code>add_media.sql</code> migration is applied.
+  Images already attached to a venue, room or tour gallery are still listed below.
+</div>
+<?php endif; ?>
+
+<div class="card">
+  <div class="card__head">
+    <span class="card__title" style="display:inline-flex;align-items:center;gap:8px"><?= admin_icon('image', 16) ?> Upload</span>
+    <span class="text-muted" style="font-size:12px">JPG, PNG or WebP · max 5MB · resized to 2000px wide</span>
+  </div>
+  <div class="card__body" style="padding:20px">
+    <form method="POST" enctype="multipart/form-data" action="/admin/media.php" style="display:flex;gap:12px;align-items:center;flex-wrap:wrap">
+      <?= csrf_field() ?>
+      <label class="filefield">
+        <span class="btn-outline btn-sm"><?= admin_icon('image', 14) ?> Choose image</span>
+        <input type="file" name="image" accept="image/jpeg,image/png,image/webp" required data-media-file>
+        <span class="filefield__name" data-media-filename>No file chosen</span>
+      </label>
+      <button type="submit" class="btn-primary btn-sm" data-media-submit disabled><?= admin_icon('plus', 15) ?> Upload</button>
+    </form>
+  </div>
+</div>
+
+<div class="dt" data-dt>
+  <div class="card" style="margin-bottom:16px">
+    <div class="card__head" style="gap:12px;flex-wrap:wrap">
+      <span class="card__title" style="display:inline-flex;align-items:center;gap:8px"><?= admin_icon('inbox', 16) ?> All images</span>
+      <span class="text-muted" style="font-size:12px">Library plus every venue, room and tour gallery</span>
+      <span style="flex:1 1 auto"></span>
+      <?php dt_toolbar(['per' => $meta['per'], 'placeholder' => 'Search filename…']); ?>
+    </div>
+  </div>
+  <div class="dt-body" data-dt-body><?= $dtBody ?></div>
+</div>
+
+<style>
+.ml-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px}
+.ml-card{margin:0;border:1px solid var(--border,#e7ded7);border-radius:10px;overflow:hidden;background:var(--card,#fff);display:flex;flex-direction:column;transition:box-shadow .15s,border-color .15s}
+.ml-card:hover{border-color:var(--sand,#B8965A);box-shadow:0 4px 14px rgba(16,47,58,.08)}
+.ml-thumb{position:relative;aspect-ratio:4/3;background:var(--bg,#f4efe9)}
+.ml-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.ml-thumb__fb{display:none;position:absolute;inset:0;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--muted,#8a7f74)}
+.ml-thumb__fb small{font-size:10px;letter-spacing:.06em;text-transform:uppercase}
+.ml-thumb.is-broken img{display:none}
+.ml-thumb.is-broken .ml-thumb__fb{display:flex}
+.ml-cap{padding:8px 10px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.ml-badge{align-self:flex-start;font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--sand,#B8965A);background:var(--bg,#f4efe9);border-radius:5px;padding:2px 6px}
+.ml-key{font:11px/1.35 ui-monospace,Menlo,monospace;color:var(--muted,#8a7f74);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+</style>
+
+<script>
+// Styled file field: reflect the chosen filename + enable the submit button.
+(function () {
+  var inp  = document.querySelector('[data-media-file]');
+  var name = document.querySelector('[data-media-filename]');
+  var btn  = document.querySelector('[data-media-submit]');
+  if (!inp) return;
+  inp.addEventListener('change', function () {
+    var f = inp.files && inp.files[0];
+    if (name) name.textContent = f ? f.name : 'No file chosen';
+    if (btn)  btn.disabled = !f;
+  });
+})();
+</script>
 <?php include __DIR__ . '/_layout_end.php'; ?>
