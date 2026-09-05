@@ -155,7 +155,7 @@ include __DIR__ . '/_layout.php';
 </div>
 
 <style>
-.ml-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px}
+.ml-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px;align-items:start}
 .ml-card{margin:0;border:1px solid var(--border,#e7ded7);border-radius:10px;overflow:hidden;background:var(--card,#fff);display:flex;flex-direction:column;transition:box-shadow .15s,border-color .15s}
 .ml-card:hover{border-color:var(--sand,#B8965A);box-shadow:0 4px 14px rgba(16,47,58,.08)}
 .ml-thumb{position:relative;aspect-ratio:4/3;background:var(--bg,#f4efe9)}
