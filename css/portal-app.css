@@ -391,15 +391,27 @@ a.pa-topbar__brand:hover .pa-topbar__title{opacity:.92;}
 .pa-nav__item:focus-visible{outline:2px solid var(--pa-gold);outline-offset:2px;}
 .pa-nav__ico svg{width:18px;height:18px;}
 
-/* Narrow phones: the nav wraps to its own full-width row beneath the title,
-   items spread so tap targets stay large. */
+/* Narrow phones: the nav drops out of the top bar and becomes a fixed bottom
+   tab bar (native-app pattern). The top bar then carries only the title. */
 @media (max-width:640px){
   .pa-topbar__brand{flex:1 1 100%;}
-  .pa-nav{flex:1 1 100%;justify-content:space-around;gap:4px;}
-  .pa-nav__item{padding:9px 8px;}
-  .pa-nav__label{display:none;}         /* icons only on phones */
-  .pa-nav__ico svg{width:23px;height:23px;}
-  .pa-nav__item.is-active{box-shadow:none;}  /* underline reads oddly under a lone icon */
+  .pa-nav{
+    position:fixed; left:0; right:0; bottom:0; z-index:30;
+    width:auto; max-width:640px; margin:0 auto;
+    background:#fff; border-top:1px solid var(--pa-line);
+    justify-content:space-around; gap:0;
+    padding:0 0 env(safe-area-inset-bottom);
+    box-shadow:0 -2px 10px rgba(0,0,0,.05);
+  }
+  .pa-nav__item{
+    flex:1 1 0; flex-direction:column; gap:3px;
+    padding:8px 4px 9px; border-radius:0;
+    color:var(--pa-muted); font-size:10.5px; font-weight:500;
+  }
+  .pa-nav__item:active{background:var(--pa-cream);}
+  .pa-nav__item.is-active{color:var(--pa-teal-d); font-weight:600; box-shadow:none;}
+  .pa-nav__label{display:block;}         /* labels return for the bottom bar */
+  .pa-nav__ico svg{width:22px;height:22px;}
 }
 
 /* Help footer now flows at the end of the content — no reserved space needed. */
@@ -411,6 +423,12 @@ a.pa-topbar__brand:hover .pa-topbar__title{opacity:.92;}
 .pa-help-footer a{color:var(--pa-teal);font-weight:500;text-decoration:none;}
 .pa-help-footer .sep{color:var(--pa-line);margin:0 7px;}
 @media (min-width:720px){.pa-help-footer{max-width:880px;}}
+/* Phones: reserve room below the content for the fixed bottom tab bar. Placed
+   after the base .pa-app/.pa-help-footer rules so it wins the cascade. */
+@media (max-width:640px){
+  .pa-app{padding-bottom:calc(64px + env(safe-area-inset-bottom));}
+  .pa-help-footer{padding-bottom:24px;}
+}
 
 /* ── Non-native <select> — shared enhancer (admin/assets/admin-select.js).
    Native <select> stays in the DOM for no-JS submit; JS drives this styled UI. ── */
