@@ -950,6 +950,29 @@ function venue_hero_url(string $slug, string $fallback = ''): string {
     return $cache[$slug] !== '' ? $cache[$slug] : $fallback;
 }
 
+/**
+ * Do the editable-content columns (tagline / about_*) exist on `venues`?
+ * On a DB whose Neon→RDS move brought the base table but not this migration
+ * they are absent, and an unguarded `UPDATE venues SET tagline=…` would 500
+ * the admin save. Callers guard the content UPDATE with this. Cached per request.
+ */
+function venue_content_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { db_query('SELECT tagline, about_heading, about_body FROM venues LIMIT 1'); $ok = true; }
+    catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/** Do the per-property stay/location columns (address / maps_url / stay_*) exist? */
+function venue_stay_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { db_query('SELECT address, maps_url, stay_wifi, stay_checkout, stay_house_rules, stay_area_guide FROM venues LIMIT 1'); $ok = true; }
+    catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
 /** One editable field for a venue, or the fallback when unset/blank. */
 function ts_venue_text(string $slug, string $field, string $fallback = ''): string {
     $c = ts_venue_content($slug);

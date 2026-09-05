@@ -161,38 +161,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     }
 
     if ($action === 'save_content' && !$isNew) {
-        db_query(
-            'UPDATE venues SET tagline=:t, about_heading=:h, about_body=:b, updated_at=NOW() WHERE id=:id',
-            [
-                ':t'  => trim($_POST['tagline'] ?? ''),
-                ':h'  => trim($_POST['about_heading'] ?? ''),
-                ':b'  => trim($_POST['about_body'] ?? ''),
-                ':id' => $id,
-            ]
-        );
-        audit_log('venue.content', 'venue', $id);
-        header("Location: /admin/venue-edit.php?id={$id}&saved=1");
-        exit;
+        // Pre-migration-safe: on a DB missing the content columns (e.g. a fresh
+        // RDS that never got add_venue_content.sql) skip the write rather than
+        // 500 the save. The read side (ts_venue_content) already degrades to [].
+        if (!venue_content_supported()) {
+            $error = 'Page-content fields are not available on this database yet — run the add_venue_content migration.';
+        } else {
+            db_query(
+                'UPDATE venues SET tagline=:t, about_heading=:h, about_body=:b, updated_at=NOW() WHERE id=:id',
+                [
+                    ':t'  => trim($_POST['tagline'] ?? ''),
+                    ':h'  => trim($_POST['about_heading'] ?? ''),
+                    ':b'  => trim($_POST['about_body'] ?? ''),
+                    ':id' => $id,
+                ]
+            );
+            audit_log('venue.content', 'venue', $id);
+            header("Location: /admin/venue-edit.php?id={$id}&saved=1");
+            exit;
+        }
     }
 
     if ($action === 'save_stay' && !$isNew) {
-        db_query(
-            'UPDATE venues SET address=:addr, maps_url=:maps, stay_wifi=:wifi,
-                    stay_checkout=:co, stay_house_rules=:hr, stay_area_guide=:ag, updated_at=NOW()
-             WHERE id=:id',
-            [
-                ':addr' => trim($_POST['address'] ?? ''),
-                ':maps' => trim($_POST['maps_url'] ?? ''),
-                ':wifi' => trim($_POST['stay_wifi'] ?? ''),
-                ':co'   => trim($_POST['stay_checkout'] ?? ''),
-                ':hr'   => trim($_POST['stay_house_rules'] ?? ''),
-                ':ag'   => trim($_POST['stay_area_guide'] ?? ''),
-                ':id'   => $id,
-            ]
-        );
-        audit_log('venue.stay', 'venue', $id);
-        header("Location: /admin/venue-edit.php?id={$id}&saved=1");
-        exit;
+        if (!venue_stay_supported()) {
+            $error = 'Stay/location fields are not available on this database yet — run the add_venue_stay_info migration.';
+        } else {
+            db_query(
+                'UPDATE venues SET address=:addr, maps_url=:maps, stay_wifi=:wifi,
+                        stay_checkout=:co, stay_house_rules=:hr, stay_area_guide=:ag, updated_at=NOW()
+                 WHERE id=:id',
+                [
+                    ':addr' => trim($_POST['address'] ?? ''),
+                    ':maps' => trim($_POST['maps_url'] ?? ''),
+                    ':wifi' => trim($_POST['stay_wifi'] ?? ''),
+                    ':co'   => trim($_POST['stay_checkout'] ?? ''),
+                    ':hr'   => trim($_POST['stay_house_rules'] ?? ''),
+                    ':ag'   => trim($_POST['stay_area_guide'] ?? ''),
+                    ':id'   => $id,
+                ]
+            );
+            audit_log('venue.stay', 'venue', $id);
+            header("Location: /admin/venue-edit.php?id={$id}&saved=1");
+            exit;
+        }
     }
 
     if ($action === 'save_publish' && !$isNew) {
@@ -380,6 +391,9 @@ include __DIR__ . '/_layout.php';
   <div class="card">
     <div class="card__head"><span class="card__title">Page Content</span></div>
     <div class="card__body" style="padding:20px">
+      <?php if (!venue_content_supported()): ?>
+      <div class="alert alert--error" style="margin-bottom:16px">These fields need the <code>add_venue_content</code> migration, which isn&rsquo;t applied on this database yet. Saving is disabled until it is.</div>
+      <?php endif; ?>
       <form method="POST" action="/admin/venue-edit?id=<?= $id ?>">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="save_content">
@@ -413,6 +427,9 @@ include __DIR__ . '/_layout.php';
     <div class="card__head"><span class="card__title">Stay info &amp; location</span></div>
     <div class="card__body" style="padding:20px">
       <p style="margin:0 0 16px;font-size:13px;color:var(--muted)">Shown to guests in the app for this property. Leave a field blank to hide it.</p>
+      <?php if (!venue_stay_supported()): ?>
+      <div class="alert alert--error" style="margin-bottom:16px">These fields need the <code>add_venue_stay_info</code> migration, which isn&rsquo;t applied on this database yet. Saving is disabled until it is.</div>
+      <?php endif; ?>
       <form method="POST" action="/admin/venue-edit?id=<?= $id ?>">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="save_stay">
