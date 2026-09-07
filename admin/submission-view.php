@@ -191,6 +191,10 @@ $payload = json_decode($sub['payload_json'] ?? '{}', true) ?: [];
 $notes   = fetch_submission_notes($id);
 $status  = submission_status_supported() ? ((string)($sub['status'] ?? '') ?: submission_status_default()) : '';
 
+// Where a guest's email reply actually lands. Inbound replies are not yet
+// auto-threaded here (see Phase 4c), so the compose box tells staff plainly.
+$reservations_inbox = (string) setting('notify_email', 'reservations@tribalsand.com');
+
 // Trip Builder posts a nested document (guest/trip/departure/special/itinerary);
 // every other form posts a flat scalar map. They render differently.
 $is_trip_builder = submission_is_trip_builder($payload);
@@ -423,6 +427,12 @@ include __DIR__ . '/_layout.php';
           <button type="submit" class="btn-primary btn-sm" style="margin-left:auto"><?= admin_icon('plus', 15) ?> Add to thread</button>
         </div>
       </form>
+
+      <p class="text-muted" style="font-size:12px;margin:12px 0 0;line-height:1.55">
+        A reply here reaches the guest by email. Their reply arrives in the
+        <strong><?= e($reservations_inbox) ?></strong> inbox — it does not appear in this thread yet.
+        Check that inbox and paste the guest’s reply back here to keep the log complete.
+      </p>
 
       <script>
         // The "email the guest" checkbox only applies to a reply, so enable it
