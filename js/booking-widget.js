@@ -501,9 +501,11 @@
         if (span) span.textContent = a;
       }
       if (c != null) {
-        c = Math.max(0, Math.min(20, parseInt(c, 10) || 0));
-        childrenH.value = c;
+        // Adults-only properties render no Children row; a prefill must not be
+        // able to put children back into the payload behind the guest's back.
         const span = guestsPop.querySelector('[data-bk-count="child"]');
+        c = span ? Math.max(0, Math.min(20, parseInt(c, 10) || 0)) : 0;
+        childrenH.value = c;
         if (span) span.textContent = c;
       }
       updateGuestsPill();

@@ -10,11 +10,17 @@
  *   'availability' → live calendar + blocked dates + 24h hold on submit
  *   'enquiry'      → simple date text inputs + enquiry email only
  *   NULL           → falls back to global setting('form_mode'), default 'enquiry'
+ *
+ * Optional, set before including:
+ *   $bk_hide_children = true;   // adults-only property — drop the Children
+ *                               // stepper. The hidden children field stays at
+ *                               // 0 so the submit payload is unchanged.
  */
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/turnstile.php';
 
 $booking_slug = $booking_slug ?? '';
+$bk_hide_children = !empty($bk_hide_children);
 
 try {
     $__room = $booking_slug ? fetch_room_by_slug($booking_slug) : false;
@@ -156,6 +162,7 @@ if ($__form_mode !== 'availability') {
           <button type="button" data-bk="adult" data-dir="1" aria-label="Increase adults">+</button>
         </div>
       </div>
+      <?php if (!$bk_hide_children): ?>
       <div class="bk-stepper-row">
         <div class="bk-stepper-row__label"><strong>Children</strong><small>Age 0–17</small></div>
         <div class="bk-stepper">
@@ -164,6 +171,7 @@ if ($__form_mode !== 'availability') {
           <button type="button" data-bk="child" data-dir="1" aria-label="Increase children">+</button>
         </div>
       </div>
+      <?php endif; ?>
       <div class="bk-pop__footer bk-pop__footer--end">
         <button type="button" class="bk-pop__cta" id="bkGuestsDone">Done</button>
       </div>

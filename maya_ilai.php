@@ -10,7 +10,7 @@ $page_preload = 'images/maya_illai/Best1.jpg';
 /* ═══ FAQS ═══ */
 $faqs = [
     ['q' => 'What is the age policy at Maya Ilai?',
-     'a' => 'Maya Ilai is an adults-only property with a minimum age of 16. Guests aged 16 to 17 may stay without a parent or guardian. If guests aged 16 to 17 wish to consume alcohol, a parent or legal guardian must sign a consent form at check-in.'],
+     'a' => 'Maya Ilai is an adults-only property with a minimum age of 16. Guests aged 16 to 17 may stay without a parent or guardian.'],
     ['q' => 'What types of accommodation are available at Maya Ilai?',
      'a' => 'Maya Ilai has 16 units — 8 three-bedroom villas and 8 studio apartments. Villa rooms are configured as doubles (rooms 1 and 2) or bunk beds (room 3). All units share access to the communal pool, bar and garden spaces.'],
     ['q' => 'Is Maya Ilai suitable for corporate retreats?',
@@ -455,7 +455,6 @@ include __DIR__ . '/includes/property-gallery.php';
       <ul class="age-policy-list">
         <li>Maya Ilai is an adults-only property. The minimum age to stay is <strong>16 years</strong>.</li>
         <li>Guests aged 16–17 <strong>may stay without a parent or guardian</strong> present.</li>
-        <li>If a guest aged 16–17 wishes to consume alcohol, a <strong>parent or legal guardian must sign a consent form</strong> at check-in.</li>
         <li>This policy is in place to preserve the peaceful, adult-focused atmosphere of the compound.</li>
       </ul>
       <div class="age-policy-note">Guests who do not meet the minimum age requirement will not be permitted to check in. We appreciate your understanding — this policy helps us maintain the retreat environment our guests value.</div>
@@ -819,9 +818,9 @@ include __DIR__ . '/includes/property-photo-grid.php';
       <div class="book-body" style="padding:0">
         <!-- Age notice in sidebar -->
         <div class="sidebar-age-notice" style="padding:1rem 1.4rem .5rem;font-size:.72rem;color:var(--mid);border-bottom:1px solid var(--border)">
-          <strong>Adults only — min. age 16.</strong> Guests 16–17 may stay unaccompanied. Alcohol consent form required for under-18s.
+          <strong>Adults only — min. age 16.</strong> Guests 16–17 may stay unaccompanied.
         </div>
-        <?php $booking_slug = 'superior-suite'; include __DIR__ . '/includes/booking-widget.php'; ?>
+        <?php $bk_hide_children = true; $booking_slug = 'superior-suite'; include __DIR__ . '/includes/booking-widget.php'; ?>
       </div>
 
       <!-- Policy accordion -->
