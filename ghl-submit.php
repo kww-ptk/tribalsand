@@ -17,6 +17,7 @@
 /* ── Config (from env; logic ports to includes/ghl.php) ── */
 require_once __DIR__ . '/includes/db.php';
 require_once __DIR__ . '/includes/ghl.php';
+require_once __DIR__ . '/includes/mail.php';
 $__env = parse_env();
 define('GHL_API_KEY',     $__env['GHL_API_KEY']     ?? '');
 define('GHL_LOCATION_ID', $__env['GHL_LOCATION_ID'] ?? '');
@@ -272,37 +273,16 @@ $userMsg    = $data['message']    ?? $cd['enquiry_message'] ?? '';   // dedicate
 $source     = $opp['source']      ?? 'Website Enquiry';
 $ref        = $data['ref']        ?? '';
 
-$emailSubject = "New Enquiry — {$guestName} · {$property}";
-
-$sep = str_repeat('-', 48);
-
-$emailBody  = "NEW WEBSITE ENQUIRY\n{$sep}\n\n";
-$emailBody .= "Name:        {$guestName}\n";
-$emailBody .= "Email:       {$guestEmail}\n";
-$emailBody .= "Phone:       {$guestPhone}\n\n";
-$emailBody .= "Property:    {$property}\n";
-$emailBody .= "Arrival:     {$arrival}\n";
-$emailBody .= "Departure:   {$departure}\n";
-$emailBody .= "Adults:      {$adults}\n";
-$emailBody .= "Children:    {$children}\n";
-if ($rooms !== '—') $emailBody .= "Rooms:       {$rooms}\n";
-$emailBody .= "Source:      {$source}\n\n";
-if ($userMsg) {
-    $emailBody .= "{$sep}\n";
-    $emailBody .= "Message:\n{$userMsg}\n\n";
-}
-$emailBody .= "{$sep}\n";
-$emailBody .= "GHL contact: https://app.gohighlevel.com/ (ID: {$contactId})\n";
-$emailBody .= "Ref:         {$ref}\n";
-
-$emailHeaders  = "From: noreply@tribalsand.com\r\n";
-$emailHeaders .= "Reply-To: {$guestEmail}\r\n";
-$emailHeaders .= "X-Mailer: TribalSand/PHP\r\n";
-$emailHeaders .= "Content-Type: text/plain; charset=UTF-8\r\n";
-
-mail(NOTIFY_EMAIL, $emailSubject, $emailBody, $emailHeaders);
+// Normalise the "—" placeholders back to empty so the mailer omits blank rows.
+$mailProperty  = $property  === '—' ? '' : $property;
+$mailArrival   = $arrival   === '—' ? '' : $arrival;
+$mailDeparture = $departure === '—' ? '' : $departure;
+$mailAdults    = $adults    === '—' ? '' : $adults;
+$mailChildren  = $children  === '—' ? '' : $children;
+$mailPhone     = $guestPhone === '—' ? '' : $guestPhone;
 
 /* ── Persist to Postgres (admin inbox) ── */
+$submissionId = 0;
 try {
     db_query(
         "INSERT INTO submissions
@@ -325,12 +305,49 @@ try {
             ':payload'  => json_encode(['property' => $property, 'rooms' => $rooms, 'ghl_contact' => $contactId, 'ref' => $ref, 'source' => $source]),
             ':src'      => $_SERVER['HTTP_REFERER'] ?? '',
             ':ref'      => '', // external referrer not available server-side at this endpoint
-            ':ip'       => $_SERVER['REMOTE_ADDR'] ?? '',
+            ':ip'       => client_ip(),
             ':ua'       => $_SERVER['HTTP_USER_AGENT'] ?? '',
         ]
     );
+    $submissionId = (int) db()->lastInsertId();
 } catch (Throwable $e) {
     error_log('[ghl-submit] submissions insert failed: ' . $e->getMessage());
+}
+
+/* ────────────────────────────────────────────────
+   STEP 6 · Emails via the site mailer (SES in prod)
+   GHL is CRM-only here; these are what actually reach
+   the guest + reservations inbox regardless of GHL.
+   ──────────────────────────────────────────────── */
+// Staff notification (branded HTML + text) to reservations@.
+send_notification([
+    'id'              => $submissionId,
+    'type'            => 'enquiry',
+    'guest_name'      => $guestName,
+    'guest_email'     => $guestEmail,
+    'guest_phone'     => $mailPhone,
+    'room_name'       => $mailProperty,
+    'check_in'        => $mailArrival,
+    'check_out'       => $mailDeparture,
+    'guests_adults'   => $mailAdults,
+    'guests_children' => $mailChildren,
+    'message'         => $userMsg,
+    'created_at'      => date('Y-m-d H:i:s'),
+]);
+
+// Guest acknowledgement (auto-reply) — only when we have a valid address.
+if (filter_var($guestEmail, FILTER_VALIDATE_EMAIL)) {
+    send_guest_acknowledgement([
+        'kind'            => 'enquiry',
+        'guest_name'      => $guestName ?: 'Guest',
+        'guest_email'     => $guestEmail,
+        'room_name'       => $mailProperty,
+        'check_in'        => $mailArrival,
+        'check_out'       => $mailDeparture,
+        'guests_adults'   => $mailAdults,
+        'guests_children' => $mailChildren,
+        'message'         => $userMsg,
+    ]);
 }
 
 /* ── Respond ── */
