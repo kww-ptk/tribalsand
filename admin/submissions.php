@@ -17,8 +17,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delet
     if ($delete_id > 0 && submission_in_scope($delete_id)) {
         db_query('DELETE FROM submissions WHERE id = :id', [':id' => $delete_id]);
     }
-    // Preserve filters/page when redirecting back (never carry ajax through a redirect)
-    $qs = http_build_query(array_filter($_GET, fn($k) => $k !== 'ajax', ARRAY_FILTER_USE_KEY));
+    // Preserve filters/page when redirecting back, but NEVER carry `ajax` or
+    // `shell` through: a full-page GET to ?shell=1 returns only the bare content
+    // fragment (no <html>/CSS), which lands the browser on an unstyled page.
+    $qs = http_build_query(array_filter($_GET, fn($k) => !in_array($k, ['ajax', 'shell'], true), ARRAY_FILTER_USE_KEY));
     header('Location: /admin/submissions.php' . ($qs ? '?' . $qs : ''));
     exit;
 }
@@ -40,8 +42,9 @@ $preserve_qs = http_build_query(array_filter(
     fn($k) => !in_array($k, ['page', 'per', 'ajax', 'export'], true),
     ARRAY_FILTER_USE_KEY
 ));
-// The full current view (minus ajax) so a delete redirect lands back where the user was.
-$view_qs = http_build_query(array_filter($_GET, fn($k) => $k !== 'ajax', ARRAY_FILTER_USE_KEY));
+// The full current view (minus ajax/shell) so the delete form posts — and the
+// redirect lands — on a full styled page, never the bare shell fragment.
+$view_qs = http_build_query(array_filter($_GET, fn($k) => !in_array($k, ['ajax', 'shell'], true), ARRAY_FILTER_USE_KEY));
 
 // ── Property scope ───────────────────────────────────────────────
 // submissions has no venue column. An enquiry reaches a property through
@@ -164,8 +167,7 @@ ob_start(); ?>
           <th>Type</th>
           <?php if (submission_status_supported()): ?><th>Status</th><?php endif; ?>
           <th>Source</th>
-          <th>Name</th>
-          <th>Email</th>
+          <th>Guest</th>
           <th>Room / Tour</th>
           <th>Check-in</th>
           <th>Date</th>
@@ -194,12 +196,18 @@ ob_start(); ?>
           <?php endif; ?>
           <td class="text-muted"><?= e(source_label($sourceUrl)) ?></td>
           <td>
-            <strong><?= e($row['guest_name']) ?></strong>
-            <?php $nc = $note_counts[(int)$row['id']] ?? 0; if ($nc > 0): ?>
-            <span class="note-count" data-tip="<?= (int)$nc ?> internal note<?= $nc === 1 ? '' : 's' ?>"><?= admin_icon('edit', 12) ?> <?= (int)$nc ?></span>
-            <?php endif; ?>
+            <div class="cell-stack">
+              <span class="cell-stack__main">
+                <strong><?= e($row['guest_name'] ?: '—') ?></strong>
+                <?php $nc = $note_counts[(int)$row['id']] ?? 0; if ($nc > 0): ?>
+                <span class="note-count" data-tip="<?= (int)$nc ?> internal note<?= $nc === 1 ? '' : 's' ?>"><?= admin_icon('edit', 12) ?> <?= (int)$nc ?></span>
+                <?php endif; ?>
+              </span>
+              <?php if (!empty($row['guest_email'])): ?>
+              <a class="cell-stack__sub" href="mailto:<?= e($row['guest_email']) ?>"><?= e($row['guest_email']) ?></a>
+              <?php endif; ?>
+            </div>
           </td>
-          <td class="text-muted"><?= e($row['guest_email']) ?></td>
           <td class="text-muted"><?= e($row['room_name'] ?: ($row['tour_name'] ? 'Tour: ' . $row['tour_name'] : '—')) ?></td>
           <td class="text-muted"><?= $row['check_in'] ? e(date('d M Y', strtotime($row['check_in']))) : '—' ?></td>
           <td class="text-muted" style="white-space:nowrap"><?= e(date('d M Y, H:i', strtotime($row['created_at']))) ?></td>

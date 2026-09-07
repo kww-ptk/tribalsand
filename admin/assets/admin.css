@@ -721,24 +721,34 @@ tr.dt-rowlink a:hover { text-decoration: none; }
 
 /* ── Skeleton loading (Phase 1 #2) ──
    A shimmering placeholder shown in a swap target while its fragment loads. */
-@keyframes ts-shimmer { 0% { background-position: -420px 0; } 100% { background-position: 420px 0; } }
+@keyframes ts-shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
 .skeleton {
-  background: linear-gradient(90deg, #ececec 25%, #f6f4f0 37%, #ececec 63%);
-  background-size: 840px 100%;
-  animation: ts-shimmer 1.4s ease-in-out infinite;
-  border-radius: 6px;
+  background: linear-gradient(100deg,
+    rgba(0,0,0,.055) 20%, rgba(0,0,0,.10) 40%, rgba(0,0,0,.055) 60%);
+  background-color: rgba(0,0,0,.05);
+  background-size: 200% 100%;
+  animation: ts-shimmer 1.5s linear infinite;
+  border-radius: 7px;
   display: block;
 }
 @media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }
-.sk-card { background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow); padding: 4px 0; margin-bottom: 24px; }
-.sk-row { display: flex; align-items: center; gap: 14px; padding: 14px 18px; border-bottom: 1px solid var(--border); }
+.sk-card { background: var(--white); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; margin-bottom: 24px; }
+.sk-row { display: flex; align-items: center; gap: 16px; padding: 15px 18px; border-bottom: 1px solid var(--border); }
 .sk-row:last-child { border-bottom: 0; }
+/* Header row: a tint band + firmer divider, echoing the real .data-table thead. */
+.sk-thead { background: #f9fafb; padding-top: 12px; padding-bottom: 12px; border-bottom: 1px solid var(--border); }
+.sk-thead .skeleton { opacity: .6; }
 .sk-bar { height: 12px; }
 .sk-bar--grow { flex: 1 1 auto; }
-.sk-bar--sm { width: 68px; }
-.sk-bar--md { width: 120px; }
+.sk-bar--sm { width: 64px; }
+.sk-bar--md { width: 118px; }
 .sk-bar--lg { width: 200px; }
-.sk-pill { height: 18px; width: 56px; border-radius: 999px; }
+.sk-pill { height: 20px; width: 62px; border-radius: 999px; flex: none; }
+.sk-dot { height: 30px; width: 30px; border-radius: 8px; margin-left: auto; flex: none; }
+/* Two-line cell (mirrors the merged Guest = name + email column). */
+.sk-guest { flex: 1 1 auto; display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.sk-guest .sk-bar--md { width: 45%; min-width: 120px; }
+.sk-guest .sk-bar--sm { width: 32%; min-width: 90px; height: 10px; }
 .sk-detail { padding: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
 .sk-detail .sk-bar { margin-bottom: 8px; }
 .sk-chat { padding: 20px; display: flex; flex-direction: column; gap: 12px; }
@@ -746,8 +756,14 @@ tr.dt-rowlink a:hover { text-decoration: none; }
 .sk-bubble--me { align-self: flex-end; width: 46%; }
 .sk-bubble--them { align-self: flex-start; width: 58%; }
 /* Page-level skeleton header (shell nav swap, #18) — mimics `.page-header`. */
-.sk-pagehdr { padding: 4px 2px 22px; }
-.sk-pagehdr .sk-bar { height: 26px; width: 220px; max-width: 60%; }
+.sk-pagehdr { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 4px 2px 20px; }
+.sk-title { height: 27px; width: 210px; max-width: 55%; border-radius: 8px; }
+.sk-btn { height: 34px; width: 124px; border-radius: 8px; flex: none; }
+/* Filter/search toolbar row (mimics the .dt-controls strip). */
+.sk-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 18px; }
+.sk-chip { height: 36px; width: 132px; border-radius: 8px; }
+.sk-search { height: 36px; width: 220px; border-radius: 8px; margin-left: auto; }
+@media (max-width: 640px) { .sk-search { margin-left: 0; flex: 1 1 auto; } }
 .admin-content.is-swapping { min-height: 60vh; }
 /* In-content form save (#18 Stage 2): the fragment is fetched while the form stays
    on screen (no skeleton), so give a busy cue instead of blanking it — dim, block
@@ -920,6 +936,16 @@ tr.is-unpriced td { background: #fff7ed; }
   font-size: 11px; font-weight: 700; color: var(--muted);
 }
 .note-count svg { width: 12px; height: 12px; }
+
+/* ── Stacked table cell (name + secondary line, e.g. Guest = name + email) ──
+   Merges two former columns into one so wide tables stay legible. */
+.cell-stack { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.cell-stack__main { display: inline-flex; align-items: center; gap: 2px; }
+.cell-stack__sub {
+  font-size: 12px; color: var(--muted); text-decoration: none;
+  max-width: 260px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cell-stack__sub:hover { color: var(--brand); text-decoration: underline; }
 
 /* ── No-native form primitives (Phase 4 — staff / guest board) ──
    Reused so team + guest-board forms drop native radios/checkboxes/file inputs. */

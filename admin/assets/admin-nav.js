@@ -52,15 +52,27 @@
     return s;
   }
   function skeletonTable() {
+    var head = '<div class="sk-row sk-thead">' +
+      '<span class="skeleton sk-pill"></span>' +
+      '<span class="skeleton sk-pill"></span>' +
+      '<span class="skeleton sk-bar sk-bar--grow"></span>' +
+      '<span class="skeleton sk-bar sk-bar--md"></span>' +
+      '<span class="skeleton sk-bar sk-bar--sm"></span>' +
+      '</div>';
     var rows = '';
-    for (var i = 0; i < 5; i++) {
+    for (var i = 0; i < 6; i++) {
       rows += '<div class="sk-row">' +
-        '<span class="skeleton sk-bar sk-bar--grow"></span>' +
-        '<span class="skeleton sk-bar sk-bar--md"></span>' +
-        '<span class="skeleton sk-pill"></span>' +
+        '<span class="skeleton sk-pill"></span>' +          /* type badge   */
+        '<span class="skeleton sk-pill"></span>' +          /* status badge */
+        '<span class="sk-guest">' +                         /* two-line guest cell */
+          '<span class="skeleton sk-bar sk-bar--md"></span>' +
+          '<span class="skeleton sk-bar sk-bar--sm"></span>' +
+        '</span>' +
+        '<span class="skeleton sk-bar sk-bar--md"></span>' + /* room / date */
+        '<span class="skeleton sk-dot"></span>' +            /* row action  */
         '</div>';
     }
-    return '<div class="sk-card">' + rows + '</div>';
+    return '<div class="sk-card">' + head + rows + '</div>';
   }
   function skeleton(kind) {
     if (kind === 'chat') {
@@ -82,7 +94,18 @@
     return skeletonTable();
   }
   function pageSkeleton() {
-    return '<div class="sk-pagehdr"><span class="skeleton sk-bar sk-bar--md"></span></div>' + skeletonTable();
+    return '' +
+      '<div class="sk-pagehdr">' +
+        '<span class="skeleton sk-title"></span>' +
+        '<span class="skeleton sk-btn"></span>' +
+      '</div>' +
+      '<div class="sk-toolbar">' +
+        '<span class="skeleton sk-chip"></span>' +
+        '<span class="skeleton sk-chip"></span>' +
+        '<span class="skeleton sk-chip"></span>' +
+        '<span class="skeleton sk-search"></span>' +
+      '</div>' +
+      skeletonTable();
   }
 
   function toastFlash(doc) {
