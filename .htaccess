@@ -24,6 +24,20 @@ RewriteRule ^sitemap\.xml$ sitemap.php [L]
 # Placed BEFORE the image/asset proxy so the PDF resolves to its 301, not a proxy.
 # Old inventory diffed in docs/redirects-map.csv. Keep both in sync.
 RewriteRule ^content/Watamu-Kenya-COMETA-2025\.pdf$ /watamu [R=301,L]
+
+# Trip Builder — one page, one lead source.
+# Three copies of the builder were live and all POSTed to the SAME GHL webhook
+# with an identical payload (source: 'Trip Builder', same tags, same TS-<year>-
+# <n> ref), so enquiries were impossible to attribute. Worse, the two .html
+# copies posted their backend call to https://www.tribalsand.com/tribal-sand/
+# api/submit.php — dead since the rewrite — so those leads reached GHL only,
+# with no confirmation email and no row in `submissions`.
+# /trip-builder (trip-builder.php) is the only real one: it is in sitemap.xml
+# and posts to /api/trip-builder.php, which stores the submission and emails.
+# The v3 name is also matched at the site root, where it 404s today, because
+# the old blog page links to it relatively.
+RewriteRule ^trip-builder\.html$ /trip-builder [R=301,L]
+RewriteRule ^(?:reference/)?tribal-sand-trip-builder-v3\.html$ /trip-builder [R=301,L]
 # ----------------------------------------------------------------------------
 
 # Serve POST/PUT/PATCH/DELETE to a .php URL DIRECTLY — never redirect. A 301 on a
