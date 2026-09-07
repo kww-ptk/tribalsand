@@ -93,12 +93,25 @@
     }
     return skeletonTable();
   }
-  function pageSkeleton() {
-    return '' +
-      '<div class="sk-pagehdr">' +
+  // Match the loading shape to the destination: single-record views/editors
+  // (…-view.php, …-edit.php, the booking workspace) get a form/detail shape;
+  // every other page (lists, dashboards) gets the list shape. Falls back to
+  // the list shape for anything unrecognised.
+  function isDetailPath(url) {
+    var p = url || '';
+    try { p = new URL(url, location.href).pathname; } catch (e) {}
+    return /(?:-view|-edit|\/booking)\.php$/.test(p);
+  }
+  function pageSkeleton(url) {
+    var hdr = '<div class="sk-pagehdr">' +
         '<span class="skeleton sk-title"></span>' +
         '<span class="skeleton sk-btn"></span>' +
-      '</div>' +
+      '</div>';
+    if (isDetailPath(url)) {
+      // A record page is several stacked cards, not a table.
+      return hdr + skeleton('detail') + skeleton('detail');
+    }
+    return hdr +
       '<div class="sk-toolbar">' +
         '<span class="skeleton sk-chip"></span>' +
         '<span class="skeleton sk-chip"></span>' +
@@ -267,7 +280,7 @@
   function shellNavigate(url, push) {
     if (!content) { window.location.href = url; return; }
     content.classList.add('is-swapping');
-    content.innerHTML = pageSkeleton();
+    content.innerHTML = pageSkeleton(url);
     var sep = url.indexOf('?') >= 0 ? '&' : '?';
     fetch(url + sep + 'shell=1', { headers: { 'X-Requested-With': 'fetch' }, credentials: 'same-origin' })
       .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.text(); })
