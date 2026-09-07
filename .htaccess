@@ -36,7 +36,18 @@ RewriteRule ^content/Watamu-Kenya-COMETA-2025\.pdf$ /watamu [R=301,L]
 # and posts to /api/trip-builder.php, which stores the submission and emails.
 # The v3 name is also matched at the site root, where it 404s today, because
 # the old blog page links to it relatively.
+# Force the canonical https host on the production hosts, exactly as the
+# strip-.php rules below do: behind CloudFront the app sees Host = the .on.aws
+# origin over http, so a path-only target makes Apache build
+# http://…on.aws/trip-builder — a URL the browser cannot reach, because the
+# origin only answers https via CloudFront. Path-only fallback second so local
+# dev and any other host still redirect.
+RewriteCond %{HTTP_HOST} (?:\.on\.aws|tribalsand\.com)$ [NC]
+RewriteRule ^trip-builder\.html$ https://tribalsand.com/trip-builder [R=301,L]
 RewriteRule ^trip-builder\.html$ /trip-builder [R=301,L]
+
+RewriteCond %{HTTP_HOST} (?:\.on\.aws|tribalsand\.com)$ [NC]
+RewriteRule ^(?:reference/)?tribal-sand-trip-builder-v3\.html$ https://tribalsand.com/trip-builder [R=301,L]
 RewriteRule ^(?:reference/)?tribal-sand-trip-builder-v3\.html$ /trip-builder [R=301,L]
 # ----------------------------------------------------------------------------
 
