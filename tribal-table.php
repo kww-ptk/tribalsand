@@ -11,13 +11,11 @@
  * (page_content_registry()['tribal-table']); each photo slot's hint names the
  * photograph that belongs there.
  *
- * Only the hero ships with a stand-in photo, because the layout needs one. Every
- * other photo slot starts EMPTY and the page adapts: a feature section with no
- * photo renders as centred text instead of a broken half-grid, and the gallery
- * hides itself below three tiles. A placeholder from another property under a
- * caption like "the chef at work" would be a small lie — the same lie this
- * rebuild was meant to clear off the dining pages — so the page would rather
- * show less until the real photographs are in.
+ * Photo slots ship with Tribal Dunes stand-ins so the page reads as finished
+ * before the real photography is loaded. The layout still degrades gracefully if
+ * a slot is CLEARED in admin: a feature section with no photo renders as centred
+ * text instead of a broken half-grid, and the gallery hides itself below three
+ * tiles — so a half-populated page never looks broken.
  */
 declare(strict_types=1);
 require_once __DIR__ . '/includes/db.php';
