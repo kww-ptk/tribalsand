@@ -108,7 +108,15 @@ window.TS_CUR_META = <?= json_encode(array_map(fn($m) => ['symbol' => $m['symbol
 <script src="js/currency.js?v=<?= filemtime(__DIR__ . '/../js/currency.js') ?>" defer></script>
 <script src="js/nice-select.js?v=<?= filemtime(__DIR__ . '/../js/nice-select.js') ?>" defer></script>
 
-<?php if (captcha_site_key()): ?>
+<?php
+/* ?nots=1 skips our Turnstile entirely for that one page view, so the GHL chat
+   widget gets a clean window.turnstile instead of sharing ours. Diagnostic only,
+   for isolating the chat's "Security check required" failure.
+   Not a security hole: verify_captcha() is untouched and still fail-closed, so
+   our own forms simply cannot submit on a page view that carries the flag. */
+$__ts_skip = isset($_GET['nots']);
+?>
+<?php if (captcha_site_key() && !$__ts_skip): ?>
 <!-- ── Cloudflare Turnstile (loaded site-wide so every form's widget works) ──
      Explicit build, not implicit: the GHL chat widget shares this page's single
      window.turnstile and is built against ?render=explicit. Keep this src exact
