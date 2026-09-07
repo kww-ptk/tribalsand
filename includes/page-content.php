@@ -375,6 +375,89 @@ function page_content_registry(): array {
                 ],
             ],
         ],
+        // Tribal Table. The restaurant runs its own site (tribaltablekenya.com) for
+        // menus, hours and bookings, so this page is the Tribal Sand-side story and
+        // photography — it never duplicates a menu or takes a reservation itself.
+        // Every photo slot ships with a Tribal Dunes placeholder; swap each one for
+        // the real Tribal Table photograph in Admin → Media, then pick it here.
+        'tribal-table' => [
+            'label' => 'Tribal Table',
+            'url'   => '/tribal-table.php',
+            'groups' => [
+                'Hero' => [
+                    'hero_image' => ['type'=>'image', 'label'=>'Hero photo',
+                        'hint'=>'Best choice: the wide shot of the dining room with the bi-fold doors open onto the bar.',
+                        'default'=>'images/maya-kobe/Maya Kobe - Day Outdoor, Pool, Beach/Maya Kobe Best3.jpg'],
+                    'hero_badge' => ['type'=>'text', 'label'=>'Status badge',
+                        'hint'=>'The pill above the heading.',
+                        'default'=>'Now Open'],
+                    'hero_eyebrow' => ['type'=>'text', 'label'=>'Eyebrow',
+                        'default'=>'Tribal Dunes · Bofa Beach · Kilifi'],
+                    'hero_title' => ['type'=>'html', 'label'=>'Headline (H1)',
+                        'hint'=>'&lt;em&gt; makes the italic gold part.',
+                        'default'=>'Tribal <em>Table</em>'],
+                    'hero_sub' => ['type'=>'html', 'label'=>'Sub-heading',
+                        'default'=>'A beachside restaurant and cocktail bar on Kenya\'s North Coast. Open to the public — and to everything the coast has to offer.'],
+                ],
+                'Introduction' => [
+                    'info_eyebrow' => ['type'=>'text', 'label'=>'Eyebrow',
+                        'default'=>'Open to the Public'],
+                    'info_title' => ['type'=>'html', 'label'=>'Heading',
+                        'default'=>'Eat with us at <em>Tribal Table</em>'],
+                    'info_body' => ['type'=>'html', 'label'=>'Paragraph',
+                        'default'=>'You do not need to be staying at Tribal Dunes to book a table. Lunch under the trees, sundowners at the bar, or dinner once the lamps come on — the doors fold all the way back and the room opens onto the garden.'],
+                ],
+                'The kitchen' => [
+                    'kitchen_image' => ['type'=>'image', 'label'=>'Kitchen photo',
+                        'hint'=>'Best choice: the chef working the flame in the open kitchen.',
+                        'default'=>''],
+                    'kitchen_title' => ['type'=>'html', 'label'=>'Heading',
+                        'default'=>'An open kitchen, <em>a real fire</em>'],
+                    'kitchen_body' => ['type'=>'html', 'label'=>'Paragraph',
+                        'default'=>'The pass is open to the room, so the cooking is part of the evening rather than hidden behind a door. Seafood and grill lead the menu, built on what the Kilifi boats and the local growers bring in.'],
+                ],
+                'The bar' => [
+                    'bar_image' => ['type'=>'image', 'label'=>'Bar photo',
+                        'hint'=>'Best choice: the bartender finishing a cocktail, or the cocktail close-up.',
+                        'default'=>''],
+                    'bar_title' => ['type'=>'html', 'label'=>'Heading',
+                        'default'=>'Craft cocktails, <em>coastal hours</em>'],
+                    'bar_body' => ['type'=>'html', 'label'=>'Paragraph',
+                        'default'=>'A proper bar, mixing to order, with a shelf worth reading and a terrace built around the sunset. Come for a drink without eating — that is a perfectly good reason to be here.'],
+                ],
+                'The team' => [
+                    'team_image' => ['type'=>'image', 'label'=>'Team photo',
+                        'hint'=>'Best choice: the team lined up at the bar.',
+                        'default'=>''],
+                    'team_title' => ['type'=>'html', 'label'=>'Heading',
+                        'default'=>'The people who <em>run the room</em>'],
+                    'team_body' => ['type'=>'html', 'label'=>'Paragraph',
+                        'default'=>'A Kilifi team, most of them from within a few kilometres of the beach they work on. They will remember what you drank last time.'],
+                ],
+                'Gallery' => [
+                    'gal_eyebrow' => ['type'=>'text', 'label'=>'Eyebrow', 'default'=>'A Look Around'],
+                    'gal_title'   => ['type'=>'html', 'label'=>'Heading',  'default'=>'The <em>Tribal Table</em>'],
+                    'gal_1' => ['type'=>'image','label'=>'Gallery photo 1',
+                        'hint'=>'Suggested: a plated dish — the soft-shell crab bun and seared tuna board.',
+                        'default'=>''],
+                    'gal_2' => ['type'=>'image','label'=>'Gallery photo 2',
+                        'hint'=>'Suggested: the restaurant seen from the garden.', 'default'=>''],
+                    'gal_3' => ['type'=>'image','label'=>'Gallery photo 3',
+                        'hint'=>'Suggested: the cocktail close-up.', 'default'=>''],
+                    'gal_4' => ['type'=>'image','label'=>'Gallery photo 4',
+                        'hint'=>'Suggested: guests at the table after dark.', 'default'=>''],
+                    'gal_5' => ['type'=>'image','label'=>'Gallery photo 5',
+                        'hint'=>'Suggested: the dining room and bar at dusk.', 'default'=>''],
+                    'gal_6' => ['type'=>'image','label'=>'Gallery photo 6',
+                        'hint'=>'Spare slot — leave empty and the tile is skipped.', 'default'=>''],
+                ],
+                'Sharing' => [
+                    'og_image' => ['type'=>'image', 'label'=>'Social share image',
+                        'hint'=>'Shown when the page is shared. Not visible on the page itself.',
+                        'default'=>'images/maya-kobe/Maya Kobe - Day Outdoor, Pool, Beach/Maya Kobe Best3.jpg'],
+                ],
+            ],
+        ],
     ];
 }
 
@@ -441,7 +524,18 @@ function page_image(string $page, string $slot): string {
     $v = trim(page_value($page, $slot));
     if ($v === '') return '';
     if (str_starts_with($v, 'http') || str_starts_with($v, '/')) return $v;
-    if (str_starts_with($v, 'images/')) return asset_url($v);
+    // Some folders in the /images tree have spaces in their names. Browsers paper
+    // over a raw space in a src, but it is still an invalid URL and anything that
+    // fetches the value verbatim (curl, a crawler, an OG scraper) gets nothing.
+    // Encode only the segments that actually contain a space, so an already-encoded
+    // path is never double-encoded.
+    if (str_starts_with($v, 'images/')) {
+        $v = implode('/', array_map(
+            fn(string $seg) => str_contains($seg, ' ') ? rawurlencode($seg) : $seg,
+            explode('/', $v)
+        ));
+        return asset_url($v);
+    }
     return storage_url($v);
 }
 
