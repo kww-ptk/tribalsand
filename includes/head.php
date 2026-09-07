@@ -109,8 +109,12 @@ window.TS_CUR_META = <?= json_encode(array_map(fn($m) => ['symbol' => $m['symbol
 <script src="js/nice-select.js?v=<?= filemtime(__DIR__ . '/../js/nice-select.js') ?>" defer></script>
 
 <?php if (captcha_site_key()): ?>
-<!-- ── Cloudflare Turnstile (loaded site-wide so every form's widget works) ── -->
-<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<!-- ── Cloudflare Turnstile (loaded site-wide so every form's widget works) ──
+     Explicit build, not implicit: the GHL chat widget shares this page's single
+     window.turnstile and is built against ?render=explicit. Keep this src exact
+     and render our own widgets from turnstile-init.js. -->
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" async defer></script>
+<script src="js/turnstile-init.js?v=<?= filemtime(__DIR__ . '/../js/turnstile-init.js') ?>" defer></script>
 <?php endif; ?>
 
 <?php if (!empty($page_booking)): ?>
