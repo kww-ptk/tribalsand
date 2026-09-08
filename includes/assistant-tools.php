@@ -19,8 +19,9 @@ declare(strict_types=1);
  *   · Fail honest. Ambiguous/invalid dates return {error, need} so the model
  *     asks a clarifying question instead of guessing.
  */
-require_once __DIR__ . '/db.php';    // ts_search_availability(), room_stay_quote(), fetch_room_by_slug(), find_available_unit()
-require_once __DIR__ . '/rates.php'; // rates_window_ymd()
+require_once __DIR__ . '/db.php';           // ts_search_availability(), room_stay_quote(), fetch_room_by_slug(), find_available_unit()
+require_once __DIR__ . '/rates.php';        // rates_window_ymd()
+require_once __DIR__ . '/assistant-rag.php'; // rag_supported(), rag_search() — descriptive layer (Phase 2)
 
 /** Today, Nairobi-local (date() is set to Africa/Nairobi in db.php). */
 function assistant_today_ymd(): string {
@@ -34,9 +35,9 @@ function assistant_today_ymd(): string {
  * model resolves relative phrases ("next weekend") into concrete dates itself,
  * anchored to the `today` we give it in the system prompt.
  */
-function assistant_tool_definitions(): array {
+function assistant_tool_definitions(bool $withRag = false): array {
     $date = ['type' => 'string', 'description' => 'Calendar date in strict YYYY-MM-DD format, Africa/Nairobi local.'];
-    return [
+    $tools = [
         [
             'name'        => 'list_properties',
             'description' => 'List the bookable properties (villas) AND the individual rooms within each, all with their URL slugs. Use this to map any name the guest mentions — a property OR a specific room — to the right slug: a property slug narrows check_availability, a room slug is what quote_stay needs. Call it whenever you are unsure whether a name is a property or a room, before telling the guest something is unavailable.',
@@ -70,19 +71,40 @@ function assistant_tool_definitions(): array {
             ],
         ],
     ];
+
+    // Descriptive layer (Phase 2). Only offered when RAG is configured — a
+    // deploy without pgvector/embeddings keeps the three factual tools and
+    // simply can't answer prose questions, rather than exposing a dead tool.
+    if ($withRag) {
+        $tools[] = [
+            'name'        => 'search_property_info',
+            'description' => 'Search the property, room, and activity DESCRIPTIONS for non-price information — what a villa or room is like, amenities and features, house rules, check-in/out details, Wi-Fi, area/location guides, cancellation and other policies, FAQs, nearby activities and tours, and sustainability initiatives. Use this for any "what/how/tell me about/is there…" question that is NOT about live availability or price. It returns short text passages; base your answer only on what comes back, and if nothing relevant is returned, say you do not have that information. Never use it to state prices or availability — use quote_stay / check_availability for those.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'query' => ['type' => 'string', 'description' => 'The information need, as a short natural-language phrase (e.g. "Zuri villa amenities", "cancellation policy", "activities near Watamu").'],
+                ],
+                'required' => ['query'],
+            ],
+        ];
+    }
+    return $tools;
 }
 
 /** The system prompt: role, the hard rules, and today's date for relative-date resolution. */
-function assistant_system_prompt(?array $venueScope): string {
+function assistant_system_prompt(?array $venueScope, bool $withRag = false): string {
     $today = assistant_today_ymd();
     $dow   = date('l');   // e.g. "Monday"
     $scopeLine = $venueScope === null
         ? 'You can see every property.'
         : 'You are scoped to this account\'s assigned properties only; the tools already filter to them, so never claim to know about others.';
+    $ragLine = $withRag
+        ? "\n- For DESCRIPTIVE questions (what a property/room is like, amenities, house rules, check-in/out, Wi-Fi, area guides, policies, FAQs, nearby activities, sustainability), call search_property_info and answer ONLY from what it returns. If it returns nothing relevant, say you don't have that information rather than guessing. Never use it for prices or availability — those come from the factual tools. It is fine to combine: use search_property_info for the description and quote_stay/check_availability for the numbers."
+        : '';
     return <<<SYS
 You are the Tribal Sand availability & price assistant, used by front-desk and management staff.
 
-Your job: answer questions about what rooms/villas are free and what they cost, by calling the tools. You do NOT know availability or prices yourself — always get them from a tool. Never invent a date, a price, or an availability status.
+Your job: answer questions about what rooms/villas are free, what they cost, and — where the tools allow — what the properties and activities are like, by calling the tools. You do NOT know availability or prices yourself — always get them from a tool. Never invent a date, a price, or an availability status.
 
 Today is {$dow}, {$today} (Africa/Nairobi). Resolve relative dates ("tonight", "this weekend", "next Friday", "in December") against today, and pass concrete YYYY-MM-DD dates to the tools. Check-out is the morning after the last night.
 
@@ -92,7 +114,7 @@ Rules:
 - Prices come only from the tools. Quote the exact figure a tool returns, with its currency. Do not do your own arithmetic on nightly rates — the tool already totals the stay.
 - You can quote and inform only. You cannot book, hold, or change anything — if the guest wants to book, tell staff to use the normal booking/hold flow.
 - If a tool returns an error, explain briefly and, if it needs clarification, ask for it.
-- {$scopeLine}
+- {$scopeLine}{$ragLine}
 - When you mention a room or property in your answer, use its friendly name (the "room"/"property" field the tool returns), not the URL slug the guest typed.
 - Be concise and practical. Prefer a short sentence plus the key figures. Amounts are per the currency the tool returns (USD shown as \$, others as the code).
 SYS;
@@ -108,6 +130,7 @@ function assistant_run_tool(string $name, array $args, ?array $venueScope): arra
         case 'list_properties':  return assistant_tool_list_properties($venueScope);
         case 'check_availability': return assistant_tool_check_availability($args, $venueScope);
         case 'quote_stay':       return assistant_tool_quote_stay($args, $venueScope);
+        case 'search_property_info': return assistant_tool_search_info($args, $venueScope);
         default:                 return ['error' => 'Unknown tool "' . $name . '".'];
     }
 }
@@ -142,6 +165,17 @@ function assistant_tool_list_properties(?array $venueScope): array {
     }
     if (!$out) return ['properties' => [], 'note' => 'No bookable properties are available for this account.'];
     return ['properties' => $out];
+}
+
+/**
+ * search_property_info: descriptive (non-price) retrieval over embedded prose.
+ * Thin wrapper over rag_search() — READ-ONLY, scope-filtered, and structurally
+ * incapable of returning a price (the embeddings table holds no figures).
+ */
+function assistant_tool_search_info(array $args, ?array $venueScope): array {
+    $q = trim((string)($args['query'] ?? ''));
+    if ($q === '') return ['error' => 'A search query is required.', 'need' => 'query'];
+    return rag_search($q, 5, $venueScope);
 }
 
 /** Validate a check_in/check_out pair. Returns [ci, co] or ['error'=>…,'need'=>…]. */

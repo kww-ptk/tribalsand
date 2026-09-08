@@ -212,6 +212,14 @@ An internal, staff-facing assistant that answers "what's free for N pax from X t
 - **Nairobi-local dates.** The system prompt hands the model today's Nairobi date; the tools validate with `rates_window_ymd()` (same read-window validator as `api/check-availability.php`) and ask a clarifying question on ambiguous/invalid dates rather than guess.
 - UI: `admin/assistant.php` + `admin/assets/admin-assistant.js` (a no-native-chrome chat panel; renders a structured availability/quote card alongside the prose). Nav link in Operations, gated by `ai_assistant_supported()`. Test: `php tests/assistant_tools.php` (pure logic + adapter fail-soft always; DB-backed wrapper asserts run when a DB is reachable, else SKIP — the model call is never exercised).
 
+### AI assistant — descriptive layer (RAG, Phase 2)
+The SAME assistant also answers **prose** questions ("what's the villa like?", "amenities?", "activities near Watamu?", "check-out time?") via retrieval-augmented generation, added as a **fourth tool** alongside the three factual ones. The split is load-bearing: **exact facts (availability, price) stay tool-calls; only descriptions are RAG.** The embeddings table holds prose and **never a price** — the two paths cannot cross. Migration: `add_content_embeddings.sql` (after `add_bookings_finance`). Helpers in **`includes/assistant-rag.php`**; every read is pre-migration-safe (`rag_supported()`).
+- **pgvector, in the same Postgres.** `content_embeddings` (one row per chunk: `source`/`source_id`/`venue_id`/`title`/`chunk_index`/`chunk_text`/`content_hash`/`embedding vector(1536)`) with an HNSW cosine index. It is a **derived cache** — safe to TRUNCATE and rebuild from the live DB. Confirmed available on Neon (dev) and RDS; `rag_supported()` = table exists **and** an embeddings key is set, so a deploy missing either just omits the descriptive layer (NFR4).
+- **Embeddings are OpenAI, independent of the chat provider.** `ai_embed()` in `includes/ai.php` calls OpenAI `text-embedding-3-small` (**1536 dims — the DB column is fixed to this; changing model ⇒ change the migration**). It does **not** follow `ai_provider()`: Anthropic has no first-party embeddings API, and the OpenAI key is funded — so you can run chat on Claude and still embed on OpenAI. Key resolves `AI_EMBED_KEY` → `OPENAI_API_KEY` → `AI_API_KEY` (when provider=openai). `ai_embed_request()` is `function_exists`-guarded for test stubbing, like the chat requests.
+- **Reindex is a CLI, idempotent.** `bin/reindex-content.php` gathers editable prose (venue about/stay copy, room descriptions + features + FAQs, tours, sustainability), chunks it (`rag_chunk`, ~1200 chars, paragraph-aware), embeds **only chunks whose `content_hash` changed**, and prunes removed docs/chunks. Re-run after editing copy (`--dry-run` to preview). On-save/scheduled reindex is a **documented follow-up**, not wired yet — copy edits don't reach the assistant until a reindex runs. Local Windows dev needs the same CA-bundle `-d curl.cainfo=…` flag as the chat call.
+- **Retrieval is read-only + venue-scoped.** `rag_search()` embeds the query and orders by cosine distance (`<=>`), dropping matches below `RAG_MIN_SCORE` (0.20) so the model can honestly say "I don't have that" (FR5). Scope mirrors the tool layer: global rows (`venue_id IS NULL`, e.g. tours) are always visible; a scoped account additionally sees only its own venues. The tool is `search_property_info`, wrapped by `assistant_tool_search_info()`.
+- **Wiring stays opt-in so Phase 1 is untouched.** `assistant_tool_definitions($withRag)` / `assistant_system_prompt($scope, $withRag)` take a flag; `api/assistant.php` passes `rag_supported()`. With no args they're still the 3-tool Phase-1 shape (that test asserts `count===3`). Test: `php tests/assistant_rag.php` (chunking/cleaning/wiring always; embed mocked; DB round-trip — upsert + search + scope + relevance floor — in a rolled-back transaction).
+
 ## File Map
 
 | File | Purpose |
@@ -254,6 +262,8 @@ An internal, staff-facing assistant that answers "what's free for N pax from X t
 | `includes/assistant-tools.php` | Read-only assistant tool layer — `check_availability`/`quote_stay`/`list_properties` wrappers, schemas, system prompt (one pricing path, scoped) |
 | `api/assistant.php` | Assistant endpoint (JSON) — session-authed, CSRF, `admin_venue_ids()`-scoped; runs the loop, returns `{answer, tool_result}` |
 | `admin/assistant.php` · `admin/assets/admin-assistant.js` | Admin availability-assistant chat panel (read-only; renders a structured card) |
+| `includes/assistant-rag.php` | RAG descriptive layer (Phase 2) — `rag_supported()`, chunking, `rag_reindex()`, `rag_search()` (pgvector, pre-migration-safe) |
+| `bin/reindex-content.php` | CLI: rebuild `content_embeddings` from live prose (idempotent, `--dry-run`) |
 | `css/main.css` | Global stylesheet (brand tokens, layout, components) |
 | `js/booking-widget.js` | Booking date picker widget |
 | `manifest.json` | PWA web app manifest |
@@ -304,4 +314,6 @@ ANTHROPIC_API_KEY=    # Vendor-native key used when AI_PROVIDER=claude and AI_AP
 OPENAI_API_KEY=       # Vendor-native key used when AI_PROVIDER=openai and AI_API_KEY is unset
 AI_PROVIDER=          # OPTIONAL: claude (default) | openai (both wired up) | gemini (not implemented)
 AI_MODEL=             # OPTIONAL: model id override (default claude-opus-5 for claude, gpt-4o-mini for openai)
+AI_EMBED_KEY=         # OPTIONAL RAG (Phase 2) embeddings key; falls back to OPENAI_API_KEY, then AI_API_KEY (if provider=openai)
+AI_EMBED_MODEL=       # OPTIONAL: embedding model override (default text-embedding-3-small — 1536 dims, MUST match the DB column)
 ```
