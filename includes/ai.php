@@ -30,6 +30,14 @@ const AI_MAX_TOKENS      = 2048;   // room for (low-effort) thinking + a short a
 const AI_EFFORT          = 'low';  // this is a simple lookup — all correctness is in PHP, so keep thinking cheap
 const AI_HTTP_TIMEOUT    = 45;     // seconds per model call
 
+// Embeddings (Phase 2 RAG). OpenAI text-embedding-3-small: 1536 dims, cheap,
+// strong retrieval quality. The DB column is vector(1536) — changing the model
+// to a different dimensionality means changing the migration too, so the
+// dimension is a deliberate constant, not just a default.
+const AI_EMBED_DEFAULT_MODEL = 'text-embedding-3-small';
+const AI_EMBED_DIM           = 1536;
+const AI_EMBED_BATCH         = 96;   // inputs per embeddings request (reindex batches to cut round-trips)
+
 /** The configured provider (lower-case), defaulting to Claude. */
 function ai_provider(): string {
     $p = strtolower(trim((string)(parse_env()['AI_PROVIDER'] ?? 'claude')));
@@ -322,6 +330,115 @@ function ai_openai_request(array $payload): array {
         $msg = $data['error']['message'] ?? ('HTTP ' . $code);
         error_log('[ai] OpenAI API error ' . $code . ': ' . $msg);
         return ['ok' => false, 'error' => 'The assistant service is temporarily unavailable.'];
+    }
+    return ['ok' => true, 'data' => $data];
+}
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Embeddings (Phase 2 RAG) — vectorising prose for similarity search
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Embeddings are always via OpenAI here: it's the only implemented backend, its
+// key is already funded on this account, and — unlike chat — Anthropic offers no
+// first-party embeddings API, so this does NOT follow ai_provider(). The chat
+// provider and the embedding provider are independent; you can run chat on
+// Claude and still embed on OpenAI. The key resolves from AI_EMBED_KEY, then the
+// vendor-native OPENAI_API_KEY, then AI_API_KEY (when that is the OpenAI key).
+
+/** The embedding model id (override with AI_EMBED_MODEL). Dim is fixed at AI_EMBED_DIM. */
+function ai_embed_model(): string {
+    $m = trim((string)(parse_env()['AI_EMBED_MODEL'] ?? ''));
+    return $m !== '' ? $m : AI_EMBED_DEFAULT_MODEL;
+}
+
+/** Key for the embeddings endpoint (see note above on why this is OpenAI-specific). */
+function ai_embed_key(): string {
+    $env = parse_env();
+    foreach (['AI_EMBED_KEY', 'OPENAI_API_KEY'] as $k) {
+        $v = trim((string)($env[$k] ?? ''));
+        if ($v !== '') return $v;
+    }
+    // Fall back to AI_API_KEY only when it *is* the OpenAI key (provider=openai).
+    if (ai_provider() === 'openai') return trim((string)($env['AI_API_KEY'] ?? ''));
+    return '';
+}
+
+/** Can we embed? True only when an embeddings key is configured. Gates rag_supported(). */
+function ai_embed_supported(): bool {
+    return ai_embed_key() !== '';
+}
+
+/**
+ * Embed one string or a batch of strings into vectors.
+ *
+ * @param string|string[] $input  A single text, or a list of texts.
+ * @return array  ['ok'=>true,'vectors'=>float[][]] (one vector per input, in order)
+ *                | ['ok'=>false,'error'=>string]. A single-string input still
+ *                returns vectors[0]; callers index by position.
+ */
+function ai_embed(string|array $input): array {
+    if (!ai_embed_supported()) {
+        return ['ok' => false, 'error' => 'Embeddings are not configured (no key set).'];
+    }
+    $texts = is_array($input) ? array_values($input) : [$input];
+    // OpenAI rejects empty strings; guard so one blank chunk can't 400 the batch.
+    foreach ($texts as $t) {
+        if (trim((string)$t) === '') return ['ok' => false, 'error' => 'Cannot embed an empty string.'];
+    }
+    if (!$texts) return ['ok' => true, 'vectors' => []];
+
+    $resp = ai_embed_request(['model' => ai_embed_model(), 'input' => $texts]);
+    if (!($resp['ok'] ?? false)) {
+        return ['ok' => false, 'error' => $resp['error'] ?? 'The embedding service is unavailable.'];
+    }
+    // Reassemble in the order OpenAI reports (data[].index), not insertion order.
+    $rows = $resp['data']['data'] ?? [];
+    $byIndex = [];
+    foreach ($rows as $row) {
+        $byIndex[(int)($row['index'] ?? 0)] = $row['embedding'] ?? null;
+    }
+    ksort($byIndex);
+    $vectors = [];
+    foreach ($byIndex as $vec) {
+        if (!is_array($vec) || count($vec) !== AI_EMBED_DIM) {
+            return ['ok' => false, 'error' => 'The embedding service returned an unexpected vector size.'];
+        }
+        $vectors[] = array_map('floatval', $vec);
+    }
+    if (count($vectors) !== count($texts)) {
+        return ['ok' => false, 'error' => 'The embedding service returned the wrong number of vectors.'];
+    }
+    return ['ok' => true, 'vectors' => $vectors];
+}
+
+/** One POST to the OpenAI embeddings API. function_exists-guarded so tests can stub it (NFR8). */
+if (!function_exists('ai_embed_request')) {
+function ai_embed_request(array $payload): array {
+    $key = ai_embed_key();
+    $ch  = curl_init('https://api.openai.com/v1/embeddings');
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_TIMEOUT        => AI_HTTP_TIMEOUT,
+        CURLOPT_POST           => true,
+        CURLOPT_HTTPHEADER     => [
+            'Authorization: Bearer ' . $key,
+            'content-type: application/json',
+        ],
+        CURLOPT_POSTFIELDS     => json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+    ]);
+    $raw  = curl_exec($ch);
+    $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $err  = curl_error($ch);
+    @curl_close($ch);
+
+    if ($err) return ['ok' => false, 'error' => 'Could not reach the embedding service.'];
+    $data = json_decode((string)$raw, true);
+    if (!is_array($data)) return ['ok' => false, 'error' => 'The embedding service returned an unreadable response.'];
+    if ($code >= 300) {
+        $msg = $data['error']['message'] ?? ('HTTP ' . $code);
+        error_log('[ai] OpenAI embeddings error ' . $code . ': ' . $msg);
+        return ['ok' => false, 'error' => 'The embedding service is temporarily unavailable.'];
     }
     return ['ok' => true, 'data' => $data];
 }

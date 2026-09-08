@@ -1,6 +1,6 @@
 # AI Availability & Price Assistant — Plan
 
-**Status:** Approved direction, not started
+**Status:** Phase 1 (tool layer) + Phase 2 (RAG) BUILT & tested locally; deploy to prod RDS/ECS pending. Phase 3 (guest widget) not started.
 **Author decision date:** 2026-09-08
 **One-line:** An AI that answers "what's free for 4 pax from X to Y and what does it cost?" by **calling our live system**, not by reading a stale snapshot.
 
@@ -97,11 +97,14 @@ The whole "what's available for N pax from X to Y, and the price" use case, staf
 - Admin UI — a simple chat panel in the portal (reuse the existing chat/polling styling; no native chrome per house rule).
 - **Exit criteria:** staff ask in plain English and get an answer that **exactly matches** what the booking widget/`admin/rates.php` shows for the same dates. Validated against known bookings before anyone trusts it.
 
-### Phase 2 — RAG for descriptions
-- Enable **pgvector** on RDS (`CREATE EXTENSION vector`). Confirm RDS Postgres version supports it (it does on current versions).
-- `content_embeddings` table (source, source_id, chunk_text, embedding, updated_at).
-- `bin/reindex-content.php` — chunk + embed DB-driven prose (venue about/tagline, policies/FAQs, menus, activities, sustainability). Re-run on save, mirroring the venue_images/nav "reindex on change" pattern. Idempotent.
-- Add a `rag_search(question)` tool; the AI uses it for descriptive questions and the availability tools for factual ones — same loop, richer answers.
+### Phase 2 — RAG for descriptions — **BUILT & tested locally (2026-09-08)**
+- Enable **pgvector** on RDS (`CREATE EXTENSION vector`). Confirm RDS Postgres version supports it (it does on current versions). ✅ Migration `db/migrations/add_content_embeddings.sql` runs `CREATE EXTENSION IF NOT EXISTS vector` + the table + an HNSW cosine index; verified available on Neon (dev, PG 18.6).
+- `content_embeddings` table (source, source_id, venue_id, title, chunk_index, chunk_text, content_hash, embedding vector(1536), updated_at). ✅
+- `bin/reindex-content.php` — chunk + embed DB-driven prose (venue about/stay copy, room descriptions + features + FAQs, tours, sustainability). ✅ Idempotent (skips unchanged chunks by `content_hash`, prunes removed docs). **Reindex-on-save is a documented follow-up, not wired** — run the CLI after copy edits.
+- Add a `search_property_info(query)` tool; the AI uses it for descriptive questions and the availability tools for factual ones — same loop, richer answers. ✅ Wired opt-in via `assistant_tool_definitions($withRag)` (Phase-1 shape unchanged); `api/assistant.php` passes `rag_supported()`.
+- Embeddings: **OpenAI `text-embedding-3-small` (1536 dims)**, independent of the chat provider (`ai_embed()` in `includes/ai.php`). `rag_search()` orders by cosine distance with a `RAG_MIN_SCORE` floor for honest "I don't have that".
+- Tests: `php tests/assistant_rag.php` (all pass; embed mocked, DB round-trip rolled back). Verified live end-to-end on OpenAI: descriptive Qs route to `search_property_info` and answer from retrieved content; Phase-1 factual tools unchanged.
+- **OPEN (deploy):** apply `add_content_embeddings.sql` to prod RDS (via `/admin/migrate.php`), set `OPENAI_API_KEY` (or `AI_EMBED_KEY`) in ECS env, then run `php bin/reindex-content.php` once against prod. pgvector must be enabled on the RDS instance (available on current engine versions).
 
 ### Phase 3 — Guest-facing concierge widget
 - Same engine behind a public endpoint, guarded like every other public form: **Turnstile fail-closed**, **IP rate-limit via `client_ip()`**, CSRF, strict read-only tools.
