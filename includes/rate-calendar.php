@@ -54,7 +54,13 @@ $__rcCell = function (float $v) use ($rc_compact, $__rcMoney): string {
     if (!$rc_compact) return $__rcMoney($v);
     if ($v < 1000)   return $__rcMoney($v);
     $k = $v / 1000;
-    return rtrim(rtrim(number_format($k, $k < 100 ? 1 : 0), '0'), '.') . 'k';
+    $s = number_format($k, $k < 100 ? 1 : 0);
+    // Trim only a trailing decimal fraction ("61.0" -> "61"). Doing it
+    // unconditionally ate the zeros of whole numbers too, so 200000 rendered as
+    // "2k" and 150000 as "15k" — and with a thousands separator "1,500" became
+    // "1,5". Guard on there actually being a decimal point.
+    if (strpos($s, '.') !== false) $s = rtrim(rtrim($s, '0'), '.');
+    return $s . 'k';
 };
 ?>
 <?php if (empty($GLOBALS['__rc_css_done'])): $GLOBALS['__rc_css_done'] = true; ?>
