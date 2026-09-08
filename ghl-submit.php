@@ -90,6 +90,21 @@ if ($__vName === '')                                    $__vErrors['name']    = 
 if (!filter_var($__vEmail, FILTER_VALIDATE_EMAIL))      $__vErrors['email']   = 'A valid email is required.';
 if ($__vMsg === '')                                     $__vErrors['message'] = 'A message is required.';
 
+/* Generated-name check. The spam reaching this form solves Turnstile but fills
+   the name with a random token (SupWYGQjIGReLzlHVZsXTO, tFdmmfPkMIXjLhTCbFq,
+   SHdXjGDufISzVYcchiZLv). Each part is tested as well as the whole, so a bot
+   filling both first and last name with tokens is caught too — the combined
+   value would contain a space and slip past on its own. */
+if (!isset($__vErrors['name'])) {
+    require_once __DIR__ . '/includes/spam-heuristics.php';
+    foreach ([$__vName, (string)($__vGuest['firstName'] ?? ''), (string)($__vGuest['lastName'] ?? '')] as $__vPart) {
+        if (spam_looks_like_random_token($__vPart)) {
+            $__vErrors['name'] = 'Please enter your real name.';
+            break;
+        }
+    }
+}
+
 if ($__vErrors) {
     http_response_code(422);
     echo json_encode(['ok' => false, 'errors' => $__vErrors]);
