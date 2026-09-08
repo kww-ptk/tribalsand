@@ -54,7 +54,7 @@ $page_title   = 'Zuri Restaurant · Beachfront Dining · Garoda Beach Watamu · 
 $page_desc    = 'Zuri is now open to the public, by reservation only. Coastal à la carte dining on Garoda Beach, Watamu. View the menu and request your table.';
 $page_url     = 'https://tribalsand.com/zuri-restaurant.php';
 $page_image   = page_image('zuri-restaurant','og_image');
-$page_schema  = '<script type="application/ld+json">{"@context":"https://schema.org","@type":"Restaurant","name":"Zuri Restaurant","servesCuisine":["Coastal","Swahili"],"address":{"@type":"PostalAddress","addressLocality":"Watamu","addressRegion":"Kilifi County","addressCountry":"KE"},"telephone":"+254115115247","url":"https://tribalsand.com/zuri-restaurant","acceptsReservations":"True","image":"' . asset_url('images/hero-zuri.jpg') . '","parentOrganization":{"@type":"Organization","name":"Tribal Sand","url":"https://tribalsand.com"}}</script>';
+$page_schema  = '<script type="application/ld+json">{"@context":"https://schema.org","@type":"Restaurant","name":"Zuri Restaurant","servesCuisine":["Coastal","Swahili"],"address":{"@type":"PostalAddress","addressLocality":"Watamu","addressRegion":"Kilifi County","addressCountry":"KE"},"telephone":"+254115115247","url":"https://tribalsand.com/zuri-restaurant","acceptsReservations":"True","hasMenu":"https://tribalsand.com/menu.php?m=zuri","areaServed":{"@type":"Place","name":"Watamu, Kilifi County, Kenya"},"image":"' . asset_url('images/hero-zuri.jpg') . '","parentOrganization":{"@type":"Organization","name":"Tribal Sand","url":"https://tribalsand.com"}}</script>';
 $page_booking = true;   // loads booking.css (datepicker styling) + datepicker.js
 ?>
 <?php include __DIR__ . '/includes/head.php'; ?>
@@ -99,6 +99,20 @@ img{display:block;object-fit:cover;}
 .zr-info p{font-size:.95rem;color:var(--mid);line-height:1.9;font-weight:300;max-width:640px;margin:0 auto;}
 .zr-facts{display:flex;flex-wrap:wrap;justify-content:center;gap:.5rem;margin-top:2rem;}
 .zr-fact{font-size:.6rem;letter-spacing:.12em;text-transform:uppercase;padding:.5rem 1.1rem;border:1px solid var(--border);color:var(--mid);}
+
+/* ── SPLIT SECTIONS (food / occasions) ── */
+.zr-split{max-width:1200px;margin:0 auto;padding:3.5rem 5vw;}
+.zr-split-in{display:grid;grid-template-columns:1fr 1fr;gap:3.5rem;align-items:center;}
+.zr-split--flip .zr-split-fig{order:-1;}
+.zr-split-fig{position:relative;aspect-ratio:4/5;overflow:hidden;background:var(--sand-pale);}
+.zr-split-fig img{width:100%;height:100%;object-fit:cover;}
+.zr-split-body h2{font-family:'Cormorant Garamond',serif;font-size:clamp(1.7rem,3.2vw,2.5rem);font-weight:400;line-height:1.2;margin-bottom:1.1rem;}
+.zr-split-body h2 em{font-style:italic;color:var(--sand);}
+.zr-split-body p{font-size:.95rem;color:var(--mid);line-height:1.9;font-weight:300;}
+.zr-split-body p + p{margin-top:1rem;}
+.zr-split-body .zr-facts{justify-content:flex-start;margin-top:1.8rem;}
+.zr-split--alt{background:var(--white);max-width:none;}
+.zr-split--alt .zr-split-in{max-width:1200px;margin:0 auto;}
 
 /* ── GALLERY ── */
 .zr-gallery{max-width:1200px;margin:0 auto;padding:3rem 5vw 4rem;}
@@ -152,6 +166,14 @@ img{display:block;object-fit:cover;}
 
 @media(max-width:760px){
   .zr-grid{grid-template-columns:repeat(2,1fr);}
+  /* Stack the split sections. The two alternate on desktop (photo right, then
+     photo left); stacked they would inherit that and read copy-then-photo on
+     one and photo-then-copy on the other. Pin the copy first on both so the
+     heading always introduces its own photo. */
+  .zr-split-in{grid-template-columns:1fr;gap:2rem;}
+  .zr-split-body{order:-1;}
+  .zr-split--flip .zr-split-fig{order:0;}
+  .zr-split-fig{aspect-ratio:4/3;}
 }
 @media(max-width:560px){
   .zr-hero{min-height:62vh;padding:0 5vw 2.6rem;}
@@ -195,6 +217,36 @@ img{display:block;object-fit:cover;}
 </section>
 
 <!-- ═══ GALLERY ═══ -->
+<!-- ═══ THE FOOD ═══ -->
+<?php
+// Tags are one editable field split on "|" so the team can add or drop one in
+// Admin without touching markup. Blank entries are skipped so a trailing bar
+// never renders an empty pill.
+$__zrChips = static function (string $raw): array {
+    return array_values(array_filter(array_map('trim', explode('|', $raw)), fn($t) => $t !== ''));
+};
+?>
+<section class="zr-split" id="food">
+  <div class="zr-split-in">
+    <div class="zr-split-body">
+      <div class="zr-info-eyebrow"><?= page_text('zuri-restaurant','food_eyebrow') ?></div>
+      <h2><?= page_html('zuri-restaurant','food_title') ?></h2>
+      <p><?= page_html('zuri-restaurant','food_body') ?></p>
+      <p><?= page_html('zuri-restaurant','food_body2') ?></p>
+      <div class="zr-facts">
+        <?php foreach ($__zrChips(page_text('zuri-restaurant','food_facts')) as $__c): ?>
+        <span class="zr-fact"><?= e($__c) ?></span>
+        <?php endforeach; ?>
+      </div>
+    </div>
+    <?php $__foodImg = page_image('zuri-restaurant','food_image'); if ($__foodImg !== ''): ?>
+    <figure class="zr-split-fig">
+      <img src="<?= e($__foodImg) ?>" alt="Coastal à la carte dining at Zuri, Watamu" loading="lazy">
+    </figure>
+    <?php endif; ?>
+  </div>
+</section>
+
 <section class="zr-gallery">
   <div class="zr-gallery-head">
     <div class="zr-info-eyebrow"><?= page_text('zuri-restaurant','gal_eyebrow') ?></div>
@@ -223,6 +275,28 @@ img{display:block;object-fit:cover;}
 $lb_urls = array_column($__zrImgs, 'url');
 include __DIR__ . '/includes/photo-lightbox.php';
 ?>
+
+<!-- ═══ CELEBRATIONS ═══ -->
+<section class="zr-split zr-split--alt zr-split--flip" id="occasions">
+  <div class="zr-split-in">
+    <?php $__occImg = page_image('zuri-restaurant','occ_image'); if ($__occImg !== ''): ?>
+    <figure class="zr-split-fig">
+      <img src="<?= e($__occImg) ?>" alt="Private beachfront table set for a celebration at Zuri, Watamu" loading="lazy">
+    </figure>
+    <?php endif; ?>
+    <div class="zr-split-body">
+      <div class="zr-info-eyebrow"><?= page_text('zuri-restaurant','occ_eyebrow') ?></div>
+      <h2><?= page_html('zuri-restaurant','occ_title') ?></h2>
+      <p><?= page_html('zuri-restaurant','occ_body') ?></p>
+      <p><?= page_html('zuri-restaurant','occ_body2') ?></p>
+      <div class="zr-facts">
+        <?php foreach ($__zrChips(page_text('zuri-restaurant','occ_facts')) as $__c): ?>
+        <span class="zr-fact"><?= e($__c) ?></span>
+        <?php endforeach; ?>
+      </div>
+    </div>
+  </div>
+</section>
 
 <!-- ═══ RESERVE ═══ -->
 <section class="zr-reserve" id="reserve">
