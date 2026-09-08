@@ -183,13 +183,19 @@ ob_start(); ?>
           <td class="text-muted"><?= e($row['id']) ?></td>
           <td>
             <?php $badge = match($row['type']) {
-              'enquiry' => 'badge--blue',
-              'contact' => 'badge--green',
-              'agency'  => 'badge--orange',
-              'event'   => 'badge--purple',
-              default   => 'badge--grey',
+              'enquiry'      => 'badge--blue',
+              'contact'      => 'badge--green',
+              'agency'       => 'badge--orange',
+              'event'        => 'badge--purple',
+              'trip_builder' => 'badge--teal',
+              default        => 'badge--grey',
+            };
+            // Underscored types would otherwise render raw in the badge.
+            $typeLabel = match($row['type']) {
+              'trip_builder' => 'Trip Builder',
+              default        => $row['type'],
             }; ?>
-            <span class="badge <?= $badge ?>"><?= e($row['type']) ?></span>
+            <span class="badge <?= $badge ?>"><?= e($typeLabel) ?></span>
           </td>
           <?php if (submission_status_supported()): $st = (string)($row['status'] ?? '') ?: submission_status_default(); ?>
           <td><span class="badge <?= submission_status_badge($st) ?>"><?= e(submission_status_label($st)) ?></span></td>
@@ -257,6 +263,7 @@ include __DIR__ . '/_layout.php';
   <select name="type" class="filter-select js-auto-submit" aria-label="Filter by type">
     <option value="">All types</option>
     <option value="enquiry"      <?= $type==='enquiry'     ?'selected':'' ?>>Enquiry</option>
+    <option value="trip_builder" <?= $type==='trip_builder'?'selected':'' ?>>Trip Builder</option>
     <option value="contact"      <?= $type==='contact'     ?'selected':'' ?>>Contact</option>
     <option value="agency"       <?= $type==='agency'      ?'selected':'' ?>>Agency</option>
     <option value="availability" <?= $type==='availability'?'selected':'' ?>>Availability search</option>

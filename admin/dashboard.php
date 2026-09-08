@@ -87,13 +87,19 @@ include __DIR__ . '/_layout.php';
           <td>
             <?php
             $badge = match($row['type']) {
-                'enquiry' => 'badge--blue',
-                'contact' => 'badge--green',
-                'agency'  => 'badge--orange',
-                default   => 'badge--grey',
+                'enquiry'      => 'badge--blue',
+                'contact'      => 'badge--green',
+                'agency'       => 'badge--orange',
+                'trip_builder' => 'badge--teal',
+                default        => 'badge--grey',
+            };
+            // Underscored types would otherwise render raw in the badge.
+            $typeLabel = match($row['type']) {
+                'trip_builder' => 'Trip Builder',
+                default        => $row['type'],
             };
             ?>
-            <span class="badge <?= $badge ?>"><?= e($row['type']) ?></span>
+            <span class="badge <?= $badge ?>"><?= e($typeLabel) ?></span>
           </td>
           <td><?= e($row['guest_name']) ?></td>
           <td class="text-muted"><?= e($row['guest_email']) ?></td>
