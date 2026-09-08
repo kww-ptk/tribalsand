@@ -1065,29 +1065,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
      <!-- IntlTelInput Script -->
      <script src="https://cdnjs.cloudflare.com/ajax/libs/intl-tel-input/17.0.8/js/intlTelInput.min.js"></script>
 
-     <script>
-     document.getElementById('contactForm').addEventListener('submit', function(e) {
-
-         e.preventDefault(); // Prevent page reload
-
-         const form = e.target;
-         const formData = new FormData(form);
-
-         fetch('TRIBAL_SAND/adwords.php', {
-                 method: 'POST',
-                 body: formData
-             })
-             .then(response => response.text())
-             .then(result => {
-                 document.getElementById('formResponse').innerHTML = result;
-                 form.reset(); // Optional: reset form
-             })
-             .catch(error => {
-                 document.getElementById('formResponse').innerHTML = 'Something went wrong.';
-                 console.error('Error:', error);
-             });
-     });
-     </script>
+     <!-- Removed: a submit handler bound to #contactForm, an id that does not exist on
+          this page, so it threw on load and never bound. It posted to
+          TRIBAL_SAND/adwords.php — a pre-rewrite path that no longer resolves. The form
+          below posts normally to this page, where the PHP handler at the top of the file
+          sends the notification and fills #responseMessage. -->
 
 
 
