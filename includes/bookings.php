@@ -179,6 +179,40 @@ function bookings_in_window(?array $venueIds, string $from, string $toIncl, stri
 }
 
 /**
+ * Ledger rows for a set of availability blocks, keyed by block_id.
+ *
+ * The calendar draws availability_blocks, which carry only dates, a type and a
+ * free-text note. Everything an import actually captured — guest, agent, source,
+ * nights, gross, currency, status, the OTA's own reference — lives on the
+ * bookings row written alongside it (bookings_import_upsert keys on block_id).
+ * This joins the two so the calendar can show that detail without a query per
+ * block. Empty before the migration, so callers degrade to the block's own data.
+ *
+ * Cancelled rows are kept: a cancelled booking whose block is still on the
+ * calendar is exactly the discrepancy someone hovering wants to see.
+ */
+function bookings_by_block_ids(array $blockIds): array {
+    if (!bookings_supported() || !$blockIds) return [];
+
+    $ids = array_values(array_unique(array_map('intval', $blockIds)));
+    $ids = array_filter($ids, static fn($i) => $i > 0);
+    if (!$ids) return [];
+
+    $in   = implode(',', $ids);   // ints only — safe to inline
+    $rows = db_query(
+        "SELECT b.*, v.name AS venue_name
+           FROM bookings b
+           LEFT JOIN venues v ON v.id = b.venue_id
+          WHERE b.block_id IN ($in)
+          ORDER BY b.id ASC"
+    )->fetchAll();
+
+    $out = [];
+    foreach ($rows as $r) { $out[(int)$r['block_id']] = $r; }   // last wins; one row per block
+    return $out;
+}
+
+/**
  * Active bookable units in scope — the occupancy denominator base. Entire-place
  * units are excluded so a whole-property unit doesn't double-count against its
  * individual rooms. $venueIds: null = all, [] = none.
