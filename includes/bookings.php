@@ -58,16 +58,30 @@ function bookings_sync_hold(int $holdId): void {
     $status   = $h['status'] === 'confirmed' ? 'confirmed' : ($h['status'] === 'cancelled' ? 'cancelled' : 'pending');
     $currency = strtoupper(trim((string)($h['price_currency'] ?? 'USD'))) ?: 'USD';
 
-    $existing = db_query('SELECT id FROM bookings WHERE hold_id = :h', [':h' => $holdId])->fetchColumn();
+    $existing = db_query(
+        'SELECT id, source, block_id FROM bookings WHERE hold_id = :h', [':h' => $holdId]
+    )->fetch();
     if ($existing) {
-        db_query(
-            "UPDATE bookings SET venue_id=:v, room_id=:r, unit_id=:u, guest_name=:gn, guest_email=:ge,
-                    check_in=:ci, check_out=:co, nights=:n, gross_amount=:g, currency=:cur, status=:st
-             WHERE id=:id",
-            [':v'=>$h['venue_id'], ':r'=>$h['room_id'], ':u'=>$h['unit_id'], ':gn'=>$h['guest_name'],
-             ':ge'=>$h['guest_email'], ':ci'=>$h['check_in'], ':co'=>$h['check_out'], ':n'=>$q['nights'],
-             ':g'=>$q['total'], ':cur'=>$currency, ':st'=>$status, ':id'=>$existing]
-        );
+        /* A row that came from an import and was later attached to a hold
+           (gantt's "convert to booking") must keep the money the channel
+           actually charged. room_stay_quote() prices OUR rate card, which is not
+           what an OTA or agent booking was sold at, so writing it here would
+           silently restate historical revenue in the reports. Same principle as
+           freezing gross at confirm time: a figure someone can defend is never
+           replaced by a recomputed one. Guest, dates and status still sync. */
+        $imported = !empty($existing['block_id'])
+                 || !in_array((string)$existing['source'], ['website', ''], true);
+
+        $sql = "UPDATE bookings SET venue_id=:v, room_id=:r, unit_id=:u, guest_name=:gn, guest_email=:ge,
+                       check_in=:ci, check_out=:co, nights=:n, status=:st"
+             . ($imported ? '' : ", gross_amount=:g, currency=:cur")
+             . " WHERE id=:id";
+        $args = [':v'=>$h['venue_id'], ':r'=>$h['room_id'], ':u'=>$h['unit_id'], ':gn'=>$h['guest_name'],
+                 ':ge'=>$h['guest_email'], ':ci'=>$h['check_in'], ':co'=>$h['check_out'],
+                 ':n'=>$q['nights'], ':st'=>$status, ':id'=>$existing['id']];
+        if (!$imported) { $args[':g'] = $q['total']; $args[':cur'] = $currency; }
+
+        db_query($sql, $args);
     } else {
         db_query(
             "INSERT INTO bookings (venue_id, room_id, unit_id, source, guest_name, guest_email,
@@ -297,4 +311,84 @@ function bookings_source_label(string $source): string {
         'website' => 'Website', 'ota' => 'OTA / channel', 'agent' => 'Travel agent',
         'direct'  => 'Direct', default => ucfirst($source),
     };
+}
+
+/**
+ * Turn an imported/manual calendar block into a real hold, so the stay gets a
+ * guest portal link (check-in, messages, concierge) like a website booking.
+ *
+ * Deliberately reuses what already exists rather than creating parallel records:
+ *
+ *   - The BLOCK is kept and pointed at the new hold (availability_blocks.hold_id).
+ *     create_hold_with_block() would otherwise add a second block over the same
+ *     nights — the unit would read as double-booked on its own calendar.
+ *   - The LEDGER ROW is kept and pointed at the new hold (bookings.hold_id).
+ *     bookings has separate unique keys on hold_id and block_id, so leaving the
+ *     hold unattached would let bookings_sync_hold() insert a SECOND row for the
+ *     same stay and double the revenue in the reports. Attaching it also makes
+ *     that function's imported-row guard apply, so the channel's amount stands.
+ *
+ * The hold is created confirmed: an imported booking is already a real, paid
+ * stay, and a pending hold would expire and release the nights.
+ *
+ * @return array{ok:bool,hold_id:int,error:string}
+ */
+function bookings_convert_block_to_hold(int $blockId, string $unitScopeSql = ''): array
+{
+    require_once __DIR__ . '/db.php';
+    require_once __DIR__ . '/booking.php';
+
+    $fail = fn(string $m) => ['ok' => false, 'hold_id' => 0, 'error' => $m];
+    if ($blockId <= 0) return $fail('No block given.');
+
+    $b = db_query(
+        "SELECT id, unit_id, date_from, date_to, block_type, hold_id, notes
+           FROM availability_blocks
+          WHERE id = :id" . ($unitScopeSql !== '' ? " AND unit_id IN ({$unitScopeSql})" : ''),
+        [':id' => $blockId]
+    )->fetch();
+
+    if (!$b)                       return $fail('Block not found.');
+    if (!empty($b['hold_id']))     return $fail('This block already has a booking.');
+    if ($b['block_type'] === 'hold') return $fail('This is already a hold.');
+
+    // Guest identity: the ledger row if the import captured one, else the note
+    // staff typed on the block. Neither is required — the portal link works off
+    // the hold id, and the name can be filled in later.
+    $bk    = bookings_supported()
+        ? db_query('SELECT * FROM bookings WHERE block_id = :b LIMIT 1', [':b' => $blockId])->fetch()
+        : null;
+    $name  = trim((string)($bk['guest_name']  ?? '')) ?: trim((string)($b['notes'] ?? ''));
+    $email = trim((string)($bk['guest_email'] ?? ''));
+
+    // Own the transaction only when the caller has not already opened one —
+    // PDO/pgsql cannot nest, and the tests wrap their work in one they roll
+    // back. Same convention as rates_apply_ranges().
+    $ownTx = !db()->inTransaction();
+    if ($ownTx) db()->beginTransaction();
+    try {
+        db_query(
+            "INSERT INTO holds (unit_id, check_in, check_out, guest_name, guest_email, status, confirmed_at)
+             VALUES (:u, :ci, :co, :gn, :ge, 'confirmed', NOW())",
+            [':u' => (int)$b['unit_id'], ':ci' => $b['date_from'], ':co' => $b['date_to'],
+             ':gn' => $name, ':ge' => $email]
+        );
+        $holdId = (int) db()->lastInsertId();
+        if ($holdId <= 0) throw new RuntimeException('Hold insert returned no id.');
+
+        db_query('UPDATE availability_blocks SET hold_id = :h WHERE id = :id',
+                 [':h' => $holdId, ':id' => $blockId]);
+
+        if ($bk) {
+            db_query('UPDATE bookings SET hold_id = :h WHERE id = :id',
+                     [':h' => $holdId, ':id' => (int)$bk['id']]);
+        }
+
+        if ($ownTx) db()->commit();
+        return ['ok' => true, 'hold_id' => $holdId, 'error' => ''];
+    } catch (Throwable $e) {
+        if ($ownTx && db()->inTransaction()) db()->rollBack();
+        error_log('[convert-block] ' . $e->getMessage());
+        return $fail('Could not create the booking.');
+    }
 }

@@ -55,6 +55,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    if ($action === 'convert_block') {
+        // Give an imported/manual block a real hold, so the stay gets a guest
+        // portal link. Scoped with the same unit subquery as every other action
+        // here, so a posted block id outside the account's venues is ignored.
+        require_once __DIR__ . '/../includes/bookings.php';
+        require_once __DIR__ . '/../includes/booking.php';
+        $res = bookings_convert_block_to_hold((int)($_POST['block_id'] ?? 0), $gUnitIds);
+        if ($res['ok']) {
+            $convert_url = make_manage_url($res['hold_id']);
+            $msg = $convert_url !== ''
+                ? 'Booking created. Guest portal link: ' . $convert_url
+                : 'Booking created (hold #' . $res['hold_id'] . '). Set BOOKING_TOKEN_SECRET to issue portal links.';
+        } else {
+            $msg = $res['error'];
+        }
+    }
+
     if ($action === 'delete_block') {
         $block_id = (int)($_POST['block_id'] ?? 0);
         // Don't delete hold-type blocks here (managed via holds.php)
@@ -192,6 +209,7 @@ foreach ($blocks as $b) $blocks_by_unit[(int)$b['unit_id']][] = $b;
 // note, so that detail was invisible here. Empty before the finance migration —
 // every consumer below treats it as optional.
 require_once __DIR__ . '/../includes/bookings.php';
+require_once __DIR__ . '/../includes/booking.php';   // make_manage_url() for the portal link
 $block_bookings = bookings_by_block_ids(array_column($blocks, 'id'));
 
 $rates = db_query(
@@ -497,6 +515,16 @@ include __DIR__ . '/_layout.php';
             ], fn($v) => $v !== '');
             if ($money > 0) $card['amount'] = bookings_money($money, (string)($bk['currency'] ?? 'USD'));
         }
+        /* Portal link. A block already carrying a hold_id has a guest record, so
+           show its link; one without can be converted into a hold to get one.
+           Hold-type blocks are managed on the Holds page and are never converted
+           from here. */
+        if (!empty($b['hold_id'])) {
+            $__pu = make_manage_url((int)$b['hold_id']);
+            if ($__pu !== '') $card['portal'] = $__pu;
+        } elseif ($b['block_type'] !== 'hold') {
+            $card['convertible'] = 1;
+        }
         // Native title stays as the no-JS fallback.
         $title = $card['type'] . ': ' . $b['date_from'] . ' → ' . $b['date_to'] . ($b['notes'] ? ' · ' . $b['notes'] : '');
       ?>
@@ -688,6 +716,15 @@ include __DIR__ . '/_layout.php';
   <button type="button" class="gb-card__close" id="gbCardClose" aria-label="Close" hidden>&times;</button>
   <div class="gb-card__head"><span class="gb-card__type" id="gbCardType"></span><span class="gb-card__unit" id="gbCardUnit"></span></div>
   <dl class="gb-card__rows" id="gbCardRows"></dl>
+  <div class="gb-card__actions" id="gbCardActions" hidden>
+    <a class="gb-card__link" id="gbCardPortal" target="_blank" rel="noopener" hidden>Open guest portal &rarr;</a>
+    <form method="POST" id="gbCardConvert" hidden style="margin:0">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="convert_block">
+      <input type="hidden" name="block_id" id="gbCardBlockId">
+      <button type="submit" class="btn-primary btn-sm">Convert to booking</button>
+    </form>
+  </div>
   <div class="gb-card__hint" id="gbCardHint">Click to keep open</div>
 </div>
 <style>
@@ -703,6 +740,9 @@ include __DIR__ . '/_layout.php';
 .gb-card__rows dd{margin:0;overflow-wrap:anywhere;}
 .gb-card__hint{margin-top:9px;padding-top:7px;border-top:1px solid var(--border,#eef1f5);color:var(--muted,#8a94a0);font-size:10.5px;}
 .gb-card.is-pinned .gb-card__hint{display:none;}
+.gb-card__actions{margin-top:10px;padding-top:9px;border-top:1px solid var(--border,#eef1f5);display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.gb-card__actions[hidden]{display:none;}
+.gb-card__link{font-size:11.5px;color:var(--brand,#1e5c6b);text-decoration:underline;overflow-wrap:anywhere;}
 .gb-card__close{position:absolute;top:6px;right:8px;background:none;border:0;font-size:18px;line-height:1;color:var(--muted,#8a94a0);cursor:pointer;}
 </style>
 <script>
@@ -730,6 +770,17 @@ include __DIR__ . '/_layout.php';
       if (d[f[0]]) html += '<dt>' + f[1] + '</dt><dd>' + esc(d[f[0]]) + '</dd>';
     });
     rows.innerHTML = html;
+
+    // Actions only make sense on a pinned card — a hovering pointer cannot
+    // reach them, and a stray click on a submit button would be a surprise.
+    var portal = document.getElementById('gbCardPortal'),
+        form   = document.getElementById('gbCardConvert'),
+        acts   = document.getElementById('gbCardActions');
+    portal.hidden = !d.portal;
+    if (d.portal) { portal.href = d.portal; }
+    form.hidden = !d.convertible;
+    if (d.convertible) { document.getElementById('gbCardBlockId').value = d.blockId || ''; }
+    acts.hidden = !(d.portal || d.convertible);
   }
   function esc(v) { return String(v == null ? '' : v).replace(/[&<>"]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
 
@@ -747,10 +798,12 @@ include __DIR__ . '/_layout.php';
     var raw = el.getAttribute('data-card');
     if (!raw) return;
     var d; try { d = JSON.parse(raw); } catch (e) { return; }
+    d.blockId = el.getAttribute('data-block-id');
     clearTimeout(hideTimer);
     build(d); place(el);
     pinned = !!pin;
     card.classList.toggle('is-pinned', pinned);
+    document.getElementById('gbCardActions').style.display = pinned ? '' : 'none';
     closeBtn.hidden = !pinned;
     // A native tooltip on top of the card is noise; restore it when we hide.
     if (el.hasAttribute('title')) { el.dataset.titleHold = el.getAttribute('title'); el.removeAttribute('title'); }
