@@ -88,9 +88,12 @@ RewriteCond %{HTTP_HOST} (?:\.on\.aws|tribalsand\.com)$ [NC]
 RewriteRule ^tribalsandstory1(?:\.php)?$ https://tribalsand.com/my-amani [R=301,L]
 RewriteRule ^tribalsandstory1(?:\.php)?$ /my-amani [R=301,L]
 
+# NOT health.php — that is the load balancer / ECS liveness probe, served at
+# /health via strip-.php. Redirecting it away makes every new task fail its
+# health check, so the service never stabilises and the old task keeps serving.
 RewriteCond %{HTTP_HOST} (?:\.on\.aws|tribalsand\.com)$ [NC]
-RewriteRule ^(?:health|processproperties)(?:\.php)?$ https://tribalsand.com/ [R=301,L]
-RewriteRule ^(?:health|processproperties)(?:\.php)?$ / [R=301,L]
+RewriteRule ^processproperties(?:\.php)?$ https://tribalsand.com/ [R=301,L]
+RewriteRule ^processproperties(?:\.php)?$ / [R=301,L]
 
 # /reference/ holds pre-cutover copies of pages — an old blog, an old trip
 # builder, an old property page, each carrying its own stale copy of the chat
