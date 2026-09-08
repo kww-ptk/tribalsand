@@ -203,6 +203,15 @@ The eyebrow tagline + About heading/body on each property page render **DB-first
 - `$vf_heading` is echoed **raw** (it carries `<em>`) — page-authored config, never user or DB input. Everything else goes through `e()`.
 - `vfeat--rule-top` / `vfeat--rule-bottom` add the hairline needed when a neighbouring section is also white.
 
+### AI availability & price assistant — tool-calling, read-only, provider-swappable
+An internal, staff-facing assistant that answers "what's free for N pax from X to Y and the price?" by **calling the app's own live helpers**, not by reading a snapshot. **Tool calling, not RAG** — RAG can't do date-overlap math or return a live price; the model only extracts dates/pax and phrases the answer, every number comes from PHP. Plan: `docs/superpowers/plans/2026-09-08-ai-availability-assistant.md`. Phase 1 only (admin tool layer); RAG for prose = Phase 2, guest widget = Phase 3.
+- **One pricing path, always.** The tools call `room_stay_quote()` / `ts_search_availability()` — the SAME canonical resolvers the booking widget and `admin/rates.php` use. **Never add a second nightly loop** for the AI (two summations over one rate map = two prices for one night). `nights===0` from the resolver is "not a quote" and surfaces as a structured error, never a $0 stay. This is the acceptance bar: an AI quote must equal the widget's quote for identical dates (asserted in `tests/assistant_tools.php`).
+- **Read-only end to end.** Every tool is a lookup — `list_properties`, `check_availability`, `quote_stay` in `includes/assistant-tools.php`. There is **no write tool**; the AI can quote but never books/holds (booking stays in the existing hold flow). Don't add a mutating tool to this layer.
+- **Provider behind ONE adapter.** `includes/ai.php` is the only file that knows the vendor (raw cURL, matching `ghl.php`/`mail.php` — no composer/SDK in this project). Both **Claude** (Anthropic Messages API) and **OpenAI** (Chat Completions, function calling) backends are wired up — `ai_claude_loop()` / `ai_openai_loop()`, same contract, different wire format; `gemini` is the remaining "not implemented" branch. `chat_with_tools()` runs the bounded (`AI_MAX_ITERATIONS`) tool-use loop; `ai_assistant_supported()` gates every surface so a deploy with no key **hides** the feature instead of 500-ing. Pick vendor with `AI_PROVIDER` (`claude` default | `openai`); the key resolves from `AI_API_KEY`, else the vendor-native `ANTHROPIC_API_KEY` / `OPENAI_API_KEY` — so you can keep both keys in env and just flip `AI_PROVIDER`. Default model: `claude-opus-5` (claude) / `gpt-4o-mini` (openai), override with `AI_MODEL`. Both `ai_claude_request()`/`ai_openai_request()` are `function_exists`-guarded so tests stub them (see `tests/assistant_loop.php`). **Local Windows dev note:** PHP cURL needs a CA bundle for the HTTPS call — run the dev server with `-d curl.cainfo=<path> -d openssl.cafile=<path>` (Git Bash ships one at `C:/Program Files/Git/usr/ssl/certs/ca-bundle.crt`); prod Linux has a system store, so no flag needed.
+- **Scoped like the rest of admin.** `api/assistant.php` is session-authed, CSRF-checked (token in the JSON body — `verify_csrf()` reads `$_POST` which a JSON fetch doesn't populate), and passes `admin_venue_ids()` into every tool (`null` = owner/all). A scoped manager's assistant sees only their properties. Audience = `require_frontdesk()` (owner/manager/reception/front-desk staff; ops & security excluded).
+- **Nairobi-local dates.** The system prompt hands the model today's Nairobi date; the tools validate with `rates_window_ymd()` (same read-window validator as `api/check-availability.php`) and ask a clarifying question on ambiguous/invalid dates rather than guess.
+- UI: `admin/assistant.php` + `admin/assets/admin-assistant.js` (a no-native-chrome chat panel; renders a structured availability/quote card alongside the prose). Nav link in Operations, gated by `ai_assistant_supported()`. Test: `php tests/assistant_tools.php` (pure logic + adapter fail-soft always; DB-backed wrapper asserts run when a DB is reachable, else SKIP — the model call is never exercised).
+
 ## File Map
 
 | File | Purpose |
@@ -241,6 +250,10 @@ The eyebrow tagline + About heading/body on each property page render **DB-first
 | `includes/bookings.php` | Unified bookings ledger — confirm/import writers, pure report aggregators, occupancy (pre-migration-safe) |
 | `admin/reports.php` | Financial reports (revenue/ADR/RevPAR/occupancy, per currency, CSV export; manager-scoped) |
 | `includes/video-feature.php` | Shared click-to-load video section (home + sustainability) |
+| `includes/ai.php` | AI provider adapter — the ONE file that knows the vendor; `chat_with_tools()` bounded tool-use loop, `ai_assistant_supported()` |
+| `includes/assistant-tools.php` | Read-only assistant tool layer — `check_availability`/`quote_stay`/`list_properties` wrappers, schemas, system prompt (one pricing path, scoped) |
+| `api/assistant.php` | Assistant endpoint (JSON) — session-authed, CSRF, `admin_venue_ids()`-scoped; runs the loop, returns `{answer, tool_result}` |
+| `admin/assistant.php` · `admin/assets/admin-assistant.js` | Admin availability-assistant chat panel (read-only; renders a structured card) |
 | `css/main.css` | Global stylesheet (brand tokens, layout, components) |
 | `js/booking-widget.js` | Booking date picker widget |
 | `manifest.json` | PWA web app manifest |
@@ -286,4 +299,9 @@ ICAL_SYNC_SECRET=     # Random secret for iCal sync endpoint
 FX_SYNC_SECRET=       # Random secret for the display-currency rate sync endpoint (api/fx-sync.php)
 RESEND_API_KEY=       # Resend.com API key for emails
 MAIL_FROM=            # noreply@yourdomain.com (must be Resend-verified domain)
+AI_API_KEY=           # AI assistant key. Optional if the vendor-native key below is set. Unset (and no vendor key) = feature hidden.
+ANTHROPIC_API_KEY=    # Vendor-native key used when AI_PROVIDER=claude and AI_API_KEY is unset
+OPENAI_API_KEY=       # Vendor-native key used when AI_PROVIDER=openai and AI_API_KEY is unset
+AI_PROVIDER=          # OPTIONAL: claude (default) | openai (both wired up) | gemini (not implemented)
+AI_MODEL=             # OPTIONAL: model id override (default claude-opus-5 for claude, gpt-4o-mini for openai)
 ```

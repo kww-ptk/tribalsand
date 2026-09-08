@@ -3,6 +3,7 @@
 // Sets: $pageTitle (required), $activeMenu (required)
 require_once __DIR__ . '/../includes/icons.php';       // admin_icon() for icon-only buttons
 require_once __DIR__ . '/../includes/admin-shell.php'; // no-flicker shell (#18)
+require_once __DIR__ . '/../includes/ai.php';          // ai_assistant_supported() — gates the Assistant nav link
 $admin = current_admin();
 
 // ── Role / job aware nav visibility ──────────────────────────────────────
@@ -22,6 +23,9 @@ $__navMessages  = $__isOwner || $__isManager || $__isReception || $__isFrontdesk
 $__navTasks     = $__isOwner || $__isManager || $__isReception;
 $__navGate      = $__isOwner || $__isManager || $__isReception || $__isSecurity;
 $__navMyWork    = $__isOps   || $__isReception;
+// Availability/price assistant — same guest-facing audience as messaging, and
+// only when a provider key is configured (feature hides itself otherwise).
+$__navAssistant = ($__isOwner || $__isManager || $__isReception || $__isFrontdeskStaff) && ai_assistant_supported();
 $__navBookings  = $__isOwner || $__isReception;   // holds / calendar / submissions / conflicts
 $__navReports   = $__isOwner || $__isManager;     // financial reports (scoped to their venues)
 
@@ -114,6 +118,12 @@ if ($__shellFrag) { ob_start(); return; }
         <a href="/admin/frontdesk.php"    class="sidebar__link <?= ($activeMenu??'')==='frontdesk'    ? 'is-active':'' ?>">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 3v3h6V3M8 11h8M8 15h5"/></svg>
           Front desk
+        </a>
+        <?php endif; ?>
+        <?php if ($__navAssistant): ?>
+        <a href="/admin/assistant.php"    class="sidebar__link <?= ($activeMenu??'')==='assistant'    ? 'is-active':'' ?>">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5 10.1 10.9 5.5 9l4.6-1.4L12 3z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2z"/></svg>
+          Assistant
         </a>
         <?php endif; ?>
         <?php if ($__navMyWork): ?>
