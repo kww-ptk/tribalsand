@@ -49,6 +49,57 @@ RewriteRule ^trip-builder\.html$ /trip-builder [R=301,L]
 RewriteCond %{HTTP_HOST} (?:\.on\.aws|tribalsand\.com)$ [NC]
 RewriteRule ^(?:reference/)?tribal-sand-trip-builder-v3\.html$ https://tribalsand.com/trip-builder [R=301,L]
 RewriteRule ^(?:reference/)?tribal-sand-trip-builder-v3\.html$ /trip-builder [R=301,L]
+
+# Retired pages. Each was live but reachable only by direct URL — nothing in the
+# site linked to them and none was in sitemap.xml. Deleted from the repo and 301'd
+# to the live equivalent so any external link or ranked URL still lands somewhere
+# real. Same host guard as above: a path-only target would send visitors to the
+# unreachable .on.aws origin.
+#
+#   tribalsand-blog-tribal-dunes.html -> now a proper Journal article
+#   tribal-sand-activity(-20).html    -> two near-duplicate "Book an Experience" pages
+#   tribalsand_sitemap.html           -> superseded by interactive-site-map.php
+#   reservation.php                   -> two <form>s with no action and no handler
+#   search-result.php                 -> superseded by search.php
+#   tribalsandstory1.php              -> an early My Amani page
+#   health.php                        -> 10-line placeholder, no content
+#   processproperties.php             -> debug stub that echoed "live - sssss"
+RewriteCond %{HTTP_HOST} (?:\.on\.aws|tribalsand\.com)$ [NC]
+RewriteRule ^tribalsand-blog-tribal-dunes\.html$ https://tribalsand.com/tribal-dunes-beachfront-village-kilifi [R=301,L]
+RewriteRule ^tribalsand-blog-tribal-dunes\.html$ /tribal-dunes-beachfront-village-kilifi [R=301,L]
+
+RewriteCond %{HTTP_HOST} (?:\.on\.aws|tribalsand\.com)$ [NC]
+RewriteRule ^tribal-sand-activity(?:-20)?\.(?:html|php)$ https://tribalsand.com/activities [R=301,L]
+RewriteRule ^tribal-sand-activity(?:-20)?\.(?:html|php)$ /activities [R=301,L]
+
+RewriteCond %{HTTP_HOST} (?:\.on\.aws|tribalsand\.com)$ [NC]
+RewriteRule ^tribalsand_sitemap\.html$ https://tribalsand.com/interactive-site-map [R=301,L]
+RewriteRule ^tribalsand_sitemap\.html$ /interactive-site-map [R=301,L]
+
+RewriteCond %{HTTP_HOST} (?:\.on\.aws|tribalsand\.com)$ [NC]
+RewriteRule ^reservation(?:\.php)?$ https://tribalsand.com/reserve [R=301,L]
+RewriteRule ^reservation(?:\.php)?$ /reserve [R=301,L]
+
+RewriteCond %{HTTP_HOST} (?:\.on\.aws|tribalsand\.com)$ [NC]
+RewriteRule ^search-result(?:\.php)?$ https://tribalsand.com/search [R=301,L]
+RewriteRule ^search-result(?:\.php)?$ /search [R=301,L]
+
+RewriteCond %{HTTP_HOST} (?:\.on\.aws|tribalsand\.com)$ [NC]
+RewriteRule ^tribalsandstory1(?:\.php)?$ https://tribalsand.com/my-amani [R=301,L]
+RewriteRule ^tribalsandstory1(?:\.php)?$ /my-amani [R=301,L]
+
+RewriteCond %{HTTP_HOST} (?:\.on\.aws|tribalsand\.com)$ [NC]
+RewriteRule ^(?:health|processproperties)(?:\.php)?$ https://tribalsand.com/ [R=301,L]
+RewriteRule ^(?:health|processproperties)(?:\.php)?$ / [R=301,L]
+
+# /reference/ holds pre-cutover copies of pages — an old blog, an old trip
+# builder, an old property page, each carrying its own stale copy of the chat
+# widget embed. They were being served publicly at 200 and were crawlable.
+# Kept in the repo (interactive-site-map.php reads tribalsand_sitemap.html from
+# here as an image fallback, and they are useful design reference) but no longer
+# reachable over HTTP. Placed AFTER the trip-builder rule above so that one
+# still 301s rather than 404ing.
+RewriteRule ^reference/ - [R=404,L]
 # ----------------------------------------------------------------------------
 
 # Serve POST/PUT/PATCH/DELETE to a .php URL DIRECTLY — never redirect. A 301 on a

@@ -255,7 +255,7 @@
         <li><a href="tribal-table.php">Tribal Table <span style="font-size:.54rem;color:#D4B07A;">· Now Open</span></a></li>
         <li><a href="maya-kobe.php#somewhere-cafe">Somewhere Café <span style="font-size:.54rem;color:rgba(184,150,90,.4);">— Soon</span></a></li>
         <li><a href="http://tribalkiteschool.com/" target="_blank">Kite School</a></li>
-        <li><a href="https://tribalsand.com/tribalsand-blog-tribal-dunes.html">Read the Story →</a></li>
+        <li><a href="/tribal-dunes-beachfront-village-kilifi">Read the Story →</a></li>
       </ul>
     </div>
 
@@ -266,7 +266,7 @@
         <li><a href="activities.php">Activities</a></li>
         <li><a href="http://tribalkiteschool.com/" target="_blank">Kite School</a></li>
         <li><a href="events.php">Events</a></li>
-        <li><a href="https://tribalsand.com/tribalsand-blog-tribal-dunes.html">Tribal Dunes</a></li>
+        <li><a href="/tribal-dunes-beachfront-village-kilifi">Tribal Dunes</a></li>
         <li><a href="sustainability.php">Sustainability</a></li>
         <li><a href="blog.php">Blog</a></li>
       </ul>
