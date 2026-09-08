@@ -220,6 +220,13 @@ The SAME assistant also answers **prose** questions ("what's the villa like?", "
 - **Retrieval is read-only + venue-scoped.** `rag_search()` embeds the query and orders by cosine distance (`<=>`), dropping matches below `RAG_MIN_SCORE` (0.20) so the model can honestly say "I don't have that" (FR5). Scope mirrors the tool layer: global rows (`venue_id IS NULL`, e.g. tours) are always visible; a scoped account additionally sees only its own venues. The tool is `search_property_info`, wrapped by `assistant_tool_search_info()`.
 - **Wiring stays opt-in so Phase 1 is untouched.** `assistant_tool_definitions($withRag)` / `assistant_system_prompt($scope, $withRag)` take a flag; `api/assistant.php` passes `rag_supported()`. With no args they're still the 3-tool Phase-1 shape (that test asserts `count===3`). Test: `php tests/assistant_rag.php` (chunking/cleaning/wiring always; embed mocked; DB round-trip — upsert + search + scope + relevance floor — in a rolled-back transaction).
 
+### AI assistant — public guest concierge (Phase 3)
+The SAME read-only tool+RAG engine, exposed to website visitors as a branded chat at **`/concierge.php`** → **`api/concierge.php`**. It quotes and describes; it **never books** — the answer card hands off to the property page's "Request to Book" (the existing 24h-hold flow). Helpers in **`includes/concierge.php`**; migration `add_concierge_log.sql` (after `add_content_embeddings`); pre-migration-safe (`concierge_supported()` / `concierge_log_supported()`).
+- **Same engine, guest persona.** The endpoint runs `chat_with_tools()` with `assistant_system_prompt(null, rag_supported(), 'guest')` and the same tools at **null scope = all PUBLISHED venues**. The `'guest'` audience only swaps the persona + booking hand-off + an on-topic guard; all the hard rules (one price path, Nairobi dates, RAG-for-prose, never-invent) are shared with the staff prompt — don't fork them.
+- **Public-form guardrails (NFR6), enforced in `api/concierge.php`.** (1) **CSRF** — token in the JSON body, and the session token must be **non-empty** before comparing (`hash_equals('','')` is true, so a cookie-less bot would otherwise pass — the check requires a real page load that minted the token). (2) **Turnstile fail-closed** via `verify_captcha()`, required on the **first** message per session then trusted for `CONCIERGE_TURNSTILE_TTL` (good chat UX; the widget hides after the first success). (3) **IP rate limit** — `concierge_rate_limited()` counts `concierge_log` rows per `client_ip`/window (fails OPEN on a read error). (4) **Honeypot** `website` field → accept-and-ignore without spending a model call.
+- **`concierge_log` does double duty:** rate-limit fuel **and** observability (one row per answered turn: question, tools used, ok) — NFR7. `concierge_log_turn()` is best-effort; a logging failure never breaks the reply.
+- **Discoverability is a deploy step, not code.** `concierge.php` is not yet linked from the site nav (avoids touching the DB-driven mega-menu / hardcoded fallback). Add a link via Admin → Site Menu (or a CTA) after deploy. Deliberately **NOT a floating global bubble** — bottom-right is taken by the LeadConnector widget (see the WhatsApp note), so the concierge is a dedicated page. Test: `php tests/concierge_logic.php` (guards, guest-vs-staff prompt, Turnstile session stamp, rate-limit + logging round-trip rolled back).
+
 ## File Map
 
 | File | Purpose |
@@ -264,6 +271,8 @@ The SAME assistant also answers **prose** questions ("what's the villa like?", "
 | `admin/assistant.php` · `admin/assets/admin-assistant.js` | Admin availability-assistant chat panel (read-only; renders a structured card) |
 | `includes/assistant-rag.php` | RAG descriptive layer (Phase 2) — `rag_supported()`, chunking, `rag_reindex()`, `rag_search()` (pgvector, pre-migration-safe) |
 | `bin/reindex-content.php` | CLI: rebuild `content_embeddings` from live prose (idempotent, `--dry-run`) |
+| `includes/concierge.php` | Guest concierge helpers (Phase 3) — support guards, IP rate limit, turn logging, Turnstile session stamp |
+| `concierge.php` · `api/concierge.php` · `js/concierge.js` | Public guest concierge page + endpoint + chat UI (read-only, quote-only, Turnstile + rate-limit + CSRF) |
 | `css/main.css` | Global stylesheet (brand tokens, layout, components) |
 | `js/booking-widget.js` | Booking date picker widget |
 | `manifest.json` | PWA web app manifest |

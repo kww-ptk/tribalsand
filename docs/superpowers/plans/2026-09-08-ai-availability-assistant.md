@@ -1,6 +1,6 @@
 # AI Availability & Price Assistant — Plan
 
-**Status:** Phase 1 (tool layer) + Phase 2 (RAG) BUILT & tested locally; deploy to prod RDS/ECS pending. Phase 3 (guest widget) not started.
+**Status:** Phase 1 (tool layer) + Phase 2 (RAG) + Phase 3 (guest concierge) all BUILT & tested locally; deploy to prod RDS/ECS pending.
 **Author decision date:** 2026-09-08
 **One-line:** An AI that answers "what's free for 4 pax from X to Y and what does it cost?" by **calling our live system**, not by reading a stale snapshot.
 
@@ -106,9 +106,14 @@ The whole "what's available for N pax from X to Y, and the price" use case, staf
 - Tests: `php tests/assistant_rag.php` (all pass; embed mocked, DB round-trip rolled back). Verified live end-to-end on OpenAI: descriptive Qs route to `search_property_info` and answer from retrieved content; Phase-1 factual tools unchanged.
 - **OPEN (deploy):** apply `add_content_embeddings.sql` to prod RDS (via `/admin/migrate.php`), set `OPENAI_API_KEY` (or `AI_EMBED_KEY`) in ECS env, then run `php bin/reindex-content.php` once against prod. pgvector must be enabled on the RDS instance (available on current engine versions).
 
-### Phase 3 — Guest-facing concierge widget
-- Same engine behind a public endpoint, guarded like every other public form: **Turnstile fail-closed**, **IP rate-limit via `client_ip()`**, CSRF, strict read-only tools.
-- Still quote-only: the AI hands off to the existing booking/enquiry flow to actually hold a room.
+### Phase 3 — Guest-facing concierge — **BUILT & tested locally (2026-09-08)**
+- Same engine behind a public endpoint, guarded like every other public form: **Turnstile fail-closed**, **IP rate-limit via `client_ip()`**, CSRF, strict read-only tools. ✅ `api/concierge.php` + `concierge.php` (branded page) + `js/concierge.js`; helpers in `includes/concierge.php`; migration `add_concierge_log.sql`.
+- Still quote-only: the AI hands off to the existing booking/enquiry flow to actually hold a room. ✅ The answer card links to `/<slug>.php#book` ("Request to Book").
+- Guest persona via `assistant_system_prompt(null, rag_supported(), 'guest')` — shares every hard rule with the staff prompt; null scope = all published venues.
+- **Security note:** the CSRF check requires a **non-empty** session token (a cold, cookie-less request has empty `$_SESSION['csrf_token']` and `hash_equals('','')` is true — that hole was found in local testing and closed). Turnstile is verified once per session then trusted for a TTL (chat UX); dev mode (no keys) bypasses it.
+- Chosen as a **dedicated page, not a floating bubble** — bottom-right is taken by the LeadConnector widget. Not yet linked in the site nav (a post-deploy step, to avoid touching the DB-driven mega-menu).
+- Verified live: page renders, endpoint enforces CSRF (cold → 403, real page flow → 200), RAG answers ground in real content, and an ambiguous-date question triggers a clarifying question (FR4). Test: `php tests/concierge_logic.php` (all pass).
+- **OPEN (deploy):** apply `add_concierge_log.sql` to prod RDS; ensure `TURNSTILE_SITE_KEY`/`TURNSTILE_SECRET_KEY` are set (fail-closed in prod); add a nav/CTA link to `concierge.php`.
 
 ---
 
