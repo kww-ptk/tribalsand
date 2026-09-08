@@ -106,9 +106,13 @@ img{display:block;object-fit:cover;}
 .zr-gallery-head .zr-info-eyebrow{margin-bottom:.6rem;}
 .zr-gallery-head h2{font-family:'Cormorant Garamond',serif;font-size:clamp(1.6rem,3vw,2.2rem);font-weight:400;}
 .zr-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:.7rem;}
-.zr-grid a{position:relative;overflow:hidden;aspect-ratio:4/3;background:var(--sand-pale);}
-.zr-grid img{width:100%;height:100%;transition:transform .5s ease;}
-.zr-grid a:hover img{transform:scale(1.06);}
+/* Tiles are <button> (they open the lightbox, they do not navigate), so the
+   default button chrome has to be reset before the tile styling applies. */
+.zr-tile{position:relative;overflow:hidden;aspect-ratio:4/3;background:var(--sand-pale);
+  padding:0;border:0;display:block;width:100%;cursor:pointer;font:inherit;color:inherit;-webkit-appearance:none;appearance:none;}
+.zr-grid img{width:100%;height:100%;object-fit:cover;transition:transform .5s ease;}
+.zr-tile:hover img{transform:scale(1.06);}
+.zr-tile:focus-visible{outline:2px solid var(--teal-d);outline-offset:2px;}
 
 /* ── RESERVE FORM ── */
 .zr-reserve{background:var(--teal-d);padding:4.5rem 5vw 5.5rem;position:relative;}
@@ -196,14 +200,29 @@ img{display:block;object-fit:cover;}
     <div class="zr-info-eyebrow"><?= page_text('zuri-restaurant','gal_eyebrow') ?></div>
     <h2><?= page_html('zuri-restaurant','gal_title') ?></h2>
   </div>
+  <?php
+    // Resolve once so the tiles and the lightbox share one ordered list —
+    // tile i must address image i. Previously each tile was a raw
+    // <a href="photo.jpg" target="_blank">, which navigated to the image file
+    // itself: no gallery, and nothing to go back to.
+    $__zrImgs = [];
+    foreach ($gallery as [$slot, $alt]) {
+        $__u = page_image('zuri-restaurant', $slot);
+        if ($__u !== '') $__zrImgs[] = ['url' => $__u, 'alt' => $alt];
+    }
+  ?>
   <div class="zr-grid">
-    <?php foreach ($gallery as [$slot, $alt]): $__u = page_image('zuri-restaurant', $slot); if ($__u === '') continue; ?>
-    <a href="<?= e($__u) ?>" target="_blank" rel="noopener">
-      <img src="<?= e($__u) ?>" alt="<?= e($alt) ?>" loading="lazy">
-    </a>
+    <?php foreach ($__zrImgs as $__i => $__im): ?>
+    <button type="button" class="zr-tile" onclick="pgOpenLb(<?= $__i ?>)" aria-label="Open photo <?= $__i + 1 ?> of <?= count($__zrImgs) ?>">
+      <img src="<?= e($__im['url']) ?>" alt="<?= e($__im['alt']) ?>" loading="lazy">
+    </button>
     <?php endforeach; ?>
   </div>
 </section>
+<?php
+$lb_urls = array_column($__zrImgs, 'url');
+include __DIR__ . '/includes/photo-lightbox.php';
+?>
 
 <!-- ═══ RESERVE ═══ -->
 <section class="zr-reserve" id="reserve">
