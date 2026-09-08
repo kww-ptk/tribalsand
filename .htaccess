@@ -62,7 +62,6 @@ RewriteRule ^(?:reference/)?tribal-sand-trip-builder-v3\.html$ /trip-builder [R=
 #   reservation.php                   -> two <form>s with no action and no handler
 #   search-result.php                 -> superseded by search.php
 #   tribalsandstory1.php              -> an early My Amani page
-#   health.php                        -> 10-line placeholder, no content
 #   processproperties.php             -> debug stub that echoed "live - sssss"
 RewriteCond %{HTTP_HOST} (?:\.on\.aws|tribalsand\.com)$ [NC]
 RewriteRule ^tribalsand-blog-tribal-dunes\.html$ https://tribalsand.com/tribal-dunes-beachfront-village-kilifi [R=301,L]
@@ -101,7 +100,10 @@ RewriteRule ^processproperties(?:\.php)?$ / [R=301,L]
 # Kept in the repo (interactive-site-map.php reads tribalsand_sitemap.html from
 # here as an image fallback, and they are useful design reference) but no longer
 # reachable over HTTP. Placed AFTER the trip-builder rule above so that one
-# still 301s rather than 404ing.
+# still 301s rather than 404ing. A .php path under here reaches its 404 via the
+# strip-.php redirect first (/reference/x.php -> /reference/x -> 404) rather than
+# 404ing outright; every other path 404s directly, and nothing under it is served
+# either way.
 RewriteRule ^reference/ - [R=404,L]
 # ----------------------------------------------------------------------------
 
