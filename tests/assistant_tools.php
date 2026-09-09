@@ -56,6 +56,21 @@ check('prompt forbids inventing',            stripos($sys, 'never invent') !== f
 $sysScoped = assistant_system_prompt([5]);
 check('prompt: scoped wording differs',      $sysScoped !== $sys);
 
+// ── Phase 4: enquiry-reply draft brief (pure) ────────────────────────────────
+$brief = assistant_build_draft_brief([
+    'guest_name' => 'Jane Doe', 'venue_name' => 'Zuri', 'room_name' => 'Jua',
+    'check_in' => '2099-03-10', 'check_out' => '2099-03-13',
+    'guests_adults' => 5, 'guests_children' => 2, 'message' => 'Anniversary trip!',
+]);
+check('draft brief: names the guest',        str_contains($brief, 'Jane Doe'));
+check('draft brief: room + property',        str_contains($brief, 'Jua at Zuri'));
+check('draft brief: carries both dates',     str_contains($brief, '2099-03-10') && str_contains($brief, '2099-03-13'));
+check('draft brief: carries party size',     str_contains($brief, '5 adults') && str_contains($brief, '2 children'));
+check('draft brief: carries their message',  str_contains($brief, 'Anniversary trip!'));
+check('draft brief: forbids inventing',      stripos($brief, 'never invent') !== false);
+$briefEmpty = assistant_build_draft_brief([]);
+check('draft brief: tolerates empty row',    str_contains($briefEmpty, 'the guest') && str_contains($briefEmpty, 'not specified'));
+
 // ── Provider adapter surface (no network) ────────────────────────────────────
 check('provider defaults non-empty',         ai_provider() !== '');
 check('model resolves non-empty',            ai_model() !== '');
@@ -185,6 +200,45 @@ if ($mk) {
     }
 } else {
     echo "SKIP  combos: maya-kobe not seeded\n";
+}
+
+// ── Phase 5: owner-editable prompt composition (rolled back) ──────────────────
+// The editable persona/knowledge is APPENDED before the hard rules; an edit can
+// shape tone and add facts but never weaken "never invent a price / read-only".
+db()->beginTransaction();
+try {
+    // Empty settings → built-in shape (regression): no editable block injected,
+    // the framing runs straight into the Rules section.
+    set_setting('ai_persona_staff',   '');
+    set_setting('ai_persona_guest',   '');
+    set_setting('ai_extra_knowledge', '');
+    set_setting('ai_draft_instructions', '');
+    $baseStaff = assistant_system_prompt(null, false, 'staff');
+    check('phase5: empty settings inject nothing',      !str_contains($baseStaff, 'Tone & voice') && !str_contains($baseStaff, 'Business notes you may use'));
+    check('phase5: empty → framing runs into Rules',    str_contains(str_replace("\r", '', $baseStaff), "last night.\n\nRules:"));
+
+    // Persona + knowledge present → both appear, per audience, before the rules.
+    set_setting('ai_persona_staff',   'ZZ_STAFF_TONE_MARKER speak plainly');
+    set_setting('ai_persona_guest',   'ZZ_GUEST_TONE_MARKER be dreamy');
+    set_setting('ai_extra_knowledge', 'ZZ_KNOWLEDGE_MARKER breakfast is included');
+    $staff = assistant_system_prompt(null, false, 'staff');
+    $guest = assistant_system_prompt(null, false, 'guest');
+    check('phase5: staff prompt carries staff persona', str_contains($staff, 'ZZ_STAFF_TONE_MARKER'));
+    check('phase5: staff prompt excludes guest persona', !str_contains($staff, 'ZZ_GUEST_TONE_MARKER'));
+    check('phase5: guest prompt carries guest persona', str_contains($guest, 'ZZ_GUEST_TONE_MARKER'));
+    check('phase5: prompt carries extra knowledge',     str_contains($staff, 'ZZ_KNOWLEDGE_MARKER'));
+    // Load-bearing: hard rules survive an edit AND stay after the editable text.
+    check('phase5: hard rules survive an edit',         stripos($staff, 'never invent') !== false || stripos($staff, 'Never invent') !== false);
+    check('phase5: persona precedes the Rules block',   strpos($staff, 'ZZ_STAFF_TONE_MARKER') < strpos($staff, "\nRules:"));
+    check('phase5: knowledge precedes the Rules block', strpos($staff, 'ZZ_KNOWLEDGE_MARKER') < strpos($staff, "\nRules:"));
+
+    set_setting('ai_draft_instructions', 'ZZ_DRAFT_MARKER sign off warmly');
+    check('phase5: draft instructions read back',       assistant_draft_instructions() === 'ZZ_DRAFT_MARKER sign off warmly');
+    // Phase 4 × Phase 5: the draft brief folds in the owner's house style.
+    $briefStyled = assistant_build_draft_brief(['guest_name' => 'X']);
+    check('phase4: brief appends house style',          str_contains($briefStyled, 'ZZ_DRAFT_MARKER') && str_contains($briefStyled, 'House drafting style'));
+} finally {
+    db()->rollBack();
 }
 
 echo ($failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n");

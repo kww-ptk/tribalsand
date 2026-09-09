@@ -26,6 +26,7 @@ $__navMyWork    = $__isOps   || $__isReception;
 // Availability/price assistant — same guest-facing audience as messaging, and
 // only when a provider key is configured (feature hides itself otherwise).
 $__navAssistant = ($__isOwner || $__isManager || $__isReception || $__isFrontdeskStaff) && ai_assistant_supported();
+$__navAiSettings = $__isOwner;   // AI tone/knowledge tuning — site-wide config, owner-only (visible even before a key is set, so it can be prepared)
 $__navBookings  = $__isOwner || $__isReception;   // holds / calendar / submissions / conflicts
 $__navReports   = $__isOwner || $__isManager;     // financial reports (scoped to their venues)
 
@@ -124,6 +125,12 @@ if ($__shellFrag) { ob_start(); return; }
         <a href="/admin/assistant.php"    class="sidebar__link <?= ($activeMenu??'')==='assistant'    ? 'is-active':'' ?>">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5 10.1 10.9 5.5 9l4.6-1.4L12 3z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2z"/></svg>
           Assistant
+        </a>
+        <?php endif; ?>
+        <?php if ($__navAiSettings): ?>
+        <a href="/admin/ai-settings.php"  class="sidebar__link <?= ($activeMenu??'')==='ai_settings'  ? 'is-active':'' ?>">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5 10.1 10.9 5.5 9l4.6-1.4L12 3z"/><circle cx="18.5" cy="17.5" r="2.4"/><path d="M18.5 13.6v1.1M18.5 20.3v1.1M22 17.5h-1.1M16.1 17.5H15M20.9 15.1l-.8.8M17 18.6l-.8.8M20.9 19.9l-.8-.8M17 16.4l-.8-.8"/></svg>
+          AI settings
         </a>
         <?php endif; ?>
         <?php if ($__navMyWork): ?>

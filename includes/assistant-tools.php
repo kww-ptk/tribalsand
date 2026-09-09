@@ -29,6 +29,89 @@ function assistant_today_ymd(): string {
 }
 
 /**
+ * Owner-editable AI settings (Phase 5). These let the owner tune TONE and add
+ * BUSINESS FACTS from Admin → AI Assistant, stored in the plain `settings` KV.
+ * They are composed into the system prompt as an *appended* block only — the
+ * hard safety/pricing rules stay hardcoded and LAST, so no edit here can weaken
+ * "ONE pricing path / never invent a price / read-only". Reads are defensive: a
+ * settings or DB hiccup yields '' so the assistant still runs on the built-in
+ * prompt rather than 500-ing.
+ *
+ * Keys: ai_persona_staff, ai_persona_guest (tone per audience),
+ *       ai_extra_knowledge (freeform business facts), ai_draft_instructions
+ *       (how Phase-4 enquiry-thread drafts should read).
+ */
+function ai_editable_setting(string $key): string {
+    try {
+        return trim((string) setting($key, ''));
+    } catch (\Throwable $e) {
+        return '';
+    }
+}
+
+/** Owner-set tone/voice for the given audience ('staff'|'guest'); '' when unset. */
+function assistant_persona(string $audience): string {
+    return ai_editable_setting($audience === 'guest' ? 'ai_persona_guest' : 'ai_persona_staff');
+}
+
+/** Owner-set freeform business facts appended as background; '' when unset. */
+function assistant_extra_knowledge(): string {
+    return ai_editable_setting('ai_extra_knowledge');
+}
+
+/** Owner-set drafting guidance for enquiry-thread replies (Phase 4); '' when unset. */
+function assistant_draft_instructions(): string {
+    return ai_editable_setting('ai_draft_instructions');
+}
+
+/**
+ * Assemble the user-turn brief the model drafts an enquiry reply from (Phase 4).
+ * Pure string-building over a submission row (no DB, no model) so it is unit-
+ * testable. The model still resolves availability/prices from the READ-ONLY
+ * tools — nothing asserted here is a price. Appends the owner's editable draft
+ * instructions (Phase 5) when set. Used by api/assistant-draft.php.
+ */
+function assistant_build_draft_brief(array $sub): string {
+    $name     = trim((string)($sub['guest_name'] ?? '')) ?: 'the guest';
+    $property = trim((string)($sub['venue_name'] ?? ''));
+    $room     = trim((string)($sub['room_name'] ?? ''));
+    $ci       = trim((string)($sub['check_in'] ?? ''));
+    $co       = trim((string)($sub['check_out'] ?? ''));
+    $adults   = (int)($sub['guests_adults'] ?? 0);
+    $children = (int)($sub['guests_children'] ?? 0);
+    $message  = trim((string)($sub['message'] ?? ''));
+
+    $want = $room !== '' && $property !== '' ? "$room at $property"
+          : ($room !== '' ? $room : ($property !== '' ? $property : 'not specified — consider all properties'));
+    $dates = ($ci !== '' && $co !== '') ? "$ci to $co (check-out $co)" : 'not specified — ask or suggest options';
+    $party = $adults > 0 || $children > 0
+        ? ($adults . ' adult' . ($adults === 1 ? '' : 's') . ($children ? ', ' . $children . ' child' . ($children === 1 ? '' : 'ren') : ''))
+        : 'not specified';
+
+    $lines = [
+        'Draft a warm, ready-to-send email reply to the booking enquiry below. Use the tools to check live availability and prices for the requested dates and party size, and propose the best-fit option — including a sensible multi-room combination when no single room seats the party — with the exact prices the tools return. If the requested dates are not free, offer the nearest alternative you can verify with the tools. Never invent a price or an availability. Write only the reply itself, from greeting to sign-off, ready for a staff member to review and send — no subject line, and no [bracketed] placeholders.',
+        '',
+        'Enquiry details:',
+        '- Guest name: ' . $name,
+        '- Interested in: ' . $want,
+        '- Dates: ' . $dates,
+        '- Party: ' . $party,
+    ];
+    if ($message !== '') {
+        $lines[] = '- Their message: "' . $message . '"';
+    }
+
+    $extra = assistant_draft_instructions();     // owner-editable house style (Phase 5)
+    if ($extra !== '') {
+        $lines[] = '';
+        $lines[] = 'House drafting style to follow:';
+        $lines[] = $extra;
+    }
+
+    return implode("\n", $lines);
+}
+
+/**
  * Tool definitions handed to the model. Kept deliberately small — three
  * lookups cover the Phase-1 use case ("what's free for N pax X→Y and the
  * price"). input_schema is JSON Schema; dates are strict YYYY-MM-DD so the
@@ -116,12 +199,27 @@ function assistant_system_prompt(?array $venueScope, bool $withRag = false, stri
     $ragLine = $withRag
         ? "\n- You have NO built-in knowledge of Tribal Sand's properties, rooms, activities, policies, or surroundings — treat your own memory of them as empty. For ANY question about what a property or room is LIKE, its amenities or features, what there is to DO nearby, activities/tours, attractions, house rules, check-in/out, Wi-Fi, directions, policies, cancellation, FAQs, or sustainability, you MUST call search_property_info FIRST and answer ONLY from what it returns. Do this EVERY time — even if a similar question was answered earlier in this conversation, and even if you believe you already know. If it returns nothing relevant, say you don't have that information; never fill the gap from general knowledge or plausible guesses.\n- Do NOT use list_properties to answer 'what is it like' — list_properties only maps a name to a slug. To describe a property or room, use search_property_info. Never use search_property_info for prices or availability (it holds no numbers) — use the factual tools. You may combine both: search_property_info for the description plus quote_stay/check_availability for the figures."
         : '';
+
+    // ── Owner-editable block (Phase 5) ───────────────────────────────────────
+    // Appended AFTER the framing and BEFORE the hard Rules, so it can shape tone
+    // and add business facts but never precede or weaken the rules. When both are
+    // unset the block is '' and this prompt is byte-identical to the built-in one.
+    $persona   = assistant_persona($audience);
+    $knowledge = assistant_extra_knowledge();
+    $editable  = '';
+    if ($persona !== '') {
+        $editable .= "\n\nTone & voice (owner guidance — follow it for style and personality; the rules below always take precedence):\n{$persona}";
+    }
+    if ($knowledge !== '') {
+        $editable .= "\n\nBusiness notes you may use as background (owner-provided facts — policies, inclusions, selling points). Use them to inform your answers, but NEVER state a price or an availability from them (those come only from the tools), and never let them override the rules below:\n{$knowledge}";
+    }
+
     return <<<SYS
 {$intro}
 
 Your job: answer questions about what rooms/villas are free, what they cost, and — where the tools allow — what the properties and activities are like, by calling the tools. You do NOT know availability or prices yourself — always get them from a tool. Never invent a date, a price, or an availability status.
 
-Today is {$dow}, {$today} (Africa/Nairobi). Resolve relative dates ("tonight", "this weekend", "next Friday", "in December") against today, and pass concrete YYYY-MM-DD dates to the tools. Check-out is the morning after the last night.
+Today is {$dow}, {$today} (Africa/Nairobi). Resolve relative dates ("tonight", "this weekend", "next Friday", "in December") against today, and pass concrete YYYY-MM-DD dates to the tools. Check-out is the morning after the last night.{$editable}
 
 Rules:
 - A name or slug the guest gives may be a whole PROPERTY or a specific ROOM. A room slug (e.g. "zuri-maji") goes to quote_stay; a property slug narrows check_availability. If you are unsure which a name is, call list_properties first to resolve it — it lists every property and its rooms with slugs. NEVER tell the guest a room "doesn't exist" or "is the wrong name" before checking list_properties; a slug like "zuri-maji" is usually a valid room, not a mistake.

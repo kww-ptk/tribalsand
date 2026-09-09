@@ -410,7 +410,16 @@ include __DIR__ . '/_layout.php';
       <form method="POST" action="/admin/submission-view?id=<?= $id ?>">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="add_note">
-        <textarea name="body" rows="4" class="inp inp--area" required
+        <?php if (ai_assistant_supported()): ?>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+          <button type="button" class="btn-outline btn-sm" id="aiDraftBtn"
+                  data-endpoint="/api/assistant-draft.php" data-sid="<?= $id ?>" data-csrf="<?= e(csrf_token()) ?>">
+            <?= admin_icon('sparkles', 15) ?: '✨' ?> Draft options with AI
+          </button>
+          <span id="aiDraftMsg" class="text-muted" style="font-size:12.5px"></span>
+        </div>
+        <?php endif; ?>
+        <textarea name="body" id="replyBody" rows="4" class="inp inp--area" required
                   style="width:100%;box-sizing:border-box;min-height:104px;resize:vertical"
                   placeholder="Add a note for the team, or paste / write the reply to send the guest…"></textarea>
         <div style="display:flex;gap:16px;align-items:center;margin-top:10px;flex-wrap:wrap">
@@ -454,6 +463,51 @@ include __DIR__ . '/_layout.php';
           sync();
         })();
       </script>
+
+      <?php if (ai_assistant_supported()): ?>
+      <script>
+        // "Draft options with AI": ask the read-only assistant to write a reply
+        // with live availability + prices, and drop it into the reply box to edit
+        // and send. It never sends — staff always review first.
+        (function () {
+          var btn = document.getElementById('aiDraftBtn');
+          var box = document.getElementById('replyBody');
+          var msg = document.getElementById('aiDraftMsg');
+          var reply = document.getElementById('kindReply');
+          if (!btn || !box) return;
+          btn.addEventListener('click', function () {
+            if (box.value.trim() && !confirm('Replace what you have written with an AI draft?')) return;
+            var orig = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = 'Drafting…';
+            if (msg) { msg.style.color = ''; msg.textContent = 'Checking live availability and prices…'; }
+            fetch(btn.dataset.endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ submission_id: btn.dataset.sid, csrf_token: btn.dataset.csrf })
+            })
+            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+            .then(function (res) {
+              if (!res.ok || !res.j || res.j.ok !== true) {
+                throw new Error((res.j && res.j.error) || 'Could not draft a reply.');
+              }
+              box.value = res.j.draft;
+              box.focus();
+              // Pre-select "Reply sent to guest" — a draft is guest-facing.
+              if (reply) { reply.checked = true; reply.dispatchEvent(new Event('change')); }
+              if (msg) { msg.style.color = ''; msg.textContent = 'Draft ready — review and edit before sending.'; }
+            })
+            .catch(function (e) {
+              if (msg) { msg.style.color = '#b91c1c'; msg.textContent = e.message || 'Could not draft a reply.'; }
+            })
+            .finally(function () {
+              btn.disabled = false;
+              btn.innerHTML = orig;
+            });
+          });
+        })();
+      </script>
+      <?php endif; ?>
     <?php endif; ?>
   </div>
 </div>
