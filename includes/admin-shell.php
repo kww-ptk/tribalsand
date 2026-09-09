@@ -22,6 +22,14 @@ declare(strict_types=1);
 
 /** True when the client asked for just the content fragment (shell navigation). */
 function admin_shell_requested(): bool {
+    // The fragment is only ever a valid response to the shell's own fetch, which
+    // sends X-Requested-With: fetch (admin-nav.js). Requiring that header means a
+    // ?shell=1 URL that reaches the browser as a real navigation — from history,
+    // a bookmark, a reload, a shared link — renders the full styled page instead
+    // of the bare fragment. Without it such a URL lands the user on an unstyled
+    // admin page with no chrome. Belt and braces alongside dt_url() no longer
+    // putting shell into links in the first place.
+    if (($_SERVER['HTTP_X_REQUESTED_WITH'] ?? '') !== 'fetch') return false;
     return ($_GET['shell'] ?? '') !== '' && ($_SERVER['REQUEST_METHOD'] ?? 'GET') === 'GET';
 }
 

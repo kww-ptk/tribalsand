@@ -30,17 +30,37 @@ $window = date('Y-m-d H:i:s', time() - 600);
 $count = (int)db_query("SELECT COUNT(*) AS cnt FROM submissions WHERE ip_address=:ip AND created_at>:w", [':ip'=>$ip, ':w'=>$window])->fetch()['cnt'];
 if ($count >= 5) { http_response_code(429); exit(json_encode(['ok' => false, 'error' => 'rate limited'])); }
 
-try {
+/*
+ * Type is bound, not literal, so it can fall back.
+ *
+ * submissions.type carries a CHECK constraint listing the permitted values, and
+ * 'trip_builder' is only added to it by reclassify_trip_builder_submissions.sql
+ * — a migration an owner runs by hand from /admin/migrate.php. Deploys are
+ * automatic on push, so this code always reaches production BEFORE that
+ * migration is run. Inserting the new type unconditionally would violate the
+ * constraint, and the catch below answers 500 and returns without sending any
+ * mail, so every trip plan submitted in that window would be lost outright.
+ *
+ * Write the new type, and on a constraint violation retry once as 'enquiry' —
+ * the value it used before — so a lead is never lost to migration ordering.
+ * The same pre-migration-safety the read helpers apply, applied to a write.
+ * Once the migration has run everywhere, the fallback is dead code and the
+ * literal can come back.
+ */
+$__tb_insert = function (string $type) use (
+    $name, $email, $guest, $trip, $data, $ip
+): void {
     db_query(
         "INSERT INTO submissions
             (type, guest_name, guest_email, guest_phone, message,
              check_in, check_out, guests_adults, guests_children, payload_json,
              source_page, referrer, ip_address, user_agent)
          VALUES
-            ('enquiry', :name, :email, :phone, :msg,
+            (:type, :name, :email, :phone, :msg,
              :ci, :co, :adults, :children, :payload,
              :src, :ref, :ip, :ua)",
         [
+            ':type'     => $type,
             ':name'     => $name,
             ':email'    => $email,
             ':phone'    => trim($guest['phone'] ?? ''),
@@ -59,9 +79,18 @@ try {
             ':ua'       => $_SERVER['HTTP_USER_AGENT'] ?? '',
         ]
     );
+};
+
+try {
+    $__tb_insert('trip_builder');
 } catch (Throwable $e) {
-    error_log('[trip-builder] insert failed: ' . $e->getMessage());
-    http_response_code(500); exit(json_encode(['ok' => false]));
+    error_log('[trip-builder] trip_builder type rejected, retrying as enquiry: ' . $e->getMessage());
+    try {
+        $__tb_insert('enquiry');
+    } catch (Throwable $e2) {
+        error_log('[trip-builder] insert failed: ' . $e2->getMessage());
+        http_response_code(500); exit(json_encode(['ok' => false]));
+    }
 }
 $new_id = (int)db()->lastInsertId();
 

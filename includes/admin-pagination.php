@@ -36,7 +36,15 @@ if (!function_exists('dt_url')) {
     function dt_url(array $overrides): string
     {
         $q = $_GET;
-        unset($q['ajax']);
+        // Never carry `ajax` or `shell` into a link. Both are transport flags for
+        // a fetch, not part of the view. A page rendered as a shell fragment has
+        // shell=1 in $_GET, so without this every pager/sort/filter link inside it
+        // is built carrying shell=1 — admin-table.js then pushState's that URL, and
+        // the next Back or reload does a full-page GET of ?shell=1, which returns
+        // the bare content fragment with no <html>/CSS. That is the unstyled admin
+        // page. submissions.php already stripped both on its own redirect; this is
+        // the same rule for the shared link builder every admin table uses.
+        unset($q['ajax'], $q['shell']);
         foreach ($overrides as $k => $v) {
             if ($v === null) unset($q[$k]);
             else $q[$k] = $v;

@@ -1091,7 +1091,14 @@ function send_admin_reply(array $sub, string $message): array {
     require_once __DIR__ . '/booking.php';   // make_submission_ref()
     $env   = parse_env();
     $from  = $env['MAIL_FROM'] ?? 'Tribal Sand <noreply@tribalsand.com>';
-    $reply = setting('notify_email', 'reservations@tribalsand.com');
+    // Reply-To decides where the guest's reply lands. When INBOUND_MAIL_ADDRESS
+    // is configured (the SES/SNS inbound intake, e.g. reply@mail.tribalsand.com),
+    // point replies there so api/inbound-mail.php can thread them back into this
+    // submission automatically via the [TSR-<id>] tag in the subject below.
+    // Unset = unchanged legacy behaviour: replies go to the reservations mailbox
+    // for a human to paste back in.
+    $reply = trim((string)($env['INBOUND_MAIL_ADDRESS'] ?? ''))
+           ?: setting('notify_email', 'reservations@tribalsand.com');
     $site  = rtrim($env['SITE_URL'] ?? $env['APP_URL'] ?? 'https://tribalsand.com', '/');
     $guest = trim((string)($sub['guest_name'] ?? ''));
     $tag   = !empty($sub['id']) ? ' [' . make_submission_ref((int)$sub['id']) . ']' : '';

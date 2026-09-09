@@ -3,7 +3,6 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/upsells.php';
 require_once __DIR__ . '/../includes/mail.php';
-require_once __DIR__ . '/../includes/ghl.php';
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
@@ -123,7 +122,7 @@ if ($form_mode !== 'availability') {
     }
 }
 
-// Insert + GHL push + hold/enquiry response — wrapped so any DB/GHL failure returns clean JSON
+// Insert + hold/enquiry response — wrapped so any DB failure returns clean JSON
 try {
     db_query(
         "INSERT INTO submissions
@@ -167,23 +166,6 @@ try {
 
     $id = (int)db()->lastInsertId();
 
-    // Mirror to GHL (skips automatically if GHL_API_KEY is unset)
-    $nameParts = explode(' ', $name, 2);
-    ghl_push([
-        'firstName' => $nameParts[0] ?? $name,
-        'lastName'  => $nameParts[1] ?? '',
-        'email'     => $email,
-        'phone'     => trim($data['phone'] ?? ''),
-        'property'  => $room ? $room['name'] : '',
-        'arrival'   => $checkin,
-        'departure' => $checkout,
-        'adults'    => (int)($data['adults'] ?? 1),
-        'children'  => (int)($data['children'] ?? 0),
-        'message'   => trim($data['message'] ?? ''),
-        'source'    => 'Website Booking Request',
-        'tags'      => ['website-enquiry', 'booking-request'],
-        'note'      => "Booking request via tribalsand.com\nRoom: " . ($room['name'] ?? '-') . "\nDates: {$checkin} → {$checkout}",
-    ]);
 
     // Availability mode: create hold + block dates
     if ($form_mode === 'availability' && $unit) {

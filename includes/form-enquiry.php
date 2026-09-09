@@ -29,6 +29,7 @@ $room_name = $room['name'] ?? '';
     </div>
     <input type="hidden" name="adults" value="1">
   </div>
+  <?php if (empty($bk_hide_children)): ?>
   <div class="booking-field booking-field--row">
     <span>Children <small>+$15</small></span>
     <div class="booking-step">
@@ -38,6 +39,11 @@ $room_name = $room['name'] ?? '';
     </div>
     <input type="hidden" name="children" value="0">
   </div>
+  <?php else: /* adults-only property — drop the stepper, keep the field at 0 so
+                 the submit payload is identical either way (same contract as
+                 the availability branch in booking-widget.php) */ ?>
+  <input type="hidden" name="children" value="0">
+  <?php endif; ?>
 
   <?php if (!empty($upsells)): ?>
   <div class="bk-ups">

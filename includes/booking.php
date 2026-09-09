@@ -74,6 +74,24 @@ function parse_submission_ref(string $text): int|false {
     return (int) $m[1];
 }
 
+/**
+ * Like parse_submission_ref(), but re-derives the 6-char HMAC suffix and only
+ * returns the ID when it matches. Use this for anything driven by *inbound*,
+ * attacker-controllable text (e.g. a reply subject arriving over the SES/SNS
+ * webhook): the plain parser trusts any well-formed tag, so a forged
+ * "TSR-<id>-000000" could otherwise inject a bogus "guest reply" into an
+ * arbitrary submission thread. Returns false if the tag is absent or its hash
+ * doesn't match what make_submission_ref() would mint for that id.
+ */
+function verify_submission_ref(string $text): int|false {
+    if (!preg_match('/TSR-(\d+)-([0-9a-fA-F]{6})/', $text, $m)) return false;
+    $id       = (int) $m[1];
+    $expected = make_submission_ref($id);          // TSR-<id>-<hash>
+    // Compare the whole tag case-insensitively; hash_equals needs same case.
+    return hash_equals(strtolower($expected), strtolower('TSR-' . $id . '-' . $m[2]))
+        ? $id : false;
+}
+
 /** Absolute URL to the guest manage page for a hold (magic link). '' if secret unset. */
 function make_manage_url(int $holdId): string {
     $ref = make_guest_ref($holdId);

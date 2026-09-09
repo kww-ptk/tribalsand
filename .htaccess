@@ -24,6 +24,87 @@ RewriteRule ^sitemap\.xml$ sitemap.php [L]
 # Placed BEFORE the image/asset proxy so the PDF resolves to its 301, not a proxy.
 # Old inventory diffed in docs/redirects-map.csv. Keep both in sync.
 RewriteRule ^content/Watamu-Kenya-COMETA-2025\.pdf$ /watamu [R=301,L]
+
+# Trip Builder — one page, one lead source.
+# Three copies of the builder were live and all POSTed to the SAME GHL webhook
+# with an identical payload (source: 'Trip Builder', same tags, same TS-<year>-
+# <n> ref), so enquiries were impossible to attribute. Worse, the two .html
+# copies posted their backend call to https://www.tribalsand.com/tribal-sand/
+# api/submit.php — dead since the rewrite — so those leads reached GHL only,
+# with no confirmation email and no row in `submissions`.
+# /trip-builder (trip-builder.php) is the only real one: it is in sitemap.xml
+# and posts to /api/trip-builder.php, which stores the submission and emails.
+# The v3 name is also matched at the site root, where it 404s today, because
+# the old blog page links to it relatively.
+# Force the canonical https host on the production hosts, exactly as the
+# strip-.php rules below do: behind CloudFront the app sees Host = the .on.aws
+# origin over http, so a path-only target makes Apache build
+# http://…on.aws/trip-builder — a URL the browser cannot reach, because the
+# origin only answers https via CloudFront. Path-only fallback second so local
+# dev and any other host still redirect.
+RewriteCond %{HTTP_HOST} (?:\.on\.aws|tribalsand\.com)$ [NC]
+RewriteRule ^trip-builder\.html$ https://tribalsand.com/trip-builder [R=301,L]
+RewriteRule ^trip-builder\.html$ /trip-builder [R=301,L]
+
+RewriteCond %{HTTP_HOST} (?:\.on\.aws|tribalsand\.com)$ [NC]
+RewriteRule ^(?:reference/)?tribal-sand-trip-builder-v3\.html$ https://tribalsand.com/trip-builder [R=301,L]
+RewriteRule ^(?:reference/)?tribal-sand-trip-builder-v3\.html$ /trip-builder [R=301,L]
+
+# Retired pages. Each was live but reachable only by direct URL — nothing in the
+# site linked to them and none was in sitemap.xml. Deleted from the repo and 301'd
+# to the live equivalent so any external link or ranked URL still lands somewhere
+# real. Same host guard as above: a path-only target would send visitors to the
+# unreachable .on.aws origin.
+#
+#   tribalsand-blog-tribal-dunes.html -> now a proper Journal article
+#   tribal-sand-activity(-20).html    -> two near-duplicate "Book an Experience" pages
+#   tribalsand_sitemap.html           -> superseded by interactive-site-map.php
+#   reservation.php                   -> two <form>s with no action and no handler
+#   search-result.php                 -> superseded by search.php
+#   tribalsandstory1.php              -> an early My Amani page
+#   processproperties.php             -> debug stub that echoed "live - sssss"
+RewriteCond %{HTTP_HOST} (?:\.on\.aws|tribalsand\.com)$ [NC]
+RewriteRule ^tribalsand-blog-tribal-dunes\.html$ https://tribalsand.com/tribal-dunes-beachfront-village-kilifi [R=301,L]
+RewriteRule ^tribalsand-blog-tribal-dunes\.html$ /tribal-dunes-beachfront-village-kilifi [R=301,L]
+
+RewriteCond %{HTTP_HOST} (?:\.on\.aws|tribalsand\.com)$ [NC]
+RewriteRule ^tribal-sand-activity(?:-20)?\.(?:html|php)$ https://tribalsand.com/activities [R=301,L]
+RewriteRule ^tribal-sand-activity(?:-20)?\.(?:html|php)$ /activities [R=301,L]
+
+RewriteCond %{HTTP_HOST} (?:\.on\.aws|tribalsand\.com)$ [NC]
+RewriteRule ^tribalsand_sitemap\.html$ https://tribalsand.com/interactive-site-map [R=301,L]
+RewriteRule ^tribalsand_sitemap\.html$ /interactive-site-map [R=301,L]
+
+RewriteCond %{HTTP_HOST} (?:\.on\.aws|tribalsand\.com)$ [NC]
+RewriteRule ^reservation(?:\.php)?$ https://tribalsand.com/reserve [R=301,L]
+RewriteRule ^reservation(?:\.php)?$ /reserve [R=301,L]
+
+RewriteCond %{HTTP_HOST} (?:\.on\.aws|tribalsand\.com)$ [NC]
+RewriteRule ^search-result(?:\.php)?$ https://tribalsand.com/search [R=301,L]
+RewriteRule ^search-result(?:\.php)?$ /search [R=301,L]
+
+RewriteCond %{HTTP_HOST} (?:\.on\.aws|tribalsand\.com)$ [NC]
+RewriteRule ^tribalsandstory1(?:\.php)?$ https://tribalsand.com/my-amani [R=301,L]
+RewriteRule ^tribalsandstory1(?:\.php)?$ /my-amani [R=301,L]
+
+# NOT health.php — that is the load balancer / ECS liveness probe, served at
+# /health via strip-.php. Redirecting it away makes every new task fail its
+# health check, so the service never stabilises and the old task keeps serving.
+RewriteCond %{HTTP_HOST} (?:\.on\.aws|tribalsand\.com)$ [NC]
+RewriteRule ^processproperties(?:\.php)?$ https://tribalsand.com/ [R=301,L]
+RewriteRule ^processproperties(?:\.php)?$ / [R=301,L]
+
+# /reference/ holds pre-cutover copies of pages — an old blog, an old trip
+# builder, an old property page, each carrying its own stale copy of the chat
+# widget embed. They were being served publicly at 200 and were crawlable.
+# Kept in the repo (interactive-site-map.php reads tribalsand_sitemap.html from
+# here as an image fallback, and they are useful design reference) but no longer
+# reachable over HTTP. Placed AFTER the trip-builder rule above so that one
+# still 301s rather than 404ing. A .php path under here reaches its 404 via the
+# strip-.php redirect first (/reference/x.php -> /reference/x -> 404) rather than
+# 404ing outright; every other path 404s directly, and nothing under it is served
+# either way.
+RewriteRule ^reference/ - [R=404,L]
 # ----------------------------------------------------------------------------
 
 # Serve POST/PUT/PATCH/DELETE to a .php URL DIRECTLY — never redirect. A 301 on a

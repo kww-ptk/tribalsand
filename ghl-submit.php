@@ -50,9 +50,64 @@ if (!$data) {
 /* ── Honeypot + Turnstile ── */
 if (!empty($data['website'])) { echo json_encode(['ok' => true]); exit; }
 require_once __DIR__ . '/includes/turnstile.php';
-if (!verify_captcha($data['cf-turnstile-response'] ?? '', client_ip())) {
+$ip = client_ip();
+if (!verify_captcha($data['cf-turnstile-response'] ?? '', $ip)) {
     http_response_code(403);
     echo json_encode(['ok' => false, 'error' => 'Security check failed. Please try again.']);
+    exit;
+}
+
+/* ── Rate limit ──
+   Same window and ceiling as every other public lead endpoint
+   (api/submit-contact.php et al). This one was the only public form without it,
+   which is why the contact page was the soft target: Turnstile gates a single
+   submission but says nothing about the hundredth from one address. */
+$__rlWindow = date('Y-m-d H:i:s', time() - 600);
+$__rlCount  = db_query(
+    "SELECT COUNT(*) AS cnt FROM submissions WHERE ip_address = :ip AND created_at > :window",
+    [':ip' => $ip, ':window' => $__rlWindow]
+)->fetch()['cnt'];
+
+if ((int)$__rlCount >= 5) {
+    http_response_code(429);
+    echo json_encode(['ok' => false, 'error' => 'Too many requests. Please wait a few minutes.']);
+    exit;
+}
+
+/* ── Validate ──
+   Nothing here was checked server-side before: a POST with no name, no message
+   and a junk email still created a GHL contact, an opportunity, a submissions
+   row and two emails. The browser form marks these required, which only binds
+   a browser — this endpoint is public and takes raw JSON. Mirrors the field
+   rules in api/submit-contact.php. */
+$__vGuest = $data['guest'] ?? [];
+$__vName  = trim(($__vGuest['firstName'] ?? '') . ' ' . ($__vGuest['lastName'] ?? ''));
+$__vEmail = trim((string)($__vGuest['email'] ?? ''));
+$__vMsg   = trim((string)($data['message'] ?? ($data['customData']['enquiry_message'] ?? '')));
+
+$__vErrors = [];
+if ($__vName === '')                                    $__vErrors['name']    = 'Your name is required.';
+if (!filter_var($__vEmail, FILTER_VALIDATE_EMAIL))      $__vErrors['email']   = 'A valid email is required.';
+if ($__vMsg === '')                                     $__vErrors['message'] = 'A message is required.';
+
+/* Generated-name check. The spam reaching this form solves Turnstile but fills
+   the name with a random token (SupWYGQjIGReLzlHVZsXTO, tFdmmfPkMIXjLhTCbFq,
+   SHdXjGDufISzVYcchiZLv). Each part is tested as well as the whole, so a bot
+   filling both first and last name with tokens is caught too — the combined
+   value would contain a space and slip past on its own. */
+if (!isset($__vErrors['name'])) {
+    require_once __DIR__ . '/includes/spam-heuristics.php';
+    foreach ([$__vName, (string)($__vGuest['firstName'] ?? ''), (string)($__vGuest['lastName'] ?? '')] as $__vPart) {
+        if (spam_looks_like_random_token($__vPart)) {
+            $__vErrors['name'] = 'Please enter your real name.';
+            break;
+        }
+    }
+}
+
+if ($__vErrors) {
+    http_response_code(422);
+    echo json_encode(['ok' => false, 'errors' => $__vErrors]);
     exit;
 }
 

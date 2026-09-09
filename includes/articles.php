@@ -149,6 +149,14 @@ function ts_articles(): array
         ],
 
         // ─────────────────────── OUR PROPERTIES ───────────────────────
+        'tribal-dunes-beachfront-village-kilifi' => [
+            'title'    => 'Tribal Dunes — How We Built a Beachfront Village in Kilifi',
+            'desc'     => 'Tribal Dunes in Kilifi — one beachfront property where a boutique hotel, a café, a restaurant, a kite school and a solar-powered eco compound share the same shore.',
+            'excerpt'  => 'A boutique hotel, a café, a restaurant, a kite school and an eco compound — all on one stretch of Kilifi shoreline.',
+            'category' => 'Our Properties',
+            'image'    => 'images/maya-kobe/Aerial/mayakobe-2.webp',
+            'cta'      => ['url' => 'tribal-dunes.php', 'label' => 'Visit Tribal Dunes'],
+        ],
         'discover-maya-kobe-where-secluded-luxury-meets-the-ocean-breeze' => [
             'title'    => 'Discover Maya Kobe: Where Secluded Luxury Meets the Ocean Breeze',
             'desc'     => 'Discover Maya Kobe — a Balinese-inspired boutique hotel on Bofa Beach, Kilifi, with ocean-facing suites, a 20m pool and chef-led dining.',

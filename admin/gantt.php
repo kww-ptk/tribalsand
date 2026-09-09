@@ -55,6 +55,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    if ($action === 'convert_block') {
+        // Give an imported/manual block a real hold, so the stay gets a guest
+        // portal link. Scoped with the same unit subquery as every other action
+        // here, so a posted block id outside the account's venues is ignored.
+        require_once __DIR__ . '/../includes/bookings.php';
+        require_once __DIR__ . '/../includes/booking.php';
+        $res = bookings_convert_block_to_hold((int)($_POST['block_id'] ?? 0), $gUnitIds);
+        if ($res['ok']) {
+            $convert_url = make_manage_url($res['hold_id']);
+            $msg = $convert_url !== ''
+                ? 'Booking created. Guest portal link: ' . $convert_url
+                : 'Booking created (hold #' . $res['hold_id'] . '). Set BOOKING_TOKEN_SECRET to issue portal links.';
+        } else {
+            $msg = $res['error'];
+        }
+    }
+
     if ($action === 'delete_block') {
         $block_id = (int)($_POST['block_id'] ?? 0);
         // Don't delete hold-type blocks here (managed via holds.php)
@@ -185,6 +202,15 @@ $blocks = db_query(
 
 $blocks_by_unit = [];
 foreach ($blocks as $b) $blocks_by_unit[(int)$b['unit_id']][] = $b;
+
+// Ledger detail for the blocks on screen, in one query rather than one per
+// block. An import writes the guest, agent, source, amount and the OTA's own
+// reference to `bookings`; the calendar only ever drew the block's dates and
+// note, so that detail was invisible here. Empty before the finance migration —
+// every consumer below treats it as optional.
+require_once __DIR__ . '/../includes/bookings.php';
+require_once __DIR__ . '/../includes/booking.php';   // make_manage_url() for the portal link
+$block_bookings = bookings_by_block_ids(array_column($blocks, 'id'));
 
 $rates = db_query(
     "SELECT date_from, date_to, room_id
@@ -460,7 +486,47 @@ include __DIR__ . '/_layout.php';
         $width_px  = max(4, $span_days * 28 - 2);
         $label     = $b['notes'] ?: $b['block_type'];
         $type_cls  = 'gantt-block--' . $b['block_type'];
-        $title     = ucfirst($b['block_type']) . ': ' . $b['date_from'] . ' → ' . $b['date_to'] . ($b['notes'] ? ' · ' . $b['notes'] : '');
+
+        /* Hover-card payload. Only fields that actually carry a value are sent,
+           so the card never shows an empty row; the JS renders whatever arrives.
+           date_to is exclusive (the checkout morning) — the card shows the last
+           night so it reads the way staff think about a stay. */
+        $bk    = $block_bookings[(int)$b['id']] ?? null;
+        $nights = max(0, (int) round((strtotime($b['date_to']) - strtotime($b['date_from'])) / 86400));
+        $card  = [
+            'type'   => ucfirst((string)$b['block_type']),
+            'unit'   => trim((string)($unit['room_name'] ?? '') . ' · ' . (string)($unit['name'] ?? ''), ' ·'),
+            'from'   => (string)$b['date_from'],
+            'last'   => date('Y-m-d', strtotime($b['date_to'] . ' -1 day')),
+            'nights' => $nights,
+        ];
+        if (trim((string)$b['notes']) !== '') $card['notes'] = trim((string)$b['notes']);
+        if ($bk) {
+            $money = (float)($bk['gross_amount'] ?? 0);
+            $card += array_filter([
+                'guest'    => trim((string)($bk['guest_name']  ?? '')),
+                'email'    => trim((string)($bk['guest_email'] ?? '')),
+                'agent'    => trim((string)($bk['agent']       ?? '')),
+                'source'   => bookings_source_label((string)($bk['source'] ?? '')),
+                'status'   => ucfirst((string)($bk['status'] ?? '')),
+                'ref'      => trim((string)($bk['external_ref'] ?? '')),
+                'venue'    => trim((string)($bk['venue_name'] ?? '')),
+                'imported' => !empty($bk['imported_at']) ? date('d M Y', strtotime((string)$bk['imported_at'])) : '',
+            ], fn($v) => $v !== '');
+            if ($money > 0) $card['amount'] = bookings_money($money, (string)($bk['currency'] ?? 'USD'));
+        }
+        /* Portal link. A block already carrying a hold_id has a guest record, so
+           show its link; one without can be converted into a hold to get one.
+           Hold-type blocks are managed on the Holds page and are never converted
+           from here. */
+        if (!empty($b['hold_id'])) {
+            $__pu = make_manage_url((int)$b['hold_id']);
+            if ($__pu !== '') $card['portal'] = $__pu;
+        } elseif ($b['block_type'] !== 'hold') {
+            $card['convertible'] = 1;
+        }
+        // Native title stays as the no-JS fallback.
+        $title = $card['type'] . ': ' . $b['date_from'] . ' → ' . $b['date_to'] . ($b['notes'] ? ' · ' . $b['notes'] : '');
       ?>
       <div class="gantt-block <?= $type_cls ?>"
            style="left:<?= $left_px ?>px;width:<?= $width_px ?>px"
@@ -469,6 +535,7 @@ include __DIR__ . '/_layout.php';
            data-date-from="<?= e($b['date_from']) ?>"
            data-date-to="<?= e($b['date_to']) ?>"
            data-unit-id="<?= e($unit['id']) ?>"
+           data-card="<?= e(json_encode($card, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)) ?>"
            title="<?= e($title) ?>">
         <?= e($label) ?>
       </div>
@@ -641,6 +708,137 @@ include __DIR__ . '/_layout.php';
 </div>
 
 <!-- ── Create block modal ── -->
+<!-- ── Block hover card ──────────────────────────────────────────────
+     Hover a calendar block for the whole record, click to pin it so it can be
+     read or copied without chasing the pointer. The native title= stays on the
+     block as the no-JS fallback and is suppressed only while the card is up. -->
+<div class="gb-card" id="gbCard" hidden role="dialog" aria-label="Block details">
+  <button type="button" class="gb-card__close" id="gbCardClose" aria-label="Close" hidden>&times;</button>
+  <div class="gb-card__head"><span class="gb-card__type" id="gbCardType"></span><span class="gb-card__unit" id="gbCardUnit"></span></div>
+  <dl class="gb-card__rows" id="gbCardRows"></dl>
+  <div class="gb-card__actions" id="gbCardActions" hidden>
+    <a class="gb-card__link" id="gbCardPortal" target="_blank" rel="noopener" hidden>Open guest portal &rarr;</a>
+    <form method="POST" id="gbCardConvert" hidden style="margin:0">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="convert_block">
+      <input type="hidden" name="block_id" id="gbCardBlockId">
+      <button type="submit" class="btn-primary btn-sm">Convert to booking</button>
+    </form>
+  </div>
+  <div class="gb-card__hint" id="gbCardHint">Click to keep open</div>
+</div>
+<style>
+.gb-card{position:fixed;z-index:1200;min-width:230px;max-width:320px;background:#fff;border:1px solid var(--border,#e3e8ee);
+  border-radius:8px;box-shadow:0 10px 34px rgba(16,32,48,.16);padding:12px 14px;font-size:12.5px;line-height:1.5;pointer-events:none;}
+.gb-card.is-pinned{pointer-events:auto;}
+.gb-card[hidden]{display:none;}
+.gb-card__head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:8px;padding-right:14px;}
+.gb-card__type{font-weight:600;font-size:12.5px;}
+.gb-card__unit{color:var(--muted,#6b7785);font-size:11.5px;min-width:0;overflow-wrap:anywhere;}
+.gb-card__rows{margin:0;display:grid;grid-template-columns:auto 1fr;gap:3px 12px;}
+.gb-card__rows dt{color:var(--muted,#6b7785);font-size:11px;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;}
+.gb-card__rows dd{margin:0;overflow-wrap:anywhere;}
+.gb-card__hint{margin-top:9px;padding-top:7px;border-top:1px solid var(--border,#eef1f5);color:var(--muted,#8a94a0);font-size:10.5px;}
+.gb-card.is-pinned .gb-card__hint{display:none;}
+.gb-card__actions{margin-top:10px;padding-top:9px;border-top:1px solid var(--border,#eef1f5);display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
+.gb-card__actions[hidden]{display:none;}
+.gb-card__link{font-size:11.5px;color:var(--brand,#1e5c6b);text-decoration:underline;overflow-wrap:anywhere;}
+.gb-card__close{position:absolute;top:6px;right:8px;background:none;border:0;font-size:18px;line-height:1;color:var(--muted,#8a94a0);cursor:pointer;}
+</style>
+<script>
+(function () {
+  var card = document.getElementById('gbCard'), rows = document.getElementById('gbCardRows'),
+      typeEl = document.getElementById('gbCardType'), unitEl = document.getElementById('gbCardUnit'),
+      closeBtn = document.getElementById('gbCardClose');
+  if (!card) return;
+
+  // Order is fixed so the same field is always in the same place; anything the
+  // server did not send is simply skipped.
+  var FIELDS = [
+    ['guest','Guest'], ['email','Email'], ['source','Source'], ['agent','Agent'],
+    ['status','Status'], ['amount','Amount'], ['ref','Ref'], ['venue','Property'],
+    ['notes','Notes'], ['imported','Imported']
+  ];
+  var pinned = false, hideTimer = null;
+
+  function build(d) {
+    typeEl.textContent = d.type || 'Block';
+    unitEl.textContent = d.unit || '';
+    var html = '<dt>Dates</dt><dd>' + esc(d.from) + ' → ' + esc(d.last) +
+               (d.nights ? ' <span style="color:var(--muted,#6b7785)">(' + d.nights + ' night' + (d.nights === 1 ? '' : 's') + ')</span>' : '') + '</dd>';
+    FIELDS.forEach(function (f) {
+      if (d[f[0]]) html += '<dt>' + f[1] + '</dt><dd>' + esc(d[f[0]]) + '</dd>';
+    });
+    rows.innerHTML = html;
+
+    // Actions only make sense on a pinned card — a hovering pointer cannot
+    // reach them, and a stray click on a submit button would be a surprise.
+    var portal = document.getElementById('gbCardPortal'),
+        form   = document.getElementById('gbCardConvert'),
+        acts   = document.getElementById('gbCardActions');
+    portal.hidden = !d.portal;
+    if (d.portal) { portal.href = d.portal; }
+    form.hidden = !d.convertible;
+    if (d.convertible) { document.getElementById('gbCardBlockId').value = d.blockId || ''; }
+    acts.hidden = !(d.portal || d.convertible);
+  }
+  function esc(v) { return String(v == null ? '' : v).replace(/[&<>"]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+
+  function place(el) {
+    card.hidden = false;                       // measure before positioning
+    var r = el.getBoundingClientRect(), c = card.getBoundingClientRect();
+    var left = Math.min(Math.max(8, r.left), window.innerWidth  - c.width  - 8);
+    var top  = r.top - c.height - 10;
+    if (top < 8) top = Math.min(r.bottom + 10, window.innerHeight - c.height - 8);
+    card.style.left = left + 'px';
+    card.style.top  = top + 'px';
+  }
+
+  function show(el, pin) {
+    var raw = el.getAttribute('data-card');
+    if (!raw) return;
+    var d; try { d = JSON.parse(raw); } catch (e) { return; }
+    d.blockId = el.getAttribute('data-block-id');
+    clearTimeout(hideTimer);
+    build(d); place(el);
+    pinned = !!pin;
+    card.classList.toggle('is-pinned', pinned);
+    document.getElementById('gbCardActions').style.display = pinned ? '' : 'none';
+    closeBtn.hidden = !pinned;
+    // A native tooltip on top of the card is noise; restore it when we hide.
+    if (el.hasAttribute('title')) { el.dataset.titleHold = el.getAttribute('title'); el.removeAttribute('title'); }
+  }
+  function hide(force) {
+    if (pinned && !force) return;
+    pinned = false;
+    card.hidden = true;
+    card.classList.remove('is-pinned');
+    document.querySelectorAll('.gantt-block[data-title-hold]').forEach(function (b) {
+      b.setAttribute('title', b.dataset.titleHold); delete b.dataset.titleHold;
+    });
+  }
+
+  document.querySelectorAll('.gantt-block[data-card]').forEach(function (block) {
+    block.addEventListener('mouseenter', function () { if (!pinned) show(block, false); });
+    block.addEventListener('mouseleave', function () { if (!pinned) hideTimer = setTimeout(hide, 90); });
+    // Pin on a real click. A drag ends in a click too, so ignore one that moved
+    // — the block drag sets data-dragged on itself when it actually moved.
+    block.addEventListener('click', function (e) {
+      if (block.dataset.dragged === '1') { delete block.dataset.dragged; return; }
+      e.stopPropagation();
+      show(block, true);
+    });
+  });
+
+  closeBtn.addEventListener('click', function () { hide(true); });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hide(true); });
+  document.addEventListener('click', function (e) {
+    if (pinned && !card.contains(e.target) && !e.target.closest('.gantt-block')) hide(true);
+  });
+  window.addEventListener('scroll', function () { hide(true); }, true);
+})();
+</script>
+
 <div class="g-modal is-hidden" id="blockModal">
   <div class="g-modal__box">
     <h2>Block Dates</h2>
@@ -886,6 +1084,12 @@ document.addEventListener('mouseup', async () => {
   if (!dragState) return;
   const { block, moved, blockId, unitId, dateFrom, dateTo, newFrom, newTo, newUnit } = dragState;
   dragState = null;
+
+  // A drag finishes with a click on the block. dragState is already cleared by
+  // the time that click fires, so leave the verdict on the element itself for
+  // the hover card's click handler to read (and clear) — otherwise dropping a
+  // block would also pin its card.
+  if (moved) block.dataset.dragged = '1';
 
   block.classList.remove('gantt-block--dragging');
   block.style.pointerEvents = '';

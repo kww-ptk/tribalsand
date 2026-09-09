@@ -198,4 +198,18 @@
     });
   }
   if (clearBtn) clearBtn.addEventListener('click', clearThread);
+
+  // ── Deep link: /admin/assistant?message=… auto-fills and submits once. ──
+  // The param is stripped from the URL afterwards so a refresh doesn't re-ask
+  // (and a bookmarked link stays a one-shot, not a loop).
+  try {
+    var params = new URLSearchParams(window.location.search);
+    var seed = params.get('message');
+    if (seed && seed.trim()) {
+      params.delete('message');
+      var qs = params.toString();
+      history.replaceState(null, '', window.location.pathname + (qs ? '?' + qs : '') + window.location.hash);
+      ask(seed);
+    }
+  } catch (e) {}
 })();
