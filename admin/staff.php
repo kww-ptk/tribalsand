@@ -71,13 +71,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($posted === 'reception' && !reception_supported()) {
             staff_flash('Reception accounts need the add_reception_role migration — run it first.', 'error');
         }
-        $type = in_array($posted, ['manager', 'reception'], true) ? $posted : 'staff';
+        $type = in_array($posted, ['owner', 'manager', 'reception'], true) ? $posted : 'staff';
         $name = trim((string)($_POST['name'] ?? ''));
         if ($name === '') staff_flash('Please enter a name.', 'error');
 
-        if ($type === 'manager' || $type === 'reception') {
-            // Both are email + password accounts scoped by admin_user_venues.
-            $label = $type === 'manager' ? 'Manager' : 'Reception';
+        if ($type === 'owner' || $type === 'manager' || $type === 'reception') {
+            // All three are email + password accounts. Owner sees everything (no
+            // venue scoping); manager/reception are scoped by admin_user_venues.
+            $label = $type === 'owner' ? 'Owner' : ($type === 'manager' ? 'Manager' : 'Reception');
             $email = strtolower(trim((string)($_POST['email'] ?? '')));
             $pass  = (string)($_POST['password'] ?? '');
             if (!filter_var($email, FILTER_VALIDATE_EMAIL)) staff_flash("Enter a valid email for the " . strtolower($label) . " account.", 'error');
@@ -91,8 +92,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 [':n' => $name, ':e' => $email, ':h' => $hash, ':r' => $type]
             );
             $newId = (int)db()->lastInsertId();
-            foreach (staff_posted_venue_ids($venueIds) as $vid) {
-                db_query('INSERT INTO admin_user_venues (admin_user_id, venue_id) VALUES (:s, :v)', [':s' => $newId, ':v' => $vid]);
+            // Owners are unscoped (admin_venue_ids() returns null for them), so
+            // property assignment only applies to manager/reception.
+            if ($type !== 'owner') {
+                foreach (staff_posted_venue_ids($venueIds) as $vid) {
+                    db_query('INSERT INTO admin_user_venues (admin_user_id, venue_id) VALUES (:s, :v)', [':s' => $newId, ':v' => $vid]);
+                }
             }
             audit_log('staff_create', 'admin_user', $newId, "{$type}: {$name}");
             staff_flash("{$label} account created.");
@@ -335,7 +340,9 @@ include __DIR__ . '/_layout.php';
           <?php if (reception_supported()): ?>
           <label class="optchip"><input type="radio" name="account_type" value="reception"> Reception (email + password)</label>
           <?php endif; ?>
+          <label class="optchip"><input type="radio" name="account_type" value="owner"> Owner (full access)</label>
         </div>
+        <span class="field-hint acct-owner-note" style="display:none;color:#8a1c13">Owner accounts have <strong>full, unrestricted access</strong> — pricing, settings, staff and every property. Only create one for someone you fully trust.</span>
         <?php if (!reception_supported()): ?>
         <span class="field-hint">Reception accounts appear here once the <code>add_reception_role</code> migration has run.</span>
         <?php endif; ?>
@@ -370,7 +377,7 @@ include __DIR__ . '/_layout.php';
         </div>
       </div>
 
-      <div class="field">
+      <div class="field acct-scoped">
         <span>Properties this account can manage</span>
         <?php if (!$venues): ?>
           <span class="text-muted">No properties yet.</span>
@@ -411,10 +418,15 @@ include __DIR__ . '/_layout.php';
   var form = document.getElementById('createForm');
   if (!form) return;
   function sync() {
-    // Manager and reception are both email + password accounts; only staff get a job type.
-    var isPw = form.querySelector('input[name=account_type]:checked').value !== 'staff';
+    // Owner, manager and reception are all email + password accounts; only staff
+    // get a job type. Owners are unscoped, so they skip the property picker.
+    var val = form.querySelector('input[name=account_type]:checked').value;
+    var isPw = val !== 'staff';
+    var isOwner = val === 'owner';
     form.querySelectorAll('.acct-manager').forEach(function (el) { el.style.display = isPw ? '' : 'none'; });
     form.querySelectorAll('.acct-staff').forEach(function (el) { el.style.display = isPw ? 'none' : ''; });
+    form.querySelectorAll('.acct-scoped').forEach(function (el) { el.style.display = isOwner ? 'none' : ''; });
+    form.querySelectorAll('.acct-owner-note').forEach(function (el) { el.style.display = isOwner ? '' : 'none'; });
     // Only require the fields that are visible, so the hidden set doesn't block submit.
     var email = form.querySelector('input[name=email]'), pw = form.querySelector('input[name=password]');
     if (email) email.required = isPw;
