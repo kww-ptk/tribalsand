@@ -45,7 +45,7 @@ function assistant_tool_definitions(bool $withRag = false): array {
         ],
         [
             'name'        => 'check_availability',
-            'description' => 'Check which rooms/villas are FREE for a date range and party size, with live prices. Returns one entry per property with its available rooms and the total for the stay. Covers all properties at once — use it for "anything free for 4 in December?" as well as a single property.',
+            'description' => 'Check which rooms/villas are FREE for a date range and party size, with live prices. Returns one entry per property with its available single rooms, the total for the stay, AND — for a party no single room can seat — one or more suggested multi-room COMBINATIONS (which rooms, per-room and combined price, and how many it sleeps), plus the property\'s max_capacity for those dates. Use it for "anything free for 4 in December?", a single property, and larger groups ("where can 7 people stay?") alike. Present only the combinations the tool returns; never invent one.',
             'input_schema' => [
                 'type' => 'object',
                 'properties' => [
@@ -127,6 +127,7 @@ Rules:
 - A name or slug the guest gives may be a whole PROPERTY or a specific ROOM. A room slug (e.g. "zuri-maji") goes to quote_stay; a property slug narrows check_availability. If you are unsure which a name is, call list_properties first to resolve it — it lists every property and its rooms with slugs. NEVER tell the guest a room "doesn't exist" or "is the wrong name" before checking list_properties; a slug like "zuri-maji" is usually a valid room, not a mistake.
 - If the guest's dates or party size are missing or ambiguous, ask ONE short clarifying question instead of guessing. A weekend means Friday check-in to Sunday check-out unless told otherwise.
 - Prices come only from the tools. Quote the exact figure a tool returns, with its currency. Do not do your own arithmetic on nightly rates — the tool already totals the stay.
+- For a party that no single room can seat, check_availability returns one or more suggested multi-room combinations (which rooms, how many it sleeps, per-room and combined price) and each property's max_capacity. Offer those combinations — the best-fit one first — with their combined price; a whole-property option, when returned, is an alternative to mention alongside. NEVER invent a combination, add rooms together yourself, or quote a combined price the tool did not return; if no combination is returned for a party, the property cannot host it for those dates — say so.
 - {$bookLine}
 - If a tool returns an error, explain briefly and, if it needs clarification, ask for it.
 - {$scopeLine}{$ragLine}{$guestGuard}
@@ -246,12 +247,38 @@ function assistant_tool_check_availability(array $args, ?array $venueScope): arr
                 'currency'        => $room['currency'],
             ];
         }
+        // Suggested multi-room combinations (present only when no single room
+        // seats the party). Same figures as search.php — the ONE pricing path.
+        $configs = $r['configurations'] ?? [];
+        $combos  = [];
+        foreach ($configs['combos'] ?? [] as $c) {
+            $comboRooms = [];
+            foreach ($c['rooms'] as $cr) {
+                $comboRooms[] = [
+                    'room'     => $cr['name'],
+                    'slug'     => $cr['slug'],
+                    'units'    => (int)$cr['units_used'],
+                    'sleeps'   => (int)$cr['capacity'] * (int)$cr['units_used'],
+                    'total'    => $cr['total'],
+                    'currency' => $cr['currency'],
+                ];
+            }
+            $combos[] = [
+                'rooms'    => $comboRooms,
+                'sleeps'   => (int)$c['capacity'],
+                'total'    => $c['total'],
+                'currency' => $c['currency'],
+            ];
+        }
+
         $props[] = [
-            'property'        => $v['name'],
-            'slug'            => $v['slug'],
-            'available_rooms' => $rooms,
-            'from'            => $r['from'],
-            'currency'        => $r['currency'],
+            'property'               => $v['name'],
+            'slug'                   => $v['slug'],
+            'available_rooms'        => $rooms,
+            'suggested_combinations' => $combos,
+            'max_capacity'           => $configs['max_capacity'] ?? null,
+            'from'                   => $r['from'],
+            'currency'               => $r['currency'],
         ];
     }
 
@@ -260,7 +287,7 @@ function assistant_tool_check_availability(array $args, ?array $venueScope): arr
     }
 
     $anyRoom = false;
-    foreach ($props as $p) { if ($p['available_rooms']) { $anyRoom = true; break; } }
+    foreach ($props as $p) { if ($p['available_rooms'] || $p['suggested_combinations']) { $anyRoom = true; break; } }
 
     return [
         'check_in'   => $ci,

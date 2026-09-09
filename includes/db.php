@@ -633,6 +633,58 @@ function create_hold_with_block(
 }
 
 /**
+ * How many active units of a room type are free for [check_in, check_out).
+ *
+ * The count sibling of find_available_unit(): same whole-villa/by-room mutual
+ * exclusion (room_conflict_unit_ids()) — a conflicting sibling booking blocks
+ * the WHOLE room type, so this returns 0 — otherwise it counts every active
+ * unit with no overlapping block. Needed for multi-unit room types (e.g. Maya
+ * Ilai's villa/studio, 8 units each) so the combination search knows how many
+ * of each it can place.
+ */
+function count_available_units(int $room_id, string $check_in, string $check_out, ?array $room = null): int {
+    expire_stale_holds();
+
+    // Callers that already hold the room row (e.g. ts_property_configurations)
+    // pass it in to save a per-room re-fetch; it only needs venue_id + is_entire_place.
+    if ($room === null || !isset($room['venue_id'])) {
+        $room = db_query(
+            'SELECT id, venue_id, is_entire_place FROM rooms WHERE id = :id',
+            [':id' => $room_id]
+        )->fetch();
+    }
+    if (!$room) return 0;
+
+    // Same mutual exclusion as find_available_unit(): a conflicting sibling
+    // booking (the whole villa, or any room when this IS the whole villa) makes
+    // every unit of this room type unbookable for the window.
+    $conflict_ids = room_conflict_unit_ids($room);
+    if ($conflict_ids) {
+        $placeholders = implode(',', $conflict_ids); // ints from DB — safe to inline
+        $clash = db_query(
+            "SELECT 1 FROM availability_blocks
+             WHERE unit_id IN ($placeholders)
+               AND date_from < :check_out AND date_to > :check_in
+             LIMIT 1",
+            [':check_in' => $check_in, ':check_out' => $check_out]
+        )->fetchColumn();
+        if ($clash) return 0;
+    }
+
+    return (int) db_query(
+        "SELECT COUNT(*) FROM units u
+         WHERE u.room_id = :room_id AND u.is_active = TRUE
+           AND NOT EXISTS (
+               SELECT 1 FROM availability_blocks ab
+               WHERE ab.unit_id = u.id
+                 AND ab.date_from < :check_out
+                 AND ab.date_to   > :check_in
+           )",
+        [':room_id' => $room_id, ':check_in' => $check_in, ':check_out' => $check_out]
+    )->fetchColumn();
+}
+
+/**
  * Returns a list of fully-blocked dates (YYYY-MM-DD) for a room:
  * a date is fully blocked when every active unit has a block covering it.
  * Used by the public availability calendar widget.
@@ -900,17 +952,205 @@ function ts_search_availability(string $check_in, string $check_out, int $guests
             $available[] = $mkItem($r, $entire);
         }
 
+        // Capacity-aware configurations (singles / entire / combos / max_capacity).
+        // Additive: the existing $available list above is unchanged, so search.php
+        // and the AI keep working for small parties; combos only appear when no
+        // single room fits the party.
+        $configs = ts_property_configurations($v, $check_in, $check_out, $guests, $rooms);
+
+        // A venue is "available" for the party when a single room, the whole place,
+        // or a combination fits — so a combo-only match no longer reads as sold out.
+        $count_effective = count($available);
+        if ($count_effective === 0 && !empty($configs['combos'])) {
+            $count_effective = 1;
+        }
+
+        // "From" price includes the cheapest combo so a combo-only venue still
+        // shows a headline figure (never below the per-room quotes it sums).
+        $from_prices = array_map(fn($r) => $r['total'], $available);
+        foreach ($configs['combos'] as $c) $from_prices[] = $c['total'];
+
         $vimgs = fetch_venue_images((int)$v['id']);
         $results[] = [
-            'venue'    => $v,
-            'hero'     => $vimgs ? storage_url($vimgs[0]['filename']) : null,
-            'rooms'    => $available,
-            'count'    => count($available),
-            'from'     => $available ? min(array_map(fn($r) => $r['total'], $available)) : null,
-            'currency' => $available[0]['currency'] ?? 'USD',
+            'venue'          => $v,
+            'hero'           => $vimgs ? storage_url($vimgs[0]['filename']) : null,
+            'rooms'          => $available,
+            'count'          => $count_effective,
+            'from'           => $from_prices ? min($from_prices) : null,
+            'currency'       => $available[0]['currency'] ?? ($configs['combos'][0]['currency'] ?? 'USD'),
+            'configurations' => $configs,
         ];
     }
     return $results;
+}
+
+/**
+ * Capacity-aware "brain" for ONE venue over a window and party size.
+ *
+ * Returns:
+ *   [
+ *     'singles'      => rooms whose ONE unit alone fits (capacity >= guests, free),
+ *     'entire'       => whole-property option(s) when free (mutual-exclusion aware),
+ *     'combos'       => ranked multi-room suggestions, ONLY when no single fits,
+ *     'max_capacity' => largest party the venue can host for the window,
+ *   ]
+ *
+ * Pricing is the ONE path: every figure is a room_stay_quote() total (× units for
+ * a combo). Never a second nightly loop. Mutual exclusion is honoured because
+ * count_available_units() already returns 0 for a room type blocked by the whole-
+ * villa (or vice-versa). $rooms may be passed in to avoid a re-query.
+ */
+function ts_property_configurations(array $venue, string $check_in, string $check_out, int $guests, ?array $rooms = null): array {
+    if ($guests < 1) $guests = 1;
+    if ($rooms === null) {
+        $rooms = db_query(
+            "SELECT r.*, (SELECT filename FROM room_images WHERE room_id = r.id AND is_hero = TRUE LIMIT 1) AS hero
+             FROM rooms r WHERE r.venue_id = :vid AND r.is_published = TRUE
+             ORDER BY r.is_entire_place ASC, r.sort_order ASC",
+            [':vid' => $venue['id']]
+        )->fetchAll();
+    }
+
+    $singles = [];
+    $entire  = [];
+    $inventory = [];   // individual (non-entire) rooms with a known capacity and >=1 free unit
+    $max_individual = 0;
+    $max_entire     = 0;
+
+    foreach ($rooms as $r) {
+        $rid      = (int)$r['id'];
+        $cap      = (int)($r['capacity'] ?? 0);
+        $isEntire = !empty($r['is_entire_place']);
+        $free     = count_available_units($rid, $check_in, $check_out, $r);
+        $q        = room_stay_quote($rid, (float)$r['price_amount'], $check_in, $check_out);
+
+        $item = [
+            'slug'       => $r['slug'],
+            'name'       => $r['name'],
+            'entire'     => $isEntire,
+            'capacity'   => $cap,
+            'units_used' => 1,
+            'short_desc' => $r['short_desc'] ?? '',
+            'tag'        => $r['tag_label'] ?: ($isEntire ? 'Whole property' : ''),
+            'price'      => (float)$r['price_amount'],
+            'currency'   => $r['price_currency'] ?: 'USD',
+            'nights'     => $q['nights'],
+            'total'      => $q['total'],
+            'hero'       => !empty($r['hero']) ? storage_url($r['hero']) : null,
+        ];
+
+        if ($isEntire) {
+            if ($free > 0) {
+                $entire[] = $item;
+                if ($cap > 0) $max_entire = max($max_entire, $cap);
+            }
+            continue;
+        }
+
+        // Individual room. Capacity 0/NULL = "unknown" → never assumed to fit a
+        // party and never fed to the combo search (Phase 0 rule).
+        if ($free > 0 && $cap > 0) {
+            $max_individual += $free * $cap;
+            $inventory[] = [
+                'slug'       => $r['slug'],
+                'name'       => $r['name'],
+                'capacity'   => $cap,
+                'free'       => $free,
+                'unit_total' => $q['total'],
+                'currency'   => $item['currency'],
+            ];
+            if ($cap >= $guests) $singles[] = $item;   // one unit alone fits
+        }
+    }
+
+    // Combos are the fallback for a party no single room fits — offered even when
+    // the whole place is free (it may be cheaper than the buyout).
+    $combos = $singles ? [] : ts_rank_combos($inventory, $guests);
+
+    return [
+        'singles'      => $singles,
+        'entire'       => $entire,
+        'combos'       => $combos,
+        'max_capacity' => max($max_individual, $max_entire),
+    ];
+}
+
+/**
+ * "Most logical configuration": pick units so their combined capacity covers the
+ * party, ranked by (1) fewest units, (2) least wasted capacity, (3) lowest price.
+ *
+ * $inventory: [ ['slug','name','capacity'(>0),'free'(>=1),'unit_total','currency'], … ]
+ * Pure — no DB, no I/O. Prices are pre-computed room_stay_quote() totals summed
+ * per unit (the ONE pricing path). Returns the top 3 combos, or [] when the venue
+ * cannot host the party for the window. A candidate mixing currencies is dropped
+ * (money is never summed across currencies).
+ */
+function ts_rank_combos(array $inventory, int $guests, int $limit = 3): array {
+    if ($guests < 1 || !$inventory) return [];
+
+    // Feasibility: even every free unit together must reach the party size.
+    $total_beds = 0;
+    foreach ($inventory as $it) $total_beds += (int)$it['free'] * (int)$it['capacity'];
+    if ($total_beds < $guests) return [];
+
+    // Fill biggest rooms first → fewer units in the natural first candidate.
+    usort($inventory, fn($a, $b) => (int)$b['capacity'] <=> (int)$a['capacity']);
+    $n = count($inventory);
+    $maxRooms = 4;   // cap distinct room types per combo (keeps the search O(small))
+
+    $candidates = [];
+    $dfs = function(int $i, array $pick, int $cap, int $rooms) use (&$dfs, &$candidates, $inventory, $n, $guests, $maxRooms) {
+        if ($cap >= $guests) { $candidates[] = $pick; return; }  // feasible — more units only wastes
+        if ($i >= $n || $rooms >= $maxRooms) return;
+
+        $it   = $inventory[$i];
+        $need = $guests - $cap;
+        // Never use more units of a room than the party could need — bounds the search.
+        $maxU = min((int)$it['free'], (int)ceil($need / (int)$it['capacity']));
+        for ($u = $maxU; $u >= 1; $u--) {
+            $np = $pick;
+            $np[] = ['it' => $it, 'units' => $u];
+            $dfs($i + 1, $np, $cap + $u * (int)$it['capacity'], $rooms + 1);
+        }
+        $dfs($i + 1, $pick, $cap, $rooms);   // skip this room type
+    };
+    $dfs(0, [], 0, 0);
+
+    $combos = [];
+    foreach ($candidates as $pick) {
+        if (!$pick) continue;
+        $units = 0; $cap = 0; $total = 0.0; $cur = null; $mixed = false; $rlist = [];
+        foreach ($pick as $p) {
+            $it = $p['it']; $u = (int)$p['units'];
+            if ($cur === null) $cur = $it['currency'];
+            elseif ($cur !== $it['currency']) { $mixed = true; break; }
+            $units += $u;
+            $cap   += $u * (int)$it['capacity'];
+            $total += $u * (float)$it['unit_total'];
+            $rlist[] = [
+                'slug'       => $it['slug'],
+                'name'       => $it['name'],
+                'units_used' => $u,
+                'capacity'   => (int)$it['capacity'],
+                'total'      => round($u * (float)$it['unit_total'], 2),
+                'currency'   => $it['currency'],
+            ];
+        }
+        if ($mixed) continue;   // never sum across currencies
+        $combos[] = [
+            'rooms'    => $rlist,
+            'units'    => $units,
+            'total'    => round($total, 2),
+            'currency' => $cur ?: 'USD',
+            'capacity' => $cap,
+            'waste'    => $cap - $guests,
+        ];
+    }
+
+    // Rank: fewest units, then least waste, then cheapest.
+    usort($combos, fn($a, $b) => [$a['units'], $a['waste'], $a['total']] <=> [$b['units'], $b['waste'], $b['total']]);
+
+    return array_slice($combos, 0, $limit);
 }
 
 /**

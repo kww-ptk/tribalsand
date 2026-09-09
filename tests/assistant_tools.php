@@ -151,5 +151,41 @@ check('check_availability: empty scope → no props', ($caScopedOut['properties'
 $caBadSlug = assistant_tool_check_availability(['check_in' => $ci, 'check_out' => $co, 'property' => 'no-such-slug'], null);
 check('check_availability: bad property slug → error', isset($caBadSlug['error']));
 
+// Every property entry carries the capacity-aware fields (Phase 2 shape).
+$hasShape = true;
+foreach ($ca['properties'] as $p) {
+    if (!array_key_exists('suggested_combinations', $p) || !array_key_exists('max_capacity', $p)) { $hasShape = false; break; }
+}
+check('check_availability: props carry combos + max_capacity', $hasShape);
+foreach ($ca['properties'] as $p) {   // 1-guest search → a single fits → no combos
+    check("check_availability: {$p['slug']} no combo for 1 guest", $p['suggested_combinations'] === []);
+    break;
+}
+
+// ── Combination recommendations for a large party (Phase 2) ───────────────────
+// Maya Kobe sleeps 12 across small rooms but has no single ≥ 7 → the tool must
+// return a combination whose total equals the sum of quote_stay per room × units.
+$mk = db_query("SELECT id, slug FROM venues WHERE slug = 'maya-kobe' AND is_published = TRUE")->fetch();
+if ($mk) {
+    $ca7 = assistant_tool_check_availability(['check_in' => $ci, 'check_out' => $co, 'guests' => 7, 'property' => 'maya-kobe'], null);
+    check('combos: maya-kobe/7 no error', !isset($ca7['error']));
+    $mkProp = $ca7['properties'][0] ?? [];
+    check('combos: maya-kobe/7 has a suggested combination', !empty($mkProp['suggested_combinations']));
+    check('combos: maya-kobe/7 max_capacity >= 7', (int)($mkProp['max_capacity'] ?? 0) >= 7);
+    if (!empty($mkProp['suggested_combinations'])) {
+        $combo = $mkProp['suggested_combinations'][0];
+        check('combos: combination sleeps the party', (int)$combo['sleeps'] >= 7);
+        // ONE pricing path: the combined total is the sum of quote_stay totals.
+        $sum = 0.0;
+        foreach ($combo['rooms'] as $cr) {
+            $q = assistant_tool_quote_stay(['room' => $cr['slug'], 'check_in' => $ci, 'check_out' => $co], null);
+            $sum += ($q['total'] ?? 0) * (int)$cr['units'];
+        }
+        check('combos: combined total == Σ quote_stay (units)', abs((float)$combo['total'] - round($sum, 2)) < 0.01);
+    }
+} else {
+    echo "SKIP  combos: maya-kobe not seeded\n";
+}
+
 echo ($failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n");
 exit($failures ? 1 : 0);
