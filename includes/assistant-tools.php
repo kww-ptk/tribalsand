@@ -22,6 +22,12 @@ declare(strict_types=1);
 require_once __DIR__ . '/db.php';           // ts_search_availability(), room_stay_quote(), fetch_room_by_slug(), find_available_unit()
 require_once __DIR__ . '/rates.php';        // rates_window_ymd()
 require_once __DIR__ . '/assistant-rag.php'; // rag_supported(), rag_search() — descriptive layer (Phase 2)
+require_once __DIR__ . '/offers.php';       // fetch_published_offers() — whats_on (Phase D)
+require_once __DIR__ . '/menu.php';         // menus_supported() — whats_on (Phase D)
+require_once __DIR__ . '/reservations.php'; // reservations_supported(), fetch_reservable_venues() — whats_on (Phase D)
+require_once __DIR__ . '/sustainability.php'; // sus_metrics() — sustainability_facts (Phase G)
+require_once __DIR__ . '/services.php';     // fetch_service_options() — list_services (Phase H)
+require_once __DIR__ . '/bookings.php';     // bookings_in_window/summarize/occupancy — occupancy_report (staff, Phase I)
 
 /** Today, Nairobi-local (date() is set to Africa/Nairobi in db.php). */
 function assistant_today_ymd(): string {
@@ -118,7 +124,7 @@ function assistant_build_draft_brief(array $sub): string {
  * model resolves relative phrases ("next weekend") into concrete dates itself,
  * anchored to the `today` we give it in the system prompt.
  */
-function assistant_tool_definitions(bool $withRag = false): array {
+function assistant_tool_definitions(bool $withRag = false, bool $withFacts = false, bool $withStaffOps = false): array {
     $date = ['type' => 'string', 'description' => 'Calendar date in strict YYYY-MM-DD format, Africa/Nairobi local.'];
     $tools = [
         [
@@ -171,6 +177,124 @@ function assistant_tool_definitions(bool $withRag = false): array {
             ],
         ];
     }
+
+    // System-awareness layer (Phases B & D). DB-only, no external dependency, so
+    // it is always safe to expose; still off by default to preserve the Phase-1
+    // three-tool shape for callers that pass no flags.
+    if ($withFacts) {
+        $tools[] = [
+            'name'        => 'property_facts',
+            'description' => 'Get the STRUCTURED facts about a property (or every property): how many rooms/suites it has, how many are individually bookable, the largest party it can host (max occupancy), the security-deposit amount, checkout time, Wi-Fi note, and location/address. Use this for "how many bedrooms does X have?", "how big a group fits at X?", "what\'s the deposit?", "where is it?", "what time is checkout?". These are exact stored facts — do NOT guess a room count, an occupancy, or a deposit. It returns NO nightly prices or live availability — use quote_stay / check_availability for those.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'property' => ['type' => 'string', 'description' => 'OPTIONAL property slug to limit to one property. Omit for every property.'],
+                ],
+                'required' => [],
+            ],
+        ];
+        $tools[] = [
+            'name'        => 'whats_on',
+            'description' => 'List what is currently ON across Tribal Sand: live special offers/deals, published restaurant menus, and whether tables can be reserved (and where). Use this for "any offers/deals right now?", "do you have a restaurant / can I see the menu?", "can I book a table?". Returns only what is actually published/current — never invent an offer, a menu, or a discount. It carries NO nightly room prices — use quote_stay / check_availability for stays.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'property' => ['type' => 'string', 'description' => 'OPTIONAL property slug to limit menus/dining to one property. Site-wide offers are always included. Omit for everything.'],
+                ],
+                'required' => [],
+            ],
+        ];
+        $tools[] = [
+            'name'        => 'list_activities',
+            'description' => 'List the activities, tours and experiences Tribal Sand offers, with their price (as published), category, area, duration and a short summary. Use this for "what is there to do?", "any dhow trips / safaris?", "activities near Watamu?", "how much is the kitesurfing?". Prices are the exact published figures — never invent one. Optionally filter by area or category.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'location' => ['type' => 'string', 'description' => 'OPTIONAL area filter: watamu | kilifi | vipingo | all. Omit for every area.'],
+                    'category' => ['type' => 'string', 'description' => 'OPTIONAL category slug to filter by (from a previous list_activities result). Omit for all categories.'],
+                ],
+                'required' => [],
+            ],
+        ];
+        $tools[] = [
+            'name'        => 'menu_details',
+            'description' => 'Get the actual dishes on a restaurant menu — item names, prices (KES), dietary/other badges (veg, vegan, gluten, spicy, nuts, GF, signature) and descriptions, grouped by section. Use this for "what\'s on the breakfast menu?", "do you have vegan / gluten-free options?", "how much is the lobster?". Give it a menu slug or a property slug. Prices are the exact stored figures — never invent one.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'menu'     => ['type' => 'string', 'description' => 'OPTIONAL menu slug (from whats_on). Takes precedence over property.'],
+                    'property' => ['type' => 'string', 'description' => 'OPTIONAL property slug — uses that property\'s first published menu. Give either this or menu.'],
+                ],
+                'required' => [],
+            ],
+        ];
+        $tools[] = [
+            'name'        => 'sustainability_facts',
+            'description' => 'Get Tribal Sand\'s current sustainability figures — solar energy generated, CO₂ avoided, beach waste collected, desalinated water, etc., each with its live value, unit and a short note. Use this for "how green are you?", "how much solar do you produce?", "what do you do for the environment?" (numbers only — describe initiatives with search_property_info). These are the live published figures; never invent one.',
+            'input_schema' => ['type' => 'object', 'properties' => (object)[], 'required' => []],
+        ];
+        $tools[] = [
+            'name'        => 'convert_currency',
+            'description' => 'Convert a price you ALREADY have (from quote_stay / check_availability / another tool) into a different currency for display, using the live exchange rates. Use it only when the guest asks to see a figure in another currency (e.g. "how much is that in KES/EUR?"). This is display-only: never treat the converted number as the booking price — the booking is always in the room\'s own currency. Do NOT invent a rate or do the maths yourself; call this.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'amount' => ['type' => 'number', 'description' => 'The amount to convert (a figure a tool already returned).'],
+                    'from'   => ['type' => 'string', 'description' => 'The currency the amount is in (ISO code, e.g. USD, KES).'],
+                    'to'     => ['type' => 'string', 'description' => 'The currency to convert into (ISO code, e.g. KES, EUR, GBP).'],
+                ],
+                'required' => ['amount', 'from', 'to'],
+            ],
+        ];
+        $tools[] = [
+            'name'        => 'list_services',
+            'description' => 'List the paid on-property services (transfers, laundry) and their configured amounts. Use for "do you do airport transfers?", "is there laundry and how much?". These are convenience services arranged at the property, not part of the room rate; amounts are as configured. Never invent a service or a price.',
+            'input_schema' => ['type' => 'object', 'properties' => (object)[], 'required' => []],
+        ];
+        $tools[] = [
+            'name'        => 'find_next_availability',
+            'description' => 'Find the SOONEST dates something is free for a party, by scanning forward from a start date. Use when the guest is flexible ("when is Zuri next available?", "what\'s the earliest we could come for 4?"). Returns the first date range with availability and what is free then, or reports nothing was free within the window searched. Prices/availability come from the same live path as check_availability — never invent a date.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'guests'      => ['type' => 'integer', 'minimum' => 1, 'description' => 'Party size. Default 2.'],
+                    'nights'      => ['type' => 'integer', 'minimum' => 1, 'description' => 'Length of stay to look for, in nights. Default 2.'],
+                    'property'    => ['type' => 'string', 'description' => 'OPTIONAL property slug to restrict to one property.'],
+                    'earliest'    => $date + ['description' => 'OPTIONAL earliest arrival date (YYYY-MM-DD) to start scanning from. Default today.'],
+                    'search_days' => ['type' => 'integer', 'minimum' => 1, 'maximum' => 120, 'description' => 'OPTIONAL how many days ahead to scan. Default 90, max 120.'],
+                ],
+                'required' => [],
+            ],
+        ];
+    }
+
+    // Staff-only operational tools (never exposed to the public concierge).
+    if ($withStaffOps) {
+        $tools[] = [
+            'name'        => 'occupancy_report',
+            'description' => 'STAFF ONLY. Summarise revenue and occupancy from the bookings ledger for a date range (and optional property): per-currency revenue, ADR, RevPAR, room-nights, and occupancy %. Revenue is attributed by arrival date and never summed across currencies. Figures are the same as the admin Reports page. Read-only.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'from'     => $date + ['description' => 'Range start (YYYY-MM-DD).'],
+                    'to'       => $date + ['description' => 'Range end, inclusive (YYYY-MM-DD).'],
+                    'property' => ['type' => 'string', 'description' => 'OPTIONAL property slug to limit to one property.'],
+                ],
+                'required' => ['from', 'to'],
+            ],
+        ];
+        $tools[] = [
+            'name'        => 'daily_operations',
+            'description' => 'STAFF ONLY. The operations snapshot for a day: confirmed arrivals and departures (guest name, property, room, dates) and how many table reservations are pending/for today. Use for "who\'s arriving today?", "any departures tomorrow?". Read-only, scoped to this account\'s properties.',
+            'input_schema' => [
+                'type' => 'object',
+                'properties' => [
+                    'date' => $date + ['description' => 'OPTIONAL day to report on (YYYY-MM-DD). Default today (Africa/Nairobi).'],
+                ],
+                'required' => [],
+            ],
+        ];
+    }
     return $tools;
 }
 
@@ -179,7 +303,7 @@ function assistant_tool_definitions(bool $withRag = false): array {
  * resolution. $audience 'staff' (admin assistant) or 'guest' (public concierge)
  * — the rules are identical; only the persona and the booking hand-off differ.
  */
-function assistant_system_prompt(?array $venueScope, bool $withRag = false, string $audience = 'staff'): string {
+function assistant_system_prompt(?array $venueScope, bool $withRag = false, string $audience = 'staff', bool $withFacts = false, bool $withStaffOps = false): string {
     $today = assistant_today_ymd();
     $dow   = date('l');   // e.g. "Monday"
     $guest = $audience === 'guest';
@@ -198,6 +322,14 @@ function assistant_system_prompt(?array $venueScope, bool $withRag = false, stri
         : 'You are scoped to this account\'s assigned properties only; the tools already filter to them, so never claim to know about others.';
     $ragLine = $withRag
         ? "\n- You have NO built-in knowledge of Tribal Sand's properties, rooms, activities, policies, or surroundings — treat your own memory of them as empty. For ANY question about what a property or room is LIKE, its amenities or features, what there is to DO nearby, activities/tours, attractions, house rules, check-in/out, Wi-Fi, directions, policies, cancellation, FAQs, or sustainability, you MUST call search_property_info FIRST and answer ONLY from what it returns. Do this EVERY time — even if a similar question was answered earlier in this conversation, and even if you believe you already know. If it returns nothing relevant, say you don't have that information; never fill the gap from general knowledge or plausible guesses.\n- Do NOT use list_properties to answer 'what is it like' — list_properties only maps a name to a slug. To describe a property or room, use search_property_info. Never use search_property_info for prices or availability (it holds no numbers) — use the factual tools. You may combine both: search_property_info for the description plus quote_stay/check_availability for the figures."
+        : '';
+    // System-awareness tools (Phases B & D). Only mentioned when enabled, so the
+    // default prompt is unchanged for callers that don't pass the flag.
+    $factsLine = $withFacts
+        ? "\n- For a structured fact about a property — its room/suite count, how many rooms are individually bookable, the largest party it can host, the security deposit, checkout time, Wi-Fi, or location — call property_facts and answer from what it returns; never guess a count, an occupancy, or a deposit. The security deposit is collected at the property on arrival, never charged online.\n- For current offers/deals, restaurant menus, or whether a table can be reserved, call whats_on. For things to do (tours, experiences, activities and their prices), call list_activities. For the actual dishes/prices on a menu, call menu_details. For environmental figures (solar, CO₂, beach waste, water), call sustainability_facts. For paid on-property services (transfers, laundry), call list_services. In every case mention only what the tool returns and never invent an offer, activity, dish, price, service or figure.\n- To show a price in another currency, call convert_currency with a figure you already have — never do the conversion yourself, and remember the booking price stays the room's own currency. When the guest is flexible on dates, use find_next_availability to find the soonest opening rather than guessing."
+        : '';
+    $staffOpsLine = $withStaffOps
+        ? "\n- You also have internal STAFF tools: occupancy_report (revenue/occupancy from the bookings ledger) and daily_operations (today's arrivals/departures + reservation counts). Use them for management questions. This is internal data for staff only — never a figure to invent."
         : '';
 
     // ── Owner-editable block (Phase 5) ───────────────────────────────────────
@@ -226,9 +358,10 @@ Rules:
 - If the guest's dates or party size are missing or ambiguous, ask ONE short clarifying question instead of guessing. A weekend means Friday check-in to Sunday check-out unless told otherwise.
 - Prices come only from the tools. Quote the exact figure a tool returns, with its currency. Do not do your own arithmetic on nightly rates — the tool already totals the stay.
 - For a party that no single room can seat, check_availability returns one or more suggested multi-room combinations (which rooms, how many it sleeps, per-room and combined price) and each property's max_capacity. Offer those combinations — the best-fit one first — with their combined price; a whole-property option, when returned, is an alternative to mention alongside. NEVER invent a combination, add rooms together yourself, or quote a combined price the tool did not return; if no combination is returned for a party, the property cannot host it for those dates — say so.
+- When a party is simply too large for anywhere (no rooms and no combination returned for any property), do NOT stop at "no availability". Use each property's max_capacity to tell the guest the largest group each place can host, and suggest a concrete next step — a whole-property buyout where one is offered, splitting the group across properties, or shifting dates. Only cite the max_capacity figures the tool returns.
 - {$bookLine}
 - If a tool returns an error, explain briefly and, if it needs clarification, ask for it.
-- {$scopeLine}{$ragLine}{$guestGuard}
+- {$scopeLine}{$ragLine}{$factsLine}{$staffOpsLine}{$guestGuard}
 - When you mention a room or property in your answer, use its friendly name (the "room"/"property" field the tool returns), not the URL slug the guest typed.
 - Be concise and practical. Prefer a short sentence plus the key figures. Amounts are per the currency the tool returns (USD shown as \$, others as the code).
 SYS;
@@ -245,6 +378,16 @@ function assistant_run_tool(string $name, array $args, ?array $venueScope): arra
         case 'check_availability': return assistant_tool_check_availability($args, $venueScope);
         case 'quote_stay':       return assistant_tool_quote_stay($args, $venueScope);
         case 'search_property_info': return assistant_tool_search_info($args, $venueScope);
+        case 'property_facts':   return assistant_tool_property_facts($args, $venueScope);
+        case 'whats_on':         return assistant_tool_whats_on($args, $venueScope);
+        case 'list_activities':  return assistant_tool_list_activities($args);
+        case 'menu_details':     return assistant_tool_menu_details($args, $venueScope);
+        case 'sustainability_facts': return assistant_tool_sustainability_facts();
+        case 'convert_currency': return assistant_tool_convert_currency($args);
+        case 'list_services':    return assistant_tool_list_services();
+        case 'find_next_availability': return assistant_tool_find_next_availability($args, $venueScope);
+        case 'occupancy_report': return assistant_tool_occupancy_report($args, $venueScope);
+        case 'daily_operations': return assistant_tool_daily_operations($args, $venueScope);
         default:                 return ['error' => 'Unknown tool "' . $name . '".'];
     }
 }
@@ -442,5 +585,497 @@ function assistant_tool_quote_stay(array $args, ?array $venueScope): array {
         'currency'        => $room['price_currency'] ?: 'USD',
         'available'       => $available,
         'note'            => $available ? null : 'Those dates are not free for this room.',
+    ];
+}
+
+/**
+ * Static (date-independent) max party a venue could host, from its published
+ * rooms + ACTIVE unit counts. Mirrors the max_capacity in
+ * ts_property_configurations() but ignores date blocks — it is the property's
+ * theoretical ceiling ("the biggest group this place holds"), used by
+ * property_facts. $rooms: rows with capacity/is_entire_place/active_units.
+ */
+function assistant_static_max_capacity(array $rooms): int {
+    $individual = 0; $entire = 0;
+    foreach ($rooms as $r) {
+        $cap = (int)($r['capacity'] ?? 0);
+        if ($cap <= 0) continue;                 // unknown capacity never assumed to fit
+        if (!empty($r['is_entire_place'])) {
+            $entire = max($entire, $cap);
+        } else {
+            $individual += (int)($r['active_units'] ?? 0) * $cap;
+        }
+    }
+    return max($individual, $entire);
+}
+
+/**
+ * property_facts (Phase B): structured, READ-ONLY facts about a property — room
+ * inventory, largest party it can host, security deposit, checkout, Wi-Fi and
+ * location. NO nightly prices or live availability (those stay in quote_stay /
+ * check_availability). Pre-migration-safe: reads optional venue columns
+ * defensively so a DB missing the stay/deposit migrations still returns the core
+ * facts. Scope-filtered; optional single-property slug.
+ */
+function assistant_tool_property_facts(array $args, ?array $venueScope): array {
+    $onlySlug = trim((string)($args['property'] ?? ''));
+
+    // SELECT * so a deploy missing the stay/deposit columns doesn't error; we read
+    // the optional fields with null-coalescing below.
+    $venues = db_query('SELECT * FROM venues WHERE is_published = TRUE ORDER BY sort_order ASC, name ASC')->fetchAll();
+
+    $out = [];
+    foreach ($venues as $v) {
+        if (!assistant_in_scope($venueScope, (int)$v['id'])) continue;
+        if ($onlySlug !== '' && $v['slug'] !== $onlySlug) continue;
+
+        $rooms = db_query(
+            'SELECT name, slug, capacity, is_entire_place,
+                    (SELECT COUNT(*) FROM units u WHERE u.room_id = r.id AND u.is_active = TRUE) AS active_units
+               FROM rooms r
+              WHERE r.venue_id = :vid AND r.is_published = TRUE
+              ORDER BY r.is_entire_place ASC, r.sort_order ASC',
+            [':vid' => (int)$v['id']]
+        )->fetchAll();
+
+        $roomList = [];
+        $bookable = 0;
+        foreach ($rooms as $r) {
+            $entire = !empty($r['is_entire_place']);
+            $units  = (int)($r['active_units'] ?? 0);
+            if (!$entire && $units > 0) $bookable++;
+            $roomList[] = [
+                'room'           => $r['name'],
+                'slug'           => $r['slug'],
+                'sleeps'         => (int)($r['capacity'] ?? 0) ?: null,
+                'bookable_units' => $units,
+                'whole_property' => $entire,
+            ];
+        }
+
+        $fact = [
+            'property'         => $v['name'],
+            'slug'             => $v['slug'],
+            'location'         => trim((string)($v['location'] ?? '')) ?: null,
+            'total_rooms'      => count($rooms),
+            'bookable_rooms'   => $bookable,
+            'max_occupancy'    => assistant_static_max_capacity($rooms) ?: null,
+            'rooms'            => $roomList,
+        ];
+
+        // Optional, pre-migration-safe extras.
+        $addr = trim((string)($v['address'] ?? ''));
+        if ($addr !== '') $fact['address'] = $addr;
+        $checkout = trim((string)($v['stay_checkout'] ?? ''));
+        if ($checkout !== '') $fact['checkout'] = $checkout;
+        // Report only WHETHER there is Wi-Fi, never the raw value — a public
+        // concierge must not leak a network password.
+        $fact['wifi_available'] = trim((string)($v['stay_wifi'] ?? '')) !== '';
+
+        $depAmt = (float)($v['deposit_amount'] ?? 0);
+        if ($depAmt > 0) {
+            $fact['deposit'] = [
+                'amount'   => $depAmt,
+                'currency' => trim((string)($v['deposit_currency'] ?? '')) ?: 'USD',
+                'note'     => 'Collected at the property on arrival — never charged online.',
+            ];
+        }
+
+        $out[] = $fact;
+    }
+
+    if ($onlySlug !== '' && !$out) {
+        return ['error' => 'No property matches the slug "' . $onlySlug . '". Call list_properties for valid property slugs.', 'need' => 'property'];
+    }
+    if (!$out) return ['properties' => [], 'note' => 'No published properties are visible to this account.'];
+    return ['properties' => $out];
+}
+
+/**
+ * whats_on (Phase D): current offers, published restaurant menus, and dining
+ * reservability. READ-ONLY, scope-filtered. Reuses the existing helpers
+ * (fetch_published_offers/menus/reservable) and is pre-migration-safe — a
+ * subsystem whose table is absent simply contributes nothing. Carries NO nightly
+ * room prices. Optional property slug limits menus/dining (offers are site-wide).
+ */
+function assistant_tool_whats_on(array $args, ?array $venueScope): array {
+    $onlySlug = trim((string)($args['property'] ?? ''));
+
+    // Offers are site-wide (no venue_id in v1), so scope doesn't apply to them.
+    $offers = [];
+    $offerRows = (function_exists('offers_supported') && offers_supported()) ? fetch_published_offers() : [];
+    foreach ($offerRows as $o) {
+        $offers[] = [
+            'title'     => $o['title'] ?? '',
+            'subtitle'  => trim((string)($o['subtitle'] ?? '')) ?: null,
+            'category'  => $o['category'] ?? 'special',
+            'valid_to'  => trim((string)($o['valid_to'] ?? '')) ?: null,
+        ];
+    }
+
+    // Menus — published, scope- and (optionally) property-filtered. A NULL
+    // venue_id menu is site-wide and always shown. Guarded for pre-migration.
+    $menus = [];
+    if (function_exists('menus_supported') && menus_supported()) {
+        try {
+            $rows = db_query(
+                "SELECT m.slug, m.title, m.subtitle, m.venue_id, v.slug AS venue_slug
+                   FROM menus m LEFT JOIN venues v ON v.id = m.venue_id
+                  WHERE m.is_published = TRUE
+                  ORDER BY m.sort_order, m.title"
+            )->fetchAll();
+            foreach ($rows as $m) {
+                $vid = $m['venue_id'] !== null ? (int)$m['venue_id'] : null;
+                if ($vid !== null && !assistant_in_scope($venueScope, $vid)) continue;
+                if ($onlySlug !== '' && $vid !== null && $m['venue_slug'] !== $onlySlug) continue;
+                $menus[] = [
+                    'title'    => $m['title'] ?? '',
+                    'subtitle' => trim((string)($m['subtitle'] ?? '')) ?: null,
+                    'slug'     => $m['slug'] ?? '',   // public URL: /menu.php?m=<slug>
+                    'property' => $m['venue_slug'] ?? null,
+                ];
+            }
+        } catch (\Throwable $e) { /* absent/partial menus schema → no menus */ }
+    }
+
+    // Dining reservations — a capability + which in-scope properties accept them.
+    $reservable = [];
+    if (function_exists('reservations_supported') && reservations_supported()) {
+        foreach (fetch_reservable_venues() as $rv) {
+            if (!assistant_in_scope($venueScope, (int)$rv['id'])) continue;
+            if ($onlySlug !== '' && $rv['slug'] !== $onlySlug) continue;
+            $reservable[] = ['property' => $rv['name'], 'slug' => $rv['slug']];
+        }
+    }
+
+    $note = (!$offers && !$menus && !$reservable)
+        ? 'Nothing special is running right now beyond the usual stays.'
+        : null;
+
+    return [
+        'offers'             => $offers,
+        'menus'              => $menus,
+        'table_reservations' => [
+            'available' => (bool)$reservable,
+            'properties' => $reservable,
+            'how'        => $reservable ? 'Guests request a table on /reserve.php?venue=<slug> (staff confirm).' : null,
+        ],
+        'note' => $note,
+    ];
+}
+
+/**
+ * list_activities (Phase F): the published tours/experiences catalogue with
+ * their published price, category, area, duration and summary. READ-ONLY. Tours
+ * are a site-wide catalogue (not venue-scoped), so — like offers — they are not
+ * filtered by the account scope. Pre-migration-safe: SELECT * + defensive reads,
+ * so a DB without the price/location columns still returns the core fields.
+ */
+function assistant_tool_list_activities(array $args): array {
+    $loc = strtolower(trim((string)($args['location'] ?? '')));
+    $cat = strtolower(trim((string)($args['category'] ?? '')));
+
+    try {
+        $rows = db_query('SELECT * FROM tours WHERE is_published = TRUE ORDER BY sort_order ASC, name ASC')->fetchAll();
+    } catch (\Throwable $e) {
+        return ['activities' => [], 'note' => 'The activities catalogue is unavailable.'];
+    }
+
+    $out = [];
+    foreach ($rows as $t) {
+        $tloc = strtolower(trim((string)($t['location'] ?? 'all')));
+        if ($loc !== '' && $loc !== 'all' && $tloc !== $loc && $tloc !== 'all') continue;
+        if ($cat !== '' && strtolower(trim((string)($t['category'] ?? ''))) !== $cat) continue;
+        $price = trim((string)($t['price'] ?? ''));   // published display string, e.g. "KES 3,500 per person"
+        $out[] = [
+            'activity' => $t['name'],
+            'slug'     => $t['slug'],
+            'category' => $t['category'] ?? null,
+            'tag'      => trim((string)($t['tag_label'] ?? '')) ?: null,
+            'duration' => trim((string)($t['duration'] ?? '')) ?: null,
+            'area'     => $tloc ?: null,
+            'price'    => $price !== '' ? $price : null,
+            'summary'  => trim((string)($t['short_desc'] ?? '')) ?: null,
+        ];
+    }
+    if (!$out) return ['activities' => [], 'note' => 'No activities match that filter right now.'];
+    return ['activities' => $out];
+}
+
+/**
+ * menu_details (Phase F): the dishes on one restaurant menu — sections → items
+ * with price (KES), dietary/other badges and description. READ-ONLY. Resolve by
+ * menu slug (preferred) or a property's first published menu. Scope-checked: a
+ * venue-linked menu must be in the account's scope (a NULL-venue menu is public).
+ */
+function assistant_tool_menu_details(array $args, ?array $venueScope): array {
+    if (!menus_supported()) return ['error' => 'Menus are not available on this environment.'];
+
+    $menuSlug = trim((string)($args['menu'] ?? ''));
+    $propSlug = trim((string)($args['property'] ?? ''));
+
+    $menu = null;
+    if ($menuSlug !== '') {
+        $menu = fetch_menu_by_slug($menuSlug, true);   // published only
+    } elseif ($propSlug !== '') {
+        $menu = db_query(
+            "SELECT m.* FROM menus m JOIN venues v ON v.id = m.venue_id
+              WHERE v.slug = :s AND m.is_published = TRUE
+              ORDER BY m.sort_order, m.id LIMIT 1",
+            [':s' => $propSlug]
+        )->fetch() ?: null;
+    } else {
+        return ['error' => 'Give a menu slug or a property slug.', 'need' => 'menu'];
+    }
+
+    if (!$menu) return ['error' => 'No published menu matches that. Call whats_on for menu slugs.', 'need' => 'menu'];
+
+    $vid = $menu['venue_id'] !== null ? (int)$menu['venue_id'] : null;
+    if ($vid !== null && !assistant_in_scope($venueScope, $vid)) {
+        return ['error' => 'That menu belongs to a property this account cannot see.'];
+    }
+
+    $badgeDefs = menu_badge_defs();   // column => [key, label]
+    $sections  = [];
+    foreach (fetch_menu_categories((int)$menu['id'], false) as $cat) {
+        $items = [];
+        foreach ($cat['items'] as $it) {
+            $badges = [];
+            foreach ($badgeDefs as $col => $def) {
+                if (!empty($it[$col])) $badges[] = $def[0];   // short key, e.g. 'vegan'
+            }
+            $price = ($it['price'] === null || $it['price'] === '') ? null : (float)$it['price'];
+            $items[] = [
+                'item'        => $it['name'],
+                'price_kes'   => $price,
+                'badges'      => $badges,
+                'description' => trim((string)($it['description'] ?? '')) ?: null,
+            ];
+        }
+        $sections[] = [
+            'section' => $cat['title'] ?? ($cat['section'] ?? ''),
+            'items'   => $items,
+        ];
+    }
+
+    return [
+        'menu'     => $menu['title'] ?? '',
+        'subtitle' => trim((string)($menu['subtitle'] ?? '')) ?: null,
+        'slug'     => $menu['slug'] ?? '',
+        'currency' => 'KES',
+        'sections' => $sections,
+    ];
+}
+
+/**
+ * sustainability_facts (Phase G): the live environmental figures shown on the
+ * site — each metric's current value (accrued, Nairobi-local), unit and note.
+ * READ-ONLY, site-wide. Pre-migration-safe: sus_metrics() returns the built-in
+ * fallback figures when the table is absent, so this never returns zeros.
+ */
+function assistant_tool_sustainability_facts(): array {
+    $metrics = [];
+    foreach (sus_metrics() as $m) {
+        $metrics[] = [
+            'metric' => $m['label'] ?? ($m['metric_key'] ?? ''),
+            'value'  => sus_metric_number($m),
+            'unit'   => sus_metric_unit($m) ?: null,
+            'note'   => trim((string)($m['note'] ?? '')) ?: null,
+        ];
+    }
+    if (!$metrics) return ['metrics' => [], 'note' => 'No sustainability figures are published right now.'];
+    return ['metrics' => $metrics];
+}
+
+/**
+ * convert_currency (Phase H): display-only FX conversion of a figure the model
+ * ALREADY has. It is NOT a pricing path — the booking price stays the room's own
+ * currency; this only renders an alternate for the guest. Uses the canonical
+ * convert_price()/fx_rates() (the same rates the site's currency switcher uses).
+ */
+function assistant_tool_convert_currency(array $args): array {
+    if (!isset($args['amount']) || !is_numeric($args['amount'])) {
+        return ['error' => 'A numeric amount is required.', 'need' => 'amount'];
+    }
+    $amount = (float)$args['amount'];
+    $from = strtoupper(trim((string)($args['from'] ?? '')));
+    $to   = strtoupper(trim((string)($args['to'] ?? '')));
+    if ($from === '' || $to === '') return ['error' => 'Both from and to currencies are required.', 'need' => 'currency'];
+    if (!is_supported_currency($to)) return ['error' => 'Currency "' . $to . '" is not one we can convert to.', 'need' => 'currency'];
+
+    $res = convert_price($amount, $from, $to);
+    if (empty($res['converted'])) {
+        return ['error' => 'No live rate is available to convert ' . $from . ' to ' . $to . ' right now.'];
+    }
+    return [
+        'from' => ['amount' => $amount, 'currency' => $from],
+        'to'   => ['amount' => $res['amount'], 'currency' => $res['currency'], 'formatted' => format_money($res['amount'], $res['currency'])],
+        'note' => 'Display only — the booking is charged in ' . $from . '.',
+    ];
+}
+
+/**
+ * list_services (Phase H): the paid on-property services catalogue
+ * (`service_options`: transfer + laundry) with their configured amounts.
+ * READ-ONLY, site-wide. The table carries no currency column, so the amount is
+ * returned bare with a note — never assume/invent a currency.
+ */
+function assistant_tool_list_services(): array {
+    $out = [];
+    foreach (['transfer', 'laundry'] as $svc) {
+        try { $rows = fetch_service_options($svc, true); }
+        catch (\Throwable $e) { $rows = []; }
+        foreach ($rows as $o) {
+            $amt = (float)($o['price_amount'] ?? 0);
+            $out[] = ['service' => $svc, 'label' => $o['label'], 'amount' => $amt > 0 ? $amt : null];
+        }
+    }
+    if (!$out) return ['services' => [], 'note' => 'No paid on-property services are configured right now.'];
+    return ['services' => $out, 'note' => 'Amounts are as configured; confirm the exact currency and details with the property.'];
+}
+
+/**
+ * find_next_availability (Phase H): scan forward for the SOONEST window that has
+ * availability for a party. Uses the single canonical ts_search_availability()
+ * path per candidate check-in and early-exits on the first hit (fast in the
+ * common case). Bounded by search_days (≤120) so it can never run unbounded.
+ * Scope-filtered; optional single property.
+ */
+function assistant_tool_find_next_availability(array $args, ?array $venueScope): array {
+    $guests = max(1, (int)($args['guests'] ?? 2));
+    $nights = max(1, (int)($args['nights'] ?? 2));
+    $days   = (int)($args['search_days'] ?? 90);
+    if ($days < 1)   $days = 90;
+    if ($days > 120) $days = 120;
+    $onlySlug = trim((string)($args['property'] ?? ''));
+
+    $today    = assistant_today_ymd();
+    $startRaw = trim((string)($args['earliest'] ?? ''));
+    $start    = $startRaw !== '' ? rates_window_ymd($startRaw) : $today;
+    if ($start === null) return ['error' => 'earliest must be a valid YYYY-MM-DD date.', 'need' => 'dates'];
+    if ($start < $today) $start = $today;   // never scan the past
+
+    for ($i = 0; $i < $days; $i++) {
+        $ci = date('Y-m-d', (int)strtotime("$start +$i day"));
+        $co = date('Y-m-d', (int)strtotime("$ci +$nights day"));
+        $results = ts_search_availability($ci, $co, $guests);
+        $hits = [];
+        foreach ($results as $r) {
+            $v = $r['venue'];
+            if (!assistant_in_scope($venueScope, (int)$v['id'])) continue;
+            if ($onlySlug !== '' && $v['slug'] !== $onlySlug) continue;
+            $cfg  = $r['configurations'] ?? [];
+            $free = !empty($r['rooms']) || !empty($cfg['combos']);
+            if ($free) $hits[] = ['property' => $v['name'], 'slug' => $v['slug'], 'from' => $r['from'], 'currency' => $r['currency']];
+        }
+        if ($hits) {
+            return ['found' => true, 'check_in' => $ci, 'check_out' => $co, 'nights' => $nights, 'guests' => $guests, 'properties' => $hits];
+        }
+    }
+    return [
+        'found' => false, 'guests' => $guests, 'nights' => $nights,
+        'searched_from' => $start, 'searched_days' => $days,
+        'note' => 'Nothing was free for that party within the next ' . $days . ' day(s) from ' . $start . '.',
+    ];
+}
+
+/**
+ * occupancy_report (Phase I, STAFF ONLY): revenue + occupancy from the bookings
+ * ledger for a range (and optional property). READ-ONLY. Per-currency (money is
+ * never summed across currencies); mirrors admin/reports.php exactly
+ * (bookings_in_window → summarize/occupancy, `to` INCLUSIVE). Scope-filtered.
+ */
+function assistant_tool_occupancy_report(array $args, ?array $venueScope): array {
+    if (!bookings_supported()) return ['error' => 'The bookings ledger is not available on this environment.'];
+
+    $from   = rates_window_ymd(trim((string)($args['from'] ?? '')));
+    $toIncl = rates_window_ymd(trim((string)($args['to'] ?? '')));
+    if ($from === null || $toIncl === null) return ['error' => 'from and to must be valid YYYY-MM-DD dates.', 'need' => 'dates'];
+    if ($toIncl < $from) return ['error' => 'to must be on or after from.', 'need' => 'dates'];
+
+    $venueIds = $venueScope;   // null = all (owner)
+    $onlySlug = trim((string)($args['property'] ?? ''));
+    if ($onlySlug !== '') {
+        $vid = (int)(db_query('SELECT id FROM venues WHERE slug = :s', [':s' => $onlySlug])->fetchColumn() ?: 0);
+        if ($vid <= 0) return ['error' => 'No property matches "' . $onlySlug . '".', 'need' => 'property'];
+        if (!assistant_in_scope($venueScope, $vid)) return ['error' => 'That property is out of scope for this account.'];
+        $venueIds = [$vid];
+    }
+
+    $rows    = bookings_in_window($venueIds, $from, $toIncl, '');
+    $summary = bookings_summarize($rows);
+    $activeU = bookings_active_unit_count($venueIds);
+    $occ     = bookings_occupancy($rows, $from, $toIncl, $activeU);
+
+    // Add RevPAR per currency (revenue ÷ available room-nights) — the reports metric.
+    $currencies = $summary['currencies'];
+    foreach ($currencies as $c => &$t) {
+        $t['revpar'] = $occ['available'] > 0 ? round($t['revenue'] / $occ['available'], 2) : 0.0;
+    }
+    unset($t);
+
+    return [
+        'from' => $from, 'to' => $toIncl,
+        'currencies'  => $currencies,          // per-currency: revenue, bookings, nights, adr, revpar
+        'occupancy'   => $occ,                  // sold / available room-nights + pct
+        'by_property' => $summary['by_property'],
+        'by_source'   => $summary['by_source'],
+    ];
+}
+
+/**
+ * daily_operations (Phase I, STAFF ONLY): the day's confirmed arrivals and
+ * departures + current table-reservation counts. READ-ONLY, scoped. Arrivals =
+ * confirmed holds whose check_in is the day; departures = check_out that day.
+ */
+function assistant_tool_daily_operations(array $args, ?array $venueScope): array {
+    $dayRaw = trim((string)($args['date'] ?? ''));
+    $day    = $dayRaw !== '' ? rates_window_ymd($dayRaw) : assistant_today_ymd();
+    if ($day === null) return ['error' => 'date must be a valid YYYY-MM-DD date.', 'need' => 'dates'];
+
+    // Scope clause. [] = no properties → empty snapshot.
+    $scopeSql = '';
+    if (is_array($venueScope)) {
+        if (!$venueScope) {
+            return ['date' => $day, 'arrivals' => [], 'departures' => [], 'reservations' => ['today' => 0, 'pending' => 0], 'note' => 'No properties in scope for this account.'];
+        }
+        $ph = implode(',', array_map('intval', $venueScope));   // ints from admin_venue_ids — safe to inline
+        $scopeSql = " AND rm.venue_id IN ($ph)";
+    }
+
+    $fetch = function (string $col) use ($day, $scopeSql): array {
+        // $col is a fixed literal chosen below — never user input.
+        $rows = db_query(
+            "SELECT h.guest_name, h.check_in, h.check_out, rm.name AS room, v.name AS property
+               FROM holds h
+               JOIN units u  ON u.id = h.unit_id
+               JOIN rooms rm ON rm.id = u.room_id
+               JOIN venues v ON v.id = rm.venue_id
+              WHERE h.status = 'confirmed' AND h.$col = :d{$scopeSql}
+              ORDER BY v.name, rm.name",
+            [':d' => $day]
+        )->fetchAll();
+        $out = [];
+        foreach ($rows as $r) {
+            $out[] = [
+                'guest'     => trim((string)($r['guest_name'] ?? '')) ?: '(no name)',
+                'property'  => $r['property'],
+                'room'      => $r['room'],
+                'check_in'  => $r['check_in'],
+                'check_out' => $r['check_out'],
+            ];
+        }
+        return $out;
+    };
+
+    $resv = function_exists('reservation_dashboard_counts')
+        ? reservation_dashboard_counts($venueScope)
+        : ['today' => 0, 'pending' => 0];
+
+    return [
+        'date'         => $day,
+        'arrivals'     => $fetch('check_in'),
+        'departures'   => $fetch('check_out'),
+        'reservations' => ['today' => (int)($resv['today'] ?? 0), 'pending' => (int)($resv['pending'] ?? 0)],
     ];
 }

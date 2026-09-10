@@ -56,8 +56,8 @@ $messages[] = ['role' => 'user', 'text' => $message];
 
 $scope  = admin_venue_ids();                     // null = owner (all); [] = none; [ids] = scoped
 $withRag = rag_supported();                      // descriptive layer available? (pgvector + embeddings key)
-$system = assistant_system_prompt($scope, $withRag);
-$tools  = assistant_tool_definitions($withRag);
+$system = assistant_system_prompt($scope, $withRag, 'staff', true, true);   // withFacts + staff ops (occupancy/daily)
+$tools  = assistant_tool_definitions($withRag, true, true);
 
 // The read-only tool runner, bound to this account's scope.
 $runTool = function (string $name, array $args) use ($scope): array {

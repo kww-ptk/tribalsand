@@ -70,8 +70,8 @@ $brief = assistant_build_draft_brief($sub);
 
 $scope   = admin_venue_ids();                 // null = owner (all); [ids] = scoped
 $withRag = rag_supported();
-$system  = assistant_system_prompt($scope, $withRag, 'staff');
-$tools   = assistant_tool_definitions($withRag);
+$system  = assistant_system_prompt($scope, $withRag, 'staff', true);   // withFacts: property_facts + whats_on
+$tools   = assistant_tool_definitions($withRag, true);
 
 $runTool = function (string $name, array $args) use ($scope): array {
     return assistant_run_tool($name, $args, $scope);
