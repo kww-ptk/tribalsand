@@ -74,22 +74,29 @@ and the dev DB is not prod — we look before we change.
    are documented as **reviewed, surgical** steps (deactivate a surplus unit,
    don't delete — units carry live bookings).
 
+3. **`bin/reconcile-capacity-units.php`** — the booking-aware fix. Dry-run by
+   default (`--apply` to write). Sets the two NULL buyout capacities and reduces
+   each room to its target active-unit count by **deactivating only the empty
+   surplus unit** (keeps any unit with a future booking; reports any room it can't
+   safely reduce). Idempotent.
+
+**Ran on prod 2026-09-10 — root cause confirmed.** The audit showed **every room
+carries exactly one extra active unit** (suites 2 not 1; Maya Ilai villa/studio 9
+not 8) — the `add_availability` default-unit seed ran on top of the by-room seed.
+That stray unit is the entire "2×" bug. Also: `maya-kobe-buyout` and `sandbox`
+had NULL capacity. **The three "open decisions" resolved themselves:** Enkare = 10
+and My Amani = 10 are already set on prod, and `superior-suite` is a real
+published room (keep it; just drop its extra unit) — the "0 units/unpublish" note
+was from a stale comment and was wrong.
+
 **How to run on prod** (region `eu-west-1`, cluster `default`, service
-`tribalsand`, container `Main`; see memory `ical-sync-and-prod-rds-access`):
-launch a one-off ECS run-task with a command override
-`["php","bin/audit-capacity-units.php"]` (the container injects `DATABASE_URL`,
-so it connects to prod automatically); read the output from CloudWatch
-(`/aws/ecs/default/tribalsand-3abb`). Then apply `db/backfill_room_capacity.sql`
-via `psql`/a `php -r` PDO wrapper (it shows no output through `admin/migrate.php`),
-and **re-run the audit** until sections A–G are clean.
-
-**Open owner decisions (cannot be guessed):**
-
-- **Enkare Bofa** capacity — in no seed; owner must supply the real
-  whole-property occupancy.
-- **My Amani** capacity — provisional **10**; confirm against reality.
-- **`maya_ilai/superior-suite`** — published with 0 active units on prod (a room
-  the current seed doesn't have): give it a real unit or unpublish it.
+`tribalsand`, container `Main`): one-off ECS run-task with command override
+`["php","bin/reconcile-capacity-units.php"]` to preview, then
+`[...,"--apply"]` to write; read output from CloudWatch
+(`/aws/ecs/default/tribalsand-3abb`). Re-run `bin/audit-capacity-units.php` until
+sections A–G are clean. (`db/backfill_room_capacity.sql` remains a capacity-only
+manual alternative; the reconciler is the authoritative fix for units + the two
+capacities.)
 
 **Acceptance:** the audit reports zero anomalies; a 6-guest Zuri query returns a
 sensible combination (distinct suites, never 2× the same one-unit suite) and the

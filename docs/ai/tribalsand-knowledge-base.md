@@ -56,32 +56,38 @@ so a single-room suite MUST have exactly **1 active unit**. A NULL/0 capacity is
 | Drift Suite | `maya-kobe-drift` | 2 | 1 | – |
 | Maya Kobe — Full Property Buyout | `maya-kobe-buyout` | 16 | 1 | ✔ (12 without Prestige; 16 with) |
 
-### Maya Ilai — 2 multi-unit room types + full-compound buyout (adults 16+)
+### Maya Ilai — 3 room types (adults 16+)  *(prod reality, per the 2026-09-10 audit)*
 | Room | slug | capacity | units | whole-property |
 |------|------|:--:|:--:|:--:|
+| Superior Suite | `superior-suite` | 6 | 1 | – |
 | Three-Bedroom Villa | `maya-ilai-villa` | 6 | **8** | – |
 | Studio Apartment | `maya-ilai-studio` | 2 | **8** | – |
-| Maya Ilai — Full Compound Buyout | `maya-ilai-buyout` | 48 | 1 | ✔ |
 
-### Entire-property villas (one whole-property room each)
-| Property | capacity | units | notes |
-|----------|:--:|:--:|-------|
-| Sandbox | 8 | 1 | "sleeps up to 8" (4 bedrooms) |
-| My Amani | 10 | 1 | ⚠ provisional — **confirm on prod** |
-| Enkare Bofa | **?** | 1 | ⚠ **owner decision** — no seed value |
+*Prod has no `maya-ilai-buyout` (the old seed did); Maya Ilai is booked by
+room type, not as a whole-compound buyout. `superior-suite` IS a real published
+room — the earlier "0 units, unpublish" note was based on a stale comment and
+was wrong.*
+
+### Entire-property villas (one whole-property room each)  *(capacities confirmed on prod)*
+| Property | room slug | capacity | units | notes |
+|----------|-----------|:--:|:--:|-------|
+| Sandbox | `sandbox` | 8 | 1 | capacity was NULL on prod — set to 8 |
+| My Amani | `my-amani-full-rental` | 10 | 1 | confirmed 10 on prod |
+| Enkare Bofa | `enkare-bofa` | 10 | 1 | confirmed 10 on prod (no longer an open question) |
 
 *Tribal Dunes is the solar site referenced by sustainability figures, not a
 bookable stay.*
 
-## Open data decisions (block a fully-correct AI until resolved on prod)
+## Data state (2026-09-10 audit) — one systemic defect
 
-1. **Enkare Bofa capacity** — set the real whole-property occupancy.
-2. **My Amani capacity** — confirm the provisional 10.
-3. **`maya_ilai/superior-suite`** — a prod room with 0 active units (not in the
-   current seed): give it a unit or unpublish it.
-
-Run `bin/audit-capacity-units.php` on prod to see the live state, then reconcile
-with `db/backfill_room_capacity.sql`. See
+The prod audit found **every room carries exactly one extra active unit** (single
+suites show 2, the Maya Ilai villa/studio show 9) — the `add_availability`
+migration's default-unit seed ran on top of the by-room seed. Plus two buyouts
+(`maya-kobe-buyout`, `sandbox`) had a NULL capacity. Fix, booking-aware and
+dry-run-first: **`bin/reconcile-capacity-units.php`** (deactivates only the empty
+surplus unit per room; sets the two capacities), then re-run the audit. The three
+earlier "owner decisions" are resolved: Enkare = 10, My Amani = 10, and
+`superior-suite` is a real room (keep, drop its extra unit). See
 `docs/superpowers/plans/2026-09-10-ai-system-awareness.md`.
 
 ## What the AI can answer today (and the tool behind it)
