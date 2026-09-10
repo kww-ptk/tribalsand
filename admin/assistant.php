@@ -29,12 +29,24 @@ include __DIR__ . '/_layout.php';
 .aiq-intro{color:var(--muted);font-size:14px;margin:2px 0 16px}
 /* One panel: messages scroll on top, the composer is docked inside at the bottom. */
 .aiq-panel{display:flex;flex-direction:column;height:min(68vh,560px);background:#fff;border:1px solid var(--border,#e7ded7);border-radius:14px;overflow:hidden}
-.aiq-scroll{flex:1;min-height:0;overflow-y:auto;padding:18px;display:flex;flex-direction:column;gap:12px}
+.aiq-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding:28px 20px 18px;display:flex;flex-direction:column;gap:12px}
+/* Custom scrollbar (no native chrome) — thin, rounded, brand-tinted. */
+.aiq-scroll{scrollbar-width:thin;scrollbar-color:#d3c7ba transparent}
+.aiq-scroll::-webkit-scrollbar{width:10px}
+.aiq-scroll::-webkit-scrollbar-track{background:transparent}
+.aiq-scroll::-webkit-scrollbar-thumb{background:#d3c7ba;border-radius:8px;border:3px solid #fff;background-clip:padding-box}
+.aiq-scroll::-webkit-scrollbar-thumb:hover{background:#bfae9c;border:3px solid #fff;background-clip:padding-box}
 .aiq-msg{max-width:88%;padding:10px 14px;border-radius:14px;font-size:14px;line-height:1.5;white-space:pre-wrap;word-wrap:break-word}
 .aiq-msg--user{align-self:flex-end;background:#1E5C6B;color:#fff;border-bottom-right-radius:4px}
 .aiq-msg--ai{align-self:flex-start;background:#f4efe9;color:#102F3A;border-bottom-left-radius:4px}
 .aiq-msg--err{align-self:flex-start;background:#fdecea;color:#8a1c13;border:1px solid #f5c6c1}
-.aiq-typing{align-self:flex-start;color:var(--muted);font-size:13px;font-style:italic}
+/* Loading indicator — three bouncing dots in an AI-style bubble. */
+.aiq-typing{align-self:flex-start;display:inline-flex;gap:5px;align-items:center;padding:13px 15px;background:#f4efe9;border-radius:14px;border-bottom-left-radius:4px}
+.aiq-typing span{width:7px;height:7px;border-radius:50%;background:#8fa9b1;display:inline-block;animation:aiq-bounce 1.2s infinite ease-in-out both}
+.aiq-typing span:nth-child(2){animation-delay:.16s}
+.aiq-typing span:nth-child(3){animation-delay:.32s}
+@keyframes aiq-bounce{0%,80%,100%{transform:scale(.55);opacity:.4}40%{transform:scale(1);opacity:1}}
+@media (prefers-reduced-motion:reduce){.aiq-typing span{animation:none;opacity:.7}}
 .aiq-empty{margin:auto;max-width:480px;display:flex;flex-direction:column;gap:14px;align-items:center;text-align:center}
 .aiq-empty[hidden]{display:none}   /* author display:flex would otherwise beat the UA [hidden] rule */
 .aiq-empty p{color:var(--muted);font-size:14px;margin:0}
@@ -48,6 +60,7 @@ include __DIR__ . '/_layout.php';
 .aiq-card__ttl{font-weight:700;color:#102F3A;font-size:13px;padding:9px 12px 4px}
 .aiq-composer{display:flex;gap:10px;align-items:flex-end;padding:12px;border-top:1px solid var(--border,#e7ded7);background:#fbf9f6}
 .aiq-composer textarea{flex:1 1 auto;resize:none;min-height:44px;max-height:140px;overflow-y:hidden;line-height:1.4}
+.aiq-composer textarea:disabled{opacity:.55;cursor:not-allowed}
 .aiq-composer button{flex:0 0 auto;height:44px;width:44px;padding:0;display:inline-flex;align-items:center;justify-content:center}
 .aiq-suggest{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
 .aiq-chip{background:#f4efe9;border:1px solid var(--border,#e7ded7);border-radius:20px;padding:6px 12px;font-size:12.5px;color:#1E5C6B;cursor:pointer}
@@ -68,7 +81,7 @@ include __DIR__ . '/_layout.php';
   <p class="aiq-intro">Ask about availability and prices in plain English. Answers come straight from the live calendar and rates — the same figures the booking page shows. The assistant can quote, but never books or holds.</p>
 
   <div class="aiq-bar">
-    <button type="button" class="btn-outline btn-sm" id="aiqClear" hidden>Clear conversation</button>
+    <button type="button" class="btn-icon btn-icon--danger" id="aiqClear" data-tip="Clear conversation" aria-label="Clear conversation" hidden><?= admin_icon('trash') ?></button>
   </div>
 
   <div class="aiq-panel">
