@@ -306,6 +306,15 @@ function assistant_tool_definitions(bool $withRag = false, bool $withFacts = fal
 function assistant_system_prompt(?array $venueScope, bool $withRag = false, string $audience = 'staff', bool $withFacts = false, bool $withStaffOps = false): string {
     $today = assistant_today_ymd();
     $dow   = date('l');   // e.g. "Monday"
+    // Pre-compute concrete weekend dates so the model never does the arithmetic
+    // itself (it was resolving "next weekend" to mid-week dates). A weekend stay =
+    // Friday check-in to Sunday check-out. "This weekend" is the coming Fri–Sun
+    // (today if it's already Friday); "next weekend" is the one after.
+    $daysToFri = (5 - (int)date('N') + 7) % 7;                       // 0 when today is Friday
+    $thisFri   = date('Y-m-d', strtotime("+{$daysToFri} day"));
+    $thisSun   = date('Y-m-d', strtotime("{$thisFri} +2 day"));
+    $nextFri   = date('Y-m-d', strtotime("{$thisFri} +7 day"));
+    $nextSun   = date('Y-m-d', strtotime("{$thisFri} +9 day"));
     $guest = $audience === 'guest';
     $intro = $guest
         ? 'You are the Tribal Sand concierge, chatting with a prospective guest on our website to help them plan and price a stay across our coastal properties in Kenya.'
@@ -351,7 +360,7 @@ function assistant_system_prompt(?array $venueScope, bool $withRag = false, stri
 
 Your job: answer questions about what rooms/villas are free, what they cost, and — where the tools allow — what the properties and activities are like, by calling the tools. You do NOT know availability or prices yourself — always get them from a tool. Never invent a date, a price, or an availability status.
 
-Today is {$dow}, {$today} (Africa/Nairobi). Resolve relative dates ("tonight", "this weekend", "next Friday", "in December") against today, and pass concrete YYYY-MM-DD dates to the tools. Check-out is the morning after the last night.{$editable}
+Today is {$dow}, {$today} (Africa/Nairobi). Resolve relative dates ("tonight", "next Friday", "in December") against today and pass concrete YYYY-MM-DD dates to the tools. For weekends, use these exact dates (a weekend stay is Friday check-in to Sunday check-out): "this weekend" = {$thisFri} to {$thisSun}; "next weekend" = {$nextFri} to {$nextSun}. Check-out is the morning after the last night.{$editable}
 
 Rules:
 - A name or slug the guest gives may be a whole PROPERTY or a specific ROOM. A room slug (e.g. "zuri-maji") goes to quote_stay; a property slug narrows check_availability. If you are unsure which a name is, call list_properties first to resolve it — it lists every property and its rooms with slugs. NEVER tell the guest a room "doesn't exist" or "is the wrong name" before checking list_properties; a slug like "zuri-maji" is usually a valid room, not a mistake.
