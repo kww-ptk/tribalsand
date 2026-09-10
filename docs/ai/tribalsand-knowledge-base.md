@@ -45,52 +45,89 @@ walking distance.
 
 ---
 
-## 2. Properties — profiles & who they suit
+## 2. Properties — profiles, facts & who they suit
 
-*(Bookable stays the availability/price tools cover. Concept/audience from the
-brand doc; capacity/units are the live truth table in §3.)*
+*(Operational facts from the Internal Property Sales Book; audience from the brand
+doc; capacity/units are the live truth table in §3. Every stay is **non-smoking**;
+**no property has in-room TVs**; a **baby cot + high chair** are available on
+request at all of them.)*
 
 ### Zuri — Watamu · luxury beachfront boutique hotel
-- **Concept:** fully-serviced luxury boutique hotel; ocean-facing suites, private
-  pool, chef-led à la carte dining, curated hospitality.
-- **Best for:** honeymooners, couples, small families, boutique destination
-  weddings — guests seeking refined comfort and premium service.
+- **Sleeps 14 · 6 suites · Bed & Breakfast · à la carte meals + bar.** Day use
+  available from 1 July 2026.
+- **Suites:** 3 Double (king) · 1 Twin · 1 **Family Suite** (1 double + 2 singles,
+  max 4) · 1 Double Master.
+- **In-room:** mini-fridge, kettle, coffee/tea station, bottled water, safe,
+  hairdryer, AC + ceiling fan, mosquito net, toiletries, WiFi (no TV).
+- **Facilities:** beachfront, pool (with towels), direct beach access, dedicated
+  **massage area**. Private staff accommodation at extra cost (room-only);
+  nanny/babysitter/driver accommodation at extra cost.
+- **Positioning:** intimate boutique beachfront hotel — luxury but informal.
+- **Best for:** honeymooners, couples, small families, boutique weddings.
 
 ### Maya Kobe — Kilifi · luxury beachfront boutique hotel (in Tribal Dunes)
-- **Concept:** as Zuri, plus walking-distance access to the whole Tribal Dunes
-  village (Tribal Table, Somewhere Café, kite school).
+- **Sleeps 12 · 5 suites · Bed & Breakfast · à la carte meals + bar.**
+- **Suites:** 4 Double (king) · 1 **Prestige Suite** (2 double bedrooms, lounge,
+  outdoor bathtubs, **private pool** — a residence-style unit).
+- **In-room:** bottled water, safe, hairdryer, AC + ceiling fan, mosquito net,
+  toiletries, WiFi (no TV).
+- **Facilities:** beachfront, pool (with towels), direct beach access; walking
+  distance to Tribal Table, Somewhere Café and the kite school. Staff accommodation
+  at extra cost; nanny/driver accommodation at extra cost.
+- **Positioning:** private boutique hotel with one exclusive residence-style unit.
 - **Best for:** honeymooners, couples, small families, boutique weddings who also
-  want the village/ecosystem on their doorstep.
+  want the Tribal Dunes village on their doorstep.
 
-### My Amani — Vipingo · ultra-private beachfront villa
-- **Concept:** ultra-private **five-bedroom** luxury villa; total exclusivity,
-  direct beach access, infinity pool + hot tub, private compound, concierge-led.
-  Near **Vipingo Ridge golf**.
-- **Best for:** high-net-worth families or friendship groups, entrepreneurs,
-  private celebrations, executive retreats, **golf travellers**. Whole-villa only.
+### My Amani — Vipingo · ultra-private serviced villa (exclusive use)
+- **Sleeps 10 · 5 bedrooms · self-catering with a dedicated chef included** + on-site
+  support staff. Near **Vipingo Ridge golf**.
+- **In-room:** AC + ceiling fan, mosquito net, toiletries. **Basic WiFi — limited
+  coverage/speed; no TV.**
+- **Facilities:** beachfront, private **infinity pool with jacuzzi corner**, direct
+  beach access, full in-house service team. **No accommodation for nannies/private
+  staff.**
+- **Positioning:** luxury exclusive-use serviced villa.
+- **Best for:** HNW families / friendship groups, entrepreneurs, private
+  celebrations, executive retreats, golf travellers. Whole-villa only.
 
-### Enkare — Kilifi · mid-range self-catering beachfront villa
-- **Concept:** more affordable, self-catering, beachfront exclusivity.
-- **Best for:** Kenyan holiday-makers from Nairobi, guests from South Africa / East
-  Africa, family gatherings, friendship groups. Whole-villa only.
+### Enkare — Kilifi · beachfront villa (exclusive use)
+- **Sleeps 10 · self-catering with an in-house cook.**
+- **Rooms:** ground floor 1 Twin en-suite; first floor 1 Double en-suite, 1 Master
+  en-suite, 2 Twins sharing a bathroom.
+- **In-room:** AC + ceiling fan, mosquito net, hand soap. **Basic WiFi — limited;
+  no TV.**
+- **Facilities:** private pool (kikoi towels), beachfront, direct beach access.
+  Daily housekeeping, pool attendant/gardener, **security 6pm–5am**. No nanny/staff
+  accommodation.
+- **Positioning:** non-luxury beachfront villa — space and location driven.
+- **Best for:** Nairobi holiday-makers, South Africa / East Africa guests, family
+  gatherings, friendship groups. Whole-villa only.
 
-### Sandbox — Kilifi · mid-range self-catering beachfront villa
-- **Concept & audience:** as Enkare — mid-range, self-catering, family/friends
-  groups. Whole-villa only.
+### Sandbox — Kilifi · beachfront villa (exclusive use)
+- **Sleeps 8 · self-catering, no chef** (a cook is available at extra cost, subject
+  to availability).
+- **Rooms:** ground floor 2 Doubles (1 en-suite, 1 external bathroom); first floor
+  2 Doubles sharing a bathroom.
+- **In-room:** AC + ceiling fan, hand soap. **Basic WiFi — limited; no TV.**
+- **Facilities:** private pool (kikoi towels), beachfront, direct beach access.
+  Daily housekeeping, pool attendant/gardener, security 6pm–5am. No nanny/staff
+  accommodation.
+- **Positioning:** entry-level beachfront villa — independent stay.
+- **Best for:** family/friends groups wanting an affordable, independent beachfront
+  base. Whole-villa only.
 
 ### Maya Ilai — Kilifi · eco retreat compound (in Tribal Dunes)
-- **Concept:** eco retreat where comfort, simplicity and sustainability meet.
-  **16 rental units — 8 three-bedroom villas + 8 studio apartments** (plus a
-  Superior Suite on the live site). Communal pool, bars & gardens, e-bikes & golf
-  carts, walking distance to the beach via Somewhere Café. Fully solar, desalinated
-  water.
+- **16 rental units — 8 three-bedroom villas + 8 studio apartments** (plus a
+  Superior Suite on the live site). Fully solar, desalinated water. Communal pool,
+  bars & gardens, e-bikes & golf carts; walking distance to the beach via Somewhere
+  Café.
 - **Best for:** corporate retreats, wedding-guest groups, kitesurf groups, wellness
-  retreat organisers, **large groups needing multiple units**, and conscious
-  travellers wanting flexibility / more affordable / longer stays. Booked **by
-  room type**, not as one whole-compound buyout.
-- **⚠ Age policy (must surface when relevant):** Maya Ilai is **adults-only, 16+**.
-  Guests 16–17 may stay without a parent present, **but** to consume alcohol a
-  parent/legal guardian must sign a consent form at check-in.
+  retreats, **large groups needing multiple units**, and conscious travellers
+  wanting flexibility / more affordable / longer stays. Booked **by room type**,
+  not as one whole-compound buyout.
+- **⚠ Age policy (must surface when relevant):** **adults-only, 16+**. Guests 16–17
+  may stay without a parent present, **but** to consume alcohol a parent/legal
+  guardian must sign a consent form at check-in.
 
 ### Off Duty — Kilifi · beachfront coworking hotel *(ecosystem venue)*
 Digital-nomad / creative coworking hotel on Bofa Beach: strong WiFi, dedicated
@@ -122,9 +159,15 @@ search does `free_units × capacity`. Reconciled on prod 2026-09-10.
 | | `maya-ilai-studio` (Studio) | 2 | **8** | – |
 | | `superior-suite` | 6 | 1 | – |
 
-**Largest party each property can host:** My Amani 10 · Zuri 14 · Maya Kobe 16 ·
+**Largest party each property can host:** My Amani 10 · Zuri 14 · Maya Kobe 16* ·
 Enkare 10 · Sandbox 8 · Maya Ilai ~70 (across its unit types). *Tribal Dunes is the
 solar site behind the sustainability figures, not a bookable stay.*
+
+> **\*Maya Kobe discrepancy to confirm.** The sales book says Maya Kobe **sleeps
+> 12** (4 doubles × 2 + Prestige 4 = 12), but the live `maya-kobe-buyout` capacity
+> is **16**. The 12 is the defensible sum of the suites — the buyout should
+> probably be **12**, not 16. Confirm with the owner; if 12 is right, set
+> `maya-kobe-buyout` capacity = 12 (one-line data fix).
 
 ---
 
@@ -142,6 +185,33 @@ solar site behind the sustainability figures, not a bookable stay.*
 - **Watersports & sport** — kite lessons/rental/beach service; pickleball (in
   progress); golf proximity in Vipingo.
 - **Concierge** — safaris and full travel arrangements can be organised.
+
+### Curated experiences (Watamu / Zuri) — indicative prices
+Third-party, licensed operators; Tribal Sand facilitates only. **Prices are
+indicative and subject to change; park/conservation/museum fees are extra unless
+noted.** Present these as *"from ~$X, indicative, confirmed at booking"* — never as
+a firm quote. *(To make the AI quote these authoritatively, seed them into the
+`tours` table so `list_activities` returns them — see §9.)*
+
+| Experience | Party | From | Notes |
+|------------|-------|------|-------|
+| Watamu Marine Park snorkelling & dolphin watching | ≤10 | $40 pp | +$15 pp park; full day |
+| Scuba – certified, 2 dives | 2–6 | $95 pp | +$15 pp park; half day |
+| Discover Scuba (beginner) | 1–4 | $120 pp | +$15 pp park; half day |
+| Open Water certification course | 1–4 | $450 pp | 3–4 days |
+| Deep-sea fishing – half / full day | 1–5 | $550 / $900 per boat | 4 / 8 hrs |
+| Sunset dhow cruise – Mida Creek | 2–12 | $45 pp | 3 hrs; prosecco upgrade |
+| Arabuko Sokoke forest birdwatching | 2–6 | $50 pp | +~$10–15 pp entry |
+| Bio-Ken Snake Farm | flexible | $25 pp | +~$8–10 entry |
+| Gede Ruins historical tour | 2–6 | $35 pp | +~$10–15 entry |
+| Falconry experience | flexible | $30 pp | 1–2 hrs |
+| Turtle watch & conservation | small groups | $30 pp | seasonal |
+| Swahili cooking class with chef | 2–8 | $75 pp | 3–4 hrs |
+| Malindi tour – half day | 2–6 | $60 pp | 4 hrs |
+| Kitesurfing lessons / watersports (Tribal Kite School) | 1–4 / flexible | On request | lessons, gear, safety |
+
+*Guests need a valid passport / Kenyan ID for park entry; weather and sea
+conditions affect availability; advance booking recommended.*
 
 ---
 
@@ -246,3 +316,28 @@ Fixed via `bin/reconcile-capacity-units.php` (18 stray units deactivated; the tw
 NULL buyout capacities set to 16/8); the re-audit is clean. Enkare = 10 and My
 Amani = 10 are confirmed on prod; `superior-suite` is a real Maya Ilai room. See
 `docs/superpowers/plans/2026-09-10-ai-system-awareness.md`.
+
+---
+
+## 9. Data tasks — make the AI actually use these facts
+
+This KB is a reference; the live AI answers from the DB (tools + RAG). To turn the
+new sales-book facts into answers the concierge can give:
+
+1. **Tone + suggestion guidance → Admin → AI settings.** Paste §6 (voice +
+   matching logic) into `ai_persona_guest`, and the key brand facts into
+   `ai_extra_knowledge`. No code, effective immediately. (The hard rules still can't
+   be weakened.)
+2. **Per-property stay facts → so "is there WiFi/TV? B&B or self-catering?" works.**
+   Put board type, WiFi/no-TV, AC/mosquito-net, cot/high-chair, staff/nanny policy,
+   security hours into each venue's editable stay info (Admin → Properties →
+   Content/Stay) and/or `ai_extra_knowledge`. These reach the AI via RAG after a
+   reindex.
+3. **Curated experiences → the `tours` table (so `list_activities` quotes them).**
+   Seed the §4 experience list (name, `price` string e.g. "From $40 per person",
+   category, `location='watamu'`, duration, short description) via Admin → Activities
+   or a seed. Until then the AI can only mention them as *indicative* — it won't
+   quote a firm price (prices come only from tools, by design).
+4. **Confirm the Maya Kobe buyout capacity** (16 vs 12 — see §3) and correct if 12.
+5. **Reindex** (`bin/reindex-content.php`) after copy edits so RAG picks them up;
+   optionally add this KB file itself as a reindex source.
