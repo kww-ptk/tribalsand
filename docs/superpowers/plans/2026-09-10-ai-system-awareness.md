@@ -227,8 +227,11 @@ prompt can never contain it (regression-tested). Tool counts:
   `ai-rag-assistant-plan`, `ical-sync-and-prod-rds-access`, `booking-model-state`.
 - Code: `includes/db.php` (`ts_property_configurations`, `ts_rank_combos`,
   `count_available_units`), `includes/assistant-tools.php`, `includes/assistant-rag.php`.
-- `docs/ai/tribalsand-knowledge-base.md` — **rebuilt** (room/capacity/units truth
-  table + per-property fact sheet + tool map). Brand-narrative section is a TODO
-  needing the owner's March 2026 PDF. `docs/ai/ai-intelligence-strategy.md` was
+- `docs/ai/tribalsand-knowledge-base.md` — **complete**: full brand narrative +
+  per-property profiles & ideal guests (from the owner's 1 March 2026 PDF), the
+  room/capacity/units truth table, dining/activities/sustainability, and a
+  dedicated **Agent behaviour — how to suggest** section (voice, guest→property
+  matching, party-size logic, ecosystem upsell, booking hand-off).
+  `docs/ai/ai-intelligence-strategy.md` was
   also lost and is not rebuilt (it was a review/diagnosis doc, superseded by this
   plan's Problem section).
