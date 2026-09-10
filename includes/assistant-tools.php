@@ -326,7 +326,7 @@ function assistant_system_prompt(?array $venueScope, bool $withRag = false, stri
     // System-awareness tools (Phases B & D). Only mentioned when enabled, so the
     // default prompt is unchanged for callers that don't pass the flag.
     $factsLine = $withFacts
-        ? "\n- For a structured fact about a property — its room/suite count, how many rooms are individually bookable, the largest party it can host, the security deposit, checkout time, Wi-Fi, or location — call property_facts and answer from what it returns; never guess a count, an occupancy, or a deposit. The security deposit is collected at the property on arrival, never charged online.\n- For current offers/deals, restaurant menus, or whether a table can be reserved, call whats_on. For things to do (tours, experiences, activities and their prices), call list_activities. For the actual dishes/prices on a menu, call menu_details. For environmental figures (solar, CO₂, beach waste, water), call sustainability_facts. For paid on-property services (transfers, laundry), call list_services. In every case mention only what the tool returns and never invent an offer, activity, dish, price, service or figure.\n- To show a price in another currency, call convert_currency with a figure you already have — never do the conversion yourself, and remember the booking price stays the room's own currency. When the guest is flexible on dates, use find_next_availability to find the soonest opening rather than guessing."
+        ? "\n- For a structured fact about a property — its room/suite count, how many rooms are individually bookable, the largest party it can host, the security deposit, checkout time, Wi-Fi, or location — call property_facts and answer from what it returns; never guess a count, an occupancy, or a deposit. The security deposit is collected at the property on arrival, never charged online. property_facts room counts are bookable room-TYPES, not bedrooms — never state a bedroom count from it; give a bedroom count only if it appears in your business notes, otherwise say you don't have it.\n- For current offers/deals, restaurant menus, or whether a table can be reserved, call whats_on. For things to do (tours, experiences, activities and their prices), call list_activities. For the actual dishes/prices on a menu, call menu_details. For environmental figures (solar, CO₂, beach waste, water), call sustainability_facts. For paid on-property services (transfers, laundry), call list_services. In every case mention only what the tool returns and never invent an offer, activity, dish, price, service or figure.\n- To show a price in another currency, call convert_currency with a figure you already have — never do the conversion yourself, and remember the booking price stays the room's own currency. When the guest is flexible on dates, use find_next_availability to find the soonest opening rather than guessing."
         : '';
     $staffOpsLine = $withStaffOps
         ? "\n- You also have internal STAFF tools: occupancy_report (revenue/occupancy from the bookings ledger) and daily_operations (today's arrivals/departures + reservation counts). Use them for management questions. This is internal data for staff only — never a figure to invent."
@@ -653,14 +653,20 @@ function assistant_tool_property_facts(array $args, ?array $venueScope): array {
             ];
         }
 
+        $allEntire = count($rooms) > 0;
+        foreach ($rooms as $r) { if (empty($r['is_entire_place'])) { $allEntire = false; break; } }
         $fact = [
             'property'         => $v['name'],
             'slug'             => $v['slug'],
             'location'         => trim((string)($v['location'] ?? '')) ?: null,
-            'total_rooms'      => count($rooms),
+            'booking_model'    => $allEntire ? 'whole-property (booked as one unit)' : 'individual rooms',
+            'bookable_room_types' => count($rooms),   // number of bookable room TYPES, NOT bedrooms
+            'total_rooms'      => count($rooms),       // kept for back-compat; same as bookable_room_types
             'bookable_rooms'   => $bookable,
             'max_occupancy'    => assistant_static_max_capacity($rooms) ?: null,
             'rooms'            => $roomList,
+            // Guard the model against reading a room-type count as a bedroom count.
+            'note'             => 'Counts here are bookable room-types, not bedrooms. Do not state a bedroom count from this tool; give one only from provided business notes.',
         ];
 
         // Optional, pre-migration-safe extras.
