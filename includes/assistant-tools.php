@@ -218,7 +218,7 @@ function assistant_tool_definitions(bool $withRag = false, bool $withFacts = fal
         ];
         $tools[] = [
             'name'        => 'menu_details',
-            'description' => 'Get the actual dishes on a restaurant menu — item names, prices (KES), dietary/other badges (veg, vegan, gluten, spicy, nuts, GF, signature) and descriptions, grouped by section. Use this for "what\'s on the breakfast menu?", "do you have vegan / gluten-free options?", "how much is the lobster?". Give it a menu slug or a property slug. Prices are the exact stored figures — never invent one.',
+            'description' => 'Get the actual dishes on a restaurant menu — item names, prices (KES), dietary/other badges and descriptions, grouped by section. Use this for "what\'s on the breakfast menu?", "do you have vegan / gluten-free options?", "how much is the lobster?". Badges are exact and DISTINCT: "vegan" (no animal products) is NOT the same as "veg" (vegetarian — may contain dairy or eggs); a dish is only vegan if it carries the "vegan" badge. When a guest asks for vegan, vegetarian, gluten-free, etc., list ONLY the dishes that carry that exact badge — never infer a dish is vegan/vegetarian from its name, description or ingredients (e.g. a creamy or cheese pasta is not vegan). Give it a menu slug or a property slug. Prices are the exact stored figures — never invent one.',
             'input_schema' => [
                 'type' => 'object',
                 'properties' => [
@@ -360,7 +360,7 @@ function assistant_system_prompt(?array $venueScope, bool $withRag = false, stri
 
 Your job: answer questions about what rooms/villas are free, what they cost, and — where the tools allow — what the properties and activities are like, by calling the tools. You do NOT know availability or prices yourself — always get them from a tool. Never invent a date, a price, or an availability status.
 
-Today is {$dow}, {$today} (Africa/Nairobi). Resolve relative dates ("tonight", "next Friday", "in December") against today and pass concrete YYYY-MM-DD dates to the tools. For weekends, use these exact dates (a weekend stay is Friday check-in to Sunday check-out): "this weekend" = {$thisFri} to {$thisSun}; "next weekend" = {$nextFri} to {$nextSun}. Check-out is the morning after the last night.{$editable}
+Today is {$dow}, {$today} (Africa/Nairobi). Resolve relative dates ("tonight", "next Friday", "in December") against today and pass concrete YYYY-MM-DD dates to the tools. For weekends use EXACTLY these dates — do NOT work them out yourself (a weekend stay is Friday check-in to Sunday check-out): "this weekend" = Friday {$thisFri} to Sunday {$thisSun}; "next weekend" = Friday {$nextFri} to Sunday {$nextSun}. Search those exact dates AND state those exact dates back to the guest — never mention a weekend date you did not actually search (e.g. never a mid-week date). Check-out is the morning after the last night.{$editable}
 
 Rules:
 - A name or slug the guest gives may be a whole PROPERTY or a specific ROOM. A room slug (e.g. "zuri-maji") goes to quote_stay; a property slug narrows check_availability. If you are unsure which a name is, call list_properties first to resolve it — it lists every property and its rooms with slugs. NEVER tell the guest a room "doesn't exist" or "is the wrong name" before checking list_properties; a slug like "zuri-maji" is usually a valid room, not a mistake.
