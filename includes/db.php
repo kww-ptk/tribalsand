@@ -1000,7 +1000,7 @@ function ts_search_availability(string $check_in, string $check_out, int $guests
  * count_available_units() already returns 0 for a room type blocked by the whole-
  * villa (or vice-versa). $rooms may be passed in to avoid a re-query.
  */
-function ts_property_configurations(array $venue, string $check_in, string $check_out, int $guests, ?array $rooms = null): array {
+function ts_property_configurations(array $venue, string $check_in, string $check_out, int $guests, ?array $rooms = null, bool $always_combos = false): array {
     if ($guests < 1) $guests = 1;
     if ($rooms === null) {
         $rooms = db_query(
@@ -1064,8 +1064,15 @@ function ts_property_configurations(array $venue, string $check_in, string $chec
     }
 
     // Combos are the fallback for a party no single room fits — offered even when
-    // the whole place is free (it may be cheaper than the buyout).
-    $combos = $singles ? [] : ts_rank_combos($inventory, $guests);
+    // the whole place is free (it may be cheaper than the buyout). With
+    // $always_combos, ALSO offer them when a single room fits (e.g. two doubles
+    // for 4 guests as a cheaper alternative to one quad) — but then only genuine
+    // MULTI-room combos, since a 1-unit combo just duplicates a listed single.
+    if ($always_combos) {
+        $combos = ts_rank_combos($inventory, $guests, 3, $singles ? 2 : 1);
+    } else {
+        $combos = $singles ? [] : ts_rank_combos($inventory, $guests);
+    }
 
     return [
         'singles'      => $singles,
@@ -1085,7 +1092,7 @@ function ts_property_configurations(array $venue, string $check_in, string $chec
  * cannot host the party for the window. A candidate mixing currencies is dropped
  * (money is never summed across currencies).
  */
-function ts_rank_combos(array $inventory, int $guests, int $limit = 3): array {
+function ts_rank_combos(array $inventory, int $guests, int $limit = 3, int $minUnits = 1): array {
     if ($guests < 1 || !$inventory) return [];
 
     // Feasibility: even every free unit together must reach the party size.
@@ -1145,6 +1152,13 @@ function ts_rank_combos(array $inventory, int $guests, int $limit = 3): array {
             'capacity' => $cap,
             'waste'    => $cap - $guests,
         ];
+    }
+
+    // Optionally drop trivial combos that use fewer than $minUnits units — a
+    // 1-unit "combo" is just a single room, already listed elsewhere. Filter
+    // BEFORE the slice so a 1-unit candidate can't push a real combo out of top-N.
+    if ($minUnits > 1) {
+        $combos = array_values(array_filter($combos, fn($c) => (int)$c['units'] >= $minUnits));
     }
 
     // Rank: fewest units, then least waste, then cheapest.

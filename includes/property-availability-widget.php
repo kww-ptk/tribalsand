@@ -70,7 +70,8 @@ $__pa_uid = 'pa' . substr(md5($__pav['slug']), 0, 6);   // unique id base if two
 .pa-opt{border:1px solid #e7ded7;border-radius:10px;padding:12px 14px;background:#fff}
 .pa-opt.is-entire{border-color:#b8965a;background:#fcf9f3}
 .pa-opt__main{display:flex;gap:12px;align-items:center;justify-content:space-between}
-.pa-opt__thumb{width:64px;height:64px;flex:0 0 auto;border-radius:8px;object-fit:cover;background:#f4efe9}
+.pa-opt__thumb{flex:1 1 0;min-width:120px;height:92px;border-radius:8px;object-fit:cover;background:#f4efe9;cursor:pointer;display:block}
+.pa-opt__thumb:focus-visible{outline:2px solid #1E5C6B;outline-offset:2px}
 .pa-opt__head{margin-bottom:8px}
 .pa-opt__right{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:6px;text-align:right}
 .pa-opt__top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
@@ -320,6 +321,18 @@ if (empty($GLOBALS['__pa_modal_done'])) {
           '<div class="pa-opt__price"><b>' + moneyHtml(o.total, o.currency) + '</b><small>' + nightsTxt + '</small></div>' +
           '</div>' +
           '</div>');
+        // Clicking the photo opens the SAME per-room lightbox the room cards use
+        // (rrOpenLb, defined by includes/rooms-and-rates.php on these pages). No-ops
+        // gracefully if that gallery isn't present or the room has no photos.
+        var img = main.querySelector('.pa-opt__thumb');
+        if (img) {
+          img.setAttribute('role', 'button');
+          img.setAttribute('tabindex', '0');
+          img.setAttribute('aria-label', 'View photos of ' + o.name);
+          var openGallery = function () { if (typeof window.rrOpenLb === 'function') window.rrOpenLb(o.slug, 0); };
+          img.addEventListener('click', openGallery);
+          img.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openGallery(); } });
+        }
         var btn = el('<button type="button" class="pa-opt__btn pa-opt__btn--inline">Select ' + (isEntire ? 'property' : 'this room') + '</button>');
         btn.addEventListener('click', function () {
           if (typeof window.tsOpenBookingModal === 'function') {

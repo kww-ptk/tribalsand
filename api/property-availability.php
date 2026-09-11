@@ -47,7 +47,10 @@ $adults   = max(0, (int)($_GET['adults']   ?? 0));
 $children = max(0, (int)($_GET['children'] ?? 0));
 $guests   = max(1, $adults + $children);
 
-$cfg = ts_property_configurations($venue, $ci, $co, $guests);
+// $always_combos = true: on the property page we also suggest multi-room
+// combinations when a single room fits (e.g. two doubles for a party of 4),
+// since a combo can be cheaper than the one larger room.
+$cfg = ts_property_configurations($venue, $ci, $co, $guests, null, true);
 
 $nights = (int)((strtotime($co) - strtotime($ci)) / 86400);
 
