@@ -69,12 +69,17 @@ $__pa_uid = 'pa' . substr(md5($__pav['slug']), 0, 6);   // unique id base if two
 .pa-sec-h{font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;color:#b8965a;font-weight:700;margin:4px 0 0}
 .pa-opt{border:1px solid #e7ded7;border-radius:10px;padding:12px 14px;background:#fff}
 .pa-opt.is-entire{border-color:#b8965a;background:#fcf9f3}
+.pa-opt__main{display:flex;gap:12px;align-items:center;justify-content:space-between}
+.pa-opt__thumb{width:64px;height:64px;flex:0 0 auto;border-radius:8px;object-fit:cover;background:#f4efe9}
+.pa-opt__head{margin-bottom:8px}
+.pa-opt__right{flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:6px;text-align:right}
 .pa-opt__top{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
 .pa-opt__name{font-weight:600;color:#102F3A}
 .pa-opt__cap{font-size:.74rem;color:#8a8173}
 .pa-opt__price b{font-family:'Cormorant Garamond',serif;font-size:1.3rem;color:#102F3A;line-height:1}
 .pa-opt__price small{display:block;font-size:.68rem;color:#8a8173;text-align:right}
 .pa-opt__btn{margin-top:10px;width:100%;padding:9px 12px;border:none;border-radius:8px;background:#1E5C6B;color:#fff;font-weight:600;font-size:.86rem;cursor:pointer}
+.pa-opt__btn--inline{margin-top:0;width:auto;white-space:nowrap;padding:8px 12px;font-size:.8rem}
 .pa-opt__btn--ghost{background:#fff;color:#1E5C6B;border:1px solid #1E5C6B}
 .pa-combo__rooms{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
 .pa-chip{display:inline-flex;gap:6px;align-items:center;background:#f4efe9;border:1px solid #e7ded7;border-radius:999px;padding:4px 10px;font-size:.78rem;color:#102F3A}
@@ -184,9 +189,19 @@ if (empty($GLOBALS['__pa_modal_done'])) {
 <?php if (empty($GLOBALS['__pa_js_done'])): $GLOBALS['__pa_js_done'] = true; ?>
 <script>
 (function () {
+  // Plain-text price in the visitor's CURRENT currency (for enquiry-email text).
   function money(amount, cur) {
+    if (typeof window.tsMoney === 'function') return window.tsMoney(amount, cur);
     var n = Math.round(Number(amount) || 0).toLocaleString('en-US');
     return (cur === 'USD' || !cur) ? '$' + n : cur + ' ' + n;
+  }
+  // Same figure as an HTML <span class="ts-price"> that js/currency.js re-renders
+  // instantly when the visitor switches currency — used for on-screen prices.
+  // Each room converts from ITS OWN base currency; the booking is still charged
+  // in that base currency (o.currency is passed to the booking modal unchanged).
+  function moneyHtml(amount, cur) {
+    if (typeof window.tsPriceSpan === 'function') return window.tsPriceSpan(amount, cur);
+    return money(amount, cur);
   }
   function el(html) { var t = document.createElement('template'); t.innerHTML = html.trim(); return t.content.firstChild; }
 
@@ -297,12 +312,15 @@ if (empty($GLOBALS['__pa_modal_done'])) {
 
       function optCard(o, isEntire) {
         var card = el('<div class="pa-opt' + (isEntire ? ' is-entire' : '') + '"></div>');
-        card.appendChild(el('<div class="pa-opt__top">' +
-          '<div><div class="pa-opt__name">' + esc(o.name) + '</div>' +
-          (o.capacity ? '<div class="pa-opt__cap">Sleeps up to ' + o.capacity + '</div>' : '') + '</div>' +
-          '<div class="pa-opt__price"><b>' + money(o.total, o.currency) + '</b><small>' + nightsTxt + '</small></div>' +
-          '</div>'));
-        var btn = el('<button type="button" class="pa-opt__btn' + (isEntire ? '' : '') + '">Select ' + (isEntire ? 'the whole property' : 'this room') + '</button>');
+        card.appendChild(el('<div class="pa-opt__head"><div class="pa-opt__name">' + esc(o.name) + '</div>' +
+          (o.capacity ? '<div class="pa-opt__cap">Sleeps up to ' + o.capacity + '</div>' : '') + '</div>'));
+        var thumb = o.hero ? '<img class="pa-opt__thumb" src="' + esc(o.hero) + '" alt="' + esc(o.name) + '" loading="lazy">' : '';
+        var main = el('<div class="pa-opt__main">' + thumb +
+          '<div class="pa-opt__right">' +
+          '<div class="pa-opt__price"><b>' + moneyHtml(o.total, o.currency) + '</b><small>' + nightsTxt + '</small></div>' +
+          '</div>' +
+          '</div>');
+        var btn = el('<button type="button" class="pa-opt__btn pa-opt__btn--inline">Select ' + (isEntire ? 'property' : 'this room') + '</button>');
         btn.addEventListener('click', function () {
           if (typeof window.tsOpenBookingModal === 'function') {
             window.tsOpenBookingModal(o.slug, venueName + ' — ' + o.name, o.price, o.currency, prefill);
@@ -310,7 +328,8 @@ if (empty($GLOBALS['__pa_modal_done'])) {
             window.location.href = '/search?checkin=' + ci + '&checkout=' + co + '&adults=' + data.adults + '&children=' + data.children;
           }
         });
-        card.appendChild(btn);
+        main.querySelector('.pa-opt__right').appendChild(btn);
+        card.appendChild(main);
         return card;
       }
 
@@ -327,11 +346,11 @@ if (empty($GLOBALS['__pa_modal_done'])) {
           var roomsText = [];
           combo.rooms.forEach(function (cr) {
             var label = cr.name + (cr.units_used > 1 ? ' ×' + cr.units_used : '');
-            roomsWrap.appendChild(el('<span class="pa-chip">' + esc(label) + ' <small>' + money(cr.total, cr.currency) + '</small></span>'));
+            roomsWrap.appendChild(el('<span class="pa-chip">' + esc(label) + ' <small>' + moneyHtml(cr.total, cr.currency) + '</small></span>'));
             roomsText.push('• ' + label + ' — ' + money(cr.total, cr.currency));
           });
           card.appendChild(el('<div class="pa-opt__top"><div class="pa-opt__name">Combination · sleeps ' + combo.capacity + '</div>' +
-            '<div class="pa-opt__price"><b>' + money(combo.total, combo.currency) + '</b><small>' + nightsTxt + ' total</small></div></div>'));
+            '<div class="pa-opt__price"><b>' + moneyHtml(combo.total, combo.currency) + '</b><small>' + nightsTxt + ' total</small></div></div>'));
           card.appendChild(roomsWrap);
           var btn = el('<button type="button" class="pa-opt__btn pa-opt__btn--ghost">Request these rooms</button>');
           btn.addEventListener('click', function () {
