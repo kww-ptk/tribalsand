@@ -121,3 +121,100 @@ function maya_ilai_pricing_save(array $state): array {
     set_setting(MAYA_ILAI_SETTING_KEY, json_encode($clean, JSON_UNESCAPED_SLASHES));
     return $clean;
 }
+
+/** Nightly rate for a unit type in a season (standard applies the reduction). */
+function maya_ilai_rate(array $cfg, string $key, string $season): float {
+    $base = (float)($cfg['rates'][$key] ?? 0);
+    return $season === 'standard' ? $base * (1 - (float)$cfg['rules']['standardReduction'] / 100) : $base;
+}
+
+/** Highest qualifying group discount % for a party size (0 unless min nights met). */
+function maya_ilai_group_discount(array $cfg, int $guests, int $nights): float {
+    if ($nights < (int)$cfg['rules']['minNights']) return 0.0;
+    $best = 0.0;
+    foreach ($cfg['groups'] as $g) {
+        if ($guests >= (int)$g['guests']) $best = max($best, (float)$g['discount']);
+    }
+    return $best;
+}
+
+/** Availability band matching a units-available count. */
+function maya_ilai_availability_band(array $cfg, int $units): array {
+    foreach ($cfg['availability'] as $b) {
+        if ($units >= (int)$b['min'] && $units <= (int)$b['max']) return $b;
+    }
+    return end($cfg['availability']) ?: ['min'=>0,'max'=>0,'adjustment'=>0,'label'=>'Sold out'];
+}
+
+/**
+ * Quote a Maya Ilai stay — the faithful PHP port of the tool's quote() logic, so
+ * the guest booking flow and the staff tool price identically from the same
+ * saved config (maya_ilai_pricing_get()). This is the ONE pricing path for Maya
+ * Ilai; never add a second calculation.
+ *
+ * $sel: qtyDouble,qtyBunk,qtyStudio,qtyVilla,qtyLiving,
+ *       guestDouble,guestBunk,guestStudio,guestVilla,
+ *       nights, season ('high'|'standard'), program ('group'|'availability'|'none'),
+ *       availableUnits (for the availability program).
+ * Returns a full breakdown incl. 'errors' and 'total'.
+ */
+function maya_ilai_quote(array $sel, ?array $cfg = null): array {
+    $cfg = $cfg ?: maya_ilai_pricing_get();
+    $r = $cfg['rules'];
+    $n = fn($k) => max(0, (int)($sel[$k] ?? 0));
+
+    $season  = ($sel['season'] ?? 'high') === 'standard' ? 'standard' : 'high';
+    $nights  = max(1, (int)($sel['nights'] ?? 1));
+    $program = in_array(($sel['program'] ?? 'group'), ['group','availability','none'], true) ? $sel['program'] : 'group';
+
+    $q = ['double'=>$n('qtyDouble'),'bunk'=>$n('qtyBunk'),'studio'=>$n('qtyStudio'),'villa'=>$n('qtyVilla'),'living'=>$n('qtyLiving')];
+    $g = ['double'=>$n('guestDouble'),'bunk'=>$n('guestBunk'),'studio'=>$n('guestStudio'),'villa'=>$n('guestVilla')];
+    $guests   = $g['double'] + $g['bunk'] + $g['studio'] + $g['villa'];
+    $capacity = $q['double']*2 + $q['bunk']*(int)$r['bunkMax'] + $q['studio']*2 + $q['villa']*(int)$r['villaMax'];
+
+    $rate = fn($k) => maya_ilai_rate($cfg, $k, $season);
+    $singleRooms = max(0, min($q['double'], 2*$q['double'] - $g['double']));
+    $doubleBase = ($q['double'] - $singleRooms)*$rate('double') + $singleRooms*$rate('double')*(1 - (float)$r['singleDiscount']/100);
+    $base = $doubleBase + $q['bunk']*$rate('bunk') + $q['studio']*$rate('studio') + $q['villa']*$rate('villa') + $q['living']*$rate('living');
+
+    $bunkExtra  = max(0, $g['bunk']  - $q['bunk'] *(int)$r['bunkIncluded'])  * (float)$r['bunkExtra'];
+    $villaExtra = max(0, $g['villa'] - $q['villa']*(int)$r['villaIncluded']) * (float)$r['bunkExtra'];
+    $supplements = $bunkExtra + $villaExtra;
+
+    $adjustment = 0.0; $adjustmentLabel = 'No adjustment'; $sold = false;
+    if ($program === 'group') {
+        $adjustment = -maya_ilai_group_discount($cfg, $guests, $nights);
+        $adjustmentLabel = $nights < (int)$r['minNights'] ? "Minimum {$r['minNights']} nights not met" : 'Group discount';
+    } elseif ($program === 'availability') {
+        $band = maya_ilai_availability_band($cfg, max(0, (int)($sel['availableUnits'] ?? 0)));
+        $sold = (int)$band['max'] === 0;
+        $adjustment = (float)$band['adjustment'];
+        $adjustmentLabel = (string)$band['label'];
+    }
+
+    $adjustedBase = $base * (1 + $adjustment/100);
+    $nightly = $adjustedBase + $supplements;
+    $eco = $guests * (float)$r['ecoFee'];
+    $total = $sold ? 0.0 : $nightly*$nights + $eco;
+
+    // Validation mirrors the tool.
+    $errors = [];
+    if ($g['double'] > $q['double']*2 || $g['double'] < $q['double']) $errors[] = 'Double Room guests must be 1–2 per selected room.';
+    if ($g['bunk']  > $q['bunk']*(int)$r['bunkMax']  || $g['bunk']  < $q['bunk'])  $errors[] = "Bunk guests must be 1–{$r['bunkMax']} per selected room.";
+    if ($g['studio']> $q['studio']*2 || $g['studio']< $q['studio']) $errors[] = 'Studio guests must be 1–2 per selected studio.';
+    if ($g['villa'] > $q['villa']*(int)$r['villaMax'] || $g['villa'] < $q['villa']) $errors[] = "Villa guests must be 1–{$r['villaMax']} per selected villa.";
+    $requiredVillas = max((int)ceil($q['double'] / max(1,(int)$cfg['inventory']['doublePerVilla'])), $q['bunk'], $q['living']);
+    $physicalVillas = $q['villa'] + $requiredVillas;
+    if ($physicalVillas > (int)$cfg['inventory']['villas']) $errors[] = "Needs {$physicalVillas} villas; only {$cfg['inventory']['villas']} available.";
+    if ($q['studio'] > (int)$cfg['inventory']['studios']) $errors[] = "Only {$cfg['inventory']['studios']} studios available.";
+    if (!$guests) $errors[] = 'Add at least one guest.';
+    if ($sold) $errors[] = 'The selected availability band is sold out.';
+
+    return [
+        'season'=>$season,'nights'=>$nights,'program'=>$program,'q'=>$q,'g'=>$g,
+        'guests'=>$guests,'capacity'=>$capacity,'base'=>round($base,2),'supplements'=>round($supplements,2),
+        'adjustment'=>$adjustment,'adjustmentLabel'=>$adjustmentLabel,'nightly'=>round($nightly,2),
+        'eco'=>round($eco,2),'total'=>round($total,2),'sold'=>$sold,'errors'=>$errors,
+        'currency'=>'USD',
+    ];
+}

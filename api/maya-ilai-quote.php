@@ -1,0 +1,43 @@
+<?php
+/**
+ * Public Maya Ilai quote endpoint (JSON, read-only).
+ * POST a room/guest selection → returns the priced breakdown from the SAME
+ * server-side calculation the staff tool uses (maya_ilai_quote over the saved
+ * config). No writes, no auth — it only prices; booking happens via the enquiry.
+ */
+declare(strict_types=1);
+require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/maya-ilai-pricing.php';
+
+header('Content-Type: application/json');
+header('Access-Control-Allow-Origin: *');
+header('Access-Control-Allow-Methods: POST, OPTIONS');
+header('Access-Control-Allow-Headers: Content-Type');
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') { http_response_code(204); exit; }
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(405); exit(json_encode(['ok'=>false,'error'=>'Method not allowed'])); }
+
+if (!maya_ilai_pricing_supported()) { http_response_code(503); exit(json_encode(['ok'=>false,'error'=>'Pricing unavailable.'])); }
+
+$data = json_decode(file_get_contents('php://input'), true) ?? [];
+
+// Guests always default to filling the selected rooms if not specified, so a
+// simple "1 villa" request still prices sensibly.
+$cfg = maya_ilai_pricing_get();
+$quote = maya_ilai_quote([
+    'qtyDouble'   => (int)($data['qtyDouble']   ?? 0),
+    'qtyBunk'     => (int)($data['qtyBunk']     ?? 0),
+    'qtyStudio'   => (int)($data['qtyStudio']   ?? 0),
+    'qtyVilla'    => (int)($data['qtyVilla']    ?? 0),
+    'qtyLiving'   => (int)($data['qtyLiving']   ?? 0),
+    'guestDouble' => (int)($data['guestDouble'] ?? 0),
+    'guestBunk'   => (int)($data['guestBunk']   ?? 0),
+    'guestStudio' => (int)($data['guestStudio'] ?? 0),
+    'guestVilla'  => (int)($data['guestVilla']  ?? 0),
+    'nights'      => (int)($data['nights']      ?? 1),
+    // Guests always get the published (high) rate and automatic group discounts;
+    // availability surcharges are a staff/revenue lever, not shown to guests.
+    'season'      => 'high',
+    'program'     => 'group',
+], $cfg);
+
+echo json_encode(['ok'=>true, 'quote'=>$quote]);

@@ -472,8 +472,14 @@ include __DIR__ . '/includes/property-gallery.php';
 
     <div class="divider"></div>
 
-    <!-- Bookable room types (DB-driven rates + availability) -->
-    <?php $rr_venue_slug = 'maya_ilai'; include __DIR__ . '/includes/rooms-and-rates.php'; ?>
+    <!-- Bookable units — full pricing parity configurator -->
+    <div class="sec" id="book-config" style="scroll-margin-top:90px">
+      <div class="sec-label">Build Your Stay</div>
+      <h2 class="sec-h">Choose Your <em>Units &amp; Guests</em></h2>
+      <div class="sec-rule"></div>
+      <p class="sec-p" style="margin-bottom:1.4rem">Mix villas, studios, bunk and double rooms to fit your group. The price updates live and includes group discounts for larger parties, extra-guest charges and the Eco-Resort Fee.</p>
+      <?php include __DIR__ . '/includes/maya-ilai-booking.php'; ?>
+    </div>
 
     <div class="divider"></div>
 
@@ -820,7 +826,11 @@ include __DIR__ . '/includes/property-photo-grid.php';
         <div class="sidebar-age-notice" style="padding:1rem 1.4rem .5rem;font-size:.72rem;color:var(--mid);border-bottom:1px solid var(--border)">
           <strong>Adults only — min. age 16.</strong> Guests 16–17 may stay unaccompanied.
         </div>
-        <?php $pa_venue_slug = 'maya_ilai'; include __DIR__ . '/includes/property-availability-widget.php'; ?>
+        <div style="padding:1.3rem 1.4rem">
+          <p style="font-size:.9rem;color:var(--mid);line-height:1.6;margin-bottom:1rem">Build a stay from villas, studios, bunk and double rooms — with live pricing, group discounts and the Eco-Resort Fee included.</p>
+          <a href="#book-config" class="btn-book-full" style="text-decoration:none">Build your stay &amp; get a price →</a>
+          <a href="#book-config" class="btn-ghost-full" style="text-decoration:none">Full compound buyout? Start here</a>
+        </div>
       </div>
 
       <!-- Policy accordion -->
