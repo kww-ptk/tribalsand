@@ -341,6 +341,29 @@ git commit -m "feat(maya-ilai): product component map and resolution"
 
 Pack tight so whole villas stay intact; skip reserved villas for component products; prefer reserved villas when selling the whole villa.
 
+> **SHIPPED WITH REVISIONS — the code below is the first draft, not what is on the
+> branch.** Two rounds of review changed it. The differences that matter to later
+> tasks:
+>
+> - **`mi_order_villas()` takes no `$totalVillas`.** Its real signature is
+>   `mi_order_villas(array $villas, bool $isVillaProduct, int $reserved)`; the total
+>   is derived from `count($villas)`. A caller-supplied total could disagree with
+>   the list it described, and when it did it failed **open** — with one villa
+>   deactivated, a ring-fenced villa became sellable to component products.
+>   `$villas` must therefore be the COMPLETE villa set, never a filtered subset.
+> - **`mi_villa_is_reserved()` takes a 1-based `$rank`, not a raw `sort_order`.**
+>   `units.sort_order` is `NOT NULL DEFAULT 0`, so an admin-added unit lands at 0
+>   and the "last N by sort order" arithmetic silently shrank the ring-fence.
+>   `mi_order_villas()` sorts by `sort_order` (tiebreaking on `unit_id`) and derives
+>   rank from position.
+> - **`mi_resolve()` fails closed.** An empty pattern returns `null`, and the
+>   component vocabulary is closed to `double`/`bunk`/`living`.
+> - **`mi_block_taken_components(?string): array` was added** — it owns the
+>   NULL-means-whole-unit rule so no caller can get it wrong. Use it, never
+>   `mi_pg_array_decode()`, when reading a stored block.
+>
+> Tasks 5 and 8 below already reflect the revised signatures.
+
 **Files:**
 - Modify: `includes/maya-ilai-inventory.php`
 - Modify: `tests/maya_ilai_inventory.php`
@@ -634,9 +657,10 @@ function mi_villa_states(int $villaRoomId, string $check_in, string $check_out):
     foreach ($blocks as $b) {
         $uid = (int)$b['unit_id'];
         if (!isset($states[$uid])) continue;
-        $comp = $b['components'] === null
-            ? MAYA_ILAI_ALL_COMPONENTS
-            : mi_pg_array_decode($b['components']);
+        // mi_block_taken_components() owns the NULL-means-whole-unit rule. Do NOT
+        // call mi_pg_array_decode() directly here — it returns [] for NULL, which
+        // reads as "nothing is taken" and would oversell the villa.
+        $comp = mi_block_taken_components($b['components']);
         $states[$uid]['taken'] = array_values(array_unique(
             array_merge($states[$uid]['taken'], $comp)
         ));
@@ -662,11 +686,12 @@ function mi_find_villa_unit(array $room, string $check_in, string $check_out): a
     $states = mi_villa_states($villaRoomId, $check_in, $check_out);
     if (!$states) return false;
 
+    // mi_order_villas() derives the villa total from the list it is given, so
+    // $states MUST be the complete villa set — never a pre-filtered subset.
     $reserved = max(0, (int) setting('maya_ilai_reserved_villas', '2'));
     $ordered  = mi_order_villas(
         array_values($states),
         $room['slug'] === MAYA_ILAI_VILLA_ROOM_SLUG,
-        count($states),
         $reserved
     );
 
@@ -1064,12 +1089,8 @@ function mi_blocked_dates(array $room, string $from, string $to): array {
     )->fetchColumn();
     if (!$villaRoomId) return [];
 
-    $reserved     = max(0, (int) setting('maya_ilai_reserved_villas', '2'));
-    $isVilla      = $room['slug'] === MAYA_ILAI_VILLA_ROOM_SLUG;
-    $totalVillas  = (int) db_query(
-        'SELECT COUNT(*) FROM units WHERE room_id = :r AND is_active = TRUE',
-        [':r' => $villaRoomId]
-    )->fetchColumn();
+    $reserved = max(0, (int) setting('maya_ilai_reserved_villas', '2'));
+    $isVilla  = $room['slug'] === MAYA_ILAI_VILLA_ROOM_SLUG;
 
     $blocked = [];
     $d   = new DateTime($from);
@@ -1079,7 +1100,7 @@ function mi_blocked_dates(array $room, string $from, string $to): array {
         $next  = (clone $d)->modify('+1 day')->format('Y-m-d');
 
         $states  = mi_villa_states($villaRoomId, $night, $next);
-        $ordered = mi_order_villas(array_values($states), $isVilla, $totalVillas, $reserved);
+        $ordered = mi_order_villas(array_values($states), $isVilla, $reserved);
 
         $fits = false;
         foreach ($ordered as $villa) {

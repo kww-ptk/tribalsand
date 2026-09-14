@@ -135,6 +135,20 @@ remaining bedrooms in a villa that exists specifically to serve groups.
 
 - `includes/maya-ilai-inventory.php` — new. The component map, the villa ordering,
   the ring-fence rule, and component-intersection helpers. Pure functions, no I/O.
+  Two rules in here are load-bearing and fail **closed** by design, both after
+  review found them failing open:
+  - `mi_resolve()` returns `null` for an empty pattern and for any component
+    outside the closed `double`/`bunk`/`living` vocabulary. An unknown pattern must
+    never resolve to "fits, consumes nothing".
+  - `mi_block_taken_components()` is the **only** place that reads a stored block's
+    component set, because it owns the NULL-means-whole-unit rule.
+    `mi_pg_array_decode()` returns `[]` for NULL, which reads as "nothing is taken"
+    and would oversell the villa.
+
+  `mi_order_villas()` derives the villa total from the list it is passed, so callers
+  must hand it the complete villa set; and it ranks villas by position after sorting
+  on `sort_order`, never on the raw column, which is `NOT NULL DEFAULT 0` and so
+  cannot be assumed dense or 1-based.
 - `find_available_unit()` (`includes/db.php`) — a Maya Ilai branch; all other
   venues route through the existing query untouched.
 - `room_conflict_unit_ids()` — must not apply the venue-wide `is_entire_place`
