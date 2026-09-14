@@ -521,11 +521,14 @@ function room_conflict_unit_ids(array $room): array {
     $venue_id = $room['venue_id'] ?? null;
     if (!$venue_id) return [];
 
-    // Maya Ilai's exclusion is per-villa and handled by mi_find_villa_unit();
-    // the venue-wide buyout rule would block the whole property off one booking.
-    if (mi_is_composite_room($room)) return [];
-
     if (!empty($room['is_entire_place'])) {
+        // Maya Ilai's exclusion is per-villa and handled by mi_find_villa_unit();
+        // the venue-wide buyout rule would block the whole property off one
+        // booking. Narrow ON PURPOSE — only this direction is exempt. The other
+        // direction ("this room is blocked when the venue's whole-place room is
+        // booked") must keep working, or re-adding a compound buyout would let
+        // composite products sell villas out from under it.
+        if (mi_is_composite_room($room)) return [];
         $sql = "SELECT u.id FROM units u
                 JOIN rooms r ON r.id = u.room_id
                 WHERE r.venue_id = :vid AND r.id <> :rid AND u.is_active = TRUE";
