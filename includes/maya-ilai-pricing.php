@@ -697,6 +697,210 @@ function maya_ilai_offer_badge(array $offer, bool $isLead, bool $isCheapest): ar
     return ['badge' => '', 'tag' => '', 'why' => ''];
 }
 
+/* ──────────────────────── The photograph on an offer card ───────────────────
+ *
+ * The offer cards show a photograph of the configuration beside its details.
+ * Nothing here is hardcoded to a file: the photo comes from `room_images`,
+ * which is exactly what Admin → Rooms → <room> → Images already writes, so the
+ * cards improve as the owner uploads and no code changes when they do.
+ *
+ * A card with no photo is a CARD, not an error. Every lookup below fails soft —
+ * a missing table, a missing room, a missing image, an unreachable DB — and the
+ * card renders the single-column layout it had before. A quote must never fail
+ * because a photograph could not be found.
+ */
+
+/**
+ * Product key → `rooms.slug`.
+ *
+ * The pricing tool's products are named strings; the photo library is keyed by
+ * room. This is the one place the two vocabularies meet, and it is a map rather
+ * than a derivation because the room slugs are the owner's, not ours.
+ *
+ * 'Private Bunk Room' is listed but UNREACHABLE today: the bare bunk room is not
+ * a product a guest can select (see maya_ilai_products), so no generated
+ * configuration ever carries it as a unit and it can never be a dominant
+ * product. It appears here only INSIDE the Family Room, the Family Suite and
+ * the whole Villa, each of which has a room and a slug of its own. The entry is
+ * kept so that reinstating the standalone bunk room needs no change here.
+ */
+function maya_ilai_room_slugs(): array {
+    return [
+        'Three-Bedroom Villa'      => 'maya-ilai-villa',
+        'Studio'                   => 'maya-ilai-studio',
+        'Double Room'              => 'maya-ilai-double',
+        'One-Bedroom Suite'        => 'maya-ilai-one-bed-suite',
+        'Two-Bedroom Family Room'  => 'maya-ilai-family-room',
+        'Two-Bedroom Family Suite' => 'maya-ilai-family-suite',
+        'Two-Bedroom Suite'        => 'maya-ilai-two-bed-suite',
+        'Private Bunk Room'        => 'maya-ilai-bunk-room',
+    ];
+}
+
+/**
+ * Nightly rate of a product by name, summed from its parts at the live rates.
+ *
+ * This is NOT a second pricing path: it resolves nothing a guest is charged. It
+ * is the tie-breaker for "which of these rooms is the one worth photographing",
+ * and it reads the same rates maya_ilai_quote() does so the answer moves with
+ * an admin rate edit. Unknown key → 0, which simply loses every tie.
+ */
+function maya_ilai_product_rate(string $key, ?array $cfg = null): float {
+    $cfg = $cfg ?: maya_ilai_pricing_get();
+    foreach (maya_ilai_products($cfg) as $p) {
+        if ($p['key'] === $key) return maya_ilai_combo_rate($cfg, $p['parts']);
+    }
+    return 0.0;
+}
+
+/**
+ * The product a configuration is OF — the one whose photograph should front it.
+ *
+ * The rule: the product contributing the MOST UNITS, ties broken by the higher
+ * nightly rate, and (for determinism only, since two products never share both)
+ * by name. So "Villa + Studio" is one unit each and the villa's $1170 beats the
+ * studio's $390 — the card shows the villa; "2× Double Room" is one product at
+ * two units and shows the double.
+ *
+ * Units carry what the guest was offered, so a configuration built from a
+ * combination resolves to the combination's OWN room (the Family Suite has a
+ * room and photos of its own) rather than to the bedrooms it expands into.
+ *
+ * @return string|null the product key, or null for an offer with no units.
+ */
+function maya_ilai_dominant_product(array $units, ?array $cfg = null): ?string {
+    $cfg  = $cfg ?: maya_ilai_pricing_get();
+    $best = null; $bestQty = -1; $bestRate = -1.0;
+    foreach ($units as $u) {
+        $key = trim((string)($u['key'] ?? ''));
+        $qty = max(0, (int)($u['qty'] ?? 0));
+        if ($key === '' || $qty < 1) continue;
+        $rate = maya_ilai_product_rate($key, $cfg);
+        if ($qty > $bestQty
+            || ($qty === $bestQty && ($rate > $bestRate
+                || ($rate === $bestRate && $key < (string)$best)))) {
+            $best = $key; $bestQty = $qty; $bestRate = $rate;
+        }
+    }
+    return $best;
+}
+
+/**
+ * Every photograph the offer cards can possibly need, in ONE query.
+ *
+ * maya_ilai_suggest() runs on a guest keystroke, so the images cannot be looked
+ * up per offer per render. The candidate set is FIXED (the eight Maya Ilai
+ * rooms plus the venue's own first photo), so the whole library is fetched once
+ * and memoised for the request — the cost is one query whether the search
+ * returns one offer or eight, and whether it is called once or twenty times.
+ *
+ * Rooms are not filtered by `is_published`: the pricing tool sells these
+ * products regardless of whether the room has a public listing page, so an
+ * unpublished room should still contribute its photograph.
+ *
+ * Returns ['rooms' => slug => row, 'venue' => row|null]; on ANY failure both
+ * are empty and the cards simply carry no photo.
+ *
+ * @param bool $reload drop the memo (tests seed rows inside a transaction).
+ */
+function maya_ilai_photo_index(bool $reload = false): array {
+    static $idx = null;
+    if ($idx !== null && !$reload) return $idx;
+
+    $idx   = ['rooms' => [], 'venue' => null];
+    $slugs = array_values(maya_ilai_room_slugs());
+    $ph = []; $params = [];
+    foreach ($slugs as $i => $s) { $ph[] = ":s{$i}"; $params[":s{$i}"] = $s; }
+    $params[':vid'] = MAYA_ILAI_VENUE_ID;
+
+    // One statement, two sources: the hero (else first by sort order) image of
+    // each room, and the venue's own first image as the last-resort fallback.
+    // The venue row is tagged with an empty slug so the two are told apart.
+    $sql = "WITH room_pick AS (
+                SELECT r.slug AS slug,
+                       i.filename AS filename,
+                       COALESCE(i.alt_text, '') AS alt_text,
+                       COALESCE(r.name, '') AS name,
+                       ROW_NUMBER() OVER (PARTITION BY r.slug
+                                          ORDER BY COALESCE(i.is_hero, FALSE) DESC,
+                                                   i.sort_order ASC, i.id ASC) AS rn
+                FROM rooms r
+                JOIN room_images i ON i.room_id = r.id
+                WHERE r.slug IN (" . implode(',', $ph) . ")
+            )
+            SELECT slug, filename, alt_text, name FROM room_pick WHERE rn = 1
+            UNION ALL
+            SELECT * FROM (
+                SELECT ''::text AS slug, v.filename,
+                       COALESCE(v.alt_text, '') AS alt_text, ''::text AS name
+                FROM venue_images v
+                WHERE v.venue_id = :vid
+                ORDER BY COALESCE(v.is_hero, FALSE) DESC, v.sort_order ASC, v.id ASC
+                LIMIT 1
+            ) venue_pick";
+
+    try {
+        $GLOBALS['__mib_photo_queries'] = (int)($GLOBALS['__mib_photo_queries'] ?? 0) + 1;
+        foreach (db_query($sql, $params)->fetchAll() as $row) {
+            if (($row['slug'] ?? '') === '') $idx['venue'] = $row;
+            else                             $idx['rooms'][$row['slug']] = $row;
+        }
+    } catch (Throwable $e) {
+        // No table, no DB, no schema — no photographs. Never a broken quote.
+        $idx = ['rooms' => [], 'venue' => null];
+    }
+    return $idx;
+}
+
+/** How many times the photo index has actually hit the DB this request. */
+function maya_ilai_photo_query_count(): int {
+    return (int)($GLOBALS['__mib_photo_queries'] ?? 0);
+}
+
+/**
+ * The photograph for one offer: ['url','alt','source'], or null for none.
+ *
+ * Resolution order, and nothing else:
+ *   1. the dominant product's room — its hero image, else its first by sort order
+ *   2. the venue's own first image
+ *   3. null — and the card renders single-column, exactly as it did before
+ *
+ * The alt text is honest about which of those happened. A room's photo is
+ * labelled with the room (its own alt text, else the room's name, else the
+ * product); the VENUE fallback is labelled with the venue's alt text and never
+ * with the product name — that photo is the property, and captioning a general
+ * compound shot "Two-Bedroom Family Suite" would claim to show a room it does
+ * not show.
+ *
+ * ── TO DROP THE VENUE FALLBACK ────────────────────────────────────────────
+ * Delete the `$idx['venue']` branch. Cards then carry a photo only once the
+ * owner has uploaded one for that product, and show none until then.
+ */
+function maya_ilai_offer_photo(array $offer, ?array $cfg = null): ?array {
+    $key  = maya_ilai_dominant_product($offer['units'] ?? [], $cfg);
+    $idx  = maya_ilai_photo_index();
+    $slug = $key !== null ? (maya_ilai_room_slugs()[$key] ?? null) : null;
+
+    if ($slug !== null && isset($idx['rooms'][$slug])) {
+        $r   = $idx['rooms'][$slug];
+        $url = storage_url((string)$r['filename']);
+        if ($url !== '') {
+            return ['url'    => $url,
+                    'alt'    => ($r['alt_text'] !== '' ? $r['alt_text'] : ($r['name'] !== '' ? $r['name'] : $key)),
+                    'source' => 'room'];
+        }
+    }
+    if ($idx['venue']) {
+        $url = storage_url((string)$idx['venue']['filename']);
+        if ($url !== '') {
+            return ['url'    => $url,
+                    'alt'    => ($idx['venue']['alt_text'] !== '' ? $idx['venue']['alt_text'] : 'Maya Ilai'),
+                    'source' => 'venue'];
+        }
+    }
+    return null;
+}
+
 /**
  * Configurations that sleep $guests, whole stays first.
  *
@@ -878,11 +1082,18 @@ function maya_ilai_suggest(int $guests, int $nights, ?array $cfg = null, int $li
     if ($cheapAt !== 0 && in_array($cheapAt, $take, true)) $order[] = $cheapAt;
     foreach ($take as $i) if (!in_array($i, $order, true)) $order[] = $i;
 
+    // The photograph is resolved HERE, server-side, for the offers that are
+    // actually returned — the surface renders what it is handed rather than
+    // guessing which room a configuration is of. The whole library is one
+    // memoised query (maya_ilai_photo_index), so this loop adds no per-offer
+    // cost, and `photo` is null whenever there is nothing to show.
     $out = [];
     foreach ($order as $slot => $i) {
         $o = $offers[$i];
         unset($o['_units'], $o['_combo']);
-        $out[$slot] = $o + maya_ilai_offer_badge($o, $slot === 0 && $i === 0, $i === $cheapAt);
+        $out[$slot] = $o
+            + ['photo' => maya_ilai_offer_photo($o, $cfg)]
+            + maya_ilai_offer_badge($o, $slot === 0 && $i === 0, $i === $cheapAt);
     }
     return $out;
 }

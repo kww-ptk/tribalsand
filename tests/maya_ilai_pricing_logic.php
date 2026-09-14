@@ -709,5 +709,144 @@ foreach (maya_ilai_combos() as $c) {
     }
 }
 
+/* ── The photograph on an offer card ────────────────────────────────────────
+ *
+ * Pure first: which product a configuration is OF is decided from the units
+ * alone and needs no DB at all.
+ */
+check('dominant product: a single product is its own dominant one',
+    maya_ilai_dominant_product([['key' => 'Double Room', 'qty' => 1]], $D) === 'Double Room');
+check('dominant product: "2× Double Room" picks the double',
+    maya_ilai_dominant_product([['key' => 'Double Room', 'qty' => 2]], $D) === 'Double Room');
+// One unit each, so the tie falls to the higher nightly rate: the villa's 1170
+// against the studio's 390.
+check('dominant product: "Villa + Studio" picks the villa',
+    maya_ilai_dominant_product([['key' => 'Three-Bedroom Villa', 'qty' => 1],
+                                ['key' => 'Studio', 'qty' => 1]], $D) === 'Three-Bedroom Villa');
+check('dominant product: the order of the units does not decide it',
+    maya_ilai_dominant_product([['key' => 'Studio', 'qty' => 1],
+                                ['key' => 'Three-Bedroom Villa', 'qty' => 1]], $D) === 'Three-Bedroom Villa');
+// Units beat rate: three studios are what that stay is, whatever a villa costs.
+check('dominant product: more units beats a higher rate',
+    maya_ilai_dominant_product([['key' => 'Three-Bedroom Villa', 'qty' => 1],
+                                ['key' => 'Studio', 'qty' => 3]], $D) === 'Studio');
+check('dominant product: an offer with no units resolves to nothing',
+    maya_ilai_dominant_product([], $D) === null
+    && maya_ilai_dominant_product([['key' => 'Studio', 'qty' => 0]], $D) === null);
+
+// Every product the search can actually offer must have a room to photograph.
+$slugMap = maya_ilai_room_slugs();
+$unmapped = array_values(array_filter(array_column(maya_ilai_products($D), 'key'),
+    fn($k) => !isset($slugMap[$k])));
+check('every offerable product maps to a room slug' . ($unmapped ? ' (missing: ' . implode(', ', $unmapped) . ')' : ''),
+    $unmapped === []);
+// The bare bunk room is mapped but unreachable: it is not a product a guest can
+// select, so no generated configuration carries it as a unit and it can never
+// be a dominant product. The entry survives for the day that changes.
+check('the bunk room has a slug but can never be a dominant product',
+    isset($slugMap['Private Bunk Room'])
+    && !array_filter(maya_ilai_products($D), fn($p) => $p['key'] === 'Private Bunk Room'));
+
+/*
+ * Then the resolution chain, against real rows. Everything below is seeded
+ * inside ONE transaction that is rolled back, so the database is left exactly
+ * as it was found — including the venue photographs the chain's second step
+ * needs temporarily removed.
+ */
+$photoTx = false;
+try { db()->beginTransaction(); $photoTx = true; }
+catch (Throwable $e) { echo "\nSKIP  no DB — offer-photograph assertions skipped\n"; }
+
+if ($photoTx) {
+    try {
+        $ph = []; $args = [];
+        foreach (array_values($slugMap) as $i => $s) { $ph[] = ":s{$i}"; $args[":s{$i}"] = $s; }
+        $roomIds = [];
+        foreach (db_query('SELECT id, slug FROM rooms WHERE slug IN (' . implode(',', $ph) . ')', $args)->fetchAll() as $r) {
+            $roomIds[$r['slug']] = (int)$r['id'];
+        }
+        check('the eight Maya Ilai products exist as rooms', count($roomIds) === count($slugMap));
+
+        /** The photo on the offer whose dominant product is $key, for a party of 7. */
+        $photoFor = function (string $key) use ($D): ?array {
+            maya_ilai_photo_index(true);                       // the seed just changed
+            foreach (maya_ilai_suggest(7, 3, $D, 8) as $o) {
+                if (maya_ilai_dominant_product($o['units'], $D) === $key) return $o['photo'];
+            }
+            return ['url' => '(no such offer)', 'alt' => '', 'source' => ''];
+        };
+
+        // Step 3 — nothing anywhere. The card gets null, and still quotes.
+        if ($roomIds) {
+            db_query('DELETE FROM room_images WHERE room_id IN (' . implode(',', array_map('intval', $roomIds)) . ')');
+        }
+        db_query('DELETE FROM venue_images WHERE venue_id = :v', [':v' => MAYA_ILAI_VENUE_ID]);
+        maya_ilai_photo_index(true);
+        $bare = maya_ilai_suggest(7, 3, $D, 8);
+        check('with no photograph anywhere every offer still quotes and still returns',
+            count($bare) >= 1 && !array_filter($bare, fn($o) => $o['quote']['errors'] !== []));
+        check('with no photograph anywhere the photo field is null, never a broken value',
+            !array_filter($bare, fn($o) => $o['photo'] !== null));
+
+        // Step 2 — the venue's own photograph, when the product has none. Its alt
+        // text is the venue's, never the product's: that picture is the property.
+        db_query("INSERT INTO venue_images (venue_id, filename, alt_text, is_hero, sort_order)
+                  VALUES (:v, 'venue-second.jpg', 'Second', FALSE, 3),
+                         (:v, 'venue-hero.jpg',   'Maya Ilai', TRUE, 9)",
+                 [':v' => MAYA_ILAI_VENUE_ID]);
+        $venuePhoto = $photoFor('Two-Bedroom Family Room');
+        check('a product with no photograph falls back to the venue',
+            $venuePhoto !== null && $venuePhoto['source'] === 'venue'
+            && $venuePhoto['url'] === storage_url('venue-hero.jpg'));
+        check('the venue fallback is labelled with the venue, not with the product',
+            $venuePhoto['alt'] === 'Maya Ilai');
+
+        // Step 1 — the dominant product's own room wins, and within that room the
+        // HERO image wins over a lower sort order.
+        db_query("INSERT INTO room_images (room_id, filename, alt_text, is_hero, sort_order)
+                  VALUES (:r, 'family-first.jpg', 'First by order', FALSE, 0),
+                         (:r, 'family-hero.jpg',  'The family room', TRUE, 7)",
+                 [':r' => $roomIds['maya-ilai-family-room']]);
+        $roomPhoto = $photoFor('Two-Bedroom Family Room');
+        check('a configuration resolves to its dominant product\'s room photograph',
+            $roomPhoto !== null && $roomPhoto['source'] === 'room'
+            && $roomPhoto['url'] === storage_url('family-hero.jpg')
+            && $roomPhoto['alt'] === 'The family room');
+        // …and ONLY that configuration. Its neighbours still have no photo of
+        // their own, so they are still on the venue fallback.
+        $neighbour = $photoFor('Three-Bedroom Villa');
+        check('one product\'s photograph is not borrowed by another configuration',
+            $neighbour !== null && $neighbour['source'] === 'venue');
+
+        // A room image with no alt text falls back to the room's name.
+        db_query("INSERT INTO room_images (room_id, filename, alt_text, is_hero, sort_order)
+                  VALUES (:r, 'villa-only.jpg', NULL, FALSE, 0)",
+                 [':r' => $roomIds['maya-ilai-villa']]);
+        $noAlt = $photoFor('Three-Bedroom Villa');
+        check('a photograph with no alt text is labelled with the room name',
+            $noAlt !== null && $noAlt['source'] === 'room' && $noAlt['alt'] === 'Three-Bedroom Villa');
+
+        // The cost. One query builds the whole library; the offers are then
+        // resolved from it, so the count does not move with how many there are.
+        $before = maya_ilai_photo_query_count();
+        maya_ilai_photo_index(true);
+        $afterIndex = maya_ilai_photo_query_count();
+        $many = maya_ilai_suggest(12, 3, $D, 8);
+        $afterOffers = maya_ilai_photo_query_count();
+        check('the photograph library costs exactly one query', $afterIndex - $before === 1);
+        check('resolving ' . count($many) . ' offers\' photographs costs no further query',
+            count($many) >= 2 && $afterOffers === $afterIndex);
+        check('and a second search re-uses the memoised library',
+            maya_ilai_suggest(9, 3, $D, 8) && maya_ilai_photo_query_count() === $afterIndex);
+    } finally {
+        db()->rollBack();
+        maya_ilai_photo_index(true);   // drop the memo built from seeded rows
+    }
+    // Belt and braces: the seeded rows are really gone.
+    $left = (int) db_query("SELECT COUNT(*) FROM room_images WHERE filename LIKE 'family-%' OR filename LIKE 'villa-only%'")->fetchColumn();
+    $venueLeft = (int) db_query("SELECT COUNT(*) FROM venue_images WHERE filename LIKE 'venue-hero%' OR filename LIKE 'venue-second%'")->fetchColumn();
+    check('the seeded photograph rows were rolled back', $left === 0 && $venueLeft === 0);
+}
+
 echo ($failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n");
 exit($failures ? 1 : 0);

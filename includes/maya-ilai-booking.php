@@ -221,7 +221,28 @@ $mibMaxNights = 30;
   .mib-recap__back{margin-left:auto;background:none;border:none;padding:.2rem 0;font-family:inherit;font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:var(--teal,#1E5C6B);cursor:pointer;border-bottom:1px solid currentColor}
   .mib-offers__lede{font-size:.84rem;color:var(--mib-mut);margin:0 0 .9rem;max-width:46ch}
   .mib-offers{display:flex;flex-direction:column;gap:1rem}
-  .mib-off{border:1px solid var(--mib-line);background:#fff;padding:1.2rem 1.3rem;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.6rem 1.6rem;align-items:start}
+  /* The card is the stay's details, and — when there is one — a photograph of
+     that configuration beside them. The DETAILS grid (name beside price,
+     everything else spanning) moved down one level into .mib-off__body, so
+     every 1/-1 span below still means "the full width of the details" and
+     nothing about those rows changed. */
+  .mib-off{border:1px solid var(--mib-line);background:#fff;padding:1.2rem 1.3rem;display:grid;grid-template-columns:minmax(0,1fr);gap:1.2rem;align-items:start}
+  .mib-off__body{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.6rem 1.6rem;align-items:start}
+  /* ONLY a card that actually has a photo becomes two columns. Without one the
+     card is the single column it has always been — no reserved gutter, no grey
+     placeholder standing in for a picture nobody has uploaded yet. */
+  .mib-off--photo{grid-template-columns:minmax(0,1fr) minmax(0,15rem)}
+  .mib-off__fig{margin:0;min-width:0}
+  /* A fixed ratio, reserved before the file arrives, so the list does not jump
+     as the photographs load in. */
+  .mib-off__fig img{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--sand-faint,#FAF6EE)}
+  /* Narrow: the photo goes ABOVE the details, full width and wider-cropped. A
+     thumbnail squeezed beside a price is worse than no photograph at all. */
+  @media(max-width:700px){
+    .mib-off--photo{grid-template-columns:minmax(0,1fr)}
+    .mib-off__fig{order:-1}
+    .mib-off__fig img{aspect-ratio:16/9}
+  }
   .mib-off--top{border-color:var(--sand,#B8965A);box-shadow:0 6px 26px rgba(184,150,90,.16)}
   /* The cheapest stay is never the lead, so it gets its own quieter accent —
      visible at a skim, not competing with the property's pick. */
@@ -287,7 +308,8 @@ $mibMaxNights = 30;
     .mib-party{padding:1.4rem 1.1rem}
     .mib-party__q{font-size:1.6rem}
     .mib-party__fields{gap:1.1rem}
-    .mib-off{grid-template-columns:1fr;padding:1.1rem}
+    .mib-off{padding:1.1rem}
+    .mib-off__body{grid-template-columns:1fr}
     .mib-off__money{text-align:left}
     .mib-off__total{font-size:1.9rem}
     .mib-off__inc li{flex-direction:column;gap:.1rem}
@@ -867,7 +889,17 @@ $mibMaxNights = 30;
     var cls = 'mib-off'
       + (o.badge === 'pick' || o.badge === 'both' ? ' mib-off--top' : '')
       + (o.badge === 'cheapest' || o.badge === 'both' ? ' mib-off--cheap' : '');
+    // The photograph is the SERVER's call too — which room a configuration is
+    // of, and which of that room's images to show, is resolved in the payload
+    // (maya_ilai_offer_photo). Never guess one here. No photo → no figure, no
+    // --photo class, and the card is the single column it has always been.
+    var photo = (o.photo && o.photo.url)
+      ? '<figure class="mib-off__fig"><img src="' + esc(o.photo.url) + '" alt="' + esc(o.photo.alt || o.label)
+        + '" loading="lazy" decoding="async"></figure>'
+      : '';
+    if (photo) cls += ' mib-off--photo';
     return '<article class="' + cls + '" data-offer="' + i + '">'
+      + '<div class="mib-off__body">'
       + (o.tag ? '<div class="mib-off__tag">' + esc(o.tag) + '</div>' : '')
       + '<div><h4 class="mib-off__name">' + esc(o.label) + '</h4>'
       + '<p class="mib-off__meta">For ' + q.guests + ' guest' + (q.guests === 1 ? '' : 's') + ' · ' + q.nights + ' night' + (q.nights === 1 ? '' : 's')
@@ -880,8 +912,24 @@ $mibMaxNights = 30;
       + (o.why ? '<p class="mib-off__why">' + esc(o.why) + '</p>' : '')
       + '<ul class="mib-off__inc">' + inc + '</ul>'
       + '<button type="button" class="mib-cta mib-off__cta">Request this stay</button>'
+      + '</div>'
+      + photo
       + '</article>';
   }
+
+  /* A photograph that does not load must leave the card looking deliberate, not
+     broken: the figure goes and the card falls back to its single column. The
+     `error` event does not bubble, so this listens in the CAPTURE phase — one
+     handler for the whole list rather than an inline onerror per image. */
+  offersEl.addEventListener('error', function (e) {
+    var img = e.target;
+    if (!img || img.tagName !== 'IMG') return;
+    var fig = img.closest('.mib-off__fig');
+    if (!fig) return;
+    var card = fig.closest('.mib-off');
+    fig.remove();
+    if (card) card.classList.remove('mib-off--photo');
+  }, true);
 
   function search() {
     clearTimeout(searchTimer);
