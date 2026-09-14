@@ -685,7 +685,8 @@ function create_hold_with_block(
     string $check_in, string $check_out,
     string $guest_name, string $guest_email,
     string $status = 'pending',
-    ?int $expiresInHours = 24
+    ?int $expiresInHours = 24,
+    ?array $components = null
 ): int {
     $confirmed = $status === 'confirmed';
     $expiresExpr = $expiresInHours === null ? 'NULL' : 'NOW() + make_interval(hours => :exph)';
@@ -723,11 +724,14 @@ function create_hold_with_block(
         }
     }
 
+    // NULL components means "the whole unit", which is what every non-Maya-Ilai
+    // booking means and what every pre-existing row already says.
     db_query(
-        "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, hold_id)
-         VALUES (:unit, :df, :dt, :bt, :hold)",
+        "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, hold_id, components)
+         VALUES (:unit, :df, :dt, :bt, :hold, :comp)",
         [':unit' => $unit_id, ':df' => $check_in, ':dt' => $check_out,
-         ':bt' => $confirmed ? 'booked' : 'hold', ':hold' => $hold_id]
+         ':bt' => $confirmed ? 'booked' : 'hold', ':hold' => $hold_id,
+         ':comp' => $components === null ? null : mi_pg_array_encode($components)]
     );
 
     return $hold_id;

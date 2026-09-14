@@ -44,6 +44,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
         try {
             // Pending, and no TTL: a booking staff typed in must not be expired by
             // the cron overnight the way an unattended web enquiry is.
+            //
+            // Maya Ilai: staff-entered bookings take the WHOLE villa (components
+            // NULL). Safe — nothing can be oversold — but a per-bedroom admin
+            // booking needs a component picker on this form first.
             $hold_id = create_hold_with_block($unit_id, null, $check_in, $check_out, $g_name, $g_email, 'pending', null);
         } catch (Throwable $e) {
             error_log('[hold-new] create failed: ' . $e->getMessage());

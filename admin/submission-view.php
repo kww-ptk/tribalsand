@@ -138,6 +138,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'conve
     }
 
     try {
+        // Maya Ilai: staff-entered bookings take the WHOLE villa (components
+        // NULL). Safe — nothing can be oversold — but a per-bedroom admin
+        // booking needs a component picker on this form first.
         $hold_id = create_hold_with_block($unit_id, $id, $check_in, $check_out, $g_name, $g_email);
     } catch (Throwable $e) {
         error_log('[convert-to-hold] create failed: ' . $e->getMessage());

@@ -348,6 +348,40 @@ try {
         check('conflict: Zuri still blocks its sibling units',
             count(room_conflict_unit_ids($zuriEntire)) > 0);
     }
+
+    // ── Task 7: components are written onto the block ──────────────────────
+    // A hold on a composite product must record its components on the block.
+    $third = (int) db_query(
+        'SELECT id FROM units WHERE room_id = :r AND sort_order = 3',
+        [':r' => $villaRoom['id']]
+    )->fetchColumn();
+    $hid = create_hold_with_block(
+        $third, null, '2099-07-01', '2099-07-04',
+        'Component Test', 'test@example.com', 'pending', 24,
+        ['double_a', 'living']
+    );
+    $written = db_query(
+        'SELECT components::text AS c FROM availability_blocks WHERE hold_id = :h',
+        [':h' => $hid]
+    )->fetchColumn();
+    check('hold: components are written onto the block',
+        mi_pg_array_decode($written) === ['double_a', 'living']);
+
+    // Omitting them keeps the old meaning: the whole unit.
+    $fourth = (int) db_query(
+        'SELECT id FROM units WHERE room_id = :r AND sort_order = 4',
+        [':r' => $villaRoom['id']]
+    )->fetchColumn();
+    $hid2 = create_hold_with_block(
+        $fourth, null, '2099-07-01', '2099-07-04',
+        'Whole Unit Test', 'test@example.com', 'pending', 24
+    );
+    $written2 = db_query(
+        'SELECT components FROM availability_blocks WHERE hold_id = :h',
+        [':h' => $hid2]
+    )->fetchColumn();
+    check('hold: omitting components leaves NULL — the whole unit',
+        $written2 === null);
 } finally {
     db()->rollBack();
 }

@@ -169,7 +169,8 @@ try {
 
     // Availability mode: create hold + block dates
     if ($form_mode === 'availability' && $unit) {
-        $hold_id = create_hold_with_block($unit['id'], $id, $checkin, $checkout, $name, $email);
+        $hold_id = create_hold_with_block($unit['id'], $id, $checkin, $checkout, $name, $email,
+            'pending', 24, $unit['_mi_components'] ?? null);
         $hold_row = db_query(
             "SELECT h.*, u.name AS unit_name, r.name AS room_name
              FROM holds h JOIN units u ON u.id = h.unit_id JOIN rooms r ON r.id = u.room_id
