@@ -62,6 +62,17 @@ $rr_venue_slug = 'maya_ilai';
    open — this rule is the wider one, for the page itself.) */
 @media (max-width: 767px) { chat-widget { display: none !important; } }
 
+/* css/main.css:1330 reserves 5rem of right padding on the sticky Book bar to
+   keep its button clear of that same bubble — a global rule, correct for every
+   other property page, which still has one. Here the bubble is gone below 768px,
+   so the reservation is 80px of dead space that pushes "Book →" off the corner
+   it belongs in. Give it back, at exactly the width where the bubble stops.
+   Keep both breakpoints at 767px: if they drift apart you get either a button
+   under the bubble again, or a gap reserved for nothing. */
+@media (max-width: 767px) {
+  .sticky-cta { padding-right: 1.2rem !important; }
+}
+
 /* ── TOKENS ── */
 :root{
   --sand:#B8965A;--sand-lt:#D4B07A;--sand-pale:#F2E8D6;--sand-faint:#FAF6EE;
