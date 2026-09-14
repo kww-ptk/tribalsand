@@ -691,8 +691,25 @@ function create_hold_with_block(
     $confirmed = $status === 'confirmed';
     $expiresExpr = $expiresInHours === null ? 'NULL' : 'NOW() + make_interval(hours => :exph)';
     $hold_id = 0;
+
+    // In Postgres a statement that raises an error aborts the WHOLE transaction:
+    // every later statement dies with "current transaction is aborted". So once
+    // this runs inside a transaction (mi_allocate_and_hold() does), the access-code
+    // retry below would turn one duplicate-key collision into a hard, unrelated-
+    // looking failure. A SAVEPOINT around the INSERT scopes the abort to the
+    // attempt, so the retry keeps working.
+    //
+    // A SAVEPOINT is only legal inside a transaction — outside one Postgres raises
+    // a warning and no savepoint exists to roll back to. The non-Maya-Ilai callers
+    // run with no transaction at all (each statement is its own), where a failed
+    // INSERT poisons nothing, so that path takes no savepoint and behaves exactly
+    // as it did before.
+    $inTx = db()->inTransaction();
+    $sp   = 'hold_access_code';
+
     for ($attempt = 0; $attempt < 5; $attempt++) {
         $code = generate_access_code();
+        if ($inTx) db()->exec("SAVEPOINT {$sp}");
         try {
             $stmt = db()->prepare(
                 "INSERT INTO holds
@@ -717,8 +734,18 @@ function create_hold_with_block(
             if ($expiresInHours !== null) $params[':exph'] = $expiresInHours;
             $stmt->execute($params);
             $hold_id = (int)$stmt->fetchColumn();
+            if ($inTx) db()->exec("RELEASE SAVEPOINT {$sp}");
             break;
         } catch (PDOException $e) {
+            if ($inTx) {
+                try {
+                    db()->exec("ROLLBACK TO SAVEPOINT {$sp}");
+                } catch (\Throwable $spFailed) {
+                    // The transaction is unrecoverable — surface the real error,
+                    // never the rollback's, and never retry into a dead session.
+                    throw $e;
+                }
+            }
             if (($e->getCode() === '23505') && $attempt < 4) continue;
             throw $e;
         }
@@ -735,6 +762,90 @@ function create_hold_with_block(
     );
 
     return $hold_id;
+}
+
+/**
+ * Namespace key for the advisory lock taken around Maya Ilai villa allocation.
+ *
+ * pg_advisory_xact_lock() has a one-key (bigint) form and a two-key (int4, int4)
+ * form, and they share no lock space with each other. Using the two-key form with
+ * a fixed namespace here means a future advisory lock somewhere else in the app
+ * can only collide with this one if it deliberately picks the same namespace —
+ * a bare room id in the one-key form cannot.
+ */
+const MI_ADVISORY_LOCK_NS = 19785; // arbitrary, fixed: "Maya Ilai villa allocation"
+
+/**
+ * Allocate a villa and write its hold atomically, for Maya Ilai only.
+ *
+ * The engine allocates (find_available_unit) and books (create_hold_with_block)
+ * in two separate calls, so two concurrent requests can claim the same
+ * inventory. For whole units that race is at least visible afterwards — two
+ * overlapping blocks on one unit. For components it is not: two blocks each
+ * claiming `bunk` violate no constraint and read as ordinary shared occupancy.
+ *
+ * So for this property the allocation is REDONE here inside a transaction that
+ * holds a Postgres advisory lock keyed on the villa room, and the block is
+ * written before the lock is released. The caller's earlier find_available_unit()
+ * result is only a fast pre-filter; this re-allocation is the authoritative one.
+ *
+ * Returns the hold id, or FALSE when the dates were taken while we waited.
+ */
+function mi_allocate_and_hold(
+    array $room, ?int $submissionId,
+    string $check_in, string $check_out,
+    string $guestName, string $guestEmail,
+    string $status = 'pending', ?int $expiresInHours = 24
+): int|false {
+    // Every other property still goes through find_available_unit() +
+    // create_hold_with_block(). Landing here with one of those rooms means a
+    // caller wired the wrong branch, not that the dates are unavailable.
+    if (!mi_is_composite_room($room)) {
+        throw new InvalidArgumentException(
+            'mi_allocate_and_hold() is for Maya Ilai composite rooms only; got ' .
+            ($room['slug'] ?? '(no slug)')
+        );
+    }
+
+    $villaRoomId = (int) db_query(
+        'SELECT id FROM rooms WHERE slug = :s', [':s' => MAYA_ILAI_VILLA_ROOM_SLUG]
+    )->fetchColumn();
+    // No villa room means nothing to allocate from and nothing sane to key the
+    // lock on. Fail closed, exactly as mi_find_villa_unit() would.
+    if (!$villaRoomId) return false;
+
+    $pdo   = db();
+    $ownTx = !$pdo->inTransaction();
+    if ($ownTx) $pdo->beginTransaction();
+    try {
+        // Serialises every concurrent allocation against this villa pool. An
+        // xact lock releases itself at commit/rollback, so there is no unlock
+        // path that can leak a held lock on an error.
+        db_query(
+            'SELECT pg_advisory_xact_lock(:ns::int, :room::int)',
+            [':ns' => MI_ADVISORY_LOCK_NS, ':room' => $villaRoomId]
+        );
+
+        // Re-allocate INSIDE the lock. Whatever the caller resolved earlier was
+        // read without one and may already be sold.
+        $unit = mi_find_villa_unit($room, $check_in, $check_out);
+        if ($unit === false) {
+            if ($ownTx) $pdo->rollBack();
+            return false;
+        }
+
+        $holdId = create_hold_with_block(
+            (int)$unit['id'], $submissionId, $check_in, $check_out,
+            $guestName, $guestEmail, $status, $expiresInHours,
+            $unit['_mi_components'] ?? null
+        );
+
+        if ($ownTx) $pdo->commit();
+        return $holdId;
+    } catch (\Throwable $e) {
+        if ($ownTx && $pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
 }
 
 /**

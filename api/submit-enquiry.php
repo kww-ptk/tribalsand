@@ -169,8 +169,24 @@ try {
 
     // Availability mode: create hold + block dates
     if ($form_mode === 'availability' && $unit) {
-        $hold_id = create_hold_with_block($unit['id'], $id, $checkin, $checkout, $name, $email,
-            'pending', 24, $unit['_mi_components'] ?? null);
+        if (mi_is_composite_room($room)) {
+            // Maya Ilai sells several products out of one pool of villas, so two
+            // requests can claim the same component with nothing to show for it
+            // afterwards. Re-allocate under a lock and write the block in the same
+            // transaction; the find_available_unit() above was only a pre-filter.
+            $hold_id = mi_allocate_and_hold($room, $id, $checkin, $checkout, $name, $email, 'pending', 24);
+        } else {
+            $hold_id = create_hold_with_block($unit['id'], $id, $checkin, $checkout, $name, $email,
+                'pending', 24, $unit['_mi_components'] ?? null);
+        }
+        if ($hold_id === false) {
+            // Someone took the dates while we waited for the lock. The lead row is
+            // already saved and is worth keeping — staff can follow it up — but
+            // there is no hold, so send nothing and answer like the earlier
+            // availability check does.
+            http_response_code(409);
+            exit(json_encode(['ok' => false, 'error' => 'No availability for those dates. Please try different dates or contact us directly.']));
+        }
         $hold_row = db_query(
             "SELECT h.*, u.name AS unit_name, r.name AS room_name
              FROM holds h JOIN units u ON u.id = h.unit_id JOIN rooms r ON r.id = u.room_id

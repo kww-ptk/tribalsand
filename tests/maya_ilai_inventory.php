@@ -413,6 +413,121 @@ try {
         check('calendar: the Bunk Room is unaffected by sold doubles',
             !in_array($BD, $bunkBlocked, true));
     }
+
+    // ── Task 9: atomic allocate + hold ──────────────────────────────────────
+    // mi_allocate_and_hold() re-runs the allocation inside a transaction that
+    // holds an advisory lock on the villa room, so two concurrent requests
+    // cannot both claim the same component.
+    $txDepthBefore = db()->inTransaction();
+
+    $doubleRoomFull = db_query(
+        'SELECT * FROM rooms WHERE slug = :s', [':s' => 'maya-ilai-double']
+    )->fetch();
+
+    $AI = '2099-10-01';
+    $AO = '2099-10-04';
+    $atomicHold = mi_allocate_and_hold(
+        $doubleRoomFull, null, $AI, $AO, 'Atomic Test', 'atomic@example.com'
+    );
+    check('atomic: a clean window returns a hold id',
+        is_int($atomicHold) && $atomicHold > 0);
+    check('atomic: the caller\'s transaction is untouched',
+        db()->inTransaction() === $txDepthBefore);
+
+    $atomicBlock = db_query(
+        "SELECT ab.components::text AS c, u.room_id
+           FROM availability_blocks ab JOIN units u ON u.id = ab.unit_id
+          WHERE ab.hold_id = :h",
+        [':h' => $atomicHold]
+    )->fetch();
+    check('atomic: the block carries the resolved components',
+        $atomicBlock && mi_pg_array_decode($atomicBlock['c']) === ['double_a']);
+    check('atomic: the block lands on a villa unit',
+        $atomicBlock && (int)$atomicBlock['room_id'] === (int)$villaRoom['id']);
+    check('atomic: the hold row is the one that was returned',
+        (int) db_query('SELECT COUNT(*) FROM holds WHERE id = :h', [':h' => $atomicHold])
+            ->fetchColumn() === 1);
+
+    // Nothing can satisfy the pattern → FALSE, not an exception and not a
+    // whole-unit block. Sell every villa's bunk, then ask for a Bunk Room.
+    $NB  = '2099-10-20';
+    $NBO = '2099-10-22';
+    foreach ($allVillas as $v) {
+        db_query(
+            "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, components)
+             VALUES (:u, :df, :dt, 'booked', :c)",
+            [':u' => $v['id'], ':df' => $NB, ':dt' => $NBO,
+             ':c' => mi_pg_array_encode(['bunk'])]
+        );
+    }
+    $bunkRoomFull = db_query(
+        'SELECT * FROM rooms WHERE slug = :s', [':s' => 'maya-ilai-bunk-room']
+    )->fetch();
+    $noRoom = mi_allocate_and_hold(
+        $bunkRoomFull, null, $NB, $NBO, 'Sold Out Test', 'soldout@example.com'
+    );
+    check('atomic: returns FALSE when no villa can satisfy the pattern',
+        $noRoom === false);
+    check('atomic: a FALSE result writes no hold',
+        (int) db_query("SELECT COUNT(*) FROM holds WHERE guest_email = 'soldout@example.com'")
+            ->fetchColumn() === 0);
+    check('atomic: a FALSE result writes no block',
+        (int) db_query(
+            "SELECT COUNT(*) FROM availability_blocks ab JOIN units u ON u.id = ab.unit_id
+              WHERE u.room_id = :r AND ab.date_from = :df AND ab.block_type = 'hold'",
+            [':r' => $villaRoom['id'], ':df' => $NB]
+        )->fetchColumn() === 0);
+    check('atomic: the caller\'s transaction survives the FALSE path',
+        db()->inTransaction() === $txDepthBefore);
+
+    // A non-composite room here is a programming error, not a runtime case.
+    $studioRoom = db_query(
+        "SELECT * FROM rooms WHERE slug = 'maya-ilai-studio'"
+    )->fetch();
+    $threw = false;
+    try {
+        mi_allocate_and_hold($studioRoom, null, $AI, $AO, 'Studio Test', 'studio@example.com');
+    } catch (InvalidArgumentException $e) {
+        $threw = true;
+    }
+    check('atomic: a non-composite room throws InvalidArgumentException', $threw);
+    check('atomic: the caller\'s transaction survives the throw',
+        db()->inTransaction() === $txDepthBefore);
+
+    // ── The savepoint fix ───────────────────────────────────────────────────
+    // The hazard: in Postgres a failed statement aborts the WHOLE transaction,
+    // so create_hold_with_block()'s access-code retry loop would turn one
+    // collision into a hard failure once it runs inside a transaction. Prove
+    // the hazard is real, then prove holds still work inside one.
+    db()->exec('SAVEPOINT mi_hazard_demo');
+    $poisoned = false;
+    try { db()->exec('SELECT 1/0'); } catch (Throwable $e) { /* expected */ }
+    try { db_query('SELECT 1'); } catch (Throwable $e) { $poisoned = true; }
+    db()->exec('ROLLBACK TO SAVEPOINT mi_hazard_demo');
+    check('savepoint: a failed statement really does abort the whole transaction',
+        $poisoned);
+    check('savepoint: rolling back to a savepoint makes the transaction usable again',
+        (int) db_query('SELECT 1')->fetchColumn() === 1);
+
+    $fifth = (int) db_query(
+        'SELECT id FROM units WHERE room_id = :r AND sort_order = 5',
+        [':r' => $villaRoom['id']]
+    )->fetchColumn();
+    $sixth = (int) db_query(
+        'SELECT id FROM units WHERE room_id = :r AND sort_order = 6',
+        [':r' => $villaRoom['id']]
+    )->fetchColumn();
+    $b2b1 = create_hold_with_block($fifth, null, '2099-12-01', '2099-12-03',
+        'Back To Back One', 'b2b1@example.com', 'pending', 24, ['bunk']);
+    $b2b2 = create_hold_with_block($sixth, null, '2099-12-01', '2099-12-03',
+        'Back To Back Two', 'b2b2@example.com', 'pending', 24, ['bunk']);
+    check('savepoint: two holds created back-to-back inside one transaction both succeed',
+        $b2b1 > 0 && $b2b2 > 0 && $b2b1 !== $b2b2);
+    check('savepoint: both back-to-back holds wrote their blocks',
+        (int) db_query(
+            'SELECT COUNT(*) FROM availability_blocks WHERE hold_id IN (:a, :b)',
+            [':a' => $b2b1, ':b' => $b2b2]
+        )->fetchColumn() === 2);
 } finally {
     db()->rollBack();
 }
