@@ -87,8 +87,16 @@ Studio blocks stay `NULL`.
 
 The product→component map lives in **`includes/maya-ilai-inventory.php`**, not the
 database. It is a fixed physical fact about the building, and keeping it in code
-makes it unit-testable without a DB connection. Reads are pre-migration-safe via a
-`maya_ilai_components_supported()` guard, consistent with the rest of the codebase.
+makes it unit-testable without a DB connection.
+
+**Pre-migration safety is enforced by ordering, not by a runtime guard.** The new
+code path fires only for rooms whose slug is in `mi_product_map()`, and those rooms
+exist only after the catalogue migration — so on a database without the column,
+nothing reaches it. To make that ordering impossible to get wrong, the catalogue
+migration **aborts if `availability_blocks.components` is missing**. This is
+deliberately different from the `*_supported()` pattern used elsewhere: those guard
+features that should degrade gracefully, whereas a Maya Ilai catalogue without the
+column would silently oversell, which must fail loudly instead.
 
 ## Availability algorithm
 
@@ -143,7 +151,7 @@ no changes, because a booking is still exactly one unit.
 2. **Check production for live holds on the three current Maya Ilai rooms**
    (`maya_ilai`, `maya-ilai-studio`, `maya-ilai-garden-room`) before retiring them.
    The local database is a separate Postgres and is not evidence about production.
-3. Rebuild the Maya Ilai room catalogue to the nine products and 16 units.
+3. Rebuild the Maya Ilai room catalogue to the eight products and 16 units.
 4. Apply rates (follow-on project).
 
 The migration must be reversible up to step 3, and must not run destructively while
