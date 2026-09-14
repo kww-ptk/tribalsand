@@ -276,6 +276,9 @@ $mibMaxNights = 30;
   .mib-off__money{text-align:right;white-space:nowrap}
   .mib-off__total{font-family:'Cormorant Garamond',serif;font-size:1.75rem;line-height:1}
   .mib-off__per{font-size:.74rem;color:var(--mib-mut);margin-top:.15rem}
+  /* Fine print, deliberately quieter than the rate above it: the fee is part of
+     the total but not part of the nightly rate, and the type should say so. */
+  .mib-off__eco{font-size:.66rem;color:var(--mib-mut);opacity:.75;margin-top:.1rem}
   .mib-off__disc{display:inline-block;margin-top:.3rem;font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:#2D7A5F}
   .mib-off__inc{grid-column:1/-1;list-style:none;margin:.5rem 0 0;padding:.7rem 0 0;border-top:1px solid var(--mib-line);display:flex;flex-direction:column;gap:.3rem}
   .mib-off__inc li{display:flex;justify-content:space-between;gap:1rem;font-size:.82rem;color:var(--mib-mut)}
@@ -1018,8 +1021,13 @@ $mibMaxNights = 30;
       + '<p class="mib-off__meta">For ' + q.guests + ' guest' + (q.guests === 1 ? '' : 's') + ' · ' + q.nights + ' night' + (q.nights === 1 ? '' : 's')
       + (q.capacity > q.guests ? ' · sleeps up to ' + q.capacity : '') + '</p></div>'
       + '<div class="mib-off__money"><div class="mib-off__total">' + priceSpan(q.total) + '</div>'
-      + '<div class="mib-off__per">' + priceSpan(q.nightly) + ' / night'
-      + (q.eco ? ' + ' + priceSpan(q.eco) + ' eco fee' : '') + '</div>'
+      // The nightly rate stands on its own — the Eco-Resort Fee is NOT folded into
+      // it and NOT part of the rate maths. It is per person for the whole stay, so
+      // spreading it over nights would make the "/ night" figure move with party
+      // size and length. Shown beneath as fine print; the total above still
+      // includes it, which is why it has to stay visible rather than vanish.
+      + '<div class="mib-off__per">' + priceSpan(q.nightly) + ' / night</div>'
+      + (q.eco ? '<div class="mib-off__eco">includes ' + priceSpan(q.eco) + ' Eco-Resort Fee</div>' : '')
       + (q.adjustment < 0 ? '<div class="mib-off__disc">' + esc(q.adjustmentLabel) + ' ' + q.adjustment + '%</div>' : '')
       + '</div>'
       + (o.why ? '<p class="mib-off__why">' + esc(o.why) + '</p>' : '')
