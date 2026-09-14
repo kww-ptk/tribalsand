@@ -1613,6 +1613,43 @@ try {
         echo "SKIP  convert ledger: add_bookings_finance not applied on this DB\n";
     }
 
+    // ── Converting a Gantt block to a booking keeps the product (I2) ────────
+    if (bookings_supported()) {
+        $IBI = '2098-11-01';
+        $IBO = '2098-11-04';                                  // 3 nights
+        $ibUnit  = (int)$villaUnits[4]['id'];
+        $ibBlock = $mkBlock($ibUnit, $IBI, $IBO, null, 'booked');
+        bookings_import_upsert($ibBlock, [
+            'venue_id' => (int)$villaRow['venue_id'], 'room_id' => (int)$bunkRoom['id'],
+            'unit_id' => $ibUnit, 'guest_name' => 'Agent Bunk', 'agent' => 'Some Agent',
+            'check_in' => $IBI, 'check_out' => $IBO,
+            'gross_amount' => 450.0, 'currency' => 'USD', 'external_ref' => 'TEST-I2',
+        ]);
+        $conv = bookings_convert_block_to_hold($ibBlock);
+        check('convert block: the block becomes a hold', ($conv['ok'] ?? false) === true);
+        check('convert block: the hold carries the PRODUCT the ledger row names, not the villa',
+            (int) db_query('SELECT room_id FROM holds WHERE id = :h', [':h' => (int)$conv['hold_id']])
+                ->fetchColumn() === (int)$bunkRoom['id']);
+        check('convert block: so every surface names the bunk room',
+            (string) db_query(
+                'SELECT r.name FROM holds h JOIN units u ON u.id = h.unit_id
+                   JOIN rooms r ON r.id = ' . hold_room_id_sql('h', 'u') . ' WHERE h.id = :h',
+                [':h' => (int)$conv['hold_id']]
+            )->fetchColumn() === (string)$bunkRoom['name']);
+
+        // Re-syncing an imported row must not restate what the channel recorded —
+        // room_id on the same side of the $imported guard as the money.
+        bookings_sync_hold((int)$conv['hold_id']);
+        $ibRow = db_query('SELECT * FROM bookings WHERE block_id = :b', [':b' => $ibBlock])->fetch();
+        check('convert block: a re-sync keeps the imported product',
+            $ibRow && (int)$ibRow['room_id'] === (int)$bunkRoom['id']);
+        check('convert block: …and the imported amount, as it always did',
+            $ibRow && (float)$ibRow['gross_amount'] === 450.0);
+    } else {
+        echo "SKIP  convert block: add_bookings_finance not applied on this DB\n";
+    }
+
+
 } finally {
     db()->rollBack();
 }

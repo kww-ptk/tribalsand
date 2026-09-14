@@ -128,14 +128,22 @@ function bookings_sync_hold(int $holdId): void {
         $imported = !empty($existing['block_id'])
                  || !in_array((string)$existing['source'], ['website', ''], true);
 
-        $sql = "UPDATE bookings SET venue_id=:v, room_id=:r, unit_id=:u, guest_name=:gn, guest_email=:ge,
+        /* room_id belongs on the same side of that guard as the money. It is
+           what the money is ATTRIBUTED to, and an imported row's product is the
+           importer's, recorded from the channel's own sheet; recomputing it here
+           would file an OTA booking under whatever room the unit happens to
+           belong to. That matters for exactly the same reason gross does: Maya
+           Ilai's villa units are shared by eight products, so "the unit's room"
+           is the villa for six of them. Latent while import_room_unit() cannot
+           target a unitless room — but the guard should not be one-sided. */
+        $sql = "UPDATE bookings SET venue_id=:v, unit_id=:u, guest_name=:gn, guest_email=:ge,
                        check_in=:ci, check_out=:co, nights=:n, status=:st"
-             . ($imported ? '' : ", gross_amount=:g, currency=:cur")
+             . ($imported ? '' : ", room_id=:r, gross_amount=:g, currency=:cur")
              . " WHERE id=:id";
-        $args = [':v'=>$h['venue_id'], ':r'=>$h['room_id'], ':u'=>$h['unit_id'], ':gn'=>$h['guest_name'],
+        $args = [':v'=>$h['venue_id'], ':u'=>$h['unit_id'], ':gn'=>$h['guest_name'],
                  ':ge'=>$h['guest_email'], ':ci'=>$h['check_in'], ':co'=>$h['check_out'],
                  ':n'=>$q['nights'], ':st'=>$status, ':id'=>$existing['id']];
-        if (!$imported) { $args[':g'] = $q['total']; $args[':cur'] = $currency; }
+        if (!$imported) { $args[':r'] = $h['room_id']; $args[':g'] = $q['total']; $args[':cur'] = $currency; }
 
         db_query($sql, $args);
     } else {
@@ -420,14 +428,28 @@ function bookings_convert_block_to_hold(int $blockId, string $unitScopeSql = '')
     // Own the transaction only when the caller has not already opened one —
     // PDO/pgsql cannot nest, and the tests wrap their work in one they roll
     // back. Same convention as rates_apply_ranges().
+    // Which PRODUCT this booking is for. The ledger row above already knows —
+    // the importer recorded it from the channel's sheet — and this INSERT used
+    // to drop it, so the hold fell back to the unit's room. At Maya Ilai that is
+    // the villa for six of the eight products, which is how a converted block
+    // ends up named (and re-priced) as "Three-Bedroom Villa" everywhere. Only
+    // written when the column exists, exactly as create_hold_with_block() does,
+    // so a deploy that has not run add_holds_room_id.sql still converts.
+    $roomId    = (int)($bk['room_id'] ?? 0);
+    $writeRoom = $roomId > 0 && holds_room_id_supported();
+
     $ownTx = !db()->inTransaction();
     if ($ownTx) db()->beginTransaction();
     try {
         db_query(
-            "INSERT INTO holds (unit_id, check_in, check_out, guest_name, guest_email, status, confirmed_at)
-             VALUES (:u, :ci, :co, :gn, :ge, 'confirmed', NOW())",
-            [':u' => (int)$b['unit_id'], ':ci' => $b['date_from'], ':co' => $b['date_to'],
-             ':gn' => $name, ':ge' => $email]
+            "INSERT INTO holds (" . ($writeRoom ? 'room_id, ' : '') . "unit_id, check_in, check_out,
+                    guest_name, guest_email, status, confirmed_at)
+             VALUES (" . ($writeRoom ? ':room, ' : '') . ":u, :ci, :co, :gn, :ge, 'confirmed', NOW())",
+            array_merge(
+                [':u' => (int)$b['unit_id'], ':ci' => $b['date_from'], ':co' => $b['date_to'],
+                 ':gn' => $name, ':ge' => $email],
+                $writeRoom ? [':room' => $roomId] : []
+            )
         );
         $holdId = (int) db()->lastInsertId();
         if ($holdId <= 0) throw new RuntimeException('Hold insert returned no id.');
