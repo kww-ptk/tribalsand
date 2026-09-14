@@ -7,7 +7,9 @@ require_bookings();
 
 $id  = (int)($_GET['id'] ?? 0);
 $sub = db_query(
-    "SELECT s.*, r.name AS room_name, r.slug AS room_slug, t.name AS tour_name, t.slug AS tour_slug
+    "SELECT s.*, r.name AS room_name, r.slug AS room_slug,
+            r.price_amount AS room_price_amount, r.price_currency AS room_price_currency,
+            t.name AS tour_name, t.slug AS tour_slug
      FROM submissions s
      LEFT JOIN rooms r ON r.id = s.room_id
      LEFT JOIN tours t ON t.id = s.tour_id
@@ -191,6 +193,39 @@ $payload = json_decode($sub['payload_json'] ?? '{}', true) ?: [];
 $notes   = fetch_submission_notes($id);
 $status  = submission_status_supported() ? ((string)($sub['status'] ?? '') ?: submission_status_default()) : '';
 
+// ── Price at enquiry ─────────────────────────────────────────────────────────
+// The enquiry table stores no price, so the admin view showed none even though
+// the guest was quoted one. Two sources, in priority order:
+//   1. A snapshot the widget captured of exactly what the guest saw (covers
+//      multi-room combos and survives later rate edits).
+//   2. A live reconstruction from the room's current rate over the stay window,
+//      using room_stay_quote() — the ONE canonical pricing path (never a second
+//      nightly loop). nights === 0 means "not a quote": show nothing, never $0.
+$enquiry_price = null; // ['html' => currency-aware total, 'note' => sub-label]
+$__snapTotal = $payload['quoted_total']    ?? null;
+$__snapCur   = $payload['quoted_currency'] ?? null;
+if (is_numeric($__snapTotal) && (float)$__snapTotal > 0) {
+    $enquiry_price = [
+        'html' => money_html((float)$__snapTotal, (string)($__snapCur ?: 'USD')),
+        'note' => trim((string)($payload['quoted_label'] ?? '')) ?: 'As shown to the guest',
+    ];
+} elseif (!empty($sub['room_id']) && !empty($sub['check_in']) && !empty($sub['check_out'])) {
+    $__q = room_stay_quote(
+        (int)$sub['room_id'],
+        (float)($sub['room_price_amount'] ?? 0),
+        (string)$sub['check_in'],
+        (string)$sub['check_out']
+    );
+    if (($__q['nights'] ?? 0) > 0 && ($__q['total'] ?? 0) > 0) {
+        $__cur = (string)($sub['room_price_currency'] ?? '') ?: 'USD';
+        $enquiry_price = [
+            'html' => money_html((float)$__q['total'], $__cur),
+            'note' => $__q['nights'] . ' night' . ($__q['nights'] === 1 ? '' : 's')
+                    . ' × current rate · indicative',
+        ];
+    }
+}
+
 // Where a guest's email reply actually lands. Inbound replies are not yet
 // auto-threaded here (see Phase 4c), so the compose box tells staff plainly.
 $reservations_inbox = (string) setting('notify_email', 'reservations@tribalsand.com');
@@ -286,6 +321,16 @@ include __DIR__ . '/_layout.php';
           <?php if ($sub['guests_children']): ?>
           · <?= e($sub['guests_children']) ?> child<?= $sub['guests_children'] != 1 ? 'ren' : '' ?>
           <?php endif; ?>
+        </div>
+      </div>
+      <?php endif; ?>
+
+      <?php if ($enquiry_price): ?>
+      <div>
+        <div class="detail-item__label">Price at enquiry</div>
+        <div class="detail-item__value">
+          <strong><?= $enquiry_price['html'] ?></strong>
+          <div class="text-muted" style="font-size:11.5px;margin-top:2px"><?= e($enquiry_price['note']) ?></div>
         </div>
       </div>
       <?php endif; ?>

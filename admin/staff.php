@@ -1,28 +1,35 @@
 <?php
 /**
- * Admin: team account management (owner-only).
+ * Admin: Team — internal directory + login accounts (owner-only).
  *
- * Three kinds of non-owner account:
- *   • manager   — email + password, per-property ops tier (assign work, tasks, gate).
- *   • reception — email + password, front of house: everything the owner sees
- *                 except Catalog, Admin and site content (Operations, Bookings,
- *                 Reservations), scoped to its assigned properties.
- *   • staff     — access code, with an operational job type that drives their home
- *                 (frontdesk → Front Desk, ops → My Work, security → Gate).
+ * Two tabs:
+ *   • Directory  — the whole workforce (hr_staff): who works where, position,
+ *                  department, weekly off-day. A row MAY link to a login account
+ *                  but usually does not. This is the "who works where" view and
+ *                  the seam the future HR/attendance tool connects to.
+ *   • Accounts   — login accounts (admin_users): manager / reception / staff.
+ *                  Per-row management lives in a collapsible drawer so the table
+ *                  reads cleanly even with many properties assigned.
  *
- * Every mutating action guards to role IN ('manager','reception','staff') so the
- * owner account can never be edited, deactivated or deleted from here.
+ * Three kinds of non-owner login account:
+ *   • manager   — email + password, per-property ops tier.
+ *   • reception — email + password, front of house, scoped to its properties.
+ *   • staff     — access code, with an operational job type that drives its home.
+ *
+ * Every mutating account action guards to role IN ('manager','reception','staff')
+ * so the owner account can never be edited, deactivated or deleted from here.
  */
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/hr.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/pagination.php';
 require_once __DIR__ . '/../includes/admin-pagination.php';
 require_login();
 require_owner();
 
-$pageTitle  = 'Staff';
+$pageTitle  = 'Team';
 $activeMenu = 'staff';
 
 // Operational specialties a staff account can hold. Order = display order.
@@ -52,11 +59,11 @@ function staff_posted_venue_ids(array $validIds): array {
     return $out;
 }
 
-/** Set a flash message + type for the next request, then redirect back. */
-function staff_flash(string $msg, string $type = 'success'): void {
+/** Set a flash message + type for the next request, then redirect back (keeping the tab). */
+function staff_flash(string $msg, string $type = 'success', string $tab = 'accounts'): void {
     $_SESSION['hold_flash']      = $msg;
     $_SESSION['hold_flash_type'] = $type;
-    header('Location: /admin/staff.php');
+    header('Location: /admin/staff.php?tab=' . urlencode($tab));
     exit;
 }
 
@@ -64,6 +71,69 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $action = $_POST['action'] ?? '';
 
+    // ── Directory (hr_staff) actions ─────────────────────────────────────────
+    if (str_starts_with($action, 'hr_')) {
+        if (!hr_staff_supported()) staff_flash('Directory needs the add_hr_staff migration — run it first.', 'error', 'directory');
+
+        if ($action === 'hr_save') {
+            $sid   = (int)($_POST['hr_id'] ?? 0);
+            $name  = trim((string)($_POST['full_name'] ?? ''));
+            $posn  = trim((string)($_POST['position'] ?? ''));
+            $dept  = trim((string)($_POST['department'] ?? '')) ?: hr_department($posn);
+            if (!in_array($dept, hr_departments(), true)) $dept = hr_department($posn);
+            $vid   = (int)($_POST['venue_id'] ?? 0);
+            $vid   = in_array($vid, $venueIds, true) ? $vid : 0; // 0 → NULL (no property)
+            $off   = strtoupper(trim((string)($_POST['off_day'] ?? '')));
+            if (!in_array($off, hr_off_days(), true)) $off = '';
+            $phone = trim((string)($_POST['phone'] ?? ''));
+            $email = trim((string)($_POST['email'] ?? ''));
+            $status= ($_POST['status'] ?? 'active') === 'inactive' ? 'inactive' : 'active';
+            // Optional link to a login account (validated against non-owner accounts).
+            $auId  = (int)($_POST['admin_user_id'] ?? 0);
+            $auOk  = $auId > 0 && db_query("SELECT 1 FROM admin_users WHERE id = :i", [':i' => $auId])->fetchColumn();
+
+            if ($name === '') staff_flash('Please enter a name.', 'error', 'directory');
+            $params = [
+                ':n' => $name, ':p' => $posn, ':d' => $dept,
+                ':v' => $vid ?: null, ':u' => $vid ? null : trim((string)($_POST['unit_label'] ?? '')),
+                ':o' => $off, ':ph' => $phone, ':em' => $email, ':st' => $status,
+                ':au' => $auOk ? $auId : null,
+            ];
+            if ($sid > 0 && fetch_hr_staff_row($sid)) {
+                db_query(
+                    "UPDATE hr_staff SET full_name=:n, position=:p, department=:d, venue_id=:v,
+                            unit_label=COALESCE(:u, unit_label), off_day=:o, phone=:ph, email=:em,
+                            status=:st, admin_user_id=:au WHERE id=:id",
+                    $params + [':id' => $sid]
+                );
+                audit_log('hr_staff_update', 'hr_staff', $sid, $name);
+                staff_flash('Directory entry updated.', 'success', 'directory');
+            } else {
+                $order = (int) db_query('SELECT COALESCE(MAX(sort_order),0)+10 FROM hr_staff')->fetchColumn();
+                db_query(
+                    "INSERT INTO hr_staff (full_name, position, department, venue_id, unit_label, off_day, phone, email, status, admin_user_id, sort_order)
+                     VALUES (:n,:p,:d,:v,:u,:o,:ph,:em,:st,:au,:so)",
+                    $params + [':so' => $order]
+                );
+                $newId = (int)db()->lastInsertId();
+                audit_log('hr_staff_create', 'hr_staff', $newId, $name);
+                staff_flash('Team member added to the directory.', 'success', 'directory');
+            }
+        } elseif ($action === 'hr_toggle') {
+            $sid = (int)($_POST['hr_id'] ?? 0);
+            $n = db_query("UPDATE hr_staff SET status = CASE WHEN status='active' THEN 'inactive' ELSE 'active' END WHERE id = :id", [':id' => $sid])->rowCount();
+            if ($n) { audit_log('hr_staff_toggle', 'hr_staff', $sid, ''); staff_flash('Status updated.', 'success', 'directory'); }
+            staff_flash('No change.', 'error', 'directory');
+        } elseif ($action === 'hr_delete') {
+            $sid = (int)($_POST['hr_id'] ?? 0);
+            $n = db_query("DELETE FROM hr_staff WHERE id = :id", [':id' => $sid])->rowCount();
+            if ($n) { audit_log('hr_staff_delete', 'hr_staff', $sid, ''); staff_flash('Directory entry removed.', 'success', 'directory'); }
+            staff_flash('No change.', 'error', 'directory');
+        }
+        staff_flash('Unknown action.', 'error', 'directory');
+    }
+
+    // ── Login account (admin_users) actions ──────────────────────────────────
     if ($action === 'create') {
         $posted = $_POST['account_type'] ?? 'staff';
         // Reception needs the widened role CHECK; without the migration the
@@ -170,7 +240,10 @@ if (!empty($_SESSION['hold_flash']) && is_string($_SESSION['hold_flash'])) {
     unset($_SESSION['hold_flash'], $_SESSION['hold_flash_type']);
 }
 
-// Search + pagination.
+// Which tab (default the Directory — the primary "who works where" view).
+$tab = ($_GET['tab'] ?? 'directory') === 'accounts' ? 'accounts' : 'directory';
+
+// ── Accounts: search + pagination (existing dt toolkit) ──────────────────────
 $pg = paginate_params(25);
 $teamParams = [];
 $teamWhere  = "WHERE role IN ('manager','reception','staff')";
@@ -193,10 +266,23 @@ foreach (db_query('SELECT admin_user_id, venue_id FROM admin_user_venues')->fetc
 $venueNames = [];
 foreach ($venues as $v) { $venueNames[(int)$v['id']] = $v['name']; }
 
-// ── Swappable body (team list + pager) — reused for AJAX + full page ──
+// Login accounts available to link from a directory entry.
+$linkAccounts = db_query("SELECT id, name, email, role FROM admin_users WHERE role IN ('owner','manager','reception','staff') ORDER BY name ASC")->fetchAll();
+
+// ── Directory filters + grouped data ─────────────────────────────────────────
+$dirFilters = [
+    'q'          => trim((string)($_GET['dq'] ?? '')),
+    'department' => in_array(($_GET['dept'] ?? ''), hr_departments(), true) ? $_GET['dept'] : '',
+    'venue_id'   => (int)($_GET['dvenue'] ?? 0),
+    'status'     => in_array(($_GET['dstatus'] ?? ''), ['active', 'inactive'], true) ? $_GET['dstatus'] : '',
+];
+$dirGroups = hr_staff_supported() ? hr_staff_by_property(null, $dirFilters) : [];
+$dirCount  = 0; foreach ($dirGroups as $g) { $dirCount += count($g['staff']); }
+
+// ── Accounts swappable body (reused for AJAX + full page) ────────────────────
 ob_start(); ?>
 <div class="card">
-  <div class="card__head"><span class="card__title">Team accounts</span></div>
+  <div class="card__head"><span class="card__title">Login accounts</span></div>
   <div class="card__body" style="padding:0">
     <div class="table-wrap">
     <table class="data-table">
@@ -248,6 +334,7 @@ ob_start(); ?>
           </td>
           <td>
             <div class="dt-actions">
+              <button type="button" class="btn-icon btn-icon--outline" data-acct-toggle="<?= $sid ?>" data-tip="Manage account" aria-label="Manage account" aria-expanded="false"><?= admin_icon('settings') ?></button>
               <?php if (!$isPwAcct): ?>
               <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="regen"><input type="hidden" name="staff_id" value="<?= $sid ?>"><button class="btn-icon btn-icon--outline" data-tip="Regenerate access code" aria-label="Regenerate access code"><?= admin_icon('rotate') ?></button></form>
               <?php endif; ?>
@@ -256,8 +343,8 @@ ob_start(); ?>
             </div>
           </td>
         </tr>
-        <tr>
-          <td colspan="6" style="background:transparent">
+        <tr class="acct-drawer" id="acct-drawer-<?= $sid ?>" hidden>
+          <td colspan="6" style="background:var(--bg,#f9fafb)">
             <form method="POST" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center">
               <?= csrf_field() ?>
               <input type="hidden" name="action" value="venues">
@@ -314,21 +401,220 @@ if ($pg['ajax']) { echo $dtBody; exit; }
 include __DIR__ . '/_layout.php';
 ?>
 
-<?php $__openCreate = ($flash !== '' && $flashType === 'error'); ?>
+<?php
+$__openCreate = ($flash !== '' && $flashType === 'error' && $tab === 'accounts');
+$__accountsUrl = '/admin/staff.php?tab=accounts';
+$__directoryUrl = '/admin/staff.php?tab=directory';
+?>
 <div class="page-header">
   <h1>Team</h1>
   <div class="actions">
+    <?php if ($tab === 'accounts'): ?>
     <button type="button" class="btn-primary btn-sm" id="addAccountBtn" aria-controls="createCard" aria-expanded="<?= $__openCreate ? 'true' : 'false' ?>"><?= admin_icon('plus', 15) ?> Add account</button>
+    <?php else: ?>
+    <button type="button" class="btn-primary btn-sm" id="addPersonBtn" aria-controls="personCard" aria-expanded="false"><?= admin_icon('plus', 15) ?> Add team member</button>
+    <?php endif; ?>
     <a href="/admin/dashboard.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Dashboard</a>
   </div>
 </div>
 
+<!-- Tabs -->
+<div class="ts-tabs" role="tablist" style="display:flex;gap:6px;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:20px">
+  <a href="<?= $__directoryUrl ?>" data-shell-link role="tab" class="ts-tab<?= $tab === 'directory' ? ' is-active' : '' ?>"
+     style="padding:9px 16px;font-weight:600;font-size:14px;text-decoration:none;border-bottom:2px solid <?= $tab === 'directory' ? 'var(--teal,#1E5C6B)' : 'transparent' ?>;color:<?= $tab === 'directory' ? 'var(--teal,#1E5C6B)' : 'var(--muted,#6b7280)' ?>">
+    Directory<?= hr_staff_supported() ? ' <span class="text-muted">(' . $dirCount . ')</span>' : '' ?>
+  </a>
+  <a href="<?= $__accountsUrl ?>" data-shell-link role="tab" class="ts-tab<?= $tab === 'accounts' ? ' is-active' : '' ?>"
+     style="padding:9px 16px;font-weight:600;font-size:14px;text-decoration:none;border-bottom:2px solid <?= $tab === 'accounts' ? 'var(--teal,#1E5C6B)' : 'transparent' ?>;color:<?= $tab === 'accounts' ? 'var(--teal,#1E5C6B)' : 'var(--muted,#6b7280)' ?>">
+    Login accounts <span class="text-muted">(<?= $total ?>)</span>
+  </a>
+</div>
+
 <?php if ($flash): ?><div class="alert alert--<?= e($flashType) ?> is-flash"><?= e($flash) ?></div><?php endif; ?>
 
+<?php if ($tab === 'directory'): ?>
+<!-- ═══════════ DIRECTORY TAB ═══════════ -->
+<?php if (!hr_staff_supported()): ?>
+  <div class="card"><div class="card__body card__body--pad">
+    <p class="text-muted" style="margin:0">The team directory is unavailable. Run the <code>add_hr_staff.sql</code> migration (and <code>db/seeds/seed_hr_staff.php</code> to import the roster) to enable it.</p>
+  </div></div>
+<?php else: ?>
+
+<!-- Add / edit person form (hidden until "Add team member" or an Edit click) -->
+<div class="card" style="margin-bottom:24px" id="personCard" hidden>
+  <div class="card__head"><span class="card__title" id="personCardTitle">Add a team member</span></div>
+  <div class="card__body card__body--pad">
+    <form method="POST" id="personForm">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="hr_save">
+      <input type="hidden" name="hr_id" id="hrId" value="">
+      <div class="form-row" style="display:grid;grid-template-columns:repeat(2,minmax(200px,1fr));gap:16px">
+        <div class="field"><label for="hrName">Full name</label><input id="hrName" name="full_name" class="inp" required placeholder="Full name" style="width:100%"></div>
+        <div class="field"><label for="hrPos">Position</label><input id="hrPos" name="position" class="inp" placeholder="e.g. House Keeper" style="width:100%"></div>
+        <div class="field"><label for="hrDept">Department</label>
+          <select id="hrDept" name="department" class="filter-select eselect--block">
+            <option value="">Auto from position</option>
+            <?php foreach (hr_departments() as $d): ?><option value="<?= e($d) ?>"><?= e($d) ?></option><?php endforeach; ?>
+          </select>
+        </div>
+        <div class="field"><label for="hrVenue">Property</label>
+          <select id="hrVenue" name="venue_id" class="filter-select eselect--block">
+            <option value="0">— none / other —</option>
+            <?php foreach ($venues as $v): ?><option value="<?= (int)$v['id'] ?>"><?= e($v['name']) ?></option><?php endforeach; ?>
+          </select>
+        </div>
+        <div class="field"><label for="hrOff">Weekly off-day</label>
+          <select id="hrOff" name="off_day" class="filter-select eselect--block">
+            <option value="">Sunday (default)</option>
+            <?php foreach (hr_off_days() as $d): ?><option value="<?= e($d) ?>"><?= e($d) ?></option><?php endforeach; ?>
+          </select>
+        </div>
+        <div class="field"><label for="hrStatus">Status</label>
+          <select id="hrStatus" name="status" class="filter-select eselect--block">
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </div>
+        <div class="field"><label for="hrPhone">Phone</label><input id="hrPhone" name="phone" class="inp" placeholder="Optional" style="width:100%"></div>
+        <div class="field"><label for="hrEmail">Email</label><input id="hrEmail" name="email" type="email" class="inp" placeholder="Optional" style="width:100%"></div>
+        <div class="field"><label for="hrLink">Login account <small class="text-muted">(optional)</small></label>
+          <select id="hrLink" name="admin_user_id" class="filter-select eselect--block">
+            <option value="0">— not linked —</option>
+            <?php foreach ($linkAccounts as $a): ?><option value="<?= (int)$a['id'] ?>"><?= e($a['name'] ?: $a['email']) ?> (<?= e($a['role']) ?>)</option><?php endforeach; ?>
+          </select>
+        </div>
+      </div>
+      <div style="margin-top:16px">
+        <button type="submit" class="btn-primary">Save</button>
+        <button type="button" class="btn-outline btn-sm" data-close-person style="margin-left:8px">Cancel</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Directory filters -->
+<form method="GET" action="/admin/staff.php" class="filters" style="margin-bottom:16px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+  <input type="hidden" name="tab" value="directory">
+  <div class="filter-field"><span>Search</span><input type="text" name="dq" value="<?= e($dirFilters['q']) ?>" class="inp inp--sm" placeholder="Name or position…" style="min-width:180px"></div>
+  <div class="filter-field"><span>Department</span>
+    <select name="dept" class="filter-select" onchange="this.form.submit()">
+      <option value="">All departments</option>
+      <?php foreach (hr_departments() as $d): ?><option value="<?= e($d) ?>" <?= $dirFilters['department'] === $d ? 'selected' : '' ?>><?= e($d) ?></option><?php endforeach; ?>
+    </select>
+  </div>
+  <div class="filter-field"><span>Property</span>
+    <select name="dvenue" class="filter-select" onchange="this.form.submit()">
+      <option value="0">All properties</option>
+      <?php foreach ($venues as $v): ?><option value="<?= (int)$v['id'] ?>" <?= $dirFilters['venue_id'] === (int)$v['id'] ? 'selected' : '' ?>><?= e($v['name']) ?></option><?php endforeach; ?>
+    </select>
+  </div>
+  <div class="filter-field"><span>Status</span>
+    <select name="dstatus" class="filter-select" onchange="this.form.submit()">
+      <option value="">All</option>
+      <option value="active"   <?= $dirFilters['status'] === 'active'   ? 'selected' : '' ?>>Active</option>
+      <option value="inactive" <?= $dirFilters['status'] === 'inactive' ? 'selected' : '' ?>>Inactive</option>
+    </select>
+  </div>
+  <button class="btn-outline btn-sm">Filter</button>
+  <?php if ($dirFilters['q'] !== '' || $dirFilters['department'] || $dirFilters['venue_id'] || $dirFilters['status']): ?>
+  <a href="<?= $__directoryUrl ?>" class="btn-outline btn-sm">Clear</a>
+  <?php endif; ?>
+</form>
+
+<?php if (!$dirGroups): ?>
+  <div class="card"><div class="card__body card__body--pad"><p class="text-muted" style="margin:0"><?= $dirCount === 0 && ($dirFilters['q'] || $dirFilters['department'] || $dirFilters['venue_id'] || $dirFilters['status']) ? 'No team members match your filters.' : 'No team members yet. Add one, or run the roster seed.' ?></p></div></div>
+<?php else: foreach ($dirGroups as $g): ?>
+<div class="card" style="margin-bottom:18px">
+  <div class="card__head">
+    <span class="card__title"><?= e($g['label']) ?></span>
+    <span class="text-muted" style="font-size:12px"><?= count($g['staff']) ?> <?= count($g['staff']) === 1 ? 'person' : 'people' ?></span>
+  </div>
+  <div class="card__body" style="padding:0">
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Name</th><th>Position</th><th>Department</th><th>Off day</th><th>Status</th><th style="text-align:right">Manage</th></tr></thead>
+        <tbody>
+          <?php foreach ($g['staff'] as $p):
+            $pid = (int)$p['id'];
+            $isActive = ($p['status'] ?? 'active') === 'active';
+            $dept = (string)($p['department'] ?? '');
+          ?>
+          <tr>
+            <td><strong><?= e($p['full_name']) ?></strong><?php if (!empty($p['admin_user_id'])): ?> <span class="badge badge--grey" data-tip="Has a login account">login</span><?php endif; ?></td>
+            <td class="text-muted"><?= e($p['position'] ?: '—') ?></td>
+            <td><span class="badge <?= e(hr_department_badge($dept)) ?>"><?= e($dept ?: 'Other') ?></span></td>
+            <td class="text-muted"><?= e($p['off_day'] ?: 'Sun') ?></td>
+            <td><?php if ($isActive): ?><span class="badge badge--green">Active</span><?php else: ?><span class="badge badge--grey">Inactive</span><?php endif; ?></td>
+            <td>
+              <div class="dt-actions">
+                <button type="button" class="btn-icon btn-icon--outline hr-edit"
+                        data-tip="Edit" aria-label="Edit"
+                        data-id="<?= $pid ?>"
+                        data-name="<?= e($p['full_name']) ?>"
+                        data-position="<?= e($p['position'] ?? '') ?>"
+                        data-department="<?= e($dept) ?>"
+                        data-venue="<?= (int)($p['venue_id'] ?? 0) ?>"
+                        data-off="<?= e($p['off_day'] ?? '') ?>"
+                        data-status="<?= e($p['status'] ?? 'active') ?>"
+                        data-phone="<?= e($p['phone'] ?? '') ?>"
+                        data-email="<?= e($p['email'] ?? '') ?>"
+                        data-link="<?= (int)($p['admin_user_id'] ?? 0) ?>"><?= admin_icon('edit') ?></button>
+                <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="hr_toggle"><input type="hidden" name="hr_id" value="<?= $pid ?>"><button class="btn-icon btn-icon--outline" data-tip="<?= $isActive ? 'Set inactive' : 'Set active' ?>" aria-label="<?= $isActive ? 'Set inactive' : 'Set active' ?>"><?= admin_icon($isActive ? 'ban' : 'check') ?></button></form>
+                <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="hr_delete"><input type="hidden" name="hr_id" value="<?= $pid ?>"><button class="btn-icon btn-icon--danger" data-confirm="Remove this person from the directory?" data-tip="Delete" aria-label="Delete"><?= admin_icon('trash') ?></button></form>
+              </div>
+            </td>
+          </tr>
+          <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+<?php endforeach; endif; ?>
+
+<script>
+(function () {
+  var card = document.getElementById('personCard');
+  var form = document.getElementById('personForm');
+  var title = document.getElementById('personCardTitle');
+  var addBtn = document.getElementById('addPersonBtn');
+  if (!card || !form) return;
+  function open() { card.removeAttribute('hidden'); card.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
+  function close() { card.setAttribute('hidden', ''); }
+  function setVal(name, val) { var el = form.querySelector('[name="' + name + '"]'); if (el) el.value = val == null ? '' : val; }
+  if (addBtn) addBtn.addEventListener('click', function () {
+    title.textContent = 'Add a team member';
+    form.reset(); setVal('hr_id', '');
+    open(); var f = form.querySelector('#hrName'); if (f) f.focus();
+  });
+  card.querySelectorAll('[data-close-person]').forEach(function (c) { c.addEventListener('click', close); });
+  document.querySelectorAll('.hr-edit').forEach(function (b) {
+    b.addEventListener('click', function () {
+      title.textContent = 'Edit ' + (b.dataset.name || 'team member');
+      setVal('hr_id', b.dataset.id);
+      setVal('full_name', b.dataset.name);
+      setVal('position', b.dataset.position);
+      setVal('department', b.dataset.department);
+      setVal('venue_id', b.dataset.venue);
+      setVal('off_day', b.dataset.off);
+      setVal('status', b.dataset.status);
+      setVal('phone', b.dataset.phone);
+      setVal('email', b.dataset.email);
+      setVal('admin_user_id', b.dataset.link);
+      open();
+    });
+  });
+})();
+</script>
+
+<?php endif; /* hr_staff_supported */ ?>
+
+<?php else: ?>
+<!-- ═══════════ ACCOUNTS TAB ═══════════ -->
 <div class="card" style="margin-bottom:24px" id="createCard" <?= $__openCreate ? '' : 'hidden' ?>>
   <div class="card__head"><span class="card__title">Add an account</span></div>
   <div class="card__body card__body--pad">
-    <form method="POST" id="createForm" data-shell-form>
+    <form method="POST" id="createForm">
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="create">
 
@@ -403,6 +689,17 @@ include __DIR__ . '/_layout.php';
 
 <script>
 (function () {
+  // Per-row account management drawer.
+  document.querySelectorAll('[data-acct-toggle]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var row = document.getElementById('acct-drawer-' + btn.dataset.acctToggle);
+      if (!row) return;
+      var open = row.hasAttribute('hidden');
+      if (open) row.removeAttribute('hidden'); else row.setAttribute('hidden', '');
+      btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+  });
+
   // Toggle the inline "Add an account" form from the header button.
   var btn = document.getElementById('addAccountBtn'), card = document.getElementById('createCard');
   if (btn && card) {
@@ -436,5 +733,7 @@ include __DIR__ . '/_layout.php';
   sync();
 })();
 </script>
+
+<?php endif; /* tab */ ?>
 
 <?php include __DIR__ . '/_layout_end.php'; ?>

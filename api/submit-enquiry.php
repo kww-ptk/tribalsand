@@ -150,8 +150,15 @@ try {
                                   'submitted_from' => $_SERVER['HTTP_REFERER'] ?? '',
                                   // Price snapshot at the moment of enquiry, so a later
                                   // price change never rewrites what the guest was shown.
+                                  // The admin enquiry view prefers this over a live re-quote.
+                                  'quoted_total'    => (isset($data['quoted_total']) && is_numeric($data['quoted_total']) && (float)$data['quoted_total'] > 0)
+                                                         ? round((float)$data['quoted_total'], 2) : null,
+                                  'quoted_currency' => trim((string)($data['quoted_currency'] ?? '')) ?: null,
+                                  'quoted_label'    => (isset($data['quoted_nights']) && (int)$data['quoted_nights'] > 0)
+                                                         ? ((int)$data['quoted_nights'] . ' night' . ((int)$data['quoted_nights'] === 1 ? '' : 's') . ' · as shown to the guest')
+                                                         : null,
                                   'upsells'        => array_map('upsell_payload_row', $upsellItems),
-                              ], fn($v) => $v !== [] && $v !== null)),
+                              ], fn($v) => $v !== [] && $v !== null && $v !== '')),
             ':source_page' => $tracking['source_page'] ?? '',
             ':referrer'    => $tracking['referrer']    ?? '',
             ':utm_source'  => $tracking['utm_source']  ?? '',

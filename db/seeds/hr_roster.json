@@ -1,0 +1,440 @@
+[
+    {
+        "name": "CAROLINE MAKENA MURUNGI",
+        "position": "HOUSE SUPERVISOR",
+        "off_day": "",
+        "unit": "MK"
+    },
+    {
+        "name": "ALBERT KITI",
+        "position": "COOK",
+        "off_day": "TUE",
+        "unit": "MK"
+    },
+    {
+        "name": "JUDY ADHIAMBO",
+        "position": "HOUSE KEEPER",
+        "off_day": "THU",
+        "unit": "MK"
+    },
+    {
+        "name": "MAUREEN  KOMBE",
+        "position": "HOUSE KEEPER",
+        "off_day": "TUE",
+        "unit": "MK"
+    },
+    {
+        "name": "PASCAL JUMA",
+        "position": "HOUSE KEEPER",
+        "off_day": "",
+        "unit": "MK"
+    },
+    {
+        "name": "FRANCIS C. MWALUNE",
+        "position": "WAITER",
+        "off_day": "",
+        "unit": "MK"
+    },
+    {
+        "name": "GILBERT KWICHA",
+        "position": "",
+        "off_day": "",
+        "unit": "MK"
+    },
+    {
+        "name": "MTAWALI NASORO",
+        "position": "HEAD GARDENER",
+        "off_day": "WED",
+        "unit": "MK"
+    },
+    {
+        "name": "BARAKA KAZUNGU CHARO",
+        "position": "GARDENER",
+        "off_day": "TUE",
+        "unit": "MK"
+    },
+    {
+        "name": "MICHAEL KAZUNGU CHARO",
+        "position": "GARDENER",
+        "off_day": "THU",
+        "unit": "MK"
+    },
+    {
+        "name": "SALIM PESA",
+        "position": "GARDENER",
+        "off_day": "FRI",
+        "unit": "MK"
+    },
+    {
+        "name": "STEPHEN CHARO UNDA",
+        "position": "POOL ATTENDANT",
+        "off_day": "MON",
+        "unit": "MK"
+    },
+    {
+        "name": "KENNEDY NYALE",
+        "position": "CARPENTER",
+        "off_day": "SUN",
+        "unit": "MK"
+    },
+    {
+        "name": "ISAAC BETT",
+        "position": "MAINTENANCE",
+        "off_day": "FRI",
+        "unit": "MK"
+    },
+    {
+        "name": "KELVIN MJIMBA",
+        "position": "HEAD WATCHMAN",
+        "off_day": "SAT",
+        "unit": "MK"
+    },
+    {
+        "name": "JONAH MEIBUKO",
+        "position": "WATCHMAN NIGHT",
+        "off_day": "MON",
+        "unit": "MK"
+    },
+    {
+        "name": "DANSON KUYAN LEMARON",
+        "position": "WATCHMAN NIGHT",
+        "off_day": "WED",
+        "unit": "MK"
+    },
+    {
+        "name": "STEPHEN NGUMBAO GONA",
+        "position": "WATCHMAN RLVER",
+        "off_day": "THU",
+        "unit": "MK"
+    },
+    {
+        "name": "JOHN KAZEMBERA MLACHA",
+        "position": "WATCHMAN",
+        "off_day": "WED",
+        "unit": "MK"
+    },
+    {
+        "name": "SANKORI",
+        "position": "CASUAL",
+        "off_day": "",
+        "unit": "MK"
+    },
+    {
+        "name": "JAMES NDORO",
+        "position": "STORE KEEPER",
+        "off_day": "SAT",
+        "unit": "TRIBAL TABLE"
+    },
+    {
+        "name": "PETER SUERO",
+        "position": "",
+        "off_day": "WED",
+        "unit": "TRIBAL TABLE"
+    },
+    {
+        "name": "ALEX MWANTHI NGUMA",
+        "position": "MANAGER",
+        "off_day": "",
+        "unit": "MAYA ILAI"
+    },
+    {
+        "name": "JENNIFER WILLIE",
+        "position": "HOUSE KEEPER",
+        "off_day": "SUN",
+        "unit": "MAYA ILAI"
+    },
+    {
+        "name": "LIKAMBA NANA -MI",
+        "position": "WATCHMAN NIGHT",
+        "off_day": "TUE",
+        "unit": "MAYA ILAI"
+    },
+    {
+        "name": "NERBERT SHAHA - MI",
+        "position": "WATCHMAN NIGHT",
+        "off_day": "WED",
+        "unit": "MAYA ILAI"
+    },
+    {
+        "name": "SATIO OLE METUI - M. ILAI",
+        "position": "WATCHMAN NIGHT",
+        "off_day": "FRI",
+        "unit": "MAYA ILAI"
+    },
+    {
+        "name": "ALOICE CHARO - M. ILAI",
+        "position": "WATCHMAN DAY",
+        "off_day": "THU",
+        "unit": "MAYA ILAI"
+    },
+    {
+        "name": "ROBERT MTAWALI KAHAMBI",
+        "position": "COOK",
+        "off_day": "WED",
+        "unit": "ENKARE BOFA - KILIFI"
+    },
+    {
+        "name": "SHIDA KAHINDI MWAJEFA",
+        "position": "GARDERNER",
+        "off_day": "THU",
+        "unit": "ENKARE BOFA - KILIFI"
+    },
+    {
+        "name": "LENICE",
+        "position": "HOUSE KEEPER",
+        "off_day": "TUE",
+        "unit": "ENKARE BOFA - KILIFI"
+    },
+    {
+        "name": "JOSPHINE",
+        "position": "",
+        "off_day": "",
+        "unit": "ENKARE BOFA - KILIFI"
+    },
+    {
+        "name": "SANKORI",
+        "position": "WATCHMAN NIGHT",
+        "off_day": "WED",
+        "unit": "ENKARE BOFA - KILIFI"
+    },
+    {
+        "name": "ANTHLEM AGGOI",
+        "position": "OPERATIONS SUPERV",
+        "off_day": "WED",
+        "unit": "SANDBOX - KILIFI"
+    },
+    {
+        "name": "JOSEPHAT KAHINDI IHA",
+        "position": "GARDENER",
+        "off_day": "MON",
+        "unit": "SANDBOX - KILIFI"
+    },
+    {
+        "name": "FLORENCE  BENJAMIN",
+        "position": "HOUSE KEEPER",
+        "off_day": "WED",
+        "unit": "SANDBOX - KILIFI"
+    },
+    {
+        "name": "KEREKU OLE NANA",
+        "position": "WATCHMAN NIGHT",
+        "off_day": "TUE",
+        "unit": "SANDBOX - KILIFI"
+    },
+    {
+        "name": "KATANA CHARO KITI",
+        "position": "DOGS CARE",
+        "off_day": "FRI",
+        "unit": "SANDBOX - KILIFI"
+    },
+    {
+        "name": "HENRY OUMA OKAKA",
+        "position": "GARDNER",
+        "off_day": "TUE",
+        "unit": "MY AMANI - VIPINGO"
+    },
+    {
+        "name": "LILIAN AWINO",
+        "position": "HOUSE KEEPER",
+        "off_day": "WED",
+        "unit": "MY AMANI - VIPINGO"
+    },
+    {
+        "name": "VICTOR MATATA SARUSI",
+        "position": "CARETAKER",
+        "off_day": "THU",
+        "unit": "MY AMANI - VIPINGO"
+    },
+    {
+        "name": "NDETE KITURET",
+        "position": "WATCHMAN NIGHT",
+        "off_day": "FRI",
+        "unit": "MY AMANI - VIPINGO"
+    },
+    {
+        "name": "MOSES YAA",
+        "position": "HOUSE SUPERVISOR",
+        "off_day": "THU",
+        "unit": "ZURI - WATAMU"
+    },
+    {
+        "name": "GEORGE CHIPANGA",
+        "position": "CHEF",
+        "off_day": "WED",
+        "unit": "ZURI - WATAMU"
+    },
+    {
+        "name": "FREDRICK MWANGUE",
+        "position": "COOK",
+        "off_day": "TUE",
+        "unit": "ZURI - WATAMU"
+    },
+    {
+        "name": "KHAMIS CHENGO",
+        "position": "WAITER",
+        "off_day": "FRI",
+        "unit": "ZURI - WATAMU"
+    },
+    {
+        "name": "FERDINAND WANJE SAFARI",
+        "position": "WAITER",
+        "off_day": "TUE",
+        "unit": "ZURI - WATAMU"
+    },
+    {
+        "name": "ANTHONY MITINGI",
+        "position": "WAITER",
+        "off_day": "THU",
+        "unit": "ZURI - WATAMU"
+    },
+    {
+        "name": "(ALICE) MNYAZI JOSHUA",
+        "position": "HOUSE KEEPER",
+        "off_day": "TUE",
+        "unit": "ZURI - WATAMU"
+    },
+    {
+        "name": "MARIAM SAID",
+        "position": "HOUSE KEEPER",
+        "off_day": "TUE",
+        "unit": "ZURI - WATAMU"
+    },
+    {
+        "name": "BLENCH  WANJIKU NGURE",
+        "position": "HOUSE KEEPER",
+        "off_day": "THU",
+        "unit": "ZURI - WATAMU"
+    },
+    {
+        "name": "JUMAA GARAMA",
+        "position": "S/POOL ATTENDANT",
+        "off_day": "FRI",
+        "unit": "ZURI - WATAMU"
+    },
+    {
+        "name": "GIDEON  JEFWA YAA",
+        "position": "ELECTRICIAN",
+        "off_day": "WED",
+        "unit": "ZURI - WATAMU"
+    },
+    {
+        "name": "JOSEPH  MWAVUO",
+        "position": "PLUMBER",
+        "off_day": "MON",
+        "unit": "ZURI - WATAMU"
+    },
+    {
+        "name": "MARTIN SHUHULI KARISA",
+        "position": "GARDENER",
+        "off_day": "FRI",
+        "unit": "ZURI - WATAMU"
+    },
+    {
+        "name": "KATANA  CHANGAWA CHEA",
+        "position": "GARDENER",
+        "off_day": "SUN",
+        "unit": "ZURI - WATAMU"
+    },
+    {
+        "name": "KANZE  KALUME MBITHA",
+        "position": "GARDENER",
+        "off_day": "THU",
+        "unit": "ZURI - WATAMU"
+    },
+    {
+        "name": "NICKSON  KHAMISI CHARO",
+        "position": "GARDENER",
+        "off_day": "WED",
+        "unit": "ZURI - WATAMU"
+    },
+    {
+        "name": "JUMA KOMBE",
+        "position": "WATCHMAN DAY",
+        "off_day": "FRI",
+        "unit": "ZURI - WATAMU"
+    },
+    {
+        "name": "LEYIAN OLE MATAINE",
+        "position": "WATCHMAN NIGHT",
+        "off_day": "WED",
+        "unit": "ZURI - WATAMU"
+    },
+    {
+        "name": "LEIYAN OLE HAMISI",
+        "position": "WATCHMAN NIGHT",
+        "off_day": "TUE",
+        "unit": "ZURI - WATAMU"
+    },
+    {
+        "name": "JOSEPHAT BAYA",
+        "position": "WATCHMAN NIGHT",
+        "off_day": "THU",
+        "unit": "ZURI - WATAMU"
+    },
+    {
+        "name": "Rajab Amani",
+        "position": "GARDENER",
+        "off_day": "SUN",
+        "unit": "Watamu - Plot  6"
+    },
+    {
+        "name": "Nickson Ashivira Musonye",
+        "position": "GARDENER",
+        "off_day": "SUN",
+        "unit": "Watamu - Plot  22"
+    },
+    {
+        "name": "Allan Rafiki",
+        "position": "ACCOUNTATNT",
+        "off_day": "SUN",
+        "unit": "Tribal Sand Center (office)"
+    },
+    {
+        "name": "Nusra Hassan",
+        "position": "HR",
+        "off_day": "SUN",
+        "unit": "Tribal Sand Center (office)"
+    },
+    {
+        "name": "Christine Omondi",
+        "position": "ASS.HR",
+        "off_day": "SUN",
+        "unit": "Tribal Sand Center (office)"
+    },
+    {
+        "name": "Faiza Lungu Kamu",
+        "position": "RESERVATIONS",
+        "off_day": "SUN",
+        "unit": "Tribal Sand Center (office)"
+    },
+    {
+        "name": "Leticia Atieno",
+        "position": "RESERVATIONS",
+        "off_day": "SUN",
+        "unit": "Tribal Sand Center (office)"
+    },
+    {
+        "name": "WILLIAM  kariuki",
+        "position": "STORE KEEPER",
+        "off_day": "SUN",
+        "unit": "Tribal Sand Center (office)"
+    },
+    {
+        "name": "BENSON CHONGA KAZUNGU",
+        "position": "ACCOUNTANT",
+        "off_day": "SUN",
+        "unit": "Tribal Sand Center (office)"
+    },
+    {
+        "name": "Jordan Mwori",
+        "position": "KITE INSTRUCTOR",
+        "off_day": "WED",
+        "unit": "Tribalsand ltd kite school"
+    },
+    {
+        "name": "Ramadhan Zonjee",
+        "position": "KITE INSTRUCTOR",
+        "off_day": "TUE",
+        "unit": "Tribalsand ltd kite school"
+    }
+]

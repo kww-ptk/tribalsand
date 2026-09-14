@@ -74,10 +74,15 @@ db_query(
         ':email'       => $email,
         ':phone'       => trim($data['phone']   ?? ''),
         ':message'     => $message,
-        ':payload'     => json_encode([
-            'subject'        => trim($data['subject'] ?? ''),
-            'submitted_from' => $_SERVER['HTTP_REFERER'] ?? '',
-        ]),
+        ':payload'     => json_encode(array_filter([
+            'subject'         => trim($data['subject'] ?? ''),
+            'submitted_from'  => $_SERVER['HTTP_REFERER'] ?? '',
+            // Combo/room-combination requests carry the total the guest was shown,
+            // so the admin enquiry view can render a structured "Price at enquiry".
+            'quoted_total'    => (isset($data['quoted_total']) && is_numeric($data['quoted_total']) && (float)$data['quoted_total'] > 0)
+                                   ? round((float)$data['quoted_total'], 2) : null,
+            'quoted_currency' => trim((string)($data['quoted_currency'] ?? '')) ?: null,
+        ], fn($v) => $v !== null && $v !== '')),
         ':source_page' => $tracking['source_page'] ?? '',
         ':referrer'    => $tracking['referrer']    ?? '',
         ':utm_source'  => $tracking['utm_source']  ?? '',

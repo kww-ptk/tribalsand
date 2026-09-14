@@ -240,6 +240,9 @@ if (empty($GLOBALS['__pa_modal_done'])) {
         body: JSON.stringify({
           name: fd.get('name'), email: fd.get('email'), phone: fd.get('phone'),
           subject: 'Room combination — ' + enqCtx.venueName, message: message,
+          // Snapshot of the combo total shown, so the admin enquiry view can show
+          // a structured "Price at enquiry" for multi-room requests too.
+          quoted_total: enqCtx.total, quoted_currency: enqCtx.currency,
           'cf-turnstile-response': (enqForm.querySelector('[name="cf-turnstile-response"]') || {}).value || ''
         })
       })
@@ -369,7 +372,8 @@ if (empty($GLOBALS['__pa_modal_done'])) {
           btn.addEventListener('click', function () {
             openEnq({
               venueName: venueName, guests: guests, dates: fmtRange(ci, co),
-              roomsText: roomsText.join('\n'), totalText: money(combo.total, combo.currency)
+              roomsText: roomsText.join('\n'), totalText: money(combo.total, combo.currency),
+              total: combo.total, currency: combo.currency
             });
           });
           card.appendChild(btn);

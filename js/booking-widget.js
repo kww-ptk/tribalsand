@@ -2,6 +2,9 @@
 // Exposes window.initBookingWidget() and window.tsLoadRoom().
 (function () {
   let slug = "", defPrice = 0, currency = "USD";
+  // Last total shown to the guest, captured so the enquiry can record exactly
+  // what they saw (the admin view falls back to a live re-quote when absent).
+  let lastTotal = 0, lastNights = 0;
   let bound = false;
 
   window.initBookingWidget = function initBookingWidget() {
@@ -215,6 +218,7 @@
           const nights   = data.nights || Math.round((selEnd - selStart) / 86400000);
           const cur      = data.currency || currency;
           const total    = data.total || 0;
+          lastTotal = total; lastNights = nights;
           setHintHtml(`✓ Available — ${nights} night${nights > 1 ? "s" : ""} · ${priceSpan(total, cur)}`, "ok");
           totalLabel.textContent = `${nights} night${nights > 1 ? "s" : ""}`;
           totalPrice.innerHTML   = priceSpan(total, cur);
@@ -258,6 +262,7 @@
       if (!selStart || !selEnd) { totalCard.hidden = true; return; }
       const nights = Math.round((selEnd - selStart) / 86400000);
       const total  = defPrice * nights;
+      lastTotal = total; lastNights = nights;
       totalLabel.innerHTML = `${nights} night${nights > 1 ? "s" : ""} · ${defPrice ? priceSpan(defPrice, currency) : "rate"} / night`;
       totalPrice.innerHTML = total > 0 ? priceSpan(total, currency) : "—";
       totalCard.hidden = false;
@@ -447,6 +452,11 @@
           // server re-validates each against what this room's property offers.
           upsell: Array.from(form.querySelectorAll("[data-bk-upsell]:checked"))
                        .map(function (c) { return parseInt(c.value, 10); }),
+          // Snapshot of the total shown in the widget, so the admin enquiry view
+          // records exactly what the guest was quoted (in the room's own currency).
+          quoted_total:    lastTotal > 0 ? lastTotal : null,
+          quoted_currency: currency,
+          quoted_nights:   lastNights > 0 ? lastNights : null,
         };
 
         saveGuest();   // persist for the next property they look at
