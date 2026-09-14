@@ -132,7 +132,12 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
   .mib-offers{display:flex;flex-direction:column;gap:1rem}
   .mib-off{border:1px solid var(--mib-line);background:#fff;padding:1.2rem 1.3rem;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.6rem 1.6rem;align-items:start}
   .mib-off--top{border-color:var(--sand,#B8965A);box-shadow:0 6px 26px rgba(184,150,90,.16)}
+  /* The cheapest stay is never the lead, so it gets its own quieter accent —
+     visible at a skim, not competing with the property's pick. */
+  .mib-off--cheap{border-left:3px solid var(--teal,#1E5C6B)}
   .mib-off__tag{grid-column:1/-1;font-size:.58rem;letter-spacing:.22em;text-transform:uppercase;color:var(--sand-dk,#8A6D33)}
+  .mib-off--cheap .mib-off__tag{color:var(--teal,#1E5C6B)}
+  .mib-off__why{grid-column:1/-1;margin:-.25rem 0 0;font-size:.8rem;line-height:1.5;color:var(--mib-mut)}
   .mib-off__name{font-family:'Cormorant Garamond',serif;font-size:1.5rem;line-height:1.15;font-weight:400;margin:0}
   .mib-off__meta{font-size:.78rem;color:var(--mib-mut);margin:.2rem 0 0}
   .mib-off__money{text-align:right;white-space:nowrap}
@@ -597,16 +602,23 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
            + '<span class="mib-off__ud">' + esc(u.desc) + '</span></span>'
            + '<span class="mib-off__ug">' + u.guests + ' guest' + (u.guests === 1 ? '' : 's') + '</span></li>';
     }).join('');
-    return '<article class="mib-off' + (i === 0 ? ' mib-off--top' : '') + '" data-offer="' + i + '">'
-      + (i === 0 ? '<div class="mib-off__tag">Best price</div>' : '')
+    // The badge is the SERVER's call, not the slot's: the property's pick leads,
+    // and the cheapest stay carries the reason it is cheap so the guest sees
+    // what they would be trading away. Never re-derive either one here.
+    var cls = 'mib-off'
+      + (o.badge === 'pick' || o.badge === 'both' ? ' mib-off--top' : '')
+      + (o.badge === 'cheapest' || o.badge === 'both' ? ' mib-off--cheap' : '');
+    return '<article class="' + cls + '" data-offer="' + i + '">'
+      + (o.tag ? '<div class="mib-off__tag">' + esc(o.tag) + '</div>' : '')
       + '<div><h4 class="mib-off__name">' + esc(o.label) + '</h4>'
-      + '<p class="mib-off__meta">Sleeps ' + q.guests + ' · ' + q.nights + ' night' + (q.nights === 1 ? '' : 's')
-      + (q.capacity > q.guests ? ' · room for ' + q.capacity : '') + '</p></div>'
+      + '<p class="mib-off__meta">For ' + q.guests + ' guest' + (q.guests === 1 ? '' : 's') + ' · ' + q.nights + ' night' + (q.nights === 1 ? '' : 's')
+      + (q.capacity > q.guests ? ' · sleeps up to ' + q.capacity : '') + '</p></div>'
       + '<div class="mib-off__money"><div class="mib-off__total">' + priceSpan(q.total) + '</div>'
       + '<div class="mib-off__per">' + priceSpan(q.nightly) + ' / night'
       + (q.eco ? ' + ' + priceSpan(q.eco) + ' eco fee' : '') + '</div>'
       + (q.adjustment < 0 ? '<div class="mib-off__disc">' + esc(q.adjustmentLabel) + ' ' + q.adjustment + '%</div>' : '')
       + '</div>'
+      + (o.why ? '<p class="mib-off__why">' + esc(o.why) + '</p>' : '')
       + '<ul class="mib-off__inc">' + inc + '</ul>'
       + '<button type="button" class="mib-cta mib-off__cta">Request this stay</button>'
       + '</article>';
@@ -632,8 +644,8 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
           }
           offers = d.suggestions || [];
           if (!offers.length) {
-            offersEl.innerHTML = '<div class="mib-offers__msg">We can\'t sleep a party that size in one stay — '
-              + 'open the full picker below, or send us a note and we\'ll work it out with you.</div>';
+            offersEl.innerHTML = '<div class="mib-offers__msg">That is a bigger party than the compound sleeps in one go. '
+              + 'Open the full picker below, or send us a note — we have put larger groups together before.</div>';
             return;
           }
           offersEl.innerHTML = offers.map(offerCard).join('');

@@ -575,7 +575,54 @@ function maya_ilai_picks_label(array $picks): string {
 }
 
 /**
- * Configurations that sleep $guests, cheapest first.
+ * The badge a suggestion wears, and the sentence under it.
+ *
+ * Two suggestions in a set are called out: the LEAD (what the property would
+ * put you in — the fewest whole products) and the CHEAPEST. When the ranking
+ * leads with a whole stay, the cheapest one is usually a pile of rooms, and the
+ * guest has to be able to SEE the trade they would be taking, not just the
+ * smaller number. So the note says what makes it cheap — bunk beds, rooms split
+ * apart — rather than only that it is cheap.
+ *
+ * Derived from the offer itself, never guessed by the surface: a set of rooms
+ * with no bunks reads differently from one with them, and the same function
+ * decides it for every surface.
+ *
+ * @return array{badge:string,tag:string,why:string}
+ */
+function maya_ilai_offer_badge(array $offer, bool $isLead, bool $isCheapest): array {
+    $units = 0;
+    foreach ($offer['units'] as $u) $units += (int)$u['qty'];
+    $bunk  = (int)($offer['quote']['q']['bunk'] ?? 0);
+    $g     = (int)$offer['quote']['guests'];
+    $one   = $units === 1;
+
+    if ($isLead && $isCheapest) {
+        // Nothing is being traded away here — the wholest stay is also the
+        // cheapest — but bunk beds are still a fact the guest should meet on
+        // the card rather than discover later.
+        if ($bunk && $one)  $why = 'Bunk beds, but a room of your own — and the lowest price we have.';
+        elseif ($one)       $why = 'One space, all yours — and the lowest price we have.';
+        else                $why = 'The fewest rooms we can put you in, and the lowest price we have.';
+        return ['badge' => 'both', 'tag' => 'Our pick · lowest price', 'why' => $why];
+    }
+    if ($isLead) {
+        return ['badge' => 'pick', 'tag' => 'Our pick',
+                'why'   => $one ? 'One space, all yours.'
+                                : 'The fewest separate rooms for a party of ' . $g . '.'];
+    }
+    if ($isCheapest) {
+        if ($bunk && !$one) $why = 'Bunk beds, split across ' . $units . ' separate rooms — the cheapest way to sleep ' . $g . ', and the least private.';
+        elseif ($bunk)      $why = 'Bunk beds — the cheapest way to sleep ' . $g . ', and the least private.';
+        elseif (!$one)      $why = 'Split across ' . $units . ' separate rooms — cheaper, but not one space to yourselves.';
+        else                $why = 'The cheapest room that sleeps ' . $g . '.';
+        return ['badge' => 'cheapest', 'tag' => 'Lowest price', 'why' => $why];
+    }
+    return ['badge' => '', 'tag' => '', 'why' => ''];
+}
+
+/**
+ * Configurations that sleep $guests, whole stays first.
  *
  * The search is a bounded depth-first enumeration of product multisets. Three
  * things keep it small enough to run on a keystroke:
@@ -592,9 +639,10 @@ function maya_ilai_picks_label(array $picks): string {
  *
  * Every surviving candidate is then QUOTED, and anything with errors is thrown
  * away. maya_ilai_quote() is both the feasibility oracle and the pricer, so a
- * suggestion is bookable by construction.
+ * suggestion is bookable by construction. The ranking below only ever REORDERS
+ * that set — it can never introduce a stay the quote has not already accepted.
  *
- * @return array<int,array{sel:array,quote:array,label:string,units:array}>
+ * @return array<int,array{sel:array,quote:array,label:string,units:array,badge:string,tag:string,why:string}>
  */
 function maya_ilai_suggest(int $guests, int $nights, ?array $cfg = null, int $limit = 5): array {
     $cfg    = $cfg ?: maya_ilai_pricing_get();
@@ -699,16 +747,49 @@ function maya_ilai_suggest(int $guests, int $nights, ?array $cfg = null, int $li
     }
     $offers = array_values($best);
 
-    // Cheapest first, then the snuggest fit — a 7-guest party should not be
-    // shown a 20-bed arrangement above one that fits.
+    // WHOLE STAYS FIRST, then price. A stay expressed as one product — a villa,
+    // a family suite, a single studio — outranks the pile of rooms that sleeps
+    // the same party, because fewer units means more private and more complete,
+    // and that is what the property sells. Leading a family of seven with "2×
+    // Private Bunk Room" sells the place as a hostel.
+    //
+    // Price is the SECOND sort, not the first, and then the snuggest fit — a
+    // 7-guest party should not be shown a 20-bed arrangement above one that fits.
     usort($offers, fn($a, $b) =>
-        [(float)$a['quote']['total'], (int)$a['quote']['capacity'] - $guests, $a['_units'], $a['label']]
-        <=> [(float)$b['quote']['total'], (int)$b['quote']['capacity'] - $guests, $b['_units'], $b['label']]);
+        [$a['_units'], (float)$a['quote']['total'], (int)$a['quote']['capacity'] - $guests, $a['label']]
+        <=> [$b['_units'], (float)$b['quote']['total'], (int)$b['quote']['capacity'] - $guests, $b['label']]);
 
-    $out = [];
-    foreach (array_slice($offers, 0, $limit) as $o) {
+    // …but the genuinely cheapest stay is never hidden. A guest looking for the
+    // cheapest way to sleep their party must find it without going back a step,
+    // so it is GUARANTEED into the returned set — swapped in over the last row
+    // when the wholeness sort pushed it past the limit — and pulled up to slot
+    // two. Slot one stays the property's own pick; slot two is the first place
+    // a skimming eye lands, so the cheapest is impossible to miss without
+    // leading with it. Buried at slot five would read as hiding it.
+    //
+    // Ties keep the earliest (best-ranked) spelling, so the cheapest is also the
+    // wholest arrangement at that price.
+    $cheapAt = 0;
+    foreach ($offers as $i => $o) {
+        if ((float)$o['quote']['total'] < (float)$offers[$cheapAt]['quote']['total'] - 0.005) $cheapAt = $i;
+    }
+
+    $out = array_slice($offers, 0, $limit);
+    if ($cheapAt >= count($out)) {
+        if (count($out) >= $limit) array_pop($out);
+        $out[] = $offers[$cheapAt];
+        $cheapSlot = count($out) - 1;
+    } else {
+        $cheapSlot = $cheapAt;
+    }
+    if ($cheapSlot > 1) {
+        array_splice($out, 1, 0, array_splice($out, $cheapSlot, 1));
+        $cheapSlot = 1;
+    }
+
+    foreach ($out as $i => $o) {
         unset($o['_units'], $o['_combo']);
-        $out[] = $o;
+        $out[$i] = $o + maya_ilai_offer_badge($o, $i === 0, $i === $cheapSlot);
     }
     return $out;
 }

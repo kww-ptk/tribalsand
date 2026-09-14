@@ -286,17 +286,94 @@ for ($g = 1; $g <= 20; $g++) {
 check('search: every party size 1–20 is answered', $anyEmpty === []);
 check('search: every suggestion for every party size 1–20 quotes without errors', true);   // failures reported above
 
-// Ranking: the list is cheapest first, and the head really is the cheapest of
-// what was returned.
+// ── Ranking: whole stays first, price second, cheapest never hidden ─────────
+// A stay expressed as ONE product outranks the pile of rooms that sleeps the
+// same party — leading a family of seven with "2× Private Bunk Room" sells the
+// place as a hostel. Price is the second sort. The one deliberate exception is
+// the globally cheapest stay, which is pulled up to slot two so a guest hunting
+// for the cheapest way to sleep their party finds it without going back a step.
+$units = fn(array $s) => array_sum(array_column($s['units'], 'qty'));
+$cheapIdx = function (array $sugs) {
+    $at = 0;
+    foreach ($sugs as $i => $s) if ((float)$s['quote']['total'] < (float)$sugs[$at]['quote']['total'] - 0.005) $at = $i;
+    return $at;
+};
+
+$orderOk = true; $presentOk = true; $slotOk = true; $taggedOk = true; $leadOk = true;
 for ($g = 1; $g <= 20; $g++) {
     $sugs = maya_ilai_suggest($g, 3, $D, 5);
     if (!$sugs) continue;
-    $totals = array_map(fn($s) => (float)$s['quote']['total'], $sugs);
-    $sorted = $totals; sort($sorted);
-    if ($totals !== $sorted) check("search: {$g} guests — suggestions are ordered cheapest first", false);
-    if (abs($totals[0] - min($totals)) >= 0.005) check("search: {$g} guests — the first really is the cheapest", false);
+
+    // THE property most likely to break silently: the cheapest configuration in
+    // existence must be in the returned set, whatever the wholeness sort did to
+    // it. Compared against an effectively unlimited search of the same party.
+    $all   = maya_ilai_suggest($g, 3, $D, 999);
+    $floor = min(array_map(fn($s) => (float)$s['quote']['total'], $all));
+    $shown = min(array_map(fn($s) => (float)$s['quote']['total'], $sugs));
+    if (abs($floor - $shown) >= 0.005) { $presentOk = false; echo "NOTE  {$g} guests: cheapest {$floor} missing, best shown {$shown}\n"; }
+
+    $at = $cheapIdx($sugs);
+    if ($at > 1) $slotOk = false;                                     // slot one or two, never buried
+    $badge = $sugs[$at]['badge'] ?? '';
+    if ($badge !== 'cheapest' && $badge !== 'both') $taggedOk = false;  // and visibly tagged
+    if (($sugs[$at]['why'] ?? '') === '') $taggedOk = false;
+
+    // The lead is the wholest stay on offer.
+    foreach ($sugs as $s) if ($units($sugs[0]) > $units($s)) $leadOk = false;
+
+    // With the promoted row set aside, the rest is ordered whole-stays-first,
+    // then price.
+    $rest = $sugs; unset($rest[$at]); $rest = array_values($rest);
+    for ($i = 1; $i < count($rest); $i++) {
+        $a = [$units($rest[$i - 1]), (float)$rest[$i - 1]['quote']['total']];
+        $b = [$units($rest[$i]),     (float)$rest[$i]['quote']['total']];
+        if ($a > $b) { $orderOk = false; echo "NOTE  {$g} guests: '{$rest[$i-1]['label']}' ranked above '{$rest[$i]['label']}'\n"; }
+    }
 }
-check('search: suggestions are always ordered cheapest first', true);   // failures reported above
+check('search: the cheapest configuration is ALWAYS in the returned set (parties 1–20)', $presentOk);
+check('search: the cheapest sits at slot one or two, never buried',                      $slotOk);
+check('search: the cheapest is visibly tagged, with a reason',                           $taggedOk);
+check('search: the lead is the wholest stay on offer',                                   $leadOk);
+check('search: the rest is ordered whole stays first, then price',                       $orderOk);
+
+// The cheapest is still guaranteed in when the limit is tight enough to have
+// dropped it — it is swapped in over the last row, not lost.
+foreach ([1, 2, 3] as $lim) {
+    $tight = maya_ilai_suggest(7, 3, $D, $lim);
+    $all7  = maya_ilai_suggest(7, 3, $D, 999);
+    check("search: limit {$lim} still carries the cheapest stay",
+        count($tight) <= $lim
+        && abs(min(array_map(fn($s) => (float)$s['quote']['total'], $tight))
+             - min(array_map(fn($s) => (float)$s['quote']['total'], $all7))) < 0.005);
+}
+
+// The 7-guest list is the case the owner judged: a real room must come before a
+// bunk pile, and the $1,175 must still be on the page.
+$seven7 = maya_ilai_suggest(7, 3, $D, 5);
+check('search: 7 guests lead with a single whole product', $units($seven7[0]) === 1);
+check('search: 7 guests do not lead with a pile of bunk rooms',
+    (int)$seven7[0]['quote']['q']['bunk'] <= 1 && $units($seven7[0]) === 1);
+check('search: the 7-guest lead is the Two-Bedroom Family Room', $seven7[0]['label'] === 'Two-Bedroom Family Room');
+check('search: the cheapest 7-guest stay is still shown, at slot two',
+    $seven7[1]['label'] === '2× Private Bunk Room' && eq((float)$seven7[1]['quote']['total'], 1175.0));
+check('search: and its tag says why it is cheap, not just that it is',
+    str_contains($seven7[1]['why'], 'Bunk beds') && str_contains($seven7[1]['why'], 'least private'));
+
+// The badge is derived from the offer, so the reason matches the rooms.
+$b = maya_ilai_offer_badge(['units' => [['qty' => 2]], 'quote' => ['q' => ['bunk' => 2], 'guests' => 7]], false, true);
+check('badge: a cheap bunk pile names the bunks and the split',
+    $b['badge'] === 'cheapest' && str_contains($b['why'], 'Bunk beds') && str_contains($b['why'], '2 separate rooms'));
+$b = maya_ilai_offer_badge(['units' => [['qty' => 2]], 'quote' => ['q' => ['bunk' => 0], 'guests' => 4]], false, true);
+check('badge: a cheap split with no bunks names only the split',
+    !str_contains($b['why'], 'Bunk') && str_contains($b['why'], 'not one space'));
+$b = maya_ilai_offer_badge(['units' => [['qty' => 1]], 'quote' => ['q' => ['bunk' => 0], 'guests' => 2]], true, false);
+check('badge: the lead claims one space, not a price', $b['badge'] === 'pick' && str_contains($b['why'], 'One space'));
+$b = maya_ilai_offer_badge(['units' => [['qty' => 1]], 'quote' => ['q' => ['bunk' => 1], 'guests' => 2]], true, true);
+check('badge: lead and cheapest at once still admits the bunk beds',
+    $b['badge'] === 'both' && str_contains($b['why'], 'Bunk beds'));
+check('badge: an unremarkable offer wears nothing',
+    maya_ilai_offer_badge(['units' => [['qty' => 1]], 'quote' => ['q' => ['bunk' => 0], 'guests' => 2]], false, false)
+    === ['badge' => '', 'tag' => '', 'why' => '']);
 
 // A couple of two sharing is not sold the whole compound.
 $two = maya_ilai_suggest(2, 3, $D, 5);
@@ -312,18 +389,19 @@ check('search: the cheapest 2-guest offer costs less than a whole villa',
     (float)$two[0]['quote']['nightly'] < (float)$D['rates']['villa']);
 
 // A snug fit outranks a cavernous one at the same money — the tie-break after
-// price is wasted capacity, so a 7-guest party is never shown a 20-bed stay
-// above one that fits.
+// units and price is wasted capacity, so a 7-guest party is never shown a
+// 20-bed stay above an equally-priced one that fits.
 $seven = maya_ilai_suggest(7, 3, $D, 5);
 check('search: 7 guests get suggestions', count($seven) > 0);
 $sevenOk = true;
 foreach ($seven as $i => $s) {
     if ($i === 0) continue;
     $prev = $seven[$i - 1];
-    if (eq((float)$prev['quote']['total'], (float)$s['quote']['total'])
+    if (array_sum(array_column($prev['units'], 'qty')) === array_sum(array_column($s['units'], 'qty'))
+        && eq((float)$prev['quote']['total'], (float)$s['quote']['total'])
         && (int)$prev['quote']['capacity'] > (int)$s['quote']['capacity']) $sevenOk = false;
 }
-check('search: at equal price the snugger fit ranks first', $sevenOk);
+check('search: at equal size and price the snugger fit ranks first', $sevenOk);
 
 // Guest allocation: the quote rejects a selected room with nobody in it, so
 // every returned configuration must seat at least one guest in every room —
