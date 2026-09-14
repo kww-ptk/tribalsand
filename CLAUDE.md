@@ -260,11 +260,32 @@ Test: `php tests/maya_ilai_inventory.php`.
   answers the stay question and is what the calendar greys out beyond. It binary-searches
   `find_available_unit()`, valid because a longer span can only take more — never fewer —
   components. It is generic, so it fixes the same latent issue at every property.
-- **Staff holds are guarded, not just documented.** `staff_hold_block_reason()`
-  (`includes/staff-hold-guard.php`) refuses a staff hold on a villa with any component
-  already sold, naming the villa, dates and component. Without it a staff hold's NULL
-  (= whole villa) block silently oversold a live component booking. Returns `null` for
-  every non-Maya-Ilai unit, so no other property's deliberate-overlap workflow changes.
+- **FIVE write paths take a whole villa, and every one is guarded.** Any write of a
+  `components`-NULL block on a villa unit claims all four bedrooms, so each must ask
+  **`staff_hold_block_reason()`** (`includes/staff-hold-guard.php`) first — it names the
+  villa, dates and sold components, and returns `null` for every non-Maya-Ilai unit so no
+  other property's deliberate-overlap workflow changes. The five: `admin/hold-new.php`,
+  `admin/submission-view.php`, the Gantt's create **and** drag-to-move
+  (`includes/gantt-block-guard.php`), `admin/conflicts.php` keep-OTA, and
+  `api/sync-ical.php`. **If you add a sixth, guard it** — each of these was found
+  separately, after the previous one was "the last".
+  - Where a path must exclude its *own* block from the check, prefer deleting it first
+    if the path deletes it anyway (conflicts.php); otherwise park the row inside a
+    transaction and re-ask (`gantt_block_move()`).
+  - Guard **before** anything irreversible. conflicts.php used to cancel the guest and
+    send the email before writing the block; refusing after that would have cancelled a
+    booking and done nothing. The email now goes out after the commit.
+- **Pre-migration safety is a runtime guard, not an ordering assumption.** The original
+  spec claimed the composite path was unreachable before the catalogue migration because
+  its rooms would not exist yet. **False:** `maya-ilai-villa` is in `db/seed_rooms_2026.sql`
+  and predates the feature, so `mi_is_composite_room()` is already true for it on an
+  unmigrated database. A deploy-before-migrate therefore broke the guest calendar, the
+  availability API, enquiry submission and admin hold-new for that room. Every read and
+  write of the new columns now goes through `components_supported()` /
+  `mi_components_select()` / `holds_room_id_supported()`, which degrade **closed** (a NULL
+  component set reads as "whole unit taken"). All three are `information_schema` catalog
+  lookups, never a failing `SELECT`: they run inside `create_hold_with_block()`'s
+  transaction, and in Postgres a failed statement aborts the whole transaction.
 - **The Gantt packs concurrent blocks into lanes** (`includes/gantt-lanes.php`, pure and
   tested). Bars are positioned only by date, so two bookings on one villa for the same
   dates previously drew identical opaque boxes and the later hid the earlier — on the one
@@ -363,6 +384,7 @@ The SAME read-only tool+RAG engine, exposed to website visitors as a branded cha
 | `includes/maya-ilai-inventory.php` | Maya Ilai composite inventory — component map, resolution, ring-fencing, villa ordering (pure, no I/O) |
 | `includes/staff-hold-guard.php` | Refuses a staff hold that would sell a villa bedroom twice (Maya Ilai villa units only) |
 | `includes/gantt-lanes.php` | First-fit lane packing so concurrent blocks on one unit stay visible on the Gantt (pure) |
+| `includes/gantt-block-guard.php` | Guards the Gantt's drag-to-move against overselling a villa; excludes the moving block from accusing itself |
 | `includes/rates.php` | Nightly rate helpers — merge, resolve, trim/split writes, scoped delete |
 | `includes/rate-form.php` · `includes/rate-calendar.php` | Multi-range rate entry + read-only month grid partials |
 | `admin/rates.php` | Site-wide read-only rates calendar (scoped, reception-visible) |
