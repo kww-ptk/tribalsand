@@ -35,6 +35,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['run'])) {
             $ok     = true;
             $output = "Migration {$file} completed successfully.";
         } catch (PDOException $e) {
+            // A migration may open its OWN transaction in SQL (BEGIN ... COMMIT),
+            // which PDO knows nothing about. When such a migration aborts — most
+            // usefully when one of its own safety gates RAISEs — Postgres leaves
+            // this connection in the aborted state, and every later query on the
+            // request dies with 25P02. That includes current_admin() in the admin
+            // layout below, so the page fatals and the gate's message — the whole
+            // point of the gate — never reaches the screen.
+            //
+            // Roll back explicitly so the connection is usable again and the real
+            // error can be rendered. Nothing is lost: the failed migration's work
+            // was already discarded by Postgres the moment it aborted.
+            try {
+                if (db()->inTransaction()) db()->rollBack();
+                else                       db()->exec('ROLLBACK');
+            } catch (Throwable $ignored) {
+                // Nothing useful to do — keep the original error, which is the
+                // one worth showing.
+            }
             $ok     = false;
             $output = "Migration {$file} failed:\n\n" . $e->getMessage();
         }
