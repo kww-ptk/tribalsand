@@ -319,6 +319,35 @@ try {
     $bunkOnly = db_query("SELECT id FROM rooms WHERE slug = 'maya-ilai-bunk-room'")->fetch();
     check('same-villa: a plain Bunk Room still sells from another villa',
         find_available_unit((int)$bunkOnly['id'], $SC, $SO) !== false);
+
+    // Maya Ilai must NOT use the venue-wide is_entire_place exclusion.
+    $villaRoomRow = db_query(
+        'SELECT id, slug, venue_id, is_entire_place FROM rooms WHERE slug = :s',
+        [':s' => MAYA_ILAI_VILLA_ROOM_SLUG]
+    )->fetch();
+    check('conflict: Maya Ilai has no venue-wide conflict units',
+        room_conflict_unit_ids($villaRoomRow) === []);
+
+    // The seed data never sets is_entire_place=TRUE on a Maya Ilai room, so the
+    // assertion above passes even without the guard (the "else" branch finds no
+    // whole-villa sibling in the venue either way). Simulate the guard actually
+    // being exercised — mi_is_composite_room() must short-circuit BEFORE the
+    // is_entire_place branch even runs, or a future flip of that flag (or a
+    // wrongly-config'd room) would block the whole property off one booking.
+    $villaRoomIfEntire = $villaRoomRow;
+    $villaRoomIfEntire['is_entire_place'] = true;
+    check('conflict: still exempt even if is_entire_place were set on the villa room',
+        room_conflict_unit_ids($villaRoomIfEntire) === []);
+
+    // Zuri keeps the old behaviour.
+    $zuriEntire = db_query(
+        "SELECT id, slug, venue_id, is_entire_place FROM rooms
+          WHERE is_entire_place = TRUE AND venue_id = (SELECT id FROM venues WHERE slug = 'zuri')"
+    )->fetch();
+    if ($zuriEntire) {
+        check('conflict: Zuri still blocks its sibling units',
+            count(room_conflict_unit_ids($zuriEntire)) > 0);
+    }
 } finally {
     db()->rollBack();
 }

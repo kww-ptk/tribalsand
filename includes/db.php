@@ -521,6 +521,10 @@ function room_conflict_unit_ids(array $room): array {
     $venue_id = $room['venue_id'] ?? null;
     if (!$venue_id) return [];
 
+    // Maya Ilai's exclusion is per-villa and handled by mi_find_villa_unit();
+    // the venue-wide buyout rule would block the whole property off one booking.
+    if (mi_is_composite_room($room)) return [];
+
     if (!empty($room['is_entire_place'])) {
         $sql = "SELECT u.id FROM units u
                 JOIN rooms r ON r.id = u.room_id
