@@ -3,6 +3,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/checkin.php';
+require_once __DIR__ . '/../includes/staff-hold-guard.php'; // staff_hold_block_reason()
 require_login();
 require_bookings();
 
@@ -39,6 +40,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
     elseif ($check_in >= $check_out)                     $error = 'Check-out must be after check-in.';
     elseif ($g_name === '')                              $error = 'Guest name is required.';
     elseif (!filter_var($g_email, FILTER_VALIDATE_EMAIL)) $error = 'A valid guest email is required.';
+
+    // Oversell guard. This form deliberately does NOT check availability — staff
+    // need to be able to record an overbooking — and that stays true everywhere
+    // except a Maya Ilai villa, where the block written below claims the WHOLE
+    // villa (components NULL) and would silently sell a bedroom a guest has
+    // already bought. staff_hold_block_reason() returns null for every other
+    // unit, so no other property's workflow changes.
+    if (!$error) {
+        $error = staff_hold_block_reason($unit_id, $check_in, $check_out) ?? '';
+    }
 
     if (!$error) {
         try {
@@ -107,7 +118,7 @@ include __DIR__ . '/_layout.php';
     <?php if (!$ru_options): ?>
       <p style="margin:0;color:var(--muted)">No availability units exist yet — add units to a room first (Rooms admin).</p>
     <?php else: ?>
-    <p style="margin:0 0 16px;font-size:13px;color:var(--muted)">Creates a <strong>pending</strong> booking, generates the guest's login code, and blocks the dates. It will not expire — confirm it from Holds when you're ready. Availability is not checked — you control overlaps.</p>
+    <p style="margin:0 0 16px;font-size:13px;color:var(--muted)">Creates a <strong>pending</strong> booking, generates the guest's login code, and blocks the dates. It will not expire — confirm it from Holds when you're ready. Availability is not checked — you control overlaps. The one exception is a Maya Ilai villa: a staff booking there takes the whole villa, so one with a bedroom already sold is refused.</p>
     <form method="POST" action="/admin/hold-new.php">
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="create">

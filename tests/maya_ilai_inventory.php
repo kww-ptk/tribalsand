@@ -6,6 +6,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/maya-ilai-inventory.php';
 require_once __DIR__ . '/../includes/bookings.php';
+require_once __DIR__ . '/../includes/gantt-lanes.php';
+require_once __DIR__ . '/../includes/staff-hold-guard.php';
 
 $failures = 0;
 function check(string $label, bool $cond): void {
@@ -220,6 +222,125 @@ check('order: a sort_order tie reserves the same villas regardless of input orde
     array_column(mi_order_villas($tieVillasA, false, 2), 'unit_id') === [51, 52]);
 check('order: a sort_order tie reserves the same villas regardless of input order (reversed)',
     array_column(mi_order_villas($tieVillasB, false, 2), 'unit_id') === [51, 52]);
+
+// ── Gantt lane assignment (pure) ────────────────────────────────────────────
+// One villa can hold several unrelated bookings at once. The calendar draws each
+// block from its dates alone, so two concurrent blocks on one unit used to land
+// on byte-identical geometry and the later one painted over the earlier. Lanes
+// split the row so every block is visible.
+//
+// Spans are half-open day indexes [start, end) — the same convention as
+// availability_blocks.date_to (the checkout morning, not the last night).
+$lanesOf = static function (array $spans): array {
+    $r = gantt_lane_assign($spans);
+    return [$r['lanes'], $r['count']];
+};
+
+[$l, $n] = $lanesOf([['key' => 'a', 'start' => 0, 'end' => 3]]);
+check('lanes: a lone block sits in lane 0 and the row keeps one lane',
+    $l === ['a' => 0] && $n === 1);
+
+[$l, $n] = $lanesOf([
+    ['key' => 'a', 'start' => 0, 'end' => 3],
+    ['key' => 'b', 'start' => 5, 'end' => 8],
+]);
+check('lanes: two blocks that do not overlap share lane 0 — other properties keep one lane',
+    $l === ['a' => 0, 'b' => 0] && $n === 1);
+
+[$l, $n] = $lanesOf([
+    ['key' => 'a', 'start' => 0, 'end' => 3],
+    ['key' => 'b', 'start' => 3, 'end' => 6],
+]);
+check('lanes: back-to-back stays one lane — checkout morning is not an overlap',
+    $l === ['a' => 0, 'b' => 0] && $n === 1);
+
+// The exact reproduction: a guest books Double A and a second guest books the
+// bunk in the same villa over the SAME nights.
+[$l, $n] = $lanesOf([
+    ['key' => 'double', 'start' => 2, 'end' => 6],
+    ['key' => 'bunk',   'start' => 2, 'end' => 6],
+]);
+check('lanes: two identical spans on one unit get separate lanes',
+    $n === 2 && $l['double'] !== $l['bunk']
+    && $l['double'] < 2 && $l['bunk'] < 2);
+// A tie on both dates is broken by key, so the same two bookings always draw in
+// the same order — not in whatever order Postgres happened to return them.
+check('lanes: an exact tie is broken deterministically by key',
+    $l === ['bunk' => 0, 'double' => 1]);
+
+// A block fully inside another was invisible too.
+[$l, $n] = $lanesOf([
+    ['key' => 'outer', 'start' => 0, 'end' => 10],
+    ['key' => 'inner', 'start' => 3, 'end' => 5],
+]);
+check('lanes: a block contained inside another gets its own lane',
+    $l === ['outer' => 0, 'inner' => 1] && $n === 2);
+
+[$l, $n] = $lanesOf([
+    ['key' => 'a', 'start' => 0, 'end' => 9],
+    ['key' => 'b', 'start' => 1, 'end' => 9],
+    ['key' => 'c', 'start' => 2, 'end' => 9],
+    ['key' => 'd', 'start' => 3, 'end' => 9],
+]);
+check('lanes: a fully split villa — all four components at once — gets four lanes',
+    $l === ['a' => 0, 'b' => 1, 'c' => 2, 'd' => 3] && $n === 4);
+
+// First fit: a lane is reused as soon as its last block has ended.
+[$l, $n] = $lanesOf([
+    ['key' => 'a', 'start' => 0, 'end' => 2],
+    ['key' => 'b', 'start' => 1, 'end' => 3],
+    ['key' => 'c', 'start' => 2, 'end' => 4],
+]);
+check('lanes: first fit reuses lane 0 once its block has ended',
+    $l === ['a' => 0, 'b' => 1, 'c' => 0] && $n === 2);
+
+// Row order out of the DB is date_from ASC, but nothing guarantees a tie order.
+// Lane assignment must not depend on it, or the same calendar would redraw
+// differently between page loads.
+$shuffled = [
+    ['key' => 'c', 'start' => 2, 'end' => 4],
+    ['key' => 'a', 'start' => 0, 'end' => 2],
+    ['key' => 'b', 'start' => 1, 'end' => 3],
+];
+[$l2, $n2] = $lanesOf($shuffled);
+check('lanes: assignment is independent of input order',
+    $l2 === ['a' => 0, 'b' => 1, 'c' => 0] && $n2 === 2);
+
+check('lanes: an empty unit has no lanes at all',
+    gantt_lane_assign([]) === ['lanes' => [], 'count' => 0]);
+
+// Geometry. One lane MUST reproduce today's CSS exactly (.gantt-cells height 36,
+// .gantt-block top:4 bottom:4 => a 28px bar), because every other property has
+// one lane and must render unchanged.
+$m1 = gantt_lane_metrics(1);
+check('lane metrics: one lane reproduces today\'s geometry exactly (36px row, 4px inset, 28px bar)',
+    $m1['row_h'] === 36 && $m1['lane_h'] === 28 && gantt_lane_top(0, $m1) === 4);
+
+$m2 = gantt_lane_metrics(2);
+check('lane metrics: two lanes still fit the 36px row',
+    $m2['row_h'] === 36
+    && gantt_lane_top(0, $m2) === 4
+    && gantt_lane_top(1, $m2) + $m2['lane_h'] === 36 - 4);
+
+$m4 = gantt_lane_metrics(4);
+check('lane metrics: four lanes grow the row instead of drawing invisible slivers',
+    $m4['lane_h'] >= 10 && $m4['row_h'] > 36
+    && gantt_lane_top(3, $m4) + $m4['lane_h'] === $m4['row_h'] - 4);
+
+check('lane metrics: lanes tile the row without overlapping, for every plausible count',
+    (function (): bool {
+        for ($n = 1; $n <= 8; $n++) {
+            $m = gantt_lane_metrics($n);
+            if (gantt_lane_top(0, $m) !== 4) return false;                      // same top inset as today
+            if (gantt_lane_top($n - 1, $m) + $m['lane_h'] !== $m['row_h'] - 4) return false; // and bottom inset
+            for ($i = 1; $i < $n; $i++) {
+                // Each lane starts strictly below the previous one ends — two
+                // bars on one unit can never paint over each other again.
+                if (gantt_lane_top($i, $m) <= gantt_lane_top($i - 1, $m) + $m['lane_h'] - 1) return false;
+            }
+        }
+        return true;
+    })());
 
 // ── DB-backed allocation (rolled back) ──────────────────────────────────────
 $villaRoom = db_query(
@@ -692,6 +813,103 @@ try {
                     ->fetchColumn() === (int)$bunkFull['id']);
         }
     }
+
+    // ── The staff path must not oversell a component booking ───────────────
+    // admin/hold-new.php and admin/submission-view.php write a block with
+    // components NULL — the WHOLE villa. Over a live component booking that
+    // silently sells the same bedroom twice: no constraint is violated and no
+    // warning is shown. The guard below is what both forms call before writing.
+    $SHI = '2100-03-01';
+    $SHO = '2100-03-05';
+    $shVilla = (int) db_query(
+        'SELECT id FROM units WHERE room_id = :r AND sort_order = 1', [':r' => $villaRoom['id']]
+    )->fetchColumn();
+    $shFree = (int) db_query(
+        'SELECT id FROM units WHERE room_id = :r AND sort_order = 8', [':r' => $villaRoom['id']]
+    )->fetchColumn();
+
+    check('staff guard: an empty villa lets a staff booking through',
+        staff_hold_block_reason($shVilla, $SHI, $SHO) === null);
+
+    // A guest books a Double Room in villa 1 — components {double_a}.
+    create_hold_with_block($shVilla, null, $SHI, $SHO, 'Guest Double',
+        'guest-double@example.com', 'pending', 24, ['double_a'], (int)$doubleRoom['id']);
+
+    $shReason = staff_hold_block_reason($shVilla, $SHI, $SHO);
+    check('staff guard: a staff booking over a live component booking is REFUSED',
+        $shReason !== null);
+    check('staff guard: the refusal names the villa',
+        is_string($shReason) && str_contains($shReason, 'Villa 1'));
+    check('staff guard: the refusal names both dates',
+        is_string($shReason) && str_contains($shReason, $SHI) && str_contains($shReason, $SHO));
+    check('staff guard: the refusal names the component that is already sold',
+        is_string($shReason) && str_contains($shReason, 'Double A'));
+
+    // Partial overlap by a single night is still an overlap.
+    check('staff guard: a one-night overlap is still refused',
+        staff_hold_block_reason($shVilla, '2100-02-25', '2100-03-02') !== null);
+
+    // A whole-villa (NULL components) block blocks the staff path too.
+    db_query(
+        "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, components)
+         VALUES (:u, :df, :dt, 'booked', NULL)",
+        [':u' => $shFree, ':df' => '2100-04-01', ':dt' => '2100-04-03']
+    );
+    check('staff guard: a NULL-components block refuses the staff path as well',
+        staff_hold_block_reason($shFree, '2100-04-01', '2100-04-03') !== null);
+
+    // Nothing booked in these dates → the staff booking still works, end to end.
+    check('staff guard: a villa with nothing booked still passes the check',
+        staff_hold_block_reason($shFree, $SHI, $SHO) === null);
+    $shHold = create_hold_with_block($shFree, null, $SHI, $SHO, 'Staff Booking',
+        'staff-booking@example.com', 'pending', null, null,
+        (int) db_query('SELECT room_id FROM units WHERE id = :u', [':u' => $shFree])->fetchColumn());
+    check('staff guard: and the staff hold is actually created',
+        is_int($shHold) && $shHold > 0);
+    check('staff guard: it still blocks the WHOLE villa (components NULL)',
+        db_query('SELECT components FROM availability_blocks WHERE hold_id = :h',
+            [':h' => $shHold])->fetchColumn() === null);
+    check('staff guard: which is why the very same villa is now refused a second staff hold',
+        staff_hold_block_reason($shFree, $SHI, $SHO) !== null);
+
+    // Dates clear of every block are unaffected.
+    check('staff guard: a window with nothing in it is never refused',
+        staff_hold_block_reason($shVilla, '2100-06-01', '2100-06-03') === null);
+
+    // The check is scoped to Maya Ilai VILLA units. Everything else — including
+    // Maya Ilai's own studios — keeps the deliberate "you control overlaps"
+    // behaviour the staff forms have always had.
+    $shStudioUnit = (int) db_query(
+        "SELECT u.id FROM units u JOIN rooms r ON r.id = u.room_id
+          WHERE r.slug = 'maya-ilai-studio' ORDER BY u.sort_order LIMIT 1"
+    )->fetchColumn();
+    if ($shStudioUnit) {
+        db_query(
+            "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type)
+             VALUES (:u, :df, :dt, 'booked')",
+            [':u' => $shStudioUnit, ':df' => $SHI, ':dt' => $SHO]
+        );
+        check('staff guard: a Maya Ilai STUDIO is not a villa unit — unaffected',
+            staff_hold_block_reason($shStudioUnit, $SHI, $SHO) === null);
+    }
+
+    $shOther = db_query(
+        "SELECT u.id FROM units u JOIN rooms r ON r.id = u.room_id
+          WHERE u.is_active = TRUE AND r.venue_id <> :v ORDER BY u.id LIMIT 1",
+        [':v' => (int)$villaRow['venue_id']]
+    )->fetchColumn();
+    if ($shOther) {
+        db_query(
+            "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type)
+             VALUES (:u, :df, :dt, 'booked')",
+            [':u' => (int)$shOther, ':df' => $SHI, ':dt' => $SHO]
+        );
+        check('staff guard: another property double-booked on purpose is still allowed',
+            staff_hold_block_reason((int)$shOther, $SHI, $SHO) === null);
+    }
+
+    check('staff guard: a unit id that does not exist is not a villa unit',
+        staff_hold_block_reason(0, $SHI, $SHO) === null);
 
     check('hold_room_id_sql: COALESCEs once the column exists',
         holds_room_id_supported()

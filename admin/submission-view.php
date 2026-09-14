@@ -33,6 +33,7 @@ require_once __DIR__ . '/../includes/submission-status.php'; // lead status pipe
 require_once __DIR__ . '/../includes/submission-payload.php'; // payload → display rows/sections
 require_once __DIR__ . '/../includes/upsells.php';             // booking-flow add-ons
 require_once __DIR__ . '/../includes/mail.php'; // send_admin_reply()
+require_once __DIR__ . '/../includes/staff-hold-guard.php'; // staff_hold_block_reason()
 
 // Flash (set by the convert handler on redirect)
 $flash = $_SESSION['sub_flash'] ?? null;
@@ -131,6 +132,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'conve
     elseif ($check_in >= $check_out)                    $err = 'Check-out must be after check-in.';
     elseif ($g_name === '')                             $err = 'Guest name is required.';
     elseif (!filter_var($g_email, FILTER_VALIDATE_EMAIL)) $err = 'A valid guest email is required.';
+
+    // Oversell guard — same gap as admin/hold-new.php. Converting an enquiry
+    // writes a block with components NULL, i.e. the WHOLE villa, which over a
+    // live Maya Ilai component booking sells the same bedroom twice. Returns
+    // null for every unit that is not a Maya Ilai villa, so the deliberate
+    // "availability is not checked" behaviour is untouched everywhere else.
+    if (!$err) {
+        $err = staff_hold_block_reason($unit_id, $check_in, $check_out) ?? '';
+    }
 
     if ($err) {
         $_SESSION['sub_flash'] = ['type' => 'error', 'msg' => $err];
@@ -538,7 +548,7 @@ include __DIR__ . '/_layout.php';
     <?php if (!$ru_options): ?>
       <p style="margin:0;font-size:14px;color:var(--muted)">No availability units are set up yet, so a hold can't be created. Add units to a room first (Rooms admin).</p>
     <?php else: ?>
-    <p style="margin:0 0 16px;font-size:13px;color:var(--muted)">Creates a 24h hold from this enquiry, generates a booking code, and blocks the dates. Availability is not checked — you control overlaps.</p>
+    <p style="margin:0 0 16px;font-size:13px;color:var(--muted)">Creates a 24h hold from this enquiry, generates a booking code, and blocks the dates. Availability is not checked — you control overlaps. The one exception is a Maya Ilai villa: a staff booking there takes the whole villa, so one with a bedroom already sold is refused.</p>
     <form method="POST" action="/admin/submission-view?id=<?= $id ?>">
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="convert">
