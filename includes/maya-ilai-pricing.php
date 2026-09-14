@@ -436,3 +436,279 @@ function maya_ilai_quote(array $sel, ?array $cfg = null): array {
         'currency'=>'USD',
     ];
 }
+
+/* ───────────────────────── Configuration search ─────────────────────────────
+ *
+ * "How many of us are there?" → the handful of real configurations that sleep
+ * that party, cheapest first. Everything below GENERATES candidate selections
+ * and hands each one to maya_ilai_quote(), which stays the single authority on
+ * whether a selection is bookable and what it costs. Nothing here re-implements
+ * villa packing, the living-room allowance, inventory or pricing — this file has
+ * already been bitten twice by a second copy of a rule, and a suggestion the
+ * guest cannot actually book is worse than no suggestion at all.
+ */
+
+/**
+ * The products the search may offer, with the occupancy maya_ilai_quote()
+ * enforces for each. Four primitives plus the named combinations, all derived
+ * from the live config so an admin rate/rule edit moves them.
+ *
+ * `min` is the fewest guests the product can hold (the quote rejects a selected
+ * room with nobody in it), `included` the guests the rate already covers, `max`
+ * the hard ceiling. Combination rows carry their parts so the selection can be
+ * posted as a combination — which is what keeps `comboUnits` (and therefore the
+ * living-room allowance) correct.
+ */
+function maya_ilai_products(?array $cfg = null): array {
+    $cfg = $cfg ?: maya_ilai_pricing_get();
+    $r = $cfg['rules'];
+    $out = [
+        ['key'=>'Three-Bedroom Villa', 'parts'=>['villa'=>1],
+         'min'=>1, 'included'=>(int)$r['villaIncluded'], 'max'=>(int)$r['villaMax'], 'combo'=>false,
+         'desc'=>'The whole villa — three bedrooms, living room + kitchen'],
+        ['key'=>'Private Bunk Room', 'parts'=>['bunk'=>1],
+         'min'=>1, 'included'=>(int)$r['bunkIncluded'], 'max'=>(int)$r['bunkMax'], 'combo'=>false,
+         'desc'=>'Villa bunk room'],
+        ['key'=>'Studio', 'parts'=>['studio'=>1],
+         'min'=>1, 'included'=>2, 'max'=>2, 'combo'=>false,
+         'desc'=>'Private studio'],
+        ['key'=>'Double Room', 'parts'=>['double'=>1],
+         'min'=>1, 'included'=>2, 'max'=>2, 'combo'=>false,
+         'desc'=>'Villa double bedroom'],
+    ];
+    foreach (maya_ilai_combos() as $c) {
+        if (!maya_ilai_combo_offerable($cfg, $c['parts'])) continue;   // dominated → never offer it
+        $occ = maya_ilai_combo_occupancy($cfg, $c['parts']);
+        $out[] = ['key'=>$c['key'], 'parts'=>$c['parts'],
+                  'min'=>$occ['min'], 'included'=>$occ['included'], 'max'=>$occ['max'],
+                  'combo'=>true, 'desc'=>$c['desc']];
+    }
+    return $out;
+}
+
+/** The largest party the compound can physically sleep, from the live inventory. */
+function maya_ilai_max_party(?array $cfg = null): int {
+    $cfg = $cfg ?: maya_ilai_pricing_get();
+    return (int)$cfg['inventory']['villas'] * (int)$cfg['rules']['villaMax']
+         + (int)$cfg['inventory']['studios'] * 2;
+}
+
+/**
+ * Spread a party across the products of one candidate.
+ *
+ * Same shape as maya_ilai_split_guests() one level up: seed every unit with its
+ * minimum (a selected room with nobody in it is rejected by the quote), then
+ * fill each toward the guests its rate already INCLUDES, and only then spill
+ * into the paid extras up to each unit's max. The within-a-combination split
+ * across its own bedrooms is not repeated here — maya_ilai_expand_combos()
+ * still does that with maya_ilai_split_guests(), so there is one copy of it.
+ *
+ * Returns product index → guests, or null when the party cannot fit this
+ * candidate at all (too few to fill a room each, or too many for the beds).
+ *
+ * @param array<int,array{product:array,qty:int}> $picks
+ * @return array<int,int>|null
+ */
+function maya_ilai_allocate_guests(array $picks, int $guests): ?array {
+    $lo = []; $inc = []; $hi = []; $sumLo = 0; $sumHi = 0;
+    foreach ($picks as $i => $pick) {
+        $qty = max(0, (int)$pick['qty']);
+        $lo[$i]  = (int)$pick['product']['min'] * $qty;
+        $inc[$i] = (int)$pick['product']['included'] * $qty;
+        $hi[$i]  = (int)$pick['product']['max'] * $qty;
+        $sumLo += $lo[$i]; $sumHi += $hi[$i];
+    }
+    if ($guests < $sumLo || $guests > $sumHi) return null;
+
+    $out  = $lo;
+    $left = $guests - $sumLo;
+    foreach ($out as $i => $_) {                       // fill toward the included count
+        if ($left <= 0) break;
+        $take = min(max(0, min($inc[$i], $hi[$i]) - $out[$i]), $left);
+        $out[$i] += $take; $left -= $take;
+    }
+    foreach ($out as $i => $_) {                       // then into the paid extras
+        if ($left <= 0) break;
+        $take = min($hi[$i] - $out[$i], $left);
+        $out[$i] += $take; $left -= $take;
+    }
+    return $left === 0 ? $out : null;
+}
+
+/**
+ * Turn a candidate (products + quantities + an allocation) into a selection
+ * maya_ilai_quote() understands. Combination rows stay expressed as
+ * combinations so maya_ilai_expand_combos() records `comboUnits` — without it
+ * the living-room allowance is computed against the wrong villa count.
+ *
+ * @param array<int,array{product:array,qty:int}> $picks
+ * @param array<int,int> $alloc
+ */
+function maya_ilai_picks_to_sel(array $picks, array $alloc, int $nights, ?array $cfg = null): array {
+    $cfg = $cfg ?: maya_ilai_pricing_get();
+    $sel = ['nights' => max(1, $nights), 'season' => 'high', 'program' => 'group'];
+    $primitive = ['villa'=>'Villa', 'studio'=>'Studio', 'bunk'=>'Bunk', 'double'=>'Double'];
+
+    foreach ($picks as $i => $pick) {
+        $p = $pick['product']; $qty = (int)$pick['qty']; $g = (int)($alloc[$i] ?? 0);
+        if ($p['combo']) {
+            $sel['combos'][$p['key']] = ['qty' => $qty, 'guests' => $g];
+            continue;
+        }
+        $k = array_key_first($p['parts']);
+        $suffix = $primitive[$k] ?? null;
+        if ($suffix === null) continue;
+        $sel['qty' . $suffix]   = (int)($sel['qty' . $suffix]   ?? 0) + $qty;
+        $sel['guest' . $suffix] = (int)($sel['guest' . $suffix] ?? 0) + $g;
+    }
+    return maya_ilai_expand_combos($sel, $cfg);
+}
+
+/** "2× Studio + Private Bunk Room" — the offer's name, from its products. */
+function maya_ilai_picks_label(array $picks): string {
+    $bits = [];
+    foreach ($picks as $pick) {
+        $qty = (int)$pick['qty'];
+        $bits[] = ($qty > 1 ? $qty . '× ' : '') . $pick['product']['key'];
+    }
+    return implode(' + ', $bits);
+}
+
+/**
+ * Configurations that sleep $guests, cheapest first.
+ *
+ * The search is a bounded depth-first enumeration of product multisets. Three
+ * things keep it small enough to run on a keystroke:
+ *
+ *   1. A branch is RECORDED and abandoned the moment its capacity covers the
+ *      party — adding a ninth bed to a stay that already sleeps everyone only
+ *      makes it dearer, and the quote would rank it last anyway.
+ *   2. Quantities are capped by what the inventory can possibly allow (8 villas,
+ *      8 studios, two doubles per villa), and the running villa load is capped
+ *      at the villa count, so branches the quote would reject die early.
+ *   3. Total units are capped at ceil(guests/2)+1 (never more than villas +
+ *      studios) — every product sleeps at least two, so no cheaper arrangement
+ *      lives beyond that depth.
+ *
+ * Every surviving candidate is then QUOTED, and anything with errors is thrown
+ * away. maya_ilai_quote() is both the feasibility oracle and the pricer, so a
+ * suggestion is bookable by construction.
+ *
+ * @return array<int,array{sel:array,quote:array,label:string,units:array}>
+ */
+function maya_ilai_suggest(int $guests, int $nights, ?array $cfg = null, int $limit = 5): array {
+    $cfg    = $cfg ?: maya_ilai_pricing_get();
+    $guests = max(1, $guests);
+    $nights = max(1, $nights);
+    $limit  = max(1, $limit);
+    if ($guests > maya_ilai_max_party($cfg)) return [];
+
+    $products = maya_ilai_products($cfg);
+    if (!$products) return [];
+    // Big sleepers first: a branch dies as soon as it covers the party, so
+    // covering fast is what keeps the tree shallow.
+    usort($products, fn($a, $b) => [$b['max'], $a['key']] <=> [$a['max'], $b['key']]);
+
+    $villas   = max(0, (int)$cfg['inventory']['villas']);
+    $studios  = max(0, (int)$cfg['inventory']['studios']);
+    $perVilla = max(1, (int)$cfg['inventory']['doublePerVilla']);
+
+    // Per-product quantity ceiling, and how much of a villa one unit consumes.
+    // A studio is not in a villa; everything else is (a combination unit is a
+    // villa of its own, which is exactly what the living-room allowance says).
+    $cap = []; $villaWeight = [];
+    foreach ($products as $i => $p) {
+        if (isset($p['parts']['studio']))     { $cap[$i] = $studios;            $villaWeight[$i] = 0.0; }
+        elseif (isset($p['parts']['villa']))  { $cap[$i] = $villas;             $villaWeight[$i] = 1.0; }
+        elseif ($p['combo'])                  { $cap[$i] = $villas;             $villaWeight[$i] = 1.0; }
+        elseif (isset($p['parts']['bunk']))   { $cap[$i] = $villas;             $villaWeight[$i] = 1.0; }
+        else                                  { $cap[$i] = $villas * $perVilla; $villaWeight[$i] = 1.0 / $perVilla; }
+    }
+
+    $maxUnits = min(max(1, $villas + $studios), max(2, (int)ceil($guests / 2) + 1));
+    $count    = count($products);
+
+    $candidates = [];
+    $dfs = function (int $i, array $qty, int $units, int $capacity, int $minSum, float $villaLoad)
+            use (&$dfs, $products, $cap, $villaWeight, $guests, $maxUnits, $villas, $count, &$candidates): void {
+        if ($capacity >= $guests) {                         // covered — record, never extend
+            if ($minSum <= $guests) $candidates[] = $qty;
+            return;
+        }
+        if ($i >= $count || $units >= $maxUnits) return;
+        $next = ($qty[$i] ?? 0) + 1;
+        if ($next <= $cap[$i] && $villaLoad + $villaWeight[$i] <= $villas + 1e-9) {
+            $more = $qty; $more[$i] = $next;
+            $dfs($i, $more, $units + 1, $capacity + (int)$products[$i]['max'],
+                 $minSum + (int)$products[$i]['min'], $villaLoad + $villaWeight[$i]);
+        }
+        $dfs($i + 1, $qty, $units, $capacity, $minSum, $villaLoad);
+    };
+    $dfs(0, [], 0, 0, 0, 0.0);
+
+    // Quote every candidate; the quote decides what is real. De-duplication
+    // happens HERE rather than over a finished list: the same primitives at the
+    // same price are ONE offer however they were assembled ("Two-Bedroom Family
+    // Room" and "Double Room + Private Bunk Room" are the same rooms at the same
+    // money), and keeping only the best spelling of each as we go is what stops
+    // a full-compound party from holding thousands of quotes in memory at once.
+    // The survivor is the one expressed as the fewest whole products — that is
+    // the one that reads like a stay rather than a parts list.
+    $best = [];
+    foreach ($candidates as $qty) {
+        $picks = [];
+        foreach ($qty as $i => $n) if ($n > 0) $picks[] = ['product' => $products[$i], 'qty' => (int)$n];
+        if (!$picks) continue;
+        $alloc = maya_ilai_allocate_guests($picks, $guests);
+        if ($alloc === null) continue;
+
+        $sel   = maya_ilai_picks_to_sel($picks, $alloc, $nights, $cfg);
+        $quote = maya_ilai_quote($sel, $cfg);
+        if ($quote['errors']) continue;                      // not bookable → not an offer
+        if ((int)$quote['guests'] !== $guests) continue;      // paranoia: the party must be seated
+
+        $units = [];
+        foreach ($picks as $i => $pick) {
+            $units[] = [
+                'key'    => $pick['product']['key'],
+                'qty'    => (int)$pick['qty'],
+                'guests' => (int)($alloc[$i] ?? 0),
+                'desc'   => $pick['product']['desc'],
+                'max'    => (int)$pick['product']['max'] * (int)$pick['qty'],
+            ];
+        }
+        $offer = [
+            'sel'   => $sel,
+            'quote' => $quote,
+            'label' => maya_ilai_picks_label($picks),
+            'units' => $units,
+            // ranking / de-duplication scratch
+            '_units' => array_sum(array_column($units, 'qty')),
+            '_combo' => (int)array_sum(array_map(fn($p) => $p['product']['combo'] ? (int)$p['qty'] : 0, $picks)),
+        ];
+
+        $q   = $quote['q'];
+        $key = implode('/', [$q['double'], $q['bunk'], $q['studio'], $q['villa'], $q['living'],
+                             number_format((float)$quote['total'], 2, '.', '')]);
+        $cur = $best[$key] ?? null;
+        if ($cur === null
+            || [$offer['_units'], -$offer['_combo'], $offer['label']]
+             < [$cur['_units'],   -$cur['_combo'],   $cur['label']]) {
+            $best[$key] = $offer;
+        }
+    }
+    $offers = array_values($best);
+
+    // Cheapest first, then the snuggest fit — a 7-guest party should not be
+    // shown a 20-bed arrangement above one that fits.
+    usort($offers, fn($a, $b) =>
+        [(float)$a['quote']['total'], (int)$a['quote']['capacity'] - $guests, $a['_units'], $a['label']]
+        <=> [(float)$b['quote']['total'], (int)$b['quote']['capacity'] - $guests, $b['_units'], $b['label']]);
+
+    $out = [];
+    foreach (array_slice($offers, 0, $limit) as $o) {
+        unset($o['_units'], $o['_combo']);
+        $out[] = $o;
+    }
+    return $out;
+}

@@ -20,6 +20,49 @@ if (!maya_ilai_pricing_supported()) { http_response_code(503); exit(json_encode(
 
 $data = json_decode(file_get_contents('php://input'), true) ?? [];
 
+/*
+ * Mode 1 — "how many of us are there?" Returns the handful of configurations
+ * that actually sleep the party, cheapest first, each already priced by the SAME
+ * maya_ilai_quote() the single-selection mode below uses. Every suggestion is
+ * quoted error-free before it is returned, so nothing here can propose a stay
+ * the guest cannot book.
+ *
+ * Public and unauthenticated, so both inputs are bounded before any search runs:
+ * the party at what the compound can physically sleep, the stay at a month.
+ * Rubbish in gets a 422, never a search.
+ */
+if (($data['mode'] ?? '') === 'suggest') {
+    $cfg       = maya_ilai_pricing_get();
+    $maxParty  = maya_ilai_max_party($cfg);
+    $rawGuests = $data['guests'] ?? null;
+    $rawNights = $data['nights'] ?? null;
+    if (!is_numeric($rawGuests) || !is_numeric($rawNights)) {
+        http_response_code(422);
+        exit(json_encode(['ok'=>false, 'error'=>'Tell us how many guests and how many nights.']));
+    }
+    $guests = (int)$rawGuests;
+    $nights = (int)$rawNights;
+    if ($guests < 1 || $guests > $maxParty) {
+        http_response_code(422);
+        exit(json_encode(['ok'=>false, 'error'=>"Party size must be between 1 and {$maxParty} guests.",
+                          'maxGuests'=>$maxParty]));
+    }
+    if ($nights < 1 || $nights > 30) {
+        http_response_code(422);
+        exit(json_encode(['ok'=>false, 'error'=>'Stays run from 1 to 30 nights.']));
+    }
+    echo json_encode([
+        'ok'          => true,
+        'guests'      => $guests,
+        'nights'      => $nights,
+        'maxGuests'   => $maxParty,
+        'minNights'   => (int)$cfg['rules']['minNights'],
+        'suggestions' => maya_ilai_suggest($guests, $nights, $cfg, max(1, min(8, (int)($data['limit'] ?? 5)))),
+    ]);
+    exit;
+}
+
+// Mode 2 — price one posted selection (the full "build it yourself" picker).
 // Guests always default to filling the selected rooms if not specified, so a
 // simple "1 villa" request still prices sensibly.
 $cfg = maya_ilai_pricing_get();

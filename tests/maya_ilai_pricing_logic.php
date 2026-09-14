@@ -251,6 +251,195 @@ check('single: two guests in a double is full rate',
 $noProg = maya_ilai_quote(['qtyDouble' => 1, 'guestDouble' => 2, 'nights' => 3], $D);
 check('default program is group', $noProg['program'] === 'group');
 
+// ── The configuration search ────────────────────────────────────────────────
+// maya_ilai_suggest() answers "we are N, what fits?" by generating candidate
+// selections and handing each to maya_ilai_quote(). The quote is both the
+// feasibility oracle and the pricer, so the bar these assertions defend is:
+// EVERY suggestion must be bookable. A suggestion the guest cannot actually
+// book is worse than no suggestion.
+
+$maxParty = maya_ilai_max_party($D);
+check('search: the compound sleeps 8 villas × 10 + 8 studios × 2 = 96', $maxParty === 96);
+
+// Every party size the property can host gets at least one answer, and every
+// answer it gives quotes clean. This is the assertion that matters most.
+$anyEmpty = [];
+for ($g = 1; $g <= 20; $g++) {
+    $sugs = maya_ilai_suggest($g, 3, $D, 5);
+    if (!$sugs) { $anyEmpty[] = $g; continue; }
+
+    foreach ($sugs as $i => $s) {
+        // Re-quote the returned selection from scratch: what the guest is shown
+        // must be what the one pricing path says, not a figure carried alongside.
+        $re = maya_ilai_quote($s['sel'], $D);
+        if ($re['errors'] !== []) {
+            check("search: {$g} guests — suggestion #" . ($i + 1) . " ('{$s['label']}') quotes without errors", false);
+        }
+        if (!eq((float)$re['total'], (float)$s['quote']['total'])) {
+            check("search: {$g} guests — suggestion #" . ($i + 1) . " re-quotes to the same total", false);
+        }
+        if ((int)$s['quote']['guests'] !== $g) {
+            check("search: {$g} guests — suggestion #" . ($i + 1) . " seats the whole party", false);
+        }
+    }
+}
+check('search: every party size 1–20 is answered', $anyEmpty === []);
+check('search: every suggestion for every party size 1–20 quotes without errors', true);   // failures reported above
+
+// Ranking: the list is cheapest first, and the head really is the cheapest of
+// what was returned.
+for ($g = 1; $g <= 20; $g++) {
+    $sugs = maya_ilai_suggest($g, 3, $D, 5);
+    if (!$sugs) continue;
+    $totals = array_map(fn($s) => (float)$s['quote']['total'], $sugs);
+    $sorted = $totals; sort($sorted);
+    if ($totals !== $sorted) check("search: {$g} guests — suggestions are ordered cheapest first", false);
+    if (abs($totals[0] - min($totals)) >= 0.005) check("search: {$g} guests — the first really is the cheapest", false);
+}
+check('search: suggestions are always ordered cheapest first', true);   // failures reported above
+
+// A couple of two sharing is not sold the whole compound.
+$two = maya_ilai_suggest(2, 3, $D, 5);
+$pos = function (array $sugs, string $label): ?int {
+    foreach ($sugs as $i => $s) if ($s['label'] === $label) return $i;
+    return null;
+};
+$villaAt = $pos($two, 'Three-Bedroom Villa'); $studioAt = $pos($two, 'Studio');
+check('search: a 2-guest party is offered a Studio', $studioAt !== null);
+check('search: a 2-guest party is not offered the whole villa above a studio',
+    $villaAt === null || ($studioAt !== null && $studioAt < $villaAt));
+check('search: the cheapest 2-guest offer costs less than a whole villa',
+    (float)$two[0]['quote']['nightly'] < (float)$D['rates']['villa']);
+
+// A snug fit outranks a cavernous one at the same money — the tie-break after
+// price is wasted capacity, so a 7-guest party is never shown a 20-bed stay
+// above one that fits.
+$seven = maya_ilai_suggest(7, 3, $D, 5);
+check('search: 7 guests get suggestions', count($seven) > 0);
+$sevenOk = true;
+foreach ($seven as $i => $s) {
+    if ($i === 0) continue;
+    $prev = $seven[$i - 1];
+    if (eq((float)$prev['quote']['total'], (float)$s['quote']['total'])
+        && (int)$prev['quote']['capacity'] > (int)$s['quote']['capacity']) $sevenOk = false;
+}
+check('search: at equal price the snugger fit ranks first', $sevenOk);
+
+// Guest allocation: the quote rejects a selected room with nobody in it, so
+// every returned configuration must seat at least one guest in every room —
+// and at least one per bedroom of a combination.
+$allocOk = true; $unitSumOk = true;
+for ($g = 1; $g <= 20; $g++) {
+    foreach (maya_ilai_suggest($g, 3, $D, 5) as $s) {
+        $q = $s['quote']['q']; $gs = $s['quote']['g'];
+        foreach (['double', 'bunk', 'studio', 'villa'] as $k) {
+            if ($q[$k] > 0 && $gs[$k] < $q[$k]) $allocOk = false;   // a room with nobody in it
+            if ($q[$k] === 0 && $gs[$k] > 0)    $allocOk = false;   // guests in a room nobody booked
+        }
+        $sum = 0;
+        foreach ($s['units'] as $u) {
+            if ($u['guests'] < $u['qty']) $allocOk = false;         // fewer guests than units
+            if ($u['guests'] > $u['max'])  $allocOk = false;        // past the product's ceiling
+            $sum += $u['guests'];
+        }
+        if ($sum !== $g) $unitSumOk = false;
+    }
+}
+check('search: guest allocation never leaves a room with zero guests', $allocOk);
+check('search: the units breakdown accounts for every guest in the party', $unitSumOk);
+
+// De-duplication: the same rooms at the same price are one offer, however it
+// was assembled. "Two-Bedroom Family Room" and "Double Room + Private Bunk
+// Room" are the same primitives at the same money — the guest sees it once.
+$dupFree = true;
+for ($g = 1; $g <= 20; $g++) {
+    $seen = [];
+    foreach (maya_ilai_suggest($g, 3, $D, 8) as $s) {
+        $q = $s['quote']['q'];
+        $key = implode('/', [$q['double'], $q['bunk'], $q['studio'], $q['villa'], $q['living'],
+                             number_format((float)$s['quote']['total'], 2, '.', '')]);
+        if (isset($seen[$key])) $dupFree = false;
+        $seen[$key] = true;
+    }
+}
+check('search: no two suggestions are the same primitives at the same price', $dupFree);
+check('search: labels are distinct within a result set', (function () use ($D) {
+    for ($g = 1; $g <= 20; $g++) {
+        $labels = array_map(fn($s) => $s['label'], maya_ilai_suggest($g, 3, $D, 8));
+        if (count($labels) !== count(array_unique($labels))) return false;
+    }
+    return true;
+})());
+
+// A combination beats its hand-assembled twin on the dedup tie-break, because a
+// whole product reads like a stay and a parts list does not.
+$fourteen = maya_ilai_suggest(14, 3, $D, 8);
+$hasPartsList = false;
+foreach ($fourteen as $s) {
+    if ($s['label'] === 'Double Room + Private Bunk Room' || $s['label'] === 'Private Bunk Room + Double Room') $hasPartsList = true;
+}
+check('search: the parts-list spelling of a combination is not offered', !$hasPartsList);
+
+// Inventory: a party larger than the compound gets NOTHING, not something
+// unbookable.
+check('search: one guest past the compound capacity returns nothing', maya_ilai_suggest($maxParty + 1, 3, $D) === []);
+check('search: a wildly oversized party returns nothing',             maya_ilai_suggest(500, 3, $D) === []);
+check('search: a full-compound party is still answered',              count(maya_ilai_suggest($maxParty, 3, $D)) > 0);
+
+// The same holds against a shrunken inventory — the limit is read from the
+// config, never assumed.
+$small = maya_ilai_merge($D, ['inventory' => ['villas' => 1, 'studios' => 0]]);
+check('search: a one-villa compound sleeps 10',            maya_ilai_max_party($small) === 10);
+check('search: 10 fits a one-villa compound',              count(maya_ilai_suggest(10, 3, $small)) > 0);
+check('search: 11 does not, and returns nothing',          maya_ilai_suggest(11, 3, $small) === []);
+$smallOk = true;
+for ($g = 1; $g <= 10; $g++) {
+    foreach (maya_ilai_suggest($g, 3, $small) as $s) {
+        if (maya_ilai_quote($s['sel'], $small)['errors'] !== []) $smallOk = false;
+        if ((int)$s['quote']['q']['studio'] > 0) $smallOk = false;          // there are no studios
+        if ((int)$s['quote']['physicalVillas'] > 1) $smallOk = false;       // there is one villa
+    }
+}
+check('search: a shrunken inventory is respected in every suggestion', $smallOk);
+
+// Nights flow through to the total the same way the picker's do.
+$oneNight   = maya_ilai_suggest(6, 1, $D, 1);
+$threeNight = maya_ilai_suggest(6, 3, $D, 1);
+check('search: nights reach the quote', $oneNight && $threeNight
+    && (int)$oneNight[0]['quote']['nights'] === 1 && (int)$threeNight[0]['quote']['nights'] === 3);
+check('search: a longer stay costs more', $oneNight && $threeNight
+    && (float)$threeNight[0]['quote']['total'] > (float)$oneNight[0]['quote']['total']);
+
+// The limit is honoured, and a bad one cannot explode the list.
+check('search: honours the limit',     count(maya_ilai_suggest(12, 3, $D, 3)) <= 3);
+check('search: a zero limit still returns something rather than nothing', count(maya_ilai_suggest(12, 3, $D, 0)) === 1);
+check('search: nonsense guest counts are floored, not crashed', count(maya_ilai_suggest(0, 3, $D)) > 0);
+check('search: nonsense night counts are floored, not crashed',
+    (int)(maya_ilai_suggest(4, 0, $D, 1)[0]['quote']['nights'] ?? 0) === 1);
+
+// Every product the search can offer is a product the quote accepts on its own.
+foreach (maya_ilai_products($D) as $p) {
+    $picks = [['product' => $p, 'qty' => 1]];
+    $alloc = maya_ilai_allocate_guests($picks, (int)$p['included']);
+    check("search: product '{$p['key']}' quotes clean at its included occupancy",
+        $alloc !== null && maya_ilai_quote(maya_ilai_picks_to_sel($picks, $alloc, 3, $D), $D)['errors'] === []);
+}
+check('search: the product list is the four primitives plus the offerable combinations',
+    count(maya_ilai_products($D)) === 4 + count(maya_ilai_combos()));
+
+// The allocator itself: seeds one per room, fills to the included count, only
+// then spills into the paid extras.
+$bunkP   = ['product' => ['min'=>1,'included'=>3,'max'=>6], 'qty' => 2];
+check('alloc: below the minimum is impossible',  maya_ilai_allocate_guests([$bunkP], 1) === null);
+check('alloc: above the maximum is impossible',  maya_ilai_allocate_guests([$bunkP], 13) === null);
+check('alloc: 2 guests seat one per bunk room',  maya_ilai_allocate_guests([$bunkP], 2) === [0 => 2]);
+check('alloc: fills toward the included count before the extras',
+    maya_ilai_allocate_guests([['product'=>['min'=>1,'included'=>3,'max'=>6],'qty'=>1],
+                              ['product'=>['min'=>1,'included'=>2,'max'=>2],'qty'=>1]], 5) === [0 => 3, 1 => 2]);
+check('alloc: only spills into the extras once every included bed is taken',
+    maya_ilai_allocate_guests([['product'=>['min'=>1,'included'=>3,'max'=>6],'qty'=>1],
+                              ['product'=>['min'=>1,'included'=>2,'max'=>2],'qty'=>1]], 7) === [0 => 5, 1 => 2]);
+
 // ── Live config (reads the saved settings blob; no writes) ──────────────────
 try {
     $live = maya_ilai_pricing_get();
