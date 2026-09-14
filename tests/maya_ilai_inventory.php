@@ -1405,6 +1405,154 @@ try {
     check('batching: ...over a window that actually contains blocked nights (an all-clear window would prove nothing)',
         $refCoverage > 0);
 
+    // ── The Gantt is the THIRD staff-entered booking surface (C1) ───────────
+    // staff-hold-guard.php guards admin/hold-new.php and admin/submission-view.php
+    // and says so. admin/gantt.php writes availability_blocks directly — "Add
+    // block" and drag-to-move — and wrote them with no check at all, which is the
+    // surface reception actually reaches for. A Gantt block has no component
+    // picker, so it is components NULL = the WHOLE villa.
+    $villaRoomId = (int)$villaRoom['id'];
+    $dblRoom = db_query('SELECT * FROM rooms WHERE slug = :s', [':s' => 'maya-ilai-double'])->fetch();
+
+    // 1. A guest books a Double Room. One bedroom, through the real allocator.
+    $GCI = '2098-04-01';
+    $GCO = '2098-04-05';
+    $gHold = mi_allocate_and_hold($dblRoom, null, $GCI, $GCO,
+        'Gantt Guest', 'gantt-guest@example.com', 'confirmed', null);
+    $gUnit = (int) db_query('SELECT unit_id FROM holds WHERE id = :h', [':h' => $gHold])->fetchColumn();
+    $gBlock = db_query(
+        'SELECT id, components::text AS components FROM availability_blocks WHERE hold_id = :h',
+        [':h' => $gHold]
+    )->fetch();
+    check('gantt bypass: the guest bought ONE bedroom of the villa, not the villa',
+        mi_pg_array_decode($gBlock['components'] ?? null) === ['double_a']);
+
+    // 2. The guard refuses that unit/range — this was always true.
+    $gReason = staff_hold_block_reason($gUnit, $GCI, $GCO);
+    check('gantt bypass: the guard refuses that villa for those dates, naming the sold bedroom',
+        is_string($gReason) && str_contains($gReason, 'Double A') && str_contains($gReason, $GCI));
+
+    // 3. …and the Gantt now asks it. create_block's INSERT is unreachable
+    //    without the guard having answered first.
+    $ganttSrc = (string) file_get_contents(__DIR__ . '/../admin/gantt.php');
+    $handler = static function (string $src, string $from, string $to): string {
+        $a = strpos($src, $from);
+        if ($a === false) return '';
+        $b = strpos($src, $to, $a);
+        return $b === false ? '' : substr($src, $a, $b - $a);
+    };
+    $createSrc = $handler($ganttSrc, "\$action === 'create_block'", "\$action === 'convert_block'");
+    check('gantt bypass: create_block consults staff_hold_block_reason() BEFORE it inserts',
+        $createSrc !== ''
+        && ($gp = strpos($createSrc, 'staff_hold_block_reason')) !== false
+        && ($gi = strpos($createSrc, 'INSERT INTO availability_blocks')) !== false
+        && $gp < $gi);
+    $updateSrc = $handler($ganttSrc, "\$action === 'update_block'", "\$action === 'add_ical_feed'");
+    check('gantt bypass: update_block no longer writes its own unguarded UPDATE',
+        $updateSrc !== ''
+        && strpos($updateSrc, 'gantt_block_move') !== false
+        && strpos($updateSrc, 'UPDATE availability_blocks') === false);
+
+    // ── Moving a block: the guard must not count the mover against itself ───
+    $villaUnits = db_query(
+        'SELECT id, sort_order FROM units WHERE room_id = :r AND is_active = TRUE ORDER BY sort_order',
+        [':r' => $villaRoomId]
+    )->fetchAll();
+    $mvUnit = (int)$villaUnits[2]['id'];      // villa 3 — untouched by the tests above
+    $mkBlock = static function (int $uid, string $df, string $dt, ?array $comp = null, string $type = 'blocked'): int {
+        db_query(
+            "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, components)
+             VALUES (:u, :df, :dt, :t, :c)",
+            [':u' => $uid, ':df' => $df, ':dt' => $dt, ':t' => $type,
+             ':c' => $comp === null ? null : mi_pg_array_encode($comp)]
+        );
+        return (int) db()->lastInsertId();
+    };
+    $blockRow = static fn(int $id): array => db_query(
+        'SELECT unit_id, date_from::text AS date_from, date_to::text AS date_to
+           FROM availability_blocks WHERE id = :id', [':id' => $id]
+    )->fetch() ?: [];
+
+    $mvId = $mkBlock($mvUnit, '2098-05-10', '2098-05-15');
+
+    // A nudge inside its own span: the only thing overlapping is the block being
+    // dragged, so this must be allowed. Asked naively the guard refuses it,
+    // because a NULL-components block reads as the whole villa.
+    check('gantt move: asked naively, the guard refuses the block its own dates',
+        staff_hold_block_reason($mvUnit, '2098-05-12', '2098-05-17') !== null);
+    $mv1 = gantt_block_move($mvId, $mvUnit, '2098-05-12', '2098-05-17');
+    check('gantt move: a block nudged within its own span is NOT refused by itself',
+        $mv1['ok'] === true);
+    check('gantt move: …and it actually moved',
+        $blockRow($mvId)['date_from'] === '2098-05-12' && $blockRow($mvId)['date_to'] === '2098-05-17');
+
+    // Somebody else's bedroom, on the same villa, overlapping the new position.
+    // The move overlaps its own current span too, so this exercises the
+    // park-and-ask-again path all the way to a refusal.
+    $mkBlock($mvUnit, '2098-05-20', '2098-05-25', ['bunk'], 'booked');
+    $mv2 = gantt_block_move($mvId, $mvUnit, '2098-05-16', '2098-05-22');
+    check('gantt move: a drag onto a villa with a sold bunk is refused',
+        $mv2['ok'] === false && str_contains($mv2['error'], 'Bunk'));
+    check('gantt move: a refused move leaves the block exactly where it was — the parking is undone',
+        $blockRow($mvId)['date_from'] === '2098-05-12'
+        && $blockRow($mvId)['date_to'] === '2098-05-17'
+        && (int)$blockRow($mvId)['unit_id'] === $mvUnit);
+
+    // A drag onto a DIFFERENT villa that is partly sold: no self-overlap, so the
+    // first (cheap) answer is already conclusive.
+    $otherVilla = (int)$villaUnits[3]['id'];
+    $mkBlock($otherVilla, '2098-08-01', '2098-08-06', ['double_a', 'living'], 'booked');
+    $mv3 = gantt_block_move($mvId, $otherVilla, '2098-08-02', '2098-08-04');
+    check('gantt move: a drag onto another villa\'s sold bedrooms is refused',
+        $mv3['ok'] === false && str_contains($mv3['error'], 'Double A'));
+    check('gantt move: that refusal changed nothing either',
+        (int)$blockRow($mvId)['unit_id'] === $mvUnit
+        && $blockRow($mvId)['date_from'] === '2098-05-12');
+
+    // A free villa still takes the block.
+    $mv4 = gantt_block_move($mvId, $otherVilla, '2098-09-02', '2098-09-04');
+    check('gantt move: a clean destination still accepts the move',
+        $mv4['ok'] === true && (int)$blockRow($mvId)['unit_id'] === $otherVilla);
+
+    // Scope and block_type are respected BEFORE anything is parked: a row this
+    // move would not touch must not be temporarily relocated.
+    $scoped = gantt_block_move($mvId, $mvUnit, '2098-05-12', '2098-05-17', 'SELECT id FROM units WHERE id = -1');
+    check('gantt move: an out-of-scope block is the same silent no-op as before',
+        $scoped['ok'] === true && (int)$blockRow($mvId)['unit_id'] === $otherVilla);
+    // A hold-type block is managed from holds.php and this action has always
+    // refused to touch it. It must not be parked either — parking a row the
+    // UPDATE will not move would leave a guest's booking on the parking dates.
+    $holdBlockId = $mkBlock($mvUnit, '2098-12-01', '2098-12-05', null, 'hold');
+    $held = gantt_block_move($holdBlockId, $otherVilla, '2098-08-02', '2098-08-04');
+    check('gantt move: a hold-type block is never moved, and never parked',
+        $held['ok'] === true
+        && (int)$blockRow($holdBlockId)['unit_id'] === $mvUnit
+        && $blockRow($holdBlockId)['date_from'] === '2098-12-01'
+        && $blockRow($holdBlockId)['date_to']   === '2098-12-05');
+
+    // ── Every other property is untouched ──────────────────────────────────
+    // staff_hold_block_reason() returns null for them, so the Gantt must still
+    // allow the overlaps staff deliberately create.
+    $otherUnitRow = db_query(
+        "SELECT u.id FROM units u JOIN rooms r ON r.id = u.room_id
+          WHERE u.is_active = TRUE AND r.venue_id <> :v ORDER BY u.id LIMIT 1",
+        [':v' => (int)$villaRow['venue_id']]
+    )->fetchColumn();
+    if (!$otherUnitRow) {
+        echo "SKIP  gantt move: no active unit at another property\n";
+    } else {
+        $oUnit = (int)$otherUnitRow;
+        $mkBlock($oUnit, '2098-07-01', '2098-07-05', null, 'booked');
+        check('other property: the guard stays silent, whatever is already booked',
+            staff_hold_block_reason($oUnit, '2098-07-01', '2098-07-05') === null);
+        $oMoveId = $mkBlock($oUnit, '2098-07-20', '2098-07-22');
+        $oMove   = gantt_block_move($oMoveId, $oUnit, '2098-07-01', '2098-07-05');
+        check('other property: a deliberate double-book by drag still succeeds',
+            $oMove['ok'] === true
+            && $blockRow($oMoveId)['date_from'] === '2098-07-01'
+            && $blockRow($oMoveId)['date_to']   === '2098-07-05');
+    }
+
 } finally {
     db()->rollBack();
 }

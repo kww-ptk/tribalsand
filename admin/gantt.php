@@ -3,6 +3,8 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/gantt-lanes.php'; // concurrent-block lane packing
+require_once __DIR__ . '/../includes/staff-hold-guard.php'; // staff_hold_block_reason()
+require_once __DIR__ . '/../includes/gantt-block-guard.php'; // gantt_block_move()
 require_login();
 require_bookings();
 
@@ -41,9 +43,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // date_to from modal is the last blocked night (inclusive) — add 1 day for exclusive DB storage
         $date_to_excl = $date_to ? date('Y-m-d', strtotime($date_to . ' +1 day')) : '';
+        $dates_ok = $unit_id && $date_from && $date_to_excl && $date_from < $date_to_excl;
+
         if ($unit_id && !$unitInScope($unit_id)) {
             $err = 'That unit isn’t one of your properties.';
-        } elseif ($unit_id && $date_from && $date_to_excl && $date_from < $date_to_excl) {
+        } elseif (!$dates_ok) {
+            $err = 'Invalid dates or unit — last blocked night must be on or after first blocked night.';
+        // Oversell guard — the same gap as admin/hold-new.php and
+        // admin/submission-view.php, on the surface reception actually uses. A
+        // Gantt block has no component picker, so it is written components NULL,
+        // i.e. the WHOLE villa; dropped over a live Maya Ilai component booking
+        // it sells the same bedroom twice. Returns null for every unit that is
+        // not a Maya Ilai villa, so the deliberate "staff control overlaps"
+        // behaviour — including a knowingly double-booked block — is untouched
+        // at every other property. Asked only after the scope check, so a
+        // refusal never names another account's villa.
+        } elseif (($guard = staff_hold_block_reason($unit_id, $date_from, $date_to_excl)) !== null) {
+            $err = $guard;
+        } else {
             db_query(
                 "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, notes)
                  VALUES (:uid, :df, :dt, :type, :notes)",
@@ -51,8 +68,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  ':type' => $type, ':notes' => $notes]
             );
             $msg = 'Block created.';
-        } else {
-            $err = 'Invalid dates or unit — last blocked night must be on or after first blocked night.';
         }
     }
 
@@ -94,20 +109,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               && preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_to)
               // Both ends must be in scope: the block being moved and its destination unit.
               && $unitInScope($unit_id);
+        $error = 'Invalid data';
         if ($ok) {
-            db_query(
-                "UPDATE availability_blocks
-                 SET unit_id=:uid, date_from=:df, date_to=:dt
-                 WHERE id=:id AND block_type != 'hold'"
-                . ($gUnitIds !== '' ? " AND unit_id IN ({$gUnitIds})" : ''),
-                [':uid' => $unit_id, ':df' => $date_from, ':dt' => $date_to, ':id' => $block_id]
-            );
-            audit_log('gantt.move_block', 'availability_block', $block_id, "unit={$unit_id} {$date_from}→{$date_to}");
+            // Same oversell guard as create_block: a dragged block is written
+            // components-NULL too, so dropping one on a Maya Ilai villa that
+            // already has a bedroom sold oversells it just as an "Add block"
+            // does. gantt_block_move() owns the move so it can ask the guard a
+            // question the block itself is not part of — a block nudged within
+            // its own span must not refuse itself. Non-Maya-Ilai moves take its
+            // fast path: one guard read that returns null, then this same
+            // UPDATE, unchanged.
+            $res   = gantt_block_move($block_id, $unit_id, $date_from, $date_to, $gUnitIds);
+            $ok    = $res['ok'];
+            $error = $res['error'] !== '' ? $res['error'] : $error;
+            if ($ok) {
+                audit_log('gantt.move_block', 'availability_block', $block_id, "unit={$unit_id} {$date_from}→{$date_to}");
+            }
         }
         // Always respond JSON (AJAX-only action)
         header('Content-Type: application/json');
         http_response_code($ok ? 200 : 400);
-        echo json_encode($ok ? ['ok' => true] : ['ok' => false, 'error' => 'Invalid data']);
+        echo json_encode($ok ? ['ok' => true] : ['ok' => false, 'error' => $error]);
         exit;
     }
 
