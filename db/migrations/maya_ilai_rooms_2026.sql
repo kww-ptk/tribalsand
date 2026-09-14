@@ -30,17 +30,50 @@ BEGIN
   END IF;
 END $$;
 
+-- Existence gate. Everything below keys off venues.slug = 'maya_ilai'. If that
+-- slug is not exactly right on this database the DELETE matches nothing, the
+-- INSERT ... WHERE v.slug = 'maya_ilai' inserts nothing, and the whole thing
+-- COMMITs successfully having done absolutely nothing — the worst outcome
+-- available, because it looks like a clean run. Fail loudly instead.
+DO $venue$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM venues WHERE slug = 'maya_ilai') THEN
+    RAISE EXCEPTION
+      'No venue with slug ''maya_ilai'' - nothing to rebuild. Check the real slug (SELECT id, slug, name FROM venues) before running this.';
+  END IF;
+END $venue$;
+
 -- Data-loss gate. The DELETE below removes every existing Maya Ilai room, and
--- rooms -> units -> availability_blocks/holds all cascade. Production's venue
--- carries a `superior-suite` room (see fix_maya_ilai_superior_suite_booking.sql)
--- that maya_ilai.php pointed at until this change, and it may hold real booking
--- history. Refuse to run rather than destroy it silently: this fires on a
--- database with real data and is a no-op on a clean one.
+-- the foreign keys into rooms/units cascade further than they look:
+--
+--   units.room_id               -> rooms  CASCADE   (and from there:)
+--     holds.unit_id             -> units  CASCADE
+--     availability_blocks.unit_id       CASCADE
+--     ical_feeds.unit_id                CASCADE     <- OTA sync for the property
+--     channel_conflicts.unit_id         CASCADE
+--   rates.room_id               -> rooms  CASCADE   <- every seasonal price
+--   room_images.room_id         -> rooms  CASCADE   <- every photo
+--
+-- The first version of this gate counted only holds, blocks and ledger rows.
+-- Production's `superior-suite` room (see fix_maya_ilai_superior_suite_booking.sql)
+-- will plausibly have room_images, and possibly rates and an ical_feeds row,
+-- while having zero live holds — so the gate would have passed and destroyed all
+-- of them silently, OTA sync included. Every cascading table is counted here.
+--
+-- Not counted, deliberately: bookings.room_id/unit_id, holds.room_id and
+-- submissions.room_id are ON DELETE SET NULL, so those rows survive (the ledger
+-- rows are still caught below via their hold, which does cascade).
+--
+-- Each table is guarded with to_regclass: not every install has all of them.
 DO $gate$
 DECLARE
-  v_holds  bigint := 0;
-  v_blocks bigint := 0;
-  v_ledger bigint := 0;
+  v_holds     bigint := 0;
+  v_blocks    bigint := 0;
+  v_ledger    bigint := 0;
+  v_rates     bigint := 0;
+  v_images    bigint := 0;
+  v_feeds     bigint := 0;
+  v_conflicts bigint := 0;
 BEGIN
   SELECT count(*) INTO v_holds
     FROM holds h
@@ -69,10 +102,54 @@ BEGIN
     $q$ INTO v_ledger;
   END IF;
 
-  IF v_holds > 0 OR v_blocks > 0 OR v_ledger > 0 THEN
+  -- Nightly rate overrides. rates.room_id -> rooms is ON DELETE CASCADE, so
+  -- every seasonal price for the property goes with the rooms.
+  IF to_regclass('public.rates') IS NOT NULL THEN
+    EXECUTE $q$
+      SELECT count(*) FROM rates x
+        JOIN rooms r  ON r.id = x.room_id
+        JOIN venues v ON v.id = r.venue_id
+       WHERE v.slug = 'maya_ilai'
+    $q$ INTO v_rates;
+  END IF;
+
+  -- Room photos. This is the one production almost certainly has.
+  IF to_regclass('public.room_images') IS NOT NULL THEN
+    EXECUTE $q$
+      SELECT count(*) FROM room_images x
+        JOIN rooms r  ON r.id = x.room_id
+        JOIN venues v ON v.id = r.venue_id
+       WHERE v.slug = 'maya_ilai'
+    $q$ INTO v_images;
+  END IF;
+
+  -- OTA iCal feeds. Losing these silently stops channel sync for the property
+  -- and the URLs are held by Airbnb/Booking.com, not by us.
+  IF to_regclass('public.ical_feeds') IS NOT NULL THEN
+    EXECUTE $q$
+      SELECT count(*) FROM ical_feeds x
+        JOIN units u  ON u.id = x.unit_id
+        JOIN rooms r  ON r.id = u.room_id
+        JOIN venues v ON v.id = r.venue_id
+       WHERE v.slug = 'maya_ilai'
+    $q$ INTO v_feeds;
+  END IF;
+
+  IF to_regclass('public.channel_conflicts') IS NOT NULL THEN
+    EXECUTE $q$
+      SELECT count(*) FROM channel_conflicts x
+        JOIN units u  ON u.id = x.unit_id
+        JOIN rooms r  ON r.id = u.room_id
+        JOIN venues v ON v.id = r.venue_id
+       WHERE v.slug = 'maya_ilai'
+    $q$ INTO v_conflicts;
+  END IF;
+
+  IF v_holds > 0 OR v_blocks > 0 OR v_ledger > 0
+     OR v_rates > 0 OR v_images > 0 OR v_feeds > 0 OR v_conflicts > 0 THEN
     RAISE EXCEPTION
-      'Refusing to rebuild Maya Ilai: % hold(s), % availability block(s) and % ledger row(s) would be destroyed. Re-point or archive them first - see docs/superpowers/plans/2026-09-13-maya-ilai-composite-inventory.md, Task 9.',
-      v_holds, v_blocks, v_ledger;
+      'Refusing to rebuild Maya Ilai - this would destroy: % hold(s), % availability block(s), % ledger row(s), % rate override(s), % room image(s), % iCal feed(s), % channel conflict(s). Re-point or archive them first - see docs/superpowers/plans/2026-09-13-maya-ilai-composite-inventory.md, Task 9.',
+      v_holds, v_blocks, v_ledger, v_rates, v_images, v_feeds, v_conflicts;
   END IF;
 END $gate$;
 
@@ -114,5 +191,33 @@ INSERT INTO units (room_id, name, sort_order)
 SELECT r.id, 'Studio ' || g, g
   FROM rooms r, generate_series(1, 8) g
  WHERE r.slug = 'maya-ilai-studio';
+
+-- Post-condition. Every statement above is driven off venues.slug and the room
+-- slugs, and every one of them is happy to affect zero rows. Assert the shape we
+-- actually intended before committing, so a partial or empty rebuild aborts
+-- loudly instead of leaving the property half-built and looking fine.
+DO $verify$
+DECLARE
+  v_rooms bigint;
+  v_units bigint;
+BEGIN
+  SELECT count(*) INTO v_rooms
+    FROM rooms r JOIN venues v ON v.id = r.venue_id
+   WHERE v.slug = 'maya_ilai';
+
+  SELECT count(*) INTO v_units
+    FROM units u
+    JOIN rooms r  ON r.id = u.room_id
+    JOIN venues v ON v.id = r.venue_id
+   WHERE v.slug = 'maya_ilai';
+
+  -- 8 products; 8 villa units + 8 studio units. The six unitless composite
+  -- products own no units of their own by design.
+  IF v_rooms <> 8 OR v_units <> 16 THEN
+    RAISE EXCEPTION
+      'Maya Ilai rebuild produced % room(s) and % unit(s), expected 8 and 16. Rolling back.',
+      v_rooms, v_units;
+  END IF;
+END $verify$;
 
 COMMIT;
