@@ -484,7 +484,19 @@ include __DIR__ . '/_layout.php';
         $span_days = (int)(($vis_end   - $vis_start)     / 86400);
         $left_px   = $left_days * 28;
         $width_px  = max(4, $span_days * 28 - 2);
-        $label     = $b['notes'] ?: $b['block_type'];
+        // Maya Ilai: a block may consume only part of a villa. NULL means the
+        // whole unit, which is what every block at every other property means.
+        $miLabel = '';
+        if (($b['components'] ?? null) !== null) {
+            $names = ['double_a' => 'Double A', 'double_b' => 'Double B',
+                      'bunk' => 'Bunk', 'living' => 'Living'];
+            $parts = array_map(
+                static fn(string $c): string => $names[$c] ?? $c,
+                mi_pg_array_decode($b['components'])
+            );
+            if ($parts) $miLabel = ' · ' . implode(' + ', $parts);
+        }
+        $label     = ($b['notes'] ?: $b['block_type']) . $miLabel;
         $type_cls  = 'gantt-block--' . $b['block_type'];
 
         /* Hover-card payload. Only fields that actually carry a value are sent,
@@ -500,6 +512,10 @@ include __DIR__ . '/_layout.php';
             'last'   => date('Y-m-d', strtotime($b['date_to'] . ' -1 day')),
             'nights' => $nights,
         ];
+        // Only sent when this block is a partial-villa (Maya Ilai) booking — an
+        // omitted key (not a null value) so every other property's card is
+        // byte-for-byte unchanged, matching how every other optional field here works.
+        if ($miLabel !== '') $card['rooms'] = ltrim($miLabel, ' ·');
         if (trim((string)$b['notes']) !== '') $card['notes'] = trim((string)$b['notes']);
         if ($bk) {
             $money = (float)($bk['gross_amount'] ?? 0);
@@ -755,6 +771,7 @@ include __DIR__ . '/_layout.php';
   // Order is fixed so the same field is always in the same place; anything the
   // server did not send is simply skipped.
   var FIELDS = [
+    ['rooms','Rooms'],
     ['guest','Guest'], ['email','Email'], ['source','Source'], ['agent','Agent'],
     ['status','Status'], ['amount','Amount'], ['ref','Ref'], ['venue','Property'],
     ['notes','Notes'], ['imported','Imported']
