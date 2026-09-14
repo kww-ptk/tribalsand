@@ -282,19 +282,22 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
    * so the allowance comes from the bedrooms (whole villas excluded — they
    * already include theirs) minus the ones combinations already consume.
    *
-   * DELIBERATELY the strict, loose-only rule — it matches what the server will
-   * actually enforce for THIS page. api/maya-ilai-quote.php builds its selection
-   * from a fixed key list, so the comboUnits/comboDouble/comboBunk this page
-   * sends are dropped before maya_ilai_quote() sees them, and the relaxed
-   * "each combination unit is its own villa" allowance never reaches the guest
-   * surface. Capping relaxed here would let a guest build a selection the server
-   * then rejects. When that endpoint forwards the three fields, add
-   * `+ p.comboUnits` here and subtract the combination bedrooms from the packing
-   * term — the server side is already relaxed and tested.
+   * Mirrors maya_ilai_quote()'s invariant exactly: each combination unit occupies
+   * its own villa and so lends one living room, while LOOSE doubles and bunks pack
+   * together and lend one between them per villa.
+   *
+   * The combination bedrooms are subtracted from the packing term because they are
+   * already accounted for by their own unit — counting them twice would let a guest
+   * build a selection the server then rejects. api/maya-ilai-quote.php forwards
+   * comboUnits/comboDouble/comboBunk so both sides compute this identically; the
+   * server remains authoritative, since the endpoint is public.
    */
   function livingCap() {
     var p = expand();
-    var allowed = Math.max(Math.ceil(p.qtyDouble / rules.doublePerVilla), p.qtyBunk);
+    var looseDouble = Math.max(0, p.qtyDouble - p.comboDouble);
+    var looseBunk   = Math.max(0, p.qtyBunk   - p.comboBunk);
+    var allowed = p.comboUnits
+      + Math.max(Math.ceil(looseDouble / rules.doublePerVilla), looseBunk);
     return Math.max(0, allowed - p.qtyLiving);
   }
 

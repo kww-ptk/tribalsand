@@ -34,6 +34,15 @@ $quote = maya_ilai_quote([
     'guestStudio' => (int)($data['guestStudio'] ?? 0),
     'guestVilla'  => (int)($data['guestVilla']  ?? 0),
     'nights'      => (int)($data['nights']      ?? 1),
+    // How many of the primitives above arrived from a COMBINATION, and how many
+    // combination units there were. The living-room allowance cannot be derived
+    // from the primitives alone: "2x One-Bedroom Suite" and "2 doubles + 2 living
+    // rooms" expand to identical primitives at an identical price, yet the first
+    // is two bedrooms in two villas (allowed, one living room each) and the
+    // second is two bedrooms in ONE villa (only one living room exists).
+    'comboUnits'  => (int)($data['comboUnits']  ?? 0),
+    'comboDouble' => (int)($data['comboDouble'] ?? 0),
+    'comboBunk'   => (int)($data['comboBunk']   ?? 0),
     // Guests always get the published (high) rate and automatic group discounts;
     // availability surcharges are a staff/revenue lever, not shown to guests.
     'season'      => 'high',
