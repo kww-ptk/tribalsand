@@ -138,24 +138,40 @@ function mi_villa_is_reserved(int $rank, int $totalVillas, int $reserved): bool 
 /**
  * Order candidate villas for allocation.
  *
- * $villas: [['unit_id'=>int, 'sort_order'=>int, 'taken'=>string[]], …]. A
- * missing 'taken' key is normalised to [] rather than left to fatal in the
- * comparator (which only runs with 2+ villas, so the bug is size-dependent).
+ * $villas: [['unit_id'=>int, 'sort_order'=>int, 'taken'=>string[]], …] — MUST be
+ * the COMPLETE set of villas for the property. The villa total used for
+ * ring-fencing is derived as count($villas), so a filtered/partial subset
+ * cannot be ranked correctly: no value of that derived total would rank a
+ * pre-filtered list the way the full property ranks it. A missing 'sort_order'
+ * or 'taken' key is normalised (to 0 and [] respectively) in a pass BEFORE
+ * ranking — normalising after would rank off raw input and, for 'taken', fatal
+ * in the comparator once there are 2+ villas.
  *
  * Component products never see a reserved villa. The whole-villa product sees
  * every villa and prefers the reserved ones, so that consuming a villa leaves the
- * open villas available for component sales. $reserved is clamped to
- * $totalVillas so a misconfigured setting larger than the villa count fails
- * closed (the whole product line goes off sale) instead of throwing.
+ * open villas available for component sales. $reserved is clamped to the villa
+ * count so a misconfigured setting larger than the property fails closed (the
+ * whole product line goes off sale) instead of throwing.
  *
  * Within those rules: most-occupied first (pack tight, keeping whole villas
- * intact), ties broken by villa number ascending for deterministic allocation.
+ * intact), ties broken by unit_id ascending in BOTH the rank sort and this
+ * final comparator. units.sort_order is NOT NULL DEFAULT 0, so two admin-added
+ * villas can share a value — without a tiebreaker, rank (and therefore which
+ * villas are ring-fenced) would fall back to arbitrary input/row order.
  */
-function mi_order_villas(array $villas, bool $isVillaProduct, int $totalVillas, int $reserved): array {
+function mi_order_villas(array $villas, bool $isVillaProduct, int $reserved): array {
+    $totalVillas = count($villas);
     $reserved = min($reserved, $totalVillas);
 
-    $sorted = $villas;
-    usort($sorted, static fn(array $a, array $b): int => (int)$a['sort_order'] <=> (int)$b['sort_order']);
+    $sorted = array_map(static function (array $v): array {
+        $v['sort_order'] = $v['sort_order'] ?? 0;
+        $v['taken'] = $v['taken'] ?? [];
+        return $v;
+    }, $villas);
+    usort($sorted, static function (array $a, array $b): int {
+        $bySortOrder = (int)$a['sort_order'] <=> (int)$b['sort_order'];
+        return $bySortOrder !== 0 ? $bySortOrder : (int)$a['unit_id'] <=> (int)$b['unit_id'];
+    });
 
     $out = [];
     $rank = 0;
@@ -163,7 +179,6 @@ function mi_order_villas(array $villas, bool $isVillaProduct, int $totalVillas, 
         $rank++;
         $isRes = mi_villa_is_reserved($rank, $totalVillas, $reserved);
         if ($isRes && !$isVillaProduct) continue;
-        $v['taken'] = $v['taken'] ?? [];
         $v['_reserved'] = $isRes;
         $out[] = $v;
     }
@@ -174,7 +189,7 @@ function mi_order_villas(array $villas, bool $isVillaProduct, int $totalVillas, 
         $ca = count($a['taken']);
         $cb = count($b['taken']);
         if ($ca !== $cb) return $cb <=> $ca;
-        return (int)$a['sort_order'] <=> (int)$b['sort_order'];
+        return (int)$a['unit_id'] <=> (int)$b['unit_id'];
     });
 
     return array_map(static function (array $v): array {

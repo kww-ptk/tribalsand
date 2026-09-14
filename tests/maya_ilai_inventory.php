@@ -137,7 +137,7 @@ $villas = [
     ['unit_id' => 108, 'sort_order' => 8, 'taken' => []],
 ];
 
-$ordered = mi_order_villas($villas, false, 8, 2);
+$ordered = mi_order_villas($villas, false, 2);
 check('order: component products skip the 2 reserved villas',
     count($ordered) === 6);
 check('order: reserved villas are absent',
@@ -146,26 +146,36 @@ check('order: reserved villas are absent',
 check('order: pack tight — most-occupied villa first',
     array_column($ordered, 'unit_id') === [103, 102, 101, 104, 105, 106]);
 
-$orderedVilla = mi_order_villas($villas, true, 8, 2);
+$orderedVilla = mi_order_villas($villas, true, 2);
 check('order: the villa product sees all 8',
     count($orderedVilla) === 8);
 check('order: the villa product takes a reserved villa first',
     array_column($orderedVilla, 'unit_id')[0] === 107
     && array_column($orderedVilla, 'unit_id')[1] === 108);
 
-$noFence = mi_order_villas($villas, false, 8, 0);
+$noFence = mi_order_villas($villas, false, 0);
 check('order: with N=0 every villa is offered',
     count($noFence) === 8);
 
 check('order: the internal _reserved sort artifact is not leaked to callers',
     !array_key_exists('_reserved', $ordered[0] ?? ['_reserved' => true]));
 
-// A villa with no 'taken' key at all must not fatal — with exactly one villa the
-// comparator never runs, so this bug was invisible in every test above.
+// A villa with no 'taken' key at all must not fatal. With exactly one villa the
+// comparator never runs (size-dependent bug, invisible above N=1) — the second
+// case below has two villas, so the comparator actually executes.
 $singleNoTaken = [['unit_id' => 201, 'sort_order' => 1]];
-$singleResult = mi_order_villas($singleNoTaken, false, 1, 0);
+$singleResult = mi_order_villas($singleNoTaken, false, 0);
 check('order: a missing taken key does not fatal with a single villa',
     count($singleResult) === 1 && $singleResult[0]['taken'] === []);
+
+$twoNoTaken = [
+    ['unit_id' => 202, 'sort_order' => 1],
+    ['unit_id' => 203, 'sort_order' => 2],
+];
+$twoResult = mi_order_villas($twoNoTaken, false, 0);
+check('order: a missing taken key does not fatal with two villas (the comparator runs here)',
+    count($twoResult) === 2
+    && $twoResult[0]['taken'] === [] && $twoResult[1]['taken'] === []);
 
 // sort_order is NOT NULL DEFAULT 0 and admin-editable, so it can be sparse or
 // 0-based. Ranking must come from POSITION after sorting by sort_order, not
@@ -180,16 +190,35 @@ $sparseVillas = [
     ['unit_id' => 307, 'sort_order' => 6, 'taken' => []],
     ['unit_id' => 308, 'sort_order' => 7, 'taken' => []],
 ];
-$sparseOrdered = mi_order_villas($sparseVillas, false, 8, 2);
+$sparseOrdered = mi_order_villas($sparseVillas, false, 2);
 check('order: 0-based/sparse sort_order still reserves exactly 2 villas with N=2',
     count($sparseOrdered) === 6);
 check('order: 0-based/sparse sort_order reserves the villas ranked last, not sort_order>=8',
     !in_array(307, array_column($sparseOrdered, 'unit_id'), true)
     && !in_array(308, array_column($sparseOrdered, 'unit_id'), true));
 
-// $reserved larger than the villa count must clamp, not throw.
-check('order: reserved clamps to the total villa count instead of erroring',
-    mi_order_villas($villas, false, 8, 10) === []);
+// $reserved larger than the villa count must clamp, not throw. $totalVillas is
+// now derived from count($villas) — there is no separate parameter to disagree
+// with the list, so a deactivated/filtered villa can no longer desync it.
+check('order: reserved clamps to the villa count instead of erroring',
+    mi_order_villas($villas, false, 10) === []);
+
+// units.sort_order is NOT NULL DEFAULT 0, so two admin-added villas can share a
+// value. Without a tiebreaker, rank falls back to arbitrary input/row order —
+// which villa gets ring-fenced would then depend on how Postgres happened to
+// return the rows on a given request. unit_id must break the tie so the same
+// villas are reserved no matter what order the rows arrive in.
+$tieVillasA = [
+    ['unit_id' => 51, 'sort_order' => 0, 'taken' => []],
+    ['unit_id' => 52, 'sort_order' => 0, 'taken' => []],
+    ['unit_id' => 53, 'sort_order' => 0, 'taken' => []],
+    ['unit_id' => 54, 'sort_order' => 0, 'taken' => []],
+];
+$tieVillasB = array_reverse($tieVillasA); // same villas, reverse input order
+check('order: a sort_order tie reserves the same villas regardless of input order (forward)',
+    array_column(mi_order_villas($tieVillasA, false, 2), 'unit_id') === [51, 52]);
+check('order: a sort_order tie reserves the same villas regardless of input order (reversed)',
+    array_column(mi_order_villas($tieVillasB, false, 2), 'unit_id') === [51, 52]);
 
 echo "\n" . ($failures ? "{$failures} FAILED\n" : "All passed\n");
 exit($failures ? 1 : 0);
