@@ -664,8 +664,34 @@ function mi_find_villa_unit(array $room, string $check_in, string $check_out): a
     return false;
 }
 
+/**
+ * The public allocator. Sweeps lapsed holds first, exactly as it always has —
+ * its ~10 callers each resolve ONE stay and want the freshest inventory.
+ */
 function find_available_unit(int $room_id, string $check_in, string $check_out): array|false {
-    expire_stale_holds();
+    return find_available_unit_internal($room_id, $check_in, $check_out, true);
+}
+
+/**
+ * Internal: find_available_unit() with the lapsed-hold sweep made optional.
+ *
+ * expire_stale_holds() is a WRITE — an UPDATE … RETURNING that can also DELETE
+ * blocks and e-mail every affected guest. That is the right thing to do once per
+ * request; it is the wrong thing to do once per PROBE. room_max_stay_nights()
+ * binary-searches with ~5 probes, and api/check-availability.php reaches it from
+ * a public, unauthenticated GET on every check-in click, at every property — so
+ * the sweep went from one write transaction per completed date range to five per
+ * click. The sweep is hoisted to the caller instead; nothing about which unit is
+ * free changes, because the probes all run after the same single sweep.
+ *
+ * NOT part of the public surface: find_available_unit() keeps its signature so
+ * none of its existing callers change. Pass $sweep = false only when the caller
+ * has already swept for this request.
+ */
+function find_available_unit_internal(
+    int $room_id, string $check_in, string $check_out, bool $sweep = true
+): array|false {
+    if ($sweep) expire_stale_holds();
 
     $room = db_query(
         'SELECT id, slug, venue_id, is_entire_place FROM rooms WHERE id = :id',
@@ -758,6 +784,15 @@ function room_max_stay_nights(int $roomId, string $checkIn, int $cap = 30): int 
 
     $from = new DateTimeImmutable($ci);
 
+    // Sweep ONCE, here, rather than once inside each of the ~5 probes below.
+    // expire_stale_holds() is an UPDATE … RETURNING that also deletes blocks and
+    // e-mails the affected guests; this function is reached from a public,
+    // unauthenticated GET (api/check-availability.php) on every check-in click,
+    // so five write transactions per click is five too many. Placed after the
+    // early returns on purpose: an invalid window or a zero cap probed nothing
+    // before this change and so swept nothing, and still doesn't.
+    expire_stale_holds();
+
     // n = 0 is bookable by definition (an empty stay), so the invariant "lo is
     // bookable" holds from the start and the loop always terminates on a real
     // answer without ever probing a zero-length window — which
@@ -767,8 +802,9 @@ function room_max_stay_nights(int $roomId, string $checkIn, int $cap = 30): int 
     while ($lo < $hi) {
         $mid = intdiv($lo + $hi + 1, 2);
         $co  = $from->modify("+{$mid} day")->format('Y-m-d');
-        if (find_available_unit($roomId, $ci, $co) !== false) $lo = $mid;
-        else                                                  $hi = $mid - 1;
+        // $sweep = false: the single sweep above already ran for this call.
+        if (find_available_unit_internal($roomId, $ci, $co, false) !== false) $lo = $mid;
+        else                                                                  $hi = $mid - 1;
     }
     return $lo;
 }

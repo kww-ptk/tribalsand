@@ -8,7 +8,9 @@ require_once __DIR__ . '/../includes/maya-ilai-inventory.php';
 require_once __DIR__ . '/../includes/bookings.php';
 require_once __DIR__ . '/../includes/gantt-lanes.php';
 require_once __DIR__ . '/../includes/staff-hold-guard.php';
+require_once __DIR__ . '/../includes/gantt-block-guard.php'; // gantt_block_move() — the Gantt's drag
 require_once __DIR__ . '/../includes/booking.php';   // fetch_hold_for_guest() — guest portal naming test
+require_once __DIR__ . '/../includes/rates.php';     // rates_window_ymd() — the max-stay reference implementation
 
 /**
  * ── Pre-migration probe (a SUBPROCESS of this same file) ─────────────────────
@@ -95,6 +97,30 @@ if (PHP_SAPI === 'cli' && in_array('--premigration-probe', $argv ?? [], true)) {
         if ($pdo->inTransaction()) $pdo->rollBack();
     }
     echo json_encode($out), "\n";
+    exit(0);
+}
+
+/**
+ * ── API probe (also a SUBPROCESS of this file) ───────────────────────────────
+ *
+ * `php tests/maya_ilai_inventory.php --api-probe <room-slug> <check_in>` runs
+ * api/check-availability.php's check-in-only branch for real and prints what it
+ * returned. A subprocess because the endpoint ends in exit(), and because $_GET
+ * has to be in place before it is included.
+ *
+ * It opens a transaction first and never commits, so anything the endpoint
+ * writes is discarded. The pre-expiry below is not belt-and-braces: the endpoint
+ * reaches expire_stale_holds(), which e-mails every guest whose hold it cancels,
+ * and RESEND_API_KEY is live in .env. Marking those rows expired inside this
+ * doomed transaction first leaves the endpoint's own sweep with nothing to find,
+ * so no guest can be mailed by a test run.
+ */
+if (PHP_SAPI === 'cli' && ($argv[1] ?? '') === '--api-probe') {
+    db()->beginTransaction();
+    db_query("UPDATE holds SET status = 'expired' WHERE status = 'pending' AND expires_at < NOW()");
+    $_SERVER['REQUEST_METHOD'] = 'GET';
+    $_GET = ['room' => (string)($argv[2] ?? ''), 'check_in' => (string)($argv[3] ?? '')];
+    include __DIR__ . '/../api/check-availability.php';   // exits; the transaction dies with it
     exit(0);
 }
 
@@ -1229,6 +1255,89 @@ try {
     check('max stay: a room that does not exist is not a stay',
         room_max_stay_nights(0, $CLEAN, 7) === 0);
 
+    // ── Hoisting the lapsed-hold sweep out of the probes ────────────────────
+    // room_max_stay_nights() used to binary-search with the PUBLIC
+    // find_available_unit(), which opens with expire_stale_holds() — an
+    // UPDATE … RETURNING that also deletes blocks and e-mails the affected
+    // guests. ~5 probes meant ~5 write transactions per check-in click on a
+    // public, unauthenticated GET. The sweep now happens once, in the caller.
+    //
+    // The closure below IS the pre-change implementation: the same binary
+    // search over the same bounds, probing with the sweeping public function.
+    // The change is a performance change and nothing else, so the two must
+    // agree everywhere — including on the windows above that are 0, the cap,
+    // and the awkward number in between.
+    $refMaxStay = static function (int $roomId, string $checkIn, int $cap = 30): int {
+        $ci = rates_window_ymd($checkIn);
+        if ($ci === null) return 0;
+        $cap = max(0, min($cap, 365));
+        if ($cap === 0) return 0;
+        $from = new DateTimeImmutable($ci);
+        $lo = 0; $hi = $cap;
+        while ($lo < $hi) {
+            $mid = intdiv($lo + $hi + 1, 2);
+            $co  = $from->modify("+{$mid} day")->format('Y-m-d');
+            if (find_available_unit($roomId, $ci, $co) !== false) $lo = $mid;
+            else                                                  $hi = $mid - 1;
+        }
+        return $lo;
+    };
+    $maxStayCases = [
+        [$bunkRoomId, $A,      10], [$bunkRoomId, $CLEAN,  7], [$bunkRoomId, $Z, 7],
+        [$bunkRoomId, '2101-7-1', 7], [$bunkRoomId, '2102-01-01', 40],
+        [$bunkRoomId, $CLEAN,  0], [$bunkRoomId, 'tomorrow', 7], [0, $CLEAN, 7],
+    ];
+    foreach (array_keys(mi_product_map()) as $pSlug) {
+        $pr = db_query('SELECT id FROM rooms WHERE slug = :s', [':s' => $pSlug])->fetchColumn();
+        if ($pr) { $maxStayCases[] = [(int)$pr, $A, 10]; $maxStayCases[] = [(int)$pr, $CLEAN, 12]; }
+    }
+    if (isset($studioId)) { $maxStayCases[] = [$studioId, '2101-05-01', 14]; }
+    $sameAsRefStay = true; $stayCoverage = [];
+    foreach ($maxStayCases as [$rid, $cin, $cap]) {
+        $now = room_max_stay_nights($rid, $cin, $cap);
+        $was = $refMaxStay($rid, $cin, $cap);
+        $stayCoverage[] = $now;
+        if ($now !== $was) { $sameAsRefStay = false; break; }
+    }
+    check('sweep hoist: room_max_stay_nights() answers exactly what the sweeping-probe version answered',
+        $sameAsRefStay);
+    check('sweep hoist: ...over cases that are not all the same number (0, the cap and a real wall)',
+        count(array_unique($stayCoverage)) >= 3
+        && in_array(0, $stayCoverage, true) && in_array(1, $stayCoverage, true));
+
+    // A stale hold is the observable trace of the sweep. Mailing is skipped for
+    // a hold with no guest e-mail (expire_stale_holds() checks), so this scratch
+    // row can never send anything — the rule for touching that function at all.
+    $sweepUnit = (int)db_query(
+        'SELECT id FROM units WHERE room_id = :r AND is_active = TRUE ORDER BY sort_order LIMIT 1',
+        [':r' => $villaRoom['id']]
+    )->fetchColumn();
+    $staleHold = static function () use ($sweepUnit): int {
+        return (int)db_query(
+            "INSERT INTO holds (unit_id, check_in, check_out, guest_name, guest_email,
+                                access_code, status, expires_at)
+             VALUES (:u, '2104-01-01', '2104-01-02', 'Sweep Probe', '',
+                     :code, 'pending', NOW() - INTERVAL '1 hour')
+             RETURNING id",
+            [':u' => $sweepUnit, ':code' => 'SWEEP' . random_int(100000, 999999)]
+        )->fetchColumn();
+    };
+    $statusOf = static fn(int $h): string => (string)db_query(
+        'SELECT status FROM holds WHERE id = :h', [':h' => $h])->fetchColumn();
+
+    $h1 = $staleHold();
+    find_available_unit_internal($bunkRoomId, $CLEAN, '2101-07-02', false);
+    check('sweep hoist: a probe with $sweep = false does NOT expire lapsed holds',
+        $statusOf($h1) === 'pending');
+    find_available_unit($bunkRoomId, $CLEAN, '2101-07-02');
+    check('sweep hoist: the public find_available_unit() still does',
+        $statusOf($h1) === 'expired');
+
+    $h2 = $staleHold();
+    room_max_stay_nights($bunkRoomId, $CLEAN, 7);
+    check('sweep hoist: room_max_stay_nights() still sweeps — once, at the top, not once per probe',
+        $statusOf($h2) === 'expired');
+
     // ── Batching: one query per window, not two per night ───────────────────
     // The closure below IS the pre-batching implementation of mi_blocked_dates()
     // — one mi_villa_states() call per night. The batched version must answer
@@ -1334,6 +1443,32 @@ check('pre-migration: ...and the availability block is actually written',
 // on an unmigrated database too — they must degrade, not raise.
 check('pre-migration: the villa\'s own allocator, calendar and staff guard degrade instead of raising',
     is_array($probe) && ($probe['villa_ok'] ?? null) === true);
+
+// ── A past check-in must not drive the availability search ──────────────────
+// api/check-availability.php's check-in-only branch is a public, unauthenticated
+// GET with no Turnstile and no rate limit, and every call runs a binary search
+// over the availability tables. A date that is already gone cannot be booked, so
+// it is answered as 0 nights without probing at all. Run for real, in a
+// subprocess (the endpoint ends in exit()) — see the --api-probe block at the
+// top of this file for why that subprocess can never e-mail anyone.
+$apiProbe = static function (string $slug, string $checkIn): ?array {
+    $raw = (string) shell_exec(
+        escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(__FILE__) . ' --api-probe '
+        . escapeshellarg($slug) . ' ' . escapeshellarg($checkIn) . ' 2>&1'
+    );
+    foreach (array_reverse(array_filter(array_map('trim', explode("\n", $raw)))) as $ln) {
+        if ($ln !== '' && $ln[0] === '{') return json_decode($ln, true);
+    }
+    return null;
+};
+$apiPast   = $apiProbe('zuri-jua', date('Y-m-d', strtotime('-30 days')));
+$apiFuture = $apiProbe('zuri-jua', '2103-06-01');
+check('past check-in: the API branch answers 0 nights',
+    is_array($apiPast) && ($apiPast['max_nights'] ?? null) === 0);
+check('past check-in: ...and still echoes the date and cap, so the widget is not left guessing',
+    is_array($apiPast) && ($apiPast['check_in'] ?? '') !== '' && ($apiPast['cap'] ?? 0) > 0);
+check('past check-in: a future check-in is unaffected — this is a guard, not a blanket 0',
+    is_array($apiFuture) && ($apiFuture['max_nights'] ?? 0) > 0);
 
 echo "\n" . ($failures ? "{$failures} FAILED\n" : "All passed\n");
 exit($failures ? 1 : 0);

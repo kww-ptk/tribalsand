@@ -79,8 +79,18 @@ if ($check_in && !$check_out) {
         http_response_code(422);
         exit(json_encode(['error' => 'Dates must be valid and formatted YYYY-MM-DD']));
     }
+    // A check-in in the past is not a stay, so it must not drive the search at
+    // all: this branch is a public, unauthenticated GET with no Turnstile and no
+    // rate limit, and each call runs a binary search over the availability
+    // tables. Nothing can be booked for a past date anyway, so answering 0
+    // without touching the database is both cheaper and more honest than
+    // probing. "Today" is Nairobi-local — includes/db.php sets the default
+    // timezone and the connection's TIME ZONE to Africa/Nairobi, so this
+    // comparison agrees with the database's own idea of the date.
+    $past = $ci < date('Y-m-d');
+
     exit(json_encode([
-        'max_nights' => room_max_stay_nights((int)$room['id'], $ci, $max_stay_cap),
+        'max_nights' => $past ? 0 : room_max_stay_nights((int)$room['id'], $ci, $max_stay_cap),
         'check_in'   => $ci,
         // The cap, so the client can tell "5 nights and then it stops" (worth
         // explaining to the guest) from "at least 30" (no constraint to explain)
