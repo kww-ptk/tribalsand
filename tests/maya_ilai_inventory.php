@@ -382,6 +382,37 @@ try {
     )->fetchColumn();
     check('hold: omitting components leaves NULL — the whole unit',
         $written2 === null);
+
+    // ── Task 8: guest calendar blocked dates ────────────────────────────────
+    // Fill every non-reserved villa's doubles over one night, so a Double Room
+    // cannot be sold on that date and the calendar must say so.
+    $BD = '2099-08-10';
+    $BE = '2099-08-11';
+    $allVillas = db_query(
+        'SELECT id, sort_order FROM units WHERE room_id = :r ORDER BY sort_order',
+        [':r' => $villaRoom['id']]
+    )->fetchAll();
+    foreach ($allVillas as $v) {
+        db_query(
+            "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, components)
+             VALUES (:u, :df, :dt, 'booked', :c)",
+            [':u' => $v['id'], ':df' => $BD, ':dt' => $BE,
+             ':c' => mi_pg_array_encode(['double_a', 'double_b'])]
+        );
+    }
+    $blocked = get_room_blocked_dates((int)$doubleRoom['id'], '2099-08-01', '2099-08-20');
+    check('calendar: a Double Room is blocked when every villa has both doubles sold',
+        in_array($BD, $blocked, true));
+    check('calendar: neighbouring dates stay open',
+        !in_array('2099-08-12', $blocked, true));
+
+    // The Bunk Room is untouched by doubles being sold.
+    $bunkRoom = db_query("SELECT id FROM rooms WHERE slug = 'maya-ilai-bunk-room'")->fetch();
+    if ($bunkRoom) {
+        $bunkBlocked = get_room_blocked_dates((int)$bunkRoom['id'], '2099-08-01', '2099-08-20');
+        check('calendar: the Bunk Room is unaffected by sold doubles',
+            !in_array($BD, $bunkBlocked, true));
+    }
 } finally {
     db()->rollBack();
 }

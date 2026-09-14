@@ -738,11 +738,57 @@ function create_hold_with_block(
 }
 
 /**
+ * Dates on which no villa can satisfy a Maya Ilai product's component pattern.
+ *
+ * Resolved one night at a time: availability is a per-night question, and a stay
+ * is sellable only when every night of it is.
+ */
+function mi_blocked_dates(array $room, string $from, string $to): array {
+    $pattern = mi_product_map()[$room['slug']] ?? null;
+    if ($pattern === null) return [];
+
+    $villaRoomId = (int) db_query(
+        'SELECT id FROM rooms WHERE slug = :s', [':s' => MAYA_ILAI_VILLA_ROOM_SLUG]
+    )->fetchColumn();
+    if (!$villaRoomId) return [];
+
+    $reserved = max(0, (int) setting('maya_ilai_reserved_villas', '2'));
+    $isVilla  = $room['slug'] === MAYA_ILAI_VILLA_ROOM_SLUG;
+
+    $blocked = [];
+    $d   = new DateTime($from);
+    $end = new DateTime($to);
+    while ($d < $end) {
+        $night = $d->format('Y-m-d');
+        $next  = (clone $d)->modify('+1 day')->format('Y-m-d');
+
+        $states  = mi_villa_states($villaRoomId, $night, $next);
+        $ordered = mi_order_villas(array_values($states), $isVilla, $reserved);
+
+        $fits = false;
+        foreach ($ordered as $villa) {
+            if (mi_resolve($pattern, $villa['taken']) !== null) { $fits = true; break; }
+        }
+        if (!$fits) $blocked[] = $night;
+
+        $d->modify('+1 day');
+    }
+    return $blocked;
+}
+
+/**
  * Returns a list of fully-blocked dates (YYYY-MM-DD) for a room:
  * a date is fully blocked when every active unit has a block covering it.
  * Used by the public availability calendar widget.
  */
 function get_room_blocked_dates(int $room_id, string $from, string $to): array {
+    // Maya Ilai composite products own no units of their own; a date is blocked
+    // when no villa can satisfy the product's component pattern that night.
+    $miRoom = db_query('SELECT id, slug FROM rooms WHERE id = :id', [':id' => $room_id])->fetch();
+    if ($miRoom && mi_is_composite_room($miRoom)) {
+        return mi_blocked_dates($miRoom, $from, $to);
+    }
+
     $unit_count = (int)db_query(
         'SELECT COUNT(*) FROM units WHERE room_id = :id AND is_active = TRUE',
         [':id' => $room_id]
