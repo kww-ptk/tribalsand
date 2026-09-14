@@ -30,6 +30,52 @@ BEGIN
   END IF;
 END $$;
 
+-- Data-loss gate. The DELETE below removes every existing Maya Ilai room, and
+-- rooms -> units -> availability_blocks/holds all cascade. Production's venue
+-- carries a `superior-suite` room (see fix_maya_ilai_superior_suite_booking.sql)
+-- that maya_ilai.php pointed at until this change, and it may hold real booking
+-- history. Refuse to run rather than destroy it silently: this fires on a
+-- database with real data and is a no-op on a clean one.
+DO $gate$
+DECLARE
+  v_holds  bigint := 0;
+  v_blocks bigint := 0;
+  v_ledger bigint := 0;
+BEGIN
+  SELECT count(*) INTO v_holds
+    FROM holds h
+    JOIN units u  ON u.id = h.unit_id
+    JOIN rooms r  ON r.id = u.room_id
+    JOIN venues v ON v.id = r.venue_id
+   WHERE v.slug = 'maya_ilai';
+
+  SELECT count(*) INTO v_blocks
+    FROM availability_blocks ab
+    JOIN units u  ON u.id = ab.unit_id
+    JOIN rooms r  ON r.id = u.room_id
+    JOIN venues v ON v.id = r.venue_id
+   WHERE v.slug = 'maya_ilai';
+
+  -- The finance ledger is a later migration on some installs; guard the read.
+  IF to_regclass('public.bookings') IS NOT NULL THEN
+    EXECUTE $q$
+      SELECT count(*) FROM bookings b
+       WHERE b.hold_id IN (
+             SELECT h.id FROM holds h
+               JOIN units u  ON u.id = h.unit_id
+               JOIN rooms r  ON r.id = u.room_id
+               JOIN venues v ON v.id = r.venue_id
+              WHERE v.slug = 'maya_ilai')
+    $q$ INTO v_ledger;
+  END IF;
+
+  IF v_holds > 0 OR v_blocks > 0 OR v_ledger > 0 THEN
+    RAISE EXCEPTION
+      'Refusing to rebuild Maya Ilai: % hold(s), % availability block(s) and % ledger row(s) would be destroyed. Re-point or archive them first - see docs/superpowers/plans/2026-09-13-maya-ilai-composite-inventory.md, Task 9.',
+      v_holds, v_blocks, v_ledger;
+  END IF;
+END $gate$;
+
 DELETE FROM rooms WHERE venue_id = (SELECT id FROM venues WHERE slug = 'maya_ilai');
 
 INSERT INTO rooms (slug, name, venue_id, capacity, bed_count, short_desc,

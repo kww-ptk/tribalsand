@@ -820,7 +820,7 @@ include __DIR__ . '/includes/property-photo-grid.php';
         <div class="sidebar-age-notice" style="padding:1rem 1.4rem .5rem;font-size:.72rem;color:var(--mid);border-bottom:1px solid var(--border)">
           <strong>Adults only — min. age 16.</strong> Guests 16–17 may stay unaccompanied.
         </div>
-        <?php $bk_hide_children = true; $booking_slug = 'superior-suite'; include __DIR__ . '/includes/booking-widget.php'; ?>
+        <?php $bk_hide_children = true; $booking_slug = 'maya-ilai-villa'; include __DIR__ . '/includes/booking-widget.php'; ?>
       </div>
 
       <!-- Policy accordion -->
