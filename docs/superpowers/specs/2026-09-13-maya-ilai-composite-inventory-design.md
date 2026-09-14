@@ -89,14 +89,42 @@ The product→component map lives in **`includes/maya-ilai-inventory.php`**, not
 database. It is a fixed physical fact about the building, and keeping it in code
 makes it unit-testable without a DB connection.
 
-**Pre-migration safety is enforced by ordering, not by a runtime guard.** The new
-code path fires only for rooms whose slug is in `mi_product_map()`, and those rooms
-exist only after the catalogue migration — so on a database without the column,
-nothing reaches it. To make that ordering impossible to get wrong, the catalogue
-migration **aborts if `availability_blocks.components` is missing**. This is
-deliberately different from the `*_supported()` pattern used elsewhere: those guard
-features that should degrade gracefully, whereas a Maya Ilai catalogue without the
-column would silently oversell, which must fail loudly instead.
+**Pre-migration safety needs a runtime guard; ordering alone does not give it.**
+The original design said the new code path fires only for rooms whose slug is in
+`mi_product_map()`, that those rooms exist only after the catalogue migration, and
+that on a database without the column nothing reaches it. **That was wrong, in two
+separate ways, and both were shipped bugs:**
+
+1. `create_hold_with_block()` writes `components` on the booking path of **every**
+   property, not only Maya Ilai. Naming a column the database has not got yet does
+   not degrade — it fails the INSERT. Deploys here are push-to-master → ECS with
+   migrations applied separately through `/admin/migrate.php`, so the default order
+   of operations put this code in front of an unmigrated database and took **web
+   bookings, `admin/hold-new.php` and convert-to-hold down at Zuri and Maya Kobe**
+   until someone ran the migration.
+2. `maya-ilai-villa` is **not** one of the catalogue migration's new slugs. It is in
+   `db/seed_rooms_2026.sql` and predates this work, so `mi_is_composite_room()` is
+   already true for it on an unmigrated database and the composite allocators
+   (`mi_villa_states()`, `mi_villa_states_window()`, and through them
+   `find_available_unit()`, `get_room_blocked_dates()` and
+   `staff_hold_block_reason()`) **are** reachable there. Only the six unit-less
+   products are gated by the catalogue migration.
+
+So the column is guarded at runtime like every other new column in this codebase:
+**`components_supported()`** (`includes/db.php`), a memoised `information_schema`
+lookup — a catalog query rather than a failing `SELECT`, because it is first reached
+from inside `create_hold_with_block()`, which `mi_allocate_and_hold()` runs inside a
+transaction, and in Postgres a failed statement aborts the whole transaction.
+`create_hold_with_block()` builds its column list conditionally (one statement, the
+same shape as `holds.room_id`), and the allocators read through
+`mi_components_select()`, which selects `NULL::text` pre-migration — which
+`mi_block_taken_components()` reads as "the whole unit is taken", i.e. exactly what
+every block meant before this column existed. Fails closed, never open.
+
+The catalogue migration still **aborts if `availability_blocks.components` is
+missing**, and that belt stays: the runtime guard keeps an unmigrated deploy
+*serving*, whereas a Maya Ilai *catalogue* without the column would silently
+oversell and must fail loudly instead.
 
 ## Availability algorithm
 

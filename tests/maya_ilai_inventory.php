@@ -10,6 +10,94 @@ require_once __DIR__ . '/../includes/gantt-lanes.php';
 require_once __DIR__ . '/../includes/staff-hold-guard.php';
 require_once __DIR__ . '/../includes/booking.php';   // fetch_hold_for_guest() — guest portal naming test
 
+/**
+ * ── Pre-migration probe (a SUBPROCESS of this same file) ─────────────────────
+ *
+ * `php tests/maya_ilai_inventory.php --premigration-probe` drops
+ * availability_blocks.components and holds.room_id inside a transaction, books
+ * an ordinary room end to end, prints one line of JSON and rolls back.
+ *
+ * It has to be a separate process, for two reasons, and both are load-bearing:
+ *
+ *  1. components_supported() / holds_room_id_supported() memoise per process.
+ *     Dropping a column inside the main suite's transaction would not change
+ *     what they already answered, and forcing them to re-probe would leave the
+ *     rest of the suite believing the columns are gone.
+ *  2. DROP COLUMN takes an ACCESS EXCLUSIVE lock. The main suite's transaction
+ *     has written to both tables, so running the ALTER while it is open would
+ *     block until it ends — i.e. hang. The parent runs this only AFTER its
+ *     rollback.
+ *
+ * A fresh process with the columns absent is also exactly the situation this is
+ * about: push-to-master deploys the container, /admin/migrate.php is run by hand
+ * afterwards, and in between every PHP worker is a cold process talking to a
+ * database that has not been migrated yet.
+ */
+if (PHP_SAPI === 'cli' && in_array('--premigration-probe', $argv ?? [], true)) {
+    $pdo = db();
+    $pdo->beginTransaction();
+    $out = ['ok' => false, 'error' => 'probe did not run'];
+    try {
+        db_query('ALTER TABLE availability_blocks DROP COLUMN IF EXISTS components');
+        db_query('ALTER TABLE holds DROP COLUMN IF EXISTS room_id');
+
+        // An ORDINARY room at another property: this is about Zuri and Maya Kobe
+        // being able to take a booking while Maya Ilai's migration is pending.
+        $room = db_query("SELECT id, slug FROM rooms WHERE slug = 'zuri-jua'")->fetch();
+        if (!$room) throw new RuntimeException('no zuri-jua room on this database');
+
+        // Far future, so no live block can make this a false negative.
+        $ci = '2103-03-01';
+        $co = '2103-03-04';
+
+        $unit = find_available_unit((int)$room['id'], $ci, $co);
+        if ($unit === false) throw new RuntimeException('find_available_unit() found nothing for zuri-jua');
+
+        $holdId = create_hold_with_block(
+            (int)$unit['id'], null, $ci, $co,
+            'Pre-migration Probe', 'premigration-probe@example.invalid'
+        );
+        $block = db_query(
+            'SELECT unit_id, date_from::text AS df, date_to::text AS dt, block_type
+               FROM availability_blocks WHERE hold_id = :h',
+            [':h' => $holdId]
+        )->fetch();
+
+        // And the villa itself. `maya-ilai-villa` is NOT one of this branch's new
+        // slugs — it is in db/seed_rooms_2026.sql and already on production — so
+        // mi_is_composite_room() is true for it on an unmigrated database and the
+        // composite allocators ARE reachable there. They must degrade to
+        // whole-villa occupancy, not raise.
+        $villaOk = null;
+        $villa = db_query('SELECT id, slug FROM rooms WHERE slug = :s',
+            [':s' => MAYA_ILAI_VILLA_ROOM_SLUG])->fetch();
+        if ($villa) {
+            find_available_unit((int)$villa['id'], $ci, $co);
+            get_room_blocked_dates((int)$villa['id'], $ci, $co);
+            $vUnit = db_query('SELECT id FROM units WHERE room_id = :r AND is_active = TRUE ORDER BY sort_order LIMIT 1',
+                [':r' => $villa['id']])->fetchColumn();
+            if ($vUnit) staff_hold_block_reason((int)$vUnit, $ci, $co);
+            $villaOk = true;
+        }
+
+        $out = [
+            'ok'       => $holdId > 0 && $block !== false,
+            'room'     => $room['slug'],
+            'unit'     => (int)$unit['id'],
+            'hold'     => (int)$holdId,
+            'block'    => $block === false ? null : $block,
+            'villa_ok' => $villaOk,
+            'error'    => null,
+        ];
+    } catch (Throwable $e) {
+        $out = ['ok' => false, 'error' => get_class($e) . ': ' . $e->getMessage()];
+    } finally {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+    }
+    echo json_encode($out), "\n";
+    exit(0);
+}
+
 $failures = 0;
 function check(string $label, bool $cond): void {
     if ($cond) { echo "PASS  {$label}\n"; }
@@ -1211,6 +1299,41 @@ try {
 } finally {
     db()->rollBack();
 }
+
+// ── Pre-migration deploy: every OTHER property must still take bookings ──────
+//
+// Push-to-master auto-deploys to ECS; migrations are applied separately through
+// /admin/migrate.php (see CLAUDE.md). So the default order of operations puts
+// this branch's code in front of a database that has neither
+// availability_blocks.components nor holds.room_id. Writing either column
+// unconditionally is not a Maya Ilai bug — it is a total booking outage at every
+// property, on the web form, admin/hold-new.php and convert-to-hold alike, until
+// somebody notices and runs the migration.
+//
+// Runs OUTSIDE the transaction above (see the probe at the top of this file for
+// why it is a subprocess at all).
+$probeCmd = escapeshellarg(PHP_BINARY) . ' ' . escapeshellarg(__FILE__) . ' --premigration-probe 2>&1';
+$probeRaw = (string) shell_exec($probeCmd);
+$probeLine = '';
+foreach (array_reverse(array_filter(array_map('trim', explode("\n", $probeRaw)))) as $ln) {
+    if ($ln !== '' && $ln[0] === '{') { $probeLine = $ln; break; }
+}
+$probe = $probeLine === '' ? null : json_decode($probeLine, true);
+
+check('pre-migration: the probe subprocess ran and reported back',
+    is_array($probe));
+check('pre-migration: an ordinary room still books with components + holds.room_id dropped'
+        . (is_array($probe) && !empty($probe['error']) ? ' — got ' . $probe['error'] : ''),
+    is_array($probe) && ($probe['ok'] ?? false) === true);
+check('pre-migration: ...and the availability block is actually written',
+    is_array($probe) && is_array($probe['block'] ?? null)
+    && ($probe['block']['df'] ?? '') === '2103-03-01'
+    && ($probe['block']['dt'] ?? '') === '2103-03-04'
+    && ($probe['block']['block_type'] ?? '') === 'hold');
+// maya-ilai-villa predates this branch, so the composite allocators are reachable
+// on an unmigrated database too — they must degrade, not raise.
+check('pre-migration: the villa\'s own allocator, calendar and staff guard degrade instead of raising',
+    is_array($probe) && ($probe['villa_ok'] ?? null) === true);
 
 echo "\n" . ($failures ? "{$failures} FAILED\n" : "All passed\n");
 exit($failures ? 1 : 0);

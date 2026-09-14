@@ -604,7 +604,7 @@ function mi_villa_states(int $villaRoomId, string $check_in, string $check_out):
     if (!$states) return [];
 
     $blocks = db_query(
-        "SELECT ab.unit_id, ab.components::text AS components
+        "SELECT ab.unit_id, " . mi_components_select('ab') . "
            FROM availability_blocks ab
            JOIN units u ON u.id = ab.unit_id
           WHERE u.room_id = :r AND u.is_active = TRUE
@@ -801,6 +801,55 @@ function holds_room_id_supported(): bool {
 }
 
 /**
+ * True once availability_blocks.components exists (migration:
+ * add_maya_ilai_components.sql). Memoised.
+ *
+ * The sibling of holds_room_id_supported(), and needed for the same reason and
+ * then some: create_hold_with_block() writes this column for EVERY property, so
+ * a container deployed ahead of its migration — which is the default order here,
+ * push-to-master builds to ECS while /admin/migrate.php is run separately — took
+ * every booking at Zuri and Maya Kobe down with it, not just Maya Ilai.
+ *
+ * A catalog lookup rather than a "SELECT <col> … LIMIT 1" probe: this is reached
+ * from inside create_hold_with_block(), which mi_allocate_and_hold() runs inside
+ * a transaction, and in Postgres a failed statement aborts the WHOLE transaction.
+ * A probe that errors would kill the booking it was asked about. This query
+ * cannot fail.
+ */
+function components_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try {
+        $ok = (bool) db_query(
+            "SELECT 1 FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'availability_blocks'
+                AND column_name = 'components'"
+        )->fetchColumn();
+    } catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/**
+ * SELECT expression for a block's component list, for the villa allocators.
+ *
+ * Pre-migration this is NULL for every row, and mi_block_taken_components()
+ * reads NULL as "the whole unit is taken" — which is precisely what every block
+ * meant before components existed. So the composite allocators degrade to
+ * whole-villa occupancy instead of erroring, and fail CLOSED (a block takes
+ * everything) rather than open.
+ *
+ * This is not dead defensiveness: `maya-ilai-villa` is NOT a new slug. It is in
+ * db/seed_rooms_2026.sql and predates this branch, so mi_is_composite_room() is
+ * already true for it on an unmigrated database and the composite path IS
+ * reachable there.
+ */
+function mi_components_select(string $blockAlias = 'ab'): string {
+    return components_supported()
+        ? "{$blockAlias}.components::text AS components"
+        : "NULL::text AS components";
+}
+
+/**
  * SQL expression resolving which ROOM (product) a hold is for.
  *
  * A hold's product used to be derivable from its unit, because each room owned
@@ -909,12 +958,27 @@ function create_hold_with_block(
 
     // NULL components means "the whole unit", which is what every non-Maya-Ilai
     // booking means and what every pre-existing row already says.
+    //
+    // Written only when the column exists — exactly like room_id above, and for
+    // a bigger blast radius: this INSERT is on the booking path of EVERY
+    // property, so naming a column the database has not got yet fails Zuri and
+    // Maya Kobe too, not just the property the column was added for. One
+    // statement either way; a pre-migration block is simply the whole unit,
+    // which is what it would have been before this branch.
+    $writeComp = components_supported();
+    $compCol   = $writeComp ? ', components' : '';
+    $compVal   = $writeComp ? ', :comp'      : '';
+    $blockParams = [
+        ':unit' => $unit_id, ':df' => $check_in, ':dt' => $check_out,
+        ':bt' => $confirmed ? 'booked' : 'hold', ':hold' => $hold_id,
+    ];
+    if ($writeComp) {
+        $blockParams[':comp'] = $components === null ? null : mi_pg_array_encode($components);
+    }
     db_query(
-        "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, hold_id, components)
-         VALUES (:unit, :df, :dt, :bt, :hold, :comp)",
-        [':unit' => $unit_id, ':df' => $check_in, ':dt' => $check_out,
-         ':bt' => $confirmed ? 'booked' : 'hold', ':hold' => $hold_id,
-         ':comp' => $components === null ? null : mi_pg_array_encode($components)]
+        "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, hold_id{$compCol})
+         VALUES (:unit, :df, :dt, :bt, :hold{$compVal})",
+        $blockParams
     );
 
     return $hold_id;
@@ -1040,7 +1104,7 @@ function mi_villa_states_window(int $villaRoomId, string $from, string $to): arr
     // Exactly the overlap predicate mi_villa_states() uses, widened from one
     // night to the whole window.
     $blocks = db_query(
-        "SELECT ab.unit_id, ab.date_from, ab.date_to, ab.components::text AS components
+        "SELECT ab.unit_id, ab.date_from, ab.date_to, " . mi_components_select('ab') . "
            FROM availability_blocks ab
            JOIN units u ON u.id = ab.unit_id
           WHERE u.room_id = :r AND u.is_active = TRUE
