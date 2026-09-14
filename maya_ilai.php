@@ -52,6 +52,16 @@ $rr_venue_slug = 'maya_ilai';
 ?>
 <?php include 'includes/head.php'; ?>
 <style>
+/* The LeadConnector chat bubble is hidden on phones on THIS page. It is loaded
+   globally from includes/footer.php and stays everywhere else — but this page's
+   whole job is the booking configurator, and at 375px the bubble sits on top of
+   the parts a guest has to tap: the datepicker's Done button, the last row of
+   dates, and "Request this stay". A chat bubble that hides the booking button is
+   not a trade-off. Desktop keeps it; there is room there.
+   (includes/maya-ilai-booking.php also hides it at any width while the popup is
+   open — this rule is the wider one, for the page itself.) */
+@media (max-width: 767px) { chat-widget { display: none !important; } }
+
 /* ── TOKENS ── */
 :root{
   --sand:#B8965A;--sand-lt:#D4B07A;--sand-pale:#F2E8D6;--sand-faint:#FAF6EE;

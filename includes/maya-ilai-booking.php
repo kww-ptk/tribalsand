@@ -322,6 +322,8 @@ $mibMaxNights = 30;
   .mib-card h3{font-family:'Cormorant Garamond',serif;font-size:1.6rem;font-weight:400;margin-bottom:.3rem}
   .mib-card p.sub{font-size:.85rem;color:var(--mib-mut);margin-bottom:1.1rem;line-height:1.6}
   .mib-field{margin-bottom:.8rem}
+  .mib-req{color:#9B3B2A}
+  .mib-req-note{font-size:.7rem;color:var(--mib-mut);margin:-.3rem 0 .8rem}
   .mib-field label{font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;color:var(--mib-mut);display:block;margin-bottom:.3rem}
   .mib-field input,.mib-field textarea{width:100%;padding:.65rem .8rem;border:1px solid var(--mib-line);font-family:inherit;font-size:.9rem}
   .mib-modal-actions{display:flex;gap:.6rem;margin-top:.5rem;flex-wrap:wrap}
@@ -577,9 +579,13 @@ $mibMaxNights = 30;
     <div class="mib-card">
       <p class="sub" id="mibSummaryText"></p>
       <form id="mibForm">
-        <div class="mib-field"><label for="mibFName">Name</label><input id="mibFName" name="name" required></div>
-        <div class="mib-field"><label for="mibFEmail">Email</label><input id="mibFEmail" name="email" type="email" required></div>
-        <div class="mib-field"><label for="mibFPhone">Phone</label><input id="mibFPhone" name="phone"></div>
+        <!-- aria-hidden on the asterisk: a screen reader already announces the
+             field as required from the `required` attribute, so reading "star"
+             as well is noise. The legend below carries the meaning visually. -->
+        <div class="mib-field"><label for="mibFName">Name <span class="mib-req" aria-hidden="true">*</span></label><input id="mibFName" name="name" required></div>
+        <div class="mib-field"><label for="mibFEmail">Email <span class="mib-req" aria-hidden="true">*</span></label><input id="mibFEmail" name="email" type="email" required></div>
+        <div class="mib-field"><label for="mibFPhone">Phone <span class="mib-req" aria-hidden="true">*</span></label><input id="mibFPhone" name="phone" type="tel" required></div>
+        <p class="mib-req-note"><span class="mib-req" aria-hidden="true">*</span> Required</p>
         <div class="mib-field"><label for="mibFNote">Anything else? (optional)</label><textarea id="mibFNote" name="note" rows="2" placeholder="Arrival time, questions, special requests…"></textarea></div>
         <input type="text" name="website" style="position:absolute;left:-9999px" tabindex="-1" autocomplete="off" aria-hidden="true">
         <div class="mib-modal-actions">
