@@ -91,3 +91,48 @@ function mi_resolve(array $pattern, array $taken): ?array {
     }
     return $out;
 }
+
+/** Every component of a villa, in canonical order. A NULL block takes all of them. */
+const MAYA_ILAI_ALL_COMPONENTS = ['double_a', 'double_b', 'bunk', 'living'];
+
+/**
+ * Reserved villas are the LAST $reserved by sort order. Taking them from the end
+ * means raising or lowering N leaves the already-reserved villas unchanged, so
+ * staff keep a stable mental model of which villas are held back.
+ */
+function mi_villa_is_reserved(int $sortOrder, int $totalVillas, int $reserved): bool {
+    if ($reserved <= 0) return false;
+    return $sortOrder > ($totalVillas - $reserved);
+}
+
+/**
+ * Order candidate villas for allocation.
+ *
+ * $villas: [['unit_id'=>int, 'sort_order'=>int, 'taken'=>string[]], …]
+ *
+ * Component products never see a reserved villa. The whole-villa product sees
+ * every villa and prefers the reserved ones, so that consuming a villa leaves the
+ * open villas available for component sales.
+ *
+ * Within those rules: most-occupied first (pack tight, keeping whole villas
+ * intact), ties broken by villa number ascending for deterministic allocation.
+ */
+function mi_order_villas(array $villas, bool $isVillaProduct, int $totalVillas, int $reserved): array {
+    $out = [];
+    foreach ($villas as $v) {
+        $isRes = mi_villa_is_reserved((int)$v['sort_order'], $totalVillas, $reserved);
+        if ($isRes && !$isVillaProduct) continue;
+        $v['_reserved'] = $isRes;
+        $out[] = $v;
+    }
+    usort($out, static function (array $a, array $b) use ($isVillaProduct): int {
+        if ($isVillaProduct && $a['_reserved'] !== $b['_reserved']) {
+            return $a['_reserved'] ? -1 : 1;
+        }
+        $ca = count($a['taken']);
+        $cb = count($b['taken']);
+        if ($ca !== $cb) return $cb <=> $ca;
+        return (int)$a['sort_order'] <=> (int)$b['sort_order'];
+    });
+    return $out;
+}

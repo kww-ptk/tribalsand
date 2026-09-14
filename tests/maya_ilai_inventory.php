@@ -82,5 +82,49 @@ check('One-Bed Suite sold: the Family Suite does not',
 check('One-Bed Suite sold: the full villa does not',
     mi_resolve(['double', 'double', 'bunk', 'living'], $suiteSold) === null);
 
+// ── Ring-fencing ────────────────────────────────────────────────────────────
+// Reserved villas are the LAST N by sort order, so changing N never reshuffles
+// which villas were already reserved.
+check('reserved: villa 8 of 8 with N=2',
+    mi_villa_is_reserved(8, 8, 2) === true);
+check('reserved: villa 7 of 8 with N=2',
+    mi_villa_is_reserved(7, 8, 2) === true);
+check('reserved: villa 6 of 8 with N=2',
+    mi_villa_is_reserved(6, 8, 2) === false);
+check('reserved: nothing reserved with N=0',
+    mi_villa_is_reserved(8, 8, 0) === false);
+
+// ── Villa ordering ──────────────────────────────────────────────────────────
+$villas = [
+    ['unit_id' => 101, 'sort_order' => 1, 'taken' => []],
+    ['unit_id' => 102, 'sort_order' => 2, 'taken' => ['double_a']],
+    ['unit_id' => 103, 'sort_order' => 3, 'taken' => ['double_a', 'bunk']],
+    ['unit_id' => 104, 'sort_order' => 4, 'taken' => []],
+    ['unit_id' => 105, 'sort_order' => 5, 'taken' => []],
+    ['unit_id' => 106, 'sort_order' => 6, 'taken' => []],
+    ['unit_id' => 107, 'sort_order' => 7, 'taken' => []],
+    ['unit_id' => 108, 'sort_order' => 8, 'taken' => []],
+];
+
+$ordered = mi_order_villas($villas, false, 8, 2);
+check('order: component products skip the 2 reserved villas',
+    count($ordered) === 6);
+check('order: reserved villas are absent',
+    !in_array(107, array_column($ordered, 'unit_id'), true)
+    && !in_array(108, array_column($ordered, 'unit_id'), true));
+check('order: pack tight — most-occupied villa first',
+    array_column($ordered, 'unit_id') === [103, 102, 101, 104, 105, 106]);
+
+$orderedVilla = mi_order_villas($villas, true, 8, 2);
+check('order: the villa product sees all 8',
+    count($orderedVilla) === 8);
+check('order: the villa product takes a reserved villa first',
+    array_column($orderedVilla, 'unit_id')[0] === 107
+    && array_column($orderedVilla, 'unit_id')[1] === 108);
+
+$noFence = mi_order_villas($villas, false, 8, 0);
+check('order: with N=0 every villa is offered',
+    count($noFence) === 8);
+
 echo "\n" . ($failures ? "{$failures} FAILED\n" : "All passed\n");
 exit($failures ? 1 : 0);
