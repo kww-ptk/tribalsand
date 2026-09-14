@@ -318,12 +318,17 @@ for ($g = 1; $g <= 20; $g++) {
     if ($badge !== 'cheapest' && $badge !== 'both') $taggedOk = false;  // and visibly tagged
     if (($sugs[$at]['why'] ?? '') === '') $taggedOk = false;
 
-    // The lead is the wholest stay on offer.
-    foreach ($sugs as $s) if ($units($sugs[0]) > $units($s)) $leadOk = false;
+    // A bare bunk room never fronts the property — but the lead is still the
+    // best-ranked stay that is not one, so it is the wholest eligible stay.
+    if (maya_ilai_offer_is_bunk_only($sugs[0])) { $leadOk = false; echo "NOTE  {$g} guests: lead '{$sugs[0]['label']}' is bunk-only\n"; }
+    foreach ($sugs as $s) {
+        if (maya_ilai_offer_is_bunk_only($s)) continue;
+        if ($units($sugs[0]) > $units($s)) $leadOk = false;
+    }
 
-    // With the promoted row set aside, the rest is ordered whole-stays-first,
-    // then price.
-    $rest = $sugs; unset($rest[$at]); $rest = array_values($rest);
+    // With the two promoted rows set aside, the rest is ordered
+    // whole-stays-first, then price.
+    $rest = $sugs; unset($rest[$at], $rest[0]); $rest = array_values($rest);
     for ($i = 1; $i < count($rest); $i++) {
         $a = [$units($rest[$i - 1]), (float)$rest[$i - 1]['quote']['total']];
         $b = [$units($rest[$i]),     (float)$rest[$i]['quote']['total']];
@@ -333,8 +338,84 @@ for ($g = 1; $g <= 20; $g++) {
 check('search: the cheapest configuration is ALWAYS in the returned set (parties 1–20)', $presentOk);
 check('search: the cheapest sits at slot one or two, never buried',                      $slotOk);
 check('search: the cheapest is visibly tagged, with a reason',                           $taggedOk);
-check('search: the lead is the wholest stay on offer',                                   $leadOk);
+check('search: no lead is a bare bunk pile, and the lead is the wholest eligible stay',  $leadOk);
 check('search: the rest is ordered whole stays first, then price',                       $orderOk);
+
+// ── A bare bunk room never fronts the property ──────────────────────────────
+// NARROW on purpose: it is about the bare product, not about bunk beds
+// existing in a stay. The Two-Bedroom Family Room CONTAINS a bunk room and
+// leads the 7-guest list; every combination is a family product and stays
+// eligible.
+check('bunk-only: a pile of bare bunk rooms is bunk-only',
+    maya_ilai_offer_is_bunk_only(['quote' => ['q' => ['bunk' => 2, 'double' => 0, 'studio' => 0, 'villa' => 0, 'living' => 0]]]));
+check('bunk-only: a Two-Bedroom Family Room is NOT (it is a family product)',
+    !maya_ilai_offer_is_bunk_only(['quote' => ['q' => ['bunk' => 1, 'double' => 1, 'studio' => 0, 'villa' => 0, 'living' => 0]]]));
+check('bunk-only: a Family Suite is NOT',
+    !maya_ilai_offer_is_bunk_only(['quote' => ['q' => ['bunk' => 1, 'double' => 1, 'studio' => 0, 'villa' => 0, 'living' => 1]]]));
+check('bunk-only: a whole villa is NOT',
+    !maya_ilai_offer_is_bunk_only(['quote' => ['q' => ['bunk' => 0, 'double' => 0, 'studio' => 0, 'villa' => 1, 'living' => 0]]]));
+check('bunk-only: a bunk room beside a studio is NOT (something else is in it)',
+    !maya_ilai_offer_is_bunk_only(['quote' => ['q' => ['bunk' => 1, 'double' => 0, 'studio' => 1, 'villa' => 0, 'living' => 0]]]));
+check('bunk-only: a stay with no bunks at all is NOT',
+    !maya_ilai_offer_is_bunk_only(['quote' => ['q' => ['bunk' => 0, 'double' => 2, 'studio' => 0, 'villa' => 0, 'living' => 1]]]));
+
+// Every party the compound can host leads with something that is not a bare
+// bunk pile, and the bunk pile keeps its price slot.
+$noLeadFor = [];
+for ($g = 1; $g <= 20; $g++) {
+    $sugs = maya_ilai_suggest($g, 3, $D, 5);
+    if (!$sugs) continue;
+    if (maya_ilai_offer_is_bunk_only($sugs[0])) $noLeadFor[] = $g;
+}
+check('bunk-only: no party 1–20 is led by a bare bunk pile', $noLeadFor === []);
+check('bunk-only: and none of them wears "Our pick" either', (function () use ($D) {
+    for ($g = 1; $g <= 20; $g++) {
+        foreach (maya_ilai_suggest($g, 3, $D, 5) as $s) {
+            if (maya_ilai_offer_is_bunk_only($s) && in_array($s['badge'], ['pick', 'both'], true)) return false;
+        }
+    }
+    return true;
+})());
+
+// The three party sizes the owner named: the bunk room used to lead each one.
+foreach ([2, 4, 6] as $g) {
+    $sugs = maya_ilai_suggest($g, 3, $D, 5);
+    $lead = $sugs[0];
+    check("bunk-only: {$g} guests are led by a named non-bunk product ('{$lead['label']}')",
+        !maya_ilai_offer_is_bunk_only($lead) && $lead['badge'] === 'pick' && $lead['label'] !== 'Private Bunk Room');
+    $bunkRow = null;
+    foreach ($sugs as $s) if ($s['label'] === 'Private Bunk Room') $bunkRow = $s;
+    check("bunk-only: {$g} guests still see the Private Bunk Room, tagged lowest price",
+        $bunkRow !== null && $bunkRow['badge'] === 'cheapest' && $bunkRow['tag'] === 'Lowest price');
+    check("bunk-only: {$g} guests — the bunk room is still the cheapest thing shown",
+        $bunkRow !== null
+        && eq((float)$bunkRow['quote']['total'], min(array_map(fn($s) => (float)$s['quote']['total'], $sugs))));
+}
+
+// The lead's sentence has to be true of the rooms in it — a studio is not "one
+// space, all yours" in the sense a villa is.
+$noteOf = fn(array $q, int $u = 1, int $g = 2) => maya_ilai_lead_note(['quote' => ['q' => $q, 'guests' => $g]], $u);
+check('lead note: a whole villa says so',
+    $noteOf(['villa' => 1]) === 'The whole villa, all yours');
+check('lead note: a suite names its living room and kitchen',
+    str_contains($noteOf(['double' => 1, 'living' => 1]), 'living room and kitchen'));
+check('lead note: one bedroom with a living room reads as one bedroom',
+    str_contains($noteOf(['double' => 1, 'living' => 1]), 'A bedroom with'));
+check('lead note: two bedrooms with a living room reads as several',
+    str_contains($noteOf(['double' => 2, 'living' => 1]), 'Bedrooms with'));
+check('lead note: a studio is a studio, not a whole space',
+    $noteOf(['studio' => 1]) === 'A studio to yourselves');
+check('lead note: a bedroom in a villa keeps the plain promise',
+    $noteOf(['double' => 1]) === 'One space, all yours');
+check('lead note: a bare bunk room admits the bunks',
+    str_contains($noteOf(['bunk' => 1]), 'Bunk beds'));
+check('lead note: several units count the rooms instead',
+    $noteOf(['double' => 2], 2, 4) === 'The fewest separate rooms for a party of 4');
+// A 9-guest party has no single product but the villa, so the villa leads and
+// says what it is.
+$nine = maya_ilai_suggest(9, 3, $D, 5);
+check('lead note: the 9-guest lead is the whole villa, and says so',
+    $nine[0]['label'] === 'Three-Bedroom Villa' && str_contains($nine[0]['why'], 'The whole villa, all yours'));
 
 // The cheapest is still guaranteed in when the limit is tight enough to have
 // dropped it — it is swapped in over the last row, not lost.
