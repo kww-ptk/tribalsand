@@ -169,9 +169,19 @@ plausible next project rather than a permanent exclusion.
 
 **Seasonal rates.** The eight products priced across a season calendar. The rate
 tool carries only a High/Standard switch and no dates; the agreed source for the
-calendar is Maya Kobe's 2026 windows. Note that Maya Kobe has **three** seasons
-(Peak / Mid / Standard) and Maya Ilai's model has **two** (High / Standard), so the
-mapping needs a decision before rate rows can be written.
+calendar is Maya Kobe's 2026 windows (`db/migrations/rates_maya_kobe_2026.sql`).
+
+Maya Kobe has three seasons and Maya Ilai has two, so the agreed mapping is:
+
+| Maya Ilai | Maya Kobe windows | Nights |
+|---|---|---|
+| **High** | Peak only — 1–10 Jan, 26 Mar–4 Apr, 20–31 Dec | 32 |
+| **Standard** | Mid **and** Standard — everything else | 333 |
+
+This is deliberate and was chosen with the consequence stated: 333 nights a year,
+including January–March and August, sell at the −20% Standard rate, so the
+Three-Bedroom Villa is $936 for all but 32 nights. Revisit if the intent was for
+the Mid windows to hold the full rate.
 
 **Migration path to A.** If another property later needs true general resources,
 B's component sets migrate into A cleanly: each distinct `(unit_id, component)` pair
