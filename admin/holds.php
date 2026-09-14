@@ -132,7 +132,15 @@ $candsFor = function (int $vid) use (&$venueCandCache) {
 
 // KPIs — joined through to rooms so the same venue scope applies; a scoped
 // account must not see counts covering properties it cannot open.
-$kpiFrom  = "FROM holds h JOIN units u ON u.id = h.unit_id JOIN rooms r ON r.id = u.room_id";
+//
+// Same join as $holdsFrom above, through hold_room_id_sql(), and it must stay
+// that way. The counts do not move today: these three only ever filter on
+// r.venue_id, and a Maya Ilai composite product shares its venue with the villa
+// its units belong to. But u.room_id names the VILLA for all six unit-less
+// products, so the moment this picks up a room filter — the obvious next KPI —
+// it would count the villa's holds under every product and none under the one
+// the guest actually booked. Resolve the product once, everywhere.
+$kpiFrom  = "FROM holds h JOIN units u ON u.id = h.unit_id JOIN rooms r ON r.id = " . hold_room_id_sql('h', 'u');
 $kpiScope = $vscope !== '' ? " AND {$vscope}" : '';
 $kpi_pending   = db_query("SELECT COUNT(*) {$kpiFrom} WHERE h.status='pending'{$kpiScope}")->fetchColumn();
 $kpi_confirmed = db_query("SELECT COUNT(*) {$kpiFrom} WHERE h.status='confirmed'{$kpiScope}")->fetchColumn();
