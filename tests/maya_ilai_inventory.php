@@ -8,6 +8,7 @@ require_once __DIR__ . '/../includes/maya-ilai-inventory.php';
 require_once __DIR__ . '/../includes/bookings.php';
 require_once __DIR__ . '/../includes/gantt-lanes.php';
 require_once __DIR__ . '/../includes/staff-hold-guard.php';
+require_once __DIR__ . '/../includes/booking.php';   // fetch_hold_for_guest() — guest portal naming test
 
 $failures = 0;
 function check(string $label, bool $cond): void {
@@ -812,6 +813,92 @@ try {
                 (int) db_query('SELECT room_id FROM holds WHERE id = :h', [':h' => $explicit])
                     ->fetchColumn() === (int)$bunkFull['id']);
         }
+    }
+
+    // ── Naming the PRODUCT a guest actually booked, on the surfaces a human
+    // reads (staff hold-notification email, guest booking-management portal) ──
+    // Both queries used to join holds -> units -> rooms directly, which for
+    // Maya Ilai always resolves to the villa (units.room_id). A guest who books
+    // a Private Bunk Room must be named "Private Bunk Room" everywhere, not
+    // "Three-Bedroom Villa". Independent of the bookings-ledger guard above —
+    // this only needs holds.room_id (Phase 1), not the finance migration.
+    $bunkForName = db_query("SELECT * FROM rooms WHERE slug = 'maya-ilai-bunk-room'")->fetch();
+    $NI = '2099-07-10';
+    $NO = '2099-07-12';
+    $nameHold = mi_allocate_and_hold(
+        $bunkForName, null, $NI, $NO, 'Name Test', 'name-test@example.com', 'pending', 24
+    );
+    check('naming: a Private Bunk Room books', is_int($nameHold) && $nameHold > 0);
+
+    // The exact query api/submit-enquiry.php runs to build the staff
+    // hold-notification email's room_name.
+    $staffNotify = db_query(
+        "SELECT h.*, u.name AS unit_name, r.name AS room_name
+         FROM holds h JOIN units u ON u.id = h.unit_id JOIN rooms r ON r.id = " . hold_room_id_sql('h', 'u') . "
+         WHERE h.id = :id",
+        [':id' => $nameHold]
+    )->fetch();
+    check('naming: the staff hold-notification query names the product, not the villa',
+        $staffNotify && $staffNotify['room_name'] === 'Private Bunk Room');
+    check('naming: …and specifically NOT the villa name',
+        $staffNotify && $staffNotify['room_name'] !== $villaRow['name']);
+
+    // includes/booking.php's fetch_hold_for_guest() — the guest's own
+    // booking-management portal (record.php / booking.php / the check-in app
+    // all resolve through this one helper).
+    $guestPortal = fetch_hold_for_guest($nameHold);
+    check('naming: the guest portal query (fetch_hold_for_guest) names the product, not the villa',
+        $guestPortal && $guestPortal['room_name'] === 'Private Bunk Room');
+    check('naming: the guest portal room_slug matches the product too',
+        $guestPortal && $guestPortal['room_slug'] === 'maya-ilai-bunk-room');
+
+    // A legacy hold — holds.room_id NULL, the pre-Phase-1 shape every existing
+    // row was backfilled from — must still resolve to the UNIT's own room.
+    $legacyVillaUnit = (int) db_query(
+        'SELECT id FROM units WHERE room_id = :r AND sort_order = 3', [':r' => $villaRoom['id']]
+    )->fetchColumn();
+    $legacyHold = create_hold_with_block($legacyVillaUnit, null, '2099-07-15', '2099-07-17',
+        'Legacy Guest', 'legacy@example.com', 'pending', 24);
+    check('naming: a legacy call with no room id leaves holds.room_id NULL',
+        db_query('SELECT room_id FROM holds WHERE id = :h', [':h' => $legacyHold])->fetchColumn() === null);
+    $legacyNotify = db_query(
+        "SELECT h.*, r.name AS room_name
+         FROM holds h JOIN units u ON u.id = h.unit_id JOIN rooms r ON r.id = " . hold_room_id_sql('h', 'u') . "
+         WHERE h.id = :id",
+        [':id' => $legacyHold]
+    )->fetch();
+    check('naming: a legacy hold (room_id NULL) still resolves to the unit\'s own room',
+        $legacyNotify && $legacyNotify['room_name'] === $villaRow['name']);
+
+    // A non-Maya-Ilai hold (Zuri or Maya Kobe) resolves exactly as before —
+    // units.room_id and the product ARE the same room everywhere else, so
+    // hold_room_id_sql() must be a pure no-op there.
+    $otherRoomForName = db_query(
+        "SELECT r.* FROM rooms r JOIN units u ON u.room_id = r.id
+          WHERE u.is_active = TRUE AND r.venue_id <> :v
+          ORDER BY r.id LIMIT 1",
+        [':v' => (int)$villaRow['venue_id']]
+    )->fetch();
+    if (!$otherRoomForName) {
+        echo "SKIP  naming: no active unit at another property\n";
+    } else {
+        $otherUnitForName = (int) db_query(
+            'SELECT id FROM units WHERE room_id = :r AND is_active = TRUE LIMIT 1',
+            [':r' => (int)$otherRoomForName['id']]
+        )->fetchColumn();
+        $otherNameHold = create_hold_with_block($otherUnitForName, null, '2099-07-20', '2099-07-22',
+            'Other Property Guest', 'other-property@example.com', 'pending', 24);
+        $otherNotify = db_query(
+            "SELECT h.*, r.name AS room_name
+             FROM holds h JOIN units u ON u.id = h.unit_id JOIN rooms r ON r.id = " . hold_room_id_sql('h', 'u') . "
+             WHERE h.id = :id",
+            [':id' => $otherNameHold]
+        )->fetch();
+        check("naming: a non-Maya-Ilai hold ({$otherRoomForName['slug']}) resolves exactly as before",
+            $otherNotify && $otherNotify['room_name'] === $otherRoomForName['name']);
+        $otherGuestPortal = fetch_hold_for_guest($otherNameHold);
+        check("naming: …and the guest portal query agrees",
+            $otherGuestPortal && $otherGuestPortal['room_name'] === $otherRoomForName['name']);
     }
 
     // ── The staff path must not oversell a component booking ───────────────

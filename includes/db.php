@@ -534,7 +534,7 @@ function expire_stale_holds(): void {
             "SELECT h.*, u.name AS unit_name, r.name AS room_name
              FROM holds h
              JOIN units u ON u.id = h.unit_id
-             JOIN rooms r ON r.id = u.room_id
+             JOIN rooms r ON r.id = " . hold_room_id_sql('h', 'u') . "
              WHERE h.id = :id",
             [':id' => $hid]
         )->fetch();

@@ -141,7 +141,7 @@ function fetch_hold_for_guest(int $holdId): array|false {
                 r.venue_id AS venue_id, v.name AS venue_name
          FROM holds h
          JOIN units u  ON u.id = h.unit_id
-         JOIN rooms r  ON r.id = u.room_id
+         JOIN rooms r  ON r.id = " . hold_room_id_sql('h', 'u') . "
          LEFT JOIN venues v ON v.id = r.venue_id
          WHERE h.id = :id",
         [':id' => $holdId]
@@ -288,7 +288,7 @@ function resolve_booking_by_code_only(string $code): array|false {
                 r.venue_id AS venue_id, v.name AS venue_name
          FROM holds h
          JOIN units u  ON u.id = h.unit_id
-         JOIN rooms r  ON r.id = u.room_id
+         JOIN rooms r  ON r.id = " . hold_room_id_sql('h', 'u') . "
          LEFT JOIN venues v ON v.id = r.venue_id
          WHERE h.access_code = :code",
         [':code' => $code]
