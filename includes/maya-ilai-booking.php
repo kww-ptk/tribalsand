@@ -2,11 +2,22 @@
 /**
  * Guest-facing Maya Ilai booking configurator (full pricing parity).
  *
- * Guests pick a mix of villas / studios / bunk rooms / double rooms (+ a living
- * room add-on), allocate guests, and get a live price that applies ALL the
- * tool's rules (single-occupancy discount, extra-guest charges, group discounts,
- * Eco-Resort Fee) — priced server-side via api/maya-ilai-quote.php, which shares
- * the exact same calculation as the staff tool (one pricing path).
+ * TWO STEPS, in this order:
+ *   1. How many of you, and for how long. Nothing else.
+ *   2. The handful of real configurations that sleep that party, cheapest
+ *      first, each with what it includes and its total — plus "Build it
+ *      yourself" for anyone who wants to assemble something bespoke.
+ *
+ * The eight-rows-at-once picker that used to open the page is still here, whole,
+ * behind that toggle: it is the only way to reach a bespoke mix, and the search
+ * only ever shows a handful. What changed is the order — the guest is asked the
+ * one question they can answer before being shown products that overlap ("Double
+ * Room + living room" and "One-Bedroom Suite" are the same $750 stay).
+ *
+ * Both steps price server-side through api/maya-ilai-quote.php, which shares the
+ * exact same calculation as the staff tool (one pricing path). Step 2's
+ * suggestions are quoted error-free before they are ever returned, so nothing
+ * the guest can tap is unbookable.
  *
  * A selection turns into a booking REQUEST (enquiry) — the property confirms it,
  * matching the existing 24h-hold flow. Set nothing before including.
@@ -15,6 +26,7 @@ require_once __DIR__ . '/maya-ilai-pricing.php';
 $mibCfg   = maya_ilai_pricing_get();
 $mibRates = $mibCfg['rates'];
 $mibRules = $mibCfg['rules'];
+$mibMaxParty = maya_ilai_max_party($mibCfg);
 
 // Unit types shown to guests, in order. inc = default guests when a unit is added,
 // minper = the fewest guests one unit can hold (the tool rejects an empty room).
@@ -97,6 +109,48 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
   .mib-cta:hover{background:var(--sand-lt,#D4B07A)}
   .mib-cta:disabled{opacity:.4;cursor:not-allowed}
   .mib-fine{padding:0 1.4rem 1.3rem;font-size:.72rem;color:var(--mib-mut);line-height:1.6}
+
+  /* ── Step 1 — how many of you ───────────────────────────────────────────── */
+  .mib-party{border:1px solid var(--mib-line);background:#fff;padding:1.8rem 1.6rem;max-width:640px;margin:0 auto;text-align:center}
+  .mib-party__q{font-family:'Cormorant Garamond',serif;font-size:1.9rem;line-height:1.15;font-weight:400;margin:0 0 .35rem}
+  .mib-party__sub{font-size:.85rem;color:var(--mib-mut);margin:0 0 1.6rem}
+  .mib-party__fields{display:flex;flex-wrap:wrap;gap:1.4rem;justify-content:center}
+  .mib-field-big{flex:1 1 190px;min-width:0}
+  .mib-field-big__lbl{font-size:.6rem;letter-spacing:.2em;text-transform:uppercase;color:var(--mib-mut);display:block;margin-bottom:.5rem}
+  .mib-bigstep{display:flex;align-items:center;justify-content:center;gap:.9rem}
+  .mib-bigstep button{width:46px;height:46px;flex:0 0 46px;border:1px solid var(--mib-line);background:#fff;color:var(--teal,#1E5C6B);font-size:1.5rem;line-height:1;cursor:pointer;border-radius:50%}
+  .mib-bigstep button:hover{background:var(--sand-faint,#FAF6EE)}
+  .mib-bigstep button:disabled{opacity:.3;cursor:not-allowed}
+  .mib-bigstep__n{font-family:'Cormorant Garamond',serif;font-size:2.4rem;line-height:1;min-width:2.6rem;text-align:center;font-variant-numeric:tabular-nums}
+  .mib-party__go{margin:1.7rem auto 0;width:100%;max-width:320px}
+  .mib-party__fine{font-size:.72rem;color:var(--mib-mut);margin:.9rem 0 0;line-height:1.6}
+
+  /* ── Step 2 — what fits ─────────────────────────────────────────────────── */
+  .mib-recap{display:flex;align-items:baseline;gap:.8rem;flex-wrap:wrap;border-bottom:1px solid var(--mib-line);padding-bottom:.9rem;margin-bottom:1.4rem}
+  .mib-recap__t{font-family:'Cormorant Garamond',serif;font-size:1.5rem;line-height:1.1}
+  .mib-recap__back{margin-left:auto;background:none;border:none;padding:.2rem 0;font-family:inherit;font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:var(--teal,#1E5C6B);cursor:pointer;border-bottom:1px solid currentColor}
+  .mib-offers{display:flex;flex-direction:column;gap:1rem}
+  .mib-off{border:1px solid var(--mib-line);background:#fff;padding:1.2rem 1.3rem;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.6rem 1.6rem;align-items:start}
+  .mib-off--top{border-color:var(--sand,#B8965A);box-shadow:0 6px 26px rgba(184,150,90,.16)}
+  .mib-off__tag{grid-column:1/-1;font-size:.58rem;letter-spacing:.22em;text-transform:uppercase;color:var(--sand-dk,#8A6D33)}
+  .mib-off__name{font-family:'Cormorant Garamond',serif;font-size:1.5rem;line-height:1.15;font-weight:400;margin:0}
+  .mib-off__meta{font-size:.78rem;color:var(--mib-mut);margin:.2rem 0 0}
+  .mib-off__money{text-align:right;white-space:nowrap}
+  .mib-off__total{font-family:'Cormorant Garamond',serif;font-size:1.75rem;line-height:1}
+  .mib-off__per{font-size:.74rem;color:var(--mib-mut);margin-top:.15rem}
+  .mib-off__disc{display:inline-block;margin-top:.3rem;font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:#2D7A5F}
+  .mib-off__inc{grid-column:1/-1;list-style:none;margin:.5rem 0 0;padding:.7rem 0 0;border-top:1px solid var(--mib-line);display:flex;flex-direction:column;gap:.3rem}
+  .mib-off__inc li{display:flex;justify-content:space-between;gap:1rem;font-size:.82rem;color:var(--mib-mut)}
+  .mib-off__u{color:var(--mib-ink)}
+  .mib-off__ud{display:block;font-size:.72rem;opacity:.75}
+  .mib-off__cta{grid-column:1/-1;width:100%;margin:.9rem 0 0}
+  .mib-offers__msg{padding:1rem 1.1rem;border:1px solid var(--mib-line);background:var(--sand-faint,#FAF6EE);font-size:.85rem;color:var(--mib-mut)}
+  .mib-bespoke{margin-top:1.8rem;border-top:1px solid var(--mib-line);padding-top:1.3rem}
+  .mib-bespoke__btn{background:none;border:1px solid var(--mib-line);padding:.75rem 1.1rem;font-family:inherit;font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;color:var(--teal,#1E5C6B);cursor:pointer;width:100%}
+  .mib-bespoke__btn:hover{background:var(--sand-faint,#FAF6EE)}
+  .mib-bespoke__hint{font-size:.76rem;color:var(--mib-mut);margin:.7rem 0 0;line-height:1.6}
+  .mib-bespoke__body{margin-top:1.5rem}
+
   /* Enquiry modal */
   .mib-modal{position:fixed;inset:0;background:rgba(16,47,58,.55);display:none;align-items:center;justify-content:center;z-index:600;padding:1rem}
   .mib-modal.open{display:flex}
@@ -111,78 +165,143 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
   .mib-msg.show{display:block}
   .mib-msg.ok{color:#2D7A5F}.mib-msg.bad{color:#9B3B2A}
   @media(max-width:820px){.mib-grid{grid-template-columns:1fr}.mib-summary{position:static}}
+  /* Phone: the offer card stacks so the price sits under the name, never squeezed
+     beside it, and the row steppers keep their own line rather than crushing the
+     room name to one word per line. */
+  @media(max-width:540px){
+    .mib-party{padding:1.4rem 1.1rem}
+    .mib-party__q{font-size:1.6rem}
+    .mib-party__fields{gap:1.1rem}
+    .mib-off{grid-template-columns:1fr;padding:1.1rem}
+    .mib-off__money{text-align:left}
+    .mib-off__total{font-size:1.9rem}
+    .mib-off__inc li{flex-direction:column;gap:.1rem}
+    .mib-off__ug{font-size:.74rem;opacity:.8}
+    .mib-row{grid-template-columns:1fr 1fr;gap:.7rem 1rem}
+    .mib-row>div:first-child{grid-column:1/-1}
+    .mib-cta{width:calc(100% - 2rem);margin-left:1rem;margin-right:1rem}
+    .mib-off__cta{width:100%;margin-left:0;margin-right:0}
+    .mib-sum-top,.mib-lines{padding-left:1rem;padding-right:1rem}
+    .mib-notice{margin-left:1rem;margin-right:1rem}
+    .mib-fine{padding-left:1rem;padding-right:1rem}
+  }
 </style>
 
 <div class="mib" id="mibRoot"
      data-endpoint="/api/maya-ilai-quote.php"
      data-contact="/api/submit-contact.php"
+     data-maxguests="<?= (int)$mibMaxParty ?>"
      data-rates='<?= e(json_encode($mibRates)) ?>'
      data-rules='<?= e(json_encode(['bunkMax'=>(int)$mibRules['bunkMax'],'doublePerVilla'=>max(1,(int)$mibCfg['inventory']['doublePerVilla'])])) ?>'>
-  <div class="mib-grid">
-    <div>
-      <?php foreach ($mibGroups as $grp): ?>
-      <div class="mib-group <?= e($grp['class'] ?? '') ?>">
-        <div class="mib-group__hd">
-          <span class="mib-group__lbl"><?= e($grp['label']) ?></span>
-          <?php if (!empty($grp['hint'])): ?><span class="mib-group__hint"><?= e($grp['hint']) ?></span><?php endif; ?>
-        </div>
-        <div class="mib-rows">
-          <?php foreach ($grp['rows'] as $u): ?>
-          <div class="mib-row" data-unit="<?= e($u['key']) ?>" data-parts='<?= e(json_encode($u['parts'])) ?>'
-               data-inc="<?= (int)$u['inc'] ?>" data-max="<?= (int)$u['max'] ?>" data-minper="<?= (int)$u['minper'] ?>">
-            <div>
-              <div class="mib-row__name"><?= e($u['key']) ?></div>
-              <div class="mib-row__note"><?= e($u['note']) ?></div>
-              <div class="mib-row__rate" data-rate="<?= (float)$u['rate'] ?>">from $<?= number_format((float)$u['rate']) ?> / night</div>
-            </div>
-            <div class="mib-ctl">
-              <span class="mib-ctl__lbl">Rooms</span>
-              <div class="mib-step" data-step="qty">
-                <button type="button" data-dir="-1" aria-label="Fewer">−</button>
-                <span class="mib-step__n mib-qty">0</span>
-                <button type="button" data-dir="1" aria-label="More">+</button>
-              </div>
-            </div>
-            <div class="mib-ctl">
-              <span class="mib-ctl__lbl">Guests</span>
-              <div class="mib-step" data-step="g">
-                <button type="button" data-dir="-1" aria-label="Fewer">−</button>
-                <span class="mib-step__n mib-g">0</span>
-                <button type="button" data-dir="1" aria-label="More">+</button>
-              </div>
-            </div>
-          </div>
-          <?php endforeach; ?>
+
+  <!-- ── Step 1 ─────────────────────────────────────────────────────────── -->
+  <section class="mib-party" id="mibStep1">
+    <h3 class="mib-party__q">How many of you are coming?</h3>
+    <p class="mib-party__sub">Tell us the party and the length of stay — we'll show you what fits, with the price.</p>
+    <div class="mib-party__fields">
+      <div class="mib-field-big">
+        <span class="mib-field-big__lbl" id="mibPGuestsLbl">Guests</span>
+        <div class="mib-bigstep" id="mibPGuests" aria-labelledby="mibPGuestsLbl">
+          <button type="button" data-dir="-1" aria-label="Fewer guests">−</button>
+          <span class="mib-bigstep__n" id="mibPGuestsN" aria-live="polite">2</span>
+          <button type="button" data-dir="1" aria-label="More guests">+</button>
         </div>
       </div>
-      <?php endforeach; ?>
-
-      <div class="mib-extra">
-        <div class="mib-living">
-          <span class="mib-living__txt">Living Room + Kitchen <span style="color:var(--teal,#1E5C6B)">($<?= number_format((float)$mibRates['living']) ?>/night)</span></span>
-          <div class="mib-step" id="mibLivingStep">
-            <button type="button" data-dir="-1" aria-label="Fewer living rooms">−</button>
-            <span class="mib-step__n" id="mibLivingN">0</span>
-            <button type="button" data-dir="1" aria-label="More living rooms">+</button>
-          </div>
-          <span class="mib-living__hint" id="mibLivingHint"></span>
+      <div class="mib-field-big">
+        <span class="mib-field-big__lbl" id="mibPNightsLbl">Nights</span>
+        <div class="mib-bigstep" id="mibPNights" aria-labelledby="mibPNightsLbl">
+          <button type="button" data-dir="-1" aria-label="Fewer nights">−</button>
+          <span class="mib-bigstep__n" id="mibPNightsN" aria-live="polite">3</span>
+          <button type="button" data-dir="1" aria-label="More nights">+</button>
         </div>
-        <label>Nights <input type="number" id="mibNights" min="1" value="3"></label>
       </div>
     </div>
+    <button type="button" class="mib-cta mib-party__go" id="mibPGo">Show what fits</button>
+    <p class="mib-party__fine">Prices in USD, for the whole stay. The property confirms availability and holds your dates — you are not charged now. Group discounts apply automatically for larger parties (min <?= (int)$mibRules['minNights'] ?> nights).</p>
+  </section>
 
-    <aside class="mib-summary">
-      <div class="mib-sum-top">
-        <div class="mib-sum-lbl">Estimated total</div>
-        <div class="mib-sum-total" id="mibTotal">$0</div>
-        <div class="mib-sum-per" id="mibPer">Add rooms to price your stay</div>
+  <!-- ── Step 2 ─────────────────────────────────────────────────────────── -->
+  <section id="mibStep2" hidden>
+    <div class="mib-recap">
+      <span class="mib-recap__t" id="mibRecap">2 guests · 3 nights</span>
+      <button type="button" class="mib-recap__back" id="mibBack">Change</button>
+    </div>
+
+    <div class="mib-offers" id="mibOffers"></div>
+
+    <div class="mib-bespoke">
+      <button type="button" class="mib-bespoke__btn" id="mibBespokeBtn" aria-expanded="false" aria-controls="mibBespoke">Build it yourself</button>
+      <p class="mib-bespoke__hint">Want a particular mix of rooms, or a living room of your own? Open the full picker and assemble the stay room by room.</p>
+
+      <div class="mib-bespoke__body" id="mibBespoke" hidden>
+        <div class="mib-grid">
+          <div>
+            <?php foreach ($mibGroups as $grp): ?>
+            <div class="mib-group <?= e($grp['class'] ?? '') ?>">
+              <div class="mib-group__hd">
+                <span class="mib-group__lbl"><?= e($grp['label']) ?></span>
+                <?php if (!empty($grp['hint'])): ?><span class="mib-group__hint"><?= e($grp['hint']) ?></span><?php endif; ?>
+              </div>
+              <div class="mib-rows">
+                <?php foreach ($grp['rows'] as $u): ?>
+                <div class="mib-row" data-unit="<?= e($u['key']) ?>" data-parts='<?= e(json_encode($u['parts'])) ?>'
+                     data-inc="<?= (int)$u['inc'] ?>" data-max="<?= (int)$u['max'] ?>" data-minper="<?= (int)$u['minper'] ?>">
+                  <div>
+                    <div class="mib-row__name"><?= e($u['key']) ?></div>
+                    <div class="mib-row__note"><?= e($u['note']) ?></div>
+                    <div class="mib-row__rate" data-rate="<?= (float)$u['rate'] ?>">from $<?= number_format((float)$u['rate']) ?> / night</div>
+                  </div>
+                  <div class="mib-ctl">
+                    <span class="mib-ctl__lbl">Rooms</span>
+                    <div class="mib-step" data-step="qty">
+                      <button type="button" data-dir="-1" aria-label="Fewer">−</button>
+                      <span class="mib-step__n mib-qty">0</span>
+                      <button type="button" data-dir="1" aria-label="More">+</button>
+                    </div>
+                  </div>
+                  <div class="mib-ctl">
+                    <span class="mib-ctl__lbl">Guests</span>
+                    <div class="mib-step" data-step="g">
+                      <button type="button" data-dir="-1" aria-label="Fewer">−</button>
+                      <span class="mib-step__n mib-g">0</span>
+                      <button type="button" data-dir="1" aria-label="More">+</button>
+                    </div>
+                  </div>
+                </div>
+                <?php endforeach; ?>
+              </div>
+            </div>
+            <?php endforeach; ?>
+
+            <div class="mib-extra">
+              <div class="mib-living">
+                <span class="mib-living__txt">Living Room + Kitchen <span style="color:var(--teal,#1E5C6B)">($<?= number_format((float)$mibRates['living']) ?>/night)</span></span>
+                <div class="mib-step" id="mibLivingStep">
+                  <button type="button" data-dir="-1" aria-label="Fewer living rooms">−</button>
+                  <span class="mib-step__n" id="mibLivingN">0</span>
+                  <button type="button" data-dir="1" aria-label="More living rooms">+</button>
+                </div>
+                <span class="mib-living__hint" id="mibLivingHint"></span>
+              </div>
+              <label>Nights <input type="number" id="mibNights" min="1" value="3"></label>
+            </div>
+          </div>
+
+          <aside class="mib-summary">
+            <div class="mib-sum-top">
+              <div class="mib-sum-lbl">Estimated total</div>
+              <div class="mib-sum-total" id="mibTotal">$0</div>
+              <div class="mib-sum-per" id="mibPer">Add rooms to price your stay</div>
+            </div>
+            <div class="mib-lines" id="mibLines"></div>
+            <div class="mib-notice" id="mibNotice">Choose your rooms and guests.</div>
+            <button class="mib-cta" id="mibRequest" disabled>Request to book</button>
+            <div class="mib-fine">Prices in USD. The property confirms availability and holds your dates — you are not charged now. Group discounts apply automatically for larger parties (min <?= (int)$mibRules['minNights'] ?> nights).</div>
+          </aside>
+        </div>
       </div>
-      <div class="mib-lines" id="mibLines"></div>
-      <div class="mib-notice" id="mibNotice">Choose your rooms and guests.</div>
-      <button class="mib-cta" id="mibRequest" disabled>Request to book</button>
-      <div class="mib-fine">Prices in USD. The property confirms availability and holds your dates — you are not charged now. Group discounts apply automatically for larger parties (min <?= (int)$mibRules['minNights'] ?> nights).</div>
-    </aside>
-  </div>
+    </div>
+  </section>
 
   <!-- Enquiry modal -->
   <div class="mib-modal" id="mibModal">
@@ -211,7 +330,10 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
   if (!root) return;
   var endpoint = root.dataset.endpoint, contact = root.dataset.contact;
   var rules = JSON.parse(root.dataset.rules);
+  var maxGuests = parseInt(root.dataset.maxguests, 10) || 96;
   var usd = function (n) { return '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 }); };
+  var esc = function (s) { return String(s == null ? '' : s).replace(/[&<>"]/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]; }); };
   var rows = Array.prototype.slice.call(root.querySelectorAll('.mib-row'));
   var state = {}; // unit -> {qty, g, parts, inc, max, minper}
   rows.forEach(function (r) {
@@ -429,12 +551,150 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
   });
   document.getElementById('mibNights').addEventListener('input', function () { nights = Math.max(1, parseInt(this.value, 10) || 1); quote(); });
 
-  // Enquiry modal
+  /* ── Step 1 → Step 2: the configuration search ───────────────────────────
+   *
+   * The guest answers party + nights; the server returns the handful of
+   * configurations that actually sleep them, already priced and already proved
+   * bookable (every suggestion is quoted error-free before it is returned).
+   */
+  var step1 = document.getElementById('mibStep1'), step2 = document.getElementById('mibStep2');
+  var offersEl = document.getElementById('mibOffers'), recapEl = document.getElementById('mibRecap');
+  var party = { guests: 2, nights: 3 };
+  var offers = [];            // the suggestions currently on screen
+  var searchTimer = null;
+  // Stale-response guard, the same shape as quote()'s debounce above but with a
+  // sequence token as well: the debounce stops a burst of requests, the token
+  // stops a slow EARLIER reply from painting over a newer one when the guest
+  // steps back and changes the party size.
+  var searchSeq = 0;
+
+  function paintParty() {
+    document.getElementById('mibPGuestsN').textContent = party.guests;
+    document.getElementById('mibPNightsN').textContent = party.nights;
+    var gb = document.getElementById('mibPGuests').querySelectorAll('button');
+    gb[0].disabled = party.guests <= 1;
+    gb[1].disabled = party.guests >= maxGuests;
+    var nb = document.getElementById('mibPNights').querySelectorAll('button');
+    nb[0].disabled = party.nights <= 1;
+    nb[1].disabled = party.nights >= 30;
+  }
+
+  function bigStep(id, key, lo, hi) {
+    document.getElementById(id).querySelectorAll('button').forEach(function (b) {
+      b.addEventListener('click', function () {
+        party[key] = Math.max(lo, Math.min(hi, party[key] + parseInt(b.dataset.dir, 10)));
+        paintParty();
+      });
+    });
+  }
+  bigStep('mibPGuests', 'guests', 1, maxGuests);
+  bigStep('mibPNights', 'nights', 1, 30);
+
+  function offerCard(o, i) {
+    var q = o.quote;
+    var inc = o.units.map(function (u) {
+      return '<li><span class="mib-off__u">' + (u.qty > 1 ? u.qty + ' × ' : '') + esc(u.key)
+           + '<span class="mib-off__ud">' + esc(u.desc) + '</span></span>'
+           + '<span class="mib-off__ug">' + u.guests + ' guest' + (u.guests === 1 ? '' : 's') + '</span></li>';
+    }).join('');
+    return '<article class="mib-off' + (i === 0 ? ' mib-off--top' : '') + '" data-offer="' + i + '">'
+      + (i === 0 ? '<div class="mib-off__tag">Best price</div>' : '')
+      + '<div><h4 class="mib-off__name">' + esc(o.label) + '</h4>'
+      + '<p class="mib-off__meta">Sleeps ' + q.guests + ' · ' + q.nights + ' night' + (q.nights === 1 ? '' : 's')
+      + (q.capacity > q.guests ? ' · room for ' + q.capacity : '') + '</p></div>'
+      + '<div class="mib-off__money"><div class="mib-off__total">' + priceSpan(q.total) + '</div>'
+      + '<div class="mib-off__per">' + priceSpan(q.nightly) + ' / night'
+      + (q.eco ? ' + ' + priceSpan(q.eco) + ' eco fee' : '') + '</div>'
+      + (q.adjustment < 0 ? '<div class="mib-off__disc">' + esc(q.adjustmentLabel) + ' ' + q.adjustment + '%</div>' : '')
+      + '</div>'
+      + '<ul class="mib-off__inc">' + inc + '</ul>'
+      + '<button type="button" class="mib-cta mib-off__cta">Request this stay</button>'
+      + '</article>';
+  }
+
+  function search() {
+    clearTimeout(searchTimer);
+    var seq = ++searchSeq;
+    recapEl.textContent = party.guests + ' guest' + (party.guests === 1 ? '' : 's') + ' · '
+                        + party.nights + ' night' + (party.nights === 1 ? '' : 's');
+    offersEl.innerHTML = '<div class="mib-offers__msg">Finding what fits…</div>';
+    searchTimer = setTimeout(function () {
+      fetch(endpoint, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ mode: 'suggest', guests: party.guests, nights: party.nights, limit: 5 })
+      })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (seq !== searchSeq) return;                      // a newer search has already run
+          if (!d || !d.ok) {
+            offersEl.innerHTML = '<div class="mib-offers__msg">' + esc((d && d.error) || 'Could not price that stay.') + '</div>';
+            offers = []; return;
+          }
+          offers = d.suggestions || [];
+          if (!offers.length) {
+            offersEl.innerHTML = '<div class="mib-offers__msg">We can\'t sleep a party that size in one stay — '
+              + 'open the full picker below, or send us a note and we\'ll work it out with you.</div>';
+            return;
+          }
+          offersEl.innerHTML = offers.map(offerCard).join('');
+        })
+        .catch(function () {
+          if (seq !== searchSeq) return;
+          offersEl.innerHTML = '<div class="mib-offers__msg">Network error — please try again.</div>';
+          offers = [];
+        });
+    }, 120);
+  }
+
+  document.getElementById('mibPGo').addEventListener('click', function () {
+    step1.hidden = true; step2.hidden = false;
+    nights = party.nights;
+    document.getElementById('mibNights').value = party.nights;
+    search();
+    step2.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+  document.getElementById('mibBack').addEventListener('click', function () {
+    searchSeq++;                      // abandon whatever is in flight
+    step2.hidden = true; step1.hidden = false;
+    step1.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  });
+
+  // Tapping an offer requests THAT stay — its own quote, not the picker's.
+  offersEl.addEventListener('click', function (e) {
+    var btn = e.target.closest('.mib-off__cta');
+    if (!btn) return;
+    var card = btn.closest('.mib-off');
+    var o = offers[parseInt(card.dataset.offer, 10)];
+    if (!o) return;
+    openModal(o.quote, o.label + ' · ' + o.units.map(function (u) {
+      return (u.qty > 1 ? u.qty + '× ' : '') + u.key + ' (' + u.guests + ' guests)';
+    }).join(', ') + ' · ' + o.quote.nights + ' nights · ' + usd(o.quote.total) + ' total');
+  });
+
+  // "Build it yourself" — the full picker, unchanged, for a bespoke mix.
+  var bespoke = document.getElementById('mibBespoke'), bespokeBtn = document.getElementById('mibBespokeBtn');
+  bespokeBtn.addEventListener('click', function () {
+    var open = bespoke.hidden;
+    bespoke.hidden = !open;
+    bespokeBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    bespokeBtn.textContent = open ? 'Hide the full picker' : 'Build it yourself';
+    if (open) { syncLiving(); quote(); bespoke.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+  });
+
+  // Enquiry modal — shared by both steps. modalQuote is what the guest is
+  // actually requesting; the picker's own live quote keeps updating in
+  // lastQuote behind it and must not overwrite what the modal is showing.
   var modal = document.getElementById('mibModal');
+  var modalQuote = null, modalSummary = '';
+  function openModal(q, summary) {
+    modalQuote = q; modalSummary = summary;
+    document.getElementById('mibSummaryText').textContent = summary;
+    document.getElementById('mibMsg').className = 'mib-msg';
+    modal.classList.add('open');
+  }
   document.getElementById('mibRequest').addEventListener('click', function () {
     if (!lastQuote || lastQuote.errors.length || !lastQuote.guests) return;
-    document.getElementById('mibSummaryText').textContent = summaryText(lastQuote);
-    modal.classList.add('open');
+    openModal(lastQuote, summaryText(lastQuote));
   });
   document.getElementById('mibCancel').addEventListener('click', function () { modal.classList.remove('open'); });
   modal.addEventListener('click', function (e) { if (e.target === modal) modal.classList.remove('open'); });
@@ -453,8 +713,9 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
     e.preventDefault();
     var f = e.target, msg = document.getElementById('mibMsg');
     if (f.website.value) { modal.classList.remove('open'); return; } // honeypot
-    var q = lastQuote;
-    var message = 'Maya Ilai booking request:\n' + summaryText(q) +
+    var q = modalQuote;
+    if (!q) return;
+    var message = 'Maya Ilai booking request:\n' + modalSummary +
       '\nAccommodation/night: ' + usd(q.nightly) + ' · Eco fee: ' + usd(q.eco) + ' · Estimated total: ' + usd(q.total) +
       (f.note.value.trim() ? ('\n\nGuest note: ' + f.note.value.trim()) : '');
     var btn = f.querySelector('button[type=submit]'); btn.disabled = true;
@@ -478,7 +739,7 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
       .then(function () { btn.disabled = false; });
   });
 
+  paintParty();
   syncLiving();
-  quote();
 })();
 </script>
