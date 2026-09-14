@@ -447,6 +447,43 @@ function fetch_units_by_room(int $room_id): array {
 }
 
 /**
+ * The room whose units actually carry this room's bookable inventory.
+ *
+ * Maya Ilai's composite products own no units of their own: their inventory is
+ * the eight villa units, owned by maya-ilai-villa (units.room_id is NOT NULL, so
+ * those eight units can belong to exactly one room). Every other room owns its
+ * own units and is its own inventory room.
+ *
+ * Any guard asking "does this room have units?" MUST ask through here. Asking
+ * fetch_units_by_room($room['id']) directly silently downgrades the six unitless
+ * composite products to enquiry mode, so they render a booking form and never
+ * create a hold.
+ *
+ * $room must carry 'slug' — mi_is_composite_room() reads it and returns false
+ * when the key is absent, which would leave a caller looking fixed while still
+ * asking about the wrong room. Fails toward existing behaviour: a missing villa
+ * room (pre-migration, or another install) returns the room's own id rather than
+ * throwing.
+ */
+function room_inventory_room_id(array $room): int {
+    $ownId = (int)($room['id'] ?? 0);
+    if (!mi_is_composite_room($room)) return $ownId;
+
+    // Memoized: these guards run on every render of a Maya Ilai property page.
+    static $villaRoomId = null;
+    if ($villaRoomId === null) {
+        try {
+            $villaRoomId = (int) db_query(
+                'SELECT id FROM rooms WHERE slug = :s', [':s' => MAYA_ILAI_VILLA_ROOM_SLUG]
+            )->fetchColumn();
+        } catch (Throwable $e) {
+            $villaRoomId = 0;
+        }
+    }
+    return $villaRoomId ?: $ownId;
+}
+
+/**
  * Every active Room—Unit pair, for the "convert to hold" dropdown.
  * Returns rows: unit_id, unit_name, room_id, room_name (ordered by room then unit).
  */

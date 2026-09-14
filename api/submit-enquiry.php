@@ -85,8 +85,14 @@ if (!empty($data['upsell']) && is_array($data['upsell']) && $room) {
 $form_mode = ($room && !empty($room['form_mode']))
     ? $room['form_mode']
     : setting('form_mode', 'enquiry');
-// Safety: fall back to enquiry if no units are seeded for this room
-if ($form_mode === 'availability' && $room && count(fetch_units_by_room((int)$room['id'])) === 0) {
+// Safety: fall back to enquiry if no units are seeded for this room's inventory.
+// A room may legitimately own no units of its own — Maya Ilai's composite
+// products allocate against the villa room's units — so the question is asked
+// through room_inventory_room_id(), never with $room['id'] directly.
+// $room came from fetch_room_by_slug() (SELECT *), so it carries the 'slug'
+// that room_inventory_room_id() needs to recognise a composite product.
+if ($form_mode === 'availability' && $room
+    && count(fetch_units_by_room(room_inventory_room_id($room))) === 0) {
     $form_mode = 'enquiry';
 }
 $unit      = false;

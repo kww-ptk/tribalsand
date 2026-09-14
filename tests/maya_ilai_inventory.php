@@ -528,6 +528,57 @@ try {
             'SELECT COUNT(*) FROM availability_blocks WHERE hold_id IN (:a, :b)',
             [':a' => $b2b1, ':b' => $b2b2]
         )->fetchColumn() === 2);
+
+    // ── Inventory room: "which room's units carry this room's inventory?" ──
+    // Both form-mode guards (api/submit-enquiry.php, includes/booking-widget.php)
+    // ask "does this room have units?" before allowing availability mode. The six
+    // unitless composite products own no units of their own, so the guards must
+    // ask through room_inventory_room_id() or they silently downgrade all six to
+    // enquiry mode — a form that renders, submits, and never creates a hold.
+    $villaRoomId = (int)$villaRoom['id'];
+    foreach (['maya-ilai-bunk-room', 'maya-ilai-double', 'maya-ilai-family-room',
+              'maya-ilai-one-bed-suite', 'maya-ilai-family-suite',
+              'maya-ilai-two-bed-suite'] as $slug) {
+        $r = db_query('SELECT * FROM rooms WHERE slug = :s', [':s' => $slug])->fetch();
+        check("inventory room: {$slug} borrows the villa room's units",
+            $r && room_inventory_room_id($r) === $villaRoomId);
+    }
+    $villaRow = db_query('SELECT * FROM rooms WHERE slug = :s',
+        [':s' => MAYA_ILAI_VILLA_ROOM_SLUG])->fetch();
+    check('inventory room: the villa product IS its own inventory room',
+        $villaRow && room_inventory_room_id($villaRow) === $villaRoomId);
+
+    $studio = db_query('SELECT * FROM rooms WHERE slug = :s',
+        [':s' => 'maya-ilai-studio'])->fetch();
+    check('inventory room: the studio is an ordinary room — its own units',
+        $studio && room_inventory_room_id($studio) === (int)$studio['id']);
+
+    $zuriRoom = db_query(
+        "SELECT * FROM rooms WHERE venue_id = (SELECT id FROM venues WHERE slug = 'zuri')
+          ORDER BY id LIMIT 1"
+    )->fetch();
+    if ($zuriRoom) {
+        check('inventory room: another property is completely unaffected',
+            room_inventory_room_id($zuriRoom) === (int)$zuriRoom['id']);
+    }
+
+    // mi_is_composite_room() reads $room['slug'] and returns false when the key is
+    // absent, so a caller that hands over a slug-less array must fall back to the
+    // room's own id — never fatal, never silently borrow the villa's units.
+    check('inventory room: a room array with no slug falls back to its own id',
+        room_inventory_room_id(['id' => 4242]) === 4242);
+
+    // The condition both guards actually evaluate. If this is false for any of the
+    // eight Maya Ilai products, that product renders an enquiry form and can never
+    // be booked.
+    $products = db_query(
+        'SELECT * FROM rooms WHERE venue_id = :v ORDER BY slug', [':v' => (int)$villaRow['venue_id']]
+    )->fetchAll();
+    check('inventory room: Maya Ilai lists all eight products', count($products) === 8);
+    foreach ($products as $p) {
+        check("guard condition: {$p['slug']} has bookable inventory",
+            count(fetch_units_by_room(room_inventory_room_id($p))) > 0);
+    }
 } finally {
     db()->rollBack();
 }
