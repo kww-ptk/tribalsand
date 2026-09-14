@@ -466,9 +466,14 @@ function maya_ilai_products(?array $cfg = null): array {
         ['key'=>'Three-Bedroom Villa', 'parts'=>['villa'=>1],
          'min'=>1, 'included'=>(int)$r['villaIncluded'], 'max'=>(int)$r['villaMax'], 'combo'=>false,
          'desc'=>'The whole villa — three bedrooms, living room + kitchen'],
-        ['key'=>'Private Bunk Room', 'parts'=>['bunk'=>1],
-         'min'=>1, 'included'=>(int)$r['bunkIncluded'], 'max'=>(int)$r['bunkMax'], 'combo'=>false,
-         'desc'=>'Villa bunk room'],
+        // NO bare bunk room. It is not a product a guest may select: it exists
+        // only INSIDE the Two-Bedroom Family Room, the Two-Bedroom Family Suite
+        // and the Three-Bedroom Villa, each of which contains one. It remains a
+        // PRIMITIVE — those combinations expand into it and maya_ilai_quote()
+        // prices it exactly as it always did (rate, extra-guest supplement,
+        // villa packing all untouched). What is gone is only the ability to
+        // pick one on its own. The staff tool still quotes one; that is a
+        // different question and nobody has asked it.
         ['key'=>'Studio', 'parts'=>['studio'=>1],
          'min'=>1, 'included'=>2, 'max'=>2, 'combo'=>false,
          'desc'=>'Private studio'],
@@ -609,25 +614,15 @@ function maya_ilai_offer_fits_party(array $offer, int $guests): bool {
     return maya_ilai_offer_included($offer) <= max(2, $guests);
 }
 
-/**
- * Is this stay nothing but bare bunk rooms?
- *
- * NARROW ON PURPOSE. The property will not be fronted by a bunk room — but the
- * rule is about the BARE product, not about bunk beds existing in a stay. A
- * Two-Bedroom Family Room contains a bunk room and is a family product; it
- * leads happily. So does the Family Suite, and so does the whole villa.
- *
- * Read off the quote's primitives rather than the display names, so it cannot
- * drift when a product is renamed: every combination the property sells carries
- * a double bedroom, a studio is its own primitive and a whole villa is another,
- * so "bunk rooms and nothing else" is exactly the bare-bunk-room pile.
+/*
+ * There was a maya_ilai_offer_is_bunk_only() here, keeping a bare bunk pile out
+ * of the lead slot. It is gone because the bare bunk room is no longer a
+ * product a guest can select at all (see maya_ilai_products), so no generated
+ * configuration can be one — the predicate could never fire again. If the
+ * standalone bunk room is ever reinstated, that rule has to come back with it:
+ * it is in commit 919cbb6, along with the evidence that without it parties
+ * 3, 4, 5, 6, 11 and 12 were fronted by a bunk pile.
  */
-function maya_ilai_offer_is_bunk_only(array $offer): bool {
-    $q = $offer['quote']['q'] ?? [];
-    return (int)($q['bunk'] ?? 0) > 0
-        && (int)($q['double'] ?? 0) === 0 && (int)($q['studio'] ?? 0) === 0
-        && (int)($q['villa']  ?? 0) === 0 && (int)($q['living'] ?? 0) === 0;
-}
 
 /**
  * What the property is actually offering you, in one clause.
@@ -642,7 +637,6 @@ function maya_ilai_lead_note(array $offer, int $units): string {
     $q = $offer['quote']['q'] ?? [];
     $g = (int)$offer['quote']['guests'];
     if ($units !== 1) return 'The fewest separate rooms for a party of ' . $g;
-    if (maya_ilai_offer_is_bunk_only($offer)) return 'Bunk beds, but a room of your own';
     if ((int)($q['villa'] ?? 0) > 0)  return 'The whole villa, all yours';
     if ((int)($q['living'] ?? 0) > 0) {
         return ((int)($q['double'] ?? 0) + (int)($q['bunk'] ?? 0)) === 1
@@ -674,7 +668,6 @@ function maya_ilai_lead_note(array $offer, int $units): string {
 function maya_ilai_offer_badge(array $offer, bool $isLead, bool $isCheapest): array {
     $units = 0;
     foreach ($offer['units'] as $u) $units += (int)$u['qty'];
-    $bunk  = (int)($offer['quote']['q']['bunk'] ?? 0);
     $g     = (int)$offer['quote']['guests'];
     $one   = $units === 1;
 
@@ -689,10 +682,16 @@ function maya_ilai_offer_badge(array $offer, bool $isLead, bool $isCheapest): ar
                 'why'   => maya_ilai_lead_note($offer, $units) . '.'];
     }
     if ($isCheapest) {
-        if ($bunk && !$one) $why = 'Bunk beds, split across ' . $units . ' separate rooms — the cheapest way to sleep ' . $g . ', and the least private.';
-        elseif ($bunk)      $why = 'Bunk beds — the cheapest way to sleep ' . $g . ', and the least private.';
-        elseif (!$one)      $why = 'Split across ' . $units . ' separate rooms — cheaper, but not one space to yourselves.';
-        else                $why = 'The cheapest room that sleeps ' . $g . '.';
+        // The trade is the SPLIT, not the bunk beds. It used to name them,
+        // because the cheapest stay was then a pile of bare bunk rooms and the
+        // beds were what set it apart. A guest can no longer select a bare bunk
+        // room, so every stay that has one has it inside a family product — the
+        // lead card included — and naming them here would single out a fact
+        // that is equally true of the row above. The card's own "what's
+        // included" list still says "Double bedroom + bunk room".
+        $why = $one
+            ? 'The cheapest stay that sleeps ' . $g . '.'
+            : 'Split across ' . $units . ' separate rooms — cheaper, but not one space to yourselves.';
         return ['badge' => 'cheapest', 'tag' => 'Lowest price', 'why' => $why];
     }
     return ['badge' => '', 'tag' => '', 'why' => ''];
@@ -865,44 +864,25 @@ function maya_ilai_suggest(int $guests, int $nights, ?array $cfg = null, int $li
         if ((float)$o['quote']['total'] < (float)$offers[$cheapAt]['quote']['total'] - 0.005) $cheapAt = $i;
     }
 
-    // A bare bunk room never fronts the property, at any party size — it can be
-    // the lowest price and it can sit anywhere further down, but it is not what
-    // Maya Ilai is. The lead is the best-ranked stay that is something else.
-    // Note how narrow this is: the Two-Bedroom Family Room CONTAINS a bunk room
-    // and leads the 7-guest list; combinations are family products and are
-    // untouched (see maya_ilai_offer_is_bunk_only).
-    //
-    // If a party has nothing else to offer, we do not contort: no row is called
-    // "Our pick", the list simply leads with the best available and the copy
-    // tells the truth about it.
-    $leadAt = null;
-    foreach ($offers as $i => $o) if (!maya_ilai_offer_is_bunk_only($o)) { $leadAt = $i; break; }
-
-    // Work in indices into the ranked list, so guaranteeing two particular rows
-    // into a set of $limit stays honest about which row each one displaced.
+    // Work in indices into the ranked list, so guaranteeing the cheapest into a
+    // set of $limit stays honest about which row it displaced. The lead needs no
+    // guarantee of its own: it is simply the best-ranked stay, which is index 0
+    // and is only ever absent when a limit of one went to the cheapest instead.
     $take = range(0, min($limit, count($offers)) - 1);
     if (!in_array($cheapAt, $take, true)) { array_pop($take); $take[] = $cheapAt; }
-    if ($leadAt !== null && !in_array($leadAt, $take, true) && count($take) > 1) {
-        // Drop the last row that is not the cheapest — the price guarantee was
-        // hard-won and outranks the lead when the two compete for one slot.
-        for ($i = count($take) - 1; $i >= 0; $i--) {
-            if ($take[$i] !== $cheapAt) { array_splice($take, $i, 1); break; }
-        }
-        $take[] = $leadAt;
-    }
 
     // Slot one is the pick, slot two the cheapest (when they are not the same
     // row); everything else keeps its ranked order behind them.
     $order = [];
-    if ($leadAt !== null && in_array($leadAt, $take, true)) $order[] = $leadAt;
-    if ($cheapAt !== $leadAt && in_array($cheapAt, $take, true)) $order[] = $cheapAt;
+    if (in_array(0, $take, true)) $order[] = 0;
+    if ($cheapAt !== 0 && in_array($cheapAt, $take, true)) $order[] = $cheapAt;
     foreach ($take as $i) if (!in_array($i, $order, true)) $order[] = $i;
 
     $out = [];
     foreach ($order as $slot => $i) {
         $o = $offers[$i];
         unset($o['_units'], $o['_combo']);
-        $out[$slot] = $o + maya_ilai_offer_badge($o, $slot === 0 && $i === $leadAt, $i === $cheapAt);
+        $out[$slot] = $o + maya_ilai_offer_badge($o, $slot === 0 && $i === 0, $i === $cheapAt);
     }
     return $out;
 }

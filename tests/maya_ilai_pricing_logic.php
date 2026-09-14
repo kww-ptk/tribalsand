@@ -318,18 +318,8 @@ for ($g = 1; $g <= 20; $g++) {
     if ($badge !== 'cheapest' && $badge !== 'both') $taggedOk = false;  // and visibly tagged
     if (($sugs[$at]['why'] ?? '') === '') $taggedOk = false;
 
-    // A bare bunk room never fronts the property — unless every stay on offer
-    // for this party IS one, in which case we lead with it and simply do not
-    // call it "Our pick" (see the party-3 assertions below).
-    $anyEligible = false;
-    foreach ($sugs as $s) if (!maya_ilai_offer_is_bunk_only($s)) $anyEligible = true;
-    if ($anyEligible && maya_ilai_offer_is_bunk_only($sugs[0])) {
-        $leadOk = false; echo "NOTE  {$g} guests: lead '{$sugs[0]['label']}' is bunk-only\n";
-    }
-    foreach ($sugs as $s) {
-        if (maya_ilai_offer_is_bunk_only($s)) continue;
-        if ($units($sugs[0]) > $units($s)) $leadOk = false;
-    }
+    // The lead is simply the best-ranked stay — the wholest, then cheapest.
+    foreach ($sugs as $s) if ($units($sugs[0]) > $units($s)) $leadOk = false;
 
     // With the two promoted rows set aside, the rest is ordered
     // whole-stays-first, then price.
@@ -346,73 +336,72 @@ check('search: the cheapest is visibly tagged, with a reason',                  
 check('search: no lead is a bare bunk pile, and the lead is the wholest eligible stay',  $leadOk);
 check('search: the rest is ordered whole stays first, then price',                       $orderOk);
 
-// ── A bare bunk room never fronts the property ──────────────────────────────
-// NARROW on purpose: it is about the bare product, not about bunk beds
-// existing in a stay. The Two-Bedroom Family Room CONTAINS a bunk room and
-// leads the 7-guest list; every combination is a family product and stays
-// eligible.
-check('bunk-only: a pile of bare bunk rooms is bunk-only',
-    maya_ilai_offer_is_bunk_only(['quote' => ['q' => ['bunk' => 2, 'double' => 0, 'studio' => 0, 'villa' => 0, 'living' => 0]]]));
-check('bunk-only: a Two-Bedroom Family Room is NOT (it is a family product)',
-    !maya_ilai_offer_is_bunk_only(['quote' => ['q' => ['bunk' => 1, 'double' => 1, 'studio' => 0, 'villa' => 0, 'living' => 0]]]));
-check('bunk-only: a Family Suite is NOT',
-    !maya_ilai_offer_is_bunk_only(['quote' => ['q' => ['bunk' => 1, 'double' => 1, 'studio' => 0, 'villa' => 0, 'living' => 1]]]));
-check('bunk-only: a whole villa is NOT',
-    !maya_ilai_offer_is_bunk_only(['quote' => ['q' => ['bunk' => 0, 'double' => 0, 'studio' => 0, 'villa' => 1, 'living' => 0]]]));
-check('bunk-only: a bunk room beside a studio is NOT (something else is in it)',
-    !maya_ilai_offer_is_bunk_only(['quote' => ['q' => ['bunk' => 1, 'double' => 0, 'studio' => 1, 'villa' => 0, 'living' => 0]]]));
-check('bunk-only: a stay with no bunks at all is NOT',
-    !maya_ilai_offer_is_bunk_only(['quote' => ['q' => ['bunk' => 0, 'double' => 2, 'studio' => 0, 'villa' => 0, 'living' => 1]]]));
+// ── The bare bunk room is not a product a guest may select ──────────────────
+// It exists only INSIDE the Two-Bedroom Family Room, the Two-Bedroom Family
+// Suite and the Three-Bedroom Villa. It remains a PRIMITIVE — those products
+// expand into it and price through it — so the assertions below are in two
+// halves: nothing OFFERS a bare bunk room, and nothing about the PRICING of the
+// products that contain one has moved.
+//
+// (This replaced maya_ilai_offer_is_bunk_only(), which kept a bare bunk pile
+// out of the lead slot. With the product unselectable that predicate could
+// never fire again, so it and its assertions are gone; commit 919cbb6 has them
+// if the standalone bunk room is ever reinstated.)
+check('no bare bunk: it is not in the sellable product list',
+    !array_filter(maya_ilai_products($D),
+        fn($p) => !$p['combo'] && array_keys($p['parts']) === ['bunk']));
+check('no bare bunk: nor under any name',
+    !array_filter(maya_ilai_products($D), fn($p) => $p['key'] === 'Private Bunk Room'));
 
-// A bare bunk pile is never called "Our pick", at any party size. THIS is the
-// invariant; leading the slot is a consequence of it everywhere except a party
-// that has nothing else on offer at all.
-check('bunk-only: a bare bunk pile never wears "Our pick"', (function () use ($D) {
+$bareBunkAt = [];
+for ($g = 1; $g <= maya_ilai_max_party($D); $g++) {
+    foreach (maya_ilai_suggest($g, 3, $D, 5) as $s) {
+        foreach ($s['units'] as $u) if ($u['key'] === 'Private Bunk Room') $bareBunkAt[] = $g;
+    }
+}
+check('no bare bunk: no suggestion at any party size contains one', $bareBunkAt === []);
+check('no bare bunk: and no mixed pair is half a bunk room either', (function () use ($D) {
     for ($g = 1; $g <= maya_ilai_max_party($D); $g++) {
-        foreach (maya_ilai_suggest($g, 3, $D, 5) as $s) {
-            if (maya_ilai_offer_is_bunk_only($s) && in_array($s['badge'], ['pick', 'both'], true)) return false;
+        foreach (maya_ilai_suggest($g, 3, $D, 8) as $s) {
+            if (str_contains($s['label'], 'Private Bunk Room')) return false;
         }
     }
     return true;
 })());
-// …and it only reaches the lead SLOT when it is the only thing that fits.
-$bunkLedBy = [];
-for ($g = 1; $g <= maya_ilai_max_party($D); $g++) {
-    $sugs = maya_ilai_suggest($g, 3, $D, 5);
-    if ($sugs && maya_ilai_offer_is_bunk_only($sugs[0])) $bunkLedBy[] = $g;
-}
-check('bunk-only: only a party of 3 is led by one, and only because nothing else fits it',
-    $bunkLedBy === [3] && count(maya_ilai_suggest(3, 3, $D, 5)) === 1);
 
-// The rule still earns its place UNDER the included-occupancy rule: without it
-// six party sizes would be fronted by a bare bunk pile, including 4 and 6,
-// which the owner named explicitly. Ranked order is what the lead would be.
-$wouldBunkLead = [];
-for ($g = 1; $g <= maya_ilai_max_party($D); $g++) {
-    $all = maya_ilai_suggest($g, 3, $D, 999);
-    if (!$all) continue;
-    usort($all, fn($a, $b) => [array_sum(array_column($a['units'], 'qty')), (float)$a['quote']['total']]
-                         <=> [array_sum(array_column($b['units'], 'qty')), (float)$b['quote']['total']]);
-    if (maya_ilai_offer_is_bunk_only($all[0])) $wouldBunkLead[] = $g;
-}
-check('bunk-only: without the rule, parties 3,4,5,6,11,12 would be bunk-led — it is not dead weight',
-    $wouldBunkLead === [3, 4, 5, 6, 11, 12]);
+// The guest picker drops its Bunk Room row too. Asserted against the source,
+// because the partial needs a DB and this file is deliberately DB-free.
+$mib = file_get_contents(__DIR__ . '/../includes/maya-ilai-booking.php');
+check('no bare bunk: the "Build it yourself" picker has no Bunk Room row',
+    $mib !== false && !str_contains($mib, "'key'=>'Bunk Room'"));
+check('no bare bunk: the picker still offers the villa, studio and double',
+    str_contains($mib, "'key'=>'Villa'") && str_contains($mib, "'key'=>'Studio'")
+    && str_contains($mib, "'key'=>'Double Room'"));
 
-// The party sizes the owner named. At 2 the bunk room is gone entirely (the
-// included-occupancy rule hides it); at 4 and 6 it is present and priced.
-foreach ([4, 6] as $g) {
-    $sugs = maya_ilai_suggest($g, 3, $D, 5);
-    $lead = $sugs[0];
-    check("bunk-only: {$g} guests are led by a named non-bunk product ('{$lead['label']}')",
-        !maya_ilai_offer_is_bunk_only($lead) && $lead['badge'] === 'pick' && $lead['label'] !== 'Private Bunk Room');
-    $bunkRow = null;
-    foreach ($sugs as $s) if ($s['label'] === 'Private Bunk Room') $bunkRow = $s;
-    check("bunk-only: {$g} guests still see the Private Bunk Room, tagged lowest price",
-        $bunkRow !== null && $bunkRow['badge'] === 'cheapest' && $bunkRow['tag'] === 'Lowest price');
-    check("bunk-only: {$g} guests — the bunk room is still the cheapest thing shown",
-        $bunkRow !== null
-        && eq((float)$bunkRow['quote']['total'], min(array_map(fn($s) => (float)$s['quote']['total'], $sugs))));
-}
+// ── …and NOTHING about the pricing moved ────────────────────────────────────
+// These three all contain a bunk room. Their totals are pinned: if the bunk
+// rate, the extra-guest supplement or the villa packing had shifted, they would
+// move. This is the proof that only the OFFER changed.
+$pin = function (array $sel) use ($D) {
+    return maya_ilai_quote($sel + ['nights' => 3, 'season' => 'high', 'program' => 'group'], $D);
+};
+$frQ = comboQuote('Two-Bedroom Family Room',  $D, ['guests' => 7, 'nights' => 3]);
+$fsQ = comboQuote('Two-Bedroom Family Suite', $D, ['guests' => 7, 'nights' => 3]);
+$vQ  = $pin(['qtyVilla' => 1, 'guestVilla' => 7]);
+check('pricing pinned: Two-Bedroom Family Room, 7 guests, 3 nights = $1,910',  eq($frQ['total'], 1910.0));
+check('pricing pinned: its bunk supplement is still (5-3) × 45 = 90',          eq($frQ['supplements'], 90.0));
+check('pricing pinned: Two-Bedroom Family Suite, 7 guests, 3 nights = $3,110', eq($fsQ['total'], 3110.0));
+check('pricing pinned: Three-Bedroom Villa, 7 guests, 3 nights = $3,650',      eq($vQ['total'], 3650.0));
+// The server stays permissive: this is a merchandising rule, not a validation
+// one, so a payload that names a bunk room is still priced (150 × 3 nights +
+// 3 × $20 eco = 510) rather than rejected.
+check('pricing pinned: a bare bunk room STILL prices if something posts one',
+    eq($pin(['qtyBunk' => 1, 'guestBunk' => 3])['total'], 510.0)
+    && $pin(['qtyBunk' => 1, 'guestBunk' => 3])['errors'] === []);
+check('pricing pinned: with its extra-guest supplement intact',
+    eq($pin(['qtyBunk' => 1, 'guestBunk' => 5])['supplements'], 90.0));
+check('pricing pinned: the bunk room is still a primitive the combinations expand into',
+    (int)comboQuote('Two-Bedroom Family Room', $D, ['guests' => 7])['q']['bunk'] === 1);
 
 // ── Never quote a party for people who are not coming ───────────────────────
 // A configuration is offered only when the guests its rates already COVER do
@@ -473,8 +462,14 @@ for ($g = 1; $g <= maya_ilai_max_party($D); $g++) {
     foreach ($sugs as $s) if (maya_ilai_offer_included($s) > max(2, $g)) { $overCap[] = $g; break; }
 }
 check('fits: no party from 1 to the compound maximum is answered with nothing', $emptyAt === []);
-check('fits: no suggestion anywhere covers more guests than the party — the fallback never fired',
-    $overCap === []);
+// When the fallback fires every returned row breaks the cap, so this list is
+// exactly the set of parties that needed it. A party of THREE is the only one:
+// with no bare bunk room to sell, the smallest thing that sleeps three covers
+// five, and an oversized suggestion beats a blank page.
+check('fits: only a party of 3 needs the relax-rather-than-blank fallback', $overCap === [3]);
+check('fits: and a party of 3 is answered with real, bookable stays',
+    count(maya_ilai_suggest(3, 3, $D, 5)) === 5
+    && !array_filter(maya_ilai_suggest(3, 3, $D, 5), fn($s) => $s['quote']['errors'] !== []));
 
 // The lead's sentence has to be true of the rooms in it — a studio is not "one
 // space, all yours" in the sense a villa is.
@@ -491,8 +486,6 @@ check('lead note: a studio is a studio, not a whole space',
     $noteOf(['studio' => 1]) === 'A studio to yourselves');
 check('lead note: a bedroom in a villa keeps the plain promise',
     $noteOf(['double' => 1]) === 'One space, all yours');
-check('lead note: a bare bunk room admits the bunks',
-    str_contains($noteOf(['bunk' => 1]), 'Bunk beds'));
 check('lead note: several units count the rooms instead',
     $noteOf(['double' => 2], 2, 4) === 'The fewest separate rooms for a party of 4');
 // A 9-guest party has no single product but the villa, so the villa leads and
@@ -519,23 +512,33 @@ check('search: 7 guests lead with a single whole product', $units($seven7[0]) ==
 check('search: 7 guests do not lead with a pile of bunk rooms',
     (int)$seven7[0]['quote']['q']['bunk'] <= 1 && $units($seven7[0]) === 1);
 check('search: the 7-guest lead is the Two-Bedroom Family Room', $seven7[0]['label'] === 'Two-Bedroom Family Room');
-check('search: the cheapest 7-guest stay is still shown, at slot two',
-    $seven7[1]['label'] === '2× Private Bunk Room' && eq((float)$seven7[1]['quote']['total'], 1175.0));
-check('search: and its tag says why it is cheap, not just that it is',
-    str_contains($seven7[1]['why'], 'Bunk beds') && str_contains($seven7[1]['why'], 'least private'));
+// With no bare bunk room to sell, the 7-guest lead is ALSO the cheapest stay,
+// so the two badges merge onto one card. The $1,175 bunk pile that used to hold
+// slot two is deliberately gone; the entry price for seven is now $1,910.
+check('search: the 7-guest lead is also the cheapest, badges merged',
+    $seven7[0]['badge'] === 'both' && eq((float)$seven7[0]['quote']['total'], 1910.0)
+    && eq((float)$seven7[0]['quote']['total'],
+          min(array_map(fn($s) => (float)$s['quote']['total'], $seven7))));
+check('search: no bunk pile is offered to a party of seven',
+    !array_filter($seven7, fn($s) => str_contains($s['label'], 'Private Bunk Room')));
 
 // The badge is derived from the offer, so the reason matches the rooms.
+// The cheapest card names the SPLIT, not the bunk beds: every stay that has a
+// bunk room now has it inside a family product, the lead card included, so
+// naming them would single out a fact that is equally true of the row above.
 $b = maya_ilai_offer_badge(['units' => [['qty' => 2]], 'quote' => ['q' => ['bunk' => 2], 'guests' => 7]], false, true);
-check('badge: a cheap bunk pile names the bunks and the split',
-    $b['badge'] === 'cheapest' && str_contains($b['why'], 'Bunk beds') && str_contains($b['why'], '2 separate rooms'));
+check('badge: a cheaper split names the split, not the bunk beds',
+    $b['badge'] === 'cheapest' && str_contains($b['why'], '2 separate rooms')
+    && !str_contains($b['why'], 'Bunk beds'));
 $b = maya_ilai_offer_badge(['units' => [['qty' => 2]], 'quote' => ['q' => ['bunk' => 0], 'guests' => 4]], false, true);
 check('badge: a cheap split with no bunks names only the split',
     !str_contains($b['why'], 'Bunk') && str_contains($b['why'], 'not one space'));
 $b = maya_ilai_offer_badge(['units' => [['qty' => 1]], 'quote' => ['q' => ['bunk' => 0], 'guests' => 2]], true, false);
 check('badge: the lead claims one space, not a price', $b['badge'] === 'pick' && str_contains($b['why'], 'One space'));
 $b = maya_ilai_offer_badge(['units' => [['qty' => 1]], 'quote' => ['q' => ['bunk' => 1], 'guests' => 2]], true, true);
-check('badge: lead and cheapest at once still admits the bunk beds',
-    $b['badge'] === 'both' && str_contains($b['why'], 'Bunk beds'));
+check('badge: lead and cheapest at once merge into one promise',
+    $b['badge'] === 'both' && $b['tag'] === 'Our pick · lowest price'
+    && str_contains($b['why'], 'lowest price we have'));
 check('badge: an unremarkable offer wears nothing',
     maya_ilai_offer_badge(['units' => [['qty' => 1]], 'quote' => ['q' => ['bunk' => 0], 'guests' => 2]], false, false)
     === ['badge' => '', 'tag' => '', 'why' => '']);
@@ -667,8 +670,8 @@ foreach (maya_ilai_products($D) as $p) {
     check("search: product '{$p['key']}' quotes clean at its included occupancy",
         $alloc !== null && maya_ilai_quote(maya_ilai_picks_to_sel($picks, $alloc, 3, $D), $D)['errors'] === []);
 }
-check('search: the product list is the four primitives plus the offerable combinations',
-    count(maya_ilai_products($D)) === 4 + count(maya_ilai_combos()));
+check('search: the product list is the three sellable primitives plus the offerable combinations',
+    count(maya_ilai_products($D)) === 3 + count(maya_ilai_combos()));
 
 // The allocator itself: seeds one per room, fills to the included count, only
 // then spills into the paid extras.

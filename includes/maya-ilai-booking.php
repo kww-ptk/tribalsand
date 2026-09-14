@@ -35,7 +35,12 @@ $mibMaxParty = maya_ilai_max_party($mibCfg);
 $mibUnits = [
     ['key'=>'Villa',  'parts'=>['villa'=>1],  'rate'=>$mibRates['villa'],  'inc'=>(int)$mibRules['villaIncluded'], 'max'=>(int)$mibRules['villaMax'], 'minper'=>1, 'note'=>'3-bedroom villa · sleeps up to '.$mibRules['villaMax']],
     ['key'=>'Studio', 'parts'=>['studio'=>1], 'rate'=>$mibRates['studio'], 'inc'=>2, 'max'=>2, 'minper'=>1, 'note'=>'Private studio · sleeps 2'],
-    ['key'=>'Bunk Room','parts'=>['bunk'=>1], 'rate'=>$mibRates['bunk'],   'inc'=>(int)$mibRules['bunkIncluded'], 'max'=>(int)$mibRules['bunkMax'], 'minper'=>1, 'note'=>'Villa bunk room · up to '.$mibRules['bunkMax']],
+    // NO bare Bunk Room row, on either surface. A guest can never select one on
+    // its own — it comes inside the Two-Bedroom Family Room, the Two-Bedroom
+    // Family Suite and the Three-Bedroom Villa, which are still here and still
+    // priced through the same primitives. The server stays permissive (a posted
+    // qtyBunk still prices correctly); this is a merchandising rule, not a
+    // validation one.
     ['key'=>'Double Room','parts'=>['double'=>1],'rate'=>$mibRates['double'],'inc'=>2, 'max'=>2, 'minper'=>1, 'note'=>'Villa double room · sleeps 2'],
 ];
 
