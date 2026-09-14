@@ -8,6 +8,8 @@ declare(strict_types=1);
 // dropped today's entries after 21:00 UTC). Set once at module load.
 date_default_timezone_set('Africa/Nairobi');
 
+require_once __DIR__ . '/maya-ilai-inventory.php';
+
 function db(): PDO {
     static $pdo = null;
     if ($pdo !== null) return $pdo;
@@ -445,6 +447,43 @@ function fetch_units_by_room(int $room_id): array {
 }
 
 /**
+ * The room whose units actually carry this room's bookable inventory.
+ *
+ * Maya Ilai's composite products own no units of their own: their inventory is
+ * the eight villa units, owned by maya-ilai-villa (units.room_id is NOT NULL, so
+ * those eight units can belong to exactly one room). Every other room owns its
+ * own units and is its own inventory room.
+ *
+ * Any guard asking "does this room have units?" MUST ask through here. Asking
+ * fetch_units_by_room($room['id']) directly silently downgrades the six unitless
+ * composite products to enquiry mode, so they render a booking form and never
+ * create a hold.
+ *
+ * $room must carry 'slug' — mi_is_composite_room() reads it and returns false
+ * when the key is absent, which would leave a caller looking fixed while still
+ * asking about the wrong room. Fails toward existing behaviour: a missing villa
+ * room (pre-migration, or another install) returns the room's own id rather than
+ * throwing.
+ */
+function room_inventory_room_id(array $room): int {
+    $ownId = (int)($room['id'] ?? 0);
+    if (!mi_is_composite_room($room)) return $ownId;
+
+    // Memoized: these guards run on every render of a Maya Ilai property page.
+    static $villaRoomId = null;
+    if ($villaRoomId === null) {
+        try {
+            $villaRoomId = (int) db_query(
+                'SELECT id FROM rooms WHERE slug = :s', [':s' => MAYA_ILAI_VILLA_ROOM_SLUG]
+            )->fetchColumn();
+        } catch (Throwable $e) {
+            $villaRoomId = 0;
+        }
+    }
+    return $villaRoomId ?: $ownId;
+}
+
+/**
  * Every active Room—Unit pair, for the "convert to hold" dropdown.
  * Returns rows: unit_id, unit_name, room_id, room_name (ordered by room then unit).
  */
@@ -465,7 +504,7 @@ function fetch_hold_by_submission(int $submission_id): array|false {
         "SELECT h.*, u.name AS unit_name, r.name AS room_name
          FROM holds h
          JOIN units u ON u.id = h.unit_id
-         JOIN rooms r ON r.id = u.room_id
+         JOIN rooms r ON r.id = " . hold_room_id_sql('h', 'u') . "
          WHERE h.submission_id = :sid
          ORDER BY h.id DESC LIMIT 1",
         [':sid' => $submission_id]
@@ -495,7 +534,7 @@ function expire_stale_holds(): void {
             "SELECT h.*, u.name AS unit_name, r.name AS room_name
              FROM holds h
              JOIN units u ON u.id = h.unit_id
-             JOIN rooms r ON r.id = u.room_id
+             JOIN rooms r ON r.id = " . hold_room_id_sql('h', 'u') . "
              WHERE h.id = :id",
             [':id' => $hid]
         )->fetch();
@@ -520,6 +559,13 @@ function room_conflict_unit_ids(array $room): array {
     if (!$venue_id) return [];
 
     if (!empty($room['is_entire_place'])) {
+        // Maya Ilai's exclusion is per-villa and handled by mi_find_villa_unit();
+        // the venue-wide buyout rule would block the whole property off one
+        // booking. Narrow ON PURPOSE — only this direction is exempt. The other
+        // direction ("this room is blocked when the venue's whole-place room is
+        // booked") must keep working, or re-adding a compound buyout would let
+        // composite products sell villas out from under it.
+        if (mi_is_composite_room($room)) return [];
         $sql = "SELECT u.id FROM units u
                 JOIN rooms r ON r.id = u.room_id
                 WHERE r.venue_id = :vid AND r.id <> :rid AND u.is_active = TRUE";
@@ -533,14 +579,132 @@ function room_conflict_unit_ids(array $room): array {
     return array_map('intval', db_query($sql, $params)->fetchAll(PDO::FETCH_COLUMN));
 }
 
+/**
+ * The occupancy of every Maya Ilai villa over a date range.
+ *
+ * Returns [unit_id => ['unit_id'=>int, 'sort_order'=>int, 'taken'=>string[]], …].
+ * A block with components IS NULL means the whole villa is taken, so it
+ * contributes every component — that is how pre-existing and staff-entered blocks
+ * keep working unchanged.
+ */
+function mi_villa_states(int $villaRoomId, string $check_in, string $check_out): array {
+    $units = db_query(
+        'SELECT id, sort_order FROM units WHERE room_id = :r AND is_active = TRUE ORDER BY sort_order',
+        [':r' => $villaRoomId]
+    )->fetchAll();
+
+    $states = [];
+    foreach ($units as $u) {
+        $states[(int)$u['id']] = [
+            'unit_id'    => (int)$u['id'],
+            'sort_order' => (int)$u['sort_order'],
+            'taken'      => [],
+        ];
+    }
+    if (!$states) return [];
+
+    $blocks = db_query(
+        "SELECT ab.unit_id, " . mi_components_select('ab') . "
+           FROM availability_blocks ab
+           JOIN units u ON u.id = ab.unit_id
+          WHERE u.room_id = :r AND u.is_active = TRUE
+            AND ab.date_from < :co AND ab.date_to > :ci",
+        [':r' => $villaRoomId, ':ci' => $check_in, ':co' => $check_out]
+    )->fetchAll();
+
+    foreach ($blocks as $b) {
+        $uid = (int)$b['unit_id'];
+        if (!isset($states[$uid])) continue;
+        // mi_block_taken_components() owns the NULL-means-whole-unit rule. Do NOT
+        // call mi_pg_array_decode() directly here — it returns [] for NULL, which
+        // reads as "nothing is taken" and would oversell the villa.
+        $comp = mi_block_taken_components($b['components']);
+        $states[$uid]['taken'] = array_values(array_unique(
+            array_merge($states[$uid]['taken'], $comp)
+        ));
+    }
+    return $states;
+}
+
+/**
+ * Allocate a villa for a Maya Ilai composite product.
+ *
+ * Returns the chosen unit row with the resolved component list under
+ * '_mi_components', which create_hold_with_block() writes onto the block.
+ */
+function mi_find_villa_unit(array $room, string $check_in, string $check_out): array|false {
+    $pattern = mi_product_map()[$room['slug']] ?? null;
+    if ($pattern === null) return false;
+
+    $villaRoomId = (int) db_query(
+        'SELECT id FROM rooms WHERE slug = :s', [':s' => MAYA_ILAI_VILLA_ROOM_SLUG]
+    )->fetchColumn();
+    if (!$villaRoomId) return false;
+
+    $states = mi_villa_states($villaRoomId, $check_in, $check_out);
+    if (!$states) return false;
+
+    // mi_order_villas() derives the villa total from the list it is given, so
+    // $states MUST be the complete villa set — never a pre-filtered subset.
+    $reserved = max(0, (int) setting('maya_ilai_reserved_villas', '2'));
+    $ordered  = mi_order_villas(
+        array_values($states),
+        $room['slug'] === MAYA_ILAI_VILLA_ROOM_SLUG,
+        $reserved
+    );
+
+    foreach ($ordered as $villa) {
+        $resolved = mi_resolve($pattern, $villa['taken']);
+        if ($resolved === null) continue;
+        $unit = db_query('SELECT * FROM units WHERE id = :id', [':id' => $villa['unit_id']])->fetch();
+        if (!$unit) continue;
+        $unit['_mi_components'] = $resolved;
+        return $unit;
+    }
+    return false;
+}
+
+/**
+ * The public allocator. Sweeps lapsed holds first, exactly as it always has —
+ * its ~10 callers each resolve ONE stay and want the freshest inventory.
+ */
 function find_available_unit(int $room_id, string $check_in, string $check_out): array|false {
-    expire_stale_holds();
+    return find_available_unit_internal($room_id, $check_in, $check_out, true);
+}
+
+/**
+ * Internal: find_available_unit() with the lapsed-hold sweep made optional.
+ *
+ * expire_stale_holds() is a WRITE — an UPDATE … RETURNING that can also DELETE
+ * blocks and e-mail every affected guest. That is the right thing to do once per
+ * request; it is the wrong thing to do once per PROBE. room_max_stay_nights()
+ * binary-searches with ~5 probes, and api/check-availability.php reaches it from
+ * a public, unauthenticated GET on every check-in click, at every property — so
+ * the sweep went from one write transaction per completed date range to five per
+ * click. The sweep is hoisted to the caller instead; nothing about which unit is
+ * free changes, because the probes all run after the same single sweep.
+ *
+ * NOT part of the public surface: find_available_unit() keeps its signature so
+ * none of its existing callers change. Pass $sweep = false only when the caller
+ * has already swept for this request.
+ */
+function find_available_unit_internal(
+    int $room_id, string $check_in, string $check_out, bool $sweep = true
+): array|false {
+    if ($sweep) expire_stale_holds();
 
     $room = db_query(
-        'SELECT id, venue_id, is_entire_place FROM rooms WHERE id = :id',
+        'SELECT id, slug, venue_id, is_entire_place FROM rooms WHERE id = :id',
         [':id' => $room_id]
     )->fetch();
     if (!$room) return false;
+
+    // Maya Ilai sells several products over the same villas; allocation is by
+    // component, not by whole unit. This must run BEFORE the is_entire_place
+    // conflict logic below, which does not apply to this property.
+    if (mi_is_composite_room($room)) {
+        return mi_find_villa_unit($room, $check_in, $check_out);
+    }
 
     // Whole-villa / by-room mutual exclusion: if a conflicting sibling unit is
     // booked for the range, this room cannot be booked at all.
@@ -573,6 +737,175 @@ function find_available_unit(int $room_id, string $check_in, string $check_out):
 }
 
 /**
+ * The longest bookable stay, in nights, starting on $checkIn (0 = not even one night).
+ *
+ * Availability is a property of a STAY, not of a night: find_available_unit()
+ * needs ONE unit free across the whole span, because a guest keeps the same room
+ * for the whole booking. Every night of a range can have some free unit while no
+ * single unit spans them all — which is why a per-night blocked-date list cannot
+ * answer "can I book Mon-Wed?".
+ *
+ * Monotonic by construction (a longer span can only take more components/units),
+ * so this binary-searches rather than walking: ~5 probes instead of $cap.
+ *
+ * Why the monotonicity holds — it is what makes the binary search legitimate, so
+ * check it before changing either allocator:
+ *   • Composite products (Maya Ilai): mi_villa_states() unions the components
+ *     taken by every block OVERLAPPING the span, so lengthening the span can
+ *     only bring more blocks in — each villa's taken set grows. mi_resolve()
+ *     fails as soon as a component it needs is taken and never un-fails against
+ *     a superset, and mi_order_villas() picks candidates by RANK, which does not
+ *     depend on the dates at all.
+ *   • Ordinary rooms: both the NOT EXISTS unit scan and the conflicting-sibling
+ *     clash test are overlap tests against the same widening window, so the free
+ *     unit set only shrinks and a clash, once found, stays found.
+ * So "nothing spans N nights" implies "nothing spans N+1", the predicate steps
+ * from available to unavailable exactly once, and the search is well defined. If
+ * that ever stops being true this must go back to walking the nights.
+ *
+ * $checkIn is validated with rates_window_ymd() — the same read-window validator
+ * api/check-availability.php uses — because a window we cannot parse is not a
+ * 0-night stay by accident, it is deliberately "not a stay". $cap is a UI
+ * affordance, not a booking rule, so it is clamped: this runs one availability
+ * probe per iteration and a caller-supplied cap must not be able to turn that
+ * into an unbounded scan.
+ */
+function room_max_stay_nights(int $roomId, string $checkIn, int $cap = 30): int {
+    // Required here, not at file scope: rates.php requires this file, so a
+    // file-scope require would be a load-order cycle (room_stay_quote() does
+    // the same for the same reason).
+    require_once __DIR__ . '/rates.php';
+
+    $ci = rates_window_ymd($checkIn);
+    if ($ci === null) return 0;
+
+    $cap = max(0, min($cap, 365));
+    if ($cap === 0) return 0;
+
+    $from = new DateTimeImmutable($ci);
+
+    // Sweep ONCE, here, rather than once inside each of the ~5 probes below.
+    // expire_stale_holds() is an UPDATE … RETURNING that also deletes blocks and
+    // e-mails the affected guests; this function is reached from a public,
+    // unauthenticated GET (api/check-availability.php) on every check-in click,
+    // so five write transactions per click is five too many. Placed after the
+    // early returns on purpose: an invalid window or a zero cap probed nothing
+    // before this change and so swept nothing, and still doesn't.
+    expire_stale_holds();
+
+    // n = 0 is bookable by definition (an empty stay), so the invariant "lo is
+    // bookable" holds from the start and the loop always terminates on a real
+    // answer without ever probing a zero-length window — which
+    // find_available_unit() would not understand.
+    $lo = 0;
+    $hi = $cap;
+    while ($lo < $hi) {
+        $mid = intdiv($lo + $hi + 1, 2);
+        $co  = $from->modify("+{$mid} day")->format('Y-m-d');
+        // $sweep = false: the single sweep above already ran for this call.
+        if (find_available_unit_internal($roomId, $ci, $co, false) !== false) $lo = $mid;
+        else                                                                  $hi = $mid - 1;
+    }
+    return $lo;
+}
+
+/**
+ * True once holds.room_id exists (migration: add_holds_room_id.sql). Memoised.
+ *
+ * This column is read on the path of EVERY property, so a deploy that has not
+ * run the migration yet must degrade to the old unit -> room behaviour rather
+ * than fatal — the house *_supported() contract (checkin_deposit_supported()
+ * and friends), with the probe query chosen as explained below.
+ */
+function holds_room_id_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    // A catalog lookup, not the usual "SELECT <col> ... LIMIT 1" probe, because
+    // this is first reached from inside create_hold_with_block() — which
+    // mi_allocate_and_hold() runs inside a transaction. In Postgres a failed
+    // statement aborts the WHOLE transaction, so on a pre-migration database the
+    // probe's own error would kill the booking it was asked about. This query
+    // cannot fail. (bookings_supported() uses to_regclass for the same reason.)
+    try {
+        $ok = (bool) db_query(
+            "SELECT 1 FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'holds'
+                AND column_name = 'room_id'"
+        )->fetchColumn();
+    } catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/**
+ * True once availability_blocks.components exists (migration:
+ * add_maya_ilai_components.sql). Memoised.
+ *
+ * The sibling of holds_room_id_supported(), and needed for the same reason and
+ * then some: create_hold_with_block() writes this column for EVERY property, so
+ * a container deployed ahead of its migration — which is the default order here,
+ * push-to-master builds to ECS while /admin/migrate.php is run separately — took
+ * every booking at Zuri and Maya Kobe down with it, not just Maya Ilai.
+ *
+ * A catalog lookup rather than a "SELECT <col> … LIMIT 1" probe: this is reached
+ * from inside create_hold_with_block(), which mi_allocate_and_hold() runs inside
+ * a transaction, and in Postgres a failed statement aborts the WHOLE transaction.
+ * A probe that errors would kill the booking it was asked about. This query
+ * cannot fail.
+ */
+function components_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try {
+        $ok = (bool) db_query(
+            "SELECT 1 FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'availability_blocks'
+                AND column_name = 'components'"
+        )->fetchColumn();
+    } catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/**
+ * SELECT expression for a block's component list, for the villa allocators.
+ *
+ * Pre-migration this is NULL for every row, and mi_block_taken_components()
+ * reads NULL as "the whole unit is taken" — which is precisely what every block
+ * meant before components existed. So the composite allocators degrade to
+ * whole-villa occupancy instead of erroring, and fail CLOSED (a block takes
+ * everything) rather than open.
+ *
+ * This is not dead defensiveness: `maya-ilai-villa` is NOT a new slug. It is in
+ * db/seed_rooms_2026.sql and predates this branch, so mi_is_composite_room() is
+ * already true for it on an unmigrated database and the composite path IS
+ * reachable there.
+ */
+function mi_components_select(string $blockAlias = 'ab'): string {
+    return components_supported()
+        ? "{$blockAlias}.components::text AS components"
+        : "NULL::text AS components";
+}
+
+/**
+ * SQL expression resolving which ROOM (product) a hold is for.
+ *
+ * A hold's product used to be derivable from its unit, because each room owned
+ * its own units. Maya Ilai's composite products break that: six of them own no
+ * units and allocate against the villa units, so unit->room reports the villa
+ * for every one of them. holds.room_id records the product directly.
+ *
+ * Falls back to the unit's room for pre-migration rows and for every hold
+ * created before this column existed — which is correct for them.
+ *
+ * Both aliases must be in scope in the query using this fragment (the fallback
+ * needs the unit alias even when the column exists).
+ */
+function hold_room_id_sql(string $holdAlias = 'h', string $unitAlias = 'u'): string {
+    return holds_room_id_supported()
+        ? "COALESCE({$holdAlias}.room_id, {$unitAlias}.room_id)"
+        : "{$unitAlias}.room_id";
+}
+
+/**
  * $expiresInHours: NULL = the hold never auto-expires. Staff-typed bookings use
  * NULL so expire_stale_holds() cannot cancel them overnight and free the dates —
  * its predicate (expires_at < NOW()) is NULL for a NULL column and never matches.
@@ -584,20 +917,46 @@ function create_hold_with_block(
     string $check_in, string $check_out,
     string $guest_name, string $guest_email,
     string $status = 'pending',
-    ?int $expiresInHours = 24
+    ?int $expiresInHours = 24,
+    ?array $components = null,
+    ?int $roomId = null
 ): int {
     $confirmed = $status === 'confirmed';
     $expiresExpr = $expiresInHours === null ? 'NULL' : 'NOW() + make_interval(hours => :exph)';
     $hold_id = 0;
+
+    // Which product this hold is for. Only written when the column exists, so a
+    // deploy that has not run add_holds_room_id.sql yet still books normally —
+    // its holds simply fall back to the unit's room, as they always did.
+    $writeRoom = $roomId !== null && $roomId > 0 && holds_room_id_supported();
+    $roomCol   = $writeRoom ? 'room_id, ' : '';
+    $roomVal   = $writeRoom ? ':room, '   : '';
+
+    // In Postgres a statement that raises an error aborts the WHOLE transaction:
+    // every later statement dies with "current transaction is aborted". So once
+    // this runs inside a transaction (mi_allocate_and_hold() does), the access-code
+    // retry below would turn one duplicate-key collision into a hard, unrelated-
+    // looking failure. A SAVEPOINT around the INSERT scopes the abort to the
+    // attempt, so the retry keeps working.
+    //
+    // A SAVEPOINT is only legal inside a transaction — outside one Postgres raises
+    // a warning and no savepoint exists to roll back to. The non-Maya-Ilai callers
+    // run with no transaction at all (each statement is its own), where a failed
+    // INSERT poisons nothing, so that path takes no savepoint and behaves exactly
+    // as it did before.
+    $inTx = db()->inTransaction();
+    $sp   = 'hold_access_code';
+
     for ($attempt = 0; $attempt < 5; $attempt++) {
         $code = generate_access_code();
+        if ($inTx) db()->exec("SAVEPOINT {$sp}");
         try {
             $stmt = db()->prepare(
                 "INSERT INTO holds
-                    (submission_id, unit_id, check_in, check_out, guest_name, guest_email,
+                    ({$roomCol}submission_id, unit_id, check_in, check_out, guest_name, guest_email,
                      access_code, status, confirmed_at, expires_at)
                  VALUES
-                    (:sub, :unit, :ci, :co, :name, :email,
+                    ({$roomVal}:sub, :unit, :ci, :co, :name, :email,
                      :code, :status, :confirmed_at, {$expiresExpr})
                  RETURNING id"
             );
@@ -612,24 +971,266 @@ function create_hold_with_block(
                 ':status'       => $status,
                 ':confirmed_at' => $confirmed ? date('Y-m-d H:i:s') : null,
             ];
+            if ($writeRoom)                $params[':room'] = $roomId;
             if ($expiresInHours !== null) $params[':exph'] = $expiresInHours;
             $stmt->execute($params);
             $hold_id = (int)$stmt->fetchColumn();
+            if ($inTx) db()->exec("RELEASE SAVEPOINT {$sp}");
             break;
         } catch (PDOException $e) {
+            if ($inTx) {
+                try {
+                    db()->exec("ROLLBACK TO SAVEPOINT {$sp}");
+                } catch (\Throwable $spFailed) {
+                    // The transaction is unrecoverable — surface the real error,
+                    // never the rollback's, and never retry into a dead session.
+                    throw $e;
+                }
+            }
             if (($e->getCode() === '23505') && $attempt < 4) continue;
             throw $e;
         }
     }
 
+    // NULL components means "the whole unit", which is what every non-Maya-Ilai
+    // booking means and what every pre-existing row already says.
+    //
+    // Written only when the column exists — exactly like room_id above, and for
+    // a bigger blast radius: this INSERT is on the booking path of EVERY
+    // property, so naming a column the database has not got yet fails Zuri and
+    // Maya Kobe too, not just the property the column was added for. One
+    // statement either way; a pre-migration block is simply the whole unit,
+    // which is what it would have been before this branch.
+    $writeComp = components_supported();
+    $compCol   = $writeComp ? ', components' : '';
+    $compVal   = $writeComp ? ', :comp'      : '';
+    $blockParams = [
+        ':unit' => $unit_id, ':df' => $check_in, ':dt' => $check_out,
+        ':bt' => $confirmed ? 'booked' : 'hold', ':hold' => $hold_id,
+    ];
+    if ($writeComp) {
+        $blockParams[':comp'] = $components === null ? null : mi_pg_array_encode($components);
+    }
     db_query(
-        "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, hold_id)
-         VALUES (:unit, :df, :dt, :bt, :hold)",
-        [':unit' => $unit_id, ':df' => $check_in, ':dt' => $check_out,
-         ':bt' => $confirmed ? 'booked' : 'hold', ':hold' => $hold_id]
+        "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, hold_id{$compCol})
+         VALUES (:unit, :df, :dt, :bt, :hold{$compVal})",
+        $blockParams
     );
 
     return $hold_id;
+}
+
+/**
+ * Namespace key for the advisory lock taken around Maya Ilai villa allocation.
+ *
+ * pg_advisory_xact_lock() has a one-key (bigint) form and a two-key (int4, int4)
+ * form, and they share no lock space with each other. Using the two-key form with
+ * a fixed namespace here means a future advisory lock somewhere else in the app
+ * can only collide with this one if it deliberately picks the same namespace —
+ * a bare room id in the one-key form cannot.
+ */
+const MI_ADVISORY_LOCK_NS = 19785; // arbitrary, fixed: "Maya Ilai villa allocation"
+
+/**
+ * Allocate a villa and write its hold atomically, for Maya Ilai only.
+ *
+ * The engine allocates (find_available_unit) and books (create_hold_with_block)
+ * in two separate calls, so two concurrent requests can claim the same
+ * inventory. For whole units that race is at least visible afterwards — two
+ * overlapping blocks on one unit. For components it is not: two blocks each
+ * claiming `bunk` violate no constraint and read as ordinary shared occupancy.
+ *
+ * So for this property the allocation is REDONE here inside a transaction that
+ * holds a Postgres advisory lock keyed on the villa room, and the block is
+ * written before the lock is released. The caller's earlier find_available_unit()
+ * result is only a fast pre-filter; this re-allocation is the authoritative one.
+ *
+ * Returns the hold id, or FALSE when the dates were taken while we waited.
+ */
+function mi_allocate_and_hold(
+    array $room, ?int $submissionId,
+    string $check_in, string $check_out,
+    string $guestName, string $guestEmail,
+    string $status = 'pending', ?int $expiresInHours = 24
+): int|false {
+    // Every other property still goes through find_available_unit() +
+    // create_hold_with_block(). Landing here with one of those rooms means a
+    // caller wired the wrong branch, not that the dates are unavailable.
+    if (!mi_is_composite_room($room)) {
+        throw new InvalidArgumentException(
+            'mi_allocate_and_hold() is for Maya Ilai composite rooms only; got ' .
+            ($room['slug'] ?? '(no slug)')
+        );
+    }
+
+    $villaRoomId = (int) db_query(
+        'SELECT id FROM rooms WHERE slug = :s', [':s' => MAYA_ILAI_VILLA_ROOM_SLUG]
+    )->fetchColumn();
+    // No villa room means nothing to allocate from and nothing sane to key the
+    // lock on. Fail closed, exactly as mi_find_villa_unit() would.
+    if (!$villaRoomId) return false;
+
+    $pdo   = db();
+    $ownTx = !$pdo->inTransaction();
+    if ($ownTx) $pdo->beginTransaction();
+    try {
+        // Serialises every concurrent allocation against this villa pool. An
+        // xact lock releases itself at commit/rollback, so there is no unlock
+        // path that can leak a held lock on an error.
+        db_query(
+            'SELECT pg_advisory_xact_lock(:ns::int, :room::int)',
+            [':ns' => MI_ADVISORY_LOCK_NS, ':room' => $villaRoomId]
+        );
+
+        // Re-allocate INSIDE the lock. Whatever the caller resolved earlier was
+        // read without one and may already be sold.
+        $unit = mi_find_villa_unit($room, $check_in, $check_out);
+        if ($unit === false) {
+            if ($ownTx) $pdo->rollBack();
+            return false;
+        }
+
+        // The PRODUCT is $room; the UNIT is a villa. Recording the room on the
+        // hold is the only thing that tells anything downstream (the revenue
+        // ledger first of all) which of the eight products was actually sold.
+        $holdId = create_hold_with_block(
+            (int)$unit['id'], $submissionId, $check_in, $check_out,
+            $guestName, $guestEmail, $status, $expiresInHours,
+            $unit['_mi_components'] ?? null,
+            (int)$room['id']
+        );
+
+        if ($ownTx) $pdo->commit();
+        return $holdId;
+    } catch (\Throwable $e) {
+        if ($ownTx && $pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
+}
+
+/**
+ * Every villa's taken components for EVERY night of [$from, $to), in two queries.
+ *
+ * Returns [ [unit_id => sort_order], [ymd => [unit_id => [component => true]]] ]
+ * — the second array carries only the nights and units that have something
+ * taken, so a caller must treat a missing key as "nothing taken".
+ *
+ * mi_villa_states() answers ONE span. Asking it once per night made an 18-month
+ * calendar 2 queries × ~547 nights ≈ 1,095, and rrBook() re-points the booking
+ * widget at each of the seven composite products, so one guest clicking through
+ * a property fired ~7,700. Same rationale as rates_nightly_map(): resolve the
+ * WHOLE window in one query and slice it in PHP — a per-month call there would
+ * have fired 24 queries for an 8-room property.
+ *
+ * Deliberately NOT a replacement for mi_villa_states(): that one unions a span
+ * into a single occupancy, which is what a STAY needs; this one keeps the nights
+ * apart, which is what a per-night calendar needs. They answer different
+ * questions and both are load-bearing.
+ */
+function mi_villa_states_window(int $villaRoomId, string $from, string $to): array {
+    $units = [];
+    foreach (db_query(
+        'SELECT id, sort_order FROM units WHERE room_id = :r AND is_active = TRUE ORDER BY sort_order',
+        [':r' => $villaRoomId]
+    )->fetchAll() as $u) {
+        $units[(int)$u['id']] = (int)$u['sort_order'];
+    }
+    if (!$units) return [[], []];
+
+    // Exactly the overlap predicate mi_villa_states() uses, widened from one
+    // night to the whole window.
+    $blocks = db_query(
+        "SELECT ab.unit_id, ab.date_from, ab.date_to, " . mi_components_select('ab') . "
+           FROM availability_blocks ab
+           JOIN units u ON u.id = ab.unit_id
+          WHERE u.room_id = :r AND u.is_active = TRUE
+            AND ab.date_from < :to AND ab.date_to > :from",
+        [':r' => $villaRoomId, ':from' => $from, ':to' => $to]
+    )->fetchAll();
+
+    $windowFrom = new DateTimeImmutable($from);
+    $windowTo   = new DateTimeImmutable($to);
+
+    $byNight = [];
+    foreach ($blocks as $b) {
+        $uid = (int)$b['unit_id'];
+        if (!isset($units[$uid])) continue;
+        // mi_block_taken_components() owns the NULL-means-whole-unit rule. Do NOT
+        // call mi_pg_array_decode() directly here — it returns [] for NULL, which
+        // reads as "nothing is taken" and would oversell the villa.
+        $comp = mi_block_taken_components($b['components']);
+        if (!$comp) continue;
+
+        // A block can start before the window and end after it; clamp so a long
+        // OTA import does not expand into years of irrelevant nights.
+        $d   = new DateTimeImmutable($b['date_from']);
+        $end = new DateTimeImmutable($b['date_to']);
+        if ($d   < $windowFrom) $d   = $windowFrom;
+        if ($end > $windowTo)   $end = $windowTo;
+        for (; $d < $end; $d = $d->modify('+1 day')) {
+            $night = $d->format('Y-m-d');
+            foreach ($comp as $c) $byNight[$night][$uid][$c] = true;
+        }
+    }
+    return [$units, $byNight];
+}
+
+/**
+ * Dates on which no villa can satisfy a Maya Ilai product's component pattern.
+ *
+ * Resolved one night at a time: this is the per-night question the calendar
+ * asks, and it is NOT the same question as "can this stay be booked" — a stay
+ * needs ONE villa to satisfy the pattern across every night of it, so two
+ * individually-free nights can still be an unbookable two-night stay. That
+ * gap is what room_max_stay_nights() exists to close; do not try to make this
+ * function answer both.
+ *
+ * The nights are resolved from one in-memory index rather than a query each —
+ * see mi_villa_states_window() for why.
+ */
+function mi_blocked_dates(array $room, string $from, string $to): array {
+    $pattern = mi_product_map()[$room['slug']] ?? null;
+    if ($pattern === null) return [];
+
+    $villaRoomId = (int) db_query(
+        'SELECT id FROM rooms WHERE slug = :s', [':s' => MAYA_ILAI_VILLA_ROOM_SLUG]
+    )->fetchColumn();
+    if (!$villaRoomId) return [];
+
+    $reserved = max(0, (int) setting('maya_ilai_reserved_villas', '2'));
+    $isVilla  = $room['slug'] === MAYA_ILAI_VILLA_ROOM_SLUG;
+
+    [$units, $takenByNight] = mi_villa_states_window($villaRoomId, $from, $to);
+    if (!$units) return [];
+
+    $blocked = [];
+    $d   = new DateTime($from);
+    $end = new DateTime($to);
+    while ($d < $end) {
+        $night = $d->format('Y-m-d');
+
+        // mi_order_villas() derives the villa total from the list it is given,
+        // so this must stay the COMPLETE villa set every night — including the
+        // villas with nothing taken, which the index does not carry a key for.
+        $states = [];
+        foreach ($units as $unitId => $sortOrder) {
+            $states[] = [
+                'unit_id'    => $unitId,
+                'sort_order' => $sortOrder,
+                'taken'      => array_keys($takenByNight[$night][$unitId] ?? []),
+            ];
+        }
+        $ordered = mi_order_villas($states, $isVilla, $reserved);
+
+        $fits = false;
+        foreach ($ordered as $villa) {
+            if (mi_resolve($pattern, $villa['taken']) !== null) { $fits = true; break; }
+        }
+        if (!$fits) $blocked[] = $night;
+
+        $d->modify('+1 day');
+    }
+    return $blocked;
 }
 
 /**
@@ -690,6 +1291,13 @@ function count_available_units(int $room_id, string $check_in, string $check_out
  * Used by the public availability calendar widget.
  */
 function get_room_blocked_dates(int $room_id, string $from, string $to): array {
+    // Maya Ilai composite products own no units of their own; a date is blocked
+    // when no villa can satisfy the product's component pattern that night.
+    $miRoom = db_query('SELECT id, slug FROM rooms WHERE id = :id', [':id' => $room_id])->fetch();
+    if ($miRoom && mi_is_composite_room($miRoom)) {
+        return mi_blocked_dates($miRoom, $from, $to);
+    }
+
     $unit_count = (int)db_query(
         'SELECT COUNT(*) FROM units WHERE room_id = :id AND is_active = TRUE',
         [':id' => $room_id]
@@ -729,7 +1337,7 @@ function get_room_blocked_dates(int $room_id, string $from, string $to): array {
     // Whole-villa / by-room mutual exclusion: a date is also blocked whenever any
     // conflicting sibling unit is booked (see room_conflict_unit_ids()).
     $room = db_query(
-        'SELECT id, venue_id, is_entire_place FROM rooms WHERE id = :id',
+        'SELECT id, slug, venue_id, is_entire_place FROM rooms WHERE id = :id',
         [':id' => $room_id]
     )->fetch();
     $conflict_ids = $room ? room_conflict_unit_ids($room) : [];

@@ -30,6 +30,56 @@ function bookings_supported(): bool {
     catch (Throwable $e) { return $c = false; }
 }
 
+/**
+ * Which PRODUCT a hold created from an enquiry should record.
+ *
+ * Staff pick a UNIT when they convert a lead by hand, and the unit's own room
+ * used to be what the hold recorded. For Maya Ilai that throws the answer away:
+ * six of the eight products own no units and allocate the villa's, so
+ * units -> rooms says "Three-Bedroom Villa" for every one of them. A Private Bunk
+ * Room enquiry converted by hand was named as the villa on every surface and
+ * snapshotted into the ledger at $3,510 instead of $450 — the same defect
+ * holds.room_id was added to fix, reintroduced on the manual path.
+ *
+ * The enquiry already knows the product ($sub['room_id'], which the page loads to
+ * prefill its room dropdown). The rule, in order:
+ *
+ *   1. The submission's room when it IS the unit's room — the ordinary case at
+ *      every other property, where the enquiry and the unit agree.
+ *   2. The submission's room when it is a composite product whose INVENTORY room
+ *      is the unit's room. For a Maya Ilai composite the two are deliberately
+ *      different — that is the whole point — so a naive equality check would
+ *      reject exactly the case this exists for. room_inventory_room_id() is the
+ *      same resolver the booking flow allocates through, so this reads as "the
+ *      guest's product is sold out of this unit".
+ *   3. Otherwise the unit's room. Staff picked something unrelated to the
+ *      enquiry (another property, or a swap to a different room type), and the
+ *      unit is then the only honest answer: the guest is getting that room and
+ *      must be billed for it. The caller can see this happened — the returned id
+ *      is not the submission's — and should say so, because when the two
+ *      disagree either the price or the allocation is wrong.
+ *
+ * $sub needs 'room_id' and 'room_slug' (mi_is_composite_room() reads the slug and
+ * returns false when it is missing, which would silently downgrade case 2 to 3).
+ * Returns the unit's room for a submission with no room at all (a tour or general
+ * enquiry), and 0 only when the unit itself cannot be resolved.
+ */
+function hold_product_room_id(array $sub, int $unitId): int {
+    $unitRoomId = (int) db_query(
+        'SELECT room_id FROM units WHERE id = :id', [':id' => $unitId]
+    )->fetchColumn();
+    if ($unitRoomId <= 0) return 0;
+
+    $subRoomId = (int)($sub['room_id'] ?? 0);
+    if ($subRoomId <= 0) return $unitRoomId;
+    if ($subRoomId === $unitRoomId) return $unitRoomId;
+
+    $inventoryRoomId = room_inventory_room_id(
+        ['id' => $subRoomId, 'slug' => (string)($sub['room_slug'] ?? '')]
+    );
+    return $inventoryRoomId === $unitRoomId ? $subRoomId : $unitRoomId;
+}
+
 /* ─────────────────────────── Writers ─────────────────────────── */
 
 /**
@@ -42,13 +92,19 @@ function bookings_sync_hold(int $holdId): void {
     if (!bookings_supported() || $holdId <= 0) return;
     require_once __DIR__ . '/db.php';
 
+    // r is the PRODUCT the guest booked, which is not the same thing as the
+    // owner of the unit it was allocated against. Maya Ilai sells eight products
+    // out of one pool of villas; six of them own no units at all. Joining rooms
+    // through u.room_id priced every one of them at the villa's nightly rate —
+    // a $150 bunk room snapshotted into the ledger at $1,170 a night — and filed
+    // it under the villa in the by-property/by-room reports. See hold_room_id_sql().
     $h = db_query(
         "SELECT h.id, h.check_in, h.check_out, h.guest_name, h.guest_email, h.status,
                 u.id AS unit_id, r.id AS room_id, r.venue_id,
                 r.price_amount, r.price_currency
          FROM holds h
          JOIN units u ON u.id = h.unit_id
-         JOIN rooms r ON r.id = u.room_id
+         JOIN rooms r ON r.id = " . hold_room_id_sql('h', 'u') . "
          WHERE h.id = :id",
         [':id' => $holdId]
     )->fetch();
@@ -72,14 +128,22 @@ function bookings_sync_hold(int $holdId): void {
         $imported = !empty($existing['block_id'])
                  || !in_array((string)$existing['source'], ['website', ''], true);
 
-        $sql = "UPDATE bookings SET venue_id=:v, room_id=:r, unit_id=:u, guest_name=:gn, guest_email=:ge,
+        /* room_id belongs on the same side of that guard as the money. It is
+           what the money is ATTRIBUTED to, and an imported row's product is the
+           importer's, recorded from the channel's own sheet; recomputing it here
+           would file an OTA booking under whatever room the unit happens to
+           belong to. That matters for exactly the same reason gross does: Maya
+           Ilai's villa units are shared by eight products, so "the unit's room"
+           is the villa for six of them. Latent while import_room_unit() cannot
+           target a unitless room — but the guard should not be one-sided. */
+        $sql = "UPDATE bookings SET venue_id=:v, unit_id=:u, guest_name=:gn, guest_email=:ge,
                        check_in=:ci, check_out=:co, nights=:n, status=:st"
-             . ($imported ? '' : ", gross_amount=:g, currency=:cur")
+             . ($imported ? '' : ", room_id=:r, gross_amount=:g, currency=:cur")
              . " WHERE id=:id";
-        $args = [':v'=>$h['venue_id'], ':r'=>$h['room_id'], ':u'=>$h['unit_id'], ':gn'=>$h['guest_name'],
+        $args = [':v'=>$h['venue_id'], ':u'=>$h['unit_id'], ':gn'=>$h['guest_name'],
                  ':ge'=>$h['guest_email'], ':ci'=>$h['check_in'], ':co'=>$h['check_out'],
                  ':n'=>$q['nights'], ':st'=>$status, ':id'=>$existing['id']];
-        if (!$imported) { $args[':g'] = $q['total']; $args[':cur'] = $currency; }
+        if (!$imported) { $args[':r'] = $h['room_id']; $args[':g'] = $q['total']; $args[':cur'] = $currency; }
 
         db_query($sql, $args);
     } else {
@@ -364,14 +428,28 @@ function bookings_convert_block_to_hold(int $blockId, string $unitScopeSql = '')
     // Own the transaction only when the caller has not already opened one —
     // PDO/pgsql cannot nest, and the tests wrap their work in one they roll
     // back. Same convention as rates_apply_ranges().
+    // Which PRODUCT this booking is for. The ledger row above already knows —
+    // the importer recorded it from the channel's sheet — and this INSERT used
+    // to drop it, so the hold fell back to the unit's room. At Maya Ilai that is
+    // the villa for six of the eight products, which is how a converted block
+    // ends up named (and re-priced) as "Three-Bedroom Villa" everywhere. Only
+    // written when the column exists, exactly as create_hold_with_block() does,
+    // so a deploy that has not run add_holds_room_id.sql still converts.
+    $roomId    = (int)($bk['room_id'] ?? 0);
+    $writeRoom = $roomId > 0 && holds_room_id_supported();
+
     $ownTx = !db()->inTransaction();
     if ($ownTx) db()->beginTransaction();
     try {
         db_query(
-            "INSERT INTO holds (unit_id, check_in, check_out, guest_name, guest_email, status, confirmed_at)
-             VALUES (:u, :ci, :co, :gn, :ge, 'confirmed', NOW())",
-            [':u' => (int)$b['unit_id'], ':ci' => $b['date_from'], ':co' => $b['date_to'],
-             ':gn' => $name, ':ge' => $email]
+            "INSERT INTO holds (" . ($writeRoom ? 'room_id, ' : '') . "unit_id, check_in, check_out,
+                    guest_name, guest_email, status, confirmed_at)
+             VALUES (" . ($writeRoom ? ':room, ' : '') . ":u, :ci, :co, :gn, :ge, 'confirmed', NOW())",
+            array_merge(
+                [':u' => (int)$b['unit_id'], ':ci' => $b['date_from'], ':co' => $b['date_to'],
+                 ':gn' => $name, ':ge' => $email],
+                $writeRoom ? [':room' => $roomId] : []
+            )
         );
         $holdId = (int) db()->lastInsertId();
         if ($holdId <= 0) throw new RuntimeException('Hold insert returned no id.');

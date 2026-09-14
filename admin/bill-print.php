@@ -9,7 +9,7 @@ require_login();
 $holdId = (int)($_GET['hold'] ?? 0);
 $hold = $holdId ? db_query(
     "SELECT h.*, r.name AS room_name, v.name AS venue_name
-     FROM holds h JOIN units u ON u.id=h.unit_id JOIN rooms r ON r.id=u.room_id
+     FROM holds h JOIN units u ON u.id=h.unit_id JOIN rooms r ON r.id=" . hold_room_id_sql('h', 'u') . "
      LEFT JOIN venues v ON v.id=r.venue_id WHERE h.id=:id", [':id'=>$holdId]
 )->fetch() : null;
 if (!$hold) { http_response_code(404); exit('Booking not found.'); }

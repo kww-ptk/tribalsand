@@ -231,6 +231,13 @@
   color: var(--bk-light); cursor: not-allowed;
   text-decoration: line-through; opacity: .4;
 }
+/* Not a check-OUT we can sell from the chosen check-in — deliberately NOT the
+   sold-out treatment above. This date is still a perfectly good check-IN, and
+   clicking it starts a new range, so it keeps its pointer and its hover state.
+   Never add line-through or not-allowed here: that asserts "sold out" about a
+   date that is bookable, which is how eighteen months of calendar once looked
+   dead on any single-unit room. */
+.bk-cell--beyond { color: var(--bk-light); opacity: .55; }
 
 /* Selected endpoints: sand gold */
 .bk-cell--start,

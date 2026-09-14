@@ -5,6 +5,132 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/mail.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/admin-pagination.php';
+require_once __DIR__ . '/../includes/staff-hold-guard.php';   // staff_hold_block_reason()
+
+/**
+ * Apply a "keep OTA" resolution: cancel the conflicting hold, block the dates
+ * for the OTA, mark the conflict resolved.
+ *
+ * Returns ['ok'=>bool, 'error'=>string, 'cancelled_hold'=>?array]. The caller
+ * sends the guest's cancellation e-mail for 'cancelled_hold' — deliberately NOT
+ * sent from in here, see ORDER below.
+ *
+ * $hold is the conflicting hold row (or null); it is only acted on when it is
+ * still pending/confirmed, exactly as before.
+ *
+ * ── WHY THIS IS GUARDED ────────────────────────────────────────────────────
+ * The OTA block is written with components NULL, which mi_block_taken_components()
+ * reads as the WHOLE unit. On a Maya Ilai villa that is eight bedrooms sold as
+ * four components across eight villas, so "keep OTA" used to do this:
+ *
+ *     guest A holds {bunk} in villa 1, guest B holds {double_a} in villa 1
+ *     staff resolve A's channel conflict in the OTA's favour
+ *        -> A cancelled + e-mailed, then the WHOLE villa blocked for the OTA
+ *        -> guest B is now booked into a villa an OTA guest has taken entire
+ *
+ * Staff consented to cancelling ONE bedroom's booking. Nothing on the page told
+ * them about guest B. So the resolution now asks staff_hold_block_reason() — the
+ * same frozen guard the two booking forms and the Gantt use — and refuses with a
+ * message naming the villa, the dates and the sold components. Every unit that
+ * is not a Maya Ilai villa gets NULL from the guard and is untouched.
+ *
+ * ── ORDER, AND THE SELF-EXCLUSION ──────────────────────────────────────────
+ * The check has to come before the cancellation, not after: refusing after the
+ * guest has been told their booking is gone is worse than either outcome.
+ *
+ * But the guard counts every overlapping block, including the one belonging to
+ * the hold this resolution is about to cancel — which would refuse every villa
+ * conflict, naming the very booking staff asked to drop. gantt_block_move()
+ * parks a row to ask the guard a question in which it genuinely is not there;
+ * here nothing needs parking, because DELETING that block is a step the
+ * resolution performs anyway. Doing it first, inside the transaction, makes the
+ * guard's answer a question about everybody ELSE. A refusal rolls the delete
+ * back, so the hold is left exactly as it was.
+ *
+ * The transaction becomes a SAVEPOINT when the caller already owns one (PDO/pgsql
+ * cannot nest, and tests/maya_ilai_inventory.php wraps its work in one it rolls
+ * back) — same convention as gantt_block_move().
+ *
+ * The e-mail is the only step that cannot be rolled back, so it is not performed
+ * here at all: the hold is handed back and the caller sends it after the commit.
+ */
+function conflict_keep_ota_apply(array $conflict, ?array $hold, ?int $adminId, string $notes): array
+{
+    $unitId = (int) $conflict['unit_id'];
+    $from   = (string) $conflict['date_from'];
+    $to     = (string) $conflict['date_to'];
+    $cancel = $hold !== null && in_array($hold['status'], ['pending', 'confirmed'], true);
+
+    $inTx = db()->inTransaction();
+    $sp   = 'conflict_keep_ota';
+    if ($inTx) db()->exec("SAVEPOINT {$sp}"); else db()->beginTransaction();
+
+    try {
+        // Self-exclusion, and the first real step of the resolution.
+        if ($cancel) {
+            db_query(
+                "DELETE FROM availability_blocks WHERE hold_id=:hid",
+                [':hid' => (int) $hold['id']]
+            );
+        }
+
+        $reason = staff_hold_block_reason($unitId, $from, $to);
+        if ($reason !== null) {
+            if ($inTx) db()->exec("ROLLBACK TO SAVEPOINT {$sp}"); else db()->rollBack();
+            return [
+                'ok'             => false,
+                'error'          => 'Not resolved — nothing was cancelled and no e-mail was sent. ' . $reason,
+                'cancelled_hold' => null,
+            ];
+        }
+
+        if ($cancel) {
+            db_query(
+                "UPDATE holds SET status='cancelled', cancelled_at=NOW() WHERE id=:id",
+                [':id' => (int) $hold['id']]
+            );
+        }
+
+        db_query(
+            "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, notes)
+             VALUES (:uid, :df, :dt, 'blocked', :notes)",
+            [':uid'   => $unitId,
+             ':df'    => $from,
+             ':dt'    => $to,
+             ':notes' => 'iCal (conflict resolved): ' . mb_substr((string) $conflict['ota_summary'], 0, 200)]
+        );
+
+        db_query(
+            "UPDATE channel_conflicts
+             SET status='resolved_keep_ota', resolved_at=NOW(), resolved_by=:uid, resolution_notes=:notes
+             WHERE id=:id",
+            [':uid' => $adminId, ':notes' => $notes, ':id' => (int) $conflict['id']]
+        );
+
+        if ($inTx) db()->exec("RELEASE SAVEPOINT {$sp}"); else db()->commit();
+        return ['ok' => true, 'error' => '', 'cancelled_hold' => $cancel ? $hold : null];
+
+    } catch (Throwable $e) {
+        try {
+            if ($inTx) db()->exec("ROLLBACK TO SAVEPOINT {$sp}");
+            elseif (db()->inTransaction()) db()->rollBack();
+        } catch (Throwable $undoFailed) {
+            error_log('[conflict-keep-ota] undo failed: ' . $undoFailed->getMessage());
+        }
+        error_log('[conflict-keep-ota] ' . $e->getMessage());
+        // Fail closed: half a resolution is worse than none, and the guest has
+        // not been told anything yet.
+        return [
+            'ok'             => false,
+            'error'          => 'Could not resolve the conflict. Nothing was changed — please reload and try again.',
+            'cancelled_hold' => null,
+        ];
+    }
+}
+
+// tests/maya_ilai_inventory.php requires this file for conflict_keep_ota_apply().
+if (defined('CONFLICTS_LIBRARY_ONLY')) return;
+
 require_login();
 require_bookings();
 
@@ -58,42 +184,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     "SELECT h.*, u.name AS unit_name, r.name AS room_name
                      FROM holds h
                      JOIN units u ON u.id = h.unit_id
-                     JOIN rooms r ON r.id = u.room_id
+                     JOIN rooms r ON r.id = " . hold_room_id_sql('h', 'u') . "
                      WHERE h.id = :id",
                     [':id' => $conflict['hold_id']]
                 )->fetch();
             }
 
-            if ($hold && in_array($hold['status'], ['pending', 'confirmed'], true)) {
-                db_query(
-                    "UPDATE holds SET status='cancelled', cancelled_at=NOW() WHERE id=:id",
-                    [':id' => $hold['id']]
-                );
-                db_query(
-                    "DELETE FROM availability_blocks WHERE hold_id=:hid",
-                    [':hid' => $hold['id']]
-                );
-                if ($hold['guest_email']) send_hold_cancelled($hold, 'cancelled');
+            $applied = conflict_keep_ota_apply($conflict, $hold ?: null, (int)$admin['id'], $notes);
+
+            if (!$applied['ok']) {
+                $error = $applied['error'];
+            } else {
+                // The guest is told only once the resolution has actually been
+                // written. An e-mail cannot be unsent, so it is the last step.
+                if ($applied['cancelled_hold'] && $applied['cancelled_hold']['guest_email']) {
+                    send_hold_cancelled($applied['cancelled_hold'], 'cancelled');
+                }
+                audit_log('conflict.keep_ota', 'channel_conflict', $conflict_id,
+                    "hold #{$conflict['hold_id']} cancelled, OTA block inserted {$conflict['date_from']}→{$conflict['date_to']}");
+                $success = "Conflict resolved — OTA block inserted, hold cancelled and guest notified.";
             }
-
-            db_query(
-                "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, notes)
-                 VALUES (:uid, :df, :dt, 'blocked', :notes)",
-                [':uid'   => $conflict['unit_id'],
-                 ':df'    => $conflict['date_from'],
-                 ':dt'    => $conflict['date_to'],
-                 ':notes' => 'iCal (conflict resolved): ' . mb_substr($conflict['ota_summary'], 0, 200)]
-            );
-
-            db_query(
-                "UPDATE channel_conflicts
-                 SET status='resolved_keep_ota', resolved_at=NOW(), resolved_by=:uid, resolution_notes=:notes
-                 WHERE id=:id",
-                [':uid' => $admin['id'], ':notes' => $notes, ':id' => $conflict_id]
-            );
-            audit_log('conflict.keep_ota', 'channel_conflict', $conflict_id,
-                "hold #{$conflict['hold_id']} cancelled, OTA block inserted {$conflict['date_from']}→{$conflict['date_to']}");
-            $success = "Conflict resolved — OTA block inserted, hold cancelled and guest notified.";
         }
     } else {
         $error = 'Invalid request.';

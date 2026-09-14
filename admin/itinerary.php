@@ -14,7 +14,7 @@ $CATS = ['flight'=>'Flight','transfer'=>'Transfer','tour'=>'Tour','dining'=>'Din
 
 $holdId = (int)($_GET['hold'] ?? $_POST['hold_id'] ?? 0);
 $hold = $holdId ? db_query(
-    "SELECT h.*, r.name AS room_name FROM holds h JOIN units u ON u.id=h.unit_id JOIN rooms r ON r.id=u.room_id WHERE h.id=:id",
+    "SELECT h.*, r.name AS room_name FROM holds h JOIN units u ON u.id=h.unit_id JOIN rooms r ON r.id=" . hold_room_id_sql('h', 'u') . " WHERE h.id=:id",
     [':id'=>$holdId]
 )->fetch() : null;
 

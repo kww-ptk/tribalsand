@@ -85,8 +85,14 @@ if (!empty($data['upsell']) && is_array($data['upsell']) && $room) {
 $form_mode = ($room && !empty($room['form_mode']))
     ? $room['form_mode']
     : setting('form_mode', 'enquiry');
-// Safety: fall back to enquiry if no units are seeded for this room
-if ($form_mode === 'availability' && $room && count(fetch_units_by_room((int)$room['id'])) === 0) {
+// Safety: fall back to enquiry if no units are seeded for this room's inventory.
+// A room may legitimately own no units of its own — Maya Ilai's composite
+// products allocate against the villa room's units — so the question is asked
+// through room_inventory_room_id(), never with $room['id'] directly.
+// $room came from fetch_room_by_slug() (SELECT *), so it carries the 'slug'
+// that room_inventory_room_id() needs to recognise a composite product.
+if ($form_mode === 'availability' && $room
+    && count(fetch_units_by_room(room_inventory_room_id($room))) === 0) {
     $form_mode = 'enquiry';
 }
 $unit      = false;
@@ -176,10 +182,27 @@ try {
 
     // Availability mode: create hold + block dates
     if ($form_mode === 'availability' && $unit) {
-        $hold_id = create_hold_with_block($unit['id'], $id, $checkin, $checkout, $name, $email);
+        if (mi_is_composite_room($room)) {
+            // Maya Ilai sells several products out of one pool of villas, so two
+            // requests can claim the same component with nothing to show for it
+            // afterwards. Re-allocate under a lock and write the block in the same
+            // transaction; the find_available_unit() above was only a pre-filter.
+            $hold_id = mi_allocate_and_hold($room, $id, $checkin, $checkout, $name, $email, 'pending', 24);
+        } else {
+            $hold_id = create_hold_with_block($unit['id'], $id, $checkin, $checkout, $name, $email,
+                'pending', 24, $unit['_mi_components'] ?? null, (int)$room['id']);
+        }
+        if ($hold_id === false) {
+            // Someone took the dates while we waited for the lock. The lead row is
+            // already saved and is worth keeping — staff can follow it up — but
+            // there is no hold, so send nothing and answer like the earlier
+            // availability check does.
+            http_response_code(409);
+            exit(json_encode(['ok' => false, 'error' => 'No availability for those dates. Please try different dates or contact us directly.']));
+        }
         $hold_row = db_query(
             "SELECT h.*, u.name AS unit_name, r.name AS room_name
-             FROM holds h JOIN units u ON u.id = h.unit_id JOIN rooms r ON r.id = u.room_id
+             FROM holds h JOIN units u ON u.id = h.unit_id JOIN rooms r ON r.id = " . hold_room_id_sql('h', 'u') . "
              WHERE h.id = :id",
             [':id' => $hold_id]
         )->fetch();

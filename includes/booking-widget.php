@@ -39,12 +39,17 @@ try {
     $__form_mode = 'enquiry';
 }
 
-// Safety: availability mode requires at least one unit seeded.
-// If none exist, fall back to enquiry so the calendar doesn't
-// accept dates then fail every submission silently.
+// Safety: availability mode requires at least one unit seeded. If none exist,
+// fall back to enquiry so the calendar doesn't accept dates then fail every
+// submission silently.
+// A room may legitimately own no units of its own: Maya Ilai's composite
+// products allocate against the villa room's units, so the inventory question
+// goes through room_inventory_room_id() rather than this room's own id.
+// $__room came from fetch_room_by_slug() (SELECT *), so it carries the 'slug'
+// that room_inventory_room_id() needs to recognise a composite product.
 if ($__form_mode === 'availability') {
     try {
-        $__units = fetch_units_by_room((int)$__room['id']);
+        $__units = fetch_units_by_room(room_inventory_room_id($__room));
         if (count($__units) === 0) $__form_mode = 'enquiry';
     } catch (Throwable $e) {
         $__form_mode = 'enquiry';

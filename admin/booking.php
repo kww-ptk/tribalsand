@@ -15,7 +15,7 @@ require_login();
 $holdId = (int)($_GET['hold'] ?? $_POST['hold_id'] ?? 0);
 $hold = $holdId ? db_query(
     "SELECT h.*, u.name AS unit_name, r.name AS room_name, r.venue_id AS venue_id, v.name AS venue_name
-     FROM holds h JOIN units u ON u.id=h.unit_id JOIN rooms r ON r.id=u.room_id
+     FROM holds h JOIN units u ON u.id=h.unit_id JOIN rooms r ON r.id=" . hold_room_id_sql('h', 'u') . "
      LEFT JOIN venues v ON v.id=r.venue_id WHERE h.id=:id", [':id'=>$holdId]
 )->fetch() : null;
 

@@ -60,6 +60,45 @@ if ($check_in && $check_out) {
     ]));
 }
 
+/**
+ * ── Reachable stay length (check-in chosen, check-out not yet) ────
+ *
+ * Availability is a property of a STAY, not of a night. `fully_blocked` below
+ * answers the per-night question, so a guest can pick two green nights that no
+ * single unit spans and only find out on submit. This branch tells the widget
+ * how long a stay can actually start on the chosen date, so it can grey out
+ * what it cannot sell instead of failing after the fact.
+ *
+ * Validated exactly as the two-date branch above: an unparseable window is not
+ * a 0-night answer, it is a 422.
+ */
+$max_stay_cap = 30;
+if ($check_in && !$check_out) {
+    $ci = rates_window_ymd($check_in) ?? '';
+    if ($ci === '') {
+        http_response_code(422);
+        exit(json_encode(['error' => 'Dates must be valid and formatted YYYY-MM-DD']));
+    }
+    // A check-in in the past is not a stay, so it must not drive the search at
+    // all: this branch is a public, unauthenticated GET with no Turnstile and no
+    // rate limit, and each call runs a binary search over the availability
+    // tables. Nothing can be booked for a past date anyway, so answering 0
+    // without touching the database is both cheaper and more honest than
+    // probing. "Today" is Nairobi-local — includes/db.php sets the default
+    // timezone and the connection's TIME ZONE to Africa/Nairobi, so this
+    // comparison agrees with the database's own idea of the date.
+    $past = $ci < date('Y-m-d');
+
+    exit(json_encode([
+        'max_nights' => $past ? 0 : room_max_stay_nights((int)$room['id'], $ci, $max_stay_cap),
+        'check_in'   => $ci,
+        // The cap, so the client can tell "5 nights and then it stops" (worth
+        // explaining to the guest) from "at least 30" (no constraint to explain)
+        // without hard-coding a copy of this number in JavaScript.
+        'cap'        => $max_stay_cap,
+    ]));
+}
+
 // ── Calendar view: return fully-blocked dates + rate-override dates ─
 $from = date('Y-m-d');
 $to   = date('Y-m-d', strtotime('+18 months'));

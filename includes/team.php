@@ -301,7 +301,7 @@ function mywork_requests(int $adminId, array $statuses = ['requested','confirmed
              FROM booking_addons ba
              JOIN holds h ON h.id = ba.hold_id
              JOIN units u ON u.id = h.unit_id
-             JOIN rooms r ON r.id = u.room_id
+             JOIN rooms r ON r.id = " . hold_room_id_sql('h', 'u') . "
              LEFT JOIN venues v ON v.id = r.venue_id
              LEFT JOIN tours  t ON t.id = ba.tour_id
              WHERE ba.assigned_to = :a AND ba.status IN (" . implode(',', $names) . ")

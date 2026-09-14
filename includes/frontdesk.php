@@ -57,7 +57,7 @@ function frontdesk_rows(?array $venueIds, string $datePredicate, array $params):
                        WHERE bm.hold_id = h.id AND bm.sender = 'guest' AND bm.read_by_admin = FALSE) AS unread_msgs
              FROM holds h
              JOIN units u ON u.id = h.unit_id
-             JOIN rooms r ON r.id = u.room_id
+             JOIN rooms r ON r.id = " . hold_room_id_sql('h', 'u') . "
              LEFT JOIN venues v      ON v.id = r.venue_id
              LEFT JOIN submissions s ON s.id = h.submission_id
              WHERE {$whereSql}

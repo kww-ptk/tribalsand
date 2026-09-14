@@ -2,6 +2,9 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/gantt-lanes.php'; // concurrent-block lane packing
+require_once __DIR__ . '/../includes/staff-hold-guard.php'; // staff_hold_block_reason()
+require_once __DIR__ . '/../includes/gantt-block-guard.php'; // gantt_block_move()
 require_login();
 require_bookings();
 
@@ -40,9 +43,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // date_to from modal is the last blocked night (inclusive) — add 1 day for exclusive DB storage
         $date_to_excl = $date_to ? date('Y-m-d', strtotime($date_to . ' +1 day')) : '';
+        $dates_ok = $unit_id && $date_from && $date_to_excl && $date_from < $date_to_excl;
+
         if ($unit_id && !$unitInScope($unit_id)) {
             $err = 'That unit isn’t one of your properties.';
-        } elseif ($unit_id && $date_from && $date_to_excl && $date_from < $date_to_excl) {
+        } elseif (!$dates_ok) {
+            $err = 'Invalid dates or unit — last blocked night must be on or after first blocked night.';
+        // Oversell guard — the same gap as admin/hold-new.php and
+        // admin/submission-view.php, on the surface reception actually uses. A
+        // Gantt block has no component picker, so it is written components NULL,
+        // i.e. the WHOLE villa; dropped over a live Maya Ilai component booking
+        // it sells the same bedroom twice. Returns null for every unit that is
+        // not a Maya Ilai villa, so the deliberate "staff control overlaps"
+        // behaviour — including a knowingly double-booked block — is untouched
+        // at every other property. Asked only after the scope check, so a
+        // refusal never names another account's villa.
+        } elseif (($guard = staff_hold_block_reason($unit_id, $date_from, $date_to_excl)) !== null) {
+            $err = $guard;
+        } else {
             db_query(
                 "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, notes)
                  VALUES (:uid, :df, :dt, :type, :notes)",
@@ -50,8 +68,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                  ':type' => $type, ':notes' => $notes]
             );
             $msg = 'Block created.';
-        } else {
-            $err = 'Invalid dates or unit — last blocked night must be on or after first blocked night.';
         }
     }
 
@@ -93,20 +109,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               && preg_match('/^\d{4}-\d{2}-\d{2}$/', $date_to)
               // Both ends must be in scope: the block being moved and its destination unit.
               && $unitInScope($unit_id);
+        $error = 'Invalid data';
         if ($ok) {
-            db_query(
-                "UPDATE availability_blocks
-                 SET unit_id=:uid, date_from=:df, date_to=:dt
-                 WHERE id=:id AND block_type != 'hold'"
-                . ($gUnitIds !== '' ? " AND unit_id IN ({$gUnitIds})" : ''),
-                [':uid' => $unit_id, ':df' => $date_from, ':dt' => $date_to, ':id' => $block_id]
-            );
-            audit_log('gantt.move_block', 'availability_block', $block_id, "unit={$unit_id} {$date_from}→{$date_to}");
+            // Same oversell guard as create_block: a dragged block is written
+            // components-NULL too, so dropping one on a Maya Ilai villa that
+            // already has a bedroom sold oversells it just as an "Add block"
+            // does. gantt_block_move() owns the move so it can ask the guard a
+            // question the block itself is not part of — a block nudged within
+            // its own span must not refuse itself. Non-Maya-Ilai moves take its
+            // fast path: one guard read that returns null, then this same
+            // UPDATE, unchanged.
+            $res   = gantt_block_move($block_id, $unit_id, $date_from, $date_to, $gUnitIds);
+            $ok    = $res['ok'];
+            $error = $res['error'] !== '' ? $res['error'] : $error;
+            if ($ok) {
+                audit_log('gantt.move_block', 'availability_block', $block_id, "unit={$unit_id} {$date_from}→{$date_to}");
+            }
         }
         // Always respond JSON (AJAX-only action)
         header('Content-Type: application/json');
         http_response_code($ok ? 200 : 400);
-        echo json_encode($ok ? ['ok' => true] : ['ok' => false, 'error' => 'Invalid data']);
+        echo json_encode($ok ? ['ok' => true] : ['ok' => false, 'error' => $error]);
         exit;
     }
 
@@ -306,6 +329,17 @@ include __DIR__ . '/_layout.php';
   transition: opacity .12s;
 }
 .gantt-block:hover { opacity: .85; }
+/* Lane-stacked blocks. One unit can hold several concurrent bookings — a Maya
+   Ilai villa sells up to four rooms at once — and identical geometry made all
+   but the last one invisible. Lanes split the row height; this class is applied
+   ONLY on a row that actually has 2+ lanes, so every single-booking row (i.e.
+   every other property) keeps the rule above untouched. The inset hairline keeps
+   two same-coloured bars readable as two bars. */
+.gantt-block--laned {
+  padding-top: 0; padding-bottom: 0; line-height: 1.1;
+  display: flex; align-items: center;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.5);
+}
 .gantt-block--hold    { background: #e07b39; }
 .gantt-block--booked  { background: #2e7d32; }
 .gantt-block--blocked { background: #6b7c85; }
@@ -434,6 +468,36 @@ include __DIR__ . '/_layout.php';
     $unit_blocks = $blocks_by_unit[(int)$unit['id']] ?? [];
     $view_start_ts = strtotime($start_str);
     $view_end_ts   = strtotime($end_str);
+
+    /* Lanes. A block is positioned from its dates alone, so two concurrent
+       bookings on ONE unit produced two divs with byte-identical geometry and
+       opaque backgrounds — the later one painted the earlier out of existence,
+       and a block contained inside another vanished the same way. That is the
+       normal case at Maya Ilai, where one villa deliberately holds several
+       unrelated bookings, and the calendar is the only operational view of them.
+
+       Spans are day indexes clipped to the rendered window — the same numbers
+       the bars are drawn from below, so what gets packed is exactly what gets
+       shown. A unit whose blocks never overlap comes back with ONE lane, and
+       nothing below emits a lane style or class in that case: its markup stays
+       byte-identical, which is what keeps every other property unchanged. */
+    $lane_spans = [];
+    foreach ($unit_blocks as $__lb) {
+        $__vs = max(strtotime($__lb['date_from']), $view_start_ts);
+        $__ve = min(strtotime($__lb['date_to']),   $view_end_ts);
+        if ($__ve <= $__vs) continue;                 // wholly outside the window
+        $lane_spans[] = [
+            'key'   => (int)$__lb['id'],
+            'start' => (int) (($__vs - $view_start_ts) / 86400),
+            'end'   => (int) (($__ve - $view_start_ts) / 86400),
+        ];
+    }
+    $lane_res   = gantt_lane_assign($lane_spans);
+    $lane_count = (int) $lane_res['count'];
+    $lane_m     = gantt_lane_metrics($lane_count);
+    // Only 4+ lanes need more than the existing 36px row.
+    $row_style  = ($lane_count > 1 && (int)$lane_m['row_h'] !== GANTT_ROW_H)
+        ? ' style="height:' . (int)$lane_m['row_h'] . 'px"' : '';
     $venue_name = trim((string)($unit['venue_name'] ?? '')) ?: 'Unassigned';
     // Stable per property name — the same value that groups the rows above ties
     // the header to its unit rows, and keeps the collapsed state across reloads.
@@ -464,7 +528,7 @@ include __DIR__ . '/_layout.php';
       <?php endif; ?>
       <?= e($unit['name']) ?>
     </div>
-    <div class="gantt-cells" data-unit-id="<?= e($unit['id']) ?>">
+    <div class="gantt-cells" data-unit-id="<?= e($unit['id']) ?>"<?= $row_style ?>>
       <?php foreach ($days as $i => $day):
         $dow = (int)date('N', strtotime($day));
         $isToday = $day === date('Y-m-d');
@@ -484,8 +548,35 @@ include __DIR__ . '/_layout.php';
         $span_days = (int)(($vis_end   - $vis_start)     / 86400);
         $left_px   = $left_days * 28;
         $width_px  = max(4, $span_days * 28 - 2);
-        $label     = $b['notes'] ?: $b['block_type'];
+        // Maya Ilai: a block may consume only part of a villa. NULL means the
+        // whole unit, which is what every block at every other property means.
+        $miLabel = '';
+        if (($b['components'] ?? null) !== null) {
+            $names = ['double_a' => 'Double A', 'double_b' => 'Double B',
+                      'bunk' => 'Bunk', 'living' => 'Living'];
+            $parts = array_map(
+                static fn(string $c): string => $names[$c] ?? $c,
+                mi_pg_array_decode($b['components'])
+            );
+            if ($parts) $miLabel = ' · ' . implode(' + ', $parts);
+        }
+        $label     = ($b['notes'] ?: $b['block_type']) . $miLabel;
         $type_cls  = 'gantt-block--' . $b['block_type'];
+
+        /* Lane geometry, emitted ONLY on a row that really has concurrent
+           blocks. `bottom:auto` is belt-and-braces: the stylesheet sets
+           top/bottom, and an over-constrained absolute box ignores `bottom`
+           once top+height are given — but saying so is cheaper than relying on
+           it. A single-lane row adds neither the style nor the class, so its
+           markup is byte-for-byte what it was before. */
+        $lane_css = '';
+        $lane_cls = '';
+        if ($lane_count > 1) {
+            $__lane   = (int)($lane_res['lanes'][(int)$b['id']] ?? 0);
+            $lane_css = ';top:' . gantt_lane_top($__lane, $lane_m) . 'px'
+                      . ';height:' . (int)$lane_m['lane_h'] . 'px;bottom:auto';
+            $lane_cls = ' gantt-block--laned';
+        }
 
         /* Hover-card payload. Only fields that actually carry a value are sent,
            so the card never shows an empty row; the JS renders whatever arrives.
@@ -500,6 +591,10 @@ include __DIR__ . '/_layout.php';
             'last'   => date('Y-m-d', strtotime($b['date_to'] . ' -1 day')),
             'nights' => $nights,
         ];
+        // Only sent when this block is a partial-villa (Maya Ilai) booking — an
+        // omitted key (not a null value) so every other property's card is
+        // byte-for-byte unchanged, matching how every other optional field here works.
+        if ($miLabel !== '') $card['rooms'] = ltrim($miLabel, ' ·');
         if (trim((string)$b['notes']) !== '') $card['notes'] = trim((string)$b['notes']);
         if ($bk) {
             $money = (float)($bk['gross_amount'] ?? 0);
@@ -528,8 +623,8 @@ include __DIR__ . '/_layout.php';
         // Native title stays as the no-JS fallback.
         $title = $card['type'] . ': ' . $b['date_from'] . ' → ' . $b['date_to'] . ($b['notes'] ? ' · ' . $b['notes'] : '');
       ?>
-      <div class="gantt-block <?= $type_cls ?>"
-           style="left:<?= $left_px ?>px;width:<?= $width_px ?>px"
+      <div class="gantt-block <?= $type_cls ?><?= $lane_cls ?>"
+           style="left:<?= $left_px ?>px;width:<?= $width_px ?>px<?= $lane_css ?>"
            data-block-id="<?= e($b['id']) ?>"
            data-block-type="<?= e($b['block_type']) ?>"
            data-date-from="<?= e($b['date_from']) ?>"
@@ -755,6 +850,7 @@ include __DIR__ . '/_layout.php';
   // Order is fixed so the same field is always in the same place; anything the
   // server did not send is simply skipped.
   var FIELDS = [
+    ['rooms','Rooms'],
     ['guest','Guest'], ['email','Email'], ['source','Source'], ['agent','Agent'],
     ['status','Status'], ['amount','Amount'], ['ref','Ref'], ['venue','Property'],
     ['notes','Notes'], ['imported','Imported']

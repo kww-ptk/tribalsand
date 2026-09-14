@@ -35,6 +35,8 @@ require_once __DIR__ . '/../includes/submission-status.php'; // lead status pipe
 require_once __DIR__ . '/../includes/submission-payload.php'; // payload → display rows/sections
 require_once __DIR__ . '/../includes/upsells.php';             // booking-flow add-ons
 require_once __DIR__ . '/../includes/mail.php'; // send_admin_reply()
+require_once __DIR__ . '/../includes/staff-hold-guard.php'; // staff_hold_block_reason()
+require_once __DIR__ . '/../includes/bookings.php'; // hold_product_room_id()
 
 // Flash (set by the convert handler on redirect)
 $flash = $_SESSION['sub_flash'] ?? null;
@@ -134,13 +136,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'conve
     elseif ($g_name === '')                             $err = 'Guest name is required.';
     elseif (!filter_var($g_email, FILTER_VALIDATE_EMAIL)) $err = 'A valid guest email is required.';
 
+    // Oversell guard — same gap as admin/hold-new.php. Converting an enquiry
+    // writes a block with components NULL, i.e. the WHOLE villa, which over a
+    // live Maya Ilai component booking sells the same bedroom twice. Returns
+    // null for every unit that is not a Maya Ilai villa, so the deliberate
+    // "availability is not checked" behaviour is untouched everywhere else.
+    if (!$err) {
+        $err = staff_hold_block_reason($unit_id, $check_in, $check_out) ?? '';
+    }
+
     if ($err) {
         $_SESSION['sub_flash'] = ['type' => 'error', 'msg' => $err];
         header('Location: ' . $redirect); exit;
     }
 
     try {
-        $hold_id = create_hold_with_block($unit_id, $id, $check_in, $check_out, $g_name, $g_email);
+        // Maya Ilai: staff-entered bookings take the WHOLE villa (components
+        // NULL). Safe — nothing can be oversold — but a per-bedroom admin
+        // booking needs a component picker on this form first.
+        //
+        // The room is recorded on the hold explicitly — and it must be the
+        // PRODUCT the guest enquired about, not the unit's owner. Deriving it
+        // from the unit reproduced the defect holds.room_id exists to fix: a
+        // Private Bunk Room enquiry converted by hand became "Three-Bedroom
+        // Villa" on every surface and $3,510 in the ledger instead of $450,
+        // because six Maya Ilai products own no units and allocate villa ones.
+        // hold_product_room_id() owns the rule (see its comment); this page only
+        // has to notice when it had to fall back.
+        $room_id     = hold_product_room_id($sub, $unit_id);
+        $sub_room_id = (int)($sub['room_id'] ?? 0);
+
+        $room_mismatch = '';
+        if ($sub_room_id > 0 && $room_id > 0 && $room_id !== $sub_room_id) {
+            $picked_room = trim((string) db_query(
+                'SELECT r.name FROM units u JOIN rooms r ON r.id = u.room_id WHERE u.id = :id',
+                [':id' => $unit_id]
+            )->fetchColumn());
+            $room_mismatch = ' Heads up: the enquiry was for ' . trim((string)($sub['room_name'] ?? 'another room'))
+                . ', but the unit you picked is a ' . ($picked_room !== '' ? $picked_room : 'different room')
+                . ' — the booking is recorded, and priced, as the room you picked.';
+        }
+        $hold_id = create_hold_with_block($unit_id, $id, $check_in, $check_out, $g_name, $g_email,
+            'pending', 24, null, $room_id ?: null);
     } catch (Throwable $e) {
         error_log('[convert-to-hold] create failed: ' . $e->getMessage());
         $_SESSION['sub_flash'] = ['type' => 'error', 'msg' => 'Could not create the hold. Please try again.'];
@@ -176,8 +213,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'conve
     } catch (Throwable $e) {
         error_log('[convert-to-hold] audit failed: ' . $e->getMessage());
     }
+    // The mismatch note rides on the success flash: the hold IS created (nothing
+    // below the create may report a failure of it), but staff booked a different
+    // room type from the one enquired about, so either the price or the room is
+    // not what the guest asked for and someone should look.
     $_SESSION['sub_flash'] = ['type' => 'success', 'msg' => "Hold #{$hold_id} created from this enquiry."
-        . ($addonsMade ? " {$addonsMade} add-on" . ($addonsMade === 1 ? '' : 's') . ' carried over.' : '')];
+        . ($addonsMade ? " {$addonsMade} add-on" . ($addonsMade === 1 ? '' : 's') . ' carried over.' : '')
+        . $room_mismatch];
     header('Location: ' . $redirect); exit;
 }
 
@@ -627,7 +669,7 @@ include __DIR__ . '/_layout.php';
     <?php if (!$ru_options): ?>
       <p style="margin:0;font-size:14px;color:var(--muted)">No availability units are set up yet, so a hold can't be created. Add units to a room first (Rooms admin).</p>
     <?php else: ?>
-    <p style="margin:0 0 16px;font-size:13px;color:var(--muted)">Creates a 24h hold from this enquiry, generates a booking code, and blocks the dates. Availability is not checked — you control overlaps.</p>
+    <p style="margin:0 0 16px;font-size:13px;color:var(--muted)">Creates a 24h hold from this enquiry, generates a booking code, and blocks the dates. Availability is not checked — you control overlaps. The one exception is a Maya Ilai villa: a staff booking there takes the whole villa, so one with a bedroom already sold is refused.</p>
     <form method="POST" action="/admin/submission-view?id=<?= $id ?>">
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="convert">
