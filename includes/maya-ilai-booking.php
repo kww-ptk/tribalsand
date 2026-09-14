@@ -134,6 +134,7 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
   .mib-recap{display:flex;align-items:baseline;gap:.8rem;flex-wrap:wrap;border-bottom:1px solid var(--mib-line);padding-bottom:.9rem;margin-bottom:1.4rem}
   .mib-recap__t{font-family:'Cormorant Garamond',serif;font-size:1.5rem;line-height:1.1}
   .mib-recap__back{margin-left:auto;background:none;border:none;padding:.2rem 0;font-family:inherit;font-size:.72rem;letter-spacing:.16em;text-transform:uppercase;color:var(--teal,#1E5C6B);cursor:pointer;border-bottom:1px solid currentColor}
+  .mib-offers__lede{font-size:.84rem;color:var(--mib-mut);margin:0 0 .9rem;max-width:46ch}
   .mib-offers{display:flex;flex-direction:column;gap:1rem}
   .mib-off{border:1px solid var(--mib-line);background:#fff;padding:1.2rem 1.3rem;display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.6rem 1.6rem;align-items:start}
   .mib-off--top{border-color:var(--sand,#B8965A);box-shadow:0 6px 26px rgba(184,150,90,.16)}
@@ -236,6 +237,12 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
       <span class="mib-recap__t" id="mibRecap">2 guests · 3 nights</span>
       <button type="button" class="mib-recap__back" id="mibBack">Change</button>
     </div>
+
+    <!-- Why a short list is a short list. Without a bare bunk room to sell, some
+         ordinary party sizes genuinely have only two or three stays that fit them
+         (five guests have two). Rather than pad the list with worse-fitting rooms,
+         say what the list is and point at the picker. -->
+    <p class="mib-offers__lede">These are the stays that fit your party. For a particular mix of rooms, build your own below.</p>
 
     <div class="mib-offers" id="mibOffers"></div>
 
