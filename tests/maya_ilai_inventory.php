@@ -12,6 +12,13 @@ require_once __DIR__ . '/../includes/gantt-block-guard.php'; // gantt_block_move
 require_once __DIR__ . '/../includes/booking.php';   // fetch_hold_for_guest() — guest portal naming test
 require_once __DIR__ . '/../includes/rates.php';     // rates_window_ymd() — the max-stay reference implementation
 
+// The last two oversell paths live in a page and an endpoint, not in includes/.
+// Both stop short of their executable body when these constants are defined, so
+// requiring them here yields their helpers and nothing else — no session, no
+// auth redirect, no feed fetched over the network, no output.
+define('CONFLICTS_LIBRARY_ONLY', true);
+require_once __DIR__ . '/../admin/conflicts.php';    // conflict_keep_ota_apply()
+
 /**
  * ── Pre-migration probe (a SUBPROCESS of this same file) ─────────────────────
  *
@@ -1649,6 +1656,136 @@ try {
         echo "SKIP  convert block: add_bookings_finance not applied on this DB\n";
     }
 
+    // ══ Resolving a channel conflict writes a WHOLE villa without asking ═════
+    //
+    // admin/conflicts.php — "keep OTA" cancels the conflicting hold, then blocks
+    // the whole villa (components NULL) for the OTA's range.
+    //
+    // Villas 5-6 and the 2097 dates are untouched by every test above.
+    $cV1 = (int)$villaUnits[4]['id'];   // villa 5
+    $cV2 = (int)$villaUnits[5]['id'];   // villa 6
+
+    // A hold + its block. guest_email is EMPTY on purpose: send_hold_cancelled()
+    // is only ever reached for a hold that has one, so no test run can mail a
+    // real person (RESEND_API_KEY is live in .env).
+    $mkHeldComponents = static function (
+        int $uid, string $ci, string $co, ?array $comp, string $status = 'confirmed'
+    ): array {
+        db_query(
+            "INSERT INTO holds (unit_id, check_in, check_out, guest_name, guest_email, status)
+             VALUES (:u, :ci, :co, 'Scratch Guest', '', :s)",
+            [':u' => $uid, ':ci' => $ci, ':co' => $co, ':s' => $status]
+        );
+        $hid = (int) db()->lastInsertId();
+        db_query(
+            "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, hold_id, components)
+             VALUES (:u, :ci, :co, 'hold', :h, :c)",
+            [':u' => $uid, ':ci' => $ci, ':co' => $co, ':h' => $hid,
+             ':c' => $comp === null ? null : mi_pg_array_encode($comp)]
+        );
+        return ['hold' => $hid, 'block' => (int) db()->lastInsertId()];
+    };
+    $mkConflict = static function (int $uid, string $df, string $dt, ?int $holdId, ?int $feedId = null): array {
+        db_query(
+            "INSERT INTO channel_conflicts (ical_feed_id, unit_id, date_from, date_to, hold_id, ota_summary)
+             VALUES (:f, :u, :df, :dt, :h, 'Airbnb (Not available)')",
+            [':f' => $feedId, ':u' => $uid, ':df' => $df, ':dt' => $dt, ':h' => $holdId]
+        );
+        return db_query('SELECT * FROM channel_conflicts WHERE id = :i',
+            [':i' => (int) db()->lastInsertId()])->fetch();
+    };
+    $holdRowOf = static fn(int $id): array => db_query(
+        'SELECT h.*, u.name AS unit_name FROM holds h JOIN units u ON u.id = h.unit_id WHERE h.id = :i',
+        [':i' => $id]
+    )->fetch() ?: [];
+    $holdStatus = static fn(int $id): string => (string) db_query(
+        'SELECT status FROM holds WHERE id = :i', [':i' => $id])->fetchColumn();
+    $conflictStatus = static fn(int $id): string => (string) db_query(
+        'SELECT status FROM channel_conflicts WHERE id = :i', [':i' => $id])->fetchColumn();
+    $blocksBetween = static fn(int $uid, string $df, string $dt): int => (int) db_query(
+        'SELECT COUNT(*) FROM availability_blocks WHERE unit_id=:u AND date_from=:df AND date_to=:dt',
+        [':u' => $uid, ':df' => $df, ':dt' => $dt]
+    )->fetchColumn();
+    // "The whole villa is gone" — exactly what a components-NULL block means.
+    $wholeVillaBlocks = static fn(int $uid, string $df, string $dt): int => (int) db_query(
+        "SELECT COUNT(*) FROM availability_blocks
+          WHERE unit_id = :u AND components IS NULL AND date_from < :dt AND date_to > :df",
+        [':u' => $uid, ':df' => $df, ':dt' => $dt]
+    )->fetchColumn();
+
+    // ── F1: keep-OTA must not write over a SECOND component booking ───────
+    // Staff consented to cancelling one bedroom's booking. They did not consent
+    // to handing the OTA a villa another guest is still in.
+    $K_CI = '2097-03-01';
+    $K_CO = '2097-03-06';
+    $kA = $mkHeldComponents($cV1, $K_CI, $K_CO, ['bunk']);        // the conflicting hold
+    $kB = $mkHeldComponents($cV1, $K_CI, $K_CO, ['double_a']);    // somebody else entirely
+    $kConflict = $mkConflict($cV1, $K_CI, $K_CO, $kA['hold']);
+
+    $kRes = conflict_keep_ota_apply($kConflict, $holdRowOf($kA['hold']), null, '');
+    check('conflict keep-OTA: refused while another guest still holds part of the villa',
+        ($kRes['ok'] ?? null) === false);
+    check('conflict keep-OTA: the refusal names the villa, the dates and the sold bedroom',
+        is_string($kRes['error'] ?? null)
+        && str_contains($kRes['error'], 'Double A')
+        && str_contains($kRes['error'], $K_CI));
+    check('conflict keep-OTA: the conflicting hold was NOT cancelled',
+        $holdStatus($kA['hold']) === 'confirmed');
+    check('conflict keep-OTA: ...so no cancellation e-mail path was taken',
+        array_key_exists('cancelled_hold', $kRes) && $kRes['cancelled_hold'] === null);
+    check('conflict keep-OTA: ...and that hold still owns its block',
+        $blockRow($kA['block']) !== []);
+    check('conflict keep-OTA: the other guest\'s bedroom is untouched',
+        $blockRow($kB['block']) !== []);
+    check('conflict keep-OTA: no whole-villa block was written',
+        $wholeVillaBlocks($cV1, $K_CI, $K_CO) === 0);
+    check('conflict keep-OTA: the conflict is still pending, so staff can act on the message',
+        $conflictStatus((int)$kConflict['id']) === 'pending');
+
+    // ── F1 clean case: the conflicting booking is the ONLY one on the villa ─
+    $kC = $mkHeldComponents($cV2, $K_CI, $K_CO, ['double_a', 'living']);
+    $kConflict2 = $mkConflict($cV2, $K_CI, $K_CO, $kC['hold']);
+    $kRes2 = conflict_keep_ota_apply($kConflict2, $holdRowOf($kC['hold']), null, 'kept the OTA');
+    check('conflict keep-OTA: a villa with only the conflicting booking resolves exactly as before',
+        ($kRes2['ok'] ?? null) === true);
+    check('conflict keep-OTA: ...the hold is cancelled',
+        $holdStatus($kC['hold']) === 'cancelled');
+    check('conflict keep-OTA: ...its block is gone',
+        $blockRow($kC['block']) === []);
+    check('conflict keep-OTA: ...the whole villa is blocked for the OTA',
+        $wholeVillaBlocks($cV2, $K_CI, $K_CO) === 1);
+    check('conflict keep-OTA: ...the conflict is resolved',
+        $conflictStatus((int)$kConflict2['id']) === 'resolved_keep_ota');
+    check('conflict keep-OTA: ...and the guest e-mail is handed back for AFTER the write',
+        (int)($kRes2['cancelled_hold']['id'] ?? 0) === $kC['hold']);
+
+    // The ordering is the whole point: a refusal after the guest has been told
+    // their booking is gone is the worst outcome of all.
+    $confSrc = (string) file_get_contents(__DIR__ . '/../admin/conflicts.php');
+    $gPos = strpos($confSrc, '= staff_hold_block_reason(');
+    check('conflict keep-OTA: the guard is consulted BEFORE anything is cancelled or sent',
+        $gPos !== false
+        && ($cPos = strpos($confSrc, "UPDATE holds SET status='cancelled'")) !== false && $gPos < $cPos
+        && ($iPos = strpos($confSrc, 'INSERT INTO availability_blocks'))     !== false && $gPos < $iPos
+        && ($mPos = strpos($confSrc, 'send_hold_cancelled'))                 !== false && $gPos < $mPos);
+
+    // ── Every other property: byte-identical ──────────────────────────────
+    if (!$otherUnitRow) {
+        echo "SKIP  conflicts/ical: no active unit at another property\n";
+    } else {
+        $oU = (int)$otherUnitRow;
+
+        // keep-OTA over an existing block is a deliberate staff decision there.
+        $mkBlock($oU, '2097-06-01', '2097-06-10', null, 'booked');
+        $oHold = $mkHeldComponents($oU, '2097-06-02', '2097-06-05', null);
+        $oConf = $mkConflict($oU, '2097-06-02', '2097-06-05', $oHold['hold']);
+        $oRes  = conflict_keep_ota_apply($oConf, $holdRowOf($oHold['hold']), null, '');
+        check('other property: keep-OTA still resolves straight over an existing block',
+            ($oRes['ok'] ?? null) === true && $holdStatus($oHold['hold']) === 'cancelled');
+        check('other property: ...and the OTA block was written',
+            $blocksBetween($oU, '2097-06-02', '2097-06-05') === 1);
+
+    }
 
 } finally {
     db()->rollBack();
