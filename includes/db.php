@@ -504,7 +504,7 @@ function fetch_hold_by_submission(int $submission_id): array|false {
         "SELECT h.*, u.name AS unit_name, r.name AS room_name
          FROM holds h
          JOIN units u ON u.id = h.unit_id
-         JOIN rooms r ON r.id = u.room_id
+         JOIN rooms r ON r.id = " . hold_room_id_sql('h', 'u') . "
          WHERE h.submission_id = :sid
          ORDER BY h.id DESC LIMIT 1",
         [':sid' => $submission_id]
