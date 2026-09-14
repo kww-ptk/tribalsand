@@ -711,6 +711,69 @@ function find_available_unit(int $room_id, string $check_in, string $check_out):
 }
 
 /**
+ * The longest bookable stay, in nights, starting on $checkIn (0 = not even one night).
+ *
+ * Availability is a property of a STAY, not of a night: find_available_unit()
+ * needs ONE unit free across the whole span, because a guest keeps the same room
+ * for the whole booking. Every night of a range can have some free unit while no
+ * single unit spans them all — which is why a per-night blocked-date list cannot
+ * answer "can I book Mon-Wed?".
+ *
+ * Monotonic by construction (a longer span can only take more components/units),
+ * so this binary-searches rather than walking: ~5 probes instead of $cap.
+ *
+ * Why the monotonicity holds — it is what makes the binary search legitimate, so
+ * check it before changing either allocator:
+ *   • Composite products (Maya Ilai): mi_villa_states() unions the components
+ *     taken by every block OVERLAPPING the span, so lengthening the span can
+ *     only bring more blocks in — each villa's taken set grows. mi_resolve()
+ *     fails as soon as a component it needs is taken and never un-fails against
+ *     a superset, and mi_order_villas() picks candidates by RANK, which does not
+ *     depend on the dates at all.
+ *   • Ordinary rooms: both the NOT EXISTS unit scan and the conflicting-sibling
+ *     clash test are overlap tests against the same widening window, so the free
+ *     unit set only shrinks and a clash, once found, stays found.
+ * So "nothing spans N nights" implies "nothing spans N+1", the predicate steps
+ * from available to unavailable exactly once, and the search is well defined. If
+ * that ever stops being true this must go back to walking the nights.
+ *
+ * $checkIn is validated with rates_window_ymd() — the same read-window validator
+ * api/check-availability.php uses — because a window we cannot parse is not a
+ * 0-night stay by accident, it is deliberately "not a stay". $cap is a UI
+ * affordance, not a booking rule, so it is clamped: this runs one availability
+ * probe per iteration and a caller-supplied cap must not be able to turn that
+ * into an unbounded scan.
+ */
+function room_max_stay_nights(int $roomId, string $checkIn, int $cap = 30): int {
+    // Required here, not at file scope: rates.php requires this file, so a
+    // file-scope require would be a load-order cycle (room_stay_quote() does
+    // the same for the same reason).
+    require_once __DIR__ . '/rates.php';
+
+    $ci = rates_window_ymd($checkIn);
+    if ($ci === null) return 0;
+
+    $cap = max(0, min($cap, 365));
+    if ($cap === 0) return 0;
+
+    $from = new DateTimeImmutable($ci);
+
+    // n = 0 is bookable by definition (an empty stay), so the invariant "lo is
+    // bookable" holds from the start and the loop always terminates on a real
+    // answer without ever probing a zero-length window — which
+    // find_available_unit() would not understand.
+    $lo = 0;
+    $hi = $cap;
+    while ($lo < $hi) {
+        $mid = intdiv($lo + $hi + 1, 2);
+        $co  = $from->modify("+{$mid} day")->format('Y-m-d');
+        if (find_available_unit($roomId, $ci, $co) !== false) $lo = $mid;
+        else                                                  $hi = $mid - 1;
+    }
+    return $lo;
+}
+
+/**
  * True once holds.room_id exists (migration: add_holds_room_id.sql). Memoised.
  *
  * This column is read on the path of EVERY property, so a deploy that has not

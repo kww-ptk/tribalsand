@@ -1007,6 +1007,141 @@ try {
             ? hold_room_id_sql('hh', 'uu') === 'COALESCE(hh.room_id, uu.room_id)'
             : hold_room_id_sql('hh', 'uu') === 'uu.room_id');
 
+    // ── Availability is a property of a STAY, not of a night ────────────────
+    // The reported bug. mi_villa_states() unions each villa's taken components
+    // across the WHOLE span on purpose — a guest keeps the same bedroom for the
+    // whole booking, they do not move rooms mid-stay — so find_available_unit()
+    // needs ONE villa to satisfy the pattern on every night. mi_blocked_dates()
+    // resolves night by night, which is the right answer to a different
+    // question, and the two disagree exactly here:
+    //
+    //   villas 1-5 have the bunk sold on night A, villas 2-6 on night B.
+    //   Each night has a free bunk SOMEWHERE, so both nights are green — but no
+    //   single villa spans both, so the two-night stay cannot be booked.
+    //
+    // room_max_stay_nights() is what lets the calendar express that.
+    $A  = '2101-03-01';   // night A
+    $B  = '2101-03-02';   // night B (and the check-out of a one-night stay from A)
+    $A2 = '2101-03-03';   // the check-out of the two-night stay A..A2
+
+    $villaRanks = db_query(
+        'SELECT id FROM units WHERE room_id = :r AND is_active = TRUE ORDER BY sort_order, id',
+        [':r' => $villaRoom['id']]
+    )->fetchAll(PDO::FETCH_COLUMN);
+    $rankUnit = [];
+    foreach ($villaRanks as $i => $uid) $rankUnit[$i + 1] = (int)$uid;
+
+    $sellBunk = static function (int $unitId, string $df, string $dt): void {
+        db_query(
+            "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, components)
+             VALUES (:u, :df, :dt, 'booked', :c)",
+            [':u' => $unitId, ':df' => $df, ':dt' => $dt, ':c' => mi_pg_array_encode(['bunk'])]
+        );
+    };
+    // With the default N=2 the last two villas by rank are ring-fenced, so a
+    // component product only ever sees ranks 1-6. Sell the bunk in 1-5 on night
+    // A and in 2-6 on night B: rank 6 is the only bunk free on A, rank 1 the
+    // only one free on B.
+    foreach ([1, 2, 3, 4, 5] as $r) $sellBunk($rankUnit[$r], $A, $B);
+    foreach ([2, 3, 4, 5, 6] as $r) $sellBunk($rankUnit[$r], $B, $A2);
+
+    $bunkRoomRow = db_query("SELECT id, slug FROM rooms WHERE slug = 'maya-ilai-bunk-room'")->fetch();
+    $bunkRoomId  = (int)$bunkRoomRow['id'];
+
+    check('stay-vs-night: both nights are individually free — the per-night calendar is unchanged',
+        mi_blocked_dates($bunkRoomRow, $A, $A2) === []);
+    check('stay-vs-night: a one-night stay from A IS bookable',
+        find_available_unit($bunkRoomId, $A, $B) !== false);
+    check('stay-vs-night: but no single villa spans both nights — the 2-night stay is refused',
+        find_available_unit($bunkRoomId, $A, $A2) === false);
+    check('stay-vs-night: room_max_stay_nights() says 1, which is what the calendar could not say before',
+        room_max_stay_nights($bunkRoomId, $A, 10) === 1);
+
+    // A clean window has nothing to stop at, so the cap is the answer.
+    $CLEAN = '2101-07-01';
+    check('max stay: a clean window returns the cap',
+        room_max_stay_nights($bunkRoomId, $CLEAN, 7) === 7);
+
+    // A check-in with no bunk anywhere is not a stay at all.
+    $Z  = '2101-09-01';
+    $Z1 = '2101-09-02';
+    foreach ($rankUnit as $uid) $sellBunk($uid, $Z, $Z1);
+    check('max stay: a fully-blocked check-in returns 0',
+        room_max_stay_nights($bunkRoomId, $Z, 7) === 0);
+    check('max stay: and that night is blocked on the per-night calendar too',
+        mi_blocked_dates($bunkRoomRow, $Z, $Z1) === [$Z]);
+
+    // ── The same shape at an ORDINARY room ──────────────────────────────────
+    // Nothing about this is Maya Ilai-specific: a room with several units has
+    // it too (unit A free Monday, unit B free Tuesday, neither free both). It
+    // has simply never been visible, because the calendar only ever asked the
+    // per-night question.
+    $studioRoom = db_query("SELECT id FROM rooms WHERE slug = 'maya-ilai-studio'")->fetch();
+    if ($studioRoom) {
+        $studioId    = (int)$studioRoom['id'];
+        $studioUnits = db_query(
+            'SELECT id FROM units WHERE room_id = :r AND is_active = TRUE ORDER BY sort_order, id',
+            [':r' => $studioId]
+        )->fetchAll(PDO::FETCH_COLUMN);
+        $blockUnit = static function (int $uid, string $df, string $dt): void {
+            db_query(
+                "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type)
+                 VALUES (:u, :df, :dt, 'booked')",
+                [':u' => $uid, ':df' => $df, ':dt' => $dt]
+            );
+        };
+
+        // A hard wall: every unit is gone from the 4th, so a stay starting on
+        // the 1st runs exactly 3 nights (checking out on the 4th).
+        foreach ($studioUnits as $uid) $blockUnit((int)$uid, '2101-05-04', '2101-05-20');
+        check('max stay: an ordinary multi-unit room stops exactly at the wall',
+            room_max_stay_nights($studioId, '2101-05-01', 14) === 3);
+        check('max stay: one night short of the wall is still bookable',
+            find_available_unit($studioId, '2101-05-01', '2101-05-04') !== false);
+        check('max stay: one night past it is not',
+            find_available_unit($studioId, '2101-05-01', '2101-05-05') === false);
+
+        // And the interleaved version, with no wall anywhere: a different unit
+        // is the free one on each night, so neither night is fully blocked and
+        // yet no two-night stay exists.
+        $G  = '2101-06-01';
+        $G1 = '2101-06-02';
+        $G2 = '2101-06-03';
+        foreach ($studioUnits as $i => $uid) if ($i !== 0) $blockUnit((int)$uid, $G,  $G1);
+        foreach ($studioUnits as $i => $uid) if ($i !== 1) $blockUnit((int)$uid, $G1, $G2);
+        check('ordinary room: neither night is fully blocked',
+            get_room_blocked_dates($studioId, $G, $G2) === []);
+        check('ordinary room: each night is bookable on its own',
+            find_available_unit($studioId, $G, $G1) !== false
+            && find_available_unit($studioId, $G1, $G2) !== false);
+        check('ordinary room: but the two-night stay is not',
+            find_available_unit($studioId, $G, $G2) === false);
+        check('ordinary room: room_max_stay_nights() reports 1 — the generic fix covers every property',
+            room_max_stay_nights($studioId, $G, 7) === 1);
+    }
+
+    // ── Invalid input is "not a stay", never a runaway ──────────────────────
+    check('max stay: an empty check-in is not a stay',
+        room_max_stay_nights($bunkRoomId, '', 7) === 0);
+    check('max stay: garbage is not a stay',
+        room_max_stay_nights($bunkRoomId, 'tomorrow', 7) === 0);
+    check('max stay: a date that is not on the calendar is not a stay',
+        room_max_stay_nights($bunkRoomId, '2101-02-30', 7) === 0);
+    check('max stay: a 13th month is not a stay',
+        room_max_stay_nights($bunkRoomId, '2101-13-01', 7) === 0);
+    check('max stay: a timestamp is not a date window',
+        room_max_stay_nights($bunkRoomId, '2101-07-01T00:00:00', 7) === 0);
+    check('max stay: a non-canonical but real date is repaired, exactly as the read-window validator does elsewhere',
+        room_max_stay_nights($bunkRoomId, '2101-7-1', 7) === 7);
+    check('max stay: a non-positive cap can only mean 0 nights',
+        room_max_stay_nights($bunkRoomId, $CLEAN, 0) === 0
+        && room_max_stay_nights($bunkRoomId, $CLEAN, -5) === 0);
+    check('max stay: an absurd cap is clamped rather than probed to death',
+        room_max_stay_nights($bunkRoomId, '2102-01-01', 1000000) === 365);
+    check('max stay: a room that does not exist is not a stay',
+        room_max_stay_nights(0, $CLEAN, 7) === 0);
+
+
 } finally {
     db()->rollBack();
 }

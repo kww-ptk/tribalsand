@@ -75,6 +75,11 @@
     let selStart = null, selEnd = null;
     let availSeq = 0;
     let availOk  = null;
+    // Reachable-stay state. See loadMaxStay() below for why a per-night blocked
+    // list is not enough. maxUntil is the LATEST selectable check-out (a ymd
+    // string), or null for "no constraint known / none to apply".
+    let maxUntil = null;
+    let maxSeq   = 0;
 
     const today = new Date(); today.setHours(0, 0, 0, 0);
     viewYear  = today.getFullYear();
@@ -88,6 +93,11 @@
     function parseYmd(s) { return new Date(s + "T00:00"); }
     function isBlocked(d) { return fullyBlocked.includes(ymd(d)); }
     function isPast(d)    { return d < today; }
+    // Beyond the longest stay that can start on the chosen check-in. Only ever
+    // true while a check-in is selected and a check-out is not, and only for
+    // dates AFTER the furthest reachable check-out — so it can narrow the
+    // selection to what the server would accept, never widen or move it.
+    function isBeyondMax(d) { return maxUntil !== null && ymd(d) > maxUntil; }
 
     // Right-month year/month
     function rightMonth() {
@@ -111,7 +121,7 @@
         const key  = ymd(date);
         let cls = "bk-cell";
 
-        if (isPast(date) || isBlocked(date)) {
+        if (isPast(date) || isBlocked(date) || isBeyondMax(date)) {
           cls += " bk-cell--blocked";
         } else {
           if (selStart && key === ymd(selStart)) cls += " bk-cell--start";
@@ -162,17 +172,22 @@
 
       if (!selStart || (selStart && selEnd)) {
         selStart = clicked; selEnd = null;
+        clearMaxStay();
         setHint("Now select your check-out date", "neutral");
         // visually indicate check-out trigger is next
         ciBtn.setAttribute("aria-expanded", "false");
         coBtn.setAttribute("aria-expanded", "true");
       } else if (clicked <= selStart) {
         selStart = clicked; selEnd = null;
+        clearMaxStay();
         setHint("Now select your check-out date", "neutral");
         ciBtn.setAttribute("aria-expanded", "false");
         coBtn.setAttribute("aria-expanded", "true");
       } else {
         selEnd = clicked;
+        // The range is complete; the cap belonged to the half-made selection and
+        // must not survive into the next one.
+        clearMaxStay();
         ciBtn.setAttribute("aria-expanded", "false");
         coBtn.setAttribute("aria-expanded", "false");
       }
@@ -182,6 +197,7 @@
       updateTotal();
 
       if (selStart && selEnd) checkAvailability();
+      else if (selStart)      loadMaxStay();
     }
 
     function setHint(text, tone) {
@@ -198,6 +214,62 @@
     function priceSpan(amount, cur) {
       if (typeof window.tsPriceSpan === "function") return window.tsPriceSpan(amount, cur);
       return (amount || 0).toLocaleString("en-US", { style: "currency", currency: cur || currency });
+    }
+
+    // ── Reachable stay length from the chosen check-in ───────────
+    // Availability is a property of a STAY, not of a night: the server needs
+    // ONE unit free across the whole span, because a guest keeps the same room
+    // for the whole booking. Every night of a range can have some free unit
+    // while no single unit spans them all, so `fully_blocked` — a per-night
+    // list — cannot tell the guest that Mon–Wed is unsellable. Once a check-in
+    // is picked we ask how long a stay can actually start there and grey out
+    // the rest, instead of letting them pick a range and fail on submit.
+    function clearMaxStay() {
+      maxSeq++;          // invalidate any in-flight answer for the old check-in
+      maxUntil = null;
+    }
+
+    async function loadMaxStay() {
+      if (!selStart || selEnd || !slug) return;
+      const ci    = ymd(selStart);
+      const mySeq = ++maxSeq;   // same guard as checkAvailability(): a slow
+                                // answer for an older check-in must not apply
+      let data;
+      try {
+        const res = await fetch(`/api/check-availability?room=${encodeURIComponent(slug)}&check_in=${ci}`);
+        data = await res.json();
+      } catch {
+        return;   // fall back to today's behaviour — never leave cells disabled
+      }
+      if (mySeq !== maxSeq) return;                       // a newer check-in won
+      if (!selStart || selEnd || ymd(selStart) !== ci) return;  // selection moved on
+
+      const n      = parseInt(data && data.max_nights, 10);
+      const capRaw = parseInt(data && data.cap, 10);
+      if (!Number.isFinite(n) || n < 0) return;           // unusable answer → no change
+      // An answer that hit the server's ceiling means "at least cap nights", not
+      // "a wall at cap". An unknown ceiling is read the same way, so a missing
+      // field can only ever under-constrain. (maxUntil is already null here —
+      // clearMaxStay() ran before this was called — so returning leaves the
+      // calendar exactly as it is today.)
+      const cap = Number.isFinite(capRaw) ? capRaw : n;
+
+      if (n === 0) {
+        // The check-in itself is unbookable (it was green when the calendar
+        // loaded and has since gone). Disabling everything after it would be a
+        // dead end, so grey out nothing and say why — every other date stays
+        // clickable, and clicking one simply starts a fresh selection.
+        setHint("No stay can start on that date — please choose another check-in.", "bad");
+        return;
+      }
+      if (n >= cap) return;   // nothing to narrow, and narrowing here would grey
+                              // out a range the server would have accepted
+
+      const last = parseYmd(ci);
+      last.setDate(last.getDate() + n);   // the furthest check-out, still selectable
+      maxUntil = ymd(last);
+      renderCal();
+      setHint(`Up to ${n} night${n > 1 ? "s" : ""} available from this date — now select your check-out.`, "neutral");
     }
 
     // ── Live availability check ──────────────────────────────────
@@ -518,6 +590,7 @@
       currency = newCurrency || wrap.dataset.currency || "USD";
       wrap.dataset.slug = slug; wrap.dataset.price = defPrice; wrap.dataset.currency = currency;
       selStart = null; selEnd = null; availOk = null; fullyBlocked = [];
+      clearMaxStay();
       clearError();
       prefillGuest();   // carry name/email/phone when the modal reopens for a new room
       updateDateFields(); updateTotal(); renderCal();

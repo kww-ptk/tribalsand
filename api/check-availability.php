@@ -60,6 +60,35 @@ if ($check_in && $check_out) {
     ]));
 }
 
+/**
+ * ── Reachable stay length (check-in chosen, check-out not yet) ────
+ *
+ * Availability is a property of a STAY, not of a night. `fully_blocked` below
+ * answers the per-night question, so a guest can pick two green nights that no
+ * single unit spans and only find out on submit. This branch tells the widget
+ * how long a stay can actually start on the chosen date, so it can grey out
+ * what it cannot sell instead of failing after the fact.
+ *
+ * Validated exactly as the two-date branch above: an unparseable window is not
+ * a 0-night answer, it is a 422.
+ */
+$max_stay_cap = 30;
+if ($check_in && !$check_out) {
+    $ci = rates_window_ymd($check_in) ?? '';
+    if ($ci === '') {
+        http_response_code(422);
+        exit(json_encode(['error' => 'Dates must be valid and formatted YYYY-MM-DD']));
+    }
+    exit(json_encode([
+        'max_nights' => room_max_stay_nights((int)$room['id'], $ci, $max_stay_cap),
+        'check_in'   => $ci,
+        // The cap, so the client can tell "5 nights and then it stops" (worth
+        // explaining to the guest) from "at least 30" (no constraint to explain)
+        // without hard-coding a copy of this number in JavaScript.
+        'cap'        => $max_stay_cap,
+    ]));
+}
+
 // ── Calendar view: return fully-blocked dates + rate-override dates ─
 $from = date('Y-m-d');
 $to   = date('Y-m-d', strtotime('+18 months'));
