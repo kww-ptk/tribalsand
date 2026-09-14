@@ -144,7 +144,9 @@
 
     var typing = document.createElement('div');
     typing.className = 'aiq-typing';
-    typing.textContent = 'Checking the calendar…';
+    typing.setAttribute('role', 'status');
+    typing.setAttribute('aria-label', 'Checking the calendar');
+    typing.innerHTML = '<span></span><span></span><span></span>';
     chat.appendChild(typing);
     scrollDown();
 

@@ -112,6 +112,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                      WHERE id=:id",
                     $data
                 );
+                // Re-read so the form fields and the capacity guardrail below
+                // reflect what was just saved, not the pre-edit row.
+                $room = db_query('SELECT r.*, v.slug AS venue_slug FROM rooms r LEFT JOIN venues v ON v.id = r.venue_id WHERE r.id = :id', [':id' => $id])->fetch() ?: $room;
                 $success = 'Details saved.';
             }
         }
@@ -290,6 +293,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['gallery_action'])) {
 
 if (isset($_GET['saved'])) $success = 'Room created successfully.';
 
+// Non-blocking capacity guardrail (Phase 0): a PUBLISHED room with no capacity
+// won't match guest-count searches (the search + AI combination logic treats a
+// NULL/0 capacity as "unknown" and never assumes it fits a party). Copy only —
+// capacity stays optional in the schema, so nothing is blocked.
+$capacityWarning = '';
+if (!$isNew && !empty($room['is_published']) && (int)($room['capacity'] ?? 0) <= 0) {
+    $capacityWarning = "Heads up: this room is published but has no max capacity set, so it won't match guest-count searches until you set one.";
+}
+
 $features_text = implode("\n", json_decode($room['features_json'] ?? '[]', true) ?: []);
 $faqs_data     = json_decode($room['faqs_json'] ?? '[]', true) ?: [];
 $venues        = db_query("SELECT id, name FROM venues ORDER BY sort_order")->fetchAll();
@@ -322,6 +334,7 @@ include __DIR__ . '/_layout.php';
 
 <?php if ($success): ?><div class="alert alert--success is-flash"><?= e($success) ?></div><?php endif; ?>
 <?php if ($error):   ?><div class="alert alert--error is-flash"><?= e($error) ?></div><?php endif; ?>
+<?php if ($capacityWarning): ?><div class="alert alert--info"><?= e($capacityWarning) ?></div><?php endif; ?>
 
 <!-- Tabs -->
 <div class="tabs">

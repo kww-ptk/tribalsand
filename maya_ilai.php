@@ -43,11 +43,36 @@ $page_schema .= ts_schema_breadcrumb([
 ]);
 $page_schema .= ts_schema_faq($faqs);
 
+// Also pulls css/booking.css + js/datepicker.js from includes/head.php — the
+// stay-configurator popup's check-in/check-out range needs both (the styled
+// .dp-btn / .dp-pop rules live in booking.css). Don't drop this flag without
+// giving includes/maya-ilai-booking.php another way to load the picker.
 $page_rooms_rates = true;
 $rr_venue_slug = 'maya_ilai';
 ?>
 <?php include 'includes/head.php'; ?>
 <style>
+/* The LeadConnector chat bubble is hidden on phones on THIS page. It is loaded
+   globally from includes/footer.php and stays everywhere else — but this page's
+   whole job is the booking configurator, and at 375px the bubble sits on top of
+   the parts a guest has to tap: the datepicker's Done button, the last row of
+   dates, and "Request this stay". A chat bubble that hides the booking button is
+   not a trade-off. Desktop keeps it; there is room there.
+   (includes/maya-ilai-booking.php also hides it at any width while the popup is
+   open — this rule is the wider one, for the page itself.) */
+@media (max-width: 767px) { chat-widget { display: none !important; } }
+
+/* css/main.css:1330 reserves 5rem of right padding on the sticky Book bar to
+   keep its button clear of that same bubble — a global rule, correct for every
+   other property page, which still has one. Here the bubble is gone below 768px,
+   so the reservation is 80px of dead space that pushes "Book →" off the corner
+   it belongs in. Give it back, at exactly the width where the bubble stops.
+   Keep both breakpoints at 767px: if they drift apart you get either a button
+   under the bubble again, or a gap reserved for nothing. */
+@media (max-width: 767px) {
+  .sticky-cta { padding-right: 1.2rem !important; }
+}
+
 /* ── TOKENS ── */
 :root{
   --sand:#B8965A;--sand-lt:#D4B07A;--sand-pale:#F2E8D6;--sand-faint:#FAF6EE;
@@ -472,8 +497,19 @@ include __DIR__ . '/includes/property-gallery.php';
 
     <div class="divider"></div>
 
-    <!-- Bookable room types (DB-driven rates + availability) -->
-    <?php $rr_venue_slug = 'maya_ilai'; include __DIR__ . '/includes/rooms-and-rates.php'; ?>
+    <!-- Bookable units — the configurator opens in a popup over the page.
+         Inline it swallowed the whole property page; what stays here is the
+         invitation. Anything marked data-mib-open opens the flow (the two
+         sidebar CTAs do too) — the links keep their href so that with JS off
+         they still land on this button. -->
+    <div class="sec" id="book-config" style="scroll-margin-top:90px">
+      <div class="sec-label">Build Your Stay</div>
+      <h2 class="sec-h">Choose Your <em>Units &amp; Guests</em></h2>
+      <div class="sec-rule"></div>
+      <p class="sec-p" style="margin-bottom:1.4rem">Tell us your party and your dates, and we'll show you the stays that fit — with the price. Group discounts for larger parties, extra-guest charges and the Eco-Resort Fee are all included in what you see.</p>
+      <button type="button" class="btn-book-full" data-mib-open style="max-width:340px">Build your stay &amp; get a price →</button>
+      <?php include __DIR__ . '/includes/maya-ilai-booking.php'; ?>
+    </div>
 
     <div class="divider"></div>
 
@@ -820,7 +856,11 @@ include __DIR__ . '/includes/property-photo-grid.php';
         <div class="sidebar-age-notice" style="padding:1rem 1.4rem .5rem;font-size:.72rem;color:var(--mid);border-bottom:1px solid var(--border)">
           <strong>Adults only — min. age 16.</strong> Guests 16–17 may stay unaccompanied.
         </div>
-        <?php $bk_hide_children = true; $booking_slug = 'maya-ilai-villa'; include __DIR__ . '/includes/booking-widget.php'; ?>
+        <div style="padding:1.3rem 1.4rem">
+          <p style="font-size:.9rem;color:var(--mid);line-height:1.6;margin-bottom:1rem">Build a stay from villas, studios, bunk and double rooms — with live pricing, group discounts and the Eco-Resort Fee included.</p>
+          <a href="#book-config" data-mib-open class="btn-book-full" style="text-decoration:none">Build your stay &amp; get a price →</a>
+          <a href="#book-config" data-mib-open class="btn-ghost-full" style="text-decoration:none">Full compound buyout? Start here</a>
+        </div>
       </div>
 
       <!-- Policy accordion -->

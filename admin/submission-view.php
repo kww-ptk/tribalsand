@@ -7,7 +7,9 @@ require_bookings();
 
 $id  = (int)($_GET['id'] ?? 0);
 $sub = db_query(
-    "SELECT s.*, r.name AS room_name, r.slug AS room_slug, t.name AS tour_name, t.slug AS tour_slug
+    "SELECT s.*, r.name AS room_name, r.slug AS room_slug,
+            r.price_amount AS room_price_amount, r.price_currency AS room_price_currency,
+            t.name AS tour_name, t.slug AS tour_slug
      FROM submissions s
      LEFT JOIN rooms r ON r.id = s.room_id
      LEFT JOIN tours t ON t.id = s.tour_id
@@ -233,6 +235,39 @@ $payload = json_decode($sub['payload_json'] ?? '{}', true) ?: [];
 $notes   = fetch_submission_notes($id);
 $status  = submission_status_supported() ? ((string)($sub['status'] ?? '') ?: submission_status_default()) : '';
 
+// ── Price at enquiry ─────────────────────────────────────────────────────────
+// The enquiry table stores no price, so the admin view showed none even though
+// the guest was quoted one. Two sources, in priority order:
+//   1. A snapshot the widget captured of exactly what the guest saw (covers
+//      multi-room combos and survives later rate edits).
+//   2. A live reconstruction from the room's current rate over the stay window,
+//      using room_stay_quote() — the ONE canonical pricing path (never a second
+//      nightly loop). nights === 0 means "not a quote": show nothing, never $0.
+$enquiry_price = null; // ['html' => currency-aware total, 'note' => sub-label]
+$__snapTotal = $payload['quoted_total']    ?? null;
+$__snapCur   = $payload['quoted_currency'] ?? null;
+if (is_numeric($__snapTotal) && (float)$__snapTotal > 0) {
+    $enquiry_price = [
+        'html' => money_html((float)$__snapTotal, (string)($__snapCur ?: 'USD')),
+        'note' => trim((string)($payload['quoted_label'] ?? '')) ?: 'As shown to the guest',
+    ];
+} elseif (!empty($sub['room_id']) && !empty($sub['check_in']) && !empty($sub['check_out'])) {
+    $__q = room_stay_quote(
+        (int)$sub['room_id'],
+        (float)($sub['room_price_amount'] ?? 0),
+        (string)$sub['check_in'],
+        (string)$sub['check_out']
+    );
+    if (($__q['nights'] ?? 0) > 0 && ($__q['total'] ?? 0) > 0) {
+        $__cur = (string)($sub['room_price_currency'] ?? '') ?: 'USD';
+        $enquiry_price = [
+            'html' => money_html((float)$__q['total'], $__cur),
+            'note' => $__q['nights'] . ' night' . ($__q['nights'] === 1 ? '' : 's')
+                    . ' × current rate · indicative',
+        ];
+    }
+}
+
 // Where a guest's email reply actually lands. Inbound replies are not yet
 // auto-threaded here (see Phase 4c), so the compose box tells staff plainly.
 $reservations_inbox = (string) setting('notify_email', 'reservations@tribalsand.com');
@@ -328,6 +363,16 @@ include __DIR__ . '/_layout.php';
           <?php if ($sub['guests_children']): ?>
           · <?= e($sub['guests_children']) ?> child<?= $sub['guests_children'] != 1 ? 'ren' : '' ?>
           <?php endif; ?>
+        </div>
+      </div>
+      <?php endif; ?>
+
+      <?php if ($enquiry_price): ?>
+      <div>
+        <div class="detail-item__label">Price at enquiry</div>
+        <div class="detail-item__value">
+          <strong><?= $enquiry_price['html'] ?></strong>
+          <div class="text-muted" style="font-size:11.5px;margin-top:2px"><?= e($enquiry_price['note']) ?></div>
         </div>
       </div>
       <?php endif; ?>
@@ -452,7 +497,16 @@ include __DIR__ . '/_layout.php';
       <form method="POST" action="/admin/submission-view?id=<?= $id ?>">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="add_note">
-        <textarea name="body" rows="4" class="inp inp--area" required
+        <?php if (ai_assistant_supported()): ?>
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+          <button type="button" class="btn-outline btn-sm" id="aiDraftBtn"
+                  data-endpoint="/api/assistant-draft.php" data-sid="<?= $id ?>" data-csrf="<?= e(csrf_token()) ?>">
+            <?= admin_icon('sparkles', 15) ?: '✨' ?> Draft options with AI
+          </button>
+          <span id="aiDraftMsg" class="text-muted" style="font-size:12.5px"></span>
+        </div>
+        <?php endif; ?>
+        <textarea name="body" id="replyBody" rows="4" class="inp inp--area" required
                   style="width:100%;box-sizing:border-box;min-height:104px;resize:vertical"
                   placeholder="Add a note for the team, or paste / write the reply to send the guest…"></textarea>
         <div style="display:flex;gap:16px;align-items:center;margin-top:10px;flex-wrap:wrap">
@@ -496,6 +550,51 @@ include __DIR__ . '/_layout.php';
           sync();
         })();
       </script>
+
+      <?php if (ai_assistant_supported()): ?>
+      <script>
+        // "Draft options with AI": ask the read-only assistant to write a reply
+        // with live availability + prices, and drop it into the reply box to edit
+        // and send. It never sends — staff always review first.
+        (function () {
+          var btn = document.getElementById('aiDraftBtn');
+          var box = document.getElementById('replyBody');
+          var msg = document.getElementById('aiDraftMsg');
+          var reply = document.getElementById('kindReply');
+          if (!btn || !box) return;
+          btn.addEventListener('click', function () {
+            if (box.value.trim() && !confirm('Replace what you have written with an AI draft?')) return;
+            var orig = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = 'Drafting…';
+            if (msg) { msg.style.color = ''; msg.textContent = 'Checking live availability and prices…'; }
+            fetch(btn.dataset.endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ submission_id: btn.dataset.sid, csrf_token: btn.dataset.csrf })
+            })
+            .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+            .then(function (res) {
+              if (!res.ok || !res.j || res.j.ok !== true) {
+                throw new Error((res.j && res.j.error) || 'Could not draft a reply.');
+              }
+              box.value = res.j.draft;
+              box.focus();
+              // Pre-select "Reply sent to guest" — a draft is guest-facing.
+              if (reply) { reply.checked = true; reply.dispatchEvent(new Event('change')); }
+              if (msg) { msg.style.color = ''; msg.textContent = 'Draft ready — review and edit before sending.'; }
+            })
+            .catch(function (e) {
+              if (msg) { msg.style.color = '#b91c1c'; msg.textContent = e.message || 'Could not draft a reply.'; }
+            })
+            .finally(function () {
+              btn.disabled = false;
+              btn.innerHTML = orig;
+            });
+          });
+        })();
+      </script>
+      <?php endif; ?>
     <?php endif; ?>
   </div>
 </div>

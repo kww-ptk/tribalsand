@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "tribal-sand",
-      "runtimeExecutable": "D:\\php84\\php.exe",
-      "runtimeArgs": ["-S", "localhost:8765", "-t", "D:\\TribalIsland", "D:\\TribalIsland\\router.php"],
+      "runtimeExecutable": "php",
+      "runtimeArgs": ["-S", "localhost:8765", "-t", ".", "router.php"],
       "port": 8765
     }
   ]

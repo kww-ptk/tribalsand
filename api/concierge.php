@@ -86,8 +86,8 @@ $messages  = $history;
 $messages[] = ['role' => 'user', 'text' => $message];
 
 $withRag = rag_supported();
-$system  = assistant_system_prompt(null, $withRag, 'guest');   // null scope = all published venues
-$tools   = assistant_tool_definitions($withRag);
+$system  = assistant_system_prompt(null, $withRag, 'guest', true);   // null scope = all published venues; withFacts on
+$tools   = assistant_tool_definitions($withRag, true);
 $runTool = fn(string $name, array $args): array => assistant_run_tool($name, $args, null);
 
 $result = chat_with_tools($system, $messages, $tools, $runTool);

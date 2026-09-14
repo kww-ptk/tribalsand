@@ -4,6 +4,7 @@
 require_once __DIR__ . '/../includes/icons.php';       // admin_icon() for icon-only buttons
 require_once __DIR__ . '/../includes/admin-shell.php'; // no-flicker shell (#18)
 require_once __DIR__ . '/../includes/ai.php';          // ai_assistant_supported() — gates the Assistant nav link
+require_once __DIR__ . '/../includes/internal-messages.php'; // internal_unread_total() — Team chat nav badge
 $admin = current_admin();
 
 // ── Role / job aware nav visibility ──────────────────────────────────────
@@ -19,13 +20,15 @@ $__isFrontdeskStaff = is_staff() && !$__isOps && !$__isSecurity;   // frontdesk 
 
 $__navFrontdesk = $__isOwner || $__isManager || $__isReception || $__isFrontdeskStaff;
 $__navConcierge = $__isOwner || $__isManager || $__isReception || $__isFrontdeskStaff;
-$__navMessages  = $__isOwner || $__isManager || $__isReception || $__isFrontdeskStaff;  // ops & security get no messaging
+$__navMessages  = $__isOwner || $__isManager || $__isReception || $__isFrontdeskStaff;  // ops & security get no GUEST messaging
+$__navInternal  = true;   // internal team chat — every signed-in account, incl. ops & gate staff
 $__navTasks     = $__isOwner || $__isManager || $__isReception;
 $__navGate      = $__isOwner || $__isManager || $__isReception || $__isSecurity;
 $__navMyWork    = $__isOps   || $__isReception;
 // Availability/price assistant — same guest-facing audience as messaging, and
 // only when a provider key is configured (feature hides itself otherwise).
 $__navAssistant = ($__isOwner || $__isManager || $__isReception || $__isFrontdeskStaff) && ai_assistant_supported();
+$__navAiSettings = $__isOwner;   // AI tone/knowledge tuning — site-wide config, owner-only (visible even before a key is set, so it can be prepared)
 $__navBookings  = $__isOwner || $__isReception;   // holds / calendar / submissions / conflicts
 $__navReports   = $__isOwner || $__isManager;     // financial reports (scoped to their venues)
 
@@ -126,6 +129,12 @@ if ($__shellFrag) { ob_start(); return; }
           Assistant
         </a>
         <?php endif; ?>
+        <?php if ($__navAiSettings): ?>
+        <a href="/admin/ai-settings.php"  class="sidebar__link <?= ($activeMenu??'')==='ai_settings'  ? 'is-active':'' ?>">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5 10.1 10.9 5.5 9l4.6-1.4L12 3z"/><circle cx="18.5" cy="17.5" r="2.4"/><path d="M18.5 13.6v1.1M18.5 20.3v1.1M22 17.5h-1.1M16.1 17.5H15M20.9 15.1l-.8.8M17 18.6l-.8.8M20.9 19.9l-.8-.8M17 16.4l-.8-.8"/></svg>
+          AI settings
+        </a>
+        <?php endif; ?>
         <?php if ($__navMyWork): ?>
         <a href="/admin/mywork.php"       class="sidebar__link <?= ($activeMenu??'')==='mywork'       ? 'is-active':'' ?>">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
@@ -141,7 +150,15 @@ if ($__shellFrag) { ob_start(); return; }
         <?php if ($__navMessages): ?>
         <a href="/admin/messages.php"     class="sidebar__link <?= ($activeMenu??'')==='messages'     ? 'is-active':'' ?>">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          Messages<?php $u=function_exists('count_unread_admin')?count_unread_admin(admin_venue_ids()):0; if($u>0): ?> <span class="badge badge--orange" style="margin-left:6px"><?= (int)$u ?></span><?php endif; ?>
+          Customer messages<?php $u=function_exists('count_unread_admin')?count_unread_admin(admin_venue_ids()):0; if($u>0): ?> <span class="badge badge--orange" style="margin-left:6px"><?= (int)$u ?></span><?php endif; ?>
+        </a>
+        <?php endif; ?>
+        <?php if ($__navInternal): ?>
+        <a href="/admin/internal-messages.php" class="sidebar__link <?= ($activeMenu??'')==='internal_messages' ? 'is-active':'' ?>">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Team chat<?php
+            $iu = function_exists('internal_unread_total') ? internal_unread_total((int)($_SESSION['admin_id'] ?? 0)) : 0;
+            if ($iu > 0): ?> <span class="badge badge--orange" style="margin-left:6px"><?= (int)$iu ?></span><?php endif; ?>
         </a>
         <?php endif; ?>
         <?php if ($__navTasks): ?>
@@ -229,6 +246,19 @@ if ($__shellFrag) { ob_start(); return; }
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
           Reports
         </a>
+        <a href="/admin/attendance.php"   class="sidebar__link <?= ($activeMenu??'')==='attendance'   ? 'is-active':'' ?>">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="m9 16 2 2 4-4"/></svg>
+          Attendance
+        </a>
+        <?php
+          // Maya Ilai rate tool — owner, or a manager scoped to Maya Ilai (venue 6).
+          $__miShow = $__isOwner || ($__isManager && in_array(6, admin_venue_ids() ?? [], true));
+          if ($__miShow): ?>
+        <a href="/admin/maya-ilai-rates.php" class="sidebar__link <?= ($activeMenu??'')==='maya_ilai_rates' ? 'is-active':'' ?>">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          Maya Ilai rates
+        </a>
+        <?php endif; ?>
       <?php $__navgroup('reports', 'Reports', ob_get_clean()); ?>
       <?php endif; ?>
 

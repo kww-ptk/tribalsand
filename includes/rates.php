@@ -149,6 +149,27 @@ function rates_nightly_map(int $roomId, float $default, string $fromYmd, string 
 }
 
 /**
+ * The lowest EFFECTIVE nightly rate for a room over the next $days days — the
+ * honest "from …" figure for a date-less card. It resolves through the single
+ * rates_nightly_map() path, so it reflects any admin rate OVERRIDES as well as
+ * the room's base price for uncovered nights (never a second nightly loop).
+ * Returns $default when nothing priced comes back (e.g. a zero base and no
+ * override) so a card never accidentally shows 0. Nairobi-local "today" (db.php).
+ */
+function rates_from_price(int $roomId, float $default, int $days = 365): float {
+    $from = date('Y-m-d');
+    $to   = date('Y-m-d', strtotime("+{$days} day"));
+    $map  = rates_nightly_map($roomId, $default, $from, $to);
+    $min  = null;
+    foreach ($map as $night) {
+        $p = (float)($night['price'] ?? 0);
+        if ($p <= 0) continue;                       // skip unpriced nights
+        if ($min === null || $p < $min) $min = $p;
+    }
+    return $min ?? $default;
+}
+
+/**
  * Free every night in [$from, $toExcl) on this room, trimming, splitting or
  * deleting whatever already overlaps.
  *

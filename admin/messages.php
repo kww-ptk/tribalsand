@@ -10,7 +10,7 @@ require_once __DIR__ . '/../includes/admin-pagination.php';
 require_login();
 require_frontdesk();   // ops & gate-security have a focused interface with no messaging
 
-$pageTitle  = 'Messages';
+$pageTitle  = 'Customer messages';
 $activeMenu = 'messages';
 
 $holdId  = isset($_GET['hold']) ? (int)$_GET['hold'] : 0;
@@ -133,7 +133,7 @@ if (!$inThread) {
 include __DIR__ . '/_layout.php';
 ?>
 <div class="page-header">
-  <h1>Messages</h1>
+  <h1>Customer messages</h1>
   <?php if ($inThread): ?>
   <a href="/admin/messages.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> All threads</a>
   <?php else: ?>

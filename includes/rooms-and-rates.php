@@ -10,6 +10,7 @@
  * instead ships the booking modal (#bkModal), rrBook opens that instead.
  */
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/rates.php';   // rates_from_price() — card shows the live "from" nightly rate
 
 $rr_venue_slug = $rr_venue_slug ?? '';
 $__v = $rr_venue_slug ? db_query('SELECT * FROM venues WHERE slug = :s', [':s' => $rr_venue_slug])->fetch() : false;
@@ -53,7 +54,11 @@ if ($__roomIds) {
         $guests = (int)($r['capacity'] ?? 0);
         $beds   = (int)($r['bed_count'] ?? 0);
         $meta = trim(($beds ? $beds . ' bed' . ($beds > 1 ? 's' : '') : '') . ($beds && $guests ? ' · ' : '') . ($guests ? 'Up to ' . $guests . ' guests' : ''));
-        $price = (float)$r['price_amount'];
+        $base  = (float)$r['price_amount'];
+        // "from" = the lowest effective nightly rate over the next year, resolved
+        // through the SAME rate engine as the booking widget — so an admin rate
+        // override is reflected here, not just the static base price.
+        $price = $base > 0 ? rates_from_price($rid, $base) : 0.0;
         $unit  = trim((string)($r['price_unit'] ?? ''));
       ?>
       <article class="suite-card rr-card" id="room-<?= e($r['slug']) ?>"
@@ -75,6 +80,7 @@ if ($__roomIds) {
           <?php if ($meta): ?><div class="suite-card-meta"><?= e($meta) ?></div><?php endif; ?>
           <div class="suite-card-price">
             <?php if ($price > 0): ?>
+            <span class="suite-card-price__from">from</span>
             <span class="suite-card-price__amt"><?= money_html($price, $r['price_currency']) ?></span>
             <?php if ($unit !== ''): ?><span class="suite-card-price__unit"><?= e($unit) ?></span><?php endif; ?>
             <?php else: ?>

@@ -126,6 +126,19 @@ include __DIR__ . '/includes/header.php';
 .rcard__btn{flex-shrink:0;display:inline-flex;align-items:center;gap:.4rem;background:var(--teal-d);color:#fff;border:none;border-radius:6px;padding:.6rem 1.1rem;font-family:'Jost',sans-serif;font-size:.6rem;letter-spacing:.16em;text-transform:uppercase;font-weight:600;cursor:pointer;transition:background .2s;}
 .rcard__btn svg{flex-shrink:0;}
 .rcard__btn:hover{background:var(--teal);}
+/* suggested room combinations (parties no single room fits) */
+.combos{padding:1.4rem 1.6rem 0;}
+.combos__head{font-size:.6rem;letter-spacing:.18em;text-transform:uppercase;color:var(--sand);font-weight:600;margin-bottom:.8rem;}
+.combo{background:#fff;border:1px solid var(--border);border-radius:10px;padding:1rem 1.1rem;margin-bottom:.9rem;}
+.combo.is-primary{border-color:var(--sand);box-shadow:0 8px 24px rgba(184,150,90,.12);}
+.combo__rooms{display:flex;flex-wrap:wrap;gap:.5rem;margin-bottom:.9rem;}
+.combo__room{display:inline-flex;align-items:center;gap:.5rem;background:var(--sand-faint);border:1px solid var(--border);border-radius:999px;padding:.34rem .8rem;}
+.combo__room-name{font-size:.82rem;color:var(--dark);font-weight:500;}
+.combo__room-price{font-size:.72rem;color:var(--light);}
+.combo__foot{display:flex;align-items:flex-end;justify-content:space-between;gap:.8rem;flex-wrap:wrap;}
+.combo__total small{display:block;font-size:.64rem;letter-spacing:.02em;color:var(--light);margin-bottom:.15rem;}
+.combo__total b{font-family:'Cormorant Garamond',serif;font-weight:600;font-size:1.4rem;color:var(--dark);line-height:1;}
+.combo .rcard__btn{text-decoration:none;}
 .srch-empty{text-align:center;padding:3rem 1rem;color:var(--mid);}
 /* filter + sort toolbar */
 .srch-tools{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:1rem 1.4rem;margin-bottom:1.6rem;padding-bottom:1.2rem;border-bottom:1px solid var(--border);}
@@ -271,9 +284,12 @@ include __DIR__ . '/includes/header.php';
       $v = $r['venue']; $sold = $r['count'] === 0;
       $room_count  = count(array_filter($r['rooms'], fn($x) => empty($x['entire'])));
       $has_entire  = (bool) array_filter($r['rooms'], fn($x) => !empty($x['entire']));
-      $only_entire = !$sold && $room_count === 0 && $has_entire;
+      $combos      = $r['configurations']['combos'] ?? [];
+      $has_combo   = !$sold && !empty($combos);
+      $only_entire = !$sold && $room_count === 0 && $has_entire && !$has_combo;
       if ($only_entire)      { $avail_txt = 'Entire villa available'; $cta_txt = 'Book the villa →'; }
       elseif ($room_count>0) { $avail_txt = $room_count . ' room' . ($room_count !== 1 ? 's' : '') . ' available' . ($has_entire ? ' · or the whole villa' : ''); $cta_txt = 'Select a room →'; }
+      elseif ($has_combo)    { $avail_txt = 'Room combination for ' . $guests . ' guests' . ($has_entire ? ' · or the whole villa' : ''); $cta_txt = 'See suggestion →'; }
       else                   { $avail_txt = 'Available'; $cta_txt = 'Select →'; }
       ?>
       <div class="vcard<?= $sold ? ' is-sold' : '' ?>"
@@ -309,6 +325,31 @@ include __DIR__ . '/includes/header.php';
 
         <?php if (!$sold): ?>
         <div class="rlist" id="rl-<?= (int)$v['id'] ?>">
+          <?php if ($has_combo): ?>
+          <div class="combos">
+            <div class="combos__head">For <?= (int)$guests ?> guests we suggest<?= count($combos) > 1 ? ' — best fit first' : '' ?></div>
+            <?php foreach ($combos as $__ci => $combo): ?>
+            <div class="combo<?= $__ci === 0 ? ' is-primary' : '' ?>">
+              <div class="combo__rooms">
+                <?php foreach ($combo['rooms'] as $cr): ?>
+                <span class="combo__room">
+                  <span class="combo__room-name"><?= e($cr['name']) ?><?= (int)$cr['units_used'] > 1 ? ' &times;' . (int)$cr['units_used'] : '' ?></span>
+                  <span class="combo__room-price"><?= money_html((float)$cr['total'], $cr['currency']) ?></span>
+                </span>
+                <?php endforeach; ?>
+              </div>
+              <div class="combo__foot">
+                <div class="combo__total">
+                  <small>Total · sleeps <?= (int)$combo['capacity'] ?> · <?= $nights ?> night<?= $nights !== 1 ? 's' : '' ?></small>
+                  <b><?= money_html((float)$combo['total'], $combo['currency']) ?></b>
+                </div>
+                <a class="rcard__btn" href="/<?= e($v['slug']) ?>?checkin=<?= e($checkin) ?>&amp;checkout=<?= e($checkout) ?>&amp;adults=<?= (int)$adults ?>&amp;children=<?= (int)$children ?>">Request these rooms <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></a>
+              </div>
+            </div>
+            <?php endforeach; ?>
+          </div>
+          <?php endif; ?>
+          <?php if ($r['rooms']): ?>
           <div class="rgrid">
           <?php foreach ($r['rooms'] as $room): ?>
           <div class="rcard">
@@ -337,6 +378,7 @@ include __DIR__ . '/includes/header.php';
           </div>
           <?php endforeach; ?>
           </div>
+          <?php endif; ?>
         </div>
         <?php endif; ?>
       </div>
