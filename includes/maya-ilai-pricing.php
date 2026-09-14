@@ -575,6 +575,41 @@ function maya_ilai_picks_label(array $picks): string {
 }
 
 /**
+ * The guests a configuration's rates already cover — the sum of its units'
+ * included counts, so a Family Room (5) beside a Studio (2) covers 7.
+ */
+function maya_ilai_offer_included(array $offer): int {
+    $n = 0;
+    foreach ($offer['units'] as $u) $n += (int)($u['included'] ?? 0);
+    return $n;
+}
+
+/**
+ * May this configuration be offered to a party of $guests at all?
+ *
+ * Never quote a party for people who are not coming. A Private Bunk Room
+ * includes 3 and a Two-Bedroom Family Suite includes 5; putting either in front
+ * of a couple prices beds they did not ask for. So a configuration is offered
+ * only when the guests its rates already cover do not EXCEED the party — summed
+ * across its units, which is why "Family Room + Studio" (5 + 2) is right for a
+ * party of seven and "2× Bunk Room" (3 + 3) is right for it too.
+ *
+ * The floor of 2 is for the solo traveller: the smallest thing the property
+ * sells includes two, so without it a party of one would be shown nothing.
+ *
+ * ── THE ONE LINE TO CHANGE FOR A WHOLE-PROPERTY UPSELL ──────────────────────
+ * This rule also hides the Three-Bedroom Villa (includes 7) from a couple, who
+ * must use "Build it yourself" to buy the whole villa. If the owner decides a
+ * whole-property product should always be offered as an upsell, append ONE
+ * disjunct to the return below and nothing else changes anywhere:
+ *
+ *     || (int)($offer['quote']['q']['villa'] ?? 0) > 0
+ */
+function maya_ilai_offer_fits_party(array $offer, int $guests): bool {
+    return maya_ilai_offer_included($offer) <= max(2, $guests);
+}
+
+/**
  * Is this stay nothing but bare bunk rooms?
  *
  * NARROW ON PURPOSE. The property will not be fronted by a bunk room — but the
@@ -763,8 +798,9 @@ function maya_ilai_suggest(int $guests, int $nights, ?array $cfg = null, int $li
                 'key'    => $pick['product']['key'],
                 'qty'    => (int)$pick['qty'],
                 'guests' => (int)($alloc[$i] ?? 0),
-                'desc'   => $pick['product']['desc'],
-                'max'    => (int)$pick['product']['max'] * (int)$pick['qty'],
+                'desc'     => $pick['product']['desc'],
+                'max'      => (int)$pick['product']['max'] * (int)$pick['qty'],
+                'included' => (int)$pick['product']['included'] * (int)$pick['qty'],
             ];
         }
         $offer = [
@@ -788,6 +824,18 @@ function maya_ilai_suggest(int $guests, int $nights, ?array $cfg = null, int $li
         }
     }
     $offers = array_values($best);
+
+    // Drop anything that would quote the party for people who are not coming.
+    // This runs AFTER de-duplication safely: the included count is a function of
+    // the primitives alone (a double covers 2, a bunk room 3, a studio 2, a
+    // villa 7), so two spellings of the same rooms always agree on it and the
+    // survivor can never be the one that does not fit.
+    //
+    // An oversized suggestion still beats a blank page: if nothing fits this
+    // party, the constraint is relaxed for it rather than returning nothing.
+    // (Measured: no party from 1 to the compound maximum needs this.)
+    $fitting = array_values(array_filter($offers, fn($o) => maya_ilai_offer_fits_party($o, $guests)));
+    if ($fitting) $offers = $fitting;
 
     // WHOLE STAYS FIRST, then price. A stay expressed as one product — a villa,
     // a family suite, a single studio — outranks the pile of rooms that sleeps

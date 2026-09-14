@@ -318,9 +318,14 @@ for ($g = 1; $g <= 20; $g++) {
     if ($badge !== 'cheapest' && $badge !== 'both') $taggedOk = false;  // and visibly tagged
     if (($sugs[$at]['why'] ?? '') === '') $taggedOk = false;
 
-    // A bare bunk room never fronts the property — but the lead is still the
-    // best-ranked stay that is not one, so it is the wholest eligible stay.
-    if (maya_ilai_offer_is_bunk_only($sugs[0])) { $leadOk = false; echo "NOTE  {$g} guests: lead '{$sugs[0]['label']}' is bunk-only\n"; }
+    // A bare bunk room never fronts the property — unless every stay on offer
+    // for this party IS one, in which case we lead with it and simply do not
+    // call it "Our pick" (see the party-3 assertions below).
+    $anyEligible = false;
+    foreach ($sugs as $s) if (!maya_ilai_offer_is_bunk_only($s)) $anyEligible = true;
+    if ($anyEligible && maya_ilai_offer_is_bunk_only($sugs[0])) {
+        $leadOk = false; echo "NOTE  {$g} guests: lead '{$sugs[0]['label']}' is bunk-only\n";
+    }
     foreach ($sugs as $s) {
         if (maya_ilai_offer_is_bunk_only($s)) continue;
         if ($units($sugs[0]) > $units($s)) $leadOk = false;
@@ -359,26 +364,43 @@ check('bunk-only: a bunk room beside a studio is NOT (something else is in it)',
 check('bunk-only: a stay with no bunks at all is NOT',
     !maya_ilai_offer_is_bunk_only(['quote' => ['q' => ['bunk' => 0, 'double' => 2, 'studio' => 0, 'villa' => 0, 'living' => 1]]]));
 
-// Every party the compound can host leads with something that is not a bare
-// bunk pile, and the bunk pile keeps its price slot.
-$noLeadFor = [];
-for ($g = 1; $g <= 20; $g++) {
-    $sugs = maya_ilai_suggest($g, 3, $D, 5);
-    if (!$sugs) continue;
-    if (maya_ilai_offer_is_bunk_only($sugs[0])) $noLeadFor[] = $g;
-}
-check('bunk-only: no party 1–20 is led by a bare bunk pile', $noLeadFor === []);
-check('bunk-only: and none of them wears "Our pick" either', (function () use ($D) {
-    for ($g = 1; $g <= 20; $g++) {
+// A bare bunk pile is never called "Our pick", at any party size. THIS is the
+// invariant; leading the slot is a consequence of it everywhere except a party
+// that has nothing else on offer at all.
+check('bunk-only: a bare bunk pile never wears "Our pick"', (function () use ($D) {
+    for ($g = 1; $g <= maya_ilai_max_party($D); $g++) {
         foreach (maya_ilai_suggest($g, 3, $D, 5) as $s) {
             if (maya_ilai_offer_is_bunk_only($s) && in_array($s['badge'], ['pick', 'both'], true)) return false;
         }
     }
     return true;
 })());
+// …and it only reaches the lead SLOT when it is the only thing that fits.
+$bunkLedBy = [];
+for ($g = 1; $g <= maya_ilai_max_party($D); $g++) {
+    $sugs = maya_ilai_suggest($g, 3, $D, 5);
+    if ($sugs && maya_ilai_offer_is_bunk_only($sugs[0])) $bunkLedBy[] = $g;
+}
+check('bunk-only: only a party of 3 is led by one, and only because nothing else fits it',
+    $bunkLedBy === [3] && count(maya_ilai_suggest(3, 3, $D, 5)) === 1);
 
-// The three party sizes the owner named: the bunk room used to lead each one.
-foreach ([2, 4, 6] as $g) {
+// The rule still earns its place UNDER the included-occupancy rule: without it
+// six party sizes would be fronted by a bare bunk pile, including 4 and 6,
+// which the owner named explicitly. Ranked order is what the lead would be.
+$wouldBunkLead = [];
+for ($g = 1; $g <= maya_ilai_max_party($D); $g++) {
+    $all = maya_ilai_suggest($g, 3, $D, 999);
+    if (!$all) continue;
+    usort($all, fn($a, $b) => [array_sum(array_column($a['units'], 'qty')), (float)$a['quote']['total']]
+                         <=> [array_sum(array_column($b['units'], 'qty')), (float)$b['quote']['total']]);
+    if (maya_ilai_offer_is_bunk_only($all[0])) $wouldBunkLead[] = $g;
+}
+check('bunk-only: without the rule, parties 3,4,5,6,11,12 would be bunk-led — it is not dead weight',
+    $wouldBunkLead === [3, 4, 5, 6, 11, 12]);
+
+// The party sizes the owner named. At 2 the bunk room is gone entirely (the
+// included-occupancy rule hides it); at 4 and 6 it is present and priced.
+foreach ([4, 6] as $g) {
     $sugs = maya_ilai_suggest($g, 3, $D, 5);
     $lead = $sugs[0];
     check("bunk-only: {$g} guests are led by a named non-bunk product ('{$lead['label']}')",
@@ -391,6 +413,68 @@ foreach ([2, 4, 6] as $g) {
         $bunkRow !== null
         && eq((float)$bunkRow['quote']['total'], min(array_map(fn($s) => (float)$s['quote']['total'], $sugs))));
 }
+
+// ── Never quote a party for people who are not coming ───────────────────────
+// A configuration is offered only when the guests its rates already COVER do
+// not exceed the party — summed across its units, so "Family Room (5) + Studio
+// (2)" is right for seven and "2× Bunk Room (3+3)" is right for it too.
+check('fits: the included count sums across the units',
+    maya_ilai_offer_included(['units' => [['included' => 5], ['included' => 2]]]) === 7);
+check('fits: a party is not shown a product that covers more of them than exist',
+    !maya_ilai_offer_fits_party(['units' => [['included' => 3]]], 2));
+check('fits: it is shown one that covers exactly the party',
+    maya_ilai_offer_fits_party(['units' => [['included' => 2]]], 2));
+check('fits: and one that covers fewer',
+    maya_ilai_offer_fits_party(['units' => [['included' => 3]]], 7));
+check('fits: the sum is what counts, not any single unit',
+    maya_ilai_offer_fits_party(['units' => [['included' => 5], ['included' => 2]]], 7)
+    && !maya_ilai_offer_fits_party(['units' => [['included' => 5], ['included' => 5]]], 7));
+check('fits: a solo traveller gets the floor of two, or nothing would fit',
+    maya_ilai_offer_fits_party(['units' => [['included' => 2]]], 1)
+    && !maya_ilai_offer_fits_party(['units' => [['included' => 3]]], 1));
+
+// Party 2, exactly as the owner specified it.
+$two2 = maya_ilai_suggest(2, 3, $D, 8);
+$labels2 = array_map(fn($s) => $s['label'], $two2);
+check('fits: 2 guests see only products that cover 2',
+    $two2 && !array_filter($two2, fn($s) => maya_ilai_offer_included($s) > 2));
+check('fits: 2 guests are NOT shown the Private Bunk Room (it covers 3)',
+    !in_array('Private Bunk Room', $labels2, true));
+check('fits: 2 guests are NOT shown the Two-Bedroom Family Suite (it covers 5)',
+    !in_array('Two-Bedroom Family Suite', $labels2, true));
+check('fits: 2 guests see the Studio, the Double Room and the One-Bedroom Suite',
+    in_array('Studio', $labels2, true) && in_array('Double Room', $labels2, true)
+    && in_array('One-Bedroom Suite', $labels2, true));
+check('fits: and nothing else — those three are the whole list',
+    count($labels2) === 3);
+// Stated as its own assertion because it is the open question: the rule also
+// hides the whole villa from a couple. If the owner reinstates it as an upsell
+// (one disjunct in maya_ilai_offer_fits_party), this is the line that flips.
+check('fits: 2 guests are not currently offered the whole villa (it covers 7)',
+    !in_array('Three-Bedroom Villa', $labels2, true));
+
+// A solo traveller still gets real options.
+$one1 = maya_ilai_suggest(1, 3, $D, 5);
+check('fits: a party of one is answered', count($one1) > 0);
+check('fits: a party of one sees rooms that sleep them, all covering 2',
+    !array_filter($one1, fn($s) => maya_ilai_offer_included($s) > 2)
+    && !array_filter($one1, fn($s) => $s['quote']['errors'] !== []));
+check('fits: a party of one is led by the Double Room at the lowest price',
+    $one1[0]['label'] === 'Double Room' && $one1[0]['badge'] === 'both');
+
+// The invariant across every party the compound can host, AND the proof that
+// the relax-rather-than-blank fallback never had to fire: when it fires every
+// returned row breaks the cap, so "no row anywhere breaks the cap" is exactly
+// "the fallback never fired".
+$overCap = []; $emptyAt = [];
+for ($g = 1; $g <= maya_ilai_max_party($D); $g++) {
+    $sugs = maya_ilai_suggest($g, 3, $D, 5);
+    if (!$sugs) { $emptyAt[] = $g; continue; }
+    foreach ($sugs as $s) if (maya_ilai_offer_included($s) > max(2, $g)) { $overCap[] = $g; break; }
+}
+check('fits: no party from 1 to the compound maximum is answered with nothing', $emptyAt === []);
+check('fits: no suggestion anywhere covers more guests than the party — the fallback never fired',
+    $overCap === []);
 
 // The lead's sentence has to be true of the rooms in it — a studio is not "one
 // space, all yours" in the sense a villa is.
