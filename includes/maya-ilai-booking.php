@@ -368,6 +368,41 @@ $mibMaxNights = 30;
     .mib-sum-top,.mib-lines{padding-left:1rem;padding-right:1rem}
     .mib-notice{margin-left:1rem;margin-right:1rem}
     .mib-fine{padding-left:1rem;padding-right:1rem}
+
+    /* ── Thumbs ──────────────────────────────────────────────────────────
+       Everything tapped in this popup clears 44×44 on a phone. The big party
+       stepper and the .dp-btn triggers already did; these three did not — the
+       row steppers at 30, the slider arrows at 34, the close × at 38. Sizes
+       only: nothing moves, and each still fits its column (the row stepper is
+       the tightest at 121px inside a 137px cell). */
+    .mib-pop__x{width:44px;height:44px}
+    .mib-step button{width:44px;height:44px;font-size:1.25rem}
+    .mib-step{gap:.35rem}
+    .mib-slide__nav{width:44px;height:44px;font-size:1.5rem}
+
+    /* The recap was costing a whole extra row. "7 guests · 4 nights · 20 Sept
+       2026 → 24 Sept 2026" wraps to two lines at this width, and with the line
+       allowed to wrap, margin-left:auto dropped Change onto a third line of its
+       own, right-aligned and looking stray. Let the line wrap INSIDE its own
+       column instead and Change keeps its place at the top right. */
+    .mib-recap{flex-wrap:nowrap;gap:.6rem}
+    .mib-recap__t{flex:1 1 auto;min-width:0;font-size:1.2rem}
+    .mib-recap__back{flex:0 0 auto;margin-left:0}
+
+    /* The calendar is the shared picker's, drawn on <body>, so this reaches it
+       the same way everything else here does — through the class the popup puts
+       on <html> while it is open, and only while it is open. Height only: the
+       pop's 310px width is a number datepicker.js also clamps against, so
+       widening the grid here would push it off the right edge.
+
+       Which is why the square goes rather than a minimum being added to it. A
+       day cell is aspect-ratio:1 in a repeat(7,1fr) track: constrain its HEIGHT
+       and the ratio resolves the width to match, so min-height:44px silently
+       made every cell 44 wide inside a 38px column — cells overlapping their
+       neighbours by 6px and the row spilling out of the grid. Dropping the
+       ratio and setting the height outright leaves the width where the track
+       put it: 38×44 cells, seven of them, still 268px across. */
+    html.mib-locked .dp-pop .bk-cell{aspect-ratio:auto;height:44px;min-width:0}
   }
 </style>
 
@@ -969,7 +1004,18 @@ $mibMaxNights = 30;
     box.dataset.i = i;
     for (var n = 0; n < slides.length; n++) slides[n].classList.toggle('on', n === i);
     var img = slides[i].querySelector('img');          // hydrate on demand, once
-    if (img && !img.getAttribute('src') && img.dataset.src) img.src = img.dataset.src;
+    if (img && !img.getAttribute('src') && img.dataset.src) {
+      // loading="lazy" has to come OFF at the moment we hydrate. The attribute
+      // and this hydration are two deferral mechanisms for one decision, and
+      // the browser's wins: a lazy image on a card scrolled out of view is not
+      // fetched at all, so it can neither load nor fail, and the failure walk
+      // below stalls on a slide that will never answer. We are the ones
+      // deciding when a slide loads; once we have decided, it must actually go.
+      // This loads no more photographs than before — only the slide being shown
+      // is ever hydrated.
+      img.loading = 'eager';
+      img.src = img.dataset.src;
+    }
     box.classList.toggle('mib-slides--one', slides.length < 2);
     var c = box.querySelector('.mib-slide__count');
     if (c) c.textContent = (i + 1) + ' / ' + slides.length;
@@ -1064,23 +1110,45 @@ $mibMaxNights = 30;
   /* A photograph that does not load must leave the card looking deliberate, not
      broken. One slide failing takes only that SLIDE out — the slider re-counts,
      shows a neighbour, and drops its chrome if only one is left; the figure (and
-     the card's second column) go only when the last photograph has gone. The
-     `error` event does not bubble, so this listens in the CAPTURE phase — one
-     handler for the whole list rather than an inline onerror per image. */
-  offersEl.addEventListener('error', function (e) {
-    var img = e.target;
-    if (!img || img.tagName !== 'IMG') return;
+     the card's second column) go only when the last photograph has gone.
+     syncSlides() hydrates whatever is now on screen, so a card whose images ALL
+     fail walks the list one request at a time and ends with no figure at all:
+     the happy path still costs one request per card, and only a card that is
+     actually broken pays for the rest. */
+  function failSlide(img) {
     var fig = img.closest('.mib-off__fig');
     if (!fig) return;
     var dead = img.closest('.mib-slide');
     if (dead) dead.remove(); else img.remove();
-    // syncSlides hydrates whatever is now on screen, so a card whose images all
-    // fail walks the list one request at a time and ends with no figure at all.
     var box = fig.querySelector('.mib-slides');
     if (box && box.querySelector('.mib-slide')) { syncSlides(box); return; }
     var card = fig.closest('.mib-off');
     fig.remove();
     if (card) card.classList.remove('mib-off--photo');
+  }
+
+  /* Neither `error` nor `load` bubbles, so both listen in the CAPTURE phase —
+     one handler apiece for the whole list rather than inline attributes per
+     image. */
+  offersEl.addEventListener('error', function (e) {
+    if (e.target && e.target.tagName === 'IMG') failSlide(e.target);
+  }, true);
+
+  /* A 404 is not the only way a photograph fails to arrive, and on this stack it
+     is not even the common one: an asset origin that has lost a file typically
+     answers 200 with a placeholder — a 1×1 spacer, a blank pixel, a "missing
+     image" sprite — and the local dev router does exactly that. Such a response
+     fires `load`, not `error`, so the walk above never starts and the card keeps
+     a reserved frame and an honest-looking "1 / 3" over nothing. Judge the
+     RESULT instead of the status: anything this small is not a photograph of a
+     bedroom, whatever the server called it, and it takes the same path out. The
+     floor is far below any real image, so it can never discard one. */
+  var MIN_PHOTO_PX = 24;
+  offersEl.addEventListener('load', function (e) {
+    var img = e.target;
+    if (!img || img.tagName !== 'IMG' || !img.closest('.mib-off__fig')) return;
+    if (img.naturalWidth >= MIN_PHOTO_PX && img.naturalHeight >= MIN_PHOTO_PX) return;
+    failSlide(img);
   }, true);
 
   function search() {
