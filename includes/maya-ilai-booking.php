@@ -135,6 +135,29 @@ $mibMaxNights = 30;
   .mib-pop__x:hover{background:rgba(255,255,255,.14)}
   .mib-pop__body{flex:1 1 auto;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:1.6rem 1.4rem 2rem}
   html.mib-locked,body.mib-locked{overflow:hidden}
+  /* ── The third-party chat bubble stands down while this popup is open ─────
+     The LeadConnector widget (includes/footer.php) is fixed bottom-right and
+     owns that corner BY CONVENTION — which is why no WhatsApp float was ever
+     added beside it. That convention is about the PAGE. At 375×812 the widget's
+     greeting card covers a 296×136 slab of the bottom of the viewport, and
+     inside this dialog that slab lands on the datepicker's Done button and its
+     last row of dates, on an offer card's "Request this stay", and on the top
+     of the picker. A guest who cannot confirm a date is not making a trade-off
+     with a support channel, they are stuck.
+
+     So: hidden for the life of the popup, and only the popup. Three properties
+     make this safe to leave alone —
+       - It hangs off .mib-locked, the class openPop()/closePop() already put on
+         <html>, so EVERY close path restores it — the ×, Escape, the backdrop
+         and a sent request all run closePop() and nothing else has to remember.
+       - It is CSS, matching a custom element by name. The widget's own scripts
+         and DOM are untouched; the node is never removed, so there is nothing
+         to re-add and nothing to race. `display:none` on the host takes its
+         shadow tree out of hit-testing with it, and the widget re-hydrates
+         intact when the rule stops matching.
+       - A deploy where the widget never loads (it is third-party, and the
+         footer can suppress it outright) simply matches no element. */
+  html.mib-locked chat-widget{display:none!important}
   .mib-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,1fr);gap:2rem;align-items:start}
   .mib-rows{display:flex;flex-direction:column;gap:.9rem}
   .mib-group+.mib-group{margin-top:1.6rem}
