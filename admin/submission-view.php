@@ -34,6 +34,7 @@ require_once __DIR__ . '/../includes/submission-payload.php'; // payload → dis
 require_once __DIR__ . '/../includes/upsells.php';             // booking-flow add-ons
 require_once __DIR__ . '/../includes/mail.php'; // send_admin_reply()
 require_once __DIR__ . '/../includes/staff-hold-guard.php'; // staff_hold_block_reason()
+require_once __DIR__ . '/../includes/bookings.php'; // hold_product_room_id()
 
 // Flash (set by the convert handler on redirect)
 $flash = $_SESSION['sub_flash'] ?? null;
@@ -152,11 +153,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'conve
         // NULL). Safe — nothing can be oversold — but a per-bedroom admin
         // booking needs a component picker on this form first.
         //
-        // The room is recorded on the hold explicitly. Staff pick a UNIT here,
-        // so the room is the unit's own — identical to what the
-        // holds -> units -> rooms join returned before, just explicit.
-        $room_id = (int) db_query('SELECT room_id FROM units WHERE id = :id',
-            [':id' => $unit_id])->fetchColumn();
+        // The room is recorded on the hold explicitly — and it must be the
+        // PRODUCT the guest enquired about, not the unit's owner. Deriving it
+        // from the unit reproduced the defect holds.room_id exists to fix: a
+        // Private Bunk Room enquiry converted by hand became "Three-Bedroom
+        // Villa" on every surface and $3,510 in the ledger instead of $450,
+        // because six Maya Ilai products own no units and allocate villa ones.
+        // hold_product_room_id() owns the rule (see its comment); this page only
+        // has to notice when it had to fall back.
+        $room_id     = hold_product_room_id($sub, $unit_id);
+        $sub_room_id = (int)($sub['room_id'] ?? 0);
+
+        $room_mismatch = '';
+        if ($sub_room_id > 0 && $room_id > 0 && $room_id !== $sub_room_id) {
+            $picked_room = trim((string) db_query(
+                'SELECT r.name FROM units u JOIN rooms r ON r.id = u.room_id WHERE u.id = :id',
+                [':id' => $unit_id]
+            )->fetchColumn());
+            $room_mismatch = ' Heads up: the enquiry was for ' . trim((string)($sub['room_name'] ?? 'another room'))
+                . ', but the unit you picked is a ' . ($picked_room !== '' ? $picked_room : 'different room')
+                . ' — the booking is recorded, and priced, as the room you picked.';
+        }
         $hold_id = create_hold_with_block($unit_id, $id, $check_in, $check_out, $g_name, $g_email,
             'pending', 24, null, $room_id ?: null);
     } catch (Throwable $e) {
@@ -194,8 +211,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'conve
     } catch (Throwable $e) {
         error_log('[convert-to-hold] audit failed: ' . $e->getMessage());
     }
+    // The mismatch note rides on the success flash: the hold IS created (nothing
+    // below the create may report a failure of it), but staff booked a different
+    // room type from the one enquired about, so either the price or the room is
+    // not what the guest asked for and someone should look.
     $_SESSION['sub_flash'] = ['type' => 'success', 'msg' => "Hold #{$hold_id} created from this enquiry."
-        . ($addonsMade ? " {$addonsMade} add-on" . ($addonsMade === 1 ? '' : 's') . ' carried over.' : '')];
+        . ($addonsMade ? " {$addonsMade} add-on" . ($addonsMade === 1 ? '' : 's') . ' carried over.' : '')
+        . $room_mismatch];
     header('Location: ' . $redirect); exit;
 }
 

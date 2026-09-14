@@ -30,6 +30,56 @@ function bookings_supported(): bool {
     catch (Throwable $e) { return $c = false; }
 }
 
+/**
+ * Which PRODUCT a hold created from an enquiry should record.
+ *
+ * Staff pick a UNIT when they convert a lead by hand, and the unit's own room
+ * used to be what the hold recorded. For Maya Ilai that throws the answer away:
+ * six of the eight products own no units and allocate the villa's, so
+ * units -> rooms says "Three-Bedroom Villa" for every one of them. A Private Bunk
+ * Room enquiry converted by hand was named as the villa on every surface and
+ * snapshotted into the ledger at $3,510 instead of $450 — the same defect
+ * holds.room_id was added to fix, reintroduced on the manual path.
+ *
+ * The enquiry already knows the product ($sub['room_id'], which the page loads to
+ * prefill its room dropdown). The rule, in order:
+ *
+ *   1. The submission's room when it IS the unit's room — the ordinary case at
+ *      every other property, where the enquiry and the unit agree.
+ *   2. The submission's room when it is a composite product whose INVENTORY room
+ *      is the unit's room. For a Maya Ilai composite the two are deliberately
+ *      different — that is the whole point — so a naive equality check would
+ *      reject exactly the case this exists for. room_inventory_room_id() is the
+ *      same resolver the booking flow allocates through, so this reads as "the
+ *      guest's product is sold out of this unit".
+ *   3. Otherwise the unit's room. Staff picked something unrelated to the
+ *      enquiry (another property, or a swap to a different room type), and the
+ *      unit is then the only honest answer: the guest is getting that room and
+ *      must be billed for it. The caller can see this happened — the returned id
+ *      is not the submission's — and should say so, because when the two
+ *      disagree either the price or the allocation is wrong.
+ *
+ * $sub needs 'room_id' and 'room_slug' (mi_is_composite_room() reads the slug and
+ * returns false when it is missing, which would silently downgrade case 2 to 3).
+ * Returns the unit's room for a submission with no room at all (a tour or general
+ * enquiry), and 0 only when the unit itself cannot be resolved.
+ */
+function hold_product_room_id(array $sub, int $unitId): int {
+    $unitRoomId = (int) db_query(
+        'SELECT room_id FROM units WHERE id = :id', [':id' => $unitId]
+    )->fetchColumn();
+    if ($unitRoomId <= 0) return 0;
+
+    $subRoomId = (int)($sub['room_id'] ?? 0);
+    if ($subRoomId <= 0) return $unitRoomId;
+    if ($subRoomId === $unitRoomId) return $unitRoomId;
+
+    $inventoryRoomId = room_inventory_room_id(
+        ['id' => $subRoomId, 'slug' => (string)($sub['room_slug'] ?? '')]
+    );
+    return $inventoryRoomId === $unitRoomId ? $subRoomId : $unitRoomId;
+}
+
 /* ─────────────────────────── Writers ─────────────────────────── */
 
 /**

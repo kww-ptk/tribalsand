@@ -1553,6 +1553,66 @@ try {
             && $blockRow($oMoveId)['date_to']   === '2098-07-05');
     }
 
+    // ── Converting an enquiry records the PRODUCT, not the unit (I1) ────────
+    // admin/submission-view.php derived room_id from the unit and threw away the
+    // room the guest actually enquired about, which the page had already loaded.
+    $bunkRoom = db_query('SELECT * FROM rooms WHERE slug = :s', [':s' => 'maya-ilai-bunk-room'])->fetch();
+    $anyVillaUnit = (int)$villaUnits[0]['id'];
+    check('convert rule: a composite product\'s inventory IS the villa room — so equality alone would reject it',
+        room_inventory_room_id($bunkRoom) === $villaRoomId
+        && (int)$bunkRoom['id'] !== $villaRoomId);
+    check('convert rule: an enquiry for a composite product keeps the product',
+        hold_product_room_id(
+            ['room_id' => (int)$bunkRoom['id'], 'room_slug' => 'maya-ilai-bunk-room'], $anyVillaUnit
+        ) === (int)$bunkRoom['id']);
+    check('convert rule: an enquiry for the unit\'s own room keeps that room',
+        hold_product_room_id(
+            ['room_id' => $villaRoomId, 'room_slug' => MAYA_ILAI_VILLA_ROOM_SLUG], $anyVillaUnit
+        ) === $villaRoomId);
+    check('convert rule: an unrelated room falls back to the unit\'s room',
+        hold_product_room_id(
+            ['room_id' => (int)$dblRoom['id'] , 'room_slug' => 'zuri-jua'], $anyVillaUnit
+        ) === $villaRoomId);
+    check('convert rule: a submission with no room at all falls back to the unit\'s room',
+        hold_product_room_id(['room_id' => null, 'room_slug' => null], $anyVillaUnit) === $villaRoomId);
+    check('convert rule: a missing slug is not treated as composite (it would silently pick the wrong room)',
+        hold_product_room_id(['room_id' => (int)$bunkRoom['id']], $anyVillaUnit) === $villaRoomId);
+
+    $convSrc = $handler(
+        (string) file_get_contents(__DIR__ . '/../admin/submission-view.php'),
+        "\$_POST['action'] ?? '') === 'convert'",
+        'create_hold_with_block('
+    );
+    check('convert rule: the page resolves the room through hold_product_room_id()',
+        $convSrc !== '' && strpos($convSrc, 'hold_product_room_id(') !== false);
+
+    // And the money, end to end: the hold the fixed page creates.
+    if (bookings_supported()) {
+        $CVI = '2098-10-01';
+        $CVO = '2098-10-04';                                  // 3 nights
+        $cvRoomId = hold_product_room_id(
+            ['room_id' => (int)$bunkRoom['id'], 'room_slug' => $bunkRoom['slug']], $anyVillaUnit
+        );
+        $cvHold = create_hold_with_block($anyVillaUnit, null, $CVI, $CVO,
+            'Convert Bunk', 'convert-bunk@example.com', 'confirmed', null, null, $cvRoomId);
+        bookings_sync_hold($cvHold);
+        $cvRow  = db_query('SELECT * FROM bookings WHERE hold_id = :h', [':h' => $cvHold])->fetch();
+        $cvName = (string) db_query(
+            'SELECT r.name FROM holds h JOIN units u ON u.id = h.unit_id
+               JOIN rooms r ON r.id = ' . hold_room_id_sql('h', 'u') . ' WHERE h.id = :h',
+            [':h' => $cvHold]
+        )->fetchColumn();
+        check('convert ledger: the converted enquiry is named as the enquired product',
+            $cvName === (string)$bunkRoom['name']);
+        check('convert ledger: …and priced at the bunk room\'s rate × 3, not the villa\'s',
+            $cvRow && (float)$cvRow['gross_amount'] === (float)$bunkRoom['price_amount'] * 3
+                   && (float)$cvRow['gross_amount'] !== (float)$villaRow['price_amount'] * 3);
+        check('convert ledger: attributed to the bunk room',
+            $cvRow && (int)$cvRow['room_id'] === (int)$bunkRoom['id']);
+    } else {
+        echo "SKIP  convert ledger: add_bookings_finance not applied on this DB\n";
+    }
+
 } finally {
     db()->rollBack();
 }
