@@ -17,7 +17,9 @@ require_once __DIR__ . '/../includes/rates.php';     // rates_window_ymd() — t
 // requiring them here yields their helpers and nothing else — no session, no
 // auth redirect, no feed fetched over the network, no output.
 define('CONFLICTS_LIBRARY_ONLY', true);
+define('ICAL_SYNC_LIBRARY_ONLY', true);
 require_once __DIR__ . '/../admin/conflicts.php';    // conflict_keep_ota_apply()
+require_once __DIR__ . '/../api/sync-ical.php';      // ical_import_event()
 
 /**
  * ── Pre-migration probe (a SUBPROCESS of this same file) ─────────────────────
@@ -1656,14 +1658,20 @@ try {
         echo "SKIP  convert block: add_bookings_finance not applied on this DB\n";
     }
 
-    // ══ Resolving a channel conflict writes a WHOLE villa without asking ═════
+    // ══ The last two paths that write a WHOLE villa without asking ════════
     //
-    // admin/conflicts.php — "keep OTA" cancels the conflicting hold, then blocks
-    // the whole villa (components NULL) for the OTA's range.
+    // Both drop a components-NULL block (= the entire villa) onto a villa unit:
+    //   admin/conflicts.php — "keep OTA": cancels the conflicting hold, then
+    //                         blocks the whole villa for the OTA's range.
+    //   api/sync-ical.php   — the hourly import: looked for an overlapping HOLD
+    //                         and nothing else, so a block with no live hold
+    //                         behind it was invisible.
     //
-    // Villas 5-6 and the 2097 dates are untouched by every test above.
+    // Villas 5-8 and the 2097 dates are untouched by every test above.
     $cV1 = (int)$villaUnits[4]['id'];   // villa 5
     $cV2 = (int)$villaUnits[5]['id'];   // villa 6
+    $cV3 = (int)$villaUnits[6]['id'];   // villa 7
+    $cV4 = (int)$villaUnits[7]['id'];   // villa 8
 
     // A hold + its block. guest_email is EMPTY on purpose: send_hold_cancelled()
     // is only ever reached for a hold that has one, so no test run can mail a
@@ -1702,10 +1710,6 @@ try {
         'SELECT status FROM holds WHERE id = :i', [':i' => $id])->fetchColumn();
     $conflictStatus = static fn(int $id): string => (string) db_query(
         'SELECT status FROM channel_conflicts WHERE id = :i', [':i' => $id])->fetchColumn();
-    $blocksBetween = static fn(int $uid, string $df, string $dt): int => (int) db_query(
-        'SELECT COUNT(*) FROM availability_blocks WHERE unit_id=:u AND date_from=:df AND date_to=:dt',
-        [':u' => $uid, ':df' => $df, ':dt' => $dt]
-    )->fetchColumn();
     // "The whole villa is gone" — exactly what a components-NULL block means.
     $wholeVillaBlocks = static fn(int $uid, string $df, string $dt): int => (int) db_query(
         "SELECT COUNT(*) FROM availability_blocks
@@ -1769,6 +1773,74 @@ try {
         && ($iPos = strpos($confSrc, 'INSERT INTO availability_blocks'))     !== false && $gPos < $iPos
         && ($mPos = strpos($confSrc, 'send_hold_cancelled'))                 !== false && $gPos < $mPos);
 
+    // ── F2: the import only ever looked for a HOLD ────────────────────────
+    $mkFeed = static function (int $uid): array {
+        db_query(
+            "INSERT INTO ical_feeds (unit_id, label, feed_url)
+             VALUES (:u, 'Scratch Airbnb', 'https://example.invalid/scratch.ics')",
+            [':u' => $uid]
+        );
+        return ['id' => (int) db()->lastInsertId(), 'unit_id' => $uid, 'label' => 'Scratch Airbnb'];
+    };
+    $pendingConflicts = static fn(int $uid, string $df, string $dt): array => db_query(
+        "SELECT * FROM channel_conflicts
+          WHERE unit_id=:u AND date_from=:df AND date_to=:dt AND status='pending'",
+        [':u' => $uid, ':df' => $df, ':dt' => $dt]
+    )->fetchAll();
+    $blocksBetween = static fn(int $uid, string $df, string $dt): int => (int) db_query(
+        'SELECT COUNT(*) FROM availability_blocks WHERE unit_id=:u AND date_from=:df AND date_to=:dt',
+        [':u' => $uid, ':df' => $df, ':dt' => $dt]
+    )->fetchColumn();
+
+    $I_CI = '2097-07-01';
+    $I_CO = '2097-07-05';
+    // A component block with NO live hold behind it — a converted booking, or a
+    // block imported from somewhere else. The hold check cannot see it.
+    $mkBlock($cV3, $I_CI, $I_CO, ['double_a'], 'booked');
+    $feed3 = $mkFeed($cV3);
+
+    $r1 = ical_import_event($feed3, $I_CI, $I_CO, 'Airbnb (Not available)');
+    check('ical import: an import over a component block on a villa does not write',
+        $r1 === 'skipped');
+    check('ical import: ...it records a conflict instead',
+        count($pendingConflicts($cV3, $I_CI, $I_CO)) === 1);
+    $i1Conf = $pendingConflicts($cV3, $I_CI, $I_CO);
+    check('ical import: ...with no hold behind it, because there is none',
+        isset($i1Conf[0]) && array_key_exists('hold_id', $i1Conf[0]) && $i1Conf[0]['hold_id'] === null);
+    check('ical import: ...and no whole-villa block reached the calendar',
+        $wholeVillaBlocks($cV3, $I_CI, $I_CO) === 0);
+
+    // The scheduler runs this hourly. A second pass must add nothing.
+    $r2 = ical_import_event($feed3, $I_CI, $I_CO, 'Airbnb (Not available)');
+    check('ical import: a second pass over the same event is still a skip',
+        $r2 === 'skipped');
+    check('ical import: ...and does NOT open a second conflict',
+        count($pendingConflicts($cV3, $I_CI, $I_CO)) === 1);
+
+    // The ordinary path on a clean villa, imported then re-imported: the block
+    // the importer wrote itself must never come back as a conflict.
+    $J_CI = '2097-09-01';
+    $J_CO = '2097-09-04';
+    $feed4 = $mkFeed($cV4);
+    $j1 = ical_import_event($feed4, $J_CI, $J_CO, 'Booking.com CLOSED');
+    $j2 = ical_import_event($feed4, $J_CI, $J_CO, 'Booking.com CLOSED');
+    check('ical import: a clean villa imports once, then skips',
+        $j1 === 'imported' && $j2 === 'skipped');
+    check('ical import: ...re-running raises no conflict against the importer\'s own block',
+        $pendingConflicts($cV4, $J_CI, $J_CO) === []);
+    check('ical import: ...and exactly one block exists afterwards',
+        $blocksBetween($cV4, $J_CI, $J_CO) === 1);
+
+    // A live hold is still caught the way it always was — keyed to the hold.
+    $H_CI = '2097-10-01';
+    $H_CO = '2097-10-04';
+    $hHold = $mkHeldComponents($cV4, $H_CI, $H_CO, ['bunk']);
+    $r3 = ical_import_event($feed4, $H_CI, $H_CO, 'Airbnb (Not available)');
+    $hConf = $pendingConflicts($cV4, $H_CI, $H_CO);
+    check('ical import: a live hold still produces the hold-keyed conflict, unchanged',
+        $r3 === 'skipped' && count($hConf) === 1
+        && (int)($hConf[0]['hold_id'] ?? 0) === $hHold['hold']);
+
     // ── Every other property: byte-identical ──────────────────────────────
     if (!$otherUnitRow) {
         echo "SKIP  conflicts/ical: no active unit at another property\n";
@@ -1785,6 +1857,16 @@ try {
         check('other property: ...and the OTA block was written',
             $blocksBetween($oU, '2097-06-02', '2097-06-05') === 1);
 
+        // …and so is an import that overlaps one.
+        $mkBlock($oU, '2097-11-01', '2097-11-10', null, 'booked');
+        $oFeed = $mkFeed($oU);
+        check('other property: an OTA import over an existing block still imports',
+            ical_import_event($oFeed, '2097-11-02', '2097-11-05', 'Airbnb (Not available)') === 'imported');
+        check('other property: ...raising no conflict',
+            $pendingConflicts($oU, '2097-11-02', '2097-11-05') === []);
+        check('other property: ...and a re-run is still a plain skip',
+            ical_import_event($oFeed, '2097-11-02', '2097-11-05', 'Airbnb (Not available)') === 'skipped'
+            && $pendingConflicts($oU, '2097-11-02', '2097-11-05') === []);
     }
 
 } finally {
