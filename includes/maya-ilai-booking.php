@@ -292,13 +292,22 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
    * comboUnits/comboDouble/comboBunk so both sides compute this identically; the
    * server remains authoritative, since the endpoint is public.
    */
-  function livingCap() {
-    var p = expand();
+  /**
+   * How many living rooms an expanded selection is entitled to. ONE definition,
+   * used by both the standalone stepper and the per-row caps — the strict and
+   * relaxed forms were briefly duplicated here, and the copy that was missed
+   * silently stopped a second One-Bedroom Suite from being sellable.
+   */
+  function livingAllowance(p) {
     var looseDouble = Math.max(0, p.qtyDouble - p.comboDouble);
     var looseBunk   = Math.max(0, p.qtyBunk   - p.comboBunk);
-    var allowed = p.comboUnits
+    return p.comboUnits
       + Math.max(Math.ceil(looseDouble / rules.doublePerVilla), looseBunk);
-    return Math.max(0, allowed - p.qtyLiving);
+  }
+
+  function livingCap() {
+    var p = expand();
+    return Math.max(0, livingAllowance(p) - p.qtyLiving);
   }
 
   /**
@@ -308,9 +317,9 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
    * separately by syncLiving(), which is why a suite can absorb one you had
    * added by hand — it comes with its own.
    *
-   * NOTE this is what stops a 2nd One-Bedroom Suite: the stated allowance packs
-   * doubles 2-per-villa, so 2 doubles entitle 1 living room while two suites need
-   * two. Enforced as specified rather than relaxed here — see the test file.
+   * It asks "would one MORE of this row still be valid?" rather than "is there
+   * spare allowance right now" — adding a suite brings its own villa as well as
+   * its own living room, so the two cancel and a second suite must stay offerable.
    */
   function syncRowCaps() {
     rows.forEach(function (r) {
@@ -321,7 +330,7 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
       s.qty = keep + 1;
       var p = expand();
       s.qty = keep;
-      plus.disabled = p.qtyLiving > Math.max(Math.ceil(p.qtyDouble / rules.doublePerVilla), p.qtyBunk);
+      plus.disabled = p.qtyLiving > livingAllowance(p);
     });
   }
 
