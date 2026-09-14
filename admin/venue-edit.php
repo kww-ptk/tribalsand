@@ -103,6 +103,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $depCur = strtoupper(preg_replace('/[^A-Za-z]/', '', (string)($_POST['deposit_currency'] ?? 'USD')));
         if ($depCur === '') $depCur = 'USD';
 
+        // Maya Ilai only. Clamped server-side: the field is a number input, and a
+        // posted value above 8 would ring-fence every villa and silently take the
+        // component products off sale.
+        if (($venue['slug'] ?? '') === 'maya_ilai' && isset($_POST['maya_ilai_reserved_villas'])) {
+            set_setting('maya_ilai_reserved_villas',
+                (string) max(0, min(8, (int)$_POST['maya_ilai_reserved_villas'])));
+        }
+
         // Booking-flow add-ons master switch for this property.
         $upsOn = upsells_supported() ? isset($_POST['upsell_enabled']) : null;
 
@@ -365,6 +373,17 @@ include __DIR__ . '/_layout.php';
               <option value="<?= e($__dcur) ?>" selected><?= e($__dcur) ?></option>
               <?php endif; ?>
             </select>
+          </div>
+        </div>
+        <?php endif; ?>
+
+        <?php if (($venue['slug'] ?? '') === 'maya_ilai'): ?>
+        <div class="form-row">
+          <div class="field">
+            <label>Villas reserved for whole-villa sales <span class="text-muted">(of 8)</span></label>
+            <input type="number" name="maya_ilai_reserved_villas" min="0" max="8" step="1"
+                   value="<?= e(setting('maya_ilai_reserved_villas', '2')) ?>">
+            <span class="field-hint">Held back from room-by-room bookings so a group can always book a whole villa. These are the last N villas by number, so changing this never reshuffles which villas were already reserved.</span>
           </div>
         </div>
         <?php endif; ?>
