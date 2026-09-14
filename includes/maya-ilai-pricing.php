@@ -138,6 +138,158 @@ function maya_ilai_group_discount(array $cfg, int $guests, int $nights): float {
     return $best;
 }
 
+/**
+ * The named combination products the property sells.
+ *
+ * These are PRESENTATION ONLY — each is a bag of the primitives the tool already
+ * prices, and every surface expands one into `parts` before quoting. There is no
+ * combination rate and no second summation: with the shipped rates each of these
+ * prices exactly as the sum of its parts (350+400, 350+150, 350+150+400,
+ * 350+350+400), which is why they can be offered by name without teaching
+ * maya_ilai_quote() anything new.
+ *
+ * The whole villa is deliberately NOT here. It is $80 cheaper than its parts
+ * (2 doubles + bunk + living = 1250 vs 1170) — that whole-villa saving is why it
+ * exists as its own primitive with its own rate. Leave it a primitive.
+ */
+function maya_ilai_combos(): array {
+    return [
+        ['key' => 'One-Bedroom Suite',
+         'parts' => ['double' => 1, 'living' => 1],
+         'desc'  => 'Double bedroom with its own living room + kitchen'],
+        ['key' => 'Two-Bedroom Family Room',
+         'parts' => ['double' => 1, 'bunk' => 1],
+         'desc'  => 'Double bedroom + bunk room'],
+        ['key' => 'Two-Bedroom Family Suite',
+         'parts' => ['double' => 1, 'bunk' => 1, 'living' => 1],
+         'desc'  => 'Double bedroom + bunk room, with living room + kitchen'],
+        ['key' => 'Two-Bedroom Suite',
+         'parts' => ['double' => 2, 'living' => 1],
+         'desc'  => 'Two double bedrooms with living room + kitchen'],
+    ];
+}
+
+/** Nightly price of a combination = the sum of its parts at the live rates. */
+function maya_ilai_combo_rate(array $cfg, array $parts, string $season = 'high'): float {
+    $sum = 0.0;
+    foreach ($parts as $k => $qty) $sum += maya_ilai_rate($cfg, $k, $season) * (int)$qty;
+    return $sum;
+}
+
+/**
+ * Occupancy of a combination, DERIVED from its parts' own rules — never a
+ * hardcoded table, so editing bunkIncluded/bunkMax in admin moves the products
+ * with it. `min` is one guest per bedroom, which is what maya_ilai_quote()'s
+ * own per-room validation demands.
+ */
+function maya_ilai_combo_occupancy(array $cfg, array $parts): array {
+    $d = (int)($parts['double'] ?? 0);
+    $b = (int)($parts['bunk'] ?? 0);
+    return [
+        'min'      => $d + $b,
+        'included' => $d * 2 + $b * (int)$cfg['rules']['bunkIncluded'],
+        'max'      => $d * 2 + $b * (int)$cfg['rules']['bunkMax'],
+    ];
+}
+
+/**
+ * Is a combination still honest to offer at the live rates?
+ *
+ * Every combination is a strict subset of a whole villa (2 doubles + bunk +
+ * living). If someone edits the rates until a subset costs AT LEAST the whole
+ * villa, the product is dominated — a guest would pay the same or more for
+ * strictly less — so the surface drops it rather than quote it. The price itself
+ * can never drift, because it is summed from the same rates that price the
+ * expansion; this guard is only about a combination that has stopped making
+ * sense as a product.
+ */
+function maya_ilai_combo_offerable(array $cfg, array $parts, string $season = 'high'): bool {
+    $villa = ['double' => 2, 'bunk' => 1, 'living' => 1];
+    $subset = true;
+    foreach ($parts as $k => $qty) if ((int)$qty > (int)($villa[$k] ?? 0)) { $subset = false; break; }
+    if (!$subset) return true;
+    return maya_ilai_combo_rate($cfg, $parts, $season) < maya_ilai_rate($cfg, 'villa', $season);
+}
+
+/**
+ * Split a combination's guests across its bedrooms the way the tool charges for
+ * them: one guest per bedroom first (the tool rejects an empty selected room),
+ * then each double filled to 2, then the remainder into the bunk rooms up to
+ * bunkMax. The supplement then falls out of maya_ilai_quote()'s own
+ * max(0, guestBunk - bunk*bunkIncluded) * bunkExtra, unchanged.
+ *
+ * The leading one-per-bedroom seed is load-bearing: filling doubles first alone
+ * would put a 2-guest Family Room entirely in the double and leave the bunk room
+ * at zero, which the tool rejects. At every guest count where the plain rule is
+ * valid the two agree.
+ */
+function maya_ilai_split_guests(array $cfg, array $parts, int $guests): array {
+    $d = (int)($parts['double'] ?? 0);
+    $b = (int)($parts['bunk'] ?? 0);
+    $left = max(0, $guests);
+
+    // NB: plain min() against the running $left — an arrow fn would capture
+    // $left by value and hand every step the untouched original.
+    $gd = min($d, $left); $left -= $gd;                                    // one per double
+    $gb = min($b, $left); $left -= $gb;                                    // one per bunk room
+    $fill = min($d * 2 - $gd, $left); $gd += $fill; $left -= $fill;        // doubles to 2
+    $gb += min($b * (int)$cfg['rules']['bunkMax'] - $gb, $left);           // remainder into bunks
+
+    return ['double' => $gd, 'bunk' => $gb];
+}
+
+/**
+ * Expand a selection that names combinations into one of pure primitives.
+ *
+ * `$sel['combos']` is a map of combination key → ['qty'=>n, 'guests'=>g]; its
+ * quantities and split guests are ADDED to any primitives already in $sel. This
+ * is the reference expansion the booking configurator's JS mirrors — the server
+ * only ever prices primitives, so maya_ilai_quote() needs no knowledge of it.
+ */
+function maya_ilai_expand_combos(array $sel, ?array $cfg = null): array {
+    $cfg = $cfg ?: maya_ilai_pricing_get();
+    $combos = $sel['combos'] ?? [];
+    unset($sel['combos']);
+    if (!is_array($combos) || !$combos) return $sel;
+
+    $byKey = [];
+    foreach (maya_ilai_combos() as $c) $byKey[$c['key']] = $c;
+
+    foreach ($combos as $key => $pick) {
+        if (!isset($byKey[$key])) continue;
+        $qty = max(0, (int)($pick['qty'] ?? 0));
+        if (!$qty) continue;
+        $parts = $byKey[$key]['parts'];
+
+        // n copies pool into one set of parts — the tool only ever sees totals.
+        $pooled = [];
+        foreach ($parts as $k => $v) $pooled[$k] = (int)$v * $qty;
+        $occ = maya_ilai_combo_occupancy($cfg, $pooled);
+        $guests = max($occ['min'], min($occ['max'], (int)($pick['guests'] ?? $occ['included'])));
+        $split = maya_ilai_split_guests($cfg, $pooled, $guests);
+
+        $sel['qtyDouble'] = (int)($sel['qtyDouble'] ?? 0) + ($pooled['double'] ?? 0);
+        $sel['qtyBunk']   = (int)($sel['qtyBunk']   ?? 0) + ($pooled['bunk']   ?? 0);
+        $sel['qtyLiving'] = (int)($sel['qtyLiving'] ?? 0) + ($pooled['living'] ?? 0);
+        $sel['guestDouble'] = (int)($sel['guestDouble'] ?? 0) + $split['double'];
+        $sel['guestBunk']   = (int)($sel['guestBunk']   ?? 0) + $split['bunk'];
+    }
+    return $sel;
+}
+
+/**
+ * How many living rooms a selection's COMPONENT bedrooms entitle it to.
+ *
+ * A villa has exactly one living room / kitchen, and you cannot rent one in a
+ * villa you have no bedroom in. Whole villas are excluded on purpose: a whole
+ * villa already includes its living room and is priced accordingly, so it lends
+ * no allowance to a separately-added one.
+ */
+function maya_ilai_living_allowance(array $cfg, int $doubles, int $bunks): int {
+    $perVilla = max(1, (int)$cfg['inventory']['doublePerVilla']);
+    return max((int)ceil(max(0, $doubles) / $perVilla), max(0, $bunks));
+}
+
 /** Availability band matching a units-available count. */
 function maya_ilai_availability_band(array $cfg, int $units): array {
     foreach ($cfg['availability'] as $b) {
@@ -165,7 +317,7 @@ function maya_ilai_quote(array $sel, ?array $cfg = null): array {
 
     $season  = ($sel['season'] ?? 'high') === 'standard' ? 'standard' : 'high';
     $nights  = max(1, (int)($sel['nights'] ?? 1));
-    $program = in_array(($sel['program'] ?? 'group'), ['group','availability','none'], true) ? $sel['program'] : 'group';
+    $program = in_array(($sel['program'] ?? 'group'), ['group','availability','none'], true) ? ($sel['program'] ?? 'group') : 'group';
 
     $q = ['double'=>$n('qtyDouble'),'bunk'=>$n('qtyBunk'),'studio'=>$n('qtyStudio'),'villa'=>$n('qtyVilla'),'living'=>$n('qtyLiving')];
     $g = ['double'=>$n('guestDouble'),'bunk'=>$n('guestBunk'),'studio'=>$n('guestStudio'),'villa'=>$n('guestVilla')];
@@ -203,6 +355,12 @@ function maya_ilai_quote(array $sel, ?array $cfg = null): array {
     if ($g['bunk']  > $q['bunk']*(int)$r['bunkMax']  || $g['bunk']  < $q['bunk'])  $errors[] = "Bunk guests must be 1–{$r['bunkMax']} per selected room.";
     if ($g['studio']> $q['studio']*2 || $g['studio']< $q['studio']) $errors[] = 'Studio guests must be 1–2 per selected studio.';
     if ($g['villa'] > $q['villa']*(int)$r['villaMax'] || $g['villa'] < $q['villa']) $errors[] = "Villa guests must be 1–{$r['villaMax']} per selected villa.";
+    // A villa has ONE living room, and it only comes with a bedroom in that villa.
+    // Distinct from the inventory check below: that one asks "do we have enough
+    // villas", this asks "is this living room attached to anything at all". A
+    // living room with no bedrooms passes the inventory check happily.
+    $livingAllowance = maya_ilai_living_allowance($cfg, $q['double'], $q['bunk']);
+    if ($q['living'] > $livingAllowance) $errors[] = "A living room comes with a villa bedroom; {$q['living']} selected, only {$livingAllowance} available.";
     $requiredVillas = max((int)ceil($q['double'] / max(1,(int)$cfg['inventory']['doublePerVilla'])), $q['bunk'], $q['living']);
     $physicalVillas = $q['villa'] + $requiredVillas;
     if ($physicalVillas > (int)$cfg['inventory']['villas']) $errors[] = "Needs {$physicalVillas} villas; only {$cfg['inventory']['villas']} available.";
@@ -215,6 +373,7 @@ function maya_ilai_quote(array $sel, ?array $cfg = null): array {
         'guests'=>$guests,'capacity'=>$capacity,'base'=>round($base,2),'supplements'=>round($supplements,2),
         'adjustment'=>$adjustment,'adjustmentLabel'=>$adjustmentLabel,'nightly'=>round($nightly,2),
         'eco'=>round($eco,2),'total'=>round($total,2),'sold'=>$sold,'errors'=>$errors,
+        'livingAllowance'=>$livingAllowance,
         'currency'=>'USD',
     ];
 }
