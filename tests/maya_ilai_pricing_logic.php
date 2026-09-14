@@ -767,16 +767,18 @@ if ($photoTx) {
         }
         check('the eight Maya Ilai products exist as rooms', count($roomIds) === count($slugMap));
 
-        /** The photo on the offer whose dominant product is $key, for a party of 7. */
-        $photoFor = function (string $key) use ($D): ?array {
+        /** The photographs on the offer whose dominant product is $key, party of 7. */
+        $photosFor = function (string $key) use ($D): array {
             maya_ilai_photo_index(true);                       // the seed just changed
             foreach (maya_ilai_suggest(7, 3, $D, 8) as $o) {
-                if (maya_ilai_dominant_product($o['units'], $D) === $key) return $o['photo'];
+                if (maya_ilai_dominant_product($o['units'], $D) === $key) return $o['photos'];
             }
-            return ['url' => '(no such offer)', 'alt' => '', 'source' => ''];
+            return [['url' => '(no such offer)', 'alt' => '', 'source' => '']];
         };
+        /** Just the URLs, for asserting ORDER rather than one winner. */
+        $urls = fn(array $photos) => array_column($photos, 'url');
 
-        // Step 3 — nothing anywhere. The card gets null, and still quotes.
+        // Step 3 — nothing anywhere. The card gets an empty list, and still quotes.
         if ($roomIds) {
             db_query('DELETE FROM room_images WHERE room_id IN (' . implode(',', array_map('intval', $roomIds)) . ')');
         }
@@ -785,49 +787,91 @@ if ($photoTx) {
         $bare = maya_ilai_suggest(7, 3, $D, 8);
         check('with no photograph anywhere every offer still quotes and still returns',
             count($bare) >= 1 && !array_filter($bare, fn($o) => $o['quote']['errors'] !== []));
-        check('with no photograph anywhere the photo field is null, never a broken value',
-            !array_filter($bare, fn($o) => $o['photo'] !== null));
+        check('with no photograph anywhere the photos list is empty, never a broken value',
+            !array_filter($bare, fn($o) => $o['photos'] !== []));
 
-        // Step 2 — the venue's own photograph, when the product has none. Its alt
-        // text is the venue's, never the product's: that picture is the property.
+        // Step 2 — the venue's own photographs, when the product has none. ALL of
+        // them now, in the same hero-first order, so the fallback is a slider too.
+        // Their alt text is the venue's, never the product's: those are the property.
         db_query("INSERT INTO venue_images (venue_id, filename, alt_text, is_hero, sort_order)
                   VALUES (:v, 'venue-second.jpg', 'Second', FALSE, 3),
+                         (:v, 'venue-third.jpg',  NULL,     FALSE, 5),
                          (:v, 'venue-hero.jpg',   'Maya Ilai', TRUE, 9)",
                  [':v' => MAYA_ILAI_VENUE_ID]);
-        $venuePhoto = $photoFor('Two-Bedroom Family Room');
-        check('a product with no photograph falls back to the venue',
-            $venuePhoto !== null && $venuePhoto['source'] === 'venue'
-            && $venuePhoto['url'] === storage_url('venue-hero.jpg'));
+        $venuePhotos = $photosFor('Two-Bedroom Family Room');
+        check('a product with no photograph falls back to ALL of the venue\'s, hero first',
+            $urls($venuePhotos) === [storage_url('venue-hero.jpg'),
+                                     storage_url('venue-second.jpg'),
+                                     storage_url('venue-third.jpg')]
+            && array_column($venuePhotos, 'source') === ['venue', 'venue', 'venue']);
         check('the venue fallback is labelled with the venue, not with the product',
-            $venuePhoto['alt'] === 'Maya Ilai');
+            array_column($venuePhotos, 'alt') === ['Maya Ilai', 'Second', 'Maya Ilai']);
 
         // Step 1 — the dominant product's own room wins, and within that room the
-        // HERO image wins over a lower sort order.
+        // HERO image leads, then sort order. Eight seeded, six returned: the cap
+        // is what stops a forty-photograph room filling a keystroke's payload.
         db_query("INSERT INTO room_images (room_id, filename, alt_text, is_hero, sort_order)
-                  VALUES (:r, 'family-first.jpg', 'First by order', FALSE, 0),
-                         (:r, 'family-hero.jpg',  'The family room', TRUE, 7)",
+                  VALUES (:r, 'family-a.jpg', 'First by order', FALSE, 0),
+                         (:r, 'family-b.jpg', NULL,   FALSE, 1),
+                         (:r, 'family-c.jpg', 'Sea',  FALSE, 2),
+                         (:r, 'family-d.jpg', NULL,   FALSE, 3),
+                         (:r, 'family-e.jpg', NULL,   FALSE, 4),
+                         (:r, 'family-f.jpg', NULL,   FALSE, 5),
+                         (:r, 'family-g.jpg', NULL,   FALSE, 6),
+                         (:r, 'family-hero.jpg', 'The family room', TRUE, 7)",
                  [':r' => $roomIds['maya-ilai-family-room']]);
-        $roomPhoto = $photoFor('Two-Bedroom Family Room');
-        check('a configuration resolves to its dominant product\'s room photograph',
-            $roomPhoto !== null && $roomPhoto['source'] === 'room'
-            && $roomPhoto['url'] === storage_url('family-hero.jpg')
-            && $roomPhoto['alt'] === 'The family room');
+        $roomPhotos = $photosFor('Two-Bedroom Family Room');
+        check('a configuration resolves to its dominant product\'s room photographs',
+            count($roomPhotos) && $roomPhotos[0]['source'] === 'room'
+            && $roomPhotos[0]['url'] === storage_url('family-hero.jpg')
+            && $roomPhotos[0]['alt'] === 'The family room');
+        check('the room\'s photographs come back hero first, then by sort order',
+            $urls($roomPhotos) === array_map('storage_url',
+                ['family-hero.jpg', 'family-a.jpg', 'family-b.jpg',
+                 'family-c.jpg', 'family-d.jpg', 'family-e.jpg']));
+        check('eight photographs on a room yield ' . MAYA_ILAI_PHOTO_MAX . ' on the card — the cap holds',
+            count($roomPhotos) === MAYA_ILAI_PHOTO_MAX);
+        check('a room photograph with no alt text is labelled with the room name',
+            $roomPhotos[2]['alt'] === 'Two-Bedroom Family Room');
+        // The room set and the venue set never blend: a card is showing the room
+        // or showing the property, and a slider that mixed them would caption a
+        // compound shot with a room it does not show.
+        check('a room with photographs takes none of the venue\'s',
+            !array_intersect($urls($roomPhotos), $urls($venuePhotos)));
+        // A room the migration has not created yet is a FALLBACK, not an error —
+        // six of the eight products are in that state on production today. Proved
+        // by hiding a room that DOES have photographs: the slug stops resolving,
+        // so the six images above stop reaching the card and the venue set does
+        // instead. Renamed rather than deleted, so nothing referencing the row is
+        // disturbed, and put straight back.
+        db_query("UPDATE rooms SET slug = 'maya-ilai-family-room-absent' WHERE slug = 'maya-ilai-family-room'");
+        $absent = $photosFor('Two-Bedroom Family Room');
+        check('a product whose room does not exist falls back to the venue, quietly',
+            $urls($absent) === $urls($venuePhotos));
+        db_query("UPDATE rooms SET slug = 'maya-ilai-family-room' WHERE slug = 'maya-ilai-family-room-absent'");
+        check('and the room\'s own photographs come back once the slug resolves again',
+            $urls($photosFor('Two-Bedroom Family Room')) === $urls($roomPhotos));
+
         // …and ONLY that configuration. Its neighbours still have no photo of
         // their own, so they are still on the venue fallback.
-        $neighbour = $photoFor('Three-Bedroom Villa');
-        check('one product\'s photograph is not borrowed by another configuration',
-            $neighbour !== null && $neighbour['source'] === 'venue');
+        $neighbour = $photosFor('Three-Bedroom Villa');
+        check('one product\'s photographs are not borrowed by another configuration',
+            count($neighbour) && $neighbour[0]['source'] === 'venue');
 
-        // A room image with no alt text falls back to the room's name.
+        // A room with exactly ONE image yields exactly one — the card renders it
+        // as it always did, with no arrows and no counter over it.
         db_query("INSERT INTO room_images (room_id, filename, alt_text, is_hero, sort_order)
                   VALUES (:r, 'villa-only.jpg', NULL, FALSE, 0)",
                  [':r' => $roomIds['maya-ilai-villa']]);
-        $noAlt = $photoFor('Three-Bedroom Villa');
-        check('a photograph with no alt text is labelled with the room name',
-            $noAlt !== null && $noAlt['source'] === 'room' && $noAlt['alt'] === 'Three-Bedroom Villa');
+        $one = $photosFor('Three-Bedroom Villa');
+        check('a room with one photograph yields exactly one, so the card gets no slider chrome',
+            count($one) === 1 && $one[0]['source'] === 'room'
+            && $one[0]['url'] === storage_url('villa-only.jpg')
+            && $one[0]['alt'] === 'Three-Bedroom Villa');
 
-        // The cost. One query builds the whole library; the offers are then
-        // resolved from it, so the count does not move with how many there are.
+        // The cost. One query builds the whole library — every image of every
+        // candidate room AND the venue's — and the offers are then resolved from
+        // it, so the count does not move with how many offers or images there are.
         $before = maya_ilai_photo_query_count();
         maya_ilai_photo_index(true);
         $afterIndex = maya_ilai_photo_query_count();
@@ -838,14 +882,21 @@ if ($photoTx) {
             count($many) >= 2 && $afterOffers === $afterIndex);
         check('and a second search re-uses the memoised library',
             maya_ilai_suggest(9, 3, $D, 8) && maya_ilai_photo_query_count() === $afterIndex);
+        // The sliders really are populated — a one-query assertion over empty
+        // lists would prove nothing.
+        check('those offers carry real slider sets, not one photograph each',
+            (bool)array_filter($many, fn($o) => count($o['photos']) > 1));
     } finally {
         db()->rollBack();
         maya_ilai_photo_index(true);   // drop the memo built from seeded rows
     }
-    // Belt and braces: the seeded rows are really gone.
+    // Belt and braces: the seeded rows are really gone, and the room this block
+    // renamed to prove the missing-room fallback is back under its own slug.
     $left = (int) db_query("SELECT COUNT(*) FROM room_images WHERE filename LIKE 'family-%' OR filename LIKE 'villa-only%'")->fetchColumn();
-    $venueLeft = (int) db_query("SELECT COUNT(*) FROM venue_images WHERE filename LIKE 'venue-hero%' OR filename LIKE 'venue-second%'")->fetchColumn();
+    $venueLeft = (int) db_query("SELECT COUNT(*) FROM venue_images WHERE filename LIKE 'venue-hero%' OR filename LIKE 'venue-second%' OR filename LIKE 'venue-third%'")->fetchColumn();
+    $renamed = (int) db_query("SELECT COUNT(*) FROM rooms WHERE slug = 'maya-ilai-family-room-absent'")->fetchColumn();
     check('the seeded photograph rows were rolled back', $left === 0 && $venueLeft === 0);
+    check('the renamed room was rolled back too', $renamed === 0);
 }
 
 echo ($failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n");

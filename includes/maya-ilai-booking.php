@@ -233,15 +233,36 @@ $mibMaxNights = 30;
      placeholder standing in for a picture nobody has uploaded yet. */
   .mib-off--photo{grid-template-columns:minmax(0,1fr) minmax(0,15rem)}
   .mib-off__fig{margin:0;min-width:0}
-  /* A fixed ratio, reserved before the file arrives, so the list does not jump
-     as the photographs load in. */
-  .mib-off__fig img{display:block;width:100%;aspect-ratio:4/3;object-fit:cover;background:var(--sand-faint,#FAF6EE)}
+  /* A fixed ratio on the FRAME, reserved before any file arrives, so the list
+     does not jump as the photographs load in — and does not jump again as the
+     guest slides between them. The slides stack inside it absolutely, so one
+     photograph and six occupy exactly the same box. */
+  .mib-slides{position:relative;aspect-ratio:4/3;overflow:hidden;background:var(--sand-faint,#FAF6EE)}
+  .mib-slide{position:absolute;inset:0;opacity:0;visibility:hidden;transition:opacity .28s ease}
+  .mib-slide.on{opacity:1;visibility:visible}
+  .mib-slide img{display:block;width:100%;height:100%;object-fit:cover}
+  @media(prefers-reduced-motion:reduce){.mib-slide{transition:none}}
+  /* The chrome. It exists ONLY on a figure with more than one photograph —
+     `.mib-slides--one` is how a single image keeps rendering exactly as it did,
+     with nothing laid over it. */
+  .mib-slides--one .mib-slide__nav,.mib-slides--one .mib-slide__count{display:none}
+  .mib-slide__nav{position:absolute;top:50%;transform:translateY(-50%);width:34px;height:34px;
+    display:flex;align-items:center;justify-content:center;padding:0;border:none;border-radius:50%;
+    background:rgba(16,47,58,.55);color:#fff;font:400 1.3rem/1 'Jost',sans-serif;cursor:pointer;
+    -webkit-tap-highlight-color:transparent}
+  .mib-slide__nav:hover{background:rgba(16,47,58,.82)}
+  .mib-slide__nav:focus-visible{outline:2px solid var(--sand-lt,#D4B07A);outline-offset:2px}
+  .mib-slide__nav--prev{left:.5rem}
+  .mib-slide__nav--next{right:.5rem}
+  .mib-slide__count{position:absolute;right:.5rem;bottom:.5rem;margin:0;padding:.12rem .45rem;
+    background:rgba(16,47,58,.55);color:#fff;font-size:.66rem;letter-spacing:.08em;
+    font-variant-numeric:tabular-nums;pointer-events:none}
   /* Narrow: the photo goes ABOVE the details, full width and wider-cropped. A
      thumbnail squeezed beside a price is worse than no photograph at all. */
   @media(max-width:700px){
     .mib-off--photo{grid-template-columns:minmax(0,1fr)}
     .mib-off__fig{order:-1}
-    .mib-off__fig img{aspect-ratio:16/9}
+    .mib-slides{aspect-ratio:16/9}
   }
   .mib-off--top{border-color:var(--sand,#B8965A);box-shadow:0 6px 26px rgba(184,150,90,.16)}
   /* The cheapest stay is never the lead, so it gets its own quieter accent —
@@ -876,6 +897,100 @@ $mibMaxNights = 30;
   }
   bigStep('mibPGuests', 'guests', 1, maxGuests);
 
+  /* ── The photograph slider ────────────────────────────────────────────────
+   *
+   * One figure per card, whatever the card is holding. Four things it rests on:
+   *
+   *  - ONLY THE FIRST SLIDE CARRIES A src. The rest hold data-src and are
+   *    hydrated the first time they are shown, so five cards of six photographs
+   *    each open as five requests, not thirty.
+   *  - The arrows are REAL BUTTONS, so Enter and Space work for nothing and the
+   *    popup's focus trap picks them up without being told they exist. That is
+   *    also why the position is a COUNTER and not a row of dots: two tab stops
+   *    per card, rather than one per photograph inside a trapped dialog.
+   *  - ONE photograph renders exactly as it did before — same frame, same
+   *    ratio, no chrome laid over it (.mib-slides--one). Zero photographs never
+   *    reach here at all: no figure, and the card is one column.
+   *  - A slide whose image fails is REMOVED, not blanked. On a local server
+   *    every CDN image 404s, so that is the ORDINARY path here: the slider
+   *    shrinks photograph by photograph, loses its chrome when one is left, and
+   *    when the last one goes the figure goes with it.
+   */
+  function figureHtml(photos, label) {
+    var many = photos.length > 1;
+    var slides = photos.map(function (p, n) {
+      return '<div class="mib-slide' + (n === 0 ? ' on' : '') + '">'
+        + '<img alt="' + esc(p.alt || label) + '" decoding="async" '
+        + (n === 0 ? 'src="' + esc(p.url) + '" loading="eager"'
+                   : 'data-src="' + esc(p.url) + '" loading="lazy"')
+        + '></div>';
+    }).join('');
+    return '<figure class="mib-off__fig"' + (many ? ' aria-label="Photographs of this stay"' : '') + '>'
+      + '<div class="mib-slides' + (many ? '' : ' mib-slides--one') + '" data-i="0">' + slides
+      + '<button type="button" class="mib-slide__nav mib-slide__nav--prev" data-mib-slide="-1" aria-label="Previous photograph">&#8249;</button>'
+      + '<button type="button" class="mib-slide__nav mib-slide__nav--next" data-mib-slide="1" aria-label="Next photograph">&#8250;</button>'
+      + '<p class="mib-slide__count" aria-live="polite">1 / ' + photos.length + '</p>'
+      + '</div></figure>';
+  }
+
+  /** Paint one slider from its own state: clamp the index, show it, say where. */
+  function syncSlides(box) {
+    var slides = box.querySelectorAll('.mib-slide');
+    if (!slides.length) return 0;
+    var i = parseInt(box.dataset.i, 10) || 0;
+    if (i < 0) i = slides.length - 1;
+    if (i >= slides.length) i = 0;
+    box.dataset.i = i;
+    for (var n = 0; n < slides.length; n++) slides[n].classList.toggle('on', n === i);
+    var img = slides[i].querySelector('img');          // hydrate on demand, once
+    if (img && !img.getAttribute('src') && img.dataset.src) img.src = img.dataset.src;
+    box.classList.toggle('mib-slides--one', slides.length < 2);
+    var c = box.querySelector('.mib-slide__count');
+    if (c) c.textContent = (i + 1) + ' / ' + slides.length;
+    return slides.length;
+  }
+
+  function slideBy(box, dir) {
+    box.dataset.i = (parseInt(box.dataset.i, 10) || 0) + dir;   // wraps in syncSlides
+    syncSlides(box);
+  }
+
+  // Arrows: one delegated handler for every card's slider.
+  offersEl.addEventListener('click', function (e) {
+    var b = e.target.closest ? e.target.closest('[data-mib-slide]') : null;
+    if (!b) return;
+    var box = b.closest('.mib-slides');
+    if (box) slideBy(box, parseInt(b.dataset.mibSlide, 10) || 1);
+  });
+
+  // ← / → while an arrow has focus. Only ever fires inside a slider, so it
+  // cannot swallow a key the dialog or the datepicker wanted.
+  offersEl.addEventListener('keydown', function (e) {
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    var box = e.target.closest ? e.target.closest('.mib-slides') : null;
+    if (!box || box.classList.contains('mib-slides--one')) return;
+    e.preventDefault();
+    slideBy(box, e.key === 'ArrowLeft' ? -1 : 1);
+  });
+
+  // Swipe. Both listeners are passive and never preventDefault: a vertical drag
+  // has to stay the guest scrolling the popup past the card, so the gesture is
+  // judged on release and only a decisively horizontal one counts.
+  var swipe = null;
+  offersEl.addEventListener('touchstart', function (e) {
+    var box = e.target.closest ? e.target.closest('.mib-slides') : null;
+    if (!box || box.classList.contains('mib-slides--one') || e.touches.length !== 1) { swipe = null; return; }
+    swipe = { box: box, x: e.touches[0].clientX, y: e.touches[0].clientY };
+  }, { passive: true });
+  offersEl.addEventListener('touchend', function (e) {
+    var s = swipe; swipe = null;
+    var t = s && e.changedTouches && e.changedTouches[0];
+    if (!t) return;
+    var dx = t.clientX - s.x, dy = t.clientY - s.y;
+    if (Math.abs(dx) < 40 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    if (document.contains(s.box)) slideBy(s.box, dx < 0 ? 1 : -1);
+  }, { passive: true });
+
   function offerCard(o, i) {
     var q = o.quote;
     var inc = o.units.map(function (u) {
@@ -889,14 +1004,12 @@ $mibMaxNights = 30;
     var cls = 'mib-off'
       + (o.badge === 'pick' || o.badge === 'both' ? ' mib-off--top' : '')
       + (o.badge === 'cheapest' || o.badge === 'both' ? ' mib-off--cheap' : '');
-    // The photograph is the SERVER's call too — which room a configuration is
-    // of, and which of that room's images to show, is resolved in the payload
-    // (maya_ilai_offer_photo). Never guess one here. No photo → no figure, no
-    // --photo class, and the card is the single column it has always been.
-    var photo = (o.photo && o.photo.url)
-      ? '<figure class="mib-off__fig"><img src="' + esc(o.photo.url) + '" alt="' + esc(o.photo.alt || o.label)
-        + '" loading="lazy" decoding="async"></figure>'
-      : '';
+    // The photographs are the SERVER's call too — which room a configuration is
+    // of, and which of that room's images it gets, is resolved in the payload
+    // (maya_ilai_offer_photos). Never guess one here. No photographs → no
+    // figure, no --photo class, and the card is the single column it always was.
+    var photos = (o.photos || []).filter(function (p) { return p && p.url; });
+    var photo = photos.length ? figureHtml(photos, o.label) : '';
     if (photo) cls += ' mib-off--photo';
     return '<article class="' + cls + '" data-offer="' + i + '">'
       + '<div class="mib-off__body">'
@@ -918,7 +1031,9 @@ $mibMaxNights = 30;
   }
 
   /* A photograph that does not load must leave the card looking deliberate, not
-     broken: the figure goes and the card falls back to its single column. The
+     broken. One slide failing takes only that SLIDE out — the slider re-counts,
+     shows a neighbour, and drops its chrome if only one is left; the figure (and
+     the card's second column) go only when the last photograph has gone. The
      `error` event does not bubble, so this listens in the CAPTURE phase — one
      handler for the whole list rather than an inline onerror per image. */
   offersEl.addEventListener('error', function (e) {
@@ -926,6 +1041,12 @@ $mibMaxNights = 30;
     if (!img || img.tagName !== 'IMG') return;
     var fig = img.closest('.mib-off__fig');
     if (!fig) return;
+    var dead = img.closest('.mib-slide');
+    if (dead) dead.remove(); else img.remove();
+    // syncSlides hydrates whatever is now on screen, so a card whose images all
+    // fail walks the list one request at a time and ends with no figure at all.
+    var box = fig.querySelector('.mib-slides');
+    if (box && box.querySelector('.mib-slide')) { syncSlides(box); return; }
     var card = fig.closest('.mib-off');
     fig.remove();
     if (card) card.classList.remove('mib-off--photo');

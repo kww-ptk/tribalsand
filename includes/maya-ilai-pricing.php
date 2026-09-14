@@ -17,6 +17,16 @@ require_once __DIR__ . '/db.php';
 const MAYA_ILAI_VENUE_ID   = 6;               // venues.id for Maya Ilai
 const MAYA_ILAI_SETTING_KEY = 'maya_ilai_pricing';
 
+/**
+ * How many photographs one offer card may carry.
+ *
+ * The cap is about the RESPONSE, not the design: a room the owner has given
+ * forty photographs must not push forty URLs through a payload that is built on
+ * a guest keystroke and re-sent on every change of party or dates. Six is more
+ * than a card is ever swiped through and is a handful of hundred bytes.
+ */
+const MAYA_ILAI_PHOTO_MAX = 6;
+
 /** Feature guard (the settings KV table is core, but stay defensive). */
 function maya_ilai_pricing_supported(): bool {
     static $c = null;
@@ -790,16 +800,22 @@ function maya_ilai_dominant_product(array $units, ?array $cfg = null): ?string {
  *
  * maya_ilai_suggest() runs on a guest keystroke, so the images cannot be looked
  * up per offer per render. The candidate set is FIXED (the eight Maya Ilai
- * rooms plus the venue's own first photo), so the whole library is fetched once
+ * rooms plus the venue's own photographs), so the whole library is fetched once
  * and memoised for the request — the cost is one query whether the search
  * returns one offer or eight, and whether it is called once or twenty times.
+ * That ONE query is load-bearing; tests assert it.
+ *
+ * Each room carries ALL of its images, hero first and then by sort order —
+ * the set the card sliders through, not just the one it used to show. The
+ * per-room list is capped at MAYA_ILAI_PHOTO_MAX in SQL rather than in PHP, so
+ * a forty-photograph room does not travel over the wire to be thrown away.
  *
  * Rooms are not filtered by `is_published`: the pricing tool sells these
  * products regardless of whether the room has a public listing page, so an
- * unpublished room should still contribute its photograph.
+ * unpublished room should still contribute its photographs.
  *
- * Returns ['rooms' => slug => row, 'venue' => row|null]; on ANY failure both
- * are empty and the cards simply carry no photo.
+ * Returns ['rooms' => slug => row[], 'venue' => row[]]; on ANY failure both are
+ * empty and the cards simply carry no photo.
  *
  * @param bool $reload drop the memo (tests seed rows inside a transaction).
  */
@@ -807,15 +823,20 @@ function maya_ilai_photo_index(bool $reload = false): array {
     static $idx = null;
     if ($idx !== null && !$reload) return $idx;
 
-    $idx   = ['rooms' => [], 'venue' => null];
+    $idx   = ['rooms' => [], 'venue' => []];
     $slugs = array_values(maya_ilai_room_slugs());
     $ph = []; $params = [];
     foreach ($slugs as $i => $s) { $ph[] = ":s{$i}"; $params[":s{$i}"] = $s; }
     $params[':vid'] = MAYA_ILAI_VENUE_ID;
+    // Two placeholders for one value: PDO's native (unemulated) prepares do not
+    // let a named parameter appear twice.
+    $params[':cap1'] = MAYA_ILAI_PHOTO_MAX;
+    $params[':cap2'] = MAYA_ILAI_PHOTO_MAX;
 
-    // One statement, two sources: the hero (else first by sort order) image of
-    // each room, and the venue's own first image as the last-resort fallback.
-    // The venue row is tagged with an empty slug so the two are told apart.
+    // One statement, two sources: every image of each room (hero first, then by
+    // sort order), and the venue's own images as the last-resort fallback. The
+    // venue rows are tagged with an empty slug so the two are told apart, and
+    // `rn` carries the order through the UNION so PHP never has to re-sort.
     $sql = "WITH room_pick AS (
                 SELECT r.slug AS slug,
                        i.filename AS filename,
@@ -827,27 +848,28 @@ function maya_ilai_photo_index(bool $reload = false): array {
                 FROM rooms r
                 JOIN room_images i ON i.room_id = r.id
                 WHERE r.slug IN (" . implode(',', $ph) . ")
-            )
-            SELECT slug, filename, alt_text, name FROM room_pick WHERE rn = 1
-            UNION ALL
-            SELECT * FROM (
+            ), venue_pick AS (
                 SELECT ''::text AS slug, v.filename,
-                       COALESCE(v.alt_text, '') AS alt_text, ''::text AS name
+                       COALESCE(v.alt_text, '') AS alt_text, ''::text AS name,
+                       ROW_NUMBER() OVER (ORDER BY COALESCE(v.is_hero, FALSE) DESC,
+                                                   v.sort_order ASC, v.id ASC) AS rn
                 FROM venue_images v
                 WHERE v.venue_id = :vid
-                ORDER BY COALESCE(v.is_hero, FALSE) DESC, v.sort_order ASC, v.id ASC
-                LIMIT 1
-            ) venue_pick";
+            )
+            SELECT slug, filename, alt_text, name, rn FROM room_pick  WHERE rn <= :cap1
+            UNION ALL
+            SELECT slug, filename, alt_text, name, rn FROM venue_pick WHERE rn <= :cap2
+            ORDER BY slug ASC, rn ASC";
 
     try {
         $GLOBALS['__mib_photo_queries'] = (int)($GLOBALS['__mib_photo_queries'] ?? 0) + 1;
         foreach (db_query($sql, $params)->fetchAll() as $row) {
-            if (($row['slug'] ?? '') === '') $idx['venue'] = $row;
-            else                             $idx['rooms'][$row['slug']] = $row;
+            if (($row['slug'] ?? '') === '') $idx['venue'][] = $row;
+            else                             $idx['rooms'][$row['slug']][] = $row;
         }
     } catch (Throwable $e) {
         // No table, no DB, no schema — no photographs. Never a broken quote.
-        $idx = ['rooms' => [], 'venue' => null];
+        $idx = ['rooms' => [], 'venue' => []];
     }
     return $idx;
 }
@@ -858,14 +880,23 @@ function maya_ilai_photo_query_count(): int {
 }
 
 /**
- * The photograph for one offer: ['url','alt','source'], or null for none.
+ * The photographs for one offer: a list of ['url','alt','source'], possibly
+ * empty. Element 0 is the one the card shows first, and is exactly the single
+ * photograph this used to resolve.
  *
  * Resolution order, and nothing else:
- *   1. the dominant product's room — its hero image, else its first by sort order
- *   2. the venue's own first image
- *   3. null — and the card renders single-column, exactly as it did before
+ *   1. the dominant product's room — ALL of its images, hero first, then by
+ *      sort order, capped at MAYA_ILAI_PHOTO_MAX
+ *   2. the venue's own images, same order, same cap
+ *   3. [] — and the card renders single-column, exactly as it did before
  *
- * The alt text is honest about which of those happened. A room's photo is
+ * It is one set or the other, never a blend: a card that reaches the venue
+ * fallback is showing the property, and interleaving a room photograph into
+ * that run would make the slider claim to show a room it does not show. Whether
+ * a room exists at all is not an error either — six of the eight products come
+ * from a migration that is not on production yet, so they simply fall back.
+ *
+ * The alt text is honest about which branch happened. A room's photo is
  * labelled with the room (its own alt text, else the room's name, else the
  * product); the VENUE fallback is labelled with the venue's alt text and never
  * with the product name — that photo is the property, and captioning a general
@@ -873,32 +904,40 @@ function maya_ilai_photo_query_count(): int {
  * not show.
  *
  * ── TO DROP THE VENUE FALLBACK ────────────────────────────────────────────
- * Delete the `$idx['venue']` branch. Cards then carry a photo only once the
- * owner has uploaded one for that product, and show none until then.
+ * Delete the `$idx['venue']` branch. Cards then carry photos only once the
+ * owner has uploaded some for that product, and show none until then.
  */
-function maya_ilai_offer_photo(array $offer, ?array $cfg = null): ?array {
+function maya_ilai_offer_photos(array $offer, ?array $cfg = null): array {
     $key  = maya_ilai_dominant_product($offer['units'] ?? [], $cfg);
     $idx  = maya_ilai_photo_index();
     $slug = $key !== null ? (maya_ilai_room_slugs()[$key] ?? null) : null;
 
-    if ($slug !== null && isset($idx['rooms'][$slug])) {
-        $r   = $idx['rooms'][$slug];
-        $url = storage_url((string)$r['filename']);
-        if ($url !== '') {
-            return ['url'    => $url,
-                    'alt'    => ($r['alt_text'] !== '' ? $r['alt_text'] : ($r['name'] !== '' ? $r['name'] : $key)),
-                    'source' => 'room'];
+    // A row whose file resolves to nothing is dropped rather than shown as a
+    // blank frame — the same instinct as the browser-side error handler.
+    $build = function (array $rows, callable $alt, string $source): array {
+        $out = [];
+        foreach ($rows as $r) {
+            $url = storage_url((string)$r['filename']);
+            if ($url === '') continue;
+            $out[] = ['url' => $url, 'alt' => $alt($r), 'source' => $source];
+            if (count($out) >= MAYA_ILAI_PHOTO_MAX) break;
         }
+        return $out;
+    };
+
+    if ($slug !== null && !empty($idx['rooms'][$slug])) {
+        $photos = $build($idx['rooms'][$slug],
+            fn(array $r) => $r['alt_text'] !== '' ? $r['alt_text']
+                          : ($r['name'] !== '' ? $r['name'] : (string)$key),
+            'room');
+        if ($photos) return $photos;
     }
-    if ($idx['venue']) {
-        $url = storage_url((string)$idx['venue']['filename']);
-        if ($url !== '') {
-            return ['url'    => $url,
-                    'alt'    => ($idx['venue']['alt_text'] !== '' ? $idx['venue']['alt_text'] : 'Maya Ilai'),
-                    'source' => 'venue'];
-        }
+    if (!empty($idx['venue'])) {
+        return $build($idx['venue'],
+            fn(array $r) => $r['alt_text'] !== '' ? $r['alt_text'] : 'Maya Ilai',
+            'venue');
     }
-    return null;
+    return [];
 }
 
 /**
@@ -1082,17 +1121,17 @@ function maya_ilai_suggest(int $guests, int $nights, ?array $cfg = null, int $li
     if ($cheapAt !== 0 && in_array($cheapAt, $take, true)) $order[] = $cheapAt;
     foreach ($take as $i) if (!in_array($i, $order, true)) $order[] = $i;
 
-    // The photograph is resolved HERE, server-side, for the offers that are
+    // The photographs are resolved HERE, server-side, for the offers that are
     // actually returned — the surface renders what it is handed rather than
     // guessing which room a configuration is of. The whole library is one
     // memoised query (maya_ilai_photo_index), so this loop adds no per-offer
-    // cost, and `photo` is null whenever there is nothing to show.
+    // cost, and `photos` is an empty list whenever there is nothing to show.
     $out = [];
     foreach ($order as $slot => $i) {
         $o = $offers[$i];
         unset($o['_units'], $o['_combo']);
         $out[$slot] = $o
-            + ['photo' => maya_ilai_offer_photo($o, $cfg)]
+            + ['photos' => maya_ilai_offer_photos($o, $cfg)]
             + maya_ilai_offer_badge($o, $slot === 0 && $i === 0, $i === $cheapAt);
     }
     return $out;

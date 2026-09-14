@@ -27,12 +27,14 @@ $data = json_decode(file_get_contents('php://input'), true) ?? [];
  * quoted error-free before it is returned, so nothing here can propose a stay
  * the guest cannot book.
  *
- * Each suggestion also carries `photo` — ['url','alt','source'] or null — which
- * maya_ilai_suggest() resolves server-side from `room_images` (the dominant
- * product's room), falling back to the venue's own photo and then to nothing.
- * It travels in the payload with everything else so the surface renders what it
- * is handed instead of guessing which room a configuration is of. A null photo
- * is normal: the card drops to its single-column layout.
+ * Each suggestion also carries `photos` — a list of ['url','alt','source'], at
+ * most MAYA_ILAI_PHOTO_MAX of them — which maya_ilai_suggest() resolves
+ * server-side from `room_images` (every image of the dominant product's room,
+ * hero first), falling back to the venue's own images and then to nothing. They
+ * travel in the payload with everything else so the surface renders what it is
+ * handed instead of guessing which room a configuration is of. An empty list is
+ * normal: the card drops to its single-column layout. The cap keeps a
+ * forty-photograph room from bloating a response built on a keystroke.
  *
  * Public and unauthenticated, so both inputs are bounded before any search runs:
  * the party at what the compound can physically sleep, the stay at a month.
