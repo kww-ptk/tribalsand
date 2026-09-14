@@ -190,6 +190,64 @@ migration**, the table predates the editors. Helpers in **`includes/rates.php`**
   `data-dp-bound` and skips them, so a clone of a live row would look right and never open.
 - Test: `php tests/rates_logic.php` (71 assertions, DB work in a rolled-back transaction).
 
+### Maya Ilai — composite inventory (components on the block)
+Maya Ilai sells **eight products over eight shared villas**. Physical inventory is
+8 villas × (2 double + 1 bunk + 1 living) + 8 studios. A product consumes a subset of
+**one** villa's components, so the same villa can hold several unrelated bookings.
+Migrations, in order: `add_maya_ilai_components` → `maya_ilai_rooms_2026`.
+Test: `php tests/maya_ilai_inventory.php`.
+- **`availability_blocks.components` is NULL = the whole unit.** That is what every row
+  at every other property means, so the column is a no-op outside Maya Ilai. **Never**
+  backfill it with `{}` — an empty set and NULL would then be indistinguishable, and
+  NULL is what makes a staff-entered or OTA-imported block still take a whole villa.
+- **`mi_block_taken_components()` is the ONLY correct way to read a stored block.**
+  `mi_pg_array_decode()` returns `[]` for NULL, which reads as *nothing is taken* and
+  oversells the villa. The rule lives in one function so no caller can get it wrong.
+- **`mi_resolve()` fails closed**: an empty pattern returns `null`, and the component
+  vocabulary is closed to `double`/`bunk`/`living`. An unknown pattern must never
+  resolve to "fits, consumes nothing" — `[]` is falsy, so `=== null` and `!$r` would
+  disagree about it.
+- **The six unitless products are the tripwire.** `units.room_id` is NOT NULL, so the 8
+  villa units belong to `maya-ilai-villa`; the other six composite products own **zero**
+  units. Any guard asking "does this room have units?" must go through
+  **`room_inventory_room_id()`** — asking `fetch_units_by_room($room['id'])` directly
+  silently downgrades those six to enquiry mode, so they render a form and never book.
+  Two guards did exactly that (`api/submit-enquiry.php`, `includes/booking-widget.php`).
+  For the same reason `find_available_unit()` and `get_room_blocked_dates()` branch.
+- **`room_conflict_unit_ids()` is exempt in ONE direction only** — the
+  `is_entire_place` branch. The other direction must keep working, or re-adding a
+  compound buyout would let composite products sell villas out from under it.
+- **Guest bookings are serialised.** `mi_allocate_and_hold()` re-runs allocation inside
+  a transaction holding `pg_advisory_xact_lock(MI_ADVISORY_LOCK_NS, <villa room id>)`
+  and writes the block before releasing. The engine's check-then-book gap is
+  pre-existing, but component allocation makes it likelier (seven products share one
+  villa pool, and pack-tight funnels them at the same villa) and **undetectable** (two
+  blocks each claiming `bunk` violate no constraint). `create_hold_with_block()`'s
+  access-code retry is wrapped in a **SAVEPOINT** — in Postgres a failed statement
+  aborts the whole transaction, so without it one collision would kill the booking.
+  The savepoint is conditional on being in a transaction; standalone calls are
+  byte-for-byte the old path.
+- **Allocation is deterministic:** pack tight (most-occupied villa first), ties by villa
+  number then unit id, doubles `double_a` before `double_b`. `mi_order_villas()` derives
+  the villa total from `count($villas)` — give it the COMPLETE set, never a filtered
+  subset — and ranks by position after sorting on `sort_order`, never the raw column,
+  which is `NOT NULL DEFAULT 0` and cannot be assumed dense.
+- **Ring-fencing:** the last N villas (`maya_ilai_reserved_villas`, default 2, Admin →
+  Properties) never take component bookings; the whole-villa product prefers them first.
+  Clamped 0–8 server-side — a larger value would take the component products off sale
+  silently.
+- **`maya_ilai_rooms_2026.sql` is destructive and gated.** It DELETEs every Maya Ilai
+  room, and production carries a `superior-suite` room (the old booking-sidebar target,
+  see `fix_maya_ilai_superior_suite_booking.sql`) that does not exist locally. The
+  migration counts holds, blocks and ledger rows for the venue and **refuses to run** if
+  any exist. `maya_ilai.php`'s sidebar now points at `maya-ilai-villa`.
+- **Known limits, deliberate:** staff-entered holds (`admin/hold-new.php`,
+  `admin/submission-view.php`) pass `components = NULL`, i.e. the whole villa — safe, but
+  a per-bedroom admin booking needs a component picker first. `mi_blocked_dates()` runs
+  ~2 queries per night. Occupancy in `admin/reports.php` counts a bunk-room night as a
+  full unit-night. And `ts_search_availability()`'s cross-exclusion is inert only because
+  no Maya Ilai room has `is_entire_place = TRUE` — ticking that box would hide products.
+
 ### Financial reports — unified bookings ledger
 Revenue reporting reads from one **`bookings`** table (migration: `add_bookings_finance.sql`, after `add_availability`) that unifies every source — website, OTA, agent, direct. Helpers in **`includes/bookings.php`**; every read is pre-migration-safe (`bookings_supported()` via `to_regclass`).
 - **Two writers feed the ledger, both idempotent.**
@@ -269,6 +327,7 @@ The SAME read-only tool+RAG engine, exposed to website visitors as a branded cha
 | `admin/reservations.php` | Reservation manager (dashboard + confirm/cancel, manager-scoped) |
 | `includes/sustainability.php` | Live metric helpers — accrual, formatting, re-baselining (pre-migration-safe) |
 | `admin/sustainability.php` | Live metrics editor (owner-only) — reading, rate, cap, small print |
+| `includes/maya-ilai-inventory.php` | Maya Ilai composite inventory — component map, resolution, ring-fencing, villa ordering (pure, no I/O) |
 | `includes/rates.php` | Nightly rate helpers — merge, resolve, trim/split writes, scoped delete |
 | `includes/rate-form.php` · `includes/rate-calendar.php` | Multi-range rate entry + read-only month grid partials |
 | `admin/rates.php` | Site-wide read-only rates calendar (scoped, reception-visible) |
