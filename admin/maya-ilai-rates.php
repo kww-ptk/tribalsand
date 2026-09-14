@@ -34,6 +34,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         http_response_code(403); exit(json_encode(['ok' => false, 'error' => 'Invalid session token. Please reload.']));
     }
     $action = (string)($data['action'] ?? 'save');
+
+    // ── Live quote ───────────────────────────────────────────────────────────
+    // The tool prices through maya_ilai_quote() — the SAME calculation the guest
+    // configurator uses — instead of reimplementing it in the page. It rides this
+    // handler rather than api/maya-ilai-quote.php because that endpoint is public
+    // (it would need a config override, and deliberately cannot express season /
+    // availability pricing, which are staff levers). Here the gate is already the
+    // page's own: require_manager + the Maya Ilai venue scope + CSRF-in-body.
+    //
+    // `state` prices UNSAVED edits: the editor must show what a rate change does
+    // before the debounced save lands, and chaining the preview to save success
+    // would quote stale rates whenever a save failed. It is coerced by the same
+    // sanitiser a save uses and never persisted — and an authenticated manager
+    // may already save any config they like, so previewing one grants nothing new.
+    if ($action === 'quote') {
+        try {
+            $cfg = is_array($data['state'] ?? null)
+                ? maya_ilai_pricing_sanitize($data['state'])
+                : maya_ilai_pricing_get();
+            $s = is_array($data['sel'] ?? null) ? $data['sel'] : [];
+            $quote = maya_ilai_quote([
+                'qtyDouble'   => (int)($s['qtyDouble']   ?? 0), 'guestDouble' => (int)($s['guestDouble'] ?? 0),
+                'qtyBunk'     => (int)($s['qtyBunk']     ?? 0), 'guestBunk'   => (int)($s['guestBunk']   ?? 0),
+                'qtyStudio'   => (int)($s['qtyStudio']   ?? 0), 'guestStudio' => (int)($s['guestStudio'] ?? 0),
+                'qtyVilla'    => (int)($s['qtyVilla']    ?? 0), 'guestVilla'  => (int)($s['guestVilla']  ?? 0),
+                'qtyLiving'   => (int)($s['qtyLiving']   ?? 0),
+                'nights'      => (int)($s['nights']      ?? 1),
+                'season'      => (string)($s['season']   ?? 'high'),
+                'program'     => (string)($s['program']  ?? 'group'),
+                'availableUnits' => (int)($s['availableUnits'] ?? 0),
+            ], $cfg);
+            exit(json_encode(['ok' => true, 'quote' => $quote]));
+        } catch (Throwable $e) {
+            error_log('[maya-ilai-rates] quote: ' . $e->getMessage());
+            http_response_code(500); exit(json_encode(['ok' => false, 'error' => 'Could not price this configuration.']));
+        }
+    }
+
     try {
         if ($action === 'reset') {
             $state = maya_ilai_pricing_save(maya_ilai_pricing_defaults());
@@ -100,7 +138,7 @@ include __DIR__ . '/_layout.php';
   </nav>
 
   <section class="view active" id="view-quote">
-    <div class="section-head"><div><h2>Build a quote</h2><p>Select the accommodation mix and allocate guests to each room type.</p></div><span class="pill">Calculates instantly</span></div>
+    <div class="section-head"><div><h2>Build a quote</h2><p>Select the accommodation mix and allocate guests to each room type.</p></div><span class="pill">Priced on the server</span></div>
     <div class="grid">
       <div class="stack">
         <div class="card"><div class="card-head"><h3>Stay details</h3></div><div class="card-body form-grid">
@@ -180,6 +218,11 @@ let state = <?= json_encode($state, JSON_UNESCAPED_SLASHES) ?>;
     }, 500);
   }
 
+  // rate() and groupDiscount() survive ONLY for the illustrative matrices on the
+  // Group Discounts and Availability Pricing tabs — "what would 40 guests cost in
+  // villas vs studios", a capacity-packing illustration. They must never be used
+  // to price a quote: the quote comes from the server (see requestQuote below),
+  // which is the single calculation shared with the guest configurator.
   function rate(key, season) { const base = Number(state.rates[key]); return season === 'standard' ? base * (1 - state.rules.standardReduction / 100) : base; }
   function groupDiscount(guests, nights = state.rules.minNights) { if (nights < state.rules.minNights) return 0; return state.groups.filter(x => guests >= x.guests).sort((a, b) => b.guests - a.guests)[0]?.discount || 0; }
   function availabilityBand(units) { return state.availability.find(x => units >= x.min && units <= x.max) || state.availability[state.availability.length - 1]; }
@@ -212,51 +255,73 @@ let state = <?= json_encode($state, JSON_UNESCAPED_SLASHES) ?>;
     root.querySelectorAll('[data-band]').forEach(el => el.addEventListener('change', () => { state.availability[Number(el.dataset.band)].adjustment = Number(el.value); save(); }));
     $('availabilityRows').innerHTML = state.availability.map(b => { const sold = b.max === 0, m = 1 + b.adjustment / 100; return `<tr><td>${b.min === b.max ? b.min : `${b.min}–${b.max}`}</td><td>${sold ? 'Sold out' : pct(b.adjustment)}</td><td>${sold ? '—' : money(state.rates.double * m)}</td><td>${sold ? '—' : money(state.rates.studio * m)}</td><td>${sold ? '—' : money(state.rates.villa * m)}</td></tr>`; }).join('');
   }
-  function quote() {
-    const season = $('season').value, nights = Math.max(1, nval('nights')), program = $('program').value;
-    const q = { double: nval('qtyDouble'), bunk: nval('qtyBunk'), studio: nval('qtyStudio'), villa: nval('qtyVilla'), living: nval('qtyLiving') };
-    const g = { double: nval('guestDouble'), bunk: nval('guestBunk'), studio: nval('guestStudio'), villa: nval('guestVilla') };
-    const guests = g.double + g.bunk + g.studio + g.villa, capacity = q.double * 2 + q.bunk * state.rules.bunkMax + q.studio * 2 + q.villa * state.rules.villaMax;
-    const singleRooms = Math.max(0, Math.min(q.double, 2 * q.double - g.double));
-    const doubleBase = (q.double - singleRooms) * rate('double', season) + singleRooms * rate('double', season) * (1 - state.rules.singleDiscount / 100);
-    const bunkBase = q.bunk * rate('bunk', season), studioBase = q.studio * rate('studio', season), villaBase = q.villa * rate('villa', season), livingBase = q.living * rate('living', season);
-    const base = doubleBase + bunkBase + studioBase + villaBase + livingBase;
-    const bunkExtra = Math.max(0, g.bunk - q.bunk * state.rules.bunkIncluded) * state.rules.bunkExtra;
-    const villaExtra = Math.max(0, g.villa - q.villa * state.rules.villaIncluded) * state.rules.bunkExtra;
-    const supplements = bunkExtra + villaExtra;
-    let adjustment = 0, adjustmentLabel = 'No adjustment', sold = false;
-    if (program === 'group') { adjustment = -groupDiscount(guests, nights); adjustmentLabel = nights < state.rules.minNights ? `Minimum ${state.rules.minNights} nights not met` : 'Group discount'; }
-    if (program === 'availability') { const band = availabilityBand(nval('availableUnits')); sold = band.max === 0; adjustment = band.adjustment; adjustmentLabel = band.label; }
-    const adjustedBase = base * (1 + adjustment / 100), nightly = adjustedBase + supplements, eco = guests * state.rules.ecoFee, total = sold ? 0 : nightly * nights + eco;
-    const requiredVillas = Math.max(Math.ceil(q.double / state.inventory.doublePerVilla), q.bunk, q.living), physicalVillas = q.villa + requiredVillas;
-    const errors = [];
-    if (g.double > q.double * 2 || g.double < q.double) errors.push('Double Room guests must be between 1 and 2 per selected room.');
-    if (g.bunk > q.bunk * state.rules.bunkMax || g.bunk < q.bunk) errors.push(`Bunk guests must be between 1 and ${state.rules.bunkMax} per selected room.`);
-    if (g.studio > q.studio * 2 || g.studio < q.studio) errors.push('Studio guests must be between 1 and 2 per selected studio.');
-    if (g.villa > q.villa * state.rules.villaMax || g.villa < q.villa) errors.push(`Villa guests must be between 1 and ${state.rules.villaMax} per selected villa.`);
-    if (physicalVillas > state.inventory.villas) errors.push(`This configuration needs ${physicalVillas} villas; only ${state.inventory.villas} are available.`);
-    if (q.studio > state.inventory.studios) errors.push(`Only ${state.inventory.studios} studios are available.`);
-    if (!guests) errors.push('Allocate at least one guest.');
-    if (sold) errors.push('The selected availability band is sold out.');
-    return { season, nights, program, q, g, guests, capacity, base, supplements, bunkExtra, villaExtra, adjustment, adjustmentLabel, adjustedBase, nightly, eco, total, errors, sold, physicalVillas, singleRooms };
+  // ── Quoting: server-side, one calculation ──────────────────────────────────
+  // The page used to reimplement maya_ilai_quote() in JS. It drifted (the
+  // living-room rule existed only in PHP), which is exactly the failure two
+  // summations over one rate map always produce. Now the selection AND the
+  // current (possibly unsaved) config go to the server and every figure below —
+  // including each per-unit line — comes back resolved.
+  let lastQuote = null, quoteTimer = null, quoteSeq = 0;
+
+  function selection() {
+    return {
+      qtyDouble: nval('qtyDouble'), guestDouble: nval('guestDouble'),
+      qtyBunk:   nval('qtyBunk'),   guestBunk:   nval('guestBunk'),
+      qtyStudio: nval('qtyStudio'), guestStudio: nval('guestStudio'),
+      qtyVilla:  nval('qtyVilla'),  guestVilla:  nval('guestVilla'),
+      qtyLiving: nval('qtyLiving'),
+      nights: Math.max(1, nval('nights')),
+      season: $('season').value, program: $('program').value,
+      availableUnits: nval('availableUnits')
+    };
   }
-  function renderQuote() {
-    const x = quote();
+
+  function requestQuote() {
+    $('availableWrap').classList.toggle('hide', $('program').value !== 'availability');
+    clearTimeout(quoteTimer);
+    quoteTimer = setTimeout(() => {
+      const seq = ++quoteSeq;
+      fetch(location.pathname, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin',
+        body: JSON.stringify({ action: 'quote', sel: selection(), state: state, csrf_token: MI_CSRF })
+      })
+        .then(r => r.json())
+        .then(d => {
+          if (seq !== quoteSeq) return;                 // a newer request is in flight
+          if (d && d.ok && d.quote) { lastQuote = d.quote; paintQuote(d.quote); }
+          else quoteFailed((d && d.error) || 'Could not price this configuration.');
+        })
+        .catch(() => { if (seq === quoteSeq) quoteFailed('Could not reach the pricing service.'); });
+    }, 120);
+  }
+
+  // Never leave a stale figure looking current — say so instead.
+  function quoteFailed(msg) {
+    const notice = $('quoteNotice');
+    notice.className = 'notice error';
+    notice.innerHTML = `${msg} The figures below may be out of date — retry in a moment.`;
+  }
+
+  function paintQuote(x) {
     $('availableWrap').classList.toggle('hide', x.program !== 'availability');
-    $('capDouble').textContent = x.q.double * 2; $('capBunk').textContent = x.q.bunk * state.rules.bunkMax; $('capStudio').textContent = x.q.studio * 2; $('capVilla').textContent = x.q.villa * state.rules.villaMax;
-    const season = x.season;
-    $('lineDouble').textContent = money((x.q.double - x.singleRooms) * rate('double', season) + x.singleRooms * rate('double', season) * (1 - state.rules.singleDiscount / 100));
-    $('lineBunk').textContent = money(x.q.bunk * rate('bunk', season) + x.bunkExtra); $('lineStudio').textContent = money(x.q.studio * rate('studio', season)); $('lineVilla').textContent = money(x.q.villa * rate('villa', season) + x.villaExtra); $('lineLiving').textContent = money(x.q.living * rate('living', season));
-    $('grandTotal').textContent = x.sold ? 'Sold out' : money(x.total); $('perGuest').textContent = x.guests && !x.sold ? `${money(x.total / x.guests / x.nights)} per guest / night` : 'Add guests to calculate';
-    $('metricGuests').textContent = x.guests; $('metricCapacity').textContent = x.capacity; $('metricNightly').textContent = x.sold ? '—' : money(x.nightly); $('metricDiscount').textContent = x.program === 'none' ? 'None' : pct(x.adjustment);
-    const adjustmentAmount = x.base * x.adjustment / 100;
-    $('breakdown').innerHTML = `<div class="line"><span>${season === 'high' ? 'High' : 'Standard'}-season base / night</span><strong>${money(x.base)}</strong></div><div class="line"><span>${x.adjustmentLabel} (${pct(x.adjustment)})</span><strong>${money(adjustmentAmount)}</strong></div><div class="line"><span>Additional guest supplements / night</span><strong>${money(x.supplements)}</strong></div><div class="line"><span>${x.nights} night${x.nights === 1 ? '' : 's'}</span><strong>${money(x.nightly * x.nights)}</strong></div><div class="line"><span>Eco-Resort Fee · ${x.guests} guests</span><strong>${money(x.eco)}</strong></div><div class="line total"><span>Estimated total</span><strong>${x.sold ? '—' : money(x.total)}</strong></div>`;
-    const notice = $('quoteNotice'); notice.className = `notice${x.errors.length ? ' error' : ''}`; notice.innerHTML = x.errors.length ? x.errors.join('<br>') : `Configuration fits inventory · uses ${x.physicalVillas} of ${state.inventory.villas} villas and ${x.q.studio} of ${state.inventory.studios} studios.`;
+    $('capDouble').textContent = x.caps.double; $('capBunk').textContent = x.caps.bunk;
+    $('capStudio').textContent = x.caps.studio; $('capVilla').textContent = x.caps.villa;
+    $('lineDouble').textContent = money(x.lines.double); $('lineBunk').textContent = money(x.lines.bunk);
+    $('lineStudio').textContent = money(x.lines.studio); $('lineVilla').textContent = money(x.lines.villa);
+    $('lineLiving').textContent = money(x.lines.living);
+    $('grandTotal').textContent = x.sold ? 'Sold out' : money(x.total);
+    $('perGuest').textContent = x.perGuestNight === null ? 'Add guests to calculate' : `${money(x.perGuestNight)} per guest / night`;
+    $('metricGuests').textContent = x.guests; $('metricCapacity').textContent = x.capacity;
+    $('metricNightly').textContent = x.sold ? '—' : money(x.nightly);
+    $('metricDiscount').textContent = x.program === 'none' ? 'None' : pct(x.adjustment);
+    $('breakdown').innerHTML = `<div class="line"><span>${x.season === 'high' ? 'High' : 'Standard'}-season base / night</span><strong>${money(x.base)}</strong></div><div class="line"><span>${x.adjustmentLabel} (${pct(x.adjustment)})</span><strong>${money(x.adjustmentAmount)}</strong></div><div class="line"><span>Additional guest supplements / night</span><strong>${money(x.supplements)}</strong></div><div class="line"><span>${x.nights} night${x.nights === 1 ? '' : 's'}</span><strong>${money(x.nightly * x.nights)}</strong></div><div class="line"><span>Eco-Resort Fee · ${x.guests} guests</span><strong>${money(x.eco)}</strong></div><div class="line total"><span>Estimated total</span><strong>${x.sold ? '—' : money(x.total)}</strong></div>`;
+    const notice = $('quoteNotice'); notice.className = `notice${x.errors.length ? ' error' : ''}`;
+    notice.innerHTML = x.errors.length ? x.errors.join('<br>') : `Configuration fits inventory · uses ${x.physicalVillas} of ${state.inventory.villas} villas and ${x.q.studio} of ${state.inventory.studios} studios.`;
   }
-  function renderAll() { renderSettings(); renderGroupSettings(); renderGroupTables(); renderAvailability(); renderQuote(); }
+  function renderAll() { renderSettings(); renderGroupSettings(); renderGroupTables(); renderAvailability(); requestQuote(); }
 
   root.querySelectorAll('.tab').forEach(btn => btn.addEventListener('click', () => { root.querySelectorAll('.tab').forEach(x => x.classList.remove('active')); root.querySelectorAll('.view').forEach(x => x.classList.remove('active')); btn.classList.add('active'); $(`view-${btn.dataset.tab}`).classList.add('active'); }));
-  root.querySelectorAll('.cfg,#season,#nights,#program,#availableUnits,#clientName').forEach(el => el.addEventListener('input', renderQuote));
+  root.querySelectorAll('.cfg,#season,#nights,#program,#availableUnits,#clientName').forEach(el => el.addEventListener('input', requestQuote));
   $('resetBtn').addEventListener('click', () => {
     if (!confirm('Reset every rate and discount to the original defaults?')) return;
     state = clone(MI_DEFAULTS);
@@ -266,7 +331,9 @@ let state = <?= json_encode($state, JSON_UNESCAPED_SLASHES) ?>;
       .then(r => r.json()).then(d => { if (d && d.ok) { state = d.state; renderAll(); } if ($('saveStatus')) $('saveStatus').textContent = d && d.ok ? 'Reset to defaults' : 'Reset failed'; })
       .catch(() => { if ($('saveStatus')) $('saveStatus').textContent = 'Reset failed'; });
   });
-  $('copyQuote').addEventListener('click', async () => { const x = quote(), name = $('clientName').value.trim(), lines = [`Maya Ilai${name ? ' · ' + name : ''}`, `${x.season === 'high' ? 'High' : 'Standard'} season · ${x.nights} nights · ${x.guests} guests`, `Configuration: ${x.q.double} double room(s), ${x.q.bunk} bunk room(s), ${x.q.studio} studio(s), ${x.q.villa} full villa(s), ${x.q.living} living room/kitchen(s)`, `Accommodation per night: ${money(x.nightly)}`, `Eco-Resort Fee: ${money(x.eco)}`, `Estimated total: ${money(x.total)}`]; try { await navigator.clipboard.writeText(lines.join('\n')); $('copyQuote').textContent = 'Copied'; setTimeout(() => $('copyQuote').textContent = 'Copy quote', 1400); } catch (e) {} });
+  // Copies the LAST server quote — never a locally recomputed one, so the text a
+  // guest is sent is the same figure the panel showed.
+  $('copyQuote').addEventListener('click', async () => { const x = lastQuote; if (!x) return; const name = $('clientName').value.trim(), lines = [`Maya Ilai${name ? ' · ' + name : ''}`, `${x.season === 'high' ? 'High' : 'Standard'} season · ${x.nights} nights · ${x.guests} guests`, `Configuration: ${x.q.double} double room(s), ${x.q.bunk} bunk room(s), ${x.q.studio} studio(s), ${x.q.villa} full villa(s), ${x.q.living} living room/kitchen(s)`, `Accommodation per night: ${money(x.nightly)}`, `Eco-Resort Fee: ${money(x.eco)}`, `Estimated total: ${money(x.total)}`]; try { await navigator.clipboard.writeText(lines.join('\n')); $('copyQuote').textContent = 'Copied'; setTimeout(() => $('copyQuote').textContent = 'Copy quote', 1400); } catch (e) {} });
   $('printQuote').addEventListener('click', () => window.print());
 
   renderAll();
