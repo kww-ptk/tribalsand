@@ -43,6 +43,10 @@ $page_schema .= ts_schema_breadcrumb([
 ]);
 $page_schema .= ts_schema_faq($faqs);
 
+// Also pulls css/booking.css + js/datepicker.js from includes/head.php — the
+// stay-configurator popup's check-in/check-out range needs both (the styled
+// .dp-btn / .dp-pop rules live in booking.css). Don't drop this flag without
+// giving includes/maya-ilai-booking.php another way to load the picker.
 $page_rooms_rates = true;
 $rr_venue_slug = 'maya_ilai';
 ?>
@@ -472,12 +476,17 @@ include __DIR__ . '/includes/property-gallery.php';
 
     <div class="divider"></div>
 
-    <!-- Bookable units — full pricing parity configurator -->
+    <!-- Bookable units — the configurator opens in a popup over the page.
+         Inline it swallowed the whole property page; what stays here is the
+         invitation. Anything marked data-mib-open opens the flow (the two
+         sidebar CTAs do too) — the links keep their href so that with JS off
+         they still land on this button. -->
     <div class="sec" id="book-config" style="scroll-margin-top:90px">
       <div class="sec-label">Build Your Stay</div>
       <h2 class="sec-h">Choose Your <em>Units &amp; Guests</em></h2>
       <div class="sec-rule"></div>
-      <p class="sec-p" style="margin-bottom:1.4rem">Mix villas, studios, bunk and double rooms to fit your group. The price updates live and includes group discounts for larger parties, extra-guest charges and the Eco-Resort Fee.</p>
+      <p class="sec-p" style="margin-bottom:1.4rem">Tell us your party and your dates, and we'll show you the stays that fit — with the price. Group discounts for larger parties, extra-guest charges and the Eco-Resort Fee are all included in what you see.</p>
+      <button type="button" class="btn-book-full" data-mib-open style="max-width:340px">Build your stay &amp; get a price →</button>
       <?php include __DIR__ . '/includes/maya-ilai-booking.php'; ?>
     </div>
 
@@ -828,8 +837,8 @@ include __DIR__ . '/includes/property-photo-grid.php';
         </div>
         <div style="padding:1.3rem 1.4rem">
           <p style="font-size:.9rem;color:var(--mid);line-height:1.6;margin-bottom:1rem">Build a stay from villas, studios, bunk and double rooms — with live pricing, group discounts and the Eco-Resort Fee included.</p>
-          <a href="#book-config" class="btn-book-full" style="text-decoration:none">Build your stay &amp; get a price →</a>
-          <a href="#book-config" class="btn-ghost-full" style="text-decoration:none">Full compound buyout? Start here</a>
+          <a href="#book-config" data-mib-open class="btn-book-full" style="text-decoration:none">Build your stay &amp; get a price →</a>
+          <a href="#book-config" data-mib-open class="btn-ghost-full" style="text-decoration:none">Full compound buyout? Start here</a>
         </div>
       </div>
 

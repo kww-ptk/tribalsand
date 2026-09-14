@@ -2,11 +2,26 @@
 /**
  * Guest-facing Maya Ilai booking configurator (full pricing parity).
  *
- * TWO STEPS, in this order:
- *   1. How many of you, and for how long. Nothing else.
+ * A POPUP, not a page section. Inline it dominated the property page; the page
+ * now carries a short invitation and anything marked [data-mib-open] opens the
+ * flow over it. This partial renders ONLY the popup (plus its styles and its
+ * controller) — the trigger copy lives on the page.
+ *
+ * THREE STEPS, in one popup, in this order:
+ *   1. How many of you, and when. Party size and a real check-in/check-out
+ *      range — nights are DERIVED from the dates, never typed.
  *   2. The handful of real configurations that sleep that party, cheapest
  *      first, each with what it includes and its total — plus "Build it
  *      yourself" for anyone who wants to assemble something bespoke.
+ *   3. The request form.
+ *
+ * Step 3 is a STEP, not a second modal. A dialog inside a dialog means two
+ * scroll locks, two focus traps and two Escape handlers racing each other; and
+ * the form is a continuation of the same flow, so it wants a Back to step 2
+ * rather than a separate lifecycle. One popup owns the lock, the trap and the
+ * Escape key; the only other layer on screen is the shared datepicker's pop,
+ * which lives on <body> at z-index 9999 and is deferred to explicitly (Escape
+ * and a backdrop click close the calendar first, the popup second).
  *
  * The eight-rows-at-once picker that used to open the page is still here, whole,
  * behind that toggle: it is the only way to reach a bespoke mix, and the search
@@ -19,8 +34,15 @@
  * suggestions are quoted error-free before they are ever returned, so nothing
  * the guest can tap is unbookable.
  *
- * A selection turns into a booking REQUEST (enquiry) — the property confirms it,
- * matching the existing 24h-hold flow. Set nothing before including.
+ * THE DATES ARE NOT CHECKED AGAINST AVAILABILITY. There is no inventory engine
+ * behind this flow — a guest can pick a week the compound is full and still be
+ * priced. That is why every surface says the property confirms availability, and
+ * why the result is a REQUEST (enquiry), not a booking. Do not let the copy
+ * imply otherwise until something actually checks.
+ *
+ * Dates use the shared styled picker (js/datepicker.js + the .dp-btn/.dp-pop
+ * rules in css/booking.css) — never a native date input. Set nothing before
+ * including.
  */
 require_once __DIR__ . '/maya-ilai-pricing.php';
 $mibCfg   = maya_ilai_pricing_get();
@@ -68,9 +90,51 @@ usort($mibCombos, fn($a, $b) => $a['rate'] <=> $b['rate']);   // price ascending
 $mibGroups = [['label'=>'Rooms', 'rows'=>$mibUnits]];
 if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'class'=>'mib-group--combo',
                                 'hint'=>'Whole bedroom sets, priced as one product.'];
+
+// The date range needs the shared picker. A page that already declares
+// $page_booking / $page_rooms_rates has it from includes/head.php together with
+// css/booking.css, which carries the public .dp-btn / .dp-pop styling — emitting
+// it again would double-load the script and, if datepicker.css came with it,
+// fight booking.css over the trigger's look. maya_ilai.php is such a page.
+// Anywhere else, the partial loads the script itself so it stays self-contained.
+$mibNeedsDp = empty($GLOBALS['page_booking']) && empty($GLOBALS['page_rooms_rates']);
+// The longest stay api/maya-ilai-quote.php will price. The UI must not let a
+// guest build a range the endpoint then rejects.
+$mibMaxNights = 30;
 ?>
+<?php if ($mibNeedsDp): ?>
+<link rel="stylesheet" href="/css/datepicker.css?v=<?= @filemtime(__DIR__ . '/../css/datepicker.css') ?: '1' ?>">
+<script src="/js/datepicker.js?v=<?= @filemtime(__DIR__ . '/../js/datepicker.js') ?: '1' ?>" defer></script>
+<?php endif; ?>
 <style>
-  .mib{--mib-line:rgba(184,150,90,.22);--mib-ink:#141412;--mib-mut:#6B6050;font-family:'Jost',sans-serif;color:var(--mib-ink)}
+  /* Both selectors carry the tokens: the popup is moved to <body> on init, so
+     it stops inheriting anything from .mib and must stand on its own. */
+  .mib,.mib-pop{--mib-line:rgba(184,150,90,.22);--mib-ink:#141412;--mib-mut:#6B6050;font-family:'Jost',sans-serif;color:var(--mib-ink)}
+
+  /* ── The popup shell ─────────────────────────────────────────────────────
+     One dialog for all three steps. The bar is fixed and the BODY scrolls, so
+     a tall step scrolls inside the popup instead of growing it past the
+     viewport. .mib-locked is put on <html> as well as <body>: this page sets
+     html{overflow-x:hidden}, which stops body's overflow propagating to the
+     viewport, so locking body alone would leave the page behind scrolling. */
+  /* Above the fixed site nav (9000) and the cookie banner (9500) — the same
+     shelf the photo lightbox uses — but BELOW the datepicker's pop (9999),
+     which has to open over this. */
+  .mib-pop{position:fixed;inset:0;z-index:9600;display:none;font-family:'Jost',sans-serif}
+  .mib-pop.open{display:block}
+  .mib-pop__scrim{position:absolute;inset:0;background:rgba(16,47,58,.62)}
+  .mib-pop__dialog{position:relative;width:min(980px,calc(100% - 2rem));max-height:92vh;margin:4vh auto;
+    display:flex;flex-direction:column;background:var(--off,#FAF8F4);
+    box-shadow:0 30px 80px rgba(0,0,0,.4);outline:none}
+  .mib-pop__bar{flex:0 0 auto;display:flex;align-items:flex-start;gap:1rem;padding:1.05rem 1.4rem;
+    background:var(--teal-d,#102F3A);color:#fff}
+  .mib-pop__eyebrow{font-size:.58rem;letter-spacing:.24em;text-transform:uppercase;color:rgba(184,150,90,.85)}
+  .mib-pop__title{font-family:'Cormorant Garamond',serif;font-size:1.45rem;font-weight:400;line-height:1.15;margin:.15rem 0 0;color:#fff}
+  .mib-pop__x{margin-left:auto;flex:0 0 auto;width:38px;height:38px;border:1px solid rgba(255,255,255,.28);
+    background:none;color:#fff;font-size:1.5rem;line-height:1;cursor:pointer;border-radius:50%;font-family:inherit}
+  .mib-pop__x:hover{background:rgba(255,255,255,.14)}
+  .mib-pop__body{flex:1 1 auto;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:1.6rem 1.4rem 2rem}
+  html.mib-locked,body.mib-locked{overflow:hidden}
   .mib-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,1fr);gap:2rem;align-items:start}
   .mib-rows{display:flex;flex-direction:column;gap:.9rem}
   .mib-group+.mib-group{margin-top:1.6rem}
@@ -130,6 +194,27 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
   .mib-party__go{margin:1.7rem auto 0;width:100%;max-width:320px}
   .mib-party__fine{font-size:.72rem;color:var(--mib-mut);margin:.9rem 0 0;line-height:1.6}
 
+  /* Dates. The styled .dp-btn comes from css/booking.css — never a native
+     date input (house rule), and never a second nights control: the nights
+     readout below is computed from the range. */
+  .mib-dates{display:flex;flex-wrap:wrap;gap:1rem;margin:1.5rem auto 0;max-width:430px;text-align:left}
+  .mib-date{flex:1 1 180px;min-width:0}
+  .mib-date .mib-field-big__lbl{margin-bottom:.35rem}
+  .mib-date .dp-btn{width:100%;font-family:inherit}
+  .mib-derived{margin:1.1rem 0 0;font-size:.86rem;color:var(--mib-mut)}
+  .mib-derived strong{color:var(--mib-ink);font-weight:500}
+  .mib-alert{margin:.9rem auto 0;max-width:430px;padding:.55rem .75rem;font-size:.78rem;line-height:1.5;
+    text-align:left;background:rgba(200,80,60,.06);color:#9B3B2A;border:1px solid rgba(200,80,60,.2)}
+  .mib-alert[hidden]{display:none}
+  /* The min-nights note. Not an error — the stay prices fine, it just does not
+     earn the group discount, which the fine print promises "automatically". */
+  .mib-minnote{margin:.9rem auto 0;max-width:430px;padding:.55rem .75rem;font-size:.78rem;line-height:1.5;
+    text-align:left;background:var(--sand-faint,#FAF6EE);color:#7a5a1e;border:1px solid var(--mib-line)}
+  .mib-minnote[hidden]{display:none}
+  .mib-stay{font-size:.85rem;color:var(--mib-mut)}
+  .mib-stay strong{color:var(--mib-ink);font-weight:500}
+  .mib-stay__d{display:block;font-size:.72rem;opacity:.8}
+
   /* ── Step 2 — what fits ─────────────────────────────────────────────────── */
   .mib-recap{display:flex;align-items:baseline;gap:.8rem;flex-wrap:wrap;border-bottom:1px solid var(--mib-line);padding-bottom:.9rem;margin-bottom:1.4rem}
   .mib-recap__t{font-family:'Cormorant Garamond',serif;font-size:1.5rem;line-height:1.1}
@@ -162,20 +247,39 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
   .mib-bespoke__hint{font-size:.76rem;color:var(--mib-mut);margin:.7rem 0 0;line-height:1.6}
   .mib-bespoke__body{margin-top:1.5rem}
 
-  /* Enquiry modal */
-  .mib-modal{position:fixed;inset:0;background:rgba(16,47,58,.55);display:none;align-items:center;justify-content:center;z-index:600;padding:1rem}
-  .mib-modal.open{display:flex}
-  .mib-card{background:#fff;max-width:440px;width:100%;padding:1.8rem;max-height:90vh;overflow:auto}
+  /* ── Step 3 — the request form ──────────────────────────────────────────
+     A step inside the one popup, not a second modal: no nested backdrop, no
+     second scroll lock, no second focus trap. */
+  .mib-card{background:#fff;max-width:480px;width:100%;margin:0 auto;padding:1.6rem;border:1px solid var(--mib-line)}
   .mib-card h3{font-family:'Cormorant Garamond',serif;font-size:1.6rem;font-weight:400;margin-bottom:.3rem}
-  .mib-card p.sub{font-size:.85rem;color:var(--mib-mut);margin-bottom:1.1rem}
+  .mib-card p.sub{font-size:.85rem;color:var(--mib-mut);margin-bottom:1.1rem;line-height:1.6}
   .mib-field{margin-bottom:.8rem}
   .mib-field label{font-size:.7rem;letter-spacing:.12em;text-transform:uppercase;color:var(--mib-mut);display:block;margin-bottom:.3rem}
   .mib-field input,.mib-field textarea{width:100%;padding:.65rem .8rem;border:1px solid var(--mib-line);font-family:inherit;font-size:.9rem}
-  .mib-modal-actions{display:flex;gap:.6rem;margin-top:.5rem}
+  .mib-modal-actions{display:flex;gap:.6rem;margin-top:.5rem;flex-wrap:wrap}
   .mib-msg{font-size:.85rem;margin-top:.7rem;display:none}
   .mib-msg.show{display:block}
   .mib-msg.ok{color:#2D7A5F}.mib-msg.bad{color:#9B3B2A}
+
+  /* Inside the popup the grid has the DIALOG's width, not the viewport's, so
+     it stacks until the viewport is wide enough for the dialog to hold two
+     readable columns. The summary sticks to the popup's own scroll box. */
+  .mib-pop .mib-grid{grid-template-columns:1fr}
+  .mib-pop .mib-summary{position:static}
+  @media(min-width:1040px){
+    .mib-pop .mib-grid{grid-template-columns:minmax(0,1.5fr) minmax(300px,1fr)}
+    .mib-pop .mib-summary{position:sticky;top:0}
+  }
   @media(max-width:820px){.mib-grid{grid-template-columns:1fr}.mib-summary{position:static}}
+  /* Phone: full-screen. A centred card with margins wastes the only screen
+     space the picker and the offer list have. */
+  @media(max-width:640px){
+    .mib-pop__dialog{width:100%;max-width:100%;max-height:100%;height:100%;margin:0}
+    .mib-pop__body{padding:1.2rem 1rem 2.2rem}
+    .mib-pop__bar{padding:.9rem 1rem}
+    .mib-pop__title{font-size:1.25rem}
+    .mib-card{padding:1.2rem}
+  }
   /* Phone: the offer card stacks so the price sits under the name, never squeezed
      beside it, and the row steppers keep their own line rather than crushing the
      room name to one word per line. */
@@ -203,12 +307,28 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
      data-contact="/api/submit-contact.php"
      data-maxguests="<?= (int)$mibMaxParty ?>"
      data-rates='<?= e(json_encode($mibRates)) ?>'
-     data-rules='<?= e(json_encode(['bunkMax'=>(int)$mibRules['bunkMax'],'doublePerVilla'=>max(1,(int)$mibCfg['inventory']['doublePerVilla'])])) ?>'>
+     data-rules='<?= e(json_encode(['bunkMax'=>(int)$mibRules['bunkMax'],'doublePerVilla'=>max(1,(int)$mibCfg['inventory']['doublePerVilla']),'minNights'=>(int)$mibRules['minNights']])) ?>'
+     data-maxnights="<?= (int)$mibMaxNights ?>">
+
+<!-- ── The popup ──────────────────────────────────────────────────────────
+     Relocated to <body> on init, so no transformed ancestor on the property
+     page can turn position:fixed into position:absolute under it. -->
+<div class="mib-pop" id="mibPop" hidden>
+  <div class="mib-pop__scrim" data-mib-close></div>
+  <div class="mib-pop__dialog" id="mibDialog" role="dialog" aria-modal="true" aria-labelledby="mibPopTitle" tabindex="-1">
+    <div class="mib-pop__bar">
+      <div>
+        <div class="mib-pop__eyebrow">Maya Ilai · Kilifi</div>
+        <h3 class="mib-pop__title" id="mibPopTitle">Build your stay</h3>
+      </div>
+      <button type="button" class="mib-pop__x" id="mibClose" data-mib-close aria-label="Close">&times;</button>
+    </div>
+    <div class="mib-pop__body" id="mibPopBody">
 
   <!-- ── Step 1 ─────────────────────────────────────────────────────────── -->
   <section class="mib-party" id="mibStep1">
     <h3 class="mib-party__q">How many of you are coming?</h3>
-    <p class="mib-party__sub">Tell us the party and the length of stay — we'll show you what fits, with the price.</p>
+    <p class="mib-party__sub">Tell us the party and your dates — we'll show you what fits, with the price.</p>
     <div class="mib-party__fields">
       <div class="mib-field-big">
         <span class="mib-field-big__lbl" id="mibPGuestsLbl">Guests</span>
@@ -218,17 +338,32 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
           <button type="button" data-dir="1" aria-label="More guests">+</button>
         </div>
       </div>
-      <div class="mib-field-big">
-        <span class="mib-field-big__lbl" id="mibPNightsLbl">Nights</span>
-        <div class="mib-bigstep" id="mibPNights" aria-labelledby="mibPNightsLbl">
-          <button type="button" data-dir="-1" aria-label="Fewer nights">−</button>
-          <span class="mib-bigstep__n" id="mibPNightsN" aria-live="polite">3</span>
-          <button type="button" data-dir="1" aria-label="More nights">+</button>
-        </div>
+    </div>
+
+    <!-- Real dates. Nights are read off the range below, so there is exactly
+         one place a stay length can come from. -->
+    <div class="mib-dates">
+      <div class="mib-date" role="group" aria-labelledby="mibCiLbl">
+        <span class="mib-field-big__lbl" id="mibCiLbl">Check-in</span>
+        <button type="button" class="dp-btn" id="mibCiBtn"
+                data-dp-role="ci" data-dp-pair="mib" data-dp-target="mibCiInput"
+                data-dp-placeholder="Select date">Select date</button>
+        <input type="hidden" id="mibCiInput" name="check_in">
+      </div>
+      <div class="mib-date" role="group" aria-labelledby="mibCoLbl">
+        <span class="mib-field-big__lbl" id="mibCoLbl">Check-out</span>
+        <button type="button" class="dp-btn" id="mibCoBtn"
+                data-dp-role="co" data-dp-pair="mib" data-dp-target="mibCoInput"
+                data-dp-placeholder="Select date">Select date</button>
+        <input type="hidden" id="mibCoInput" name="check_out">
       </div>
     </div>
-    <button type="button" class="mib-cta mib-party__go" id="mibPGo">Show what fits</button>
-    <p class="mib-party__fine">Prices in USD, for the whole stay. The property confirms availability and holds your dates — you are not charged now. Group discounts apply automatically for larger parties (min <?= (int)$mibRules['minNights'] ?> nights).</p>
+    <p class="mib-derived" id="mibDerived" aria-live="polite">Pick your dates and we'll count the nights.</p>
+    <p class="mib-alert" id="mibDateErr" role="alert" hidden></p>
+    <p class="mib-minnote" id="mibMinNote1" hidden></p>
+
+    <button type="button" class="mib-cta mib-party__go" id="mibPGo" disabled>Show what fits</button>
+    <p class="mib-party__fine">Prices in USD, for the whole stay. The property confirms availability and holds your dates — you are not charged now, and these dates are not checked against the calendar until we reply. Group discounts apply automatically for larger parties (min <?= (int)$mibRules['minNights'] ?> nights).</p>
   </section>
 
   <!-- ── Step 2 ─────────────────────────────────────────────────────────── -->
@@ -237,6 +372,7 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
       <span class="mib-recap__t" id="mibRecap">2 guests · 3 nights</span>
       <button type="button" class="mib-recap__back" id="mibBack">Change</button>
     </div>
+    <p class="mib-minnote" id="mibMinNote2" hidden></p>
 
     <!-- Why a short list is a short list. Without a bare bunk room to sell, some
          ordinary party sizes genuinely have only two or three stays that fit them
@@ -300,7 +436,13 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
                 </div>
                 <span class="mib-living__hint" id="mibLivingHint"></span>
               </div>
-              <label>Nights <input type="number" id="mibNights" min="1" value="3"></label>
+              <!-- No nights control here. The stay length is the date range from
+                   step 1 and nowhere else — a second input is how a picker and a
+                   search end up quoting two different stays. -->
+              <div class="mib-stay">
+                <strong id="mibStayNights">—</strong>
+                <span class="mib-stay__d" id="mibStayDates"></span>
+              </div>
             </div>
           </div>
 
@@ -320,25 +462,34 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
     </div>
   </section>
 
-  <!-- Enquiry modal -->
-  <div class="mib-modal" id="mibModal">
+  <!-- ── Step 3 — the request ───────────────────────────────────────────── -->
+  <section id="mibStep3" hidden>
+    <div class="mib-recap">
+      <!-- Not a second "Request your stay" — the popup's own bar already says
+           that. This line asks the question the step is actually for. -->
+      <span class="mib-recap__t">Who shall we confirm with?</span>
+      <button type="button" class="mib-recap__back" id="mibFormBack">Back</button>
+    </div>
     <div class="mib-card">
-      <h3>Request your Maya Ilai stay</h3>
       <p class="sub" id="mibSummaryText"></p>
       <form id="mibForm">
-        <div class="mib-field"><label>Name</label><input name="name" required></div>
-        <div class="mib-field"><label>Email</label><input name="email" type="email" required></div>
-        <div class="mib-field"><label>Phone</label><input name="phone"></div>
-        <div class="mib-field"><label>Dates / notes (optional)</label><textarea name="note" rows="2" placeholder="Preferred dates, questions…"></textarea></div>
+        <div class="mib-field"><label for="mibFName">Name</label><input id="mibFName" name="name" required></div>
+        <div class="mib-field"><label for="mibFEmail">Email</label><input id="mibFEmail" name="email" type="email" required></div>
+        <div class="mib-field"><label for="mibFPhone">Phone</label><input id="mibFPhone" name="phone"></div>
+        <div class="mib-field"><label for="mibFNote">Anything else? (optional)</label><textarea id="mibFNote" name="note" rows="2" placeholder="Arrival time, questions, special requests…"></textarea></div>
         <input type="text" name="website" style="position:absolute;left:-9999px" tabindex="-1" autocomplete="off" aria-hidden="true">
         <div class="mib-modal-actions">
-          <button type="submit" class="mib-cta" style="width:auto;margin:0;flex:1">Send request</button>
-          <button type="button" class="mib-cta" id="mibCancel" style="width:auto;margin:0;background:#eee;color:#333">Cancel</button>
+          <button type="submit" class="mib-cta" style="width:auto;margin:0;flex:1 1 160px">Send request</button>
+          <button type="button" class="mib-cta" id="mibCancel" style="width:auto;margin:0;flex:0 1 auto;background:#eee;color:#333">Back</button>
         </div>
         <div class="mib-msg" id="mibMsg"></div>
       </form>
     </div>
-  </div>
+  </section>
+
+    </div><!-- /.mib-pop__body -->
+  </div><!-- /.mib-pop__dialog -->
+</div><!-- /.mib-pop -->
 </div>
 
 <script>
@@ -362,7 +513,12 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
       minper: parseInt(r.dataset.minper, 10) || 1
     };
   });
-  var livingQty = 0, nights = 3, lastQuote = null, timer = null;
+  // `nights` is DERIVED from the date range in step 1 and set in one place
+  // (syncDates). Nothing types it any more, so the picker and the search can
+  // never be quoting two different stay lengths.
+  var livingQty = 0, nights = 0, lastQuote = null, timer = null;
+  var maxNights = parseInt(root.dataset.maxnights, 10) || 30;
+  var minNights = parseInt(rules.minNights, 10) || 0;
 
   /**
    * Split a row's guests across the primitives it expands to, mirroring
@@ -493,7 +649,7 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
   function payload() {
     var p = expand();
     p.qtyLiving += livingQty;
-    p.nights = nights;
+    p.nights = Math.max(1, nights);   // the picker is only reachable with real dates
     return p;
   }
 
@@ -566,7 +722,6 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
       syncLiving(); quote();
     });
   });
-  document.getElementById('mibNights').addEventListener('input', function () { nights = Math.max(1, parseInt(this.value, 10) || 1); quote(); });
 
   /* ── Step 1 → Step 2: the configuration search ───────────────────────────
    *
@@ -574,9 +729,10 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
    * configurations that actually sleep them, already priced and already proved
    * bookable (every suggestion is quoted error-free before it is returned).
    */
-  var step1 = document.getElementById('mibStep1'), step2 = document.getElementById('mibStep2');
+  var step1 = document.getElementById('mibStep1'), step2 = document.getElementById('mibStep2'),
+      step3 = document.getElementById('mibStep3');
   var offersEl = document.getElementById('mibOffers'), recapEl = document.getElementById('mibRecap');
-  var party = { guests: 2, nights: 3 };
+  var party = { guests: 2 };
   var offers = [];            // the suggestions currently on screen
   var searchTimer = null;
   // Stale-response guard, the same shape as quote()'s debounce above but with a
@@ -585,15 +741,107 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
   // steps back and changes the party size.
   var searchSeq = 0;
 
+  /* ── Dates ────────────────────────────────────────────────────────────────
+   *
+   * The shared picker (js/datepicker.js) owns the calendar and writes the two
+   * hidden inputs; it blocks past days and any check-out on or before the
+   * check-in, so those cannot be posted from the UI at all. What it does NOT do
+   * is fire an event when a RANGE lands — only single mode dispatches `change` —
+   * so the values are re-read after a click. The calendar is click-driven, so
+   * that is the only moment they can move, and the re-read is a string compare.
+   *
+   * TWO listeners, because one cannot see both cases: the picker's pop calls
+   * stopPropagation() on its own clicks (that is how an outside click closes
+   * it), so a day cell never reaches document — the listener has to sit ON the
+   * pop, after the cell handlers have run. The document listener catches the
+   * other way out, dismissing the calendar by clicking away from it.
+   *
+   * Everything downstream reads `dates.nights`. Nights are never typed.
+   */
+  var ciInput = document.getElementById('mibCiInput'), coInput = document.getElementById('mibCoInput');
+  var derivedEl = document.getElementById('mibDerived'), dateErrEl = document.getElementById('mibDateErr');
+  var goBtn = document.getElementById('mibPGo');
+  var dates = { ci: '', co: '', nights: 0, error: '' };
+
+  function ymdUtc(s) { var p = s.split('-'); return Date.UTC(+p[0], +p[1] - 1, +p[2]); }
+  function isYmd(s) { return /^\d{4}-\d{2}-\d{2}$/.test(s || ''); }
+  function todayUtc() { var d = new Date(); return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()); }
+  function fmtYmd(s) {
+    if (!isYmd(s)) return '';
+    return new Date(s + 'T00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  }
+  function nightsWord(n) { return n + ' night' + (n === 1 ? '' : 's'); }
+
+  /** Read the two hidden inputs into `dates`, with the reason it is unusable. */
+  function evaluateDates() {
+    var ci = (ciInput.value || '').trim(), co = (coInput.value || '').trim();
+    var out = { ci: ci, co: co, nights: 0, error: '' };
+    if (!isYmd(ci) || !isYmd(co)) {
+      out.error = (ci || co) ? 'Choose both a check-in and a check-out date.' : '';
+      return out;
+    }
+    if (ymdUtc(ci) < todayUtc()) { out.error = 'Check-in cannot be in the past.'; return out; }
+    var n = Math.round((ymdUtc(co) - ymdUtc(ci)) / 86400000);
+    if (n < 1) { out.error = 'Check-out has to be after check-in.'; return out; }
+    // The endpoint prices at most 30 nights; never let a range be built that it
+    // will then refuse.
+    if (n > maxNights) { out.error = 'We can price up to ' + maxNights + ' nights online — please shorten your dates, or send us a note.'; return out; }
+    out.nights = n;
+    return out;
+  }
+
+  /** The one place the minimum-nights rule is explained to the guest. */
+  function minNoteText() {
+    if (!minNights || !dates.nights || dates.nights >= minNights) return '';
+    return 'Group discounts need at least ' + nightsWord(minNights) + ' — your dates are '
+         + nightsWord(dates.nights) + ', so the prices below are shown without one.';
+  }
+  function paintMinNote() {
+    var txt = minNoteText();
+    ['mibMinNote1', 'mibMinNote2'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      el.textContent = txt;
+      el.hidden = !txt;
+    });
+  }
+
+  function paintDates() {
+    derivedEl.textContent = dates.nights
+      ? nightsWord(dates.nights) + ' · ' + fmtYmd(dates.ci) + ' → ' + fmtYmd(dates.co)
+      : 'Pick your dates and we\'ll count the nights.';
+    dateErrEl.textContent = dates.error;
+    dateErrEl.hidden = !dates.error;
+    goBtn.disabled = !dates.nights;
+    document.getElementById('mibStayNights').textContent = dates.nights ? nightsWord(dates.nights) : '—';
+    document.getElementById('mibStayDates').textContent =
+      dates.nights ? fmtYmd(dates.ci) + ' → ' + fmtYmd(dates.co) : '';
+    paintMinNote();
+  }
+
+  /** Re-read the inputs; repaint and re-price only when something moved. */
+  function syncDates(force) {
+    if (!force && ciInput.value === dates.ci && coInput.value === dates.co) return;
+    dates  = evaluateDates();
+    nights = dates.nights;               // the single source of stay length
+    paintDates();
+    if (!step2.hidden && dates.nights) { search(); if (!bespoke.hidden) quote(); }
+  }
+  document.addEventListener('click', function () { syncDates(false); });
+
+  /** Hook the picker's own popup once it exists (it is built lazily on <body>). */
+  function bindDpSync() {
+    var p = document.querySelector('.dp-pop');
+    if (!p || p.dataset.mibSync) return;
+    p.dataset.mibSync = '1';
+    p.addEventListener('click', function () { syncDates(false); });
+  }
+
   function paintParty() {
     document.getElementById('mibPGuestsN').textContent = party.guests;
-    document.getElementById('mibPNightsN').textContent = party.nights;
     var gb = document.getElementById('mibPGuests').querySelectorAll('button');
     gb[0].disabled = party.guests <= 1;
     gb[1].disabled = party.guests >= maxGuests;
-    var nb = document.getElementById('mibPNights').querySelectorAll('button');
-    nb[0].disabled = party.nights <= 1;
-    nb[1].disabled = party.nights >= 30;
   }
 
   function bigStep(id, key, lo, hi) {
@@ -605,7 +853,6 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
     });
   }
   bigStep('mibPGuests', 'guests', 1, maxGuests);
-  bigStep('mibPNights', 'nights', 1, 30);
 
   function offerCard(o, i) {
     var q = o.quote;
@@ -639,13 +886,12 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
   function search() {
     clearTimeout(searchTimer);
     var seq = ++searchSeq;
-    recapEl.textContent = party.guests + ' guest' + (party.guests === 1 ? '' : 's') + ' · '
-                        + party.nights + ' night' + (party.nights === 1 ? '' : 's');
+    recapEl.textContent = party.guests + ' guest' + (party.guests === 1 ? '' : 's') + ' · ' + stayLine();
     offersEl.innerHTML = '<div class="mib-offers__msg">Finding what fits…</div>';
     searchTimer = setTimeout(function () {
       fetch(endpoint, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'suggest', guests: party.guests, nights: party.nights, limit: 5 })
+        body: JSON.stringify({ mode: 'suggest', guests: party.guests, nights: dates.nights, limit: 5 })
       })
         .then(function (r) { return r.json(); })
         .then(function (d) {
@@ -670,17 +916,33 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
     }, 120);
   }
 
-  document.getElementById('mibPGo').addEventListener('click', function () {
-    step1.hidden = true; step2.hidden = false;
-    nights = party.nights;
-    document.getElementById('mibNights').value = party.nights;
+  /** The stay, said once, the same way everywhere it is shown or sent. */
+  function stayLine() {
+    return dates.nights
+      ? nightsWord(dates.nights) + ' · ' + fmtYmd(dates.ci) + ' → ' + fmtYmd(dates.co)
+      : nightsWord(Math.max(1, nights));
+  }
+
+  /* ── Steps ────────────────────────────────────────────────────────────────
+   * Three panels, one popup. The title follows the step; the popup's own scroll
+   * box is reset so a step never opens half-scrolled. */
+  var stepTitles = { 1: 'Build your stay', 2: 'What fits your party', 3: 'Request your stay' };
+  var popTitle = document.getElementById('mibPopTitle');
+  function showStep(n) {
+    step1.hidden = n !== 1; step2.hidden = n !== 2; step3.hidden = n !== 3;
+    popTitle.textContent = stepTitles[n] || stepTitles[1];
+    popBody.scrollTop = 0;
+  }
+
+  goBtn.addEventListener('click', function () {
+    syncDates(true);
+    if (!dates.nights) return;         // belt and braces — the button is disabled too
+    showStep(2);
     search();
-    step2.scrollIntoView({ behavior: 'smooth', block: 'start' });
   });
   document.getElementById('mibBack').addEventListener('click', function () {
     searchSeq++;                      // abandon whatever is in flight
-    step2.hidden = true; step1.hidden = false;
-    step1.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    showStep(1);
   });
 
   // Tapping an offer requests THAT stay — its own quote, not the picker's.
@@ -690,9 +952,15 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
     var card = btn.closest('.mib-off');
     var o = offers[parseInt(card.dataset.offer, 10)];
     if (!o) return;
-    openModal(o.quote, o.label + ' · ' + o.units.map(function (u) {
-      return (u.qty > 1 ? u.qty + '× ' : '') + u.key + ' (' + u.guests + ' guests)';
-    }).join(', ') + ' · ' + o.quote.nights + ' nights · ' + usd(o.quote.total) + ' total');
+    // A one-unit offer's name IS its breakdown ("2× Two-Bedroom Family Room ·
+    // 2× Two-Bedroom Family Room") — say it once, and spell the mix out only
+    // when there is actually a mix.
+    var breakdown = o.units.map(function (u) {
+      return (u.qty > 1 ? u.qty + '× ' : '') + u.key + ' (' + u.guests + ' guest' + (u.guests === 1 ? '' : 's') + ')';
+    }).join(', ');
+    openRequest(o.quote, o.units.length === 1
+      ? o.label + ' · ' + o.quote.guests + ' guest' + (o.quote.guests === 1 ? '' : 's')
+      : o.label + ' · ' + breakdown);
   });
 
   // "Build it yourself" — the full picker, unchanged, for a bespoke mix.
@@ -705,49 +973,62 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
     if (open) { syncLiving(); quote(); bespoke.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   });
 
-  // Enquiry modal — shared by both steps. modalQuote is what the guest is
-  // actually requesting; the picker's own live quote keeps updating in
-  // lastQuote behind it and must not overwrite what the modal is showing.
-  var modal = document.getElementById('mibModal');
-  var modalQuote = null, modalSummary = '';
-  function openModal(q, summary) {
-    modalQuote = q; modalSummary = summary;
-    document.getElementById('mibSummaryText').textContent = summary;
+  // Step 3 — the request. modalQuote is what the guest is actually requesting;
+  // the picker's own live quote keeps updating in lastQuote behind it and must
+  // not overwrite what the form is showing.
+  // Callers hand over the ROOMS only; the stay and the money are appended here,
+  // so the screen and the email say the dates once each and say them the same.
+  var modalQuote = null, modalRooms = '';
+  function openRequest(q, rooms) {
+    modalQuote = q; modalRooms = rooms;
+    document.getElementById('mibSummaryText').textContent =
+      rooms + ' · ' + stayLine() + ' · ' + usd(q.total) + ' total';
     document.getElementById('mibMsg').className = 'mib-msg';
-    modal.classList.add('open');
+    showStep(3);
   }
   document.getElementById('mibRequest').addEventListener('click', function () {
     if (!lastQuote || lastQuote.errors.length || !lastQuote.guests) return;
-    openModal(lastQuote, summaryText(lastQuote));
+    openRequest(lastQuote, roomsText());
   });
-  document.getElementById('mibCancel').addEventListener('click', function () { modal.classList.remove('open'); });
-  modal.addEventListener('click', function (e) { if (e.target === modal) modal.classList.remove('open'); });
+  document.getElementById('mibCancel').addEventListener('click', function () { showStep(2); });
+  document.getElementById('mibFormBack').addEventListener('click', function () { showStep(2); });
 
-  function summaryText(q) {
+  /** What the bespoke picker currently holds, rooms only. */
+  function roomsText() {
     var parts = [];
     rows.forEach(function (r) {
       var s = state[r.dataset.unit];
       if (s.qty) parts.push(s.qty + '× ' + r.dataset.unit + ' (' + s.g + ' guests)');
     });
     if (livingQty) parts.push(livingQty + '× Living Room + Kitchen');
-    return parts.join(', ') + ' · ' + q.nights + ' nights · ' + usd(q.total) + ' total';
+    return parts.join(', ');
   }
 
   document.getElementById('mibForm').addEventListener('submit', function (e) {
     e.preventDefault();
     var f = e.target, msg = document.getElementById('mibMsg');
-    if (f.website.value) { modal.classList.remove('open'); return; } // honeypot
+    if (f.website.value) { closePop(); return; } // honeypot
     var q = modalQuote;
     if (!q) return;
-    var message = 'Maya Ilai booking request:\n' + modalSummary +
+    // The dates lead. Staff used to receive a room mix and a night count with no
+    // dates at all, which is most of the work of actioning an enquiry; the ISO
+    // pair is carried alongside the readable one so it can be parsed later.
+    var dateLine = dates.nights
+      ? 'Dates: ' + fmtYmd(dates.ci) + ' → ' + fmtYmd(dates.co)
+        + ' (' + dates.ci + ' → ' + dates.co + ', ' + nightsWord(dates.nights) + ')'
+      : 'Dates: not given (' + nightsWord(q.nights) + ')';
+    var message = 'Maya Ilai booking request:\n' + dateLine + '\nRooms: ' + modalRooms +
       '\nAccommodation/night: ' + usd(q.nightly) + ' · Eco fee: ' + usd(q.eco) + ' · Estimated total: ' + usd(q.total) +
+      '\nDates are the guest\'s request — availability is not checked by this form.' +
       (f.note.value.trim() ? ('\n\nGuest note: ' + f.note.value.trim()) : '');
     var btn = f.querySelector('button[type=submit]'); btn.disabled = true;
     fetch(contact, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         name: f.name.value, email: f.email.value, phone: f.phone.value,
-        subject: 'Maya Ilai booking request', message: message,
+        subject: 'Maya Ilai booking request' + (dates.nights ? ' · ' + dates.ci + ' → ' + dates.co : ''),
+        message: message,
+        check_in: dates.ci, check_out: dates.co, nights: dates.nights,
         quoted_total: q.total, quoted_currency: 'USD',
         'cf-turnstile-response': ''
       })
@@ -756,14 +1037,109 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
       .then(function (res) {
         if (res.ok && res.j && res.j.ok) {
           msg.className = 'mib-msg ok show'; msg.textContent = 'Request sent — the property will confirm availability by email shortly.';
-          setTimeout(function () { modal.classList.remove('open'); }, 2200);
+          setTimeout(function () { closePop(); }, 2400);
         } else { msg.className = 'mib-msg bad show'; msg.textContent = (res.j && res.j.error) || 'Could not send. Please try again.'; }
       })
       .catch(function () { msg.className = 'mib-msg bad show'; msg.textContent = 'Network error. Please try again.'; })
       .then(function () { btn.disabled = false; });
   });
 
+  /* ── The popup ────────────────────────────────────────────────────────────
+   *
+   * ONE dialog owns the scroll lock, the focus trap and the Escape key — which
+   * is exactly why the request form became step 3 instead of a second modal.
+   *
+   * The one other layer that can be on screen is the shared datepicker's pop.
+   * It lives on <body> at z-index 9999, above this, and closes itself on
+   * Escape and on any outside click. Both handlers below stand aside while it
+   * is open, so the first Escape (and the first backdrop click) dismisses the
+   * calendar and the second dismisses the popup — never both at once.
+   */
+  var pop = document.getElementById('mibPop'), dialog = document.getElementById('mibDialog');
+  var popBody = document.getElementById('mibPopBody');
+  // Out to <body>: position:fixed is relative to a transformed ancestor, and
+  // the property page animates sections on scroll.
+  if (pop.parentNode !== document.body) document.body.appendChild(pop);
+
+  var lastTrigger = null;
+  var FOCUSABLE = 'a[href],button:not([disabled]),input:not([disabled]),select:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex="-1"])';
+  function dpIsOpen() { var p = document.querySelector('.dp-pop'); return !!(p && !p.hidden); }
+  function focusables() {
+    return Array.prototype.filter.call(dialog.querySelectorAll(FOCUSABLE), function (el) {
+      return el.offsetWidth || el.offsetHeight || el.getClientRects().length;   // skips hidden steps
+    });
+  }
+
+  function openPop(trigger) {
+    if (trigger) lastTrigger = trigger;
+    if (!pop.hidden) return;
+    // The page must not scroll behind. body alone is not enough here: this page
+    // sets html{overflow-x:hidden}, so body's overflow no longer propagates to
+    // the viewport and <html> stays the scroller.
+    var bar = window.innerWidth - document.documentElement.clientWidth;
+    if (bar > 0) document.body.style.paddingRight = bar + 'px';
+    document.documentElement.classList.add('mib-locked');
+    document.body.classList.add('mib-locked');
+    pop.hidden = false; pop.classList.add('open');
+    // The picker binds each .dp-btn once and skips bound ones, so this is safe
+    // to call every time and covers the script having landed late.
+    if (typeof window.initDatepickers === 'function') window.initDatepickers();
+    bindDpSync();
+    syncDates(true);
+    var f = focusables();
+    (f.length ? f[0] : dialog).focus();
+  }
+
+  function closePop() {
+    if (pop.hidden) return;
+    pop.classList.remove('open'); pop.hidden = true;
+    document.documentElement.classList.remove('mib-locked');
+    document.body.classList.remove('mib-locked');
+    document.body.style.paddingRight = '';
+    // Back to whatever opened it. Reopening keeps the party, the dates and the
+    // step exactly as they were — nothing is reset, on either trigger.
+    if (lastTrigger && document.contains(lastTrigger)) lastTrigger.focus();
+  }
+
+  // Any trigger, anywhere on the page. The links keep their href so that with
+  // no JS they still jump to the section that holds the button.
+  document.addEventListener('click', function (e) {
+    var t = e.target.closest ? e.target.closest('[data-mib-open]') : null;
+    if (!t) return;
+    e.preventDefault();
+    openPop(t);
+  });
+
+  pop.addEventListener('click', function (e) {
+    if (!e.target.closest('[data-mib-close]')) return;   // backdrop or the × only
+    if (dpIsOpen()) return;                              // let the calendar close first
+    closePop();
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if (pop.hidden) return;
+    if (e.key === 'Escape' || e.key === 'Esc') {
+      if (dpIsOpen()) return;                            // the calendar closes itself
+      e.preventDefault(); closePop(); return;
+    }
+    if (e.key !== 'Tab') return;
+    var f = focusables();
+    if (!f.length) { e.preventDefault(); dialog.focus(); return; }
+    var first = f[0], last = f[f.length - 1], active = document.activeElement;
+    if (!dialog.contains(active)) { e.preventDefault(); (e.shiftKey ? last : first).focus(); }
+    else if (e.shiftKey && active === first) { e.preventDefault(); last.focus(); }
+    else if (!e.shiftKey && active === last) { e.preventDefault(); first.focus(); }
+  });
+
+  // datepicker.js pins its calendar to the trigger and repositions on WINDOW
+  // scroll — which the popup's own scroll box never fires. Nudge it, or the
+  // calendar floats away from its button as the guest scrolls the popup.
+  popBody.addEventListener('scroll', function () {
+    if (dpIsOpen()) window.dispatchEvent(new Event('scroll'));
+  }, { passive: true });
+
   paintParty();
+  paintDates();
   syncLiving();
 })();
 </script>
