@@ -16,18 +16,54 @@ $mibCfg   = maya_ilai_pricing_get();
 $mibRates = $mibCfg['rates'];
 $mibRules = $mibCfg['rules'];
 
-// Unit types shown to guests, in order. cap = default guests when a unit is added.
+// Unit types shown to guests, in order. inc = default guests when a unit is added,
+// minper = the fewest guests one unit can hold (the tool rejects an empty room).
+// `parts` is the primitive expansion EVERY row carries — the payload is assembled
+// from it, so a combination and a hand-assembled equivalent post identically.
 $mibUnits = [
-    ['key'=>'Villa',  'qty'=>'qtyVilla',  'g'=>'guestVilla',  'rate'=>$mibRates['villa'],  'inc'=>(int)$mibRules['villaIncluded'], 'max'=>(int)$mibRules['villaMax'], 'note'=>'3-bedroom villa · sleeps up to '.$mibRules['villaMax']],
-    ['key'=>'Studio', 'qty'=>'qtyStudio', 'g'=>'guestStudio', 'rate'=>$mibRates['studio'], 'inc'=>2, 'max'=>2, 'note'=>'Private studio · sleeps 2'],
-    ['key'=>'Bunk Room','qty'=>'qtyBunk', 'g'=>'guestBunk',   'rate'=>$mibRates['bunk'],   'inc'=>(int)$mibRules['bunkIncluded'], 'max'=>(int)$mibRules['bunkMax'], 'note'=>'Villa bunk room · up to '.$mibRules['bunkMax']],
-    ['key'=>'Double Room','qty'=>'qtyDouble','g'=>'guestDouble','rate'=>$mibRates['double'],'inc'=>2, 'max'=>2, 'note'=>'Villa double room · sleeps 2'],
+    ['key'=>'Villa',  'parts'=>['villa'=>1],  'rate'=>$mibRates['villa'],  'inc'=>(int)$mibRules['villaIncluded'], 'max'=>(int)$mibRules['villaMax'], 'minper'=>1, 'note'=>'3-bedroom villa · sleeps up to '.$mibRules['villaMax']],
+    ['key'=>'Studio', 'parts'=>['studio'=>1], 'rate'=>$mibRates['studio'], 'inc'=>2, 'max'=>2, 'minper'=>1, 'note'=>'Private studio · sleeps 2'],
+    ['key'=>'Bunk Room','parts'=>['bunk'=>1], 'rate'=>$mibRates['bunk'],   'inc'=>(int)$mibRules['bunkIncluded'], 'max'=>(int)$mibRules['bunkMax'], 'minper'=>1, 'note'=>'Villa bunk room · up to '.$mibRules['bunkMax']],
+    ['key'=>'Double Room','parts'=>['double'=>1],'rate'=>$mibRates['double'],'inc'=>2, 'max'=>2, 'minper'=>1, 'note'=>'Villa double room · sleeps 2'],
 ];
+
+// The named combination products. Price, occupancy and note are ALL derived from
+// the live config (never a hardcoded table), so a rate edited in admin moves the
+// product with it — the displayed figure is summed from the same rates that price
+// the expansion, so the two cannot drift apart. A combination that has stopped
+// making sense at the live rates (costing at least a whole villa, which contains
+// it) is dropped by maya_ilai_combo_offerable() rather than quoted.
+$mibCombos = [];
+foreach (maya_ilai_combos() as $c) {
+    if (!maya_ilai_combo_offerable($mibCfg, $c['parts'])) continue;
+    $occ    = maya_ilai_combo_occupancy($mibCfg, $c['parts']);
+    $sleeps = $occ['included'] === $occ['max']
+        ? 'sleeps '.$occ['included']
+        : 'sleeps '.$occ['included'].', up to '.$occ['max'];
+    $mibCombos[] = [
+        'key'=>$c['key'], 'parts'=>$c['parts'], 'rate'=>maya_ilai_combo_rate($mibCfg, $c['parts']),
+        'inc'=>$occ['included'], 'max'=>$occ['max'], 'minper'=>$occ['min'],
+        'note'=>$c['desc'].' · '.$sleeps,
+    ];
+}
+usort($mibCombos, fn($a, $b) => $a['rate'] <=> $b['rate']);   // price ascending
+
+$mibGroups = [['label'=>'Rooms', 'rows'=>$mibUnits]];
+if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'class'=>'mib-group--combo',
+                                'hint'=>'Whole bedroom sets, priced as one product.'];
 ?>
 <style>
   .mib{--mib-line:rgba(184,150,90,.22);--mib-ink:#141412;--mib-mut:#6B6050;font-family:'Jost',sans-serif;color:var(--mib-ink)}
   .mib-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,1fr);gap:2rem;align-items:start}
   .mib-rows{display:flex;flex-direction:column;gap:.9rem}
+  .mib-group+.mib-group{margin-top:1.6rem}
+  .mib-group__hd{display:flex;align-items:baseline;gap:.7rem;flex-wrap:wrap;margin-bottom:.7rem}
+  .mib-group__lbl{font-size:.62rem;letter-spacing:.2em;text-transform:uppercase;color:var(--mib-mut)}
+  .mib-group__hint{font-size:.76rem;color:var(--mib-mut);opacity:.8}
+  /* Combinations read as one picker with the rooms, but visibly their own shelf. */
+  .mib-group--combo .mib-rows{border-left:2px solid var(--sand,#B8965A);padding-left:.9rem}
+  .mib-group--combo .mib-group__lbl{color:var(--sand-dk,#8A6D33)}
+  .mib-group--combo .mib-row{background:var(--sand-faint,#FAF6EE)}
   .mib-row{display:grid;grid-template-columns:1fr auto auto;gap:1rem;align-items:center;border:1px solid var(--mib-line);background:#fff;padding:.9rem 1.1rem}
   .mib-row__name{font-family:'Cormorant Garamond',serif;font-size:1.25rem;color:var(--mib-ink);line-height:1.1}
   .mib-row__note{font-size:.78rem;color:var(--mib-mut);margin-top:.15rem}
@@ -42,6 +78,9 @@ $mibUnits = [
   .mib-extra{display:flex;flex-wrap:wrap;gap:1rem;align-items:center;margin-top:1.1rem;padding-top:1.1rem;border-top:1px solid var(--mib-line)}
   .mib-extra label{font-size:.85rem;color:var(--mib-mut);display:flex;align-items:center;gap:.45rem}
   .mib-extra input[type=number]{width:64px;padding:.45rem .5rem;border:1px solid var(--mib-line);font-family:inherit;font-size:.9rem}
+  .mib-living{display:flex;align-items:center;gap:.7rem;flex-wrap:wrap}
+  .mib-living__txt{font-size:.85rem;color:var(--mib-mut)}
+  .mib-living__hint{font-size:.72rem;color:var(--mib-mut);opacity:.75;flex-basis:100%}
   .mib-summary{position:sticky;top:90px;border:1px solid var(--mib-line);background:#fff;box-shadow:0 8px 32px rgba(0,0,0,.06)}
   .mib-sum-top{background:var(--teal-d,#102F3A);color:#fff;padding:1.3rem 1.4rem}
   .mib-sum-lbl{font-size:.6rem;letter-spacing:.24em;text-transform:uppercase;color:rgba(184,150,90,.7)}
@@ -78,40 +117,56 @@ $mibUnits = [
      data-endpoint="/api/maya-ilai-quote.php"
      data-contact="/api/submit-contact.php"
      data-rates='<?= e(json_encode($mibRates)) ?>'
-     data-inc='<?= e(json_encode(['Villa'=>(int)$mibRules['villaIncluded'],'Studio'=>2,'Bunk Room'=>(int)$mibRules['bunkIncluded'],'Double Room'=>2])) ?>'
-     data-max='<?= e(json_encode(['Villa'=>(int)$mibRules['villaMax'],'Studio'=>2,'Bunk Room'=>(int)$mibRules['bunkMax'],'Double Room'=>2])) ?>'>
+     data-rules='<?= e(json_encode(['bunkMax'=>(int)$mibRules['bunkMax'],'doublePerVilla'=>max(1,(int)$mibCfg['inventory']['doublePerVilla'])])) ?>'>
   <div class="mib-grid">
     <div>
-      <div class="mib-rows">
-        <?php foreach ($mibUnits as $u): ?>
-        <div class="mib-row" data-unit="<?= e($u['key']) ?>" data-qty="<?= e($u['qty']) ?>" data-g="<?= e($u['g']) ?>" data-inc="<?= (int)$u['inc'] ?>" data-max="<?= (int)$u['max'] ?>">
-          <div>
-            <div class="mib-row__name"><?= e($u['key']) ?></div>
-            <div class="mib-row__note"><?= e($u['note']) ?></div>
-            <div class="mib-row__rate" data-rate="<?= (float)$u['rate'] ?>">from $<?= number_format((float)$u['rate']) ?> / night</div>
-          </div>
-          <div class="mib-ctl">
-            <span class="mib-ctl__lbl">Rooms</span>
-            <div class="mib-step" data-step="qty">
-              <button type="button" data-dir="-1" aria-label="Fewer">−</button>
-              <span class="mib-step__n mib-qty">0</span>
-              <button type="button" data-dir="1" aria-label="More">+</button>
-            </div>
-          </div>
-          <div class="mib-ctl">
-            <span class="mib-ctl__lbl">Guests</span>
-            <div class="mib-step" data-step="g">
-              <button type="button" data-dir="-1" aria-label="Fewer">−</button>
-              <span class="mib-step__n mib-g">0</span>
-              <button type="button" data-dir="1" aria-label="More">+</button>
-            </div>
-          </div>
+      <?php foreach ($mibGroups as $grp): ?>
+      <div class="mib-group <?= e($grp['class'] ?? '') ?>">
+        <div class="mib-group__hd">
+          <span class="mib-group__lbl"><?= e($grp['label']) ?></span>
+          <?php if (!empty($grp['hint'])): ?><span class="mib-group__hint"><?= e($grp['hint']) ?></span><?php endif; ?>
         </div>
-        <?php endforeach; ?>
+        <div class="mib-rows">
+          <?php foreach ($grp['rows'] as $u): ?>
+          <div class="mib-row" data-unit="<?= e($u['key']) ?>" data-parts='<?= e(json_encode($u['parts'])) ?>'
+               data-inc="<?= (int)$u['inc'] ?>" data-max="<?= (int)$u['max'] ?>" data-minper="<?= (int)$u['minper'] ?>">
+            <div>
+              <div class="mib-row__name"><?= e($u['key']) ?></div>
+              <div class="mib-row__note"><?= e($u['note']) ?></div>
+              <div class="mib-row__rate" data-rate="<?= (float)$u['rate'] ?>">from $<?= number_format((float)$u['rate']) ?> / night</div>
+            </div>
+            <div class="mib-ctl">
+              <span class="mib-ctl__lbl">Rooms</span>
+              <div class="mib-step" data-step="qty">
+                <button type="button" data-dir="-1" aria-label="Fewer">−</button>
+                <span class="mib-step__n mib-qty">0</span>
+                <button type="button" data-dir="1" aria-label="More">+</button>
+              </div>
+            </div>
+            <div class="mib-ctl">
+              <span class="mib-ctl__lbl">Guests</span>
+              <div class="mib-step" data-step="g">
+                <button type="button" data-dir="-1" aria-label="Fewer">−</button>
+                <span class="mib-step__n mib-g">0</span>
+                <button type="button" data-dir="1" aria-label="More">+</button>
+              </div>
+            </div>
+          </div>
+          <?php endforeach; ?>
+        </div>
       </div>
+      <?php endforeach; ?>
 
       <div class="mib-extra">
-        <label><input type="checkbox" id="mibLiving"> Add Living Room + Kitchen <span style="color:var(--teal,#1E5C6B)">($<?= number_format((float)$mibRates['living']) ?>/night)</span></label>
+        <div class="mib-living">
+          <span class="mib-living__txt">Living Room + Kitchen <span style="color:var(--teal,#1E5C6B)">($<?= number_format((float)$mibRates['living']) ?>/night)</span></span>
+          <div class="mib-step" id="mibLivingStep">
+            <button type="button" data-dir="-1" aria-label="Fewer living rooms">−</button>
+            <span class="mib-step__n" id="mibLivingN">0</span>
+            <button type="button" data-dir="1" aria-label="More living rooms">+</button>
+          </div>
+          <span class="mib-living__hint" id="mibLivingHint"></span>
+        </div>
         <label>Nights <input type="number" id="mibNights" min="1" value="3"></label>
       </div>
     </div>
@@ -155,18 +210,117 @@ $mibUnits = [
   var root = document.getElementById('mibRoot');
   if (!root) return;
   var endpoint = root.dataset.endpoint, contact = root.dataset.contact;
-  var inc = JSON.parse(root.dataset.inc), max = JSON.parse(root.dataset.max);
+  var rules = JSON.parse(root.dataset.rules);
   var usd = function (n) { return '$' + Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 0 }); };
-  var state = {}; // unit -> {qty, g}
-  root.querySelectorAll('.mib-row').forEach(function (r) { state[r.dataset.unit] = { qty: 0, g: 0 }; });
-  var living = false, nights = 3, lastQuote = null, timer = null;
+  var rows = Array.prototype.slice.call(root.querySelectorAll('.mib-row'));
+  var state = {}; // unit -> {qty, g, parts, inc, max, minper}
+  rows.forEach(function (r) {
+    state[r.dataset.unit] = {
+      qty: 0, g: 0,
+      parts:  JSON.parse(r.dataset.parts),
+      inc:    parseInt(r.dataset.inc, 10) || 1,
+      max:    parseInt(r.dataset.max, 10) || 1,
+      minper: parseInt(r.dataset.minper, 10) || 1
+    };
+  });
+  var livingQty = 0, nights = 3, lastQuote = null, timer = null;
+
+  /**
+   * Split a row's guests across the primitives it expands to, mirroring
+   * maya_ilai_split_guests(): one guest per bedroom first (the tool rejects an
+   * empty selected room), then doubles to 2, then the remainder into the bunk
+   * rooms. Single-primitive rows just hand their guests to their own bucket, so
+   * the four original rows post exactly what they always did.
+   */
+  function allocate(parts, guests) {
+    var a = { double: 0, bunk: 0, studio: 0, villa: 0 };
+    if (parts.studio) { a.studio = guests; return a; }
+    if (parts.villa)  { a.villa  = guests; return a; }
+    var d = parts.double || 0, b = parts.bunk || 0, left = Math.max(0, guests), take;
+    a.double = Math.min(d, left); left -= a.double;               // one per double
+    a.bunk   = Math.min(b, left); left -= a.bunk;                 // one per bunk room
+    take = Math.min(d * 2 - a.double, left); a.double += take; left -= take;   // doubles to 2
+    a.bunk += Math.min(b * rules.bunkMax - a.bunk, left);         // remainder into bunks
+    return a;
+  }
+
+  /** Every row's primitive totals — the one place a selection becomes primitives. */
+  function expand() {
+    var p = { qtyDouble: 0, qtyBunk: 0, qtyStudio: 0, qtyVilla: 0, qtyLiving: 0,
+              guestDouble: 0, guestBunk: 0, guestStudio: 0, guestVilla: 0 };
+    rows.forEach(function (r) {
+      var s = state[r.dataset.unit];
+      if (!s.qty) return;
+      var pooled = {}, k;
+      for (k in s.parts) pooled[k] = s.parts[k] * s.qty;
+      p.qtyDouble += pooled.double || 0; p.qtyBunk   += pooled.bunk   || 0;
+      p.qtyStudio += pooled.studio || 0; p.qtyVilla  += pooled.villa  || 0;
+      p.qtyLiving += pooled.living || 0;
+      var a = allocate(pooled, s.g);
+      p.guestDouble += a.double; p.guestBunk += a.bunk;
+      p.guestStudio += a.studio; p.guestVilla += a.villa;
+    });
+    return p;
+  }
+
+  /**
+   * How many MORE standalone living rooms the selection may take. A villa has
+   * one living room and you cannot rent one in a villa you have no bedroom in,
+   * so the allowance comes from the component bedrooms (whole villas excluded —
+   * they already include theirs) minus the ones combinations already consume.
+   * The server enforces the same rule; this only keeps the guest out of it.
+   */
+  function livingCap() {
+    var p = expand();
+    var allowed = Math.max(Math.ceil(p.qtyDouble / rules.doublePerVilla), p.qtyBunk);
+    return Math.max(0, allowed - p.qtyLiving);
+  }
+
+  /**
+   * Cap the rows that BRING a living room with them, so the guest cannot build a
+   * selection the server would reject. Mirrors maya_ilai_quote()'s invariant over
+   * the combination-supplied living rooms; the standalone stepper is clamped
+   * separately by syncLiving(), which is why a suite can absorb one you had
+   * added by hand — it comes with its own.
+   *
+   * NOTE this is what stops a 2nd One-Bedroom Suite: the stated allowance packs
+   * doubles 2-per-villa, so 2 doubles entitle 1 living room while two suites need
+   * two. Enforced as specified rather than relaxed here — see the test file.
+   */
+  function syncRowCaps() {
+    rows.forEach(function (r) {
+      var s = state[r.dataset.unit];
+      if (!s.parts.living) return;
+      var plus = r.querySelector('.mib-step[data-step="qty"] button[data-dir="1"]');
+      var keep = s.qty;
+      s.qty = keep + 1;
+      var p = expand();
+      s.qty = keep;
+      plus.disabled = p.qtyLiving > Math.max(Math.ceil(p.qtyDouble / rules.doublePerVilla), p.qtyBunk);
+    });
+  }
+
+  function syncLiving() {
+    syncRowCaps();
+    var p = expand();
+    var free = livingCap();                 // allowance not already used by a combination
+    if (livingQty > free) livingQty = free;
+    var remaining = free - livingQty;
+
+    document.getElementById('mibLivingN').textContent = livingQty;
+    var btns = document.getElementById('mibLivingStep').querySelectorAll('button');
+    btns[0].disabled = livingQty <= 0;
+    btns[1].disabled = remaining <= 0;
+    document.getElementById('mibLivingHint').textContent =
+      (!p.qtyDouble && !p.qtyBunk) ? 'Add a villa bedroom first — a living room comes with one.'
+      : remaining                  ? 'One per villa · ' + remaining + ' more available'
+                                   : 'One per villa · all your villas have one';
+  }
 
   function payload() {
-    var p = { nights: nights, qtyLiving: living ? 1 : 0 };
-    root.querySelectorAll('.mib-row').forEach(function (r) {
-      var s = state[r.dataset.unit];
-      p[r.dataset.qty] = s.qty; p[r.dataset.g] = s.g;
-    });
+    var p = expand();
+    p.qtyLiving += livingQty;
+    p.nights = nights;
     return p;
   }
 
@@ -213,7 +367,7 @@ $mibUnits = [
   function row(a, b, tot) { return '<div class="mib-line' + (tot ? ' mib-line--total' : '') + '"><span>' + a + '</span><span>' + b + '</span></div>'; }
 
   // Steppers
-  root.querySelectorAll('.mib-row').forEach(function (r) {
+  rows.forEach(function (r) {
     var u = r.dataset.unit;
     r.querySelectorAll('.mib-step').forEach(function (step) {
       var kind = step.dataset.step;
@@ -223,17 +377,22 @@ $mibUnits = [
           if (kind === 'qty') {
             s.qty = Math.max(0, s.qty + dir);
             // Default guests to the included capacity when rooms change.
-            s.g = s.qty === 0 ? 0 : Math.max(s.qty, Math.min(s.qty * max[u], (inc[u] || max[u]) * s.qty));
+            s.g = s.qty === 0 ? 0 : Math.max(s.qty * s.minper, Math.min(s.qty * s.max, s.inc * s.qty));
           } else {
-            var lo = s.qty, hi = s.qty * (max[u] || 1);
+            var lo = s.qty * s.minper, hi = s.qty * s.max;
             s.g = Math.min(hi, Math.max(lo, s.g + dir));
           }
-          render(r); quote();
+          render(r); syncLiving(); quote();
         });
       });
     });
   });
-  document.getElementById('mibLiving').addEventListener('change', function () { living = this.checked; quote(); });
+  document.getElementById('mibLivingStep').querySelectorAll('button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      livingQty = Math.max(0, Math.min(livingCap(), livingQty + parseInt(b.dataset.dir, 10)));
+      syncLiving(); quote();
+    });
+  });
   document.getElementById('mibNights').addEventListener('input', function () { nights = Math.max(1, parseInt(this.value, 10) || 1); quote(); });
 
   // Enquiry modal
@@ -248,11 +407,11 @@ $mibUnits = [
 
   function summaryText(q) {
     var parts = [];
-    root.querySelectorAll('.mib-row').forEach(function (r) {
+    rows.forEach(function (r) {
       var s = state[r.dataset.unit];
       if (s.qty) parts.push(s.qty + '× ' + r.dataset.unit + ' (' + s.g + ' guests)');
     });
-    if (living) parts.push('Living Room + Kitchen');
+    if (livingQty) parts.push(livingQty + '× Living Room + Kitchen');
     return parts.join(', ') + ' · ' + q.nights + ' nights · ' + usd(q.total) + ' total';
   }
 
@@ -285,6 +444,7 @@ $mibUnits = [
       .then(function () { btn.disabled = false; });
   });
 
+  syncLiving();
   quote();
 })();
 </script>
