@@ -711,6 +711,53 @@ function find_available_unit(int $room_id, string $check_in, string $check_out):
 }
 
 /**
+ * True once holds.room_id exists (migration: add_holds_room_id.sql). Memoised.
+ *
+ * This column is read on the path of EVERY property, so a deploy that has not
+ * run the migration yet must degrade to the old unit -> room behaviour rather
+ * than fatal — the house *_supported() contract (checkin_deposit_supported()
+ * and friends), with the probe query chosen as explained below.
+ */
+function holds_room_id_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    // A catalog lookup, not the usual "SELECT <col> ... LIMIT 1" probe, because
+    // this is first reached from inside create_hold_with_block() — which
+    // mi_allocate_and_hold() runs inside a transaction. In Postgres a failed
+    // statement aborts the WHOLE transaction, so on a pre-migration database the
+    // probe's own error would kill the booking it was asked about. This query
+    // cannot fail. (bookings_supported() uses to_regclass for the same reason.)
+    try {
+        $ok = (bool) db_query(
+            "SELECT 1 FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'holds'
+                AND column_name = 'room_id'"
+        )->fetchColumn();
+    } catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/**
+ * SQL expression resolving which ROOM (product) a hold is for.
+ *
+ * A hold's product used to be derivable from its unit, because each room owned
+ * its own units. Maya Ilai's composite products break that: six of them own no
+ * units and allocate against the villa units, so unit->room reports the villa
+ * for every one of them. holds.room_id records the product directly.
+ *
+ * Falls back to the unit's room for pre-migration rows and for every hold
+ * created before this column existed — which is correct for them.
+ *
+ * Both aliases must be in scope in the query using this fragment (the fallback
+ * needs the unit alias even when the column exists).
+ */
+function hold_room_id_sql(string $holdAlias = 'h', string $unitAlias = 'u'): string {
+    return holds_room_id_supported()
+        ? "COALESCE({$holdAlias}.room_id, {$unitAlias}.room_id)"
+        : "{$unitAlias}.room_id";
+}
+
+/**
  * $expiresInHours: NULL = the hold never auto-expires. Staff-typed bookings use
  * NULL so expire_stale_holds() cannot cancel them overnight and free the dates —
  * its predicate (expires_at < NOW()) is NULL for a NULL column and never matches.
@@ -723,11 +770,19 @@ function create_hold_with_block(
     string $guest_name, string $guest_email,
     string $status = 'pending',
     ?int $expiresInHours = 24,
-    ?array $components = null
+    ?array $components = null,
+    ?int $roomId = null
 ): int {
     $confirmed = $status === 'confirmed';
     $expiresExpr = $expiresInHours === null ? 'NULL' : 'NOW() + make_interval(hours => :exph)';
     $hold_id = 0;
+
+    // Which product this hold is for. Only written when the column exists, so a
+    // deploy that has not run add_holds_room_id.sql yet still books normally —
+    // its holds simply fall back to the unit's room, as they always did.
+    $writeRoom = $roomId !== null && $roomId > 0 && holds_room_id_supported();
+    $roomCol   = $writeRoom ? 'room_id, ' : '';
+    $roomVal   = $writeRoom ? ':room, '   : '';
 
     // In Postgres a statement that raises an error aborts the WHOLE transaction:
     // every later statement dies with "current transaction is aborted". So once
@@ -750,10 +805,10 @@ function create_hold_with_block(
         try {
             $stmt = db()->prepare(
                 "INSERT INTO holds
-                    (submission_id, unit_id, check_in, check_out, guest_name, guest_email,
+                    ({$roomCol}submission_id, unit_id, check_in, check_out, guest_name, guest_email,
                      access_code, status, confirmed_at, expires_at)
                  VALUES
-                    (:sub, :unit, :ci, :co, :name, :email,
+                    ({$roomVal}:sub, :unit, :ci, :co, :name, :email,
                      :code, :status, :confirmed_at, {$expiresExpr})
                  RETURNING id"
             );
@@ -768,6 +823,7 @@ function create_hold_with_block(
                 ':status'       => $status,
                 ':confirmed_at' => $confirmed ? date('Y-m-d H:i:s') : null,
             ];
+            if ($writeRoom)                $params[':room'] = $roomId;
             if ($expiresInHours !== null) $params[':exph'] = $expiresInHours;
             $stmt->execute($params);
             $hold_id = (int)$stmt->fetchColumn();
@@ -871,10 +927,14 @@ function mi_allocate_and_hold(
             return false;
         }
 
+        // The PRODUCT is $room; the UNIT is a villa. Recording the room on the
+        // hold is the only thing that tells anything downstream (the revenue
+        // ledger first of all) which of the eight products was actually sold.
         $holdId = create_hold_with_block(
             (int)$unit['id'], $submissionId, $check_in, $check_out,
             $guestName, $guestEmail, $status, $expiresInHours,
-            $unit['_mi_components'] ?? null
+            $unit['_mi_components'] ?? null,
+            (int)$room['id']
         );
 
         if ($ownTx) $pdo->commit();

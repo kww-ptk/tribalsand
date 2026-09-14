@@ -42,13 +42,19 @@ function bookings_sync_hold(int $holdId): void {
     if (!bookings_supported() || $holdId <= 0) return;
     require_once __DIR__ . '/db.php';
 
+    // r is the PRODUCT the guest booked, which is not the same thing as the
+    // owner of the unit it was allocated against. Maya Ilai sells eight products
+    // out of one pool of villas; six of them own no units at all. Joining rooms
+    // through u.room_id priced every one of them at the villa's nightly rate —
+    // a $150 bunk room snapshotted into the ledger at $1,170 a night — and filed
+    // it under the villa in the by-property/by-room reports. See hold_room_id_sql().
     $h = db_query(
         "SELECT h.id, h.check_in, h.check_out, h.guest_name, h.guest_email, h.status,
                 u.id AS unit_id, r.id AS room_id, r.venue_id,
                 r.price_amount, r.price_currency
          FROM holds h
          JOIN units u ON u.id = h.unit_id
-         JOIN rooms r ON r.id = u.room_id
+         JOIN rooms r ON r.id = " . hold_room_id_sql('h', 'u') . "
          WHERE h.id = :id",
         [':id' => $holdId]
     )->fetch();

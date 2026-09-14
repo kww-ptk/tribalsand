@@ -183,7 +183,7 @@ try {
             $hold_id = mi_allocate_and_hold($room, $id, $checkin, $checkout, $name, $email, 'pending', 24);
         } else {
             $hold_id = create_hold_with_block($unit['id'], $id, $checkin, $checkout, $name, $email,
-                'pending', 24, $unit['_mi_components'] ?? null);
+                'pending', 24, $unit['_mi_components'] ?? null, (int)$room['id']);
         }
         if ($hold_id === false) {
             // Someone took the dates while we waited for the lock. The lead row is

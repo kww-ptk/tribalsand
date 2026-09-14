@@ -5,6 +5,7 @@ declare(strict_types=1);
 // Any DB assertions run inside ONE transaction that is ROLLED BACK at the end.
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/maya-ilai-inventory.php';
+require_once __DIR__ . '/../includes/bookings.php';
 
 $failures = 0;
 function check(string $label, bool $cond): void {
@@ -579,6 +580,128 @@ try {
         check("guard condition: {$p['slug']} has bookable inventory",
             count(fetch_units_by_room(room_inventory_room_id($p))) > 0);
     }
+    // ── Which PRODUCT a hold is for, and what the ledger charges ────────────
+    // Every consumer used to derive the product from holds -> units -> rooms.
+    // That is wrong for Maya Ilai: six of the eight products own no units and
+    // allocate against the VILLA's units, so the join reports "Three-Bedroom
+    // Villa" for all of them. The money consequence is the one that matters —
+    // bookings_sync_hold() took r.price_amount through that join, so a $150
+    // Private Bunk Room was written into the revenue ledger at the villa's
+    // $1,170 a night. holds.room_id records the product directly.
+    if (!bookings_supported()) {
+        echo "SKIP  ledger: add_bookings_finance not applied on this DB\n";
+    } else {
+        $LI = '2099-06-10';
+        $LO = '2099-06-13';                 // 3 nights
+        $bunkFull = db_query('SELECT * FROM rooms WHERE slug = :s',
+            [':s' => 'maya-ilai-bunk-room'])->fetch();
+        $bunkPrice  = (float)$bunkFull['price_amount'];
+        $villaPrice = (float)$villaRow['price_amount'];
+
+        $ledgerHold = mi_allocate_and_hold(
+            $bunkFull, null, $LI, $LO, 'Ledger Bunk', 'ledger-bunk@example.com', 'confirmed', null
+        );
+        check('ledger: a Private Bunk Room books', is_int($ledgerHold) && $ledgerHold > 0);
+
+        check('hold room_id: mi_allocate_and_hold() records the PRODUCT, not the villa',
+            (int) db_query('SELECT room_id FROM holds WHERE id = :h', [':h' => $ledgerHold])
+                ->fetchColumn() === (int)$bunkFull['id']);
+
+        bookings_sync_hold($ledgerHold);
+        $lrow = db_query('SELECT * FROM bookings WHERE hold_id = :h', [':h' => $ledgerHold])->fetch();
+        check('ledger: sync wrote a row', (bool)$lrow);
+        check('ledger: gross is the bunk room\'s 150 × 3 nights, not the villa\'s 1170 × 3',
+            $lrow && (float)$lrow['gross_amount'] === $bunkPrice * 3);
+        check('ledger: the row is attributed to the bunk room, not the villa',
+            $lrow && (int)$lrow['room_id'] === (int)$bunkFull['id']
+                  && (int)$lrow['room_id'] !== (int)$villaRow['id']);
+        check('ledger: nights survive unchanged', $lrow && (int)$lrow['nights'] === 3);
+        check('ledger: the villa price is genuinely different, so the assertion above bites',
+            $villaPrice > 0 && $villaPrice !== $bunkPrice);
+        check('ledger: the unit is still a villa unit — allocation is unchanged',
+            $lrow && (int) db_query('SELECT room_id FROM units WHERE id = :u',
+                [':u' => (int)$lrow['unit_id']])->fetchColumn() === (int)$villaRow['id']);
+
+        // Re-syncing must not duplicate or restate.
+        bookings_sync_hold($ledgerHold);
+        check('ledger: re-sync stays idempotent',
+            (int) db_query('SELECT COUNT(*) FROM bookings WHERE hold_id = :h',
+                [':h' => $ledgerHold])->fetchColumn() === 1);
+
+        // The whole-villa product must still price at the villa's rate.
+        $VI = '2099-06-20';
+        $VO = '2099-06-22';                 // 2 nights
+        $villaHold = mi_allocate_and_hold(
+            $villaRow, null, $VI, $VO, 'Ledger Villa', 'ledger-villa@example.com', 'confirmed', null
+        );
+        check('ledger: the villa product books', is_int($villaHold) && $villaHold > 0);
+        bookings_sync_hold($villaHold);
+        $vrow = db_query('SELECT * FROM bookings WHERE hold_id = :h', [':h' => $villaHold])->fetch();
+        check('ledger: the villa product still prices at the villa rate',
+            $vrow && (float)$vrow['gross_amount'] === $villaPrice * 2
+                  && (int)$vrow['room_id'] === (int)$villaRow['id']);
+
+        // ── No regression at any other property ────────────────────────────
+        // Every non-Maya-Ilai hold has room_id = exactly what the unit->room
+        // join already returned, so the figure must be identical to the old one.
+        $otherUnit = db_query(
+            "SELECT u.id AS unit_id, r.id AS room_id, r.price_amount, r.price_currency, r.slug
+               FROM units u JOIN rooms r ON r.id = u.room_id
+              WHERE u.is_active = TRUE AND r.price_amount > 0
+                AND r.venue_id <> :v
+              ORDER BY u.id LIMIT 1",
+            [':v' => (int)$villaRow['venue_id']]
+        )->fetch();
+        if (!$otherUnit) {
+            echo "SKIP  ledger: no priced unit at another property\n";
+        } else {
+            $OI = '2099-06-10';
+            $OO = '2099-06-14';             // 4 nights
+            $oHold = create_hold_with_block((int)$otherUnit['unit_id'], null, $OI, $OO,
+                'Ledger Other', 'ledger-other@example.com', 'confirmed', null);
+            bookings_sync_hold($oHold);
+            $orow = db_query('SELECT * FROM bookings WHERE hold_id = :h', [':h' => $oHold])->fetch();
+            // The pre-change expectation, computed the old way: the unit's room.
+            $oExpected = room_stay_quote((int)$otherUnit['room_id'],
+                (float)$otherUnit['price_amount'], $OI, $OO);
+            check("no regression: {$otherUnit['slug']} gross is unchanged",
+                $orow && (float)$orow['gross_amount'] === (float)$oExpected['total']);
+            check("no regression: {$otherUnit['slug']} is attributed to its own room",
+                $orow && (int)$orow['room_id'] === (int)$otherUnit['room_id']);
+            check('no regression: a caller that passes no room id leaves room_id NULL',
+                db_query('SELECT room_id FROM holds WHERE id = :h', [':h' => $oHold])
+                    ->fetchColumn() === null);
+            check('legacy path: a NULL holds.room_id still resolves to the unit\'s room',
+                (int) db_query(
+                    'SELECT ' . hold_room_id_sql() . ' FROM holds h JOIN units u ON u.id = h.unit_id
+                      WHERE h.id = :h', [':h' => $oHold]
+                )->fetchColumn() === (int)$otherUnit['room_id']);
+        }
+
+        // create_hold_with_block() writes the room id it is handed.
+        $seventh = (int) db_query(
+            'SELECT id FROM units WHERE room_id = :r AND sort_order = 7',
+            [':r' => $villaRoom['id']]
+        )->fetchColumn();
+        if ($seventh) {
+            $explicit = create_hold_with_block($seventh, null, '2099-06-25', '2099-06-27',
+                'Explicit Room', 'explicit@example.com', 'pending', 24, ['bunk'],
+                (int)$bunkFull['id']);
+            check('hold room_id: create_hold_with_block() writes the room id it is passed',
+                (int) db_query('SELECT room_id FROM holds WHERE id = :h', [':h' => $explicit])
+                    ->fetchColumn() === (int)$bunkFull['id']);
+        }
+    }
+
+    check('hold_room_id_sql: COALESCEs once the column exists',
+        holds_room_id_supported()
+            ? hold_room_id_sql() === 'COALESCE(h.room_id, u.room_id)'
+            : hold_room_id_sql() === 'u.room_id');
+    check('hold_room_id_sql: honours custom aliases',
+        holds_room_id_supported()
+            ? hold_room_id_sql('hh', 'uu') === 'COALESCE(hh.room_id, uu.room_id)'
+            : hold_room_id_sql('hh', 'uu') === 'uu.room_id');
+
 } finally {
     db()->rollBack();
 }
