@@ -189,7 +189,10 @@ function mi_order_villas(array $villas, bool $isVillaProduct, int $reserved): ar
         $ca = count($a['taken']);
         $cb = count($b['taken']);
         if ($ca !== $cb) return $cb <=> $ca;
-        return (int)$a['unit_id'] <=> (int)$b['unit_id'];
+        // Villa number first — staff reason about "Villa 3", not unit ids — then
+        // unit_id, because sort_order is NOT NULL DEFAULT 0 and can tie.
+        $byVilla = (int)$a['sort_order'] <=> (int)$b['sort_order'];
+        return $byVilla !== 0 ? $byVilla : (int)$a['unit_id'] <=> (int)$b['unit_id'];
     });
 
     return array_map(static function (array $v): array {
