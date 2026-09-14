@@ -1141,6 +1141,72 @@ try {
     check('max stay: a room that does not exist is not a stay',
         room_max_stay_nights(0, $CLEAN, 7) === 0);
 
+    // ── Batching: one query per window, not two per night ───────────────────
+    // The closure below IS the pre-batching implementation of mi_blocked_dates()
+    // — one mi_villa_states() call per night. The batched version must answer
+    // identically for every product over a window full of partial blocks, whole-
+    // unit blocks and clean nights. (Same rationale as rates_nightly_map():
+    // resolve the whole window once and slice it in PHP.)
+    $refBlockedDates = static function (array $room, string $from, string $to) use ($villaRoom): array {
+        $pattern = mi_product_map()[$room['slug']] ?? null;
+        if ($pattern === null) return [];
+        $reserved = max(0, (int) setting('maya_ilai_reserved_villas', '2'));
+        $isVilla  = $room['slug'] === MAYA_ILAI_VILLA_ROOM_SLUG;
+        $out = [];
+        $d   = new DateTime($from);
+        $end = new DateTime($to);
+        while ($d < $end) {
+            $night   = $d->format('Y-m-d');
+            $next    = (clone $d)->modify('+1 day')->format('Y-m-d');
+            $ordered = mi_order_villas(
+                array_values(mi_villa_states((int)$villaRoom['id'], $night, $next)),
+                $isVilla, $reserved
+            );
+            $fits = false;
+            foreach ($ordered as $villa) {
+                if (mi_resolve($pattern, $villa['taken']) !== null) { $fits = true; break; }
+            }
+            if (!$fits) $out[] = $night;
+            $d->modify('+1 day');
+        }
+        return $out;
+    };
+
+    // Give the window a whole-villa block and a couple of partial ones on top of
+    // the fixtures above, so it is not just clean nights being compared.
+    db_query(
+        "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, components)
+         VALUES (:u, '2101-04-10', '2101-04-14', 'booked', NULL)",
+        [':u' => $rankUnit[3]]
+    );
+    db_query(
+        "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, components)
+         VALUES (:u, '2101-04-12', '2101-04-20', 'booked', :c)",
+        [':u' => $rankUnit[4], ':c' => mi_pg_array_encode(['double_a', 'living'])]
+    );
+    foreach ([1, 2, 5, 6, 7, 8] as $r) {
+        db_query(
+            "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, components)
+             VALUES (:u, '2101-04-11', '2101-04-13', 'booked', :c)",
+            [':u' => $rankUnit[$r], ':c' => mi_pg_array_encode(['double_a', 'double_b', 'living'])]
+        );
+    }
+
+    $BW_FROM = '2101-02-25';
+    $BW_TO   = '2101-09-10';
+    $sameAsRef = true;
+    $refCoverage = 0;
+    foreach (array_keys(mi_product_map()) as $productSlug) {
+        $pr = db_query('SELECT id, slug FROM rooms WHERE slug = :s', [':s' => $productSlug])->fetch();
+        if (!$pr) continue;
+        $ref = $refBlockedDates($pr, $BW_FROM, $BW_TO);
+        $refCoverage += count($ref);
+        if (mi_blocked_dates($pr, $BW_FROM, $BW_TO) !== $ref) { $sameAsRef = false; break; }
+    }
+    check('batching: mi_blocked_dates() is byte-identical to the night-by-night implementation, for all seven products',
+        $sameAsRef);
+    check('batching: ...over a window that actually contains blocked nights (an all-clear window would prove nothing)',
+        $refCoverage > 0);
 
 } finally {
     db()->rollBack();

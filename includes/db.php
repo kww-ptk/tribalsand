@@ -1009,10 +1009,84 @@ function mi_allocate_and_hold(
 }
 
 /**
+ * Every villa's taken components for EVERY night of [$from, $to), in two queries.
+ *
+ * Returns [ [unit_id => sort_order], [ymd => [unit_id => [component => true]]] ]
+ * — the second array carries only the nights and units that have something
+ * taken, so a caller must treat a missing key as "nothing taken".
+ *
+ * mi_villa_states() answers ONE span. Asking it once per night made an 18-month
+ * calendar 2 queries × ~547 nights ≈ 1,095, and rrBook() re-points the booking
+ * widget at each of the seven composite products, so one guest clicking through
+ * a property fired ~7,700. Same rationale as rates_nightly_map(): resolve the
+ * WHOLE window in one query and slice it in PHP — a per-month call there would
+ * have fired 24 queries for an 8-room property.
+ *
+ * Deliberately NOT a replacement for mi_villa_states(): that one unions a span
+ * into a single occupancy, which is what a STAY needs; this one keeps the nights
+ * apart, which is what a per-night calendar needs. They answer different
+ * questions and both are load-bearing.
+ */
+function mi_villa_states_window(int $villaRoomId, string $from, string $to): array {
+    $units = [];
+    foreach (db_query(
+        'SELECT id, sort_order FROM units WHERE room_id = :r AND is_active = TRUE ORDER BY sort_order',
+        [':r' => $villaRoomId]
+    )->fetchAll() as $u) {
+        $units[(int)$u['id']] = (int)$u['sort_order'];
+    }
+    if (!$units) return [[], []];
+
+    // Exactly the overlap predicate mi_villa_states() uses, widened from one
+    // night to the whole window.
+    $blocks = db_query(
+        "SELECT ab.unit_id, ab.date_from, ab.date_to, ab.components::text AS components
+           FROM availability_blocks ab
+           JOIN units u ON u.id = ab.unit_id
+          WHERE u.room_id = :r AND u.is_active = TRUE
+            AND ab.date_from < :to AND ab.date_to > :from",
+        [':r' => $villaRoomId, ':from' => $from, ':to' => $to]
+    )->fetchAll();
+
+    $windowFrom = new DateTimeImmutable($from);
+    $windowTo   = new DateTimeImmutable($to);
+
+    $byNight = [];
+    foreach ($blocks as $b) {
+        $uid = (int)$b['unit_id'];
+        if (!isset($units[$uid])) continue;
+        // mi_block_taken_components() owns the NULL-means-whole-unit rule. Do NOT
+        // call mi_pg_array_decode() directly here — it returns [] for NULL, which
+        // reads as "nothing is taken" and would oversell the villa.
+        $comp = mi_block_taken_components($b['components']);
+        if (!$comp) continue;
+
+        // A block can start before the window and end after it; clamp so a long
+        // OTA import does not expand into years of irrelevant nights.
+        $d   = new DateTimeImmutable($b['date_from']);
+        $end = new DateTimeImmutable($b['date_to']);
+        if ($d   < $windowFrom) $d   = $windowFrom;
+        if ($end > $windowTo)   $end = $windowTo;
+        for (; $d < $end; $d = $d->modify('+1 day')) {
+            $night = $d->format('Y-m-d');
+            foreach ($comp as $c) $byNight[$night][$uid][$c] = true;
+        }
+    }
+    return [$units, $byNight];
+}
+
+/**
  * Dates on which no villa can satisfy a Maya Ilai product's component pattern.
  *
- * Resolved one night at a time: availability is a per-night question, and a stay
- * is sellable only when every night of it is.
+ * Resolved one night at a time: this is the per-night question the calendar
+ * asks, and it is NOT the same question as "can this stay be booked" — a stay
+ * needs ONE villa to satisfy the pattern across every night of it, so two
+ * individually-free nights can still be an unbookable two-night stay. That
+ * gap is what room_max_stay_nights() exists to close; do not try to make this
+ * function answer both.
+ *
+ * The nights are resolved from one in-memory index rather than a query each —
+ * see mi_villa_states_window() for why.
  */
 function mi_blocked_dates(array $room, string $from, string $to): array {
     $pattern = mi_product_map()[$room['slug']] ?? null;
@@ -1026,15 +1100,27 @@ function mi_blocked_dates(array $room, string $from, string $to): array {
     $reserved = max(0, (int) setting('maya_ilai_reserved_villas', '2'));
     $isVilla  = $room['slug'] === MAYA_ILAI_VILLA_ROOM_SLUG;
 
+    [$units, $takenByNight] = mi_villa_states_window($villaRoomId, $from, $to);
+    if (!$units) return [];
+
     $blocked = [];
     $d   = new DateTime($from);
     $end = new DateTime($to);
     while ($d < $end) {
         $night = $d->format('Y-m-d');
-        $next  = (clone $d)->modify('+1 day')->format('Y-m-d');
 
-        $states  = mi_villa_states($villaRoomId, $night, $next);
-        $ordered = mi_order_villas(array_values($states), $isVilla, $reserved);
+        // mi_order_villas() derives the villa total from the list it is given,
+        // so this must stay the COMPLETE villa set every night — including the
+        // villas with nothing taken, which the index does not carry a key for.
+        $states = [];
+        foreach ($units as $unitId => $sortOrder) {
+            $states[] = [
+                'unit_id'    => $unitId,
+                'sort_order' => $sortOrder,
+                'taken'      => array_keys($takenByNight[$night][$unitId] ?? []),
+            ];
+        }
+        $ordered = mi_order_villas($states, $isVilla, $reserved);
 
         $fits = false;
         foreach ($ordered as $villa) {
