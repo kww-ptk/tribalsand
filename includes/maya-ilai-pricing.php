@@ -79,12 +79,15 @@ function maya_ilai_pricing_get(): array {
 }
 
 /**
- * Persist a posted state. Sanitised against the defaults' shape: every numeric
- * field is coerced to a non-negative number, list rows are rebuilt from known
+ * Coerce a posted state into the defaults' shape WITHOUT persisting it: every
+ * numeric field becomes a non-negative number, list rows are rebuilt from known
  * keys, and unknown keys are dropped — so a tampered payload can never inject
- * arbitrary structure into the KV.
+ * arbitrary structure. Split out from maya_ilai_pricing_save() so the admin
+ * tool's live preview can price un-saved edits through the identical coercion a
+ * saved config gets; a preview that sanitised differently could show a figure the
+ * saved config would never produce.
  */
-function maya_ilai_pricing_save(array $state): array {
+function maya_ilai_pricing_sanitize(array $state): array {
     $d = maya_ilai_pricing_defaults();
     $num = fn($v) => max(0, (float) $v);
 
@@ -118,6 +121,12 @@ function maya_ilai_pricing_save(array $state): array {
         if (!$clean['availability']) $clean['availability'] = $d['availability'];
     }
 
+    return $clean;
+}
+
+/** Persist a posted state, sanitised against the defaults' shape. */
+function maya_ilai_pricing_save(array $state): array {
+    $clean = maya_ilai_pricing_sanitize($state);
     set_setting(MAYA_ILAI_SETTING_KEY, json_encode($clean, JSON_UNESCAPED_SLASHES));
     return $clean;
 }
@@ -273,21 +282,45 @@ function maya_ilai_expand_combos(array $sel, ?array $cfg = null): array {
         $sel['qtyLiving'] = (int)($sel['qtyLiving'] ?? 0) + ($pooled['living'] ?? 0);
         $sel['guestDouble'] = (int)($sel['guestDouble'] ?? 0) + $split['double'];
         $sel['guestBunk']   = (int)($sel['guestBunk']   ?? 0) + $split['bunk'];
+
+        // Combination context for the living-room allowance. The expanded totals
+        // alone cannot distinguish 2× One-Bedroom Suite (two villas, two living
+        // rooms) from 2 loose doubles (one villa, one living room) — they are the
+        // same primitives — so record how many villas the combinations occupy and
+        // which bedrooms came from them.
+        $sel['comboUnits']  = (int)($sel['comboUnits']  ?? 0) + $qty;
+        $sel['comboDouble'] = (int)($sel['comboDouble'] ?? 0) + ($pooled['double'] ?? 0);
+        $sel['comboBunk']   = (int)($sel['comboBunk']   ?? 0) + ($pooled['bunk']   ?? 0);
     }
     return $sel;
 }
 
 /**
- * How many living rooms a selection's COMPONENT bedrooms entitle it to.
+ * How many living rooms a selection is entitled to.
  *
  * A villa has exactly one living room / kitchen, and you cannot rent one in a
- * villa you have no bedroom in. Whole villas are excluded on purpose: a whole
- * villa already includes its living room and is priced accordingly, so it lends
- * no allowance to a separately-added one.
+ * villa you have no bedroom in:
+ *
+ *     allowance = <combination units> + max(ceil(loose doubles / perVilla), loose bunks)
+ *
+ * Each COMBINATION unit occupies a villa of its own and so lends one allowance —
+ * two One-Bedroom Suites are two villas, and two living rooms. LOOSE bedrooms
+ * (picked directly, not arriving from a combination's expansion) still pack
+ * densest, so two loose doubles are one villa and one living room. That split is
+ * the whole point: the two selections have identical primitive totals, so the
+ * allowance cannot be computed from totals alone — the caller must say how many
+ * of the bedrooms came from combinations.
+ *
+ * Whole villas are excluded on purpose: a whole villa already includes its
+ * living room and is priced accordingly, so it lends nothing to a separate one.
+ *
+ * $comboUnits defaults to 0, which is exactly right for any caller that has no
+ * combinations (the staff tool, a hand-built primitive selection).
  */
-function maya_ilai_living_allowance(array $cfg, int $doubles, int $bunks): int {
+function maya_ilai_living_allowance(array $cfg, int $looseDoubles, int $looseBunks, int $comboUnits = 0): int {
     $perVilla = max(1, (int)$cfg['inventory']['doublePerVilla']);
-    return max((int)ceil(max(0, $doubles) / $perVilla), max(0, $bunks));
+    return max(0, $comboUnits)
+         + max((int)ceil(max(0, $looseDoubles) / $perVilla), max(0, $looseBunks));
 }
 
 /** Availability band matching a units-available count. */
@@ -358,8 +391,15 @@ function maya_ilai_quote(array $sel, ?array $cfg = null): array {
     // A villa has ONE living room, and it only comes with a bedroom in that villa.
     // Distinct from the inventory check below: that one asks "do we have enough
     // villas", this asks "is this living room attached to anything at all". A
-    // living room with no bedrooms passes the inventory check happily.
-    $livingAllowance = maya_ilai_living_allowance($cfg, $q['double'], $q['bunk']);
+    // living room with no bedrooms passes the inventory check happily. Both stand.
+    //
+    // Bedrooms arriving from a combination each occupy their own villa (see
+    // maya_ilai_living_allowance); the rest pack densest. A caller with no
+    // combinations passes nothing and gets the loose-only rule.
+    $comboUnits = max(0, (int)($sel['comboUnits'] ?? 0));
+    $looseD = max(0, $q['double'] - max(0, (int)($sel['comboDouble'] ?? 0)));
+    $looseB = max(0, $q['bunk']   - max(0, (int)($sel['comboBunk']   ?? 0)));
+    $livingAllowance = maya_ilai_living_allowance($cfg, $looseD, $looseB, $comboUnits);
     if ($q['living'] > $livingAllowance) $errors[] = "A living room comes with a villa bedroom; {$q['living']} selected, only {$livingAllowance} available.";
     $requiredVillas = max((int)ceil($q['double'] / max(1,(int)$cfg['inventory']['doublePerVilla'])), $q['bunk'], $q['living']);
     $physicalVillas = $q['villa'] + $requiredVillas;
@@ -374,6 +414,25 @@ function maya_ilai_quote(array $sel, ?array $cfg = null): array {
         'adjustment'=>$adjustment,'adjustmentLabel'=>$adjustmentLabel,'nightly'=>round($nightly,2),
         'eco'=>round($eco,2),'total'=>round($total,2),'sold'=>$sold,'errors'=>$errors,
         'livingAllowance'=>$livingAllowance,
+        // Breakdown parts. Every figure a surface displays is resolved HERE, so no
+        // caller ever multiplies a rate by a count of its own — that is how the
+        // staff tool drifted from the guest page in the first place.
+        'bunkExtra'=>round($bunkExtra,2),'villaExtra'=>round($villaExtra,2),
+        'adjustedBase'=>round($adjustedBase,2),'singleRooms'=>$singleRooms,
+        'adjustmentAmount'=>round($base * $adjustment / 100, 2),
+        'perGuestNight'=>($guests && !$sold) ? round($total / $guests / $nights, 2) : null,
+        'requiredVillas'=>$requiredVillas,'physicalVillas'=>$physicalVillas,
+        'lines'=>[
+            'double' => round($doubleBase, 2),
+            'bunk'   => round($q['bunk']*$rate('bunk') + $bunkExtra, 2),
+            'studio' => round($q['studio']*$rate('studio'), 2),
+            'villa'  => round($q['villa']*$rate('villa') + $villaExtra, 2),
+            'living' => round($q['living']*$rate('living'), 2),
+        ],
+        'caps'=>[
+            'double' => $q['double']*2, 'bunk' => $q['bunk']*(int)$r['bunkMax'],
+            'studio' => $q['studio']*2, 'villa' => $q['villa']*(int)$r['villaMax'],
+        ],
         'currency'=>'USD',
     ];
 }

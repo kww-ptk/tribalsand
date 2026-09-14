@@ -141,11 +141,15 @@ $hasLivingErr = function (array $sel) use ($D): bool {
     }
     return false;
 };
-check('living: allowance from 2 doubles (doublePerVilla 2) is 1', maya_ilai_living_allowance($D, 2, 0) === 1);
-check('living: allowance from 3 doubles is 2',                    maya_ilai_living_allowance($D, 3, 0) === 2);
-check('living: each bunk room is its own villa',                  maya_ilai_living_allowance($D, 0, 3) === 3);
-check('living: doubles and bunks share a villa, not stack',       maya_ilai_living_allowance($D, 2, 1) === 1);
+check('living: allowance from 2 loose doubles (doublePerVilla 2) is 1', maya_ilai_living_allowance($D, 2, 0) === 1);
+check('living: allowance from 3 loose doubles is 2',              maya_ilai_living_allowance($D, 3, 0) === 2);
+check('living: each loose bunk room is its own villa',            maya_ilai_living_allowance($D, 0, 3) === 3);
+check('living: loose doubles and bunks share a villa, not stack', maya_ilai_living_allowance($D, 2, 1) === 1);
 check('living: no bedrooms, no allowance',                        maya_ilai_living_allowance($D, 0, 0) === 0);
+// Each combination unit is a villa of its own and lends one allowance.
+check('living: each combination unit lends one allowance',        maya_ilai_living_allowance($D, 0, 0, 2) === 2);
+check('living: combination units add to the loose packing',       maya_ilai_living_allowance($D, 2, 0, 2) === 3);
+check('living: combination units default to none',                maya_ilai_living_allowance($D, 2, 0) === maya_ilai_living_allowance($D, 2, 0, 0));
 
 check('living: valid at the boundary (2 doubles, 1 living)',
     !$hasLivingErr(['qtyDouble' => 2, 'guestDouble' => 4, 'qtyLiving' => 1]));
@@ -172,31 +176,54 @@ check('living: a stray living room is rejected even though inventory is fine',
     $hasLivingErr(['qtyLiving' => 1, 'qtyStudio' => 1, 'guestStudio' => 2])
     && !in_array("Needs 1 villas; only {$D['inventory']['villas']} available.", $stray['errors'], true));
 
-// Every offered combination satisfies its own invariant at quantity 1.
+// Every offered combination satisfies its invariant at quantity 1 AND 2 — two
+// combination units are two villas, so they carry two living rooms.
 foreach (maya_ilai_combos() as $c) {
     check("living: combination '{$c['key']}' satisfies the invariant",
         comboQuote($c['key'], $D)['errors'] === []);
+    check("living: 2× '{$c['key']}' satisfies the invariant",
+        comboQuote($c['key'], $D, ['qty' => 2])['errors'] === []);
 }
 
-// KNOWN LIMIT OF THE STATED RULE — 2× One-Bedroom Suite.
-// The invariant is max(ceil(doubles / doublePerVilla), bunks), which counts the
-// FEWEST villas the bedrooms could occupy. Two one-bedroom suites are 2 doubles
-// and 2 living rooms: the formula packs both doubles into one villa and allows
-// only 1 living room, but two suites each with their own living room are by
-// definition in two different villas (2 doubles sharing one living room is a
-// Two-Bedroom Suite at 1100, not 2× One-Bedroom Suite at 1500). The property has
-// 8 villas, so the stay is physically fine and the inventory check agrees — it is
-// the allowance formula that is too tight.
-// This is enforced AS SPECIFIED rather than silently relaxed: the configurator
-// caps the quantity so a guest can never build the rejected state. Relaxing it
-// is an owner decision, and one line: give each part-set with a living room its
-// own villa (allowance = max(ceil(d/perVilla), bunks, livings-in-combinations)).
-check('living: KNOWN LIMIT — 2× One-Bedroom Suite is rejected by the stated formula',
-    comboQuote('One-Bedroom Suite', $D, ['qty' => 2])['errors'] !== []);
-foreach (['Two-Bedroom Family Room', 'Two-Bedroom Family Suite', 'Two-Bedroom Suite'] as $key) {
-    check("living: 2× '{$key}' satisfies the invariant",
-        comboQuote($key, $D, ['qty' => 2])['errors'] === []);
+// ── The allowance table, exactly as the owner specified it ──────────────────
+// The load-bearing pair is rows 1 and 3: 2× One-Bedroom Suite and 2 loose
+// doubles + 2 livings have IDENTICAL primitive totals (2 doubles, 2 livings) and
+// the same price, yet one is permitted and one is not. The allowance therefore
+// cannot be derived from the expanded totals — the combination context has to
+// travel with the selection.
+$twoSuites = maya_ilai_expand_combos(['combos' => ['One-Bedroom Suite' => ['qty' => 2]]], $D);
+$twoSuitesPlusLoose = $twoSuites;
+$twoSuitesPlusLoose['qtyLiving'] = (int)$twoSuitesPlusLoose['qtyLiving'] + 1;
+
+$allowanceTable = [
+    ['2× One-Bedroom Suite',                  $twoSuites,                                                             2, false],
+    ['1× Two-Bedroom Suite',                  maya_ilai_expand_combos(['combos' => ['Two-Bedroom Suite' => ['qty' => 1]]], $D), 1, false],
+    ['2 loose doubles + 2 livings',           ['qtyDouble' => 2, 'guestDouble' => 4, 'qtyLiving' => 2],                1, true],
+    ['2 loose doubles + 1 living',            ['qtyDouble' => 2, 'guestDouble' => 4, 'qtyLiving' => 1],                1, false],
+    ['Studio only + 1 living',                ['qtyStudio' => 1, 'guestStudio' => 2, 'qtyLiving' => 1],                0, true],
+    ['Whole villa + 1 living',                ['qtyVilla' => 1, 'guestVilla' => 7, 'qtyLiving' => 1],                  0, true],
+    ['2× One-Bedroom Suite + 1 loose living', $twoSuitesPlusLoose,                                                     2, true],
+];
+foreach ($allowanceTable as [$label, $sel, $allowed, $shouldReject]) {
+    $q = maya_ilai_quote($sel + ['nights' => 1, 'program' => 'none'], $D);
+    $rejected = false;
+    foreach ($q['errors'] as $e) if (str_contains($e, 'living room comes with a villa bedroom')) $rejected = true;
+    check("allowance: {$label} → allowed {$allowed}", $q['livingAllowance'] === $allowed);
+    check("allowance: {$label} → " . ($shouldReject ? 'rejected' : 'permitted'), $rejected === $shouldReject);
 }
+
+// Identical primitives, different outcome — stated as its own assertion because
+// it is the fact the whole context-passing design exists to serve.
+check('allowance: the suite pair and the loose pair have identical primitives',
+    (int)$twoSuites['qtyDouble'] === 2 && (int)$twoSuites['qtyLiving'] === 2);
+check('allowance: identical primitives, opposite outcomes',
+    maya_ilai_quote($twoSuites + ['nights' => 1, 'program' => 'none'], $D)['errors'] === []
+    && maya_ilai_quote(['qtyDouble' => 2, 'guestDouble' => 4, 'qtyLiving' => 2, 'nights' => 1, 'program' => 'none'], $D)['errors'] !== []);
+
+// The inventory check is untouched and still answers its own question.
+$eight = maya_ilai_quote(['qtyDouble' => 18, 'guestDouble' => 36, 'nights' => 1, 'program' => 'none'], $D);
+check('inventory: the villa-count check still fires independently',
+    (bool)array_filter($eight['errors'], fn($e) => str_contains($e, 'villas; only')));
 
 // ── Discounts, supplements and the eco fee ──────────────────────────────────
 // 2× Family Suite, 10 guests, 3 nights: base 2×(350+150+400) = 1800, no bunk

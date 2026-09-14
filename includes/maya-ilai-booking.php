@@ -244,21 +244,34 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
     return a;
   }
 
-  /** Every row's primitive totals — the one place a selection becomes primitives. */
+  /**
+   * Every row's primitive totals — the one place a selection becomes primitives.
+   *
+   * Also reports the combination context (how many villas the combinations
+   * occupy, and which bedrooms came from them), because the living-room
+   * allowance cannot be derived from the totals alone: 2× One-Bedroom Suite and
+   * 2 loose doubles are the same primitives but a different number of villas.
+   */
   function expand() {
     var p = { qtyDouble: 0, qtyBunk: 0, qtyStudio: 0, qtyVilla: 0, qtyLiving: 0,
-              guestDouble: 0, guestBunk: 0, guestStudio: 0, guestVilla: 0 };
+              guestDouble: 0, guestBunk: 0, guestStudio: 0, guestVilla: 0,
+              comboUnits: 0, comboDouble: 0, comboBunk: 0 };
     rows.forEach(function (r) {
       var s = state[r.dataset.unit];
       if (!s.qty) return;
-      var pooled = {}, k;
-      for (k in s.parts) pooled[k] = s.parts[k] * s.qty;
+      var pooled = {}, k, n = 0;
+      for (k in s.parts) { pooled[k] = s.parts[k] * s.qty; n++; }
       p.qtyDouble += pooled.double || 0; p.qtyBunk   += pooled.bunk   || 0;
       p.qtyStudio += pooled.studio || 0; p.qtyVilla  += pooled.villa  || 0;
       p.qtyLiving += pooled.living || 0;
       var a = allocate(pooled, s.g);
       p.guestDouble += a.double; p.guestBunk += a.bunk;
       p.guestStudio += a.studio; p.guestVilla += a.villa;
+      if (n > 1) {   // a multi-part row is a combination; each unit is one villa
+        p.comboUnits  += s.qty;
+        p.comboDouble += pooled.double || 0;
+        p.comboBunk   += pooled.bunk   || 0;
+      }
     });
     return p;
   }
@@ -266,9 +279,18 @@ if ($mibCombos) $mibGroups[] = ['label'=>'Combinations', 'rows'=>$mibCombos, 'cl
   /**
    * How many MORE standalone living rooms the selection may take. A villa has
    * one living room and you cannot rent one in a villa you have no bedroom in,
-   * so the allowance comes from the component bedrooms (whole villas excluded —
-   * they already include theirs) minus the ones combinations already consume.
-   * The server enforces the same rule; this only keeps the guest out of it.
+   * so the allowance comes from the bedrooms (whole villas excluded — they
+   * already include theirs) minus the ones combinations already consume.
+   *
+   * DELIBERATELY the strict, loose-only rule — it matches what the server will
+   * actually enforce for THIS page. api/maya-ilai-quote.php builds its selection
+   * from a fixed key list, so the comboUnits/comboDouble/comboBunk this page
+   * sends are dropped before maya_ilai_quote() sees them, and the relaxed
+   * "each combination unit is its own villa" allowance never reaches the guest
+   * surface. Capping relaxed here would let a guest build a selection the server
+   * then rejects. When that endpoint forwards the three fields, add
+   * `+ p.comboUnits` here and subtract the combination bedrooms from the packing
+   * term — the server side is already relaxed and tested.
    */
   function livingCap() {
     var p = expand();
