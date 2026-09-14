@@ -8,6 +8,8 @@ declare(strict_types=1);
 // dropped today's entries after 21:00 UTC). Set once at module load.
 date_default_timezone_set('Africa/Nairobi');
 
+require_once __DIR__ . '/maya-ilai-inventory.php';
+
 function db(): PDO {
     static $pdo = null;
     if ($pdo !== null) return $pdo;
@@ -533,14 +535,106 @@ function room_conflict_unit_ids(array $room): array {
     return array_map('intval', db_query($sql, $params)->fetchAll(PDO::FETCH_COLUMN));
 }
 
+/**
+ * The occupancy of every Maya Ilai villa over a date range.
+ *
+ * Returns [unit_id => ['unit_id'=>int, 'sort_order'=>int, 'taken'=>string[]], …].
+ * A block with components IS NULL means the whole villa is taken, so it
+ * contributes every component — that is how pre-existing and staff-entered blocks
+ * keep working unchanged.
+ */
+function mi_villa_states(int $villaRoomId, string $check_in, string $check_out): array {
+    $units = db_query(
+        'SELECT id, sort_order FROM units WHERE room_id = :r AND is_active = TRUE ORDER BY sort_order',
+        [':r' => $villaRoomId]
+    )->fetchAll();
+
+    $states = [];
+    foreach ($units as $u) {
+        $states[(int)$u['id']] = [
+            'unit_id'    => (int)$u['id'],
+            'sort_order' => (int)$u['sort_order'],
+            'taken'      => [],
+        ];
+    }
+    if (!$states) return [];
+
+    $blocks = db_query(
+        "SELECT ab.unit_id, ab.components::text AS components
+           FROM availability_blocks ab
+           JOIN units u ON u.id = ab.unit_id
+          WHERE u.room_id = :r AND u.is_active = TRUE
+            AND ab.date_from < :co AND ab.date_to > :ci",
+        [':r' => $villaRoomId, ':ci' => $check_in, ':co' => $check_out]
+    )->fetchAll();
+
+    foreach ($blocks as $b) {
+        $uid = (int)$b['unit_id'];
+        if (!isset($states[$uid])) continue;
+        // mi_block_taken_components() owns the NULL-means-whole-unit rule. Do NOT
+        // call mi_pg_array_decode() directly here — it returns [] for NULL, which
+        // reads as "nothing is taken" and would oversell the villa.
+        $comp = mi_block_taken_components($b['components']);
+        $states[$uid]['taken'] = array_values(array_unique(
+            array_merge($states[$uid]['taken'], $comp)
+        ));
+    }
+    return $states;
+}
+
+/**
+ * Allocate a villa for a Maya Ilai composite product.
+ *
+ * Returns the chosen unit row with the resolved component list under
+ * '_mi_components', which create_hold_with_block() writes onto the block.
+ */
+function mi_find_villa_unit(array $room, string $check_in, string $check_out): array|false {
+    $pattern = mi_product_map()[$room['slug']] ?? null;
+    if ($pattern === null) return false;
+
+    $villaRoomId = (int) db_query(
+        'SELECT id FROM rooms WHERE slug = :s', [':s' => MAYA_ILAI_VILLA_ROOM_SLUG]
+    )->fetchColumn();
+    if (!$villaRoomId) return false;
+
+    $states = mi_villa_states($villaRoomId, $check_in, $check_out);
+    if (!$states) return false;
+
+    // mi_order_villas() derives the villa total from the list it is given, so
+    // $states MUST be the complete villa set — never a pre-filtered subset.
+    $reserved = max(0, (int) setting('maya_ilai_reserved_villas', '2'));
+    $ordered  = mi_order_villas(
+        array_values($states),
+        $room['slug'] === MAYA_ILAI_VILLA_ROOM_SLUG,
+        $reserved
+    );
+
+    foreach ($ordered as $villa) {
+        $resolved = mi_resolve($pattern, $villa['taken']);
+        if ($resolved === null) continue;
+        $unit = db_query('SELECT * FROM units WHERE id = :id', [':id' => $villa['unit_id']])->fetch();
+        if (!$unit) continue;
+        $unit['_mi_components'] = $resolved;
+        return $unit;
+    }
+    return false;
+}
+
 function find_available_unit(int $room_id, string $check_in, string $check_out): array|false {
     expire_stale_holds();
 
     $room = db_query(
-        'SELECT id, venue_id, is_entire_place FROM rooms WHERE id = :id',
+        'SELECT id, slug, venue_id, is_entire_place FROM rooms WHERE id = :id',
         [':id' => $room_id]
     )->fetch();
     if (!$room) return false;
+
+    // Maya Ilai sells several products over the same villas; allocation is by
+    // component, not by whole unit. This must run BEFORE the is_entire_place
+    // conflict logic below, which does not apply to this property.
+    if (mi_is_composite_room($room)) {
+        return mi_find_villa_unit($room, $check_in, $check_out);
+    }
 
     // Whole-villa / by-room mutual exclusion: if a conflicting sibling unit is
     // booked for the range, this room cannot be booked at all.
@@ -677,7 +771,7 @@ function get_room_blocked_dates(int $room_id, string $from, string $to): array {
     // Whole-villa / by-room mutual exclusion: a date is also blocked whenever any
     // conflicting sibling unit is booked (see room_conflict_unit_ids()).
     $room = db_query(
-        'SELECT id, venue_id, is_entire_place FROM rooms WHERE id = :id',
+        'SELECT id, slug, venue_id, is_entire_place FROM rooms WHERE id = :id',
         [':id' => $room_id]
     )->fetch();
     $conflict_ids = $room ? room_conflict_unit_ids($room) : [];

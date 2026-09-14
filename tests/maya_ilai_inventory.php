@@ -220,5 +220,108 @@ check('order: a sort_order tie reserves the same villas regardless of input orde
 check('order: a sort_order tie reserves the same villas regardless of input order (reversed)',
     array_column(mi_order_villas($tieVillasB, false, 2), 'unit_id') === [51, 52]);
 
+// ── DB-backed allocation (rolled back) ──────────────────────────────────────
+$villaRoom = db_query(
+    'SELECT id FROM rooms WHERE slug = :s', [':s' => MAYA_ILAI_VILLA_ROOM_SLUG]
+)->fetch();
+$doubleRoom = db_query(
+    'SELECT id FROM rooms WHERE slug = :s', [':s' => 'maya-ilai-double']
+)->fetch();
+
+if (!$villaRoom || !$doubleRoom) {
+    echo "\nSKIP  Maya Ilai rooms not seeded — run db/migrations/maya_ilai_rooms_2026.sql\n";
+    echo ($failures ? "{$failures} FAILED\n" : "All passed\n");
+    exit($failures ? 1 : 0);
+}
+
+db()->beginTransaction();
+try {
+    $CI = '2099-05-01';
+    $CO = '2099-05-05';
+
+    // A clean window: nothing booked, so the villa product allocates.
+    $u = find_available_unit((int)$villaRoom['id'], $CI, $CO);
+    check('alloc: the villa product finds a unit in a clean window', $u !== false);
+    check('alloc: it resolves all four components',
+        ($u['_mi_components'] ?? []) === ['double_a', 'double_b', 'bunk', 'living']);
+
+    // With N=2 the villa product must take a RESERVED villa first (villa 7).
+    $seventh = db_query(
+        'SELECT id FROM units WHERE room_id = :r AND sort_order = 7',
+        [':r' => $villaRoom['id']]
+    )->fetchColumn();
+    check('alloc: the villa product takes reserved villa 7 first',
+        (int)$u['id'] === (int)$seventh);
+
+    // Sell a One-Bedroom Suite in villa 1 and re-check what remains there.
+    $first = (int) db_query(
+        'SELECT id FROM units WHERE room_id = :r AND sort_order = 1',
+        [':r' => $villaRoom['id']]
+    )->fetchColumn();
+    db_query(
+        "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, components)
+         VALUES (:u, :df, :dt, 'booked', :c)",
+        [':u' => $first, ':df' => $CI, ':dt' => $CO,
+         ':c' => mi_pg_array_encode(['double_a', 'living'])]
+    );
+
+    $d = find_available_unit((int)$doubleRoom['id'], $CI, $CO);
+    check('alloc: a Double Room packs into the partly-sold villa 1',
+        $d !== false && (int)$d['id'] === $first);
+    check('alloc: and it takes double_b',
+        ($d['_mi_components'] ?? []) === ['double_b']);
+
+    // A whole-unit block (components NULL) still means the entire villa.
+    $second = (int) db_query(
+        'SELECT id FROM units WHERE room_id = :r AND sort_order = 2',
+        [':r' => $villaRoom['id']]
+    )->fetchColumn();
+    db_query(
+        "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, components)
+         VALUES (:u, :df, :dt, 'booked', NULL)",
+        [':u' => $second, ':df' => $CI, ':dt' => $CO]
+    );
+    $taken = mi_villa_states((int)$villaRoom['id'], $CI, $CO);
+    check('alloc: a NULL-components block takes the whole villa',
+        ($taken[$second]['taken'] ?? []) === MAYA_ILAI_ALL_COMPONENTS);
+
+    // Dates outside the window are unaffected.
+    $far = find_available_unit((int)$doubleRoom['id'], '2099-09-01', '2099-09-03');
+    check('alloc: an unrelated window is unaffected', $far !== false);
+
+    // ── The same-villa constraint ───────────────────────────────────────────
+    // A Family Room needs a double AND a bunk in the SAME villa. Arrange a window
+    // where a free double exists in one villa and free bunks exist in others, but
+    // no single villa has both — the product must be unavailable.
+    $SC = '2099-11-01';
+    $SO = '2099-11-03';
+    $villaUnits = db_query(
+        'SELECT id, sort_order FROM units WHERE room_id = :r ORDER BY sort_order',
+        [':r' => $villaRoom['id']]
+    )->fetchAll();
+    foreach ($villaUnits as $v) {
+        // Villa 1 keeps a free double but loses its bunk; every other villa keeps
+        // a free bunk but loses both doubles.
+        $take = ((int)$v['sort_order'] === 1)
+            ? ['double_a', 'bunk', 'living']
+            : ['double_a', 'double_b', 'living'];
+        db_query(
+            "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, components)
+             VALUES (:u, :df, :dt, 'booked', :c)",
+            [':u' => $v['id'], ':df' => $SC, ':dt' => $SO, ':c' => mi_pg_array_encode($take)]
+        );
+    }
+    $famRoom = db_query("SELECT id FROM rooms WHERE slug = 'maya-ilai-family-room'")->fetch();
+    check('same-villa: a Family Room cannot borrow a bunk from another villa',
+        find_available_unit((int)$famRoom['id'], $SC, $SO) === false);
+    check('same-villa: a plain Double Room still sells from villa 1',
+        find_available_unit((int)$doubleRoom['id'], $SC, $SO) !== false);
+    $bunkOnly = db_query("SELECT id FROM rooms WHERE slug = 'maya-ilai-bunk-room'")->fetch();
+    check('same-villa: a plain Bunk Room still sells from another villa',
+        find_available_unit((int)$bunkOnly['id'], $SC, $SO) !== false);
+} finally {
+    db()->rollBack();
+}
+
 echo "\n" . ($failures ? "{$failures} FAILED\n" : "All passed\n");
 exit($failures ? 1 : 0);
