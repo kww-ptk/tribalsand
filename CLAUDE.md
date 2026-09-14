@@ -241,12 +241,45 @@ Test: `php tests/maya_ilai_inventory.php`.
   see `fix_maya_ilai_superior_suite_booking.sql`) that does not exist locally. The
   migration counts holds, blocks and ledger rows for the venue and **refuses to run** if
   any exist. `maya_ilai.php`'s sidebar now points at `maya-ilai-villa`.
-- **Known limits, deliberate:** staff-entered holds (`admin/hold-new.php`,
-  `admin/submission-view.php`) pass `components = NULL`, i.e. the whole villa — safe, but
-  a per-bedroom admin booking needs a component picker first. `mi_blocked_dates()` runs
-  ~2 queries per night. Occupancy in `admin/reports.php` counts a bunk-room night as a
-  full unit-night. And `ts_search_availability()`'s cross-exclusion is inert only because
-  no Maya Ilai room has `is_entire_place = TRUE` — ticking that box would hide products.
+- **A hold's product is `holds.room_id`, NOT its unit's room.** Every composite product
+  except the villa allocates a *villa* unit, so `JOIN units u … JOIN rooms r ON r.id =
+  u.room_id` names "Three-Bedroom Villa" for all of them — it put a $450 bunk-room stay
+  into the ledger at the villa's rate ($3,510) and told staff a different room from the
+  guest. Resolve the product with **`hold_room_id_sql('h','u')`**
+  (`COALESCE(h.room_id, u.room_id)`); the fallback is correct for every pre-migration
+  hold, which is backfilled. Migration: `add_holds_room_id`. Sites that legitimately
+  want the *unit's* room — venue scoping, `channel_conflicts`, the outbound per-unit
+  iCal feed in `api/ical.php`, the staff unit-picker — are deliberately left alone.
+  `holds_room_id_supported()` probes `information_schema`, **not** a failing `SELECT`:
+  it is first reached inside `create_hold_with_block()`'s transaction, and in Postgres a
+  failed statement aborts the whole transaction, so the probe would kill the booking.
+- **Availability is a property of a STAY, not a night.** `find_available_unit()` needs
+  ONE unit free across the whole span (a guest keeps the same bedroom), so every night of
+  a range can be free while no single villa spans them all. `mi_blocked_dates()` answers
+  the per-night question (correct for "is this date free at all"); **`room_max_stay_nights()`**
+  answers the stay question and is what the calendar greys out beyond. It binary-searches
+  `find_available_unit()`, valid because a longer span can only take more — never fewer —
+  components. It is generic, so it fixes the same latent issue at every property.
+- **Staff holds are guarded, not just documented.** `staff_hold_block_reason()`
+  (`includes/staff-hold-guard.php`) refuses a staff hold on a villa with any component
+  already sold, naming the villa, dates and component. Without it a staff hold's NULL
+  (= whole villa) block silently oversold a live component booking. Returns `null` for
+  every non-Maya-Ilai unit, so no other property's deliberate-overlap workflow changes.
+- **The Gantt packs concurrent blocks into lanes** (`includes/gantt-lanes.php`, pure and
+  tested). Bars are positioned only by date, so two bookings on one villa for the same
+  dates previously drew identical opaque boxes and the later hid the earlier — on the one
+  calendar reception actually uses.
+- **Batch the calendar.** `mi_villa_states_window()` fetches a whole window in ONE query;
+  `mi_blocked_dates()` resolves from that index. Per-night calls made an 18-month
+  calendar load ~1,096 queries (~7,700 for a click-through of all seven products); it is
+  now ~4. Note the two readers answer different questions: `mi_villa_states()` unions a
+  span (what a stay needs), `mi_villa_states_window()` indexes per night.
+- **Known limits, deliberate:** staff-entered holds still take the WHOLE villa
+  (`components = NULL`) — safe, but a per-bedroom admin booking needs a component picker
+  first. Occupancy in `admin/reports.php` counts a bunk-room night as a full unit-night,
+  so Maya Ilai occupancy and RevPAR are not yet meaningful. `room_max_stay_nights()` caps
+  at 30 nights. And `ts_search_availability()`'s cross-exclusion is inert only because no
+  Maya Ilai room has `is_entire_place = TRUE` — ticking that box would hide products.
 
 ### Financial reports — unified bookings ledger
 Revenue reporting reads from one **`bookings`** table (migration: `add_bookings_finance.sql`, after `add_availability`) that unifies every source — website, OTA, agent, direct. Helpers in **`includes/bookings.php`**; every read is pre-migration-safe (`bookings_supported()` via `to_regclass`).
@@ -328,6 +361,8 @@ The SAME read-only tool+RAG engine, exposed to website visitors as a branded cha
 | `includes/sustainability.php` | Live metric helpers — accrual, formatting, re-baselining (pre-migration-safe) |
 | `admin/sustainability.php` | Live metrics editor (owner-only) — reading, rate, cap, small print |
 | `includes/maya-ilai-inventory.php` | Maya Ilai composite inventory — component map, resolution, ring-fencing, villa ordering (pure, no I/O) |
+| `includes/staff-hold-guard.php` | Refuses a staff hold that would sell a villa bedroom twice (Maya Ilai villa units only) |
+| `includes/gantt-lanes.php` | First-fit lane packing so concurrent blocks on one unit stay visible on the Gantt (pure) |
 | `includes/rates.php` | Nightly rate helpers — merge, resolve, trim/split writes, scoped delete |
 | `includes/rate-form.php` · `includes/rate-calendar.php` | Multi-range rate entry + read-only month grid partials |
 | `admin/rates.php` | Site-wide read-only rates calendar (scoped, reception-visible) |
