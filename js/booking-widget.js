@@ -93,11 +93,20 @@
     function parseYmd(s) { return new Date(s + "T00:00"); }
     function isBlocked(d) { return fullyBlocked.includes(ymd(d)); }
     function isPast(d)    { return d < today; }
-    // Beyond the longest stay that can start on the chosen check-in. Only ever
-    // true while a check-in is selected and a check-out is not, and only for
-    // dates AFTER the furthest reachable check-out — so it can narrow the
-    // selection to what the server would accept, never widen or move it.
-    function isBeyondMax(d) { return maxUntil !== null && ymd(d) > maxUntil; }
+    // Beyond the longest stay that can start on the chosen check-in — i.e. this
+    // date is not a CHECK-OUT the server would accept from the current check-in.
+    // It says nothing about the date itself: every such date is still a perfectly
+    // good check-in for some other stay, and stays clickable as one (onDayClick
+    // restarts the selection there; renderMonth marks it --beyond, never
+    // --blocked). The guards spell out the only state in which the question even
+    // means anything: a check-in chosen, a check-out not yet, and a date after
+    // the check-in. So this can narrow the set of candidate check-outs and
+    // nothing else — it can never make a date unreachable as a check-in.
+    function isBeyondMax(d) {
+      if (maxUntil === null || !selStart || selEnd) return false;
+      const key = ymd(d);
+      return key > ymd(selStart) && key > maxUntil;
+    }
 
     // Right-month year/month
     function rightMonth() {
@@ -121,8 +130,13 @@
         const key  = ymd(date);
         let cls = "bk-cell";
 
-        if (isPast(date) || isBlocked(date) || isBeyondMax(date)) {
+        if (isPast(date) || isBlocked(date)) {
           cls += " bk-cell--blocked";
+        } else if (isBeyondMax(date)) {
+          // Out of reach as a CHECK-OUT from the current check-in, but not sold
+          // out — a deliberately separate class from --blocked, which is what
+          // keeps the click listener below bound to it.
+          cls += " bk-cell--beyond";
         } else {
           if (selStart && key === ymd(selStart)) cls += " bk-cell--start";
           if (selEnd   && key === ymd(selEnd))   cls += " bk-cell--end";
@@ -132,6 +146,8 @@
       }
       grid.innerHTML = html;
 
+      // --beyond is deliberately absent from this exclusion list: an unreachable
+      // check-out must still take a click, as a new check-in.
       grid.querySelectorAll(".bk-cell:not(.bk-cell--blocked):not(.bk-cell--blank)").forEach(cell => {
         cell.addEventListener("click",      () => onDayClick(cell.dataset.date));
         cell.addEventListener("mouseenter", () => onCellHover(cell.dataset.date));
@@ -153,6 +169,10 @@
 
     function onCellHover(dateStr) {
       if (!selStart || selEnd) return;
+      // Hovering an out-of-reach date would preview a range we can't sell, and
+      // clicking it restarts the selection rather than closing that range — so
+      // show no range at all instead of a misleading one.
+      if (isBeyondMax(parseYmd(dateStr))) { clearHoverRange(); return; }
       const start = ymd(selStart);
       allCells().forEach(c => {
         const d  = c.dataset.date;
@@ -169,8 +189,14 @@
     // ── Day click ───────────────────────────────────────────────
     function onDayClick(dateStr) {
       const clicked = parseYmd(dateStr);
+      // Read this BEFORE touching the selection — it is a question about the
+      // selection we are leaving. A date past the reachable stay is not a
+      // check-out we can sell, but it is a fine check-in, so clicking it starts
+      // a fresh range there (which then fetches its own max_nights) rather than
+      // being swallowed as an invalid check-out.
+      const restart = isBeyondMax(clicked);
 
-      if (!selStart || (selStart && selEnd)) {
+      if (!selStart || (selStart && selEnd) || restart) {
         selStart = clicked; selEnd = null;
         clearMaxStay();
         setHint("Now select your check-out date", "neutral");
