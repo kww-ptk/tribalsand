@@ -35,6 +35,60 @@ check('net: 0% leaves the published price',
 check('net: a per-venue override drives the net price for that venue',
     eq(agent_net_price(200, ['discount_pct' => 10, 'venue_discounts' => [7 => 25]], 7), 150.0));
 
+// ── Stay validation (pure) ─────────────────────────────────────────────────────
+check('stay: a normal future window is accepted and normalised',
+    agent_valid_stay('2098-6-10', '2098-06-12', '2026-09-15') === ['2098-06-10', '2098-06-12', 2]);
+check('stay: a check-in before today is refused',  agent_valid_stay('2026-09-14', '2026-09-16', '2026-09-15') === null);
+check('stay: today is allowed as a check-in',      agent_valid_stay('2026-09-15', '2026-09-16', '2026-09-15') !== null);
+check('stay: reversed / equal dates are refused',  agent_valid_stay('2098-06-12', '2098-06-10', '2026-09-15') === null && agent_valid_stay('2098-06-10', '2098-06-10', '2026-09-15') === null);
+check('stay: garbage is refused',                  agent_valid_stay('soon', '2098-06-12', '2026-09-15') === null);
+check('stay: 30 nights ok, 31 refused',
+    agent_valid_stay('2098-06-01', '2098-07-01', '2026-09-15') !== null && agent_valid_stay('2098-06-01', '2098-07-02', '2026-09-15') === null);
+
+// ── Pricing a configurations result (pure) ────────────────────────────────────
+$cfg = [
+    'singles' => [['slug' => 'a', 'name' => 'A', 'total' => 1000.0, 'currency' => 'USD']],
+    'entire'  => [['slug' => 'whole', 'name' => 'Whole', 'total' => 5000.0, 'currency' => 'USD']],
+    'combos'  => [['rooms' => [['slug' => 'a', 'units_used' => 2, 'total' => 2000.0, 'currency' => 'USD']], 'total' => 2000.0, 'currency' => 'USD', 'capacity' => 4]],
+    'max_capacity' => 8,
+];
+$priced = agent_price_configurations($cfg, ['discount_pct' => 10, 'venue_discounts' => [7 => 25]], 3);
+check('price: net_total on a single = published × 0.9',   eq($priced['singles'][0]['net_total'], 900.0));
+check('price: net_total on the whole property',          eq($priced['entire'][0]['net_total'], 4500.0));
+check('price: net_total on a combo and on its rooms',    eq($priced['combos'][0]['net_total'], 1800.0) && eq($priced['combos'][0]['rooms'][0]['net_total'], 1800.0));
+check('price: published totals are untouched',           eq($priced['singles'][0]['total'], 1000.0) && eq($priced['combos'][0]['total'], 2000.0));
+check('price: discount_pct is reported',                 eq($priced['discount_pct'], 10.0));
+$pricedOv = agent_price_configurations($cfg, ['discount_pct' => 10, 'venue_discounts' => [7 => 25]], 7);
+check('price: a per-venue override drives the net',      eq($pricedOv['singles'][0]['net_total'], 750.0));
+$priced0 = agent_price_configurations($cfg, ['discount_pct' => 0], 3);
+check('price: 0% leaves net = published',                eq($priced0['singles'][0]['net_total'], 1000.0));
+
+// ── Combo link parameter round-trip (pure) ────────────────────────────────────
+check('rooms param: builds from combo rooms',
+    agent_rooms_param([['slug' => 'double', 'units_used' => 2], ['slug' => 'bunk', 'units_used' => 1]]) === 'double:2,bunk:1');
+check('rooms param: parses back, clamps and drops junk',
+    agent_parse_rooms_param('double:2,bunk,bad slug!,x:99') === [['slug' => 'double', 'units' => 2], ['slug' => 'bunk', 'units' => 1], ['slug' => 'x', 'units' => 8]]);
+
+// ── Trade lines (pure) ────────────────────────────────────────────────────────
+$tl = agent_trade_lines(['name' => 'Jane Agent', 'agency' => 'Safari Co', 'email' => 'jane@x.com'],
+    ['nights' => 2, 'published' => 1000.0, 'net' => 850.0, 'currency' => 'USD', 'discount_pct' => 15]);
+check('trade lines: agent line names agency, agent and email', $tl['agent'] === 'Safari Co — Jane Agent <jane@x.com>');
+check('trade lines: rate line shows net, nights and the discount', $tl['rate'] === 'USD 850 net · 2 nights · 15% off published USD 1,000');
+$tl0 = agent_trade_lines(['name' => 'Solo', 'agency' => '', 'email' => 's@x.com'],
+    ['nights' => 1, 'published' => 200.0, 'net' => 200.0, 'currency' => 'KES', 'discount_pct' => 0]);
+check('trade lines: no discount reads as published rate', $tl0['agent'] === 'Solo <s@x.com>' && $tl0['rate'] === 'KES 200 · 1 night · published rate (no trade discount)');
+
+// ── Request status (pure) ─────────────────────────────────────────────────────
+$now = strtotime('2026-09-15 10:00:00');
+check('status: no hold = enquiry sent', agent_request_status(['hold_status' => null], $now)['label'] === 'Enquiry sent');
+$st = agent_request_status(['hold_status' => 'pending', 'expires_at' => '2026-09-15 21:30:00'], $now);
+check('status: pending shows the countdown', $st['label'] === 'On hold' && $st['note'] === 'Expires in 11h 30m');
+check('status: pending with no expiry awaits confirmation', agent_request_status(['hold_status' => 'pending', 'expires_at' => null], $now)['note'] === 'Awaiting confirmation');
+check('status: confirmed / expired / cancelled labels',
+    agent_request_status(['hold_status' => 'confirmed'], $now)['label'] === 'Confirmed'
+    && agent_request_status(['hold_status' => 'expired'], $now)['label'] === 'Expired'
+    && agent_request_status(['hold_status' => 'cancelled'], $now)['class'] === 'cancelled');
+
 // ── DB round-trip (rolled back) ─────────────────────────────────────────────
 $hasDb = false;
 try { db()->beginTransaction(); $hasDb = true; }
