@@ -88,17 +88,24 @@ if (($data['mode'] ?? '') === 'suggest') {
         ];
     }
 
+    // The same check-in date also decides the SEASON. It is re-validated
+    // strictly here rather than reusing $ci as-is: mi_live_availability() is
+    // allowed to be lenient about a date it will simply decline to check, but a
+    // date that moves a PRICE between seasons must be exactly YYYY-MM-DD.
+    $checkIn = maya_ilai_ymd($ci);
+
     echo json_encode([
         'ok'           => true,
         'guests'       => $guests,
         'nights'       => $nights,
+        'checkIn'      => $checkIn,
         'maxGuests'    => $maxParty,
         'minNights'    => (int)$cfg['rules']['minNights'],
         'checked'      => $live !== null,                       // did we consult the calendar?
         'freeVillas'   => $live['freeVillas']  ?? null,
         'freeStudios'  => $live['freeStudios'] ?? null,
         'availability' => $band,                                // null when not checked
-        'suggestions'  => maya_ilai_suggest($guests, $nights, $cfg, max(1, min(8, (int)($data['limit'] ?? 5))), $live),
+        'suggestions'  => maya_ilai_suggest($guests, $nights, $cfg, max(1, min(8, (int)($data['limit'] ?? 5))), $live, $checkIn),
     ]);
     exit;
 }
@@ -147,9 +154,15 @@ $quote = maya_ilai_quote([
     'comboUnits'  => (int)($data['comboUnits']  ?? 0),
     'comboDouble' => (int)($data['comboDouble'] ?? 0),
     'comboBunk'   => (int)($data['comboBunk']   ?? 0),
-    // Guests always get the published (high) season rate; the live availability
-    // band and the automatic group discount are composed by the 'live' program
-    // when dates were supplied (else 'group', the prior guest behaviour).
+    // The stay's own dates decide the season, night by night — a stay that
+    // straddles a boundary is part high, part standard. Absent or malformed, the
+    // split falls back to high: the published rate, never an under-quote.
+    //
+    // 'season' stays 'high' as the FALLBACK for a quote with no usable date; when
+    // checkIn is present it is the dates, not this, that decide. The live
+    // availability band and the automatic group discount are composed by the
+    // 'live' program when dates were supplied (else 'group', the prior behaviour).
+    'checkIn'        => maya_ilai_ymd($ci),
     'season'         => 'high',
     'program'        => $program,
     'availableUnits' => $availableUnits,

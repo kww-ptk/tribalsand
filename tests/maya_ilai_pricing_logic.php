@@ -691,7 +691,7 @@ try {
     $live = maya_ilai_pricing_get();
 } catch (Throwable $e) {
     echo "\nSKIP  live config unreadable ({$e->getMessage()})\n";
-    echo ($failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n");
+echo ($failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n");
     exit($failures ? 1 : 0);
 }
 
@@ -1031,6 +1031,105 @@ check('split: a single room takes the whole total',
 $sh4 = mi_proportional_shares([$pk('Mystery A'), $pk('Mystery B')], 100.0, $D);
 check('split: all-zero-weight (unknown products) splits evenly and sums to total',
     eq($sh4[0], 50.0) && eq($sh4[1], 50.0) && eq(array_sum($sh4), 100.0));
+/* ───────────── Seasons: the dates decide the price, night by night ─────────── */
+
+// The windows are stated twice — here in PHP for the configurator, and as SQL in
+// db/migrations/rates_maya_ilai_2026.sql for the booking engine. Two statements
+// of one fact drift, so parse the migration and assert they still agree.
+$mig = @file_get_contents(__DIR__ . '/../db/migrations/rates_maya_ilai_2026.sql');
+if ($mig === false) {
+    check('rates migration is readable', false);
+} else {
+    preg_match_all(
+        "/\(DATE\s+'(\d{4}-\d{2}-\d{2})',\s*DATE\s+'(\d{4}-\d{2}-\d{2})',\s*(TRUE|FALSE)\)/i",
+        $mig, $m, PREG_SET_ORDER
+    );
+    $fromSql = [];
+    foreach ($m as $row) if (strtoupper($row[3]) === 'TRUE') $fromSql[] = [$row[1], $row[2]];
+    check('the migration really declares some high-season windows', count($fromSql) > 0);
+
+    // The mapped calendar: outside it a night falls back to high, so its bounds
+    // decide where the standard rate stops being offered at all.
+    $all = array_map(fn($r) => [$r[1], $r[2]], $m);
+    check('PHP season calendar spans exactly what the migration covers',
+          [$all[0][0], $all[count($all) - 1][1]] === maya_ilai_season_calendar());
+    check('PHP high-season windows match the rates migration exactly',
+          $fromSql === maya_ilai_high_windows());
+
+    // And the collapse the design agreed on: 32 high-season nights in 2026.
+    $high = 0;
+    foreach (maya_ilai_high_windows() as [$a, $b]) {
+        $high += (int) (new DateTimeImmutable($a))->diff(new DateTimeImmutable($b))->days;
+    }
+    check('32 high-season nights, as the design states', $high === 32);
+}
+
+check('a night inside a window is high',      maya_ilai_season_for_night('2026-12-25') === 'high');
+check('a night outside every window is standard', maya_ilai_season_for_night('2026-06-15') === 'standard');
+check('the window end is the checkout morning, not a night',
+      maya_ilai_season_for_night('2026-01-11') === 'standard'
+   && maya_ilai_season_for_night('2026-01-10') === 'high');
+check('an unmapped year is high, never an under-quote',
+      maya_ilai_season_for_night('2028-06-15') === 'high');
+
+// New Year into January: the window ends 11 Jan, so 8-14 Jan is 3 high nights
+// then 3 standard. Kept inside 2026 deliberately — a stay running past 1 Jan 2027
+// leaves the mapped calendar and every night after it falls back to high, which
+// is the next assertion rather than an accident of this one.
+$sp = maya_ilai_season_split('2026-01-08', 6);
+check('a straddling stay is split night by night', $sp['high'] === 3 && $sp['standard'] === 3);
+check('the split always accounts for every night', $sp['high'] + $sp['standard'] === 6);
+$past = maya_ilai_season_split('2026-12-28', 8);   // 4 nights in 2026, 4 in 2027
+check('nights past the mapped calendar fall back to high, not standard',
+      $past['high'] === 8 && $past['standard'] === 0);
+check('no date falls back to the season given', maya_ilai_season_split(null, 5, 'standard')['standard'] === 5);
+check('a malformed date is not tolerated on a price',
+      maya_ilai_ymd('2026-9-1') === null && maya_ilai_ymd('2026-02-30') === null
+   && maya_ilai_ymd('2026-09-01') === '2026-09-01');
+
+// A mid-June stay must cost the standard rate — the bug the guest reported was
+// that it charged high regardless of when they were coming.
+$sel = ['qtyDouble' => 1, 'guestDouble' => 2, 'nights' => 4, 'program' => 'none'];
+$hi  = maya_ilai_quote($sel + ['checkIn' => '2026-12-21'], $D);
+$std = maya_ilai_quote($sel + ['checkIn' => '2026-06-15'], $D);
+check('a standard-season stay is the reduced rate',
+      eq((float)$std['nightly'], $D['rates']['double'] * (1 - $D['rules']['standardReduction'] / 100)));
+check('a high-season stay is the published rate', eq((float)$hi['nightly'], (float)$D['rates']['double']));
+check('standard really is cheaper than high', (float)$std['total'] < (float)$hi['total']);
+check('the season is labelled from the dates', $hi['season'] === 'high' && $std['season'] === 'standard');
+
+// The straddling quote must sit strictly between the two, and its nightly figure
+// must still foot exactly — this is what makes the blended rate legitimate
+// rather than an approximation.
+$mix = maya_ilai_quote($sel + ['checkIn' => '2026-01-09'], $D);   // 9,10 high · 11,12 standard
+check('a straddling stay is labelled mixed', $mix['season'] === 'mixed');
+check('a straddling stay prices between the two seasons',
+      (float)$mix['total'] > (float)$std['total'] && (float)$mix['total'] < (float)$hi['total']);
+check('a straddling stay is exactly its nights at their own rates',
+      eq((float)$mix['accommodation'],
+         $D['rates']['double'] * 2
+       + $D['rates']['double'] * (1 - $D['rules']['standardReduction'] / 100) * 2));
+check('nightly x nights still foots to accommodation',
+      eq((float)$mix['nightly'] * 4, (float)$mix['accommodation']));
+
+// Omitting the date must leave the staff tool byte-for-byte as it was.
+check('no date is the old single-season behaviour',
+      maya_ilai_quote($sel + ['season' => 'standard'], $D)['total'] === $std['total']);
+
+/* ───────────── The Eco-Resort Fee is a separate charge ─────────────────────── */
+
+$fee = maya_ilai_quote(['qtyDouble' => 1, 'guestDouble' => 2, 'nights' => 3,
+                        'program' => 'none', 'checkIn' => '2026-06-15'], $D);
+check('accommodation excludes the Eco-Resort Fee',
+      eq((float)$fee['accommodation'], (float)$fee['nightly'] * 3));
+check('total is accommodation plus the fee',
+      eq((float)$fee['total'], (float)$fee['accommodation'] + (float)$fee['eco']));
+check('the fee is per guest for the whole stay, not per night',
+      eq((float)$fee['eco'], 2 * (float)$D['rules']['ecoFee']));
+check('a longer stay does not multiply the fee',
+      eq((float)maya_ilai_quote(['qtyDouble' => 1, 'guestDouble' => 2, 'nights' => 9,
+                                 'program' => 'none'], $D)['eco'], (float)$fee['eco']));
+
 
 /* ───────────── The Eco-Resort Fee is not part of what a guest is quoted ────── */
 

@@ -155,6 +155,100 @@ function maya_ilai_rate(array $cfg, string $key, string $season): float {
     return $season === 'standard' ? $base * (1 - (float)$cfg['rules']['standardReduction'] / 100) : $base;
 }
 
+/**
+ * The HIGH-season windows, as [start, end) — end is the checkout morning, the
+ * same exclusive convention rates.date_to uses.
+ *
+ * These MUST stay equal to the `TRUE` rows in
+ * db/migrations/rates_maya_ilai_2026.sql. That migration prices the eight
+ * products for the booking engine; this list prices the same nights in the
+ * guest configurator, which quotes from the rate tool's primitives instead.
+ * Two statements of one fact is how they drift, so
+ * tests/maya_ilai_pricing_logic.php parses the migration and asserts the two
+ * agree. Change one, change the other, and the test will tell you if you forgot.
+ *
+ * 32 high-season nights in 2026, in three windows (the migration writes five
+ * rows because it also spells out the standard stretches between them).
+ */
+function maya_ilai_high_windows(): array {
+    return [
+        ['2026-01-01', '2026-01-11'],   // New Year        10 nights
+        ['2026-03-26', '2026-04-05'],   // Easter shoulder 10 nights
+        ['2026-12-20', '2027-01-01'],   // Christmas       12 nights
+    ];
+}
+
+/**
+ * The span the seasons are actually mapped for, as [start, end).
+ *
+ * Must equal the full stretch db/migrations/rates_maya_ilai_2026.sql covers —
+ * its five windows are contiguous across this range. Asserted in
+ * tests/maya_ilai_pricing_logic.php alongside the high windows themselves.
+ */
+function maya_ilai_season_calendar(): array {
+    return ['2026-01-01', '2027-01-01'];
+}
+
+/**
+ * Which season one night falls in.
+ *
+ * Three cases, and the third is the one worth stating. A night inside a high
+ * window is high; a night inside the mapped calendar but outside every high
+ * window is standard; a night OUTSIDE the mapped calendar altogether is high.
+ *
+ * That last fallback is deliberate. The windows only describe 2026, and beyond
+ * them the booking engine falls back to rooms.price_amount — which IS the high
+ * figure. Calling an unmapped 2028 night 'standard' would quote 20% under what
+ * the same stay costs through the booking engine, and a quote that is too low is
+ * the expensive direction to be wrong in.
+ */
+function maya_ilai_season_for_night(string $ymd): string {
+    foreach (maya_ilai_high_windows() as [$from, $to]) {
+        if ($ymd >= $from && $ymd < $to) return 'high';
+    }
+    [$calFrom, $calTo] = maya_ilai_season_calendar();
+    return ($ymd >= $calFrom && $ymd < $calTo) ? 'standard' : 'high';
+}
+
+/**
+ * Split a stay into high- and standard-season nights.
+ *
+ * A stay may straddle a boundary — Christmas week into January is the obvious
+ * one — so this counts nights rather than picking a single season for the whole
+ * booking. The counts always sum to $nights.
+ *
+ * With no usable check-in date it falls back to $fallback for every night, which
+ * is exactly the pre-dates behaviour: the staff tool passes a season and no date
+ * and is unaffected by any of this.
+ */
+function maya_ilai_season_split(?string $checkIn, int $nights, string $fallback = 'high'): array {
+    $nights   = max(0, $nights);
+    $fallback = $fallback === 'standard' ? 'standard' : 'high';
+    $split    = ['high' => 0, 'standard' => 0];
+
+    $d = maya_ilai_ymd($checkIn);
+    if ($d === null) { $split[$fallback] = $nights; return $split; }
+
+    $cur = new DateTimeImmutable($d);
+    for ($i = 0; $i < $nights; $i++) {
+        $split[maya_ilai_season_for_night($cur->format('Y-m-d'))]++;
+        $cur = $cur->modify('+1 day');
+    }
+    return $split;
+}
+
+/**
+ * A strict YYYY-MM-DD, or null. Strict because this guards a PRICE: a date the
+ * parser merely tolerates ('2026-9-1') would sort wrong against the window
+ * bounds above, which are string comparisons, and silently move a stay between
+ * seasons.
+ */
+function maya_ilai_ymd($value): ?string {
+    if (!is_string($value) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $value)) return null;
+    [$y, $m, $d] = array_map('intval', explode('-', $value));
+    return checkdate($m, $d, $y) ? $value : null;
+}
+
 /** Highest qualifying group discount % for a party size (0 unless min nights met). */
 function maya_ilai_group_discount(array $cfg, int $guests, int $nights): float {
     if ($nights < (int)$cfg['rules']['minNights']) return 0.0;
@@ -388,7 +482,21 @@ function maya_ilai_quote(array $sel, ?array $cfg = null): array {
     $guests   = $g['double'] + $g['bunk'] + $g['studio'] + $g['villa'];
     $capacity = $q['double']*2 + $q['bunk']*(int)$r['bunkMax'] + $q['studio']*2 + $q['villa']*(int)$r['villaMax'];
 
-    $rate = fn($k) => maya_ilai_rate($cfg, $k, $season);
+    // The ONE point where season enters a price. Every figure below — base, the
+    // per-room lines, adjustedBase, nightly, total — is linear in these rates, so
+    // blending HERE, once, by how many nights fall in each season, makes every
+    // downstream figure the correct per-night average and keeps
+    // `nightly * nights` exactly equal to the accommodation total. Splitting the
+    // quote in two and adding the halves would be a second pricing path; this is
+    // not. With no check-in date the split is all-one-season and this is
+    // byte-for-byte the old single-season behaviour.
+    $split = maya_ilai_season_split($sel['checkIn'] ?? null, $nights, $season);
+    $rate = function (string $k) use ($cfg, $split, $nights) {
+        return (maya_ilai_rate($cfg, $k, 'high')     * $split['high']
+              + maya_ilai_rate($cfg, $k, 'standard') * $split['standard']) / max(1, $nights);
+    };
+    // What the stay actually spans, for the surfaces to label.
+    $season = $split['high'] && $split['standard'] ? 'mixed' : ($split['standard'] ? 'standard' : 'high');
     $singleRooms = max(0, min($q['double'], 2*$q['double'] - $g['double']));
     $doubleBase = ($q['double'] - $singleRooms)*$rate('double') + $singleRooms*$rate('double')*(1 - (float)$r['singleDiscount']/100);
     $base = $doubleBase + $q['bunk']*$rate('bunk') + $q['studio']*$rate('studio') + $q['villa']*$rate('villa') + $q['living']*$rate('living');
@@ -484,7 +592,7 @@ function maya_ilai_quote(array $sel, ?array $cfg = null): array {
         'guests'=>$guests,'capacity'=>$capacity,'base'=>round($base,2),'supplements'=>round($supplements,2),
         'adjustment'=>$adjustment,'adjustmentLabel'=>$adjustmentLabel,'nightly'=>round($nightly,2),
         'eco'=>round($eco,2),'total'=>round($total,2),'sold'=>$sold,'errors'=>$errors,
-        'accommodation'=>round($accommodation,2),
+        'accommodation'=>round($accommodation,2),'seasonNights'=>$split,
         'livingAllowance'=>$livingAllowance,
         // The two composed levers, exposed separately so a surface can frame them
         // honestly (a discount as a reason, scarcity as scarcity) rather than
@@ -1111,7 +1219,8 @@ function maya_ilai_offer_demand(array $picks): array {
  *
  * @return array<int,array{sel:array,quote:array,label:string,units:array,badge:string,tag:string,why:string}>
  */
-function maya_ilai_suggest(int $guests, int $nights, ?array $cfg = null, int $limit = 5, ?array $live = null): array {
+function maya_ilai_suggest(int $guests, int $nights, ?array $cfg = null, int $limit = 5,
+                          ?array $live = null, ?string $checkIn = null): array {
     $cfg    = $cfg ?: maya_ilai_pricing_get();
     $guests = max(1, $guests);
     $nights = max(1, $nights);
@@ -1186,6 +1295,11 @@ function maya_ilai_suggest(int $guests, int $nights, ?array $cfg = null, int $li
             $sel['program']        = 'live';
             $sel['availableUnits'] = (int)($live['freeVillas'] ?? 0);
         }
+        // Independent of the band above: the dates decide the SEASON. One says
+        // how scarce the villas are, the other what a night costs at this time of
+        // year, and a stay needs both. Set here rather than inside picks_to_sel so
+        // that helper stays about rooms and guests.
+        $sel['checkIn'] = $checkIn;
         $quote = maya_ilai_quote($sel, $cfg);
         if ($quote['errors']) continue;                      // not bookable → not an offer
         if ((int)$quote['guests'] !== $guests) continue;      // paranoia: the party must be seated
