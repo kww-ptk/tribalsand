@@ -141,6 +141,106 @@ if ($hasDb) {
                 check('form mode: availability only when the inventory room has units',
                     agent_room_form_mode(array_merge($qRoom, ['form_mode' => 'availability'])) === ($hasUnits ? 'availability' : 'enquiry'));
             }
+
+            // ── Request writer round-trip (all rolled back) ──────────────────
+            // A published, priced, individual, non-composite room with exactly ONE
+            // active unit at a published property — so a second identical request
+            // must be refused with a 409.
+            $room = db_query(
+                "SELECT r.* FROM rooms r JOIN venues v ON v.id = r.venue_id
+                  WHERE r.is_published = TRUE AND v.is_published = TRUE AND r.is_entire_place = FALSE
+                    AND r.price_amount > 0 AND r.slug NOT LIKE 'maya-ilai-%'
+                    AND (SELECT COUNT(*) FROM units u WHERE u.room_id = r.id AND u.is_active) = 1
+                  ORDER BY r.id LIMIT 1")->fetch();
+            if (!$room) {
+                echo "SKIP  no single-unit published room to book against\n";
+            } else {
+                db_query("UPDATE rooms SET form_mode = 'availability' WHERE id = :id", [':id' => $room['id']]);
+                $venueSlug = (string) db_query('SELECT slug FROM venues WHERE id = :id', [':id' => $room['venue_id']])->fetchColumn();
+                $ci = '2098-06-10'; $co = '2098-06-12';
+                $req = ['kind' => 'room', 'room_slug' => $room['slug'], 'check_in' => $ci, 'check_out' => $co,
+                        'adults' => 2, 'children' => 1, 'guest_name' => 'ZZ Traveller',
+                        'guest_email' => 'zz-trav@example.com', 'guest_phone' => '+254700000000', 'notes' => 'Late arrival'];
+                $res = agent_submit_request($agentRow, $req, ['source_page' => 'test', 'ip' => '127.0.0.1']);
+                check('request: hold mode succeeds', $res['ok'] === true && $res['mode'] === 'hold' && (int)$res['hold_id'] > 0);
+
+                $hold = db_query('SELECT * FROM holds WHERE id = :id', [':id' => $res['hold_id']])->fetch();
+                check('request: hold names the traveller, is emailed to the agent',
+                    $hold['guest_name'] === 'ZZ Traveller' && $hold['guest_email'] === 'zz-agent@example.com');
+                check('request: hold is pending with a 24h expiry', $hold['status'] === 'pending' && !empty($hold['expires_at']));
+                check('request: availability block written',
+                    (bool) db_query('SELECT 1 FROM availability_blocks WHERE hold_id = :h', [':h' => $res['hold_id']])->fetchColumn());
+
+                $canon     = room_stay_quote((int)$room['id'], (float)$room['price_amount'], $ci, $co);
+                $expectNet = agent_net_price((float)$canon['total'], $agentRow, (int)$room['venue_id']);
+                check('request: net = published (ONE path) × (1 − discount)',
+                    eq((float)$res['quote']['net'], $expectNet) && eq((float)$res['quote']['published'], (float)$canon['total']));
+                if (holds_agent_supported()) check('request: holds.agent_id links the agent', (int)$hold['agent_id'] === (int)$agentRow['id']);
+                else echo "SKIP  holds.agent_id absent — run add_holds_agent.sql\n";
+                if (holds_quoted_amount_supported()) check('request: net frozen on the hold',
+                    eq((float)$hold['quoted_amount'], $expectNet) && $hold['quoted_currency'] === ($room['price_currency'] ?: 'USD'));
+                else echo "SKIP  holds.quoted_amount absent — run add_holds_quoted_amount.sql\n";
+
+                $sub = db_query('SELECT * FROM submissions WHERE id = :id', [':id' => $res['submission_id']])->fetch();
+                $pl  = json_decode((string)$sub['payload_json'], true);
+                check('request: submission payload names the agent, source and net',
+                    (int)$pl['agent_id'] === (int)$agentRow['id'] && $pl['source'] === 'trade-portal'
+                    && eq((float)$pl['quoted_total'], $expectNet) && $pl['traveller_email'] === 'zz-trav@example.com');
+                check('request: submission contact is the agent, guest is the traveller, message carries the trade lines',
+                    $sub['guest_email'] === 'zz-agent@example.com' && $sub['guest_name'] === 'ZZ Traveller'
+                    && (int)$sub['room_id'] === (int)$room['id'] && (int)$sub['guests_children'] === 1
+                    && str_contains((string)$sub['message'], 'ZZ Agency') && str_contains((string)$sub['message'], 'Late arrival'));
+
+                // "Your requests"
+                $list = agent_requests($agentRow);
+                check('requests: the request lists with its hold status',
+                    count($list) === 1 && (int)$list[0]['hold_id'] === (int)$res['hold_id'] && $list[0]['hold_status'] === 'pending');
+                check('requests: reads as "On hold"', agent_request_status($list[0])['label'] === 'On hold');
+
+                // Ledger: confirming snapshots source = 'agent' at the NET figure.
+                if (bookings_supported() && holds_agent_supported() && holds_quoted_amount_supported()) {
+                    db_query("UPDATE holds SET status = 'confirmed', confirmed_at = NOW() WHERE id = :id", [':id' => $res['hold_id']]);
+                    bookings_sync_hold((int)$res['hold_id']);
+                    $bk = db_query('SELECT * FROM bookings WHERE hold_id = :h', [':h' => $res['hold_id']])->fetch();
+                    check('ledger: an agent hold books as source=agent, named by agency',
+                        is_array($bk) && $bk['source'] === 'agent' && $bk['agent'] === 'ZZ Agency');
+                    check('ledger: gross is the frozen net figure', is_array($bk) && eq((float)$bk['gross_amount'], $expectNet));
+                } else {
+                    echo "SKIP  ledger source check needs bookings + holds.agent_id + holds.quoted_amount\n";
+                }
+
+                // The race: the one unit is now held → refused, nothing written.
+                $holdsBefore = (int) db_query('SELECT COUNT(*) FROM holds')->fetchColumn();
+                $subsBefore  = (int) db_query('SELECT COUNT(*) FROM submissions')->fetchColumn();
+                $again = agent_submit_request($agentRow, $req, ['ip' => '127.0.0.1']);
+                check('request: a second request for the one unit is refused (409)', $again['ok'] === false && $again['code'] === 409);
+                check('request: … and writes nothing',
+                    (int) db_query('SELECT COUNT(*) FROM holds')->fetchColumn() === $holdsBefore
+                    && (int) db_query('SELECT COUNT(*) FROM submissions')->fetchColumn() === $subsBefore);
+
+                // Validation: traveller name required; past dates refused.
+                check('request: traveller name is required', agent_submit_request($agentRow, ['guest_name' => ''] + $req)['code'] === 422);
+                check('request: a past check-in is refused', agent_submit_request($agentRow, ['check_in' => '2020-01-01', 'check_out' => '2020-01-03'] + $req)['code'] === 422);
+
+                // A combination is an ENQUIRY: submission only, no hold, rooms in the payload.
+                $combo = agent_submit_request($agentRow, [
+                    'kind' => 'combo', 'venue_slug' => $venueSlug, 'rooms' => [['slug' => $room['slug'], 'units' => 1]],
+                    'check_in' => $ci, 'check_out' => $co, 'adults' => 2, 'children' => 0, 'guest_name' => 'ZZ Group',
+                ], ['ip' => '127.0.0.1']);
+                check('request: a combination is recorded as an enquiry with no hold',
+                    $combo['ok'] === true && $combo['mode'] === 'enquiry' && $combo['hold_id'] === null);
+                $csub = db_query('SELECT * FROM submissions WHERE id = :id', [':id' => $combo['submission_id']])->fetch();
+                $cpl  = json_decode((string)$csub['payload_json'], true);
+                check('request: combo submission has no room_id and lists the rooms',
+                    $csub['room_id'] === null && str_contains((string)($cpl['rooms'] ?? ''), (string)$room['name']));
+                $list2 = agent_requests($agentRow);
+                check('requests: both list, newest first, the combo reads "Enquiry sent"',
+                    count($list2) === 2 && agent_request_status($list2[0])['label'] === 'Enquiry sent');
+                check('request: a room from another property is refused in a combo',
+                    agent_submit_request($agentRow, ['kind' => 'combo', 'venue_slug' => $venueSlug,
+                        'rooms' => [['slug' => 'no-such-room-zz', 'units' => 1]], 'check_in' => $ci, 'check_out' => $co,
+                        'adults' => 2, 'children' => 0, 'guest_name' => 'X'])['code'] === 422);
+            }
         }
     } finally {
         db()->rollBack();

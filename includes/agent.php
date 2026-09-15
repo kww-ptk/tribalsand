@@ -280,3 +280,249 @@ function agent_room_form_mode(array $room): string {
     }
     return $mode === 'availability' ? 'availability' : 'enquiry';
 }
+
+/** Raised inside the request transaction when the dates are taken while we write. */
+class AgentSoldOutException extends \RuntimeException {}
+
+/**
+ * Turn an agent's "Request to book" into the SAME records the public widget
+ * creates: one submission (type 'enquiry'; payload.agent_* carries the trade
+ * facts) and — when the room is in availability mode — one 24h hold written by
+ * the same allocators the guest path uses (mi_allocate_and_hold() for a Maya Ilai
+ * composite room, else find_available_unit() + create_hold_with_block()). The
+ * hold carries holds.agent_id and freezes the NET price in holds.quoted_amount,
+ * which bookings_sync_hold() snapshots at confirm time. A room combination, or a
+ * room in enquiry mode, creates the submission only.
+ *
+ * $req: kind 'room' (room_slug) | 'combo' (venue_slug + rooms [['slug','units'],…]),
+ *       check_in, check_out, adults, children, guest_name (the traveller, required),
+ *       guest_email, guest_phone, notes.
+ *
+ * Contact of record = the AGENT. guest_email on the submission and the hold is
+ * the agent's login email, so every automatic email (acknowledgement,
+ * confirmation, cancellation, expiry, the manage link) and admin's reply reach
+ * the trade partner; guest_name is the traveller. The traveller's own contact
+ * details go into the payload and the message for reception.
+ *
+ * Runs in ONE transaction (joins the caller's when one is open, so a test can
+ * roll everything back). Never sends email — the caller does, after commit.
+ * Returns ['ok'=>true, submission_id, hold_id|null, mode 'hold'|'enquiry', quote,
+ * trade, lines, venue, rooms_label, message, hold (joined row)|null, check_in,
+ * check_out, adults, children, traveller, notes]
+ * or ['ok'=>false, error, code 403|409|422|500].
+ */
+function agent_submit_request(array $agent, array $req, array $tracking = []): array {
+    $err = fn(string $m, int $c = 422): array => ['ok' => false, 'error' => $m, 'code' => $c];
+    $agentId    = (int)($agent['id'] ?? 0);
+    $agentEmail = strtolower(trim((string)($agent['email'] ?? '')));
+    if ($agentId <= 0 || !filter_var($agentEmail, FILTER_VALIDATE_EMAIL)) return $err('Please sign in again.', 403);
+
+    $stay = agent_valid_stay((string)($req['check_in'] ?? ''), (string)($req['check_out'] ?? ''));
+    if ($stay === null) {
+        return $err('Please choose a valid check-in and a later check-out — not in the past and up to ' . AGENT_MAX_STAY_NIGHTS . ' nights.');
+    }
+    [$ci, $co, $nights] = $stay;
+
+    $adults    = max(1, min(30, (int)($req['adults'] ?? 1)));
+    $children  = max(0, min(20, (int)($req['children'] ?? 0)));
+    $traveller = mb_substr(trim((string)($req['guest_name'] ?? '')), 0, 255);
+    if ($traveller === '') return $err('The travelling guest’s name is required.');
+    $tEmail = trim((string)($req['guest_email'] ?? ''));
+    if ($tEmail !== '' && !filter_var($tEmail, FILTER_VALIDATE_EMAIL)) return $err('The traveller’s email address doesn’t look right.');
+    $tPhone = mb_substr(trim((string)($req['guest_phone'] ?? '')), 0, 50);
+    $notes  = mb_substr(trim((string)($req['notes'] ?? '')), 0, 2000);
+
+    // ── Resolve the product(s) and price them server-side — the ONE path ──
+    $kind  = (($req['kind'] ?? 'room') === 'combo') ? 'combo' : 'room';
+    $lines = [];   // [['room' => row, 'units' => int, 'quote' => agent_stay_quote()], …]
+    if ($kind === 'room') {
+        $room = fetch_room_by_slug(trim((string)($req['room_slug'] ?? '')));
+        if (!$room || empty($room['is_published'])) return $err('That room isn’t available to book.');
+        $venue = db_query('SELECT id, slug, name FROM venues WHERE id = :id AND is_published = TRUE',
+            [':id' => $room['venue_id']])->fetch();
+        if (!$venue) return $err('That property isn’t available to book.');
+        $lines[] = ['room' => $room, 'units' => 1, 'quote' => agent_stay_quote($room, $agent, $ci, $co)];
+    } else {
+        $venue = db_query('SELECT id, slug, name FROM venues WHERE slug = :s AND is_published = TRUE',
+            [':s' => trim((string)($req['venue_slug'] ?? ''))])->fetch();
+        if (!$venue) return $err('That property isn’t available to book.');
+        foreach ((is_array($req['rooms'] ?? null) ? $req['rooms'] : []) as $pick) {
+            $room = fetch_room_by_slug(trim((string)($pick['slug'] ?? '')));
+            if (!$room || empty($room['is_published']) || (int)$room['venue_id'] !== (int)$venue['id']) {
+                return $err('One of those rooms isn’t available at this property.');
+            }
+            $lines[] = ['room' => $room, 'units' => max(1, min(8, (int)($pick['units'] ?? 1))),
+                        'quote' => agent_stay_quote($room, $agent, $ci, $co)];
+        }
+        if (!$lines) return $err('Choose at least one room.');
+    }
+    $currency  = (string)$lines[0]['quote']['currency'];
+    $published = 0.0;
+    $net       = 0.0;
+    foreach ($lines as $l) {
+        if ((int)$l['quote']['nights'] === 0) return $err('We couldn’t price those dates. Please try again.');
+        // Money is never summed across currencies.
+        if ($l['quote']['currency'] !== $currency) return $err('Those rooms are priced in different currencies and can’t be requested together.');
+        $published += $l['quote']['published'] * $l['units'];
+        $net       += $l['quote']['net']       * $l['units'];
+    }
+    $venueId = (int)$venue['id'];
+    $quote   = ['nights' => $nights, 'published' => round($published, 2), 'net' => round($net, 2),
+                'currency' => $currency, 'discount_pct' => agent_discount_pct($agent, $venueId)];
+    $trade   = agent_trade_lines($agent, $quote);
+
+    $holdMode   = $kind === 'room' && agent_room_form_mode($lines[0]['room']) === 'availability';
+    $roomsLabel = implode(', ', array_map(
+        fn($l) => $l['room']['name'] . ($l['units'] > 1 ? ' ×' . $l['units'] : ''), $lines));
+
+    // What staff read first — in the notification email and the inbox.
+    $msg = ['Trade booking request via the agent portal' . ($holdMode ? '' : ' (enquiry — no hold placed)'),
+            'Agent: ' . $trade['agent'],
+            'Traveller: ' . $traveller . ($tEmail !== '' ? ' · ' . $tEmail : '') . ($tPhone !== '' ? ' · ' . $tPhone : ''),
+            'Rate: ' . $trade['rate']];
+    if ($kind === 'combo') $msg[] = 'Rooms: ' . $roomsLabel;
+    if ($notes !== '') { $msg[] = ''; $msg[] = 'Agent note: ' . $notes; }
+    $message = implode("\n", $msg);
+
+    $payload = array_filter([
+        'source'          => 'trade-portal',
+        'agent_id'        => $agentId,
+        'agent_name'      => (string)($agent['name'] ?? ''),
+        'agency'          => (string)($agent['agency'] ?? ''),
+        'agent_email'     => $agentEmail,
+        'venue'           => (string)$venue['name'],
+        'traveller_email' => $tEmail,
+        'traveller_phone' => $tPhone,
+        'discount_pct'    => $quote['discount_pct'],
+        'published_total' => $quote['published'],
+        'quoted_total'    => $quote['net'],
+        'quoted_currency' => $currency,
+        'quoted_label'    => $nights . ' night' . ($nights === 1 ? '' : 's') . ' · trade net rate'
+            . ($quote['discount_pct'] > 0
+                ? ' (' . agent_pct_label($quote['discount_pct']) . '% off published ' . format_price($quote['published'], $currency) . ')'
+                : ''),
+        'rooms'           => $kind === 'combo' ? $roomsLabel : '',
+    ], fn($v) => $v !== '' && $v !== null);
+
+    $pdo   = db();
+    $ownTx = !$pdo->inTransaction();
+    if ($ownTx) $pdo->beginTransaction();
+    $holdId = null;
+    try {
+        $room = $lines[0]['room'];
+        $unit = false;
+        if ($holdMode) {
+            // Fast pre-check; mi_allocate_and_hold() re-allocates under its own lock.
+            $unit = find_available_unit((int)$room['id'], $ci, $co);
+            if (!$unit) throw new AgentSoldOutException();
+        }
+
+        db_query(
+            "INSERT INTO submissions
+                (type, room_id, guest_name, guest_email, guest_phone, message,
+                 check_in, check_out, guests_adults, guests_children, payload_json,
+                 source_page, referrer, utm_source, utm_medium, utm_campaign, utm_term, utm_content,
+                 user_agent, ip_address)
+             VALUES
+                ('enquiry', :room_id, :name, :email, :phone, :message,
+                 :ci, :co, :adults, :children, :payload,
+                 :source_page, :referrer, :utm_source, :utm_medium, :utm_campaign, :utm_term, :utm_content,
+                 :ua, :ip)",
+            [
+                ':room_id'     => $kind === 'room' ? (int)$room['id'] : null,
+                ':name'        => $traveller,
+                ':email'       => $agentEmail,
+                ':phone'       => $tPhone,
+                ':message'     => $message,
+                ':ci'          => $ci,
+                ':co'          => $co,
+                ':adults'      => $adults,
+                ':children'    => $children,
+                ':payload'     => json_encode($payload, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                ':source_page' => (string)($tracking['source_page'] ?? ''),
+                ':referrer'    => (string)($tracking['referrer'] ?? ''),
+                ':utm_source'  => (string)($tracking['utm_source'] ?? 'trade-portal'),
+                ':utm_medium'  => (string)($tracking['utm_medium'] ?? ''),
+                ':utm_campaign'=> (string)($tracking['utm_campaign'] ?? ''),
+                ':utm_term'    => (string)($tracking['utm_term'] ?? ''),
+                ':utm_content' => (string)($tracking['utm_content'] ?? ''),
+                ':ua'          => (string)($tracking['user_agent'] ?? ''),
+                ':ip'          => (string)($tracking['ip'] ?? client_ip()),
+            ]
+        );
+        $subId = (int)$pdo->lastInsertId();
+
+        if ($holdMode) {
+            if (mi_is_composite_room($room)) {
+                $holdId = mi_allocate_and_hold($room, $subId, $ci, $co, $traveller, $agentEmail, 'pending', 24);
+            } else {
+                $holdId = create_hold_with_block((int)$unit['id'], $subId, $ci, $co, $traveller, $agentEmail,
+                    'pending', 24, $unit['_mi_components'] ?? null, (int)$room['id']);
+            }
+            if ($holdId === false) throw new AgentSoldOutException();
+            $holdId = (int)$holdId;
+            if (holds_agent_supported()) {
+                db_query('UPDATE holds SET agent_id = :a WHERE id = :id', [':a' => $agentId, ':id' => $holdId]);
+            }
+            if (holds_quoted_amount_supported()) {
+                db_query('UPDATE holds SET quoted_amount = :q, quoted_currency = :c WHERE id = :id',
+                    [':q' => $quote['net'], ':c' => $currency, ':id' => $holdId]);
+            }
+        }
+        if ($ownTx) $pdo->commit();
+    } catch (AgentSoldOutException $e) {
+        if ($ownTx && $pdo->inTransaction()) $pdo->rollBack();
+        return $err('Those dates were taken while you were completing the request. Please search again.', 409);
+    } catch (\Throwable $e) {
+        if ($ownTx && $pdo->inTransaction()) $pdo->rollBack();
+        error_log('[agent-request] failed: ' . $e->getMessage());
+        return $err('Something went wrong saving the request. Please try again or contact reservations.', 500);
+    }
+
+    $hold = $holdId ? db_query(
+        "SELECT h.*, u.name AS unit_name, r.name AS room_name
+           FROM holds h JOIN units u ON u.id = h.unit_id JOIN rooms r ON r.id = " . hold_room_id_sql('h', 'u') . "
+          WHERE h.id = :id", [':id' => $holdId]
+    )->fetch() : null;
+
+    return [
+        'ok' => true, 'submission_id' => $subId, 'hold_id' => $holdId, 'mode' => $holdMode ? 'hold' : 'enquiry',
+        'quote' => $quote, 'trade' => $trade, 'lines' => $lines, 'venue' => $venue, 'rooms_label' => $roomsLabel,
+        'message' => $message, 'hold' => $hold ?: null, 'check_in' => $ci, 'check_out' => $co,
+        'adults' => $adults, 'children' => $children, 'traveller' => $traveller, 'notes' => $notes,
+    ];
+}
+
+/**
+ * The agent's requests, newest first. Every request writes a submission whose
+ * payload names the agent, so that is the source of truth — with or without the
+ * holds.agent_id column. The latest hold on each submission supplies the status.
+ * Each row carries a decoded `payload`.
+ */
+function agent_requests(array $agent, int $limit = 100): array {
+    $aid = (int)($agent['id'] ?? 0);
+    if ($aid <= 0) return [];
+    $limit = max(1, min(500, $limit));
+    $rows = db_query(
+        "SELECT s.id, s.created_at, s.check_in, s.check_out, s.guest_name, s.room_id, s.payload_json,
+                s.guests_adults, s.guests_children,
+                r.name AS room_name, v.name AS venue_name,
+                h.id AS hold_id, h.status AS hold_status, h.expires_at, h.access_code
+           FROM submissions s
+           LEFT JOIN rooms  r ON r.id = s.room_id
+           LEFT JOIN venues v ON v.id = r.venue_id
+           LEFT JOIN LATERAL (
+                SELECT id, status, expires_at, access_code FROM holds
+                 WHERE submission_id = s.id ORDER BY id DESC LIMIT 1
+           ) h ON TRUE
+          WHERE s.payload_json->>'agent_id' = :aid
+          ORDER BY s.created_at DESC, s.id DESC
+          LIMIT {$limit}",
+        [':aid' => (string)$aid]
+    )->fetchAll();
+    foreach ($rows as $i => $r) {
+        $pl = json_decode((string)($r['payload_json'] ?? '{}'), true);
+        $rows[$i]['payload'] = is_array($pl) ? $pl : [];
+    }
+    return $rows;
+}
