@@ -91,6 +91,17 @@ check('status: confirmed / expired / cancelled labels',
     && agent_request_status(['hold_status' => 'expired'], $now)['label'] === 'Expired'
     && agent_request_status(['hold_status' => 'cancelled'], $now)['class'] === 'cancelled');
 
+// ── Trade rows in the staff hold email (pure HTML builder) ───────────────────
+$mailBase = ['guest_name' => 'ZZ Traveller', 'guest_email' => 'a@x.com', 'room_name' => 'Suite', 'unit_name' => 'Unit A',
+             'check_in' => '2098-06-10', 'check_out' => '2098-06-12', 'expires' => '24 hours',
+             'confirm_url' => '#', 'decline_url' => '#', 'holds_url' => '#', 'has_tokens' => false];
+$plain = _hold_notification_html($mailBase);
+$trade = _hold_notification_html($mailBase + ['trade_agent' => 'Safari Co — Jane <j@x.com>', 'trade_rate' => 'USD 850 net · 2 nights']);
+check('mail: a guest hold email has no trade rows', !str_contains($plain, 'Booked by'));
+check('mail: a trade hold email names the agent and the net rate',
+    str_contains($trade, 'Booked by') && str_contains($trade, 'Safari Co') && str_contains($trade, 'USD 850 net'));
+check('mail: trade values are escaped', str_contains($trade, '&lt;j@x.com&gt;'));
+
 // ── DB round-trip (rolled back) ─────────────────────────────────────────────
 $hasDb = false;
 try { db()->beginTransaction(); $hasDb = true; }

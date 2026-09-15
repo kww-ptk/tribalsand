@@ -298,7 +298,8 @@ function send_guest_acknowledgement(array $a): void {
     $rows = [];
     foreach (['room_name' => 'Villa / Room', 'tour_name' => 'Experience',
               'check_in' => 'Check-in', 'check_out' => 'Check-out',
-              'guests' => 'Guests', 'agency_name' => 'Agency', 'subject' => 'Subject'] as $key => $label) {
+              'guests' => 'Guests', 'agency_name' => 'Agency', 'subject' => 'Subject',
+              'price' => 'Price' /* trade-portal acks only */] as $key => $label) {
         if (empty($a[$key])) continue;
         $val = (string)$a[$key];
         if (($key === 'check_in' || $key === 'check_out') && ($ts = strtotime($val))) {
@@ -689,7 +690,13 @@ function send_hold_notification(array $hold): void {
     $holdId  = (int)$hold['id'];
     $expires = isset($hold['expires_at']) ? date('d M Y H:i', strtotime($hold['expires_at'])) . ' (UTC+3)' : '24 hours';
 
-    $subject = "[Hold Request] {$hold['room_name']} — {$hold['guest_name']} — {$hold['check_in']} to {$hold['check_out']}";
+    // Trade-portal requests pass the two lines from agent_trade_lines(); absent = a
+    // guest hold, and the email is byte-for-byte what it always was.
+    $tradeAgent = trim((string)($hold['trade_agent'] ?? ''));
+    $tradeRate  = trim((string)($hold['trade_rate']  ?? ''));
+
+    $subject = ($tradeAgent !== '' ? '[Trade Hold Request] ' : '[Hold Request] ')
+             . "{$hold['room_name']} — {$hold['guest_name']} — {$hold['check_in']} to {$hold['check_out']}";
 
     // Build action URLs if token secret is configured
     $confirm_url = $site . '/admin/holds.php';
@@ -715,6 +722,9 @@ function send_hold_notification(array $hold): void {
         "Expires:   {$expires}",
         '',
     ];
+    if ($tradeAgent !== '') {
+        array_splice($text_lines, 9, 0, ["Booked by: {$tradeAgent}", "Trade rate: {$tradeRate}"]);
+    }
     if ($has_tokens) {
         $text_lines[] = "CONFIRM: {$confirm_url}";
         $text_lines[] = "DECLINE: {$decline_url}";
@@ -737,6 +747,8 @@ function send_hold_notification(array $hold): void {
         'decline_url' => $decline_url,
         'holds_url'   => $site . '/admin/holds.php',
         'has_tokens'  => $has_tokens,
+        'trade_agent' => $tradeAgent,
+        'trade_rate'  => $tradeRate,
     ]);
 
     _dispatch_mail($to, $subject, $text, $from, $hold['guest_email'] ?? '', $env, $html);
@@ -764,7 +776,7 @@ function _hold_notification_html(array $d): string {
         . '<div style="max-width:600px;margin:32px auto;background:#fff;border-radius:8px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.1)">'
           . '<div style="background:#1E5C6B;padding:24px 32px">'
             . '<h1 style="margin:0;color:#fff;font-size:20px;font-weight:700">New Hold Request</h1>'
-            . '<p style="margin:6px 0 0;color:#bcdfe6;font-size:14px">24-hour soft hold &mdash; please confirm or decline</p>'
+            . '<p style="margin:6px 0 0;color:#bcdfe6;font-size:14px">' . (!empty($d['trade_agent']) ? 'Trade booking &middot; ' : '') . '24-hour soft hold &mdash; please confirm or decline</p>'
           . '</div>'
           . '<div style="padding:32px">'
             . '<table style="width:100%;border-collapse:collapse;margin-bottom:8px">'
@@ -781,6 +793,12 @@ function _hold_notification_html(array $d): string {
                   . '<td style="padding:8px 0;font-weight:600">' . $esc($d['check_out']) . '</td></tr>'
               . '<tr><td style="padding:8px 0;color:#777;font-size:13px">Expires</td>'
                   . '<td style="padding:8px 0;color:#b45309;font-weight:600">' . $esc($d['expires']) . '</td></tr>'
+              . (!empty($d['trade_agent'])
+                  ? '<tr><td style="padding:8px 0;color:#777;font-size:13px">Booked by</td>'
+                      . '<td style="padding:8px 0;font-weight:600">' . $esc((string)$d['trade_agent']) . '</td></tr>'
+                  . '<tr><td style="padding:8px 0;color:#777;font-size:13px">Trade rate</td>'
+                      . '<td style="padding:8px 0;font-weight:700;color:#0f6f68">' . $esc((string)($d['trade_rate'] ?? '')) . '</td></tr>'
+                  : '')
             . '</table>'
             . $action_block
             . '<p style="font-size:12px;color:#aaa;text-align:center;margin:24px 0 0">'
