@@ -253,8 +253,10 @@ $mibMaxNights = 30;
   .mib-off__body{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:.6rem 1.6rem;align-items:start}
   /* ONLY a card that actually has a photo becomes two columns. Without one the
      card is the single column it has always been — no reserved gutter, no grey
-     placeholder standing in for a picture nobody has uploaded yet. */
-  .mib-off--photo{grid-template-columns:minmax(0,1fr) minmax(0,15rem)}
+     placeholder standing in for a picture nobody has uploaded yet.
+     Equal halves: the photograph is half the argument for a stay, and a 15rem
+     cap left it a thumbnail beside a column of text three times its width. */
+  .mib-off--photo{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
   .mib-off__fig{margin:0;min-width:0}
   /* A fixed ratio on the FRAME, reserved before any file arrives, so the list
      does not jump as the photographs load in — and does not jump again as the
