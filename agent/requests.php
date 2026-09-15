@@ -29,7 +29,15 @@ include __DIR__ . '/_layout.php';
 <h1>Your requests</h1>
 <p class="ap-sub">Every request you have sent, and its status. Reservations confirm each one by email to <?= e($agent['email']) ?>.</p>
 
-<?php if ($sent): ?><div class="alert alert-success">Request sent — reservations will confirm by email. Dates on hold are kept for 24 hours.</div><?php endif; ?>
+<?php if ($sent):
+    // Say what actually happened to THIS request: a hold keeps the dates for 24h,
+    // an enquiry (enquiry-mode room or a room combination) holds nothing yet.
+    $sentRow  = null;
+    foreach ($rows as $r) { if ((int)$r['id'] === $sent) { $sentRow = $r; break; } }
+    $sentHeld = $sentRow !== null && !empty($sentRow['hold_id']);
+?>
+<div class="alert alert-success">Request sent — reservations will confirm by email. <?= $sentHeld ? 'Your dates are on hold for 24 hours.' : 'Nothing is held yet; we’ll confirm the rooms and price by email.' ?></div>
+<?php endif; ?>
 <?php if ($loadError): ?><div class="alert alert-error"><?= e($loadError) ?></div><?php endif; ?>
 
 <div class="ap-card">
