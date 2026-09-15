@@ -309,6 +309,10 @@ $mibMaxNights = 30;
   .mib-off__ud{display:block;font-size:.72rem;opacity:.75}
   .mib-off__cta{grid-column:1/-1;width:100%;margin:.9rem 0 0}
   .mib-offers__msg{padding:1rem 1.1rem;border:1px solid var(--mib-line);background:var(--sand-faint,#FAF6EE);font-size:.85rem;color:var(--mib-mut)}
+  .mib-avail{padding:.6rem .85rem;margin-bottom:.7rem;border-radius:8px;font-size:.82rem;line-height:1.45;border:1px solid var(--mib-line)}
+  .mib-avail--deal{background:#EEF7EE;border-color:#CFE8CF;color:#2F6B36}
+  .mib-avail--tight{background:#FBF1E7;border-color:#F0D9BE;color:#8A5A22}
+  .mib-avail b{font-weight:600}
   .mib-bespoke{margin-top:1.8rem;border-top:1px solid var(--mib-line);padding-top:1.3rem}
   .mib-bespoke__btn{background:none;border:1px solid var(--mib-line);padding:.75rem 1.1rem;font-family:inherit;font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;color:var(--teal,#1E5C6B);cursor:pointer;width:100%}
   .mib-bespoke__btn:hover{background:var(--sand-faint,#FAF6EE)}
@@ -760,6 +764,9 @@ $mibMaxNights = 30;
     var p = expand();
     p.qtyLiving += livingQty;
     p.nights = Math.max(1, nights);   // the picker is only reachable with real dates
+    // Send the dates so the server can price on the live availability band; the
+    // picker is only reachable once a real range is chosen in step 1.
+    if (dates.ci && dates.co) { p.check_in = dates.ci; p.check_out = dates.co; }
     return p;
   }
 
@@ -1157,6 +1164,23 @@ $mibMaxNights = 30;
     failSlide(img);
   }, true);
 
+  /* An honest one-line note about the live availability price. A discount is
+     framed as a REASON (opening rates while the compound is quiet); scarcity is
+     framed as scarcity (how many villas are left), never as a "surcharge" line
+     that reads like a penalty. Silent at the reference band (no adjustment). */
+  function availabilityBanner(d) {
+    var a = d && d.availability;
+    if (!a || !a.adjustment) return '';
+    var n = a.freeVillas, villas = n + ' villa' + (n === 1 ? '' : 's');
+    if (a.adjustment < 0) {
+      var off = Math.round(Math.abs(a.adjustment));
+      return '<div class="mib-avail mib-avail--deal"><b>' + esc(a.label) + '</b> — '
+           + off + '% off while ' + villas + ' are open for these dates.</div>';
+    }
+    return '<div class="mib-avail mib-avail--tight">Only <b>' + villas
+         + '</b> left for these dates' + (a.label ? ' — ' + esc(a.label) + ' rates apply' : '') + '.</div>';
+  }
+
   function search() {
     clearTimeout(searchTimer);
     var seq = ++searchSeq;
@@ -1195,7 +1219,7 @@ $mibMaxNights = 30;
             offersEl.innerHTML = '<div class="mib-offers__msg">' + msg + '</div>';
             return;
           }
-          offersEl.innerHTML = offers.map(offerCard).join('');
+          offersEl.innerHTML = availabilityBanner(d) + offers.map(offerCard).join('');
         })
         .catch(function () {
           if (seq !== searchSeq) return;

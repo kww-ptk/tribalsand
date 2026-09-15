@@ -116,17 +116,24 @@ function maya_ilai_pricing_sanitize(array $state): array {
         if (!$clean['groups']) $clean['groups'] = $d['groups'];
     }
     if (isset($state['availability']) && is_array($state['availability'])) {
+        // The whole ladder is owner-editable now — threshold, %, label, and the
+        // number of bands (add/remove rows). Every row is coerced into shape:
+        // min >= 0, max >= min (an inverted range can never match), adjustment a
+        // real number (negatives ARE valid — they are discounts), label a string.
+        // The ladder is NOT forced to be gap-free or non-overlapping here: the
+        // reader (maya_ilai_availability_band) resolves overlaps first-match and
+        // fails SAFE to the reference rate on a gap, so a rough ladder degrades
+        // to "price as normal" rather than throwing or mis-pricing.
         $clean['availability'] = [];
-        foreach ($state['availability'] as $i => $b) {
+        foreach ($state['availability'] as $b) {
             if (!is_array($b)) continue;
-            // Keep the band's fixed min/max/label from defaults where present (bands are a fixed ladder);
-            // only the adjustment is user-editable, matching the reference tool.
-            $base = $d['availability'][$i] ?? ['min' => 0, 'max' => 0, 'label' => ''];
+            $min = max(0, (int)($b['min'] ?? 0));
+            $max = max($min, (int)($b['max'] ?? $min));
             $clean['availability'][] = [
-                'min'        => (int)($b['min'] ?? $base['min']),
-                'max'        => (int)($b['max'] ?? $base['max']),
+                'min'        => $min,
+                'max'        => $max,
                 'adjustment' => (float)($b['adjustment'] ?? 0),
-                'label'      => (string)($b['label'] ?? $base['label']),
+                'label'      => (string)($b['label'] ?? ''),
             ];
         }
         if (!$clean['availability']) $clean['availability'] = $d['availability'];
@@ -334,12 +341,22 @@ function maya_ilai_living_allowance(array $cfg, int $looseDoubles, int $looseBun
          + max((int)ceil(max(0, $looseDoubles) / $perVilla), max(0, $looseBunks));
 }
 
-/** Availability band matching a units-available count. */
+/**
+ * Availability band matching a units-available count.
+ *
+ * Fails SAFE, not closed-as-sold-out: an owner-editable ladder can have a gap or
+ * a bad row, and a count that matches no band must never be read as "sold out"
+ * (a false zero-price, or a surprise surcharge). An unmatched count returns a
+ * neutral band — reference rate, no adjustment, not sold — so a misconfigured
+ * ladder degrades to "price as normal", the one answer that can't harm a guest
+ * or the owner. `units === 0` still matches the explicit 0-0 sold-out row when
+ * the ladder defines one.
+ */
 function maya_ilai_availability_band(array $cfg, int $units): array {
     foreach ($cfg['availability'] as $b) {
         if ($units >= (int)$b['min'] && $units <= (int)$b['max']) return $b;
     }
-    return end($cfg['availability']) ?: ['min'=>0,'max'=>0,'adjustment'=>0,'label'=>'Sold out'];
+    return ['min'=>$units, 'max'=>$units, 'adjustment'=>0, 'label'=>'Reference rate'];
 }
 
 /**
@@ -361,7 +378,10 @@ function maya_ilai_quote(array $sel, ?array $cfg = null): array {
 
     $season  = ($sel['season'] ?? 'high') === 'standard' ? 'standard' : 'high';
     $nights  = max(1, (int)($sel['nights'] ?? 1));
-    $program = in_array(($sel['program'] ?? 'group'), ['group','availability','none'], true) ? ($sel['program'] ?? 'group') : 'group';
+    // 'group' and 'availability' are the staff tool's single levers, unchanged.
+    // 'live' is the guest path: it composes the live-availability band with the
+    // automatic group discount (both apply — see the adjustment block below).
+    $program = in_array(($sel['program'] ?? 'group'), ['group','availability','live','none'], true) ? ($sel['program'] ?? 'group') : 'group';
 
     $q = ['double'=>$n('qtyDouble'),'bunk'=>$n('qtyBunk'),'studio'=>$n('qtyStudio'),'villa'=>$n('qtyVilla'),'living'=>$n('qtyLiving')];
     $g = ['double'=>$n('guestDouble'),'bunk'=>$n('guestBunk'),'studio'=>$n('guestStudio'),'villa'=>$n('guestVilla')];
@@ -377,18 +397,51 @@ function maya_ilai_quote(array $sel, ?array $cfg = null): array {
     $villaExtra = max(0, $g['villa'] - $q['villa']*(int)$r['villaIncluded']) * (float)$r['bunkExtra'];
     $supplements = $bunkExtra + $villaExtra;
 
-    $adjustment = 0.0; $adjustmentLabel = 'No adjustment'; $sold = false;
-    if ($program === 'group') {
-        $adjustment = -maya_ilai_group_discount($cfg, $guests, $nights);
-        $adjustmentLabel = $nights < (int)$r['minNights'] ? "Minimum {$r['minNights']} nights not met" : 'Group discount';
-    } elseif ($program === 'availability') {
+    // Two INDEPENDENT levers, composed multiplicatively so neither is a second
+    // copy of the other's rule:
+    //   · availAdj  — the availability band (how full the compound is), +/-%.
+    //   · groupDisc — the automatic party-size discount, always >= 0.
+    // 'group'/'availability' keep exactly one lever on (byte-identical to before);
+    // 'live' turns both on — the guest sees the dynamic rate AND their group
+    // discount. The effective single %/label below keep every existing return
+    // field (and the picker's one adjustment line) coherent.
+    $availAdj = 0.0; $availLabel = '';
+    $groupDisc = 0.0; $groupLabel = '';
+    $sold = false;
+
+    if ($program === 'group' || $program === 'live') {
+        $groupDisc = maya_ilai_group_discount($cfg, $guests, $nights);
+        $groupLabel = $nights < (int)$r['minNights'] ? "Minimum {$r['minNights']} nights not met" : 'Group discount';
+    }
+    if ($program === 'availability' || $program === 'live') {
         $band = maya_ilai_availability_band($cfg, max(0, (int)($sel['availableUnits'] ?? 0)));
         $sold = (int)$band['max'] === 0;
-        $adjustment = (float)$band['adjustment'];
-        $adjustmentLabel = (string)$band['label'];
+        $availAdj = (float)$band['adjustment'];
+        $availLabel = (string)$band['label'];
     }
 
-    $adjustedBase = $base * (1 + $adjustment/100);
+    // The composed factor is the one source of truth for the adjusted base; the
+    // effective single percentage is derived from it so `adjustment`,
+    // `adjustmentAmount` and `adjustedBase` stay mutually consistent for every
+    // surface that still reads only those.
+    $factor       = (1 + $availAdj/100) * (1 - $groupDisc/100);
+    $adjustment   = round(($factor - 1) * 100, 4);
+    $adjustedBase = $base * $factor;
+
+    // A single human label for the one-line surfaces. 'live' names the stronger
+    // signal first (the band the guest is subject to), then the discount.
+    if ($program === 'live') {
+        $parts = [];
+        if ($availAdj != 0.0 && $availLabel !== '') $parts[] = $availLabel;
+        if ($groupDisc > 0)                          $parts[] = 'Group discount';
+        $adjustmentLabel = $parts ? implode(' · ', $parts) : ($availLabel !== '' ? $availLabel : 'No adjustment');
+    } elseif ($program === 'group') {
+        $adjustmentLabel = $groupLabel;
+    } elseif ($program === 'availability') {
+        $adjustmentLabel = $availLabel !== '' ? $availLabel : 'No adjustment';
+    } else {
+        $adjustmentLabel = 'No adjustment';
+    }
     $nightly = $adjustedBase + $supplements;
     $eco = $guests * (float)$r['ecoFee'];
     $total = $sold ? 0.0 : $nightly*$nights + $eco;
@@ -425,12 +478,17 @@ function maya_ilai_quote(array $sel, ?array $cfg = null): array {
         'adjustment'=>$adjustment,'adjustmentLabel'=>$adjustmentLabel,'nightly'=>round($nightly,2),
         'eco'=>round($eco,2),'total'=>round($total,2),'sold'=>$sold,'errors'=>$errors,
         'livingAllowance'=>$livingAllowance,
+        // The two composed levers, exposed separately so a surface can frame them
+        // honestly (a discount as a reason, scarcity as scarcity) rather than
+        // showing one blended number. 'group'/'availability' leave one at zero.
+        'availabilityAdjustment'=>$availAdj,'availabilityLabel'=>$availLabel,
+        'groupDiscount'=>$groupDisc,'groupDiscountLabel'=>$groupLabel,
         // Breakdown parts. Every figure a surface displays is resolved HERE, so no
         // caller ever multiplies a rate by a count of its own — that is how the
         // staff tool drifted from the guest page in the first place.
         'bunkExtra'=>round($bunkExtra,2),'villaExtra'=>round($villaExtra,2),
         'adjustedBase'=>round($adjustedBase,2),'singleRooms'=>$singleRooms,
-        'adjustmentAmount'=>round($base * $adjustment / 100, 2),
+        'adjustmentAmount'=>round($adjustedBase - $base, 2),
         'perGuestNight'=>($guests && !$sold) ? round($total / $guests / $nights, 2) : null,
         'requiredVillas'=>$requiredVillas,'physicalVillas'=>$physicalVillas,
         'lines'=>[
@@ -1069,6 +1127,14 @@ function maya_ilai_suggest(int $guests, int $nights, ?array $cfg = null, int $li
         if ($alloc === null) continue;
 
         $sel   = maya_ilai_picks_to_sel($picks, $alloc, $nights, $cfg);
+        // With a live snapshot, price on the guest 'live' program: the
+        // availability band (from the free-villa count) composed with the
+        // automatic group discount — the SAME quote the guest is charged. Without
+        // one, picks_to_sel()'s 'group' program stands (prior behaviour).
+        if ($live !== null) {
+            $sel['program']        = 'live';
+            $sel['availableUnits'] = (int)($live['freeVillas'] ?? 0);
+        }
         $quote = maya_ilai_quote($sel, $cfg);
         if ($quote['errors']) continue;                      // not bookable → not an offer
         if ((int)$quote['guests'] !== $guests) continue;      // paranoia: the party must be seated

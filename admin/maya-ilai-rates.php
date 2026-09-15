@@ -183,8 +183,8 @@ include __DIR__ . '/_layout.php';
   </section>
 
   <section class="view" id="view-availability">
-    <div class="section-head"><div><h2>Availability pricing</h2><p>Set the discount or surcharge used as inventory becomes limited.</p></div></div>
-    <div class="card" style="margin-bottom:18px"><div class="card-head"><h3>Availability bands</h3></div><div class="table-wrap"><table class="data-table editable-table"><thead><tr><th>Units available</th><th>Adjustment</th><th>Meaning</th></tr></thead><tbody id="availabilitySettings"></tbody></table></div></div>
+    <div class="section-head"><div><h2>Availability pricing</h2><p>Set the discount or surcharge used as inventory becomes limited. The guest site applies the matching band automatically, on top of any group discount.</p></div></div>
+    <div class="card" style="margin-bottom:18px"><div class="card-head"><h3>Availability bands</h3><span class="subtle">Villas free → adjustment. Negative = discount, positive = higher rate. Edit thresholds, add or remove bands freely; a count matching no band is priced at the reference rate.</span></div><div class="table-wrap"><table class="data-table editable-table"><thead><tr><th>From (villas free)</th><th>To</th><th>Adjustment %</th><th>Label</th><th></th></tr></thead><tbody id="availabilitySettings"></tbody></table></div><div style="padding:12px 13px"><button type="button" class="btn-outline btn-sm" id="availAddBand">+ Add band</button></div></div>
     <div class="card"><div class="card-head"><h3>High-season nightly preview</h3><span class="subtle">Negative values are discounts; positive values are surcharges</span></div><div class="table-wrap"><table class="data-table"><thead><tr><th>Units available</th><th>Adjustment</th><th>Double Room</th><th>Studio</th><th>Full Villa</th></tr></thead><tbody id="availabilityRows"></tbody></table></div></div>
   </section>
 </div>
@@ -251,8 +251,27 @@ let state = <?= json_encode($state, JSON_UNESCAPED_SLASHES) ?>;
     $('groupDoubleRows').innerHTML = sizes.map(g => { let units = Math.ceil(g / 2), d = Math.min(units, maxD), st = Math.max(units - maxD, 0), ok = st <= is, disc = groupDiscount(g), hi = (d * state.rates.double + st * state.rates.studio) * (1 - disc / 100), std = (d * rate('double', 'standard') + st * rate('studio', 'standard')) * (1 - disc / 100); return `<tr><td>${g}</td><td>${d}</td><td>${st}</td><td>${disc}%</td><td>${ok ? money(hi) : '—'}</td><td>${ok ? money(std) : '—'}</td><td class="${ok ? '' : 'bad'}">${ok ? 'Fits' : 'Exceeds capacity'}</td></tr>`; }).join('');
   }
   function renderAvailability() {
-    $('availabilitySettings').innerHTML = state.availability.map((b, i) => `<tr><td>${b.min === b.max ? b.min : `${b.min}–${b.max}`}</td><td><input type="number" step="0.5" data-band="${i}" value="${b.adjustment}">%</td><td>${b.label}</td></tr>`).join('');
-    root.querySelectorAll('[data-band]').forEach(el => el.addEventListener('change', () => { state.availability[Number(el.dataset.band)].adjustment = Number(el.value); save(); }));
+    // The whole ladder is editable: threshold (from/to), adjustment, label, and
+    // the set of bands (add/remove). Inputs fire on 'change' (blur/enter), so the
+    // table is only rebuilt between edits and never steals focus mid-keystroke.
+    const escA = s => String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+    $('availabilitySettings').innerHTML = state.availability.map((b, i) => `<tr>`
+      + `<td><input type="number" min="0" step="1" data-band="${i}" data-k="min" value="${b.min}"></td>`
+      + `<td><input type="number" min="0" step="1" data-band="${i}" data-k="max" value="${b.max}"></td>`
+      + `<td><input type="number" step="0.5" data-band="${i}" data-k="adjustment" value="${b.adjustment}"></td>`
+      + `<td><input type="text" data-band="${i}" data-k="label" value="${escA(b.label)}" style="width:160px;text-align:left"></td>`
+      + `<td><button type="button" class="btn-icon btn-icon--outline" data-band-del="${i}" title="Remove band" aria-label="Remove band">×</button></td>`
+      + `</tr>`).join('');
+    root.querySelectorAll('#availabilitySettings [data-band]').forEach(el => el.addEventListener('change', () => {
+      const b = state.availability[Number(el.dataset.band)], k = el.dataset.k;
+      b[k] = (k === 'label') ? el.value : Number(el.value);
+      save();
+    }));
+    root.querySelectorAll('#availabilitySettings [data-band-del]').forEach(el => el.addEventListener('click', () => {
+      state.availability.splice(Number(el.dataset.bandDel), 1);
+      if (!state.availability.length) state.availability.push({ min: 0, max: 0, adjustment: 0, label: 'Reference rate' });
+      save();
+    }));
     $('availabilityRows').innerHTML = state.availability.map(b => { const sold = b.max === 0, m = 1 + b.adjustment / 100; return `<tr><td>${b.min === b.max ? b.min : `${b.min}–${b.max}`}</td><td>${sold ? 'Sold out' : pct(b.adjustment)}</td><td>${sold ? '—' : money(state.rates.double * m)}</td><td>${sold ? '—' : money(state.rates.studio * m)}</td><td>${sold ? '—' : money(state.rates.villa * m)}</td></tr>`; }).join('');
   }
   // ── Quoting: server-side, one calculation ──────────────────────────────────
@@ -322,6 +341,14 @@ let state = <?= json_encode($state, JSON_UNESCAPED_SLASHES) ?>;
 
   root.querySelectorAll('.tab').forEach(btn => btn.addEventListener('click', () => { root.querySelectorAll('.tab').forEach(x => x.classList.remove('active')); root.querySelectorAll('.view').forEach(x => x.classList.remove('active')); btn.classList.add('active'); $(`view-${btn.dataset.tab}`).classList.add('active'); }));
   root.querySelectorAll('.cfg,#season,#nights,#program,#availableUnits,#clientName').forEach(el => el.addEventListener('input', requestQuote));
+  // Bound once (renderAvailability rebuilds its rows on every save, so its own
+  // buttons are re-bound there; this add button lives outside that tbody).
+  $('availAddBand').addEventListener('click', () => {
+    const last = state.availability[state.availability.length - 1];
+    const from = last ? Math.max(0, Number(last.min) - 1) : 0;
+    state.availability.push({ min: from, max: from, adjustment: 0, label: 'New band' });
+    save();
+  });
   $('resetBtn').addEventListener('click', () => {
     if (!confirm('Reset every rate and discount to the original defaults?')) return;
     state = clone(MI_DEFAULTS);

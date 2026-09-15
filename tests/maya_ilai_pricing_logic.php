@@ -917,7 +917,7 @@ check('demand: an unknown product key is dropped',
 // ── Live-availability filtering in the suggestion search (pure) ─────────────
 // With a live snapshot, maya_ilai_suggest() drops any configuration that cannot
 // actually be booked for the dates — BEFORE ranking and the limit.
-$allFull = ['villaStates' => [], 'freeStudios' => 0, 'reserved' => 0];
+$allFull = ['freeVillas' => 0, 'villaStates' => [], 'freeStudios' => 0, 'reserved' => 0];
 for ($i = 0; $i < 8; $i++) {
     $allFull['villaStates'][] = ['unit_id' => 200 + $i, 'sort_order' => $i + 1, 'taken' => MAYA_ILAI_ALL_COMPONENTS];
 }
@@ -926,7 +926,8 @@ check('suggest+live: a fully-booked compound offers nothing',
 
 // One empty villa, no studios free: a couple still gets a villa-based stay, but
 // no offer may consume a studio that is not there.
-$oneVilla = ['villaStates' => [['unit_id' => 300, 'sort_order' => 1, 'taken' => []]],
+$oneVilla = ['freeVillas' => 1,
+             'villaStates' => [['unit_id' => 300, 'sort_order' => 1, 'taken' => []]],
              'freeStudios' => 0, 'reserved' => 0];
 $sugsOneVilla = maya_ilai_suggest(2, 3, $D, 8, $oneVilla);
 check('suggest+live: one free villa still yields a bookable stay for a couple',
@@ -941,6 +942,74 @@ check('suggest+live: no offer consumes a studio when none are free', $consumesSt
 
 check('suggest: with no snapshot the search is unfiltered, as before',
     count(maya_ilai_suggest(2, 3, $D, 8)) >= 1);
+
+// ── Dynamic availability pricing: the 'live' program (pure) ─────────────────
+// 'group' and 'availability' stay single levers (byte-identical to before);
+// 'live' composes the availability band with the automatic group discount, so a
+// guest sees the dynamic rate AND their discount in one price.
+$sel2 = ['qtyVilla' => 1, 'guestVilla' => 2, 'nights' => 3];   // a couple, whole villa
+
+// Reference band (2-3 villas free): 0% availability adjustment. With only 2
+// guests there is no group tier, so 'live' equals the plain published price.
+$qRef = maya_ilai_quote($sel2 + ['program' => 'live', 'availableUnits' => 3], $D);
+$qNone = maya_ilai_quote($sel2 + ['program' => 'none'], $D);
+check('live: reference band + small party == the plain published price',
+    eq((float)$qRef['total'], (float)$qNone['total']));
+
+// Opening rate (6-8 free): -15% off the base, shown as a discount.
+$qOpen = maya_ilai_quote($sel2 + ['program' => 'live', 'availableUnits' => 8], $D);
+check('live: opening-rate band discounts the base 15%',
+    eq((float)$qOpen['availabilityAdjustment'], -15.0)
+    && eq((float)$qOpen['adjustedBase'], (float)$qNone['base'] * 0.85));
+
+// Limited availability (1 free): +15% on the base, surfaced as its own lever.
+$qTight = maya_ilai_quote($sel2 + ['program' => 'live', 'availableUnits' => 1], $D);
+check('live: limited-availability band lifts the base 15%',
+    eq((float)$qTight['availabilityAdjustment'], 15.0)
+    && (float)$qTight['total'] > (float)$qNone['total']);
+
+// Composition: a party big enough for a group tier AND a discounted band applies
+// BOTH, multiplicatively — never one or the other.
+$grp = ['qtyVilla' => 2, 'guestVilla' => 20, 'nights' => 5];   // 20 guests → a group tier
+$gTier = maya_ilai_group_discount($D, 20, 5);                  // the % that tier earns
+check('live: composes band × group discount (both apply, multiplicatively)', (function () use ($grp, $D, $gTier) {
+    $q = maya_ilai_quote($grp + ['program' => 'live', 'availableUnits' => 8], $D);
+    $base = (float)$q['base'];
+    $expected = $base * 0.85 * (1 - $gTier / 100);
+    return $gTier > 0 && eq((float)$q['adjustedBase'], $expected)
+        && eq((float)$q['groupDiscount'], $gTier)
+        && eq((float)$q['availabilityAdjustment'], -15.0);
+})());
+
+// Backward-compat: 'group' and 'availability' are unchanged single levers.
+check('live-refactor: plain group discount is unchanged',
+    eq((float)maya_ilai_quote($grp + ['program' => 'group'], $D)['adjustedBase'],
+       (float)maya_ilai_quote($grp, $D)['base'] * (1 - $gTier / 100)));
+check('live-refactor: plain availability lever is unchanged (no group applied)',
+    eq((float)maya_ilai_quote($sel2 + ['program' => 'availability', 'availableUnits' => 8], $D)['adjustedBase'],
+       (float)$qNone['base'] * 0.85));
+
+// The whole band ladder is owner-editable now. Sanitize coerces each row
+// (min>=0, max>=min, adjustment real incl. negatives, label a string) and
+// accepts a variable number of bands.
+$san = maya_ilai_pricing_sanitize(['availability' => [
+    ['min' => 5, 'max' => 3, 'adjustment' => -10, 'label' => 'Deep discount'],   // inverted range
+    ['min' => 0, 'max' => 0, 'adjustment' => 0,   'label' => 'Sold out'],
+]]);
+check('sanitize: an inverted range is clamped (max >= min), negatives kept',
+    $san['availability'][0] === ['min' => 5, 'max' => 5, 'adjustment' => -10.0, 'label' => 'Deep discount']);
+check('sanitize: the ladder length follows what was posted (add/remove bands)',
+    count($san['availability']) === 2);
+check('sanitize: an empty ladder falls back to the shipped defaults',
+    maya_ilai_pricing_sanitize(['availability' => []])['availability'] === $D['availability']);
+
+// The band lookup fails SAFE: an out-of-range count is priced at reference (0%),
+// never read as sold out.
+$safe = maya_ilai_availability_band($D, 99);
+check('band: an unmatched count fails safe to reference rate, not sold out',
+    (int)$safe['adjustment'] === 0 && (int)$safe['max'] !== 0);
+check('band: the explicit 0-free row is still sold out',
+    (int)maya_ilai_availability_band($D, 0)['max'] === 0);
 
 echo ($failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n");
 exit($failures ? 1 : 0);
