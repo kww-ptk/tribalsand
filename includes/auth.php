@@ -100,7 +100,7 @@ function admin_job(): ?string {
 
 /** The job types whose home is the focused My Work queue (vs Front Desk / Gate). */
 function job_is_ops(?string $job): bool {
-    return in_array($job, ['housekeeping','maintenance','gardening','driver'], true);
+    return in_array($job, ['housekeeping','laundry','maintenance','gardening','driver'], true);
 }
 
 /**

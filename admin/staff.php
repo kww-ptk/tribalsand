@@ -36,6 +36,7 @@ $activeMenu = 'staff';
 const STAFF_JOB_TYPES = [
     'frontdesk'    => 'Front desk',
     'housekeeping' => 'Housekeeping',
+    'laundry'      => 'Laundry',
     'maintenance'  => 'Maintenance',
     'gardening'    => 'Gardening',
     'security'     => 'Gate security',

@@ -10,6 +10,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/booking.php';
+require_once __DIR__ . '/../includes/frontdesk.php';   // frontdesk_today_ymd(), the live worklist source
 require_login();
 
 $pageTitle  = 'My work';
@@ -22,6 +23,27 @@ $meId    = (int)($_SESSION['admin_id'] ?? 0);
 $showDone = isset($_GET['done']) && $_GET['done'] === '1';
 $asgOn   = addon_assigned_supported();
 $tasksOn = tasks_supported();
+
+// Specialty worklist, derived from the live booking calendar and scoped to the
+// staff member's own venues. Housekeeping/laundry/driver get a tailored "today"
+// list; other jobs get [] and work from Tasks + assigned requests below.
+$myJob    = admin_job();
+$jobLabel = team_job_types()[$myJob] ?? 'My work';
+$today    = frontdesk_today_ymd();
+$worklist = staff_day_worklist(admin_venue_ids(), (string)$myJob, $today);
+
+/** One turnover row: guest, property · room, and the stay dates. */
+function worklist_row(array $r): void {
+    $room = trim((string)($r['room_name'] ?? '') . (!empty($r['unit_name']) ? ' · ' . $r['unit_name'] : ''), ' ·');
+    ?>
+    <tr>
+      <td><strong><?= e($r['guest_name'] ?: 'Guest') ?></strong></td>
+      <td><?= e($r['venue_name'] ?? '') ?></td>
+      <td><?= e($room) ?></td>
+      <td><span class="text-muted" style="font-size:12px"><?= e(date('j M', strtotime((string)$r['check_in']))) ?> → <?= e(date('j M', strtotime((string)$r['check_out']))) ?></span></td>
+    </tr>
+    <?php
+}
 
 $open = $asgOn ? mywork_requests($meId, ['requested','confirmed']) : [];
 $done = ($asgOn && $showDone) ? mywork_requests($meId, ['completed']) : [];
@@ -69,13 +91,32 @@ include __DIR__ . '/_layout.php';
 ?>
 
 <div class="page-header">
-  <h1>My work</h1>
+  <h1><?= e($jobLabel) ?> — my work</h1>
   <?php if ($asgOn): ?>
   <a href="/admin/mywork.php<?= $showDone ? '' : '?done=1' ?>" class="btn-outline btn-sm"><?= $showDone ? admin_icon('arrow-left', 15) . ' Hide completed' : 'Show completed' ?></a>
   <?php endif; ?>
 </div>
 
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type'] ?? 'success') ?> is-flash"><?= e($flash['msg'] ?? (is_string($flash) ? $flash : '')) ?></div><?php endif; ?>
+
+<?php if (in_array($myJob, ['housekeeping','laundry','driver'], true)): ?>
+<div class="card" style="margin-bottom:16px">
+  <div class="card__head"><span class="card__title">Today · <?= e(date('D j M', strtotime($today))) ?></span></div>
+  <div class="card__body" style="padding:0">
+    <?php if (!$worklist): ?>
+      <p class="text-muted" style="margin:0;padding:2rem;text-align:center">Nothing on the calendar for your properties today. 🎉</p>
+    <?php else: foreach ($worklist as $sec): ?>
+      <div style="padding:12px 16px 4px"><strong><?= e($sec['title']) ?></strong> <span class="text-muted" style="font-size:12px">· <?= e($sec['note']) ?></span></div>
+      <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Guest</th><th>Property</th><th>Room</th><th>Stay</th></tr></thead>
+        <tbody><?php foreach ($sec['rows'] as $r) worklist_row($r); ?></tbody>
+      </table>
+      </div>
+    <?php endforeach; endif; ?>
+  </div>
+</div>
+<?php endif; ?>
 
 <?php if (!$asgOn && !$tasksOn): ?>
 <div class="card"><div class="card__body"><p class="text-muted" style="margin:0">Your work queue isn’t enabled yet. Ask the owner to run the <code>add_addon_assignee.sql</code> and <code>add_tasks.sql</code> migrations.</p></div></div>
