@@ -592,6 +592,9 @@ $mibMaxNights = 30;
         <p class="mib-req-note"><span class="mib-req" aria-hidden="true">*</span> Required</p>
         <div class="mib-field"><label for="mibFNote">Anything else? (optional)</label><textarea id="mibFNote" name="note" rows="2" placeholder="Arrival time, questions, special requests…"></textarea></div>
         <input type="text" name="website" style="position:absolute;left:-9999px" tabindex="-1" autocomplete="off" aria-hidden="true">
+        <?php if (function_exists('captcha_site_key') && captcha_site_key()): ?>
+        <div class="cf-turnstile" data-sitekey="<?= e(captcha_site_key()) ?>" style="margin:.4rem 0"></div>
+        <?php endif; ?>
         <div class="mib-modal-actions">
           <button type="submit" class="mib-cta" style="width:auto;margin:0;flex:1 1 160px">Send request</button>
           <button type="button" class="mib-cta" id="mibCancel" style="width:auto;margin:0;flex:0 1 auto;background:#eee;color:#333">Back</button>
@@ -1271,9 +1274,13 @@ $mibMaxNights = 30;
     var breakdown = o.units.map(function (u) {
       return (u.qty > 1 ? u.qty + '× ' : '') + u.key + ' (' + u.guests + ' guest' + (u.guests === 1 ? '' : 's') + ')';
     }).join(', ');
+    // Carry the offer's product units through, so this becomes a real atomic
+    // multi-room hold (each unit → its own hold, all-or-nothing) rather than an
+    // enquiry. The picker's bespoke path passes no units and stays an enquiry.
+    var bookUnits = o.units.map(function (u) { return { key: u.key, qty: u.qty, guests: u.guests }; });
     openRequest(o.quote, o.units.length === 1
       ? o.label + ' · ' + o.quote.guests + ' guest' + (o.quote.guests === 1 ? '' : 's')
-      : o.label + ' · ' + breakdown);
+      : o.label + ' · ' + breakdown, bookUnits);
   });
 
   // "Build it yourself" — the full picker, unchanged, for a bespoke mix.
@@ -1291,9 +1298,9 @@ $mibMaxNights = 30;
   // not overwrite what the form is showing.
   // Callers hand over the ROOMS only; the stay and the money are appended here,
   // so the screen and the email say the dates once each and say them the same.
-  var modalQuote = null, modalRooms = '';
-  function openRequest(q, rooms) {
-    modalQuote = q; modalRooms = rooms;
+  var modalQuote = null, modalRooms = '', modalUnits = null;
+  function openRequest(q, rooms, units) {
+    modalQuote = q; modalRooms = rooms; modalUnits = (units && units.length) ? units : null;
     document.getElementById('mibSummaryText').textContent =
       rooms + ' · ' + stayLine() + ' · ' + usd(q.total) + ' total';
     document.getElementById('mibMsg').className = 'mib-msg';
@@ -1301,7 +1308,7 @@ $mibMaxNights = 30;
   }
   document.getElementById('mibRequest').addEventListener('click', function () {
     if (!lastQuote || lastQuote.errors.length || !lastQuote.guests) return;
-    openRequest(lastQuote, roomsText());
+    openRequest(lastQuote, roomsText());   // bespoke picker → enquiry (no units)
   });
   document.getElementById('mibCancel').addEventListener('click', function () { showStep(2); });
   document.getElementById('mibFormBack').addEventListener('click', function () { showStep(2); });
@@ -1334,24 +1341,46 @@ $mibMaxNights = 30;
       '\nAccommodation/night: ' + usd(q.nightly) + ' · Eco fee: ' + usd(q.eco) + ' · Estimated total: ' + usd(q.total) +
       '\nThe property will confirm and hold these dates by email.' +
       (f.note.value.trim() ? ('\n\nGuest note: ' + f.note.value.trim()) : '');
+    // The real Turnstile token from the widget in this form (empty in dev, where
+    // verify_captcha() bypasses). Used by BOTH the booking and the enquiry POST.
+    var tkEl = f.querySelector('[name="cf-turnstile-response"]');
+    var token = tkEl ? tkEl.value : '';
     var btn = f.querySelector('button[type=submit]'); btn.disabled = true;
-    fetch(contact, {
+
+    // An offer (modalUnits set) becomes a REAL atomic multi-room hold; the bespoke
+    // picker (no units) stays an enquiry, exactly as before.
+    var isBooking = !!(modalUnits && modalUnits.length && dates.ci && dates.co);
+    var endpoint2 = isBooking ? '/api/maya-ilai-book.php' : contact;
+    var body = isBooking
+      ? { units: modalUnits, check_in: dates.ci, check_out: dates.co,
+          name: f.name.value, email: f.email.value, phone: f.phone.value,
+          message: f.note.value.trim(), website: '', 'cf-turnstile-response': token }
+      : { name: f.name.value, email: f.email.value, phone: f.phone.value,
+          subject: 'Maya Ilai booking request' + (dates.nights ? ' · ' + dates.ci + ' → ' + dates.co : ''),
+          message: message, check_in: dates.ci, check_out: dates.co, nights: dates.nights, rooms: modalRooms,
+          quoted_total: q.total, quoted_currency: 'USD', 'cf-turnstile-response': token };
+
+    fetch(endpoint2, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: f.name.value, email: f.email.value, phone: f.phone.value,
-        subject: 'Maya Ilai booking request' + (dates.nights ? ' · ' + dates.ci + ' → ' + dates.co : ''),
-        message: message,
-        check_in: dates.ci, check_out: dates.co, nights: dates.nights, rooms: modalRooms,
-        quoted_total: q.total, quoted_currency: 'USD',
-        'cf-turnstile-response': ''
-      })
+      body: JSON.stringify(body)
     })
       .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
       .then(function (res) {
         if (res.ok && res.j && res.j.ok) {
-          msg.className = 'mib-msg ok show'; msg.textContent = 'Request sent — the property will confirm availability by email shortly.';
-          setTimeout(function () { closePop(); }, 2400);
-        } else { msg.className = 'mib-msg bad show'; msg.textContent = (res.j && res.j.error) || 'Could not send. Please try again.'; }
+          msg.className = 'mib-msg ok show';
+          if (isBooking && res.j.mode === 'hold') {
+            msg.textContent = 'Your rooms are held for 24 hours' + (res.j.access_code ? ' (ref ' + res.j.access_code + ')' : '')
+              + '. We\'ll confirm by email shortly.';
+          } else {
+            msg.textContent = 'Request sent — the property will confirm availability by email shortly.';
+          }
+          setTimeout(function () { closePop(); }, 3000);
+        } else {
+          msg.className = 'mib-msg bad show';
+          msg.textContent = (res.j && (res.j.error || (res.j.errors && Object.values(res.j.errors)[0]))) || 'Could not send. Please try again.';
+          // A single-use Turnstile token is spent on a failed submit; reset the widget.
+          if (window.turnstile && typeof window.turnstile.reset === 'function') { try { window.turnstile.reset(); } catch (e) {} }
+        }
       })
       .catch(function () { msg.className = 'mib-msg bad show'; msg.textContent = 'Network error. Please try again.'; })
       .then(function () { btn.disabled = false; });

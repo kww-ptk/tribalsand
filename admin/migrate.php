@@ -14,8 +14,21 @@ $pageTitle  = 'Migrations';
 $activeMenu = '';
 
 $dir   = __DIR__ . '/../db/migrations';
-$files = is_dir($dir) ? array_map('basename', glob($dir . '/*.sql')) : [];
+$paths = is_dir($dir) ? (glob($dir . '/*.sql') ?: []) : [];
+
+// $files: the flat basename list the POST handler validates against (unchanged).
+$files = array_map('basename', $paths);
 sort($files);
+
+// $display: what the table renders — MOST RECENTLY ADDED FIRST (by file
+// modified time), name as a stable tiebreak. A pull that adds a migration
+// touches only that file, so the newest ones rise to the top where they are
+// easy to find. On a fresh clone every file shares the checkout time and the
+// name tiebreak keeps the order deterministic.
+$display = [];
+foreach ($paths as $p) $display[] = ['name' => basename($p), 'mtime' => (int)(@filemtime($p) ?: 0)];
+usort($display, fn($a, $b) => ($b['mtime'] <=> $a['mtime']) ?: strcmp($a['name'], $b['name']));
+$newest = $display ? $display[0]['mtime'] : 0;   // to badge the freshest batch
 
 $output = '';
 $ok     = null;
@@ -76,19 +89,20 @@ include __DIR__ . '/_layout.php';
 <div class="card">
   <div class="card__head">
     <span class="card__title">Available migrations</span>
-    <span class="text-muted" style="font-size:12px">Files in <code>db/migrations/</code></span>
+    <span class="text-muted" style="font-size:12px">Newest first · files in <code>db/migrations/</code></span>
   </div>
   <div class="card__body" style="padding:0">
     <table class="data-table">
       <thead>
-        <tr><th>File</th><th style="width:140px;text-align:right">Action</th></tr>
+        <tr><th>File</th><th style="width:150px">Added</th><th style="width:120px;text-align:right">Action</th></tr>
       </thead>
       <tbody>
-        <?php if (!$files): ?>
-        <tr><td colspan="2" style="text-align:center;padding:2rem;color:var(--muted)">No migration files found.</td></tr>
-        <?php else: foreach ($files as $f): ?>
+        <?php if (!$display): ?>
+        <tr><td colspan="3" style="text-align:center;padding:2rem;color:var(--muted)">No migration files found.</td></tr>
+        <?php else: foreach ($display as $row): $f = $row['name']; $isNew = $row['mtime'] > 0 && $row['mtime'] === $newest; ?>
         <tr>
-          <td><strong><?= e($f) ?></strong></td>
+          <td><strong><?= e($f) ?></strong><?php if ($isNew): ?> <span class="badge badge--green">Recent</span><?php endif; ?></td>
+          <td><span class="text-muted" style="font-size:12px"><?= $row['mtime'] ? e(date('j M Y, H:i', $row['mtime'])) : '—' ?></span></td>
           <td style="text-align:right">
             <form method="POST" style="display:inline" onsubmit="return confirm('Run migration <?= e($f) ?>?\n\nThis will execute SQL against the production database. Migrations are designed to be safe to re-run, but make sure you have a backup if anything important is at stake.')">
               <?= csrf_field() ?>

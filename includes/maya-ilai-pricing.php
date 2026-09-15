@@ -560,6 +560,49 @@ function maya_ilai_products(?array $cfg = null): array {
     return $out;
 }
 
+/**
+ * Split one quoted stay total across its rooms, proportional to each room's base
+ * rate — the attribution used when a multi-room booking becomes several holds so
+ * the financial ledger reads per room. Pure.
+ *
+ * $picks: [['product'=>['key'=>…],'qty'=>n], …] (or a flat list of one-unit
+ * picks). Weight = maya_ilai_product_rate(key) × qty. Shares are 2dp and sum
+ * EXACTLY to $total — the rounding remainder is pushed onto the heaviest room so
+ * money always reconciles. A degenerate all-zero-weight set splits evenly.
+ *
+ * @return array<int,float> keyed the same as $picks
+ */
+function mi_proportional_shares(array $picks, float $total, ?array $cfg = null): array {
+    if (!$picks) return [];
+    $cfg   = $cfg ?: maya_ilai_pricing_get();
+    $total = round(max(0.0, $total), 2);
+
+    $weights = []; $sum = 0.0;
+    foreach ($picks as $i => $p) {
+        $key = (string)($p['product']['key'] ?? '');
+        $qty = max(0, (int)($p['qty'] ?? 0));
+        $w   = maya_ilai_product_rate($key, $cfg) * $qty;
+        $weights[$i] = $w; $sum += $w;
+    }
+
+    $shares = [];
+    if ($sum <= 0) {
+        $each = round($total / count($picks), 2);
+        foreach ($picks as $i => $_) $shares[$i] = $each;
+    } else {
+        foreach ($weights as $i => $w) $shares[$i] = round($total * $w / $sum, 2);
+    }
+
+    // Reconcile rounding drift onto the heaviest room (or the first, all-even).
+    $diff = round($total - array_sum($shares), 2);
+    if (abs($diff) >= 0.01) {
+        $maxI = array_key_first($shares);
+        foreach ($weights as $i => $w) { if ($w > ($weights[$maxI] ?? -1)) $maxI = $i; }
+        $shares[$maxI] = round($shares[$maxI] + $diff, 2);
+    }
+    return $shares;
+}
+
 /** The largest party the compound can physically sleep, from the live inventory. */
 function maya_ilai_max_party(?array $cfg = null): int {
     $cfg = $cfg ?: maya_ilai_pricing_get();
