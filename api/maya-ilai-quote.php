@@ -60,13 +60,45 @@ if (($data['mode'] ?? '') === 'suggest') {
         http_response_code(422);
         exit(json_encode(['ok'=>false, 'error'=>'Stays run from 1 to 30 nights.']));
     }
+    // Live calendar check: only offer configurations that can ACTUALLY be booked
+    // for these dates (a villa's one living room may already be gone). Dates are
+    // optional and validated inside mi_live_availability(); when absent, invalid,
+    // or on a pre-migration DB it returns supported=false and the search runs
+    // unfiltered — its prior behaviour. The band-pricing wiring lands separately;
+    // this commit only makes the suggestions honest about availability.
+    $live = null;
+    $ci = isset($data['check_in'])  ? (string)$data['check_in']  : '';
+    $co = isset($data['check_out']) ? (string)$data['check_out'] : '';
+    if ($ci !== '' && $co !== '') {
+        $maybe = mi_live_availability($ci, $co);
+        if (!empty($maybe['supported'])) $live = $maybe;
+    }
+
+    // The band the free-villa count falls in, so the surface can frame the price
+    // honestly (a discount as a reason, scarcity as scarcity) instead of only
+    // showing a number. Follows the owner-edited ladder, not a hardcoded rule.
+    $band = null;
+    if ($live !== null) {
+        $b = maya_ilai_availability_band($cfg, (int)$live['freeVillas']);
+        $band = [
+            'freeVillas'  => (int)$live['freeVillas'],
+            'totalVillas' => (int)$live['totalVillas'],
+            'adjustment'  => (float)$b['adjustment'],
+            'label'       => (string)$b['label'],
+        ];
+    }
+
     echo json_encode([
-        'ok'          => true,
-        'guests'      => $guests,
-        'nights'      => $nights,
-        'maxGuests'   => $maxParty,
-        'minNights'   => (int)$cfg['rules']['minNights'],
-        'suggestions' => maya_ilai_suggest($guests, $nights, $cfg, max(1, min(8, (int)($data['limit'] ?? 5)))),
+        'ok'           => true,
+        'guests'       => $guests,
+        'nights'       => $nights,
+        'maxGuests'    => $maxParty,
+        'minNights'    => (int)$cfg['rules']['minNights'],
+        'checked'      => $live !== null,                       // did we consult the calendar?
+        'freeVillas'   => $live['freeVillas']  ?? null,
+        'freeStudios'  => $live['freeStudios'] ?? null,
+        'availability' => $band,                                // null when not checked
+        'suggestions'  => maya_ilai_suggest($guests, $nights, $cfg, max(1, min(8, (int)($data['limit'] ?? 5))), $live),
     ]);
     exit;
 }
@@ -75,6 +107,26 @@ if (($data['mode'] ?? '') === 'suggest') {
 // Guests always default to filling the selected rooms if not specified, so a
 // simple "1 villa" request still prices sensibly.
 $cfg = maya_ilai_pricing_get();
+
+// Same live-availability pricing as the suggestions: when the picker sends its
+// dates and the composite layer is live, price on the 'live' program — the
+// availability band (from the free-villa count) composed with the group
+// discount. Absent dates or a pre-migration DB fall back to 'group' (the price
+// guests saw before), so the picker never errors for want of a calendar.
+$program = 'group';
+$availableUnits = 0;
+$freeVillas = null;
+$ci = isset($data['check_in'])  ? (string)$data['check_in']  : '';
+$co = isset($data['check_out']) ? (string)$data['check_out'] : '';
+if ($ci !== '' && $co !== '') {
+    $live = mi_live_availability($ci, $co);
+    if (!empty($live['supported'])) {
+        $program        = 'live';
+        $availableUnits = (int)$live['freeVillas'];
+        $freeVillas     = (int)$live['freeVillas'];
+    }
+}
+
 $quote = maya_ilai_quote([
     'qtyDouble'   => (int)($data['qtyDouble']   ?? 0),
     'qtyBunk'     => (int)($data['qtyBunk']     ?? 0),
@@ -95,10 +147,12 @@ $quote = maya_ilai_quote([
     'comboUnits'  => (int)($data['comboUnits']  ?? 0),
     'comboDouble' => (int)($data['comboDouble'] ?? 0),
     'comboBunk'   => (int)($data['comboBunk']   ?? 0),
-    // Guests always get the published (high) rate and automatic group discounts;
-    // availability surcharges are a staff/revenue lever, not shown to guests.
-    'season'      => 'high',
-    'program'     => 'group',
+    // Guests always get the published (high) season rate; the live availability
+    // band and the automatic group discount are composed by the 'live' program
+    // when dates were supplied (else 'group', the prior guest behaviour).
+    'season'         => 'high',
+    'program'        => $program,
+    'availableUnits' => $availableUnits,
 ], $cfg);
 
-echo json_encode(['ok'=>true, 'quote'=>$quote]);
+echo json_encode(['ok'=>true, 'quote'=>$quote, 'freeVillas'=>$freeVillas]);

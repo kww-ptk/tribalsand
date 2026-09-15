@@ -309,6 +309,10 @@ $mibMaxNights = 30;
   .mib-off__ud{display:block;font-size:.72rem;opacity:.75}
   .mib-off__cta{grid-column:1/-1;width:100%;margin:.9rem 0 0}
   .mib-offers__msg{padding:1rem 1.1rem;border:1px solid var(--mib-line);background:var(--sand-faint,#FAF6EE);font-size:.85rem;color:var(--mib-mut)}
+  .mib-avail{padding:.6rem .85rem;margin-bottom:.7rem;border-radius:8px;font-size:.82rem;line-height:1.45;border:1px solid var(--mib-line)}
+  .mib-avail--deal{background:#EEF7EE;border-color:#CFE8CF;color:#2F6B36}
+  .mib-avail--tight{background:#FBF1E7;border-color:#F0D9BE;color:#8A5A22}
+  .mib-avail b{font-weight:600}
   .mib-bespoke{margin-top:1.8rem;border-top:1px solid var(--mib-line);padding-top:1.3rem}
   .mib-bespoke__btn{background:none;border:1px solid var(--mib-line);padding:.75rem 1.1rem;font-family:inherit;font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;color:var(--teal,#1E5C6B);cursor:pointer;width:100%}
   .mib-bespoke__btn:hover{background:var(--sand-faint,#FAF6EE)}
@@ -469,7 +473,7 @@ $mibMaxNights = 30;
     <p class="mib-minnote" id="mibMinNote1" hidden></p>
 
     <button type="button" class="mib-cta mib-party__go" id="mibPGo" disabled>Show what fits</button>
-    <p class="mib-party__fine">Prices in USD, for the whole stay. The property confirms availability and holds your dates — you are not charged now, and these dates are not checked against the calendar until we reply. Group discounts apply automatically for larger parties (min <?= (int)$mibRules['minNights'] ?> nights).</p>
+    <p class="mib-party__fine">Prices in USD, for the whole stay. We check these dates against the live calendar, so you only see stays we can actually hold — you are not charged now, and the property confirms and holds your dates when you send your request. Group discounts apply automatically for larger parties (min <?= (int)$mibRules['minNights'] ?> nights).</p>
   </section>
 
   <!-- ── Step 2 ─────────────────────────────────────────────────────────── -->
@@ -760,6 +764,9 @@ $mibMaxNights = 30;
     var p = expand();
     p.qtyLiving += livingQty;
     p.nights = Math.max(1, nights);   // the picker is only reachable with real dates
+    // Send the dates so the server can price on the live availability band; the
+    // picker is only reachable once a real range is chosen in step 1.
+    if (dates.ci && dates.co) { p.check_in = dates.ci; p.check_out = dates.co; }
     return p;
   }
 
@@ -1157,6 +1164,23 @@ $mibMaxNights = 30;
     failSlide(img);
   }, true);
 
+  /* An honest one-line note about the live availability price. A discount is
+     framed as a REASON (opening rates while the compound is quiet); scarcity is
+     framed as scarcity (how many villas are left), never as a "surcharge" line
+     that reads like a penalty. Silent at the reference band (no adjustment). */
+  function availabilityBanner(d) {
+    var a = d && d.availability;
+    if (!a || !a.adjustment) return '';
+    var n = a.freeVillas, villas = n + ' villa' + (n === 1 ? '' : 's');
+    if (a.adjustment < 0) {
+      var off = Math.round(Math.abs(a.adjustment));
+      return '<div class="mib-avail mib-avail--deal"><b>' + esc(a.label) + '</b> — '
+           + off + '% off while ' + villas + ' are open for these dates.</div>';
+    }
+    return '<div class="mib-avail mib-avail--tight">Only <b>' + villas
+         + '</b> left for these dates' + (a.label ? ' — ' + esc(a.label) + ' rates apply' : '') + '.</div>';
+  }
+
   function search() {
     clearTimeout(searchTimer);
     var seq = ++searchSeq;
@@ -1165,7 +1189,8 @@ $mibMaxNights = 30;
     searchTimer = setTimeout(function () {
       fetch(endpoint, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'suggest', guests: party.guests, nights: dates.nights, limit: 5 })
+        body: JSON.stringify({ mode: 'suggest', guests: party.guests, nights: dates.nights,
+                               check_in: dates.ci, check_out: dates.co, limit: 5 })
       })
         .then(function (r) { return r.json(); })
         .then(function (d) {
@@ -1176,11 +1201,25 @@ $mibMaxNights = 30;
           }
           offers = d.suggestions || [];
           if (!offers.length) {
-            offersEl.innerHTML = '<div class="mib-offers__msg">That is a bigger party than the compound sleeps in one go. '
-              + 'Open the full picker below, or send us a note — we have put larger groups together before.</div>';
+            // With a live calendar check (d.checked), an empty result means these
+            // dates cannot seat this party — distinct from a party bigger than the
+            // compound could ever sleep. Say which, so the guest knows whether to
+            // change the party or the dates.
+            var msg;
+            if (d.checked && (d.freeVillas === 0 && d.freeStudios === 0)) {
+              msg = 'We are fully booked for these dates. Try different dates, or send us a note — '
+                  + 'we sometimes have movement on the calendar.';
+            } else if (d.checked) {
+              msg = 'We do not have space for ' + party.guests + ' guest' + (party.guests === 1 ? '' : 's')
+                  + ' on these dates. Try shorter or different dates, open the full picker below, or send us a note.';
+            } else {
+              msg = 'That is a bigger party than the compound sleeps in one go. '
+                  + 'Open the full picker below, or send us a note — we have put larger groups together before.';
+            }
+            offersEl.innerHTML = '<div class="mib-offers__msg">' + msg + '</div>';
             return;
           }
-          offersEl.innerHTML = offers.map(offerCard).join('');
+          offersEl.innerHTML = availabilityBanner(d) + offers.map(offerCard).join('');
         })
         .catch(function () {
           if (seq !== searchSeq) return;
@@ -1293,7 +1332,7 @@ $mibMaxNights = 30;
       : 'Dates: not given (' + nightsWord(q.nights) + ')';
     var message = 'Maya Ilai booking request:\n' + dateLine + '\nRooms: ' + modalRooms +
       '\nAccommodation/night: ' + usd(q.nightly) + ' · Eco fee: ' + usd(q.eco) + ' · Estimated total: ' + usd(q.total) +
-      '\nDates are the guest\'s request — availability is not checked by this form.' +
+      '\nThe property will confirm and hold these dates by email.' +
       (f.note.value.trim() ? ('\n\nGuest note: ' + f.note.value.trim()) : '');
     var btn = f.querySelector('button[type=submit]'); btn.disabled = true;
     fetch(contact, {
@@ -1302,7 +1341,7 @@ $mibMaxNights = 30;
         name: f.name.value, email: f.email.value, phone: f.phone.value,
         subject: 'Maya Ilai booking request' + (dates.nights ? ' · ' + dates.ci + ' → ' + dates.co : ''),
         message: message,
-        check_in: dates.ci, check_out: dates.co, nights: dates.nights,
+        check_in: dates.ci, check_out: dates.co, nights: dates.nights, rooms: modalRooms,
         quoted_total: q.total, quoted_currency: 'USD',
         'cf-turnstile-response': ''
       })

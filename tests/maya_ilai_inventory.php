@@ -347,6 +347,84 @@ check('order: a sort_order tie reserves the same villas regardless of input orde
 check('order: a sort_order tie reserves the same villas regardless of input order (reversed)',
     array_column(mi_order_villas($tieVillasB, false, 2), 'unit_id') === [51, 52]);
 
+// ── Live-availability placement oracle (pure) ───────────────────────────────
+// mi_can_place_products() replays the real allocation (mi_order_villas +
+// mi_resolve) against a snapshot of villa occupancy, so the guest configurator
+// only ever offers a stay that can actually be held. A `true` is genuine (every
+// placement went through mi_resolve) and it backtracks, so a feasible layout is
+// never missed.
+$freshVillas = static function (int $n): array {
+    $out = [];
+    for ($i = 0; $i < $n; $i++) {
+        $out[] = ['unit_id' => 100 + $i, 'sort_order' => $i + 1, 'taken' => []];
+    }
+    return $out;
+};
+
+check('place: nothing to place is trivially bookable',
+    mi_can_place_products($freshVillas(8), [], 0, 0, 0) === true);
+check('place: one villa product into 8 empty villas',
+    mi_can_place_products($freshVillas(8), ['maya-ilai-villa'], 0, 0, 0) === true);
+check('place: 8 villa products fill 8 villas',
+    mi_can_place_products($freshVillas(8), array_fill(0, 8, 'maya-ilai-villa'), 0, 0, 0) === true);
+check('place: a 9th villa product cannot fit 8 villas',
+    mi_can_place_products($freshVillas(8), array_fill(0, 9, 'maya-ilai-villa'), 0, 0, 0) === false);
+
+// The living-room ceiling — exactly one living room per villa.
+check('place: 8 one-bed-suites fit 8 villas (one living room each)',
+    mi_can_place_products($freshVillas(8), array_fill(0, 8, 'maya-ilai-one-bed-suite'), 0, 0, 0) === true);
+check('place: a 9th one-bed-suite cannot — only 8 living rooms exist',
+    mi_can_place_products($freshVillas(8), array_fill(0, 9, 'maya-ilai-one-bed-suite'), 0, 0, 0) === false);
+
+// Several bedrooms pack into one villa.
+check('place: two doubles share one villa (double_a + double_b)',
+    mi_can_place_products($freshVillas(1), ['maya-ilai-double', 'maya-ilai-double'], 0, 0, 0) === true);
+check('place: a third double needs a second villa',
+    mi_can_place_products($freshVillas(1), array_fill(0, 3, 'maya-ilai-double'), 0, 0, 0) === false);
+check('place: two doubles + bunk all pack into one villa',
+    mi_can_place_products($freshVillas(1),
+        ['maya-ilai-double', 'maya-ilai-double', 'maya-ilai-bunk-room'], 0, 0, 0) === true);
+
+// Partial occupancy — the correctness heart. A villa whose one living room is
+// already taken still sells its bedrooms, but never a second living room.
+$livingGone = $freshVillas(1); $livingGone[0]['taken'] = ['living'];
+check('place: a double still sells in a villa whose living room is gone',
+    mi_can_place_products($livingGone, ['maya-ilai-double'], 0, 0, 0) === true);
+check('place: the bunk room still sells alongside the gone living room',
+    mi_can_place_products($livingGone, ['maya-ilai-bunk-room'], 0, 0, 0) === true);
+check('place: a one-bed-suite cannot — that villa\'s one living room is already taken',
+    mi_can_place_products($livingGone, ['maya-ilai-one-bed-suite'], 0, 0, 0) === false);
+
+// Studios are counted, not packed.
+check('place: studio demand within supply is fine',
+    mi_can_place_products($freshVillas(0), [], 2, 2, 0) === true);
+check('place: studio demand over supply fails',
+    mi_can_place_products($freshVillas(2), [], 3, 2, 0) === false);
+check('place: a studio and a villa product both must fit',
+    mi_can_place_products($freshVillas(1), ['maya-ilai-villa'], 2, 2, 0) === true);
+
+// Ring-fencing: component products avoid the reserved villas; the whole villa may
+// use them.
+check('place: with 2 reserved, 6 villas host component products',
+    mi_can_place_products($freshVillas(8), array_fill(0, 6, 'maya-ilai-one-bed-suite'), 0, 0, 2) === true);
+check('place: a 7th component product cannot use a reserved villa',
+    mi_can_place_products($freshVillas(8), array_fill(0, 7, 'maya-ilai-one-bed-suite'), 0, 0, 2) === false);
+check('place: the whole-villa product may still use a reserved villa',
+    mi_can_place_products($freshVillas(8), array_fill(0, 8, 'maya-ilai-villa'), 0, 0, 2) === true);
+
+// Mixed products across villas.
+check('place: a villa and a one-bed-suite need two different villas',
+    mi_can_place_products($freshVillas(2), ['maya-ilai-villa', 'maya-ilai-one-bed-suite'], 0, 0, 0) === true);
+check('place: villa + villa + double needs a third villa',
+    mi_can_place_products($freshVillas(2),
+        ['maya-ilai-villa', 'maya-ilai-villa', 'maya-ilai-double'], 0, 0, 0) === false);
+
+// Fail closed on anything it does not understand, and on no inventory at all.
+check('place: an unknown product slug fails closed',
+    mi_can_place_products($freshVillas(8), ['not-a-real-slug'], 0, 0, 0) === false);
+check('place: a villa product with no villas in the snapshot fails closed',
+    mi_can_place_products($freshVillas(0), ['maya-ilai-double'], 0, 0, 0) === false);
+
 // ── Gantt lane assignment (pure) ────────────────────────────────────────────
 // One villa can hold several unrelated bookings at once. The calendar draws each
 // block from its dates alone, so two concurrent blocks on one unit used to land

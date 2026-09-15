@@ -112,11 +112,19 @@ check('null job treated as frontdesk (home)', admin_home_url() === '/admin/front
 // ── Phase 2: kind → job routing map (pure) ─────────────────────────────────
 check('route housekeeping', request_job_for_kind('housekeeping') === 'housekeeping');
 check('route amenities → housekeeping', request_job_for_kind('amenities') === 'housekeeping');
-check('route laundry → housekeeping',   request_job_for_kind('laundry') === 'housekeeping');
+check('route laundry → laundry (its own specialty now)', request_job_for_kind('laundry') === 'laundry');
 check('route maintenance',  request_job_for_kind('maintenance') === 'maintenance');
 check('route transfer → driver', request_job_for_kind('transfer') === 'driver');
 check('route tour → null (unrouted)',       request_job_for_kind('tour') === null);
 check('route restaurant → null (unrouted)', request_job_for_kind('restaurant') === null);
+
+// ── Laundry is a first-class ops specialty (add_laundry_job.sql) ────────────
+check('laundry: job_is_ops',                 job_is_ops('laundry') === true);
+check('laundry: in the shared job vocabulary', isset(team_job_types()['laundry']));
+// staff_day_worklist is turnover-derived only for housekeeping/laundry/driver;
+// every other job returns [] with no DB touch (pure early return).
+check('worklist: gardening has no turnover list', staff_day_worklist(null, 'gardening', '2026-01-01') === []);
+check('worklist: frontdesk has no turnover list', staff_day_worklist(null, 'frontdesk', '2026-01-01') === []);
 
 // ── Phase 2: default_assignee_for (job_type is new, so only ZZ fixtures match) ─
 // $sHouse is the sole housekeeping staffer at V1 → auto-assigns to them.

@@ -15,7 +15,7 @@ function request_job_for_kind(string $kind): ?string {
     return [
         'housekeeping' => 'housekeeping',
         'amenities'    => 'housekeeping',
-        'laundry'      => 'housekeeping',
+        'laundry'      => 'laundry',       // its own specialty now (add_laundry_job.sql)
         'maintenance'  => 'maintenance',
         'transfer'     => 'driver',
     ][$kind] ?? null;
@@ -90,6 +90,7 @@ function team_job_types(): array {
     return [
         'frontdesk'    => 'Front desk',
         'housekeeping' => 'Housekeeping',
+        'laundry'      => 'Laundry',
         'maintenance'  => 'Maintenance',
         'gardening'    => 'Gardening',
         'security'     => 'Gate security',
@@ -190,6 +191,53 @@ function mywork_tasks(int $adminId, array $statuses = ['todo','in_progress']): a
             $params
         )->fetchAll();
     } catch (Throwable $e) { return []; }
+}
+
+/**
+ * A specialty ops worklist for one day, DERIVED from the live confirmed-booking
+ * calendar (frontdesk_day) — never a hand-kept list, so it cannot drift from the
+ * real arrivals/departures. Each job gets tailored, labelled sections:
+ *   housekeeping → check-out cleans, arrival preps, in-house refreshes
+ *   laundry      → check-out linen strip, in-house mid-stay change
+ *   driver       → arrival pickups, departure drop-offs
+ * Jobs with no turnover-derived work (gardening/maintenance/frontdesk/security)
+ * return [] and work from Tasks / their own screens.
+ *
+ * $venueIds is the acting staff member's scope (null = all/owner), $ymd a
+ * Nairobi-local Y-m-d. Pre-migration-safe: frontdesk_day() fails soft to [].
+ *
+ * @return list<array{key:string,title:string,note:string,rows:array}>
+ */
+function staff_day_worklist(?array $venueIds, string $job, string $ymd): array {
+    if (!in_array($job, ['housekeeping','laundry','driver'], true)) return [];
+    require_once __DIR__ . '/frontdesk.php';
+    if (!function_exists('frontdesk_day')) return [];
+
+    $day = frontdesk_day($venueIds, $ymd);
+    $arr = $day['arriving']  ?? [];
+    $dep = $day['departing'] ?? [];
+    $inh = $day['inhouse']   ?? [];
+
+    $sections = [];
+    if ($job === 'housekeeping') {
+        $sections = [
+            ['key'=>'checkout','title'=>'Check-out cleans','note'=>'Full clean once these guests leave today','rows'=>$dep],
+            ['key'=>'arrival', 'title'=>'Arrival prep',    'note'=>'Ready these rooms for guests arriving today','rows'=>$arr],
+            ['key'=>'stay',    'title'=>'In-house refresh','note'=>'Occupied tonight — daily servicing','rows'=>$inh],
+        ];
+    } elseif ($job === 'laundry') {
+        $sections = [
+            ['key'=>'checkout','title'=>'Check-out linen','note'=>'Strip and launder after departure','rows'=>$dep],
+            ['key'=>'stay',    'title'=>'In-house linen', 'note'=>'Mid-stay linen change','rows'=>$inh],
+        ];
+    } else { // driver
+        $sections = [
+            ['key'=>'pickup', 'title'=>'Arrival pickups',    'note'=>'Guests arriving today — transfers in','rows'=>$arr],
+            ['key'=>'dropoff','title'=>'Departure drop-offs','note'=>'Guests leaving today — transfers out','rows'=>$dep],
+        ];
+    }
+    // Drop empty sections so a quiet day shows a clean "nothing today", not blanks.
+    return array_values(array_filter($sections, fn($s) => !empty($s['rows'])));
 }
 
 // ── Gate visitors (Phase 4) ────────────────────────────────────────────────
