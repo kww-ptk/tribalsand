@@ -526,3 +526,54 @@ function agent_requests(array $agent, int $limit = 100): array {
     }
     return $rows;
 }
+
+/**
+ * After a request is committed: the staff notification — the hold email with the
+ * trade rows, or the plain enquiry notification whose stored message already
+ * opens with them — and the agent's acknowledgement, addressed to the agent with
+ * the net price on record. Best-effort: a mail failure never undoes a saved request.
+ */
+function agent_send_request_emails(array $agent, array $res): void {
+    require_once __DIR__ . '/mail.php';
+    $trade = $res['trade'];
+    $where = $res['venue']['name'] . ' — ' . $res['rooms_label'];
+    try {
+        if ($res['mode'] === 'hold' && !empty($res['hold'])) {
+            send_hold_notification($res['hold'] + ['trade_agent' => $trade['agent'], 'trade_rate' => $trade['rate']]);
+        } else {
+            send_notification([
+                'id'              => $res['submission_id'],
+                'type'            => 'enquiry',
+                'room_name'       => $where,
+                'guest_name'      => $res['traveller'],
+                'guest_email'     => (string)$agent['email'],
+                'guest_phone'     => '',
+                'message'         => $res['message'],
+                'check_in'        => $res['check_in'],
+                'check_out'       => $res['check_out'],
+                'guests_adults'   => $res['adults'],
+                'guests_children' => $res['children'],
+                'created_at'      => date('Y-m-d H:i:s'),
+                'source_page'     => 'Trade portal',
+                'utm_source'      => 'trade-portal',
+            ]);
+        }
+        send_guest_acknowledgement([
+            'kind'            => $res['mode'] === 'hold' ? 'hold' : 'enquiry',
+            'guest_name'      => (string)$agent['name'],
+            'guest_email'     => (string)$agent['email'],
+            'agency_name'     => (string)($agent['agency'] ?? ''),
+            'room_name'       => $where,
+            'check_in'        => $res['check_in'],
+            'check_out'       => $res['check_out'],
+            'guests_adults'   => $res['adults'],
+            'guests_children' => $res['children'],
+            'price'           => $trade['rate'],
+            'message'         => 'Booking for: ' . $res['traveller'] . ($res['notes'] !== '' ? "\n" . $res['notes'] : ''),
+            'hold_id'         => (int)($res['hold_id'] ?? 0),
+            'access_code'     => (string)($res['hold']['access_code'] ?? ''),
+        ]);
+    } catch (Throwable $e) {
+        error_log('[agent-request] mail failed: ' . $e->getMessage());
+    }
+}

@@ -1,0 +1,172 @@
+<?php
+declare(strict_types=1);
+/**
+ * Trade portal — "Request to book". GET shows the option (re-quoted and re-checked
+ * live), the net price and the traveller form; POST (CSRF) writes the request
+ * through agent_submit_request() — the same submission + 24h hold the public
+ * widget creates, tagged as a trade booking — then emails and redirects (PRG) to
+ * the request list. Nothing from the form is trusted for money: the price is
+ * re-derived from the agent row and the room on every request.
+ */
+require_once __DIR__ . '/../includes/agent.php';
+
+agent_require_login();
+$agent = agent_current();
+
+$in  = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $_GET;
+$str = fn(string $k): string => trim((string)($in[$k] ?? ''));
+
+$req = [
+    'kind'        => ($str('venue') !== '' && $str('rooms') !== '') ? 'combo' : 'room',
+    'room_slug'   => $str('room'),
+    'venue_slug'  => $str('venue'),
+    'rooms'       => agent_parse_rooms_param($str('rooms')),
+    'check_in'    => $str('check_in'),
+    'check_out'   => $str('check_out'),
+    'adults'      => max(1, min(30, (int)($in['adults'] ?? 1))),
+    'children'    => max(0, min(20, (int)($in['children'] ?? 0))),
+    'guest_name'  => $str('guest_name'),
+    'guest_email' => $str('guest_email'),
+    'guest_phone' => $str('guest_phone'),
+    'notes'       => $str('notes'),
+];
+$backUrl = '/agent/availability.php?' . http_build_query([
+    'check_in' => $req['check_in'], 'check_out' => $req['check_out'],
+    'adults' => $req['adults'], 'children' => $req['children'],
+]);
+
+// ── Resolve + quote what the link points at (read-only) ─────────────────────
+$error = '';
+$view  = null;
+$stay  = agent_valid_stay($req['check_in'], $req['check_out']);
+if ($stay === null) {
+    $error = 'Those dates aren’t valid any more — please search again.';
+} else {
+    [$ci, $co, $nights] = $stay;
+    $lines = [];
+    $venue = false;
+    if ($req['kind'] === 'room') {
+        $room  = fetch_room_by_slug($req['room_slug']);
+        $venue = ($room && !empty($room['is_published']))
+            ? db_query('SELECT id, slug, name FROM venues WHERE id = :id AND is_published = TRUE', [':id' => $room['venue_id']])->fetch()
+            : false;
+        if ($room && $venue) $lines[] = ['room' => $room, 'units' => 1, 'quote' => agent_stay_quote($room, $agent, $ci, $co)];
+    } else {
+        $venue = db_query('SELECT id, slug, name FROM venues WHERE slug = :s AND is_published = TRUE', [':s' => $req['venue_slug']])->fetch();
+        foreach ($venue ? $req['rooms'] : [] as $pick) {
+            $room = fetch_room_by_slug($pick['slug']);
+            if (!$room || empty($room['is_published']) || (int)$room['venue_id'] !== (int)$venue['id']) { $lines = []; break; }
+            $lines[] = ['room' => $room, 'units' => $pick['units'], 'quote' => agent_stay_quote($room, $agent, $ci, $co)];
+        }
+    }
+    if (!$venue || !$lines) {
+        $error = 'That option isn’t available to book — please search again.';
+    } else {
+        $currency  = (string)$lines[0]['quote']['currency'];
+        $published = 0.0;
+        $net       = 0.0;
+        $available = true;
+        foreach ($lines as $l) {
+            if ((int)$l['quote']['nights'] === 0 || $l['quote']['currency'] !== $currency) {
+                $error = 'That option can’t be priced — please search again.';
+                break;
+            }
+            $published += $l['quote']['published'] * $l['units'];
+            $net       += $l['quote']['net']       * $l['units'];
+            // Live re-check, so the form never invites a request for dates that just went.
+            $free = $req['kind'] === 'room'
+                ? (bool) find_available_unit((int)$l['room']['id'], $ci, $co)
+                : count_available_units((int)$l['room']['id'], $ci, $co, $l['room']) >= $l['units'];
+            if (!$free) $available = false;
+        }
+        if ($error === '') {
+            $view = [
+                'venue' => $venue, 'lines' => $lines, 'ci' => $ci, 'co' => $co, 'nights' => $nights,
+                'quote' => ['nights' => $nights, 'published' => round($published, 2), 'net' => round($net, 2),
+                            'currency' => $currency, 'discount_pct' => agent_discount_pct($agent, (int)$venue['id'])],
+                'available' => $available,
+                'hold_mode' => $req['kind'] === 'room' && agent_room_form_mode($lines[0]['room']) === 'availability',
+            ];
+        }
+    }
+}
+
+// ── POST: write the request, then email, then PRG ───────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error === '' && $view !== null) {
+    verify_csrf();
+    if (!$view['available']) {
+        $error = 'Those dates were taken while you were completing the request. Please search again.';
+    } else {
+        $res = agent_submit_request($agent, $req, [
+            'source_page' => site_url('/agent/request.php'),
+            'utm_source'  => 'trade-portal',
+            'utm_medium'  => 'agent-portal',
+            'user_agent'  => (string)($_SERVER['HTTP_USER_AGENT'] ?? ''),
+            'ip'          => client_ip(),
+        ]);
+        if (!$res['ok']) {
+            $error = $res['error'];
+        } else {
+            agent_send_request_emails($agent, $res);   // best-effort, after commit
+            header('Location: /agent/requests.php?sent=' . (int)$res['submission_id']);
+            exit;
+        }
+    }
+}
+
+$agentPageTitle = 'Request to book';
+$agentActive    = 'availability';
+include __DIR__ . '/_layout.php';
+?>
+<h1>Request to book</h1>
+
+<?php if ($error !== '' && $view === null): ?>
+  <div class="alert alert-error"><?= e($error) ?></div>
+  <p><a href="<?= e($backUrl) ?>">← Back to availability</a></p>
+<?php else: $q = $view['quote']; $pct = (float)$q['discount_pct']; ?>
+<div class="ap-card">
+  <h2><?= e($view['venue']['name']) ?></h2>
+  <p class="ap-cardsub"><?= $view['hold_mode']
+      ? 'Dates are held for 24 hours while reservations confirm — nothing is charged now.'
+      : 'This request is sent as an enquiry — reservations confirm availability and price by email.' ?></p>
+
+  <div class="ap-summary">
+    <div><small>Room<?= count($view['lines']) > 1 ? 's' : '' ?></small><span>
+      <?php foreach ($view['lines'] as $l): ?><?= e($l['room']['name']) ?><?= $l['units'] > 1 ? ' ×' . (int)$l['units'] : '' ?><br><?php endforeach; ?>
+    </span></div>
+    <div><small>Dates</small><span><?= e(date('D j M Y', strtotime($view['ci']))) ?> → <?= e(date('D j M Y', strtotime($view['co']))) ?></span></div>
+    <div><small>Nights</small><span><?= (int)$view['nights'] ?></span></div>
+    <div><small>Guests</small><span><?= (int)$req['adults'] ?> adult<?= $req['adults'] === 1 ? '' : 's' ?><?= $req['children'] ? ', ' . (int)$req['children'] . ' child' . ($req['children'] === 1 ? '' : 'ren') : '' ?></span></div>
+    <div><small>Published</small><span><?= e(format_price((float)$q['published'], $q['currency'])) ?></span></div>
+    <div><small>Your rate<?= $pct > 0 ? ' · ' . e(agent_pct_label($pct)) . '% off' : '' ?></small><span class="ap-net"><?= e(format_price((float)$q['net'], $q['currency'])) ?></span></div>
+  </div>
+
+  <?php if ($error !== ''): ?><div class="alert alert-error"><?= e($error) ?></div><?php endif; ?>
+
+  <?php if (!$view['available']): ?>
+    <div class="alert alert-error">Those dates have just been taken. <a href="<?= e($backUrl) ?>">Search again →</a></div>
+  <?php else: ?>
+  <form method="POST" action="/agent/request.php" novalidate>
+    <?= csrf_field() ?>
+    <input type="hidden" name="room"      value="<?= e($req['room_slug']) ?>">
+    <input type="hidden" name="venue"     value="<?= e($req['venue_slug']) ?>">
+    <input type="hidden" name="rooms"     value="<?= e(agent_rooms_param($req['rooms'])) ?>">
+    <input type="hidden" name="check_in"  value="<?= e($view['ci']) ?>">
+    <input type="hidden" name="check_out" value="<?= e($view['co']) ?>">
+    <input type="hidden" name="adults"    value="<?= (int)$req['adults'] ?>">
+    <input type="hidden" name="children"  value="<?= (int)$req['children'] ?>">
+    <div class="ap-form" style="margin-bottom:14px">
+      <div class="field"><label for="rqName">Travelling guest’s name</label><input type="text" id="rqName" name="guest_name" value="<?= e($req['guest_name']) ?>" required autofocus></div>
+      <div class="field"><label for="rqEmail">Guest’s email (optional)</label><input type="email" id="rqEmail" name="guest_email" value="<?= e($req['guest_email']) ?>"></div>
+      <div class="field"><label for="rqPhone">Guest’s phone (optional)</label><input type="tel" id="rqPhone" name="guest_phone" value="<?= e($req['guest_phone']) ?>"></div>
+    </div>
+    <div class="field"><label for="rqNotes">Notes for reservations (optional)</label><textarea id="rqNotes" name="notes" rows="3"><?= e($req['notes']) ?></textarea></div>
+    <p class="ap-note">We’ll write to you at <strong><?= e($agent['email']) ?></strong> — you are the contact for this booking; the traveller is not emailed.</p>
+    <button type="submit" class="btn btn--auto">Request to book</button>
+    <a href="<?= e($backUrl) ?>" style="margin-left:12px">Back to availability</a>
+  </form>
+  <?php endif; ?>
+</div>
+<?php endif; ?>
+
+<?php include __DIR__ . '/_layout_end.php'; ?>
