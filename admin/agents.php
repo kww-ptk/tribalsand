@@ -65,6 +65,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
                     [':h' => password_hash($pass, PASSWORD_DEFAULT), ':id' => $id]);
                 $flash['msg'] = 'Password reset.';
             }
+        } elseif ($action === 'set_venue_discounts') {
+            // Per-property overrides: keep only venues given a real 0..100 value;
+            // a blank clears that venue back to the flat default. Store NULL when
+            // nothing is overridden so agent_discount_pct() falls straight through.
+            $id  = (int)($_POST['id'] ?? 0);
+            $in  = is_array($_POST['venue_pct'] ?? null) ? $_POST['venue_pct'] : [];
+            $map = [];
+            foreach ($in as $vid => $val) {
+                $val = trim((string)$val);
+                if ($val === '' || !is_numeric($val)) continue;
+                $map[(string)(int)$vid] = max(0.0, min(100.0, (float)$val));
+            }
+            db_query('UPDATE travel_agents SET venue_discounts = :j WHERE id = :id',
+                [':j' => $map ? json_encode($map) : null, ':id' => $id]);
+            $flash['msg'] = 'Per-property rates updated.';
         } elseif ($action === 'delete') {
             $id = (int)($_POST['id'] ?? 0);
             db_query('DELETE FROM travel_agents WHERE id = :id', [':id' => $id]);
@@ -83,6 +98,10 @@ if (!empty($_SESSION['hold_flash'])) { $flash = $_SESSION['hold_flash']; unset($
 
 $agents = $supported
     ? db_query('SELECT * FROM travel_agents ORDER BY is_active DESC, name ASC')->fetchAll()
+    : [];
+// Published venues for the per-property override editor.
+$venuesAll = $supported
+    ? db_query('SELECT id, name FROM venues WHERE is_published = TRUE ORDER BY sort_order ASC, name ASC')->fetchAll()
     : [];
 
 include __DIR__ . '/_layout.php';
@@ -141,6 +160,34 @@ include __DIR__ . '/_layout.php';
               <form method="POST" action="/admin/agents.php" style="display:flex;gap:4px;align-items:center"><?= csrf_field() ?><input type="hidden" name="action" value="reset_password"><input type="hidden" name="id" value="<?= $id ?>"><input type="text" name="password" placeholder="New password" style="width:120px"><button class="btn-icon btn-icon--outline" title="Reset password" aria-label="Reset password"><?= admin_icon('check') ?></button></form>
               <form method="POST" action="/admin/agents.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= $id ?>"><button class="btn-icon btn-icon--danger" title="Delete agent" aria-label="Delete agent" data-confirm="Delete <?= e($a['name']) ?>? This cannot be undone."><?= admin_icon('trash') ?></button></form>
             </div>
+          </td>
+        </tr>
+        <?php
+          // Current per-property overrides (JSONB comes back as a string).
+          $ov = $a['venue_discounts'] ?? null;
+          if (is_string($ov)) $ov = json_decode($ov, true);
+          if (!is_array($ov)) $ov = [];
+          $ovCount = count(array_filter($ov, fn($x) => is_numeric($x)));
+        ?>
+        <tr>
+          <td colspan="6" style="padding:0 12px 12px">
+            <details<?= $ovCount ? ' open' : '' ?>>
+              <summary style="cursor:pointer;color:var(--muted);font-size:13px;padding:6px 0">Per-property rates <?= $ovCount ? '<span class="badge badge--blue">' . (int)$ovCount . ' set</span>' : '<span class="text-muted">(using ' . e(rtrim(rtrim(number_format((float)$a['discount_pct'],2),'0'),'.')) . '% everywhere)</span>' ?></summary>
+              <?php if (!$venuesAll): ?>
+                <p class="text-muted" style="font-size:12px;margin:6px 0 0">No published properties.</p>
+              <?php else: ?>
+              <form method="POST" action="/admin/agents.php" style="margin-top:8px">
+                <?= csrf_field() ?><input type="hidden" name="action" value="set_venue_discounts"><input type="hidden" name="id" value="<?= $id ?>">
+                <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
+                  <?php foreach ($venuesAll as $v): $vid=(int)$v['id']; $cur = isset($ov[(string)$vid]) && is_numeric($ov[(string)$vid]) ? rtrim(rtrim(number_format((float)$ov[(string)$vid],2),'0'),'.') : ''; ?>
+                  <label style="display:flex;align-items:center;gap:6px;font-size:13px"><span style="flex:1"><?= e($v['name']) ?></span><input type="number" name="venue_pct[<?= $vid ?>]" min="0" max="100" step="0.5" value="<?= e($cur) ?>" placeholder="def" style="width:70px">%</label>
+                  <?php endforeach; ?>
+                </div>
+                <button class="btn-primary btn-sm" style="margin-top:8px">Save per-property rates</button>
+                <span class="text-muted" style="font-size:12px;margin-left:8px">Blank = use the <?= e(rtrim(rtrim(number_format((float)$a['discount_pct'],2),'0'),'.')) ?>% default.</span>
+              </form>
+              <?php endif; ?>
+            </details>
           </td>
         </tr>
         <?php endforeach; endif; ?>
