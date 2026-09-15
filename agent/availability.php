@@ -52,6 +52,7 @@ $reqUrl  = fn(array $params): string => '/agent/request.php?' . http_build_query
 ]);
 /** Published (struck through when discounted) + net, for one option. */
 $priceCell = function (array $o, float $pct): string {
+    if ((float)($o['total'] ?? 0) <= 0) return '<b>On request</b>';   // unpriced room — never "USD 0"
     $cur = (string)($o['currency'] ?? 'USD');
     $pub = format_price((float)$o['total'], $cur);
     $net = format_price((float)($o['net_total'] ?? $o['total']), $cur);

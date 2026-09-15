@@ -207,10 +207,15 @@ function agent_trade_lines(array $agent, array $quote): array {
     $nights    = (int)($quote['nights'] ?? 0);
     $pct       = (float)($quote['discount_pct'] ?? 0);
     $nightsTxt = $nights . ' night' . ($nights === 1 ? '' : 's');
-    $rate = $pct > 0
-        ? format_price((float)($quote['net'] ?? 0), $cur) . ' net · ' . $nightsTxt . ' · '
-          . agent_pct_label($pct) . '% off published ' . format_price((float)($quote['published'] ?? 0), $cur)
-        : format_price((float)($quote['published'] ?? 0), $cur) . ' · ' . $nightsTxt . ' · published rate (no trade discount)';
+    // An unpriced room (no base rate set) is "on request" — never "USD 0 net".
+    if ((float)($quote['published'] ?? 0) <= 0) {
+        $rate = 'Price on request · ' . $nightsTxt . ($pct > 0 ? ' · ' . agent_pct_label($pct) . '% trade discount applies' : '');
+    } elseif ($pct > 0) {
+        $rate = format_price((float)($quote['net'] ?? 0), $cur) . ' net · ' . $nightsTxt . ' · '
+              . agent_pct_label($pct) . '% off published ' . format_price((float)($quote['published'] ?? 0), $cur);
+    } else {
+        $rate = format_price((float)($quote['published'] ?? 0), $cur) . ' · ' . $nightsTxt . ' · published rate (no trade discount)';
+    }
     return ['agent' => $who, 'rate' => $rate];
 }
 
@@ -397,10 +402,12 @@ function agent_submit_request(array $agent, array $req, array $tracking = []): a
         'published_total' => $quote['published'],
         'quoted_total'    => $quote['net'],
         'quoted_currency' => $currency,
-        'quoted_label'    => $nights . ' night' . ($nights === 1 ? '' : 's') . ' · trade net rate'
-            . ($quote['discount_pct'] > 0
-                ? ' (' . agent_pct_label($quote['discount_pct']) . '% off published ' . format_price($quote['published'], $currency) . ')'
-                : ''),
+        'quoted_label'    => $nights . ' night' . ($nights === 1 ? '' : 's')
+            . ($quote['published'] <= 0
+                ? ' · price on request'
+                : ' · trade net rate' . ($quote['discount_pct'] > 0
+                    ? ' (' . agent_pct_label($quote['discount_pct']) . '% off published ' . format_price($quote['published'], $currency) . ')'
+                    : '')),
         'rooms'           => $kind === 'combo' ? $roomsLabel : '',
     ], fn($v) => $v !== '' && $v !== null);
 

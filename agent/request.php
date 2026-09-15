@@ -137,8 +137,8 @@ include __DIR__ . '/_layout.php';
     <div><small>Dates</small><span><?= e(date('D j M Y', strtotime($view['ci']))) ?> → <?= e(date('D j M Y', strtotime($view['co']))) ?></span></div>
     <div><small>Nights</small><span><?= (int)$view['nights'] ?></span></div>
     <div><small>Guests</small><span><?= (int)$req['adults'] ?> adult<?= $req['adults'] === 1 ? '' : 's' ?><?= $req['children'] ? ', ' . (int)$req['children'] . ' child' . ($req['children'] === 1 ? '' : 'ren') : '' ?></span></div>
-    <div><small>Published</small><span><?= e(format_price((float)$q['published'], $q['currency'])) ?></span></div>
-    <div><small>Your rate<?= $pct > 0 ? ' · ' . e(agent_pct_label($pct)) . '% off' : '' ?></small><span class="ap-net"><?= e(format_price((float)$q['net'], $q['currency'])) ?></span></div>
+    <div><small>Published</small><span><?= $q['published'] > 0 ? e(format_price((float)$q['published'], $q['currency'])) : 'On request' ?></span></div>
+    <div><small>Your rate<?= $pct > 0 ? ' · ' . e(agent_pct_label($pct)) . '% off' : '' ?></small><span class="ap-net"><?= $q['published'] > 0 ? e(format_price((float)$q['net'], $q['currency'])) : 'On request' ?></span></div>
   </div>
 
   <?php if ($error !== ''): ?><div class="alert alert-error"><?= e($error) ?></div><?php endif; ?>

@@ -79,6 +79,9 @@ check('trade lines: rate line shows net, nights and the discount', $tl['rate'] =
 $tl0 = agent_trade_lines(['name' => 'Solo', 'agency' => '', 'email' => 's@x.com'],
     ['nights' => 1, 'published' => 200.0, 'net' => 200.0, 'currency' => 'KES', 'discount_pct' => 0]);
 check('trade lines: no discount reads as published rate', $tl0['agent'] === 'Solo <s@x.com>' && $tl0['rate'] === 'KES 200 · 1 night · published rate (no trade discount)');
+$tlNo = agent_trade_lines(['name' => 'Solo', 'agency' => '', 'email' => 's@x.com'],
+    ['nights' => 3, 'published' => 0.0, 'net' => 0.0, 'currency' => 'USD', 'discount_pct' => 15]);
+check('trade lines: an unpriced room reads as on request, never USD 0', $tlNo['rate'] === 'Price on request · 3 nights · 15% trade discount applies');
 
 // ── Request status (pure) ─────────────────────────────────────────────────────
 $now = strtotime('2026-09-15 10:00:00');
