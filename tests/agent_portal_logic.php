@@ -5,6 +5,8 @@ declare(strict_types=1);
 // transaction that is rolled back. Run: php tests/agent_portal_logic.php
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/agent.php';
+require_once __DIR__ . '/../includes/bookings.php';   // bookings_sync_hold() for the ledger check
+require_once __DIR__ . '/../includes/mail.php';       // _hold_notification_html() for the trade-row check
 
 $failures = 0;
 function check(string $label, bool $cond): void {
@@ -116,6 +118,29 @@ if ($hasDb) {
                 eq(agent_discount_pct($row, 1), 12.5));
             check('db: net price at the overridden venue = 80 off 100',
                 eq(agent_net_price(100, $row, 999), 80.0));
+
+            // ── Quote parity + form-mode rule ───────────────────────────────
+            $agentRow = db_query("SELECT * FROM travel_agents WHERE email = 'zz-agent@example.com'")->fetch();
+            $qRoom = db_query(
+                "SELECT r.* FROM rooms r JOIN venues v ON v.id = r.venue_id
+                  WHERE r.is_published = TRUE AND v.is_published = TRUE AND r.price_amount > 0
+                  ORDER BY r.id LIMIT 1")->fetch();
+            if (!$qRoom) {
+                echo "SKIP  no priced published room for the quote checks\n";
+            } else {
+                $canon = room_stay_quote((int)$qRoom['id'], (float)$qRoom['price_amount'], '2098-06-10', '2098-06-12');
+                $aq    = agent_stay_quote($qRoom, $agentRow, '2098-06-10', '2098-06-12');
+                check('quote: published = room_stay_quote() (the ONE path)', eq($aq['published'], (float)$canon['total']) && $aq['nights'] === 2);
+                check('quote: net = published × (1 − 12.5%)',              eq($aq['net'], round((float)$canon['total'] * 0.875, 2)));
+                check('quote: currency is the room’s',                      $aq['currency'] === ($qRoom['price_currency'] ?: 'USD'));
+                $bad = agent_stay_quote($qRoom, $agentRow, '2098-06-12', '2098-06-10');
+                check('quote: a reversed window is NOT a quote (nights 0, net 0)', $bad['nights'] === 0 && $bad['net'] === 0.0);
+
+                check('form mode: the room’s own enquiry mode wins', agent_room_form_mode(array_merge($qRoom, ['form_mode' => 'enquiry'])) === 'enquiry');
+                $hasUnits = count(fetch_units_by_room(room_inventory_room_id($qRoom))) > 0;
+                check('form mode: availability only when the inventory room has units',
+                    agent_room_form_mode(array_merge($qRoom, ['form_mode' => 'availability'])) === ($hasUnits ? 'availability' : 'enquiry'));
+            }
         }
     } finally {
         db()->rollBack();

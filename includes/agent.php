@@ -239,3 +239,44 @@ function agent_request_status(array $row, ?int $now = null): array {
         default     => ['label' => ucfirst($st), 'class' => 'expired', 'note' => ''],
     };
 }
+
+/**
+ * An agent's quote for one room over a stay: the published total from
+ * room_stay_quote() — the ONE pricing path, override-aware — and the net total
+ * with the agent's discount for that room's property. nights === 0 means "not a
+ * quote" (unparseable / reversed window): callers must reject it before showing
+ * or storing a price — neither a $0 stay nor an epoch night-count is safe.
+ * $room needs id, venue_id, price_amount, price_currency (fetch_room_by_slug()).
+ */
+function agent_stay_quote(array $room, array $agent, string $checkIn, string $checkOut): array {
+    $venueId   = (int)($room['venue_id'] ?? 0);
+    $q         = room_stay_quote((int)$room['id'], (float)($room['price_amount'] ?? 0), $checkIn, $checkOut);
+    $published = round((float)$q['total'], 2);
+    return [
+        'nights'       => (int)$q['nights'],
+        'published'    => $published,
+        'net'          => (int)$q['nights'] > 0 ? agent_net_price($published, $agent, $venueId) : 0.0,
+        'currency'     => (string)(($room['price_currency'] ?? '') ?: 'USD'),
+        'discount_pct' => agent_discount_pct($agent, $venueId),
+    ];
+}
+
+/**
+ * Whether a request for this room becomes a 24h HOLD or a plain ENQUIRY — the
+ * exact rule api/submit-enquiry.php applies to the public widget: the room's own
+ * form_mode, else the global `form_mode` setting, and never 'availability' when
+ * the room's inventory room has no active unit to hold. The inventory question
+ * goes through room_inventory_room_id(), so a Maya Ilai composite product asks
+ * about the villa's units instead of silently downgrading to an enquiry.
+ */
+function agent_room_form_mode(array $room): string {
+    $mode = !empty($room['form_mode']) ? (string)$room['form_mode'] : setting('form_mode', 'enquiry');
+    if ($mode === 'availability') {
+        try {
+            if (count(fetch_units_by_room(room_inventory_room_id($room))) === 0) $mode = 'enquiry';
+        } catch (Throwable $e) {
+            $mode = 'enquiry';
+        }
+    }
+    return $mode === 'availability' ? 'availability' : 'enquiry';
+}
