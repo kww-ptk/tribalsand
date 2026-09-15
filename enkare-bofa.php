@@ -1,9 +1,14 @@
 <?php require_once 'includes/schema.php'; ?>
 <?php
-$page_title   = 'Enkare Bofa · Beachfront Villa · Bofa Road Kilifi · Tribal Sand';
-$page_desc    = 'Enkare Bofa is a five-bedroom beachfront private villa on Kilifi\'s Bofa Road, Kenya. In-house cook, pool, beach access. Ideal for families and groups.';
+// Title, meta description and social image: the DB first (Admin → Properties →
+// Content → SEO & Social), each falling back to the built-in value beside it, so
+// an unset field or a DB without the SEO columns serves exactly what it always did.
+[$page_title, $page_desc, $page_image] = ts_venue_meta('enkare-bofa', [
+    'title' => 'Enkare Bofa · Beachfront Villa · Bofa Road Kilifi · Tribal Sand',
+    'desc'  => 'Enkare Bofa is a five-bedroom beachfront private villa on Kilifi\'s Bofa Road, Kenya. In-house cook, pool, beach access. Ideal for families and groups.',
+    'image' => asset_url('images/hero-enkare-bofa.jpg'),
+]);
 $page_url     = 'https://tribalsand.com/enkare-bofa.php';
-$page_image   = asset_url('images/hero-enkare-bofa.jpg');
 $page_preload = 'images/hero-enkare-bofa.jpg';
 
 $faqs = [

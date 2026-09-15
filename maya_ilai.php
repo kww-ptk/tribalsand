@@ -1,10 +1,15 @@
 <?php require_once 'includes/schema.php'; ?>
 <?php
 /* ═══ SEO ═══ */
-$page_title   = 'Maya Ilai · Eco Resort · Kilifi Kenya · Tribal Sand';
-$page_desc    = 'Maya Ilai is a solar-powered eco resort within Tribal Dunes, Kilifi. 16 units including villas and studios. Communal pool. Adults 16+ only.';
+// Title, meta description and social image: the DB first (Admin → Properties →
+// Content → SEO & Social), each falling back to the built-in value beside it, so
+// an unset field or a DB without the SEO columns serves exactly what it always did.
+[$page_title, $page_desc, $page_image] = ts_venue_meta('maya_ilai', [
+    'title' => 'Maya Ilai · Eco Resort · Kilifi Kenya · Tribal Sand',
+    'desc'  => 'Maya Ilai is a solar-powered eco resort within Tribal Dunes, Kilifi. 16 units including villas and studios. Communal pool. Adults 16+ only.',
+    'image' => asset_url('images/maya_illai/Best1.jpg'),
+]);
 $page_url     = 'https://tribalsand.com/maya_ilai.php';
-$page_image   = asset_url('images/maya_illai/Best1.jpg');
 $page_preload = 'images/maya_illai/Best1.jpg';
 
 /* ═══ FAQS ═══ */

@@ -2,10 +2,15 @@
 require_once 'includes/schema.php';
 
 /* ── SEO Variables ── */
-$page_title   = 'Zuri · Beachfront Boutique Hotel · Garoda Beach Watamu · Tribal Sand';
-$page_desc    = 'Beachfront boutique hotel on Garoda Beach, Watamu. Six ocean-facing suites, private pool and direct beach access inside Watamu Marine National Park, Kenya.';
+// Title, meta description and social image: the DB first (Admin → Properties →
+// Content → SEO & Social), each falling back to the built-in value beside it, so
+// an unset field or a DB without the SEO columns serves exactly what it always did.
+[$page_title, $page_desc, $page_image] = ts_venue_meta('zuri', [
+    'title' => 'Zuri · Beachfront Boutique Hotel · Garoda Beach Watamu · Tribal Sand',
+    'desc'  => 'Beachfront boutique hotel on Garoda Beach, Watamu. Six ocean-facing suites, private pool and direct beach access inside Watamu Marine National Park, Kenya.',
+    'image' => asset_url('images/hero-zuri.jpg'),
+]);
 $page_url     = 'https://tribalsand.com/zuri.php';
-$page_image   = asset_url('images/hero-zuri.jpg');
 $page_preload = 'images/hero-zuri.jpg';
 
 /* ── FAQ data ── */

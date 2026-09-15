@@ -1,9 +1,14 @@
 <?php require_once 'includes/schema.php'; ?>
 <?php
-$page_title   = 'Sandbox · Beachfront Self-Catering Villa · Kilifi Kenya · Tribal Sand';
-$page_desc    = 'Sandbox is a self-catering beachfront villa on Kilifi\'s Bofa Road. Four bedrooms, sleeps 8, pool, direct beach access. Private and flexible.';
+// Title, meta description and social image: the DB first (Admin → Properties →
+// Content → SEO & Social), each falling back to the built-in value beside it, so
+// an unset field or a DB without the SEO columns serves exactly what it always did.
+[$page_title, $page_desc, $page_image] = ts_venue_meta('sandbox', [
+    'title' => 'Sandbox · Beachfront Self-Catering Villa · Kilifi Kenya · Tribal Sand',
+    'desc'  => 'Sandbox is a self-catering beachfront villa on Kilifi\'s Bofa Road. Four bedrooms, sleeps 8, pool, direct beach access. Private and flexible.',
+    'image' => asset_url('images/hero-sandbox.jpg'),
+]);
 $page_url     = 'https://tribalsand.com/sandbox.php';
-$page_image   = asset_url('images/hero-sandbox.jpg');
 $page_preload = 'images/hero-sandbox.jpg';
 
 $faqs = [

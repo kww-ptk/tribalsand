@@ -2,10 +2,15 @@
 require_once 'includes/schema.php';
 
 /* ── SEO ── */
-$page_title  = 'My Amani · Luxury Private Beachfront Villa · Vipingo Kenya · Tribal Sand';
-$page_desc   = 'Luxury private beachfront villa in Vipingo, Kenya. Five bedrooms, infinity pool, hot tub, private chef. Exclusive use only. Book direct.';
+// Title, meta description and social image: the DB first (Admin → Properties →
+// Content → SEO & Social), each falling back to the built-in value beside it, so
+// an unset field or a DB without the SEO columns serves exactly what it always did.
+[$page_title, $page_desc, $page_image] = ts_venue_meta('my-amani', [
+    'title' => 'My Amani · Luxury Private Beachfront Villa · Vipingo Kenya · Tribal Sand',
+    'desc'  => 'Luxury private beachfront villa in Vipingo, Kenya. Five bedrooms, infinity pool, hot tub, private chef. Exclusive use only. Book direct.',
+    'image' => asset_url('images/my-amani/Aerial/myamani-11.webp'),
+]);
 $page_url    = 'https://tribalsand.com/my-amani.php';
-$page_image  = asset_url('images/my-amani/Aerial/myamani-11.webp');
 $page_preload = 'images/my-amani/Aerial/myamani-11.webp';
 
 /* ── SCHEMA ── */

@@ -190,6 +190,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         }
     }
 
+    if ($action === 'save_seo' && !$isNew) {
+        if (!venue_seo_supported()) {
+            $error = 'SEO fields are not available on this database yet — run the add_venue_seo migration.';
+        } else {
+            // The social image is chosen from THIS venue's gallery, and the posted
+            // filename is checked against it. The column holds a storage key, so an
+            // unchecked value would let a form post point og:image at any object in
+            // the bucket — including a private one.
+            $og = trim($_POST['og_image'] ?? '');
+            if ($og !== '') {
+                $owned = db_query('SELECT 1 FROM venue_images WHERE venue_id = :v AND filename = :f',
+                                  [':v' => $id, ':f' => $og])->fetchColumn();
+                if (!$owned) $og = '';
+            }
+            db_query(
+                'UPDATE venues SET seo_title=:t, seo_description=:d, og_image=:og, updated_at=NOW() WHERE id=:id',
+                [
+                    ':t'  => trim($_POST['seo_title'] ?? ''),
+                    ':d'  => trim($_POST['seo_description'] ?? ''),
+                    ':og' => $og,
+                    ':id' => $id,
+                ]
+            );
+            audit_log('venue.seo', 'venue', $id);
+            header("Location: /admin/venue-edit.php?id={$id}&saved=1");
+            exit;
+        }
+    }
+
     if ($action === 'save_stay' && !$isNew) {
         if (!venue_stay_supported()) {
             $error = 'Stay/location fields are not available on this database yet — run the add_venue_stay_info migration.';
@@ -435,6 +464,61 @@ include __DIR__ . '/_layout.php';
         </div>
 
         <button type="submit" class="btn-primary btn-sm" data-tip="Save the tagline & About text">Save Content</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ── SEO & social sharing ──────────────────────────────────────────────
+       What Google lists, and what WhatsApp/Facebook/LinkedIn show when someone
+       pastes a link to this property. Every field is optional: left empty, the
+       page serves the built-in values it always has. -->
+  <div class="card" style="margin-top:20px">
+    <div class="card__head"><span class="card__title">SEO & Social Sharing</span></div>
+    <div class="card__body" style="padding:20px">
+      <?php if (!venue_seo_supported()): ?>
+      <div class="alert alert--error" style="margin-bottom:16px">These fields need the <code>add_venue_seo</code> migration, which isn&rsquo;t applied on this database yet. Saving is disabled until it is.</div>
+      <?php endif; ?>
+      <form method="POST" action="/admin/venue-edit?id=<?= $id ?>">
+        <?= csrf_field() ?>
+        <input type="hidden" name="action" value="save_seo">
+
+        <?php $seoT = trim((string)($venue['seo_title'] ?? '')); $seoD = trim((string)($venue['seo_description'] ?? '')); ?>
+        <div class="field">
+          <label>Search title <span class="text-muted">(the blue link in Google, and the browser tab)</span></label>
+          <input type="text" name="seo_title" value="<?= e($seoT) ?>" maxlength="120"
+                 placeholder="e.g. Maya Ilai &middot; Eco Resort &middot; Kilifi Kenya &middot; Tribal Sand">
+          <span class="field-hint">Around 60 characters shows in full; longer is trimmed with an ellipsis. Leave empty to keep the page&rsquo;s built-in title.<?= $seoT === '' ? '' : ' <strong>' . mb_strlen($seoT) . ' characters.</strong>' ?></span>
+        </div>
+
+        <div class="field">
+          <label>Search description</label>
+          <textarea name="seo_description" rows="3" maxlength="320"
+                    placeholder="One or two sentences describing the property."><?= e($seoD) ?></textarea>
+          <span class="field-hint">Google shows roughly 150&ndash;160 characters. Leave empty to keep the page&rsquo;s built-in text.<?= $seoD === '' ? '' : ' <strong>' . mb_strlen($seoD) . ' characters.</strong>' ?></span>
+        </div>
+
+        <div class="field">
+          <label>Social sharing image <span class="text-muted">(shown when the link is pasted into WhatsApp, Facebook, LinkedIn)</span></label>
+          <?php $ogNow = trim((string)($venue['og_image'] ?? '')); ?>
+          <?php if (!$images): ?>
+            <p class="text-muted" style="margin:0;font-size:13px">Upload photos in the <strong>Gallery</strong> tab first &mdash; the sharing image is chosen from this property&rsquo;s gallery.</p>
+          <?php else: ?>
+            <select name="og_image" class="eselect">
+              <option value="">Use the page&rsquo;s built-in image</option>
+              <?php foreach ($images as $img): ?>
+              <option value="<?= e($img['filename']) ?>"<?= $ogNow === $img['filename'] ? ' selected' : '' ?>><?= e(($img['alt_text'] ?: $img['filename']) . (!empty($img['is_hero']) ? '  — main photo' : '')) ?></option>
+              <?php endforeach; ?>
+            </select>
+            <span class="field-hint">Landscape works best &mdash; it is displayed at 1200&times;630, so a tall photo gets cropped top and bottom.</span>
+            <?php if ($ogNow !== '' && ($ogUrl = storage_url($ogNow)) !== ''): ?>
+            <div style="margin-top:10px">
+              <img src="<?= e($ogUrl) ?>" alt="Current sharing image" style="width:260px;max-width:100%;aspect-ratio:1200/630;object-fit:cover;border:1px solid var(--border)">
+            </div>
+            <?php endif; ?>
+          <?php endif; ?>
+        </div>
+
+        <button type="submit" class="btn-primary btn-sm" data-tip="Save the search & sharing settings">Save SEO</button>
       </form>
     </div>
   </div>

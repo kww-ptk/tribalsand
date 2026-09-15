@@ -1920,6 +1920,74 @@ function ts_venue_text(string $slug, string $field, string $fallback = ''): stri
     return (isset($c[$field]) && trim((string)$c[$field]) !== '') ? (string)$c[$field] : $fallback;
 }
 
+/** Do the per-property SEO columns (seo_title / seo_description / og_image) exist? */
+function venue_seo_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { db_query('SELECT seo_title, seo_description, og_image FROM venues LIMIT 1'); $ok = true; }
+    catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/** The saved SEO row for one venue, or [] (missing columns, missing venue, DB down). */
+function ts_venue_seo(string $slug): array {
+    static $cache = [];
+    if (!array_key_exists($slug, $cache)) {
+        try {
+            $row = db_query('SELECT seo_title, seo_description, og_image FROM venues WHERE slug = :s',
+                            [':s' => $slug])->fetch();
+            $cache[$slug] = $row ?: [];
+        } catch (Throwable $e) {
+            $cache[$slug] = [];
+        }
+    }
+    return $cache[$slug];
+}
+
+/**
+ * Resolve a property page's title, meta description and social image.
+ *
+ * DB first, the page's own hardcoded values as the fallback — the same shape as
+ * ts_venue_text() for the About copy. A property page calls this once, before
+ * includes/head.php:
+ *
+ *     [$page_title, $page_desc, $page_image] = ts_venue_meta('maya_ilai', [
+ *         'title' => '…', 'desc' => '…', 'image' => asset_url('images/…jpg'),
+ *     ]);
+ *
+ * The fallback is what the page has always served, so a database with no SEO
+ * columns, no row, or every field blank renders exactly what it rendered before
+ * any of this existed. An empty string in the DB means "not set", never "blank
+ * title" — an empty <title> is not something an editor can usefully ask for, and
+ * treating it as a value would let one stray save de-index a page.
+ *
+ * og_image is a STORAGE KEY, resolved through storage_url() like every other
+ * uploaded image. A key that resolves to nothing falls through to the page's own
+ * image rather than emitting an empty og:image, which renders as a broken card.
+ *
+ * @param array{title?:string,desc?:string,image?:string} $fallback
+ * @return array{0:string,1:string,2:string} [title, description, image URL]
+ */
+function ts_venue_meta(string $slug, array $fallback): array {
+    $seo = ts_venue_seo($slug);
+    $pick = function (string $field, string $default) use ($seo): string {
+        $v = trim((string)($seo[$field] ?? ''));
+        return $v !== '' ? $v : $default;
+    };
+
+    $image = trim((string)($seo['og_image'] ?? ''));
+    if ($image !== '') {
+        $url   = storage_url($image);
+        $image = $url !== '' ? $url : '';
+    }
+
+    return [
+        $pick('seo_title',       (string)($fallback['title'] ?? '')),
+        $pick('seo_description', (string)($fallback['desc']  ?? '')),
+        $image !== '' ? $image : (string)($fallback['image'] ?? ''),
+    ];
+}
+
 /** Convert *word* to <em>word</em> in already-escaped text (for headings). */
 function ts_emphasis(string $escaped): string {
     return preg_replace('/\*([^*]+)\*/', '<em>$1</em>', $escaped);

@@ -1,10 +1,15 @@
 <?php require_once 'includes/schema.php'; ?>
 <?php
 /* ═══ SEO ═══ */
-$page_title   = 'Maya Kobe · Eco Beachfront Boutique Hotel · Kilifi · Tribal Sand';
-$page_desc    = 'Eco beachfront boutique hotel in Kilifi, Kenya. Five ocean suites, private pool, à la carte dining and direct beach access at Tribal Dunes, Bofa Beach.';
+// Title, meta description and social image: the DB first (Admin → Properties →
+// Content → SEO & Social), each falling back to the built-in value beside it, so
+// an unset field or a DB without the SEO columns serves exactly what it always did.
+[$page_title, $page_desc, $page_image] = ts_venue_meta('maya-kobe', [
+    'title' => 'Maya Kobe · Eco Beachfront Boutique Hotel · Kilifi · Tribal Sand',
+    'desc'  => 'Eco beachfront boutique hotel in Kilifi, Kenya. Five ocean suites, private pool, à la carte dining and direct beach access at Tribal Dunes, Bofa Beach.',
+    'image' => asset_url('images/hero-maya-kobe.jpg'),
+]);
 $page_url     = 'https://tribalsand.com/maya-kobe.php';
-$page_image   = asset_url('images/hero-maya-kobe.jpg');
 $page_preload = 'images/hero-maya-kobe.jpg';
 
 /* ═══ FAQS ═══ */
