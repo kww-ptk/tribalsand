@@ -106,7 +106,12 @@ $venuesAll = $supported
 
 include __DIR__ . '/_layout.php';
 ?>
-<div class="page-header"><h1>Travel agents</h1></div>
+<div class="page-header">
+  <div>
+    <h1>Travel agents</h1>
+    <p class="text-muted" style="margin:4px 0 0;font-size:13px">External trade partners with their own read-only rate portal — set a discount and they see live net prices.</p>
+  </div>
+</div>
 
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type'] ?? 'success') ?> is-flash"><?= e($flash['msg'] ?? '') ?></div><?php endif; ?>
 
@@ -128,7 +133,11 @@ include __DIR__ . '/_layout.php';
       </div>
       <button type="submit" class="btn-primary btn-sm" style="margin-top:10px">Add agent</button>
     </form>
-    <p class="text-muted" style="font-size:12px;margin:10px 0 0">Agents sign in at <code>/agent/login.php</code>. The discount is a flat % off the published nightly rate across every property; their price is always calculated live, so a rate change updates it automatically.</p>
+    <p class="text-muted" style="font-size:12.5px;margin:12px 0 0;line-height:1.65;max-width:760px">
+      Agents log in separately at <code>/agent/login.php</code> — they only see rates there, never this admin panel.
+      The discount is a flat % off your published nightly rate; their price is worked out <strong>live</strong>, so it updates on its own whenever you change a rate.
+      Want different rates for certain properties? Open <strong>Per-property rates</strong> on the agent’s row below.
+    </p>
   </div>
 </div>
 
