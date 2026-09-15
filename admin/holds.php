@@ -96,9 +96,14 @@ if ($sw !== '') $conditions[] = $sw;
 
 $where = $conditions ? 'WHERE ' . implode(' AND ', $conditions) : '';
 
+// Trade bookings: name the agent beside the traveller (only once add_holds_agent.sql has run).
+$agOn   = holds_agent_supported();
+$agCols = $agOn ? ', ta.name AS agent_name, ta.agency AS agent_agency' : '';
+$agJoin = $agOn ? ' LEFT JOIN travel_agents ta ON ta.id = h.agent_id' : '';
+
 $holdsFrom = "FROM holds h
      JOIN units u ON u.id = h.unit_id
-     JOIN rooms r ON r.id = " . hold_room_id_sql('h', 'u') . "
+     JOIN rooms r ON r.id = " . hold_room_id_sql('h', 'u') . "{$agJoin}
      {$where}";
 
 $total = (int) db_query("SELECT COUNT(*) {$holdsFrom}", $params)->fetchColumn();
@@ -113,7 +118,7 @@ $ciCols = checkin_supported()
     : '';
 
 $holds = db_query(
-    "SELECT h.*, u.name AS unit_name, r.name AS room_name, r.id AS room_db_id, r.venue_id AS venue_id
+    "SELECT h.*, u.name AS unit_name, r.name AS room_name, r.id AS room_db_id, r.venue_id AS venue_id{$agCols}
      {$ciCols}
      {$holdsFrom}
      ORDER BY h.created_at DESC
@@ -209,6 +214,9 @@ ob_start(); ?>
           <td>
             <strong><?= e($hold['guest_name']) ?></strong><br>
             <a href="mailto:<?= e($hold['guest_email']) ?>" style="font-size:12px;color:var(--muted)"><?= e($hold['guest_email']) ?></a>
+            <?php if (!empty($hold['agent_id'])): ?>
+            <div style="margin-top:4px"><span class="badge badge--blue" title="Requested through the trade portal">Trade · <?= e(trim((string)($hold['agent_agency'] ?? '')) ?: (string)($hold['agent_name'] ?? 'agent')) ?></span></div>
+            <?php endif; ?>
             <?php $__mref = (string)make_manage_url((int)$hold['id']); $__code = (string)($hold['access_code'] ?? ''); ?>
             <?php if ($__code !== '' || $__mref !== ''): ?>
             <div style="margin-top:6px"><?php copy_link_control($__code, $__mref); ?></div>

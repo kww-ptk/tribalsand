@@ -10,13 +10,18 @@ require_once __DIR__ . '/../includes/checkin.php';
 require_once __DIR__ . '/../includes/icons.php';            // admin_icon() — used while buffering the AJAX panel (before _layout.php loads it)
 require_once __DIR__ . '/../includes/admin-pagination.php'; // dt_empty() for the workspace thread list
 require_once __DIR__ . '/../includes/copy-link.php';        // copy_link_control() for the Details tab
+require_once __DIR__ . '/../includes/services.php';         // format_price() for a trade booking's net figure
 require_login();
 
 $holdId = (int)($_GET['hold'] ?? $_POST['hold_id'] ?? 0);
+$agOn = holds_agent_supported();   // trade-portal link, only once add_holds_agent.sql has run
 $hold = $holdId ? db_query(
-    "SELECT h.*, u.name AS unit_name, r.name AS room_name, r.venue_id AS venue_id, v.name AS venue_name
+    "SELECT h.*, u.name AS unit_name, r.name AS room_name, r.venue_id AS venue_id, v.name AS venue_name"
+    . ($agOn ? ", ta.name AS agent_name, ta.agency AS agent_agency, ta.email AS agent_email" : "") . "
      FROM holds h JOIN units u ON u.id=h.unit_id JOIN rooms r ON r.id=" . hold_room_id_sql('h', 'u') . "
-     LEFT JOIN venues v ON v.id=r.venue_id WHERE h.id=:id", [':id'=>$holdId]
+     LEFT JOIN venues v ON v.id=r.venue_id"
+    . ($agOn ? " LEFT JOIN travel_agents ta ON ta.id=h.agent_id" : "") . "
+     WHERE h.id=:id", [':id'=>$holdId]
 )->fetch() : null;
 
 $flash = null;
@@ -311,7 +316,7 @@ include __DIR__ . '/_layout.php';
   <h1><?= e($hold['guest_name'] ?: 'Guest') ?> — <?= e($hold['room_name']) ?></h1>
   <a href="/admin/holds.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Bookings</a>
 </div>
-<p class="text-muted" style="margin:-8px 0 14px;font-size:13px"><?= e(date('j M Y',strtotime($hold['check_in']))) ?> → <?= e(date('j M Y',strtotime($hold['check_out']))) ?> · <span class="badge badge--<?= ['pending'=>'orange','confirmed'=>'green','cancelled'=>'red','expired'=>'grey'][$hold['status']] ?? 'grey' ?>"><?= e($hold['status']) ?></span> · <code><?= e($hold['access_code']) ?></code></p>
+<p class="text-muted" style="margin:-8px 0 14px;font-size:13px"><?= e(date('j M Y',strtotime($hold['check_in']))) ?> → <?= e(date('j M Y',strtotime($hold['check_out']))) ?> · <span class="badge badge--<?= ['pending'=>'orange','confirmed'=>'green','cancelled'=>'red','expired'=>'grey'][$hold['status']] ?? 'grey' ?>"><?= e($hold['status']) ?></span> · <code><?= e($hold['access_code']) ?></code><?php if (!empty($hold['agent_id'])): ?> · <span class="badge badge--blue">Trade booking</span> via <strong><?= e(trim((string)($hold['agent_agency'] ?? '')) ?: (string)($hold['agent_name'] ?? '')) ?></strong> (<?= e((string)($hold['agent_name'] ?? '')) ?>, <a href="mailto:<?= e((string)($hold['agent_email'] ?? '')) ?>"><?= e((string)($hold['agent_email'] ?? '')) ?></a>)<?php if (!empty($hold['quoted_amount'])): ?> · net <?= e(format_price((float)$hold['quoted_amount'], (string)(($hold['quoted_currency'] ?? '') ?: 'USD'))) ?><?php endif; ?><?php endif; ?></p>
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?> is-flash"><?= e($flash['msg']) ?></div><?php endif; ?>
 
 <div class="ws" data-ws>

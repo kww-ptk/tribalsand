@@ -3,6 +3,8 @@ declare(strict_types=1);
 /**
  * Admin: Travel agents (owner-only). Create external agent accounts, set each
  * one's flat trade discount, activate/deactivate, reset password, delete.
+ * Agents then check availability and request bookings at /agent (see
+ * includes/agent.php) — those land in Holds & Bookings as trade holds.
  *
  * Agents are NOT admin_users — they live in travel_agents and sign in at
  * /agent, entirely separate from this panel. Their rate is always the published
@@ -109,7 +111,7 @@ include __DIR__ . '/_layout.php';
 <div class="page-header">
   <div>
     <h1>Travel agents</h1>
-    <p class="text-muted" style="margin:4px 0 0;font-size:13px">External trade partners with their own read-only rate portal — set a discount and they see live net prices.</p>
+    <p class="text-muted" style="margin:4px 0 0;font-size:13px">External trade partners with their own portal — set a discount and they see live net prices, check availability and send booking requests that land here as trade holds.</p>
   </div>
 </div>
 
@@ -134,7 +136,8 @@ include __DIR__ . '/_layout.php';
       <button type="submit" class="btn-primary btn-sm" style="margin-top:10px">Add agent</button>
     </form>
     <p class="text-muted" style="font-size:12.5px;margin:12px 0 0;line-height:1.65;max-width:760px">
-      Agents log in separately at <code>/agent/login.php</code> — they only see rates there, never this admin panel.
+      Agents log in separately at <code>/agent/login.php</code> — they see their rates, check live availability and request to book there, never this admin panel.
+      A request creates the same 24-hour hold a guest request does, marked <strong>Trade</strong> in Holds &amp; Bookings.
       The discount is a flat % off your published nightly rate; their price is worked out <strong>live</strong>, so it updates on its own whenever you change a rate.
       Want different rates for certain properties? Open <strong>Per-property rates</strong> on the agent’s row below.
     </p>

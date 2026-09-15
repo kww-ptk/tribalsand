@@ -148,6 +148,7 @@ function source_label(?string $url): string {
         str_starts_with($page, 'agency')  => 'Travel Agency',
         str_starts_with($page, 'about')   => 'About page',
         str_starts_with($page, 'dining')  => 'Dining page',
+        str_starts_with($page, 'request') => 'Trade portal',
         default                           => $page,
     };
 }
