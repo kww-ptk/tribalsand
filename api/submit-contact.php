@@ -16,6 +16,13 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 $data = json_decode(file_get_contents('php://input'), true) ?? [];
 
+/** A real calendar date as Y-m-d, else null — for the structured stay payload. */
+function contact_valid_ymd($s): ?string {
+    $s = trim((string)$s);
+    if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $s, $m)) return null;
+    return checkdate((int)$m[2], (int)$m[3], (int)$m[1]) ? $s : null;
+}
+
 // Honeypot
 if (!empty($data['website'])) {
     exit(json_encode(['ok' => true]));
@@ -82,6 +89,13 @@ db_query(
             'quoted_total'    => (isset($data['quoted_total']) && is_numeric($data['quoted_total']) && (float)$data['quoted_total'] > 0)
                                    ? round((float)$data['quoted_total'], 2) : null,
             'quoted_currency' => trim((string)($data['quoted_currency'] ?? '')) ?: null,
+            // Structured stay details (Maya Ilai configurator, combos) so the admin
+            // enquiry view can action a hold at the quoted figure without parsing
+            // the message. Dates validated as real Y-m-d; anything else is dropped.
+            'check_in'        => contact_valid_ymd($data['check_in']  ?? ''),
+            'check_out'       => contact_valid_ymd($data['check_out'] ?? ''),
+            'nights'          => (isset($data['nights']) && (int)$data['nights'] > 0) ? (int)$data['nights'] : null,
+            'rooms'           => (trim((string)($data['rooms'] ?? '')) !== '') ? trim((string)$data['rooms']) : null,
         ], fn($v) => $v !== null && $v !== '')),
         ':source_page' => $tracking['source_page'] ?? '',
         ':referrer'    => $tracking['referrer']    ?? '',

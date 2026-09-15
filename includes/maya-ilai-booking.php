@@ -1332,7 +1332,7 @@ $mibMaxNights = 30;
       : 'Dates: not given (' + nightsWord(q.nights) + ')';
     var message = 'Maya Ilai booking request:\n' + dateLine + '\nRooms: ' + modalRooms +
       '\nAccommodation/night: ' + usd(q.nightly) + ' · Eco fee: ' + usd(q.eco) + ' · Estimated total: ' + usd(q.total) +
-      '\nDates are the guest\'s request — availability is not checked by this form.' +
+      '\nThe property will confirm and hold these dates by email.' +
       (f.note.value.trim() ? ('\n\nGuest note: ' + f.note.value.trim()) : '');
     var btn = f.querySelector('button[type=submit]'); btn.disabled = true;
     fetch(contact, {
@@ -1341,7 +1341,7 @@ $mibMaxNights = 30;
         name: f.name.value, email: f.email.value, phone: f.phone.value,
         subject: 'Maya Ilai booking request' + (dates.nights ? ' · ' + dates.ci + ' → ' + dates.co : ''),
         message: message,
-        check_in: dates.ci, check_out: dates.co, nights: dates.nights,
+        check_in: dates.ci, check_out: dates.co, nights: dates.nights, rooms: modalRooms,
         quoted_total: q.total, quoted_currency: 'USD',
         'cf-turnstile-response': ''
       })
