@@ -301,7 +301,6 @@ $mibMaxNights = 30;
   .mib-off__per{font-size:.74rem;color:var(--mib-mut);margin-top:.15rem}
   /* Fine print, deliberately quieter than the rate above it: the fee is part of
      the total but not part of the nightly rate, and the type should say so. */
-  .mib-off__eco{font-size:.66rem;color:var(--mib-mut);opacity:.75;margin-top:.1rem}
   .mib-off__disc{display:inline-block;margin-top:.3rem;font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:#2D7A5F}
   .mib-off__inc{grid-column:1/-1;list-style:none;margin:.5rem 0 0;padding:.7rem 0 0;border-top:1px solid var(--mib-line);display:flex;flex-direction:column;gap:.3rem}
   .mib-off__inc li{display:flex;justify-content:space-between;gap:1rem;font-size:.82rem;color:var(--mib-mut)}
@@ -798,16 +797,18 @@ $mibMaxNights = 30;
     var totalEl = document.getElementById('mibTotal'), perEl = document.getElementById('mibPer');
     var linesEl = document.getElementById('mibLines'), noticeEl = document.getElementById('mibNotice'), cta = document.getElementById('mibRequest');
     var hasErr = q.errors && q.errors.length;
-    totalEl.innerHTML = q.guests ? priceSpan(q.total) : '$0';
-    perEl.textContent = q.guests && !hasErr ? (priceSpanText(q.total / q.guests / q.nights) + ' per guest / night') : 'Add rooms to price your stay';
+    totalEl.innerHTML = q.guests ? priceSpan(q.accommodation) : '$0';
+    perEl.textContent = q.guests && !hasErr ? (priceSpanText(q.accommodation / q.guests / q.nights) + ' per guest / night') : 'Add rooms to price your stay';
     var disc = q.base * q.adjustment / 100;
     linesEl.innerHTML =
       row('Accommodation / night', priceSpan(q.base)) +
       (q.adjustment ? row(q.adjustmentLabel + ' (' + q.adjustment + '%)', priceSpan(disc)) : '') +
       (q.supplements ? row('Extra-guest charges / night', priceSpan(q.supplements)) : '') +
       row(q.nights + ' night' + (q.nights === 1 ? '' : 's'), priceSpan(q.nightly * q.nights)) +
-      row('Eco-Resort Fee · ' + q.guests + ' guest' + (q.guests === 1 ? '' : 's'), priceSpan(q.eco)) +
-      row('<strong>Estimated total</strong>', '<strong>' + priceSpan(q.total) + '</strong>', true);
+      // No Eco-Resort Fee row, and the footing is ACCOMMODATION. An itemised
+      // breakdown that hides a line but keeps it in the total is worse than
+      // either showing or omitting the fee — the visible rows would not add up.
+      row('<strong>Estimated total</strong>', '<strong>' + priceSpan(q.accommodation) + '</strong>', true);
     noticeEl.className = 'mib-notice' + (hasErr ? ' err' : '');
     noticeEl.innerHTML = hasErr ? q.errors.join('<br>') : ('Fits the compound · ' + q.guests + ' guest' + (q.guests === 1 ? '' : 's') + ', capacity ' + q.capacity + '.');
     cta.disabled = hasErr || !q.guests;
@@ -1105,14 +1106,13 @@ $mibMaxNights = 30;
       + '<div><h4 class="mib-off__name">' + esc(o.label) + '</h4>'
       + '<p class="mib-off__meta">For ' + q.guests + ' guest' + (q.guests === 1 ? '' : 's') + ' · ' + q.nights + ' night' + (q.nights === 1 ? '' : 's')
       + (q.capacity > q.guests ? ' · sleeps up to ' + q.capacity : '') + '</p></div>'
-      + '<div class="mib-off__money"><div class="mib-off__total">' + priceSpan(q.total) + '</div>'
-      // The nightly rate stands on its own — the Eco-Resort Fee is NOT folded into
-      // it and NOT part of the rate maths. It is per person for the whole stay, so
-      // spreading it over nights would make the "/ night" figure move with party
-      // size and length. Shown beneath as fine print; the total above still
-      // includes it, which is why it has to stay visible rather than vanish.
+      // Every figure a guest sees here is ACCOMMODATION. The Eco-Resort Fee is
+      // still calculated, still travels in the payload, and still reaches the
+      // property on the enquiry — it is simply not quoted to the guest, who is
+      // told about it by the property. So nothing on this card may be derived
+      // from q.total, which includes it.
+      + '<div class="mib-off__money"><div class="mib-off__total">' + priceSpan(q.accommodation) + '</div>'
       + '<div class="mib-off__per">' + priceSpan(q.nightly) + ' / night</div>'
-      + (q.eco ? '<div class="mib-off__eco">includes ' + priceSpan(q.eco) + ' Eco-Resort Fee</div>' : '')
       + (q.adjustment < 0 ? '<div class="mib-off__disc">' + esc(q.adjustmentLabel) + ' ' + q.adjustment + '%</div>' : '')
       + '</div>'
       + (o.why ? '<p class="mib-off__why">' + esc(o.why) + '</p>' : '')
@@ -1302,7 +1302,7 @@ $mibMaxNights = 30;
   function openRequest(q, rooms, units) {
     modalQuote = q; modalRooms = rooms; modalUnits = (units && units.length) ? units : null;
     document.getElementById('mibSummaryText').textContent =
-      rooms + ' · ' + stayLine() + ' · ' + usd(q.total) + ' total';
+      rooms + ' · ' + stayLine() + ' · ' + usd(q.accommodation) + ' total';
     document.getElementById('mibMsg').className = 'mib-msg';
     showStep(3);
   }

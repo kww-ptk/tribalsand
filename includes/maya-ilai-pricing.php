@@ -444,7 +444,14 @@ function maya_ilai_quote(array $sel, ?array $cfg = null): array {
     }
     $nightly = $adjustedBase + $supplements;
     $eco = $guests * (float)$r['ecoFee'];
-    $total = $sold ? 0.0 : $nightly*$nights + $eco;
+    // Two figures, deliberately. `accommodation` is what the rooms cost and is
+    // what every guest-facing surface shows; `total` is everything payable and is
+    // what the enquiry to the property and the ledger record. The Eco-Resort Fee
+    // is never folded into a nightly rate — it is per person for the whole stay,
+    // so spreading it over nights would make a "/ night" figure move with party
+    // size and length.
+    $accommodation = $sold ? 0.0 : $nightly * $nights;
+    $total = $sold ? 0.0 : $accommodation + $eco;
 
     // Validation mirrors the tool.
     $errors = [];
@@ -477,6 +484,7 @@ function maya_ilai_quote(array $sel, ?array $cfg = null): array {
         'guests'=>$guests,'capacity'=>$capacity,'base'=>round($base,2),'supplements'=>round($supplements,2),
         'adjustment'=>$adjustment,'adjustmentLabel'=>$adjustmentLabel,'nightly'=>round($nightly,2),
         'eco'=>round($eco,2),'total'=>round($total,2),'sold'=>$sold,'errors'=>$errors,
+        'accommodation'=>round($accommodation,2),
         'livingAllowance'=>$livingAllowance,
         // The two composed levers, exposed separately so a surface can frame them
         // honestly (a discount as a reason, scarcity as scarcity) rather than

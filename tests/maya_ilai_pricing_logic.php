@@ -1032,5 +1032,22 @@ $sh4 = mi_proportional_shares([$pk('Mystery A'), $pk('Mystery B')], 100.0, $D);
 check('split: all-zero-weight (unknown products) splits evenly and sums to total',
     eq($sh4[0], 50.0) && eq($sh4[1], 50.0) && eq(array_sum($sh4), 100.0));
 
+/* ───────────── The Eco-Resort Fee is not part of what a guest is quoted ────── */
+
+$fee = maya_ilai_quote(['qtyDouble' => 1, 'guestDouble' => 2, 'nights' => 3,
+                        'program' => 'none'], $D);
+check('accommodation excludes the Eco-Resort Fee',
+      eq((float)$fee['accommodation'], (float)$fee['nightly'] * 3));
+check('total is accommodation plus the fee — the property still collects it',
+      eq((float)$fee['total'], (float)$fee['accommodation'] + (float)$fee['eco']));
+check('the fee is per guest for the whole stay, not per night',
+      eq((float)$fee['eco'], 2 * (float)$D['rules']['ecoFee']));
+check('a longer stay does not multiply the fee',
+      eq((float)maya_ilai_quote(['qtyDouble' => 1, 'guestDouble' => 2, 'nights' => 9,
+                                 'program' => 'none'], $D)['eco'], (float)$fee['eco']));
+check('a sold-out band quotes nothing, not a fee-only stay',
+      eq((float)maya_ilai_quote(['qtyDouble' => 1, 'guestDouble' => 2, 'nights' => 3,
+                                 'program' => 'availability', 'availableUnits' => 0], $D)['accommodation'], 0.0));
+
 echo ($failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n");
 exit($failures ? 1 : 0);
