@@ -8,6 +8,8 @@ declare(strict_types=1);
  *   · Website — bookings_sync_hold() snapshots a confirmed hold's gross at confirm
  *     time (rate map × nights, frozen), so a later rate edit never rewrites a
  *     historical figure. Idempotent per hold (upsert on hold_id).
+ *     A hold requested through the trade portal (holds.agent_id) books as
+ *     source = 'agent' with the agency named, at its frozen net (quoted_amount).
  *   · Import — bookings_import_upsert() writes a row alongside the availability
  *     block the Ezee importer creates, carrying the amount staff entered in the
  *     preview. Idempotent per block (upsert on block_id).
@@ -102,14 +104,20 @@ function bookings_sync_hold(int $holdId): void {
     // booking freezes each room's share of the configurator total, which the
     // rooms/rates card does not know about). Read it only where the column exists.
     $qaCols = holds_quoted_amount_supported() ? 'h.quoted_amount, h.quoted_currency,' : '';
+    // A hold requested through the trade portal is an AGENT booking. Read the link
+    // (and the agency, for the report label) only where the column exists.
+    $agOn   = holds_agent_supported();
+    $agCols = $agOn ? 'h.agent_id, ta.name AS agent_name, ta.agency AS agent_agency,' : '';
+    $agJoin = $agOn ? 'LEFT JOIN travel_agents ta ON ta.id = h.agent_id' : '';
     $h = db_query(
         "SELECT h.id, h.check_in, h.check_out, h.guest_name, h.guest_email, h.status,
-                {$qaCols}
+                {$qaCols} {$agCols}
                 u.id AS unit_id, r.id AS room_id, r.venue_id,
                 r.price_amount, r.price_currency
          FROM holds h
          JOIN units u ON u.id = h.unit_id
          JOIN rooms r ON r.id = " . hold_room_id_sql('h', 'u') . "
+         {$agJoin}
          WHERE h.id = :id",
         [':id' => $holdId]
     )->fetch();
@@ -162,12 +170,20 @@ function bookings_sync_hold(int $holdId): void {
 
         db_query($sql, $args);
     } else {
+        // Trade-portal holds are 'agent' bookings — the source the reports split on,
+        // with the agency named beside them. Their gross is the frozen quoted_amount
+        // above: the net figure the agent actually pays, never the rack rate.
+        $isAgent  = !empty($h['agent_id']);
+        $agentTag = $isAgent
+            ? (trim((string)($h['agent_agency'] ?? '')) ?: trim((string)($h['agent_name'] ?? '')))
+            : '';
         db_query(
-            "INSERT INTO bookings (venue_id, room_id, unit_id, source, guest_name, guest_email,
+            "INSERT INTO bookings (venue_id, room_id, unit_id, source, guest_name, guest_email, agent,
                     check_in, check_out, nights, gross_amount, currency, status, hold_id)
-             VALUES (:v,:r,:u,'website',:gn,:ge,:ci,:co,:n,:g,:cur,:st,:h)",
-            [':v'=>$h['venue_id'], ':r'=>$h['room_id'], ':u'=>$h['unit_id'], ':gn'=>$h['guest_name'],
-             ':ge'=>$h['guest_email'], ':ci'=>$h['check_in'], ':co'=>$h['check_out'], ':n'=>$q['nights'],
+             VALUES (:v,:r,:u,:src,:gn,:ge,:ag,:ci,:co,:n,:g,:cur,:st,:h)",
+            [':v'=>$h['venue_id'], ':r'=>$h['room_id'], ':u'=>$h['unit_id'], ':src'=>$isAgent ? 'agent' : 'website',
+             ':gn'=>$h['guest_name'], ':ge'=>$h['guest_email'], ':ag'=>$agentTag,
+             ':ci'=>$h['check_in'], ':co'=>$h['check_out'], ':n'=>$q['nights'],
              ':g'=>$gross, ':cur'=>$currency, ':st'=>$status, ':h'=>$holdId]
         );
     }
