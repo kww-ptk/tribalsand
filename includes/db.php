@@ -916,6 +916,25 @@ function holds_quoted_amount_supported(): bool {
 }
 
 /**
+ * True once holds.agent_id exists (migration: add_holds_agent.sql) — the link
+ * from a hold to the travel agent who requested it through the trade portal.
+ * Memoised, catalog lookup — first reached inside the trade-portal booking
+ * transaction, so it must never be a failing SELECT that would abort it.
+ */
+function holds_agent_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try {
+        $ok = (bool) db_query(
+            "SELECT 1 FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'holds'
+                AND column_name = 'agent_id'"
+        )->fetchColumn();
+    } catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/**
  * True once availability_blocks.components exists (migration:
  * add_maya_ilai_components.sql). Memoised.
  *

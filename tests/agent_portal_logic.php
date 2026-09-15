@@ -45,6 +45,8 @@ if ($hasDb) {
         if (!agents_supported()) {
             echo "SKIP  travel_agents table absent — run add_travel_agents.sql\n";
         } else {
+            check('db: holds.agent_id probe agrees with information_schema',
+                holds_agent_supported() === (bool) db_query("SELECT 1 FROM information_schema.columns WHERE table_name='holds' AND column_name='agent_id'")->fetchColumn());
             db_query(
                 "INSERT INTO travel_agents (name, agency, email, password_hash, discount_pct, venue_discounts)
                  VALUES ('ZZ Test Agent','ZZ Agency','zz-agent@example.com',:h,12.5,'{\"999\":20}')",
