@@ -13,6 +13,7 @@
  */
 declare(strict_types=1);
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/maya-ilai-inventory.php';   // mi_can_place_products() — the live-availability oracle
 
 const MAYA_ILAI_VENUE_ID   = 6;               // venues.id for Maya Ilai
 const MAYA_ILAI_SETTING_KEY = 'maya_ilai_pricing';
@@ -941,6 +942,36 @@ function maya_ilai_offer_photos(array $offer, ?array $cfg = null): array {
 }
 
 /**
+ * The live inventory a candidate configuration would consume, in the vocabulary
+ * mi_can_place_products() speaks: a list of villa-consuming product room-slugs
+ * (one entry per unit) plus a studio count.
+ *
+ * This is the one place the pricing tool's product NAMES meet the composite
+ * inventory's room SLUGS — maya_ilai_room_slugs() already owns that map, and each
+ * villa-consuming slug it yields is a key of mi_product_map(). The studio is the
+ * only product that is not a villa slice, so it is split out to be counted. A
+ * product with no known slug is skipped (it cannot be placed, so a candidate
+ * carrying one is dropped by the caller).
+ *
+ * @param array<int,array{product:array,qty:int}> $picks
+ * @return array{villaSlugs:string[],studios:int}
+ */
+function maya_ilai_offer_demand(array $picks): array {
+    $slugs = maya_ilai_room_slugs();          // product key => rooms.slug
+    $villaSlugs = []; $studios = 0;
+    foreach ($picks as $pick) {
+        $key = (string)($pick['product']['key'] ?? '');
+        $qty = max(0, (int)($pick['qty'] ?? 0));
+        if ($qty < 1) continue;
+        $slug = $slugs[$key] ?? null;
+        if ($slug === null) continue;
+        if ($slug === 'maya-ilai-studio') { $studios += $qty; continue; }
+        for ($i = 0; $i < $qty; $i++) $villaSlugs[] = $slug;
+    }
+    return ['villaSlugs' => $villaSlugs, 'studios' => $studios];
+}
+
+/**
  * Configurations that sleep $guests, whole stays first.
  *
  * The search is a bounded depth-first enumeration of product multisets. Three
@@ -961,9 +992,17 @@ function maya_ilai_offer_photos(array $offer, ?array $cfg = null): array {
  * suggestion is bookable by construction. The ranking below only ever REORDERS
  * that set — it can never introduce a stay the quote has not already accepted.
  *
+ * $live, when given, is a live-availability snapshot (mi_live_availability()):
+ * ['villaStates'=>…, 'freeStudios'=>int, 'reserved'=>int]. Every candidate is
+ * then checked against the REAL calendar with mi_can_place_products() and dropped
+ * if it cannot be booked for the dates — BEFORE ranking, de-duplication and the
+ * limit, so the lead/cheapest are chosen only among genuinely bookable stays.
+ * Omit it (null) to search the static inventory as before (its prior behaviour,
+ * and the shape the pre-migration path and the unit tests still rely on).
+ *
  * @return array<int,array{sel:array,quote:array,label:string,units:array,badge:string,tag:string,why:string}>
  */
-function maya_ilai_suggest(int $guests, int $nights, ?array $cfg = null, int $limit = 5): array {
+function maya_ilai_suggest(int $guests, int $nights, ?array $cfg = null, int $limit = 5, ?array $live = null): array {
     $cfg    = $cfg ?: maya_ilai_pricing_get();
     $guests = max(1, $guests);
     $nights = max(1, $nights);
@@ -1033,6 +1072,23 @@ function maya_ilai_suggest(int $guests, int $nights, ?array $cfg = null, int $li
         $quote = maya_ilai_quote($sel, $cfg);
         if ($quote['errors']) continue;                      // not bookable → not an offer
         if ((int)$quote['guests'] !== $guests) continue;      // paranoia: the party must be seated
+
+        // Live calendar check. A configuration the static rules accept may still
+        // be unbookable for these dates (a villa already holds a booking, its one
+        // living room is gone). mi_can_place_products() replays the real
+        // allocation against the live occupancy snapshot, so a stay we offer can
+        // actually be held. Skipped entirely when no snapshot was supplied.
+        if ($live !== null) {
+            $demand = maya_ilai_offer_demand($picks);
+            if (!mi_can_place_products(
+                    $live['villaStates'] ?? [],
+                    $demand['villaSlugs'],
+                    $demand['studios'],
+                    (int)($live['freeStudios'] ?? 0),
+                    (int)($live['reserved'] ?? 0))) {
+                continue;                                    // not bookable for these dates
+            }
+        }
 
         $units = [];
         foreach ($picks as $i => $pick) {

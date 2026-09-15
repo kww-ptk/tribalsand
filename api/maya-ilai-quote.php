@@ -60,13 +60,30 @@ if (($data['mode'] ?? '') === 'suggest') {
         http_response_code(422);
         exit(json_encode(['ok'=>false, 'error'=>'Stays run from 1 to 30 nights.']));
     }
+    // Live calendar check: only offer configurations that can ACTUALLY be booked
+    // for these dates (a villa's one living room may already be gone). Dates are
+    // optional and validated inside mi_live_availability(); when absent, invalid,
+    // or on a pre-migration DB it returns supported=false and the search runs
+    // unfiltered — its prior behaviour. The band-pricing wiring lands separately;
+    // this commit only makes the suggestions honest about availability.
+    $live = null;
+    $ci = isset($data['check_in'])  ? (string)$data['check_in']  : '';
+    $co = isset($data['check_out']) ? (string)$data['check_out'] : '';
+    if ($ci !== '' && $co !== '') {
+        $maybe = mi_live_availability($ci, $co);
+        if (!empty($maybe['supported'])) $live = $maybe;
+    }
+
     echo json_encode([
         'ok'          => true,
         'guests'      => $guests,
         'nights'      => $nights,
         'maxGuests'   => $maxParty,
         'minNights'   => (int)$cfg['rules']['minNights'],
-        'suggestions' => maya_ilai_suggest($guests, $nights, $cfg, max(1, min(8, (int)($data['limit'] ?? 5)))),
+        'checked'     => $live !== null,                       // did we consult the calendar?
+        'freeVillas'  => $live['freeVillas']  ?? null,
+        'freeStudios' => $live['freeStudios'] ?? null,
+        'suggestions' => maya_ilai_suggest($guests, $nights, $cfg, max(1, min(8, (int)($data['limit'] ?? 5))), $live),
     ]);
     exit;
 }

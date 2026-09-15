@@ -899,5 +899,48 @@ if ($photoTx) {
     check('the renamed room was rolled back too', $renamed === 0);
 }
 
+// ── Offer → live-inventory demand translation (pure) ────────────────────────
+// maya_ilai_offer_demand() maps the pricing tool's product NAMES onto the
+// inventory's room SLUGS (studios split out to be counted), so the live
+// availability oracle can be asked whether an offer is bookable.
+$demand = maya_ilai_offer_demand([
+    ['product' => ['key' => 'Three-Bedroom Villa'], 'qty' => 1],
+    ['product' => ['key' => 'Studio'], 'qty' => 2],
+    ['product' => ['key' => 'One-Bedroom Suite'], 'qty' => 1],
+]);
+check('demand: villa + one-bed-suite become villa slugs, 2 studios counted',
+    $demand === ['villaSlugs' => ['maya-ilai-villa', 'maya-ilai-one-bed-suite'], 'studios' => 2]);
+check('demand: an unknown product key is dropped',
+    maya_ilai_offer_demand([['product' => ['key' => 'Mystery Room'], 'qty' => 3]])
+        === ['villaSlugs' => [], 'studios' => 0]);
+
+// ── Live-availability filtering in the suggestion search (pure) ─────────────
+// With a live snapshot, maya_ilai_suggest() drops any configuration that cannot
+// actually be booked for the dates — BEFORE ranking and the limit.
+$allFull = ['villaStates' => [], 'freeStudios' => 0, 'reserved' => 0];
+for ($i = 0; $i < 8; $i++) {
+    $allFull['villaStates'][] = ['unit_id' => 200 + $i, 'sort_order' => $i + 1, 'taken' => MAYA_ILAI_ALL_COMPONENTS];
+}
+check('suggest+live: a fully-booked compound offers nothing',
+    maya_ilai_suggest(2, 3, $D, 5, $allFull) === []);
+
+// One empty villa, no studios free: a couple still gets a villa-based stay, but
+// no offer may consume a studio that is not there.
+$oneVilla = ['villaStates' => [['unit_id' => 300, 'sort_order' => 1, 'taken' => []]],
+             'freeStudios' => 0, 'reserved' => 0];
+$sugsOneVilla = maya_ilai_suggest(2, 3, $D, 8, $oneVilla);
+check('suggest+live: one free villa still yields a bookable stay for a couple',
+    count($sugsOneVilla) >= 1);
+$consumesStudio = false;
+foreach ($sugsOneVilla as $s) {
+    $d = maya_ilai_offer_demand(array_map(
+        fn($u) => ['product' => ['key' => $u['key']], 'qty' => $u['qty']], $s['units']));
+    if ($d['studios'] > 0) { $consumesStudio = true; break; }
+}
+check('suggest+live: no offer consumes a studio when none are free', $consumesStudio === false);
+
+check('suggest: with no snapshot the search is unfiltered, as before',
+    count(maya_ilai_suggest(2, 3, $D, 8)) >= 1);
+
 echo ($failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n");
 exit($failures ? 1 : 0);

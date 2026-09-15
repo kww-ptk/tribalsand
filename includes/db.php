@@ -627,6 +627,67 @@ function mi_villa_states(int $villaRoomId, string $check_in, string $check_out):
 }
 
 /**
+ * A live Maya Ilai availability snapshot for a date range, for the guest
+ * configurator (and the availability-pricing band).
+ *
+ * Built from the SAME composite-inventory reader the live allocator uses
+ * (mi_villa_states), so "one living room per villa" and every staff-entered or
+ * OTA-imported block are honoured against the real calendar — not the static
+ * inventory settings the pricing tool ships with.
+ *
+ *   supported   — false pre-migration, or when the villa room is absent; callers
+ *                 then skip filtering rather than mis-report "sold out".
+ *   freeVillas  — villas with ALL four components free across the span (the clean
+ *                 occupancy signal the availability pricing band keys on).
+ *   totalVillas — the active villa count (the band's upper bound).
+ *   freeStudios — free studio units across the span.
+ *   villaStates — per-villa taken components; mi_can_place_products() consumes it.
+ *   reserved    — the ring-fenced villa count (maya_ilai_reserved_villas), clamped.
+ *
+ * Never throws: any environment where the composite layer is not live returns
+ * supported=false and the caller falls back to the unfiltered search.
+ */
+function mi_live_availability(string $check_in, string $check_out): array {
+    require_once __DIR__ . '/rates.php';   // rates_window_ymd()
+    $none = ['supported'=>false,'freeVillas'=>0,'totalVillas'=>0,'freeStudios'=>0,'villaStates'=>[],'reserved'=>0];
+
+    $ci = rates_window_ymd($check_in);
+    $co = rates_window_ymd($check_out);
+    if ($ci === null || $co === null || $ci >= $co) return $none;
+
+    $villaRoomId = (int) db_query(
+        'SELECT id FROM rooms WHERE slug = :s', [':s' => MAYA_ILAI_VILLA_ROOM_SLUG]
+    )->fetchColumn();
+    if (!$villaRoomId) return $none;
+
+    // Freshest inventory, once for this request — the allocator's callers sweep
+    // the same way. mi_villa_states() itself is already pre-migration-safe.
+    expire_stale_holds();
+
+    $states = mi_villa_states($villaRoomId, $ci, $co);
+    if (!$states) return $none;
+
+    $freeVillas = 0;
+    foreach ($states as $s) { if (empty($s['taken'])) $freeVillas++; }
+
+    $studioRoomId = (int) db_query(
+        'SELECT id FROM rooms WHERE slug = :s', [':s' => 'maya-ilai-studio']
+    )->fetchColumn();
+    $freeStudios = $studioRoomId ? count_available_units($studioRoomId, $ci, $co) : 0;
+
+    $reserved = max(0, min(count($states), (int) setting('maya_ilai_reserved_villas', '2')));
+
+    return [
+        'supported'   => true,
+        'freeVillas'  => $freeVillas,
+        'totalVillas' => count($states),
+        'freeStudios' => $freeStudios,
+        'villaStates' => array_values($states),
+        'reserved'    => $reserved,
+    ];
+}
+
+/**
  * Allocate a villa for a Maya Ilai composite product.
  *
  * Returns the chosen unit row with the resolved component list under

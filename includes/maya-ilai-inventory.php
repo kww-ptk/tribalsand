@@ -200,3 +200,81 @@ function mi_order_villas(array $villas, bool $isVillaProduct, int $reserved): ar
         return $v;
     }, $out);
 }
+
+/**
+ * Can a WHOLE configuration of composite products be booked against a snapshot
+ * of live villa occupancy?
+ *
+ * This is the availability oracle behind the guest configurator. It answers "do
+ * these dates actually have room for this stay" WITHOUT duplicating the packing
+ * rules — it composes the very primitives the live allocator uses one hold at a
+ * time (mi_order_villas() + mi_resolve()), placing each product in turn against a
+ * MUTABLE copy of the villa states. The file has been bitten twice by a second
+ * copy of a rule; this is deliberately not a third.
+ *
+ * $villaStates: the COMPLETE villa set, each ['unit_id','sort_order','taken'] —
+ *   exactly the shape mi_villa_states() returns (and mi_order_villas() consumes).
+ *   It must be the whole property: the ring-fencing total is derived from its
+ *   size, so a filtered subset cannot be reasoned about correctly.
+ * $villaProductSlugs: one entry per villa-consuming product to place (a product
+ *   booked twice appears twice), each a key of mi_product_map(). The studio is
+ *   NOT here — it is an ordinary independent unit, counted below.
+ * $studioDemand / $studioFree: studios are counted, not packed.
+ * $reserved: the maya_ilai_reserved_villas setting (ring-fenced villas).
+ *
+ * Backtracks over villa choices, so a feasible arrangement is never missed — the
+ * inputs are tiny (<=8 villas, a handful of products). A `true` is always
+ * genuine: every placement went through mi_resolve(), the one component
+ * authority, so it can never claim a stay is bookable when it is not. A closed
+ * vocabulary or an unknown product slug fails closed (returns false), never
+ * "fits, consumes nothing".
+ */
+function mi_can_place_products(
+    array $villaStates,
+    array $villaProductSlugs,
+    int $studioDemand,
+    int $studioFree,
+    int $reserved
+): bool {
+    if ($studioDemand > max(0, $studioFree)) return false;
+    if (!$villaProductSlugs) return true;
+
+    // Normalise to a unit_id-keyed map we can mutate as products are placed.
+    $keyed = [];
+    foreach ($villaStates as $s) {
+        $uid = (int)($s['unit_id'] ?? 0);
+        if ($uid <= 0) continue;
+        $keyed[$uid] = [
+            'unit_id'    => $uid,
+            'sort_order' => (int)($s['sort_order'] ?? 0),
+            'taken'      => array_values($s['taken'] ?? []),
+        ];
+    }
+    if (!$keyed) return false;
+
+    $map = mi_product_map();
+
+    $place = function (array $states, array $slugs) use (&$place, $map, $reserved): bool {
+        if (!$slugs) return true;
+        $slug    = array_shift($slugs);
+        $pattern = $map[$slug] ?? null;
+        if ($pattern === null) return false;                 // unknown product — cannot place
+        $isVilla = ($slug === MAYA_ILAI_VILLA_ROOM_SLUG);
+        // mi_order_villas() excludes ring-fenced villas for component products and
+        // prefers them for the whole villa — the same rule the live allocator uses.
+        $ordered = mi_order_villas(array_values($states), $isVilla, $reserved);
+        foreach ($ordered as $villa) {
+            $resolved = mi_resolve($pattern, $villa['taken']);
+            if ($resolved === null) continue;
+            $uid  = (int)$villa['unit_id'];
+            $next = $states;
+            $next[$uid]['taken'] = array_values(array_unique(
+                array_merge($next[$uid]['taken'], $resolved)
+            ));
+            if ($place($next, $slugs)) return true;           // backtrack on failure
+        }
+        return false;
+    };
+
+    return $place($keyed, array_values($villaProductSlugs));
+}

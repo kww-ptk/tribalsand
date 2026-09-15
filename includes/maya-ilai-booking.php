@@ -469,7 +469,7 @@ $mibMaxNights = 30;
     <p class="mib-minnote" id="mibMinNote1" hidden></p>
 
     <button type="button" class="mib-cta mib-party__go" id="mibPGo" disabled>Show what fits</button>
-    <p class="mib-party__fine">Prices in USD, for the whole stay. The property confirms availability and holds your dates — you are not charged now, and these dates are not checked against the calendar until we reply. Group discounts apply automatically for larger parties (min <?= (int)$mibRules['minNights'] ?> nights).</p>
+    <p class="mib-party__fine">Prices in USD, for the whole stay. We check these dates against the live calendar, so you only see stays we can actually hold — you are not charged now, and the property confirms and holds your dates when you send your request. Group discounts apply automatically for larger parties (min <?= (int)$mibRules['minNights'] ?> nights).</p>
   </section>
 
   <!-- ── Step 2 ─────────────────────────────────────────────────────────── -->
@@ -1165,7 +1165,8 @@ $mibMaxNights = 30;
     searchTimer = setTimeout(function () {
       fetch(endpoint, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ mode: 'suggest', guests: party.guests, nights: dates.nights, limit: 5 })
+        body: JSON.stringify({ mode: 'suggest', guests: party.guests, nights: dates.nights,
+                               check_in: dates.ci, check_out: dates.co, limit: 5 })
       })
         .then(function (r) { return r.json(); })
         .then(function (d) {
@@ -1176,8 +1177,22 @@ $mibMaxNights = 30;
           }
           offers = d.suggestions || [];
           if (!offers.length) {
-            offersEl.innerHTML = '<div class="mib-offers__msg">That is a bigger party than the compound sleeps in one go. '
-              + 'Open the full picker below, or send us a note — we have put larger groups together before.</div>';
+            // With a live calendar check (d.checked), an empty result means these
+            // dates cannot seat this party — distinct from a party bigger than the
+            // compound could ever sleep. Say which, so the guest knows whether to
+            // change the party or the dates.
+            var msg;
+            if (d.checked && (d.freeVillas === 0 && d.freeStudios === 0)) {
+              msg = 'We are fully booked for these dates. Try different dates, or send us a note — '
+                  + 'we sometimes have movement on the calendar.';
+            } else if (d.checked) {
+              msg = 'We do not have space for ' + party.guests + ' guest' + (party.guests === 1 ? '' : 's')
+                  + ' on these dates. Try shorter or different dates, open the full picker below, or send us a note.';
+            } else {
+              msg = 'That is a bigger party than the compound sleeps in one go. '
+                  + 'Open the full picker below, or send us a note — we have put larger groups together before.';
+            }
+            offersEl.innerHTML = '<div class="mib-offers__msg">' + msg + '</div>';
             return;
           }
           offersEl.innerHTML = offers.map(offerCard).join('');
