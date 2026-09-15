@@ -98,8 +98,13 @@ function bookings_sync_hold(int $holdId): void {
     // through u.room_id priced every one of them at the villa's nightly rate —
     // a $150 bunk room snapshotted into the ledger at $1,170 a night — and filed
     // it under the villa in the by-property/by-room reports. See hold_room_id_sql().
+    // A hold MAY carry an authoritative quoted price (a Maya Ilai multi-room
+    // booking freezes each room's share of the configurator total, which the
+    // rooms/rates card does not know about). Read it only where the column exists.
+    $qaCols = holds_quoted_amount_supported() ? 'h.quoted_amount, h.quoted_currency,' : '';
     $h = db_query(
         "SELECT h.id, h.check_in, h.check_out, h.guest_name, h.guest_email, h.status,
+                {$qaCols}
                 u.id AS unit_id, r.id AS room_id, r.venue_id,
                 r.price_amount, r.price_currency
          FROM holds h
@@ -113,6 +118,16 @@ function bookings_sync_hold(int $holdId): void {
     $q = room_stay_quote((int)$h['room_id'], (float)$h['price_amount'], (string)$h['check_in'], (string)$h['check_out']);
     $status   = $h['status'] === 'confirmed' ? 'confirmed' : ($h['status'] === 'cancelled' ? 'cancelled' : 'pending');
     $currency = strtoupper(trim((string)($h['price_currency'] ?? 'USD'))) ?: 'USD';
+
+    // Freeze the stored quote when one is set (> 0) — that IS the number the guest
+    // was quoted and will pay. Nights stay date-derived (always correct). Falls
+    // straight through to the rate-card quote for every ordinary hold.
+    $gross = (float)$q['total'];
+    if (isset($h['quoted_amount']) && $h['quoted_amount'] !== null && (float)$h['quoted_amount'] > 0) {
+        $gross = round((float)$h['quoted_amount'], 2);
+        $qc = strtoupper(trim((string)($h['quoted_currency'] ?? '')));
+        if ($qc !== '') $currency = $qc;
+    }
 
     $existing = db_query(
         'SELECT id, source, block_id FROM bookings WHERE hold_id = :h', [':h' => $holdId]
@@ -143,7 +158,7 @@ function bookings_sync_hold(int $holdId): void {
         $args = [':v'=>$h['venue_id'], ':u'=>$h['unit_id'], ':gn'=>$h['guest_name'],
                  ':ge'=>$h['guest_email'], ':ci'=>$h['check_in'], ':co'=>$h['check_out'],
                  ':n'=>$q['nights'], ':st'=>$status, ':id'=>$existing['id']];
-        if (!$imported) { $args[':r'] = $h['room_id']; $args[':g'] = $q['total']; $args[':cur'] = $currency; }
+        if (!$imported) { $args[':r'] = $h['room_id']; $args[':g'] = $gross; $args[':cur'] = $currency; }
 
         db_query($sql, $args);
     } else {
@@ -153,7 +168,7 @@ function bookings_sync_hold(int $holdId): void {
              VALUES (:v,:r,:u,'website',:gn,:ge,:ci,:co,:n,:g,:cur,:st,:h)",
             [':v'=>$h['venue_id'], ':r'=>$h['room_id'], ':u'=>$h['unit_id'], ':gn'=>$h['guest_name'],
              ':ge'=>$h['guest_email'], ':ci'=>$h['check_in'], ':co'=>$h['check_out'], ':n'=>$q['nights'],
-             ':g'=>$q['total'], ':cur'=>$currency, ':st'=>$status, ':h'=>$holdId]
+             ':g'=>$gross, ':cur'=>$currency, ':st'=>$status, ':h'=>$holdId]
         );
     }
 }

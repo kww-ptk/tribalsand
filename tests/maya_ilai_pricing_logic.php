@@ -1011,5 +1011,26 @@ check('band: an unmatched count fails safe to reference rate, not sold out',
 check('band: the explicit 0-free row is still sold out',
     (int)maya_ilai_availability_band($D, 0)['max'] === 0);
 
+// ── Proportional ledger split for a multi-room booking (pure) ───────────────
+// mi_proportional_shares() splits one quoted total across rooms by base rate,
+// and the shares must sum EXACTLY to the total (money reconciles).
+$pk = fn(string $key, int $qty = 1) => ['product' => ['key' => $key], 'qty' => $qty];
+
+$sh = mi_proportional_shares([$pk('Three-Bedroom Villa'), $pk('Studio')], 1000.0, $D);
+check('split: villa vs studio 1170:390 of 1000 → 750 / 250',
+    eq($sh[0], 750.0) && eq($sh[1], 250.0));
+
+$sh2 = mi_proportional_shares([$pk('Double Room', 2), $pk('Studio')], 1234.56, $D);
+check('split: shares sum exactly to the total (rounding reconciled)',
+    eq(array_sum($sh2), 1234.56) && $sh2[0] > 0 && $sh2[1] > 0);
+
+$sh3 = mi_proportional_shares([$pk('Three-Bedroom Villa')], 999.99, $D);
+check('split: a single room takes the whole total',
+    eq($sh3[0], 999.99));
+
+$sh4 = mi_proportional_shares([$pk('Mystery A'), $pk('Mystery B')], 100.0, $D);
+check('split: all-zero-weight (unknown products) splits evenly and sums to total',
+    eq($sh4[0], 50.0) && eq($sh4[1], 50.0) && eq(array_sum($sh4), 100.0));
+
 echo ($failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n");
 exit($failures ? 1 : 0);

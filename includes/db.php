@@ -898,6 +898,24 @@ function holds_room_id_supported(): bool {
 }
 
 /**
+ * True once holds.quoted_amount exists (migration: add_holds_quoted_amount.sql).
+ * Memoised, catalog lookup — reached from inside a transaction (the multi-room
+ * booking), so it must never be a failing SELECT that would abort it.
+ */
+function holds_quoted_amount_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try {
+        $ok = (bool) db_query(
+            "SELECT 1 FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'holds'
+                AND column_name = 'quoted_amount'"
+        )->fetchColumn();
+    } catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/**
  * True once availability_blocks.components exists (migration:
  * add_maya_ilai_components.sql). Memoised.
  *
