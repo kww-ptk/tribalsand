@@ -9,7 +9,7 @@ require_once __DIR__ . '/../includes/agent.php';
 session_init();
 
 // Already signed in → straight to the rates.
-if (agent_current()) { header('Location: /agent/rates.php'); exit; }
+if (agent_current()) { header('Location: /agent/availability.php'); exit; }
 
 $error = '';
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -23,7 +23,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif (is_rate_limited(strtolower($email), client_ip())) {
             $error = 'Too many failed attempts. Please wait 10 minutes and try again.';
         } elseif (agent_login($email, $password, client_ip())) {
-            header('Location: /agent/rates.php');
+            header('Location: /agent/availability.php');
             exit;
         } else {
             $error = 'Invalid email or password, or the account is inactive.';
@@ -36,7 +36,7 @@ include __DIR__ . '/_layout.php';
 ?>
 <div class="ap-login">
   <h1>Travel trade portal</h1>
-  <p class="ap-sub">Sign in to view your agreed rates across all Tribal Sand properties.</p>
+  <p class="ap-sub">Sign in to check live availability, see your agreed rates and request bookings across all Tribal Sand properties.</p>
 
   <?php if ($error): ?><div class="alert alert-error"><?= e($error) ?></div><?php endif; ?>
 

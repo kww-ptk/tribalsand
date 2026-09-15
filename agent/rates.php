@@ -17,10 +17,11 @@ $agent = agent_current();
 $venues = db_query('SELECT id, name FROM venues WHERE is_published = TRUE ORDER BY sort_order ASC, name ASC')->fetchAll();
 
 $agentPageTitle = 'Your rates';
+$agentActive    = 'rates';
 include __DIR__ . '/_layout.php';
 ?>
 <h1>Your rates</h1>
-<p class="ap-sub">Nightly rates from, across every property. Your agreed discount is already applied — availability is confirmed when you book.</p>
+<p class="ap-sub">Nightly rates from, across every property, with your agreed discount already applied. <a href="/agent/availability.php">Check live availability for your dates →</a></p>
 
 <?php foreach ($venues as $v):
     $vid  = (int)$v['id'];
