@@ -120,11 +120,11 @@ include __DIR__ . '/_layout.php';
     <form method="POST" action="/admin/agents.php">
       <?= csrf_field() ?><input type="hidden" name="action" value="add">
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">
-        <div class="field"><label>Name</label><input name="name" required></div>
-        <div class="field"><label>Agency</label><input name="agency"></div>
-        <div class="field"><label>Email</label><input type="email" name="email" required></div>
-        <div class="field"><label>Password (min 8)</label><input type="text" name="password" required></div>
-        <div class="field"><label>Discount %</label><input type="number" name="discount_pct" min="0" max="100" step="0.5" value="10"></div>
+        <div class="field"><label for="agName">Name</label><input id="agName" name="name" class="inp" required placeholder="Full name" style="width:100%"></div>
+        <div class="field"><label for="agAgency">Agency</label><input id="agAgency" name="agency" class="inp" placeholder="e.g. Safari Travel Co." style="width:100%"></div>
+        <div class="field"><label for="agEmail">Email</label><input id="agEmail" type="email" name="email" class="inp" required placeholder="agent@agency.com" style="width:100%"></div>
+        <div class="field"><label for="agPass">Password (min 8)</label><input id="agPass" type="text" name="password" class="inp" required placeholder="At least 8 characters" style="width:100%"></div>
+        <div class="field"><label for="agDisc">Discount %</label><input id="agDisc" type="number" name="discount_pct" class="inp" min="0" max="100" step="0.5" value="10" style="width:100%"></div>
       </div>
       <button type="submit" class="btn-primary btn-sm" style="margin-top:10px">Add agent</button>
     </form>
@@ -148,7 +148,7 @@ include __DIR__ . '/_layout.php';
           <td>
             <form method="POST" action="/admin/agents.php" style="display:flex;gap:6px;align-items:center">
               <?= csrf_field() ?><input type="hidden" name="action" value="set_discount"><input type="hidden" name="id" value="<?= $id ?>">
-              <input type="number" name="discount_pct" min="0" max="100" step="0.5" value="<?= e(rtrim(rtrim(number_format((float)$a['discount_pct'], 2), '0'), '.')) ?>" style="width:74px">%
+              <input type="number" name="discount_pct" class="inp" min="0" max="100" step="0.5" value="<?= e(rtrim(rtrim(number_format((float)$a['discount_pct'], 2), '0'), '.')) ?>" style="width:74px">%
               <button class="btn-icon btn-icon--outline" title="Save discount" aria-label="Save discount"><?= admin_icon('check') ?></button>
             </form>
           </td>
@@ -157,7 +157,7 @@ include __DIR__ . '/_layout.php';
           <td>
             <div class="row-actions" style="flex-wrap:wrap;gap:6px">
               <form method="POST" action="/admin/agents.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="toggle_active"><input type="hidden" name="id" value="<?= $id ?>"><button class="btn-icon btn-icon--outline" title="<?= $a['is_active'] ? 'Deactivate' : 'Activate' ?>" aria-label="Toggle active"><?= admin_icon($a['is_active'] ? 'x' : 'check') ?></button></form>
-              <form method="POST" action="/admin/agents.php" style="display:flex;gap:4px;align-items:center"><?= csrf_field() ?><input type="hidden" name="action" value="reset_password"><input type="hidden" name="id" value="<?= $id ?>"><input type="text" name="password" placeholder="New password" style="width:120px"><button class="btn-icon btn-icon--outline" title="Reset password" aria-label="Reset password"><?= admin_icon('check') ?></button></form>
+              <form method="POST" action="/admin/agents.php" style="display:flex;gap:4px;align-items:center"><?= csrf_field() ?><input type="hidden" name="action" value="reset_password"><input type="hidden" name="id" value="<?= $id ?>"><input type="text" name="password" class="inp" placeholder="New password" style="width:120px"><button class="btn-icon btn-icon--outline" title="Reset password" aria-label="Reset password"><?= admin_icon('check') ?></button></form>
               <form method="POST" action="/admin/agents.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= $id ?>"><button class="btn-icon btn-icon--danger" title="Delete agent" aria-label="Delete agent" data-confirm="Delete <?= e($a['name']) ?>? This cannot be undone."><?= admin_icon('trash') ?></button></form>
             </div>
           </td>
@@ -180,7 +180,7 @@ include __DIR__ . '/_layout.php';
                 <?= csrf_field() ?><input type="hidden" name="action" value="set_venue_discounts"><input type="hidden" name="id" value="<?= $id ?>">
                 <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:10px">
                   <?php foreach ($venuesAll as $v): $vid=(int)$v['id']; $cur = isset($ov[(string)$vid]) && is_numeric($ov[(string)$vid]) ? rtrim(rtrim(number_format((float)$ov[(string)$vid],2),'0'),'.') : ''; ?>
-                  <label style="display:flex;align-items:center;gap:6px;font-size:13px"><span style="flex:1"><?= e($v['name']) ?></span><input type="number" name="venue_pct[<?= $vid ?>]" min="0" max="100" step="0.5" value="<?= e($cur) ?>" placeholder="def" style="width:70px">%</label>
+                  <label style="display:flex;align-items:center;gap:6px;font-size:13px"><span style="flex:1"><?= e($v['name']) ?></span><input type="number" name="venue_pct[<?= $vid ?>]" class="inp" min="0" max="100" step="0.5" value="<?= e($cur) ?>" placeholder="def" style="width:70px">%</label>
                   <?php endforeach; ?>
                 </div>
                 <button class="btn-primary btn-sm" style="margin-top:8px">Save per-property rates</button>
