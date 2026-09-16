@@ -68,7 +68,12 @@
 
   function setTimesDisabled(row, off) {
     var f = rowInputs(row);
-    [f.in1, f.out1, f.in2, f.out2].forEach(function (i) { i.disabled = off; if (off) i.value = ''; });
+    [f.in1, f.out1, f.in2, f.out2].forEach(function (i) {
+      i.disabled = off; if (off) i.value = '';
+      // When timepicker.js has enhanced this input, relabel/disable its button
+      // (the styled picker) to match the value/disabled state we just set.
+      if (i._tpSync) i._tpSync();
+    });
   }
 
   function onStatusChange(row) {

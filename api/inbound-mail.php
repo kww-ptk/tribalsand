@@ -140,6 +140,9 @@ if ($authorLabel === '') $authorLabel = 'Guest';
 
 $noteId = add_submission_note((int)$sub['id'], null, $body, 'guest_reply', $authorLabel);
 
+// 8b. Flag it unread for reservations (a new-reply badge in the inbox + nav).
+if ($noteId) submission_mark_guest_reply((int)$sub['id']);
+
 // 9. Nudge the pipeline: a fresh guest reply is something to follow up on —
 //    but don't stomp a terminal outcome.
 if ($noteId && submission_status_supported()) {

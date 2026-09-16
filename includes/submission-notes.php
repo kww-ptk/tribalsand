@@ -102,6 +102,97 @@ function add_submission_note(int $submission_id, ?int $admin_id, string $body,
     }
 }
 
+/* ── Unread guest-reply markers (Item 4) ──────────────────────────────────────
+ * A reliable "new reply since staff last looked" signal for reservations, backed
+ * by two nullable timestamps on submissions (add_submission_reply_flags.sql).
+ * Every read is guarded so a pre-migration deploy shows no badges and never 500s.
+ */
+
+/** True once add_submission_reply_flags.sql has been applied (memoised). */
+function submission_reply_flags_supported(): bool {
+    static $cached = null;
+    if ($cached !== null) return $cached;
+    try {
+        $r = db_query(
+            "SELECT 1 FROM information_schema.columns
+             WHERE table_name = 'submissions' AND column_name = 'last_guest_reply_at' LIMIT 1"
+        )->fetch();
+        return $cached = (bool) $r;
+    } catch (Throwable $e) { return $cached = false; }
+}
+
+/** Stamp a fresh customer reply (inbound email or trade-portal reply). Best-effort. */
+function submission_mark_guest_reply(int $submission_id): void {
+    if ($submission_id <= 0 || !submission_reply_flags_supported()) return;
+    try {
+        db_query('UPDATE submissions SET last_guest_reply_at = now() WHERE id = :id', [':id' => $submission_id]);
+    } catch (Throwable $e) {
+        error_log('[submission-notes] mark guest reply failed: ' . $e->getMessage());
+    }
+}
+
+/** Mark a submission's replies as seen (staff opened the thread). Best-effort. */
+function submission_mark_reply_seen(int $submission_id): void {
+    if ($submission_id <= 0 || !submission_reply_flags_supported()) return;
+    try {
+        db_query('UPDATE submissions SET reply_seen_at = now() WHERE id = :id', [':id' => $submission_id]);
+    } catch (Throwable $e) {
+        error_log('[submission-notes] mark reply seen failed: ' . $e->getMessage());
+    }
+}
+
+/**
+ * Of the given submission ids, which have an UNREAD customer reply — a
+ * last_guest_reply_at that no reply_seen_at covers. Returns a set
+ * [submission_id => true]. Empty pre-migration / on error.
+ */
+function submission_unread_reply_ids(array $ids): array {
+    $ids = array_values(array_filter(array_map('intval', $ids), fn($i) => $i > 0));
+    if (!$ids || !submission_reply_flags_supported()) return [];
+    try {
+        $ph  = implode(',', array_fill(0, count($ids), '?'));
+        $rows = db_query(
+            "SELECT id FROM submissions
+              WHERE id IN ($ph)
+                AND last_guest_reply_at IS NOT NULL
+                AND (reply_seen_at IS NULL OR reply_seen_at < last_guest_reply_at)",
+            $ids
+        )->fetchAll();
+        $out = [];
+        foreach ($rows as $r) $out[(int)$r['id']] = true;
+        return $out;
+    } catch (Throwable $e) {
+        error_log('[submission-notes] unread ids failed: ' . $e->getMessage());
+        return [];
+    }
+}
+
+/**
+ * Count of submissions with an unread customer reply, within the acting account's
+ * venue scope (for the nav badge). Mirrors admin/submissions.php scoping: an
+ * enquiry reaches a property through room_id → rooms.venue_id; property-less
+ * contact/agency rows stay visible to every scoped account. 0 pre-migration /
+ * on error / outside an admin context.
+ */
+function submission_unread_reply_count(): int {
+    if (!submission_reply_flags_supported()) return 0;
+    $where = "last_guest_reply_at IS NOT NULL
+              AND (reply_seen_at IS NULL OR reply_seen_at < last_guest_reply_at)";
+    if (function_exists('venue_scope_sql')) {
+        $sVenue = venue_scope_sql('r.venue_id');
+        if ($sVenue === '1=0') return 0; // scoped nowhere
+        if ($sVenue !== '') {
+            $where .= " AND (s.room_id IS NULL OR EXISTS (SELECT 1 FROM rooms r WHERE r.id = s.room_id AND {$sVenue}))";
+        }
+    }
+    try {
+        return (int) db_query("SELECT COUNT(*) FROM submissions s WHERE {$where}")->fetchColumn();
+    } catch (Throwable $e) {
+        error_log('[submission-notes] unread count failed: ' . $e->getMessage());
+        return 0;
+    }
+}
+
 /**
  * Note counts for a set of submission ids → [submission_id => count].
  * Missing ids simply don't appear. [] pre-migration / on error.

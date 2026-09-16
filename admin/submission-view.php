@@ -244,6 +244,10 @@ $badge = match($sub['type']) {
 
 $payload = json_decode($sub['payload_json'] ?? '{}', true) ?: [];
 $notes   = fetch_submission_notes($id);
+
+// Opening the thread marks any customer reply as read (clears the inbox/nav
+// "new reply" badge). GET only — a POST handler above would already have exited.
+if ($_SERVER['REQUEST_METHOD'] === 'GET') submission_mark_reply_seen($id);
 $status  = submission_status_supported() ? ((string)($sub['status'] ?? '') ?: submission_status_default()) : '';
 
 // ── Price at enquiry ─────────────────────────────────────────────────────────

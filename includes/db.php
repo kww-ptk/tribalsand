@@ -1784,6 +1784,7 @@ function ts_property_configurations(array $venue, string $check_in, string $chec
                 'free'       => $free,
                 'unit_total' => $q['total'],
                 'currency'   => $item['currency'],
+                'hero'       => $item['hero'],   // carried through to combo room chips (Item 1)
             ];
             if ($cap >= $guests) $singles[] = $item;   // one unit alone fits
         }
@@ -1867,6 +1868,7 @@ function ts_rank_combos(array $inventory, int $guests, int $limit = 3, int $minU
                 'capacity'   => (int)$it['capacity'],
                 'total'      => round($u * (float)$it['unit_total'], 2),
                 'currency'   => $it['currency'],
+                'hero'       => $it['hero'] ?? null,   // Item 1: thumbnail for the combo room chip
             ];
         }
         if ($mixed) continue;   // never sum across currencies

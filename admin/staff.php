@@ -100,6 +100,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ':o' => $off, ':ph' => $phone, ':em' => $email, ':st' => $status,
                 ':au' => $auOk ? $auId : null,
             ];
+            // Additional properties this person can be managed from (Item 5). The
+            // home venue ($vid) is the single "who works where" card; these only
+            // widen visibility/scope. hr_set_staff_venues filters out the home and
+            // any invalid id.
+            $alsoVenues = is_array($_POST['also_venue_id'] ?? null) ? $_POST['also_venue_id'] : [];
             if ($sid > 0 && fetch_hr_staff_row($sid)) {
                 db_query(
                     "UPDATE hr_staff SET full_name=:n, position=:p, department=:d, venue_id=:v,
@@ -107,6 +112,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             status=:st, admin_user_id=:au WHERE id=:id",
                     $params + [':id' => $sid]
                 );
+                hr_set_staff_venues($sid, $alsoVenues, $vid ?: null, $venueIds);
                 audit_log('hr_staff_update', 'hr_staff', $sid, $name);
                 staff_flash('Directory entry updated.', 'success', 'directory');
             } else {
@@ -117,6 +123,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $params + [':so' => $order]
                 );
                 $newId = (int)db()->lastInsertId();
+                hr_set_staff_venues($newId, $alsoVenues, $vid ?: null, $venueIds);
                 audit_log('hr_staff_create', 'hr_staff', $newId, $name);
                 staff_flash('Team member added to the directory.', 'success', 'directory');
             }
@@ -266,6 +273,15 @@ foreach (db_query('SELECT admin_user_id, venue_id FROM admin_user_venues')->fetc
 }
 $venueNames = [];
 foreach ($venues as $v) { $venueNames[(int)$v['id']] = $v['name']; }
+
+// Additional-venue assignments for directory rows: hr_staff_id => [venue_id, ...]
+// (Item 5). Prefetched once to avoid an N+1 across the directory tables.
+$hrExtraVenues = [];
+if (hr_staff_supported() && hr_staff_venues_supported()) {
+    foreach (db_query('SELECT hr_staff_id, venue_id FROM hr_staff_venues')->fetchAll() as $row) {
+        $hrExtraVenues[(int)$row['hr_staff_id']][] = (int)$row['venue_id'];
+    }
+}
 
 // Login accounts available to link from a directory entry.
 $linkAccounts = db_query("SELECT id, name, email, role FROM admin_users WHERE role IN ('owner','manager','reception','staff') ORDER BY name ASC")->fetchAll();
@@ -484,6 +500,16 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
             <?php foreach ($linkAccounts as $a): ?><option value="<?= (int)$a['id'] ?>"><?= e($a['name'] ?: $a['email']) ?> (<?= e($a['role']) ?>)</option><?php endforeach; ?>
           </select>
         </div>
+        <?php if (hr_staff_venues_supported()): ?>
+        <div class="field" style="grid-column:1/-1">
+          <label>Also works at <small class="text-muted">(extra properties a manager can find them under — the home property above stays their main card)</small></label>
+          <div class="optset" id="hrAlsoVenues">
+            <?php foreach ($venues as $v): ?>
+            <label class="optchip"><input type="checkbox" name="also_venue_id[]" value="<?= (int)$v['id'] ?>"> <?= e($v['name']) ?></label>
+            <?php endforeach; ?>
+          </div>
+        </div>
+        <?php endif; ?>
       </div>
       <div style="margin-top:16px">
         <button type="submit" class="btn-primary">Save</button>
@@ -539,9 +565,14 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
             $pid = (int)$p['id'];
             $isActive = ($p['status'] ?? 'active') === 'active';
             $dept = (string)($p['department'] ?? '');
+            $extraVids = $hrExtraVenues[$pid] ?? [];
           ?>
           <tr>
-            <td><strong><?= e($p['full_name']) ?></strong><?php if (!empty($p['admin_user_id'])): ?> <span class="badge badge--grey" data-tip="Has a login account">login</span><?php endif; ?></td>
+            <td><strong><?= e($p['full_name']) ?></strong><?php if (!empty($p['admin_user_id'])): ?> <span class="badge badge--grey" data-tip="Has a login account">login</span><?php endif; ?>
+              <?php foreach ($extraVids as $evid): if (!isset($venueNames[$evid])) continue; ?>
+              <span class="badge badge--teal" data-tip="Also works here" style="font-weight:500">+ <?= e($venueNames[$evid]) ?></span>
+              <?php endforeach; ?>
+            </td>
             <td class="text-muted"><?= e($p['position'] ?: '—') ?></td>
             <td><span class="badge <?= e(hr_department_badge($dept)) ?>"><?= e($dept ?: 'Other') ?></span></td>
             <td class="text-muted"><?= e($p['off_day'] ?: 'Sun') ?></td>
@@ -559,7 +590,8 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
                         data-status="<?= e($p['status'] ?? 'active') ?>"
                         data-phone="<?= e($p['phone'] ?? '') ?>"
                         data-email="<?= e($p['email'] ?? '') ?>"
-                        data-link="<?= (int)($p['admin_user_id'] ?? 0) ?>"><?= admin_icon('edit') ?></button>
+                        data-link="<?= (int)($p['admin_user_id'] ?? 0) ?>"
+                        data-venues="<?= e(implode(',', $extraVids)) ?>"><?= admin_icon('edit') ?></button>
                 <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="hr_toggle"><input type="hidden" name="hr_id" value="<?= $pid ?>"><button class="btn-icon btn-icon--outline" data-tip="<?= $isActive ? 'Set inactive' : 'Set active' ?>" aria-label="<?= $isActive ? 'Set inactive' : 'Set active' ?>"><?= admin_icon($isActive ? 'ban' : 'check') ?></button></form>
                 <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="hr_delete"><input type="hidden" name="hr_id" value="<?= $pid ?>"><button class="btn-icon btn-icon--danger" data-confirm="Remove this person from the directory?" data-tip="Delete" aria-label="Delete"><?= admin_icon('trash') ?></button></form>
               </div>
@@ -583,9 +615,27 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
   function open() { card.removeAttribute('hidden'); card.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }
   function close() { card.setAttribute('hidden', ''); }
   function setVal(name, val) { var el = form.querySelector('[name="' + name + '"]'); if (el) el.value = val == null ? '' : val; }
+  // "Also works at" checkboxes (Item 5).
+  var alsoBoxes = form.querySelectorAll('input[name="also_venue_id[]"]');
+  var homeSel = form.querySelector('[name="venue_id"]');
+  function setAlso(csv) {
+    var ids = String(csv || '').split(',').filter(Boolean);
+    alsoBoxes.forEach(function (b) { b.checked = ids.indexOf(b.value) !== -1; });
+  }
+  // The home property is never also an extra — grey out & clear its box.
+  function syncHome() {
+    var home = homeSel ? homeSel.value : '0';
+    alsoBoxes.forEach(function (b) {
+      var isHome = b.value === home && home !== '0';
+      b.disabled = isHome;
+      if (isHome) b.checked = false;
+      b.closest('.optchip').style.opacity = isHome ? '0.45' : '';
+    });
+  }
+  if (homeSel) homeSel.addEventListener('change', syncHome);
   if (addBtn) addBtn.addEventListener('click', function () {
     title.textContent = 'Add a team member';
-    form.reset(); setVal('hr_id', '');
+    form.reset(); setVal('hr_id', ''); setAlso(''); syncHome();
     open(); var f = form.querySelector('#hrName'); if (f) f.focus();
   });
   card.querySelectorAll('[data-close-person]').forEach(function (c) { c.addEventListener('click', close); });
@@ -602,6 +652,7 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
       setVal('phone', b.dataset.phone);
       setVal('email', b.dataset.email);
       setVal('admin_user_id', b.dataset.link);
+      setAlso(b.dataset.venues); syncHome();
       open();
     });
   });

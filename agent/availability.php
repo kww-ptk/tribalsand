@@ -59,6 +59,13 @@ $priceCell = function (array $o, float $pct): string {
     return ($pct > 0 ? '<span class="ap-was">' . e($pub) . '</span> ' : '') . '<b>' . e($net) . '</b>';
 };
 $nightsTxt = $stay ? $stay[2] . ' night' . ($stay[2] === 1 ? '' : 's') : '';
+/** The option's hero thumbnail, or an aligned placeholder box when none is set. */
+$thumb = function (array $o): string {
+    $alt = e((string)($o['name'] ?? ''));
+    return !empty($o['hero'])
+        ? '<img class="ap-opt__thumb" src="' . e((string)$o['hero']) . '" alt="' . $alt . '" loading="lazy" width="72" height="54">'
+        : '<div class="ap-opt__thumb ap-opt__thumb--ph" aria-hidden="true">◫</div>';
+};
 
 $agentPageTitle = 'Check availability';
 $agentActive    = 'availability';
@@ -116,9 +123,12 @@ include __DIR__ . '/_layout.php';
     <div class="ap-opts">
       <?php foreach ($cfg['singles'] as $o): ?>
       <div class="ap-opt">
-        <div>
-          <div class="ap-opt__name"><?= e($o['name']) ?></div>
-          <div class="ap-opt__meta"><?= !empty($o['capacity']) ? 'Sleeps up to ' . (int)$o['capacity'] . ' · ' : '' ?><?= e($nightsTxt) ?></div>
+        <div class="ap-opt__body">
+          <?= $thumb($o) ?>
+          <div>
+            <div class="ap-opt__name"><?= e($o['name']) ?></div>
+            <div class="ap-opt__meta"><?= !empty($o['capacity']) ? 'Sleeps up to ' . (int)$o['capacity'] . ' · ' : '' ?><?= e($nightsTxt) ?></div>
+          </div>
         </div>
         <div class="ap-opt__price"><?= $priceCell($o, $pct) ?><a class="ap-btn" href="<?= e($reqUrl(['room' => $o['slug']])) ?>">Request to book</a></div>
       </div>
@@ -133,7 +143,7 @@ include __DIR__ . '/_layout.php';
       <div class="ap-opt">
         <div>
           <div class="ap-opt__name">Combination · sleeps <?= (int)$c['capacity'] ?></div>
-          <div><?php foreach ($c['rooms'] as $cr): ?><span class="ap-chip"><?= e($cr['name']) ?><?= (int)$cr['units_used'] > 1 ? ' ×' . (int)$cr['units_used'] : '' ?> · <?= e(format_price((float)($cr['net_total'] ?? $cr['total']), (string)$cr['currency'])) ?></span><?php endforeach; ?></div>
+          <div><?php foreach ($c['rooms'] as $cr): ?><span class="ap-chip"><?php if (!empty($cr['hero'])): ?><img class="ap-chip__thumb" src="<?= e((string)$cr['hero']) ?>" alt="" loading="lazy" width="26" height="26"><?php endif; ?><?= e($cr['name']) ?><?= (int)$cr['units_used'] > 1 ? ' ×' . (int)$cr['units_used'] : '' ?> · <?= e(format_price((float)($cr['net_total'] ?? $cr['total']), (string)$cr['currency'])) ?></span><?php endforeach; ?></div>
           <div class="ap-opt__meta">Reservations confirm the rooms and price by email.</div>
         </div>
         <div class="ap-opt__price"><?= $priceCell($c, $pct) ?><a class="ap-btn ap-btn--ghost" href="<?= e($reqUrl(['venue' => $v['slug'], 'rooms' => agent_rooms_param($c['rooms'])])) ?>">Request these rooms</a></div>
@@ -147,9 +157,12 @@ include __DIR__ . '/_layout.php';
     <div class="ap-opts">
       <?php foreach ($cfg['entire'] as $o): ?>
       <div class="ap-opt ap-opt--entire">
-        <div>
-          <div class="ap-opt__name"><?= e($o['name']) ?> <span class="ap-badge">Whole property</span></div>
-          <div class="ap-opt__meta"><?= !empty($o['capacity']) ? 'Sleeps up to ' . (int)$o['capacity'] . ' · ' : '' ?><?= e($nightsTxt) ?></div>
+        <div class="ap-opt__body">
+          <?= $thumb($o) ?>
+          <div>
+            <div class="ap-opt__name"><?= e($o['name']) ?> <span class="ap-badge">Whole property</span></div>
+            <div class="ap-opt__meta"><?= !empty($o['capacity']) ? 'Sleeps up to ' . (int)$o['capacity'] . ' · ' : '' ?><?= e($nightsTxt) ?></div>
+          </div>
         </div>
         <div class="ap-opt__price"><?= $priceCell($o, $pct) ?><a class="ap-btn" href="<?= e($reqUrl(['room' => $o['slug']])) ?>">Request to book</a></div>
       </div>

@@ -7,6 +7,7 @@ require_once __DIR__ . '/../includes/pagination.php';
 require_once __DIR__ . '/../includes/admin-pagination.php';
 require_once __DIR__ . '/../includes/submission-notes.php';   // note-count badges (#15)
 require_once __DIR__ . '/../includes/submission-status.php';   // lead-status filter + badge
+require_once __DIR__ . '/../includes/agent.php';               // agent_requests_filter() — "requests from agent N"
 require_login();
 require_bookings();
 
@@ -32,9 +33,22 @@ $pg = paginate_params();   // page / per (default 10) / q / offset / ajax
 $type     = $_GET['type']     ?? '';
 $status   = $_GET['status']   ?? '';
 $room_id  = isset($_GET['room_id']) ? (int)$_GET['room_id'] : 0;
+$agent_id = isset($_GET['agent_id']) ? (int)$_GET['agent_id'] : 0;
+$unread   = !empty($_GET['unread']) && submission_reply_flags_supported();
 $date_from= trim($_GET['date_from'] ?? '');
 $date_to  = trim($_GET['date_to']   ?? '');
 $export   = isset($_GET['export']);
+
+// "View requests" from the travel-agent list: filter to one agent's requests via
+// the same server-side, injection-safe fragment the portal uses (server-written
+// submissions.agent_id, or the HMAC-signed payload marker for legacy rows). The
+// agent's name is shown as a removable filter label.
+$agent_name = '';
+if ($agent_id > 0 && agents_supported()) {
+    try { $agent_name = (string) db_query('SELECT name FROM travel_agents WHERE id = :id', [':id' => $agent_id])->fetchColumn(); }
+    catch (Throwable $e) { $agent_name = ''; }
+    if ($agent_name === '') $agent_id = 0; // unknown agent → ignore the filter
+}
 
 // A clean query string (minus paging/ajax/export) for the CSV export link.
 $preserve_qs = http_build_query(array_filter(
@@ -65,6 +79,8 @@ if ($type)      { $where[] = 's.type = :type';                    $params[':type
 if ($status && submission_status_supported() && submission_status_valid($status)) {
                   $where[] = 's.status = :status';                $params[':status']    = $status; }
 if ($room_id)   { $where[] = 's.room_id = :room_id';              $params[':room_id']   = $room_id; }
+if ($agent_id)  { [$aFrag, $aParams] = agent_requests_filter($agent_id, 's'); $where[] = $aFrag; $params += $aParams; }
+if ($unread)    { $where[] = 's.last_guest_reply_at IS NOT NULL AND (s.reply_seen_at IS NULL OR s.reply_seen_at < s.last_guest_reply_at)'; }
 if ($date_from) { $where[] = 's.created_at::date >= :date_from';  $params[':date_from'] = $date_from; }
 if ($date_to)   { $where[] = 's.created_at::date <= :date_to';    $params[':date_to']   = $date_to; }
 $sw = search_where(['s.guest_name', 's.guest_email', "COALESCE(s.message,'')"], $pg['q'], $params);
@@ -124,6 +140,8 @@ $rows = db_query(
 
 // Internal note counts for the current page's rows (badge in the list). Empty pre-migration.
 $note_counts = submission_note_counts(array_column($rows, 'id'));
+// Rows with an unread customer reply → a red "New reply" badge (Item 4). Empty pre-migration.
+$unread_ids  = submission_unread_reply_ids(array_column($rows, 'id'));
 
 // ── Room list for filter dropdown ────────────────────────────────
 $rooms = db_query(
@@ -206,6 +224,9 @@ ob_start(); ?>
             <div class="cell-stack">
               <span class="cell-stack__main">
                 <strong><?= e($row['guest_name'] ?: '—') ?></strong>
+                <?php if (!empty($unread_ids[(int)$row['id']])): ?>
+                <span class="badge badge--red" data-tip="New customer reply — open to read" style="margin-left:4px">New reply</span>
+                <?php endif; ?>
                 <?php $nc = $note_counts[(int)$row['id']] ?? 0; if ($nc > 0): ?>
                 <span class="note-count" data-tip="<?= (int)$nc ?> internal note<?= $nc === 1 ? '' : 's' ?>"><?= admin_icon('edit', 12) ?> <?= (int)$nc ?></span>
                 <?php endif; ?>
@@ -255,12 +276,20 @@ include __DIR__ . '/_layout.php';
   </div>
 </div>
 
+<?php if ($agent_id && $agent_name !== ''): ?>
+<div class="alert alert--info is-flash" style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+  <span>Showing requests from <strong><?= e($agent_name) ?></strong> (travel agent).</span>
+  <a href="/admin/submissions.php" class="btn-outline btn-sm" style="margin-left:auto"><?= admin_icon('x', 14) ?> Show all submissions</a>
+</div>
+<?php endif; ?>
+
 <!-- Filters + search share one aligned control row -->
 <div class="dt" data-dt>
   <div class="dt-controls">
 <form method="GET" action="/admin/submissions" class="filters" id="filtersForm">
   <input type="hidden" name="q"   value="<?= e($pg['q']) ?>">
   <input type="hidden" name="per" value="<?= (int)$meta['per'] ?>">
+  <?php if ($agent_id): ?><input type="hidden" name="agent_id" value="<?= (int)$agent_id ?>"><?php endif; ?>
   <select name="type" class="filter-select js-auto-submit" aria-label="Filter by type">
     <option value="">All types</option>
     <option value="enquiry"      <?= $type==='enquiry'     ?'selected':'' ?>>Enquiry</option>
@@ -286,12 +315,18 @@ include __DIR__ . '/_layout.php';
     <?php endforeach; ?>
   </select>
 
+  <?php if (submission_reply_flags_supported()): ?>
+  <label class="optchip" style="display:inline-flex;align-items:center;gap:6px">
+    <input type="checkbox" name="unread" value="1" class="js-auto-submit" <?= $unread ? 'checked' : '' ?>> Unread replies
+  </label>
+  <?php endif; ?>
+
   <button type="button" class="dp-btn" data-dp-target="subDateFrom" data-dp-placeholder="From date" style="width:150px">From date</button>
   <input type="hidden" id="subDateFrom" name="date_from" value="<?= e($date_from) ?>">
   <button type="button" class="dp-btn" data-dp-target="subDateTo" data-dp-placeholder="To date" style="width:150px">To date</button>
   <input type="hidden" id="subDateTo" name="date_to" value="<?= e($date_to) ?>">
 
-  <?php if ($type || $status || $room_id || $date_from || $date_to || $pg['q']): ?>
+  <?php if ($type || $status || $room_id || $agent_id || $unread || $date_from || $date_to || $pg['q']): ?>
   <a href="/admin/submissions.php" class="btn-outline btn-sm"><?= admin_icon('x', 14) ?> Clear</a>
   <?php endif; ?>
 </form>

@@ -1,0 +1,34 @@
+/* timepicker.js — styled time picker in the admin house style. Mirrors the
+ * datepicker's popup conventions. Scoped to .tp-* so it never collides. */
+.tp-btn{
+  display:inline-block;width:74px;padding:7px 8px;font:inherit;font-size:.9rem;
+  text-align:center;background:#fff;border:1px solid #d1d5db;border-radius:6px;
+  color:#1f2937;cursor:pointer;line-height:1.2;font-variant-numeric:tabular-nums;
+}
+.tp-btn--sm{padding:5px 6px;font-size:.85rem}
+.tp-btn:hover{border-color:#9ca3af}
+.tp-btn:disabled{opacity:.5;cursor:not-allowed;background:#f3f4f6}
+.tp-btn:focus-visible{outline:2px solid #1E5C6B;outline-offset:1px}
+
+.tp-pop{
+  position:fixed;z-index:9999;width:230px;background:#fff;border:1px solid #e5e7eb;
+  border-radius:10px;box-shadow:0 12px 32px rgba(0,0,0,.18);padding:12px;
+  font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+}
+.tp-pop__title{font-size:1.1rem;font-weight:700;text-align:center;margin-bottom:8px;color:#1E5C6B;font-variant-numeric:tabular-nums}
+.tp-pop__lbl{font-size:.68rem;text-transform:uppercase;letter-spacing:.06em;color:#6b7280;margin:6px 0 4px}
+.tp-grid{display:grid;gap:4px}
+.tp-grid--h{grid-template-columns:repeat(6,1fr)}
+.tp-grid--m{grid-template-columns:repeat(4,1fr)}
+.tp-cell{
+  padding:6px 0;font:inherit;font-size:.82rem;background:#f9fafb;border:1px solid #e5e7eb;
+  border-radius:6px;cursor:pointer;color:#1f2937;font-variant-numeric:tabular-nums;
+}
+.tp-cell:hover{background:#eef2f3;border-color:#cbd5e1}
+.tp-cell.is-on{background:#1E5C6B;border-color:#1E5C6B;color:#fff;font-weight:700}
+.tp-next{display:flex;align-items:center;gap:6px;font-size:.8rem;color:#374151;margin:10px 0 4px}
+.tp-pop__foot{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+.tp-x{background:none;border:0;color:#6b7280;font-size:.82rem;cursor:pointer;padding:4px}
+.tp-x:hover{color:#b91c1c}
+.tp-ok{background:#1E5C6B;color:#fff;border:0;border-radius:7px;padding:7px 16px;font-weight:700;font-size:.85rem;cursor:pointer}
+.tp-ok:hover{background:#164a56}

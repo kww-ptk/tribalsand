@@ -7,6 +7,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/agent.php';
 require_once __DIR__ . '/../includes/bookings.php';   // bookings_sync_hold() for the ledger check
 require_once __DIR__ . '/../includes/mail.php';       // _hold_notification_html() for the trade-row check
+require_once __DIR__ . '/../includes/submission-notes.php'; // thread + unread helpers (Item 2/4)
 
 $failures = 0;
 function check(string $label, bool $cond): void {
@@ -93,6 +94,28 @@ check('status: confirmed / expired / cancelled labels',
     agent_request_status(['hold_status' => 'confirmed'], $now)['label'] === 'Confirmed'
     && agent_request_status(['hold_status' => 'expired'], $now)['label'] === 'Expired'
     && agent_request_status(['hold_status' => 'cancelled'], $now)['class'] === 'cancelled');
+
+// ── Status reflects the admin pipeline BEFORE a hold exists (pure, Item 2) ────
+check('status: no hold + no sub-status still reads Sent',
+    agent_request_status(['hold_status' => null], $now)['label'] === 'Sent');
+check('status: received sub-status reads Sent',
+    agent_request_status(['hold_status' => null, 'sub_status' => 'received'], $now)['label'] === 'Sent');
+check('status: option_sent reads "In review"',
+    agent_request_status(['hold_status' => null, 'sub_status' => 'option_sent'], $now)['label'] === 'In review');
+check('status: to_follow_up reads "In review"',
+    agent_request_status(['hold_status' => null, 'sub_status' => 'to_follow_up'], $now)['label'] === 'In review');
+check('status: dates_unavailable is surfaced',
+    agent_request_status(['hold_status' => null, 'sub_status' => 'dates_unavailable'], $now)['label'] === 'Dates unavailable');
+check('status: not_interested reads "Closed"',
+    agent_request_status(['hold_status' => null, 'sub_status' => 'not_interested'], $now)['label'] === 'Closed');
+check('status: booked (no hold yet) reads "Booked"',
+    agent_request_status(['hold_status' => null, 'sub_status' => 'booked'], $now)['label'] === 'Booked');
+check('status: a hold ALWAYS wins over the sub-status',
+    agent_request_status(['hold_status' => 'confirmed', 'sub_status' => 'option_sent'], $now)['label'] === 'Confirmed');
+check('status: an unknown sub-status falls back to Sent',
+    agent_request_status(['hold_status' => null, 'sub_status' => 'whatever'], $now)['label'] === 'Sent');
+check('sub-status mapper: unknown slug returns null',
+    agent_request_sub_status('nope') === null && agent_request_sub_status(null) === null);
 
 // ── DB round-trip (rolled back) ─────────────────────────────────────────────
 $hasDb = false;
@@ -191,6 +214,43 @@ if ($hasDb) {
                 check('requests: lists the request as sent, with no hold yet',
                     count($list) === 1 && (int)$list[0]['id'] === (int)$res['submission_id'] && $list[0]['hold_id'] === null
                     && agent_request_status($list[0])['label'] === 'Sent');
+
+                // ── Per-request view + thread + ownership (Item 2) ───────────────
+                $one = agent_fetch_request($agentRow, (int)$res['submission_id']);
+                check('request-view: the owning agent can fetch their own request',
+                    is_array($one) && (int)$one['id'] === (int)$res['submission_id'] && isset($one['payload']));
+                check('request-view: a wrong agent id cannot fetch this request',
+                    agent_fetch_request(['id' => (int)$agentRow['id'] + 99999], (int)$res['submission_id']) === null);
+                check('request-view: message ownership is re-checked (foreign id → 404)',
+                    agent_post_message(['id' => (int)$agentRow['id'] + 99999], (int)$res['submission_id'], 'hi')['code'] === 404);
+                check('request-view: an empty message is refused',
+                    agent_post_message($agentRow, (int)$res['submission_id'], '   ')['ok'] === false);
+                if (submission_notes_kind_supported()) {
+                    $before = count(fetch_agent_visible_thread((int)$res['submission_id']));
+                    $sent = agent_post_message($agentRow, (int)$res['submission_id'], 'Traveller prefers a sea view.');
+                    check('request-view: the agent can post a message', $sent['ok'] === true && $sent['note_id'] > 0);
+                    $thread = fetch_agent_visible_thread((int)$res['submission_id']);
+                    check('request-view: the agent’s message appears as a guest_reply in the visible thread',
+                        count($thread) === $before + 1 && $thread[count($thread) - 1]['kind'] === 'guest_reply'
+                        && str_contains((string)$thread[count($thread) - 1]['body'], 'sea view'));
+                    // An internal staff note must NEVER be visible to the agent.
+                    add_submission_note((int)$res['submission_id'], null, 'INTERNAL: check rack rate', 'note', 'Staff');
+                    $thread2 = fetch_agent_visible_thread((int)$res['submission_id']);
+                    check('request-view: an internal note is hidden from the agent',
+                        count($thread2) === count($thread)
+                        && !array_filter($thread2, fn($n) => str_contains((string)$n['body'], 'INTERNAL')));
+                    // A staff reply IS visible.
+                    add_submission_note((int)$res['submission_id'], null, 'Sea view confirmed.', 'reply', 'Reservations');
+                    $thread3 = fetch_agent_visible_thread((int)$res['submission_id']);
+                    check('request-view: a staff reply is visible to the agent',
+                        (bool) array_filter($thread3, fn($n) => $n['kind'] === 'reply' && str_contains((string)$n['body'], 'Sea view confirmed')));
+                    if (submission_reply_flags_supported()) {
+                        check('request-view: an agent message raises the unread flag',
+                            !empty(submission_unread_reply_ids([(int)$res['submission_id']])[(int)$res['submission_id']]));
+                    }
+                } else {
+                    echo "SKIP  submission_notes kind column absent — thread checks skipped\n";
+                }
 
                 // Reservations convert it: the hold is tagged with the agent + the net for the booked room.
                 $unit   = db_query('SELECT id FROM units WHERE room_id = :r AND is_active = TRUE ORDER BY sort_order LIMIT 1', [':r' => $room['id']])->fetch();

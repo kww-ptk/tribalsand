@@ -29,7 +29,8 @@ function att_staff_in_scope(int $staffId, ?array $venueIds): bool {
     if (!$staffId) return false;
     $row = fetch_hr_staff_row($staffId);
     if (!$row) return false;
-    return $venueIds === null || ($row['venue_id'] !== null && in_array((int)$row['venue_id'], $venueIds, true));
+    // In scope via HOME venue OR any additional venue (Item 5).
+    return hr_staff_in_venue_scope($staffId, $row['venue_id'] !== null ? (int)$row['venue_id'] : null, $venueIds);
 }
 
 $flash = null;
@@ -265,10 +266,10 @@ if ($view === 'daily'):
               <button type="button" class="btn-icon btn-icon--outline att-q" data-shift="secday" title="Security day">D</button>
               <button type="button" class="btn-icon btn-icon--outline att-q" data-shift="secnight" title="Security night">N</button>
             </div></td>
-            <td><input class="inp inp--sm att-t" name="in1[<?= $sid ?>]"  value="<?= e(attendance_min_to_hhmm($r['in1']  !== null ? (int)$r['in1']  : null)) ?>" placeholder="—" style="width:74px"></td>
-            <td><input class="inp inp--sm att-t" name="out1[<?= $sid ?>]" value="<?= e(attendance_min_to_hhmm($r['out1'] !== null ? (int)$r['out1'] : null)) ?>" placeholder="—" style="width:74px"></td>
-            <td><input class="inp inp--sm att-t" name="in2[<?= $sid ?>]"  value="<?= e(attendance_min_to_hhmm($r['in2']  !== null ? (int)$r['in2']  : null)) ?>" placeholder="—" style="width:74px"></td>
-            <td><input class="inp inp--sm att-t" name="out2[<?= $sid ?>]" value="<?= e(attendance_min_to_hhmm($r['out2'] !== null ? (int)$r['out2'] : null)) ?>" placeholder="—" style="width:74px"></td>
+            <td><input class="inp inp--sm att-t tp-input" name="in1[<?= $sid ?>]"  value="<?= e(attendance_min_to_hhmm($r['in1']  !== null ? (int)$r['in1']  : null)) ?>" placeholder="—" style="width:74px"></td>
+            <td><input class="inp inp--sm att-t tp-input" name="out1[<?= $sid ?>]" value="<?= e(attendance_min_to_hhmm($r['out1'] !== null ? (int)$r['out1'] : null)) ?>" placeholder="—" style="width:74px"></td>
+            <td><input class="inp inp--sm att-t tp-input" name="in2[<?= $sid ?>]"  value="<?= e(attendance_min_to_hhmm($r['in2']  !== null ? (int)$r['in2']  : null)) ?>" placeholder="—" style="width:74px"></td>
+            <td><input class="inp inp--sm att-t tp-input" name="out2[<?= $sid ?>]" value="<?= e(attendance_min_to_hhmm($r['out2'] !== null ? (int)$r['out2'] : null)) ?>" placeholder="—" style="width:74px"></td>
             <td>
               <select name="status[<?= $sid ?>]" class="filter-select att-status">
                 <option value="" <?= $isP || $eff==='' ? 'selected' : '' ?>>Worked (P)</option>
@@ -287,6 +288,8 @@ if ($view === 'daily'):
   <?php endforeach; endif; ?>
 </form>
 
+<link rel="stylesheet" href="/css/timepicker.css?v=<?= @filemtime(__DIR__ . '/../css/timepicker.css') ?: '1' ?>">
+<script src="/js/timepicker.js?v=<?= @filemtime(__DIR__ . '/../js/timepicker.js') ?: '1' ?>"></script>
 <script src="/admin/assets/admin-attendance.js?v=<?= @filemtime(__DIR__ . '/assets/admin-attendance.js') ?: time() ?>"></script>
 
 <?php
@@ -407,8 +410,8 @@ elseif ($view === 'leave'):
 elseif ($view === 'person'):
   $sid = (int)($_GET['staff'] ?? 0);
   $person = fetch_hr_staff_row($sid);
-  // Scope: a manager may only view staff at their own properties.
-  $inScope = $person && ($venueIds === null || ($person['venue_id'] !== null && in_array((int)$person['venue_id'], $venueIds, true)));
+  // Scope: a manager may only view staff at their own properties (home or extra).
+  $inScope = $person && att_staff_in_scope($sid, $venueIds);
   if (!$inScope):
 ?>
 <div class="card"><div class="card__body card__body--pad"><p class="text-muted" style="margin:0">Staff member not found or outside your properties. <a href="/admin/attendance.php?view=month&month=<?= e($month) ?>">Back to the month grid</a>.</p></div></div>

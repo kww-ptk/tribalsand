@@ -49,7 +49,7 @@ include __DIR__ . '/_layout.php';
         <td class="ap-left"><?= e((string)$r['guest_name']) ?></td>
         <td class="ap-net"><?= isset($pl['quoted_total']) ? e(format_price((float)$pl['quoted_total'], (string)($pl['quoted_currency'] ?? 'USD'))) : '—' ?></td>
         <td class="ap-left"><span class="ap-status ap-status--<?= e($st['class']) ?>"><?= e($st['label']) ?></span><?= $st['note'] !== '' ? '<br><span class="ap-note">' . e($st['note']) . '</span>' : '' ?></td>
-        <td><?php if ($manage !== ''): ?><a href="<?= e($manage) ?>">Manage</a><?php endif; ?></td>
+        <td style="white-space:nowrap"><a href="/agent/request-view.php?id=<?= (int)$r['id'] ?>">View / message</a><?php if ($manage !== ''): ?> · <a href="<?= e($manage) ?>">Manage</a><?php endif; ?></td>
       </tr>
     <?php endforeach; ?>
     </tbody>

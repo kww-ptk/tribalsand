@@ -149,9 +149,7 @@ function attendance_upsert(int $staffId, string $ymd, array $data, ?int $loggedB
 function fetch_attendance_for_date(?array $venueIds, string $ymd, array $filters = []): array {
     if (!attendance_supported() || !hr_staff_supported()) return [];
     $where = "WHERE s.status = 'active'"; $params = [':d' => $ymd];
-    $scope = ''; hr_scope_sql($venueIds, $scope, $params);
-    // hr_scope_sql aliases as bare venue_id; qualify for the join.
-    $scope = str_replace('venue_id', 's.venue_id', $scope);
+    $scope = ''; hr_scope_sql($venueIds, $scope, $params, 's');   // hr_staff aliased as s (home OR extra venue)
     $where .= $scope;
     if (!empty($filters['department'])) { $where .= ' AND s.department = :dept'; $params[':dept'] = (string)$filters['department']; }
     if (!empty($filters['venue_id']))   { $where .= ' AND s.venue_id = :fvid';  $params[':fvid'] = (int)$filters['venue_id']; }
@@ -221,8 +219,7 @@ function attendance_month_matrix(?array $venueIds, int $year, int $month, array 
     $daysInMonth = (int) date('t', strtotime(sprintf('%04d-%02d-01', $year, $month)));
 
     $where = "WHERE s.status = 'active'"; $params = [];
-    $scope = ''; hr_scope_sql($venueIds, $scope, $params);
-    $scope = str_replace('venue_id', 's.venue_id', $scope);
+    $scope = ''; hr_scope_sql($venueIds, $scope, $params, 's');
     $where .= $scope;
     if (!empty($filters['department'])) { $where .= ' AND s.department = :dept'; $params[':dept'] = (string)$filters['department']; }
     if (!empty($filters['venue_id']))   { $where .= ' AND s.venue_id = :fvid';  $params[':fvid'] = (int)$filters['venue_id']; }
@@ -336,8 +333,7 @@ function leave_status_badge(string $s): string {
 function fetch_leave_requests(?array $venueIds, array $filters = []): array {
     if (!leave_requests_supported() || !hr_staff_supported()) return [];
     $where = 'WHERE 1=1'; $params = [];
-    $scope = ''; hr_scope_sql($venueIds, $scope, $params);
-    $scope = str_replace('venue_id', 's.venue_id', $scope);
+    $scope = ''; hr_scope_sql($venueIds, $scope, $params, 's');
     $where .= $scope;
     if (!empty($filters['status'])) { $where .= ' AND l.status = :st'; $params[':st'] = (string)$filters['status']; }
     return db_query(

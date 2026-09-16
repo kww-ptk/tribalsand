@@ -22,6 +22,44 @@ function hr_staff_supported(): bool {
     catch (Throwable $e) { return $c = false; }
 }
 
+/** True once add_hr_staff_venues.sql has been applied (memoised). */
+function hr_staff_venues_supported(): bool {
+    static $c = null;
+    if ($c !== null) return $c;
+    try { return $c = (bool) db_query("SELECT to_regclass('public.hr_staff_venues')")->fetchColumn(); }
+    catch (Throwable $e) { return $c = false; }
+}
+
+/** A person's ADDITIONAL venue ids (the home venue lives on hr_staff.venue_id). */
+function hr_staff_venue_ids(int $staffId): array {
+    if ($staffId <= 0 || !hr_staff_venues_supported()) return [];
+    try {
+        return array_map('intval', array_column(
+            db_query('SELECT venue_id FROM hr_staff_venues WHERE hr_staff_id = :s ORDER BY venue_id', [':s' => $staffId])->fetchAll(),
+            'venue_id'
+        ));
+    } catch (Throwable $e) { return []; }
+}
+
+/**
+ * Replace a person's ADDITIONAL venues (home venue is written separately on the
+ * hr_staff row). The home venue is filtered out — it never doubles as an extra.
+ * Only valid venue ids are kept. Caller wraps in a transaction where appropriate.
+ */
+function hr_set_staff_venues(int $staffId, array $venueIds, ?int $homeVenueId, array $validIds): void {
+    if ($staffId <= 0 || !hr_staff_venues_supported()) return;
+    $ids = [];
+    foreach ($venueIds as $v) {
+        $vid = (int)$v;
+        if ($vid > 0 && $vid !== (int)$homeVenueId && in_array($vid, $validIds, true) && !in_array($vid, $ids, true)) $ids[] = $vid;
+    }
+    db_query('DELETE FROM hr_staff_venues WHERE hr_staff_id = :s', [':s' => $staffId]);
+    foreach ($ids as $vid) {
+        db_query('INSERT INTO hr_staff_venues (hr_staff_id, venue_id) VALUES (:s, :v) ON CONFLICT DO NOTHING',
+            [':s' => $staffId, ':v' => $vid]);
+    }
+}
+
 /** The department buckets, in display order. */
 function hr_departments(): array {
     return ['Housekeeping', 'Kitchen', 'Gardening', 'Maintenance', 'Security', 'Service', 'Stores', 'Admin', 'Other'];
@@ -66,14 +104,41 @@ function hr_department_badge(string $dept): string {
     };
 }
 
-/** Build the scope WHERE clause. Returns [sql, params]; empty sql when unscoped. */
-function hr_scope_sql(?array $venueIds, string &$sqlOut, array &$params): void {
+/**
+ * Build the scope WHERE clause (appended to a WHERE). Returns via &$sqlOut; empty
+ * when unscoped (owner). $alias qualifies the hr_staff table: '' for an unaliased
+ * `FROM hr_staff`, or e.g. 's' for `FROM hr_staff s`. A person is in scope when
+ * their HOME venue (hr_staff.venue_id) OR any ADDITIONAL venue (hr_staff_venues)
+ * is in the account's set — the many-to-many widens visibility only (Item 5).
+ * Pre-migration (no join table) it is exactly the old home-venue-only clause.
+ */
+function hr_scope_sql(?array $venueIds, string &$sqlOut, array &$params, string $alias = ''): void {
     if ($venueIds === null) { $sqlOut = ''; return; } // owner — everyone
     $ids = array_values(array_filter(array_map('intval', $venueIds)));
-    if (!$ids) { $sqlOut = ' AND venue_id = -1'; return; } // scoped but no venues → nothing
+    $vcol  = $alias !== '' ? "$alias.venue_id" : 'venue_id';
+    $idcol = $alias !== '' ? "$alias.id"       : 'hr_staff.id';
+    if (!$ids) { $sqlOut = " AND $vcol = -1"; return; } // scoped but no venues → nothing
     $ph = [];
     foreach ($ids as $i => $vid) { $k = ":sv$i"; $ph[] = $k; $params[$k] = $vid; }
-    $sqlOut = ' AND venue_id IN (' . implode(',', $ph) . ')';
+    $inList = implode(',', $ph);
+    if (hr_staff_venues_supported()) {
+        $sqlOut = " AND ($vcol IN ($inList)"
+                . " OR EXISTS (SELECT 1 FROM hr_staff_venues hv WHERE hv.hr_staff_id = $idcol AND hv.venue_id IN ($inList)))";
+    } else {
+        $sqlOut = " AND $vcol IN ($inList)";
+    }
+}
+
+/**
+ * Whether an account scoped to $venueIds (null = owner/all) may see/manage a
+ * staff member — true if their HOME venue OR any ADDITIONAL venue is in scope.
+ * The single-boundary version of hr_scope_sql(), for per-row write guards.
+ */
+function hr_staff_in_venue_scope(int $staffId, ?int $homeVenueId, ?array $venueIds): bool {
+    if ($venueIds === null) return true;                                    // owner — everyone
+    if ($homeVenueId !== null && in_array((int)$homeVenueId, $venueIds, true)) return true;
+    foreach (hr_staff_venue_ids($staffId) as $vid) if (in_array($vid, $venueIds, true)) return true;
+    return false;
 }
 
 /**

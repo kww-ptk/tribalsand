@@ -12,6 +12,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/booking.php';
 require_once __DIR__ . '/../includes/inbound-mail.php';
+require_once __DIR__ . '/../includes/submission-notes.php';   // Item 4 unread-reply markers
 
 $failures = 0;
 function check(string $label, bool $cond): void {
@@ -91,6 +92,7 @@ check('subscribe confirm rejects non-amazon host', sns_confirm_subscription('htt
 
 // ── Support guards return bool ───────────────────────────────────────────────
 check('inbound_mail_log_supported returns bool', is_bool(inbound_mail_log_supported()));
+check('submission_reply_flags_supported returns bool', is_bool(submission_reply_flags_supported()));
 
 // ── De-dup round-trip (rolled back) ──────────────────────────────────────────
 if (!inbound_mail_log_supported()) {
@@ -116,6 +118,22 @@ try {
     inbound_mail_record($mid, null, 'Jane <jane@example.com>', 'dupe');
     $cnt = (int)db_query("SELECT COUNT(*) FROM inbound_mail_log WHERE message_id = :m", [':m' => $mid])->fetchColumn();
     check('duplicate record is idempotent',       $cnt === 1);
+
+    // ── Item 4: unread-reply marker round-trip (rolled back) ──────────────────
+    if (submission_reply_flags_supported()) {
+        db_query("INSERT INTO submissions (type, guest_name, guest_email, message) VALUES ('enquiry', 'Test Guest', 'g@example.com', 'hi')");
+        $subId = (int)db()->lastInsertId();
+        check('fresh submission is not unread',      empty(submission_unread_reply_ids([$subId])));
+        submission_mark_guest_reply($subId);
+        check('after a guest reply → unread',        !empty(submission_unread_reply_ids([$subId])[$subId]));
+        submission_mark_reply_seen($subId);
+        check('after opening the thread → read',     empty(submission_unread_reply_ids([$subId])));
+        // A newer reply after a seen re-flags it unread.
+        db_query("UPDATE submissions SET last_guest_reply_at = now() + interval '1 second' WHERE id = :id", [':id' => $subId]);
+        check('a newer reply re-flags unread',       !empty(submission_unread_reply_ids([$subId])[$subId]));
+    } else {
+        echo "SKIP  reply-flags round-trip (columns missing — run add_submission_reply_flags.sql)\n";
+    }
 } finally {
     if (db()->inTransaction()) db()->rollBack();
 }

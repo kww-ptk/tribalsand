@@ -220,14 +220,36 @@ function agent_trade_lines(array $agent, array $quote): array {
 }
 
 /**
- * Portal-facing state of one agent_requests() row: "Sent" until reservations
- * convert it to a hold, then the hold's status (with a countdown while pending).
- * Pure — pass $now for tests.
+ * Trade-friendly labels for the admin lead-status pipeline, used BEFORE a hold
+ * exists so the portal reflects what reservations are actually doing (not a
+ * permanent "Sent"). Internal slugs never leak — only these labels/classes.
+ * Pure. Returns null for an unrecognised/empty slug so the caller keeps "Sent".
+ */
+function agent_request_sub_status(?string $slug): ?array {
+    return match ((string)$slug) {
+        'received'                                          => ['label' => 'Sent',              'class' => 'sent',      'note' => 'Reservations will confirm by email'],
+        'answered', 'option_sent', 'waiting', 'to_follow_up' => ['label' => 'In review',         'class' => 'pending',   'note' => 'Reservations are working on this'],
+        'dates_unavailable'                                 => ['label' => 'Dates unavailable', 'class' => 'expired',   'note' => 'Try other dates or ask reservations'],
+        'not_interested'                                    => ['label' => 'Closed',            'class' => 'cancelled', 'note' => ''],
+        'booked'                                            => ['label' => 'Booked',            'class' => 'confirmed', 'note' => ''],
+        default                                             => null,
+    };
+}
+
+/**
+ * Portal-facing state of one agent_requests() row: the hold's status once a hold
+ * exists (with a countdown while pending); before that, the admin lead status
+ * mapped to a trade-friendly label (agent_request_sub_status()), or "Sent" when
+ * there is no status yet. The hold always wins — it carries the countdown and
+ * confirmation. Pure — pass $now for tests; reads $row['sub_status'] when present.
  */
 function agent_request_status(array $row, ?int $now = null): array {
     $now = $now ?? time();
     $st  = (string)($row['hold_status'] ?? '');
-    if ($st === '') return ['label' => 'Sent', 'class' => 'sent', 'note' => 'Reservations will confirm by email'];
+    if ($st === '') {
+        return agent_request_sub_status($row['sub_status'] ?? null)
+            ?? ['label' => 'Sent', 'class' => 'sent', 'note' => 'Reservations will confirm by email'];
+    }
     if ($st === 'pending') {
         $exp = !empty($row['expires_at']) ? strtotime((string)$row['expires_at']) : false;
         if ($exp === false) return ['label' => 'On hold', 'class' => 'pending', 'note' => 'Awaiting confirmation'];
@@ -606,9 +628,13 @@ function agent_requests(array $agent, int $limit = 100): array {
     if ($aid <= 0) return [];
     $limit = max(1, min(500, $limit));
     [$where, $params] = agent_requests_filter($aid);
+    // The admin lead status feeds the portal's status BEFORE a hold exists — but
+    // only once add_submission_status.sql has run.
+    require_once __DIR__ . '/submission-status.php';
+    $subStatusSel = submission_status_supported() ? 's.status AS sub_status,' : "NULL::text AS sub_status,";
     $rows = db_query(
         "SELECT s.id, s.created_at, s.check_in, s.check_out, s.guest_name, s.room_id, s.payload_json,
-                s.guests_adults, s.guests_children,
+                s.guests_adults, s.guests_children, {$subStatusSel}
                 r.name AS room_name, v.name AS venue_name,
                 h.id AS hold_id, h.status AS hold_status, h.expires_at, h.access_code
            FROM submissions s
@@ -628,6 +654,108 @@ function agent_requests(array $agent, int $limit = 100): array {
         $rows[$i]['payload'] = is_array($pl) ? $pl : [];
     }
     return $rows;
+}
+
+/**
+ * One of an agent's requests by submission id, with the SAME ownership guard the
+ * list uses (agent_requests_filter — server-written agent_id, or the signed
+ * payload marker; never the bare id from the URL). Returns the row (decoded
+ * `payload`, hold status, sub_status) or null when it is not this agent's request.
+ */
+function agent_fetch_request(array $agent, int $submissionId): ?array {
+    $aid = (int)($agent['id'] ?? 0);
+    if ($aid <= 0 || $submissionId <= 0) return null;
+    [$where, $params] = agent_requests_filter($aid);
+    require_once __DIR__ . '/submission-status.php';
+    $subStatusSel = submission_status_supported() ? 's.status AS sub_status,' : "NULL::text AS sub_status,";
+    try {
+        $row = db_query(
+            "SELECT s.id, s.created_at, s.check_in, s.check_out, s.guest_name, s.room_id, s.payload_json,
+                    s.guests_adults, s.guests_children, {$subStatusSel}
+                    r.name AS room_name, v.name AS venue_name,
+                    h.id AS hold_id, h.status AS hold_status, h.expires_at, h.access_code
+               FROM submissions s
+               LEFT JOIN rooms  r ON r.id = s.room_id
+               LEFT JOIN venues v ON v.id = r.venue_id
+               LEFT JOIN LATERAL (
+                    SELECT id, status, expires_at, access_code FROM holds
+                     WHERE submission_id = s.id ORDER BY id DESC LIMIT 1
+               ) h ON TRUE
+              WHERE s.id = :sid AND {$where}
+              LIMIT 1",
+            $params + [':sid' => $submissionId]
+        )->fetch();
+    } catch (Throwable $e) {
+        error_log('[agent-request] fetch one failed: ' . $e->getMessage());
+        return null;
+    }
+    if (!$row) return null;
+    $pl = json_decode((string)($row['payload_json'] ?? '{}'), true);
+    $row['payload'] = is_array($pl) ? $pl : [];
+    return $row;
+}
+
+/**
+ * The conversation an agent may see on their request: ONLY staff replies
+ * (kind 'reply') and customer replies (kind 'guest_reply' — an inbound email or
+ * the agent's own portal messages). Internal `note` rows are staff-only and are
+ * NEVER returned here. [] pre-migration / on error. Ownership is the caller's job
+ * (use agent_fetch_request() first).
+ */
+function fetch_agent_visible_thread(int $submissionId): array {
+    if ($submissionId <= 0) return [];
+    require_once __DIR__ . '/submission-notes.php';
+    // Before the kind column exists every row is a plain internal note, so there
+    // is nothing an agent may see.
+    if (!submission_notes_kind_supported()) return [];
+    try {
+        return db_query(
+            "SELECT n.id, n.body, n.created_at, n.kind, NULLIF(n.author_name,'') AS frozen_author,
+                    a.name AS author_name
+               FROM submission_notes n
+               LEFT JOIN admin_users a ON a.id = n.admin_id
+              WHERE n.submission_id = :sid AND n.kind IN ('reply','guest_reply')
+              ORDER BY n.created_at ASC, n.id ASC",
+            [':sid' => $submissionId]
+        )->fetchAll();
+    } catch (Throwable $e) {
+        error_log('[agent-request] visible thread failed: ' . $e->getMessage());
+        return [];
+    }
+}
+
+/**
+ * The agent posts a message on their own request. Re-checks ownership, then writes
+ * a `guest_reply` note (the same blue bubble reservations already read in
+ * admin/submission-view.php — zero extra work there) and raises the Item-4 unread
+ * flag. NEVER creates a hold (the owner's rule). Returns ['ok'=>true, note_id] or
+ * ['ok'=>false, error, code].
+ */
+function agent_post_message(array $agent, int $submissionId, string $body): array {
+    $err = fn(string $m, int $c = 422): array => ['ok' => false, 'error' => $m, 'code' => $c];
+    $aid  = (int)($agent['id'] ?? 0);
+    $body = trim($body);
+    if ($aid <= 0) return $err('Please sign in again.', 403);
+    if ($body === '') return $err('Please write a message.');
+    $body = mb_substr($body, 0, 4000);
+
+    $req = agent_fetch_request($agent, $submissionId);
+    if ($req === null) return $err('That request could not be found.', 404);
+
+    require_once __DIR__ . '/submission-notes.php';
+    if (!submission_notes_supported()) return $err('Messaging is unavailable right now — please email reservations.', 503);
+
+    $who = trim((string)($agent['name'] ?? ''));
+    $agency = trim((string)($agent['agency'] ?? ''));
+    $label = $agency !== '' ? ($who !== '' ? $who . ' (' . $agency . ')' : $agency) : ($who ?: 'Agent');
+
+    $noteId = add_submission_note($submissionId, null, $body, 'guest_reply', $label);
+    if (!$noteId) return $err('Could not send your message. Please try again.', 500);
+
+    // Same unread signal an inbound guest reply raises (Item 4) — a trade reply is
+    // a customer reply for reservations to see.
+    submission_mark_guest_reply($submissionId);
+    return ['ok' => true, 'note_id' => $noteId];
 }
 
 /**

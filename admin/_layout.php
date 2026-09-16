@@ -5,6 +5,7 @@ require_once __DIR__ . '/../includes/icons.php';       // admin_icon() for icon-
 require_once __DIR__ . '/../includes/admin-shell.php'; // no-flicker shell (#18)
 require_once __DIR__ . '/../includes/ai.php';          // ai_assistant_supported() — gates the Assistant nav link
 require_once __DIR__ . '/../includes/internal-messages.php'; // internal_unread_total() — Team chat nav badge
+require_once __DIR__ . '/../includes/submission-notes.php';  // submission_unread_reply_count() — Submissions nav badge
 $admin = current_admin();
 
 // ── Role / job aware nav visibility ──────────────────────────────────────
@@ -204,9 +205,10 @@ if ($__shellFrag) { ob_start(); return; }
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
           Rates
         </a>
+        <?php $__subsUnread = function_exists('submission_unread_reply_count') ? submission_unread_reply_count() : 0; ?>
         <a href="/admin/submissions.php"  class="sidebar__link <?= ($activeMenu??'')==='submissions'  ? 'is-active':'' ?>">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 9v11"/></svg>
-          Submissions
+          Submissions<?php if ($__subsUnread > 0): ?> <span class="badge badge--red" data-tip="<?= (int)$__subsUnread ?> new customer repl<?= $__subsUnread === 1 ? 'y' : 'ies' ?>" style="margin-left:6px"><?= (int)$__subsUnread ?></span><?php endif; ?>
         </a>
         <?php
           // Scoped to the account's venues — reception must not see a count
