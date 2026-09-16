@@ -3,6 +3,14 @@
 **Date:** 2026-09-15 · **Status:** approved for implementation (autonomous session — see
 "Decisions made without confirmation" at the end)
 
+> **Revision 2026-09-16 (owner decision): a trade request never places a hold.** Everything below
+> that says the request creates a 24h hold is superseded: `agent_submit_request()` writes the
+> submission only (no hold, no block, no sweep); reservations place the hold with Convert to Hold in
+> the enquiry view, and `agent_tag_converted_hold()` links that hold to the agent and freezes their
+> net for the room actually booked. §5.1 (`holds.agent_id`), §5.5, §5.7 and the ledger rule still
+> apply to the *converted* hold. The staff hold-notification trade rows and the pending-hold cap
+> were dropped with the automatic hold. Implemented as shipped in `includes/agent.php`.
+
 ## 1. Problem
 
 Travel agents can now sign in at `/agent` (T3, commit `a153cf9`), but the portal is a

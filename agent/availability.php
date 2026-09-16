@@ -65,7 +65,7 @@ $agentActive    = 'availability';
 include __DIR__ . '/_layout.php';
 ?>
 <h1>Check availability</h1>
-<p class="ap-sub">Live availability across every property, priced at your trade rate. Choose dates and party size, then request the option you want — dates are held for 24 hours while reservations confirm.</p>
+<p class="ap-sub">Live availability across every property, priced at your trade rate. Choose dates and party size, then request the option you want — reservations check the dates, place the hold and confirm by email.</p>
 
 <div class="ap-card">
   <form method="GET" action="/agent/availability.php" class="ap-form">
@@ -134,7 +134,7 @@ include __DIR__ . '/_layout.php';
         <div>
           <div class="ap-opt__name">Combination · sleeps <?= (int)$c['capacity'] ?></div>
           <div><?php foreach ($c['rooms'] as $cr): ?><span class="ap-chip"><?= e($cr['name']) ?><?= (int)$cr['units_used'] > 1 ? ' ×' . (int)$cr['units_used'] : '' ?> · <?= e(format_price((float)($cr['net_total'] ?? $cr['total']), (string)$cr['currency'])) ?></span><?php endforeach; ?></div>
-          <div class="ap-opt__meta">Sent as an enquiry — reservations confirm the rooms and price by email.</div>
+          <div class="ap-opt__meta">Reservations confirm the rooms and price by email.</div>
         </div>
         <div class="ap-opt__price"><?= $priceCell($c, $pct) ?><a class="ap-btn ap-btn--ghost" href="<?= e($reqUrl(['venue' => $v['slug'], 'rooms' => agent_rooms_param($c['rooms'])])) ?>">Request these rooms</a></div>
       </div>

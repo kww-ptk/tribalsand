@@ -85,7 +85,7 @@ check('trade lines: an unpriced room reads as on request, never USD 0', $tlNo['r
 
 // ── Request status (pure) ─────────────────────────────────────────────────────
 $now = strtotime('2026-09-15 10:00:00');
-check('status: no hold = enquiry sent', agent_request_status(['hold_status' => null], $now)['label'] === 'Enquiry sent');
+check('status: no hold = sent, awaiting reservations', agent_request_status(['hold_status' => null], $now)['label'] === 'Sent');
 $st = agent_request_status(['hold_status' => 'pending', 'expires_at' => '2026-09-15 21:30:00'], $now);
 check('status: pending shows the countdown', $st['label'] === 'On hold' && $st['note'] === 'Expires in 11h 30m');
 check('status: pending with no expiry awaits confirmation', agent_request_status(['hold_status' => 'pending', 'expires_at' => null], $now)['note'] === 'Awaiting confirmation');
@@ -93,17 +93,6 @@ check('status: confirmed / expired / cancelled labels',
     agent_request_status(['hold_status' => 'confirmed'], $now)['label'] === 'Confirmed'
     && agent_request_status(['hold_status' => 'expired'], $now)['label'] === 'Expired'
     && agent_request_status(['hold_status' => 'cancelled'], $now)['class'] === 'cancelled');
-
-// ── Trade rows in the staff hold email (pure HTML builder) ───────────────────
-$mailBase = ['guest_name' => 'ZZ Traveller', 'guest_email' => 'a@x.com', 'room_name' => 'Suite', 'unit_name' => 'Unit A',
-             'check_in' => '2098-06-10', 'check_out' => '2098-06-12', 'expires' => '24 hours',
-             'confirm_url' => '#', 'decline_url' => '#', 'holds_url' => '#', 'has_tokens' => false];
-$plain = _hold_notification_html($mailBase);
-$trade = _hold_notification_html($mailBase + ['trade_agent' => 'Safari Co — Jane <j@x.com>', 'trade_rate' => 'USD 850 net · 2 nights']);
-check('mail: a guest hold email has no trade rows', !str_contains($plain, 'Booked by'));
-check('mail: a trade hold email names the agent and the net rate',
-    str_contains($trade, 'Booked by') && str_contains($trade, 'Safari Co') && str_contains($trade, 'USD 850 net'));
-check('mail: trade values are escaped', str_contains($trade, '&lt;j@x.com&gt;'));
 
 // ── DB round-trip (rolled back) ─────────────────────────────────────────────
 $hasDb = false;
@@ -150,125 +139,109 @@ if ($hasDb) {
                 $bad = agent_stay_quote($qRoom, $agentRow, '2098-06-12', '2098-06-10');
                 check('quote: a reversed window is NOT a quote (nights 0, net 0)', $bad['nights'] === 0 && $bad['net'] === 0.0);
 
-                check('form mode: the room’s own enquiry mode wins', agent_room_form_mode(array_merge($qRoom, ['form_mode' => 'enquiry'])) === 'enquiry');
-                $hasUnits = count(fetch_units_by_room(room_inventory_room_id($qRoom))) > 0;
-                check('form mode: availability only when the inventory room has units',
-                    agent_room_form_mode(array_merge($qRoom, ['form_mode' => 'availability'])) === ($hasUnits ? 'availability' : 'enquiry'));
             }
 
             // ── Request writer round-trip (all rolled back) ──────────────────
-            // A published, priced, individual, non-composite room with exactly ONE
-            // active unit at a published property — so a second identical request
-            // must be refused with a 409.
+            // A trade request NEVER places a hold (the owner's rule): one submission
+            // with a server-written agent id and the net quote in its payload. The
+            // hold is placed by reservations (Convert to Hold) and tagged from it.
             $room = db_query(
                 "SELECT r.* FROM rooms r JOIN venues v ON v.id = r.venue_id
                   WHERE r.is_published = TRUE AND v.is_published = TRUE AND r.is_entire_place = FALSE
                     AND r.price_amount > 0 AND r.slug NOT LIKE 'maya-ilai-%'
-                    AND (SELECT COUNT(*) FROM units u WHERE u.room_id = r.id AND u.is_active) = 1
+                    AND EXISTS (SELECT 1 FROM units u WHERE u.room_id = r.id AND u.is_active)
                   ORDER BY r.id LIMIT 1")->fetch();
             if (!$room) {
-                echo "SKIP  no single-unit published room to book against\n";
+                echo "SKIP  no priced published room with a unit to request\n";
             } else {
-                db_query("UPDATE rooms SET form_mode = 'availability' WHERE id = :id", [':id' => $room['id']]);
                 $venueSlug = (string) db_query('SELECT slug FROM venues WHERE id = :id', [':id' => $room['venue_id']])->fetchColumn();
                 $ci = '2098-06-10'; $co = '2098-06-12';
                 $req = ['kind' => 'room', 'room_slug' => $room['slug'], 'check_in' => $ci, 'check_out' => $co,
                         'adults' => 2, 'children' => 1, 'guest_name' => 'ZZ Traveller',
                         'guest_email' => 'zz-trav@example.com', 'guest_phone' => '+254700000000', 'notes' => 'Late arrival'];
+                $holdsBefore = (int) db_query('SELECT COUNT(*) FROM holds')->fetchColumn();
                 $res = agent_submit_request($agentRow, $req, ['source_page' => 'test', 'ip' => '127.0.0.1']);
-                check('request: hold mode succeeds', $res['ok'] === true && $res['mode'] === 'hold' && (int)$res['hold_id'] > 0);
-
-                $hold = db_query('SELECT * FROM holds WHERE id = :id', [':id' => $res['hold_id']])->fetch();
-                check('request: hold names the traveller, is emailed to the agent',
-                    $hold['guest_name'] === 'ZZ Traveller' && $hold['guest_email'] === 'zz-agent@example.com');
-                check('request: hold is pending with a 24h expiry', $hold['status'] === 'pending' && !empty($hold['expires_at']));
-                check('request: availability block written',
-                    (bool) db_query('SELECT 1 FROM availability_blocks WHERE hold_id = :h', [':h' => $res['hold_id']])->fetchColumn());
+                check('request: saves as a request, never a hold', $res['ok'] === true && $res['mode'] === 'enquiry' && empty($res['hold_id']));
+                check('request: no hold or block is written',
+                    (int) db_query('SELECT COUNT(*) FROM holds')->fetchColumn() === $holdsBefore
+                    && !db_query('SELECT 1 FROM holds WHERE submission_id = :s', [':s' => $res['submission_id']])->fetchColumn());
 
                 $canon     = room_stay_quote((int)$room['id'], (float)$room['price_amount'], $ci, $co);
                 $expectNet = agent_net_price((float)$canon['total'], $agentRow, (int)$room['venue_id']);
                 check('request: net = published (ONE path) × (1 − discount)',
                     eq((float)$res['quote']['net'], $expectNet) && eq((float)$res['quote']['published'], (float)$canon['total']));
-                if (holds_agent_supported()) check('request: holds.agent_id links the agent', (int)$hold['agent_id'] === (int)$agentRow['id']);
-                else echo "SKIP  holds.agent_id absent — run add_holds_agent.sql\n";
-                if (holds_quoted_amount_supported()) check('request: net frozen on the hold',
-                    eq((float)$hold['quoted_amount'], $expectNet) && $hold['quoted_currency'] === ($room['price_currency'] ?: 'USD'));
-                else echo "SKIP  holds.quoted_amount absent — run add_holds_quoted_amount.sql\n";
 
                 $sub = db_query('SELECT * FROM submissions WHERE id = :id', [':id' => $res['submission_id']])->fetch();
                 $pl  = json_decode((string)$sub['payload_json'], true);
-                check('request: submission payload names the agent, source and net',
+                check('request: payload names the agent, source, signed marker and net',
                     (int)$pl['agent_id'] === (int)$agentRow['id'] && $pl['source'] === 'trade-portal'
+                    && hash_equals(agent_request_sig((int)$agentRow['id']), (string)($pl['agent_sig'] ?? ''))
                     && eq((float)$pl['quoted_total'], $expectNet) && $pl['traveller_email'] === 'zz-trav@example.com');
-                check('request: submission contact is the agent, guest is the traveller, message carries the trade lines',
+                if (submissions_agent_supported()) check('request: submissions.agent_id is written by the server', (int)$sub['agent_id'] === (int)$agentRow['id']);
+                else echo "SKIP  submissions.agent_id absent — run add_holds_agent.sql\n";
+                check('request: contact is the agent, guest is the traveller, phone only in the payload',
                     $sub['guest_email'] === 'zz-agent@example.com' && $sub['guest_name'] === 'ZZ Traveller'
+                    && (string)$sub['guest_phone'] === '' && ($pl['traveller_phone'] ?? '') === '+254700000000'
                     && (int)$sub['room_id'] === (int)$room['id'] && (int)$sub['guests_children'] === 1
                     && str_contains((string)$sub['message'], 'ZZ Agency') && str_contains((string)$sub['message'], 'Late arrival'));
+                check('request: the message tells reservations no hold was placed', str_contains((string)$sub['message'], 'no hold placed'));
 
-                // "Your requests"
+                // "Your requests": sent, awaiting reservations.
                 $list = agent_requests($agentRow);
-                check('requests: the request lists with its hold status',
-                    count($list) === 1 && (int)$list[0]['hold_id'] === (int)$res['hold_id'] && $list[0]['hold_status'] === 'pending');
-                check('requests: reads as "On hold"', agent_request_status($list[0])['label'] === 'On hold');
+                check('requests: lists the request as sent, with no hold yet',
+                    count($list) === 1 && (int)$list[0]['id'] === (int)$res['submission_id'] && $list[0]['hold_id'] === null
+                    && agent_request_status($list[0])['label'] === 'Sent');
+
+                // Reservations convert it: the hold is tagged with the agent + the net for the booked room.
+                $unit   = db_query('SELECT id FROM units WHERE room_id = :r AND is_active = TRUE ORDER BY sort_order LIMIT 1', [':r' => $room['id']])->fetch();
+                $holdId = create_hold_with_block((int)$unit['id'], (int)$res['submission_id'], $ci, $co, 'ZZ Traveller', 'zz-agent@example.com', 'pending', 24, null, (int)$room['id']);
+                $tag    = agent_tag_converted_hold($holdId, $sub);
+                check('convert: a converted trade request tags the hold', is_array($tag) && $tag['agency'] === 'ZZ Agency' && eq((float)$tag['net'], $expectNet));
+                $hold = db_query('SELECT * FROM holds WHERE id = :id', [':id' => $holdId])->fetch();
+                if (holds_agent_supported()) check('convert: holds.agent_id links the agent', (int)$hold['agent_id'] === (int)$agentRow['id']);
+                else echo "SKIP  holds.agent_id absent — run add_holds_agent.sql\n";
+                if (holds_quoted_amount_supported()) check('convert: the net for the booked room is frozen on the hold',
+                    eq((float)$hold['quoted_amount'], $expectNet) && $hold['quoted_currency'] === ($room['price_currency'] ?: 'USD'));
+                else echo "SKIP  holds.quoted_amount absent — run add_holds_quoted_amount.sql\n";
+                check('convert: a guest enquiry is never tagged', agent_tag_converted_hold($holdId, ['payload_json' => '{"agent_id": 1}']) === null);
+                check('requests: the converted request now reads "On hold"', agent_request_status(agent_requests($agentRow)[0])['label'] === 'On hold');
 
                 // Ledger: confirming snapshots source = 'agent' at the NET figure.
                 if (bookings_supported() && holds_agent_supported() && holds_quoted_amount_supported()) {
-                    db_query("UPDATE holds SET status = 'confirmed', confirmed_at = NOW() WHERE id = :id", [':id' => $res['hold_id']]);
-                    bookings_sync_hold((int)$res['hold_id']);
-                    $bk = db_query('SELECT * FROM bookings WHERE hold_id = :h', [':h' => $res['hold_id']])->fetch();
-                    check('ledger: an agent hold books as source=agent, named by agency',
+                    db_query("UPDATE holds SET status = 'confirmed', confirmed_at = NOW() WHERE id = :id", [':id' => $holdId]);
+                    bookings_sync_hold($holdId);
+                    $bk = db_query('SELECT * FROM bookings WHERE hold_id = :h', [':h' => $holdId])->fetch();
+                    check('ledger: a converted trade request books as source=agent, named by agency',
                         is_array($bk) && $bk['source'] === 'agent' && $bk['agent'] === 'ZZ Agency');
                     check('ledger: gross is the frozen net figure', is_array($bk) && eq((float)$bk['gross_amount'], $expectNet));
                 } else {
                     echo "SKIP  ledger source check needs bookings + holds.agent_id + holds.quoted_amount\n";
                 }
 
-                // The race: the one unit is now held → a DIFFERENT agent asking for it is refused,
-                // nothing written. (The same agent re-sending inside 30 s is a double submit — see below.)
-                db_query("INSERT INTO travel_agents (name, agency, email, password_hash, discount_pct) VALUES ('ZZ Other','ZZ Other Co','zz-agent-2@example.com',:h,5)",
-                    [':h' => password_hash('secret456', PASSWORD_DEFAULT)]);
-                $otherAgent  = db_query("SELECT * FROM travel_agents WHERE email = 'zz-agent-2@example.com'")->fetch();
-                $holdsBefore = (int) db_query('SELECT COUNT(*) FROM holds')->fetchColumn();
-                $subsBefore  = (int) db_query('SELECT COUNT(*) FROM submissions')->fetchColumn();
-                $again = agent_submit_request($otherAgent, $req, ['ip' => '127.0.0.1']);
-                check('request: a second request for the one unit is refused (409)', $again['ok'] === false && $again['code'] === 409);
-                check('request: … and writes nothing',
-                    (int) db_query('SELECT COUNT(*) FROM holds')->fetchColumn() === $holdsBefore
-                    && (int) db_query('SELECT COUNT(*) FROM submissions')->fetchColumn() === $subsBefore);
-
-                // Validation: traveller name required; past dates refused.
+                // Validation.
                 check('request: traveller name is required', agent_submit_request($agentRow, ['guest_name' => ''] + $req)['code'] === 422);
                 check('request: a past check-in is refused', agent_submit_request($agentRow, ['check_in' => '2020-01-01', 'check_out' => '2020-01-03'] + $req)['code'] === 422);
 
-                // A combination is an ENQUIRY: submission only, no hold, rooms in the payload.
+                // A double submit reuses the earlier request (nothing new written, nothing re-mailed).
+                $subsNow = (int) db_query('SELECT COUNT(*) FROM submissions')->fetchColumn();
+                $dup = agent_submit_request($agentRow, $req, ['ip' => '127.0.0.1']);
+                check('dedupe: an identical re-send returns the earlier request',
+                    $dup['ok'] === true && !empty($dup['dedupe']) && (int)$dup['submission_id'] === (int)$res['submission_id']
+                    && (int) db_query('SELECT COUNT(*) FROM submissions')->fetchColumn() === $subsNow);
+
+                // A combination is a request too: no hold, rooms listed in the payload.
                 $combo = agent_submit_request($agentRow, [
                     'kind' => 'combo', 'venue_slug' => $venueSlug, 'rooms' => [['slug' => $room['slug'], 'units' => 1]],
                     'check_in' => $ci, 'check_out' => $co, 'adults' => 2, 'children' => 0, 'guest_name' => 'ZZ Group',
                 ], ['ip' => '127.0.0.1']);
-                check('request: a combination is recorded as an enquiry with no hold',
-                    $combo['ok'] === true && $combo['mode'] === 'enquiry' && $combo['hold_id'] === null);
-                $csub = db_query('SELECT * FROM submissions WHERE id = :id', [':id' => $combo['submission_id']])->fetch();
-                $cpl  = json_decode((string)$csub['payload_json'], true);
-                check('request: combo submission has no room_id and lists the rooms',
-                    $csub['room_id'] === null && str_contains((string)($cpl['rooms'] ?? ''), (string)$room['name']));
-                $list2 = agent_requests($agentRow);
-                check('requests: both list, newest first, the combo reads "Enquiry sent"',
-                    count($list2) === 2 && agent_request_status($list2[0])['label'] === 'Enquiry sent');
+                check('request: a combination is recorded with no hold and its rooms listed',
+                    $combo['ok'] === true && empty($combo['dedupe'])
+                    && db_query('SELECT room_id, payload_json FROM submissions WHERE id = :id', [':id' => $combo['submission_id']])->fetch()['room_id'] === null
+                    && str_contains((string)(json_decode((string)db_query('SELECT payload_json FROM submissions WHERE id = :id', [':id' => $combo['submission_id']])->fetchColumn(), true)['rooms'] ?? ''), (string)$room['name']));
                 check('request: a room from another property is refused in a combo',
                     agent_submit_request($agentRow, ['kind' => 'combo', 'venue_slug' => $venueSlug,
                         'rooms' => [['slug' => 'no-such-room-zz', 'units' => 1]], 'check_in' => $ci, 'check_out' => $co,
                         'adults' => 2, 'children' => 0, 'guest_name' => 'X'])['code'] === 422);
-
-                // ── Review hardening ─────────────────────────────────────────
-                // A double submit reuses the earlier request (nothing new written, nothing re-mailed).
-                $subsNow = (int) db_query('SELECT COUNT(*) FROM submissions')->fetchColumn();
-                $dup = agent_submit_request($agentRow, [
-                    'kind' => 'combo', 'venue_slug' => $venueSlug, 'rooms' => [['slug' => $room['slug'], 'units' => 1]],
-                    'check_in' => $ci, 'check_out' => $co, 'adults' => 2, 'children' => 0, 'guest_name' => 'ZZ Group',
-                ], ['ip' => '127.0.0.1']);
-                check('dedupe: an identical re-send returns the earlier request',
-                    $dup['ok'] === true && !empty($dup['dedupe']) && (int)$dup['submission_id'] === (int)$combo['submission_id']
-                    && (int) db_query('SELECT COUNT(*) FROM submissions')->fetchColumn() === $subsNow);
 
                 // Isolation: a payload that merely CLAIMS an agent id (what any public form could post) is never listed.
                 $listBefore = count(agent_requests($agentRow));
@@ -277,52 +250,23 @@ if ($hasDb) {
                     [':p' => json_encode(['agent_id' => (int)$agentRow['id'], 'source' => 'trade-portal', 'quoted_total' => 1])]);
                 check('isolation: a spoofed payload agent_id does not appear in the agent’s requests',
                     count(agent_requests($agentRow)) === $listBefore);
-                if (submissions_agent_supported()) {
-                    check('request: submissions.agent_id is written by the server',
-                        (int) db_query('SELECT agent_id FROM submissions WHERE id = :id', [':id' => $res['submission_id']])->fetchColumn() === (int)$agentRow['id']);
-                } else {
-                    echo "SKIP  submissions.agent_id absent — run add_holds_agent.sql\n";
-                }
-                check('request: the traveller’s phone is not stored as the booker’s contact',
-                    (string) db_query('SELECT guest_phone FROM submissions WHERE id = :id', [':id' => $res['submission_id']])->fetchColumn() === '');
 
-                // Throttle: counts only this agent's own requests; the pending-hold cap needs holds.agent_id.
-                check('throttle: within limits → null', agent_request_throttled($agentRow, 100, 100) === null);
-                check('throttle: the request window is enforced', agent_request_throttled($agentRow, 1, 100) !== null);
-
-                // An enquiry-mode room creates the submission only (different dates, so the de-dupe stays out of the way).
-                db_query("UPDATE rooms SET form_mode = 'enquiry' WHERE id = :id", [':id' => $room['id']]);
-                $enq = agent_submit_request($agentRow, ['check_in' => '2098-07-01', 'check_out' => '2098-07-03'] + $req, ['ip' => '127.0.0.1']);
-                check('request: an enquiry-mode room is recorded without a hold',
-                    $enq['ok'] === true && $enq['mode'] === 'enquiry' && $enq['hold_id'] === null
-                    && (int) db_query('SELECT room_id FROM submissions WHERE id = :id', [':id' => $enq['submission_id']])->fetchColumn() === (int)$room['id']);
-                db_query("UPDATE rooms SET form_mode = 'availability' WHERE id = :id", [':id' => $room['id']]);
+                // Throttle counts only this agent's own requests.
+                check('throttle: within limits → null', agent_request_throttled($agentRow, 100) === null);
+                check('throttle: the request window is enforced', agent_request_throttled($agentRow, 1) !== null);
             }
 
-            // ── Maya Ilai: the villa books through the locked allocator; per-bedroom products are refused ──
+            // ── Maya Ilai: the villa can be requested; per-bedroom products are refused ──
             $villa = db_query("SELECT r.* FROM rooms r JOIN venues v ON v.id = r.venue_id
                                 WHERE r.slug = :s AND r.is_published = TRUE AND v.is_published = TRUE", [':s' => MAYA_ILAI_VILLA_ROOM_SLUG])->fetch();
-            $villaUnits = $villa ? count(fetch_units_by_room((int)$villa['id'])) : 0;
-            if (!$villa || $villaUnits === 0) {
-                echo "SKIP  no published Maya Ilai villa with units — composite round-trip skipped\n";
+            if (!$villa) {
+                echo "SKIP  no published Maya Ilai villa — composite checks skipped\n";
             } else {
-                db_query("UPDATE rooms SET form_mode = 'availability' WHERE id = :id", [':id' => $villa['id']]);
                 $vres = agent_submit_request($agentRow, ['kind' => 'room', 'room_slug' => $villa['slug'],
                     'check_in' => '2098-08-10', 'check_out' => '2098-08-12', 'adults' => 6, 'children' => 0,
                     'guest_name' => 'ZZ Villa Party'], ['ip' => '127.0.0.1']);
-                check('maya ilai: the villa is held through the locked allocator', $vres['ok'] === true && $vres['mode'] === 'hold' && (int)$vres['hold_id'] > 0);
-                if ($vres['ok']) {
-                    $vh = db_query("SELECT h.room_id, h.unit_id, u.room_id AS unit_room_id FROM holds h JOIN units u ON u.id = h.unit_id WHERE h.id = :id", [':id' => $vres['hold_id']])->fetch();
-                    check('maya ilai: the hold names the villa product on a villa unit',
-                        (int)$vh['room_id'] === (int)$villa['id'] && (int)$vh['unit_room_id'] === (int)$villa['id']);
-                    if (components_supported()) {
-                        // Through the locked allocator the villa product claims all four
-                        // components explicitly (NULL = whole unit is the staff/OTA block rule).
-                        $comps = mi_pg_array_decode(db_query('SELECT components FROM availability_blocks WHERE hold_id = :h', [':h' => $vres['hold_id']])->fetchColumn());
-                        check('maya ilai: a villa hold claims every bedroom of its villa',
-                            count($comps) === 4 && in_array('bunk', $comps, true) && in_array('living', $comps, true));
-                    }
-                }
+                check('maya ilai: the villa can be requested (no hold placed)',
+                    $vres['ok'] === true && !db_query('SELECT 1 FROM holds WHERE submission_id = :s', [':s' => $vres['submission_id']])->fetchColumn());
                 $bedroom = db_query("SELECT r.* FROM rooms r WHERE r.venue_id = :v AND r.is_published = TRUE AND r.slug <> :villa AND r.slug <> 'maya-ilai-studio'
                                       AND NOT EXISTS (SELECT 1 FROM units u WHERE u.room_id = r.id AND u.is_active) ORDER BY r.id LIMIT 1",
                     [':v' => $villa['venue_id'], ':villa' => $villa['slug']])->fetch();

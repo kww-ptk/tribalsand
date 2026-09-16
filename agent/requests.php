@@ -1,10 +1,9 @@
 <?php
 declare(strict_types=1);
 /**
- * Trade portal — the agent's requests and what became of each: on hold (with the
- * expiry countdown), confirmed, expired, cancelled, or "enquiry sent" for a
- * request that placed no hold. Read from the submission payload
- * (agent_requests()), so it works with or without holds.agent_id.
+ * Trade portal — the agent's requests and what became of each: sent (awaiting
+ * reservations), then on hold (with the expiry countdown), confirmed, expired or
+ * cancelled once reservations have converted it. Read via agent_requests().
  */
 require_once __DIR__ . '/../includes/agent.php';
 require_once __DIR__ . '/../includes/booking.php';   // make_manage_url()
@@ -27,17 +26,9 @@ $agentActive    = 'requests';
 include __DIR__ . '/_layout.php';
 ?>
 <h1>Your requests</h1>
-<p class="ap-sub">Every request you have sent, and its status. Reservations confirm each one by email to <?= e($agent['email']) ?>.</p>
+<p class="ap-sub">Every request you have sent, and its status. Reservations place the hold and confirm each one by email to <?= e($agent['email']) ?>.</p>
 
-<?php if ($sent):
-    // Say what actually happened to THIS request: a hold keeps the dates for 24h,
-    // an enquiry (enquiry-mode room or a room combination) holds nothing yet.
-    $sentRow  = null;
-    foreach ($rows as $r) { if ((int)$r['id'] === $sent) { $sentRow = $r; break; } }
-    $sentHeld = $sentRow !== null && !empty($sentRow['hold_id']);
-?>
-<div class="alert alert-success">Request sent — reservations will confirm by email. <?= $sentHeld ? 'Your dates are on hold for 24 hours.' : 'Nothing is held yet; we’ll confirm the rooms and price by email.' ?></div>
-<?php endif; ?>
+<?php if ($sent): ?><div class="alert alert-success">Request sent — reservations will check the dates, place the hold and confirm by email. Nothing is held or charged until then.</div><?php endif; ?>
 <?php if ($loadError): ?><div class="alert alert-error"><?= e($loadError) ?></div><?php endif; ?>
 
 <div class="ap-card">

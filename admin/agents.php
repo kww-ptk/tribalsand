@@ -111,7 +111,7 @@ include __DIR__ . '/_layout.php';
 <div class="page-header">
   <div>
     <h1>Travel agents</h1>
-    <p class="text-muted" style="margin:4px 0 0;font-size:13px">External trade partners with their own portal — set a discount and they see live net prices, check availability and send booking requests that land here as trade holds.</p>
+    <p class="text-muted" style="margin:4px 0 0;font-size:13px">External trade partners with their own portal — set a discount and they see live net prices, check availability and send booking requests that land in the inbox — you place the hold (Convert to Hold) and it is tagged to them at their net rate.</p>
   </div>
 </div>
 
@@ -137,7 +137,7 @@ include __DIR__ . '/_layout.php';
     </form>
     <p class="text-muted" style="font-size:12.5px;margin:12px 0 0;line-height:1.65;max-width:760px">
       Agents log in separately at <code>/agent/login.php</code> — they see their rates, check live availability and request to book there, never this admin panel.
-      A request creates the same 24-hour hold a guest request does, marked <strong>Trade</strong> in Holds &amp; Bookings.
+      A request never holds dates by itself: it lands in Submissions, and converting it to a hold tags the booking <strong>Trade</strong> at the agent’s net rate.
       The discount is a flat % off your published nightly rate; their price is worked out <strong>live</strong>, so it updates on its own whenever you change a rate.
       Want different rates for certain properties? Open <strong>Per-property rates</strong> on the agent’s row below.
     </p>

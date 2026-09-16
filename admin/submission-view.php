@@ -37,6 +37,8 @@ require_once __DIR__ . '/../includes/upsells.php';             // booking-flow a
 require_once __DIR__ . '/../includes/mail.php'; // send_admin_reply()
 require_once __DIR__ . '/../includes/staff-hold-guard.php'; // staff_hold_block_reason()
 require_once __DIR__ . '/../includes/bookings.php'; // hold_product_room_id()
+require_once __DIR__ . '/../includes/agent.php';    // agent_tag_converted_hold() — trade requests
+require_once __DIR__ . '/../includes/services.php'; // format_price() for the trade net figure
 
 // Flash (set by the convert handler on redirect)
 $flash = $_SESSION['sub_flash'] ?? null;
@@ -185,6 +187,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'conve
     }
     // Hold created — nothing below may report a failure of the hold itself.
     //
+    // A trade request (sent by a travel agent through the portal): link the hold to
+    // the agent and freeze their net price for the room actually booked, so it
+    // reads as a trade booking everywhere and books as source='agent' in the ledger.
+    $tradeTag = null;
+    try { $tradeTag = agent_tag_converted_hold($hold_id, $sub); }
+    catch (Throwable $e) { error_log('[convert-to-hold] trade tag failed: ' . $e->getMessage()); }
+    //
     // Add-ons the guest ticked during the enquiry become addon requests on the
     // new booking, so they show up in the guest portal and on the front desk.
     // Re-validated against what the room's property actually offers, so an
@@ -218,6 +227,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'conve
     // room type from the one enquired about, so either the price or the room is
     // not what the guest asked for and someone should look.
     $_SESSION['sub_flash'] = ['type' => 'success', 'msg' => "Hold #{$hold_id} created from this enquiry."
+        . ($tradeTag ? ' Trade booking via ' . ($tradeTag['agency'] !== '' ? $tradeTag['agency'] : $tradeTag['agent'])
+            . ($tradeTag['net'] > 0 ? ' at net ' . format_price($tradeTag['net'], $tradeTag['currency']) : '') . '.' : '')
         . ($addonsMade ? " {$addonsMade} add-on" . ($addonsMade === 1 ? '' : 's') . ' carried over.' : '')
         . $room_mismatch];
     header('Location: ' . $redirect); exit;
@@ -669,6 +680,8 @@ include __DIR__ . '/_layout.php';
     <?php if (!$ru_options): ?>
       <p style="margin:0;font-size:14px;color:var(--muted)">No availability units are set up yet, so a hold can't be created. Add units to a room first (Rooms admin).</p>
     <?php else: ?>
+    <?php $__tradeAid = agent_submission_agent_id($sub); $__tradeAgent = $__tradeAid && agents_supported() ? db_query('SELECT name, agency FROM travel_agents WHERE id = :id', [':id' => $__tradeAid])->fetch() : null; ?>
+    <?php if ($__tradeAgent): ?><p style="margin:0 0 10px;font-size:13px"><span class="badge badge--blue">Trade request</span> from <strong><?= e(trim((string)$__tradeAgent['agency']) ?: (string)$__tradeAgent['name']) ?></strong> — the hold you create is tagged to them at their net rate, and the agent (not the traveller) is emailed.</p><?php endif; ?>
     <p style="margin:0 0 16px;font-size:13px;color:var(--muted)">Creates a 24h hold from this enquiry, generates a booking code, and blocks the dates. Availability is not checked — you control overlaps. The one exception is a Maya Ilai villa: a staff booking there takes the whole villa, so one with a bedroom already sold is refused.</p>
     <form method="POST" action="/admin/submission-view?id=<?= $id ?>">
       <?= csrf_field() ?>

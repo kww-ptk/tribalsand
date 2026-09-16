@@ -81,6 +81,7 @@ $__agent = agent_current();
   .ap-status--expired,.ap-status--cancelled{background:#f1ece5;color:#6b6050}
   .ap-status--sent{background:#eef5f7;color:#0f6f68}
   .alert-success{background:#eef7ee;border:1px solid #cfe6cf;color:#2f6b36}
+  .alert-info{background:#eef5f7;border:1px solid #cfe0e6;color:#0f6f68}
   table th.ap-left,table td.ap-left{text-align:left}
 </style>
 </head>

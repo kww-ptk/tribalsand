@@ -220,14 +220,14 @@ function agent_trade_lines(array $agent, array $quote): array {
 }
 
 /**
- * Portal-facing state of one agent_requests() row: the hold's status (with a
- * countdown while pending) or "Enquiry sent" when the request created no hold
- * (enquiry-mode room, or a room combination). Pure — pass $now for tests.
+ * Portal-facing state of one agent_requests() row: "Sent" until reservations
+ * convert it to a hold, then the hold's status (with a countdown while pending).
+ * Pure — pass $now for tests.
  */
 function agent_request_status(array $row, ?int $now = null): array {
     $now = $now ?? time();
     $st  = (string)($row['hold_status'] ?? '');
-    if ($st === '') return ['label' => 'Enquiry sent', 'class' => 'sent', 'note' => 'We’ll reply by email'];
+    if ($st === '') return ['label' => 'Sent', 'class' => 'sent', 'note' => 'Reservations will confirm by email'];
     if ($st === 'pending') {
         $exp = !empty($row['expires_at']) ? strtotime((string)$row['expires_at']) : false;
         if ($exp === false) return ['label' => 'On hold', 'class' => 'pending', 'note' => 'Awaiting confirmation'];
@@ -266,29 +266,8 @@ function agent_stay_quote(array $room, array $agent, string $checkIn, string $ch
     ];
 }
 
-/**
- * Whether a request for this room becomes a 24h HOLD or a plain ENQUIRY — the
- * exact rule api/submit-enquiry.php applies to the public widget: the room's own
- * form_mode, else the global `form_mode` setting, and never 'availability' when
- * the room's inventory room has no active unit to hold. The inventory question
- * goes through room_inventory_room_id(), so a Maya Ilai composite product asks
- * about the villa's units instead of silently downgrading to an enquiry.
- */
-function agent_room_form_mode(array $room): string {
-    $mode = !empty($room['form_mode']) ? (string)$room['form_mode'] : setting('form_mode', 'enquiry');
-    if ($mode === 'availability') {
-        try {
-            if (count(fetch_units_by_room(room_inventory_room_id($room))) === 0) $mode = 'enquiry';
-        } catch (Throwable $e) {
-            $mode = 'enquiry';
-        }
-    }
-    return $mode === 'availability' ? 'availability' : 'enquiry';
-}
-
 /** Abuse guards for the authenticated (Turnstile-less) portal. */
 const AGENT_MAX_REQUESTS_PER_WINDOW = 12;   // per 10 minutes
-const AGENT_MAX_PENDING_HOLDS       = 15;   // stays awaiting confirmation at once
 const AGENT_DEDUPE_SECONDS          = 30;   // an identical re-send inside this window is a double submit
 
 /**
@@ -364,11 +343,11 @@ function agent_recent_duplicate(int $agentId, string $ci, string $co, ?int $room
 
 /**
  * Per-agent throttle. The portal is authenticated, so there is no Turnstile —
- * but a scripted or leaked session must not be able to hold a property's whole
- * inventory for 24 hours. Returns the refusal message, or null when within
- * limits. Fails OPEN on a read error (like concierge_rate_limited()).
+ * but a scripted or leaked session must not be able to flood the inbox (each
+ * request e-mails reservations). Returns the refusal message, or null when
+ * within limits. Fails OPEN on a read error (like concierge_rate_limited()).
  */
-function agent_request_throttled(array $agent, int $maxRequests = AGENT_MAX_REQUESTS_PER_WINDOW, int $maxPending = AGENT_MAX_PENDING_HOLDS): ?string {
+function agent_request_throttled(array $agent, int $maxRequests = AGENT_MAX_REQUESTS_PER_WINDOW): ?string {
     $aid = (int)($agent['id'] ?? 0);
     try {
         [$where, $params] = agent_requests_filter($aid);
@@ -379,49 +358,33 @@ function agent_request_throttled(array $agent, int $maxRequests = AGENT_MAX_REQU
         if ($recent >= $maxRequests) {
             return 'You have sent several requests in the last few minutes. Please wait a little before sending more, or email reservations for a large group.';
         }
-        if (holds_agent_supported()) {
-            $pending = (int) db_query(
-                "SELECT COUNT(*) FROM holds WHERE agent_id = :a AND status = 'pending'", [':a' => $aid]
-            )->fetchColumn();
-            if ($pending >= $maxPending) {
-                return "You already have {$pending} stays on hold awaiting confirmation. Please wait for reservations to confirm them, or email reservations for a large group.";
-            }
-        }
     } catch (Throwable $e) {
         error_log('[agent-request] throttle check failed: ' . $e->getMessage());
     }
     return null;
 }
 
-/** Raised inside the request transaction when the dates are taken while we write. */
-class AgentSoldOutException extends \RuntimeException {}
-
 /**
- * Turn an agent's "Request to book" into the SAME records the public widget
- * creates: one submission (type 'enquiry'; payload.agent_* carries the trade
- * facts) and — when the room is in availability mode — one 24h hold written by
- * the same allocators the guest path uses (mi_allocate_and_hold() for a Maya Ilai
- * composite room, else find_available_unit() + create_hold_with_block()). The
- * hold carries holds.agent_id and freezes the NET price in holds.quoted_amount,
- * which bookings_sync_hold() snapshots at confirm time. A room combination, or a
- * room in enquiry mode, creates the submission only.
+ * Turn an agent's "Request to book" into a booking REQUEST for reservations: one
+ * submission (type 'enquiry'; server-written agent_id; payload.agent_* carries
+ * the trade facts including the net quote). It NEVER places a hold — the owner's
+ * rule is that a trade request must not block inventory by itself. Reservations
+ * review it in the inbox and place the hold with "Convert to Hold", which
+ * agent_tag_converted_hold() links to the agent at their frozen net price.
  *
  * $req: kind 'room' (room_slug) | 'combo' (venue_slug + rooms [['slug','units'],…]),
  *       check_in, check_out, adults, children, guest_name (the traveller, required),
  *       guest_email, guest_phone, notes.
  *
- * Contact of record = the AGENT. guest_email on the submission and the hold is
- * the agent's login email, so every automatic email (acknowledgement,
- * confirmation, cancellation, expiry, the manage link) and admin's reply reach
- * the trade partner; guest_name is the traveller. The traveller's own contact
- * details go into the payload and the message for reception.
+ * Contact of record = the AGENT: guest_email is the agent's login email (all
+ * automatic e-mails and admin replies reach the trade partner), guest_name is the
+ * traveller, and the traveller's own contact details go into the payload and the
+ * message for reception. Never sends e-mail — the caller does, after the write.
  *
- * Runs in ONE transaction (joins the caller's when one is open, so a test can
- * roll everything back). Never sends email — the caller does, after commit.
- * Returns ['ok'=>true, submission_id, hold_id|null, mode 'hold'|'enquiry', quote,
- * trade, lines, venue, rooms_label, message, hold (joined row)|null, check_in,
- * check_out, adults, children, traveller, notes]
- * or ['ok'=>false, error, code 403|409|422|500].
+ * Returns ['ok'=>true, submission_id, mode 'enquiry', quote, trade, lines, venue,
+ * rooms_label, message, check_in, check_out, adults, children, traveller, notes]
+ * (+ 'dedupe'=>true when an identical re-send was reused)
+ * or ['ok'=>false, error, code 403|422|429|500].
  */
 function agent_submit_request(array $agent, array $req, array $tracking = []): array {
     $err = fn(string $m, int $c = 422): array => ['ok' => false, 'error' => $m, 'code' => $c];
@@ -482,13 +445,13 @@ function agent_submit_request(array $agent, array $req, array $tracking = []): a
     $quote   = ['nights' => $nights, 'published' => round($published, 2), 'net' => round($net, 2),
                 'currency' => $currency, 'discount_pct' => agent_discount_pct($agent, $venueId)];
     $trade   = agent_trade_lines($agent, $quote);
+    $room    = $lines[0]['room'];
 
-    $holdMode   = $kind === 'room' && agent_room_form_mode($lines[0]['room']) === 'availability';
     $roomsLabel = implode(', ', array_map(
         fn($l) => $l['room']['name'] . ($l['units'] > 1 ? ' ×' . $l['units'] : ''), $lines));
 
-    // What staff read first — in the notification email and the inbox.
-    $msg = ['Trade booking request via the agent portal' . ($holdMode ? '' : ' (enquiry — no hold placed)'),
+    // What staff read first — in the notification e-mail and the inbox.
+    $msg = ['Trade booking request via the agent portal — no hold placed: please check the dates and convert this request to a hold.',
             'Agent: ' . $trade['agent'],
             'Traveller: ' . $traveller . ($tEmail !== '' ? ' · ' . $tEmail : '') . ($tPhone !== '' ? ' · ' . $tPhone : ''),
             'Rate: ' . $trade['rate']];
@@ -519,49 +482,25 @@ function agent_submit_request(array $agent, array $req, array $tracking = []): a
         'rooms'           => $kind === 'combo' ? $roomsLabel : '',
     ], fn($v) => $v !== '' && $v !== null);
 
-    $room = $lines[0]['room'];
-
     // A double submit (same product/rooms + dates inside the window) reuses the
     // earlier request rather than writing a second one and mailing everyone twice.
     $dup = agent_recent_duplicate($agentId, $ci, $co, $kind === 'room' ? (int)$room['id'] : null,
         $kind === 'combo' ? $roomsLabel : '');
     if ($dup !== null) {
-        return ['ok' => true, 'dedupe' => true, 'submission_id' => $dup['submission_id'],
-                'hold_id' => $dup['hold_id'], 'mode' => $dup['hold_id'] ? 'hold' : 'enquiry'];
+        return ['ok' => true, 'dedupe' => true, 'submission_id' => $dup['submission_id'], 'mode' => 'enquiry'];
     }
     if (($throttled = agent_request_throttled($agent)) !== null) return $err($throttled, 429);
 
-    // Sweep lapsed holds ONCE, before the transaction. find_available_unit()'s
-    // sweep is a write that also e-mails the expiring guests; run inside the
-    // transaction it would be rolled back by a 409/500 — after the e-mails had
-    // gone out — and its row locks would be held for the whole request.
-    if ($holdMode) expire_stale_holds();
-
     $writeSubAgent = submissions_agent_supported();
-    $subAgentCol   = $writeSubAgent ? 'agent_id, ' : '';
-    $subAgentVal   = $writeSubAgent ? ':agent_id, ' : '';
-
-    $pdo   = db();
-    $ownTx = !$pdo->inTransaction();
-    if ($ownTx) $pdo->beginTransaction();
-    $holdId = null;
     try {
-        $unit = false;
-        if ($holdMode) {
-            // Fast pre-check (already swept above); mi_allocate_and_hold()
-            // re-allocates under its own lock for a composite room.
-            $unit = find_available_unit_internal((int)$room['id'], $ci, $co, false);
-            if (!$unit) throw new AgentSoldOutException();
-        }
-
         db_query(
             "INSERT INTO submissions
-                ({$subAgentCol}type, room_id, guest_name, guest_email, guest_phone, message,
+                (" . ($writeSubAgent ? 'agent_id, ' : '') . "type, room_id, guest_name, guest_email, guest_phone, message,
                  check_in, check_out, guests_adults, guests_children, payload_json,
                  source_page, referrer, utm_source, utm_medium, utm_campaign, utm_term, utm_content,
                  user_agent, ip_address)
              VALUES
-                ({$subAgentVal}'enquiry', :room_id, :name, :email, :phone, :message,
+                (" . ($writeSubAgent ? ':agent_id, ' : '') . "'enquiry', :room_id, :name, :email, :phone, :message,
                  :ci, :co, :adults, :children, :payload,
                  :source_page, :referrer, :utm_source, :utm_medium, :utm_campaign, :utm_term, :utm_content,
                  :ua, :ip)",
@@ -589,52 +528,72 @@ function agent_submit_request(array $agent, array $req, array $tracking = []): a
                 ':ip'          => (string)($tracking['ip'] ?? client_ip()),
             ]
         );
-        $subId = (int)$pdo->lastInsertId();
-
-        if ($holdMode) {
-            if (mi_is_composite_room($room)) {
-                $holdId = mi_allocate_and_hold($room, $subId, $ci, $co, $traveller, $agentEmail, 'pending', 24);
-            } else {
-                $holdId = create_hold_with_block((int)$unit['id'], $subId, $ci, $co, $traveller, $agentEmail,
-                    'pending', 24, $unit['_mi_components'] ?? null, (int)$room['id']);
-            }
-            if ($holdId === false) throw new AgentSoldOutException();
-            $holdId = (int)$holdId;
-            if (holds_agent_supported()) {
-                db_query('UPDATE holds SET agent_id = :a WHERE id = :id', [':a' => $agentId, ':id' => $holdId]);
-            }
-            if (holds_quoted_amount_supported()) {
-                db_query('UPDATE holds SET quoted_amount = :q, quoted_currency = :c WHERE id = :id',
-                    [':q' => $quote['net'], ':c' => $currency, ':id' => $holdId]);
-            }
-        }
-        if ($ownTx) $pdo->commit();
-    } catch (AgentSoldOutException $e) {
-        if ($ownTx && $pdo->inTransaction()) $pdo->rollBack();
-        return $err('Those dates were taken while you were completing the request. Please search again.', 409);
+        $subId = (int)db()->lastInsertId();
     } catch (\Throwable $e) {
-        // Joined a caller's transaction: in Postgres it is aborted now, and only
-        // the caller can roll it back — surface the error rather than hide it.
-        if (!$ownTx) throw $e;
-        if ($pdo->inTransaction()) $pdo->rollBack();
         error_log('[agent-request] failed: ' . $e->getMessage());
         return $err('Something went wrong saving the request. Please try again or contact reservations.', 500);
     }
 
-    $hold = $holdId ? db_query(
-        "SELECT h.*, u.name AS unit_name, r.name AS room_name
-           FROM holds h JOIN units u ON u.id = h.unit_id JOIN rooms r ON r.id = " . hold_room_id_sql('h', 'u') . "
-          WHERE h.id = :id", [':id' => $holdId]
-    )->fetch() : null;
-
     return [
-        'ok' => true, 'submission_id' => $subId, 'hold_id' => $holdId, 'mode' => $holdMode ? 'hold' : 'enquiry',
+        'ok' => true, 'submission_id' => $subId, 'mode' => 'enquiry',
         'quote' => $quote, 'trade' => $trade, 'lines' => $lines, 'venue' => $venue, 'rooms_label' => $roomsLabel,
-        'message' => $message, 'hold' => $hold ?: null, 'check_in' => $ci, 'check_out' => $co,
+        'message' => $message, 'check_in' => $ci, 'check_out' => $co,
         'adults' => $adults, 'children' => $children, 'traveller' => $traveller, 'notes' => $notes,
     ];
 }
 
+/**
+ * The agent behind a submission, or 0: the server-written submissions.agent_id
+ * when present, else the payload's agent_id only when its HMAC marker verifies
+ * (a bare payload id is client-posted — see agent_request_sig()).
+ */
+function agent_submission_agent_id(array $sub): int {
+    if (!empty($sub['agent_id'])) return (int)$sub['agent_id'];
+    $pl = json_decode((string)($sub['payload_json'] ?? '{}'), true);
+    if (!is_array($pl) || empty($pl['agent_id'])) return 0;
+    $aid = (int)$pl['agent_id'];
+    return hash_equals(agent_request_sig($aid), (string)($pl['agent_sig'] ?? '')) ? $aid : 0;
+}
+
+/**
+ * Called by admin's "Convert to Hold" right after it creates a hold from a trade
+ * request: links the hold to the agent (holds.agent_id) and freezes the agent's
+ * NET price for the room actually booked (holds.quoted_amount/currency) — re-quoted
+ * through agent_stay_quote(), the ONE pricing path, so a swapped room or a
+ * combination's per-room hold is priced correctly, not from the request's total.
+ * bookings_sync_hold() then books it as source='agent' at that figure. Each
+ * column is written only when supported. Returns ['agent', 'agency', 'net',
+ * 'currency', 'nights'] when the hold was tagged, null when the submission is not
+ * a trade request (a guest enquiry) or nothing could be resolved.
+ */
+function agent_tag_converted_hold(int $holdId, array $sub): ?array {
+    $aid = agent_submission_agent_id($sub);
+    if ($aid <= 0 || $holdId <= 0 || !agents_supported()) return null;
+    try {
+        $agent = db_query('SELECT * FROM travel_agents WHERE id = :id', [':id' => $aid])->fetch();
+        if (!$agent) return null;
+        $h = db_query(
+            "SELECT h.check_in, h.check_out, r.*
+               FROM holds h JOIN units u ON u.id = h.unit_id JOIN rooms r ON r.id = " . hold_room_id_sql('h', 'u') . "
+              WHERE h.id = :id", [':id' => $holdId]
+        )->fetch();
+        if (!$h) return null;
+        $q = agent_stay_quote($h, $agent, (string)$h['check_in'], (string)$h['check_out']);
+
+        if (holds_agent_supported()) {
+            db_query('UPDATE holds SET agent_id = :a WHERE id = :id', [':a' => $aid, ':id' => $holdId]);
+        }
+        if ((int)$q['nights'] > 0 && $q['published'] > 0 && holds_quoted_amount_supported()) {
+            db_query('UPDATE holds SET quoted_amount = :q, quoted_currency = :c WHERE id = :id',
+                [':q' => $q['net'], ':c' => $q['currency'], ':id' => $holdId]);
+        }
+    } catch (Throwable $e) {
+        error_log('[agent-convert] tagging hold ' . $holdId . ' failed: ' . $e->getMessage());
+        return null;
+    }
+    return ['agent' => (string)$agent['name'], 'agency' => (string)($agent['agency'] ?? ''),
+            'net' => (float)$q['net'], 'currency' => (string)$q['currency'], 'nights' => (int)$q['nights']];
+}
 /**
  * The agent's requests, newest first, selected by agent_requests_filter() — the
  * server-written submissions.agent_id, or the signed payload marker for rows
@@ -672,38 +631,34 @@ function agent_requests(array $agent, int $limit = 100): array {
 }
 
 /**
- * After a request is committed: the staff notification — the hold email with the
- * trade rows, or the plain enquiry notification whose stored message already
- * opens with them — and the agent's acknowledgement, addressed to the agent with
- * the net price on record. Best-effort: a mail failure never undoes a saved request.
+ * After a request is saved: the staff enquiry notification (its stored message
+ * opens with the trade lines) and the agent's acknowledgement, addressed to the
+ * agent with the net price on record. Best-effort: a mail failure never undoes
+ * a saved request.
  */
 function agent_send_request_emails(array $agent, array $res): void {
     require_once __DIR__ . '/mail.php';
     $trade = $res['trade'];
     $where = $res['venue']['name'] . ' — ' . $res['rooms_label'];
     try {
-        if ($res['mode'] === 'hold' && !empty($res['hold'])) {
-            send_hold_notification($res['hold'] + ['trade_agent' => $trade['agent'], 'trade_rate' => $trade['rate']]);
-        } else {
-            send_notification([
-                'id'              => $res['submission_id'],
-                'type'            => 'enquiry',
-                'room_name'       => $where,
-                'guest_name'      => $res['traveller'],
-                'guest_email'     => (string)$agent['email'],
-                'guest_phone'     => '',
-                'message'         => $res['message'],
-                'check_in'        => $res['check_in'],
-                'check_out'       => $res['check_out'],
-                'guests_adults'   => $res['adults'],
-                'guests_children' => $res['children'],
-                'created_at'      => date('Y-m-d H:i:s'),
-                'source_page'     => 'Trade portal',
-                'utm_source'      => 'trade-portal',
-            ]);
-        }
+        send_notification([
+            'id'              => $res['submission_id'],
+            'type'            => 'enquiry',
+            'room_name'       => $where,
+            'guest_name'      => $res['traveller'],
+            'guest_email'     => (string)$agent['email'],
+            'guest_phone'     => '',
+            'message'         => $res['message'],
+            'check_in'        => $res['check_in'],
+            'check_out'       => $res['check_out'],
+            'guests_adults'   => $res['adults'],
+            'guests_children' => $res['children'],
+            'created_at'      => date('Y-m-d H:i:s'),
+            'source_page'     => 'Trade portal',
+            'utm_source'      => 'trade-portal',
+        ]);
         send_guest_acknowledgement([
-            'kind'            => $res['mode'] === 'hold' ? 'hold' : 'enquiry',
+            'kind'            => 'enquiry',
             'guest_name'      => (string)$agent['name'],
             'guest_email'     => (string)$agent['email'],
             'agency_name'     => (string)($agent['agency'] ?? ''),
@@ -714,8 +669,6 @@ function agent_send_request_emails(array $agent, array $res): void {
             'guests_children' => $res['children'],
             'price'           => $trade['rate'],
             'message'         => 'Booking for: ' . $res['traveller'] . ($res['notes'] !== '' ? "\n" . $res['notes'] : ''),
-            'hold_id'         => (int)($res['hold_id'] ?? 0),
-            'access_code'     => (string)($res['hold']['access_code'] ?? ''),
         ]);
     } catch (Throwable $e) {
         error_log('[agent-request] mail failed: ' . $e->getMessage());

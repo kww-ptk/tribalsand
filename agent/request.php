@@ -1,12 +1,12 @@
 <?php
 declare(strict_types=1);
 /**
- * Trade portal — "Request to book". GET shows the option (re-quoted and re-checked
- * live), the net price and the traveller form; POST (CSRF) writes the request
- * through agent_submit_request() — the same submission + 24h hold the public
- * widget creates, tagged as a trade booking — then emails and redirects (PRG) to
- * the request list. Nothing from the form is trusted for money: the price is
- * re-derived from the agent row and the room on every request.
+ * Trade portal — "Request to book". GET shows the option (re-quoted live), the net
+ * price and the traveller form; POST (CSRF) saves the request through
+ * agent_submit_request(), e-mails, and redirects (PRG) to the request list.
+ * A request NEVER places a hold — reservations check the dates and place it
+ * (Convert to Hold), so nothing here blocks inventory. Nothing from the form is
+ * trusted for money: the price is re-derived from the agent row and the room.
  */
 require_once __DIR__ . '/../includes/agent.php';
 
@@ -47,10 +47,10 @@ if ($stay === null) {
     $venue = false;
     if ($req['kind'] === 'room') {
         $room  = fetch_room_by_slug($req['room_slug']);
-        $venue = ($room && !empty($room['is_published']))
+        $venue = ($room && agent_room_bookable($room))
             ? db_query('SELECT id, slug, name FROM venues WHERE id = :id AND is_published = TRUE', [':id' => $room['venue_id']])->fetch()
             : false;
-        if ($room && $venue && agent_room_bookable($room)) $lines[] = ['room' => $room, 'units' => 1, 'quote' => agent_stay_quote($room, $agent, $ci, $co)];
+        if ($room && $venue) $lines[] = ['room' => $room, 'units' => 1, 'quote' => agent_stay_quote($room, $agent, $ci, $co)];
     } else {
         $venue = db_query('SELECT id, slug, name FROM venues WHERE slug = :s AND is_published = TRUE', [':s' => $req['venue_slug']])->fetch();
         foreach ($venue ? $req['rooms'] : [] as $pick) {
@@ -73,7 +73,7 @@ if ($stay === null) {
             }
             $published += $l['quote']['published'] * $l['units'];
             $net       += $l['quote']['net']       * $l['units'];
-            // Live re-check, so the form never invites a request for dates that just went.
+            // Informational only: the request goes to reservations either way.
             $free = $req['kind'] === 'room'
                 ? (bool) find_available_unit((int)$l['room']['id'], $ci, $co)
                 : count_available_units((int)$l['room']['id'], $ci, $co, $l['room']) >= $l['units'];
@@ -85,33 +85,28 @@ if ($stay === null) {
                 'quote' => ['nights' => $nights, 'published' => round($published, 2), 'net' => round($net, 2),
                             'currency' => $currency, 'discount_pct' => agent_discount_pct($agent, (int)$venue['id'])],
                 'available' => $available,
-                'hold_mode' => $req['kind'] === 'room' && agent_room_form_mode($lines[0]['room']) === 'availability',
             ];
         }
     }
 }
 
-// ── POST: write the request, then email, then PRG ───────────────────────────
+// ── POST: save the request, then e-mail, then PRG ───────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error === '' && $view !== null) {
     verify_csrf();
-    if (!$view['available']) {
-        $error = 'Those dates were taken while you were completing the request. Please search again.';
+    $res = agent_submit_request($agent, $req, [
+        'source_page' => site_url('/agent/request.php'),
+        'utm_source'  => 'trade-portal',
+        'utm_medium'  => 'agent-portal',
+        'user_agent'  => (string)($_SERVER['HTTP_USER_AGENT'] ?? ''),
+        'ip'          => client_ip(),
+    ]);
+    if (!$res['ok']) {
+        $error = $res['error'];
     } else {
-        $res = agent_submit_request($agent, $req, [
-            'source_page' => site_url('/agent/request.php'),
-            'utm_source'  => 'trade-portal',
-            'utm_medium'  => 'agent-portal',
-            'user_agent'  => (string)($_SERVER['HTTP_USER_AGENT'] ?? ''),
-            'ip'          => client_ip(),
-        ]);
-        if (!$res['ok']) {
-            $error = $res['error'];
-        } else {
-            // A double submit reuses the earlier request — it was already e-mailed.
-            if (empty($res['dedupe'])) agent_send_request_emails($agent, $res);   // best-effort, after commit
-            header('Location: /agent/requests.php?sent=' . (int)$res['submission_id']);
-            exit;
-        }
+        // A double submit reuses the earlier request — it was already e-mailed.
+        if (empty($res['dedupe'])) agent_send_request_emails($agent, $res);   // best-effort, after the write
+        header('Location: /agent/requests.php?sent=' . (int)$res['submission_id']);
+        exit;
     }
 }
 
@@ -127,9 +122,7 @@ include __DIR__ . '/_layout.php';
 <?php else: $q = $view['quote']; $pct = (float)$q['discount_pct']; ?>
 <div class="ap-card">
   <h2><?= e($view['venue']['name']) ?></h2>
-  <p class="ap-cardsub"><?= $view['hold_mode']
-      ? 'Dates are held for 24 hours while reservations confirm — nothing is charged now.'
-      : 'This request is sent as an enquiry — reservations confirm availability and price by email.' ?></p>
+  <p class="ap-cardsub">Reservations check the dates and place the hold for you — nothing is held or charged until they confirm by email.</p>
 
   <div class="ap-summary">
     <div><small>Room<?= count($view['lines']) > 1 ? 's' : '' ?></small><span>
@@ -143,10 +136,10 @@ include __DIR__ . '/_layout.php';
   </div>
 
   <?php if ($error !== ''): ?><div class="alert alert-error"><?= e($error) ?></div><?php endif; ?>
-
   <?php if (!$view['available']): ?>
-    <div class="alert alert-error">Those dates have just been taken. <a href="<?= e($backUrl) ?>">Search again →</a></div>
-  <?php else: ?>
+    <div class="alert alert-info">These dates currently show as unavailable. You can still send the request — reservations will check and suggest alternatives if needed.</div>
+  <?php endif; ?>
+
   <form method="POST" action="/agent/request.php" novalidate
         onsubmit="var b=this.querySelector('button[type=submit]');if(b.disabled)return false;b.disabled=true;b.textContent='Sending…';return true;">
     <?= csrf_field() ?>
@@ -167,7 +160,6 @@ include __DIR__ . '/_layout.php';
     <button type="submit" class="btn btn--auto">Request to book</button>
     <a href="<?= e($backUrl) ?>" style="margin-left:12px">Back to availability</a>
   </form>
-  <?php endif; ?>
 </div>
 <?php endif; ?>
 
