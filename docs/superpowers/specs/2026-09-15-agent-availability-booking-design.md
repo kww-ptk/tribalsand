@@ -71,8 +71,12 @@ for a Maya Ilai composite room), the rate resolver (`room_stay_quote()` /
 ALTER TABLE holds ADD COLUMN IF NOT EXISTS agent_id INTEGER NULL
     REFERENCES travel_agents(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_holds_agent_id ON holds(agent_id) WHERE agent_id IS NOT NULL;
--- "Your requests" reads submissions by the agent id in the payload:
-CREATE INDEX IF NOT EXISTS idx_submissions_agent_id ON submissions ((payload_json->>'agent_id'));
+-- Server-written link from a request to its agent (the payload is client-posted):
+ALTER TABLE submissions ADD COLUMN IF NOT EXISTS agent_id INTEGER NULL
+    REFERENCES travel_agents(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_submissions_agent ON submissions (agent_id) WHERE agent_id IS NOT NULL;
+-- Pre-column rows are found by payload id + HMAC marker (agent_sig):
+CREATE INDEX IF NOT EXISTS idx_submissions_payload_agent ON submissions ((payload_json->>'agent_id'));
 ```
 
 - `holds.agent_id` = which agent requested the hold. Guarded everywhere by a new
@@ -124,15 +128,22 @@ test can wrap it in a transaction it rolls back):
 2. Quote server-side: `agent_stay_quote()` per room (× units for a combo; mixed currencies
    in one combo → 422, money is never summed across currencies). Nothing from the form is
    trusted for money.
-3. `room` kind, availability mode: live re-check (`find_available_unit()`), then insert the
+3. `room` kind, availability mode: sweep lapsed holds ONCE before the transaction
+   (`expire_stale_holds()`), then inside it re-check without sweeping
+   (`find_available_unit_internal(…, false)`) — a sweep inside the transaction would be
+   rolled back by a 409/500 after its expiry e-mails had gone out — then insert the
    submission, then the hold — `mi_allocate_and_hold()` for a Maya Ilai composite room,
    else `create_hold_with_block(unit, submissionId, ci, co, traveller, AGENT EMAIL,
    'pending', 24, $unit['_mi_components'] ?? null, roomId)`. Then `UPDATE holds SET
    agent_id, quoted_amount = net, quoted_currency` (each column only when supported).
    Lost the race → rollback → `['ok'=>false,'code'=>409]`.
 4. `room` kind, enquiry mode, and every `combo`: submission only (type `enquiry`;
-   `room_id` = the room, or NULL for a combo), with `find_recent_duplicate_submission()`
-   de-dupe exactly like the guest enquiry path.
+   `room_id` = the room, or NULL for a combo).
+   Before any write (both modes): an identical re-send inside 30 s — same agent, dates and
+   product/room set (`agent_recent_duplicate()`) — returns the earlier request instead of
+   writing again; `agent_request_throttled()` refuses beyond 12 requests / 10 min or 15
+   pending holds per agent; `agent_room_bookable()` refuses the six unit-less Maya Ilai
+   products.
 5. Commit. Return `['ok'=>true,'submission_id','hold_id'|null,'mode'=>'hold'|'enquiry',
    'quote','room','hold'(row joined with unit/room names, for the email)]`.
 
@@ -179,7 +190,7 @@ SELECT s.id, s.created_at, s.check_in, s.check_out, s.guest_name, s.room_id, s.p
   LEFT JOIN venues v ON v.id = r.venue_id
   LEFT JOIN LATERAL (SELECT id, status, expires_at, access_code FROM holds
                       WHERE submission_id = s.id ORDER BY id DESC LIMIT 1) h ON TRUE
- WHERE s.payload_json->>'agent_id' = :aid
+ WHERE <agent_requests_filter()>   -- s.agent_id = :aid, or payload id + HMAC agent_sig for pre-column rows
  ORDER BY s.created_at DESC LIMIT :lim
 ```
 
@@ -240,15 +251,18 @@ message, never a blank page.
   identifiers, dates and traveller details. Rooms/venues are re-validated as published.
 - "Your requests" is filtered by the session agent's id; an agent can never see another
   agent's requests or rates.
-- No Turnstile (authenticated surface); the guest de-dupe guard applies to enquiry mode.
+- No Turnstile (authenticated surface); instead a 30 s idempotency window on identical
+  re-sends and a per-agent throttle (12 requests / 10 min, 15 pending holds).
+- The request list is keyed on the server-written `submissions.agent_id` (or the HMAC
+  `agent_sig` for pre-column rows), never on a client-posted payload id.
 - Inputs bounded (party sizes, 30-night cap, string lengths trimmed/limited as elsewhere).
 
 ## 8. Known limits (deliberate, documented in CLAUDE.md)
 
 - **Maya Ilai is priced off the rate card** (`room_stay_quote()`), exactly as the existing
-  agent rates page and `/search` already do; the guest configurator's band/group/eco-fee
-  pricing (`maya_ilai_quote()`) and the six per-bedroom composite products are **not**
-  offered in the trade portal. The villa and the studios are.
+  agent rates page and `/search` already do; the six per-bedroom composite products are
+  **refused** by `agent_room_bookable()` (not listed, and not bookable by URL). The villa
+  and the studios are bookable, through the locked allocator.
 - Combinations become an enquiry (no hold) — parity with guest v1; the atomic multi-room
   hold stays the v2 follow-up.
 - Agents cannot cancel from the portal; they use the emailed manage link (as guests do).

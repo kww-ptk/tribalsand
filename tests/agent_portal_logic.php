@@ -223,10 +223,14 @@ if ($hasDb) {
                     echo "SKIP  ledger source check needs bookings + holds.agent_id + holds.quoted_amount\n";
                 }
 
-                // The race: the one unit is now held → refused, nothing written.
+                // The race: the one unit is now held → a DIFFERENT agent asking for it is refused,
+                // nothing written. (The same agent re-sending inside 30 s is a double submit — see below.)
+                db_query("INSERT INTO travel_agents (name, agency, email, password_hash, discount_pct) VALUES ('ZZ Other','ZZ Other Co','zz-agent-2@example.com',:h,5)",
+                    [':h' => password_hash('secret456', PASSWORD_DEFAULT)]);
+                $otherAgent  = db_query("SELECT * FROM travel_agents WHERE email = 'zz-agent-2@example.com'")->fetch();
                 $holdsBefore = (int) db_query('SELECT COUNT(*) FROM holds')->fetchColumn();
                 $subsBefore  = (int) db_query('SELECT COUNT(*) FROM submissions')->fetchColumn();
-                $again = agent_submit_request($agentRow, $req, ['ip' => '127.0.0.1']);
+                $again = agent_submit_request($otherAgent, $req, ['ip' => '127.0.0.1']);
                 check('request: a second request for the one unit is refused (409)', $again['ok'] === false && $again['code'] === 409);
                 check('request: … and writes nothing',
                     (int) db_query('SELECT COUNT(*) FROM holds')->fetchColumn() === $holdsBefore
@@ -254,6 +258,83 @@ if ($hasDb) {
                     agent_submit_request($agentRow, ['kind' => 'combo', 'venue_slug' => $venueSlug,
                         'rooms' => [['slug' => 'no-such-room-zz', 'units' => 1]], 'check_in' => $ci, 'check_out' => $co,
                         'adults' => 2, 'children' => 0, 'guest_name' => 'X'])['code'] === 422);
+
+                // ── Review hardening ─────────────────────────────────────────
+                // A double submit reuses the earlier request (nothing new written, nothing re-mailed).
+                $subsNow = (int) db_query('SELECT COUNT(*) FROM submissions')->fetchColumn();
+                $dup = agent_submit_request($agentRow, [
+                    'kind' => 'combo', 'venue_slug' => $venueSlug, 'rooms' => [['slug' => $room['slug'], 'units' => 1]],
+                    'check_in' => $ci, 'check_out' => $co, 'adults' => 2, 'children' => 0, 'guest_name' => 'ZZ Group',
+                ], ['ip' => '127.0.0.1']);
+                check('dedupe: an identical re-send returns the earlier request',
+                    $dup['ok'] === true && !empty($dup['dedupe']) && (int)$dup['submission_id'] === (int)$combo['submission_id']
+                    && (int) db_query('SELECT COUNT(*) FROM submissions')->fetchColumn() === $subsNow);
+
+                // Isolation: a payload that merely CLAIMS an agent id (what any public form could post) is never listed.
+                $listBefore = count(agent_requests($agentRow));
+                db_query("INSERT INTO submissions (type, guest_name, guest_email, message, payload_json)
+                          VALUES ('enquiry', 'Spoofer', 'spoof@example.com', 'x', :p)",
+                    [':p' => json_encode(['agent_id' => (int)$agentRow['id'], 'source' => 'trade-portal', 'quoted_total' => 1])]);
+                check('isolation: a spoofed payload agent_id does not appear in the agent’s requests',
+                    count(agent_requests($agentRow)) === $listBefore);
+                if (submissions_agent_supported()) {
+                    check('request: submissions.agent_id is written by the server',
+                        (int) db_query('SELECT agent_id FROM submissions WHERE id = :id', [':id' => $res['submission_id']])->fetchColumn() === (int)$agentRow['id']);
+                } else {
+                    echo "SKIP  submissions.agent_id absent — run add_holds_agent.sql\n";
+                }
+                check('request: the traveller’s phone is not stored as the booker’s contact',
+                    (string) db_query('SELECT guest_phone FROM submissions WHERE id = :id', [':id' => $res['submission_id']])->fetchColumn() === '');
+
+                // Throttle: counts only this agent's own requests; the pending-hold cap needs holds.agent_id.
+                check('throttle: within limits → null', agent_request_throttled($agentRow, 100, 100) === null);
+                check('throttle: the request window is enforced', agent_request_throttled($agentRow, 1, 100) !== null);
+
+                // An enquiry-mode room creates the submission only (different dates, so the de-dupe stays out of the way).
+                db_query("UPDATE rooms SET form_mode = 'enquiry' WHERE id = :id", [':id' => $room['id']]);
+                $enq = agent_submit_request($agentRow, ['check_in' => '2098-07-01', 'check_out' => '2098-07-03'] + $req, ['ip' => '127.0.0.1']);
+                check('request: an enquiry-mode room is recorded without a hold',
+                    $enq['ok'] === true && $enq['mode'] === 'enquiry' && $enq['hold_id'] === null
+                    && (int) db_query('SELECT room_id FROM submissions WHERE id = :id', [':id' => $enq['submission_id']])->fetchColumn() === (int)$room['id']);
+                db_query("UPDATE rooms SET form_mode = 'availability' WHERE id = :id", [':id' => $room['id']]);
+            }
+
+            // ── Maya Ilai: the villa books through the locked allocator; per-bedroom products are refused ──
+            $villa = db_query("SELECT r.* FROM rooms r JOIN venues v ON v.id = r.venue_id
+                                WHERE r.slug = :s AND r.is_published = TRUE AND v.is_published = TRUE", [':s' => MAYA_ILAI_VILLA_ROOM_SLUG])->fetch();
+            $villaUnits = $villa ? count(fetch_units_by_room((int)$villa['id'])) : 0;
+            if (!$villa || $villaUnits === 0) {
+                echo "SKIP  no published Maya Ilai villa with units — composite round-trip skipped\n";
+            } else {
+                db_query("UPDATE rooms SET form_mode = 'availability' WHERE id = :id", [':id' => $villa['id']]);
+                $vres = agent_submit_request($agentRow, ['kind' => 'room', 'room_slug' => $villa['slug'],
+                    'check_in' => '2098-08-10', 'check_out' => '2098-08-12', 'adults' => 6, 'children' => 0,
+                    'guest_name' => 'ZZ Villa Party'], ['ip' => '127.0.0.1']);
+                check('maya ilai: the villa is held through the locked allocator', $vres['ok'] === true && $vres['mode'] === 'hold' && (int)$vres['hold_id'] > 0);
+                if ($vres['ok']) {
+                    $vh = db_query("SELECT h.room_id, h.unit_id, u.room_id AS unit_room_id FROM holds h JOIN units u ON u.id = h.unit_id WHERE h.id = :id", [':id' => $vres['hold_id']])->fetch();
+                    check('maya ilai: the hold names the villa product on a villa unit',
+                        (int)$vh['room_id'] === (int)$villa['id'] && (int)$vh['unit_room_id'] === (int)$villa['id']);
+                    if (components_supported()) {
+                        // Through the locked allocator the villa product claims all four
+                        // components explicitly (NULL = whole unit is the staff/OTA block rule).
+                        $comps = mi_pg_array_decode(db_query('SELECT components FROM availability_blocks WHERE hold_id = :h', [':h' => $vres['hold_id']])->fetchColumn());
+                        check('maya ilai: a villa hold claims every bedroom of its villa',
+                            count($comps) === 4 && in_array('bunk', $comps, true) && in_array('living', $comps, true));
+                    }
+                }
+                $bedroom = db_query("SELECT r.* FROM rooms r WHERE r.venue_id = :v AND r.is_published = TRUE AND r.slug <> :villa AND r.slug <> 'maya-ilai-studio'
+                                      AND NOT EXISTS (SELECT 1 FROM units u WHERE u.room_id = r.id AND u.is_active) ORDER BY r.id LIMIT 1",
+                    [':v' => $villa['venue_id'], ':villa' => $villa['slug']])->fetch();
+                if ($bedroom) {
+                    check('maya ilai: a per-bedroom product is not bookable through the portal', agent_room_bookable($bedroom) === false);
+                    $bres = agent_submit_request($agentRow, ['kind' => 'room', 'room_slug' => $bedroom['slug'],
+                        'check_in' => '2098-08-10', 'check_out' => '2098-08-12', 'adults' => 2, 'children' => 0,
+                        'guest_name' => 'ZZ Bunk'], ['ip' => '127.0.0.1']);
+                    check('maya ilai: … and the writer refuses it (422)', $bres['ok'] === false && $bres['code'] === 422);
+                } else {
+                    echo "SKIP  no unit-less Maya Ilai product to refuse\n";
+                }
             }
         }
     } finally {

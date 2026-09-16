@@ -286,6 +286,113 @@ function agent_room_form_mode(array $room): string {
     return $mode === 'availability' ? 'availability' : 'enquiry';
 }
 
+/** Abuse guards for the authenticated (Turnstile-less) portal. */
+const AGENT_MAX_REQUESTS_PER_WINDOW = 12;   // per 10 minutes
+const AGENT_MAX_PENDING_HOLDS       = 15;   // stays awaiting confirmation at once
+const AGENT_DEDUPE_SECONDS          = 30;   // an identical re-send inside this window is a double submit
+
+/**
+ * The HMAC marker the portal writes into a request's payload. Any public form can
+ * post an `agent_id` key (api/trip-builder.php stores its POST body wholesale),
+ * so a bare payload id must never decide whose request a row is; this cannot be
+ * produced without the booking-token secret.
+ */
+function agent_request_sig(int $agentId): string {
+    $secret = (string)(parse_env()['BOOKING_TOKEN_SECRET'] ?? '');
+    return hash_hmac('sha256', 'trade-portal:' . $agentId, $secret !== '' ? $secret : 'trade-portal');
+}
+
+/**
+ * SQL that selects an agent's own requests, as [fragment, params] for alias $s.
+ * Keyed on the SERVER-written submissions.agent_id once the migration has run;
+ * rows written before the column existed are matched by payload id + the HMAC
+ * marker. A payload id on its own is never enough (see agent_request_sig()).
+ */
+function agent_requests_filter(int $agentId, string $s = 's'): array {
+    $params    = [':aid_txt' => (string)$agentId, ':sig' => agent_request_sig($agentId)];
+    $byPayload = "({$s}.payload_json->>'agent_id' = :aid_txt AND {$s}.payload_json->>'agent_sig' = :sig)";
+    if (!submissions_agent_supported()) return [$byPayload, $params];
+    $params[':aid'] = $agentId;
+    return ["({$s}.agent_id = :aid OR ({$s}.agent_id IS NULL AND {$byPayload}))", $params];
+}
+
+/**
+ * A room the portal will book: published, and not one of the six per-bedroom
+ * Maya Ilai products. Those own no units (they slice the villa's) and are priced
+ * by the guest configurator, not the rate card — ts_property_configurations()
+ * cannot list them, so the writer must not book them by URL either.
+ */
+function agent_room_bookable(array $room): bool {
+    if (empty($room['is_published'])) return false;
+    if (mi_is_composite_room($room)) {
+        try { if (count(fetch_units_by_room((int)$room['id'])) === 0) return false; }
+        catch (Throwable $e) { return false; }
+    }
+    return true;
+}
+
+/**
+ * The same agent re-sending the same request — same product (or room set) and
+ * dates — within AGENT_DEDUPE_SECONDS is a double submit, not a second booking.
+ * Returns the earlier request so the caller reuses it instead of writing a
+ * second submission, a second hold and a second pair of emails. Keyed on what
+ * was actually asked for: the guest helper keys on email + dates only, which
+ * would swallow a legitimate second room for the same client and dates.
+ */
+function agent_recent_duplicate(int $agentId, string $ci, string $co, ?int $roomId, string $roomsLabel): ?array {
+    [$where, $params] = agent_requests_filter($agentId);
+    try {
+        $row = db_query(
+            "SELECT s.id,
+                    (SELECT h.id FROM holds h WHERE h.submission_id = s.id ORDER BY h.id DESC LIMIT 1) AS hold_id
+               FROM submissions s
+              WHERE {$where}
+                AND s.check_in = :ci AND s.check_out = :co
+                AND COALESCE(s.room_id, 0) = :room
+                AND COALESCE(s.payload_json->>'rooms', '') = :rooms
+                AND s.created_at > :win
+              ORDER BY s.id DESC LIMIT 1",
+            $params + [':ci' => $ci, ':co' => $co, ':room' => (int)$roomId, ':rooms' => $roomsLabel,
+                       ':win' => date('Y-m-d H:i:s', time() - AGENT_DEDUPE_SECONDS)]
+        )->fetch();
+    } catch (Throwable $e) {
+        error_log('[agent-request] dedupe check failed: ' . $e->getMessage());
+        return null;
+    }
+    return $row ? ['submission_id' => (int)$row['id'], 'hold_id' => $row['hold_id'] !== null ? (int)$row['hold_id'] : null] : null;
+}
+
+/**
+ * Per-agent throttle. The portal is authenticated, so there is no Turnstile —
+ * but a scripted or leaked session must not be able to hold a property's whole
+ * inventory for 24 hours. Returns the refusal message, or null when within
+ * limits. Fails OPEN on a read error (like concierge_rate_limited()).
+ */
+function agent_request_throttled(array $agent, int $maxRequests = AGENT_MAX_REQUESTS_PER_WINDOW, int $maxPending = AGENT_MAX_PENDING_HOLDS): ?string {
+    $aid = (int)($agent['id'] ?? 0);
+    try {
+        [$where, $params] = agent_requests_filter($aid);
+        $recent = (int) db_query(
+            "SELECT COUNT(*) FROM submissions s WHERE {$where} AND s.created_at > :win",
+            $params + [':win' => date('Y-m-d H:i:s', time() - 600)]
+        )->fetchColumn();
+        if ($recent >= $maxRequests) {
+            return 'You have sent several requests in the last few minutes. Please wait a little before sending more, or email reservations for a large group.';
+        }
+        if (holds_agent_supported()) {
+            $pending = (int) db_query(
+                "SELECT COUNT(*) FROM holds WHERE agent_id = :a AND status = 'pending'", [':a' => $aid]
+            )->fetchColumn();
+            if ($pending >= $maxPending) {
+                return "You already have {$pending} stays on hold awaiting confirmation. Please wait for reservations to confirm them, or email reservations for a large group.";
+            }
+        }
+    } catch (Throwable $e) {
+        error_log('[agent-request] throttle check failed: ' . $e->getMessage());
+    }
+    return null;
+}
+
 /** Raised inside the request transaction when the dates are taken while we write. */
 class AgentSoldOutException extends \RuntimeException {}
 
@@ -342,7 +449,7 @@ function agent_submit_request(array $agent, array $req, array $tracking = []): a
     $lines = [];   // [['room' => row, 'units' => int, 'quote' => agent_stay_quote()], …]
     if ($kind === 'room') {
         $room = fetch_room_by_slug(trim((string)($req['room_slug'] ?? '')));
-        if (!$room || empty($room['is_published'])) return $err('That room isn’t available to book.');
+        if (!$room || !agent_room_bookable($room)) return $err('That room isn’t available to book through the trade portal — please choose another room or email reservations.');
         $venue = db_query('SELECT id, slug, name FROM venues WHERE id = :id AND is_published = TRUE',
             [':id' => $room['venue_id']])->fetch();
         if (!$venue) return $err('That property isn’t available to book.');
@@ -353,7 +460,7 @@ function agent_submit_request(array $agent, array $req, array $tracking = []): a
         if (!$venue) return $err('That property isn’t available to book.');
         foreach ((is_array($req['rooms'] ?? null) ? $req['rooms'] : []) as $pick) {
             $room = fetch_room_by_slug(trim((string)($pick['slug'] ?? '')));
-            if (!$room || empty($room['is_published']) || (int)$room['venue_id'] !== (int)$venue['id']) {
+            if (!$room || !agent_room_bookable($room) || (int)$room['venue_id'] !== (int)$venue['id']) {
                 return $err('One of those rooms isn’t available at this property.');
             }
             $lines[] = ['room' => $room, 'units' => max(1, min(8, (int)($pick['units'] ?? 1))),
@@ -395,6 +502,7 @@ function agent_submit_request(array $agent, array $req, array $tracking = []): a
         'agent_name'      => (string)($agent['name'] ?? ''),
         'agency'          => (string)($agent['agency'] ?? ''),
         'agent_email'     => $agentEmail,
+        'agent_sig'       => agent_request_sig($agentId),
         'venue'           => (string)$venue['name'],
         'traveller_email' => $tEmail,
         'traveller_phone' => $tPhone,
@@ -411,35 +519,59 @@ function agent_submit_request(array $agent, array $req, array $tracking = []): a
         'rooms'           => $kind === 'combo' ? $roomsLabel : '',
     ], fn($v) => $v !== '' && $v !== null);
 
+    $room = $lines[0]['room'];
+
+    // A double submit (same product/rooms + dates inside the window) reuses the
+    // earlier request rather than writing a second one and mailing everyone twice.
+    $dup = agent_recent_duplicate($agentId, $ci, $co, $kind === 'room' ? (int)$room['id'] : null,
+        $kind === 'combo' ? $roomsLabel : '');
+    if ($dup !== null) {
+        return ['ok' => true, 'dedupe' => true, 'submission_id' => $dup['submission_id'],
+                'hold_id' => $dup['hold_id'], 'mode' => $dup['hold_id'] ? 'hold' : 'enquiry'];
+    }
+    if (($throttled = agent_request_throttled($agent)) !== null) return $err($throttled, 429);
+
+    // Sweep lapsed holds ONCE, before the transaction. find_available_unit()'s
+    // sweep is a write that also e-mails the expiring guests; run inside the
+    // transaction it would be rolled back by a 409/500 — after the e-mails had
+    // gone out — and its row locks would be held for the whole request.
+    if ($holdMode) expire_stale_holds();
+
+    $writeSubAgent = submissions_agent_supported();
+    $subAgentCol   = $writeSubAgent ? 'agent_id, ' : '';
+    $subAgentVal   = $writeSubAgent ? ':agent_id, ' : '';
+
     $pdo   = db();
     $ownTx = !$pdo->inTransaction();
     if ($ownTx) $pdo->beginTransaction();
     $holdId = null;
     try {
-        $room = $lines[0]['room'];
         $unit = false;
         if ($holdMode) {
-            // Fast pre-check; mi_allocate_and_hold() re-allocates under its own lock.
-            $unit = find_available_unit((int)$room['id'], $ci, $co);
+            // Fast pre-check (already swept above); mi_allocate_and_hold()
+            // re-allocates under its own lock for a composite room.
+            $unit = find_available_unit_internal((int)$room['id'], $ci, $co, false);
             if (!$unit) throw new AgentSoldOutException();
         }
 
         db_query(
             "INSERT INTO submissions
-                (type, room_id, guest_name, guest_email, guest_phone, message,
+                ({$subAgentCol}type, room_id, guest_name, guest_email, guest_phone, message,
                  check_in, check_out, guests_adults, guests_children, payload_json,
                  source_page, referrer, utm_source, utm_medium, utm_campaign, utm_term, utm_content,
                  user_agent, ip_address)
              VALUES
-                ('enquiry', :room_id, :name, :email, :phone, :message,
+                ({$subAgentVal}'enquiry', :room_id, :name, :email, :phone, :message,
                  :ci, :co, :adults, :children, :payload,
                  :source_page, :referrer, :utm_source, :utm_medium, :utm_campaign, :utm_term, :utm_content,
                  :ua, :ip)",
-            [
+            ($writeSubAgent ? [':agent_id' => $agentId] : []) + [
                 ':room_id'     => $kind === 'room' ? (int)$room['id'] : null,
                 ':name'        => $traveller,
                 ':email'       => $agentEmail,
-                ':phone'       => $tPhone,
+                // Contact of record is the agent: the traveller's phone lives in the
+                // payload + message, so staff never mistake it for the booker's.
+                ':phone'       => '',
                 ':message'     => $message,
                 ':ci'          => $ci,
                 ':co'          => $co,
@@ -481,7 +613,10 @@ function agent_submit_request(array $agent, array $req, array $tracking = []): a
         if ($ownTx && $pdo->inTransaction()) $pdo->rollBack();
         return $err('Those dates were taken while you were completing the request. Please search again.', 409);
     } catch (\Throwable $e) {
-        if ($ownTx && $pdo->inTransaction()) $pdo->rollBack();
+        // Joined a caller's transaction: in Postgres it is aborted now, and only
+        // the caller can roll it back — surface the error rather than hide it.
+        if (!$ownTx) throw $e;
+        if ($pdo->inTransaction()) $pdo->rollBack();
         error_log('[agent-request] failed: ' . $e->getMessage());
         return $err('Something went wrong saving the request. Please try again or contact reservations.', 500);
     }
@@ -501,15 +636,17 @@ function agent_submit_request(array $agent, array $req, array $tracking = []): a
 }
 
 /**
- * The agent's requests, newest first. Every request writes a submission whose
- * payload names the agent, so that is the source of truth — with or without the
- * holds.agent_id column. The latest hold on each submission supplies the status.
+ * The agent's requests, newest first, selected by agent_requests_filter() — the
+ * server-written submissions.agent_id, or the signed payload marker for rows
+ * written before that column existed; never the bare payload id. The latest
+ * hold on each submission supplies the status.
  * Each row carries a decoded `payload`.
  */
 function agent_requests(array $agent, int $limit = 100): array {
     $aid = (int)($agent['id'] ?? 0);
     if ($aid <= 0) return [];
     $limit = max(1, min(500, $limit));
+    [$where, $params] = agent_requests_filter($aid);
     $rows = db_query(
         "SELECT s.id, s.created_at, s.check_in, s.check_out, s.guest_name, s.room_id, s.payload_json,
                 s.guests_adults, s.guests_children,
@@ -522,10 +659,10 @@ function agent_requests(array $agent, int $limit = 100): array {
                 SELECT id, status, expires_at, access_code FROM holds
                  WHERE submission_id = s.id ORDER BY id DESC LIMIT 1
            ) h ON TRUE
-          WHERE s.payload_json->>'agent_id' = :aid
+          WHERE {$where}
           ORDER BY s.created_at DESC, s.id DESC
           LIMIT {$limit}",
-        [':aid' => (string)$aid]
+        $params
     )->fetchAll();
     foreach ($rows as $i => $r) {
         $pl = json_decode((string)($r['payload_json'] ?? '{}'), true);

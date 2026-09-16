@@ -73,11 +73,13 @@ include __DIR__ . '/_layout.php';
       <label for="apCi">Check-in</label>
       <button type="button" class="dp-btn" data-dp-role="ci" data-dp-pair="apStay" data-dp-target="apCi" data-dp-placeholder="Add date">Add date</button>
       <input type="hidden" id="apCi" name="check_in" value="<?= e($stay[0] ?? $ciRaw) ?>">
+      <noscript><input type="date" name="check_in" value="<?= e($stay[0] ?? $ciRaw) ?>" aria-label="Check-in"></noscript>
     </div>
     <div class="field">
       <label for="apCo">Check-out</label>
       <button type="button" class="dp-btn" data-dp-role="co" data-dp-pair="apStay" data-dp-target="apCo" data-dp-placeholder="Add date">Add date</button>
       <input type="hidden" id="apCo" name="check_out" value="<?= e($stay[1] ?? $coRaw) ?>">
+      <noscript><input type="date" name="check_out" value="<?= e($stay[1] ?? $coRaw) ?>" aria-label="Check-out"></noscript>
     </div>
     <div class="field"><label for="apAd">Adults</label><input type="number" id="apAd" name="adults" min="1" max="30" value="<?= (int)$adults ?>"></div>
     <div class="field"><label for="apCh">Children</label><input type="number" id="apCh" name="children" min="0" max="20" value="<?= (int)$children ?>"></div>

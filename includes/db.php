@@ -935,6 +935,26 @@ function holds_agent_supported(): bool {
 }
 
 /**
+ * True once submissions.agent_id exists (same migration as holds.agent_id). The
+ * server-written link from a request to the agent who sent it — the portal keys
+ * "Your requests" on it because the payload is client-posted and forgeable.
+ * Memoised, catalog lookup, never a failing SELECT (reached inside the
+ * trade-portal booking transaction).
+ */
+function submissions_agent_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try {
+        $ok = (bool) db_query(
+            "SELECT 1 FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'submissions'
+                AND column_name = 'agent_id'"
+        )->fetchColumn();
+    } catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/**
  * True once availability_blocks.components exists (migration:
  * add_maya_ilai_components.sql). Memoised.
  *

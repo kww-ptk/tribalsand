@@ -50,12 +50,12 @@ if ($stay === null) {
         $venue = ($room && !empty($room['is_published']))
             ? db_query('SELECT id, slug, name FROM venues WHERE id = :id AND is_published = TRUE', [':id' => $room['venue_id']])->fetch()
             : false;
-        if ($room && $venue) $lines[] = ['room' => $room, 'units' => 1, 'quote' => agent_stay_quote($room, $agent, $ci, $co)];
+        if ($room && $venue && agent_room_bookable($room)) $lines[] = ['room' => $room, 'units' => 1, 'quote' => agent_stay_quote($room, $agent, $ci, $co)];
     } else {
         $venue = db_query('SELECT id, slug, name FROM venues WHERE slug = :s AND is_published = TRUE', [':s' => $req['venue_slug']])->fetch();
         foreach ($venue ? $req['rooms'] : [] as $pick) {
             $room = fetch_room_by_slug($pick['slug']);
-            if (!$room || empty($room['is_published']) || (int)$room['venue_id'] !== (int)$venue['id']) { $lines = []; break; }
+            if (!$room || !agent_room_bookable($room) || (int)$room['venue_id'] !== (int)$venue['id']) { $lines = []; break; }
             $lines[] = ['room' => $room, 'units' => $pick['units'], 'quote' => agent_stay_quote($room, $agent, $ci, $co)];
         }
     }
@@ -107,7 +107,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $error === '' && $view !== null) {
         if (!$res['ok']) {
             $error = $res['error'];
         } else {
-            agent_send_request_emails($agent, $res);   // best-effort, after commit
+            // A double submit reuses the earlier request — it was already e-mailed.
+            if (empty($res['dedupe'])) agent_send_request_emails($agent, $res);   // best-effort, after commit
             header('Location: /agent/requests.php?sent=' . (int)$res['submission_id']);
             exit;
         }
@@ -146,7 +147,8 @@ include __DIR__ . '/_layout.php';
   <?php if (!$view['available']): ?>
     <div class="alert alert-error">Those dates have just been taken. <a href="<?= e($backUrl) ?>">Search again →</a></div>
   <?php else: ?>
-  <form method="POST" action="/agent/request.php" novalidate>
+  <form method="POST" action="/agent/request.php" novalidate
+        onsubmit="var b=this.querySelector('button[type=submit]');if(b.disabled)return false;b.disabled=true;b.textContent='Sending…';return true;">
     <?= csrf_field() ?>
     <input type="hidden" name="room"      value="<?= e($req['room_slug']) ?>">
     <input type="hidden" name="venue"     value="<?= e($req['venue_slug']) ?>">

@@ -723,7 +723,7 @@ function send_hold_notification(array $hold): void {
         '',
     ];
     if ($tradeAgent !== '') {
-        array_splice($text_lines, 9, 0, ["Booked by: {$tradeAgent}", "Trade rate: {$tradeRate}"]);
+        array_splice($text_lines, 8, 0, ["Booked by: {$tradeAgent}", "Trade rate: {$tradeRate}"]);
     }
     if ($has_tokens) {
         $text_lines[] = "CONFIRM: {$confirm_url}";
