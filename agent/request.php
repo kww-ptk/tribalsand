@@ -117,14 +117,14 @@ include __DIR__ . '/_layout.php';
 <h1>Request to book</h1>
 
 <?php if ($error !== '' && $view === null): ?>
-  <div class="alert alert-error"><?= e($error) ?></div>
+  <div class="alert alert--error"><?= e($error) ?></div>
   <p><a href="<?= e($backUrl) ?>">← Back to availability</a></p>
 <?php else: $q = $view['quote']; $pct = (float)$q['discount_pct']; ?>
-<div class="ap-card">
+<div class="card"><div class="card__body card__body--pad">
   <h2><?= e($view['venue']['name']) ?></h2>
-  <p class="ap-cardsub">Reservations check the dates and place the hold for you — nothing is held or charged until they confirm by email.</p>
+  <p class="tp-cardsub">Reservations check the dates and place the hold for you — nothing is held or charged until they confirm by email.</p>
 
-  <div class="ap-summary">
+  <div class="tp-summary">
     <div><small>Room<?= count($view['lines']) > 1 ? 's' : '' ?></small><span>
       <?php foreach ($view['lines'] as $l): ?><?= e($l['room']['name']) ?><?= $l['units'] > 1 ? ' ×' . (int)$l['units'] : '' ?><br><?php endforeach; ?>
     </span></div>
@@ -132,12 +132,12 @@ include __DIR__ . '/_layout.php';
     <div><small>Nights</small><span><?= (int)$view['nights'] ?></span></div>
     <div><small>Guests</small><span><?= (int)$req['adults'] ?> adult<?= $req['adults'] === 1 ? '' : 's' ?><?= $req['children'] ? ', ' . (int)$req['children'] . ' child' . ($req['children'] === 1 ? '' : 'ren') : '' ?></span></div>
     <div><small>Published</small><span><?= $q['published'] > 0 ? e(format_price((float)$q['published'], $q['currency'])) : 'On request' ?></span></div>
-    <div><small>Your rate<?= $pct > 0 ? ' · ' . e(agent_pct_label($pct)) . '% off' : '' ?></small><span class="ap-net"><?= $q['published'] > 0 ? e(format_price((float)$q['net'], $q['currency'])) : 'On request' ?></span></div>
+    <div><small>Your rate<?= $pct > 0 ? ' · ' . e(agent_pct_label($pct)) . '% off' : '' ?></small><span class="tp-net"><?= $q['published'] > 0 ? e(format_price((float)$q['net'], $q['currency'])) : 'On request' ?></span></div>
   </div>
 
-  <?php if ($error !== ''): ?><div class="alert alert-error"><?= e($error) ?></div><?php endif; ?>
+  <?php if ($error !== ''): ?><div class="alert alert--error"><?= e($error) ?></div><?php endif; ?>
   <?php if (!$view['available']): ?>
-    <div class="alert alert-info">These dates currently show as unavailable. You can still send the request — reservations will check and suggest alternatives if needed.</div>
+    <div class="alert alert--info">These dates currently show as unavailable. You can still send the request — reservations will check and suggest alternatives if needed.</div>
   <?php endif; ?>
 
   <form method="POST" action="/agent/request.php" novalidate
@@ -150,17 +150,17 @@ include __DIR__ . '/_layout.php';
     <input type="hidden" name="check_out" value="<?= e($view['co']) ?>">
     <input type="hidden" name="adults"    value="<?= (int)$req['adults'] ?>">
     <input type="hidden" name="children"  value="<?= (int)$req['children'] ?>">
-    <div class="ap-form" style="margin-bottom:14px">
-      <div class="field"><label for="rqName">Travelling guest’s name</label><input type="text" id="rqName" name="guest_name" value="<?= e($req['guest_name']) ?>" required autofocus></div>
-      <div class="field"><label for="rqEmail">Guest’s email (optional)</label><input type="email" id="rqEmail" name="guest_email" value="<?= e($req['guest_email']) ?>"></div>
-      <div class="field"><label for="rqPhone">Guest’s phone (optional)</label><input type="tel" id="rqPhone" name="guest_phone" value="<?= e($req['guest_phone']) ?>"></div>
+    <div class="tp-form" style="margin-bottom:14px">
+      <div class="field"><label for="rqName">Travelling guest’s name</label><input type="text" id="rqName" class="inp" name="guest_name" value="<?= e($req['guest_name']) ?>" required autofocus style="width:100%"></div>
+      <div class="field"><label for="rqEmail">Guest’s email (optional)</label><input type="email" id="rqEmail" class="inp" name="guest_email" value="<?= e($req['guest_email']) ?>" style="width:100%"></div>
+      <div class="field"><label for="rqPhone">Guest’s phone (optional)</label><input type="tel" id="rqPhone" class="inp" name="guest_phone" value="<?= e($req['guest_phone']) ?>" style="width:100%"></div>
     </div>
-    <div class="field"><label for="rqNotes">Notes for reservations (optional)</label><textarea id="rqNotes" name="notes" rows="3"><?= e($req['notes']) ?></textarea></div>
-    <p class="ap-note">We’ll write to you at <strong><?= e($agent['email']) ?></strong> — you are the contact for this booking; the traveller is not emailed.</p>
-    <button type="submit" class="btn btn--auto">Request to book</button>
-    <a href="<?= e($backUrl) ?>" style="margin-left:12px">Back to availability</a>
+    <div class="field"><label for="rqNotes">Notes for reservations (optional)</label><textarea id="rqNotes" class="inp inp--area" name="notes" rows="3" style="width:100%"><?= e($req['notes']) ?></textarea></div>
+    <p class="tp-note" style="margin-bottom:14px">We’ll write to you at <strong><?= e($agent['email']) ?></strong> — you are the contact for this booking; the traveller is not emailed.</p>
+    <button type="submit" class="btn-primary">Request to book</button>
+    <a href="<?= e($backUrl) ?>" class="btn-outline btn-sm" style="margin-left:8px">Back to availability</a>
   </form>
-</div>
+</div></div>
 <?php endif; ?>
 
 <?php include __DIR__ . '/_layout_end.php'; ?>

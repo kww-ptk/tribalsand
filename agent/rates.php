@@ -21,7 +21,7 @@ $agentActive    = 'rates';
 include __DIR__ . '/_layout.php';
 ?>
 <h1>Your rates</h1>
-<p class="ap-sub">Nightly rates from, across every property, with your agreed discount already applied. <a href="/agent/availability.php">Check live availability for your dates →</a></p>
+<p class="tp-sub">Nightly rates from, across every property, with your agreed discount already applied. <a href="/agent/availability.php">Check live availability for your dates →</a></p>
 
 <?php foreach ($venues as $v):
     $vid  = (int)$v['id'];
@@ -34,14 +34,16 @@ include __DIR__ . '/_layout.php';
     )->fetchAll();
     if (!$rooms) continue;
 ?>
-<div class="ap-card">
-  <h2><?= e($v['name']) ?></h2>
-  <p class="ap-cardsub">
-    <?php if ($pct > 0): ?>Your rate: <span class="ap-badge"><?= e(rtrim(rtrim(number_format($pct, 2), '0'), '.')) ?>% off published</span>
-    <?php else: ?>Published rates (no trade discount set for this property).<?php endif; ?>
-  </p>
-  <div style="overflow-x:auto">
-  <table>
+<div class="card">
+  <div class="card__body card__body--pad" style="padding-bottom:8px">
+    <h2><?= e($v['name']) ?></h2>
+    <p class="tp-cardsub" style="margin-bottom:0">
+      <?php if ($pct > 0): ?>Your rate: <span class="badge badge--teal"><?= e(rtrim(rtrim(number_format($pct, 2), '0'), '.')) ?>% off published</span>
+      <?php else: ?>Published rates (no trade discount set for this property).<?php endif; ?>
+    </p>
+  </div>
+  <div class="card__body" style="padding:0"><div class="table-wrap">
+  <table class="data-table">
     <thead><tr><th>Room</th><th>Sleeps</th><th>Published / night</th><th>Your rate / night</th></tr></thead>
     <tbody>
       <?php foreach ($rooms as $r):
@@ -49,26 +51,26 @@ include __DIR__ . '/_layout.php';
         $cur  = $r['price_currency'] ?: 'USD';
         $base = (float)$r['price_amount'];
         if (!is_priced($base)) {
-          echo '<tr><td>' . e($r['name']) . ($r['is_entire_place'] ? ' <span class="ap-badge">Whole property</span>' : '')
-             . '</td><td>' . (int)$r['capacity'] . '</td><td colspan="2" style="text-align:left;color:#6b6050">On request</td></tr>';
+          echo '<tr><td>' . e($r['name']) . ($r['is_entire_place'] ? ' <span class="badge badge--teal">Whole property</span>' : '')
+             . '</td><td>' . (int)$r['capacity'] . '</td><td colspan="2" class="tp-note">On request</td></tr>';
           continue;
         }
         $from = rates_from_price($rid, $base, 365);          // honest "from", override-aware
         $net  = agent_net_price($from, $agent, $vid);
       ?>
       <tr>
-        <td><?= e($r['name']) ?><?= $r['is_entire_place'] ? ' <span class="ap-badge">Whole property</span>' : '' ?></td>
+        <td><?= e($r['name']) ?><?= $r['is_entire_place'] ? ' <span class="badge badge--teal">Whole property</span>' : '' ?></td>
         <td><?= $r['capacity'] ? (int)$r['capacity'] : '—' ?></td>
-        <td><?php if ($pct > 0): ?><span class="ap-was"><?= e(format_price($from, $cur)) ?></span><?php else: ?><?= e(format_price($from, $cur)) ?><?php endif; ?></td>
-        <td class="ap-net"><?= e(format_price($net, $cur)) ?></td>
+        <td><?php if ($pct > 0): ?><span class="tp-was"><?= e(format_price($from, $cur)) ?></span><?php else: ?><?= e(format_price($from, $cur)) ?><?php endif; ?></td>
+        <td class="tp-net"><?= e(format_price($net, $cur)) ?></td>
       </tr>
       <?php endforeach; ?>
     </tbody>
   </table>
-  </div>
+  </div></div>
 </div>
 <?php endforeach; ?>
 
-<?php if (!$venues): ?><div class="ap-card">No published properties to show yet.</div><?php endif; ?>
+<?php if (!$venues): ?><div class="card"><div class="card__body card__body--pad">No published properties to show yet.</div></div><?php endif; ?>
 
 <?php include __DIR__ . '/_layout_end.php'; ?>

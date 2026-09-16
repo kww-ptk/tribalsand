@@ -70,6 +70,62 @@ function fetch_submission_notes(int $submission_id): array {
 }
 
 /**
+ * Notes for one submission with id > $afterId (oldest-first) — the "poll" query
+ * that live messaging uses to fetch only what is new since the last seen id.
+ * Same row shape as fetch_submission_notes(). [] pre-migration / on error.
+ */
+function fetch_submission_notes_since(int $submission_id, int $afterId): array {
+    if ($submission_id <= 0 || !submission_notes_supported()) return [];
+    $kindSel = submission_notes_kind_supported()
+        ? "n.kind, NULLIF(n.author_name, '') AS frozen_author,"
+        : "'note'::text AS kind, NULL::text AS frozen_author,";
+    try {
+        return db_query(
+            "SELECT n.id, n.body, n.created_at, n.admin_id, {$kindSel}
+                    a.name AS author_name, a.email AS author_email
+             FROM submission_notes n
+             LEFT JOIN admin_users a ON a.id = n.admin_id
+             WHERE n.submission_id = :sid AND n.id > :after
+             ORDER BY n.created_at ASC, n.id ASC",
+            [':sid' => $submission_id, ':after' => $afterId]
+        )->fetchAll();
+    } catch (Throwable $e) {
+        error_log('[submission-notes] fetch since failed: ' . $e->getMessage());
+        return [];
+    }
+}
+
+/**
+ * One note → the JSON shape the live-messaging JS renders, for a viewer $role
+ * ('admin' | 'agent'). `mine` marks the viewer's own side (admin: note/reply;
+ * agent: guest_reply). The "📧 Emailed to guest:" bookkeeping prefix is stripped
+ * for the agent's eyes only. Pure.
+ */
+function submission_thread_payload(array $n, string $role): array {
+    $kind = (string)($n['kind'] ?? 'note');
+    $mine = $role === 'agent' ? ($kind === 'guest_reply') : ($kind !== 'guest_reply');
+    $body = (string)($n['body'] ?? '');
+    if ($role === 'agent') $body = preg_replace('/^📧 Emailed to guest:\s*/u', '', $body);
+    $author = trim((string)($n['frozen_author'] ?? ''))
+           ?: (trim((string)($n['author_name'] ?? ''))
+           ?: (trim((string)($n['author_email'] ?? '')) ?: ($kind === 'guest_reply' ? 'Guest' : 'Staff')));
+    if ($role === 'agent') {
+        $label = $mine ? 'You' : 'Reservations';
+    } else {
+        $label = $kind === 'guest_reply' ? $author : ($kind === 'reply' ? ($author . ' → guest') : $author);
+    }
+    $ts = strtotime((string)($n['created_at'] ?? 'now')) ?: time();
+    return [
+        'id'         => (int)($n['id'] ?? 0),
+        'kind'       => $kind,
+        'mine'       => $mine,
+        'author'     => $label,
+        'body'       => $body,
+        'time_label' => date('j M, H:i', $ts),
+    ];
+}
+
+/**
  * Add a thread entry. $kind is note|reply|guest_reply (defaults to note);
  * $authorName is frozen at write time. Returns the new id or 0 on failure /
  * pre-migration / empty body. The kind/author_name columns are written only

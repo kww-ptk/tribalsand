@@ -481,35 +481,25 @@ include __DIR__ . '/_layout.php';
       <p class="text-muted" style="margin:0;font-size:13px">The conversation thread is unavailable. Run the <code>add_submission_notes.sql</code> migration to enable it.</p>
     <?php else: ?>
       <div class="detail-item__label" style="margin-bottom:10px">Conversation &amp; Notes</div>
-      <?php if (!$notes): ?>
-        <p class="text-muted" style="font-size:13px;margin:0 0 18px">No entries yet. Leave a note for the team, or log / send a reply to the guest.</p>
-      <?php else: ?>
-      <div style="display:flex;flex-direction:column;gap:12px;margin-bottom:20px">
-        <?php foreach ($notes as $n):
-          [$nColor, $nBadge, $nLabel, $nGuest] = match ($n['kind'] ?? 'note') {
-              'reply'       => ['var(--green,#16a34a)', 'badge--green', 'reply',       false], // staff → guest
-              'guest_reply' => ['#0b6273',              'badge--blue',  'guest reply', true],  // guest → us
-              default       => ['var(--border,#e5e7eb)', 'badge--grey', 'note',        false],
-          };
-          $author = trim((string)($n['frozen_author'] ?? ''))
-                 ?: (trim((string)($n['author_name'] ?? ''))
-                 ?: (trim((string)($n['author_email'] ?? '')) ?: ($nGuest ? 'Guest' : 'Admin')));
-        ?>
-        <div style="background:<?= $nGuest ? '#f0f9fa' : 'var(--bg,#f9fafb)' ?>;border-radius:6px;padding:12px 14px;border-left:3px solid <?= $nColor ?>">
-          <div style="display:flex;justify-content:space-between;gap:10px;margin-bottom:6px;font-size:12px;color:var(--muted)">
-            <span>
-              <strong style="color:var(--text,#222)"><?= e($author) ?></strong>
-              <span class="badge <?= $nBadge ?>" style="margin-left:6px"><?= e($nLabel) ?></span>
-            </span>
-            <span style="white-space:nowrap"><?= e(date('d M Y, H:i', strtotime($n['created_at']))) ?></span>
-          </div>
-          <div style="font-size:13.5px;line-height:1.6;white-space:pre-wrap"><?= e($n['body']) ?></div>
+      <?php
+        // Live-polled thread (js/submission-thread.js + api/submission-thread.php):
+        // new customer/agent replies appear here without a page refresh, and a
+        // plain note/reply sends instantly. An emailed reply keeps the PRG path.
+        $__stNotes  = array_map(fn($n) => submission_thread_payload($n, 'admin'), $notes);
+        $__stLast   = $__stNotes ? (int) end($__stNotes)['id'] : 0;
+      ?>
+      <div id="stThread" class="st-thread" data-poll-url="/api/submission-thread.php" data-id="<?= (int)$id ?>" data-last="<?= (int)$__stLast ?>" data-role="admin" style="margin-bottom:20px">
+        <?php if (!$__stNotes): ?>
+          <p class="text-muted st-empty" style="font-size:13px;margin:0">No entries yet. Leave a note for the team, or log / send a reply to the guest.</p>
+        <?php else: foreach ($__stNotes as $n): ?>
+        <div class="stm <?= $n['mine'] ? 'stm--me' : 'stm--them' ?>" data-nid="<?= (int)$n['id'] ?>">
+          <div class="stm__head"><strong><?= e($n['author']) ?></strong> · <?= e($n['time_label']) ?></div>
+          <div class="stm__body"><?= e($n['body']) ?></div>
         </div>
-        <?php endforeach; ?>
+        <?php endforeach; endif; ?>
       </div>
-      <?php endif; ?>
 
-      <form method="POST" action="/admin/submission-view?id=<?= $id ?>">
+      <form method="POST" action="/admin/submission-view?id=<?= $id ?>" id="stForm">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="add_note">
         <?php if (ai_assistant_supported()): ?>
@@ -535,9 +525,11 @@ include __DIR__ . '/_layout.php';
             <input type="checkbox" name="send_email" value="1" id="sendEmail" disabled>
             📧 Also email this reply to <?= e($sub['guest_email'] ?: 'the guest') ?>
           </label>
+          <span class="st-status text-muted" style="font-size:12.5px"></span>
           <button type="submit" class="btn-primary btn-sm" style="margin-left:auto"><?= admin_icon('plus', 15) ?> Add to thread</button>
         </div>
       </form>
+      <script defer src="/js/submission-thread.js?v=<?= @filemtime(__DIR__ . '/../js/submission-thread.js') ?: '1' ?>"></script>
 
       <p class="text-muted" style="font-size:12px;margin:12px 0 0;line-height:1.55">
         A reply here reaches the guest by email. Their reply arrives in the

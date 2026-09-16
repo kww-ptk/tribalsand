@@ -267,6 +267,16 @@ function agent_request_status(array $row, ?int $now = null): array {
     };
 }
 
+/** Map a portal status class (agent_request_status) to an admin .badge class. */
+function agent_status_badge(string $class): string {
+    return match ($class) {
+        'confirmed' => 'badge--green',
+        'pending'   => 'badge--orange',
+        'sent'      => 'badge--blue',
+        default     => 'badge--grey',   // expired / cancelled
+    };
+}
+
 /**
  * An agent's quote for one room over a stay: the published total from
  * room_stay_quote() — the ONE pricing path, override-aware — and the net total
@@ -702,7 +712,7 @@ function agent_fetch_request(array $agent, int $submissionId): ?array {
  * NEVER returned here. [] pre-migration / on error. Ownership is the caller's job
  * (use agent_fetch_request() first).
  */
-function fetch_agent_visible_thread(int $submissionId): array {
+function fetch_agent_visible_thread(int $submissionId, int $afterId = 0): array {
     if ($submissionId <= 0) return [];
     require_once __DIR__ . '/submission-notes.php';
     // Before the kind column exists every row is a plain internal note, so there
@@ -714,9 +724,9 @@ function fetch_agent_visible_thread(int $submissionId): array {
                     a.name AS author_name
                FROM submission_notes n
                LEFT JOIN admin_users a ON a.id = n.admin_id
-              WHERE n.submission_id = :sid AND n.kind IN ('reply','guest_reply')
+              WHERE n.submission_id = :sid AND n.id > :after AND n.kind IN ('reply','guest_reply')
               ORDER BY n.created_at ASC, n.id ASC",
-            [':sid' => $submissionId]
+            [':sid' => $submissionId, ':after' => $afterId]
         )->fetchAll();
     } catch (Throwable $e) {
         error_log('[agent-request] visible thread failed: ' . $e->getMessage());

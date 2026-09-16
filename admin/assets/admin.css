@@ -1058,3 +1058,13 @@ tr.is-unpriced td { background: #fff7ed; }
   input:not([type=checkbox]):not([type=radio]):not([type=range]),
   select, textarea { font-size: 16px; }
 }
+
+/* ── Submission-notes conversation thread (live-polled; admin view + agent portal) ── */
+.st-thread { display: flex; flex-direction: column; gap: 10px; max-height: 460px; overflow-y: auto; padding: 2px; }
+.stm { max-width: 82%; border: 1px solid var(--border); border-radius: 12px; padding: 10px 12px; }
+.stm--them { background: #eef5f7; border-color: #cfe0e6; align-self: flex-start; border-bottom-left-radius: 3px; }
+.stm--me   { background: var(--bg); align-self: flex-end; border-bottom-right-radius: 3px; }
+.stm__head { font-size: 11.5px; color: var(--muted); margin-bottom: 4px; }
+.stm__head strong { color: var(--text); font-weight: 600; }
+.stm__body { font-size: 14px; line-height: 1.5; color: var(--text); white-space: pre-wrap; word-wrap: break-word; }
+@media (max-width: 560px) { .stm { max-width: 100%; } }

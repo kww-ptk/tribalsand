@@ -123,7 +123,7 @@ include __DIR__ . '/_layout.php';
 
 <div class="card" style="margin-bottom:16px">
   <div class="card__head"><span class="card__title">Add an agent</span></div>
-  <div class="card__body">
+  <div class="card__body card__body--pad">
     <form method="POST" action="/admin/agents.php">
       <?= csrf_field() ?><input type="hidden" name="action" value="add">
       <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px">

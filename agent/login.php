@@ -34,23 +34,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $agentPageTitle = 'Trade sign in';
 include __DIR__ . '/_layout.php';
 ?>
-<div class="ap-login">
+<div class="tp-login">
   <h1>Travel trade portal</h1>
-  <p class="ap-sub">Sign in to check live availability, see your agreed rates and request bookings across all Tribal Sand properties.</p>
+  <p class="tp-sub">Sign in to check live availability, see your agreed rates and request bookings across all Tribal Sand properties.</p>
 
-  <?php if ($error): ?><div class="alert alert-error"><?= e($error) ?></div><?php endif; ?>
+  <div class="card"><div class="card__body card__body--pad">
+    <?php if ($error): ?><div class="alert alert--error"><?= e($error) ?></div><?php endif; ?>
 
-  <form method="POST" action="/agent/login.php" novalidate>
-    <div class="field">
-      <label for="email">Email</label>
-      <input type="email" id="email" name="email" value="<?= e($_POST['email'] ?? '') ?>" required autofocus>
-    </div>
-    <div class="field">
-      <label for="password">Password</label>
-      <input type="password" id="password" name="password" required>
-    </div>
-    <button type="submit" class="btn">Sign in</button>
-  </form>
-  <p class="ap-sub" style="margin-top:16px"><a href="/">← Back to tribalsand.com</a></p>
+    <form method="POST" action="/agent/login.php" novalidate>
+      <div class="field">
+        <label for="email">Email</label>
+        <input type="email" id="email" name="email" class="inp" value="<?= e($_POST['email'] ?? '') ?>" required autofocus style="width:100%">
+      </div>
+      <div class="field">
+        <label for="password">Password</label>
+        <input type="password" id="password" name="password" class="inp" required style="width:100%">
+      </div>
+      <button type="submit" class="btn-primary" style="width:100%">Sign in</button>
+    </form>
+  </div></div>
+  <p class="tp-sub" style="margin-top:16px"><a href="/">← Back to tribalsand.com</a></p>
 </div>
 <?php include __DIR__ . '/_layout_end.php'; ?>

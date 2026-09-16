@@ -56,15 +56,15 @@ $priceCell = function (array $o, float $pct): string {
     $cur = (string)($o['currency'] ?? 'USD');
     $pub = format_price((float)$o['total'], $cur);
     $net = format_price((float)($o['net_total'] ?? $o['total']), $cur);
-    return ($pct > 0 ? '<span class="ap-was">' . e($pub) . '</span> ' : '') . '<b>' . e($net) . '</b>';
+    return ($pct > 0 ? '<span class="tp-was">' . e($pub) . '</span> ' : '') . '<b>' . e($net) . '</b>';
 };
 $nightsTxt = $stay ? $stay[2] . ' night' . ($stay[2] === 1 ? '' : 's') : '';
 /** The option's hero thumbnail, or an aligned placeholder box when none is set. */
 $thumb = function (array $o): string {
     $alt = e((string)($o['name'] ?? ''));
     return !empty($o['hero'])
-        ? '<img class="ap-opt__thumb" src="' . e((string)$o['hero']) . '" alt="' . $alt . '" loading="lazy" width="72" height="54">'
-        : '<div class="ap-opt__thumb ap-opt__thumb--ph" aria-hidden="true">◫</div>';
+        ? '<img class="tp-opt__thumb" src="' . e((string)$o['hero']) . '" alt="' . $alt . '" loading="lazy" width="74" height="56">'
+        : '<div class="tp-opt__thumb tp-opt__thumb--ph" aria-hidden="true">◫</div>';
 };
 
 $agentPageTitle = 'Check availability';
@@ -72,108 +72,106 @@ $agentActive    = 'availability';
 include __DIR__ . '/_layout.php';
 ?>
 <h1>Check availability</h1>
-<p class="ap-sub">Live availability across every property, priced at your trade rate. Choose dates and party size, then request the option you want — reservations check the dates, place the hold and confirm by email.</p>
+<p class="tp-sub">Live availability across every property, priced at your trade rate. Choose dates and party size, then request the option you want — reservations check the dates, place the hold and confirm by email.</p>
 
-<div class="ap-card">
-  <form method="GET" action="/agent/availability.php" class="ap-form">
+<div class="card"><div class="card__body card__body--pad">
+  <form method="GET" action="/agent/availability.php" class="tp-form">
     <div class="field">
       <label for="apCi">Check-in</label>
       <button type="button" class="dp-btn" data-dp-role="ci" data-dp-pair="apStay" data-dp-target="apCi" data-dp-placeholder="Add date">Add date</button>
       <input type="hidden" id="apCi" name="check_in" value="<?= e($stay[0] ?? $ciRaw) ?>">
-      <noscript><input type="date" name="check_in" value="<?= e($stay[0] ?? $ciRaw) ?>" aria-label="Check-in"></noscript>
     </div>
     <div class="field">
       <label for="apCo">Check-out</label>
       <button type="button" class="dp-btn" data-dp-role="co" data-dp-pair="apStay" data-dp-target="apCo" data-dp-placeholder="Add date">Add date</button>
       <input type="hidden" id="apCo" name="check_out" value="<?= e($stay[1] ?? $coRaw) ?>">
-      <noscript><input type="date" name="check_out" value="<?= e($stay[1] ?? $coRaw) ?>" aria-label="Check-out"></noscript>
     </div>
-    <div class="field"><label for="apAd">Adults</label><input type="number" id="apAd" name="adults" min="1" max="30" value="<?= (int)$adults ?>"></div>
-    <div class="field"><label for="apCh">Children</label><input type="number" id="apCh" name="children" min="0" max="20" value="<?= (int)$children ?>"></div>
+    <div class="field"><label for="apAd">Adults</label><input type="number" id="apAd" class="inp" name="adults" min="1" max="30" value="<?= (int)$adults ?>" style="width:100%"></div>
+    <div class="field"><label for="apCh">Children</label><input type="number" id="apCh" class="inp" name="children" min="0" max="20" value="<?= (int)$children ?>" style="width:100%"></div>
     <div class="field">
       <label for="apVenue">Property</label>
-      <select id="apVenue" name="venue">
+      <select id="apVenue" name="venue" class="filter-select eselect--block" aria-label="Property">
         <option value="">All properties</option>
         <?php foreach ($venuesAll as $v): ?>
         <option value="<?= e($v['slug']) ?>" <?= $venueSel === $v['slug'] ? 'selected' : '' ?>><?= e($v['name']) ?></option>
         <?php endforeach; ?>
       </select>
     </div>
-    <div class="field"><button type="submit" class="btn">Check availability</button></div>
+    <div class="field"><button type="submit" class="btn-primary" style="width:100%">Check availability</button></div>
   </form>
-  <?php if ($error): ?><div class="alert alert-error" style="margin:14px 0 0"><?= e($error) ?></div><?php endif; ?>
-</div>
+  <?php if ($error): ?><div class="alert alert--error" style="margin:14px 0 0"><?= e($error) ?></div><?php endif; ?>
+</div></div>
 
 <?php if ($stay !== null && !$error): [$ci, $co, $nights] = $stay; ?>
-<p class="ap-sub"><strong><?= e($fmtDate($ci)) ?> → <?= e($fmtDate($co)) ?></strong> · <?= e($nightsTxt) ?> ·
+<p class="tp-sub"><strong><?= e($fmtDate($ci)) ?> → <?= e($fmtDate($co)) ?></strong> · <?= e($nightsTxt) ?> ·
   <?= $guests ?> guest<?= $guests === 1 ? '' : 's' ?> (<?= $adults ?> adult<?= $adults === 1 ? '' : 's' ?><?= $children ? ', ' . $children . ' child' . ($children === 1 ? '' : 'ren') : '' ?>)</p>
 
 <?php foreach ($results as $res): $v = $res['venue']; $cfg = $res['cfg']; $pct = (float)$cfg['discount_pct'];
       $has = $cfg['singles'] || $cfg['combos'] || $cfg['entire']; ?>
-<div class="ap-card">
+<div class="card"><div class="card__body card__body--pad">
   <h2><?= e($v['name']) ?></h2>
-  <p class="ap-cardsub"><?php if ($pct > 0): ?>Your rate: <span class="ap-badge"><?= e(agent_pct_label($pct)) ?>% off published</span><?php else: ?>Published rates (no trade discount set for this property).<?php endif; ?></p>
+  <p class="tp-cardsub"><?php if ($pct > 0): ?>Your rate: <span class="badge badge--teal"><?= e(agent_pct_label($pct)) ?>% off published</span><?php else: ?>Published rates (no trade discount set for this property).<?php endif; ?></p>
 
   <?php if (!$has): ?>
-    <p class="ap-note">Nothing fits <?= $guests ?> guest<?= $guests === 1 ? '' : 's' ?> for these dates<?= !empty($cfg['max_capacity']) ? ' — the property sleeps up to ' . (int)$cfg['max_capacity'] . ' for this window' : '' ?>.</p>
+    <p class="tp-note">Nothing fits <?= $guests ?> guest<?= $guests === 1 ? '' : 's' ?> for these dates<?= !empty($cfg['max_capacity']) ? ' — the property sleeps up to ' . (int)$cfg['max_capacity'] . ' for this window' : '' ?>.</p>
   <?php else: ?>
 
     <?php if ($cfg['singles']): ?>
-    <div class="ap-sec">Available rooms</div>
-    <div class="ap-opts">
+    <div class="tp-sec">Available rooms</div>
+    <div class="tp-opts">
       <?php foreach ($cfg['singles'] as $o): ?>
-      <div class="ap-opt">
-        <div class="ap-opt__body">
+      <div class="tp-opt">
+        <div class="tp-opt__body">
           <?= $thumb($o) ?>
           <div>
-            <div class="ap-opt__name"><?= e($o['name']) ?></div>
-            <div class="ap-opt__meta"><?= !empty($o['capacity']) ? 'Sleeps up to ' . (int)$o['capacity'] . ' · ' : '' ?><?= e($nightsTxt) ?></div>
+            <div class="tp-opt__name"><?= e($o['name']) ?></div>
+            <div class="tp-opt__meta"><?= !empty($o['capacity']) ? 'Sleeps up to ' . (int)$o['capacity'] . ' · ' : '' ?><?= e($nightsTxt) ?></div>
           </div>
         </div>
-        <div class="ap-opt__price"><?= $priceCell($o, $pct) ?><a class="ap-btn" href="<?= e($reqUrl(['room' => $o['slug']])) ?>">Request to book</a></div>
+        <div class="tp-opt__price"><?= $priceCell($o, $pct) ?><a class="btn-primary btn-sm" href="<?= e($reqUrl(['room' => $o['slug']])) ?>">Request to book</a></div>
       </div>
       <?php endforeach; ?>
     </div>
     <?php endif; ?>
 
     <?php if ($cfg['combos']): ?>
-    <div class="ap-sec">For <?= $guests ?> guests we suggest<?= count($cfg['combos']) > 1 ? ' — best fit first' : '' ?></div>
-    <div class="ap-opts">
+    <div class="tp-sec">For <?= $guests ?> guests we suggest<?= count($cfg['combos']) > 1 ? ' — best fit first' : '' ?></div>
+    <div class="tp-opts">
       <?php foreach ($cfg['combos'] as $c): ?>
-      <div class="ap-opt">
+      <div class="tp-opt">
         <div>
-          <div class="ap-opt__name">Combination · sleeps <?= (int)$c['capacity'] ?></div>
-          <div><?php foreach ($c['rooms'] as $cr): ?><span class="ap-chip"><?php if (!empty($cr['hero'])): ?><img class="ap-chip__thumb" src="<?= e((string)$cr['hero']) ?>" alt="" loading="lazy" width="26" height="26"><?php endif; ?><?= e($cr['name']) ?><?= (int)$cr['units_used'] > 1 ? ' ×' . (int)$cr['units_used'] : '' ?> · <?= e(format_price((float)($cr['net_total'] ?? $cr['total']), (string)$cr['currency'])) ?></span><?php endforeach; ?></div>
-          <div class="ap-opt__meta">Reservations confirm the rooms and price by email.</div>
+          <div class="tp-opt__name">Combination · sleeps <?= (int)$c['capacity'] ?></div>
+          <div><?php foreach ($c['rooms'] as $cr): ?><span class="tp-chip"><?php if (!empty($cr['hero'])): ?><img class="tp-chip__thumb" src="<?= e((string)$cr['hero']) ?>" alt="" loading="lazy" width="26" height="26"><?php endif; ?><?= e($cr['name']) ?><?= (int)$cr['units_used'] > 1 ? ' ×' . (int)$cr['units_used'] : '' ?> · <?= e(format_price((float)($cr['net_total'] ?? $cr['total']), (string)$cr['currency'])) ?></span><?php endforeach; ?></div>
+          <div class="tp-opt__meta">Reservations confirm the rooms and price by email.</div>
         </div>
-        <div class="ap-opt__price"><?= $priceCell($c, $pct) ?><a class="ap-btn ap-btn--ghost" href="<?= e($reqUrl(['venue' => $v['slug'], 'rooms' => agent_rooms_param($c['rooms'])])) ?>">Request these rooms</a></div>
+        <div class="tp-opt__price"><?= $priceCell($c, $pct) ?><a class="btn-outline btn-sm" href="<?= e($reqUrl(['venue' => $v['slug'], 'rooms' => agent_rooms_param($c['rooms'])])) ?>">Request these rooms</a></div>
       </div>
       <?php endforeach; ?>
     </div>
     <?php endif; ?>
 
     <?php if ($cfg['entire']): ?>
-    <div class="ap-sec"><?= ($cfg['singles'] || $cfg['combos']) ? 'Or the whole property' : 'The whole property' ?></div>
-    <div class="ap-opts">
+    <div class="tp-sec"><?= ($cfg['singles'] || $cfg['combos']) ? 'Or the whole property' : 'The whole property' ?></div>
+    <div class="tp-opts">
       <?php foreach ($cfg['entire'] as $o): ?>
-      <div class="ap-opt ap-opt--entire">
-        <div class="ap-opt__body">
+      <div class="tp-opt tp-opt--entire">
+        <div class="tp-opt__body">
           <?= $thumb($o) ?>
           <div>
-            <div class="ap-opt__name"><?= e($o['name']) ?> <span class="ap-badge">Whole property</span></div>
-            <div class="ap-opt__meta"><?= !empty($o['capacity']) ? 'Sleeps up to ' . (int)$o['capacity'] . ' · ' : '' ?><?= e($nightsTxt) ?></div>
+            <div class="tp-opt__name"><?= e($o['name']) ?> <span class="badge badge--teal">Whole property</span></div>
+            <div class="tp-opt__meta"><?= !empty($o['capacity']) ? 'Sleeps up to ' . (int)$o['capacity'] . ' · ' : '' ?><?= e($nightsTxt) ?></div>
           </div>
         </div>
-        <div class="ap-opt__price"><?= $priceCell($o, $pct) ?><a class="ap-btn" href="<?= e($reqUrl(['room' => $o['slug']])) ?>">Request to book</a></div>
+        <div class="tp-opt__price"><?= $priceCell($o, $pct) ?><a class="btn-primary btn-sm" href="<?= e($reqUrl(['room' => $o['slug']])) ?>">Request to book</a></div>
       </div>
       <?php endforeach; ?>
     </div>
     <?php endif; ?>
 
   <?php endif; ?>
-</div>
+</div></div>
 <?php endforeach; ?>
-<?php if (!$results): ?><div class="ap-card">No published properties to check.</div><?php endif; ?>
+<?php if (!$results): ?><div class="card"><div class="card__body card__body--pad">No published properties to check.</div></div><?php endif; ?>
 <?php endif; ?>
 
 <?php include __DIR__ . '/_layout_end.php'; ?>
