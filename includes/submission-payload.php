@@ -14,9 +14,9 @@ declare(strict_types=1);
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/mail.php'; // _tb_prop_name(), _tb_nights(), _tb_party()
 
-/** Transport / anti-spam plumbing — captured on submit, never shown to staff. */
+/** Transport / anti-spam plumbing — captured on submit, never shown to staff. (agent_sig is the trade portal's HMAC marker.) */
 function submission_payload_hidden_keys(): array {
-    return ['cf-turnstile-response', 'website', 'ts_raw_json'];
+    return ['cf-turnstile-response', 'website', 'ts_raw_json', 'agent_sig'];
 }
 
 /** A Trip Builder document, as posted by trip-builder.php → api/trip-builder.php. */
