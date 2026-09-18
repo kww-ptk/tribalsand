@@ -302,6 +302,42 @@ Test: `php tests/maya_ilai_inventory.php`.
   at 30 nights. And `ts_search_availability()`'s cross-exclusion is inert only because no
   Maya Ilai room has `is_entire_place = TRUE` — ticking that box would hide products.
 
+### Maya Ilai unit map — live aerial view, READ-ONLY
+The **Unit Map** tab in `admin/maya-ilai-rates.php` renders the aerial compound
+(8 villas × Double A/Double B/Bunk/Living + 8 studios) with live per-bedroom
+booking status for a chosen day. Helpers in **`includes/maya-ilai-unitmap.php`**;
+every read is pre-migration-safe. Test: `php tests/maya_ilai_unitmap.php` (pure).
+- **It is READ-ONLY and does NOT breach this page's "standalone" contract.** The
+  four pricing tabs never feed the live rooms/rates tables (a WRITE rule); this
+  tab only READS `availability_blocks` / `holds` / `bookings`. `mi_unit_map($date)`
+  reuses the SAME calendar the Gantt draws, so it is "synced with the system" by
+  construction — website holds, OTA iCal imports, channel-manager/eZee spreadsheet
+  imports, agent holds and maintenance closures all appear, with no new sync path.
+- **The stay-vs-maintenance rule is load-bearing and lives in ONE place**
+  (`mi_unitmap_is_stay()`). An OTA import and a manual maintenance closure are
+  BOTH `block_type='blocked'`; the imported one carries a `bookings` ledger row
+  (guest + channel), the maintenance one does not. Get it wrong and Booking.com
+  reads as "blocked" or a closure reads as an occupied guest.
+- **`date_to` is EXCLUSIVE (checkout morning), same as everywhere.** A cell is
+  `arriving` when `date == date_from`, `departing` when `date == date_to`,
+  `occupied` in between, `blocked` for a maintenance covering block, else
+  `available`. A covering stay outranks a same-day departure (back-to-back).
+  The pure resolver `mi_unitmap_cell_status()` is DB-free and unit-tested.
+- **Villa bedrooms come from the block's `components`** via
+  `mi_block_taken_components()` (NULL ⇒ whole villa, the pre-migration meaning) —
+  never `mi_pg_array_decode()` directly. Pre-composite-migration every villa block
+  reads as the whole villa; post-migration a `double_a`-only booking colours only
+  Double A. Villas/studios are numbered 1..8 by `sort_order` (staff say "Villa 3").
+- The tab posts `{action:'unitmap', date}` to the page (session-authed +
+  Maya Ilai scope + CSRF-in-body, exactly like the quote/save actions). The SVG is
+  ported from the aerial prototype; the date navigates via the shared `.dp-btn`
+  picker (single mode) + Prev/Today/Next. Lazy-loads on first tab open.
+- **Channel-manager (eZee) API is NOT wired here** — a live two-way API sync
+  (rate/image push) needs eZee/channel-manager API credentials (a business
+  application step). The map already reflects channel bookings today because the
+  existing iCal import (`api/sync-ical.php`) and Ezee spreadsheet importer
+  (`admin/import-bookings.php`) land them as `availability_blocks`.
+
 ### Financial reports — unified bookings ledger
 Revenue reporting reads from one **`bookings`** table (migration: `add_bookings_finance.sql`, after `add_availability`) that unifies every source — website, OTA, agent, direct. Helpers in **`includes/bookings.php`**; every read is pre-migration-safe (`bookings_supported()` via `to_regclass`).
 - **Two writers feed the ledger, both idempotent.**
@@ -415,6 +451,8 @@ From `admin/submission-view.php`, **"Draft options with AI"** (shown only when `
 | `admin/sustainability.php` | Live metrics editor (owner-only) — reading, rate, cap, small print |
 | `includes/maya-ilai-inventory.php` | Maya Ilai composite inventory — component map, resolution, ring-fencing, villa ordering (pure, no I/O) |
 | `includes/staff-hold-guard.php` | Refuses a staff hold that would sell a villa bedroom twice (Maya Ilai villa units only) |
+| `includes/maya-ilai-unitmap.php` | Live aerial unit-map data — `mi_unit_map($date)` + pure `mi_unitmap_cell_status()` (read-only occupancy, pre-migration-safe) |
+| `admin/maya-ilai-rates.php` | Maya Ilai rate/quote tool (standalone) **+ the read-only live Unit Map tab** |
 | `includes/gantt-lanes.php` | First-fit lane packing so concurrent blocks on one unit stay visible on the Gantt (pure) |
 | `includes/gantt-block-guard.php` | Guards the Gantt's drag-to-move against overselling a villa; excludes the moving block from accusing itself |
 | `includes/rates.php` | Nightly rate helpers — merge, resolve, trim/split writes, scoped delete |
