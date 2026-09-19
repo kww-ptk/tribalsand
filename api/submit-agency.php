@@ -1,7 +1,17 @@
 <?php
 declare(strict_types=1);
+/**
+ * "Become Our Partner" — a travel agency registers itself from /for-agents.php.
+ *
+ * Writes the normal `agency` submission AND, when the agency supplied a logo or
+ * website, an UNPUBLISHED agency_partners row so the owner can approve it into
+ * the partner ticker (see includes/partners.php). Approval is the gate: nothing
+ * a visitor uploads reaches the public page — or earns them a backlink — until
+ * the owner publishes it in Admin → Partners.
+ */
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/mail.php';
+require_once __DIR__ . '/../includes/partners.php';
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
@@ -14,7 +24,11 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     exit(json_encode(['ok' => false, 'error' => 'Method not allowed']));
 }
 
-$data = json_decode(file_get_contents('php://input'), true) ?? [];
+// The form posts multipart/form-data when the agency attaches a logo (a file
+// can't ride in a JSON body). Accept either shape so the original JSON contract
+// still works for any other caller.
+$data = !empty($_POST) ? $_POST : (json_decode((string)file_get_contents('php://input'), true) ?? []);
+if (!is_array($data)) $data = [];
 
 // Honeypot
 if (!empty($data['website'])) {
@@ -60,8 +74,25 @@ if ($errors) {
 if (session_status() === PHP_SESSION_NONE) session_start();
 $tracking = $_SESSION['tracking'] ?? [];
 
+// The partner's own site, normalised to an absolute https href (NOT the
+// honeypot field, which is called 'website').
+$agencyWebsite = partner_website_href($data['agency_website'] ?? '');
+
+// Logo (optional). Rejecting it must not reject the registration — record the
+// reason in the payload and let the enquiry through; the owner can chase the
+// logo by email. GD re-encodes the image, so nothing executable survives.
+$logoKey = ''; $logoError = '';
+if (!empty($_FILES['agency_logo']['name'] ?? '')) {
+    $stored = partner_store_logo($_FILES['agency_logo'], $err);
+    if ($stored === false) $logoError = (string)($err ?? 'Could not read that logo.');
+    else                   $logoKey   = $stored;
+}
+
 $payload = [
     'agency_name'    => $agency,
+    'agency_website' => $agencyWebsite,
+    'agency_logo'    => $logoKey,
+    'logo_error'     => $logoError,
     'iata'           => trim($data['iata']    ?? ''),
     'country'        => trim($data['country'] ?? ''),
     'submitted_from' => $_SERVER['HTTP_REFERER'] ?? '',
@@ -97,13 +128,22 @@ db_query(
 
 $id = (int)db()->lastInsertId();
 
+// Queue the agency for the partner ticker — hidden until the owner approves it.
+// Best-effort: the enquiry is already saved, so a partners failure changes
+// nothing the agency sees.
+if ($logoKey !== '' || $agencyWebsite !== '') {
+    partner_register_pending($agency, $agencyWebsite, $logoKey, $email, $id);
+}
+
 send_notification([
     'id'          => $id,
     'type'        => 'agency',
     'guest_name'  => $name,
     'guest_email' => $email,
     'guest_phone' => $data['phone'] ?? '',
-    'message'     => $message . "\n\nAgency: {$agency}\nIATA: {$payload['iata']}\nCountry: {$payload['country']}",
+    'message'     => $message . "\n\nAgency: {$agency}\nWebsite: {$payload['agency_website']}\nIATA: {$payload['iata']}\nCountry: {$payload['country']}"
+                     . ($logoKey !== ''   ? "\nLogo: uploaded — approve it in Admin → Partners" : '')
+                     . ($logoError !== '' ? "\nLogo: rejected ({$logoError}) — ask the agency to resend" : ''),
     'created_at'  => date('Y-m-d H:i:s'),
 ] + $tracking);
 

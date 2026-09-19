@@ -282,6 +282,11 @@
         <li><a href="/booking">Book Now</a></li>
         <li><a href="trip-builder.php">Plan Your Trip</a></li>
       </ul>
+      <span class="ts-foot-sub-lbl">Login</span>
+      <ul class="ts-foot-links">
+        <li><a href="/admin/login.php">Team Login</a></li>
+        <li><a href="/agent/login.php">Travel Agency Login</a></li>
+      </ul>
     </div>
 
   </div>

@@ -70,4 +70,16 @@ log "scheduler started"
   done
 ) &
 
+# ── Job 3: spawn recurring tasks daily ──────────────────────────────────────
+# Turns job-timetable / recurring-task rules into real tasks on their cadence.
+# Runs the PHP script directly (it has DB env from the parent). Idempotent — the
+# unique (recurrence_id, due_date) index means a re-run never double-creates.
+# Belt-and-suspenders: the Tasks board also spawns inline on load.
+(
+  while true; do
+    php "$APP_DIR/bin/spawn-recurring-tasks.php" >> "$LOG" 2>&1 || log "spawn-recurring-tasks failed"
+    sleep 86400
+  done
+) &
+
 wait
