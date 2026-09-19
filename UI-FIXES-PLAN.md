@@ -1,7 +1,7 @@
 # Tribal Sand — Guest-Flow UI Fixes: Implementation Plan
 
 > Self-contained spec. A fresh session can execute this without prior context.
-> Approved 2026-08-19 after manual testing of prod (tribalsand.onrender.com).
+> Approved 2026-08-19 after manual testing of prod (tribalsand.com).
 > **Order: A → B → C. Scope: ALL property pages.**
 
 ---
@@ -11,7 +11,7 @@
 - **Stack:** PHP 8.2, vanilla JS/CSS. **No framework, no build system, no npm, no React.**
 - **"Lucide React" = inline Lucide SVG.** When the user says "use Lucide React icons," it means paste the Lucide icon as an inline `<svg>` (same pattern already used in hero steppers / booking widget). There is no JSX here.
 - **No native UI rule (hard constraint):** never use native `<select>`, `<input type="date">`, `<input type="time">`, or unicode arrow/tick glyphs (`▾ ▸ ✓ ✔`) as UI. Always use the reusable styled components below + inline Lucide SVG icons.
-- **Local dev server:** `D:\php84\php.exe -S localhost:8765 -t D:\TribalIsland D:\TribalIsland\router.php` (uses Neon cloud DB via `.env`). **Do NOT submit real enquiries/trip-builder forms during testing** — they write to the live DB and email staff/guest. Test rendering + client-side validation only.
+- **Local dev server:** `D:\php84\php.exe -S localhost:8765 -t D:\TribalIsland D:\TribalIsland\router.php` (uses the PostgreSQL DB via `.env`). **Do NOT submit real enquiries/trip-builder forms during testing** — they write to the live DB and email staff/guest. Test rendering + client-side validation only.
 - **Cache-busting:** CSS/JS `<link>`/`<script>` in `includes/head.php` already use `?v=<?= filemtime(...) ?>`. No manual version bumps needed.
 - **Verify each change in the browser** (read_page / javascript_tool / console) before moving on. The Browser pane may not composite screenshots; use text-based inspection.
 

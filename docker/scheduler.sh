@@ -1,6 +1,6 @@
 #!/bin/bash
-# In-container periodic-job scheduler — the AWS replacement for the old Render
-# cron service (deleted with render.yaml). Launched in the background by
+# In-container periodic-job scheduler. There is no external cron service, so
+# scheduled jobs run inside the app container. Launched in the background by
 # docker/entrypoint.sh, so it inherits the full container environment
 # (DATABASE_URL, ICAL_SYNC_SECRET, FX_SYNC_SECRET, …). That matters: cron does
 # NOT inherit container env, which is why this is a plain background loop rather

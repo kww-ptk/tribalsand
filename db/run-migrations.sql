@@ -1,6 +1,6 @@
 -- ============================================================
--- Tribal Sand — Run this once in the Neon SQL console
--- Paste the entire file and click Run
+-- Tribal Sand — Run this once against the database (psql, or /admin/migrate.php)
+-- Paste the entire file and run it
 -- All statements are idempotent (safe to re-run)
 -- ============================================================
 

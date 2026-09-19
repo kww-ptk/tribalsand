@@ -28,7 +28,7 @@
 - **Never break a price.** If a rate is missing or conversion fails, fall back to rendering the original stored currency unconverted — never show `NaN`, `0`, or a blank.
 - **SEO / structured data stays stable.** `includes/schema.php` price fields keep the room's **real** currency — do NOT localize schema.org markup (currency is per-user; structured data must be deterministic).
 - **Cache-busting:** CSS/JS in `includes/head.php` already use `?v=filemtime()`.
-- **Local dev:** `D:\php84\php.exe -S localhost:8765 -t D:\TribalIsland D:\TribalIsland\router.php` (Neon cloud DB via `.env`). Do NOT submit live enquiries during testing.
+- **Local dev:** `D:\php84\php.exe -S localhost:8765 -t D:\TribalIsland D:\TribalIsland\router.php` (PostgreSQL DB via `.env`). Do NOT submit live enquiries during testing.
 
 ### Decisions (locked)
 | Decision | Value |
