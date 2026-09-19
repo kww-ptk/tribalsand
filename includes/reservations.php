@@ -36,6 +36,97 @@ function reservation_slots(): array {
     return $out;
 }
 
+/** Largest party the request form (and the integration API) will accept. */
+function reservation_max_party(): int { return 30; }
+
+/**
+ * Validate a reservation request. ONE validator, shared by the website form
+ * (api/submit-reservation.php) and the partner integration API
+ * (api/reservation-api.php) — a partner site must not be able to create a
+ * booking the website itself would have rejected.
+ *
+ * $in keys: venue_id, reservation_date, reservation_time, party_size,
+ * guest_name, guest_phone, guest_email. Returns [field => message]; empty = OK.
+ * The caller is responsible for resolving/authorising the venue; pass the
+ * resolved row (or false) as $venue.
+ */
+function reservation_validate(array $in, array|false $venue): array {
+    $errors = [];
+
+    if (!$venue || empty($venue['is_published'])) $errors['venue_id'] = 'Please choose a property.';
+
+    $time = trim((string)($in['reservation_time'] ?? ''));
+    if ($time === '' || !isset(reservation_slots()[$time])) {
+        $errors['reservation_time'] = 'Please choose a time.';
+    }
+
+    $date   = trim((string)($in['reservation_date'] ?? ''));
+    $dateTs = $date !== '' ? strtotime($date) : false;
+    if ($date === '' || $dateTs === false) {
+        $errors['reservation_date'] = 'Please choose a date.';
+    } elseif (date('Y-m-d', $dateTs) < date('Y-m-d')) {
+        $errors['reservation_date'] = 'Please choose today or a future date.';
+    }
+
+    $party = (int)($in['party_size'] ?? 0);
+    if ($party < 1 || $party > reservation_max_party()) {
+        $errors['party_size'] = 'Party size must be between 1 and ' . reservation_max_party() . '.';
+    }
+
+    if (trim((string)($in['guest_name']  ?? '')) === '') $errors['guest_name']  = 'A name is required.';
+    if (trim((string)($in['guest_phone'] ?? '')) === '') $errors['guest_phone'] = 'A phone number is required.';
+
+    $email = trim((string)($in['guest_email'] ?? ''));
+    if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $errors['guest_email'] = 'Please enter a valid email, or leave it blank.';
+    }
+
+    return $errors;
+}
+
+/**
+ * The venue's first published menu id, or null. Soft link only — used to tie a
+ * reservation to the menu the guest was looking at.
+ */
+function reservation_menu_id_for_venue(int $venueId): ?int {
+    if ($venueId <= 0) return null;
+    try {
+        if (!db_query("SELECT to_regclass('public.menus')")->fetchColumn()) return null;
+        $id = db_query(
+            'SELECT id FROM menus WHERE venue_id = :v AND is_published = TRUE ORDER BY sort_order, id LIMIT 1',
+            [':v' => $venueId]
+        )->fetchColumn();
+        return $id ? (int)$id : null;
+    } catch (Throwable $e) { return null; }
+}
+
+/** True when this IP has hit the reservation cap (5 / 10 min). Fails OPEN on a read error. */
+function reservation_rate_limited(string $ip, int $max = 5): bool {
+    if (!reservations_supported()) return false;
+    try {
+        $n = (int) db_query(
+            "SELECT COUNT(*) FROM reservations WHERE client_ip = :ip AND created_at > now() - interval '10 minutes'",
+            [':ip' => $ip]
+        )->fetchColumn();
+        return $n >= $max;
+    } catch (Throwable $e) { return false; }
+}
+
+/** One reservation by its public reference (TSR-…), or null. */
+function fetch_reservation_by_reference(string $reference): ?array {
+    if (!reservations_supported() || trim($reference) === '') return null;
+    try {
+        $row = db_query(
+            "SELECT r.*, v.name AS venue_name, v.slug AS venue_slug
+               FROM reservations r
+               LEFT JOIN venues v ON v.id = r.venue_id
+              WHERE r.reference = :r",
+            [':r' => trim($reference)]
+        )->fetch();
+    } catch (Throwable $e) { return null; }
+    return $row ?: null;
+}
+
 /** Badge CSS class for a reservation status (matches admin badge--* palette). */
 function reservation_status_badge(string $status): string {
     return match ($status) {

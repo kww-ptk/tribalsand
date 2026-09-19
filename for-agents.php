@@ -1,4 +1,6 @@
 <?php require_once 'includes/schema.php'; ?>
+<?php require_once 'includes/partners.php'; ?>
+<?php $__partners = fetch_published_partners(); ?>
 <?php
 $page_title  = 'For Travel Agents · Tribal Sand Kenya · Commission & FAM';
 $page_desc   = 'Partner with Tribal Sand. Competitive commission for travel agents, complimentary FAM trips, dedicated support and quick response on all bookings.';
@@ -44,6 +46,47 @@ require_once 'includes/head.php';
   font-family:'Jost',sans-serif;font-size:.88rem;
   color:rgba(255,255,255,.78);line-height:1.75;
 }
+.ag-hero-cta{
+  display:inline-block;margin-top:1.8rem;
+  font-family:'Jost',sans-serif;font-size:.68rem;
+  letter-spacing:.2em;text-transform:uppercase;font-weight:500;
+  padding:.9rem 2.2rem;background:var(--sand);color:var(--teal-d);
+  text-decoration:none;border:1px solid var(--sand);
+  transition:background .22s,border-color .22s;
+}
+.ag-hero-cta:hover{background:#D4B07A;border-color:#D4B07A;}
+
+/* PARTNER TICKER */
+.ag-partners{background:var(--cream, #F5EFE3);padding:4.5rem 0 5rem;overflow:hidden;}
+.ag-partners-inner{max-width:1100px;margin:0 auto;padding:0 6vw;text-align:center;}
+.ag-partners-eyebrow{
+  font-family:'Jost',sans-serif;font-size:.56rem;
+  letter-spacing:.3em;text-transform:uppercase;
+  color:var(--sand);margin-bottom:.8rem;
+}
+.ag-partners h2{
+  font-family:'Cormorant Garamond',serif;
+  font-size:clamp(1.6rem,3vw,2.4rem);font-weight:400;
+  color:var(--teal-d);margin-bottom:2.6rem;
+}
+.ag-ticker{
+  position:relative;width:100%;overflow:hidden;
+  -webkit-mask-image:linear-gradient(to right,transparent,#000 8%,#000 92%,transparent);
+          mask-image:linear-gradient(to right,transparent,#000 8%,#000 92%,transparent);
+}
+.ag-ticker-track{display:flex;width:max-content;animation:ag-scroll 40s linear infinite;}
+.ag-ticker:hover .ag-ticker-track{animation-play-state:paused;}
+.ag-ticker-item{
+  flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+  height:80px;padding:0 2.6rem;
+}
+.ag-ticker-item img{
+  max-height:64px;max-width:170px;object-fit:contain;
+  filter:grayscale(1);opacity:.7;transition:filter .25s,opacity .25s;
+}
+.ag-ticker-item a:hover img{filter:grayscale(0);opacity:1;}
+@keyframes ag-scroll{from{transform:translateX(0);}to{transform:translateX(-50%);}}
+@media(prefers-reduced-motion:reduce){.ag-ticker-track{animation:none;flex-wrap:wrap;justify-content:center;width:100%;}}
 
 /* INTRO DARK */
 .ag-intro{background:var(--teal-d);padding:5.5rem 6vw;}
@@ -134,6 +177,18 @@ require_once 'includes/head.php';
 }
 .ag-input::placeholder{color:rgba(255,255,255,.3);}
 .ag-input:focus{border-color:rgba(184,150,90,.5);background:rgba(255,255,255,.09);}
+.ag-file{padding:.7rem 1rem;color:rgba(255,255,255,.7);cursor:pointer;}
+.ag-file::file-selector-button{
+  font-family:'Jost',sans-serif;font-size:.68rem;
+  letter-spacing:.14em;text-transform:uppercase;
+  margin-right:.9rem;padding:.5rem 1rem;cursor:pointer;
+  background:rgba(184,150,90,.18);color:var(--sand);
+  border:1px solid rgba(184,150,90,.35);
+}
+.ag-hint{
+  font-family:'Jost',sans-serif;font-size:.74rem;
+  color:rgba(255,255,255,.45);line-height:1.6;margin:.1rem 0 0;
+}
 .ag-honeypot{position:absolute;overflow:hidden;width:1px;height:1px;opacity:0;pointer-events:none;}
 .ag-submit{
   font-family:'Jost',sans-serif;font-size:.72rem;
@@ -215,17 +270,18 @@ require_once 'includes/head.php';
 <section class="ag-hero">
   <div class="ag-hero-content">
     <p class="ag-eyebrow">For Travel Agents</p>
-    <h1>Partner with <em>Tribal Sand</em></h1>
-    <p class="ag-hero-sub">Earn competitive commission on every Tribal Sand booking.</p>
+    <h1>Become Our <em>Partner</em></h1>
+    <p class="ag-hero-sub">Register your agency and earn competitive commission on every Tribal Sand booking.</p>
+    <a href="#register" class="ag-hero-cta">Become Our Partner</a>
   </div>
 </section>
 
 <!-- INTRO -->
 <section class="ag-intro">
   <div class="ag-intro-inner">
-    <p class="ag-intro-eyebrow">Something Exciting is Coming</p>
+    <p class="ag-intro-eyebrow">Become Our Partner</p>
     <h2>Join the Tribal Sand Agent Programme</h2>
-    <p>Are you passionate about unique travel experiences and looking to be part of something extraordinary? At Tribal Sand, we're building an exclusive agent programme designed just for you. Stay tuned as we put together an opportunity that will let you become part of the Tribal Sand journey.</p>
+    <p>Travel agencies can register to become official Tribal Sand partners — earning competitive commission across our collection of beachfront boutique hotels and private villas on Kenya's North Coast. Register below and our team will set you up with rates, availability and everything you need to start selling.</p>
   </div>
 </section>
 
@@ -276,12 +332,12 @@ require_once 'includes/head.php';
   </div>
 </section>
 
-<!-- SIGN-UP FORM -->
-<section class="ag-form-section">
+<!-- BECOME OUR PARTNER FORM -->
+<section class="ag-form-section" id="register">
   <div class="ag-form-inner">
-    <p class="ag-form-eyebrow">Stay Informed</p>
-    <h2>Be the First to Know</h2>
-    <p>Register your interest and we'll notify you the moment our agent programme launches.</p>
+    <p class="ag-form-eyebrow">Register Your Agency</p>
+    <h2>Become Our Partner</h2>
+    <p>Complete the form to register your travel agency. Share your website and logo and — once approved — we'll feature your agency in our partner section with a link back to your site.</p>
 
     <form class="ag-form" id="agent-signup-form" novalidate>
       <!-- Honeypot -->
@@ -291,7 +347,12 @@ require_once 'includes/head.php';
       </div>
 
       <div class="ag-field">
-        <label class="ag-label" for="agent-name">Your Name</label>
+        <label class="ag-label" for="agent-agency">Agency Name</label>
+        <input class="ag-input" type="text" id="agent-agency" name="agency_name" placeholder="Safari Travel Co." required>
+      </div>
+
+      <div class="ag-field">
+        <label class="ag-label" for="agent-name">Contact Name</label>
         <input class="ag-input" type="text" id="agent-name" name="agent_name" placeholder="Jane Smith" required>
       </div>
 
@@ -300,18 +361,81 @@ require_once 'includes/head.php';
         <input class="ag-input" type="email" id="agent-email" name="agent_email" placeholder="jane@travelagency.com" required>
       </div>
 
+      <div class="ag-field">
+        <label class="ag-label" for="agent-phone">Phone <span style="opacity:.6;text-transform:none;letter-spacing:0">(optional)</span></label>
+        <input class="ag-input" type="tel" id="agent-phone" name="agent_phone" placeholder="+254 …">
+      </div>
+
+      <div class="ag-field">
+        <label class="ag-label" for="agent-website">Agency Website <span style="opacity:.6;text-transform:none;letter-spacing:0">(optional)</span></label>
+        <input class="ag-input" type="text" id="agent-website" name="agency_website" placeholder="https://youragency.com">
+      </div>
+
+      <div class="ag-field">
+        <label class="ag-label" for="agent-logo">Agency Logo <span style="opacity:.6;text-transform:none;letter-spacing:0">(optional · PNG, JPG or WebP, max 2MB)</span></label>
+        <input class="ag-input ag-file" type="file" id="agent-logo" name="agency_logo" accept="image/png,image/jpeg,image/webp">
+        <p class="ag-hint">A transparent PNG works best. Once approved, your logo appears in our partner section linked to your website.</p>
+      </div>
+
+      <div class="ag-field">
+        <label class="ag-label" for="agent-country">Country <span style="opacity:.6;text-transform:none;letter-spacing:0">(optional)</span></label>
+        <input class="ag-input" type="text" id="agent-country" name="agent_country" placeholder="Kenya">
+      </div>
+
+      <div class="ag-field">
+        <label class="ag-label" for="agent-message">Anything else? <span style="opacity:.6;text-transform:none;letter-spacing:0">(optional)</span></label>
+        <textarea class="ag-input" id="agent-message" name="agent_message" rows="3" placeholder="Tell us about your agency, IATA number, markets you serve…"></textarea>
+      </div>
+
       <?php if (captcha_site_key()): ?>
       <div class="cf-turnstile" data-sitekey="<?= e(captcha_site_key()) ?>" style="margin-bottom:1rem"></div>
       <?php endif; ?>
 
-      <button class="ag-submit" type="submit" id="submitBtn">Register Interest</button>
+      <button class="ag-submit" type="submit" id="submitBtn">Register My Agency</button>
     </form>
 
     <div class="ag-success" id="successMsg" role="status">
-      Thank you — we'll be in touch soon.
+      Thank you for registering — our team will review your details and be in touch to set up your partnership. Once you're approved, your logo appears in our partner section with a link back to your site.
     </div>
   </div>
 </section>
+
+<?php if ($__partners): ?>
+<!-- PARTNER TICKER -->
+<section class="ag-partners">
+  <div class="ag-partners-inner">
+    <p class="ag-partners-eyebrow">Trusted By</p>
+    <h2>Our Travel Partners</h2>
+  </div>
+  <div class="ag-ticker" aria-label="Our travel partners">
+    <div class="ag-ticker-track">
+      <?php
+        // The -50% keyframe scrolls exactly half the track, so the track has to
+        // be the list repeated an EVEN number of times for the loop to be
+        // seamless. Repeat enough to overflow a wide screen too — with two or
+        // three partners a single pair leaves a gap and then visibly jumps.
+        // Tiles are ~230px, so ten of them fill ~2300px.
+        $__reps = max(2, (int) ceil(10 / max(1, count($__partners))));
+        if ($__reps % 2 !== 0) $__reps++;
+        $__n = count($__partners);
+        for ($i = 0; $i < $__reps * $__n; $i++):
+          $p    = $__partners[$i % $__n];
+          $logo = partner_logo_url($p['logo_key']);
+          if ($logo === '') continue;
+          $href = partner_website_href($p['website_url']);
+          // Only the first pass is real content — the repeats exist purely to
+          // fill the marquee, so hide them from screen readers and the tab order.
+          $dup  = $i >= $__n;
+      ?>
+      <div class="ag-ticker-item"<?= $dup ? ' aria-hidden="true"' : '' ?>>
+        <?php if ($href): ?><a href="<?= e($href) ?>" target="_blank" rel="noopener"<?= $dup ? ' tabindex="-1"' : '' ?> title="<?= e($p['name']) ?>"><img src="<?= e($logo) ?>" alt="<?= $dup ? '' : e($p['name']) ?>" loading="lazy"></a>
+        <?php else: ?><img src="<?= e($logo) ?>" alt="<?= $dup ? '' : e($p['name']) ?>" loading="lazy"><?php endif; ?>
+      </div>
+      <?php endfor; ?>
+    </div>
+  </div>
+</section>
+<?php endif; ?>
 
 <!-- PROPERTIES -->
 <section class="ag-properties">
@@ -368,35 +492,41 @@ document.getElementById('agent-signup-form').addEventListener('submit', function
   if (honeypot && honeypot.value) return; // spam
   btn.textContent = 'Sending\u2026';
   btn.disabled = true;
-  var fd = new FormData(form);
-  var nm = (fd.get('agent_name') || '').toString().trim();
-  var payload = {
-    name:    nm,
-    email:   (fd.get('agent_email') || '').toString().trim(),
-    phone:   '',
-    agency:  nm,
-    country: '',
-    message: 'Travel agent registration enquiry',
-    website: (fd.get('name-email') || '').toString(),
-    'cf-turnstile-response': (form.querySelector("[name='cf-turnstile-response']")||{}).value || ''
-  };
-  fetch('/api/submit-agency.php', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload)
-  })
+  var raw = new FormData(form);
+  var nm  = (raw.get('agent_name')  || '').toString().trim();
+  var agy = (raw.get('agency_name') || '').toString().trim();
+  var str = function (k) { return (raw.get(k) || '').toString().trim(); };
+
+  // Posted as multipart (not JSON) because the agency may attach a logo file.
+  // api/submit-agency.php reads $_POST first, falling back to a JSON body.
+  var body = new FormData();
+  body.append('name',    nm);
+  body.append('email',   str('agent_email'));
+  body.append('phone',   str('agent_phone'));
+  body.append('agency',  agy || nm);
+  body.append('country', str('agent_country'));
+  body.append('agency_website', str('agency_website'));
+  body.append('message', str('agent_message') || 'Become our partner \u2014 agency registration');
+  body.append('website', (raw.get('name-email') || '').toString());   // honeypot
+  body.append('cf-turnstile-response', (form.querySelector("[name='cf-turnstile-response']")||{}).value || '');
+
+  var logo = document.getElementById('agent-logo');
+  if (logo && logo.files && logo.files[0]) body.append('agency_logo', logo.files[0]);
+
+  // No Content-Type header — the browser sets the multipart boundary itself.
+  fetch('/api/submit-agency.php', { method: 'POST', body: body })
   .then(function(r){ return r.json(); })
   .then(function(data){
     if (data.ok) {
       form.style.display = 'none';
       document.getElementById('successMsg').style.display = 'block';
     } else {
-      btn.textContent = 'Submit';
+      btn.textContent = 'Register My Agency';
       btn.disabled = false;
     }
   })
   .catch(function(){
-    btn.textContent = 'Submit';
+    btn.textContent = 'Register My Agency';
     btn.disabled = false;
   });
 });

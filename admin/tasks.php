@@ -8,6 +8,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/booking.php';   // team helpers
+require_once __DIR__ . '/../includes/recurring-tasks.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/pagination.php';
 require_once __DIR__ . '/../includes/admin-pagination.php';
@@ -63,6 +64,31 @@ if ($venueIds === null) {
     $candidates = [];
 }
 
+/**
+ * Which venues each candidate is scoped to, so a row's reassign menu can offer
+ * only the people who may actually take THAT task's property. Mirrors
+ * team_can_take_venue() (the server-side guard the reassign action re-applies);
+ * without it every row listed the whole team and most choices bounced off
+ * "That person isn't assigned to that property."
+ */
+$candidateVenues = [];
+if ($candidates) {
+    $ids = implode(',', array_map(fn($c) => (int)$c['id'], $candidates));
+    try {
+        foreach (db_query("SELECT admin_user_id, venue_id FROM admin_user_venues WHERE admin_user_id IN ({$ids})")->fetchAll() as $r) {
+            $candidateVenues[(int)$r['admin_user_id']][] = (int)$r['venue_id'];
+        }
+    } catch (Throwable $e) { $candidateVenues = []; }
+}
+/** Candidates assignable to one venue (empty map = pre-migration, offer everyone). */
+$candidatesFor = function (int $venueId) use ($candidates, $candidateVenues): array {
+    if (!$candidateVenues) return $candidates;
+    return array_values(array_filter(
+        $candidates,
+        fn($c) => in_array($venueId, $candidateVenues[(int)$c['id']] ?? [], true)
+    ));
+};
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $action = $_POST['action'] ?? '';
@@ -90,15 +116,83 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         $dueSql = null;
         if ($due !== '') { $ts = strtotime($due); if ($ts !== false) $dueSql = date('Y-m-d', $ts); }
+        $timeSql = trim((string)($_POST['due_time'] ?? '')) ?: null;
 
-        db_query(
-            "INSERT INTO tasks (venue_id, assigned_to, job_type, title, detail, due_date, created_by)
-             VALUES (:v, :a, :j, :t, :d, :due, :cb)",
-            [':v'=>$venue, ':a'=>$asg, ':j'=>$job, ':t'=>$title, ':d'=>($detail !== '' ? $detail : null),
-             ':due'=>$dueSql, ':cb'=>$meId ?: null]
-        );
+        // Recurring path: create a recurrence rule (optionally attached to a
+        // timetable) and let the spawner create the actual task(s). One-time path
+        // is the original single INSERT.
+        $isRecurring = recurring_tasks_supported() && ($_POST['recurring'] ?? '') === '1';
+        if ($isRecurring) {
+            $freq = (string)($_POST['frequency'] ?? 'weekly');
+            $sid  = (int)($_POST['schedule_id'] ?? 0) ?: null;
+            // A chosen timetable must be one of this account's own.
+            if ($sid !== null) {
+                $s = fetch_task_schedule($sid);
+                if (!$s || !in_array((int)$s['venue_id'], $scopedVenueIds, true)) $sid = null;
+            }
+            $rid = create_task_recurrence([
+                'schedule_id'  => $sid,
+                'venue_id'     => $venue,
+                'assigned_to'  => $asg,
+                'job_type'     => $job,
+                'title'        => $title,
+                'detail'       => $detail,
+                'frequency'    => $freq,
+                'interval_days'=> $_POST['interval_days'] ?? null,
+                'time_of_day'  => $_POST['due_time'] ?? '',
+                'start_date'   => $dueSql ?? date('Y-m-d'),   // first occurrence = the due date, or today
+                'created_by'   => $meId ?: null,
+            ]);
+            audit_log('task_recurrence.create', 'task_recurrence', $rid, $title);
+            spawn_due_recurring_tasks(null, $venueIds);   // create the first occurrence immediately
+            $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Recurring task created — it will repeat ' . strtolower(recurring_freq_label($freq, (int)($_POST['interval_days'] ?? 0) ?: null)) . '.'];
+            header('Location: /admin/tasks.php'); exit;
+        }
+
+        // due_time arrives with add_recurring_tasks.sql, so a deploy that lands
+        // before the migration must still create a plain task — this is the
+        // pre-existing one-time path and breaking it would take the board down.
+        // recurring_tasks_supported() probes that same migration.
+        $params = [':v'=>$venue, ':a'=>$asg, ':j'=>$job, ':t'=>$title,
+                   ':d'=>($detail !== '' ? $detail : null), ':due'=>$dueSql, ':cb'=>$meId ?: null];
+        if (recurring_tasks_supported()) {
+            $params[':tm'] = $timeSql;
+            db_query(
+                "INSERT INTO tasks (venue_id, assigned_to, job_type, title, detail, due_date, due_time, created_by)
+                 VALUES (:v, :a, :j, :t, :d, :due, :tm, :cb)", $params
+            );
+        } else {
+            db_query(
+                "INSERT INTO tasks (venue_id, assigned_to, job_type, title, detail, due_date, created_by)
+                 VALUES (:v, :a, :j, :t, :d, :due, :cb)", $params
+            );
+        }
         audit_log('task.create', 'task', (int)db()->lastInsertId(), $title);
         $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Task created.'];
+        header('Location: /admin/tasks.php'); exit;
+    }
+
+    if ($action === 'reassign') {
+        // Owner/manager only (reception can create/track but not reassign ownership).
+        if (!is_owner() && !is_manager()) {
+            $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Only a manager can reassign a task.'];
+            header('Location: /admin/tasks.php'); exit;
+        }
+        $id  = (int)($_POST['id'] ?? 0);
+        $t   = $id ? fetch_task($id) : false;
+        $ok  = $t && ($venueIds === null || in_array((int)$t['venue_id'], $venueIds, true));
+        if (!$ok) {
+            $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Not your task.'];
+            header('Location: /admin/tasks.php'); exit;
+        }
+        $to = (int)($_POST['assigned_to'] ?? 0) ?: null;
+        if ($to !== null && !team_can_take_venue($to, (int)$t['venue_id'])) {
+            $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'That person isn’t assigned to that property.'];
+            header('Location: /admin/tasks.php'); exit;
+        }
+        db_query("UPDATE tasks SET assigned_to = :a WHERE id = :id", [':a'=>$to, ':id'=>$id]);
+        audit_log('task.reassign', 'task', $id, $to !== null ? ('→ ' . team_member_name($to)) : 'unassigned');
+        $_SESSION['hold_flash'] = ['type'=>'success','msg'=>$to !== null ? ('Task reassigned to ' . team_member_name($to) . '.') : 'Task unassigned.'];
         header('Location: /admin/tasks.php'); exit;
     }
 
@@ -116,6 +210,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: /admin/tasks.php'); exit;
     }
 }
+
+// Spawn any due recurring tasks on load (idempotent) so the board is current.
+if (recurring_tasks_supported()) recurring_inline_spawn($venueIds);
+
+// Active timetables in scope, for the "Add to timetable" picker on the create form.
+$schedulesForPicker = (recurring_tasks_supported())
+    ? array_values(array_filter(fetch_task_schedules($venueIds), fn($s) => !empty($s['is_active']) && $s['is_active'] !== 'f'))
+    : [];
+// Owner/manager may reassign; reception may not.
+$canReassign = is_owner() || is_manager();
 
 // Filters.
 $statusKey = $_GET['status'] ?? 'open';
@@ -158,6 +262,7 @@ ob_start(); ?>
         <tr>
           <td>
             <strong><?= e($t['title']) ?></strong>
+            <?php if (!empty($t['recurrence_id'])): ?> <span class="badge badge--blue" style="font-size:10px" title="Created by a recurring schedule">↻ Recurring</span><?php endif; ?>
             <?php if (!empty($t['detail'])): ?><br><span class="text-muted" style="font-size:12px"><?= e($t['detail']) ?></span><?php endif; ?>
             <?php if (!empty($t['hold_guest'])): ?><br><span class="text-muted" style="font-size:12px">Booking: <?= e($t['hold_guest']) ?></span><?php endif; ?>
           </td>
@@ -179,6 +284,19 @@ ob_start(); ?>
               if (in_array($st, ['done','cancelled'], true))   $btn('todo', 'Reopen task', 'rotate', 'btn-icon--outline');
               if (in_array($st, ['todo','in_progress'], true)) $btn('cancelled', 'Cancel task', 'ban', 'btn-icon--outline');
             ?>
+            <?php $rowCandidates = $canReassign ? $candidatesFor((int)$t['venue_id']) : []; ?>
+            <?php if ($canReassign && $rowCandidates && in_array($st, ['todo','in_progress'], true)): ?>
+            <form method="POST" style="display:inline-flex;align-items:center;gap:4px">
+              <?= csrf_field() ?><input type="hidden" name="action" value="reassign"><input type="hidden" name="id" value="<?= $tid ?>">
+              <select name="assigned_to" class="filter-select" title="Reassign task" aria-label="Reassign task" style="max-width:150px" onchange="this.form.submit()">
+                <option value="" disabled>Reassign…</option>
+                <option value="0" <?= empty($t['assigned_to']) ? 'selected' : '' ?>>— Unassigned —</option>
+                <?php foreach ($rowCandidates as $c): ?>
+                <option value="<?= (int)$c['id'] ?>" <?= (int)($t['assigned_to'] ?? 0) === (int)$c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?></option>
+                <?php endforeach; ?>
+              </select>
+            </form>
+            <?php endif; ?>
             <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= $tid ?>"><button class="btn-icon btn-icon--danger" title="Delete task" aria-label="Delete task" data-confirm="Delete this task?"><?= admin_icon('trash') ?></button></form>
             </div>
           </td>
@@ -248,11 +366,42 @@ include __DIR__ . '/_layout.php';
           <?php foreach ($JOBS as $jk=>$jl): ?><option value="<?= e($jk) ?>"><?= e($jl) ?></option><?php endforeach; ?>
         </select>
       </label>
-      <label>Due date <span class="text-muted">(optional)</span>
-        <button type="button" class="dp-btn" data-dp-target="taskDueDate" data-dp-placeholder="Select due date" style="margin-top:4px">Select due date</button>
+      <label><?php /* label doubles as "first occurrence" when recurring */ ?><span id="dueDateLabel">Due date</span> <span class="text-muted">(optional)</span>
+        <button type="button" class="dp-btn" data-dp-target="taskDueDate" data-dp-placeholder="Select date" style="margin-top:4px">Select date</button>
         <input type="hidden" id="taskDueDate" name="due_date">
       </label>
-      <div><button type="submit" class="btn-primary">Create task</button></div>
+      <?php if (recurring_tasks_supported()): /* tasks.due_time ships with that migration */ ?>
+      <label>Time <span class="text-muted">(optional)</span>
+        <input type="time" name="due_time" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid #d9d2c6;border-radius:6px">
+      </label>
+      <?php endif; ?>
+
+      <?php if (recurring_tasks_supported()): ?>
+      <label style="grid-column:1/-1;display:flex;align-items:center;gap:8px;font-weight:500;margin-top:4px">
+        <input type="checkbox" name="recurring" value="1" id="taskRecurring" style="width:auto"> Make this a recurring task
+      </label>
+      <div id="taskRecurringFields" style="grid-column:1/-1;display:none;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:16px;align-items:end;padding:14px;background:#f7f3ea;border:1px solid #e2dbcd;border-radius:8px">
+        <label>Frequency
+          <select name="frequency" id="taskFreq" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid #d9d2c6;border-radius:6px">
+            <?php foreach (recurring_freq_options() as $fk=>$fl): ?><option value="<?= e($fk) ?>"<?= $fk==='weekly'?' selected':'' ?>><?= e($fl) ?></option><?php endforeach; ?>
+          </select>
+        </label>
+        <label id="taskIntervalWrap" style="display:none">Every N days
+          <input type="number" name="interval_days" min="1" placeholder="e.g. 10" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid #d9d2c6;border-radius:6px">
+        </label>
+        <?php if ($schedulesForPicker): ?>
+        <label>Add to timetable <span class="text-muted">(optional)</span>
+          <select name="schedule_id" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid #d9d2c6;border-radius:6px">
+            <option value="">— None —</option>
+            <?php foreach ($schedulesForPicker as $s): ?><option value="<?= (int)$s['id'] ?>"><?= e($s['name']) ?></option><?php endforeach; ?>
+          </select>
+        </label>
+        <?php endif; ?>
+        <p class="text-muted" style="grid-column:1/-1;margin:0;font-size:12.5px">The date above is the first occurrence (defaults to today). Tasks repeat automatically on the chosen frequency. Manage all recurring tasks under <a href="/admin/task-schedules.php">Job timetables</a>.</p>
+      </div>
+      <?php endif; ?>
+
+      <div style="grid-column:1/-1"><button type="submit" class="btn-primary">Create task</button></div>
     </form>
     <?php endif; ?>
   </div>
@@ -294,6 +443,24 @@ include __DIR__ . '/_layout.php';
     btn.setAttribute('aria-expanded', open ? 'false' : 'true');
     if (!open) { var f = card.querySelector('input[name="title"]'); if (f) f.focus(); }
   });
+})();
+// Recurring toggle: reveal the frequency block; show interval only for "custom";
+// relabel the date field as "First occurrence" when recurring.
+(function () {
+  var chk   = document.getElementById('taskRecurring');
+  var block = document.getElementById('taskRecurringFields');
+  var freq  = document.getElementById('taskFreq');
+  var ivWrap= document.getElementById('taskIntervalWrap');
+  var lbl   = document.getElementById('dueDateLabel');
+  if (!chk || !block) return;
+  function sync() {
+    block.style.display = chk.checked ? 'grid' : 'none';
+    if (lbl) lbl.textContent = chk.checked ? 'First occurrence' : 'Due date';
+    if (ivWrap && freq) ivWrap.style.display = (chk.checked && freq.value === 'custom') ? '' : 'none';
+  }
+  chk.addEventListener('change', sync);
+  if (freq) freq.addEventListener('change', sync);
+  sync();
 })();
 </script>
 

@@ -125,3 +125,124 @@ function fetch_published_menus(): array {
         )->fetchAll();
     } catch (Throwable $e) { return []; }
 }
+
+// ── Public sync API (api/menu-feed.php) ─────────────────────────────────────
+// A read-only JSON feed of a published menu, so an external site (e.g. the
+// standalone Zuri restaurant site) can render the SAME menu the admin edits
+// here. There is one source of truth — the `menus`/`menu_categories`/
+// `menu_items` tables — so an admin edit is visible to the external site on its
+// next fetch, with no separate copy to keep in step. Everything below is pure
+// data-shaping over the existing readers; no new query paths.
+
+/** Dietary/attribute flags for a menu item as booleans, in a stable order. */
+function menu_item_attributes(array $it): array {
+    $out = [];
+    foreach (menu_badge_defs() as $col => [$cls, $_label]) {
+        $out[$cls] = !empty($it[$col]) && $it[$col] !== 'f';
+    }
+    return $out;   // veg, vegan, spicy, nuts, gluten, gf, sig
+}
+
+/**
+ * The public JSON shape for ONE published menu (or null if missing/unpublished).
+ * $slug is a raw slug; it is looked up published-only. Includes only visible
+ * categories and available items — exactly what /menu.php renders.
+ */
+function menu_feed_payload(string $slug): ?array {
+    $menu = fetch_menu_by_slug($slug, true);
+    if (!$menu) return null;
+
+    $curLabel = $menu['currency_label'] ?: 'Kes';
+    $cats     = fetch_menu_categories((int)$menu['id'], false);
+
+    // Resolve the tied published venue (for the reservation deep link), if any.
+    $venue = null; $reserveUrl = null;
+    if (!empty($menu['venue_id'])) {
+        try {
+            $v = db_query(
+                'SELECT slug, name FROM venues WHERE id = :id AND is_published = TRUE',
+                [':id' => (int)$menu['venue_id']]
+            )->fetch();
+        } catch (Throwable $e) { $v = false; }
+        if ($v) {
+            $venue = ['slug' => (string)$v['slug'], 'name' => (string)$v['name']];
+            if (function_exists('reservations_supported') && reservations_supported())
+                $reserveUrl = site_url('/reserve.php?venue=' . rawurlencode((string)$v['slug']));
+        }
+    }
+
+    // Everything a partner site needs to put its own "book a table" form in
+    // front of this menu. The slot list is reservation_slots() itself, so the
+    // partner form can never offer a time api/reservation-api.php would reject.
+    $resSupported = function_exists('reservations_supported') && reservations_supported();
+    $reservations = [
+        'enabled'        => $resSupported && $venue !== null,
+        'venue_slug'     => $venue['slug'] ?? null,
+        'api_url'        => site_url('/api/reservation-api.php'),
+        'public_url'     => $reserveUrl,
+        'slots'          => $resSupported ? reservation_slots() : [],
+        'max_party_size' => function_exists('reservation_max_party') ? reservation_max_party() : 30,
+    ];
+
+    $sections = ['food' => [], 'drinks' => []];
+    foreach ($cats as $c) {
+        $section = ($c['section'] === 'drinks') ? 'drinks' : 'food';
+        $items = [];
+        foreach ($c['items'] as $it) {
+            $price = ($it['price'] === null || $it['price'] === '') ? null : (float)$it['price'];
+            $items[] = [
+                'name'        => (string)$it['name'],
+                'description' => (string)($it['description'] ?? ''),
+                'price'       => $price,
+                'price_label' => menu_price_label($it['price'], $curLabel),
+                'attributes'  => menu_item_attributes($it),
+            ];
+        }
+        $sections[$section][] = [
+            'name'  => (string)$c['name'],
+            'tag'   => (string)($c['tag'] ?? ''),
+            'icon'  => (string)($c['icon'] ?? ''),
+            'items' => $items,
+        ];
+    }
+
+    return [
+        'slug'        => (string)$menu['slug'],
+        'title'       => (string)$menu['title'],
+        'subtitle'    => (string)($menu['subtitle'] ?? ''),
+        'tagline'     => (string)($menu['tagline'] ?? ''),
+        'location'    => (string)($menu['location_label'] ?? ''),
+        'footer_note' => (string)($menu['footer_note'] ?? ''),
+        'currency'    => $curLabel,
+        'venue'       => $venue,
+        'reserve_url' => $reserveUrl,
+        'reservations'=> $reservations,
+        'public_url'  => site_url('/menu.php?m=' . rawurlencode((string)$menu['slug'])),
+        'updated_at'  => $menu['updated_at'] ? date('c', strtotime((string)$menu['updated_at'])) : null,
+        'sections'    => $sections,
+    ];
+}
+
+/** Index of published menus for the feed root (no slug): [slug,title,subtitle,venue_slug]. */
+function menu_feed_index(): array {
+    if (!menus_supported()) return [];
+    try {
+        $rows = db_query(
+            "SELECT m.slug, m.title, m.subtitle, v.slug AS venue_slug
+               FROM menus m LEFT JOIN venues v ON v.id = m.venue_id
+              WHERE m.is_published = TRUE ORDER BY m.sort_order, m.title"
+        )->fetchAll();
+    } catch (Throwable $e) { return []; }
+    $out = [];
+    foreach ($rows as $r) {
+        $out[] = [
+            'slug'       => (string)$r['slug'],
+            'title'      => (string)$r['title'],
+            'subtitle'   => (string)($r['subtitle'] ?? ''),
+            'venue_slug' => $r['venue_slug'] !== null ? (string)$r['venue_slug'] : null,
+            'feed_url'   => site_url('/api/menu-feed.php?slug=' . rawurlencode((string)$r['slug'])),
+            'public_url' => site_url('/menu.php?m=' . rawurlencode((string)$r['slug'])),
+        ];
+    }
+    return $out;
+}
