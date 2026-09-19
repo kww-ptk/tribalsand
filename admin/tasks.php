@@ -149,12 +149,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             header('Location: /admin/tasks.php'); exit;
         }
 
-        db_query(
-            "INSERT INTO tasks (venue_id, assigned_to, job_type, title, detail, due_date, due_time, created_by)
-             VALUES (:v, :a, :j, :t, :d, :due, :tm, :cb)",
-            [':v'=>$venue, ':a'=>$asg, ':j'=>$job, ':t'=>$title, ':d'=>($detail !== '' ? $detail : null),
-             ':due'=>$dueSql, ':tm'=>$timeSql, ':cb'=>$meId ?: null]
-        );
+        // due_time arrives with add_recurring_tasks.sql, so a deploy that lands
+        // before the migration must still create a plain task — this is the
+        // pre-existing one-time path and breaking it would take the board down.
+        // recurring_tasks_supported() probes that same migration.
+        $params = [':v'=>$venue, ':a'=>$asg, ':j'=>$job, ':t'=>$title,
+                   ':d'=>($detail !== '' ? $detail : null), ':due'=>$dueSql, ':cb'=>$meId ?: null];
+        if (recurring_tasks_supported()) {
+            $params[':tm'] = $timeSql;
+            db_query(
+                "INSERT INTO tasks (venue_id, assigned_to, job_type, title, detail, due_date, due_time, created_by)
+                 VALUES (:v, :a, :j, :t, :d, :due, :tm, :cb)", $params
+            );
+        } else {
+            db_query(
+                "INSERT INTO tasks (venue_id, assigned_to, job_type, title, detail, due_date, created_by)
+                 VALUES (:v, :a, :j, :t, :d, :due, :cb)", $params
+            );
+        }
         audit_log('task.create', 'task', (int)db()->lastInsertId(), $title);
         $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Task created.'];
         header('Location: /admin/tasks.php'); exit;
@@ -358,9 +370,11 @@ include __DIR__ . '/_layout.php';
         <button type="button" class="dp-btn" data-dp-target="taskDueDate" data-dp-placeholder="Select date" style="margin-top:4px">Select date</button>
         <input type="hidden" id="taskDueDate" name="due_date">
       </label>
+      <?php if (recurring_tasks_supported()): /* tasks.due_time ships with that migration */ ?>
       <label>Time <span class="text-muted">(optional)</span>
         <input type="time" name="due_time" style="display:block;width:100%;margin-top:4px;padding:8px;border:1px solid #d9d2c6;border-radius:6px">
       </label>
+      <?php endif; ?>
 
       <?php if (recurring_tasks_supported()): ?>
       <label style="grid-column:1/-1;display:flex;align-items:center;gap:8px;font-weight:500;margin-top:4px">
