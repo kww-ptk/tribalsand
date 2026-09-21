@@ -53,8 +53,12 @@ if (!in_array($venueId, $allowed, true)) $venueId = $allowed[0] ?? 0;
 
 $weekStart = task_week_start((string)($_GET['week'] ?? $today));
 
-// Person filter. Managers and the owner choose; staff are locked to themselves.
-$canFilterPeople = is_owner() || is_manager();
+// Person filter. Managers, the owner and reception choose; staff are locked to
+// themselves. Reception is a front-of-house oversight tier: admin/task-action.php
+// already lets it change any in-scope task's status, and tasks are assigned to
+// ops staff, so locking it to "my own tasks" would render a permanently empty
+// grid. Only access-code STAFF are locked to themselves.
+$canFilterPeople = is_owner() || is_manager() || is_reception();
 $filters = [];
 if ($canFilterPeople) {
     $who = (string)($_GET['who'] ?? '');
