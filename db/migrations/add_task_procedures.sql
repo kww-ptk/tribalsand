@@ -1,0 +1,13 @@
+-- Migration: a written procedure on a recurring job.
+-- Run via /admin/migrate.php. Idempotent. Depends on add_recurring_tasks.sql.
+--
+-- The procedure is the standing how-to for a routine ("how we clean a villa").
+-- It lives ONLY here and is read live through tasks.recurrence_id — it is never
+-- copied onto a spawned task. Correcting it therefore fixes every task that came
+-- from this rule, including ones already spawned and not yet done. That is the
+-- deliberate opposite of the signed-consent rule (waiver_*_snapshot), where a
+-- record must never change after signing: a procedure must always be current.
+--
+-- `procedure` is a NON-RESERVED keyword in PostgreSQL and works unquoted as a
+-- column name (verified on PG 18). No call site needs to quote it.
+ALTER TABLE task_recurrences ADD COLUMN IF NOT EXISTS procedure TEXT;
