@@ -45,3 +45,22 @@ function task_week_days(string $weekStart): array {
 function task_week_shift(string $weekStart, int $n): string {
     return date('Y-m-d', strtotime(($n >= 0 ? '+' : '-') . abs($n) . ' weeks', strtotime(task_week_start($weekStart))));
 }
+
+/**
+ * Is this task late? Open (not done/cancelled) AND either its due date is past,
+ * or it is today and its due time has already gone by.
+ *
+ * "Now" is passed in rather than read from the clock so the grid, the day list
+ * and the counts all judge one instant — and so this is testable.
+ */
+function task_is_overdue(array $t, string $todayYmd, string $nowHms): bool {
+    $status = (string)($t['status'] ?? '');
+    if ($status === 'done' || $status === 'cancelled') return false;
+    $due = (string)($t['due_date'] ?? '');
+    if ($due === '') return false;
+    if ($due < $todayYmd) return true;
+    if ($due > $todayYmd) return false;
+    $time = (string)($t['due_time'] ?? '');
+    if ($time === '') return false;          // untimed today is not late yet
+    return substr($time, 0, 8) < substr($nowHms, 0, 8);
+}

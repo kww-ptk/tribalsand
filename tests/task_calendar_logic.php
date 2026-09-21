@@ -33,5 +33,18 @@ check('impossible day falls back',task_week_start('2026-02-31') === $thisWeek);
 check('empty falls back',         task_week_start('') === $thisWeek);
 check('valid date still works',   task_week_start('2026-09-24') === '2026-09-21');
 
+// ── Overdue (pure; "now" is injected so this is testable at any instant) ─────
+$t = fn(string $d, ?string $tm, string $st) => ['due_date'=>$d, 'due_time'=>$tm, 'status'=>$st];
+
+check('yesterday open is overdue',   task_is_overdue($t('2026-09-20', null, 'todo'), '2026-09-21', '10:00:00') === true);
+check('today untimed is not overdue',task_is_overdue($t('2026-09-21', null, 'todo'), '2026-09-21', '10:00:00') === false);
+check('today earlier is overdue',    task_is_overdue($t('2026-09-21', '09:00:00', 'todo'), '2026-09-21', '10:00:00') === true);
+check('today later is not overdue',  task_is_overdue($t('2026-09-21', '11:00:00', 'todo'), '2026-09-21', '10:00:00') === false);
+check('tomorrow is not overdue',     task_is_overdue($t('2026-09-22', null, 'todo'), '2026-09-21', '10:00:00') === false);
+check('done is never overdue',       task_is_overdue($t('2026-09-20', null, 'done'), '2026-09-21', '10:00:00') === false);
+check('cancelled is never overdue',  task_is_overdue($t('2026-09-20', null, 'cancelled'), '2026-09-21', '10:00:00') === false);
+check('in_progress can be overdue',  task_is_overdue($t('2026-09-20', null, 'in_progress'), '2026-09-21', '10:00:00') === true);
+check('no due date is not overdue',  task_is_overdue($t('', null, 'todo'), '2026-09-21', '10:00:00') === false);
+
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);
