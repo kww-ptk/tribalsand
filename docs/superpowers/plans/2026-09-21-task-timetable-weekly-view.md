@@ -1015,10 +1015,10 @@ Create `admin/assets/admin-timetable.js`:
     });
   }
 
-  function token() {
-    var el = document.querySelector('input[name="csrf_token"]');
-    return el ? el.value : '';
-  }
+  /* The page hands us the token on #ttPanel's data-csrf — this page has no
+     form to read one from, the way admin-assistant.js and admin-gallery.js
+     read theirs off a data attribute. */
+  function token() { return panel.getAttribute('data-csrf') || ''; }
 
   function close() { panel.hidden = true; panel.innerHTML = ''; }
 
@@ -1062,8 +1062,14 @@ Create `admin/assets/admin-timetable.js`:
     body.append('format', 'json');
     btn.disabled = true;
 
+    /* verify_csrf() answers an expired session with a 403 and a PLAIN TEXT body,
+       before task-action.php's JSON flag exists — so check the status before
+       parsing, or .json() throws and we blame the network for a dead session. */
     fetch('/admin/task-action.php', { method: 'POST', body: body, credentials: 'same-origin' })
-      .then(function (r) { return r.json(); })
+      .then(function (r) {
+        if (r.status === 403) return { ok: false, error: 'Your session expired. Reload the page and sign in again.' };
+        return r.json().catch(function () { return { ok: false, error: 'That didn’t save. Reload and try again.' }; });
+      })
       .then(function (d) {
         if (d && d.ok) { window.location.reload(); return; }
         btn.disabled = false;
@@ -1081,16 +1087,16 @@ Create `admin/assets/admin-timetable.js`:
 })();
 ```
 
-- [ ] **Step 2: Confirm the page can find a CSRF token to read**
+- [ ] **Step 2: Confirm the page really hands over a token**
 
-Run: `grep -n "csrf_token" admin/_layout.php admin/timetable.php | head`
+Task 7 puts it on the panel container: `<div id="ttPanel" … data-csrf="…">`.
 
-If neither emits a `csrf_token` input, add one inside the filter form in
-`admin/timetable.php`, immediately after the opening `<form method="GET" …>` tag:
+Run: `grep -n 'data-csrf' admin/timetable.php`
+Expected: one match, on `#ttPanel`.
 
-```php
-<?= csrf_field() ?>
-```
+If it is missing, STOP and report it rather than adding a `csrf_field()` to the
+filter form — that form is a GET and a hidden token in it would be echoed into
+the query string of every filter change.
 
 - [ ] **Step 3: Commit**
 
