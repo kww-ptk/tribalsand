@@ -108,10 +108,10 @@ $dayAll = $tasksOn ? task_user_day_fetch($meId, $today) : [];
 $myToday = array_values(array_filter($dayAll, fn($r) => ($r['due_time'] ?? '') !== ''));
 $myLater = array_values(array_filter($dayAll, fn($r) => ($r['due_time'] ?? '') === ''));
 
-// Anything assigned and still open from before today, so nothing is silently lost.
-$myOverdue = $tasksOn
-    ? array_values(array_filter(mywork_tasks($meId, ['todo','in_progress']), fn($r) => (string)($r['due_date'] ?? '') !== '' && (string)$r['due_date'] < $today))
-    : [];
+// Anything assigned and still open from before today, so nothing is silently
+// lost — via the SAME one-query/one-shape read model as today's tasks, so it
+// carries the procedure too (an overdue task is the one most likely to need it).
+$myOverdue = $tasksOn ? task_user_overdue_fetch($meId, $today) : [];
 
 /** Map an addon status to the admin badge colour class. */
 $badgeClass = fn(string $s): string => [

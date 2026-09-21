@@ -252,3 +252,38 @@ function task_user_day_fetch(int $adminId, string $ymd): array {
         return [];
     }
 }
+
+/**
+ * One person's still-open tasks from BEFORE a given day, across every property,
+ * in ONE query — same no-venue-loop rule as task_user_day_fetch(). The staff day
+ * view shows these above today's work so nothing is silently lost, and they
+ * carry the procedure: an overdue task is the one most likely to need it, since
+ * it is the one the person has NOT yet done.
+ *
+ * status IN ('todo','in_progress') so a done or cancelled task never resurfaces
+ * just because its due_date has passed.
+ */
+function task_user_overdue_fetch(int $adminId, string $beforeYmd): array {
+    if (!tasks_supported() || $adminId <= 0) return [];
+
+    [$timeSel, $timeOrd, $procSel, $procJoin] = task_calendar_sql_parts();
+
+    try {
+        return db_query(
+            "SELECT t.id, t.venue_id, t.title, t.detail, t.status, t.due_date, t.job_type,
+                    t.assigned_to, {$timeSel}, {$procSel},
+                    v.name AS venue_name
+               FROM tasks t
+               LEFT JOIN venues v ON v.id = t.venue_id
+               {$procJoin}
+              WHERE t.assigned_to = :a
+                AND t.due_date IS NOT NULL AND t.due_date < :d
+                AND t.status IN ('todo','in_progress')
+              ORDER BY t.due_date ASC, {$timeOrd} ASC NULLS LAST, t.id ASC",
+            [':a' => $adminId, ':d' => $beforeYmd]
+        )->fetchAll();
+    } catch (Throwable $e) {
+        error_log('[task-calendar] overdue fetch failed: ' . $e->getMessage());
+        return [];
+    }
+}

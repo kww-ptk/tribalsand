@@ -133,6 +133,18 @@ if (!$dbOk || !tasks_supported()) {
         check('day fetch finds my task',  in_array('Grid probe', array_column($mine, 'title'), true));
         check('day fetch is that day only', $mine === [] || count(array_unique(array_column($mine, 'due_date'))) === 1);
         check('day fetch excludes others', task_user_day_fetch(999999, $wed) === []);
+
+        // Overdue fetch: still-open tasks from before a given day, one query,
+        // across every property — the staff day view's "Still open from before".
+        $yest = date('Y-m-d', strtotime('-1 day', strtotime($mon)));
+        db_query("INSERT INTO tasks (venue_id, assigned_to, title, status, due_date) VALUES (:v, :a, 'Overdue probe', 'todo', :d)", [':v'=>$vid, ':a'=>$anyAdmin, ':d'=>$yest]);
+        db_query("INSERT INTO tasks (venue_id, assigned_to, title, status, due_date) VALUES (:v, :a, 'Done probe', 'done', :d)", [':v'=>$vid, ':a'=>$anyAdmin, ':d'=>$yest]);
+        $od = task_user_overdue_fetch($anyAdmin, $mon);
+        $odTitles = array_column($od, 'title');
+        check('overdue fetch finds the open one',  in_array('Overdue probe', $odTitles, true));
+        check('overdue fetch skips the done one',  !in_array('Done probe', $odTitles, true));
+        check('overdue fetch excludes others',     task_user_overdue_fetch(999999, $mon) === []);
+        check('overdue rows carry procedure key',  $od === [] || array_key_exists('procedure_text', $od[0]));
     } finally {
         db()->rollBack();
     }
