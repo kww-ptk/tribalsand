@@ -98,7 +98,29 @@ $url = function (array $over = []) use ($venueId, $weekStart): string {
 };
 
 /** A chip colour per job type, so a glance reads "who does what". */
-$jobClass = fn(?string $j): string => 'tt-chip--' . preg_replace('/[^a-z]/', '', strtolower((string)$j)) ?: 'tt-chip--none';
+$jobClass = fn(?string $j): string => 'tt-chip--' . (preg_replace('/[^a-z]/', '', strtolower((string)$j)) ?: 'none');
+
+/** One task chip. Carries its own data so the panel needs no second request. */
+function tt_chip(array $t, string $today, string $nowHms, callable $jobClass): void {
+    $late = task_is_overdue($t, $today, $nowHms);
+    $done = (string)$t['status'] === 'done';
+    $cls  = 'tt-chip ' . $jobClass($t['job_type'] ?? null)
+          . ($done ? ' is-done' : '') . ($late ? ' is-late' : '');
+    ?>
+    <button type="button" class="<?= e($cls) ?>" data-task='<?= e(json_encode([
+        'id'        => (int)$t['id'],
+        'title'     => (string)$t['title'],
+        'detail'    => (string)($t['detail'] ?? ''),
+        'procedure' => (string)($t['procedure_text'] ?? ''),
+        'assignee'  => (string)($t['assignee_name'] ?? ''),
+        'status'    => (string)$t['status'],
+        'time'      => $t['due_time'] ? substr((string)$t['due_time'], 0, 5) : '',
+    ], JSON_HEX_APOS | JSON_HEX_QUOT)) ?>'>
+      <span class="tt-chip__title"><?= e($t['title']) ?></span>
+      <span class="tt-chip__who"><?= e($t['assignee_name'] ?: 'Unassigned') ?></span>
+    </button>
+    <?php
+}
 
 include __DIR__ . '/_layout.php';
 ?>
@@ -194,38 +216,15 @@ include __DIR__ . '/_layout.php';
   </div>
 </div>
 
-<div id="ttPanel" class="tt-panel" hidden aria-live="polite"></div>
+<div id="ttPanel" class="tt-panel" hidden aria-live="polite" data-csrf="<?= e(csrf_token()) ?>"></div>
 
 <?php endif; ?>
 
-<?php
-/** One task chip. Carries its own data so the panel needs no second request. */
-function tt_chip(array $t, string $today, string $nowHms, callable $jobClass): void {
-    $late = task_is_overdue($t, $today, $nowHms);
-    $done = (string)$t['status'] === 'done';
-    $cls  = 'tt-chip ' . $jobClass($t['job_type'] ?? null)
-          . ($done ? ' is-done' : '') . ($late ? ' is-late' : '');
-    ?>
-    <button type="button" class="<?= e($cls) ?>" data-task='<?= e(json_encode([
-        'id'        => (int)$t['id'],
-        'title'     => (string)$t['title'],
-        'detail'    => (string)($t['detail'] ?? ''),
-        'procedure' => (string)($t['procedure_text'] ?? ''),
-        'assignee'  => (string)($t['assignee_name'] ?? ''),
-        'status'    => (string)$t['status'],
-        'time'      => $t['due_time'] ? substr((string)$t['due_time'], 0, 5) : '',
-    ], JSON_HEX_APOS | JSON_HEX_QUOT)) ?>'>
-      <span class="tt-chip__title"><?= e($t['title']) ?></span>
-      <span class="tt-chip__who"><?= e($t['assignee_name'] ?: 'Unassigned') ?></span>
-    </button>
-    <?php
-}
-?>
 <style>
 .tt-grid{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed}
-.tt-grid th,.tt-grid td{border:1px solid #e7e1d6;vertical-align:top;padding:3px}
+.tt-grid th,.tt-grid td{border:1px solid var(--border,#e7ded7);vertical-align:top;padding:3px}
 .tt-grid thead th{padding:6px 3px;font-size:12px;text-align:center}
-.tt-hourcol{width:62px;color:#8a8072;font-weight:400;text-align:right;padding-right:6px!important;white-space:nowrap}
+.tt-hourcol{width:62px;color:var(--muted,#6B6050);font-weight:400;text-align:right;padding-right:6px!important;white-space:nowrap}
 .tt-grid td.is-today,.tt-grid th.is-today{background:#fdfaf4}
 .tt-anytime td{background:#faf7f1}
 .tt-chip{display:block;width:100%;text-align:left;border:1px solid transparent;border-radius:5px;padding:4px 5px;margin-bottom:3px;cursor:pointer;font:inherit;background:#eef2f7}
@@ -241,7 +240,7 @@ function tt_chip(array $t, string $today, string $nowHms, callable $jobClass): v
 .tt-chip--driver{background:#f2eef7}
 .tt-chip--security{background:#f7eaea}
 .tt-chip--frontdesk{background:#eaf0f7}
-.tt-panel{position:fixed;right:0;top:0;bottom:0;width:340px;max-width:92vw;background:#fff;border-left:1px solid #e7e1d6;box-shadow:-8px 0 24px rgba(0,0,0,.08);padding:1.25rem;overflow:auto;z-index:60}
+.tt-panel{position:fixed;right:0;top:0;bottom:0;width:340px;max-width:92vw;background:#fff;border-left:1px solid var(--border,#e7ded7);box-shadow:-8px 0 24px rgba(0,0,0,.08);padding:1.25rem;overflow:auto;z-index:60}
 .tt-panel h3{margin:0 0 .35rem;font-size:16px}
 .tt-proc{white-space:pre-wrap;background:#faf7f1;border-radius:6px;padding:10px;font-size:13px;line-height:1.55;margin-top:.5rem}
 </style>
