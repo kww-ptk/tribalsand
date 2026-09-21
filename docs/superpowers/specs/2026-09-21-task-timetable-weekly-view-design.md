@@ -139,9 +139,17 @@ request: §5.1 already fetched everything the panel shows. The panel carries the
 status buttons as the staff card, posting to the same endpoint.
 
 **Scoping.** The property picker is built from `admin_venue_ids()` and a posted `venue_id`
-outside that set is ignored, not honoured — the same rule as the booking importer. Owner and
-manager get the person and job-type filters. **A staff member's filter is locked to
-themselves** and the control is disabled, so the grid is their own week.
+outside that set is ignored, not honoured — the same rule as the booking importer. Owner,
+manager **and reception** get the person and job-type filters. **An access-code staff
+member's filter is locked to themselves** and the control is disabled, so the grid is their
+own week.
+
+Reception is included deliberately. `admin/task-action.php` already lets it change the
+status of any in-scope task, and it assigns guest and booking requests — yet tasks are
+assigned to ops staff, never to reception, so locking it to "my own tasks" would render a
+permanently empty grid for that whole role. Widening the filter grants reception nothing it
+cannot already do. (Reassignment stays owner/manager only, per `admin/tasks.php` — a
+different power.)
 
 Empty week → an empty state naming the property and week, never a blank grid.
 
