@@ -26,5 +26,12 @@ check('shift forward',           task_week_shift('2026-09-21', 1) === '2026-09-2
 check('shift back',              task_week_shift('2026-09-21', -1) === '2026-09-14');
 check('bad date falls back',     task_week_start('not-a-date') === task_week_start(date('Y-m-d')));
 
+$thisWeek = task_week_start(date('Y-m-d'));
+check('zero date falls back',     task_week_start('0000-00-00') === $thisWeek);
+check('huge year falls back',     task_week_start('99999-01-01') === $thisWeek);
+check('impossible day falls back',task_week_start('2026-02-31') === $thisWeek);
+check('empty falls back',         task_week_start('') === $thisWeek);
+check('valid date still works',   task_week_start('2026-09-24') === '2026-09-21');
+
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);

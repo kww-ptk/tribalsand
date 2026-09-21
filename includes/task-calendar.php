@@ -17,10 +17,17 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/booking.php';           // team helpers: tasks_supported()
 require_once __DIR__ . '/recurring-tasks.php';   // recurring_tasks_supported()
 
-/** Monday of the week containing $ymd. Unparseable input falls back to today. */
+/** Monday of the week containing $ymd. Unparseable/malformed input falls back to today. */
 function task_week_start(string $ymd): string {
+    $ymd = trim($ymd);
+    // Validate the shape before trusting strtotime(): it accepts '0000-00-00'
+    // (year -1) and '99999-01-01' (silently 2008) rather than returning false,
+    // so a === false check alone lets a crafted ?week= through. Same read-window
+    // repair rule as rates_window_ymd().
+    if (!preg_match('/^(\d{4})-(\d{1,2})-(\d{1,2})$/', $ymd, $m) || !checkdate((int)$m[2], (int)$m[3], (int)$m[1])) {
+        $ymd = date('Y-m-d');
+    }
     $ts = strtotime($ymd);
-    if ($ts === false) $ts = strtotime(date('Y-m-d'));
     // 'N' is 1 (Mon) … 7 (Sun), so subtracting N-1 days always lands on Monday.
     $dow = (int)date('N', $ts);
     return date('Y-m-d', strtotime('-' . ($dow - 1) . ' days', $ts));
