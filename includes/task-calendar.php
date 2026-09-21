@@ -154,6 +154,30 @@ function task_procedures_supported(): bool {
 }
 
 /**
+ * The optional-column SQL fragments both fetchers need, resolved once.
+ * Returns [$timeSel, $timeOrd, $procSel, $procJoin].
+ *
+ * due_time ships with add_recurring_tasks.sql (see admin/tasks.php:373), and
+ * the procedure with add_task_procedures.sql. Each is selected only when
+ * present.
+ *
+ * SELECT and ORDER BY need DIFFERENT time expressions: the select list carries
+ * the "AS due_time" alias, and an alias is a syntax error inside ORDER BY.
+ * Collapsing them throws 42601, which the callers' catch would turn into an
+ * empty grid — a silently blank page on exactly the pre-migration deploy these
+ * guards exist to protect.
+ */
+function task_calendar_sql_parts(): array {
+    $has = recurring_tasks_supported();
+    return [
+        $has ? "t.due_time" : "NULL::time AS due_time",                                    // timeSel
+        $has ? "t.due_time" : "NULL::time",                                                // timeOrd
+        task_procedures_supported() ? "r.procedure AS procedure_text" : "NULL::text AS procedure_text", // procSel
+        $has ? "LEFT JOIN task_recurrences r ON r.id = t.recurrence_id" : "",               // procJoin
+    ];
+}
+
+/**
  * Every task for ONE property in ONE week, scoped. ONE query — never one per
  * cell: a 7-day x 15-hour grid is 105 cells, and a per-cell query would be 105
  * round trips for one page view.
@@ -178,19 +202,7 @@ function task_week_fetch(?array $venueIds, int $venueId, string $weekStart, arra
 
     if (!empty($filters['job_type'])) { $where .= " AND t.job_type = :j"; $p[':j'] = (string)$filters['job_type']; }
 
-    // due_time ships with add_recurring_tasks.sql (see admin/tasks.php:373), and
-    // the procedure with add_task_procedures.sql. Select each only when present.
-    //
-    // SELECT and ORDER BY need DIFFERENT expressions: the select list carries the
-    // "AS due_time" alias, and an alias is a syntax error inside ORDER BY. Reusing
-    // one string for both throws 42601, which this function's catch would turn
-    // into an empty grid — a silent blank page on exactly the pre-migration
-    // deploy the guard exists to protect.
-    $has      = recurring_tasks_supported();
-    $timeSel  = $has ? "t.due_time" : "NULL::time AS due_time";
-    $timeOrd  = $has ? "t.due_time" : "NULL::time";
-    $procSel  = task_procedures_supported() ? "r.procedure AS procedure_text" : "NULL::text AS procedure_text";
-    $procJoin = $has ? "LEFT JOIN task_recurrences r ON r.id = t.recurrence_id" : "";
+    [$timeSel, $timeOrd, $procSel, $procJoin] = task_calendar_sql_parts();
 
     try {
         return db_query(
@@ -205,7 +217,10 @@ function task_week_fetch(?array $venueIds, int $venueId, string $weekStart, arra
               ORDER BY t.due_date ASC, {$timeOrd} ASC NULLS LAST, t.id ASC",
             $p
         )->fetchAll();
-    } catch (Throwable $e) { return []; }
+    } catch (Throwable $e) {
+        error_log('[task-calendar] week fetch failed: ' . $e->getMessage());
+        return [];
+    }
 }
 
 /**
@@ -218,13 +233,7 @@ function task_week_fetch(?array $venueIds, int $venueId, string $weekStart, arra
 function task_user_day_fetch(int $adminId, string $ymd): array {
     if (!tasks_supported() || $adminId <= 0) return [];
 
-    // Same SELECT-vs-ORDER BY split as task_week_fetch(): an alias is a syntax
-    // error in ORDER BY, and the catch below would hide it as an empty day.
-    $has      = recurring_tasks_supported();
-    $timeSel  = $has ? "t.due_time" : "NULL::time AS due_time";
-    $timeOrd  = $has ? "t.due_time" : "NULL::time";
-    $procSel  = task_procedures_supported() ? "r.procedure AS procedure_text" : "NULL::text AS procedure_text";
-    $procJoin = $has ? "LEFT JOIN task_recurrences r ON r.id = t.recurrence_id" : "";
+    [$timeSel, $timeOrd, $procSel, $procJoin] = task_calendar_sql_parts();
 
     try {
         return db_query(
@@ -238,5 +247,8 @@ function task_user_day_fetch(int $adminId, string $ymd): array {
               ORDER BY {$timeOrd} ASC NULLS LAST, t.id ASC",
             [':a' => $adminId, ':d' => $ymd]
         )->fetchAll();
-    } catch (Throwable $e) { return []; }
+    } catch (Throwable $e) {
+        error_log('[task-calendar] day fetch failed: ' . $e->getMessage());
+        return [];
+    }
 }
