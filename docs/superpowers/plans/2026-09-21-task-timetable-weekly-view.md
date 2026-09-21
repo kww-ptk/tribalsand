@@ -261,7 +261,7 @@ function task_is_overdue(array $t, string $todayYmd, string $nowHms): bool {
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `php tests/task_calendar_logic.php`
-Expected: 19 `PASS` lines then `ALL PASS`.
+Expected: 24 `PASS` lines then `ALL PASS`.
 
 - [ ] **Step 5: Commit**
 
@@ -405,7 +405,7 @@ function task_week_grid(array $tasks, string $weekStart, string $todayYmd, strin
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `php tests/task_calendar_logic.php`
-Expected: 34 `PASS` lines then `ALL PASS`.
+Expected: 39 `PASS` lines then `ALL PASS`.
 
 - [ ] **Step 5: Commit**
 
@@ -591,7 +591,7 @@ function task_user_day_fetch(int $adminId, string $ymd): array {
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `php tests/task_calendar_logic.php`
-Expected: 44 `PASS` lines then `ALL PASS`. (If the DB has fewer than two venues, the
+Expected: 49 `PASS` lines then `ALL PASS`. (If the DB has fewer than two venues, the
 out-of-scope assertion still passes — it falls back to `-1`, which no venue has.)
 
 - [ ] **Step 5: Commit**
