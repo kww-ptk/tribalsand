@@ -138,3 +138,105 @@ function task_week_grid(array $tasks, string $weekStart, string $todayYmd, strin
         'counts'  => $counts,
     ];
 }
+
+/** True if task_recurrences.procedure exists (memoised). False pre-migration. */
+function task_procedures_supported(): bool {
+    static $c = null;
+    if ($c !== null) return $c;
+    if (!recurring_tasks_supported()) return $c = false;
+    try {
+        $st = db_query(
+            "SELECT 1 FROM information_schema.columns
+             WHERE table_name = 'task_recurrences' AND column_name = 'procedure'"
+        );
+        return $c = (bool) $st->fetchColumn();
+    } catch (Throwable $e) { return $c = false; }
+}
+
+/**
+ * Every task for ONE property in ONE week, scoped. ONE query — never one per
+ * cell: a 7-day x 15-hour grid is 105 cells, and a per-cell query would be 105
+ * round trips for one page view.
+ *
+ * $venueIds is admin_venue_ids() (null = owner/all) and is the security
+ * boundary; $venueId is the property being viewed and must sit inside it, or the
+ * call returns [] rather than honouring a posted id.
+ *
+ * $filters: 'assigned_to' => int|'unassigned', 'job_type' => string.
+ */
+function task_week_fetch(?array $venueIds, int $venueId, string $weekStart, array $filters = []): array {
+    if (!tasks_supported() || $venueId <= 0) return [];
+    if ($venueIds !== null && !in_array($venueId, array_map('intval', $venueIds), true)) return [];
+
+    $days  = task_week_days($weekStart);
+    $p     = [':v' => $venueId, ':from' => $days[0], ':to' => $days[6]];
+    $where = "t.venue_id = :v AND t.due_date BETWEEN :from AND :to";
+
+    $asg = $filters['assigned_to'] ?? null;
+    if ($asg === 'unassigned')      { $where .= " AND t.assigned_to IS NULL"; }
+    elseif (is_numeric($asg))       { $where .= " AND t.assigned_to = :a"; $p[':a'] = (int)$asg; }
+
+    if (!empty($filters['job_type'])) { $where .= " AND t.job_type = :j"; $p[':j'] = (string)$filters['job_type']; }
+
+    // due_time ships with add_recurring_tasks.sql (see admin/tasks.php:373), and
+    // the procedure with add_task_procedures.sql. Select each only when present.
+    //
+    // SELECT and ORDER BY need DIFFERENT expressions: the select list carries the
+    // "AS due_time" alias, and an alias is a syntax error inside ORDER BY. Reusing
+    // one string for both throws 42601, which this function's catch would turn
+    // into an empty grid — a silent blank page on exactly the pre-migration
+    // deploy the guard exists to protect.
+    $has      = recurring_tasks_supported();
+    $timeSel  = $has ? "t.due_time" : "NULL::time AS due_time";
+    $timeOrd  = $has ? "t.due_time" : "NULL::time";
+    $procSel  = task_procedures_supported() ? "r.procedure AS procedure_text" : "NULL::text AS procedure_text";
+    $procJoin = $has ? "LEFT JOIN task_recurrences r ON r.id = t.recurrence_id" : "";
+
+    try {
+        return db_query(
+            "SELECT t.id, t.venue_id, t.title, t.detail, t.status, t.due_date, t.job_type,
+                    t.assigned_to, {$timeSel}, {$procSel},
+                    v.name AS venue_name, a.name AS assignee_name
+               FROM tasks t
+               LEFT JOIN venues v ON v.id = t.venue_id
+               LEFT JOIN admin_users a ON a.id = t.assigned_to
+               {$procJoin}
+              WHERE {$where}
+              ORDER BY t.due_date ASC, {$timeOrd} ASC NULLS LAST, t.id ASC",
+            $p
+        )->fetchAll();
+    } catch (Throwable $e) { return []; }
+}
+
+/**
+ * One person's tasks for ONE day, across every property they work at — in ONE
+ * query. The staff day view must never loop venues: a person scoped to four
+ * properties would fire four queries for one screen, and an owner one per venue
+ * in the whole estate. Assignment already implies the property, so no venue
+ * filter is needed and none is applied.
+ */
+function task_user_day_fetch(int $adminId, string $ymd): array {
+    if (!tasks_supported() || $adminId <= 0) return [];
+
+    // Same SELECT-vs-ORDER BY split as task_week_fetch(): an alias is a syntax
+    // error in ORDER BY, and the catch below would hide it as an empty day.
+    $has      = recurring_tasks_supported();
+    $timeSel  = $has ? "t.due_time" : "NULL::time AS due_time";
+    $timeOrd  = $has ? "t.due_time" : "NULL::time";
+    $procSel  = task_procedures_supported() ? "r.procedure AS procedure_text" : "NULL::text AS procedure_text";
+    $procJoin = $has ? "LEFT JOIN task_recurrences r ON r.id = t.recurrence_id" : "";
+
+    try {
+        return db_query(
+            "SELECT t.id, t.venue_id, t.title, t.detail, t.status, t.due_date, t.job_type,
+                    t.assigned_to, {$timeSel}, {$procSel},
+                    v.name AS venue_name
+               FROM tasks t
+               LEFT JOIN venues v ON v.id = t.venue_id
+               {$procJoin}
+              WHERE t.assigned_to = :a AND t.due_date = :d
+              ORDER BY {$timeOrd} ASC NULLS LAST, t.id ASC",
+            [':a' => $adminId, ':d' => $ymd]
+        )->fetchAll();
+    } catch (Throwable $e) { return []; }
+}

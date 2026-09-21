@@ -91,5 +91,52 @@ $g4 = task_week_grid([
 ], '2026-09-21', '2026-09-21', '10:00:00');
 check('overdue counted once', $g4['counts']['overdue'] === 1);
 
+// ── DB round-trip, inside a transaction we roll back ────────────────────────
+$dbOk = true;
+try { db(); } catch (Throwable $e) { $dbOk = false; }
+
+if (!$dbOk || !tasks_supported()) {
+    echo "\nSKIP  DB assertions (no database, or add_tasks.sql not applied)\n";
+} else {
+    db()->beginTransaction();
+    try {
+        $vid = (int) db_query("SELECT id FROM venues ORDER BY id LIMIT 1")->fetchColumn();
+        $other = (int) (db_query("SELECT id FROM venues WHERE id <> :v ORDER BY id LIMIT 1", [':v'=>$vid])->fetchColumn() ?: 0);
+        $mon = task_week_start(date('Y-m-d'));
+        $wed = date('Y-m-d', strtotime('+2 days', strtotime($mon)));
+
+        db_query("INSERT INTO tasks (venue_id, title, status, due_date) VALUES (:v, 'Grid probe', 'todo', :d)", [':v'=>$vid, ':d'=>$wed]);
+
+        $rows = task_week_fetch(null, $vid, $mon);
+        $titles = array_column($rows, 'title');
+        check('fetch finds the task in its week', in_array('Grid probe', $titles, true));
+
+        $prev = task_week_fetch(null, $vid, task_week_shift($mon, -1));
+        check('previous week does not see it', !in_array('Grid probe', array_column($prev, 'title'), true));
+
+        // Scope: a venue outside the caller's set yields nothing, even when asked for.
+        check('out-of-scope venue returns []', task_week_fetch([$other ?: -1], $vid, $mon) === []);
+        check('in-scope venue returns rows',   count(task_week_fetch([$vid], $vid, $mon)) >= 1);
+
+        // Assignee filter: nobody is assigned, so filtering to a real id finds none.
+        check('assignee filter narrows', task_week_fetch(null, $vid, $mon, ['assigned_to' => 999999]) === []);
+        check('unassigned filter finds it',
+            in_array('Grid probe', array_column(task_week_fetch(null, $vid, $mon, ['assigned_to'=>'unassigned']), 'title'), true));
+
+        check('procedure guard returns a bool', is_bool(task_procedures_supported()));
+
+        // The staff day list must be ONE query, not one per property. Assign the
+        // probe task and read it back without naming a venue at all.
+        $anyAdmin = (int) db_query("SELECT id FROM admin_users ORDER BY id LIMIT 1")->fetchColumn();
+        db_query("UPDATE tasks SET assigned_to = :a WHERE title = 'Grid probe'", [':a' => $anyAdmin]);
+        $mine = task_user_day_fetch($anyAdmin, $wed);
+        check('day fetch finds my task',  in_array('Grid probe', array_column($mine, 'title'), true));
+        check('day fetch is that day only', $mine === [] || count(array_unique(array_column($mine, 'due_date'))) === 1);
+        check('day fetch excludes others', task_user_day_fetch(999999, $wed) === []);
+    } finally {
+        db()->rollBack();
+    }
+}
+
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);
