@@ -12,6 +12,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/booking.php';           // team helpers
 require_once __DIR__ . '/../includes/recurring-tasks.php';
+require_once __DIR__ . '/../includes/task-calendar.php';     // task_procedures_supported()
 require_once __DIR__ . '/../includes/icons.php';
 require_login();
 require_manager();
@@ -103,6 +104,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'start_date'   => $_POST['start_date'] ?? '',
                     'created_by'   => $meId ?: null,
                 ]);
+                // create_task_recurrence() (includes/recurring-tasks.php) doesn't know
+                // about the procedure column, so it's written here with its own guard —
+                // pre-migration this is a no-op and the recurrence is still created fine.
+                if ($rid && task_procedures_supported()) {
+                    $proc = trim((string)($_POST['procedure'] ?? ''));
+                    db_query("UPDATE task_recurrences SET procedure = :p WHERE id = :id",
+                        [':p' => $proc !== '' ? $proc : null, ':id' => $rid]);
+                }
                 audit_log('task_recurrence.create', 'task_recurrence', $rid, $title);
                 $flash['msg'] = 'Recurring task added.';
             }
@@ -110,6 +119,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $rid = (int)($_POST['id'] ?? 0); $r = fetch_task_recurrence($rid);
             if ($r && (int)$r['schedule_id'] === $id) { db_query("UPDATE task_recurrences SET is_active = NOT is_active WHERE id = :id", [':id'=>$rid]); $flash['msg']='Recurring task updated.'; }
             else $flash = ['type'=>'error','msg'=>'Not your task.'];
+        } elseif ($action === 'update_procedure') {
+            // The only per-item field editable after creation — everything else
+            // (title/frequency/time/assignee) has no update path in this file today,
+            // only toggle/delete. The procedure is deliberately live-editable (see
+            // db/migrations/add_task_procedures.sql): correcting it here fixes every
+            // task already spawned from this rule, not just future ones.
+            if (!task_procedures_supported()) {
+                $flash = ['type'=>'error','msg'=>'Procedures aren’t enabled yet.'];
+            } else {
+                $rid = (int)($_POST['id'] ?? 0); $r = fetch_task_recurrence($rid);
+                if ($r && (int)$r['schedule_id'] === $id) {
+                    $proc = trim((string)($_POST['procedure'] ?? ''));
+                    db_query("UPDATE task_recurrences SET procedure = :p WHERE id = :id",
+                        [':p' => $proc !== '' ? $proc : null, ':id' => $rid]);
+                    $flash['msg'] = 'Procedure updated.';
+                } else $flash = ['type'=>'error','msg'=>'Not your task.'];
+            }
         } elseif ($action === 'delete_item') {
             $rid = (int)($_POST['id'] ?? 0); $r = fetch_task_recurrence($rid);
             if ($r && (int)$r['schedule_id'] === $id) { db_query("DELETE FROM task_recurrences WHERE id = :id", [':id'=>$rid]); audit_log('task_recurrence.delete','task_recurrence',$rid,''); $flash['msg']='Recurring task removed.'; }
@@ -216,6 +242,15 @@ $freqSelect = function (string $name, string $current = 'weekly') use ($FREQS) {
             $active = !empty($r['is_active']) && $r['is_active'] !== 'f';
             echo '<tr><td><strong>' . e($r['title']) . '</strong>';
             if (!empty($r['detail'])) echo '<br><span class="text-muted" style="font-size:12px">' . e($r['detail']) . '</span>';
+            if (task_procedures_supported()) {
+                $procLabel = trim((string)($r['procedure'] ?? '')) !== '' ? 'Procedure' : 'Add procedure';
+                echo '<details style="margin-top:6px"><summary style="cursor:pointer;font-size:12px;color:var(--muted)">' . e($procLabel) . '</summary>'
+                   . '<form method="POST" action="/admin/task-schedule-edit.php?id=' . $id . '" style="margin-top:6px;max-width:360px">' . csrf_field()
+                   . '<input type="hidden" name="action" value="update_procedure"><input type="hidden" name="id" value="' . $rid . '">'
+                   . '<textarea name="procedure" rows="4" class="inp" style="width:100%" placeholder="How this job is done — staff read this on the task">' . e($r['procedure'] ?? '') . '</textarea>'
+                   . '<div style="margin-top:6px"><button type="submit" class="btn-sm btn-primary">Save procedure</button></div>'
+                   . '</form></details>';
+            }
             echo '</td><td>' . e($freq) . '</td><td>' . e($time) . '</td><td>' . $asg . '</td><td>' . $next . '</td>';
             echo '<td><span class="badge ' . ($active ? 'badge--green' : 'badge--grey') . '">' . ($active ? 'Active' : 'Paused') . '</span></td>';
             echo '<td style="text-align:right"><span class="dt-actions">'
@@ -232,6 +267,11 @@ $freqSelect = function (string $name, string $current = 'weekly') use ($FREQS) {
       <label style="grid-column:1/-1;font-size:12px;color:var(--muted)">New recurring task
         <input type="text" name="title" required placeholder="e.g. Cut grass" class="inp" style="width:100%;margin-top:4px">
       </label>
+      <?php if (task_procedures_supported()): ?>
+      <label style="grid-column:1/-1;font-size:12px;color:var(--muted)">Procedure <span style="opacity:.6">(optional — how the job is done; staff read this on the task)</span>
+        <textarea name="procedure" rows="4" class="inp" style="width:100%;margin-top:4px" placeholder="e.g. 1. Mow the front lawn&#10;2. Trim the hedge by the gate&#10;3. Sweep the driveway"></textarea>
+      </label>
+      <?php endif; ?>
       <label style="font-size:12px;color:var(--muted)">Frequency<?php $freqSelect("frequency"); ?></label>
       <label style="font-size:12px;color:var(--muted)">Every N days <span style="opacity:.6">(custom)</span><input type="number" name="interval_days" min="1" placeholder="e.g. 10" class="inp" style="width:100%"></label>
       <label style="font-size:12px;color:var(--muted)">Time <span style="opacity:.6">(optional)</span><input type="time" name="time_of_day" class="inp" style="width:100%"></label>
