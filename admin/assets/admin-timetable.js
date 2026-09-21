@@ -44,8 +44,8 @@
       detail + proc +
       '<div class="tt-panel__actions">' +
         (t.status === 'done'
-          ? '<button type="button" class="btn-icon btn-icon--outline" data-tt-set="todo" data-tt-id="' + t.id + '">Reopen</button>'
-          : '<button type="button" class="btn-icon btn-icon--primary" data-tt-set="done" data-tt-id="' + t.id + '">Mark done</button>') +
+          ? '<button type="button" class="btn-outline btn-sm" data-tt-set="todo" data-tt-id="' + t.id + '">Reopen</button>'
+          : '<button type="button" class="btn-primary btn-sm" data-tt-set="done" data-tt-id="' + t.id + '">Mark done</button>') +
       '</div>' +
       '<p data-tt-msg class="tt-panel__msg"></p>';
     panel.hidden = false;

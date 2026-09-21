@@ -169,7 +169,7 @@ include __DIR__ . '/_layout.php';
         <?= e(date('j M', strtotime($grid['days'][0]))) ?> – <?= e(date('j M Y', strtotime($grid['days'][6]))) ?>
       </span>
       <a class="btn-icon btn-icon--outline" href="<?= e($url(['week' => task_week_shift($weekStart, 1)])) ?>" aria-label="Next week">›</a>
-      <a class="btn-icon btn-icon--outline" href="<?= e($url(['week' => task_week_start($today)])) ?>">Today</a>
+      <a class="btn-outline btn-sm" href="<?= e($url(['week' => task_week_start($today)])) ?>">Today</a>
     </div>
   </div>
 </div>

@@ -165,9 +165,9 @@ include __DIR__ . '/_layout.php';
 
 <?php if ($tasksOn): ?>
 <div class="card" style="margin-bottom:1rem" id="mwTaskCard" data-csrf="<?= e(csrf_token()) ?>">
-  <div class="card__header" style="display:flex;justify-content:space-between;align-items:center">
+  <div class="card__header mw-head-row">
     <h2 style="margin:0;font-size:17px">Today · <?= e(date('D j M', strtotime($today))) ?></h2>
-    <a class="btn-icon btn-icon--outline" href="/admin/timetable.php">This week</a>
+    <a class="btn-outline btn-sm" href="/admin/timetable.php">This week</a>
   </div>
   <div class="card__body">
     <?php if (!$myToday && !$myLater && !$myOverdue): ?>
@@ -249,6 +249,9 @@ include __DIR__ . '/_layout.php';
 <?php endif; ?>
 
 <style>
+.mw-head-row{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
+.mw-head-row h2{flex:1 1 auto;min-width:0}
+.mw-head-row > a{flex:0 0 auto}
 .mw-head{font-size:13px;color:#8a8072;margin:1rem 0 .5rem;font-weight:500}
 .mw-head:first-child{margin-top:0}
 .mw-task{display:flex;gap:12px;align-items:flex-start;border:1px solid #e7e1d6;border-radius:10px;padding:12px;margin-bottom:10px;background:#fff}
