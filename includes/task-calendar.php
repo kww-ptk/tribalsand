@@ -52,6 +52,12 @@ function task_week_shift(string $weekStart, int $n): string {
  *
  * "Now" is passed in rather than read from the clock so the grid, the day list
  * and the counts all judge one instant — and so this is testable.
+ *
+ * Dates/times are compared as STRINGS ($due vs $todayYmd, $time vs $nowHms),
+ * which is only chronologically correct because both sides are zero-padded
+ * (YYYY-MM-DD / HH:MM:SS). Same precondition as rates_window_ymd() in
+ * includes/rates.php, where an unpadded date sorting wrongly was a real bug —
+ * never feed this an unpadded value.
  */
 function task_is_overdue(array $t, string $todayYmd, string $nowHms): bool {
     $status = (string)($t['status'] ?? '');
@@ -63,4 +69,68 @@ function task_is_overdue(array $t, string $todayYmd, string $nowHms): bool {
     $time = (string)($t['due_time'] ?? '');
     if ($time === '') return false;          // untimed today is not late yet
     return substr($time, 0, 8) < substr($nowHms, 0, 8);
+}
+
+/** Default hour rows — a property working day, not 24 rows of empty grid. */
+const TASK_GRID_MIN_HOUR = 6;
+const TASK_GRID_MAX_HOUR = 20;
+
+/**
+ * Bucket week rows into the grid. PURE — no DB, no clock.
+ *
+ * Returns:
+ *   days    => 7 Y-m-d dates, Monday first
+ *   hours   => the hour rows to render, ascending
+ *   anytime => [ymd => [task, …]]  tasks with no due_time
+ *   cells   => [ymd => [hour => [task, …]]]
+ *   counts  => ['total'=>n,'done'=>n,'overdue'=>n]
+ *
+ * A row outside the week is dropped, so a caller that over-fetches cannot leak a
+ * stray task into the grid or the counts.
+ *
+ * A task is untimed when due_time is null OR the key is absent — pre-migration
+ * the column does not exist, so every task lands in the Anytime row and the grid
+ * still renders.
+ */
+function task_week_grid(array $tasks, string $weekStart, string $todayYmd, string $nowHms): array {
+    $days    = task_week_days($weekStart);
+    $anytime = array_fill_keys($days, []);
+    $cells   = array_fill_keys($days, []);
+    $counts  = ['total' => 0, 'done' => 0, 'overdue' => 0];
+    $lo = TASK_GRID_MIN_HOUR; $hi = TASK_GRID_MAX_HOUR;
+
+    foreach ($tasks as $t) {
+        $day = (string)($t['due_date'] ?? '');
+        if ($day === '' || !array_key_exists($day, $cells)) continue;   // outside the week
+
+        $counts['total']++;
+        if ((string)($t['status'] ?? '') === 'done') $counts['done']++;
+        if (task_is_overdue($t, $todayYmd, $nowHms)) $counts['overdue']++;
+
+        $time = (string)($t['due_time'] ?? '');
+        if ($time === '') { $anytime[$day][] = $t; continue; }
+
+        $hour = max(0, min(23, (int)substr($time, 0, 2)));
+        $cells[$day][$hour][] = $t;
+        if ($hour < $lo) $lo = $hour;
+        if ($hour > $hi) $hi = $hour;
+    }
+
+    // Keep each cell in time order; the SQL orders too, but the pure function
+    // must not depend on its caller having done so.
+    foreach ($cells as $day => $byHour) {
+        foreach ($byHour as $hour => $list) {
+            usort($list, fn($a, $b) => strcmp((string)($a['due_time'] ?? ''), (string)($b['due_time'] ?? '')));
+            $cells[$day][$hour] = $list;
+        }
+        ksort($cells[$day]);
+    }
+
+    return [
+        'days'    => $days,
+        'hours'   => range($lo, $hi),
+        'anytime' => $anytime,
+        'cells'   => $cells,
+        'counts'  => $counts,
+    ];
 }

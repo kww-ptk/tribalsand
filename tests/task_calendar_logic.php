@@ -45,6 +45,50 @@ check('done is never overdue',       task_is_overdue($t('2026-09-20', null, 'don
 check('cancelled is never overdue',  task_is_overdue($t('2026-09-20', null, 'cancelled'), '2026-09-21', '10:00:00') === false);
 check('in_progress can be overdue',  task_is_overdue($t('2026-09-20', null, 'in_progress'), '2026-09-21', '10:00:00') === true);
 check('no due date is not overdue',  task_is_overdue($t('', null, 'todo'), '2026-09-21', '10:00:00') === false);
+check('exact same second is not overdue', task_is_overdue($t('2026-09-21', '10:00:00', 'todo'), '2026-09-21', '10:00:00') === false);
+
+// ── Bucketing (pure) ────────────────────────────────────────────────────────
+$rows = [
+    ['id'=>1,'due_date'=>'2026-09-21','due_time'=>'07:00:00','status'=>'todo','title'=>'Water beds'],
+    ['id'=>2,'due_date'=>'2026-09-21','due_time'=>'07:30:00','status'=>'todo','title'=>'Sweep deck'],
+    ['id'=>3,'due_date'=>'2026-09-21','due_time'=>null,      'status'=>'todo','title'=>'Rake paths'],
+    ['id'=>4,'due_date'=>'2026-09-24','due_time'=>'15:00:00','status'=>'done','title'=>'Pool check'],
+    ['id'=>5,'due_date'=>'2026-09-20','due_time'=>'09:00:00','status'=>'todo','title'=>'Last week'],
+];
+$g = task_week_grid($rows, '2026-09-21', '2026-09-21', '10:00:00');
+
+check('grid days are the week',    $g['days'][0] === '2026-09-21' && $g['days'][6] === '2026-09-27');
+check('two tasks share the 7 cell',count($g['cells']['2026-09-21'][7]) === 2);
+check('cell keeps time order',     $g['cells']['2026-09-21'][7][0]['id'] === 1);
+check('untimed goes to anytime',   count($g['anytime']['2026-09-21']) === 1 && $g['anytime']['2026-09-21'][0]['id'] === 3);
+check('untimed is NOT in a cell',  !isset($g['cells']['2026-09-21'][0]));
+check('task outside week dropped', $g['counts']['total'] === 4);
+check('done counted',              $g['counts']['done'] === 1);
+check('hours default low bound',   $g['hours'][0] === 6);
+check('hours default high bound',  end($g['hours']) === 20);
+check('thursday cell placed',      count($g['cells']['2026-09-24'][15]) === 1);
+
+// Range expansion: a 04:00 task pulls the low bound down, a 22:00 pushes it up.
+$g2 = task_week_grid([
+    ['id'=>9,'due_date'=>'2026-09-22','due_time'=>'04:00:00','status'=>'todo','title'=>'Early'],
+    ['id'=>10,'due_date'=>'2026-09-22','due_time'=>'22:00:00','status'=>'todo','title'=>'Late'],
+], '2026-09-21', '2026-09-21', '10:00:00');
+check('range expands down',  $g2['hours'][0] === 4);
+check('range expands up',    end($g2['hours']) === 22);
+
+// Pre-migration shape: no due_time key at all → everything is an Anytime task.
+$g3 = task_week_grid([
+    ['id'=>11,'due_date'=>'2026-09-23','status'=>'todo','title'=>'No time column'],
+], '2026-09-21', '2026-09-21', '10:00:00');
+check('missing due_time → anytime', count($g3['anytime']['2026-09-23']) === 1);
+check('missing due_time → no cells', $g3['cells']['2026-09-23'] === []);
+
+// Overdue count agrees with the rows it came from.
+$g4 = task_week_grid([
+    ['id'=>12,'due_date'=>'2026-09-21','due_time'=>'08:00:00','status'=>'todo','title'=>'Missed'],
+    ['id'=>13,'due_date'=>'2026-09-21','due_time'=>'12:00:00','status'=>'todo','title'=>'Coming'],
+], '2026-09-21', '2026-09-21', '10:00:00');
+check('overdue counted once', $g4['counts']['overdue'] === 1);
 
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);
