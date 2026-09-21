@@ -67,6 +67,7 @@ check('done counted',              $g['counts']['done'] === 1);
 check('hours default low bound',   $g['hours'][0] === 6);
 check('hours default high bound',  end($g['hours']) === 20);
 check('thursday cell placed',      count($g['cells']['2026-09-24'][15]) === 1);
+check('empty hour key is absent, not []', !array_key_exists(12, $g['cells']['2026-09-21']));
 
 // Range expansion: a 04:00 task pulls the low bound down, a 22:00 pushes it up.
 $g2 = task_week_grid([

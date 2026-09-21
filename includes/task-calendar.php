@@ -85,6 +85,10 @@ const TASK_GRID_MAX_HOUR = 20;
  *   cells   => [ymd => [hour => [task, …]]]
  *   counts  => ['total'=>n,'done'=>n,'overdue'=>n]
  *
+ * Every ymd key is present in both `anytime` and `cells`, even for a day with
+ * no tasks. Hour keys are SPARSE: an hour with nothing due has no key at all,
+ * not an empty array — so index it as `$cells[$day][$hour] ?? []`, never bare.
+ *
  * A row outside the week is dropped, so a caller that over-fetches cannot leak a
  * stray task into the grid or the counts.
  *
