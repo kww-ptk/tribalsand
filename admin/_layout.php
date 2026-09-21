@@ -24,6 +24,12 @@ $__navConcierge = $__isOwner || $__isManager || $__isReception || $__isFrontdesk
 $__navMessages  = $__isOwner || $__isManager || $__isReception || $__isFrontdeskStaff;  // ops & security get no GUEST messaging
 $__navInternal  = true;   // internal team chat — every signed-in account, incl. ops & gate staff
 $__navTasks     = $__isOwner || $__isManager || $__isReception;
+// admin/timetable.php has no role gate beyond require_login() — it locks a
+// STAFF person-filter to themselves internally (never a request param), so
+// every job type (ops/security/frontdesk), not just $__navTasks' audience,
+// can hold a task and needs to see their own week. Same "everyone" gate as
+// $__navInternal, not $__navTasks (which excludes ops/security/frontdesk staff).
+$__navTimetable = true;
 $__navGate      = $__isOwner || $__isManager || $__isReception || $__isSecurity;
 $__navMyWork    = $__isOps   || $__isReception;
 // Availability/price assistant — same guest-facing audience as messaging, and
@@ -172,6 +178,12 @@ if ($__shellFrag) { ob_start(); return; }
         <a href="/admin/task-schedules.php" class="sidebar__link <?= ($activeMenu??'')==='task_schedules' ? 'is-active':'' ?>">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14l2 2 4-4"/></svg>
           Job timetables
+        </a>
+        <?php endif; ?>
+        <?php if ($__navTimetable): ?>
+        <a href="/admin/timetable.php"    class="sidebar__link <?= ($activeMenu??'')==='timetable'    ? 'is-active':'' ?>">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="12" y1="14" x2="12" y2="18"/></svg>
+          Timetable
         </a>
         <?php endif; ?>
         <?php if ($__navGate): ?>
