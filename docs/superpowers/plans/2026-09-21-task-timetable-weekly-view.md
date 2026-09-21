@@ -1109,6 +1109,23 @@ git commit -m "feat(tasks): timetable detail panel, no second request per chip"
 
 ### Task 9: The staff day view
 
+> **The staff cards must patch in place, NOT reload.** The admin grid (Task 8)
+> reloads on success, which is fine for a manager on a desktop acting
+> occasionally. It is the wrong trade here: a staff member works down many tasks
+> on a phone, often on a poor connection, and a full page reload per tap is slow,
+> costly and loses their place in the list. `admin/task-action.php` returns
+> `id`, `status`, `label` and `badge` precisely so the caller can patch. On
+> success, update the card in place — strike the title, grey the card, swap the
+> button to Reopen — and do not navigate. `admin/assets/admin-chat.js` is the
+> house precedent for patching after a mutation.
+>
+> The same two client rules from Task 8 apply, for the same reasons: read the
+> CSRF token from a `data-csrf` attribute the page emits (not a form input), and
+> check `r.status === 403` BEFORE calling `.json()`, because `verify_csrf()`
+> answers an expired session with a plain-text body. A staff phone left open all
+> shift makes the expired session the LIKELY failure, not an edge case.
+
+
 **Files:**
 - Modify: `admin/mywork.php`
 
