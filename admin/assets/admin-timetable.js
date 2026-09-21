@@ -1,11 +1,20 @@
 /* Timetable grid — the task detail panel.
    The chip already carries its task as JSON (the week query fetched it), so
    opening the panel costs no request. Status buttons post FormData to the same
-   endpoint the staff cards use, so one permission model serves both. */
+   endpoint the staff cards use, so one permission model serves both.
+
+   Listeners are scoped to the grid table and the panel themselves (not
+   document), matching admin-gallery.js's `grid`-scoped pattern — a
+   document-level click listener would run for the lifetime of every admin
+   page that loads this script, not just this one. Escape stays a document
+   listener (it has to catch focus anywhere on the page) but backs off when
+   focus is inside a form control, since the filter selects live alongside
+   the panel. */
 (function () {
   'use strict';
   var panel = document.getElementById('ttPanel');
-  if (!panel) return;
+  var grid = document.querySelector('.tt-grid');
+  if (!panel || !grid) return;
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -27,27 +36,28 @@
     var detail = t.detail ? '<p style="font-size:13px;color:#6b6256">' + esc(t.detail) + '</p>' : '';
     var when = t.time ? esc(t.time) : 'Anytime';
     panel.innerHTML =
-      '<div style="display:flex;justify-content:space-between;align-items:start;gap:8px">' +
+      '<div class="tt-panel__head">' +
         '<h3>' + esc(t.title) + '</h3>' +
         '<button type="button" class="btn-icon btn-icon--outline" data-tt-close aria-label="Close">&times;</button>' +
       '</div>' +
-      '<p class="text-muted" style="font-size:13px;margin:.1rem 0 .75rem">' + when + ' · ' + esc(t.assignee || 'Unassigned') + '</p>' +
+      '<p class="text-muted tt-panel__meta">' + when + ' · ' + esc(t.assignee || 'Unassigned') + '</p>' +
       detail + proc +
-      '<div style="margin-top:1.25rem;display:flex;gap:8px;flex-wrap:wrap">' +
+      '<div class="tt-panel__actions">' +
         (t.status === 'done'
           ? '<button type="button" class="btn-icon btn-icon--outline" data-tt-set="todo" data-tt-id="' + t.id + '">Reopen</button>'
           : '<button type="button" class="btn-icon btn-icon--primary" data-tt-set="done" data-tt-id="' + t.id + '">Mark done</button>') +
       '</div>' +
-      '<p data-tt-msg style="font-size:12px;color:#b3261e;margin-top:.6rem"></p>';
+      '<p data-tt-msg class="tt-panel__msg"></p>';
     panel.hidden = false;
   }
 
-  document.addEventListener('click', function (ev) {
+  grid.addEventListener('click', function (ev) {
     var chip = ev.target.closest ? ev.target.closest('.tt-chip') : null;
-    if (chip) {
-      try { open(JSON.parse(chip.getAttribute('data-task'))); } catch (e) { /* malformed payload: leave the panel shut */ }
-      return;
-    }
+    if (!chip) return;
+    try { open(JSON.parse(chip.getAttribute('data-task'))); } catch (e) { /* malformed payload: leave the panel shut */ }
+  });
+
+  panel.addEventListener('click', function (ev) {
     if (ev.target.closest && ev.target.closest('[data-tt-close]')) { close(); return; }
 
     var btn = ev.target.closest ? ev.target.closest('[data-tt-set]') : null;
@@ -66,20 +76,25 @@
     fetch('/admin/task-action.php', { method: 'POST', body: body, credentials: 'same-origin' })
       .then(function (r) {
         if (r.status === 403) return { ok: false, error: 'Your session expired. Reload the page and sign in again.' };
-        return r.json().catch(function () { return { ok: false, error: 'That didn’t save. Reload and try again.' }; });
+        return r.json().catch(function () { return { ok: false, error: 'That didn’t save. Please reload and try again.' }; });
       })
       .then(function (d) {
         if (d && d.ok) { window.location.reload(); return; }
         btn.disabled = false;
         var m = panel.querySelector('[data-tt-msg]');
-        if (m) m.textContent = (d && d.error) || 'That didn’t save. Try again.';
+        if (m) m.textContent = (d && d.error) || 'That didn’t save. Please reload and try again.';
       })
       .catch(function () {
         btn.disabled = false;
         var m = panel.querySelector('[data-tt-msg]');
-        if (m) m.textContent = 'Network problem. Try again.';
+        if (m) m.textContent = 'Network problem. Please try again.';
       });
   });
 
-  document.addEventListener('keydown', function (ev) { if (ev.key === 'Escape') close(); });
+  document.addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Escape') return;
+    var tag = (document.activeElement && document.activeElement.tagName) || '';
+    if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA') return;
+    close();
+  });
 })();

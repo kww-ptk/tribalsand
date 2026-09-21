@@ -243,6 +243,10 @@ include __DIR__ . '/_layout.php';
 .tt-panel{position:fixed;right:0;top:0;bottom:0;width:340px;max-width:92vw;background:#fff;border-left:1px solid var(--border,#e7ded7);box-shadow:-8px 0 24px rgba(0,0,0,.08);padding:1.25rem;overflow:auto;z-index:60}
 .tt-panel h3{margin:0 0 .35rem;font-size:16px}
 .tt-proc{white-space:pre-wrap;background:#faf7f1;border-radius:6px;padding:10px;font-size:13px;line-height:1.55;margin-top:.5rem}
+.tt-panel__head{display:flex;justify-content:space-between;align-items:start;gap:8px}
+.tt-panel__meta{font-size:13px;margin:.1rem 0 .75rem}
+.tt-panel__actions{margin-top:1.25rem;display:flex;gap:8px;flex-wrap:wrap}
+.tt-panel__msg{font-size:12px;color:#b3261e;margin-top:.6rem}
 </style>
 <script src="/admin/assets/admin-timetable.js?v=<?= @filemtime(__DIR__ . '/assets/admin-timetable.js') ?: time() ?>"></script>
 <?php include __DIR__ . '/_layout_end.php'; ?>
