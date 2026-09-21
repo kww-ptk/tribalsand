@@ -1,16 +1,18 @@
 <?php
 /**
- * Admin: My Work — a team member's own queue. Shows the guest requests assigned
- * to the signed-in account with inline status actions. Ops staff (housekeeping,
+ * Admin: My Work — a team member's own queue. Ops staff (housekeeping,
  * maintenance, gardening, driver) land here after login.
  *
- * (Phase 3 adds a Tasks section below for internal work items.)
+ * Today's tasks are the dominant block, rendered as tall cards with a big
+ * "Mark done" button — the one thing staff need to check daily. Below that:
+ * the specialty worklist (derived from bookings) and assigned guest requests.
  */
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/booking.php';
 require_once __DIR__ . '/../includes/frontdesk.php';   // frontdesk_today_ymd(), the live worklist source
+require_once __DIR__ . '/../includes/task-calendar.php';   // today's tasks + procedures
 require_login();
 
 $pageTitle  = 'My work';
@@ -45,9 +47,71 @@ function worklist_row(array $r): void {
     <?php
 }
 
+/**
+ * One task card: title, when, property, procedure, and a big Mark done button.
+ *
+ * `data-late` freezes whether this task was overdue AT RENDER (task_is_overdue()
+ * already returns false for a done/cancelled task, so this is "late while open").
+ * The client only ever needs to CLEAR the overdue indicator when it patches a
+ * card to done — it never has to compute lateness itself — so freezing it here is
+ * enough; nothing recomputes it from a bare id + status.
+ */
+function mywork_task_card(array $t, string $today, string $nowHms): void {
+    $done = (string)$t['status'] === 'done';
+    $late = task_is_overdue($t, $today, $nowHms);
+    $when = ($t['due_time'] ?? '') !== '' ? substr((string)$t['due_time'], 0, 5) : 'Anytime';
+    ?>
+    <div class="mw-task<?= $done ? ' is-done' : '' ?><?= $late ? ' is-late' : '' ?>" data-task-card data-late="<?= $late ? '1' : '0' ?>">
+      <div class="mw-task__when"><?= e($when) ?></div>
+      <div class="mw-task__body">
+        <div class="mw-task__title"><?= e($t['title']) ?></div>
+        <div class="mw-task__meta"><?= e($t['venue_name'] ?? '') ?><span class="mw-task__overdue"<?= ($late && !$done) ? '' : ' hidden' ?>> · Overdue</span></div>
+        <?php if (!empty($t['detail'])): ?>
+        <div class="mw-task__detail"><?= e($t['detail']) ?></div>
+        <?php endif; ?>
+        <?php if (!empty($t['procedure_text'])): ?>
+        <details class="mw-task__proc">
+          <summary>Procedure</summary>
+          <div><?= nl2br(e($t['procedure_text'])) ?></div>
+        </details>
+        <?php endif; ?>
+      </div>
+      <form method="POST" action="/admin/task-action.php" class="mw-task__act" data-task-form>
+        <?= csrf_field() ?>
+        <input type="hidden" name="return" value="mywork">
+        <input type="hidden" name="id" value="<?= (int)$t['id'] ?>">
+        <?php if ($done): ?>
+        <button type="submit" name="status" value="todo" class="mw-btn mw-btn--undo">Reopen</button>
+        <?php else: ?>
+        <button type="submit" name="status" value="done" class="mw-btn mw-btn--done">Mark done</button>
+        <?php endif; ?>
+        <div class="mw-task__msg" data-task-msg></div>
+      </form>
+    </div>
+    <?php
+}
+
 $open = $asgOn ? mywork_requests($meId, ['requested','confirmed']) : [];
 $done = ($asgOn && $showDone) ? mywork_requests($meId, ['completed']) : [];
-$myTasks = $tasksOn ? mywork_tasks($meId, ['todo','in_progress']) : [];
+
+// Today's tasks come from the SAME read model as the grid, so the two cannot
+// disagree about what is due or what counts as late. ONE query, whatever the
+// person's venue scope — task_user_day_fetch() keys on assignment, which already
+// implies the property, so there is no venue loop to fire a query per property.
+//
+// Completed tasks stay in the list for the rest of the day: a staff member should
+// see what they finished, and be able to reopen a mis-tap.
+$nowHms = date('H:i:s');
+$dayAll = $tasksOn ? task_user_day_fetch($meId, $today) : [];
+
+// Timed work first, in clock order; untimed work under its own heading.
+$myToday = array_values(array_filter($dayAll, fn($r) => ($r['due_time'] ?? '') !== ''));
+$myLater = array_values(array_filter($dayAll, fn($r) => ($r['due_time'] ?? '') === ''));
+
+// Anything assigned and still open from before today, so nothing is silently lost.
+$myOverdue = $tasksOn
+    ? array_values(array_filter(mywork_tasks($meId, ['todo','in_progress']), fn($r) => (string)($r['due_date'] ?? '') !== '' && (string)$r['due_date'] < $today))
+    : [];
 
 /** Map an addon status to the admin badge colour class. */
 $badgeClass = fn(string $s): string => [
@@ -99,6 +163,32 @@ include __DIR__ . '/_layout.php';
 
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type'] ?? 'success') ?> is-flash"><?= e($flash['msg'] ?? (is_string($flash) ? $flash : '')) ?></div><?php endif; ?>
 
+<?php if ($tasksOn): ?>
+<div class="card" style="margin-bottom:1rem" id="mwTaskCard" data-csrf="<?= e(csrf_token()) ?>">
+  <div class="card__header" style="display:flex;justify-content:space-between;align-items:center">
+    <h2 style="margin:0;font-size:17px">Today · <?= e(date('D j M', strtotime($today))) ?></h2>
+    <a class="btn-icon btn-icon--outline" href="/admin/timetable.php">This week</a>
+  </div>
+  <div class="card__body">
+    <?php if (!$myToday && !$myLater && !$myOverdue): ?>
+    <p class="text-muted" style="text-align:center;padding:1.5rem 0;margin:0">Nothing on your list today.</p>
+    <?php endif; ?>
+
+    <?php if ($myOverdue): ?>
+    <h3 class="mw-head">Still open from before</h3>
+    <?php foreach ($myOverdue as $t) mywork_task_card($t, $today, $nowHms); ?>
+    <?php endif; ?>
+
+    <?php foreach ($myToday as $t) mywork_task_card($t, $today, $nowHms); ?>
+
+    <?php if ($myLater): ?>
+    <h3 class="mw-head">Anytime today</h3>
+    <?php foreach ($myLater as $t) mywork_task_card($t, $today, $nowHms); ?>
+    <?php endif; ?>
+  </div>
+</div>
+<?php endif; ?>
+
 <?php if (in_array($myJob, ['housekeeping','laundry','driver'], true)): ?>
 <div class="card" style="margin-bottom:16px">
   <div class="card__head"><span class="card__title">Today · <?= e(date('D j M', strtotime($today))) ?></span></div>
@@ -120,44 +210,6 @@ include __DIR__ . '/_layout.php';
 
 <?php if (!$asgOn && !$tasksOn): ?>
 <div class="card"><div class="card__body"><p class="text-muted" style="margin:0">Your work queue isn’t enabled yet. Ask the owner to run the <code>add_addon_assignee.sql</code> and <code>add_tasks.sql</code> migrations.</p></div></div>
-<?php endif; ?>
-
-<?php if ($tasksOn): ?>
-<div class="card" style="margin-bottom:16px">
-  <div class="card__head"><span class="card__title">My tasks</span></div>
-  <div class="card__body" style="padding:0">
-    <div class="table-wrap">
-    <table class="data-table">
-      <thead><tr><th>Task</th><th>Property</th><th>Due</th><th>Status</th><th>Actions</th></tr></thead>
-      <tbody>
-        <?php if (!$myTasks): ?>
-        <tr><td colspan="5" style="text-align:center;padding:2rem;color:var(--muted)">No tasks assigned to you.</td></tr>
-        <?php else: foreach ($myTasks as $t): $tid=(int)$t['id']; $st=(string)$t['status']; ?>
-        <tr>
-          <td>
-            <strong><?= e($t['title']) ?></strong>
-            <?php if (!empty($t['detail'])): ?><br><span class="text-muted" style="font-size:12px"><?= e($t['detail']) ?></span><?php endif; ?>
-          </td>
-          <td><?= e($t['venue_name'] ?? '') ?></td>
-          <td><?= !empty($t['due_date']) ? e(date('j M', strtotime((string)$t['due_date']))) : '<span class="text-muted">—</span>' ?></td>
-          <td><span class="badge <?= task_badge_class($st) ?>"><?= e(task_status_label($st)) ?></span></td>
-          <td>
-            <div class="row-actions">
-            <?php if ($st === 'todo'): ?>
-            <form method="POST" action="/admin/task-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="return" value="mywork"><input type="hidden" name="id" value="<?= $tid ?>"><button name="status" value="in_progress" class="btn-icon btn-icon--outline" title="Start task" aria-label="Start task"><?= admin_icon('play') ?></button></form>
-            <?php endif; ?>
-            <?php if (in_array($st, ['todo','in_progress'], true)): ?>
-            <form method="POST" action="/admin/task-action.php" style="display:inline"><?= csrf_field() ?><input type="hidden" name="return" value="mywork"><input type="hidden" name="id" value="<?= $tid ?>"><button name="status" value="done" class="btn-icon btn-icon--primary" title="Mark done" aria-label="Mark done"><?= admin_icon('check') ?></button></form>
-            <?php endif; ?>
-            </div>
-          </td>
-        </tr>
-        <?php endforeach; endif; ?>
-      </tbody>
-    </table>
-    </div>
-  </div>
-</div>
 <?php endif; ?>
 
 <?php if ($asgOn): ?>
@@ -195,5 +247,34 @@ include __DIR__ . '/_layout.php';
 </div>
 <?php endif; ?>
 <?php endif; ?>
+
+<style>
+.mw-head{font-size:13px;color:#8a8072;margin:1rem 0 .5rem;font-weight:500}
+.mw-head:first-child{margin-top:0}
+.mw-task{display:flex;gap:12px;align-items:flex-start;border:1px solid #e7e1d6;border-radius:10px;padding:12px;margin-bottom:10px;background:#fff}
+.mw-task.is-late{border-color:#e8b4ae}
+.mw-task.is-done{opacity:.55}
+.mw-task.is-done .mw-task__title{text-decoration:line-through}
+.mw-task__when{min-width:52px;font-size:13px;color:#8a8072;padding-top:2px}
+.mw-task__body{flex:1;min-width:0}
+.mw-task__title{font-size:16px;line-height:1.3}
+.mw-task__meta{font-size:12px;color:#8a8072;margin-top:2px}
+.mw-task__overdue{color:#b3261e}
+.mw-task__detail{font-size:13px;color:#6b6256;margin-top:6px}
+.mw-task__proc{margin-top:8px;font-size:13px}
+.mw-task__proc summary{cursor:pointer;color:#6b6256}
+.mw-task__proc div{white-space:pre-wrap;background:#faf7f1;border-radius:6px;padding:10px;margin-top:6px;line-height:1.55}
+.mw-btn{border:0;border-radius:8px;padding:12px 16px;font:inherit;font-size:14px;cursor:pointer;min-height:44px;white-space:nowrap}
+.mw-btn--done{background:#2f6f4f;color:#fff}
+.mw-btn--undo{background:#f1ece2;color:#6b6256}
+.mw-task__msg{font-size:12px;color:#b3261e;margin-top:6px}
+.mw-task__msg:empty{margin-top:0}
+@media (max-width:560px){
+  .mw-task{flex-wrap:wrap}
+  .mw-task__act{width:100%}
+  .mw-btn{width:100%}
+}
+</style>
+<script src="/admin/assets/admin-mywork.js?v=<?= @filemtime(__DIR__ . '/assets/admin-mywork.js') ?: time() ?>"></script>
 
 <?php include __DIR__ . '/_layout_end.php'; ?>
