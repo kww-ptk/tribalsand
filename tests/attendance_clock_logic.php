@@ -139,6 +139,18 @@ if (!$dbOk || !attendance_punches_supported()) {
         check('punch rows written',
               (int) db_query("SELECT count(*) FROM attendance_punches WHERE hr_staff_id = :s", [':s'=>$sid])->fetchColumn() === 2);
 
+        // A correction inside the window must NOT be refused: in, out, then a
+        // genuine second in all within seconds targets in1, out1, in2 — three
+        // different slots, so none is a duplicate.
+        db_query("INSERT INTO hr_staff (full_name, venue_id, status) VALUES ('Fast Probe', :v, 'active')", [':v'=>$vid]);
+        $fid = (int) db()->lastInsertId('hr_staff_id_seq');
+        $f1 = clock_record_punch($fid, 'in',  420, $today, $devId, $vid, null);
+        $f2 = clock_record_punch($fid, 'out', 421, $today, $devId, $vid, null);
+        $f3 = clock_record_punch($fid, 'in',  422, $today, $devId, $vid, null);
+        check('rapid in accepted',        ($f1['ok'] ?? false) === true);
+        check('rapid correction out ok',  ($f2['ok'] ?? false) === true);
+        check('rapid re-entry ok (in2)',  ($f3['ok'] ?? false) === true && ($f3['slot'] ?? '') === 'in2');
+
         // ── Night shift: yesterday open, clocking out this morning ──────────
         db_query("INSERT INTO hr_staff (full_name, venue_id, status) VALUES ('Night Probe', :v, 'active')", [':v'=>$vid]);
         $nid = (int) db()->lastInsertId('hr_staff_id_seq');

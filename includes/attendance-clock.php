@@ -256,7 +256,7 @@ function clock_record_punch(int $staffId, string $kind, int $minutes, string $to
             : 'You haven’t clocked in yet.'];
     }
 
-    if (clock_is_duplicate($staffId, $kind)) {
+    if (clock_is_duplicate($staffId, $slot, $workDate)) {
         return ['ok' => false, 'error' => 'Already recorded a moment ago.'];
     }
 
@@ -294,18 +294,27 @@ function clock_rate_limited(int $staffId, int $max = 20): bool {
     }
 }
 
-/** Was an identical punch just recorded? Guards a double-tap or a held card. */
-function clock_is_duplicate(int $staffId, string $kind): bool {
+/**
+ * Was this exact slot just written? Guards a double-tap or a card left in front
+ * of the lens.
+ *
+ * Scoped by SLOT, not by kind. clock_next_slot() already refuses a second `in`
+ * while in1 is open, so a kind-scoped window adds nothing there — it only
+ * creates a false rejection when someone corrects a mistaken punch, or returns
+ * from a short break, inside the window. Fails OPEN: a read error must never
+ * stop a real punch.
+ */
+function clock_is_duplicate(int $staffId, string $slot, string $workDate): bool {
     try {
         return (bool) db_query(
             "SELECT 1 FROM attendance_punches
-              WHERE hr_staff_id = :s AND kind = :k
+              WHERE hr_staff_id = :s AND slot = :sl AND work_date = :d
                 AND punched_at > now() - (:w || ' seconds')::interval
               LIMIT 1",
-            [':s' => $staffId, ':k' => $kind, ':w' => (string) CLOCK_DUPLICATE_WINDOW]
+            [':s' => $staffId, ':sl' => $slot, ':d' => $workDate, ':w' => (string) CLOCK_DUPLICATE_WINDOW]
         )->fetchColumn();
     } catch (Throwable $e) {
         error_log('[clock] duplicate check failed: ' . $e->getMessage());
-        return false;   // fail OPEN — never block a real punch on a read error
+        return false;
     }
 }
