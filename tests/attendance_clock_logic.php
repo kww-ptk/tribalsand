@@ -98,6 +98,23 @@ if (!$dbOk || !attendance_punches_supported()) {
         check('reissue changes the token',  $new !== $tok);
         check('old card no longer works',   clock_staff_by_token($tok) === null);
         check('new card works',             (int)(clock_staff_by_token($new)['id'] ?? 0) === $sid);
+
+        // ── Kiosk devices ───────────────────────────────────────────────────
+        [$devId, $devTok] = clock_register_device('Probe tablet', $vid, null);
+        check('device id returned',      $devId > 0);
+        check('device token is 32 hex',  (bool)preg_match('/^[0-9a-f]{32}$/', $devTok));
+
+        $dev = clock_device_by_token($devTok);
+        check('device token resolves',   (int)($dev['id'] ?? 0) === $devId);
+        check('wrong token refused',     clock_device_by_token(clock_new_token()) === null);
+        check('empty token refused',     clock_device_by_token('') === null);
+
+        // The plaintext token must NOT be recoverable from the row.
+        $stored = (string) db_query("SELECT token_hash FROM attendance_devices WHERE id = :i", [':i' => $devId])->fetchColumn();
+        check('token stored hashed',     $stored !== $devTok && $stored !== '');
+
+        clock_revoke_device($devId);
+        check('revoked device refused',  clock_device_by_token($devTok) === null);
     } finally {
         db()->rollBack();
     }

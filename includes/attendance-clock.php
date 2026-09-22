@@ -148,3 +148,51 @@ function clock_staff_by_token(string $token): ?array {
         return null;
     }
 }
+
+/**
+ * Register a kiosk. Returns [id, plaintext token] — the token is shown ONCE and
+ * only its hash is stored, like a password. A leaked database row must not yield
+ * a working kiosk.
+ */
+function clock_register_device(string $name, ?int $venueId, ?int $createdBy): array {
+    $tok = clock_new_token();
+    db_query(
+        "INSERT INTO attendance_devices (name, venue_id, token_hash, created_by)
+         VALUES (:n, :v, :h, :c)",
+        [':n' => trim($name) ?: 'Kiosk', ':v' => $venueId ?: null,
+         ':h' => password_hash($tok, PASSWORD_DEFAULT), ':c' => $createdBy]
+    );
+    return [(int) db()->lastInsertId('attendance_devices_id_seq'), $tok];
+}
+
+/**
+ * The active device a kiosk token belongs to, or null.
+ *
+ * The hash is per-row, so this walks active devices and verifies. There are a
+ * handful of tablets, not thousands — a lookup index is not worth storing a
+ * reversible token for.
+ */
+function clock_device_by_token(string $token): ?array {
+    $token = trim($token);
+    if ($token === '' || !preg_match('/^[0-9a-f]{32}$/', $token)) return null;
+    if (!attendance_devices_supported()) return null;
+    try {
+        foreach (db_query("SELECT * FROM attendance_devices WHERE is_active = TRUE")->fetchAll() as $d) {
+            if (password_verify($token, (string)$d['token_hash'])) return $d;
+        }
+    } catch (Throwable $e) {
+        error_log('[clock] device lookup failed: ' . $e->getMessage());
+    }
+    return null;
+}
+
+/** Stamp a device as seen. Best effort — never fails a punch. */
+function clock_touch_device(int $deviceId): void {
+    try { db_query("UPDATE attendance_devices SET last_seen_at = now() WHERE id = :i", [':i' => $deviceId]); }
+    catch (Throwable $e) { error_log('[clock] touch failed: ' . $e->getMessage()); }
+}
+
+/** Retire a tablet. The next punch from it is refused. */
+function clock_revoke_device(int $deviceId): void {
+    db_query("UPDATE attendance_devices SET is_active = FALSE WHERE id = :i", [':i' => $deviceId]);
+}
