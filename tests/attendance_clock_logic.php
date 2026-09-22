@@ -51,5 +51,27 @@ check('open: in2 only',      clock_row_is_open($in2)    === true);
 check('open: full',          clock_row_is_open($full)   === false);
 check('open: empty',         clock_row_is_open($empty)  === false);
 
+// ── The merge rule (pure). THIS is the trap: attendance_upsert() is a whole-row
+//    upsert, so a punch that passes only its own slot wipes the others. ───────
+$merged = clock_merge_times(['in1' => 420], 'out1', 720);
+check('merge keeps in1',        ($merged['in1']  ?? null) === '07:00');
+check('merge sets out1',        ($merged['out1'] ?? null) === '12:00');
+check('merge leaves in2 null',  ($merged['in2']  ?? null) === null);
+check('merge leaves out2 null', ($merged['out2'] ?? null) === null);
+
+$merged2 = clock_merge_times(['in1' => 420, 'out1' => 720, 'in2' => 780], 'out2', 1020);
+check('merge keeps all three',  ($merged2['in1'] ?? null) === '07:00'
+                             && ($merged2['out1'] ?? null) === '12:00'
+                             && ($merged2['in2'] ?? null) === '13:00');
+check('merge sets out2',        ($merged2['out2'] ?? null) === '17:00');
+
+// Crossing midnight: 07:00 the next morning on yesterday's row is 1440 + 420.
+check('past-midnight renders',  clock_merge_times(['in1' => 1140], 'out1', 1860)['out1'] === '31:00');
+
+// Minutes helper
+check('min from 07:02',   clock_minutes_from_hms('07:02:00') === 422);
+check('min from 00:00',   clock_minutes_from_hms('00:00:00') === 0);
+check('min from 23:59',   clock_minutes_from_hms('23:59:59') === 1439);
+
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);

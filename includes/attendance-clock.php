@@ -75,3 +75,32 @@ function clock_next_slot(array $row, string $kind): ?string {
 function clock_row_is_open(array $row): bool {
     return clock_next_slot($row, 'out') !== null;
 }
+
+/** Minutes past midnight for an H:i or H:i:s clock string. PURE. */
+function clock_minutes_from_hms(string $hms): int {
+    $p = explode(':', trim($hms));
+    return max(0, ((int)($p[0] ?? 0)) * 60 + (int)($p[1] ?? 0));
+}
+
+/**
+ * Build the COMPLETE four-slot payload for attendance_upsert(), preserving what
+ * is already on the row and setting one slot.
+ *
+ * attendance_upsert() is a whole-row upsert (see includes/attendance.php): it
+ * writes status, in1, out1, in2 and out2 on every call. Passing only the slot
+ * being punched silently erases the others — the fastest way to lose someone's
+ * hours. Always go through this function.
+ *
+ * Values come back as H:i strings because attendance_upsert() parses them with
+ * attendance_hhmm_to_min(). A time past midnight stays >= 24:00 (e.g. 31:00) so
+ * the stored minute value keeps the >= 1440 night-shift convention.
+ */
+function clock_merge_times(array $row, string $slot, int $minutes): array {
+    $out = [];
+    foreach (['in1', 'out1', 'in2', 'out2'] as $k) {
+        $v = $row[$k] ?? null;
+        $out[$k] = ($v === null || $v === '') ? null : sprintf('%02d:%02d', intdiv((int)$v, 60), ((int)$v) % 60);
+    }
+    $out[$slot] = sprintf('%02d:%02d', intdiv($minutes, 60), $minutes % 60);
+    return $out;
+}
