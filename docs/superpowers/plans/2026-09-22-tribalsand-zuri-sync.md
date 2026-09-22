@@ -52,8 +52,8 @@ Each phase lists its owner: **(Aly)**, **(Bhumika)**, **(Joint)**, **(Owner)** =
 - [x] Menu→envelope mappers (v1 proposal) + backfill/shadow export + tests
 
 ### Stage 1 — Shadow (ready now)
-- [ ] **(Aly)** Apply `add_restaurant_sync.sql` (prod RDS + Neon dev) via `admin/migrate.php`
-- [ ] **(Aly)** `php bin/sync-export.php > menu.json`; hand to Bhumika
+- [x] **(Aly)** Apply `add_restaurant_sync.sql` (prod RDS + Neon dev) via `admin/migrate.php` — DONE 2026-09-22
+- [ ] **(Aly)** `php bin/sync-export.php > menu.json`; hand to Bhumika ← **NEXT**
 - [ ] **(Bhumika)** Same four sync tables + `sync_*` columns on the MySQL side (SKIP LOCKED needs MySQL 8.0; 5.7 = claim-token workaround)
 - [ ] **(Bhumika)** Run the backfill matcher against `menu.json`; report unmatched rows
 - [ ] **(Joint)** Confirm the HMAC handshake end-to-end (spec test #12: wrong secret → 401 + alert)
