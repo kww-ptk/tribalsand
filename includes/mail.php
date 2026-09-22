@@ -1092,15 +1092,16 @@ function send_admin_reply(array $sub, string $message): array {
     require_once __DIR__ . '/booking.php';   // make_submission_ref()
     $env   = parse_env();
     $from  = $env['MAIL_FROM'] ?? 'Tribal Sand <noreply@tribalsand.com>';
-    // Reply-To is always the monitored reservations mailbox so a guest's reply
-    // reaches a real person at a recognisable brand address. It is fixed to
-    // reservations@tribalsand.com (NOT the `notify_email` setting, which is the
-    // internal staff-notification recipient and may point elsewhere, and NOT the
-    // reply@inbound.* SES subdomain). The [TSR-<id>] tag still rides the subject
-    // below, so automatic threading (api/inbound-mail.php) keeps working as long
-    // as the reservations@ mailbox forwards to the inbound SES intake (see
-    // docs/inbound-mail-setup.md); otherwise staff paste the reply in by hand.
-    $reply = 'reservations@tribalsand.com';
+    // Reply-To is the recognisable "reservations@" brand address, fixed to
+    // reservations@inbound.tribalsand.com. That local part reads as reservations,
+    // and the inbound.tribalsand.com subdomain is one AWS SES *receives* on — so a
+    // guest's reply lands at SES, the [TSR-<id>] subject tag below is matched by
+    // api/inbound-mail.php, and the reply threads back automatically with NO M365
+    // forwarding needed. It is deliberately NOT the apex reservations@tribalsand.com
+    // (that mailbox is on M365 and SES cannot receive it) nor the `notify_email`
+    // setting (internal staff recipient; may point elsewhere). The address MUST be
+    // accepted by the SES receipt rule — see docs/inbound-mail-setup.md.
+    $reply = 'reservations@inbound.tribalsand.com';
     $site  = rtrim($env['SITE_URL'] ?? $env['APP_URL'] ?? 'https://tribalsand.com', '/');
     $guest = trim((string)($sub['guest_name'] ?? ''));
     $tag   = !empty($sub['id']) ? ' [' . make_submission_ref((int)$sub['id']) . ']' : '';

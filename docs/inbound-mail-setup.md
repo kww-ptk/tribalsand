@@ -24,11 +24,11 @@ work in another region, use it consistently and swap the MX host accordingly.
 
 - `api/inbound-mail.php` — the webhook (SNS signature check + `[TSR-<id>]` HMAC
   match + thread write + de-dupe).
-- `send_admin_reply()` sets **Reply-To** to the reservations mailbox
-  (`reservations@tribalsand.com`) — the recognisable brand address guests see and
-  reply to. It no longer uses `INBOUND_MAIL_ADDRESS` for the Reply-To. Every reply
-  still carries the `[TSR-<id>]` subject tag, so automatic threading works as long
-  as `reservations@` **forwards** to the SES inbound address (see step 7b).
+- `send_admin_reply()` sets **Reply-To** to `reservations@inbound.tribalsand.com` —
+  a recognisable "reservations@" address on the SES-received `inbound.tribalsand.com`
+  subdomain. Guests reply straight to SES (no M365 involved), the `[TSR-<id>]` subject
+  tag is matched, and the reply threads automatically. This address **must be accepted
+  by the SES receipt rule** (see step 3).
 - Migration `db/migrations/add_inbound_mail_log.sql` (de-dupe + observability).
 
 So the order is: **deploy the code and set the env vars first**, then create the
@@ -56,7 +56,10 @@ AWS Console → **SES** → **Email receiving** → **Rule sets**.
 - If there's no active rule set, **Create rule set** (name it `default`) and set it
   **Active**.
 - Inside it, **Create rule**:
-  - **Recipients:** add `reply@mail.tribalsand.com`
+  - **Recipients:** add `reply@mail.tribalsand.com` **and
+    `reservations@inbound.tribalsand.com`** (the Reply-To on outbound admin replies —
+    guests reply here, so SES must accept it). Simplest: set the recipient condition to
+    the whole receiving subdomain so every address at it is accepted.
   - **Add action → Publish to Amazon SNS topic**
     - Topic: `tribalsand-inbound-mail`
     - Encoding: **UTF-8** (leave default)
@@ -105,21 +108,15 @@ GoDaddy → **tribalsand.com** → **DNS** → **Add record**:
 
 Save. DNS can take minutes to a couple of hours to propagate.
 
-### 7b. Forward the reservations@ mailbox to the inbound address (keeps auto-threading)
-Because every outbound reply now shows **`Reply-To: reservations@tribalsand.com`**,
-guests reply to that M365 mailbox — not to `reply@mail.tribalsand.com`. To keep the
-replies threading automatically, add a **forwarding rule in Microsoft 365** on the
-`reservations@tribalsand.com` mailbox:
-
-- Microsoft 365 admin / Outlook mailbox settings → **Rules** (or **Forwarding**).
-- Forward incoming mail to **`reply@mail.tribalsand.com`** (the SES inbound address).
-- Keep a copy in the mailbox if you want staff to still see it.
-
-Forwarding preserves the subject line, so the `[TSR-<id>]` tag survives and
-`api/inbound-mail.php` threads the reply. **Without this forward the feature is
-inert** — replies just sit in the reservations mailbox and staff paste them in by
-hand (the pre-feature behaviour, which is fine if that's what you want). Test the
-forward with step 8 below.
+### 7b. (Alternative) Use the apex reservations@tribalsand.com with an M365 forward
+The shipped setup uses **`Reply-To: reservations@inbound.tribalsand.com`**, which SES
+receives directly — no M365 needed. If you ever want the Reply-To to be the *apex*
+`reservations@tribalsand.com` instead, that mailbox lives on M365 and SES can't
+receive it, so you must bridge it: add a **redirect rule in Microsoft 365** on the
+`reservations@tribalsand.com` mailbox → **`reply@inbound.tribalsand.com`** (keep a copy
+if you want staff to see it). The redirect preserves the subject, so the `[TSR-<id>]`
+tag survives and threading works. Without the forward, apex replies just sit in the
+mailbox for manual paste. Not required for the current subdomain-address setup.
 
 ### 8. Test
 1. In the admin panel, open a submission whose guest email is one **you** control.
