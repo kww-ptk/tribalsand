@@ -24,8 +24,11 @@ work in another region, use it consistently and swap the MX host accordingly.
 
 - `api/inbound-mail.php` — the webhook (SNS signature check + `[TSR-<id>]` HMAC
   match + thread write + de-dupe).
-- `send_admin_reply()` now sets **Reply-To** to `INBOUND_MAIL_ADDRESS` when it's
-  configured, so guest replies go to the inbound address instead of the mailbox.
+- `send_admin_reply()` sets **Reply-To** to the reservations mailbox
+  (`reservations@tribalsand.com`) — the recognisable brand address guests see and
+  reply to. It no longer uses `INBOUND_MAIL_ADDRESS` for the Reply-To. Every reply
+  still carries the `[TSR-<id>]` subject tag, so automatic threading works as long
+  as `reservations@` **forwards** to the SES inbound address (see step 7b).
 - Migration `db/migrations/add_inbound_mail_log.sql` (de-dupe + observability).
 
 So the order is: **deploy the code and set the env vars first**, then create the
@@ -101,6 +104,22 @@ GoDaddy → **tribalsand.com** → **DNS** → **Add record**:
 | TTL | 1 Hour |
 
 Save. DNS can take minutes to a couple of hours to propagate.
+
+### 7b. Forward the reservations@ mailbox to the inbound address (keeps auto-threading)
+Because every outbound reply now shows **`Reply-To: reservations@tribalsand.com`**,
+guests reply to that M365 mailbox — not to `reply@mail.tribalsand.com`. To keep the
+replies threading automatically, add a **forwarding rule in Microsoft 365** on the
+`reservations@tribalsand.com` mailbox:
+
+- Microsoft 365 admin / Outlook mailbox settings → **Rules** (or **Forwarding**).
+- Forward incoming mail to **`reply@mail.tribalsand.com`** (the SES inbound address).
+- Keep a copy in the mailbox if you want staff to still see it.
+
+Forwarding preserves the subject line, so the `[TSR-<id>]` tag survives and
+`api/inbound-mail.php` threads the reply. **Without this forward the feature is
+inert** — replies just sit in the reservations mailbox and staff paste them in by
+hand (the pre-feature behaviour, which is fine if that's what you want). Test the
+forward with step 8 below.
 
 ### 8. Test
 1. In the admin panel, open a submission whose guest email is one **you** control.

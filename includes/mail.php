@@ -1092,14 +1092,15 @@ function send_admin_reply(array $sub, string $message): array {
     require_once __DIR__ . '/booking.php';   // make_submission_ref()
     $env   = parse_env();
     $from  = $env['MAIL_FROM'] ?? 'Tribal Sand <noreply@tribalsand.com>';
-    // Reply-To decides where the guest's reply lands. When INBOUND_MAIL_ADDRESS
-    // is configured (the SES/SNS inbound intake, e.g. reply@mail.tribalsand.com),
-    // point replies there so api/inbound-mail.php can thread them back into this
-    // submission automatically via the [TSR-<id>] tag in the subject below.
-    // Unset = unchanged legacy behaviour: replies go to the reservations mailbox
-    // for a human to paste back in.
-    $reply = trim((string)($env['INBOUND_MAIL_ADDRESS'] ?? ''))
-           ?: setting('notify_email', 'reservations@tribalsand.com');
+    // Reply-To is always the monitored reservations mailbox so a guest's reply
+    // reaches a real person at a recognisable brand address. It is fixed to
+    // reservations@tribalsand.com (NOT the `notify_email` setting, which is the
+    // internal staff-notification recipient and may point elsewhere, and NOT the
+    // reply@inbound.* SES subdomain). The [TSR-<id>] tag still rides the subject
+    // below, so automatic threading (api/inbound-mail.php) keeps working as long
+    // as the reservations@ mailbox forwards to the inbound SES intake (see
+    // docs/inbound-mail-setup.md); otherwise staff paste the reply in by hand.
+    $reply = 'reservations@tribalsand.com';
     $site  = rtrim($env['SITE_URL'] ?? $env['APP_URL'] ?? 'https://tribalsand.com', '/');
     $guest = trim((string)($sub['guest_name'] ?? ''));
     $tag   = !empty($sub['id']) ? ' [' . make_submission_ref((int)$sub['id']) . ']' : '';
