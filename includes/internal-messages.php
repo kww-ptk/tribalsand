@@ -116,7 +116,7 @@ function fetch_internal_group_members(int $groupId): array {
  * Create a group chat with a name and a member set (the creator is always a
  * member). Returns the new group id, or 0 on failure. Caller authorises.
  */
-function create_internal_group(string $name, int $creatorId, array $memberIds): int {
+function create_internal_group(string $name, int $creatorId, array $memberIds, bool $isDirect = false): int {
     if (!internal_group_channels_supported()) return 0;
     $name = trim($name);
     if ($name === '' || $creatorId <= 0) return 0;
@@ -128,7 +128,7 @@ function create_internal_group(string $name, int $creatorId, array $memberIds): 
     $owns = !db()->inTransaction();
     try {
         if ($owns) db()->beginTransaction();
-        db_query("INSERT INTO internal_channels (name, created_by) VALUES (:n, :c)", [':n' => $name, ':c' => $creatorId]);
+        db_query("INSERT INTO internal_channels (name, created_by, is_direct) VALUES (:n, :c, :d)", [':n' => $name, ':c' => $creatorId, ':d' => $isDirect ? 't' : 'f']);
         $gid = (int) db()->lastInsertId();
         // Only real, active accounts can be members.
         foreach (array_keys($ids) as $mid) {
@@ -143,6 +143,42 @@ function create_internal_group(string $name, int $creatorId, array $memberIds): 
     } catch (Throwable $e) {
         if ($owns && db()->inTransaction()) db()->rollBack();
         error_log('[internal-messages] create group failed: ' . $e->getMessage());
+        return 0;
+    }
+}
+
+/**
+ * Find (or create) the 1:1 direct-message channel between two accounts (Item 6).
+ * Returns the group id, or 0. Reuses an existing direct channel between exactly
+ * these two so a manager doesn't spawn duplicates by clicking Message twice.
+ */
+function internal_direct_channel(int $meId, int $otherId): int {
+    if (!internal_group_channels_supported() || $meId <= 0 || $otherId <= 0 || $meId === $otherId) return 0;
+    try {
+        $gid = db_query(
+            "SELECT c.id FROM internal_channels c
+             WHERE c.is_active = TRUE AND c.is_direct = TRUE
+               AND (SELECT COUNT(*) FROM internal_channel_members m WHERE m.channel_id = c.id) = 2
+               AND EXISTS (SELECT 1 FROM internal_channel_members m WHERE m.channel_id = c.id AND m.admin_user_id = :me)
+               AND EXISTS (SELECT 1 FROM internal_channel_members m WHERE m.channel_id = c.id AND m.admin_user_id = :o)
+             LIMIT 1",
+            [':me' => $meId, ':o' => $otherId]
+        )->fetchColumn();
+        if ($gid) return (int)$gid;
+
+        // Only start a DM with a real, active account.
+        $names = db_query(
+            "SELECT id, COALESCE(NULLIF(TRIM(name), ''), email) AS n FROM admin_users
+             WHERE id IN (:me, :o) AND is_active = TRUE",
+            [':me' => $meId, ':o' => $otherId]
+        )->fetchAll(PDO::FETCH_KEY_PAIR);
+        if (!isset($names[$meId], $names[$otherId])) return 0;
+        // First-name-ish label, both people, so it reads the same for either party.
+        $short = fn($s) => explode(' ', trim((string)$s))[0] ?: (string)$s;
+        $label = $short($names[$meId]) . ' & ' . $short($names[$otherId]);
+        return create_internal_group($label, $meId, [$otherId], true);
+    } catch (Throwable $e) {
+        error_log('[internal-messages] direct channel failed: ' . $e->getMessage());
         return 0;
     }
 }

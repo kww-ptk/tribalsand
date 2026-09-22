@@ -60,6 +60,20 @@ function hr_set_staff_venues(int $staffId, array $venueIds, ?int $homeVenueId, a
     }
 }
 
+/**
+ * Best-effort WhatsApp deep link from a stored phone number (Item 6 — reaching a
+ * field staff member who has no login account). Normalises to international
+ * digits: a Kenyan local 0-prefixed number becomes 254…. Returns '' when the
+ * number is too short to be usable, so the caller can omit the action.
+ */
+function hr_whatsapp_link(?string $phone): string {
+    $d = preg_replace('/\D+/', '', (string)$phone);
+    if ($d === '') return '';
+    if (str_starts_with($d, '0') && strlen($d) >= 9) $d = '254' . substr($d, 1);
+    if (strlen($d) < 10) return '';
+    return 'https://wa.me/' . $d;
+}
+
 /** The department buckets, in display order. */
 function hr_departments(): array {
     return ['Housekeeping', 'Kitchen', 'Gardening', 'Maintenance', 'Security', 'Service', 'Stores', 'Admin', 'Other'];

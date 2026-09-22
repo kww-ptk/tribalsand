@@ -19,8 +19,11 @@ CREATE TABLE IF NOT EXISTS internal_channels (
     name       TEXT NOT NULL,
     created_by INT REFERENCES admin_users(id) ON DELETE SET NULL,
     is_active  BOOLEAN NOT NULL DEFAULT TRUE,
+    is_direct  BOOLEAN NOT NULL DEFAULT FALSE,   -- TRUE = a 1:1 direct message (Item 6)
     created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+-- Idempotent for a DB that already has internal_channels from an earlier run.
+ALTER TABLE internal_channels ADD COLUMN IF NOT EXISTS is_direct BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE TABLE IF NOT EXISTS internal_channel_members (
     channel_id    INT NOT NULL REFERENCES internal_channels(id) ON DELETE CASCADE,

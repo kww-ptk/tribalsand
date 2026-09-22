@@ -25,6 +25,19 @@ $meId  = (int)($admin['id'] ?? 0);
 $flash = null;
 if (!empty($_SESSION['hold_flash'])) { $flash = $_SESSION['hold_flash']; unset($_SESSION['hold_flash']); }
 
+// Open (or start) a 1:1 direct message with a teammate (Item 6 — "Message" button).
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['dm'])) {
+    $other = (int)$_GET['dm'];
+    if (!internal_group_channels_supported()) {
+        $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Direct messages need the add_internal_group_channels migration.'];
+        header('Location: /admin/internal-messages.php'); exit;
+    }
+    $gid = internal_direct_channel($meId, $other);
+    if ($gid > 0) { header('Location: /admin/internal-messages.php?channel=g' . $gid); exit; }
+    $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Could not open a chat with that person.'];
+    header('Location: /admin/internal-messages.php'); exit;
+}
+
 // Who may create group chats (Item 4).
 $canCreateGroups = internal_group_channels_supported() && (is_owner() || is_manager());
 
