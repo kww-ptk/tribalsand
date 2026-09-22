@@ -272,6 +272,7 @@ include __DIR__ . '/_layout.php';
 <div class="page-header">
   <h1>Submissions</h1>
   <div class="actions">
+    <a href="/admin/submission-trends.php" class="btn-outline btn-sm"><?= admin_icon('filter', 15) ?> Trends</a>
     <a href="/admin/submissions.php?<?= e($preserve_qs ? $preserve_qs . '&export=1' : 'export=1') ?>" class="btn-outline btn-sm"><?= admin_icon('download', 15) ?> Export CSV</a>
   </div>
 </div>
