@@ -12,6 +12,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/attendance.php';
+require_once __DIR__ . '/frontdesk.php';
 
 /** True once add_attendance_punches.sql has created the punch log (memoised). */
 function attendance_punches_supported(): bool {
@@ -195,4 +196,116 @@ function clock_touch_device(int $deviceId): void {
 /** Retire a tablet. The next punch from it is refused. */
 function clock_revoke_device(int $deviceId): void {
     db_query("UPDATE attendance_devices SET is_active = FALSE WHERE id = :i", [':i' => $deviceId]);
+}
+
+/** How recently an identical punch counts as a double-tap rather than a new one. */
+const CLOCK_DUPLICATE_WINDOW = 120;
+
+/** One attendance row, or [] when the person has none that day. */
+function clock_day_row(int $staffId, string $ymd): array {
+    try {
+        $r = db_query("SELECT * FROM attendance WHERE hr_staff_id = :s AND work_date = :d",
+                      [':s' => $staffId, ':d' => $ymd])->fetch();
+        return $r ?: [];
+    } catch (Throwable $e) {
+        error_log('[clock] day row failed: ' . $e->getMessage());
+        return [];
+    }
+}
+
+/**
+ * Record a punch. Returns ['ok'=>bool, 'error'=>?string, 'slot'=>?string,
+ * 'work_date'=>?string, 'punch_id'=>?int].
+ *
+ * $minutes is minutes past midnight of $todayYmd, injected rather than read from
+ * the clock so this is testable at any instant.
+ *
+ * Night shifts: a clock-out with no open slot today, when YESTERDAY is still
+ * open, closes yesterday and stores the time as minutes + 1440 — the convention
+ * add_attendance.sql documents. Only yesterday is considered; a row left open
+ * longer is a manager's problem, not something to guess at.
+ */
+function clock_record_punch(int $staffId, string $kind, int $minutes, string $todayYmd,
+                            ?int $deviceId, ?int $venueId, ?string $photoKey): array {
+    if (!attendance_punches_supported()) return ['ok' => false, 'error' => 'Clocking in isn’t enabled yet.'];
+    if ($staffId <= 0 || !in_array($kind, ['in', 'out'], true)) return ['ok' => false, 'error' => 'Bad punch.'];
+
+    $workDate = $todayYmd;
+    $row      = clock_day_row($staffId, $workDate);
+    $slot     = clock_next_slot($row, $kind);
+
+    // Night shift: nothing open today, but yesterday is mid-shift.
+    if ($slot === null && $kind === 'out') {
+        $yest    = date('Y-m-d', strtotime('-1 day', strtotime($todayYmd)));
+        $yestRow = clock_day_row($staffId, $yest);
+        if (clock_row_is_open($yestRow)) {
+            $workDate = $yest;
+            $row      = $yestRow;
+            $slot     = clock_next_slot($yestRow, 'out');
+            $minutes += 1440;
+        }
+    }
+
+    if ($slot === null) {
+        $status = trim((string)($row['status'] ?? ''));
+        if ($status !== '' && $status !== 'P') {
+            return ['ok' => false, 'error' => 'Today is marked ' . attendance_status_label($status) . '. See a manager.'];
+        }
+        return ['ok' => false, 'error' => $kind === 'in'
+            ? 'You are already clocked in.'
+            : 'You haven’t clocked in yet.'];
+    }
+
+    if (clock_is_duplicate($staffId, $kind)) {
+        return ['ok' => false, 'error' => 'Already recorded a moment ago.'];
+    }
+
+    attendance_upsert($staffId, $workDate, clock_merge_times($row, $slot, $minutes), null);
+
+    db_query(
+        "INSERT INTO attendance_punches (hr_staff_id, device_id, venue_id, kind, work_date, slot, photo_key)
+         VALUES (:s, :dev, :v, :k, :d, :sl, :p)",
+        [':s' => $staffId, ':dev' => $deviceId, ':v' => $venueId, ':k' => $kind,
+         ':d' => $workDate, ':sl' => $slot, ':p' => $photoKey]
+    );
+
+    return ['ok' => true, 'error' => null, 'slot' => $slot, 'work_date' => $workDate,
+            'punch_id' => (int) db()->lastInsertId('attendance_punches_id_seq')];
+}
+
+/**
+ * Too many punches from one card in a short window? Guards a scanned card being
+ * replayed in a loop. Mirrors reservation_rate_limited() in
+ * includes/reservations.php: count this feature's own rows, and fail OPEN on a
+ * read error — a database hiccup must never stop someone starting their shift.
+ */
+function clock_rate_limited(int $staffId, int $max = 20): bool {
+    if (!attendance_punches_supported()) return false;
+    try {
+        $n = (int) db_query(
+            "SELECT COUNT(*) FROM attendance_punches
+              WHERE hr_staff_id = :s AND punched_at > now() - interval '10 minutes'",
+            [':s' => $staffId]
+        )->fetchColumn();
+        return $n >= $max;
+    } catch (Throwable $e) {
+        error_log('[clock] rate check failed: ' . $e->getMessage());
+        return false;
+    }
+}
+
+/** Was an identical punch just recorded? Guards a double-tap or a held card. */
+function clock_is_duplicate(int $staffId, string $kind): bool {
+    try {
+        return (bool) db_query(
+            "SELECT 1 FROM attendance_punches
+              WHERE hr_staff_id = :s AND kind = :k
+                AND punched_at > now() - (:w || ' seconds')::interval
+              LIMIT 1",
+            [':s' => $staffId, ':k' => $kind, ':w' => (string) CLOCK_DUPLICATE_WINDOW]
+        )->fetchColumn();
+    } catch (Throwable $e) {
+        error_log('[clock] duplicate check failed: ' . $e->getMessage());
+        return false;   // fail OPEN — never block a real punch on a read error
+    }
 }

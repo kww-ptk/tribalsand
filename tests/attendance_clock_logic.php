@@ -115,6 +115,51 @@ if (!$dbOk || !attendance_punches_supported()) {
 
         clock_revoke_device($devId);
         check('revoked device refused',  clock_device_by_token($devTok) === null);
+
+        // ── Recording punches ───────────────────────────────────────────────
+        $today = frontdesk_today_ymd();
+        $yest  = date('Y-m-d', strtotime('-1 day', strtotime($today)));
+
+        $r1 = clock_record_punch($sid, 'in', 422, $today, $devId, $vid, null);   // 07:02
+        check('in accepted',        ($r1['ok'] ?? false) === true);
+        check('in filled in1',      ($r1['slot'] ?? '') === 'in1');
+
+        $dup = clock_record_punch($sid, 'in', 423, $today, $devId, $vid, null);
+        check('second in refused',  ($dup['ok'] ?? true) === false);
+
+        $r2 = clock_record_punch($sid, 'out', 720, $today, $devId, $vid, null);  // 12:00
+        check('out accepted',       ($r2['ok'] ?? false) === true);
+        check('out filled out1',    ($r2['slot'] ?? '') === 'out1');
+
+        // THE TRAP: out1 must not have erased in1.
+        $row = db_query("SELECT in1, out1 FROM attendance WHERE hr_staff_id = :s AND work_date = :d",
+                        [':s' => $sid, ':d' => $today])->fetch();
+        check('in1 survived the out punch', (int)$row['in1'] === 422);
+        check('out1 stored',                (int)$row['out1'] === 720);
+        check('punch rows written',
+              (int) db_query("SELECT count(*) FROM attendance_punches WHERE hr_staff_id = :s", [':s'=>$sid])->fetchColumn() === 2);
+
+        // ── Night shift: yesterday open, clocking out this morning ──────────
+        db_query("INSERT INTO hr_staff (full_name, venue_id, status) VALUES ('Night Probe', :v, 'active')", [':v'=>$vid]);
+        $nid = (int) db()->lastInsertId('hr_staff_id_seq');
+        db_query("INSERT INTO attendance (hr_staff_id, work_date, in1) VALUES (:s, :d, 1140)", [':s'=>$nid, ':d'=>$yest]); // 19:00
+
+        $n = clock_record_punch($nid, 'out', 420, $today, $devId, $vid, null);   // 07:00 today
+        check('night out accepted',      ($n['ok'] ?? false) === true);
+        check('night out hit yesterday', ($n['work_date'] ?? '') === $yest);
+        $nrow = db_query("SELECT in1, out1 FROM attendance WHERE hr_staff_id = :s AND work_date = :d",
+                         [':s'=>$nid, ':d'=>$yest])->fetch();
+        check('night out stored past midnight', (int)$nrow['out1'] === 1860);
+        check('night in1 untouched',            (int)$nrow['in1']  === 1140);
+
+        check('rate limiter is off at low volume', clock_rate_limited($sid) === false);
+        check('rate limiter trips at the cap',      clock_rate_limited($sid, 1) === true);
+
+        // A leave day refuses a punch outright.
+        db_query("INSERT INTO hr_staff (full_name, venue_id, status) VALUES ('Leave Probe', :v, 'active')", [':v'=>$vid]);
+        $lid = (int) db()->lastInsertId('hr_staff_id_seq');
+        db_query("INSERT INTO attendance (hr_staff_id, work_date, status) VALUES (:s, :d, 'LV')", [':s'=>$lid, ':d'=>$today]);
+        check('leave day refuses a punch', (clock_record_punch($lid, 'in', 420, $today, $devId, $vid, null)['ok'] ?? true) === false);
     } finally {
         db()->rollBack();
     }
