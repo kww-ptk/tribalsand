@@ -37,3 +37,41 @@ function attendance_devices_supported(): bool {
 function clock_new_token(): string {
     return bin2hex(random_bytes(16));
 }
+
+/**
+ * Which slot a punch fills, or null when the punch makes no sense. PURE.
+ *
+ * in1 → out1 → in2 → out2, in that order. Refusing is deliberate: a second
+ * "clock in" without an intervening "out" is a mistake, and silently
+ * overwriting in1 would erase the real start of someone's day.
+ *
+ * $row is an attendance row (or [] when the person has none yet). A row
+ * carrying a non-worked status (leave, off, sick) accepts no punch at all —
+ * a manager marked that day deliberately and the kiosk must not overwrite it.
+ */
+function clock_next_slot(array $row, string $kind): ?string {
+    $status = trim((string)($row['status'] ?? ''));
+    if ($status !== '' && $status !== 'P') return null;
+
+    $has = fn(string $k): bool => isset($row[$k]) && $row[$k] !== null && $row[$k] !== '';
+
+    if ($kind === 'in') {
+        if (!$has('in1'))                    return 'in1';
+        if ($has('out1') && !$has('in2'))    return 'in2';
+        return null;
+    }
+    if ($kind === 'out') {
+        if ($has('in1') && !$has('out1'))    return 'out1';
+        if ($has('in2') && !$has('out2'))    return 'out2';
+        return null;
+    }
+    return null;
+}
+
+/**
+ * Is this row mid-shift — an in with no matching out? Used to decide whether a
+ * clock-out belongs to YESTERDAY (a night shift crossing midnight).
+ */
+function clock_row_is_open(array $row): bool {
+    return clock_next_slot($row, 'out') !== null;
+}
