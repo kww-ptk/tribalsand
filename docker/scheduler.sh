@@ -82,4 +82,18 @@ log "scheduler started"
   done
 ) &
 
+# ── Job 4: purge old clock-in photos daily ──────────────────────────────────
+# Deletes stored punch photos older than 30 days, keeping the punch records.
+# The photo is evidence for a disputed shift — a question asked within days or
+# weeks, not years — so holding images of staff faces indefinitely serves no
+# purpose and grows without bound at two punches a person a day.
+# Runs the PHP script directly (it has DB env from the parent). Idempotent: only
+# rows that still carry a photo_key are selected, so repeats do nothing.
+(
+  while true; do
+    php "$APP_DIR/bin/purge-attendance-photos.php" >> "$LOG" 2>&1 || log "purge-attendance-photos failed"
+    sleep 86400
+  done
+) &
+
 wait

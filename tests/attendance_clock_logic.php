@@ -73,6 +73,15 @@ check('min from 07:02',   clock_minutes_from_hms('07:02:00') === 422);
 check('min from 00:00',   clock_minutes_from_hms('00:00:00') === 0);
 check('min from 23:59',   clock_minutes_from_hms('23:59:59') === 1439);
 
+// ── Photo expiry labelling (pure) ───────────────────────────────────────────
+// "photo expired" and "no photo" must not look the same: a purged image is
+// otherwise indistinguishable from a camera that failed, and someone reviewing
+// a disputed shift would draw the wrong conclusion.
+check('has photo is never expired',   clock_photo_expired(['photo_key'=>'k','punched_at'=>date('Y-m-d H:i:s', strtotime('-90 days'))]) === false);
+check('recent missing is not expired',clock_photo_expired(['photo_key'=>null,'punched_at'=>date('Y-m-d H:i:s')]) === false);
+check('old missing is expired',       clock_photo_expired(['photo_key'=>null,'punched_at'=>date('Y-m-d H:i:s', strtotime('-60 days'))]) === true);
+check('unparseable date is not expired', clock_photo_expired(['photo_key'=>null,'punched_at'=>'not a date']) === false);
+
 // ── DB round-trip, inside a transaction we roll back ────────────────────────
 $dbOk = true;
 try { db(); } catch (Throwable $e) { $dbOk = false; }
@@ -166,6 +175,27 @@ if (!$dbOk || !attendance_punches_supported()) {
 
         check('rate limiter is off at low volume', clock_rate_limited($sid) === false);
         check('rate limiter trips at the cap',      clock_rate_limited($sid, 1) === true);
+
+        // ── Photo retention ─────────────────────────────────────────────────
+        // The image is purged after 30 days; the punch record is kept forever.
+        db_query("INSERT INTO hr_staff (full_name, venue_id, status) VALUES ('Purge Probe', :v, 'active')", [':v'=>$vid]);
+        $pid = (int) db()->lastInsertId('hr_staff_id_seq');
+        foreach ([['-1 hour', 'recent.jpg'], ['-45 days', 'old.jpg']] as [$age, $pkey]) {
+            db_query("INSERT INTO attendance_punches (hr_staff_id, kind, work_date, slot, photo_key, punched_at)
+                      VALUES (:s, 'in', CURRENT_DATE, 'in1', :k, now() + (:a)::interval)",
+                     [':s'=>$pid, ':k'=>$pkey, ':a'=>$age]);
+        }
+        $before = (int) db_query("SELECT count(*) FROM attendance_punches WHERE hr_staff_id = :s", [':s'=>$pid])->fetchColumn();
+        $dry = clock_purge_old_photos(true);
+        check('dry run finds the old one', ($dry['checked'] ?? 0) === 1);
+        check('dry run deletes nothing',   ($dry['deleted'] ?? -1) === 0);
+        $pur = clock_purge_old_photos();
+        check('purge deletes the old one', ($pur['deleted'] ?? 0) === 1);
+        check('recent photo survives',
+              (string) db_query("SELECT photo_key FROM attendance_punches WHERE hr_staff_id = :s AND photo_key IS NOT NULL", [':s'=>$pid])->fetchColumn() === 'recent.jpg');
+        check('punch rows are kept',
+              (int) db_query("SELECT count(*) FROM attendance_punches WHERE hr_staff_id = :s", [':s'=>$pid])->fetchColumn() === $before);
+        check('purge is idempotent',       (clock_purge_old_photos()['deleted'] ?? -1) === 0);
 
         // ── The owner's kill switch ─────────────────────────────────────────
         // Default OFF so the feature can ship dark, and a punch from an

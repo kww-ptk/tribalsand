@@ -13,6 +13,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/attendance.php';
 require_once __DIR__ . '/frontdesk.php';
+require_once __DIR__ . '/storage.php';     // storage_delete_private() for the photo purge
 
 /** True once add_attendance_punches.sql has created the punch log (memoised). */
 function attendance_punches_supported(): bool {
@@ -341,6 +342,71 @@ function clock_is_duplicate(int $staffId, string $slot, string $workDate): bool 
         error_log('[clock] duplicate check failed: ' . $e->getMessage());
         return false;
     }
+}
+
+const CLOCK_PHOTO_RETENTION_DAYS = 30;
+
+/**
+ * Delete stored photos for punches older than the retention window, keeping the
+ * punch rows. Returns ['checked','deleted','failed'].
+ *
+ * The photo exists to settle a disputed shift, and that gets questioned within
+ * days or weeks — not years. Keeping images of staff faces indefinitely serves
+ * no purpose the feature was built for, and two a person a day adds up fast.
+ * The PUNCH itself (who, when, which tablet) is small and kept forever; only
+ * the image goes.
+ *
+ * Idempotent: it only selects rows that still have a photo_key, so a re-run —
+ * or a second ECS task running the same scheduler — finds nothing left to do.
+ *
+ * The row's photo_key is cleared only AFTER the file is actually gone, so a
+ * storage failure leaves the row pointing at a file that still exists and the
+ * next run retries it, rather than orphaning bytes nothing references.
+ */
+function clock_purge_old_photos(bool $dryRun = false): array {
+    $out = ['checked' => 0, 'deleted' => 0, 'failed' => 0];
+    if (!attendance_punches_supported()) return $out;
+
+    try {
+        $rows = db_query(
+            "SELECT id, photo_key FROM attendance_punches
+              WHERE photo_key IS NOT NULL
+                AND punched_at < now() - (:d || ' days')::interval
+              ORDER BY id",
+            [':d' => (string) CLOCK_PHOTO_RETENTION_DAYS]
+        )->fetchAll();
+    } catch (Throwable $e) {
+        error_log('[clock] photo purge query failed: ' . $e->getMessage());
+        return $out;
+    }
+
+    foreach ($rows as $r) {
+        $out['checked']++;
+        if ($dryRun) continue;
+        try {
+            storage_delete_private((string)$r['photo_key']);
+            db_query("UPDATE attendance_punches SET photo_key = NULL WHERE id = :i", [':i' => (int)$r['id']]);
+            $out['deleted']++;
+        } catch (Throwable $e) {
+            $out['failed']++;
+            error_log('[clock] photo purge failed for punch ' . (int)$r['id'] . ': ' . $e->getMessage());
+        }
+    }
+    return $out;
+}
+
+/**
+ * Did this punch once have a photo that has since been purged? PURE.
+ *
+ * Lets the admin say "photo expired" rather than "no photo" for an old punch.
+ * Otherwise a purged image is indistinguishable from a camera that failed, and
+ * someone reviewing a dispute would draw the wrong conclusion.
+ */
+function clock_photo_expired(array $punch): bool {
+    if (!empty($punch['photo_key'])) return false;
+    $at = strtotime((string)($punch['punched_at'] ?? ''));
+    if ($at === false) return false;
+    return $at < strtotime('-' . CLOCK_PHOTO_RETENTION_DAYS . ' days');
 }
 
 /**

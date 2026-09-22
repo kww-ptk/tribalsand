@@ -272,6 +272,8 @@ if ($view === 'daily'):
                   <a href="/admin/attendance-photo.php?punch=<?= (int)$pu['id'] ?>" target="_blank" rel="noopener" title="View captured photo">
                     <img src="/admin/attendance-photo.php?punch=<?= (int)$pu['id'] ?>" alt="" style="width:20px;height:20px;object-fit:cover;border-radius:4px;vertical-align:middle;border:1px solid var(--border,#e5e7eb)">
                   </a>
+                  <?php elseif (clock_photo_expired($pu)): ?>
+                  <span title="Photos are kept for <?= (int)CLOCK_PHOTO_RETENTION_DAYS ?> days, then deleted">photo expired</span>
                   <?php else: ?>
                   <span>no photo</span>
                   <?php endif; ?>
