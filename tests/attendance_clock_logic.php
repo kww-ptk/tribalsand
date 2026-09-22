@@ -90,6 +90,18 @@ check('leading space trimmed',    clock_first_name('   Moses Kamau ') === 'Moses
 check('double space handled',     clock_first_name('Moses  Kamau') === 'Moses');
 check('empty name stays empty',   clock_first_name('') === '');
 check('whitespace-only is empty', clock_first_name('   ') === '');
+
+// ── Most recent slot (pure) ─────────────────────────────────────────────────
+// Reuses $empty/$in1/$closed/$in2/$full defined in the slot-resolution block.
+check('no row -> no last punch',   clock_last_punch($empty) === null);
+check('in1 only -> in at 420',     clock_last_punch($in1)   === ['kind' => 'in',  'min' => 420]);
+check('closed -> out at 720',      clock_last_punch($closed)=== ['kind' => 'out', 'min' => 720]);
+check('in2 -> in at 780',          clock_last_punch($in2)   === ['kind' => 'in',  'min' => 780]);
+check('full -> out at 1020',       clock_last_punch($full)  === ['kind' => 'out', 'min' => 1020]);
+// A manager's edit can leave a hole; the newest SET slot still wins.
+check('gap: in1+in2 -> in at 780', clock_last_punch(['in1' => 420, 'in2' => 780]) === ['kind' => 'in', 'min' => 780]);
+check('empty string is not set',   clock_last_punch(['in1' => 420, 'out1' => '']) === ['kind' => 'in', 'min' => 420]);
+
 // ── DB round-trip, inside a transaction we roll back ────────────────────────
 $dbOk = true;
 try { db(); } catch (Throwable $e) { $dbOk = false; }

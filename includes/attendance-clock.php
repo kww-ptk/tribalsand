@@ -123,6 +123,30 @@ function clock_first_name(string $full): string {
 }
 
 /**
+ * The most recently filled slot on a row: ['kind'=>'in'|'out', 'min'=>int], or
+ * null when nothing is recorded. PURE.
+ *
+ * Walks the four slots in chronological order and keeps the last one that is
+ * set, so it answers "what happened most recently" without assuming the row is
+ * contiguous — a manager's edit can leave a hole in the middle.
+ *
+ * This is what the greeting's sub-line reports, and it is deliberately NOT
+ * "the open clock-in": the kiosk also needs a time in states where nothing is
+ * open ("checked out at 13:00"), and the newest-slot rule gives the right
+ * answer in every state, including mid-shift, where the newest slot IS the
+ * open clock-in.
+ */
+function clock_last_punch(array $row): ?array {
+    $found = null;
+    foreach ([['in1', 'in'], ['out1', 'out'], ['in2', 'in'], ['out2', 'out']] as [$col, $kind]) {
+        $v = $row[$col] ?? null;
+        if ($v === null || $v === '') continue;
+        $found = ['kind' => $kind, 'min' => (int)$v];
+    }
+    return $found;
+}
+
+/**
  * Build the COMPLETE four-slot payload for attendance_upsert(), preserving what
  * is already on the row and setting one slot.
  *
