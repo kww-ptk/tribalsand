@@ -30,6 +30,22 @@ function hr_staff_venues_supported(): bool {
     catch (Throwable $e) { return $c = false; }
 }
 
+/** True once add_hr_staff_profile.sql has been applied (memoised). */
+function hr_staff_profile_supported(): bool {
+    static $c = null;
+    if ($c !== null) return $c;
+    try {
+        return $c = (bool) db_query(
+            "SELECT 1 FROM information_schema.columns WHERE table_name = 'hr_staff' AND column_name = 'contract_type'"
+        )->fetchColumn();
+    } catch (Throwable $e) { return $c = false; }
+}
+
+/** Contract-type options, in display order. */
+function hr_contract_types(): array {
+    return ['Permanent', 'Contract', 'Casual', 'Probation', 'Intern', 'Other'];
+}
+
 /** A person's ADDITIONAL venue ids (the home venue lives on hr_staff.venue_id). */
 function hr_staff_venue_ids(int $staffId): array {
     if ($staffId <= 0 || !hr_staff_venues_supported()) return [];

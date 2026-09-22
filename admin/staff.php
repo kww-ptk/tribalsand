@@ -569,7 +569,7 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
             $extraVids = $hrExtraVenues[$pid] ?? [];
           ?>
           <tr>
-            <td><strong><?= e($p['full_name']) ?></strong><?php if (!empty($p['admin_user_id'])): ?> <span class="badge badge--grey" data-tip="Has a login account">login</span><?php endif; ?>
+            <td><a href="/admin/employee.php?id=<?= $pid ?>" style="font-weight:700;color:inherit;text-decoration:none;border-bottom:1px dotted var(--border,#cbd5e1)" data-tip="Open profile"><?= e($p['full_name']) ?></a><?php if (!empty($p['admin_user_id'])): ?> <span class="badge badge--grey" data-tip="Has a login account">login</span><?php endif; ?>
               <?php foreach ($extraVids as $evid): if (!isset($venueNames[$evid])) continue; ?>
               <span class="badge badge--teal" data-tip="Also works here" style="font-weight:500">+ <?= e($venueNames[$evid]) ?></span>
               <?php endforeach; ?>
@@ -580,6 +580,7 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
             <td><?php if ($isActive): ?><span class="badge badge--green">Active</span><?php else: ?><span class="badge badge--grey">Inactive</span><?php endif; ?></td>
             <td>
               <div class="dt-actions">
+                <a href="/admin/employee.php?id=<?= $pid ?>" class="btn-icon btn-icon--outline" data-tip="Open profile" aria-label="Open profile"><?= admin_icon('eye') ?></a>
                 <?php if (!empty($p['admin_user_id']) && internal_group_channels_supported()): ?>
                 <a href="/admin/internal-messages.php?dm=<?= (int)$p['admin_user_id'] ?>" class="btn-icon btn-icon--outline" data-tip="Message in team chat" aria-label="Message"><?= admin_icon('message') ?></a>
                 <?php elseif (!empty($p['phone']) && ($__wa = hr_whatsapp_link($p['phone'])) !== ''): ?>

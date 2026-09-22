@@ -51,6 +51,12 @@ function activity_action_label(string $action): string {
         'bill.set_price'               => 'Bill price set',
         'itinerary.add'                => 'Plan item added',
         'itinerary.delete'             => 'Plan item removed',
+        'hr_staff_create'              => 'Added to directory',
+        'hr_staff_update'              => 'Directory details edited',
+        'hr_staff_toggle'              => 'Status changed',
+        'hr_staff_delete'              => 'Removed from directory',
+        'hr.profile_save'              => 'Employment details edited',
+        'attendance.save'              => 'Attendance recorded',
     ];
     if (isset($map[$action])) return $map[$action];
     // Prettify: "some.action_name" → "Action name"
