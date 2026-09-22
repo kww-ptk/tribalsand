@@ -59,10 +59,14 @@ Each phase lists its owner: **(Aly)**, **(Bhumika)**, **(Joint)**, **(Owner)** =
 - [ ] **(Joint)** Confirm the HMAC handshake end-to-end (spec test #12: wrong secret → 401 + alert)
 
 ### Phase A — Contract-independent Tribalsand build (parallel with Stage 1)
-- [ ] **(Aly)** `restaurant_table` model + admin UI (we own → Zuri) + `sync_*` columns
-- [ ] **(Aly)** `opening_hours` model + admin UI (we own → Zuri) + `sync_*` columns
-- [ ] **(Aly)** `customers` model (Zuri owns → we receive) + `sync_*` columns
-- [ ] **(Aly)** Extend reservation status `pending|confirmed|cancelled` → add `seated|completed|no_show` (CHECK + admin UI)
+Migration `add_restaurant_sync_models.sql` + helpers + mappers + tests DONE (data/logic layer). Admin UI for tables/hours is the remaining slice (needs a running app+DB to verify).
+- [x] **(Aly)** `restaurant_table` model + `sync_*` cols + helpers (`includes/restaurant-tables.php`) + mapper — DONE
+- [ ] **(Aly)** `restaurant_table` admin UI (create/edit/reorder/soft-delete)
+- [x] **(Aly)** `opening_hours` model + `sync_*` cols + helpers (`includes/opening-hours.php`) + mapper — DONE
+- [ ] **(Aly)** `opening_hours` admin UI (per-day editor)
+- [x] **(Aly)** `customers` model (Zuri owns → we receive) + `sync_*` cols + helpers incl. backfill match (`includes/customers.php`) — DONE
+- [x] **(Aly)** Reservation status → add `seated|completed|no_show` (CHECK) + state-machine-guarded `set_reservation_status` + badges — DONE
+- [ ] **(Aly)** Reservation admin: expose the new status actions (Seat / Complete / No-show)
 
 ### Phase B — Applier skeleton (parallel; mapper calls stubbed)
 - [ ] **(Aly)** `bin/sync-apply.php` — drain `sync_inbox`, resolve via `sync_resolve()`, write `sync_conflicts`, maintain `sync_id_map`

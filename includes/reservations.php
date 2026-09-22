@@ -13,6 +13,7 @@
 
 declare(strict_types=1);
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/sync.php';   // reservation state machine (§6): sync_reservation_states / _transition_allowed
 
 /** True if the reservations table exists (memoised). False pre-migration. */
 function reservations_supported(): bool {
@@ -131,7 +132,10 @@ function fetch_reservation_by_reference(string $reference): ?array {
 function reservation_status_badge(string $status): string {
     return match ($status) {
         'confirmed' => 'badge--green',
+        'seated'    => 'badge--blue',
+        'completed' => 'badge--grey',
         'cancelled' => 'badge--red',
+        'no_show'   => 'badge--purple',
         default     => 'badge--orange',   // pending
     };
 }
@@ -305,13 +309,29 @@ function reservation_dashboard_counts(?array $venueIds): array {
     ];
 }
 
-/** Transition a reservation's status. Returns true on a real change. */
+/**
+ * Transition a reservation's status, enforcing the §6 state machine (via
+ * sync_reservation_transition_allowed). An illegal move — most importantly a
+ * terminal status trying to revive (cancelled/no_show/completed → anything) —
+ * returns false and changes nothing. Bumps sync_version so the change is
+ * sync-ready. Returns true on a real change.
+ */
 function set_reservation_status(int $id, string $status): bool {
     if (!reservations_supported() || $id <= 0) return false;
-    if (!in_array($status, ['pending','confirmed','cancelled'], true)) return false;
+    if (!in_array($status, sync_reservation_states(), true)) return false;
+
+    $current = db_query('SELECT status FROM reservations WHERE id = :id', [':id' => $id])->fetchColumn();
+    if ($current === false) return false;                       // no such row
+    if (!sync_reservation_transition_allowed((string) $current, $status)) return false;
+
+    // Bump the sync columns only when they exist (post add_restaurant_sync);
+    // pre-migration the reservations table has no sync_version, so keep the
+    // original plain update and never reference the missing columns.
+    $set = sync_supported()
+        ? 'status = :s, updated_at = now(), sync_version = sync_version + 1, sync_updated_at = now()'
+        : 'status = :s, updated_at = now()';
     $n = db_query(
-        "UPDATE reservations SET status = :s, updated_at = now()
-          WHERE id = :id AND status <> :s",
+        "UPDATE reservations SET $set WHERE id = :id AND status <> :s",
         [':s' => $status, ':id' => $id]
     )->rowCount();
     return $n > 0;

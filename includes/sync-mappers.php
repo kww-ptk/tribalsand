@@ -76,3 +76,35 @@ function sync_map_menu(array $row): array {
         'sort_order'     => (int) ($row['sort_order'] ?? 0),
     ];
 }
+
+/**
+ * restaurant_table → envelope data. `venue_slug` links it to the property by a
+ * stable key (both sides key rooms/venues off slug, not our local id).
+ */
+function sync_map_restaurant_table(array $row): array {
+    return [
+        'venue_slug' => (string) ($row['venue_slug'] ?? ''),
+        'label'      => (string) ($row['label'] ?? ''),
+        'seats'      => (int) ($row['seats'] ?? 0),
+        'section'    => $row['section'] !== null ? (string) $row['section'] : null,
+        'sort_order' => (int) ($row['sort_order'] ?? 0),
+        'is_active'  => (bool) ($row['is_active'] ?? true),
+    ];
+}
+
+/**
+ * opening_hours → envelope data. Times are HH:MM strings (null when closed).
+ * day_of_week is 0=Sunday..6=Saturday (agree this convention with Bhumika).
+ */
+function sync_map_opening_hours(array $row): array {
+    $hm = static fn($t) => $t !== null && $t !== '' ? substr((string) $t, 0, 5) : null;
+    $closed = (bool) ($row['is_closed'] ?? false);
+    return [
+        'venue_slug'  => (string) ($row['venue_slug'] ?? ''),
+        'day_of_week' => (int) ($row['day_of_week'] ?? 0),
+        'open_time'   => $closed ? null : $hm($row['open_time']  ?? null),
+        'close_time'  => $closed ? null : $hm($row['close_time'] ?? null),
+        'is_closed'   => $closed,
+        'sort_order'  => (int) ($row['sort_order'] ?? 0),
+    ];
+}
