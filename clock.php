@@ -19,6 +19,11 @@ session_init();
 $signedIn = !empty($_SESSION['admin_id']);
 $canSetUp = $signedIn && (is_owner() || is_manager());
 
+// The feature ships dark. While it is off the tablet says so plainly rather
+// than showing a camera that can never record anything — and the JS below is
+// not even loaded, so no camera permission is requested.
+$kioskOn = clock_kiosk_enabled();
+
 $venues = [];
 if ($canSetUp) {
     $scope = admin_venue_ids();
@@ -63,6 +68,17 @@ body{margin:0;font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,s
 </head>
 <body>
 <div class="kiosk">
+
+<?php if (!$kioskOn): ?>
+  <h1>Clocking in is switched off</h1>
+  <p class="sub">
+    <?php if ($canSetUp): ?>
+      Turn it on in Admin → Clock kiosks, then reload this page.
+    <?php else: ?>
+      Ask a manager to switch it on.
+    <?php endif; ?>
+  </p>
+<?php else: ?>
 
   <div id="kioskMode" class="hidden">
     <h1>Scan your card</h1>
@@ -111,8 +127,12 @@ body{margin:0;font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,s
     <?php endif; ?>
   </div>
 
+<?php endif; ?>
+
 </div>
+<?php if ($kioskOn): ?>
 <script src="/js/vendor/jsqr.js?v=<?= @filemtime(__DIR__ . '/js/vendor/jsqr.js') ?: time() ?>"></script>
 <script src="/js/clock-kiosk.js?v=<?= @filemtime(__DIR__ . '/js/clock-kiosk.js') ?: time() ?>"></script>
+<?php endif; ?>
 </body>
 </html>

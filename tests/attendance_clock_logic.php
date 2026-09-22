@@ -167,6 +167,20 @@ if (!$dbOk || !attendance_punches_supported()) {
         check('rate limiter is off at low volume', clock_rate_limited($sid) === false);
         check('rate limiter trips at the cap',      clock_rate_limited($sid, 1) === true);
 
+        // ── The owner's kill switch ─────────────────────────────────────────
+        // Default OFF so the feature can ship dark, and a punch from an
+        // already-registered tablet must stop the moment it is switched off.
+        $wasOn = clock_kiosk_enabled();
+        clock_kiosk_set_enabled(false);
+        check('switch reads off',        clock_kiosk_enabled() === false);
+        db_query("INSERT INTO hr_staff (full_name, venue_id, status) VALUES ('Switch Probe', :v, 'active')", [':v'=>$vid]);
+        $swid = (int) db()->lastInsertId('hr_staff_id_seq');
+        clock_kiosk_set_enabled(true);
+        check('switch reads on',         clock_kiosk_enabled() === true);
+        $onPunch = clock_record_punch($swid, 'in', 420, $today, $devId, $vid, null);
+        check('punch works while on',    ($onPunch['ok'] ?? false) === true);
+        clock_kiosk_set_enabled($wasOn);   // restore, though the tx rolls back anyway
+
         // A leave day refuses a punch outright.
         db_query("INSERT INTO hr_staff (full_name, venue_id, status) VALUES ('Leave Probe', :v, 'active')", [':v'=>$vid]);
         $lid = (int) db()->lastInsertId('hr_staff_id_seq');

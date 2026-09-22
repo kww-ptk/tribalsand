@@ -31,6 +31,30 @@ function attendance_devices_supported(): bool {
 }
 
 /**
+ * Is the clock in/out kiosk switched on?
+ *
+ * OFF until an owner turns it on in Admin → Clock kiosks. The feature ships
+ * dark: the migration can land and the code can deploy with nothing visible to
+ * staff, and the whole thing is switched on — or killed — from one place.
+ *
+ * This is a kill switch, not just a nav toggle: /clock.php, both API endpoints
+ * and the card sheet all refuse while it is off, so a tablet that was already
+ * registered stops recording the moment the switch is thrown.
+ *
+ * Site-wide config, so only the owner may change it (CLAUDE.md: pricing, site
+ * menu and AI settings follow the same rule).
+ */
+function clock_kiosk_enabled(): bool {
+    try { return setting('clock_kiosk_enabled', '') === '1'; }
+    catch (Throwable $e) { return false; }   // a settings hiccup leaves it OFF
+}
+
+/** Turn the kiosk on or off. Caller must have checked is_owner(). */
+function clock_kiosk_set_enabled(bool $on): void {
+    set_setting('clock_kiosk_enabled', $on ? '1' : '0');
+}
+
+/**
  * A fresh secret for a QR card or a kiosk device: 32 hex characters from a
  * cryptographic source. Never derived from a row id — a card encoding an id is
  * forged by printing a different number.

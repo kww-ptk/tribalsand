@@ -6,6 +6,7 @@ require_once __DIR__ . '/../includes/admin-shell.php'; // no-flicker shell (#18)
 require_once __DIR__ . '/../includes/ai.php';          // ai_assistant_supported() — gates the Assistant nav link
 require_once __DIR__ . '/../includes/internal-messages.php'; // internal_unread_total() — Team chat nav badge
 require_once __DIR__ . '/../includes/submission-notes.php';  // submission_unread_reply_count() — Submissions nav badge
+require_once __DIR__ . '/../includes/attendance-clock.php';  // clock_kiosk_enabled() — gates the Clock nav links
 $admin = current_admin();
 
 // ── Role / job aware nav visibility ──────────────────────────────────────
@@ -270,14 +271,26 @@ if ($__shellFrag) { ob_start(); return; }
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="m9 16 2 2 4-4"/></svg>
           Attendance
         </a>
+        <?php
+          // Clocking in ships dark. The OWNER always sees "Clock kiosks" — that
+          // page holds the switch, so hiding it would hide the only way to turn
+          // the feature on. Everyone else sees these two only once it is on, so
+          // a manager is never shown a feature that cannot do anything.
+          $__clockOn   = clock_kiosk_enabled();
+          $__navClock  = $__clockOn || $__isOwner;
+        ?>
+        <?php if ($__navClock): ?>
         <a href="/admin/attendance-devices.php" class="sidebar__link <?= ($activeMenu??'')==='attendance_devices' ? 'is-active':'' ?>">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18.01"/></svg>
           Clock kiosks
         </a>
+        <?php endif; ?>
+        <?php if ($__clockOn): ?>
         <a href="/admin/attendance-cards.php" class="sidebar__link <?= ($activeMenu??'')==='attendance_cards' ? 'is-active':'' ?>">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="14" rx="2"/><path d="M7 7V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/><rect x="8" y="11" width="4" height="4"/><line x1="14" y1="12" x2="17" y2="12"/><line x1="14" y1="15" x2="17" y2="15"/></svg>
           Clock cards
         </a>
+        <?php endif; ?>
         <?php
           // Maya Ilai rate tool — owner, or a manager scoped to Maya Ilai (venue 6).
           $__miShow = $__isOwner || ($__isManager && in_array(6, admin_venue_ids() ?? [], true));

@@ -22,6 +22,10 @@ if (!attendance_devices_supported()) {
     http_response_code(400);
     exit(json_encode(['ok'=>false,'error'=>'Run the add_attendance_punches.sql migration first.']));
 }
+if (!clock_kiosk_enabled()) {
+    http_response_code(403);
+    exit(json_encode(['ok'=>false,'error'=>'Clocking in is switched off. An owner can turn it on in Admin → Clock kiosks.']));
+}
 
 /**
  * Photo evidence is the point of this feature, and storage_put_private() falls

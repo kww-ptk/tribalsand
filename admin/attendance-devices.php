@@ -26,7 +26,21 @@ if (!empty($_SESSION['hold_flash'])) { $flash = $_SESSION['hold_flash']; unset($
 // ── POST: revoke a device (ownership re-checked server-side) ────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
-    if (($_POST['action'] ?? '') === 'revoke') {
+    if (($_POST['action'] ?? '') === 'toggle') {
+        // Site-wide config, so owner only — same rule as pricing, the site menu
+        // and AI settings. A manager scoped to one property must not switch a
+        // feature on across the whole estate.
+        if (!is_owner()) {
+            $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Only the owner can switch clocking in on or off.'];
+        } else {
+            $on = ($_POST['on'] ?? '') === '1';
+            clock_kiosk_set_enabled($on);
+            audit_log('clock_kiosk.' . ($on ? 'enable' : 'disable'), 'setting', 0, 'clock_kiosk_enabled');
+            $_SESSION['hold_flash'] = ['type'=>'success','msg'=> $on
+                ? 'Clocking in is ON. Register a tablet to start.'
+                : 'Clocking in is OFF. Registered tablets have stopped recording.'];
+        }
+    } elseif (($_POST['action'] ?? '') === 'revoke') {
         $id  = (int)($_POST['id'] ?? 0);
         $dev = $id ? db_query("SELECT id, venue_id, name FROM attendance_devices WHERE id = :i", [':i'=>$id])->fetch() : false;
         $ok = $dev && ($scope === null || in_array((int)$dev['venue_id'], array_map('intval', $scope), true));
@@ -72,10 +86,42 @@ include __DIR__ . '/_layout.php';
 </div></div>
 <?php include __DIR__ . '/_layout_end.php'; return; endif; ?>
 
+<?php $kioskOn = clock_kiosk_enabled(); ?>
+<div class="card" style="margin-bottom:16px"><div class="card__body card__body--pad"
+     style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+  <div style="flex:1 1 320px;min-width:0">
+    <p style="margin:0 0 2px"><strong>Clocking in is
+      <span style="color:<?= $kioskOn ? '#2f6f4f' : '#8a4b2a' ?>"><?= $kioskOn ? 'ON' : 'OFF' ?></span></strong></p>
+    <p class="text-muted" style="margin:0;font-size:12.5px">
+      <?php if ($kioskOn): ?>
+        Staff can scan their cards on a registered tablet. Switching this off stops every
+        tablet recording immediately — it does not delete anything already recorded.
+      <?php else: ?>
+        The kiosk, the card sheet and every registered tablet are switched off. Nothing is
+        lost while it is off; turning it back on resumes exactly where it left off.
+      <?php endif; ?>
+    </p>
+  </div>
+  <?php if (is_owner()): ?>
+  <form method="POST" style="flex:0 0 auto">
+    <?= csrf_field() ?>
+    <input type="hidden" name="action" value="toggle">
+    <input type="hidden" name="on" value="<?= $kioskOn ? '0' : '1' ?>">
+    <button class="<?= $kioskOn ? 'btn-outline' : 'btn-primary' ?> btn-sm"<?= $kioskOn ? ' data-confirm="Switch clocking in OFF? Every registered tablet stops recording immediately."' : '' ?>>
+      <?= $kioskOn ? 'Switch off' : 'Switch on' ?>
+    </button>
+  </form>
+  <?php else: ?>
+  <span class="text-muted" style="font-size:12.5px;flex:0 0 auto">Only the owner can change this.</span>
+  <?php endif; ?>
+</div></div>
+
+<?php if ($kioskOn): ?>
 <div class="card" style="margin-bottom:16px"><div class="card__body card__body--pad">
   <p style="margin:0 0 4px"><strong>To register a new tablet:</strong> open <code><?= e(site_url('/clock.php')) ?></code> on it and follow the on-screen setup — give it a name and pick its property. It will then appear here.</p>
   <p class="text-muted" style="margin:0;font-size:12.5px">Registration happens on the tablet, not here, because the token is generated and stored only on that device.</p>
 </div></div>
+<?php endif; ?>
 
 <div class="card">
   <div class="card__head"><span class="card__title">Registered tablets</span><span class="text-muted" style="font-size:12px"><?= count($devices) ?> total</span></div>

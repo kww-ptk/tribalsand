@@ -21,6 +21,10 @@ function punch_fail(string $msg, int $code = 400): void {
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') punch_fail('Method not allowed', 405);
 if (!attendance_punches_supported())       punch_fail('Clocking in isn’t enabled yet.');
+// The owner's kill switch. A tablet registered earlier stops recording the
+// moment this is turned off — that is the point of it being checked here and
+// not only in the nav.
+if (!clock_kiosk_enabled())               punch_fail('Clocking in is switched off. Ask a manager.', 403);
 
 $device = clock_device_by_token((string)($_POST['device_token'] ?? ''));
 if (!$device) punch_fail('This tablet is no longer registered. Ask a manager to set it up again.', 403);

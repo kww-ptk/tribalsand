@@ -19,6 +19,13 @@ require_once __DIR__ . '/../includes/attendance-clock.php';
 require_login();
 require_manager();
 
+// Printing cards for a feature that is switched off would hand out credentials
+// that do nothing. Send them to the one page that can turn it on.
+if (!clock_kiosk_enabled()) {
+    $_SESSION['hold_flash'] = ['type' => 'error', 'msg' => 'Clocking in is switched off. An owner can turn it on here first.'];
+    header('Location: /admin/attendance-devices.php'); exit;
+}
+
 $scope = admin_venue_ids();   // null = owner (all); array = manager's venues
 
 // ── Property picker, scoped ─────────────────────────────────────────────
