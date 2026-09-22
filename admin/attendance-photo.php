@@ -10,9 +10,13 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/storage.php';
+require_once __DIR__ . '/../includes/attendance-clock.php';
 require_login();
 
-$id = (int)($_GET['punch'] ?? 0);
+// Guard the read: attendance_punches_supported() is an information_schema probe,
+// never a failing SELECT, so a pre-migration deploy 404s cleanly instead of
+// fataling on an undefined table.
+$id = attendance_punches_supported() ? (int)($_GET['punch'] ?? 0) : 0;
 $row = $id ? db_query(
     "SELECT p.photo_key, s.venue_id
        FROM attendance_punches p

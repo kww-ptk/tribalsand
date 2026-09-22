@@ -318,3 +318,25 @@ function clock_is_duplicate(int $staffId, string $slot, string $workDate): bool 
         return false;
     }
 }
+
+/**
+ * Punches for one person on one day, oldest first. [] pre-migration.
+ * Used by the attendance editor to show what the kiosk actually recorded,
+ * alongside whatever a manager may since have typed over it.
+ */
+function clock_punches_for(int $staffId, string $ymd): array {
+    if (!attendance_punches_supported()) return [];
+    try {
+        return db_query(
+            "SELECT p.id, p.kind, p.slot, p.punched_at, p.photo_key, d.name AS device_name
+               FROM attendance_punches p
+               LEFT JOIN attendance_devices d ON d.id = p.device_id
+              WHERE p.hr_staff_id = :s AND p.work_date = :d
+              ORDER BY p.punched_at ASC",
+            [':s' => $staffId, ':d' => $ymd]
+        )->fetchAll();
+    } catch (Throwable $e) {
+        error_log('[clock] punches fetch failed: ' . $e->getMessage());
+        return [];
+    }
+}

@@ -42,7 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $pageTitle  = 'Clock kiosks';
-$activeMenu = 'attendance';
+$activeMenu = 'attendance_devices';
 
 $devices = [];
 if (attendance_devices_supported()) {

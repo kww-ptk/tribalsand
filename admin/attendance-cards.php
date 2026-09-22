@@ -56,7 +56,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $pageTitle  = 'Clock cards';
-$activeMenu = 'attendance';
+$activeMenu = 'attendance_cards';
 
 $people = $venueId
     ? fetch_hr_staff($scope, ['venue_id' => $venueId, 'status' => 'active'])

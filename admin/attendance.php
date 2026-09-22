@@ -16,6 +16,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/attendance.php';
+require_once __DIR__ . '/../includes/attendance-clock.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_login();
 require_manager();
@@ -257,9 +258,28 @@ if ($view === 'daily'):
             $sid = (int)$r['hr_staff_id'];
             $eff = attendance_effective_status($r);
             $isP = $eff === 'P';
+            $punches = attendance_punches_supported() ? clock_punches_for($sid, $date) : [];
           ?>
           <tr class="att-row" data-sid="<?= $sid ?>" data-dept="<?= e($r['department'] ?? '') ?>" data-off="<?= e($r['off_day'] ?? '') ?>" data-std="<?= attendance_standard_hours($r['department'] ?? '') ?>">
-            <td><strong><?= e($r['full_name']) ?></strong><span class="text-muted" style="display:block;font-size:11px"><?= e($r['position'] ?: '—') ?></span></td>
+            <td><strong><?= e($r['full_name']) ?></strong><span class="text-muted" style="display:block;font-size:11px"><?= e($r['position'] ?: '—') ?></span>
+              <?php if ($punches): ?>
+              <div class="text-muted" style="font-size:10.5px;margin-top:4px;line-height:1.6">
+                <span style="text-transform:uppercase;letter-spacing:.03em">Self-recorded:</span>
+                <?php foreach ($punches as $pu): ?>
+                <div style="display:flex;align-items:center;gap:5px;margin-top:2px">
+                  <span><?= e(date('H:i', strtotime((string)$pu['punched_at']))) ?> <?= e($pu['kind']) ?></span>
+                  <?php if (!empty($pu['photo_key'])): ?>
+                  <a href="/admin/attendance-photo.php?punch=<?= (int)$pu['id'] ?>" target="_blank" rel="noopener" title="View captured photo">
+                    <img src="/admin/attendance-photo.php?punch=<?= (int)$pu['id'] ?>" alt="" style="width:20px;height:20px;object-fit:cover;border-radius:4px;vertical-align:middle;border:1px solid var(--border,#e5e7eb)">
+                  </a>
+                  <?php else: ?>
+                  <span>no photo</span>
+                  <?php endif; ?>
+                </div>
+                <?php endforeach; ?>
+              </div>
+              <?php endif; ?>
+            </td>
             <td class="text-muted" style="font-size:12px"><?= e($r['off_day'] ?: 'Sun') ?></td>
             <td><div style="display:flex;gap:3px">
               <button type="button" class="btn-icon btn-icon--outline att-q" data-shift="std" title="Standard 8h">8h</button>
