@@ -310,19 +310,28 @@ include __DIR__ . '/_layout.php';
 /* Month sub-header */
 .gantt-months { display: flex; min-width: max-content; border-bottom: 1px solid var(--border); }
 .gantt-month-cell { display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; background: var(--sidebar-bg); color: #fff; height: 20px; border-right: 1px solid rgba(255,255,255,.15); }
-/* Day header */
-.gantt-day-h { position: relative; width: 28px; min-width: 28px; height: 32px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #334155; border-right: 1px solid var(--border); flex-shrink: 0; }
-/* Weekends — a cool tint, clearly not a weekday */
-.gantt-day-h.is-weekend { background: #eef2f6; color: #64748b; }
-/* Kenyan public holidays — rose, with a dot marker so they read at a glance */
-.gantt-day-h.is-holiday { background: #fde8e8; color: #b42318; font-weight: 700; }
-.gantt-day-h.is-holiday::after { content: ''; position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%); width: 4px; height: 4px; border-radius: 50%; background: #d92d20; }
+/* Day header — weekday letter over the date, so a week's shape reads without
+   hovering. Each marker owns ONE visual channel so they never blur together:
+   weekend = slate column band, holiday = rose column band, today = blue outline,
+   rate override = amber bar across the top (opt-in filter, see .show-rates). */
+.gantt-day-h { position: relative; width: 28px; min-width: 28px; height: 38px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; font-size: 11px; font-weight: 600; color: #334155; border-right: 1px solid var(--border); flex-shrink: 0; line-height: 1; }
+.gantt-day-h .gd-dow { font-size: 9px; font-weight: 600; color: #94a3b8; letter-spacing: .02em; }
+/* Weekends — a solid slate header and a visible column band down the grid */
+.gantt-day-h.is-weekend { background: #dde3ea; color: #0f172a; font-weight: 700; }
+.gantt-day-h.is-weekend .gd-dow { color: #475569; font-weight: 700; }
+/* Kenyan public holidays — rose header + band (wins over a weekend) */
+.gantt-day-h.is-holiday { background: #fbd5d5; color: #9f1239; font-weight: 800; }
+.gantt-day-h.is-holiday .gd-dow { color: #be123c; font-weight: 700; }
 /* Row cells */
 .gantt-cells { position: relative; display: flex; flex: 1; height: 36px; border-bottom: 1px solid var(--border); }
-.gantt-day-cell { width: 28px; min-width: 28px; height: 100%; border-right: 1px solid #f0f0f0; cursor: pointer; flex-shrink: 0; transition: background .1s; }
-.gantt-day-cell:hover { background: #eaf4f7; }
-.gantt-day-cell.is-weekend { background: #f4f7fa; }
-.gantt-day-cell.is-holiday { background: #fdf1f1; }
+.gantt-day-cell { width: 28px; min-width: 28px; height: 100%; border-right: 1px solid #eef0f2; cursor: pointer; flex-shrink: 0; transition: background .1s; }
+.gantt-day-cell:hover { background: #e3f0f4; }
+.gantt-day-cell.is-weekend { background: #eef1f5; border-right-color: #e2e7ed; }
+.gantt-day-cell.is-weekend:hover { background: #e2e8ef; }
+/* A week boundary: a slightly firmer line after each Sunday */
+.gantt-day-h.is-sun, .gantt-day-cell.is-sun { border-right: 1px solid #cbd5e1; }
+.gantt-day-cell.is-holiday { background: #fdeeee; }
+.gantt-day-cell.is-holiday:hover { background: #fbe1e1; }
 .gantt-day-cell.is-selecting { background: #dceeff; }
 /* Month boundary — a vertical divider line where a new month starts */
 .gantt-day-h.is-month-start, .gantt-day-cell.is-month-start { border-left: 2px solid #94a3b8; }
@@ -361,10 +370,16 @@ include __DIR__ . '/_layout.php';
 .g-modal__box { background: #fff; border-radius: 8px; padding: 24px; width: 100%; max-width: 420px; box-shadow: 0 8px 32px rgba(0,0,0,.2); }
 .g-modal__box h2 { font-size: 15px; font-weight: 700; margin-bottom: 16px; }
 .g-modal__actions { display: flex; gap: 8px; margin-top: 20px; justify-content: flex-end; }
-/* Rate-override day highlight (never over-rides today's blue band) */
-.gantt-day-h.is-rate:not(.is-today) { background: #fef9c3; color: #92400e; }
-.gantt-day-cell.is-rate:not(.is-today) { background: #fefce8; }
-.gantt-day-cell.is-rate:not(.is-today):hover { background: #fef08a; }
+/* Rate overrides — a FILTER, off by default (toggle in the legend). When on,
+   an amber bar runs across the top of each overridden night. It is drawn as a
+   pseudo-element, not a background, so it layers cleanly over the weekend /
+   holiday / today bands instead of fighting them for the same fill. */
+/* Rows only: the shared header would light up any night ANY room overrides,
+   which across a whole portfolio is nearly every night — noise, not signal. */
+.gantt-outer.show-rates .gantt-day-cell.is-rate::before {
+  content: ''; position: absolute; left: 0; right: -1px; top: 0; height: 4px; background: #f59e0b; pointer-events: none; z-index: 1;
+}
+.gantt-day-cell { position: relative; }
 /* Drag-move / resize */
 .gantt-block--dragging { opacity:.3 !important; }
 .gantt-day-cell.is-drag-target { background:#bfdbfe !important; }
@@ -394,8 +409,12 @@ include __DIR__ . '/_layout.php';
 .gantt-legend .gl { width: 13px; height: 13px; border-radius: 3px; flex: none; border: 1px solid rgba(0,0,0,.08); }
 .gl--booked { background: #2e7d32; } .gl--hold { background: #e07b39; } .gl--blocked { background: #6b7c85; }
 .gl--today { background: #eff5ff; box-shadow: inset 2px 0 0 #1d4ed8, inset -2px 0 0 #1d4ed8; border-color: #1d4ed8; }
-.gl--weekend { background: #f4f7fa; border-color: #dbe3ea; } .gl--holiday { background: #fdf1f1; border-color: #f3c1c1; } .gl--rate { background: #fefce8; border-color: #fde68a; }
+.gl--weekend { background: #dde3ea; border-color: #c5ced9; } .gl--holiday { background: #fbd5d5; border-color: #f1a9b1; }
+.gl--rate { background: linear-gradient(#f59e0b 0 4px, #fff 4px); border-color: #fcd34d; }
 .gantt-legend .gl-sep { width: 1px; height: 14px; background: var(--border); border: 0; }
+/* The rate-override filter chip — the house .optchip, compact to sit in the legend */
+.gantt-legend .optchip { padding: 4px 11px 4px 9px; font-size: 12px; gap: 6px; }
+.gantt-legend .optchip .gl { border-color: rgba(0,0,0,.12); }
 
 /* Custom date picker */
 .dp { position: relative; }
@@ -449,7 +468,10 @@ include __DIR__ . '/_layout.php';
   <span><i class="gl gl--today"></i> Today</span>
   <span><i class="gl gl--weekend"></i> Weekend</span>
   <span><i class="gl gl--holiday"></i> Public holiday</span>
-  <span><i class="gl gl--rate"></i> Rate override</span>
+  <span class="gl-sep" aria-hidden="true"></span>
+  <label class="optchip" title="Mark nights that have a nightly-rate override">
+    <input type="checkbox" id="ganttShowRates"> <i class="gl gl--rate"></i> Show rate overrides
+  </label>
 </div>
 
 <!-- ── Gantt ── -->
@@ -474,7 +496,7 @@ include __DIR__ . '/_layout.php';
       <?php endforeach; ?>
     </div>
     <div class="gantt-head" style="min-width:0">
-      <div class="gantt-label" style="height:30px;align-items:flex-start;padding-top:8px;border-bottom:none"></div>
+      <div class="gantt-label" style="height:38px;border-bottom:none"></div>
       <div class="gantt-days">
         <?php foreach ($days as $i => $day):
           $dow = (int)date('N', strtotime($day));
@@ -483,11 +505,12 @@ include __DIR__ . '/_layout.php';
           $hol     = ke_holiday_name($day);
           $isMonthStart = $i > 0 && date('j', strtotime($day)) === '1';
           $cls = ($isToday ? ' is-today' : '') . ($dow >= 6 ? ' is-weekend' : '')
+               . ($dow === 7 ? ' is-sun' : '')
                . ($hol ? ' is-holiday' : '') . ($isRate ? ' is-rate' : '') . ($isMonthStart ? ' is-month-start' : '');
           $ttl = date('D d M', strtotime($day)) . ($hol ? ' · ' . $hol : '') . ($isRate ? ' ★ Rate override' : '');
         ?>
         <div class="gantt-day-h<?= $cls ?>" title="<?= e($ttl) ?>">
-          <?= date('j', strtotime($day)) ?>
+          <span class="gd-dow"><?= substr(date('D', strtotime($day)), 0, 1) ?></span><?= date('j', strtotime($day)) ?>
         </div>
         <?php endforeach; ?>
       </div>
@@ -571,6 +594,7 @@ include __DIR__ . '/_layout.php';
         $isHol   = ke_holiday_name($day) !== null;
         $isMonthStart = $i > 0 && date('j', strtotime($day)) === '1';
         $cls = ($isToday ? ' is-today' : '') . ($dow >= 6 ? ' is-weekend' : '')
+             . ($dow === 7 ? ' is-sun' : '')
              . ($isHol ? ' is-holiday' : '') . ($isRate ? ' is-rate' : '') . ($isMonthStart ? ' is-month-start' : '');
       ?>
       <div class="gantt-day-cell<?= $cls ?>" data-date="<?= e($day) ?>" data-unit="<?= e($unit['id']) ?>"></div>
@@ -719,15 +743,7 @@ include __DIR__ . '/_layout.php';
   <?php endforeach; ?>
 </div>
 
-<!-- Legend -->
-<div style="display:flex;gap:20px;margin-bottom:28px;font-size:12px;align-items:center;flex-wrap:wrap">
-  <strong>Legend:</strong>
-  <span><span style="display:inline-block;width:12px;height:12px;background:#2e7d32;border-radius:2px;vertical-align:middle;margin-right:4px"></span>Booked</span>
-  <span><span style="display:inline-block;width:12px;height:12px;background:#e07b39;border-radius:2px;vertical-align:middle;margin-right:4px"></span>Hold (pending)</span>
-  <span><span style="display:inline-block;width:12px;height:12px;background:#6b7c85;border-radius:2px;vertical-align:middle;margin-right:4px"></span>Blocked</span>
-  <span><span style="display:inline-block;width:12px;height:12px;background:#fef9c3;border:1px solid #f59e0b;border-radius:2px;vertical-align:middle;margin-right:4px"></span>Rate override</span>
-  <span style="color:var(--muted)">Drag empty cells to block · Drag blocks to move · Drag right edge to resize · Click block to delete</span>
-</div>
+<p style="margin:0 0 28px;font-size:12px;color:var(--muted)">Drag empty cells to block · Drag blocks to move · Drag right edge to resize · Click block to delete</p>
 
 <?php endif; // end if units ?>
 
@@ -1104,6 +1120,23 @@ function setVenueCollapsed(key, collapsed) {
     header.addEventListener('keydown', e => {
       if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); }
     });
+  });
+})();
+
+// ── Rate-override filter ──────────────────────────────────────────
+// Off by default so the grid shows occupancy first; remembered across the
+// PRG reloads like the collapsed properties above.
+(function initRateFilter() {
+  const box = document.getElementById('ganttShowRates');
+  const outer = document.getElementById('ganttOuter');
+  if (!box || !outer) return;
+  const KEY = 'ganttShowRates';
+  try { box.checked = localStorage.getItem(KEY) === '1'; } catch (e) {}
+  const apply = () => outer.classList.toggle('show-rates', box.checked);
+  apply();
+  box.addEventListener('change', () => {
+    apply();
+    try { localStorage.setItem(KEY, box.checked ? '1' : '0'); } catch (e) {}
   });
 })();
 
