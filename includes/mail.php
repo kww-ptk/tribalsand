@@ -1092,16 +1092,17 @@ function send_admin_reply(array $sub, string $message): array {
     require_once __DIR__ . '/booking.php';   // make_submission_ref()
     $env   = parse_env();
     $from  = $env['MAIL_FROM'] ?? 'Tribal Sand <noreply@tribalsand.com>';
-    // Reply-To is the recognisable "reservations@" brand address, fixed to
-    // reservations@inbound.tribalsand.com. That local part reads as reservations,
-    // and the inbound.tribalsand.com subdomain is one AWS SES *receives* on — so a
-    // guest's reply lands at SES, the [TSR-<id>] subject tag below is matched by
-    // api/inbound-mail.php, and the reply threads back automatically with NO M365
-    // forwarding needed. It is deliberately NOT the apex reservations@tribalsand.com
-    // (that mailbox is on M365 and SES cannot receive it) nor the `notify_email`
-    // setting (internal staff recipient; may point elsewhere). The address MUST be
-    // accepted by the SES receipt rule — see docs/inbound-mail-setup.md.
-    $reply = 'reservations@inbound.tribalsand.com';
+    // Reply-To is the apex brand address reservations@tribalsand.com — what the
+    // guest sees and replies to. That mailbox lives on M365 (the apex MX), which
+    // SES cannot receive, so automatic threading depends on an M365 rule that
+    // FORWARDS reservations@tribalsand.com -> reservations@inbound.tribalsand.com
+    // (an address SES receives; the receipt rule accepts the whole
+    // inbound.tribalsand.com subdomain). The forward preserves the subject, so the
+    // [TSR-<id>] tag below is matched by api/inbound-mail.php and the reply threads
+    // back. Without that forward, replies just sit in the M365 mailbox for staff to
+    // paste in. Deliberately NOT the `notify_email` setting (internal staff
+    // recipient; on dev it's a tester's inbox). See docs/inbound-mail-setup.md.
+    $reply = 'reservations@tribalsand.com';
     $site  = rtrim($env['SITE_URL'] ?? $env['APP_URL'] ?? 'https://tribalsand.com', '/');
     $guest = trim((string)($sub['guest_name'] ?? ''));
     $tag   = !empty($sub['id']) ? ' [' . make_submission_ref((int)$sub['id']) . ']' : '';
