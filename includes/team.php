@@ -76,6 +76,59 @@ function team_can_be_assigned(int $adminId, int $holdId): bool {
     } catch (Throwable $e) { return false; }
 }
 
+// ── Lead / booking assignment (Items 2 & 3) ─────────────────────────────────
+
+/** True if <table>.assigned_to exists (memoised per table). False pre-migration. */
+function assignee_column_supported(string $table): bool {
+    static $c = [];
+    if (isset($c[$table])) return $c[$table];
+    try {
+        return $c[$table] = (bool) db_query(
+            "SELECT 1 FROM information_schema.columns
+             WHERE table_name = :t AND column_name = 'assigned_to'",
+            [':t' => $table]
+        )->fetchColumn();
+    } catch (Throwable $e) { return $c[$table] = false; }
+}
+function submission_assignee_supported(): bool { return assignee_column_supported('submissions'); }
+function hold_assignee_supported(): bool       { return assignee_column_supported('holds'); }
+
+/**
+ * The people a lead / booking can be assigned to — active non-owner accounts that
+ * actually follow leads up (manager, reception, staff). When $venueId is given the
+ * list is scoped to accounts covering that property; NULL/0 (a general enquiry with
+ * no property) returns every such account. Returns rows: id, name, email, role, job_type.
+ */
+function assignable_accounts(?int $venueId = null): array {
+    try {
+        if ($venueId) {
+            return db_query(
+                "SELECT DISTINCT a.id, a.name, a.email, a.role, a.job_type
+                 FROM admin_users a
+                 JOIN admin_user_venues av ON av.admin_user_id = a.id
+                 WHERE a.role IN ('manager','reception','staff') AND a.is_active = TRUE AND av.venue_id = :v
+                 ORDER BY a.role DESC, a.name ASC",
+                [':v' => $venueId]
+            )->fetchAll();
+        }
+        return db_query(
+            "SELECT a.id, a.name, a.email, a.role, a.job_type
+             FROM admin_users a
+             WHERE a.role IN ('manager','reception','staff') AND a.is_active = TRUE
+             ORDER BY a.role DESC, a.name ASC"
+        )->fetchAll();
+    } catch (Throwable $e) { return []; }
+}
+
+/** True if $adminId is a valid target to assign a lead/booking at $venueId to. */
+function is_assignable_account(int $adminId, ?int $venueId = null): bool {
+    if ($adminId <= 0) return false;
+    foreach (assignable_accounts($venueId) as $a) {
+        if ((int)$a['id'] === $adminId) return true;
+    }
+    return false;
+}
+
 /** Display name for an assigned admin id (or '' if unknown). */
 function team_member_name(?int $adminId): string {
     if (!$adminId) return '';

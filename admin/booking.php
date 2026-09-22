@@ -11,6 +11,7 @@ require_once __DIR__ . '/../includes/icons.php';            // admin_icon() — 
 require_once __DIR__ . '/../includes/admin-pagination.php'; // dt_empty() for the workspace thread list
 require_once __DIR__ . '/../includes/copy-link.php';        // copy_link_control() for the Details tab
 require_once __DIR__ . '/../includes/services.php';         // format_price() for a trade booking's net figure
+require_once __DIR__ . '/../includes/activity-log.php';     // activity_log_html() — Item 3
 require_login();
 
 $holdId = (int)($_GET['hold'] ?? $_POST['hold_id'] ?? 0);
@@ -33,7 +34,7 @@ if (!is_owner() && !staff_can_hold($holdId)) { $_SESSION['hold_flash']=['type'=>
 $__noMessaging = is_staff() && (job_is_ops(admin_job()) || admin_job() === 'security');
 
 $tab = $_GET['tab'] ?? 'requests';
-if (!in_array($tab, ['requests','messages','plan','bill','checkin','details'], true)) $tab = 'requests';
+if (!in_array($tab, ['requests','messages','plan','bill','checkin','activity','details'], true)) $tab = 'requests';
 // Only the owner sees the Details tab (booking confirm/cancel/edit is owner-only config).
 if (!is_owner() && $tab === 'details') $tab = 'requests';
 if ($__noMessaging && $tab === 'messages') $tab = 'requests';
@@ -63,6 +64,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         audit_log('hold.cancel', 'hold', $holdId, "{$hold['guest_name']}");
         $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Cancelled — dates freed, guest notified.'];
         header("Location: /admin/booking.php?hold=$holdId&tab=details"); exit;
+    }
+    // Assign / reassign this booking to a team member (Item 2). Front-desk audience only.
+    if ($act === 'assign') {
+        if ($__noMessaging) {
+            $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Assignment isn’t available for your account.'];
+        } elseif (!hold_assignee_supported()) {
+            $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Assignment is unavailable — run the add_lead_assignee migration.'];
+        } else {
+            $to  = (int)($_POST['assigned_to'] ?? 0);
+            $old = (int)($hold['assigned_to'] ?? 0);
+            $vid = (int)($hold['venue_id'] ?? 0);
+            if ($to !== 0 && !is_assignable_account($to, $vid ?: null)) {
+                $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Pick a valid team member.'];
+            } else {
+                db_query('UPDATE holds SET assigned_to = :a WHERE id = :id', [':a'=>$to ?: null, ':id'=>$holdId]);
+                audit_log('hold.assign', 'hold', $holdId,
+                    (team_member_name($old ?: null) ?: 'Unassigned') . ' → ' . (team_member_name($to ?: null) ?: 'Unassigned'));
+                $_SESSION['hold_flash'] = ['type'=>'success','msg'=>$to
+                    ? 'Assigned to ' . (team_member_name($to) ?: 'team member') . '.'
+                    : 'Booking unassigned.'];
+            }
+        }
+        header("Location: /admin/booking.php?hold=$holdId&tab=activity"); exit;
     }
     if ($act === 'reply' && $__noMessaging) {
         $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Messaging isn’t available for your account.'];
@@ -287,13 +311,13 @@ foreach ($__changes as $c){ if ($c['status']==='requested') $openReq++; }
 $unreadMsg = (int)db_query("SELECT COUNT(*) FROM booking_messages WHERE hold_id=:h AND sender='guest' AND read_by_admin=FALSE",[':h'=>$holdId])->fetchColumn();
 
 // Tab menu (owner-only Details; ops/security get no Messages).
-$__wtabs = ['requests'=>'Requests','messages'=>'Messages','plan'=>'Plan','bill'=>'Bill','checkin'=>'Check-in','details'=>'Details'];
+$__wtabs = ['requests'=>'Requests','messages'=>'Messages','plan'=>'Plan','bill'=>'Bill','checkin'=>'Check-in','activity'=>'Activity','details'=>'Details'];
 if (!is_owner())     unset($__wtabs['details']);
 if ($__noMessaging)  unset($__wtabs['messages']);
 
 // Skeleton the shell shows while a tab loads: the tab NAV always lands on the
 // list/overview shape; the panel itself may be a chat when a thread is open.
-$__tabSkel = ['requests'=>'table','messages'=>'table','plan'=>'detail','bill'=>'table','checkin'=>'detail','details'=>'detail'];
+$__tabSkel = ['requests'=>'table','messages'=>'table','plan'=>'detail','bill'=>'table','checkin'=>'detail','activity'=>'detail','details'=>'detail'];
 $__skel    = ($tab === 'messages' && ($_GET['thread'] ?? null) !== null) ? 'chat' : ($__tabSkel[$tab] ?? 'table');
 
 // Build the active tab's panel into a buffer so it can be served on its own as an
@@ -304,6 +328,7 @@ elseif ($tab === 'messages') include __DIR__ . '/_ws_messages.php';
 elseif ($tab === 'plan')     include __DIR__ . '/_ws_plan.php';
 elseif ($tab === 'bill')     include __DIR__ . '/_ws_bill.php';
 elseif ($tab === 'checkin')  include __DIR__ . '/_ws_checkin.php';
+elseif ($tab === 'activity') include __DIR__ . '/_ws_activity.php';
 else                         include __DIR__ . '/_ws_details.php';
 $wsPanel = ob_get_clean();
 
@@ -313,7 +338,9 @@ if (($_GET['ajax'] ?? '') !== '' && $_SERVER['REQUEST_METHOD'] === 'GET') { echo
 include __DIR__ . '/_layout.php';
 ?>
 <div class="page-header">
-  <h1><?= e($hold['guest_name'] ?: 'Guest') ?> — <?= e($hold['room_name']) ?></h1>
+  <h1><?= e($hold['guest_name'] ?: 'Guest') ?> — <?= e($hold['room_name']) ?>
+    <?php if (hold_assignee_supported() && !empty($hold['assigned_to'])): ?><span class="badge badge--blue" style="vertical-align:middle;font-size:12px"><?= admin_icon('user', 12) ?> <?= e(team_member_name((int)$hold['assigned_to'])) ?></span><?php endif; ?>
+  </h1>
   <a href="/admin/holds.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Bookings</a>
 </div>
 <p class="text-muted" style="margin:-8px 0 14px;font-size:13px"><?= e(date('j M Y',strtotime($hold['check_in']))) ?> → <?= e(date('j M Y',strtotime($hold['check_out']))) ?> · <span class="badge badge--<?= ['pending'=>'orange','confirmed'=>'green','cancelled'=>'red','expired'=>'grey'][$hold['status']] ?? 'grey' ?>"><?= e($hold['status']) ?></span> · <code><?= e($hold['access_code']) ?></code><?php if (!empty($hold['agent_id'])): ?> · <span class="badge badge--blue">Trade booking</span> via <strong><?= e(trim((string)($hold['agent_agency'] ?? '')) ?: (string)($hold['agent_name'] ?? '')) ?></strong> (<?= e((string)($hold['agent_name'] ?? '')) ?>, <a href="mailto:<?= e((string)($hold['agent_email'] ?? '')) ?>"><?= e((string)($hold['agent_email'] ?? '')) ?></a>)<?php if (!empty($hold['quoted_amount'])): ?> · net <?= e(format_price((float)$hold['quoted_amount'], (string)(($hold['quoted_currency'] ?? '') ?: 'USD'))) ?><?php endif; ?><?php endif; ?></p>

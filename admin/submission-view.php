@@ -39,6 +39,7 @@ require_once __DIR__ . '/../includes/staff-hold-guard.php'; // staff_hold_block_
 require_once __DIR__ . '/../includes/bookings.php'; // hold_product_room_id()
 require_once __DIR__ . '/../includes/agent.php';    // agent_tag_converted_hold() — trade requests
 require_once __DIR__ . '/../includes/services.php'; // format_price() for the trade net figure
+require_once __DIR__ . '/../includes/activity-log.php'; // activity_log_html() — Item 3
 
 // Flash (set by the convert handler on redirect)
 $flash = $_SESSION['sub_flash'] ?? null;
@@ -56,8 +57,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'set_s
     } elseif (!submission_status_valid($new)) {
         $_SESSION['sub_flash'] = ['type' => 'error', 'msg' => 'Pick a valid status.'];
     } else {
+        $old = (string)($sub['status'] ?? '') ?: submission_status_default();
         db_query('UPDATE submissions SET status = :st WHERE id = :id', [':st' => $new, ':id' => $id]);
+        if ($new !== $old) {
+            audit_log('submission.status', 'submission', $id,
+                submission_status_label($old) . ' → ' . submission_status_label($new));
+        }
         $_SESSION['sub_flash'] = ['type' => 'success', 'msg' => 'Status updated to “' . submission_status_label($new) . '”.'];
+    }
+    header('Location: /admin/submission-view?id=' . $id . '#thread');
+    exit;
+}
+
+// Assign / reassign this lead to a team member (Item 2)
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'assign') {
+    verify_csrf();
+    if (!submission_assignee_supported()) {
+        $_SESSION['sub_flash'] = ['type' => 'error', 'msg' => 'Assignment is unavailable — run the add_lead_assignee migration.'];
+    } else {
+        $venueId = (int)($sub['room_id'] ?? 0) > 0
+            ? (int) db_query('SELECT venue_id FROM rooms WHERE id = :r', [':r' => (int)$sub['room_id']])->fetchColumn()
+            : 0;
+        $to  = (int)($_POST['assigned_to'] ?? 0);
+        $old = (int)($sub['assigned_to'] ?? 0);
+        if ($to !== 0 && !is_assignable_account($to, $venueId ?: null)) {
+            $_SESSION['sub_flash'] = ['type' => 'error', 'msg' => 'Pick a valid team member.'];
+        } else {
+            db_query('UPDATE submissions SET assigned_to = :a WHERE id = :id', [':a' => $to ?: null, ':id' => $id]);
+            audit_log('submission.assign', 'submission', $id,
+                (team_member_name($old ?: null) ?: 'Unassigned') . ' → ' . (team_member_name($to ?: null) ?: 'Unassigned'));
+            $_SESSION['sub_flash'] = ['type' => 'success', 'msg' => $to
+                ? 'Lead assigned to ' . (team_member_name($to) ?: 'team member') . '.'
+                : 'Lead unassigned.'];
+        }
     }
     header('Location: /admin/submission-view?id=' . $id . '#thread');
     exit;
@@ -308,6 +340,7 @@ include __DIR__ . '/_layout.php';
   <h1>Submission #<?= e($id) ?>
     <span class="badge <?= $badge ?>" style="vertical-align:middle"><?= e($sub['type']) ?></span>
     <?php if ($status !== ''): ?><span class="badge <?= submission_status_badge($status) ?>" style="vertical-align:middle"><?= e(submission_status_label($status)) ?></span><?php endif; ?>
+    <?php if (submission_assignee_supported() && !empty($sub['assigned_to'])): ?><span class="badge badge--blue" style="vertical-align:middle"><?= admin_icon('user', 12) ?> <?= e(team_member_name((int)$sub['assigned_to'])) ?></span><?php endif; ?>
   </h1>
   <div class="actions">
     <a href="/admin/submissions.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Inbox</a>
@@ -477,6 +510,29 @@ include __DIR__ . '/_layout.php';
     </form>
     <?php endif; ?>
 
+    <!-- Assign lead to a team member (Item 2) -->
+    <?php if (submission_assignee_supported()):
+      $__aVenue = (int)($sub['room_id'] ?? 0) > 0
+        ? (int) db_query('SELECT venue_id FROM rooms WHERE id = :r', [':r' => (int)$sub['room_id']])->fetchColumn()
+        : 0;
+      $__assignable = assignable_accounts($__aVenue ?: null);
+      $__assignedTo = (int)($sub['assigned_to'] ?? 0);
+    ?>
+    <form method="POST" action="/admin/submission-view?id=<?= $id ?>" style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:22px">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="assign">
+      <label class="detail-item__label" style="margin:0">Assigned to</label>
+      <select name="assigned_to" class="inp" style="min-width:190px;max-width:240px">
+        <option value="0">— Unassigned —</option>
+        <?php foreach ($__assignable as $m): ?>
+        <option value="<?= (int)$m['id'] ?>" <?= $__assignedTo === (int)$m['id'] ? 'selected' : '' ?>><?= e($m['name'] ?: $m['email']) ?><?= $m['role'] !== 'staff' ? ' (' . e($m['role']) . ')' : '' ?></option>
+        <?php endforeach; ?>
+      </select>
+      <button type="submit" class="btn-primary btn-sm">Save</button>
+      <?php if ($__assignedTo): ?><span class="text-muted" style="font-size:12.5px">Responsible: <strong><?= e(team_member_name($__assignedTo)) ?></strong></span><?php endif; ?>
+    </form>
+    <?php endif; ?>
+
     <?php if (!submission_notes_supported()): ?>
       <p class="text-muted" style="margin:0;font-size:13px">The conversation thread is unavailable. Run the <code>add_submission_notes.sql</code> migration to enable it.</p>
     <?php else: ?>
@@ -603,6 +659,14 @@ include __DIR__ . '/_layout.php';
       </script>
       <?php endif; ?>
     <?php endif; ?>
+  </div>
+</div>
+
+<!-- Activity log (Item 3): who did what, and when -->
+<div class="card" id="activity">
+  <div class="card__head"><span class="card__title">Activity Log</span></div>
+  <div class="card__body" style="padding:14px 20px">
+    <?php activity_log_html('submission', $id); ?>
   </div>
 </div>
 
