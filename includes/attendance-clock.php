@@ -162,6 +162,97 @@ function clock_display_time(?int $min): ?string {
 }
 
 /**
+ * How long a night shift may run before we stop believing it is one. 14 hours.
+ *
+ * A real night shift and a clock-out someone forgot are IDENTICAL in the data —
+ * both are a row with an in and no out. Only elapsed time separates them. A
+ * generous night shift with overtime is ~12h; past 14h it is almost certainly
+ * a forgotten punch, and closing it would book a 24-hour shift into the hours
+ * totals.
+ */
+const CLOCK_NIGHT_SHIFT_MAX_MIN = 840;
+
+/**
+ * What the kiosk should offer the person who just scanned. PURE — no database,
+ * no clock; $nowMinutes is minutes past midnight of today, injected so this is
+ * testable at any instant.
+ *
+ * Returns:
+ *   action     'in' | 'out' | null   what to offer
+ *   slot       which column it fills, or null
+ *   last_min   raw minutes of the most recent filled slot, or null
+ *   last_kind  'in' | 'out' for that slot
+ *   scope      'today' | 'yesterday' — which day an out would close
+ *   blocked    null | 'status' | 'done'
+ *   stale      true when yesterday was left open past the bound above
+ *   status     the day's status code, for the message
+ *
+ * Built ON clock_next_slot(), never a second copy of the slot rules: that
+ * function is what the WRITE path uses, and two implementations of one rule is
+ * how a kiosk starts offering buttons the punch endpoint refuses.
+ *
+ * last_min is returned RAW. Formatting is the endpoint's job (see
+ * clock_display_time) so this stays free of presentation.
+ */
+function clock_card_state(array $today, array $yest, int $nowMinutes): array {
+    $base = [
+        'action'    => null,
+        'slot'      => null,
+        'last_min'  => null,
+        'last_kind' => null,
+        'scope'     => 'today',
+        'blocked'   => null,
+        'stale'     => false,
+        'status'    => trim((string)($today['status'] ?? '')),
+    ];
+
+    $last = clock_last_punch($today);
+    if ($last !== null) {
+        $base['last_min']  = $last['min'];
+        $base['last_kind'] = $last['kind'];
+    }
+
+    // A manager marked this day deliberately. Checked BEFORE the slot lookups
+    // so a leave day reads as 'status' and not as 'done' — they need different
+    // messages on screen.
+    if ($base['status'] !== '' && $base['status'] !== 'P') {
+        return ['blocked' => 'status'] + $base;
+    }
+
+    // Mid-shift: an out is what's expected. This is the headline case.
+    $outSlot = clock_next_slot($today, 'out');
+    if ($outSlot !== null) {
+        return ['action' => 'out', 'slot' => $outSlot] + $base;
+    }
+
+    $inSlot = clock_next_slot($today, 'in');
+    if ($inSlot !== null) {
+        // Yesterday still open: either a night shift ending now, or a punch
+        // someone forgot before going home.
+        if (clock_row_is_open($yest)) {
+            $yLast   = clock_last_punch($yest);
+            $elapsed = $yLast !== null ? ($nowMinutes + 1440) - $yLast['min'] : PHP_INT_MAX;
+
+            if ($elapsed <= CLOCK_NIGHT_SHIFT_MAX_MIN) {
+                return [
+                    'action'    => 'out',
+                    'slot'      => clock_next_slot($yest, 'out'),
+                    'scope'     => 'yesterday',
+                    'last_min'  => $yLast['min'],
+                    'last_kind' => $yLast['kind'],
+                ] + $base;
+            }
+            // Too old to be a shift. Start today and leave the stale row for a
+            // manager — closing it here would record a day-long shift.
+            return ['action' => 'in', 'slot' => $inSlot, 'stale' => true] + $base;
+        }
+        return ['action' => 'in', 'slot' => $inSlot] + $base;
+    }
+
+    return ['blocked' => 'done'] + $base;
+}
+
+/**
  * Build the COMPLETE four-slot payload for attendance_upsert(), preserving what
  * is already on the row and setting one slot.
  *

@@ -113,6 +113,86 @@ check('display null -> null',   clock_display_time(null) === null);
 // editor, not a greeting.
 check('display 1470 -> 00:30',  clock_display_time(1470) === '00:30');
 check('display 1440 -> 00:00',  clock_display_time(1440) === '00:00');
+
+// ── Card state: what the kiosk offers (pure) ────────────────────────────────
+// Rows reuse the fixtures above. $none is "no row yesterday".
+$none = [];
+
+$s = clock_card_state($empty, $none, 480);              // 08:00, nothing yet
+check('fresh day offers in',       $s['action'] === 'in' && $s['slot'] === 'in1');
+check('fresh day has no last',     $s['last_min'] === null && $s['last_kind'] === null);
+check('fresh day not blocked',     $s['blocked'] === null && $s['stale'] === false);
+
+$s = clock_card_state($in1, $none, 600);                // 10:00, in since 07:00
+check('mid-shift offers out',      $s['action'] === 'out' && $s['slot'] === 'out1');
+check('mid-shift reports the in',  $s['last_min'] === 420 && $s['last_kind'] === 'in');
+check('mid-shift scope is today',  $s['scope'] === 'today');
+
+$s = clock_card_state($closed, $none, 780);             // 13:00, back from break
+check('after break offers in',     $s['action'] === 'in' && $s['slot'] === 'in2');
+check('after break reports out',   $s['last_min'] === 720 && $s['last_kind'] === 'out');
+
+$s = clock_card_state($in2, $none, 900);                // 15:00, second shift open
+check('second shift offers out',   $s['action'] === 'out' && $s['slot'] === 'out2');
+check('second shift reports in2',  $s['last_min'] === 780 && $s['last_kind'] === 'in');
+
+$s = clock_card_state($full, $none, 1100);              // 18:20, day complete
+check('full day offers nothing',   $s['action'] === null && $s['blocked'] === 'done');
+check('full day reports last out', $s['last_min'] === 1020 && $s['last_kind'] === 'out');
+
+$s = clock_card_state(['status' => 'LV'], $none, 480);
+check('leave day is blocked',      $s['action'] === null && $s['blocked'] === 'status');
+check('leave day keeps status',    $s['status'] === 'LV');
+
+$s = clock_card_state(['status' => 'P'], $none, 480);
+check('status P is a normal day',  $s['action'] === 'in' && $s['blocked'] === null);
+
+// ── Night shift vs a punch someone forgot ───────────────────────────────────
+// Yesterday: clocked in 22:00 (1320), never clocked out.
+$yOpen = ['in1' => 1320];
+
+$s = clock_card_state($empty, $yOpen, 360);             // 06:00, 8h later
+check('night shift offers out',    $s['action'] === 'out' && $s['slot'] === 'out1');
+check('night shift scope is yest', $s['scope'] === 'yesterday');
+check('night shift reports yest',  $s['last_min'] === 1320 && $s['last_kind'] === 'in');
+check('night shift not stale',     $s['stale'] === false);
+
+// The boundary. elapsed = (now + 1440) - 1320, and the bound is 840 (14h).
+check('13h59 later is a shift',    clock_card_state($empty, $yOpen, 719)['action'] === 'out');
+$s = clock_card_state($empty, $yOpen, 721);             // 14h01 later
+check('14h01 later offers in',     $s['action'] === 'in' && $s['slot'] === 'in1');
+check('14h01 later is flagged',    $s['stale'] === true);
+check('14h01 scope is today',      $s['scope'] === 'today');
+
+// A closed yesterday is simply irrelevant.
+check('closed yesterday ignored',  clock_card_state($empty, $full, 480)['action'] === 'in');
+
+// Past midnight: in1 22:00, out1 23:30, in2 00:30 (1470) — still open.
+$crossed = ['in1' => 1320, 'out1' => 1410, 'in2' => 1470];
+$s = clock_card_state($crossed, $none, 120);
+check('crossed midnight -> out2',  $s['action'] === 'out' && $s['slot'] === 'out2');
+check('crossed reports 1470',      $s['last_min'] === 1470);
+check('crossed displays 00:30',    clock_display_time($s['last_min']) === '00:30');
+
+// ── The property that keeps read and write from drifting apart ──────────────
+// Whenever the resolver names an action, the WRITE path must agree that a slot
+// exists for it. If these two ever disagree the kiosk offers a button that the
+// punch endpoint then refuses.
+foreach ([
+    ['today' => $empty,  'yest' => $none,  'now' => 480],
+    ['today' => $in1,    'yest' => $none,  'now' => 600],
+    ['today' => $closed, 'yest' => $none,  'now' => 780],
+    ['today' => $in2,    'yest' => $none,  'now' => 900],
+    ['today' => $empty,  'yest' => $yOpen, 'now' => 360],
+    ['today' => $empty,  'yest' => $yOpen, 'now' => 721],
+    ['today' => $crossed,'yest' => $none,  'now' => 120],
+] as $i => $c) {
+    $st = clock_card_state($c['today'], $c['yest'], $c['now']);
+    if ($st['action'] === null) { check("case {$i}: no action, no slot", $st['slot'] === null); continue; }
+    $row = ($st['scope'] === 'yesterday') ? $c['yest'] : $c['today'];
+    check("case {$i}: write path agrees", clock_next_slot($row, $st['action']) === $st['slot']);
+}
+
 // ── DB round-trip, inside a transaction we roll back ────────────────────────
 $dbOk = true;
 try { db(); } catch (Throwable $e) { $dbOk = false; }
