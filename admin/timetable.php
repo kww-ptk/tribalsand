@@ -16,7 +16,17 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/booking.php';
 require_once __DIR__ . '/../includes/frontdesk.php';
 require_once __DIR__ . '/../includes/task-calendar.php';
+require_once __DIR__ . '/../includes/holidays.php';   // ke_holiday_name() — weekend/holiday column tint
 require_login();
+
+/** Column class string for a timetable day (today / weekend / KE holiday). */
+function tt_day_cls(string $d, string $today): string {
+    $c = [];
+    if ($d === $today)                                   $c[] = 'is-today';
+    if (in_array((int)date('N', strtotime($d)), [6, 7])) $c[] = 'is-weekend';
+    if (ke_holiday_name($d) !== null)                    $c[] = 'is-holiday';
+    return implode(' ', $c);
+}
 
 $pageTitle  = 'Timetable';
 $activeMenu = 'timetable';
@@ -180,9 +190,10 @@ include __DIR__ . '/_layout.php';
       <thead>
         <tr>
           <th class="tt-hourcol"></th>
-          <?php foreach ($grid['days'] as $d): ?>
-          <th class="<?= $d === $today ? 'is-today' : '' ?>">
+          <?php foreach ($grid['days'] as $d): $hol = ke_holiday_name($d); ?>
+          <th class="<?= e(tt_day_cls($d, $today)) ?>"<?= $hol ? ' title="' . e($hol) . '"' : '' ?>>
             <?= e(date('D', strtotime($d))) ?><br><span class="text-muted" style="font-weight:400"><?= e(date('j M', strtotime($d))) ?></span>
+            <?php if ($hol): ?><br><span class="tt-hol" title="<?= e($hol) ?>"><?= e($hol) ?></span><?php endif; ?>
           </th>
           <?php endforeach; ?>
         </tr>
@@ -191,7 +202,7 @@ include __DIR__ . '/_layout.php';
         <tr class="tt-anytime">
           <th class="tt-hourcol">Anytime</th>
           <?php foreach ($grid['days'] as $d): ?>
-          <td class="<?= $d === $today ? 'is-today' : '' ?>">
+          <td class="<?= e(tt_day_cls($d, $today)) ?>">
             <?php foreach ($grid['anytime'][$d] as $t) tt_chip($t, $today, $nowHms, $jobClass); ?>
           </td>
           <?php endforeach; ?>
@@ -200,7 +211,7 @@ include __DIR__ . '/_layout.php';
         <tr>
           <th class="tt-hourcol"><?= sprintf('%02d:00', $h) ?></th>
           <?php foreach ($grid['days'] as $d): ?>
-          <td class="<?= $d === $today ? 'is-today' : '' ?>">
+          <td class="<?= e(tt_day_cls($d, $today)) ?>">
             <?php foreach (($grid['cells'][$d][$h] ?? []) as $t) tt_chip($t, $today, $nowHms, $jobClass); ?>
           </td>
           <?php endforeach; ?>
@@ -225,8 +236,16 @@ include __DIR__ . '/_layout.php';
 .tt-grid th,.tt-grid td{border:1px solid var(--border,#e7ded7);vertical-align:top;padding:3px}
 .tt-grid thead th{padding:6px 3px;font-size:12px;text-align:center}
 .tt-hourcol{width:62px;color:var(--muted,#6B6050);font-weight:400;text-align:right;padding-right:6px!important;white-space:nowrap}
-.tt-grid td.is-today,.tt-grid th.is-today{background:#fdfaf4}
 .tt-anytime td{background:#faf7f1}
+/* Weekend + Kenyan public holiday column tints (today over-rides both) */
+.tt-grid td.is-weekend,.tt-grid th.is-weekend{background:#f1f5f9}
+.tt-grid td.is-holiday,.tt-grid th.is-holiday{background:#fdf1f1}
+.tt-grid thead th.is-holiday{color:#b42318}
+.tt-hol{display:inline-block;margin-top:1px;font-size:9px;font-weight:700;color:#b42318;line-height:1.1}
+/* Today — a loud blue header chip + a full-height accent band down the column */
+.tt-grid thead th.is-today{background:#1d4ed8;color:#fff;border-color:#1d4ed8}
+.tt-grid thead th.is-today .text-muted{color:#dbe9ff!important}
+.tt-grid td.is-today{background:#eff5ff;box-shadow:inset 2px 0 0 #1d4ed8,inset -2px 0 0 #1d4ed8}
 .tt-chip{display:block;width:100%;text-align:left;border:1px solid transparent;border-radius:5px;padding:4px 5px;margin-bottom:3px;cursor:pointer;font:inherit;background:#eef2f7}
 .tt-chip:last-child{margin-bottom:0}
 .tt-chip__title{display:block;line-height:1.25}

@@ -5,6 +5,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/gantt-lanes.php'; // concurrent-block lane packing
 require_once __DIR__ . '/../includes/staff-hold-guard.php'; // staff_hold_block_reason()
 require_once __DIR__ . '/../includes/gantt-block-guard.php'; // gantt_block_move()
+require_once __DIR__ . '/../includes/holidays.php';         // ke_holiday_name() — calendar holiday highlight
 require_login();
 require_bookings();
 
@@ -310,16 +311,27 @@ include __DIR__ . '/_layout.php';
 .gantt-months { display: flex; min-width: max-content; border-bottom: 1px solid var(--border); }
 .gantt-month-cell { display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; background: var(--sidebar-bg); color: #fff; height: 20px; border-right: 1px solid rgba(255,255,255,.15); }
 /* Day header */
-.gantt-day-h { width: 28px; min-width: 28px; height: 30px; display: flex; align-items: center; justify-content: center; font-size: 10px; color: var(--muted); border-right: 1px solid var(--border); flex-shrink: 0; }
-.gantt-day-h.is-today { background: #e0f2fe; color: #0369a1; font-weight: 700; }
-.gantt-day-h.is-weekend { background: #f8f9fa; }
+.gantt-day-h { position: relative; width: 28px; min-width: 28px; height: 32px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; color: #334155; border-right: 1px solid var(--border); flex-shrink: 0; }
+/* Weekends — a cool tint, clearly not a weekday */
+.gantt-day-h.is-weekend { background: #eef2f6; color: #64748b; }
+/* Kenyan public holidays — rose, with a dot marker so they read at a glance */
+.gantt-day-h.is-holiday { background: #fde8e8; color: #b42318; font-weight: 700; }
+.gantt-day-h.is-holiday::after { content: ''; position: absolute; bottom: 3px; left: 50%; transform: translateX(-50%); width: 4px; height: 4px; border-radius: 50%; background: #d92d20; }
 /* Row cells */
 .gantt-cells { position: relative; display: flex; flex: 1; height: 36px; border-bottom: 1px solid var(--border); }
 .gantt-day-cell { width: 28px; min-width: 28px; height: 100%; border-right: 1px solid #f0f0f0; cursor: pointer; flex-shrink: 0; transition: background .1s; }
-.gantt-day-cell:hover { background: #f0f8fa; }
-.gantt-day-cell.is-today { background: #f0f9ff; }
-.gantt-day-cell.is-weekend { background: #fafafa; }
+.gantt-day-cell:hover { background: #eaf4f7; }
+.gantt-day-cell.is-weekend { background: #f4f7fa; }
+.gantt-day-cell.is-holiday { background: #fdf1f1; }
 .gantt-day-cell.is-selecting { background: #dceeff; }
+/* Month boundary — a vertical divider line where a new month starts */
+.gantt-day-h.is-month-start, .gantt-day-cell.is-month-start { border-left: 2px solid #94a3b8; }
+/* TODAY — the loudest thing on the grid: solid header chip + a full-height
+   accent band drawn with inset shadows (so the month-divider border stays free). */
+.gantt-day-h.is-today { background: #1d4ed8; color: #fff; font-weight: 800; border-radius: 4px 4px 0 0; }
+.gantt-day-cell.is-today { background: #eff5ff; }
+.gantt-day-cell.is-today:hover { background: #dbe9ff; }
+.gantt-day-h.is-today, .gantt-day-cell.is-today { box-shadow: inset 2px 0 0 #1d4ed8, inset -2px 0 0 #1d4ed8; }
 /* Blocks */
 .gantt-block {
   position: absolute; top: 4px; bottom: 4px;
@@ -349,11 +361,10 @@ include __DIR__ . '/_layout.php';
 .g-modal__box { background: #fff; border-radius: 8px; padding: 24px; width: 100%; max-width: 420px; box-shadow: 0 8px 32px rgba(0,0,0,.2); }
 .g-modal__box h2 { font-size: 15px; font-weight: 700; margin-bottom: 16px; }
 .g-modal__actions { display: flex; gap: 8px; margin-top: 20px; justify-content: flex-end; }
-/* Rate-override day highlight */
-.gantt-day-h.is-rate { background: #fef9c3; color: #92400e; }
-.gantt-day-cell.is-rate { background: #fefce8; }
-.gantt-day-cell.is-rate:hover { background: #fef08a; }
-.gantt-day-cell.is-today.is-rate { background: #fef9c3; }
+/* Rate-override day highlight (never over-rides today's blue band) */
+.gantt-day-h.is-rate:not(.is-today) { background: #fef9c3; color: #92400e; }
+.gantt-day-cell.is-rate:not(.is-today) { background: #fefce8; }
+.gantt-day-cell.is-rate:not(.is-today):hover { background: #fef08a; }
 /* Drag-move / resize */
 .gantt-block--dragging { opacity:.3 !important; }
 .gantt-day-cell.is-drag-target { background:#bfdbfe !important; }
@@ -377,6 +388,15 @@ include __DIR__ . '/_layout.php';
   .gantt-outer { display:none; }
   .gantt-mobile { display:block; }
 }
+/* Colour legend — so the grid reads at a glance */
+.gantt-legend { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; margin: 0 0 12px; font-size: 12px; color: var(--muted); }
+.gantt-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.gantt-legend .gl { width: 13px; height: 13px; border-radius: 3px; flex: none; border: 1px solid rgba(0,0,0,.08); }
+.gl--booked { background: #2e7d32; } .gl--hold { background: #e07b39; } .gl--blocked { background: #6b7c85; }
+.gl--today { background: #eff5ff; box-shadow: inset 2px 0 0 #1d4ed8, inset -2px 0 0 #1d4ed8; border-color: #1d4ed8; }
+.gl--weekend { background: #f4f7fa; border-color: #dbe3ea; } .gl--holiday { background: #fdf1f1; border-color: #f3c1c1; } .gl--rate { background: #fefce8; border-color: #fde68a; }
+.gantt-legend .gl-sep { width: 1px; height: 14px; background: var(--border); border: 0; }
+
 /* Custom date picker */
 .dp { position: relative; }
 .dp__display { display: block; width: 100%; padding: 7px 10px; border: 1px solid var(--border); border-radius: var(--radius); font-size: 13px; cursor: pointer; background: #fff; color: var(--muted); user-select: none; box-sizing: border-box; }
@@ -421,6 +441,17 @@ include __DIR__ . '/_layout.php';
 <div class="alert alert--info">No units defined yet. Go to <a href="/admin/rooms.php">Rooms</a>, edit a room, and add units under the <strong>Units</strong> tab.</div>
 <?php else: ?>
 
+<div class="gantt-legend" aria-label="Calendar legend">
+  <span><i class="gl gl--booked"></i> Booked</span>
+  <span><i class="gl gl--hold"></i> Hold</span>
+  <span><i class="gl gl--blocked"></i> Blocked / OTA</span>
+  <span class="gl-sep" aria-hidden="true"></span>
+  <span><i class="gl gl--today"></i> Today</span>
+  <span><i class="gl gl--weekend"></i> Weekend</span>
+  <span><i class="gl gl--holiday"></i> Public holiday</span>
+  <span><i class="gl gl--rate"></i> Rate override</span>
+</div>
+
 <!-- ── Gantt ── -->
 <div class="gantt-outer" id="ganttOuter">
 
@@ -445,13 +476,17 @@ include __DIR__ . '/_layout.php';
     <div class="gantt-head" style="min-width:0">
       <div class="gantt-label" style="height:30px;align-items:flex-start;padding-top:8px;border-bottom:none"></div>
       <div class="gantt-days">
-        <?php foreach ($days as $day):
+        <?php foreach ($days as $i => $day):
           $dow = (int)date('N', strtotime($day));
           $isToday = $day === date('Y-m-d');
           $isRate  = isset($rate_dates_any[$day]);
-          $cls = ($isToday ? ' is-today' : '') . ($dow >= 6 ? ' is-weekend' : '') . ($isRate ? ' is-rate' : '');
+          $hol     = ke_holiday_name($day);
+          $isMonthStart = $i > 0 && date('j', strtotime($day)) === '1';
+          $cls = ($isToday ? ' is-today' : '') . ($dow >= 6 ? ' is-weekend' : '')
+               . ($hol ? ' is-holiday' : '') . ($isRate ? ' is-rate' : '') . ($isMonthStart ? ' is-month-start' : '');
+          $ttl = date('D d M', strtotime($day)) . ($hol ? ' · ' . $hol : '') . ($isRate ? ' ★ Rate override' : '');
         ?>
-        <div class="gantt-day-h<?= $cls ?>" title="<?= date('D d M', strtotime($day)) . ($isRate ? ' ★ Rate override' : '') ?>">
+        <div class="gantt-day-h<?= $cls ?>" title="<?= e($ttl) ?>">
           <?= date('j', strtotime($day)) ?>
         </div>
         <?php endforeach; ?>
@@ -533,7 +568,10 @@ include __DIR__ . '/_layout.php';
         $dow = (int)date('N', strtotime($day));
         $isToday = $day === date('Y-m-d');
         $isRate  = isset($rate_dates[(int)$unit['room_db_id']][$day]);
-        $cls = ($isToday ? ' is-today' : '') . ($dow >= 6 ? ' is-weekend' : '') . ($isRate ? ' is-rate' : '');
+        $isHol   = ke_holiday_name($day) !== null;
+        $isMonthStart = $i > 0 && date('j', strtotime($day)) === '1';
+        $cls = ($isToday ? ' is-today' : '') . ($dow >= 6 ? ' is-weekend' : '')
+             . ($isHol ? ' is-holiday' : '') . ($isRate ? ' is-rate' : '') . ($isMonthStart ? ' is-month-start' : '');
       ?>
       <div class="gantt-day-cell<?= $cls ?>" data-date="<?= e($day) ?>" data-unit="<?= e($unit['id']) ?>"></div>
       <?php endforeach; ?>
