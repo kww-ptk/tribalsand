@@ -1116,10 +1116,22 @@ to idle, and the moment the evidence photo is captured."
 
 No new code. This is the task that proves the feature works against a real database, and it is not optional.
 
-**Prerequisites:** the attendance migrations (`add_hr_staff.sql`, `add_attendance.sql`,
-`add_attendance_punches.sql`) applied to whichever database `.env` points at, the kiosk
-switched on in Admin → Clock kiosks, a registered tablet (or browser), and one `hr_staff`
-row with a printed or on-screen QR card from `admin/attendance-cards.php`.
+**Prerequisites.** The attendance migrations (`add_hr_staff.sql`, `add_attendance.sql`,
+`add_attendance_punches.sql`) are **already applied** on the database this worktree reaches
+— verified before execution started, and `tests/attendance_clock_logic.php` runs its DB
+block rather than skipping it. So you need only:
+
+- the kiosk switched **on** in Admin → Clock kiosks (`clock_kiosk_enabled()`);
+- a registered device — open `/clock.php` signed in as owner or manager and register the
+  browser once. **Note:** `api/clock-register.php` refuses unless one of
+  `R2_CHECKIN_BUCKET`, `S3_CHECKIN_BUCKET` or `CHECKIN_STORAGE_DIR` is set, because photo
+  evidence would otherwise land in a temp dir and be lost. If none is set locally, point
+  `CHECKIN_STORAGE_DIR` at a local folder in `.env` before this task;
+- one `hr_staff` row with a card from `admin/attendance-cards.php` (on screen is fine —
+  no need to print).
+
+If any of that turns out not to hold, **stop and report** rather than skipping the task.
+The pure tests cannot prove the tablet greets anyone correctly.
 
 - [ ] **Step 1: Fresh day**
 
