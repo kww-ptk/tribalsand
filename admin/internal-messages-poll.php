@@ -20,22 +20,23 @@ if (!internal_messages_supported()) { http_response_code(503); exit(json_encode(
 
 $meId = (int)$admin['id'];
 
-/** Resolve a channel param ('all' | '<venue_id>') to an int|null venue id. */
-$resolve = function ($raw): array {
-    if ($raw === '' || $raw === null || $raw === 'all') return [null, true];
-    $vid = (int)$raw;
-    return [$vid, internal_can_access_channel($vid)];
+/** Resolve a channel param ('all' | '<venue_id>' | 'g<group_id>') → [venueId, groupId, ok]. */
+$resolve = function ($raw) use ($meId): array {
+    [$venueId, $groupId] = internal_parse_channel((string)$raw);
+    if ($groupId)       return [null, $groupId, internal_can_access_group($groupId, $meId)];
+    if ($venueId)       return [$venueId, null, internal_can_access_channel($venueId)];
+    return [null, null, true]; // all-team
 };
 
 // ── GET: poll for new messages ──
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
-    [$venueId, $ok] = $resolve($_GET['channel'] ?? 'all');
+    [$venueId, $groupId, $ok] = $resolve($_GET['channel'] ?? 'all');
     if (!$ok) { http_response_code(403); exit(json_encode(['ok'=>false,'error'=>'Not your channel.'])); }
     $after = (int)($_GET['after'] ?? 0);
-    $rows  = fetch_internal_messages_since($venueId, $after);
+    $rows  = fetch_internal_messages_since($venueId, $after, 200, $groupId);
     $msgs  = array_map(fn($r) => internal_message_payload($r, $meId), $rows);
     $lastId = $msgs ? end($msgs)['id'] : $after;
-    if ($lastId > $after) internal_mark_channel_read($meId, $venueId, $lastId);
+    if ($lastId > $after) internal_mark_channel_read($meId, $venueId, $lastId, $groupId);
     exit(json_encode(['ok'=>true, 'messages'=>$msgs, 'last_id'=>$lastId]));
 }
 
@@ -48,16 +49,16 @@ if (($_SESSION['csrf_token'] ?? '') === '' || !hash_equals($_SESSION['csrf_token
     http_response_code(403); exit(json_encode(['ok'=>false,'error'=>'Invalid session token. Please reload.']));
 }
 
-[$venueId, $ok] = $resolve($data['channel'] ?? 'all');
+[$venueId, $groupId, $ok] = $resolve($data['channel'] ?? 'all');
 if (!$ok) { http_response_code(403); exit(json_encode(['ok'=>false,'error'=>'Not your channel.'])); }
 
 $body = trim((string)($data['body'] ?? ''));
 if ($body === '') { http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'Type a message.'])); }
 
 try {
-    $id = post_internal_message($venueId, $meId, $body);
-    internal_mark_channel_read($meId, $venueId, $id); // sender has "read" their own message
-    audit_log('internal_message.post', 'venue', $venueId ?? 0, '');
+    $id = post_internal_message($venueId, $meId, $body, $groupId);
+    internal_mark_channel_read($meId, $venueId, $id, $groupId); // sender has "read" their own message
+    audit_log('internal_message.post', $groupId ? 'internal_channel' : 'venue', ($groupId ?: $venueId) ?? 0, '');
     echo json_encode(['ok'=>true, 'message'=>internal_message_payload([
         'id'=>$id, 'sender_admin_id'=>$meId, 'sender_name'=>$admin['name'] ?? 'Team',
         'body'=>$body, 'created_at'=>'now',
