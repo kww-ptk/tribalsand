@@ -73,5 +73,35 @@ check('min from 07:02',   clock_minutes_from_hms('07:02:00') === 422);
 check('min from 00:00',   clock_minutes_from_hms('00:00:00') === 0);
 check('min from 23:59',   clock_minutes_from_hms('23:59:59') === 1439);
 
+// ── DB round-trip, inside a transaction we roll back ────────────────────────
+$dbOk = true;
+try { db(); } catch (Throwable $e) { $dbOk = false; }
+
+if (!$dbOk || !attendance_punches_supported()) {
+    echo "\nSKIP  DB assertions (no database, or add_attendance_punches.sql not applied)\n";
+} else {
+    db()->beginTransaction();
+    try {
+        $vid = (int) db_query("SELECT id FROM venues ORDER BY id LIMIT 1")->fetchColumn();
+        db_query("INSERT INTO hr_staff (full_name, venue_id, status) VALUES ('Clock Probe', :v, 'active')", [':v' => $vid]);
+        $sid = (int) db()->lastInsertId('hr_staff_id_seq');
+
+        $tok = clock_ensure_token($sid);
+        check('token minted',            (bool)preg_match('/^[0-9a-f]{32}$/', $tok));
+        check('token is stable',         clock_ensure_token($sid) === $tok);
+        $found = clock_staff_by_token($tok);
+        check('token resolves to person',(int)($found['id'] ?? 0) === $sid);
+        check('unknown token resolves to nothing', clock_staff_by_token('deadbeef') === null);
+        check('empty token resolves to nothing',   clock_staff_by_token('') === null);
+
+        $new = clock_reissue_token($sid);
+        check('reissue changes the token',  $new !== $tok);
+        check('old card no longer works',   clock_staff_by_token($tok) === null);
+        check('new card works',             (int)(clock_staff_by_token($new)['id'] ?? 0) === $sid);
+    } finally {
+        db()->rollBack();
+    }
+}
+
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);

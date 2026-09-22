@@ -104,3 +104,47 @@ function clock_merge_times(array $row, string $slot, int $minutes): array {
     $out[$slot] = sprintf('%02d:%02d', intdiv($minutes, 60), $minutes % 60);
     return $out;
 }
+
+/** This person's card token, minting one on first use. Stable across calls. */
+function clock_ensure_token(int $staffId): string {
+    if ($staffId <= 0) return '';
+    $cur = (string) (db_query("SELECT punch_token FROM hr_staff WHERE id = :i", [':i' => $staffId])->fetchColumn() ?: '');
+    if ($cur !== '') return $cur;
+    $tok = clock_new_token();
+    db_query("UPDATE hr_staff SET punch_token = :t WHERE id = :i", [':t' => $tok, ':i' => $staffId]);
+    return $tok;
+}
+
+/** Replace this person's token, instantly killing their old printed card. */
+function clock_reissue_token(int $staffId): string {
+    $tok = clock_new_token();
+    db_query("UPDATE hr_staff SET punch_token = :t WHERE id = :i", [':t' => $tok, ':i' => $staffId]);
+    return $tok;
+}
+
+/**
+ * The active person a scanned card belongs to, or null.
+ *
+ * Refuses an empty token explicitly: `punch_token IS NULL` rows must never be
+ * matched by a blank scan, which a bare equality test would do if the column
+ * and the input were both empty strings.
+ */
+function clock_staff_by_token(string $token): ?array {
+    $token = trim($token);
+    if ($token === '' || !preg_match('/^[0-9a-f]{32}$/', $token)) return null;
+    try {
+        $row = db_query(
+            "SELECT s.id, s.full_name, s.position, s.venue_id, s.status, v.name AS venue_name
+               FROM hr_staff s
+               LEFT JOIN venues v ON v.id = s.venue_id
+              WHERE s.punch_token = :t",
+            [':t' => $token]
+        )->fetch();
+        if (!$row) return null;
+        if (strtolower(trim((string)($row['status'] ?? ''))) === 'inactive') return null;
+        return $row;
+    } catch (Throwable $e) {
+        error_log('[clock] token lookup failed: ' . $e->getMessage());
+        return null;
+    }
+}
