@@ -55,4 +55,14 @@ if ($name === '') { http_response_code(400); exit(json_encode(['ok'=>false,'erro
 [$id, $token] = clock_register_device($name, $venueId ?: null, (int)($_SESSION['admin_id'] ?? 0) ?: null);
 audit_log('attendance_device.register', 'attendance_device', $id, $name);
 
-echo json_encode(['ok' => true, 'error' => null, 'device_id' => $id, 'token' => $token]);
+// The idle screen names the property this tablet belongs to. Registration is
+// the only moment it learns this, so it is returned once and cached in
+// localStorage rather than costing a request on every page load.
+$venueName = '';
+if ($venueId) {
+    $v = db_query("SELECT name FROM venues WHERE id = :id", [':id' => $venueId])->fetch();
+    $venueName = $v ? (string)$v['name'] : '';
+}
+
+echo json_encode(['ok' => true, 'error' => null, 'device_id' => $id,
+                  'token' => $token, 'venue_name' => $venueName]);

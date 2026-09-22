@@ -24,6 +24,14 @@ $canSetUp = $signedIn && (is_owner() || is_manager());
 // not even loaded, so no camera permission is requested.
 $kioskOn = clock_kiosk_enabled();
 
+// The idle clock ticks from the SERVER's time, not the tablet's. The whole app
+// is Africa/Nairobi and punches are stamped by PHP; a clock reading the
+// tablet's own time could disagree with what a punch actually records, which
+// is exactly the confusion a visible clock is supposed to prevent.
+$nowTs    = time();
+$nowLabel = date('H:i', $nowTs);
+$dayLabel = date('l j F', $nowTs);
+
 $venues = [];
 if ($canSetUp) {
     $scope = admin_venue_ids();
@@ -63,6 +71,28 @@ body{margin:0;font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,s
 .setup{text-align:left;background:#193440;border-radius:14px;padding:20px}
 .setup label{display:block;margin:0 0 12px;font-size:14px;color:#9fb3ba}
 .setup input,.setup select{width:100%;padding:12px;border-radius:8px;border:1px solid #34505a;background:#0e1e24;color:#f4efe6;font-size:16px;margin-top:6px}
+/* ── Idle screen ─────────────────────────────────────────────────────────── */
+.idle{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:78vh}
+.idle__glow{position:absolute;width:min(560px,90vw);aspect-ratio:1;border-radius:50%;pointer-events:none;
+  background:radial-gradient(circle,rgba(97,164,132,.20) 0%,rgba(18,38,45,0) 68%);
+  animation:idleBreath 7s ease-in-out infinite}
+.idle__logo{height:56px;width:auto;filter:brightness(0) invert(1);opacity:.92;position:relative;z-index:2;
+  animation:idleRise 1.1s ease-out both, idlePulse 7s ease-in-out 1.1s infinite}
+.idle__word{font-size:26px;letter-spacing:.18em;text-transform:uppercase;position:relative;z-index:2;
+  animation:idleRise 1.1s ease-out both, idlePulse 7s ease-in-out 1.1s infinite}
+.idle__sub{color:#9fb3ba;font-size:15px;margin:16px 0 26px;position:relative;z-index:2}
+.idle__start{position:relative;z-index:2;min-width:260px;min-height:76px;font-size:21px;letter-spacing:.05em}
+.idle__foot{position:absolute;bottom:18px;left:0;right:0;color:#6d868f;font-size:13px;z-index:2}
+.idle__time{font-size:17px;color:#9fb3ba;display:block;margin-bottom:2px}
+
+@keyframes idleBreath{0%,100%{transform:scale(.9);opacity:.55}50%{transform:scale(1.1);opacity:1}}
+@keyframes idleRise{from{opacity:0;transform:translateY(14px)}to{opacity:.92;transform:none}}
+@keyframes idlePulse{0%,100%{transform:scale(1)}50%{transform:scale(1.035)}}
+
+/* A wall tablet runs this animation every waking hour. Honour the setting. */
+@media (prefers-reduced-motion: reduce){
+  .idle__glow,.idle__logo,.idle__word{animation:none}
+}
 .hidden{display:none}
 </style>
 </head>
@@ -81,19 +111,33 @@ body{margin:0;font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,s
 <?php else: ?>
 
   <div id="kioskMode" class="hidden">
-    <h1>Scan your card</h1>
-    <p class="sub">Hold it up to the camera</p>
-    <video id="video" playsinline muted></video>
-    <canvas id="frame" class="hidden"></canvas>
+    <div id="idleMode" class="idle">
+      <div class="idle__glow"></div>
+      <img class="idle__logo" src="<?= e(asset_url('images/whitelogo11.png')) ?>" alt="Tribal Sand"
+           onerror="this.outerHTML='<div class=\'idle__word\'>Tribal Sand</div>'">
+      <p class="idle__sub">Tap to clock in or out</p>
+      <button class="big big--in idle__start" id="startBtn">START</button>
+      <p class="msg" id="idleMsg"></p>
+      <div class="idle__foot">
+        <span class="idle__time" id="idleClock" data-now="<?= e($nowLabel) ?>"><?= e($nowLabel) ?></span>
+        <span id="idleWhere"><?= e($dayLabel) ?></span>
+      </div>
+    </div>
+
+    <div id="scanMode" class="hidden">
+      <h1>Scan your card</h1>
+      <p class="sub">Hold it up to the camera</p>
+      <video id="video" playsinline muted></video>
+      <canvas id="frame" class="hidden"></canvas>
+      <div class="acts" style="margin-top:18px">
+        <button class="big big--ghost" data-cancel>Cancel</button>
+      </div>
+    </div>
 
     <div id="person" class="hidden">
       <div class="person" id="personName"></div>
       <p class="meta" id="personMeta"></p>
-      <div class="acts">
-        <button class="big big--in"    data-kind="in">Clock in</button>
-        <button class="big big--out"   data-kind="out">Clock out</button>
-        <button class="big big--ghost" data-cancel>Cancel</button>
-      </div>
+      <div class="acts" id="personActs"></div>
     </div>
 
     <p class="msg" id="msg"></p>
