@@ -147,6 +147,21 @@ function clock_last_punch(array $row): ?array {
 }
 
 /**
+ * A punch time for a person to read: "08:15". PURE.
+ *
+ * Deliberately NOT attendance_min_to_hhmm(), which renders a past-midnight time
+ * as "00:30+1". That form is right on the manager's editor, where the +1 tells
+ * you which day the minutes belong to, and wrong in a greeting, where it reads
+ * as noise. Here the day is already established by the sentence around it
+ * ("checked in at 22:10 yesterday").
+ */
+function clock_display_time(?int $min): ?string {
+    if ($min === null) return null;
+    $m = ((int)$min % 1440 + 1440) % 1440;   // also folds a negative safely
+    return sprintf('%02d:%02d', intdiv($m, 60), $m % 60);
+}
+
+/**
  * Build the COMPLETE four-slot payload for attendance_upsert(), preserving what
  * is already on the row and setting one slot.
  *

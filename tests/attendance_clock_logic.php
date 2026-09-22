@@ -102,6 +102,17 @@ check('full -> out at 1020',       clock_last_punch($full)  === ['kind' => 'out'
 check('gap: in1+in2 -> in at 780', clock_last_punch(['in1' => 420, 'in2' => 780]) === ['kind' => 'in', 'min' => 780]);
 check('empty string is not set',   clock_last_punch(['in1' => 420, 'out1' => '']) === ['kind' => 'in', 'min' => 420]);
 
+
+// ── Display time (pure) ─────────────────────────────────────────────────────
+check('display 495 -> 08:15',   clock_display_time(495)  === '08:15');
+check('display 1320 -> 22:00',  clock_display_time(1320) === '22:00');
+check('display 0 -> 00:00',     clock_display_time(0)    === '00:00');
+check('display null -> null',   clock_display_time(null) === null);
+// Past midnight: 1470 is 00:30 the next day. A person reads "00:30" —
+// attendance_min_to_hhmm() would say "00:30+1", which is for the manager's
+// editor, not a greeting.
+check('display 1470 -> 00:30',  clock_display_time(1470) === '00:30');
+check('display 1440 -> 00:00',  clock_display_time(1440) === '00:00');
 // ── DB round-trip, inside a transaction we roll back ────────────────────────
 $dbOk = true;
 try { db(); } catch (Throwable $e) { $dbOk = false; }
