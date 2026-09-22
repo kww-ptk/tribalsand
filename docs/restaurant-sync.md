@@ -45,7 +45,7 @@ Stage 1 logs what we would send and applies nothing. Run it read-only, with no
 live write-path changes:
 
 ```
-php admin/migrate.php   (or apply add_restaurant_sync.sql on Neon/RDS) — one time
+php admin/migrate.php   (apply add_restaurant_sync.sql on RDS) — one time
 php bin/sync-export.php > menu.json     # the payloads we'd send + Zuri's backfill dataset (§7)
 ```
 

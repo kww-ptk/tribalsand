@@ -12,7 +12,7 @@
 --
 -- Cross-system identity is sync_uuid (see docs/restaurant-sync.md §3). Local
 -- auto-increment ids stay local and are NEVER sent. gen_random_uuid() is built
--- into PostgreSQL 13+ (present on both Neon dev and prod RDS).
+-- into PostgreSQL 13+ (available on our AWS RDS PostgreSQL).
 --
 -- NEVER hard-delete a synced row: soft-delete via is_deleted, or the peer will
 -- re-create it on the next changes pull.

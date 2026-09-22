@@ -9,8 +9,8 @@
 -- from the live DB (venue about/stay copy, room descriptions + FAQs, tours,
 -- sustainability). It is a derived cache: safe to TRUNCATE and rebuild.
 --
--- Requires pgvector. Confirmed available on Neon (dev) and RDS supports it on
--- current versions; the app degrades gracefully (rag_supported()) if the
+-- Requires pgvector, which our AWS RDS PostgreSQL supports on current
+-- versions; the app degrades gracefully (rag_supported()) if the
 -- extension/table is absent, so a deploy without this migration simply omits
 -- the descriptive layer instead of erroring.
 CREATE EXTENSION IF NOT EXISTS vector;

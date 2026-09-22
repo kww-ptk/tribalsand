@@ -26,7 +26,7 @@ Do NOT sit idle waiting for the contract, and do NOT write mappers before it.
 
 These are ordered to finish fast by front-loading the long pole and parallelising:
 
-1. **Apply the migration** (`add_restaurant_sync.sql`) on prod RDS + Neon dev — *5 min, Aly.* Unblocks everything below.
+1. **Apply the migration** (`add_restaurant_sync.sql`) on RDS — *5 min, Aly.* Unblocks everything below.
 2. **Export `menu.json` and send it to Bhumika** — *Aly, same day.* This starts the contract clock (the long pole) and gives her backfill matcher real data.
 3. **Owner decision: egress IP** — HMAC-only vs NAT+EIP (see Decisions). Not on the critical path; decide before Stage 2.
 4. **In parallel while the contract is discussed** (none of these need the contract):
@@ -52,7 +52,7 @@ Each phase lists its owner: **(Aly)**, **(Bhumika)**, **(Joint)**, **(Owner)** =
 - [x] Menu→envelope mappers (v1 proposal) + backfill/shadow export + tests
 
 ### Stage 1 — Shadow (ready now)
-- [x] **(Aly)** Apply `add_restaurant_sync.sql` (prod RDS + Neon dev) via `admin/migrate.php` — DONE 2026-09-22
+- [x] **(Aly)** Apply `add_restaurant_sync.sql` on RDS via `admin/migrate.php` — DONE 2026-09-22
 - [ ] **(Aly)** `php bin/sync-export.php > menu.json`; hand to Bhumika ← **NEXT**
 - [ ] **(Bhumika)** Same four sync tables + `sync_*` columns on the MySQL side (SKIP LOCKED needs MySQL 8.0; 5.7 = claim-token workaround)
 - [ ] **(Bhumika)** Run the backfill matcher against `menu.json`; report unmatched rows

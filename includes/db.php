@@ -1934,7 +1934,7 @@ function venue_hero_url(string $slug, string $fallback = ''): string {
 
 /**
  * Do the editable-content columns (tagline / about_*) exist on `venues`?
- * On a DB whose Neon→RDS move brought the base table but not this migration
+ * On a DB that has the base table but not this migration
  * they are absent, and an unguarded `UPDATE venues SET tagline=…` would 500
  * the admin save. Callers guard the content UPDATE with this. Cached per request.
  */

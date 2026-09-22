@@ -19,7 +19,7 @@
  * suggest nonsense (the "6 pax → 2× a one-room suite" symptom). It is NOT an
  * algorithm or prompt bug; both are already correct. The fix is the data.
  *
- * The catch: the dev DB (.env / Neon) is NOT production. This script is meant to
+ * The catch: the dev DB (.env) is NOT production. This script is meant to
  * run against PROD RDS so we see the real state before changing anything.
  *
  * How to run against PROD
