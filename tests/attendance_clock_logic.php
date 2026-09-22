@@ -82,6 +82,14 @@ check('recent missing is not expired',clock_photo_expired(['photo_key'=>null,'pu
 check('old missing is expired',       clock_photo_expired(['photo_key'=>null,'punched_at'=>date('Y-m-d H:i:s', strtotime('-60 days'))]) === true);
 check('unparseable date is not expired', clock_photo_expired(['photo_key'=>null,'punched_at'=>'not a date']) === false);
 
+// ── Greeting name (pure) ────────────────────────────────────────────────────
+check('first name of two parts',  clock_first_name('Moses Kamau') === 'Moses');
+check('first name of three',      clock_first_name('Moses Wanjiru Kamau') === 'Moses');
+check('single name unchanged',    clock_first_name('Moses') === 'Moses');
+check('leading space trimmed',    clock_first_name('   Moses Kamau ') === 'Moses');
+check('double space handled',     clock_first_name('Moses  Kamau') === 'Moses');
+check('empty name stays empty',   clock_first_name('') === '');
+check('whitespace-only is empty', clock_first_name('   ') === '');
 // ── DB round-trip, inside a transaction we roll back ────────────────────────
 $dbOk = true;
 try { db(); } catch (Throwable $e) { $dbOk = false; }

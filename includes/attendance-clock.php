@@ -109,6 +109,20 @@ function clock_minutes_from_hms(string $hms): int {
 }
 
 /**
+ * The name to greet someone by: the first whitespace-separated part of a full
+ * name. "Moses Kamau" → "Moses". PURE.
+ *
+ * Returns '' for an empty name rather than inventing a placeholder — the caller
+ * decides what a nameless row should say on screen.
+ */
+function clock_first_name(string $full): string {
+    $full = trim($full);
+    if ($full === '') return '';
+    $parts = preg_split('/\s+/', $full);
+    return ($parts && $parts[0] !== '') ? $parts[0] : $full;
+}
+
+/**
  * Build the COMPLETE four-slot payload for attendance_upsert(), preserving what
  * is already on the row and setting one slot.
  *
