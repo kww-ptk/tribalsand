@@ -12,8 +12,9 @@ declare(strict_types=1);
  * the synced venue (SYNC_VENUE_SLUG). Deletes are SOFT (is_deleted = TRUE); a
  * synced row is never hard-deleted or the peer re-creates it.
  *
- * Contract limits (handover §6): number ≤10 chars (our `label`), capacity 1–255
- * (our `seats`), zone ≤60 (our `section`). rtable_validate() enforces them.
+ * Contract limits (handover §6): number ≤10 chars (our `label`), name ≤80
+ * (`name`, add_restaurant_table_name.sql), capacity 1–255 (our `seats`), zone ≤60
+ * (our `section`). rtable_validate() enforces them.
  *
  * All reads are pre-migration-safe via rtables_supported().
  */
@@ -59,15 +60,17 @@ function rtable_validate(array $in): array {
     $err = [];
     $d = [
         'label'      => trim((string) ($in['label'] ?? '')),
+        'name'       => trim((string) ($in['name'] ?? '')),
         'seats'      => (int) ($in['seats'] ?? 0),
         'section'    => trim((string) ($in['section'] ?? '')),
         'sort_order' => (int) ($in['sort_order'] ?? 0),
         'is_active'  => !empty($in['is_active']),
     ];
-    if ($d['label'] === '')                 $err['label'] = 'Give the table a number, e.g. T1.';
+    if ($d['label'] === '')                 $err['label'] = 'Give the table its number, e.g. 7.';
     elseif (mb_strlen($d['label']) > 10)    $err['label'] = 'At most 10 characters.';
     if ($d['seats'] < 1 || $d['seats'] > 255) $err['seats'] = 'Between 1 and 255 seats.';
     if (mb_strlen($d['section']) > 60)      $err['section'] = 'At most 60 characters.';
+    if (mb_strlen($d['name']) > 80)         $err['name'] = 'At most 80 characters.';
     return ['data' => $d, 'errors' => $err];
 }
 
@@ -81,20 +84,28 @@ function rtable_label_taken(int $venueId, string $label, int $exceptId = 0): boo
     )->fetchColumn();
 }
 
+/** True once add_restaurant_table_name.sql has run (tables have a display name). */
+function rtables_name_supported(): bool {
+    return rtables_supported() && sync_column_exists('restaurant_tables', 'name');
+}
+
 /** Insert a table and queue its create event. Returns the new row. */
 function create_restaurant_table(array $d): array {
     return menu_sync_tx(function () use ($d) {
+        $withName = rtables_name_supported();
+        $p = [
+            ':v'   => (int) ($d['venue_id'] ?? 0),
+            ':l'   => trim((string) ($d['label'] ?? '')),
+            ':s'   => max(1, (int) ($d['seats'] ?? 2)),
+            ':sec' => trim((string) ($d['section'] ?? '')) ?: null,
+            ':o'   => (int) ($d['sort_order'] ?? 0),
+            ':a'   => !empty($d['is_active']),
+        ];
+        if ($withName) $p[':n'] = trim((string) ($d['name'] ?? '')) ?: null;
         $id = (int) db_query(
-            "INSERT INTO restaurant_tables (venue_id, label, seats, section, sort_order, is_active)
-             VALUES (:v, :l, :s, :sec, :o, :a) RETURNING id",
-            [
-                ':v'   => (int) ($d['venue_id'] ?? 0),
-                ':l'   => trim((string) ($d['label'] ?? '')),
-                ':s'   => max(1, (int) ($d['seats'] ?? 2)),
-                ':sec' => trim((string) ($d['section'] ?? '')) ?: null,
-                ':o'   => (int) ($d['sort_order'] ?? 0),
-                ':a'   => !empty($d['is_active']),
-            ]
+            "INSERT INTO restaurant_tables (venue_id, label, seats, section, sort_order, is_active" . ($withName ? ', name' : '') . ")
+             VALUES (:v, :l, :s, :sec, :o, :a" . ($withName ? ', :n' : '') . ") RETURNING id",
+            $p
         )->fetchColumn();
         menu_sync_emit('restaurant_table', $id, 'create');
         return fetch_restaurant_table($id) ?? [];
@@ -108,19 +119,23 @@ function create_restaurant_table(array $d): array {
 function update_restaurant_table(int $id, array $d): bool {
     if (!rtables_supported() || $id <= 0) return false;
     return menu_sync_tx(function () use ($id, $d) {
+        $withName = rtables_name_supported();
+        $p = [
+            ':l'   => trim((string) ($d['label'] ?? '')),
+            ':s'   => max(1, (int) ($d['seats'] ?? 2)),
+            ':sec' => trim((string) ($d['section'] ?? '')) ?: null,
+            ':o'   => (int) ($d['sort_order'] ?? 0),
+            ':a'   => !empty($d['is_active']),
+            ':id'  => $id,
+        ];
+        if ($withName) $p[':n'] = trim((string) ($d['name'] ?? '')) ?: null;
         $n = db_query(
             "UPDATE restaurant_tables
-                SET label = :l, seats = :s, section = :sec, sort_order = :o, is_active = :a,
+                SET label = :l, seats = :s, section = :sec, sort_order = :o, is_active = :a,"
+                . ($withName ? ' name = :n,' : '') . "
                     updated_at = now()
               WHERE id = :id AND is_deleted = FALSE",
-            [
-                ':l'   => trim((string) ($d['label'] ?? '')),
-                ':s'   => max(1, (int) ($d['seats'] ?? 2)),
-                ':sec' => trim((string) ($d['section'] ?? '')) ?: null,
-                ':o'   => (int) ($d['sort_order'] ?? 0),
-                ':a'   => !empty($d['is_active']),
-                ':id'  => $id,
-            ]
+            $p
         )->rowCount();
         if ($n > 0) menu_sync_emit('restaurant_table', $id, 'update');
         return $n > 0;

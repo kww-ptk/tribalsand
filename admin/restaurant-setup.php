@@ -110,7 +110,8 @@ $hErr     = $errs['hours'] ?? [];
 
 $tables = $venue ? fetch_restaurant_tables([$venueId]) : [];
 $editId = (int)($_GET['edit'] ?? 0);
-$tform  = ['id' => 0, 'label' => '', 'seats' => 2, 'section' => '', 'sort_order' => count($tables), 'is_active' => true];
+$tform  = ['id' => 0, 'label' => '', 'name' => '', 'seats' => 2, 'section' => '', 'sort_order' => count($tables), 'is_active' => true];
+$hasName = rtables_name_supported();
 if ($editId) {
     foreach ($tables as $t) if ((int)$t['id'] === $editId) { $tform = array_intersect_key($t, $tform) + $tform; break; }
 }
@@ -226,11 +227,12 @@ include __DIR__ . '/_layout.php';
         <?php else: ?>
         <div class="table-wrap">
           <table class="data-table">
-            <thead><tr><th>Table</th><th>Seats</th><th>Zone</th><th>Status</th><th style="width:1%;text-align:right">Actions</th></tr></thead>
+            <thead><tr><th>No.</th><?php if ($hasName): ?><th>Name</th><?php endif; ?><th>Seats</th><th>Zone</th><th>Status</th><th style="width:1%;text-align:right">Actions</th></tr></thead>
             <tbody>
             <?php foreach ($tables as $t): ?>
               <tr<?= (int)$t['id'] === $editId ? ' class="is-selected"' : '' ?>>
                 <td><strong><?= e($t['label']) ?></strong></td>
+                <?php if ($hasName): ?><td><?= !empty($t['name']) ? e($t['name']) : '<span class="text-muted">—</span>' ?></td><?php endif; ?>
                 <td><?= (int)$t['seats'] ?></td>
                 <td class="text-muted"><?= $t['section'] ? e($t['section']) : '—' ?></td>
                 <td><span class="badge <?= $t['is_active'] ? 'badge--green' : 'badge--grey' ?>"><?= $t['is_active'] ? 'In service' : 'Out of service' ?></span></td>
@@ -264,11 +266,17 @@ include __DIR__ . '/_layout.php';
           <input type="hidden" name="action" value="save_table">
           <input type="hidden" name="venue_id" value="<?= $venueId ?>">
           <input type="hidden" name="table_id" value="<?= (int)$tform['id'] ?>">
-          <div class="rs-two">
-            <div class="field"><label for="rsLabel">Table number</label>
-              <input id="rsLabel" name="label" class="inp<?= isset($tErr['label']) ? ' is-invalid' : '' ?>" maxlength="10" value="<?= e((string)$tform['label']) ?>" placeholder="e.g. T1" required>
+          <div class="<?= $hasName ? 'rs-three' : 'rs-two' ?>">
+            <div class="field"><label for="rsLabel">Table number <span class="text-muted">(as on Zuri)</span></label>
+              <input id="rsLabel" name="label" class="inp<?= isset($tErr['label']) ? ' is-invalid' : '' ?>" maxlength="10" value="<?= e((string)$tform['label']) ?>" placeholder="e.g. 7" required>
               <?php if (isset($tErr['label'])): ?><div class="field-error"><?= e($tErr['label']) ?></div><?php endif; ?>
             </div>
+            <?php if ($hasName): ?>
+            <div class="field"><label for="rsName">Name <span class="text-muted">(optional)</span></label>
+              <input id="rsName" name="name" class="inp<?= isset($tErr['name']) ? ' is-invalid' : '' ?>" maxlength="80" value="<?= e((string)($tform['name'] ?? '')) ?>" placeholder="e.g. Pool 1">
+              <?php if (isset($tErr['name'])): ?><div class="field-error"><?= e($tErr['name']) ?></div><?php endif; ?>
+            </div>
+            <?php endif; ?>
             <div class="field"><label for="rsSeats">Seats</label>
               <input id="rsSeats" name="seats" class="inp<?= isset($tErr['seats']) ? ' is-invalid' : '' ?>" inputmode="numeric" pattern="[0-9]*" value="<?= (int)$tform['seats'] ?>" required>
               <?php if (isset($tErr['seats'])): ?><div class="field-error"><?= e($tErr['seats']) ?></div><?php endif; ?>
@@ -306,6 +314,8 @@ include __DIR__ . '/_layout.php';
 .rs-form .inp{width:100%}
 .rs-two{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 @media (max-width:420px){.rs-two{grid-template-columns:1fr}}
+.rs-three{display:grid;grid-template-columns:1fr 2fr 1fr;gap:12px}
+@media (max-width:520px){.rs-three{grid-template-columns:1fr 1fr}.rs-three .field:nth-child(2){grid-column:1/-1;order:3}}
 .rs-actions{display:flex;gap:8px}
 .rs-chip{align-self:flex-start;cursor:pointer}
 .rs-uuid{font-size:11.5px}

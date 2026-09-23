@@ -35,6 +35,8 @@ $t = sync_map_restaurant_table(['venue_slug'=>'zuri','label'=>'T1','seats'=>4,'s
 check('table: label → number',     $t['number'] === 'T1');
 check('table: seats → capacity',   $t['capacity'] === 4);
 check('table: section → zone',     $t['zone'] === 'Terrace');
+check('table: name sent when the column exists', sync_map_restaurant_table(['label'=>'7','name'=>'Pool 1','seats'=>2])['name'] === 'Pool 1');
+check('table: no name key pre-migration', !array_key_exists('name', sync_map_restaurant_table(['label'=>'7','seats'=>2])));
 check('table capacity clamped',    sync_map_restaurant_table(['label'=>'T2','seats'=>999])['capacity'] === 255);
 
 $h = sync_map_opening_hours(['lunch'=>'12:00 – 15:00','dinner'=>'','first_slot'=>'12:00:00','last_slot'=>'22:00:00','slot_minutes'=>30,'duration_minutes'=>90]);

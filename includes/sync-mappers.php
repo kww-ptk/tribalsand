@@ -27,6 +27,25 @@ function sync_venue_slug(): string {
     return $v !== '' ? $v : 'zuri';
 }
 
+/**
+ * Does $table.$column exist? Memoised information_schema lookup — never a
+ * failing SELECT, which would abort a caller's Postgres transaction. Used for
+ * columns added after the table (e.g. restaurant_tables.name).
+ */
+function sync_column_exists(string $table, string $column): bool {
+    static $c = [];
+    $k = "$table.$column";
+    if (isset($c[$k])) return $c[$k];
+    try {
+        return $c[$k] = (bool) db_query(
+            "SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = :t AND column_name = :c",
+            [':t' => $table, ':c' => $column]
+        )->fetchColumn();
+    } catch (Throwable $e) {
+        return $c[$k] = false;
+    }
+}
+
 /** NUMERIC price → decimal string "349.00", or null when unpriced. */
 function sync_money(mixed $price): ?string {
     if ($price === null || $price === '') return null;
@@ -80,13 +99,16 @@ function sync_map_menu_item(array $row): array {
 }
 
 /**
- * restaurant_table → envelope data (contract: number ≤10 required, zone,
- * capacity 1–255, in_service, sort_order, is_active). Our `label` is the
- * table's number ("T1"); live seating state stays local to Zuri.
+ * restaurant_table → envelope data (contract: number ≤10 required, name ≤80,
+ * zone, capacity 1–255, in_service, sort_order, is_active). Our `label` is the
+ * table's number ("7" — Zuri matches on it), `name` what staff call it
+ * ("Pool 1"). `name` is only sent once the column exists (add_restaurant_table_name);
+ * live seating state stays local to Zuri.
  */
 function sync_map_restaurant_table(array $row): array {
-    return [
-        'number'     => (string) ($row['label'] ?? ''),
+    $out = ['number' => (string) ($row['label'] ?? '')];
+    if (array_key_exists('name', $row)) $out['name'] = sync_text($row['name']);
+    return $out + [
         'zone'       => sync_text($row['section'] ?? null),
         'capacity'   => max(1, min(255, (int) ($row['seats'] ?? 0))),
         'in_service' => (bool) ($row['is_active'] ?? true),
@@ -150,7 +172,8 @@ function sync_menu_rows(string $entity, ?int $id = null): array {
               WHERE v.slug = :venue{$where}" . ($one ? '' : ' AND c.is_deleted = FALSE AND m.is_deleted = FALSE') . "
               ORDER BY x.id",
         'restaurant_table' =>
-            "SELECT x.id, x.sync_uuid, x.sync_version, x.label, x.seats, x.section, x.sort_order, x.is_active
+            "SELECT x.id, x.sync_uuid, x.sync_version, x.label, x.seats, x.section, x.sort_order, x.is_active"
+              . (sync_column_exists('restaurant_tables', 'name') ? ', x.name' : '') . "
                FROM restaurant_tables x
                JOIN venues v ON v.id = x.venue_id
               WHERE v.slug = :venue{$where}
@@ -224,7 +247,8 @@ function sync_backfill_export(): array {
         ];
     }
     foreach (sync_menu_rows('restaurant_table') as $t) {
-        $out['restaurant_table'][] = ['sync_uuid' => (string) $t['sync_uuid'], 'number' => (string) $t['label']];
+        $out['restaurant_table'][] = ['sync_uuid' => (string) $t['sync_uuid'], 'number' => (string) $t['label']]
+            + (array_key_exists('name', $t) ? ['name' => $t['name']] : []);
     }
     foreach (sync_menu_rows('opening_hours') as $h) {
         $out['opening_hours'][] = ['sync_uuid' => (string) $h['sync_uuid']];   // the fixed uuid Zuri keys on

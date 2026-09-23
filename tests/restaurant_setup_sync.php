@@ -38,6 +38,8 @@ check('table validate: number required',      isset(rtable_validate(['label' => 
 check('table validate: number ≤10',           isset(rtable_validate(['label' => 'Terrace-101', 'seats' => 4])['errors']['label']));
 check('table validate: seats 1–255',          isset(rtable_validate(['label' => 'T1', 'seats' => 0])['errors']['seats'])
                                               && isset(rtable_validate(['label' => 'T1', 'seats' => 256])['errors']['seats']));
+check('table validate: name ≤80',           isset(rtable_validate(['label' => '10', 'seats' => 12, 'name' => str_repeat('x', 81)])['errors']['name'])
+                                              && rtable_validate(['label' => '10', 'seats' => 12, 'name' => 'Private Dining'])['errors'] === []);
 check('table validate: zone ≤60',             isset(rtable_validate(['label' => 'T1', 'seats' => 2, 'section' => str_repeat('x', 61)])['errors']['section']));
 
 // ── DB round-trip (rolled back) ─────────────────────────────────────────────
