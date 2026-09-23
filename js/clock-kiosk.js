@@ -208,7 +208,10 @@
      this replaced. */
   function renderPerson(d) {
     pending = d.action;
-    personName.textContent = (d.action === 'out' ? 'Hi ' : 'Hello, ') + (d.name || 'there');
+    // "Hello," opens a shift, "Hi" greets someone already under way or finished
+    // for the day. Keyed on 'in' rather than 'out' so the no-action states
+    // (done, on leave) also read as "Hi Moses", per the spec's copy table.
+    personName.textContent = (d.action === 'in' ? 'Hello, ' : 'Hi ') + (d.name || 'there');
     personMeta.textContent = d.message || '';
     personActs.innerHTML   = '';
 
