@@ -39,6 +39,40 @@ a 300s replay window** compared via `hash_equals`, **ownership 403 `not_owner`**
 (Zuri writing a menu price is refused), and the **reservation state machine's
 terminal guard** (a late `confirmed` can never revive a `cancelled` booking).
 
+## Aligned with Zuri's handover (21 Sep 2026)
+
+Bhumika's handover document is the agreed field map (mirrored in
+`docs/sync-contract.json` in the Zuri repo). What we changed to match it:
+
+- **Mappers** ([`includes/sync-mappers.php`](../includes/sync-mappers.php)) use the
+  contract names. `menu_category`: `section`→`group`, `tag`→`subtitle`,
+  `is_visible`→`is_active`. `menu_item`: `is_veg`→`is_vegetarian`,
+  `has_nuts`/`has_gluten`→`contains_*`, our "Hidden" toggle (`is_available`)→
+  `is_active`; **`is_available` is never sent** (sold-out is Zuri's
+  `item_availability`, and sending it gets the event rejected `not_owner`);
+  `is_gf` has no contract field. `price` is required — an unpriced item is held
+  back until its first priced edit. `restaurant_table`: `label`→`number`,
+  `seats`→`capacity`, `section`→`zone`.
+- **No `menu` entity** — Zuri has none. Menus stay local (versioned and
+  soft-deleted, never sent).
+- **Only the Zuri property syncs** — `SYNC_VENUE_SLUG` (default `zuri`). Other
+  properties' menus/tables never leave.
+- **Backfill file** in Zuri's matcher format (handover §9) — `/admin/sync-export.php`
+  (default) or `php bin/sync-export.php > backfill.json`; `skipped` lists unpriced
+  items for the manual review. `?format=events` / `--events` gives the envelopes.
+- **Endpoints:** 401 `bad_signature` | `bad_timestamp` | `ip_not_allowed` (same
+  codes as Zuri); `X-Sync-Source` must be `zuri` and every envelope's `source`
+  must match it; `/events` rejections are `{event_id, code, message}` plus
+  `received`/`applies`; `/changes` returns `next_cursor`, takes `limit`, and
+  `?entity=&sync_uuid=` returns one record's current state (for Zuri after a
+  `stale_version`). The dispatcher records Zuri's per-event `code`/`message`.
+
+**Still open against the contract:** `opening_hours` is ONE record on Zuri
+(lunch/dinner text, first/last slot, slot + duration minutes, fixed uuid we
+mint) — our per-day model doesn't map yet, so hours are not sent. Inbound
+`item_availability` needs a sold-out field on our side (with the applier).
+Staff bookings go through Zuri's `/reserve` only (agreed).
+
 ## Stage 1 — Shadow (ready now)
 
 Stage 1 logs what we would send and applies nothing. Run it read-only, with no
@@ -46,32 +80,36 @@ live write-path changes:
 
 ```
 php admin/migrate.php   (apply add_restaurant_sync.sql on RDS) — one time
-php bin/sync-export.php > menu.json     # the payloads we'd send + Zuri's backfill dataset (§7)
+php bin/sync-export.php > backfill.json # Zuri's matcher file (§7) — or /admin/sync-export.php in the browser
 ```
 
 `bin/sync-export.php` needs no env flags and touches nothing. The dispatcher's
 `SYNC_SHADOW=true` mode logs outbox rows instead of sending them, for once the
-Stage-2 outbox hooks land. Hand `menu.json` to Bhumika to (a) confirm the v1
-field map and (b) run her backfill matcher against real data.
+Stage-2 outbox hooks land. Hand `backfill.json` to Bhumika to run her backfill
+matcher against real data (the field map itself is agreed — see above).
 
 ## Still to build (in rollout order)
 
-- **Repository-layer outbox hooks** — call `sync_outbox_push()` in the same
-  transaction as each menu/reservation write, bumping `sync_version`. Needed for
-  **Stage 2** (menu one-way TS→Zuri). Note two decisions this forces: the menu
-  editor (`admin/menu-edit.php`) currently HARD-deletes rows — must become
-  `is_deleted = TRUE` soft deletes; and reservation *ownership direction* (are
-  website reservations ours to push, or is Zuri the sole intake per §1?) is a
-  joint call to settle before wiring `create_reservation`.
-- **The applier** (`bin/sync-apply.php`) — drain `sync_inbox`, run `sync_resolve()`,
-  write locally via per-entity mappers. **The field maps are jointly owned (§11)**
-  and must be agreed in the shared contract repo before the mappers are written —
-  that boundary is deliberate.
-- **Three missing models** Tribalsand owns/consumes: `restaurant_table`,
-  `opening_hours` (we own → Zuri), `customers` (Zuri → us). Each gets the same six
-  `sync_*` columns when created.
-- **Reservation status extension** — today's `pending|confirmed|cancelled` →
-  add `seated|completed|no_show` (CHECK constraint + admin UI).
+- ~~**Menu outbox hooks**~~ — **DONE.** [`includes/menu-sync.php`](../includes/menu-sync.php):
+  every write in `admin/menu-edit.php` + `admin/menus.php` (create, save, publish
+  toggle, availability toggle, reorder, delete) runs inside `menu_sync_tx()` and
+  calls `menu_sync_emit()`, which bumps `sync_version` and queues the §3 event in
+  the same transaction (skipped while applying — loop guard). Deletes are now
+  **soft** (`is_deleted = TRUE`, children announced before parents; a deleted menu
+  is also unpublished and its slug freed); readers in `includes/menu.php` skip
+  deleted rows via `menu_live_sql()`. Pre-migration everything degrades to the old
+  hard-delete / no-event path. Events queue even while `SYNC_ENABLED` is off (§10:
+  they drain in order when it comes on). Test: `php tests/menu_sync_logic.php`.
+- **Reservation outbox hooks** — same pattern for reservations; staff-created
+  bookings must first call Zuri's `/reserve` (§1 rule 1).
+- **The applier** (`bin/sync-apply.php`) — drain `sync_inbox` in order under a
+  lock, run `sync_resolve()`, write locally via per-entity mappers (reservation,
+  customer, item_availability — field list in Zuri's handover §6). Retry an event
+  whose reference hasn't arrived yet a few times before failing it (the ordering
+  race Zuri found in testing).
+- **Opening hours as ONE record** (contract shape above) + a fixed uuid.
+- **Admin UI for the Phase A models** — table editor, and reservation
+  Seat / Complete / No-show buttons (models + state machine already exist).
 - **Staff booking → Zuri `/reserve`** synchronous call (Zuri owns seat inventory).
 - **Dashboard + alerts + `bin/reconcile.php`** (§9).
 
@@ -83,6 +121,7 @@ SYNC_TS_TO_ZURI=false       # per-direction: push our menu/tables/hours to Zuri
 SYNC_ZURI_TO_TS=false       # per-direction: apply Zuri's availability/reservations
 SYNC_SHARED_SECRET=         # the HMAC secret, identical on both sides (never in Git)
 SYNC_PEER_URL=https://zuriwatamu.com/sync/v1   # for the dispatcher
+SYNC_VENUE_SLUG=zuri        # the property whose menu/tables sync (default zuri)
 SYNC_PEER_IPS=13.60.72.12   # Zuri's outbound IP(s), comma-separated; empty = don't block
 ```
 

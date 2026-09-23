@@ -43,26 +43,39 @@ $accepted = [];
 $duplicates = [];
 $rejected = [];
 
+// Rejections use Zuri's shape: {event_id, code, message}.
+$reject = static function (?string $eid, string $code, string $message) use (&$rejected): void {
+    $rejected[] = ['event_id' => $eid, 'code' => $code, 'message' => $message];
+};
+
 foreach ($events as $ev) {
-    if (!is_array($ev)) { $rejected[] = ['event_id' => null, 'error' => 'invalid_payload']; continue; }
+    if (!is_array($ev)) { $reject(null, 'invalid_payload', 'event is not an object'); continue; }
+    $eid = isset($ev['event_id']) ? (string) $ev['event_id'] : null;
+    if (($ev['source'] ?? '') !== sync_peer_source()) {
+        $reject($eid, 'invalid_payload', 'source must equal X-Sync-Source (' . sync_peer_source() . ')');
+        continue;
+    }
     try {
         $r = sync_inbox_receive($ev);
     } catch (Throwable $e) {
         error_log('[sync/events] receive failed: ' . $e->getMessage());
-        $rejected[] = ['event_id' => $ev['event_id'] ?? null, 'error' => 'server_error'];
+        $reject($eid, 'server_error', 'could not store the event');
         continue;
     }
-    $eid = (string) ($ev['event_id'] ?? '');
     switch ($r['result']) {
-        case 'accepted':   $accepted[]   = $eid; break;
-        case 'duplicate':  $duplicates[] = $eid; break;
-        default:           $rejected[]   = ['event_id' => $eid, 'error' => $r['error'] ?? 'rejected'];
+        case 'accepted':   $accepted[]   = (string) $eid; break;
+        case 'duplicate':  $duplicates[] = (string) $eid; break;
+        default:
+            $code = (string) ($r['error'] ?? 'rejected');
+            $reject($eid, $code === 'not_owner' ? 'not_owner' : 'invalid_payload',
+                $code === 'not_owner' ? 'tribalsand owns ' . ($ev['entity'] ?? '') : $code);
     }
 }
 
 sync_api_json([
-    'ok'         => true,
     'accepted'   => $accepted,
     'duplicates' => $duplicates,
     'rejected'   => $rejected,
+    'received'   => count($events),
+    'applies'    => 'async',
 ], 202);

@@ -116,7 +116,8 @@ function sync_sign(string $timestamp, string $rawBody, ?string $secret = null): 
 /**
  * Verify an inbound request. Returns one of:
  *   ['ok' => true]
- *   ['ok' => false, 'code' => 401, 'error' => 'bad_signature']  (also stale timestamp)
+ *   ['ok' => false, 'code' => 401, 'error' => 'bad_signature']
+ *   ['ok' => false, 'code' => 401, 'error' => 'bad_timestamp']  (outside the 300s window)
  *   ['ok' => false, 'code' => 503, 'error' => 'not_configured'] (no secret set)
  *
  * The 300s window check comes FIRST so a replayed body with a valid old signature
@@ -131,7 +132,7 @@ function sync_verify_signature(string $timestamp, string $rawBody, string $prese
     $ts = (int) $timestamp;
     $now = $now ?? time();
     if ($ts <= 0 || abs($now - $ts) > sync_timestamp_window()) {
-        return ['ok' => false, 'code' => 401, 'error' => 'bad_signature'];   // stale / skewed clock
+        return ['ok' => false, 'code' => 401, 'error' => 'bad_timestamp'];   // stale / skewed clock
     }
 
     $expected = sync_sign($timestamp, $rawBody, $secret);

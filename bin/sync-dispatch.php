@@ -155,20 +155,25 @@ function dispatch_pass(): int {
         // Accepted + duplicates both count as delivered. A per-event rejection
         // inside a 202 is a bug for that event — mark it failed, don't retry.
         $ok = array_merge($body['accepted'] ?? [], $body['duplicates'] ?? []);
-        $okIds = []; $badIds = [];
+        $okIds = [];
         foreach ($rows as $r) {
             if (in_array($r['event_id'], $ok, true)) $okIds[] = (int) $r['id'];
         }
-        $rejected = $body['rejected'] ?? [];
-        if ($rejected) {
-            $badEids = array_column($rejected, 'event_id');
-            foreach ($rows as $r) {
-                if (in_array($r['event_id'], $badEids, true)) $badIds[] = (int) $r['id'];
-            }
-            dispatch_log('peer rejected ' . count($badIds) . ' event(s): ' . json_encode($rejected));
+        // Each rejection carries {event_id, code, message} (Zuri handover §7):
+        // invalid_payload = our mapper bug, not_owner = we sent a field Zuri
+        // owns, stale_version = Zuri holds newer — pull it with
+        // GET /changes?entity=&sync_uuid= and reconcile. None is retried.
+        $why = [];
+        foreach ($body['rejected'] ?? [] as $rej) {
+            $code = (string) ($rej['code'] ?? $rej['error'] ?? 'rejected');
+            $why[(string) ($rej['event_id'] ?? '')] = trim($code . ' ' . (string) ($rej['message'] ?? ''));
         }
         dispatch_mark_sent($okIds);
-        dispatch_mark_failed($badIds, 'rejected by peer');
+        foreach ($rows as $r) {
+            if (!isset($why[$r['event_id']])) continue;
+            dispatch_mark_failed([(int) $r['id']], 'rejected by peer: ' . $why[$r['event_id']]);
+            dispatch_log("ALERT peer rejected {$r['entity']} {$r['event_id']}: " . $why[$r['event_id']]);
+        }
         return count($rows);
     }
 

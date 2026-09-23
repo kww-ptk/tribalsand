@@ -4,6 +4,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/menu.php';
+require_once __DIR__ . '/../includes/menu-sync.php';   // outbox hooks + soft deletes (Zuri sync)
 require_login();
 require_manager();   // owner or house manager
 
@@ -19,11 +20,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($allowed && isset($_POST['toggle_publish'])) {
         $val = $_POST['is_published'] === '1' ? 'FALSE' : 'TRUE';
-        db_query("UPDATE menus SET is_published = {$val}, updated_at = NOW() WHERE id = :id", [':id' => $mid]);
+        menu_sync_tx(function () use ($val, $mid) {
+            db_query("UPDATE menus SET is_published = {$val}, updated_at = NOW() WHERE id = :id", [':id' => $mid]);
+            menu_sync_emit('menu', $mid, 'update');
+        });
         audit_log('menu.publish', 'menu', $mid, $menu['title']);
     }
     if ($allowed && isset($_POST['delete_menu'])) {
-        db_query('DELETE FROM menus WHERE id = :id', [':id' => $mid]);   // cascade removes categories + items
+        menu_delete_menu($mid);   // soft delete once synced; hard delete (cascade) pre-migration
         audit_log('menu.delete', 'menu', $mid, $menu['title']);
     }
     header('Location: /admin/menus.php');

@@ -58,14 +58,14 @@ function sync_api_header(string $name): string {
 /**
  * The full gate for an authenticated inbound request. Verifies the peer IP
  * allowlist and the HMAC signature over (timestamp . '.' . rawBody), and exits
- * with the right status on failure (401 bad_signature, 403 forbidden IP, 503 not
- * configured). Returns the raw body on success so the handler parses it once.
+ * with the right status on failure (401 bad_signature / bad_timestamp /
+ * ip_not_allowed — the same codes Zuri answers with — or 503 not configured). Returns the raw body on success so the handler parses it once.
  */
 function sync_api_authenticate(): string {
     $ip = client_ip();
     if (!sync_ip_allowed($ip)) {
         error_log('[sync-api] blocked IP: ' . $ip);
-        sync_api_json(['ok' => false, 'error' => 'forbidden'], 403);
+        sync_api_json(['ok' => false, 'error' => 'ip_not_allowed'], 401);
     }
 
     $raw = sync_api_raw_body();
@@ -80,6 +80,12 @@ function sync_api_authenticate(): string {
             error_log('[sync-api] ALERT bad_signature from ' . $ip . ' src=' . sync_api_header('X-Sync-Source'));
         }
         sync_api_json(['ok' => false, 'error' => $v['error']], $v['code']);
+    }
+    // Signed by the shared key AND claiming to be the peer — our own name here
+    // would mean a request replayed back at us.
+    if (sync_api_header('X-Sync-Source') !== sync_peer_source()) {
+        error_log('[sync-api] ALERT wrong X-Sync-Source from ' . $ip . ': ' . sync_api_header('X-Sync-Source'));
+        sync_api_json(['ok' => false, 'error' => 'bad_signature'], 401);
     }
     return $raw;
 }

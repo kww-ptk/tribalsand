@@ -21,6 +21,26 @@ function menus_supported(): bool {
     catch (Throwable $e) { return $c = false; }
 }
 
+/**
+ * SQL that hides soft-deleted rows (Zuri sync, add_restaurant_sync.sql adds
+ * is_deleted to menus / menu_categories / menu_items). '' pre-migration, so
+ * every reader keeps working on a database without the column. A catalog
+ * lookup, never a failing SELECT — some readers run inside a transaction.
+ */
+function menu_live_sql(string $alias = ''): string {
+    static $has = null;
+    if ($has === null) {
+        try {
+            $has = (bool) db_query(
+                "SELECT 1 FROM information_schema.columns
+                  WHERE table_schema = 'public' AND table_name = 'menu_items' AND column_name = 'is_deleted'"
+            )->fetchColumn();
+        } catch (Throwable $e) { $has = false; }
+    }
+    if (!$has) return '';
+    return ' AND ' . ($alias !== '' ? $alias . '.' : '') . 'is_deleted = FALSE';
+}
+
 /** The badge flags in render order: [item-column => [class, label]]. */
 function menu_badge_defs(): array {
     return [
@@ -49,19 +69,21 @@ function menu_price_label($price, string $label = 'Kes'): string {
 /** All menus (admin list). Scoped to $venueIds unless null (owner = all). Includes hidden. */
 function fetch_menus(?array $venueIds = null): array {
     if (!menus_supported()) return [];
-    $where  = '';
+    $where  = 'WHERE TRUE' . menu_live_sql('m');
     $params = [];
     if ($venueIds !== null) {
         if (!$venueIds) return [];   // scoped user with no venues sees nothing
         $in = implode(',', array_map('intval', $venueIds));
-        $where = "WHERE m.venue_id IN ($in)";
+        $where .= " AND m.venue_id IN ($in)";
     }
+    $liveC = menu_live_sql('c');
+    $liveI = menu_live_sql('i');
     return db_query(
         "SELECT m.*, v.name AS venue_name,
-                (SELECT COUNT(*) FROM menu_categories c WHERE c.menu_id = m.id) AS category_count,
+                (SELECT COUNT(*) FROM menu_categories c WHERE c.menu_id = m.id{$liveC}) AS category_count,
                 (SELECT COUNT(*) FROM menu_items i
                     JOIN menu_categories c ON c.id = i.category_id
-                   WHERE c.menu_id = m.id) AS item_count
+                   WHERE c.menu_id = m.id{$liveC}{$liveI}) AS item_count
            FROM menus m
            LEFT JOIN venues v ON v.id = m.venue_id
            $where
@@ -75,7 +97,7 @@ function fetch_menu(int $id): ?array {
     if (!menus_supported() || $id <= 0) return null;
     $row = db_query(
         "SELECT m.*, v.name AS venue_name FROM menus m
-           LEFT JOIN venues v ON v.id = m.venue_id WHERE m.id = :id",
+           LEFT JOIN venues v ON v.id = m.venue_id WHERE m.id = :id" . menu_live_sql('m'),
         [':id' => $id]
     )->fetch();
     return $row ?: null;
@@ -84,7 +106,7 @@ function fetch_menu(int $id): ?array {
 /** One published menu row by slug (public). NULL if missing/unpublished. */
 function fetch_menu_by_slug(string $slug, bool $publishedOnly = true): ?array {
     if (!menus_supported() || $slug === '') return null;
-    $sql = "SELECT * FROM menus WHERE slug = :s";
+    $sql = "SELECT * FROM menus WHERE slug = :s" . menu_live_sql();
     if ($publishedOnly) $sql .= " AND is_published = TRUE";
     $row = db_query($sql, [':s' => $slug])->fetch();
     return $row ?: null;
@@ -96,7 +118,7 @@ function fetch_menu_by_slug(string $slug, bool $publishedOnly = true): ?array {
  */
 function fetch_menu_categories(int $menuId, bool $forAdmin = false): array {
     if (!menus_supported() || $menuId <= 0) return [];
-    $catWhere = $forAdmin ? '' : ' AND is_visible = TRUE';
+    $catWhere = ($forAdmin ? '' : ' AND is_visible = TRUE') . menu_live_sql();
     $cats = db_query(
         "SELECT * FROM menu_categories WHERE menu_id = :m {$catWhere} ORDER BY sort_order, id",
         [':m' => $menuId]
@@ -104,7 +126,7 @@ function fetch_menu_categories(int $menuId, bool $forAdmin = false): array {
     if (!$cats) return [];
 
     $ids = implode(',', array_map(fn($c) => (int)$c['id'], $cats));
-    $itemWhere = $forAdmin ? '' : ' AND is_available = TRUE';
+    $itemWhere = ($forAdmin ? '' : ' AND is_available = TRUE') . menu_live_sql();
     $items = db_query(
         "SELECT * FROM menu_items WHERE category_id IN ($ids){$itemWhere} ORDER BY sort_order, id"
     )->fetchAll();

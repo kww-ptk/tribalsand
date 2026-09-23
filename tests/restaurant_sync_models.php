@@ -30,11 +30,12 @@ check('6 states known',           count(sync_reservation_states()) === 6);
 check('confirmed→seated allowed', sync_reservation_transition_allowed('confirmed', 'seated'));
 check('cancelled never revives',  sync_reservation_transition_allowed('cancelled', 'confirmed') === false);
 
-// ── Mappers (v1 proposal shapes) ─────────────────────────────────────────────
+// ── Mappers (Zuri contract, handover §6) ─────────────────────────────────────────────
 $t = sync_map_restaurant_table(['venue_slug'=>'zuri','label'=>'T1','seats'=>4,'section'=>'Terrace','sort_order'=>2,'is_active'=>true]);
-check('table maps venue_slug',    $t['venue_slug'] === 'zuri');
-check('table seats is int',       $t['seats'] === 4);
-check('table section preserved',  $t['section'] === 'Terrace');
+check('table: label → number',     $t['number'] === 'T1');
+check('table: seats → capacity',   $t['capacity'] === 4);
+check('table: section → zone',     $t['zone'] === 'Terrace');
+check('table capacity clamped',    sync_map_restaurant_table(['label'=>'T2','seats'=>999])['capacity'] === 255);
 
 $hOpen = sync_map_opening_hours(['venue_slug'=>'zuri','day_of_week'=>1,'open_time'=>'12:00:00','close_time'=>'22:30:00','is_closed'=>false]);
 check('hours trims to HH:MM',      $hOpen['open_time'] === '12:00' && $hOpen['close_time'] === '22:30');

@@ -28,8 +28,8 @@ $now = (int) $ts;
 check('verify accepts a good signature',  sync_verify_signature($ts, $body, sync_sign($ts, $body, $secret), $now, $secret)['ok'] === true);
 check('verify rejects a bad signature',   sync_verify_signature($ts, $body, 'deadbeef', $now, $secret)['error'] === 'bad_signature');
 check('verify rejects an empty signature',sync_verify_signature($ts, $body, '', $now, $secret)['error'] === 'bad_signature');
-check('verify rejects a stale timestamp',  sync_verify_signature((string)($now - 400), $body, sync_sign((string)($now - 400), $body, $secret), $now, $secret)['error'] === 'bad_signature');
-check('verify rejects a future timestamp', sync_verify_signature((string)($now + 400), $body, sync_sign((string)($now + 400), $body, $secret), $now, $secret)['error'] === 'bad_signature');
+check('verify rejects a stale timestamp',  sync_verify_signature((string)($now - 400), $body, sync_sign((string)($now - 400), $body, $secret), $now, $secret)['error'] === 'bad_timestamp');
+check('verify rejects a future timestamp', sync_verify_signature((string)($now + 400), $body, sync_sign((string)($now + 400), $body, $secret), $now, $secret)['error'] === 'bad_timestamp');
 check('verify accepts within the window',  sync_verify_signature((string)($now - 299), $body, sync_sign((string)($now - 299), $body, $secret), $now, $secret)['ok'] === true);
 check('verify 503 when no secret set',    sync_verify_signature($ts, $body, $sig, $now, '')['error'] === 'not_configured');
 
@@ -109,13 +109,20 @@ $item = sync_map_menu_item([
 ]);
 check('item price is a string',     $item['price'] === '349.00');
 check('item links category_uuid',   $item['category_uuid'] === 'cat-uuid-1');
-check('item carries veg badge',     $item['is_veg'] === true);
-check('item carries availability',  $item['is_available'] === false);
-check('item null description',      $item['description'] === null);
+check('item: is_veg → is_vegetarian',       $item['is_vegetarian'] === true);
+check('item: Hidden toggle → is_active',     $item['is_active'] === false);
+check('item NEVER carries is_available',     !array_key_exists('is_available', $item));   // Zuri-owned → not_owner
+check('item uses contract names only',       !array_key_exists('is_veg', $item) && !array_key_exists('is_gf', $item));
+check('item null description',               $item['description'] === null);
+check('unpriced item is held back',          sync_menu_item_skip_reason(['price' => null]) === 'no_price'
+                                             && sync_menu_item_skip_reason(['price' => 349]) === '');
 
-$cat = sync_map_menu_category(['section' => 'drinks', 'name' => 'Cocktails', 'tag' => null, 'icon' => '🍹', 'sort_order' => 1, 'is_visible' => true, 'menu_sync_uuid' => 'menu-uuid-1']);
-check('category links menu_uuid',   $cat['menu_uuid'] === 'menu-uuid-1');
-check('category section preserved', $cat['section'] === 'drinks');
+$cat = sync_map_menu_category(['section' => 'drinks', 'name' => 'Cocktails', 'tag' => 'Mains · Seafood', 'icon' => '🍹', 'sort_order' => 1, 'is_visible' => false]);
+check('category: section → group',           $cat['group'] === 'drinks');
+check('category: tag → subtitle',            $cat['subtitle'] === 'Mains · Seafood');
+check('category: is_visible → is_active',    $cat['is_active'] === false);
+check('category has no menu link',           !array_key_exists('menu_uuid', $cat));
+check('category group defaults to food',     sync_map_menu_category(['section' => null, 'name' => 'x'])['group'] === 'food');
 
 // ── DB round-trip (outbox push + inbox de-dupe) ──────────────────────────────
 if (!sync_supported()) {

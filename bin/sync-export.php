@@ -10,12 +10,11 @@ declare(strict_types=1);
  * simultaneously the JSON dataset Zuri's backfill matcher reads to pair existing
  * rows before any live sync (§7).
  *
- *   php bin/sync-export.php            # {"events":[…]} to stdout
- *   php bin/sync-export.php > menu.json
+ *   php bin/sync-export.php > backfill.json          # Zuri's matcher format (handover §9)
+ *   php bin/sync-export.php --events > events.json   # the exact §3 envelopes we'd send
  *
- * Emitted oldest-parent-first (menus → categories → items) so a backfill applies
- * in dependency order: a category's menu_uuid and an item's category_uuid always
- * resolve before the child arrives.
+ * Emitted oldest-parent-first (categories → items) so a backfill applies
+ * in dependency order: an item's category_uuid always resolves before the item.
  */
 require_once __DIR__ . '/../includes/sync-mappers.php';
 

@@ -4,19 +4,28 @@ declare(strict_types=1);
  * Tribalsand → envelope mappers for the entities Tribalsand OWNS (§1, §11).
  *
  * These translate our PostgreSQL rows into the shared §3 envelope `data` shape.
- * Per §11 the mapper *code* on each side is that side's to own (this is Aly's
- * menu/tables/hours mapper); the FIELD MAP it targets — which envelope key maps
- * to which column — is JOINTLY owned and must be signed off with Bhumika in the
- * shared contract repo. The shapes below follow the §3 example and are the v1
- * PROPOSAL to confirm during Stage 1 (Shadow), which exists precisely so both
- * sides can compare real payloads before anything is applied.
+ * The field names follow Zuri's contract — Bhumika's handover (21 Sep 2026) §6,
+ * mirrored in docs/sync-contract.json in the Zuri repository. Change a field
+ * here only after changing it there, together.
  *
- * Non-negotiables from §3, enforced here:
- *   • money is a decimal STRING ("349.00"), never a float
- *   • cross-system links use the peer's sync_uuid, never our local auto-inc id
+ * Contract rules enforced here:
+ *   • money is a decimal STRING ("349.00"), never a float; menu_item.price is required
+ *   • cross-system links use sync_uuid, never our local auto-inc id
+ *   • Zuri has no `menu` entity — categories are sent as-is, grouped food|drinks
+ *   • item availability (sold out) is ZURI's: menu_item must never carry
+ *     `is_available`, or Zuri rejects the whole event as not_owner. Our admin's
+ *     "Hidden" toggle (menu_items.is_available) is the item's `is_active`.
+ *   • only the Zuri property's menu syncs (SYNC_VENUE_SLUG, default `zuri`) —
+ *     Maya Kobe's breakfast menu must never appear on Zuri's site.
  */
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/sync.php';
+
+/** The venue whose menu/tables sync to Zuri. */
+function sync_venue_slug(): string {
+    $v = trim((string) (parse_env()['SYNC_VENUE_SLUG'] ?? ''));
+    return $v !== '' ? $v : 'zuri';
+}
 
 /** NUMERIC price → decimal string "349.00", or null when unpriced. */
 function sync_money(mixed $price): ?string {
@@ -24,122 +33,73 @@ function sync_money(mixed $price): ?string {
     return number_format((float) $price, 2, '.', '');
 }
 
+/** Nullable text → string|null (trimmed, '' → null). */
+function sync_text(mixed $v): ?string {
+    if ($v === null) return null;
+    $s = trim((string) $v);
+    return $s === '' ? null : $s;
+}
+
 /**
- * menu_category → envelope data. `menu_uuid` links the category to its menu by
- * the menu's sync_uuid (parent link), so identity survives across systems.
+ * menu_category → envelope data (contract: group, name, subtitle, icon,
+ * sort_order, is_active). Our `tag` is the one-line strapline under the
+ * category name ("Mains · Seafood") — Zuri's `subtitle`.
  */
 function sync_map_menu_category(array $row): array {
     return [
-        'menu_uuid'  => (string) ($row['menu_sync_uuid'] ?? ''),
-        'section'    => (string) ($row['section'] ?? 'food'),
+        'group'      => ($row['section'] ?? '') === 'drinks' ? 'drinks' : 'food',
         'name'       => (string) ($row['name'] ?? ''),
-        'tag'        => $row['tag'] !== null ? (string) $row['tag'] : null,
-        'icon'       => $row['icon'] !== null ? (string) $row['icon'] : null,
+        'subtitle'   => sync_text($row['tag'] ?? null),
+        'icon'       => sync_text($row['icon'] ?? null),
         'sort_order' => (int) ($row['sort_order'] ?? 0),
-        'is_visible' => (bool) ($row['is_visible'] ?? true),
+        'is_active'  => (bool) ($row['is_visible'] ?? true),
     ];
 }
 
 /**
- * menu_item → envelope data. `category_uuid` links it to its category. The seven
- * dietary badges + availability travel as booleans. Price is a decimal string.
+ * menu_item → envelope data. Fields we don't hold (code, slug, image,
+ * is_featured, allergens, prep_minutes) are omitted, not nulled — partial
+ * objects are allowed, and a null would wipe a value Zuri holds. `is_gf` has no
+ * contract field and is not sent.
  */
 function sync_map_menu_item(array $row): array {
     return [
-        'category_uuid' => (string) ($row['category_sync_uuid'] ?? ''),
-        'name'          => (string) ($row['name'] ?? ''),
-        'description'   => $row['description'] !== null ? (string) $row['description'] : null,
-        'price'         => sync_money($row['price'] ?? null),
-        'is_veg'        => (bool) ($row['is_veg'] ?? false),
-        'is_vegan'      => (bool) ($row['is_vegan'] ?? false),
-        'is_spicy'      => (bool) ($row['is_spicy'] ?? false),
-        'has_nuts'      => (bool) ($row['has_nuts'] ?? false),
-        'has_gluten'    => (bool) ($row['has_gluten'] ?? false),
-        'is_gf'         => (bool) ($row['is_gf'] ?? false),
-        'is_signature'  => (bool) ($row['is_signature'] ?? false),
-        'is_available'  => (bool) ($row['is_available'] ?? true),
-        'sort_order'    => (int) ($row['sort_order'] ?? 0),
+        'category_uuid'   => (string) ($row['category_sync_uuid'] ?? ''),
+        'name'            => (string) ($row['name'] ?? ''),
+        'description'     => sync_text($row['description'] ?? null),
+        'price'           => sync_money($row['price'] ?? null),
+        'is_signature'    => (bool) ($row['is_signature'] ?? false),
+        'is_vegetarian'   => (bool) ($row['is_veg'] ?? false),
+        'is_vegan'        => (bool) ($row['is_vegan'] ?? false),
+        'is_spicy'        => (bool) ($row['is_spicy'] ?? false),
+        'contains_nuts'   => (bool) ($row['has_nuts'] ?? false),
+        'contains_gluten' => (bool) ($row['has_gluten'] ?? false),
+        'sort_order'      => (int) ($row['sort_order'] ?? 0),
+        'is_active'       => (bool) ($row['is_available'] ?? true),   // our "Hidden" toggle
     ];
 }
 
 /**
- * menu → envelope data. The menu itself is a synced entity too (its slug/title
- * is the container categories hang off).
- */
-function sync_map_menu(array $row): array {
-    return [
-        'slug'           => (string) ($row['slug'] ?? ''),
-        'title'          => (string) ($row['title'] ?? ''),
-        'subtitle'       => $row['subtitle'] !== null ? (string) $row['subtitle'] : null,
-        'currency_label' => (string) ($row['currency_label'] ?? 'Kes'),
-        'is_published'   => (bool) ($row['is_published'] ?? true),
-        'sort_order'     => (int) ($row['sort_order'] ?? 0),
-    ];
-}
-
-/**
- * The full backfill/shadow export (§7) of the entities Tribalsand OWNS, as an
- * ordered array of §3 envelopes: menus → categories → items (parents before
- * children so a backfill applies in dependency order). READ-ONLY. Shared by
- * bin/sync-export.php (CLI) and admin/sync-export.php (browser download) so the
- * two can never diverge. Empty array pre-migration.
- */
-function sync_export_events(): array {
-    if (!sync_supported()) return [];
-    $events = [];
-
-    foreach (db_query(
-        "SELECT id, sync_uuid, sync_version, slug, title, subtitle, currency_label, is_published, sort_order
-           FROM menus WHERE is_deleted = FALSE ORDER BY id"
-    )->fetchAll() as $m) {
-        $events[] = sync_make_event('menu', 'create', (string) $m['sync_uuid'], (int) $m['sync_version'], sync_map_menu($m));
-    }
-
-    foreach (db_query(
-        "SELECT c.id, c.sync_uuid, c.sync_version, c.section, c.name, c.tag, c.icon, c.sort_order, c.is_visible,
-                m.sync_uuid AS menu_sync_uuid
-           FROM menu_categories c
-           JOIN menus m ON m.id = c.menu_id
-          WHERE c.is_deleted = FALSE AND m.is_deleted = FALSE
-          ORDER BY c.id"
-    )->fetchAll() as $c) {
-        $events[] = sync_make_event('menu_category', 'create', (string) $c['sync_uuid'], (int) $c['sync_version'], sync_map_menu_category($c));
-    }
-
-    foreach (db_query(
-        "SELECT i.id, i.sync_uuid, i.sync_version, i.name, i.description, i.price,
-                i.is_veg, i.is_vegan, i.is_spicy, i.has_nuts, i.has_gluten, i.is_gf,
-                i.is_signature, i.is_available, i.sort_order,
-                c.sync_uuid AS category_sync_uuid
-           FROM menu_items i
-           JOIN menu_categories c ON c.id = i.category_id
-          WHERE i.is_deleted = FALSE AND c.is_deleted = FALSE
-          ORDER BY i.id"
-    )->fetchAll() as $i) {
-        $events[] = sync_make_event('menu_item', 'create', (string) $i['sync_uuid'], (int) $i['sync_version'], sync_map_menu_item($i));
-    }
-
-    return $events;
-}
-
-/**
- * restaurant_table → envelope data. `venue_slug` links it to the property by a
- * stable key (both sides key rooms/venues off slug, not our local id).
+ * restaurant_table → envelope data (contract: number ≤10 required, zone,
+ * capacity 1–255, in_service, sort_order, is_active). Our `label` is the
+ * table's number ("T1"); live seating state stays local to Zuri.
  */
 function sync_map_restaurant_table(array $row): array {
     return [
-        'venue_slug' => (string) ($row['venue_slug'] ?? ''),
-        'label'      => (string) ($row['label'] ?? ''),
-        'seats'      => (int) ($row['seats'] ?? 0),
-        'section'    => $row['section'] !== null ? (string) $row['section'] : null,
+        'number'     => (string) ($row['label'] ?? ''),
+        'zone'       => sync_text($row['section'] ?? null),
+        'capacity'   => max(1, min(255, (int) ($row['seats'] ?? 0))),
+        'in_service' => (bool) ($row['is_active'] ?? true),
         'sort_order' => (int) ($row['sort_order'] ?? 0),
         'is_active'  => (bool) ($row['is_active'] ?? true),
     ];
 }
 
 /**
- * opening_hours → envelope data. Times are HH:MM strings (null when closed).
- * day_of_week is 0=Sunday..6=Saturday (agree this convention with Bhumika).
+ * opening_hours → envelope data, per-day model.
+ * NOTE: Zuri's contract is ONE record (lunch, dinner, first_slot, last_slot,
+ * slot_minutes, duration_minutes) with a fixed uuid — this per-day mapper does
+ * not match it yet and is not sent. Rework pending.
  */
 function sync_map_opening_hours(array $row): array {
     $hm = static fn($t) => $t !== null && $t !== '' ? substr((string) $t, 0, 5) : null;
@@ -152,4 +112,106 @@ function sync_map_opening_hours(array $row): array {
         'is_closed'   => $closed,
         'sort_order'  => (int) ($row['sort_order'] ?? 0),
     ];
+}
+
+/**
+ * Why an item row can't be sent, or '' if it can. price is required by the
+ * contract, so an unpriced item waits until it has one (the first priced edit
+ * goes out, and Zuri treats an update for an unknown uuid as a create).
+ */
+function sync_menu_item_skip_reason(array $row): string {
+    return sync_money($row['price'] ?? null) === null ? 'no_price' : '';
+}
+
+/**
+ * Menu/table rows for the synced venue, with each row's parent sync_uuid/name.
+ * $id = one row (any is_deleted state — a delete event still describes it);
+ * null = every live row, parents before children order by id.
+ */
+function sync_menu_rows(string $entity, ?int $id = null): array {
+    $one   = $id !== null;
+    $where = $one ? ' AND x.id = :id' : ' AND x.is_deleted = FALSE';
+    $p     = [':venue' => sync_venue_slug()] + ($one ? [':id' => $id] : []);
+    $sql = match ($entity) {
+        'menu_category' =>
+            "SELECT x.id, x.sync_uuid, x.sync_version, x.section, x.name, x.tag, x.icon, x.sort_order, x.is_visible
+               FROM menu_categories x
+               JOIN menus m  ON m.id = x.menu_id
+               JOIN venues v ON v.id = m.venue_id
+              WHERE v.slug = :venue{$where}" . ($one ? '' : ' AND m.is_deleted = FALSE') . "
+              ORDER BY x.id",
+        'menu_item' =>
+            "SELECT x.id, x.sync_uuid, x.sync_version, x.name, x.description, x.price,
+                    x.is_veg, x.is_vegan, x.is_spicy, x.has_nuts, x.has_gluten, x.is_gf,
+                    x.is_signature, x.is_available, x.sort_order,
+                    c.sync_uuid AS category_sync_uuid, c.name AS category_name
+               FROM menu_items x
+               JOIN menu_categories c ON c.id = x.category_id
+               JOIN menus m  ON m.id = c.menu_id
+               JOIN venues v ON v.id = m.venue_id
+              WHERE v.slug = :venue{$where}" . ($one ? '' : ' AND c.is_deleted = FALSE AND m.is_deleted = FALSE') . "
+              ORDER BY x.id",
+        'restaurant_table' =>
+            "SELECT x.id, x.sync_uuid, x.sync_version, x.label, x.seats, x.section, x.sort_order, x.is_active
+               FROM restaurant_tables x
+               JOIN venues v ON v.id = x.venue_id
+              WHERE v.slug = :venue{$where}
+              ORDER BY x.id",
+        default => null,
+    };
+    if ($sql === null) return [];
+    if ($entity === 'restaurant_table'
+        && !db_query("SELECT to_regclass('public.restaurant_tables')")->fetchColumn()) {
+        return [];   // add_restaurant_sync_models.sql not applied yet
+    }
+    return db_query($sql, $p)->fetchAll();
+}
+
+/**
+ * The full shadow export (§7) as ordered §3 envelopes — categories before
+ * items so a backfill applies in dependency order. READ-ONLY. Unpriced items
+ * are left out (see sync_menu_item_skip_reason). Empty pre-migration.
+ */
+function sync_export_events(): array {
+    if (!sync_supported()) return [];
+    $events = [];
+    foreach (sync_menu_rows('menu_category') as $c) {
+        $events[] = sync_make_event('menu_category', 'create', (string) $c['sync_uuid'], (int) $c['sync_version'], sync_map_menu_category($c));
+    }
+    foreach (sync_menu_rows('menu_item') as $i) {
+        if (sync_menu_item_skip_reason($i) !== '') continue;
+        $events[] = sync_make_event('menu_item', 'create', (string) $i['sync_uuid'], (int) $i['sync_version'], sync_map_menu_item($i));
+    }
+    return $events;
+}
+
+/**
+ * The backfill file Zuri's natural-key matcher reads (handover §9): per entity,
+ * just the uuid plus the match keys. Also reports what was left out, so the
+ * manual review knows about it. READ-ONLY.
+ */
+function sync_backfill_export(): array {
+    $out = ['menu_category' => [], 'menu_item' => [], 'restaurant_table' => [], 'opening_hours' => []];
+    $skipped = [];
+    if (!sync_supported()) return $out + ['skipped' => $skipped];
+
+    foreach (sync_menu_rows('menu_category') as $c) {
+        $out['menu_category'][] = ['sync_uuid' => (string) $c['sync_uuid'], 'name' => (string) $c['name']];
+    }
+    foreach (sync_menu_rows('menu_item') as $i) {
+        $why = sync_menu_item_skip_reason($i);
+        if ($why !== '') {
+            $skipped[] = ['entity' => 'menu_item', 'sync_uuid' => (string) $i['sync_uuid'], 'name' => (string) $i['name'], 'reason' => $why];
+            continue;
+        }
+        $out['menu_item'][] = [
+            'sync_uuid' => (string) $i['sync_uuid'],
+            'name'      => (string) $i['name'],
+            'category'  => (string) $i['category_name'],
+        ];
+    }
+    foreach (sync_menu_rows('restaurant_table') as $t) {
+        $out['restaurant_table'][] = ['sync_uuid' => (string) $t['sync_uuid'], 'number' => (string) $t['label']];
+    }
+    return $out + ['venue' => sync_venue_slug(), 'skipped' => $skipped];
 }

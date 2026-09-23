@@ -4,6 +4,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/menu.php';
+require_once __DIR__ . '/../includes/menu-sync.php';   // outbox hooks + soft deletes (Zuri sync)
 require_login();
 require_manager();   // owner or house manager
 
@@ -20,17 +21,28 @@ function menu_slugify(string $s): string {
     $s = preg_replace('/[^a-z0-9]+/', '-', $s);
     return trim((string)$s, '-');
 }
-/** Move a row up/down among siblings sharing $scopeCol=$scopeVal, then renumber. */
-function menu_move(string $table, string $scopeCol, int $scopeVal, int $rowId, int $dir): void {
-    $rows = db_query("SELECT id FROM {$table} WHERE {$scopeCol} = :s ORDER BY sort_order, id", [':s' => $scopeVal])
-        ->fetchAll(PDO::FETCH_COLUMN);
-    $rows = array_map('intval', $rows);
-    $idx  = array_search($rowId, $rows, true);
+/**
+ * Move a row up/down among siblings sharing $scopeCol=$scopeVal, then renumber.
+ * Only rows whose sort_order actually changes are written — each of those is
+ * announced to Zuri, since sort_order travels in the sync payload.
+ */
+function menu_move(string $table, string $entity, string $scopeCol, int $scopeVal, int $rowId, int $dir): void {
+    $rows = db_query("SELECT id, sort_order FROM {$table} WHERE {$scopeCol} = :s" . menu_live_sql() . " ORDER BY sort_order, id", [':s' => $scopeVal])
+        ->fetchAll();
+    $ids  = array_map(fn($r) => (int)$r['id'], $rows);
+    $was  = array_combine($ids, array_map(fn($r) => (int)$r['sort_order'], $rows));
+    $idx  = array_search($rowId, $ids, true);
     if ($idx === false) return;
     $swap = $idx + $dir;
-    if ($swap < 0 || $swap >= count($rows)) return;
-    [$rows[$idx], $rows[$swap]] = [$rows[$swap], $rows[$idx]];
-    foreach ($rows as $o => $rid) db_query("UPDATE {$table} SET sort_order = :o WHERE id = :id", [':o' => $o, ':id' => $rid]);
+    if ($swap < 0 || $swap >= count($ids)) return;
+    [$ids[$idx], $ids[$swap]] = [$ids[$swap], $ids[$idx]];
+    menu_sync_tx(function () use ($table, $entity, $ids, $was) {
+        foreach ($ids as $o => $rid) {
+            if ($was[$rid] === $o) continue;
+            db_query("UPDATE {$table} SET sort_order = :o WHERE id = :id", [':o' => $o, ':id' => $rid]);
+            menu_sync_emit($entity, $rid, 'update');
+        }
+    });
 }
 /** The 7 badge columns pulled from a posted form. */
 function menu_posted_badges(): array {
@@ -60,9 +72,9 @@ $success = '';
 $error   = '';
 
 /** True if $catId belongs to the menu being edited. */
-$catOwned  = fn(int $catId) => $catId > 0 && (int)(db_query("SELECT menu_id FROM menu_categories WHERE id = :c", [':c' => $catId])->fetchColumn() ?: 0) === $id;
+$catOwned  = fn(int $catId) => $catId > 0 && (int)(db_query("SELECT menu_id FROM menu_categories WHERE id = :c" . menu_live_sql(), [':c' => $catId])->fetchColumn() ?: 0) === $id;
 /** True if $itemId's category belongs to the menu being edited; returns its category_id or 0. */
-$itemCat   = fn(int $itemId) => (int)(db_query("SELECT c.id FROM menu_items i JOIN menu_categories c ON c.id = i.category_id WHERE i.id = :i AND c.menu_id = :m", [':i' => $itemId, ':m' => $id])->fetchColumn() ?: 0);
+$itemCat   = fn(int $itemId) => (int)(db_query("SELECT c.id FROM menu_items i JOIN menu_categories c ON c.id = i.category_id WHERE i.id = :i AND c.menu_id = :m" . menu_live_sql('i') . menu_live_sql('c'), [':i' => $itemId, ':m' => $id])->fetchColumn() ?: 0);
 
 // ── POST ─────────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
@@ -97,31 +109,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ':pub'      => isset($_POST['is_published']) ? 'TRUE' : 'FALSE',
             ];
             if ($isNew) {
-                db_query(
-                    "INSERT INTO menus (venue_id,slug,title,subtitle,tagline,location_label,footer_note,currency_label,is_published,sort_order)
-                     VALUES (:venue,:slug,:title,:subtitle,:tagline,:location,:footer,:cur,:pub,
-                             (SELECT COALESCE(MAX(sort_order),0)+1 FROM menus))",
-                    $data
-                );
-                $id = (int)db()->lastInsertId();
+                $id = menu_sync_tx(function () use ($data) {
+                    db_query(
+                        "INSERT INTO menus (venue_id,slug,title,subtitle,tagline,location_label,footer_note,currency_label,is_published,sort_order)
+                         VALUES (:venue,:slug,:title,:subtitle,:tagline,:location,:footer,:cur,:pub,
+                                 (SELECT COALESCE(MAX(sort_order),0)+1 FROM menus))",
+                        $data
+                    );
+                    $newId = (int)db()->lastInsertId();
+                    menu_sync_emit('menu', $newId, 'create');
+                    return $newId;
+                });
                 audit_log('menu.create', 'menu', $id, $title);
                 header("Location: /admin/menu-edit.php?id={$id}&saved=1");
                 exit;
             }
             $data[':id'] = $id;
-            db_query(
-                "UPDATE menus SET venue_id=:venue,slug=:slug,title=:title,subtitle=:subtitle,tagline=:tagline,
-                    location_label=:location,footer_note=:footer,currency_label=:cur,is_published=:pub,updated_at=NOW()
-                 WHERE id=:id",
-                $data
-            );
+            menu_sync_tx(function () use ($data, $id) {
+                db_query(
+                    "UPDATE menus SET venue_id=:venue,slug=:slug,title=:title,subtitle=:subtitle,tagline=:tagline,
+                        location_label=:location,footer_note=:footer,currency_label=:cur,is_published=:pub,updated_at=NOW()
+                     WHERE id=:id",
+                    $data
+                );
+                menu_sync_emit('menu', $id, 'update');
+            });
             audit_log('menu.save', 'menu', $id, $title);
             $success = 'Menu details saved.';
         }
     }
 
     if ($action === 'delete_menu' && !$isNew) {
-        db_query('DELETE FROM menus WHERE id = :id', [':id' => $id]);
+        menu_delete_menu($id);
         audit_log('menu.delete', 'menu', $id, $menu['title'] ?? '');
         header('Location: /admin/menus.php');
         exit;
@@ -131,30 +150,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if ($action === 'add_category' && !$isNew) {
         $name = trim($_POST['name'] ?? '');
         if ($name !== '') {
-            db_query(
-                "INSERT INTO menu_categories (menu_id,section,name,tag,icon,sort_order)
-                 VALUES (:m,:sec,:n,:tag,:ic,(SELECT COALESCE(MAX(sort_order),0)+1 FROM menu_categories WHERE menu_id=:m))",
-                [':m'=>$id, ':sec'=>($_POST['section']==='drinks'?'drinks':'food'), ':n'=>$name,
-                 ':tag'=>trim($_POST['tag']??''), ':ic'=>trim($_POST['icon']??'')]
-            );
+            menu_sync_tx(function () use ($id, $name) {
+                db_query(
+                    "INSERT INTO menu_categories (menu_id,section,name,tag,icon,sort_order)
+                     VALUES (:m,:sec,:n,:tag,:ic,(SELECT COALESCE(MAX(sort_order),0)+1 FROM menu_categories WHERE menu_id=:m))",
+                    [':m'=>$id, ':sec'=>($_POST['section']==='drinks'?'drinks':'food'), ':n'=>$name,
+                     ':tag'=>trim($_POST['tag']??''), ':ic'=>trim($_POST['icon']??'')]
+                );
+                menu_sync_emit('menu_category', (int)db()->lastInsertId(), 'create');
+            });
             $success = 'Category added.';
         } else { $error = 'Category name is required.'; }
     }
     if ($action === 'save_category' && $catOwned((int)($_POST['cat_id'] ?? 0))) {
-        db_query(
-            "UPDATE menu_categories SET section=:sec,name=:n,tag=:tag,icon=:ic,is_visible=:vis WHERE id=:c",
-            [':sec'=>($_POST['section']==='drinks'?'drinks':'food'), ':n'=>trim($_POST['name']??''),
-             ':tag'=>trim($_POST['tag']??''), ':ic'=>trim($_POST['icon']??''),
-             ':vis'=>isset($_POST['is_visible'])?'TRUE':'FALSE', ':c'=>(int)$_POST['cat_id']]
-        );
+        menu_sync_tx(function () {
+            db_query(
+                "UPDATE menu_categories SET section=:sec,name=:n,tag=:tag,icon=:ic,is_visible=:vis WHERE id=:c",
+                [':sec'=>($_POST['section']==='drinks'?'drinks':'food'), ':n'=>trim($_POST['name']??''),
+                 ':tag'=>trim($_POST['tag']??''), ':ic'=>trim($_POST['icon']??''),
+                 ':vis'=>isset($_POST['is_visible'])?'TRUE':'FALSE', ':c'=>(int)$_POST['cat_id']]
+            );
+            menu_sync_emit('menu_category', (int)$_POST['cat_id'], 'update');
+        });
         $success = 'Category saved.';
     }
     if ($action === 'delete_category' && $catOwned((int)($_POST['cat_id'] ?? 0))) {
-        db_query('DELETE FROM menu_categories WHERE id = :c', [':c'=>(int)$_POST['cat_id']]);
+        menu_delete_category((int)$_POST['cat_id']);
         $success = 'Category deleted.';
     }
     if (($action === 'cat_up' || $action === 'cat_down') && $catOwned((int)($_POST['cat_id'] ?? 0))) {
-        menu_move('menu_categories', 'menu_id', $id, (int)$_POST['cat_id'], $action === 'cat_up' ? -1 : 1);
+        menu_move('menu_categories', 'menu_category', 'menu_id', $id, (int)$_POST['cat_id'], $action === 'cat_up' ? -1 : 1);
     }
 
     // ---- Items ----
@@ -162,41 +187,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         $name = trim($_POST['name'] ?? '');
         if ($name !== '') {
             $b = menu_posted_badges();
-            db_query(
-                "INSERT INTO menu_items (category_id,name,description,price,is_veg,is_vegan,is_spicy,has_nuts,has_gluten,is_gf,is_signature,is_available,sort_order)
-                 VALUES (:c,:n,:d,:p,:veg,:vgn,:sp,:nut,:glu,:gf,:sig,:av,(SELECT COALESCE(MAX(sort_order),0)+1 FROM menu_items WHERE category_id=:c))",
-                [':c'=>(int)$_POST['cat_id'], ':n'=>$name, ':d'=>trim($_POST['description']??''),
-                 ':p'=>($_POST['price']??'')===''?null:(float)$_POST['price'],
-                 ':veg'=>$b['is_veg'], ':vgn'=>$b['is_vegan'], ':sp'=>$b['is_spicy'], ':nut'=>$b['has_nuts'],
-                 ':glu'=>$b['has_gluten'], ':gf'=>$b['is_gf'], ':sig'=>$b['is_signature'],
-                 ':av'=>isset($_POST['is_available'])?'TRUE':'FALSE']
-            );
+            menu_sync_tx(function () use ($name, $b) {
+                db_query(
+                    "INSERT INTO menu_items (category_id,name,description,price,is_veg,is_vegan,is_spicy,has_nuts,has_gluten,is_gf,is_signature,is_available,sort_order)
+                     VALUES (:c,:n,:d,:p,:veg,:vgn,:sp,:nut,:glu,:gf,:sig,:av,(SELECT COALESCE(MAX(sort_order),0)+1 FROM menu_items WHERE category_id=:c))",
+                    [':c'=>(int)$_POST['cat_id'], ':n'=>$name, ':d'=>trim($_POST['description']??''),
+                     ':p'=>($_POST['price']??'')===''?null:(float)$_POST['price'],
+                     ':veg'=>$b['is_veg'], ':vgn'=>$b['is_vegan'], ':sp'=>$b['is_spicy'], ':nut'=>$b['has_nuts'],
+                     ':glu'=>$b['has_gluten'], ':gf'=>$b['is_gf'], ':sig'=>$b['is_signature'],
+                     ':av'=>isset($_POST['is_available'])?'TRUE':'FALSE']
+                );
+                menu_sync_emit('menu_item', (int)db()->lastInsertId(), 'create');
+            });
             $success = 'Item added.';
         } else { $error = 'Item name is required.'; }
     }
     if ($action === 'save_item' && $itemCat((int)($_POST['item_id'] ?? 0))) {
         $b = menu_posted_badges();
-        db_query(
-            "UPDATE menu_items SET name=:n,description=:d,price=:p,is_veg=:veg,is_vegan=:vgn,is_spicy=:sp,
-                has_nuts=:nut,has_gluten=:glu,is_gf=:gf,is_signature=:sig,is_available=:av WHERE id=:i",
-            [':n'=>trim($_POST['name']??''), ':d'=>trim($_POST['description']??''),
-             ':p'=>($_POST['price']??'')===''?null:(float)$_POST['price'],
-             ':veg'=>$b['is_veg'], ':vgn'=>$b['is_vegan'], ':sp'=>$b['is_spicy'], ':nut'=>$b['has_nuts'],
-             ':glu'=>$b['has_gluten'], ':gf'=>$b['is_gf'], ':sig'=>$b['is_signature'],
-             ':av'=>isset($_POST['is_available'])?'TRUE':'FALSE', ':i'=>(int)$_POST['item_id']]
-        );
+        menu_sync_tx(function () use ($b) {
+            db_query(
+                "UPDATE menu_items SET name=:n,description=:d,price=:p,is_veg=:veg,is_vegan=:vgn,is_spicy=:sp,
+                    has_nuts=:nut,has_gluten=:glu,is_gf=:gf,is_signature=:sig,is_available=:av WHERE id=:i",
+                [':n'=>trim($_POST['name']??''), ':d'=>trim($_POST['description']??''),
+                 ':p'=>($_POST['price']??'')===''?null:(float)$_POST['price'],
+                 ':veg'=>$b['is_veg'], ':vgn'=>$b['is_vegan'], ':sp'=>$b['is_spicy'], ':nut'=>$b['has_nuts'],
+                 ':glu'=>$b['has_gluten'], ':gf'=>$b['is_gf'], ':sig'=>$b['is_signature'],
+                 ':av'=>isset($_POST['is_available'])?'TRUE':'FALSE', ':i'=>(int)$_POST['item_id']]
+            );
+            menu_sync_emit('menu_item', (int)$_POST['item_id'], 'update');
+        });
         $success = 'Item saved.';
     }
     if ($action === 'toggle_item' && $itemCat((int)($_POST['item_id'] ?? 0))) {
-        db_query('UPDATE menu_items SET is_available = NOT is_available WHERE id = :i', [':i'=>(int)$_POST['item_id']]);
+        menu_sync_tx(function () {
+            db_query('UPDATE menu_items SET is_available = NOT is_available WHERE id = :i', [':i'=>(int)$_POST['item_id']]);
+            menu_sync_emit('menu_item', (int)$_POST['item_id'], 'update');
+        });
     }
     if ($action === 'delete_item' && $itemCat((int)($_POST['item_id'] ?? 0))) {
-        db_query('DELETE FROM menu_items WHERE id = :i', [':i'=>(int)$_POST['item_id']]);
+        menu_delete_item((int)$_POST['item_id']);
         $success = 'Item deleted.';
     }
     if (($action === 'item_up' || $action === 'item_down')) {
         $cid = $itemCat((int)($_POST['item_id'] ?? 0));
-        if ($cid) menu_move('menu_items', 'category_id', $cid, (int)$_POST['item_id'], $action === 'item_up' ? -1 : 1);
+        if ($cid) menu_move('menu_items', 'menu_item', 'category_id', $cid, (int)$_POST['item_id'], $action === 'item_up' ? -1 : 1);
     }
 
     // Reload menu after any mutation (unless we redirected).
