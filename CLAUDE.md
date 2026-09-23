@@ -42,6 +42,41 @@ There is **no external cron service**. Scheduled jobs run **inside the app conta
 - `admin_home_url()` routes each account to its home (owner→dashboard, manager→frontdesk, security→gate, ops→mywork, else frontdesk); `admin/_layout.php` nav is role/job-aware.
 - Request auto-routing + assignment + tasks + visitors helpers live in `includes/team.php` (loaded via `includes/booking.php`); every read is pre-migration-safe (`*_supported()` guards). Migrations, in order: `add_team_roles` → `add_addon_assignee` → `add_tasks` → `add_visitors`. Test: `php tests/team_logic.php`.
 
+### Clock kiosk — the system picks the action, the camera sleeps
+`clock.php` + `js/clock-kiosk.js`, model in `includes/attendance-clock.php`. Migrations:
+`add_hr_staff` → `add_attendance` → `add_attendance_punches`. Owner kill switch:
+`clock_kiosk_enabled()`. Test: `php tests/attendance_clock_logic.php` (pure; runs with no DB).
+- **The kiosk decides in-or-out, the person confirms.** `clock_card_state($today, $yest,
+  $nowMin)` resolves it and the tablet renders the ONE button that applies. It is **built on
+  `clock_next_slot()`** — never a second copy of the slot rules, or the kiosk starts offering
+  buttons `clock_record_punch()` then refuses. The server re-decides on the punch regardless:
+  the client's `kind` is a request, never an instruction. The JS must **never** fall back to
+  showing both buttons, which hands the decision back to the person.
+- **A night shift and a forgotten clock-out are identical in the data** — an `in` with no
+  `out`. They split on elapsed time at `CLOCK_NIGHT_SHIFT_MAX_MIN` (840 = 14h): inside it the
+  punch closes yesterday, outside it starts today and leaves the stale row for a manager.
+  Without the bound, someone who went home without scanning books a **24-hour shift** into
+  the hours totals (`clock_record_punch()` stores a yesterday-out as minutes + 1440).
+- **`clock_last_punch()` is the most recent filled slot, NOT the open clock-in.** The
+  greeting needs a time in states where nothing is open ("checked out at 13:00"). Mid-shift
+  the newest slot *is* the open in, so one rule serves every state.
+- **Display with `clock_display_time()`, not `attendance_min_to_hhmm()`** — the latter renders
+  "00:30+1", which is right on the manager's editor and noise in a greeting.
+- **Greeting: "Hello," opens a shift, "Hi" for everything else** (mid-shift, finished, on
+  leave). Keyed on `action === 'in'`, not on `'out'` — keying on `out` drops the two
+  no-action states into the opening greeting.
+- **The camera is off until START is pressed** and is released with `track.stop()` on every
+  return to idle, including the instant the evidence photo is captured. Pausing the `<video>`
+  is not enough — the hardware indicator stays lit. The 45s scan / 20s confirm timeouts are
+  load-bearing: a tablet is mounted and never reloaded, so one person walking away would
+  otherwise leave the camera live indefinitely. `getUserMedia` runs on the tap, not on load.
+- **The idle clock is server-stamped.** `clock.php` renders PHP's time into `data-now` and the
+  script ticks from it. A JS clock would follow the *tablet's* time and could disagree with
+  what a punch records (the app is Africa/Nairobi throughout).
+- `api/clock-card.php` is **read-only** — same guards as `api/clock-punch.php`, in the same
+  order, no CSRF (no session to ride), and **no rate limit**: it needs a valid device token
+  AND a valid 128-bit card token, and anyone with both can already punch.
+
 ### Live messaging — polling, not websockets
 Guest↔staff chat updates live via **short polling** (no websockets — Apache/ECS has no long-running socket process). Both sides poll a JSON endpoint every 5s (`after=<last id>`) and pause when the tab is hidden. Guest: `GET/POST api/booking-message.php` (ref-authed). Admin: `GET/POST admin/messages-poll.php` (session-authed, `staff_can_hold`-scoped, `require_frontdesk`-gated; JSON POST carries `csrf_token` in the body since `verify_csrf()` reads `$_POST`). Shared helpers in `includes/booking.php`: `fetch_thread_messages_since()`, `message_payload()`, `message_time_label()` — keep initial render and appended bubbles identical. Admin `admin/messages.php` keeps its PRG form as a no-JS fallback; `admin/assets/admin-chat.js` and `js/booking-manage.js` (chat block) enhance it.
 
@@ -435,6 +470,9 @@ From `admin/submission-view.php`, **"Draft options with AI"** (shown only when `
 | `api/submit-agency.php` | Trade/agent enquiry |
 | `api/sync-ical.php` | Pull OTA iCal feeds, import availability blocks |
 | `admin/gantt.php` | Gantt calendar + iCal sync |
+| `includes/attendance-clock.php` | Clock kiosk model — pure slot/state resolution, card + device auth, photo purge |
+| `api/clock-card.php` | Read-only card lookup — who scanned, and what to offer them |
+| `clock.php` · `js/clock-kiosk.js` | The kiosk: breathing idle screen, scan, greeting, confirm (camera off at rest) |
 | `includes/property-gallery-data.php` | `pg_gallery()` — memoized venue-slug → gallery-image resolver, shared by both gallery partials |
 | `includes/property-gallery.php` | Top hero gallery partial + the shared `pgOpenLb` lightbox |
 | `includes/property-photo-grid.php` | Bottom "Photo Gallery" section partial — DB-driven, caps at 15 + "See more" → gallery.php |
