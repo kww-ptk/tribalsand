@@ -67,10 +67,15 @@ Bhumika's handover document is the agreed field map (mirrored in
   `?entity=&sync_uuid=` returns one record's current state (for Zuri after a
   `stale_version`). The dispatcher records Zuri's per-event `code`/`message`.
 
-**Still open against the contract:** `opening_hours` is ONE record on Zuri
-(lunch/dinner text, first/last slot, slot + duration minutes, fixed uuid we
-mint) — our per-day model doesn't map yet, so hours are not sent. Inbound
-`item_availability` needs a sold-out field on our side (with the applier).
+**Opening hours are ONE record** (contract shape): `restaurant_hours`, one row
+per venue (migration `add_restaurant_hours.sql`), `lunch`/`dinner` text +
+`first_slot`/`last_slot` (HH:MM) + `slot_minutes`/`duration_minutes` (≥15). Its
+`sync_uuid` is minted once by the migration and never changes — it is the fixed
+uuid Zuri keys the record on, shown to the owner under the hours form in
+**Admin → Restaurant → Hours & tables** and included in `backfill.json`
+(`opening_hours: [{sync_uuid}]`). The Phase A per-day `opening_hours` table is
+left in place, unused (not dropped — no data lost).
+
 Staff bookings go through Zuri's `/reserve` only (agreed).
 
 ## Stage 1 — Shadow (ready now)
@@ -107,9 +112,16 @@ matcher against real data (the field map itself is agreed — see above).
   customer, item_availability — field list in Zuri's handover §6). Retry an event
   whose reference hasn't arrived yet a few times before failing it (the ordering
   race Zuri found in testing).
-- **Opening hours as ONE record** (contract shape above) + a fixed uuid.
-- **Admin UI for the Phase A models** — table editor, and reservation
-  Seat / Complete / No-show buttons (models + state machine already exist).
+- ~~**Opening hours as ONE record**~~ + ~~**table editor**~~ — **DONE.**
+  `admin/restaurant-setup.php` (owner + manager, scoped by `admin_venue_ids()`;
+  sidebar "Hours & tables"): the hours form (`includes/restaurant-hours.php` —
+  an unchanged save writes and emits nothing) and the tables list/editor
+  (`includes/restaurant-tables.php` — number ≤10 and unique per venue, seats
+  1–255, zone ≤60; delete is soft). Every write goes through the ONE emit path,
+  `menu_sync_tx()` + `menu_sync_emit()` (its entity map now covers
+  `restaurant_table` and `opening_hours`), so only the synced venue emits and the
+  loop guard/version bump live in one place. Test: `php tests/restaurant_setup_sync.php`.
+- **Reservation Seat / Complete / No-show buttons** (state machine already exists).
 - **Staff booking → Zuri `/reserve`** synchronous call (Zuri owns seat inventory).
 - **Dashboard + alerts + `bin/reconcile.php`** (§9).
 
@@ -139,6 +151,9 @@ and self-disables via the kill switch, so it is safe to always schedule.
 
 ```
 php tests/sync_logic.php
+php tests/menu_sync_logic.php
+php tests/restaurant_sync_models.php
+php tests/restaurant_setup_sync.php
 ```
 
 Pure logic (HMAC, ownership, state machine, resolver, envelope) runs anywhere. The

@@ -37,10 +37,10 @@ check('table: seats → capacity',   $t['capacity'] === 4);
 check('table: section → zone',     $t['zone'] === 'Terrace');
 check('table capacity clamped',    sync_map_restaurant_table(['label'=>'T2','seats'=>999])['capacity'] === 255);
 
-$hOpen = sync_map_opening_hours(['venue_slug'=>'zuri','day_of_week'=>1,'open_time'=>'12:00:00','close_time'=>'22:30:00','is_closed'=>false]);
-check('hours trims to HH:MM',      $hOpen['open_time'] === '12:00' && $hOpen['close_time'] === '22:30');
-$hClosed = sync_map_opening_hours(['venue_slug'=>'zuri','day_of_week'=>2,'open_time'=>'12:00','close_time'=>'22:00','is_closed'=>true]);
-check('closed day nulls times',    $hClosed['open_time'] === null && $hClosed['close_time'] === null && $hClosed['is_closed'] === true);
+$h = sync_map_opening_hours(['lunch'=>'12:00 – 15:00','dinner'=>'','first_slot'=>'12:00:00','last_slot'=>'22:00:00','slot_minutes'=>30,'duration_minutes'=>90]);
+check('hours: exact contract keys', array_keys($h) === ['lunch','dinner','first_slot','last_slot','slot_minutes','duration_minutes']);
+check('hours: trims to HH:MM',      $h['first_slot'] === '12:00' && $h['last_slot'] === '22:00');
+check('hours: blank text → null',   $h['dinner'] === null && $h['lunch'] === '12:00 – 15:00');
 
 // ── Customer phone normalisation (backfill match key) ────────────────────────
 check('phone strips symbols',      customer_normalize_phone('+254 700 123 456') === '254700123456');

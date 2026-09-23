@@ -96,21 +96,19 @@ function sync_map_restaurant_table(array $row): array {
 }
 
 /**
- * opening_hours → envelope data, per-day model.
- * NOTE: Zuri's contract is ONE record (lunch, dinner, first_slot, last_slot,
- * slot_minutes, duration_minutes) with a fixed uuid — this per-day mapper does
- * not match it yet and is not sent. Rework pending.
+ * opening_hours → envelope data (contract: ONE record with a fixed uuid —
+ * lunch, dinner, first_slot HH:MM, last_slot HH:MM, slot_minutes ≥15,
+ * duration_minutes ≥15). Source row: restaurant_hours (one per venue).
  */
 function sync_map_opening_hours(array $row): array {
     $hm = static fn($t) => $t !== null && $t !== '' ? substr((string) $t, 0, 5) : null;
-    $closed = (bool) ($row['is_closed'] ?? false);
     return [
-        'venue_slug'  => (string) ($row['venue_slug'] ?? ''),
-        'day_of_week' => (int) ($row['day_of_week'] ?? 0),
-        'open_time'   => $closed ? null : $hm($row['open_time']  ?? null),
-        'close_time'  => $closed ? null : $hm($row['close_time'] ?? null),
-        'is_closed'   => $closed,
-        'sort_order'  => (int) ($row['sort_order'] ?? 0),
+        'lunch'            => sync_text($row['lunch'] ?? null),
+        'dinner'           => sync_text($row['dinner'] ?? null),
+        'first_slot'       => $hm($row['first_slot'] ?? null),
+        'last_slot'        => $hm($row['last_slot'] ?? null),
+        'slot_minutes'     => max(15, (int) ($row['slot_minutes'] ?? 30)),
+        'duration_minutes' => max(15, (int) ($row['duration_minutes'] ?? 90)),
     ];
 }
 
@@ -157,20 +155,29 @@ function sync_menu_rows(string $entity, ?int $id = null): array {
                JOIN venues v ON v.id = x.venue_id
               WHERE v.slug = :venue{$where}
               ORDER BY x.id",
+        'opening_hours' =>
+            "SELECT x.id, x.sync_uuid, x.sync_version, x.lunch, x.dinner, x.first_slot, x.last_slot,
+                    x.slot_minutes, x.duration_minutes
+               FROM restaurant_hours x
+               JOIN venues v ON v.id = x.venue_id
+              WHERE v.slug = :venue{$where}
+              ORDER BY x.id",
         default => null,
     };
     if ($sql === null) return [];
-    if ($entity === 'restaurant_table'
-        && !db_query("SELECT to_regclass('public.restaurant_tables')")->fetchColumn()) {
-        return [];   // add_restaurant_sync_models.sql not applied yet
+    $table = ['restaurant_table' => 'restaurant_tables', 'opening_hours' => 'restaurant_hours'][$entity] ?? null;
+    if ($table !== null
+        && !db_query("SELECT to_regclass('public.{$table}')")->fetchColumn()) {
+        return [];   // its migration has not been applied yet
     }
     return db_query($sql, $p)->fetchAll();
 }
 
 /**
  * The full shadow export (§7) as ordered §3 envelopes — categories before
- * items so a backfill applies in dependency order. READ-ONLY. Unpriced items
- * are left out (see sync_menu_item_skip_reason). Empty pre-migration.
+ * items so a backfill applies in dependency order, then tables and the hours
+ * record. READ-ONLY. Unpriced items are left out (see
+ * sync_menu_item_skip_reason). Empty pre-migration.
  */
 function sync_export_events(): array {
     if (!sync_supported()) return [];
@@ -181,6 +188,12 @@ function sync_export_events(): array {
     foreach (sync_menu_rows('menu_item') as $i) {
         if (sync_menu_item_skip_reason($i) !== '') continue;
         $events[] = sync_make_event('menu_item', 'create', (string) $i['sync_uuid'], (int) $i['sync_version'], sync_map_menu_item($i));
+    }
+    foreach (sync_menu_rows('restaurant_table') as $t) {
+        $events[] = sync_make_event('restaurant_table', 'create', (string) $t['sync_uuid'], (int) $t['sync_version'], sync_map_restaurant_table($t));
+    }
+    foreach (sync_menu_rows('opening_hours') as $h) {
+        $events[] = sync_make_event('opening_hours', 'create', (string) $h['sync_uuid'], (int) $h['sync_version'], sync_map_opening_hours($h));
     }
     return $events;
 }
@@ -212,6 +225,9 @@ function sync_backfill_export(): array {
     }
     foreach (sync_menu_rows('restaurant_table') as $t) {
         $out['restaurant_table'][] = ['sync_uuid' => (string) $t['sync_uuid'], 'number' => (string) $t['label']];
+    }
+    foreach (sync_menu_rows('opening_hours') as $h) {
+        $out['opening_hours'][] = ['sync_uuid' => (string) $h['sync_uuid']];   // the fixed uuid Zuri keys on
     }
     return $out + ['venue' => sync_venue_slug(), 'skipped' => $skipped];
 }

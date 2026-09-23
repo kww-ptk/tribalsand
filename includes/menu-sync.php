@@ -1,9 +1,12 @@
 <?php
 declare(strict_types=1);
 /**
- * Menu → outbox hooks (Stage 2 of the Zuri sync, spec §4).
+ * Outbox hooks for every entity Tribalsand OWNS (Stage 2 of the Zuri sync, §4):
+ * menu categories/items, restaurant tables and the opening-hours record.
+ * (Named menu_* because the menu came first; it is the one emit path for all of
+ * them — never copy the loop-guard/version logic into a second one.)
  *
- * Every menu write that should reach Zuri goes through here, so the data change
+ * Every owned write that should reach Zuri goes through here, so the data change
  * and its outbox event land in the SAME transaction — a price can never change
  * without its "this changed" event, and a rolled-back edit never leaves one.
  *
@@ -29,7 +32,13 @@ require_once __DIR__ . '/sync-mappers.php';
  * others, but Zuri's contract has no menu entity, so it never emits an event.
  */
 function menu_sync_tables(): array {
-    return ['menu' => 'menus', 'menu_category' => 'menu_categories', 'menu_item' => 'menu_items'];
+    return [
+        'menu'             => 'menus',
+        'menu_category'    => 'menu_categories',
+        'menu_item'        => 'menu_items',
+        'restaurant_table' => 'restaurant_tables',
+        'opening_hours'    => 'restaurant_hours',   // ONE record per venue (contract)
+    ];
 }
 
 /**
@@ -61,8 +70,10 @@ function menu_sync_row(string $entity, int $id): ?array {
 /** The §3 envelope data for a loaded row — the SAME mappers the backfill export uses. */
 function menu_sync_map(string $entity, array $row): array {
     return match ($entity) {
-        'menu_category' => sync_map_menu_category($row),
-        'menu_item'     => sync_map_menu_item($row),
+        'menu_category'    => sync_map_menu_category($row),
+        'menu_item'        => sync_map_menu_item($row),
+        'restaurant_table' => sync_map_restaurant_table($row),
+        'opening_hours'    => sync_map_opening_hours($row),
     };
 }
 

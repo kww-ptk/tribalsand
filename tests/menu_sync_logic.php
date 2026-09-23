@@ -15,7 +15,7 @@ function check(string $label, bool $cond): void {
 }
 
 // ── Pure ────────────────────────────────────────────────────────────────────
-check('three menu entities are hooked', array_keys(menu_sync_tables()) === ['menu', 'menu_category', 'menu_item']);
+check('owned entities are hooked',      array_keys(menu_sync_tables()) === ['menu', 'menu_category', 'menu_item', 'restaurant_table', 'opening_hours']);
 check('entity → table map',             menu_sync_tables()['menu_item'] === 'menu_items');
 
 $item = menu_sync_map('menu_item', [
