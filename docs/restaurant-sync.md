@@ -183,6 +183,10 @@ matcher against real data (the field map itself is agreed — see above).
   carries a `checksums` map of the same shape, the report compares them; agree that
   with Bhumika. Test: `php tests/sync_monitor_logic.php`.
 
+- ~~**Hardening**~~ — **DONE.** Dockerfile: `ServerTokens Prod` + `ServerSignature Off`
+  (`tribalsand-hardening.conf`, loads after Debian's `security.conf`) and PHP
+  `expose_php=Off` — error pages no longer print the ECS hostname / versions.
+
 ## Environment variables
 
 ```

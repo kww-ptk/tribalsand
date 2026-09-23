@@ -12,6 +12,13 @@ RUN apt-get update && apt-get install -y libpq-dev postgresql-client curl libgd-
 # size checks run. Our handlers cap files themselves (8–15 MB), so allow a bit more.
 RUN printf 'upload_max_filesize=16M\npost_max_size=40M\nmax_file_uploads=20\n' > /usr/local/etc/php/conf.d/tribalsand-uploads.ini
 
+# Don't advertise versions. Apache's default error pages (e.g. a 403) printed the
+# internal ECS hostname + Apache/OS version, and PHP sent X-Powered-By. The conf
+# name sorts after Debian's security.conf, so these win (last directive applies).
+RUN printf 'ServerTokens Prod\nServerSignature Off\n' > /etc/apache2/conf-available/tribalsand-hardening.conf \
+    && a2enconf tribalsand-hardening \
+    && printf 'expose_php=Off\n' > /usr/local/etc/php/conf.d/tribalsand-hardening.ini
+
 # Copy project files
 COPY . /var/www/html/
 
