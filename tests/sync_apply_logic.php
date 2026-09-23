@@ -15,6 +15,7 @@ function sync_peer_request(string $method, string $path, string $body = '', arra
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/sync-apply.php';
 require_once __DIR__ . '/../includes/restaurant-tables.php';
+require_once __DIR__ . '/../includes/reservations.php';   // create_reservation() in the "booking we created" case
 
 $failures = 0;
 function check(string $label, bool $cond): void {

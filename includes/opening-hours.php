@@ -52,7 +52,7 @@ function create_opening_hour(array $d): array {
             ':dow'    => max(0, min(6, (int) ($d['day_of_week'] ?? 0))),
             ':o'      => $closed ? null : (trim((string) ($d['open_time'] ?? '')) ?: null),
             ':c'      => $closed ? null : (trim((string) ($d['close_time'] ?? '')) ?: null),
-            ':closed' => $closed,
+            ':closed' => $closed ? 'true' : 'false',   // emulated prepares send PHP false as ''
             ':sort'   => (int) ($d['sort_order'] ?? 0),
         ]
     );
@@ -73,7 +73,7 @@ function update_opening_hour(int $id, array $d): bool {
             ':dow'    => max(0, min(6, (int) ($d['day_of_week'] ?? 0))),
             ':o'      => $closed ? null : (trim((string) ($d['open_time'] ?? '')) ?: null),
             ':c'      => $closed ? null : (trim((string) ($d['close_time'] ?? '')) ?: null),
-            ':closed' => $closed,
+            ':closed' => $closed ? 'true' : 'false',   // emulated prepares send PHP false as ''
             ':sort'   => (int) ($d['sort_order'] ?? 0),
             ':id'     => $id,
         ]

@@ -99,7 +99,7 @@ function create_restaurant_table(array $d): array {
             ':s'   => max(1, (int) ($d['seats'] ?? 2)),
             ':sec' => trim((string) ($d['section'] ?? '')) ?: null,
             ':o'   => (int) ($d['sort_order'] ?? 0),
-            ':a'   => !empty($d['is_active']),
+            ':a'   => !empty($d['is_active']) ? 'true' : 'false',   // emulated prepares send PHP false as '' — Postgres rejects it
         ];
         if ($withName) $p[':n'] = trim((string) ($d['name'] ?? '')) ?: null;
         $id = (int) db_query(
@@ -125,7 +125,7 @@ function update_restaurant_table(int $id, array $d): bool {
             ':s'   => max(1, (int) ($d['seats'] ?? 2)),
             ':sec' => trim((string) ($d['section'] ?? '')) ?: null,
             ':o'   => (int) ($d['sort_order'] ?? 0),
-            ':a'   => !empty($d['is_active']),
+            ':a'   => !empty($d['is_active']) ? 'true' : 'false',   // emulated prepares send PHP false as '' — Postgres rejects it
             ':id'  => $id,
         ];
         if ($withName) $p[':n'] = trim((string) ($d['name'] ?? '')) ?: null;
