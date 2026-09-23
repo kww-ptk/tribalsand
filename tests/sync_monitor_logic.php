@@ -75,6 +75,16 @@ try {
     $rep = sync_reconcile_report();
     check('reconcile: delivered row clears', !in_array((string) $t['sync_uuid'], $rep['entities']['restaurant_table']['undelivered_sample'], true));
 
+    // Send everything: dry run writes nothing; a real run queues; pressing again queues nothing.
+    $before = (int) db_query("SELECT count(*) FROM sync_outbox WHERE status = 'pending'")->fetchColumn();
+    $dry = sync_requeue_all(true);
+    check('send-all dry run writes nothing', (int) db_query("SELECT count(*) FROM sync_outbox WHERE status = 'pending'")->fetchColumn() === $before
+                                             && ($dry['counts']['restaurant_table'] ?? 0) >= 1);
+    $r1 = sync_requeue_all();
+    check('send-all queues the dataset',     (int) db_query("SELECT count(*) FROM sync_outbox WHERE status = 'pending'")->fetchColumn() === $before + $r1['queued']);
+    $r2 = sync_requeue_all();
+    check('send-all again queues nothing',   $r2['queued'] === 0 && $r2['skipped'] === $r1['queued'] + $r1['skipped']);
+
     // Rejected inbound → re-queue.
     $ev = ['event_id' => sync_new_event_id(), 'entity' => 'customer', 'operation' => 'create', 'sync_uuid' => sync_new_uuid(),
            'version' => 1, 'source' => 'zuri', 'data' => ['name' => 'X']];

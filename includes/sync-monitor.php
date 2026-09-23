@@ -175,3 +175,38 @@ function sync_reconcile_last(): ?array {
     $r = $j !== '' ? json_decode($j, true) : null;
     return is_array($r) ? $r : null;
 }
+
+/**
+ * Queue the complete current dataset we own for Zuri — go-live after shadow (S§7
+ * step 6), used by bin/sync-requeue.php and the dashboard's "Send everything to
+ * Zuri" button. A `create` per live row of the synced venue in dependency order
+ * (categories → items → tables → hours), built by sync_export_events() — the same
+ * mappers as the live emit path. Unpriced items are left out.
+ *
+ * Idempotent: a row that already has a PENDING event at the same or newer
+ * version is skipped. All-or-nothing (one transaction) so a half-queued dataset
+ * can never push out of order. Returns ['counts' => entity => rows,
+ * 'queued' => n, 'skipped' => n]; $dry = count only, write nothing.
+ */
+function sync_requeue_all(bool $dry = false): array {
+    $out = ['counts' => [], 'queued' => 0, 'skipped' => 0];
+    if (!sync_supported()) return $out;
+    $run = function () use (&$out, $dry) {
+        foreach (sync_export_events() as $ev) {
+            $ent = (string) $ev['entity'];
+            $out['counts'][$ent] = ($out['counts'][$ent] ?? 0) + 1;
+            $pending = (bool) db_query(
+                "SELECT 1 FROM sync_outbox WHERE sync_uuid = :u AND status = 'pending' AND version >= :v LIMIT 1",
+                [':u' => $ev['sync_uuid'], ':v' => (int) $ev['version']]
+            )->fetchColumn();
+            if ($pending) { $out['skipped']++; continue; }
+            if (!$dry) sync_outbox_push($ent, (string) $ev['sync_uuid'], 'create', (array) $ev['data'], (int) $ev['version']);
+            $out['queued']++;
+        }
+    };
+    if ($dry || db()->inTransaction()) { $run(); return $out; }
+    db()->beginTransaction();
+    try { $run(); db()->commit(); }
+    catch (Throwable $e) { if (db()->inTransaction()) db()->rollBack(); throw $e; }
+    return $out;
+}

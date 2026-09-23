@@ -40,6 +40,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && sync_supported()) {
             $msg = sync_mark_conflict_reviewed($id) ? 'Conflict marked reviewed.' : 'Already reviewed.';
             audit_log('sync.conflict_reviewed', 'sync_conflict', $id, '');
             break;
+        case 'send_all':
+            // Shadow marks queued rows "sent" after only logging them, so a full
+            // send made in shadow would never reach Zuri — refuse it.
+            if (sync_env_bool('SYNC_SHADOW', false)) {
+                $_SESSION['sync_flash'] = ['type' => 'error', 'msg' => 'Turn shadow mode (SYNC_SHADOW) off first — in shadow nothing is really sent.'];
+                header('Location: /admin/sync.php'); exit;
+            }
+            $r = sync_requeue_all();
+            audit_log('sync.send_all', 'sync_outbox', 0, "queued {$r['queued']}, skipped {$r['skipped']}");
+            $msg = "Queued {$r['queued']} record" . ($r['queued'] === 1 ? '' : 's') . ' for Zuri'
+                 . ($r['skipped'] ? " ({$r['skipped']} already waiting)" : '') . '. '
+                 . (sync_ts_to_zuri_enabled() ? 'They go out within seconds.' : 'They go out once SYNC_TS_TO_ZURI is on.');
+            break;
         case 'reconcile':
             $sw0 = sync_monitor_switches();
             $r = sync_reconcile_report(($sw0['peer_url'] !== '' && $sw0['secret_set']) ? sync_peer_health(true) : null);
@@ -59,6 +72,7 @@ $rejected  = sync_rejected_inbox();
 $conflicts = sync_open_conflicts();
 $openConf  = sync_open_conflict_count();
 $recon     = sync_reconcile_last();
+$preview   = sync_requeue_all(true);   // read-only: what "Send everything" would queue
 $peer      = (isset($_GET['peer']) && $sw['peer_url'] !== '' && $sw['secret_set']) ? sync_peer_health() : null;
 
 /** Short uuid for tables; full value in the tooltip. */
@@ -208,6 +222,27 @@ include __DIR__ . '/_layout.php';
     </div>
     <?php endforeach; ?>
     <?php endif; ?>
+  </div>
+</div>
+
+<!-- ── Send everything (go-live) ── -->
+<div class="card" style="margin-top:16px">
+  <div class="card__head"><span class="card__title">Send everything to Zuri</span>
+    <form method="POST" action="/admin/sync.php" style="margin:0" onsubmit="return confirm('Queue the whole menu, tables and opening hours for Zuri? Only do this at go-live, together with Zuri.')">
+      <?= csrf_field() ?><input type="hidden" name="action" value="send_all">
+      <button class="btn-primary btn-sm"<?= $sw['SYNC_SHADOW'] || !$preview['queued'] ? ' disabled' : '' ?>><?= admin_icon('send', 14) ?> Send everything</button>
+    </form>
+  </div>
+  <div class="card__body" style="padding:14px 16px">
+    <p style="margin:0 0 6px;font-size:13px">For go-live (the backfill with Zuri): queues every live record we own so Zuri gets the complete current data. Safe to press twice — records already waiting are skipped.</p>
+    <p class="text-muted" style="margin:0;font-size:12.5px">
+      Would send:
+      <?php $lbl = ['menu_category' => 'categories', 'menu_item' => 'items', 'restaurant_table' => 'tables', 'opening_hours' => 'opening-hours record'];
+            $parts = []; foreach ($preview['counts'] as $ent => $n) $parts[] = $n . ' ' . ($lbl[$ent] ?? $ent);
+            echo e($parts ? implode(' · ', $parts) : 'nothing'); ?>
+      <?php if ($preview['skipped']): ?> — <?= (int)$preview['skipped'] ?> already waiting<?php endif; ?>.
+      <?php if ($sw['SYNC_SHADOW']): ?><br><strong style="color:#b45309">Shadow mode is on — turn it off first; in shadow nothing is really sent.</strong><?php endif; ?>
+    </p>
   </div>
 </div>
 
