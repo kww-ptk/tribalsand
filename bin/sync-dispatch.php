@@ -10,6 +10,10 @@ declare(strict_types=1);
  *
  *   php bin/sync-dispatch.php            # one pass, then exit (scheduler-driven)
  *   php bin/sync-dispatch.php --loop     # long-running worker
+ *   php bin/sync-dispatch.php --quiet    # no "idle" lines (the scheduler runs it every 10s)
+ *
+ * Only one dispatcher runs at a time across all ECS tasks (sync_worker_lock) —
+ * delivery order matters, so a second instance skips its pass.
  *
  * Kill switch (§10): does nothing unless SYNC_ENABLED and SYNC_TS_TO_ZURI are on.
  * While off, rows accumulate and drain in order once switched back on.
@@ -193,10 +197,13 @@ function dispatch_pass(): int {
 }
 
 // ── main ────────────────────────────────────────────────────────────────────
-if (!sync_supported()) { dispatch_log('sync not migrated — nothing to do'); exit(0); }
+$quiet = in_array('--quiet', $argv, true);
 $shadow = dispatch_shadow_mode();
-if (!$shadow && !sync_ts_to_zuri_enabled()) { dispatch_log('TS→Zuri disabled (kill switch) — idle'); exit(0); }
-if ($shadow) dispatch_log('SHADOW mode — logging only, nothing sent');
+// Env switches first: an idle pass (the scheduler's every-10s default) never touches the DB.
+if (!$shadow && !sync_ts_to_zuri_enabled()) { if (!$quiet) dispatch_log('TS→Zuri disabled (kill switch) — idle'); exit(0); }
+if (!sync_supported()) { if (!$quiet) dispatch_log('sync not migrated — nothing to do'); exit(0); }
+if (!sync_worker_lock('dispatch')) { if (!$quiet) dispatch_log('another dispatcher is running — skipping'); exit(0); }
+if ($shadow && !$quiet) dispatch_log('SHADOW mode — logging only, nothing sent');
 
 $loop = in_array('--loop', $argv, true);
 do {

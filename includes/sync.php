@@ -411,6 +411,24 @@ function sync_inbox_receive(array $ev): array {
 }
 
 /* ─────────────────────────────────────────────────────────────────────────
+ * Single-runner lock for the workers (dispatcher / applier)
+ *
+ * The scheduler runs in EVERY ECS task, so without this two tasks would drain
+ * the same queue concurrently and deliver/apply events out of order. A session
+ * advisory lock (released automatically when the PHP process exits) makes each
+ * worker a singleton; a second instance simply skips its pass.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+/** Try to become the only running $worker. False = another process holds it. */
+function sync_worker_lock(string $worker): bool {
+    try {
+        return (bool) db_query('SELECT pg_try_advisory_lock(hashtext(:k))', [':k' => 'sync-worker:' . $worker])->fetchColumn();
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
  * Health snapshot (§9)
  * ───────────────────────────────────────────────────────────────────────── */
 

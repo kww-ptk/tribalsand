@@ -96,4 +96,19 @@ log "scheduler started"
   done
 ) &
 
+# ── Job 5: Zuri restaurant sync every 10 seconds ────────────────────────────
+# Push our outbox to Zuri (bin/sync-dispatch.php) and apply what Zuri sent us
+# (bin/sync-apply.php). Both self-gate on the env switches — SYNC_ENABLED plus
+# SYNC_TS_TO_ZURI / SYNC_ZURI_TO_TS (or SYNC_SHADOW=true for the dispatcher) —
+# so this is inert until sync is switched on. Each takes a Postgres advisory
+# lock, so with several ECS tasks only one instance runs a pass at a time (event
+# ORDER matters; the others skip). --quiet keeps idle passes out of the log.
+(
+  while true; do
+    php "$APP_DIR/bin/sync-dispatch.php" --quiet >> "$LOG" 2>&1 || log "sync-dispatch failed"
+    php "$APP_DIR/bin/sync-apply.php" --quiet >> "$LOG" 2>&1 || log "sync-apply failed"
+    sleep 10
+  done
+) &
+
 wait

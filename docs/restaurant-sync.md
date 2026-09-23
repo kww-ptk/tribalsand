@@ -140,12 +140,43 @@ SYNC_PEER_IPS=13.60.72.12   # Zuri's outbound IP(s), comma-separated; empty = do
 Sync does nothing until `SYNC_ENABLED` **and** the relevant direction flag are on
 — matching the spec's stage-by-stage rollout. Flip one direction at a time.
 
-## Running the dispatcher
+## Running the workers (scheduled)
 
-The in-container scheduler ([`docker/scheduler.sh`](../docker/scheduler.sh)) is the
-natural home. Add a job that runs `php bin/sync-dispatch.php` on a short interval,
-or `--loop` for a supervised worker (near-real-time reservations). It is idempotent
-and self-disables via the kill switch, so it is safe to always schedule.
+[`docker/scheduler.sh`](../docker/scheduler.sh) Job 5 runs, every 10 seconds,
+`php bin/sync-dispatch.php --quiet` (push our outbox → Zuri) and
+`php bin/sync-apply.php --quiet` (apply Zuri's inbox → our DB). Both check the
+env switches **before touching the DB** and exit at once while off, so the job is
+inert until sync is switched on. Each takes a Postgres advisory lock
+(`sync_worker_lock()`), so when ECS runs several tasks only one dispatcher and one
+applier run a pass at a time — event order matters, the others just skip.
+
+### Env flags per rollout stage (S§10)
+
+| Stage | `SYNC_ENABLED` | `SYNC_SHADOW` | `SYNC_TS_TO_ZURI` | `SYNC_ZURI_TO_TS` | Notes |
+|---|---|---|---|---|---|
+| 0 — deployed, inert | off | off | off | off | Outbox rows still accumulate from edits. |
+| 1 — shadow | off | **on** | off | off | Dispatcher logs `SHADOW would send …` and marks rows sent. Nothing leaves. |
+| 2 — menu one-way | **on** | off | **on** | off | **Run `php bin/sync-requeue.php` first** (see below). |
+| 3 — availability reverse | on | off | on | **on** | Applier starts writing `item_availability` / customers / reservations. |
+| 4+ — reservations | on | off | on | on | Reservation status + `/reserve` (staff bookings). |
+
+Kill switch: `SYNC_ENABLED=false` stops both workers on the next pass; outbox
+rows keep accumulating and drain in order when it comes back on.
+
+### Going live after shadow — `bin/sync-requeue.php`
+
+Shadow marks rows `sent` after only logging them, so before the first real push
+queue the complete current dataset again:
+
+```
+php bin/sync-requeue.php --dry-run   # counts per entity, writes nothing
+php bin/sync-requeue.php             # queues a create per live row, one transaction
+```
+
+Order is categories → items → tables → opening hours (dependency order), built
+from `sync_export_events()` — the same mappers as the live emit path. Idempotent:
+a row with a pending event at the same or newer version is skipped. Unpriced
+items are left out (their first priced edit sends them).
 
 ## Tests
 
