@@ -105,8 +105,31 @@ matcher against real data (the field map itself is agreed — see above).
   deleted rows via `menu_live_sql()`. Pre-migration everything degrades to the old
   hard-delete / no-event path. Events queue even while `SYNC_ENABLED` is off (§10:
   they drain in order when it comes on). Test: `php tests/menu_sync_logic.php`.
-- **Reservation outbox hooks** — same pattern for reservations; staff-created
-  bookings must first call Zuri's `/reserve` (§1 rule 1).
+- ~~**Reservation outbox hooks + `/reserve`**~~ — **DONE.**
+  - **One booking entry point:** `reservation_book()` ([`includes/sync-reserve.php`](../includes/sync-reserve.php)),
+    used by the public form (`api/submit-reservation.php`) and the new staff
+    **New booking** card on `admin/reservations.php`. For the synced venue with
+    `SYNC_RESERVATIONS` on it calls Zuri's `POST /sync/v1/reserve` (signed,
+    `Idempotency-Key` = the `sync_uuid` we mint first, `external_id` =
+    `TSR-<venue>-<rand>`): **201** → stored locally with Zuri's reference/status,
+    `sync_source='tribalsand'`, `sync_last_at` set; **409** → nothing stored, the
+    form shows Zuri's `alternatives`; **anything else** (down/5xx/400) → saved as a
+    local pending request with `staff_notes` "NOT ON ZURI YET …" and an ALERT in
+    the log, so a guest's booking is never lost. Every other venue (and sync off)
+    is the old `create_reservation()` path, byte for byte.
+  - **Status out:** `set_reservation_status($id, $to, $reason)` bumps the version,
+    stamps `confirmed_at`/`seated_at`/`cancelled_at` + `cancellation_reason`, and
+    — only when `reservation_on_zuri()` (synced venue + `sync_last_at` set) —
+    queues a `reservation` update carrying **status (+ cancellation_reason) only**,
+    in the same transaction. Local-only requests are never announced. Skipped
+    while applying (no echo).
+  - Admin: Seat / Complete / No-show buttons (one per move the state machine
+    allows), status filter covers all six states, "on Zuri" / "not on Zuri yet"
+    markers. `create_reservation()` now stamps `sync_source='tribalsand'` (the
+    column defaults to `zuri`).
+  - The partner endpoint `api/reservation-api.php` still creates local requests
+    only — once Zuri sends its bookings through sync, retire that integration.
+  - Test: `php tests/sync_reserve_logic.php` (HTTP stubbed).
 - ~~**The applier**~~ — **DONE.** [`includes/sync-apply.php`](../includes/sync-apply.php)
   + `bin/sync-apply.php` (scheduled, gated on `SYNC_ZURI_TO_TS`), migration
   `add_sync_applier.sql`. Drains `sync_inbox` oldest first, one transaction per
@@ -155,6 +178,8 @@ SYNC_SHARED_SECRET=         # the HMAC secret, identical on both sides (never in
 SYNC_PEER_URL=https://zuriwatamu.com/sync/v1   # for the dispatcher
 SYNC_VENUE_SLUG=zuri        # the property whose menu/tables sync (default zuri)
 SYNC_PEER_IPS=13.60.72.12   # Zuri's outbound IP(s), comma-separated; empty = don't block
+SYNC_RESERVATIONS=false     # reservations stage: route Zuri bookings through /reserve (needs SYNC_ENABLED)
+SYNC_SHADOW=false           # Stage 1: the dispatcher logs instead of sending
 ```
 
 Sync does nothing until `SYNC_ENABLED` **and** the relevant direction flag are on
@@ -178,7 +203,7 @@ applier run a pass at a time — event order matters, the others just skip.
 | 1 — shadow | off | **on** | off | off | Dispatcher logs `SHADOW would send …` and marks rows sent. Nothing leaves. |
 | 2 — menu one-way | **on** | off | **on** | off | **Run `php bin/sync-requeue.php` first** (see below). |
 | 3 — availability reverse | on | off | on | **on** | Applier starts writing `item_availability` / customers / reservations. |
-| 4+ — reservations | on | off | on | on | Reservation status + `/reserve` (staff bookings). |
+| 4 — reservations | on | off | on | on | + **`SYNC_RESERVATIONS=true`**: bookings for Zuri go through `/reserve`; status changes sync. |
 
 Kill switch: `SYNC_ENABLED=false` stops both workers on the next pass; outbox
 rows keep accumulating and drain in order when it comes back on.
@@ -206,6 +231,7 @@ php tests/menu_sync_logic.php
 php tests/restaurant_sync_models.php
 php tests/restaurant_setup_sync.php
 php tests/sync_apply_logic.php
+php tests/sync_reserve_logic.php
 ```
 
 Pure logic (HMAC, ownership, state machine, resolver, envelope) runs anywhere. The

@@ -54,6 +54,14 @@ function sync_ts_to_zuri_enabled(): bool {
 function sync_zuri_to_ts_enabled(): bool {
     return sync_enabled() && sync_env_bool('SYNC_ZURI_TO_TS', false);
 }
+/**
+ * Reservations stage (S§10 "reservations one-way"): Tribalsand bookings for the
+ * synced venue go to Zuri's POST /reserve first. Its own switch, so turning on
+ * the menu push (SYNC_TS_TO_ZURI) never starts routing guest bookings.
+ */
+function sync_reservations_enabled(): bool {
+    return sync_enabled() && sync_env_bool('SYNC_RESERVATIONS', false);
+}
 function sync_env_bool(string $key, bool $default): bool {
     $env = parse_env();
     if (!isset($env[$key])) return $default;
@@ -408,6 +416,43 @@ function sync_inbox_receive(array $ev): array {
         ]
     );
     return $stmt->fetchColumn() ? ['result' => 'accepted'] : ['result' => 'duplicate'];
+}
+
+/* ─────────────────────────────────────────────────────────────────────────
+ * Signed request to the peer (the applier's pull-on-unknown and the /reserve
+ * client). function_exists-guarded so tests can stub the HTTP call, like
+ * ai_claude_request(). The dispatcher keeps its own batch sender.
+ * ───────────────────────────────────────────────────────────────────────── */
+
+if (!function_exists('sync_peer_request')) {
+    /**
+     * Signed request to Zuri's /sync/v1. Returns [httpCode, decodedJson|null].
+     * $headers are extra "Name: value" lines (e.g. Idempotency-Key).
+     */
+    function sync_peer_request(string $method, string $path, string $body = '', array $headers = []): array {
+        $base = sync_peer_base_url();
+        if ($base === '' || sync_shared_secret() === '') return [0, null];
+        $ts = (string) time();
+        $ch = curl_init($base . $path);
+        curl_setopt_array($ch, [
+            CURLOPT_CUSTOMREQUEST  => $method,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 20,
+            CURLOPT_HTTPHEADER     => array_merge([
+                'Content-Type: application/json',
+                'X-Sync-Source: ' . sync_self_source(),
+                'X-Sync-Timestamp: ' . $ts,
+                'X-Sync-Signature: ' . sync_sign($ts, $body),
+            ], $headers),
+        ]);
+        if ($method !== 'GET') curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
+        $resp = curl_exec($ch);
+        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        if ($resp === false) error_log('[sync] peer request failed: ' . curl_error($ch));
+        curl_close($ch);
+        $json = is_string($resp) ? json_decode($resp, true) : null;
+        return [$code, is_array($json) ? $json : null];
+    }
 }
 
 /* ─────────────────────────────────────────────────────────────────────────

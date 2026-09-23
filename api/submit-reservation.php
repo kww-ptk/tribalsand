@@ -11,6 +11,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/auth.php';        // csrf + session
 require_once __DIR__ . '/../includes/reservations.php';
+require_once __DIR__ . '/../includes/sync-reserve.php';   // reservation_book(): Zuri's /reserve for the synced venue
 require_once __DIR__ . '/../includes/mail.php';
 
 session_init();
@@ -96,7 +97,9 @@ $dateTs = strtotime($old['reservation_date']);
 $menuId = reservation_menu_id_for_venue((int)$venue['id']);
 
 // ── Create + notify ──
-$res = create_reservation([
+// reservation_book() asks Zuri first for the synced venue (it owns the tables
+// once sync is live); everywhere else it is the plain local create.
+$booked = reservation_book([
     'venue_id'         => (int)$venue['id'],
     'menu_id'          => $menuId,
     'reservation_date' => date('Y-m-d', $dateTs),
@@ -108,6 +111,13 @@ $res = create_reservation([
     'notes'            => $old['notes'],
     'source'           => 'web',
 ]);
+if (!$booked['ok']) {   // slot_unavailable — nothing was stored
+    $alts = sync_reserve_alternatives_label($booked['alternatives'] ?? [], date('Y-m-d', $dateTs));
+    _reserve_fail(['reservation_time' => $alts !== ''
+        ? 'That time is fully booked. Available: ' . $alts . '.'
+        : 'That time is fully booked. Please choose another time.'], $old, $venueSlug);
+}
+$res = $booked['reservation'];
 
 try { send_reservation_received($res); }
 catch (Throwable $e) { error_log('[reservation] mail: ' . $e->getMessage()); }

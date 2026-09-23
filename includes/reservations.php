@@ -23,6 +23,31 @@ function reservations_supported(): bool {
     catch (Throwable $e) { return $c = false; }
 }
 
+/**
+ * True once add_sync_applier.sql has added the contract columns (preference,
+ * staff_notes, cancellation_reason, confirmed_at/seated_at/cancelled_at …).
+ * An information_schema lookup — set_reservation_status() can run inside a
+ * transaction, where a failing SELECT would abort it.
+ */
+function reservations_extended_supported(): bool {
+    static $c = null;
+    if ($c !== null) return $c;
+    try {
+        return $c = (bool) db_query(
+            "SELECT 1 FROM information_schema.columns
+              WHERE table_schema = 'public' AND table_name = 'reservations' AND column_name = 'staff_notes'"
+        )->fetchColumn();
+    } catch (Throwable $e) { return $c = false; }
+}
+
+/** Status → label for staff ("No-show", not "No_show"). */
+function reservation_status_label(string $status): string {
+    return match ($status) {
+        'no_show' => 'No-show',
+        default   => ucfirst($status),
+    };
+}
+
 /** Service-time options for the styled select: 12:00–22:00 in 30-min steps → [value=>label]. */
 function reservation_slots(): array {
     $out = [];
@@ -184,15 +209,28 @@ function create_reservation(array $data): array {
         ':ip'    => client_ip(),
     ];
 
+    // Once synced, a row we create is OURS: the column defaults to 'zuri' (most
+    // bookings originate there), so stamp it — the applier uses sync_source to
+    // decide which fields Zuri may change. Preference / staff notes only exist
+    // after add_sync_applier.sql.
+    $extraCols = ''; $extraVals = '';
+    if (sync_supported()) { $extraCols .= ', sync_source'; $extraVals .= ", 'tribalsand'"; }
+    if (reservations_extended_supported()) {
+        $extraCols .= ', preference, staff_notes';
+        $extraVals .= ', :pref, :snotes';
+        $params[':pref']   = trim((string)($data['preference'] ?? '')) ?: null;
+        $params[':snotes'] = trim((string)($data['staff_notes'] ?? '')) ?: null;
+    }
+
     // Insert first (reference NULL), then mint + set the reference so we can key
     // it off the real id. Retry the reference on the rare unique collision.
     $stmt = db()->prepare(
         "INSERT INTO reservations
             (venue_id, menu_id, reservation_date, reservation_time, party_size,
-             guest_name, guest_phone, guest_email, notes, source, client_ip)
+             guest_name, guest_phone, guest_email, notes, source, client_ip{$extraCols})
          VALUES
             (:venue, :menu, :date, :time, :party,
-             :name, :phone, :email, :notes, :source, :ip)
+             :name, :phone, :email, :notes, :source, :ip{$extraVals})
          RETURNING id"
     );
     $stmt->execute($params);
@@ -248,7 +286,7 @@ function _reservations_where(?array $venueIds, array $filters): array {
         $clauses[] = 'r.venue_id = :fvenue';
         $params[':fvenue'] = (int)$filters['venue_id'];
     }
-    if (!empty($filters['status']) && in_array($filters['status'], ['pending','confirmed','cancelled'], true)) {
+    if (!empty($filters['status']) && in_array($filters['status'], sync_reservation_states(), true)) {
         $clauses[] = 'r.status = :fstatus';
         $params[':fstatus'] = $filters['status'];
     }
@@ -317,10 +355,18 @@ function reservation_dashboard_counts(?array $venueIds): array {
  * Transition a reservation's status, enforcing the §6 state machine (via
  * sync_reservation_transition_allowed). An illegal move — most importantly a
  * terminal status trying to revive (cancelled/no_show/completed → anything) —
- * returns false and changes nothing. Bumps sync_version so the change is
- * sync-ready. Returns true on a real change.
+ * returns false and changes nothing. Returns true on a real change.
+ *
+ * Once synced it also bumps sync_version, stamps the contract timestamp for the
+ * new state (confirmed_at / seated_at / cancelled_at) and the cancellation
+ * reason, and — when the booking exists on Zuri (reservation_on_zuri) — queues
+ * a `reservation` update carrying ONLY status (+ cancellation_reason), in the
+ * same transaction. Those two are the shared fields (S§6); anything else on a
+ * Zuri-created booking would be rejected not_owner. Skipped while applying an
+ * inbound change (sync_outbox_push's loop guard), so Zuri's own status moves are
+ * never echoed back.
  */
-function set_reservation_status(int $id, string $status): bool {
+function set_reservation_status(int $id, string $status, ?string $reason = null): bool {
     if (!reservations_supported() || $id <= 0) return false;
     if (!in_array($status, sync_reservation_states(), true)) return false;
 
@@ -331,14 +377,51 @@ function set_reservation_status(int $id, string $status): bool {
     // Bump the sync columns only when they exist (post add_restaurant_sync);
     // pre-migration the reservations table has no sync_version, so keep the
     // original plain update and never reference the missing columns.
-    $set = sync_supported()
-        ? 'status = :s, updated_at = now(), sync_version = sync_version + 1, sync_updated_at = now()'
-        : 'status = :s, updated_at = now()';
-    $n = db_query(
-        "UPDATE reservations SET $set WHERE id = :id AND status <> :s",
-        [':s' => $status, ':id' => $id]
-    )->rowCount();
-    return $n > 0;
+    $set    = 'status = :s, updated_at = now()';
+    $params = [':s' => $status, ':id' => $id];
+    if (sync_supported()) $set .= ', sync_version = sync_version + 1, sync_updated_at = now()';
+    if (reservations_extended_supported()) {
+        $stamp = ['confirmed' => 'confirmed_at', 'seated' => 'seated_at', 'cancelled' => 'cancelled_at'][$status] ?? null;
+        if ($stamp) $set .= ", {$stamp} = now()";
+        if ($status === 'cancelled') {
+            $set .= ', cancellation_reason = :why';
+            $params[':why'] = ($reason !== null && trim($reason) !== '') ? mb_substr(trim($reason), 0, 255) : null;
+        }
+    }
+
+    $write = function () use ($set, $params, $id): bool {
+        $n = db_query("UPDATE reservations SET $set WHERE id = :id AND status <> :s", $params)->rowCount();
+        if ($n > 0) reservation_sync_emit_status($id);
+        return $n > 0;
+    };
+    if (!sync_supported() || db()->inTransaction()) return $write();
+    db()->beginTransaction();
+    try { $ok = $write(); db()->commit(); return $ok; }
+    catch (Throwable $e) { if (db()->inTransaction()) db()->rollBack(); throw $e; }
+}
+
+/**
+ * Does this booking exist on Zuri? True once it came FROM Zuri (the applier
+ * sets sync_last_at) or was accepted by Zuri's /reserve (also sets it) — and it
+ * belongs to the synced venue. A local-only request (other venues, sync off, or
+ * a /reserve fallback) is never announced: Zuri has nothing to update.
+ */
+function reservation_on_zuri(array $row): bool {
+    if (empty($row['sync_last_at']) || empty($row['sync_uuid'])) return false;
+    $synced = trim((string) (parse_env()['SYNC_VENUE_SLUG'] ?? '')) ?: 'zuri';
+    return (string) ($row['venue_slug'] ?? '') === $synced;
+}
+
+/** Queue the status (+ cancellation_reason) of a booking that exists on Zuri. */
+function reservation_sync_emit_status(int $id): void {
+    if (!sync_supported() || SyncContext::isApplying()) return;
+    $row = fetch_reservation($id);
+    if (!$row || !reservation_on_zuri($row)) return;
+    $data = ['status' => (string) $row['status']];
+    if ($row['status'] === 'cancelled' && reservations_extended_supported()) {
+        $data['cancellation_reason'] = $row['cancellation_reason'] ?? null;
+    }
+    sync_outbox_push('reservation', (string) $row['sync_uuid'], 'update', $data, (int) $row['sync_version']);
 }
 
 /** True if the current admin ($venueIds scope) may act on this reservation. */

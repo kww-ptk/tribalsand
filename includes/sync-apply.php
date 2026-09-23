@@ -172,11 +172,12 @@ function sync_apply_map_reservation(array $d): array {
 /**
  * On a booking WE created (sync_source = tribalsand), Zuri may change only the
  * shared fields — status and cancellation_reason (S§6) — plus what it assigns
- * when it seats the booking: its reference, the status timestamps and the table.
- * Everything else is ours; a Zuri change to it is ignored.
+ * when it takes the booking: its reference, the status timestamps, the table and
+ * the customer record it created from our /reserve call. Everything else (date,
+ * guests, our guest name/phone …) is ours; a Zuri change to it is ignored.
  */
 function sync_apply_reservation_peer_keys_on_ours(): array {
-    return ['status', 'cancellation_reason', 'confirmed_at', 'seated_at', 'cancelled_at', 'reference', 'table_uuid'];
+    return ['status', 'cancellation_reason', 'confirmed_at', 'seated_at', 'cancelled_at', 'reference', 'table_uuid', 'customer_uuid'];
 }
 
 /** Our current row → contract keys (for the resolver's equality check), limited to $keys. */
@@ -198,39 +199,8 @@ function sync_apply_reservation_local_data(array $row, array $keys, ?string $cus
 /* ─────────────────────────────────────────────────────────────────────────
  * Talking back to Zuri: a signed GET of one record's current state (S§6 — an
  * update for a uuid we don't know makes us pull the full record first).
- * sync_peer_request() is function_exists-guarded so tests can stub it.
+ * sync_peer_request() lives in sync.php (function_exists-guarded for tests).
  * ───────────────────────────────────────────────────────────────────────── */
-
-if (!function_exists('sync_peer_request')) {
-    /**
-     * Signed request to Zuri's /sync/v1. Returns [httpCode, decodedJson|null].
-     * $headers are extra "Name: value" lines (e.g. Idempotency-Key).
-     */
-    function sync_peer_request(string $method, string $path, string $body = '', array $headers = []): array {
-        $base = sync_peer_base_url();
-        if ($base === '' || sync_shared_secret() === '') return [0, null];
-        $ts = (string) time();
-        $ch = curl_init($base . $path);
-        curl_setopt_array($ch, [
-            CURLOPT_CUSTOMREQUEST  => $method,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_TIMEOUT        => 20,
-            CURLOPT_HTTPHEADER     => array_merge([
-                'Content-Type: application/json',
-                'X-Sync-Source: ' . sync_self_source(),
-                'X-Sync-Timestamp: ' . $ts,
-                'X-Sync-Signature: ' . sync_sign($ts, $body),
-            ], $headers),
-        ]);
-        if ($method !== 'GET') curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
-        $resp = curl_exec($ch);
-        $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        if ($resp === false) error_log('[sync] peer request failed: ' . curl_error($ch));
-        curl_close($ch);
-        $json = is_string($resp) ? json_decode($resp, true) : null;
-        return [$code, is_array($json) ? $json : null];
-    }
-}
 
 /** Zuri's current state of one record as an envelope, or null (not found / unreachable). */
 function sync_pull_record(string $entity, string $uuid): ?array {
