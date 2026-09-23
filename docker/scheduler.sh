@@ -111,4 +111,14 @@ log "scheduler started"
   done
 ) &
 
+# ── Job 6: Zuri sync reconciliation nightly (report-only) ───────────────────
+# Counts + checksums our synced rows and flags edits that never reached Zuri;
+# stores the report for Admin → Zuri sync. Quiet while SYNC_ENABLED is off.
+(
+  while true; do
+    php "$APP_DIR/bin/reconcile.php" >> "$LOG" 2>&1 || log "sync reconcile failed"
+    sleep 86400
+  done
+) &
+
 wait

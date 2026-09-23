@@ -166,7 +166,22 @@ matcher against real data (the field map itself is agreed — see above).
   loop guard/version bump live in one place. Test: `php tests/restaurant_setup_sync.php`.
 - **Reservation Seat / Complete / No-show buttons** (state machine already exists).
 - **Staff booking → Zuri `/reserve`** synchronous call (Zuri owns seat inventory).
-- **Dashboard + alerts + `bin/reconcile.php`** (§9).
+- ~~**Dashboard + alerts + `bin/reconcile.php`**~~ — **DONE.** **Admin → Zuri sync**
+  (`admin/sync.php`, owner-only, Admin nav group; helpers
+  [`includes/sync-monitor.php`](../includes/sync-monitor.php)): switches (the secret
+  shows set/missing only), our queue KPIs, **Check Zuri now** (signed `GET /health`,
+  Zuri's `alerts[]` shown verbatim), failed sends with Retry / Retry all (back to
+  `pending`, attempts reset), rejected inbound with Apply again, open conflicts side
+  by side with Mark reviewed (`resolved_at`), and the last reconcile report with Run
+  now. Our own `/sync/v1/health` now also returns `switches`, `conflicts_open`,
+  plain-English `alerts[]` and the last reconcile `checksums`.
+  `bin/reconcile.php` (scheduler Job 6, daily, quiet while `SYNC_ENABLED` is off;
+  `--force` to run anyway) is **report-only**: per owned entity, live-row count +
+  checksum `md5(string_agg(sync_uuid||'|'||sync_version, ',' ORDER BY sync_uuid))`
+  (`sync_checksum()` computes the same in PHP) and the rows whose current version
+  was never delivered. Zuri has no checksum endpoint yet — when its `/health`
+  carries a `checksums` map of the same shape, the report compares them; agree that
+  with Bhumika. Test: `php tests/sync_monitor_logic.php`.
 
 ## Environment variables
 
@@ -232,6 +247,7 @@ php tests/restaurant_sync_models.php
 php tests/restaurant_setup_sync.php
 php tests/sync_apply_logic.php
 php tests/sync_reserve_logic.php
+php tests/sync_monitor_logic.php
 ```
 
 Pure logic (HMAC, ownership, state machine, resolver, envelope) runs anywhere. The

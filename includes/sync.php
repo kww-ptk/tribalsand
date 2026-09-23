@@ -497,9 +497,36 @@ function sync_health(): array {
             max(applied_at)                             AS last_applied_at
          FROM sync_inbox"
     )->fetch() ?: [];
+    $conflicts = (int) db_query('SELECT count(*) FROM sync_conflicts WHERE resolved_at IS NULL')->fetchColumn();
+
+    // Plain-English alerts, the same idea as Zuri's /health alerts[].
+    $alerts = [];
+    if (sync_shared_secret() === '') $alerts[] = 'Shared secret is not set';
+    if ((int) ($out['outbox_failed'] ?? 0) > 0)   $alerts[] = (int) $out['outbox_failed'] . ' event(s) failed to send to Zuri';
+    if ((int) ($in['inbox_rejected'] ?? 0) > 0)   $alerts[] = (int) $in['inbox_rejected'] . ' inbound event(s) rejected';
+    if (sync_ts_to_zuri_enabled() && (int) ($out['oldest_pending_secs'] ?? 0) > 600) {
+        $alerts[] = 'Oldest unsent event is ' . intdiv((int) $out['oldest_pending_secs'], 60) . ' min old';
+    }
+    if ($conflicts > 0) $alerts[] = $conflicts . ' open conflict(s) to review';
+
+    // Last reconcile checksums (bin/reconcile.php), so the peer can compare.
+    $checksums = null;
+    try {
+        $last = json_decode(setting('sync_reconcile_last', ''), true);
+        if (is_array($last['entities'] ?? null)) {
+            foreach ($last['entities'] as $ent => $x) $checksums[$ent] = ['count' => (int) $x['count'], 'checksum' => (string) $x['checksum']];
+        }
+    } catch (Throwable $e) { /* optional */ }
+
     return [
-        'ok'                 => true,
+        'ok'                 => $alerts === [] || !sync_enabled(),
         'supported'          => true,
+        'switches'           => ['enabled' => sync_enabled(), 'ts_to_zuri' => sync_ts_to_zuri_enabled(),
+                                 'zuri_to_ts' => sync_zuri_to_ts_enabled(), 'reservations' => sync_reservations_enabled(),
+                                 'shadow' => sync_env_bool('SYNC_SHADOW', false)],
+        'conflicts_open'     => $conflicts,
+        'alerts'             => $alerts,
+        'checksums'          => $checksums,
         'enabled'            => sync_enabled(),
         'ts_to_zuri'         => sync_ts_to_zuri_enabled(),
         'zuri_to_ts'         => sync_zuri_to_ts_enabled(),
