@@ -18,4 +18,8 @@ if (($_SERVER['REQUEST_METHOD'] ?? '') !== 'GET') {
 
 sync_api_authenticate();   // HMAC over the (empty) body
 
-sync_api_json(sync_health());
+// ?checksums=1 adds per-entity {count, checksum} under `entities` — the same
+// flag and shape as Zuri's /health, left out of the default (cheap) report.
+$withChecksums = isset($_GET['checksums']) && $_GET['checksums'] !== '0';
+if ($withChecksums) require_once __DIR__ . '/../../includes/sync-monitor.php';
+sync_api_json(sync_health($withChecksums));

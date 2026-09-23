@@ -23,7 +23,8 @@ function check(string $label, bool $cond): void {
 // ── Pure ────────────────────────────────────────────────────────────────────
 $a = ['sync_uuid' => 'bbbb', 'sync_version' => 2];
 $b = ['sync_uuid' => 'aaaa', 'sync_version' => 1];
-check('checksum = md5 of sorted uuid|version', sync_checksum([$a, $b]) === md5('aaaa|1,bbbb|2'));
+check('checksum = Zuri formula (newline-joined, sorted)', sync_checksum([$a, $b]) === md5("aaaa|1\nbbbb|2"));
+check('checksum lower-cases uuids',      sync_checksum([['sync_uuid' => 'AAAA', 'sync_version' => 1]]) === md5('aaaa|1'));
 check('checksum is order-independent',   sync_checksum([$a, $b]) === sync_checksum([$b, $a]));
 check('checksum changes with a version', sync_checksum([$a, $b]) !== sync_checksum([['sync_uuid' => 'bbbb', 'sync_version' => 3], $b]));
 check('empty set checksum',              sync_checksum([]) === md5(''));
@@ -35,8 +36,15 @@ check('switches never carry the secret',   !str_contains((string) json_encode($s
 $GLOBALS['__peer']['reply'] = [200, ['ok' => false, 'alerts' => ['Outbox backlog 120', ['code' => 'bad_signature']]]];
 $ph = sync_peer_health();
 check('peer alerts shown verbatim',      $ph['alerts'][0] === 'Outbox backlog 120' && str_contains($ph['alerts'][1], 'bad_signature'));
+check('JSON answer is the sync API',     $ph['is_api'] === true);
+$GLOBALS['__peer']['reply'] = [200, null];   // e.g. the website homepage (HTML)
+check('HTML 200 is not the sync API',     sync_peer_health()['is_api'] === false && sync_peer_health()['reachable'] === true);
 $GLOBALS['__peer']['reply'] = [0, null];
 check('unreachable peer',                sync_peer_health()['reachable'] === false);
+
+// Reconcile compares against Zuri's /health?checksums=1 `entities` map.
+$peerFixture = ['body' => ['entities' => ['restaurant_table' => ['count' => 0, 'checksum' => md5('')]]]];
+check('peer checksums read from entities', ($peerFixture['body']['entities']['restaurant_table']['checksum'] ?? '') === sync_checksum([]));
 
 // ── DB round-trip (rolled back) ─────────────────────────────────────────────
 if (!sync_supported() || !rtables_supported()) {

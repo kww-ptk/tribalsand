@@ -112,11 +112,26 @@ function sync_reserve_call(array $body, string $idempotencyKey): array {
     return ['ok' => false, 'code' => $code === 0 ? 'unreachable' : 'http_' . $code, 'message' => (string) ($resp['error'] ?? '')];
 }
 
-/** A table reference in Zuri's answer (uuid string or {sync_uuid}) → our table id, or null. */
+/**
+ * The table in Zuri's /reserve answer → our table id, or null. Zuri sends
+ * {"sync_uuid": "…"|null, "number": "7"} or null (no table held). The inner
+ * sync_uuid is null for a Zuri table not yet matched to one of ours, so fall
+ * back to the table NUMBER at the synced venue (the backfill's natural key).
+ */
 function sync_reserve_table_id(mixed $table): ?int {
-    $uuid = is_array($table) ? ($table['sync_uuid'] ?? $table['uuid'] ?? null) : $table;
-    if (!is_string($uuid) || !preg_match('/^[0-9a-f-]{36}$/i', $uuid) || !rtables_supported()) return null;
-    $id = (int) (db_query('SELECT id FROM restaurant_tables WHERE sync_uuid = :u', [':u' => $uuid])->fetchColumn() ?: 0);
+    if (!rtables_supported() || $table === null) return null;
+    $uuid   = is_array($table) ? ($table['sync_uuid'] ?? null) : $table;
+    $number = is_array($table) ? trim((string) ($table['number'] ?? '')) : '';
+    if (is_string($uuid) && preg_match('/^[0-9a-f-]{36}$/i', $uuid)) {
+        $id = (int) (db_query('SELECT id FROM restaurant_tables WHERE sync_uuid = :u', [':u' => $uuid])->fetchColumn() ?: 0);
+        if ($id) return $id;
+    }
+    if ($number === '') return null;
+    $id = (int) (db_query(
+        'SELECT id FROM restaurant_tables
+          WHERE venue_id = :v AND lower(label) = lower(:n) AND is_deleted = FALSE ORDER BY id LIMIT 1',
+        [':v' => sync_apply_venue_id(), ':n' => $number]
+    )->fetchColumn() ?: 0);
     return $id ?: null;
 }
 

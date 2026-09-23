@@ -174,14 +174,16 @@ matcher against real data (the field map itself is agreed — see above).
   `pending`, attempts reset), rejected inbound with Apply again, open conflicts side
   by side with Mark reviewed (`resolved_at`), and the last reconcile report with Run
   now. Our own `/sync/v1/health` now also returns `switches`, `conflicts_open`,
-  plain-English `alerts[]` and the last reconcile `checksums`.
+  plain-English `alerts[]`, and per-entity `entities` {count, checksum} on
+  `?checksums=1`. The dashboard flags an HTML answer as "Not the sync API".
   `bin/reconcile.php` (scheduler Job 6, daily, quiet while `SYNC_ENABLED` is off;
   `--force` to run anyway) is **report-only**: per owned entity, live-row count +
-  checksum `md5(string_agg(sync_uuid||'|'||sync_version, ',' ORDER BY sync_uuid))`
-  (`sync_checksum()` computes the same in PHP) and the rows whose current version
-  was never delivered. Zuri has no checksum endpoint yet — when its `/health`
-  carries a `checksums` map of the same shape, the report compares them; agree that
-  with Bhumika. Test: `php tests/sync_monitor_logic.php`.
+  checksum = md5 of the `sync_uuid|sync_version` lines, ordered by uuid, joined
+  with a **newline** (`sync_checksum()` — byte-for-byte Zuri's
+  `SyncHealth::checksums()`; change it only together with Zuri) — and the rows
+  whose current version was never delivered. It compares against Zuri's
+  `GET /health?checksums=1` (`entities` map). Our own `/sync/v1/health?checksums=1`
+  answers in the same shape. Test: `php tests/sync_monitor_logic.php`.
 
 - ~~**Hardening**~~ — **DONE.** Dockerfile: `ServerTokens Prod` + `ServerSignature Off`
   (`tribalsand-hardening.conf`, loads after Debian's `security.conf`) and PHP

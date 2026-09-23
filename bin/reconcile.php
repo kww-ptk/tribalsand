@@ -6,10 +6,10 @@ declare(strict_types=1);
  *
  * For each entity we own (categories, items, tables, the hours record) it counts
  * the synced venue's live rows, computes the shared checksum
- *   md5(string_agg(sync_uuid || '|' || sync_version, ',' ORDER BY sync_uuid))
- * and lists rows whose CURRENT version was never delivered to Zuri. When Zuri's
- * /health carries a matching `checksums` map the two are compared; until that
- * endpoint is agreed with Zuri the undelivered check is the drift signal.
+ *   md5 of "sync_uuid|sync_version" lines, ordered by uuid, joined by "\n"
+ * and lists rows whose CURRENT version was never delivered to Zuri. It also
+ * pulls Zuri's GET /health?checksums=1 (`entities` map, same formula — see
+ * sync_checksum()) and flags any entity whose count/checksum differs.
  *
  *   php bin/reconcile.php            # scheduler: daily, only while SYNC_ENABLED
  *   php bin/reconcile.php --force    # run even with sync switched off
@@ -20,7 +20,7 @@ $force = in_array('--force', $argv, true);
 if (!$force && !sync_enabled()) exit(0);                 // quiet when sync is off
 if (!sync_supported()) { fwrite(STDERR, "sync not migrated — nothing to reconcile\n"); exit(0); }
 
-$peer = (sync_peer_base_url() !== '' && sync_shared_secret() !== '') ? sync_peer_health() : null;
+$peer = (sync_peer_base_url() !== '' && sync_shared_secret() !== '') ? sync_peer_health(true) : null;
 $r = sync_reconcile_report($peer);
 
 $ts = '[' . gmdate('Y-m-d H:i:s') . 'Z] reconcile';

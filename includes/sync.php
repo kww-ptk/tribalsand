@@ -477,7 +477,7 @@ function sync_worker_lock(string $worker): bool {
  * Health snapshot (§9)
  * ───────────────────────────────────────────────────────────────────────── */
 
-function sync_health(): array {
+function sync_health(bool $withChecksums = false): array {
     if (!sync_supported()) {
         return ['ok' => false, 'enabled' => false, 'supported' => false];
     }
@@ -509,14 +509,6 @@ function sync_health(): array {
     }
     if ($conflicts > 0) $alerts[] = $conflicts . ' open conflict(s) to review';
 
-    // Last reconcile checksums (bin/reconcile.php), so the peer can compare.
-    $checksums = null;
-    try {
-        $last = json_decode(setting('sync_reconcile_last', ''), true);
-        if (is_array($last['entities'] ?? null)) {
-            foreach ($last['entities'] as $ent => $x) $checksums[$ent] = ['count' => (int) $x['count'], 'checksum' => (string) $x['checksum']];
-        }
-    } catch (Throwable $e) { /* optional */ }
 
     return [
         'ok'                 => $alerts === [] || !sync_enabled(),
@@ -526,7 +518,6 @@ function sync_health(): array {
                                  'shadow' => sync_env_bool('SYNC_SHADOW', false)],
         'conflicts_open'     => $conflicts,
         'alerts'             => $alerts,
-        'checksums'          => $checksums,
         'enabled'            => sync_enabled(),
         'ts_to_zuri'         => sync_ts_to_zuri_enabled(),
         'zuri_to_ts'         => sync_zuri_to_ts_enabled(),
@@ -538,5 +529,21 @@ function sync_health(): array {
         'inbox_rejected'     => (int) ($in['inbox_rejected'] ?? 0),
         'last_applied_at'    => $in['last_applied_at'] ?? null,
         'generated_at'       => gmdate('Y-m-d\TH:i:s\Z'),
-    ];
+    ] + ($withChecksums ? ['entities' => sync_owned_checksums()] : []);
+}
+
+/**
+ * Live per-entity {count, checksum} for the entities we own — what
+ * GET /sync/v1/health?checksums=1 returns under `entities`, the same shape and
+ * formula as Zuri's (sync_checksum()). Computed on request, never cached.
+ */
+function sync_owned_checksums(): array {
+    require_once __DIR__ . '/sync-monitor.php';
+    $out = [];
+    foreach (['menu_category', 'menu_item', 'restaurant_table', 'opening_hours'] as $entity) {
+        $rows = sync_menu_rows($entity);
+        if ($entity === 'menu_item') $rows = array_values(array_filter($rows, fn($r) => sync_menu_item_skip_reason($r) === ''));
+        $out[$entity] = ['count' => count($rows), 'checksum' => sync_checksum($rows)];
+    }
+    return $out;
 }

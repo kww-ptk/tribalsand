@@ -41,8 +41,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && sync_supported()) {
             audit_log('sync.conflict_reviewed', 'sync_conflict', $id, '');
             break;
         case 'reconcile':
-            $r = sync_reconcile_report();
-            $msg = $r['ok'] ? 'Reconcile ran — no drift found.' : 'Reconcile ran — drift found, see below.';
+            $sw0 = sync_monitor_switches();
+            $r = sync_reconcile_report(($sw0['peer_url'] !== '' && $sw0['secret_set']) ? sync_peer_health(true) : null);
+            $msg = $r['ok'] ? 'Reconcile ran — no drift found.'
+                 : (sync_enabled() ? 'Reconcile ran — drift found, see below.'
+                                   : 'Reconcile ran — sync is off, so nothing has been sent to Zuri yet (expected).');
             break;
     }
     if ($msg) $_SESSION['sync_flash'] = ['type' => 'success', 'msg' => $msg];
@@ -115,10 +118,12 @@ include __DIR__ . '/_layout.php';
 <?php if ($peer !== null): ?>
 <div class="card" style="margin-top:16px">
   <div class="card__head"><span class="card__title">Zuri's health</span>
-    <span class="badge <?= ($peer['code'] === 200 && !empty($peer['body']['ok'])) ? 'badge--green' : 'badge--red' ?>"><?= $peer['reachable'] ? 'HTTP ' . (int)$peer['code'] : 'Unreachable' ?></span>
+    <span class="badge <?= ($peer['is_api'] && $peer['code'] === 200 && !empty($peer['body']['ok'])) ? 'badge--green' : 'badge--red' ?>"><?= !$peer['reachable'] ? 'Unreachable' : (!$peer['is_api'] ? 'Not the sync API' : 'HTTP ' . (int)$peer['code']) ?></span>
   </div>
   <div class="card__body" style="padding:18px">
-    <?php if ($peer['alerts']): ?>
+    <?php if ($peer['reachable'] && !$peer['is_api']): ?>
+      <p style="margin:0">Zuri's server answered <strong>HTTP <?= (int)$peer['code'] ?></strong>, but with a web page instead of the sync API — <code>/sync/v1</code> isn't deployed at <code><?= e($sw['peer_url']) ?></code>. Ask Zuri to deploy it (or correct <code>SYNC_PEER_URL</code>).</p>
+    <?php elseif ($peer['alerts']): ?>
       <p style="margin:0 0 8px;font-weight:600">Zuri reports:</p>
       <ul class="sy-alerts"><?php foreach ($peer['alerts'] as $a): ?><li><?= e($a) ?></li><?php endforeach; ?></ul>
     <?php elseif ($peer['code'] === 200): ?>

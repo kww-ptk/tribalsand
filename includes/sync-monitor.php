@@ -33,16 +33,22 @@ function sync_monitor_switches(): array {
 
 /**
  * Zuri's health snapshot. Returns ['reachable' => bool, 'code' => int,
- * 'body' => ?array, 'alerts' => list<string>]. Alerts are shown verbatim — they
- * are Zuri's own words about its side.
+ * 'body' => ?array, 'alerts' => list<string>, 'is_api' => bool]. Alerts are shown
+ * verbatim — they are Zuri's own words about its side. `is_api` is false when the
+ * URL answered but not with JSON (e.g. the website's homepage — the sync API is
+ * not deployed at that address).
+ *
+ * $checksums = true asks for GET /health?checksums=1, which adds Zuri's
+ * per-entity {count, checksum} under `entities` (kept out of the default report
+ * so the dashboard poll stays cheap).
  */
-function sync_peer_health(): array {
-    [$code, $body] = sync_peer_request('GET', '/health');
+function sync_peer_health(bool $checksums = false): array {
+    [$code, $body] = sync_peer_request('GET', '/health' . ($checksums ? '?checksums=1' : ''));
     $alerts = [];
     foreach ((array) ($body['alerts'] ?? []) as $a) {
         $alerts[] = is_string($a) ? $a : (string) json_encode($a, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
     }
-    return ['reachable' => $code > 0, 'code' => $code, 'body' => $body, 'alerts' => $alerts];
+    return ['reachable' => $code > 0, 'code' => $code, 'body' => $body, 'alerts' => $alerts, 'is_api' => is_array($body)];
 }
 
 function sync_failed_outbox(int $limit = 50): array {
@@ -103,16 +109,20 @@ function sync_mark_conflict_reviewed(int $id): bool {
 }
 
 /**
- * S§9 checksum over a set of rows: md5 of "uuid|version" lines sorted by uuid —
- * the same value as Postgres
- *   md5(string_agg(sync_uuid || '|' || sync_version, ',' ORDER BY sync_uuid))
- * so either side can compute it in SQL or code. Pure.
+ * S§9 checksum over a set of rows: md5 of "uuid|version" lines, sorted by uuid,
+ * joined with a NEWLINE — exactly Zuri's SyncHealth::checksums()
+ * (md5(implode("\n", …)) over CONCAT(sync_uuid,'|',sync_version) ORDER BY
+ * sync_uuid). Change it only together with Zuri, or every night reports a false
+ * mismatch. Uuids are compared lower-case. Pure.
  */
 function sync_checksum(array $rows): string {
     $lines = [];
-    foreach ($rows as $r) $lines[(string) $r['sync_uuid']] = $r['sync_uuid'] . '|' . (int) $r['sync_version'];
+    foreach ($rows as $r) {
+        $u = strtolower((string) $r['sync_uuid']);
+        $lines[$u] = $u . '|' . (int) $r['sync_version'];
+    }
     ksort($lines, SORT_STRING);
-    return md5(implode(',', $lines));
+    return md5(implode("\n", $lines));
 }
 
 /**
@@ -129,7 +139,8 @@ function sync_reconcile_report(?array $peerHealth = null): array {
     $report = ['generated_at' => gmdate('Y-m-d\TH:i:s\Z'), 'venue' => sync_venue_slug(), 'entities' => [], 'ok' => true];
     if (!sync_supported()) return ['ok' => false, 'error' => 'sync not migrated'] + $report;
 
-    $peerSums = is_array($peerHealth['body']['checksums'] ?? null) ? $peerHealth['body']['checksums'] : null;
+    // Zuri: GET /health?checksums=1 → `entities` => {entity: {count, checksum}}.
+    $peerSums = is_array($peerHealth['body']['entities'] ?? null) ? $peerHealth['body']['entities'] : null;
     foreach (['menu_category', 'menu_item', 'restaurant_table', 'opening_hours'] as $entity) {
         $rows = sync_menu_rows($entity);
         if ($entity === 'menu_item') $rows = array_values(array_filter($rows, fn($r) => sync_menu_item_skip_reason($r) === ''));
