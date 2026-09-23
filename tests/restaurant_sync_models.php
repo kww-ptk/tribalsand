@@ -47,6 +47,9 @@ check('hours: blank text → null',   $h['dinner'] === null && $h['lunch'] === '
 // ── Customer phone normalisation (backfill match key) ────────────────────────
 check('phone strips symbols',      customer_normalize_phone('+254 700 123 456') === '254700123456');
 check('phone empty stays empty',   customer_normalize_phone('') === '');
+check('phone key = last 9 digits', customer_phone_key('0700 111 222') === customer_phone_key('+254 700 111 222')
+                                   && customer_phone_key('+254 700 111 222') === '700111222');
+check('short phone kept whole',    customer_phone_key('12 34') === '1234');
 
 // ── DB CRUD (rolled back) ────────────────────────────────────────────────────
 if (!rtables_supported() || !reservations_supported()) {

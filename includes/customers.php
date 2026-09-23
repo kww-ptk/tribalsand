@@ -39,19 +39,30 @@ function fetch_customer_by_sync_uuid(string $uuid): ?array {
 }
 
 /**
- * Backfill match (§7): normalised phone first, then exact email. Returns the
- * local row or null. Used to pair an incoming Zuri customer with one we already
- * have before minting a new sync_uuid.
+ * The phone match key from the shared contract (backfill_natural_keys.customer:
+ * "phone (last 9 digits)"): the last 9 digits, so "0700 111 222" and
+ * "+254 700 111 222" — the same Kenyan number — match. Shorter numbers are kept
+ * whole. Pure.
+ */
+function customer_phone_key(string $phone): string {
+    $d = customer_normalize_phone($phone);
+    return strlen($d) > 9 ? substr($d, -9) : $d;
+}
+
+/**
+ * Backfill match (§7): phone on its last 9 digits first, then exact email.
+ * Returns the local row or null. Used to pair an incoming Zuri customer with one
+ * we already have before minting a new sync_uuid.
  */
 function match_customer(string $phone, string $email): ?array {
     if (!customers_supported()) return null;
-    $normPhone = customer_normalize_phone($phone);
-    if ($normPhone !== '') {
+    $key = customer_phone_key($phone);
+    if ($key !== '') {
         $row = db_query(
             "SELECT * FROM customers
-              WHERE is_deleted = FALSE AND regexp_replace(coalesce(phone,''), '\\D', '', 'g') = :p
+              WHERE is_deleted = FALSE AND right(regexp_replace(coalesce(phone,''), '\\D', '', 'g'), 9) = :p
               ORDER BY id LIMIT 1",
-            [':p' => $normPhone]
+            [':p' => $key]
         )->fetch();
         if ($row) return $row;
     }
