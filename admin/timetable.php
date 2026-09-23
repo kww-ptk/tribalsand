@@ -16,15 +16,15 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/booking.php';
 require_once __DIR__ . '/../includes/frontdesk.php';
 require_once __DIR__ . '/../includes/task-calendar.php';
-require_once __DIR__ . '/../includes/holidays.php';   // ke_holiday_name() — weekend/holiday column tint
+require_once __DIR__ . '/../includes/calendar-highlights.php';   // cal_day_map() — public holidays + admin highlights
 require_login();
 
-/** Column class string for a timetable day (today / weekend / KE holiday). */
-function tt_day_cls(string $d, string $today): string {
+/** Column class string for a timetable day (today / weekend / holiday or highlight). */
+function tt_day_cls(string $d, string $today, array $calMap = []): string {
     $c = [];
     if ($d === $today)                                   $c[] = 'is-today';
     if (in_array((int)date('N', strtotime($d)), [6, 7])) $c[] = 'is-weekend';
-    if (ke_holiday_name($d) !== null)                    $c[] = 'is-holiday';
+    if (isset($calMap[$d]))                              $c[] = cal_day_info($calMap[$d])['class'];
     return implode(' ', $c);
 }
 
@@ -82,6 +82,7 @@ if ($canFilterPeople) {
 
 $rows = $venueId ? task_week_fetch($venueIds, $venueId, $weekStart, $filters) : [];
 $grid = task_week_grid($rows, $weekStart, $today, $nowHms);
+$calMap = $grid['days'] ? cal_day_map($grid['days'][0], $grid['days'][count($grid['days']) - 1]) : [];
 
 // People who could hold a task at this property, for the filter menu.
 $people = [];
@@ -190,10 +191,10 @@ include __DIR__ . '/_layout.php';
       <thead>
         <tr>
           <th class="tt-hourcol"></th>
-          <?php foreach ($grid['days'] as $d): $hol = ke_holiday_name($d); ?>
-          <th class="<?= e(tt_day_cls($d, $today)) ?>"<?= $hol ? ' title="' . e($hol) . '"' : '' ?>>
+          <?php foreach ($grid['days'] as $d): $hl = cal_day_info($calMap[$d] ?? []); $hol = $hl['title']; ?>
+          <th class="<?= e(tt_day_cls($d, $today, $calMap)) ?>"<?= $hol ? ' title="' . e($hol) . '"' : '' ?>>
             <?= e(date('D', strtotime($d))) ?><br><span class="text-muted" style="font-weight:400"><?= e(date('j M', strtotime($d))) ?></span>
-            <?php if ($hol): ?><br><span class="tt-hol" title="<?= e($hol) ?>"><?= e($hol) ?></span><?php endif; ?>
+            <?php foreach ($hl['labels'] as $hlLabel): ?><br><span class="tt-hol" title="<?= e($hlLabel) ?>"><?= e($hlLabel) ?></span><?php endforeach; ?>
           </th>
           <?php endforeach; ?>
         </tr>
@@ -202,7 +203,7 @@ include __DIR__ . '/_layout.php';
         <tr class="tt-anytime">
           <th class="tt-hourcol">Anytime</th>
           <?php foreach ($grid['days'] as $d): ?>
-          <td class="<?= e(tt_day_cls($d, $today)) ?>">
+          <td class="<?= e(tt_day_cls($d, $today, $calMap)) ?>">
             <?php foreach ($grid['anytime'][$d] as $t) tt_chip($t, $today, $nowHms, $jobClass); ?>
           </td>
           <?php endforeach; ?>
@@ -211,7 +212,7 @@ include __DIR__ . '/_layout.php';
         <tr>
           <th class="tt-hourcol"><?= sprintf('%02d:00', $h) ?></th>
           <?php foreach ($grid['days'] as $d): ?>
-          <td class="<?= e(tt_day_cls($d, $today)) ?>">
+          <td class="<?= e(tt_day_cls($d, $today, $calMap)) ?>">
             <?php foreach (($grid['cells'][$d][$h] ?? []) as $t) tt_chip($t, $today, $nowHms, $jobClass); ?>
           </td>
           <?php endforeach; ?>
@@ -242,6 +243,16 @@ include __DIR__ . '/_layout.php';
 .tt-grid td.is-holiday,.tt-grid th.is-holiday{background:#fdf1f1}
 .tt-grid thead th.is-holiday{color:#b42318}
 .tt-hol{display:inline-block;margin-top:1px;font-size:9px;font-weight:700;color:#b42318;line-height:1.1}
+/* Admin-editable highlights (Admin → Calendar highlights) */
+.tt-grid td.is-hl--amber,.tt-grid th.is-hl--amber{background:#fff6e0}
+.tt-grid td.is-hl--red,.tt-grid th.is-hl--red{background:#fdf1f1}
+.tt-grid td.is-hl--green,.tt-grid th.is-hl--green{background:#edf8ee}
+.tt-grid td.is-hl--blue,.tt-grid th.is-hl--blue{background:#eef4fd}
+.tt-grid td.is-hl--purple,.tt-grid th.is-hl--purple{background:#f5effc}
+.tt-grid thead th.is-hl--amber .tt-hol{color:#7a4b00}
+.tt-grid thead th.is-hl--green .tt-hol{color:#1b5e20}
+.tt-grid thead th.is-hl--blue .tt-hol{color:#1e3a8a}
+.tt-grid thead th.is-hl--purple .tt-hol{color:#5b21b6}
 /* Today — a loud blue header chip + a full-height accent band down the column */
 .tt-grid thead th.is-today{background:#1d4ed8;color:#fff;border-color:#1d4ed8}
 .tt-grid thead th.is-today .text-muted{color:#dbe9ff!important}

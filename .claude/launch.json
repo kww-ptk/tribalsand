@@ -6,6 +6,12 @@
       "runtimeExecutable": "php",
       "runtimeArgs": ["-S", "localhost:8765", "-t", ".", "router.php"],
       "port": 8765
+    },
+    {
+      "name": "tribal-sand-php84",
+      "runtimeExecutable": "D:\\php84\\php.exe",
+      "runtimeArgs": ["-d", "extension=sodium", "-S", "localhost:8766", "-t", ".", "router.php"],
+      "port": 8766
     }
   ]
 }

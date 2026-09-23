@@ -1,29 +1,20 @@
 <?php
 /**
- * Tribal Sand · GHL Submit Handler
- * ─────────────────────────────────
- * 1. Creates / upserts a contact in GHL
- * 2. Creates an opportunity in "New Enquiry"
- * 3. Posts a conversation note so the enquiry appears in GHL Conversations
- * 4. Adds a contact timeline note
- * 5. Sends internal notification email to reservations@tribalsand.com
+ * Tribal Sand · Contact-page enquiry handler (contact.php → /ghl-submit)
+ * ─────────────────────────────────────────────────────────────────────
+ * 1. Validates (Turnstile, rate limit, required fields, spam names)
+ * 2. Saves the lead to the `submissions` inbox FIRST
+ * 3. Sends the staff notification + guest acknowledgement
+ * 4. Answers the browser, THEN syncs to GHL through the shared ghl_push()
+ *    path (includes/ghl.php) — contact upsert, opportunity, conversation note.
+ *    A GHL outage no longer fails the guest's request or loses the lead.
  *
  * NOTE: lives at root (not includes/) — the includes/ directory is
  * blocked from web access via .htaccess.
  */
-
-/* GHL_BASE and GHL_VERSION are provided as constants by includes/ghl.php (required below);
-   they are intentionally NOT re-defined here to avoid a duplicate-constant fatal. */
-/* ── Config (from env; logic ports to includes/ghl.php) ── */
 require_once __DIR__ . '/includes/db.php';
 require_once __DIR__ . '/includes/ghl.php';
 require_once __DIR__ . '/includes/mail.php';
-$__env = parse_env();
-define('GHL_API_KEY',     $__env['GHL_API_KEY']     ?? '');
-define('GHL_LOCATION_ID', $__env['GHL_LOCATION_ID'] ?? '');
-define('GHL_PIPELINE_ID', $__env['GHL_PIPELINE_ID'] ?? '');
-define('GHL_STAGE_ID',    $__env['GHL_STAGE_ID']    ?? '');
-define('NOTIFY_EMAIL',    setting('notify_email', 'reservations@tribalsand.com'));
 
 /* ── Suppress deprecation warnings so JSON output stays clean ── */
 error_reporting(E_ALL & ~E_DEPRECATED & ~E_NOTICE);
@@ -112,254 +103,85 @@ if ($__vErrors) {
 }
 
 /* ────────────────────────────────────────────────
-   Helper: make a GHL API request via cURL
-   ──────────────────────────────────────────────── */
-function ghl(string $method, string $path, array $body = []): array {
-    // Intentionally returns ok=true on skip so the existing contactId fatal-exit
-    // checks (gated by $ghlSkipped) are bypassed and the request still reaches the
-    // Postgres insert. A real failure with a key present still returns ok=false.
-    if (!GHL_API_KEY) return ['ok' => true, 'status' => 0, 'data' => [], 'skipped' => true];
-    $ch = curl_init(GHL_BASE . $path);
-    curl_setopt_array($ch, [
-        CURLOPT_RETURNTRANSFER => true,
-        CURLOPT_TIMEOUT        => 15,
-        CURLOPT_HTTPHEADER     => [
-            'Authorization: Bearer ' . GHL_API_KEY,
-            'Content-Type: application/json',
-            'Version: '             . GHL_VERSION,
-        ],
-    ]);
-    if ($method === 'POST') {
-        curl_setopt($ch, CURLOPT_POST,       true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($body));
-    }
-    if ($method === 'PUT') {
-        curl_setopt($ch, CURLOPT_CUSTOMREQUEST, 'PUT');
-        curl_setopt($ch, CURLOPT_POSTFIELDS,    json_encode($body));
-    }
-    $resp = curl_exec($ch);
-    $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-    $err  = curl_error($ch);
-    @curl_close($ch); // suppress deprecation in PHP 8.5
-
-    if ($err) return ['ok' => false, 'error' => $err, 'status' => 0,    'data' => []];
-    $decoded = json_decode($resp, true) ?? [];
-    return          ['ok' => $code < 300, 'status' => $code, 'data' => $decoded];
-}
-
-/* ────────────────────────────────────────────────
-   STEP 1 · Create / upsert contact
+   Normalise the posted fields
    ──────────────────────────────────────────────── */
 $guest = $data['guest'] ?? [];
 $trip  = $data['trip']  ?? [];
+$cd    = $data['customData'] ?? [];
+$opp   = $data['opportunity'] ?? [];
 
-// Build GHL custom fields — populates {{contact.xxx}} merge tags in GHL email templates
-// Field types: property=Text, arrival_date=Date, departure_date=Date,
-//              adults=Number, children=Number, enquiry_message=TextArea,
-//              enquiry_source=Text, nights=Number
-
-$customFields = [];
-
-// Helper: normalise date to YYYY-MM-DD (GHL Date fields accept ISO strings)
-$toDate = function(string $d): string {
+// Normalise a date to YYYY-MM-DD ('' when unparseable).
+$toDate = function (string $d): string {
     if (!$d) return '';
-    // Already ISO format
     if (preg_match('/^\d{4}-\d{2}-\d{2}$/', $d)) return $d;
     $ts = strtotime($d);
     return $ts ? date('Y-m-d', $ts) : '';
 };
-
-// Helper: extract leading integer from strings like "2 Adults", "10+", "0"
-$toNum = function(string $v): string {
+// Leading integer from strings like "2 Adults", "10+", "0".
+$toNum = function (string $v): string {
     preg_match('/\d+/', $v, $m);
-    return isset($m[0]) ? $m[0] : '';
+    return $m[0] ?? '';
 };
 
-$arrivalRaw   = $trip['arrival']   ?? ($data['customData']['arrival_date']   ?? '');
-$departureRaw = $trip['departure'] ?? ($data['customData']['departure_date'] ?? '');
-$adultsRaw    = $trip['adults']    ?? ($data['customData']['adults']         ?? '');
-$childrenRaw  = $trip['children']  ?? ($data['customData']['children']       ?? '');
+$arrivalRaw   = (string)($trip['arrival']   ?? ($cd['arrival_date']   ?? ($cd['arrival']   ?? '')));
+$departureRaw = (string)($trip['departure'] ?? ($cd['departure_date'] ?? ($cd['departure'] ?? '')));
+$adultsRaw    = (string)($trip['adults']    ?? ($cd['adults']         ?? ''));
+$childrenRaw  = (string)($trip['children']  ?? ($cd['children']       ?? ''));
 
-// Calculate nights if both dates present
-$nights = '';
-if ($arrivalRaw && $departureRaw) {
-    $diff = strtotime($departureRaw) - strtotime($arrivalRaw);
-    if ($diff > 0) $nights = (string) round($diff / 86400);
-}
-
-// Exact GHL field keys confirmed in GHL Settings → Custom Fields → Contacts
-$cfMap = [
-    'property'        => $trip['prop']    ?? ($data['customData']['property']        ?? ''),
-    'arrivaldate'     => $toDate($arrivalRaw),    // GHL key: contact.arrivaldate (no underscore)
-    'departuredate'   => $toDate($departureRaw),  // GHL key: contact.departuredate (no underscore)
-    'adults'          => $toNum($adultsRaw),
-    'children'        => $toNum($childrenRaw),
-    'nights'          => $nights,
-    'enquiry_message' => $data['message'] ?? ($data['customData']['enquiry_message'] ?? ''),
-    'enquiry_souce'   => $data['opportunity']['source'] ?? ($data['customData']['enquiry_source'] ?? ''), // typo in GHL — use as-is
-];
-
-foreach ($cfMap as $key => $val) {
-    if ($val === '' || $val === null) continue;
-    $customFields[] = ['key' => $key, 'field_value' => (string) $val];
-}
-
-// Merge any extra customData keys not already covered
-foreach (($data['customData'] ?? []) as $k => $v) {
-    if (!array_key_exists($k, $cfMap) && $v !== '') {
-        $customFields[] = ['key' => $k, 'field_value' => (string) $v];
-    }
-}
-
-$contactBody = [
-    'locationId' => GHL_LOCATION_ID,
-    'firstName'  => $guest['firstName'] ?? '',
-    'lastName'   => $guest['lastName']  ?? '',
-    'email'      => $guest['email']     ?? '',
-    'phone'      => $guest['phone']     ?? '',
-    'source'     => 'tribalsand.com',
-    'tags'       => $data['tags']       ?? ['website-enquiry'],
-];
-
-if (!empty($guest['country'])) {
-    $contactBody['country'] = $guest['country'];
-}
-
-if ($customFields) {
-    $contactBody['customFields'] = $customFields;
-}
-
-$contactRes  = ghl('POST', '/contacts/', $contactBody);
-$ghlSkipped  = !empty($contactRes['skipped']);
-$contactId   = $contactRes['data']['contact']['id']
-            ?? $contactRes['data']['meta']['contactId'] // GHL "duplicate" 400 returns existing ID here
-            ?? null;
-$isDuplicate = !$contactRes['ok'] && $contactId;
-
-if (!$ghlSkipped) {
-    if (!$contactRes['ok'] && !$contactId) {
-        http_response_code(502);
-        echo json_encode(['ok' => false, 'error' => 'Failed to create contact', 'detail' => $contactRes]);
-        exit;
-    }
-    if (!$contactId) {
-        http_response_code(502);
-        echo json_encode(['ok' => false, 'error' => 'Contact created but ID missing', 'detail' => $contactRes]);
-        exit;
-    }
-}
-
-// Existing contact — push tags + custom fields via PUT so they're always recorded
-if ($isDuplicate) {
-    $putBody = [
-        'tags'   => $data['tags'] ?? ['website-enquiry'],
-        'source' => 'tribalsand.com',
-    ];
-    if ($customFields) $putBody['customFields'] = $customFields;
-    ghl('PUT', '/contacts/' . $contactId, $putBody);
-}
-
-/* ────────────────────────────────────────────────
-   STEP 2 · Create opportunity in "New Enquiry"
-   ──────────────────────────────────────────────── */
-$opp = $data['opportunity'] ?? [];
-// $trip already defined in Step 1
-
-$baseName = $opp['name']
-    ?? trim(($guest['firstName'] ?? '') . ' ' . ($guest['lastName'] ?? ''))
-       . ' · ' . ($trip['prop'] ?? '');
-$oppName  = $baseName . ' · ' . date('d M Y');
-
-$oppRes = ghl('POST', '/opportunities/', [
-    'locationId'      => GHL_LOCATION_ID,
-    'pipelineId'      => GHL_PIPELINE_ID,
-    'pipelineStageId' => GHL_STAGE_ID,
-    'contactId'       => $contactId,
-    'name'            => $oppName,
-    'status'          => 'open',
-    'monetaryValue'   => $opp['monetaryValue'] ?? 0,
-    'source'          => $opp['source']        ?? 'Website Enquiry',
-]);
-
-$oppId = $oppRes['data']['opportunity']['id'] ?? null;
-
-/* ────────────────────────────────────────────────
-   STEP 3 · Post conversation note (appears in GHL Conversations)
-   ──────────────────────────────────────────────── */
-$cd       = $data['customData'] ?? [];
-$convNote = "New enquiry received via tribalsand.com\n\n"
-    . "Property:   " . ($trip['prop']          ?? $cd['property']  ?? '—') . "\n"
-    . "Arrival:    " . ($trip['arrival']        ?? $cd['arrival']   ?? '—') . "\n"
-    . "Departure:  " . ($trip['departure']      ?? $cd['departure'] ?? '—') . "\n"
-    . "Adults:     " . ($trip['adults']         ?? $cd['adults']    ?? '—') . "\n"
-    . "Children:   " . ($trip['children']       ?? $cd['children']  ?? '—') . "\n"
-    . "Source:     " . ($opp['source']          ?? 'Website')              . "\n"
-    . "\nMessage:\n" . ($data['note']           ?? '—');
-
-ghl('POST', '/conversations/messages', [
-    'locationId' => GHL_LOCATION_ID,
-    'contactId'  => $contactId,
-    'type'       => 'Note',
-    'message'    => $convNote,
-]);
-
-/* ────────────────────────────────────────────────
-   STEP 4 · Add timeline note to contact
-   ──────────────────────────────────────────────── */
-if (!empty($data['note'])) {
-    ghl('POST', '/contacts/' . $contactId . '/notes/', [
-        'body' => $data['note'],
-    ]);
-}
-
-/* ────────────────────────────────────────────────
-   STEP 5 · Internal notification email
-   ──────────────────────────────────────────────── */
 $guestName  = trim(($guest['firstName'] ?? '') . ' ' . ($guest['lastName'] ?? ''));
-$guestEmail = $guest['email']     ?? '';
-$guestPhone = $guest['phone']     ?? '—';
-$property   = $trip['prop']       ?? $cd['property']        ?? '—';
-$arrival    = $trip['arrival']    ?? $cd['arrival_date']    ?? $cd['arrival']   ?? '—';
-$departure  = $trip['departure']  ?? $cd['departure_date']  ?? $cd['departure'] ?? '—';
-$adults     = $trip['adults']     ?? $cd['adults']          ?? '—';
-$children   = $trip['children']   ?? $cd['children']        ?? '—';
-$rooms      = $trip['rooms']      ?? $cd['rooms']           ?? '—';
-$userMsg    = $data['message']    ?? $cd['enquiry_message'] ?? '';   // dedicated message field
-$source     = $opp['source']      ?? 'Website Enquiry';
-$ref        = $data['ref']        ?? '';
+$guestEmail = trim((string)($guest['email'] ?? ''));
+$guestPhone = trim((string)($guest['phone'] ?? ''));
+$property   = trim((string)($trip['prop'] ?? ($cd['property'] ?? '')));
+$rooms      = (string)($trip['rooms'] ?? ($cd['rooms'] ?? ''));
+$userMsg    = (string)($data['message'] ?? ($cd['enquiry_message'] ?? ''));
+$source     = (string)($opp['source'] ?? 'Website Enquiry');
+$ref        = (string)($data['ref'] ?? '');
+$arrival    = $toDate($arrivalRaw);
+$departure  = $toDate($departureRaw);
 
-// Normalise the "—" placeholders back to empty so the mailer omits blank rows.
-$mailProperty  = $property  === '—' ? '' : $property;
-$mailArrival   = $arrival   === '—' ? '' : $arrival;
-$mailDeparture = $departure === '—' ? '' : $departure;
-$mailAdults    = $adults    === '—' ? '' : $adults;
-$mailChildren  = $children  === '—' ? '' : $children;
-$mailPhone     = $guestPhone === '—' ? '' : $guestPhone;
+/* ────────────────────────────────────────────────
+   STEP 1 · Save to Postgres (admin inbox) — FIRST,
+   so a GHL outage can never lose the lead.
+   ──────────────────────────────────────────────── */
+if (session_status() === PHP_SESSION_NONE) session_start();
+$tracking = $_SESSION['tracking'] ?? [];
 
-/* ── Persist to Postgres (admin inbox) ── */
 $submissionId = 0;
 try {
     db_query(
         "INSERT INTO submissions
             (type, guest_name, guest_email, guest_phone, message,
              check_in, check_out, guests_adults, guests_children, payload_json,
-             source_page, referrer, ip_address, user_agent)
+             source_page, referrer, utm_source, utm_medium, utm_campaign, utm_term, utm_content,
+             ip_address, user_agent)
          VALUES
             ('enquiry', :name, :email, :phone, :message,
              :ci, :co, :adults, :children, :payload,
-             :src, :ref, :ip, :ua)",
+             :src, :ref, :us, :um, :uc, :ut, :uco,
+             :ip, :ua)",
         [
-            ':name'     => trim(($guest['firstName'] ?? '') . ' ' . ($guest['lastName'] ?? '')),
-            ':email'    => $guest['email'] ?? '',
-            ':phone'    => $guest['phone'] ?? '',
-            ':message'  => $userMsg ?: ($data['note'] ?? ''),
-            ':ci'       => $toDate($arrivalRaw) ?: null,
-            ':co'       => $toDate($departureRaw) ?: null,
-            ':adults'   => (int)($toNum((string)$adultsRaw) ?: 1),
-            ':children' => (int)($toNum((string)$childrenRaw) ?: 0),
-            ':payload'  => json_encode(['property' => $property, 'rooms' => $rooms, 'ghl_contact' => $contactId, 'ref' => $ref, 'source' => $source]),
-            ':src'      => $_SERVER['HTTP_REFERER'] ?? '',
-            ':ref'      => '', // external referrer not available server-side at this endpoint
+            ':name'     => $guestName,
+            ':email'    => $guestEmail,
+            ':phone'    => $guestPhone,
+            ':message'  => $userMsg ?: (string)($data['note'] ?? ''),
+            ':ci'       => $arrival ?: null,
+            ':co'       => $departure ?: null,
+            ':adults'   => (int)($toNum($adultsRaw) ?: 1),
+            ':children' => (int)($toNum($childrenRaw) ?: 0),
+            ':payload'  => json_encode(array_filter([
+                'property'       => $property,
+                'rooms'          => $rooms,
+                'ref'            => $ref,
+                'source'         => $source,
+                'submitted_from' => $_SERVER['HTTP_REFERER'] ?? '',
+            ], fn($v) => $v !== '' && $v !== null)),
+            ':src'      => $tracking['source_page'] ?? ($_SERVER['HTTP_REFERER'] ?? ''),
+            ':ref'      => $tracking['referrer']     ?? '',
+            ':us'       => $tracking['utm_source']   ?? '',
+            ':um'       => $tracking['utm_medium']   ?? '',
+            ':uc'       => $tracking['utm_campaign'] ?? '',
+            ':ut'       => $tracking['utm_term']     ?? '',
+            ':uco'      => $tracking['utm_content']  ?? '',
             ':ip'       => client_ip(),
             ':ua'       => $_SERVER['HTTP_USER_AGENT'] ?? '',
         ]
@@ -370,46 +192,74 @@ try {
 }
 
 /* ────────────────────────────────────────────────
-   STEP 6 · Emails via the site mailer (SES in prod)
-   GHL is CRM-only here; these are what actually reach
-   the guest + reservations inbox regardless of GHL.
+   STEP 2 · Emails via the site mailer (SES in prod)
+   These are what actually reach the guest + the
+   reservations inbox, regardless of GHL.
    ──────────────────────────────────────────────── */
-// Staff notification (branded HTML + text) to reservations@.
 send_notification([
     'id'              => $submissionId,
     'type'            => 'enquiry',
     'guest_name'      => $guestName,
     'guest_email'     => $guestEmail,
-    'guest_phone'     => $mailPhone,
-    'room_name'       => $mailProperty,
-    'check_in'        => $mailArrival,
-    'check_out'       => $mailDeparture,
-    'guests_adults'   => $mailAdults,
-    'guests_children' => $mailChildren,
+    'guest_phone'     => $guestPhone,
+    'room_name'       => $property,
+    'check_in'        => $arrival,
+    'check_out'       => $departure,
+    'guests_adults'   => $toNum($adultsRaw),
+    'guests_children' => $toNum($childrenRaw),
     'message'         => $userMsg,
     'created_at'      => date('Y-m-d H:i:s'),
 ]);
 
-// Guest acknowledgement (auto-reply) — only when we have a valid address.
 if (filter_var($guestEmail, FILTER_VALIDATE_EMAIL)) {
     send_guest_acknowledgement([
         'kind'            => 'enquiry',
         'guest_name'      => $guestName ?: 'Guest',
         'guest_email'     => $guestEmail,
-        'room_name'       => $mailProperty,
-        'check_in'        => $mailArrival,
-        'check_out'       => $mailDeparture,
-        'guests_adults'   => $mailAdults,
-        'guests_children' => $mailChildren,
+        'room_name'       => $property,
+        'check_in'        => $arrival,
+        'check_out'       => $departure,
+        'guests_adults'   => $toNum($adultsRaw),
+        'guests_children' => $toNum($childrenRaw),
         'message'         => $userMsg,
     ]);
 }
 
-/* ── Respond ── */
-echo json_encode([
-    'ok'        => true,
-    'contactId' => $contactId,
-    'oppId'     => $oppId,
-    'oppOk'     => $oppRes['ok'],
-    'ref'       => $ref,
-]);
+/* ────────────────────────────────────────────────
+   STEP 3 · Answer the browser, then sync to GHL
+   through the shared ghl_push() path (contact upsert
+   → opportunity → conversation note). Best-effort.
+   ──────────────────────────────────────────────── */
+ghl_respond_json(['ok' => true, 'id' => $submissionId, 'ref' => $ref]);
+
+// Extra customData keys (anything the form sent beyond the standard fields)
+// still reach GHL as contact custom fields, as before.
+$extraCf = [];
+foreach ($cd as $k => $v) {
+    if (in_array($k, ['property', 'arrival_date', 'departure_date', 'arrival', 'departure', 'adults', 'children', 'enquiry_message', 'enquiry_source', 'rooms'], true)) continue;
+    if ($v !== '' && $v !== null) $extraCf[(string)$k] = $v;
+}
+$tags = is_array($data['tags'] ?? null) ? array_values(array_filter(array_map('strval', $data['tags']))) : ['website-enquiry'];
+
+$overrides = [
+    'tags'            => $tags ?: ['website-enquiry'],
+    'source'          => $source,
+    'country'         => (string)($guest['country'] ?? ''),
+    'opportunityName' => trim((string)($opp['name'] ?? '')) !== '' ? trim((string)$opp['name']) . ' · ' . date('d M Y') : '',
+    'monetaryValue'   => is_numeric($opp['monetaryValue'] ?? null) ? (float)$opp['monetaryValue'] : 0,
+    'customFields'    => $extraCf,
+];
+if (trim((string)($data['note'] ?? '')) !== '') $overrides['note'] = trim((string)$data['note']);
+
+if ($submissionId > 0) {
+    ghl_push_submission($submissionId, $overrides);
+} else {
+    // The DB insert failed — still get the lead into the CRM.
+    [$fn, $ln] = ghl_split_name($guestName);
+    ghl_push(array_merge([
+        'firstName' => $fn, 'lastName' => $ln, 'email' => $guestEmail, 'phone' => $guestPhone,
+        'property'  => $property, 'arrival' => $arrival, 'departure' => $departure,
+        'adults'    => $toNum($adultsRaw), 'children' => $toNum($childrenRaw), 'message' => $userMsg,
+        'note'      => $userMsg,
+    ], $overrides));
+}

@@ -15,6 +15,8 @@ require_once 'includes/head.php';
 <?php include 'includes/header.php'; ?>
 
 <style>
+.cs-captcha{display:flex;justify-content:center;margin:.9rem 0 0;min-height:65px}
+.cs-err{color:#f3b8a8;font-size:.85rem;min-height:1.2em;margin:.5rem 0 0}
 .cs-wrap{min-height:100vh;background:var(--teal-d,#102F3A);display:flex;flex-direction:column;align-items:center;justify-content:center;padding:2rem var(--px,5vw);position:relative;overflow:hidden;text-align:center;}
 .cs-bg{position:absolute;inset:0;background-image:url('images/maya-kobe/Aerial/mayakobe-2.webp');background-size:cover;background-position:center;opacity:.7;}
 .cs-bg::after{content:'';position:absolute;inset:0;background:linear-gradient(to bottom,rgba(16,47,58,.82) 0%,rgba(16,47,58,.68) 50%,rgba(16,47,58,.85) 100%);}
@@ -76,10 +78,12 @@ require_once 'includes/head.php';
     </div>
 
     <form class="cs-form" id="csForm" novalidate>
-      <div style="position:absolute;opacity:0;pointer-events:none;"><input type="text" name="name-email" tabindex="-1" autocomplete="off"></div>
+      <div style="position:absolute;left:-9999px;opacity:0;pointer-events:none;" aria-hidden="true"><input type="text" name="website" tabindex="-1" autocomplete="off"></div>
       <input type="email" class="cs-inp" id="csEmail" name="email" placeholder="your@email.com" required>
       <button type="submit" class="cs-btn" id="csBtn">Join Waitlist</button>
     </form>
+    <?php if (captcha_site_key()): ?><div class="cs-captcha"><div class="cf-turnstile" data-sitekey="<?= e(captcha_site_key()) ?>" data-theme="dark"></div></div><?php endif; ?>
+    <p class="cs-err" id="csErr" role="alert" aria-live="polite"></p>
     <p class="cs-note">No spam. Just the launch announcement when we're ready.</p>
 
     <a href="tribal-dunes.php" class="cs-back">← Back to Tribal Dunes</a>
@@ -88,30 +92,44 @@ require_once 'includes/head.php';
 </div>
 
 <script>
+/* Waitlist sign-up → our backend (Turnstile + rate limit + admin inbox), which
+   forwards it to GoHighLevel server-side. Never straight to GHL from the browser. */
 document.getElementById('csForm').addEventListener('submit', function(e) {
   e.preventDefault();
+  var form  = this;
   var email = document.getElementById('csEmail').value.trim();
-  if (!email) return;
+  var err   = document.getElementById('csErr');
+  err.textContent = '';
+  if (!email || email.indexOf('@') < 1) { err.textContent = 'Please enter a valid email address.'; return; }
+  var tokEl = document.querySelector('.cs-captcha [name="cf-turnstile-response"]');
+  if (document.querySelector('.cs-captcha .cf-turnstile') && !(tokEl && tokEl.value)) {
+    err.textContent = 'Please complete the security check above.'; return;
+  }
   var btn = document.getElementById('csBtn');
   btn.textContent = '…';
   btn.disabled = true;
-  fetch('https://services.leadconnectorhq.com/hooks/cBTrngnK5Q4lTkFUwhlo/webhook-trigger/ad7f1a2d-9c2a-4f9a-9049-c30b144643e5', {
+  fetch('/api/submit-waitlist.php', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({
+      list: 'off-duty',
       email: email,
-      source: 'off-duty-waitlist',
-      tags: ['off-duty-waitlist', 'coming-soon'],
-      note: 'Off Duty waitlist signup from tribalsand.com/off-duty.php'
+      website: (form.querySelector('[name="website"]') || {}).value || '',
+      'cf-turnstile-response': tokEl ? tokEl.value : ''
     })
   })
-  .then(function() {
-    document.getElementById('csForm').style.display = 'none';
+  .then(function(r) { return r.json().catch(function(){ return {ok:false}; }); })
+  .then(function(r) {
+    if (!r.ok) throw new Error((r.errors && r.errors.email) || r.error || 'Something went wrong — please try again.');
+    form.style.display = 'none';
+    var cap = document.querySelector('.cs-captcha'); if (cap) cap.style.display = 'none';
     document.getElementById('csSuccess').style.display = 'block';
   })
-  .catch(function() {
+  .catch(function(ex) {
+    err.textContent = ex.message || 'Something went wrong — please try again.';
     btn.textContent = 'Join Waitlist';
     btn.disabled = false;
+    if (window.turnstile) { try { window.turnstile.reset(); } catch (x) {} }
   });
 });
 </script>

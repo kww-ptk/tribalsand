@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/ghl.php';
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
@@ -22,13 +23,19 @@ if (!verify_captcha($data['cf-turnstile-response'] ?? '', client_ip())) {
 $guest = $data['guest'] ?? [];
 $trip  = $data['trip']  ?? [];
 $name  = trim(($guest['firstName'] ?? '') . ' ' . ($guest['lastName'] ?? ''));
-$email = trim($guest['email'] ?? '');
-if (!filter_var($email, FILTER_VALIDATE_EMAIL)) { http_response_code(422); exit(json_encode(['ok' => false, 'error' => 'valid email required'])); }
 
-$ip = $_SERVER['REMOTE_ADDR'] ?? '';
+// The GHL workflow payload rides along in `ghl` (built by the page, forwarded to
+// the GHL webhook trigger from HERE after Turnstile + rate limit). It is not
+// part of the lead record, so keep it — and the captcha token — out of payload_json.
+$ghlPayload = is_array($data['ghl'] ?? null) ? $data['ghl'] : null;
+unset($data['ghl'], $data['cf-turnstile-response']);
+$email = trim($guest['email'] ?? '');
+if (!filter_var($email, FILTER_VALIDATE_EMAIL)) { http_response_code(422); exit(json_encode(['ok' => false, 'error' => 'A valid email is required.'])); }
+
+$ip = client_ip();   // behind the load balancer REMOTE_ADDR is the proxy — never use it
 $window = date('Y-m-d H:i:s', time() - 600);
 $count = (int)db_query("SELECT COUNT(*) AS cnt FROM submissions WHERE ip_address=:ip AND created_at>:w", [':ip'=>$ip, ':w'=>$window])->fetch()['cnt'];
-if ($count >= 5) { http_response_code(429); exit(json_encode(['ok' => false, 'error' => 'rate limited'])); }
+if ($count >= 5) { http_response_code(429); exit(json_encode(['ok' => false, 'error' => 'Too many requests. Please wait a few minutes.'])); }
 
 /*
  * Type is bound, not literal, so it can fall back.
@@ -102,4 +109,9 @@ try {
     error_log('[trip-builder] mail failed: ' . $e->getMessage());
 }
 
-echo json_encode(['ok' => true, 'id' => $new_id]);
+// Answer the guest first, then hand the plan to the GHL workflow (best-effort).
+ghl_respond_json(['ok' => true, 'id' => $new_id]);
+if ($ghlPayload) {
+    $ghlPayload['admin_submission_id'] = $new_id;
+    ghl_forward_webhook($ghlPayload);
+}

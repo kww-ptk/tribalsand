@@ -5,7 +5,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/gantt-lanes.php'; // concurrent-block lane packing
 require_once __DIR__ . '/../includes/staff-hold-guard.php'; // staff_hold_block_reason()
 require_once __DIR__ . '/../includes/gantt-block-guard.php'; // gantt_block_move()
-require_once __DIR__ . '/../includes/holidays.php';         // ke_holiday_name() — calendar holiday highlight
+require_once __DIR__ . '/../includes/calendar-highlights.php'; // cal_day_map() — public holidays + admin highlights
 require_login();
 require_bookings();
 
@@ -176,6 +176,9 @@ $d = clone $start;
 while ($d < $end) { $days[] = $d->format('Y-m-d'); $d->modify('+1 day'); }
 $day_count  = count($days);
 $day_index  = array_flip($days); // date→index for fast lookup
+// Day highlights for the whole window in ONE query (public holidays + Admin →
+// Calendar highlights); cells below only index into it.
+$calMap     = $days ? cal_day_map($days[0], $days[$day_count - 1]) : [];
 
 // ── Load data ────────────────────────────────────────────────────
 $filterRoom = isset($_GET['room']) ? (int)$_GET['room'] : 0;
@@ -332,6 +335,24 @@ include __DIR__ . '/_layout.php';
 .gantt-day-h.is-sun, .gantt-day-cell.is-sun { border-right: 1px solid #cbd5e1; }
 .gantt-day-cell.is-holiday { background: #fdeeee; }
 .gantt-day-cell.is-holiday:hover { background: #fbe1e1; }
+/* Admin-editable highlights (Admin → Calendar highlights) — softer than a public holiday */
+.gantt-day-h.is-hl--amber  { background: #fde7b0; color: #7a4b00; font-weight: 800; }
+.gantt-day-h.is-hl--red    { background: #fbd5d5; color: #9f1239; font-weight: 800; }
+.gantt-day-h.is-hl--green  { background: #cdeccf; color: #1b5e20; font-weight: 800; }
+.gantt-day-h.is-hl--blue   { background: #d3e4fb; color: #1e3a8a; font-weight: 800; }
+.gantt-day-h.is-hl--purple { background: #e6d9f7; color: #5b21b6; font-weight: 800; }
+.gantt-day-h.is-hl .gd-dow { color: inherit; opacity: .75; }
+.gantt-day-cell.is-hl--amber  { background: #fff6e0; }
+.gantt-day-cell.is-hl--red    { background: #fdeeee; }
+.gantt-day-cell.is-hl--green  { background: #edf8ee; }
+.gantt-day-cell.is-hl--blue   { background: #eef4fd; }
+.gantt-day-cell.is-hl--purple { background: #f5effc; }
+.gantt-day-cell.is-hl:hover   { filter: brightness(.97); }
+.gl--hl-amber { background: #fde7b0; border-color: #f3c96a; } .gl--hl-red { background: #fbd5d5; border-color: #f1a9b1; }
+.gl--hl-green { background: #cdeccf; border-color: #94cf98; } .gl--hl-blue { background: #d3e4fb; border-color: #9dbff0; }
+.gl--hl-purple { background: #e6d9f7; border-color: #c4a8ea; }
+.gantt-legend .gl-manage { color: var(--brand); font-weight: 600; text-decoration: none; }
+.gantt-legend .gl-manage:hover { text-decoration: underline; }
 .gantt-day-cell.is-selecting { background: #dceeff; }
 /* Month boundary — a vertical divider line where a new month starts */
 .gantt-day-h.is-month-start, .gantt-day-cell.is-month-start { border-left: 2px solid #94a3b8; }
@@ -468,6 +489,12 @@ include __DIR__ . '/_layout.php';
   <span><i class="gl gl--today"></i> Today</span>
   <span><i class="gl gl--weekend"></i> Weekend</span>
   <span><i class="gl gl--holiday"></i> Public holiday</span>
+  <?php foreach (cal_map_custom_legend($calMap) as $lg): ?>
+  <span><i class="gl gl--hl-<?= e($lg['color']) ?>"></i> <?= e($lg['label']) ?></span>
+  <?php endforeach; ?>
+  <?php if (is_owner() || is_manager()): ?>
+  <a href="/admin/calendar-highlights.php" class="gl-manage" data-tip="Mark school holidays, events or any other dates on this calendar">+ Highlight dates</a>
+  <?php endif; ?>
   <span class="gl-sep" aria-hidden="true"></span>
   <label class="optchip" title="Mark nights that have a nightly-rate override">
     <input type="checkbox" id="ganttShowRates"> <i class="gl gl--rate"></i> Show rate overrides
@@ -502,12 +529,12 @@ include __DIR__ . '/_layout.php';
           $dow = (int)date('N', strtotime($day));
           $isToday = $day === date('Y-m-d');
           $isRate  = isset($rate_dates_any[$day]);
-          $hol     = ke_holiday_name($day);
+          $hl      = cal_day_info($calMap[$day] ?? []);
           $isMonthStart = $i > 0 && date('j', strtotime($day)) === '1';
           $cls = ($isToday ? ' is-today' : '') . ($dow >= 6 ? ' is-weekend' : '')
                . ($dow === 7 ? ' is-sun' : '')
-               . ($hol ? ' is-holiday' : '') . ($isRate ? ' is-rate' : '') . ($isMonthStart ? ' is-month-start' : '');
-          $ttl = date('D d M', strtotime($day)) . ($hol ? ' · ' . $hol : '') . ($isRate ? ' ★ Rate override' : '');
+               . ($hl['class'] !== '' ? ' ' . $hl['class'] : '') . ($isRate ? ' is-rate' : '') . ($isMonthStart ? ' is-month-start' : '');
+          $ttl = date('D d M', strtotime($day)) . ($hl['title'] !== '' ? ' · ' . $hl['title'] : '') . ($isRate ? ' ★ Rate override' : '');
         ?>
         <div class="gantt-day-h<?= $cls ?>" title="<?= e($ttl) ?>">
           <span class="gd-dow"><?= substr(date('D', strtotime($day)), 0, 1) ?></span><?= date('j', strtotime($day)) ?>
@@ -591,11 +618,11 @@ include __DIR__ . '/_layout.php';
         $dow = (int)date('N', strtotime($day));
         $isToday = $day === date('Y-m-d');
         $isRate  = isset($rate_dates[(int)$unit['room_db_id']][$day]);
-        $isHol   = ke_holiday_name($day) !== null;
+        $hlCls   = isset($calMap[$day]) ? cal_day_info($calMap[$day])['class'] : '';
         $isMonthStart = $i > 0 && date('j', strtotime($day)) === '1';
         $cls = ($isToday ? ' is-today' : '') . ($dow >= 6 ? ' is-weekend' : '')
              . ($dow === 7 ? ' is-sun' : '')
-             . ($isHol ? ' is-holiday' : '') . ($isRate ? ' is-rate' : '') . ($isMonthStart ? ' is-month-start' : '');
+             . ($hlCls !== '' ? ' ' . $hlCls : '') . ($isRate ? ' is-rate' : '') . ($isMonthStart ? ' is-month-start' : '');
       ?>
       <div class="gantt-day-cell<?= $cls ?>" data-date="<?= e($day) ?>" data-unit="<?= e($unit['id']) ?>"></div>
       <?php endforeach; ?>

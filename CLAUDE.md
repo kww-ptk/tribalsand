@@ -77,6 +77,28 @@ There is **no external cron service**. Scheduled jobs run **inside the app conta
   order, no CSRF (no session to ride), and **no rate limit**: it needs a valid device token
   AND a valid 128-bit card token, and anyone with both can already punch.
 
+### GoHighLevel — one server-side lead path + inbound WhatsApp webhook
+Helpers in **`includes/ghl.php`** (outbound) and **`includes/ghl-webhook.php`** (inbound). Runbook: `docs/ghl-whatsapp-webhook.md`. Test: `php -d extension=sodium tests/ghl_logic.php` (GHL API stubbed).
+- **Every public form saves the `submissions` row and sends our emails FIRST, answers the browser with `ghl_respond_json()`, THEN syncs to GHL.** A GHL outage or a missing `GHL_API_KEY` never loses a lead or fails the request. Don't move the GHL call before the insert (the old `ghl-submit.php` did, and 502'd the guest when GHL was down).
+- **One push path: `ghl_push_submission($id, $overrides)`** builds the lead from the saved row (`ghl_lead_from_submission()`, pure) and calls `ghl_push()`. Used by `api/submit-enquiry.php`, `api/submit-contact.php`, `api/submit-agency.php` and `ghl-submit.php`. It stores the GHL contact id on the row (`payload_json.ghl_contact_id`) — the inbound webhook matches on it. Never reintroduce an inline `ghl()` helper. The custom-field key `enquiry_souce` is GHL's own typo — keep it.
+- **Trip Builder + the two waitlists (`off-duty.php`, `somewhere-cafe.php`) never call GHL from the browser.** They post to our backend (`api/trip-builder.php`, `api/submit-waitlist.php`: Turnstile + rate limit + inbox), which forwards to the existing GHL inbound-webhook trigger with `ghl_forward_webhook()` (`GHL_WEBHOOK_URL`, default = the old trigger URL; `off` disables). The trip builder's GHL blob rides in `payload.ghl` and is stripped before `payload_json` is stored.
+- **Inbound `api/ghl-webhook.php` authenticates before trusting anything:** Ed25519 `X-GHL-Signature` over the RAW body (GHL's published key built in, `GHL_WEBHOOK_PUBLIC_KEY` override; needs ext-sodium — prod image has it, local dev: `-d extension=sodium`) **or** `X-Webhook-Secret`/Bearer == `GHL_WEBHOOK_SECRET` (only when non-empty — never compare an empty secret). Matched lead (contact id → email → last-9 phone digits) gets a `guest_reply` note + unread flag + `to_follow_up` nudge (same as inbound email); unknown sender → new `contact` submission with `payload.source='whatsapp'`. De-dupe via `ghl_webhook_log` (migration `add_ghl_webhook_log.sql`). It is a lead touch, **not** a WhatsApp inbox — staff reply in GHL.
+
+### Calendar highlights — admin-editable date ranges on the calendars
+**Admin → Calendar highlights** (`admin/calendar-highlights.php`, `require_manager()`) marks any range with a label + colour (school holidays, events, peak season). Migration `add_calendar_highlights.sql`; helpers `includes/calendar-highlights.php` (pre-migration-safe, `cal_highlights_supported()`). Test: `php tests/calendar_highlights_logic.php`.
+- **Kenyan public holidays stay computed** in `includes/holidays.php` (Easter moves yearly — rows would need re-seeding) and are merged in; they always win the day's colour (`is-holiday`, red). Custom rows add `is-hl is-hl--<colour>`.
+- **`calendar_highlights.date_to` is INCLUSIVE** (last highlighted day) — unlike rates/blocks, whose `date_to` is the exclusive checkout morning. A highlight marks days, not nights.
+- Calendars call **`cal_day_map($from, $to)` once per visible window** (one query) and `cal_day_info($map[$ymd] ?? [])` per cell — never a query per cell. Used by `admin/gantt.php` (header + cells + legend) and `admin/timetable.php`.
+
+### Employee documents — private, many per person
+Documents card on `admin/employee.php` (upload several at once / download / delete; owner + manager, venue-scoped). Migration `add_hr_staff_documents.sql`; helpers `includes/hr-documents.php`. Test: `php tests/hr_documents_logic.php`.
+- Files are **private**, exactly like passport scans: `storage_put_private()` under `hr/<staff id>/…`, served **only** by `admin/employee-file.php`, which re-checks `require_manager()` + `hr_staff_in_venue_scope()` on every view. Never a public URL.
+- Type is decided by the **sniffed** MIME (`hr_doc_resolve_type()`): PDF, Word, JPG, PNG, WEBP; 15 MB each. SVG/HTML are refused. Filenames go through `hr_doc_safe_filename()` because they land in a `Content-Disposition` header.
+- The Dockerfile raises PHP's upload limits (`upload_max_filesize=16M`, `post_max_size=40M`) — the base image's 2 MB default silently dropped scans/contracts before any app check ran.
+
+### Submission trends — Source + Children
+`admin/submission-trends.php` also breaks enquiries down by **lead source** and **children**. Source is classified in PHP by `subtrends_source_label()` (agent link → UTM source → external referrer site → "Direct / unknown"; our own domain counts as direct); WhatsApp and waitlist rows are labelled from `payload.source`. Test: `php tests/submission_trends_logic.php`.
+
 ### Live messaging — polling, not websockets
 Guest↔staff chat updates live via **short polling** (no websockets — Apache/ECS has no long-running socket process). Both sides poll a JSON endpoint every 5s (`after=<last id>`) and pause when the tab is hidden. Guest: `GET/POST api/booking-message.php` (ref-authed). Admin: `GET/POST admin/messages-poll.php` (session-authed, `staff_can_hold`-scoped, `require_frontdesk`-gated; JSON POST carries `csrf_token` in the body since `verify_csrf()` reads `$_POST`). Shared helpers in `includes/booking.php`: `fetch_thread_messages_since()`, `message_payload()`, `message_time_label()` — keep initial render and appended bubbles identical. Admin `admin/messages.php` keeps its PRG form as a no-JS fallback; `admin/assets/admin-chat.js` and `js/booking-manage.js` (chat block) enhance it.
 
@@ -468,6 +490,11 @@ From `admin/submission-view.php`, **"Draft options with AI"** (shown only when `
 | `api/submit-enquiry.php` | Room booking hold submission |
 | `api/submit-contact.php` | General contact/tour enquiry |
 | `api/submit-agency.php` | Trade/agent enquiry |
+| `api/submit-waitlist.php` | Off Duty / Somewhere Café waitlist sign-ups → inbox, then forwarded to GHL server-side |
+| `includes/ghl.php` | GoHighLevel outbound — `ghl_push()`, `ghl_push_submission()`, `ghl_forward_webhook()`, `ghl_respond_json()` |
+| `includes/ghl-webhook.php` · `api/ghl-webhook.php` | Inbound GHL webhook (WhatsApp replies) — Ed25519/secret auth, lead matching, de-dupe |
+| `includes/calendar-highlights.php` · `admin/calendar-highlights.php` | Admin-editable calendar date ranges merged with Kenyan public holidays |
+| `includes/hr-documents.php` · `admin/employee-file.php` | Employee documents — private storage + gated download |
 | `api/sync-ical.php` | Pull OTA iCal feeds, import availability blocks |
 | `admin/gantt.php` | Gantt calendar + iCal sync |
 | `includes/attendance-clock.php` | Clock kiosk model — pure slot/state resolution, card + device auth, photo purge |
@@ -561,6 +588,13 @@ RESEND_API_KEY=       # Resend.com API key for emails
 MAIL_FROM=            # noreply@yourdomain.com (must be Resend-verified domain)
 INBOUND_MAIL_ADDRESS= # OPTIONAL. The SES receiving address for the inbound webhook (reply@mail.tribalsand.com). It NO LONGER sets the Reply-To — guest-facing replies always show reservations@tribalsand.com. Automatic threading now requires the reservations@ mailbox to forward to this SES address; unset (or no forward) = replies stay in the mailbox for manual paste.
 INBOUND_MAIL_SNS_TOPIC_ARN= # OPTIONAL. Pin the inbound webhook to one SNS topic ARN (defence-in-depth on top of the SNS signature check).
+GHL_API_KEY=          # GoHighLevel Private Integration Token. Unset = lead push skipped (forms still work).
+GHL_LOCATION_ID=      # GHL location (sub-account) id
+GHL_PIPELINE_ID=      # Pipeline + stage for new opportunities (both needed, else no opportunity is created)
+GHL_STAGE_ID=
+GHL_WEBHOOK_URL=      # OPTIONAL GHL inbound-webhook trigger for Trip Builder + waitlists (defaults to the existing one; "off" disables)
+GHL_WEBHOOK_SECRET=   # Shared secret the GHL "Customer Replied" workflow sends as X-Webhook-Secret to api/ghl-webhook.php. Set it.
+GHL_WEBHOOK_PUBLIC_KEY= # OPTIONAL override of GHL's published Ed25519 key for X-GHL-Signature
 AI_API_KEY=           # AI assistant key. Optional if the vendor-native key below is set. Unset (and no vendor key) = feature hidden.
 ANTHROPIC_API_KEY=    # Vendor-native key used when AI_PROVIDER=claude and AI_API_KEY is unset
 OPENAI_API_KEY=       # Vendor-native key used when AI_PROVIDER=openai and AI_API_KEY is unset

@@ -15,6 +15,7 @@ require_once __DIR__ . '/../includes/attendance.php';
 require_once __DIR__ . '/../includes/booking.php';           // mywork_tasks() (team helpers)
 require_once __DIR__ . '/../includes/internal-messages.php'; // DM button
 require_once __DIR__ . '/../includes/activity-log.php';
+require_once __DIR__ . '/../includes/hr-documents.php';      // Documents card (contracts / IDs)
 require_once __DIR__ . '/../includes/icons.php';
 require_login();
 require_manager();   // owner or manager
@@ -27,6 +28,13 @@ if (!hr_staff_supported()) {
     echo '<p style="padding:32px;color:var(--muted)">The team directory needs the <code>add_hr_staff</code> migration.</p>';
     include __DIR__ . '/_layout_end.php';
     exit;
+}
+
+// A POST bigger than post_max_size arrives with $_POST and $_FILES EMPTY — no
+// action, no CSRF token — so explain it instead of failing the CSRF check.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$_POST && (int)($_SERVER['CONTENT_LENGTH'] ?? 0) > 0) {
+    $_SESSION['emp_flash'] = ['type'=>'error','msg'=>'Those files are too large to upload in one go (max 15 MB each). Try fewer or smaller files.'];
+    header('Location: /admin/employee.php?id=' . (int)($_GET['id'] ?? 0)); exit;
 }
 
 $id   = (int)($_GET['id'] ?? $_POST['hr_id'] ?? 0);
@@ -64,6 +72,47 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
     header('Location: /admin/employee.php?id=' . $id); exit;
 }
 
+// ── Documents: upload one or more / delete (owner/manager, scoped above) ──
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'upload_docs') {
+    verify_csrf();
+    // Normalise docs[] (multiple) into a list of $_FILES-style entries.
+    $files = [];
+    $raw   = $_FILES['docs'] ?? null;
+    if ($raw && is_array($raw['name'] ?? null)) {
+        foreach ($raw['name'] as $i => $n) {
+            if (($raw['error'][$i] ?? UPLOAD_ERR_NO_FILE) === UPLOAD_ERR_NO_FILE) continue;
+            $files[] = ['name' => $n, 'tmp_name' => $raw['tmp_name'][$i] ?? '', 'error' => $raw['error'][$i] ?? UPLOAD_ERR_NO_FILE, 'size' => $raw['size'][$i] ?? 0];
+        }
+    }
+    $label = trim((string)($_POST['doc_label'] ?? ''));
+    $ok = 0; $errs = [];
+    foreach ($files as $f) {
+        $r = hr_doc_store($id, $f, $label, (int)($_SESSION['admin_id'] ?? 0));
+        if ($r['ok']) { $ok++; audit_log('hr.document_upload', 'hr_staff', $id, (string)$f['name']); }
+        else          { $errs[] = $r['error']; }
+    }
+    if (!$files) {
+        $_SESSION['emp_flash'] = ['type'=>'error','msg'=>'Choose at least one file to upload.'];
+    } elseif ($errs) {
+        $_SESSION['emp_flash'] = ['type'=>'error','msg'=>($ok ? "{$ok} uploaded. " : '') . implode(' ', $errs)];
+    } else {
+        $_SESSION['emp_flash'] = ['type'=>'success','msg'=>$ok === 1 ? 'Document uploaded.' : "{$ok} documents uploaded."];
+    }
+    header('Location: /admin/employee.php?id=' . $id . '#documents'); exit;
+}
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete_doc') {
+    verify_csrf();
+    $docId = (int)($_POST['doc_id'] ?? 0);
+    $doc   = fetch_hr_staff_document($docId);
+    if ($doc && hr_doc_delete($docId, $id)) {
+        audit_log('hr.document_delete', 'hr_staff', $id, (string)$doc['filename']);
+        $_SESSION['emp_flash'] = ['type'=>'success','msg'=>'Document deleted.'];
+    } else {
+        $_SESSION['emp_flash'] = ['type'=>'error','msg'=>'Document not found.'];
+    }
+    header('Location: /admin/employee.php?id=' . $id . '#documents'); exit;
+}
+
 // ── Gather profile data ───────────────────────────────────────────
 $venueNames = [];
 foreach (db_query('SELECT id, name FROM venues')->fetchAll() as $v) { $venueNames[(int)$v['id']] = $v['name']; }
@@ -72,6 +121,8 @@ $extraVids  = hr_staff_venue_ids($id);
 $dept       = (string)($p['department'] ?? '');
 $acctId     = (int)($p['admin_user_id'] ?? 0);
 $hasProfile = hr_staff_profile_supported();
+$hasDocs    = hr_staff_documents_supported();
+$docs       = $hasDocs ? fetch_hr_staff_documents($id) : [];
 
 // Linked account's open tasks + recent activity.
 $tasks = ($acctId > 0) ? mywork_tasks($acctId) : [];
@@ -170,6 +221,69 @@ include __DIR__ . '/_layout.php';
     </div>
   </div>
 
+  <!-- Documents (contracts, ID copies, certificates) — private files -->
+  <div class="card" id="documents">
+    <div class="card__head" style="display:flex;justify-content:space-between;align-items:center">
+      <span class="card__title">Documents</span>
+      <?php if ($docs): ?><span class="text-muted" style="font-size:12px"><?= count($docs) ?> file<?= count($docs) === 1 ? '' : 's' ?></span><?php endif; ?>
+    </div>
+    <div class="card__body" style="padding:18px">
+      <?php if (!$hasDocs): ?>
+        <p class="text-muted" style="font-size:13px;margin:0">Run the <code>add_hr_staff_documents.sql</code> migration to upload contracts and other documents.</p>
+      <?php else: ?>
+        <?php if (!$docs): ?>
+          <p class="text-muted" style="font-size:13px;margin:0 0 14px">No documents yet. Upload the contract, ID copy or certificates here — they stay private to owners and managers.</p>
+        <?php else: ?>
+        <ul class="emp-docs">
+          <?php foreach ($docs as $d):
+            $viewUrl = '/admin/employee-file.php?doc=' . (int)$d['id']; ?>
+          <li class="emp-docs__row">
+            <span class="emp-docs__ext"><?= e(strtoupper(pathinfo((string)$d['filename'], PATHINFO_EXTENSION))) ?></span>
+            <span class="emp-docs__main">
+              <a href="<?= e($viewUrl) ?>" target="_blank" rel="noopener" class="emp-docs__name"><?= e($d['label'] ?: $d['filename']) ?></a>
+              <span class="text-muted emp-docs__meta"><?php
+                $meta = [];
+                if (!empty($d['label'])) $meta[] = $d['filename'];
+                $meta[] = hr_doc_format_size((int)$d['size_bytes']);
+                $meta[] = date('j M Y', strtotime((string)$d['uploaded_at']));
+                if (!empty($d['uploader_name'])) $meta[] = 'by ' . $d['uploader_name'];
+                echo e(implode(' · ', $meta)); ?></span>
+            </span>
+            <span class="emp-docs__act">
+              <a href="<?= e($viewUrl) ?>&amp;download=1" class="btn-icon" data-tip="Download" aria-label="Download <?= e($d['filename']) ?>"><?= admin_icon('download', 15) ?></a>
+              <form method="POST" action="/admin/employee.php?id=<?= $id ?>" style="margin:0" onsubmit="return confirm('Delete this document? This cannot be undone.')">
+                <?= csrf_field() ?>
+                <input type="hidden" name="action" value="delete_doc">
+                <input type="hidden" name="hr_id" value="<?= $id ?>">
+                <input type="hidden" name="doc_id" value="<?= (int)$d['id'] ?>">
+                <button type="submit" class="btn-icon btn-icon--danger" data-tip="Delete" aria-label="Delete <?= e($d['filename']) ?>"><?= admin_icon('trash', 15) ?></button>
+              </form>
+            </span>
+          </li>
+          <?php endforeach; ?>
+        </ul>
+        <?php endif; ?>
+
+        <form method="POST" action="/admin/employee.php?id=<?= $id ?>" enctype="multipart/form-data" class="emp-docs__up">
+          <?= csrf_field() ?>
+          <input type="hidden" name="action" value="upload_docs">
+          <input type="hidden" name="hr_id" value="<?= $id ?>">
+          <div class="field"><label>Label <span class="text-muted">(optional)</span></label>
+            <input name="doc_label" class="inp" maxlength="200" placeholder="e.g. Employment contract 2026" style="width:100%">
+          </div>
+          <div class="emp-docs__uprow">
+            <div class="filefield">
+              <label class="btn-outline btn-sm" style="cursor:pointer"><?= admin_icon('plus', 15) ?> Choose files<input type="file" name="docs[]" multiple accept=".pdf,.doc,.docx,.jpg,.jpeg,.png,.webp,application/pdf,image/*" data-file-input required></label>
+              <span class="filefield__name" data-file-name>No file chosen</span>
+            </div>
+            <button type="submit" class="btn-primary btn-sm">Upload</button>
+          </div>
+          <p class="text-muted" style="font-size:11.5px;margin:8px 0 0">PDF, Word, JPG, PNG or WEBP · up to 15 MB each · you can pick several at once.</p>
+        </form>
+      <?php endif; ?>
+    </div>
+  </div>
+
   <!-- Tasks / timetable -->
   <div class="card">
     <div class="card__head"><span class="card__title">Assigned tasks &amp; timetable</span></div>
@@ -194,8 +308,8 @@ include __DIR__ . '/_layout.php';
     </div>
   </div>
 
-  <!-- Attendance / clock in-out -->
-  <div class="card">
+  <!-- Attendance / clock in-out — full width: its 7-column table was cramped in a half-width card -->
+  <div class="card emp-span">
     <div class="card__head" style="display:flex;justify-content:space-between;align-items:center">
       <span class="card__title">Clock in / out</span>
       <?php if (attendance_supported()): ?><a href="/admin/attendance.php" class="btn-outline btn-sm">Full attendance</a><?php endif; ?>
@@ -244,6 +358,31 @@ include __DIR__ . '/_layout.php';
 .emp-tasks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
 .emp-tasks li{display:flex;align-items:center;gap:8px;font-size:13px;flex-wrap:wrap}
 .emp-tasks__t{font-weight:600}
+.emp-docs{list-style:none;margin:0 0 16px;padding:0;display:flex;flex-direction:column;border:1px solid var(--border,#e7ded7);border-radius:10px;overflow:hidden}
+.emp-docs__row{display:flex;align-items:center;gap:12px;padding:10px 12px;border-top:1px solid var(--border,#e7ded7)}
+.emp-docs__row:first-child{border-top:0}
+.emp-docs__ext{flex:0 0 auto;min-width:40px;text-align:center;font-size:10.5px;font-weight:800;letter-spacing:.04em;color:var(--teal,#1E5C6B);background:#eef5f7;border-radius:6px;padding:6px 4px}
+.emp-docs__main{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;gap:2px}
+.emp-docs__name{font-weight:600;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.emp-docs__meta{font-size:11.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.emp-docs__act{flex:0 0 auto;display:flex;align-items:center;gap:2px}
+.emp-docs__up .field label{display:block;font-size:12px;color:var(--muted,#6b7280);margin-bottom:4px}
+.emp-docs__uprow{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:10px}
+.emp-docs__uprow .filefield__name{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 </style>
+
+<script>
+/* Styled file input (.filefield): show what was picked — one name, or "N files". */
+(function(){
+  document.querySelectorAll('.emp-docs__up [data-file-input]').forEach(function(fi){
+    fi.addEventListener('change', function(){
+      var out = fi.closest('.filefield').querySelector('[data-file-name]');
+      var n = fi.files ? fi.files.length : 0;
+      out.textContent = n === 0 ? 'No file chosen' : (n === 1 ? fi.files[0].name : n + ' files selected');
+      out.title = n > 1 ? Array.prototype.map.call(fi.files, function(f){ return f.name; }).join('\n') : '';
+    });
+  });
+})();
+</script>
 
 <?php include __DIR__ . '/_layout_end.php'; ?>

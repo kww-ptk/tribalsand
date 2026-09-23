@@ -559,9 +559,10 @@ require_once 'includes/head.php';
 /* ════════════════════════════════════════════════════════════
    TRIBAL SAND · GoHighLevel Configuration
    ════════════════════════════════════════════════════════════ */
+/* The plan goes to OUR backend only (Turnstile + rate limit + admin inbox);
+   the server forwards the GHL workflow payload to GoHighLevel itself. The GHL
+   webhook URL no longer lives in the browser. */
 var TS_GHL = {
-  webhookUrl: 'https://services.leadconnectorhq.com/hooks/cBTrngnK5Q4lTkFUwhlo/webhook-trigger/ad7f1a2d-9c2a-4f9a-9049-c30b144643e5',
-  alsoPostToBackend: true,
   backendUrl: '/api/trip-builder.php',
 };
 
@@ -1226,33 +1227,29 @@ function submit(){
   };
 
   payload['cf-turnstile-response']=hcToken;
-  if(TS_GHL.alsoPostToBackend){
-    fetch(TS_GHL.backendUrl,{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body:JSON.stringify(payload),
-    })
-      .catch(function(e){ console.warn('[trip-builder] backend post failed', e); });
-  }
-
-  fetch(TS_GHL.webhookUrl,{
+  payload.ghl=ghlPayload;
+  var resetBtn=function(){
+    btn.innerHTML='Send My Trip <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8h10M9 4l4 4-4 4"/></svg>';
+    btn.disabled=false;
+  };
+  fetch(TS_GHL.backendUrl,{
     method:'POST',
     headers:{'Content-Type':'application/json'},
-    body:JSON.stringify(ghlPayload),
+    body:JSON.stringify(payload),
   })
-  .then(function(){
+  .then(function(r){ return r.json().catch(function(){ return {ok:false}; }); })
+  .then(function(r){
+    if(!r||!r.ok){ throw new Error((r&&r.error)||'Could not send your trip.'); }
     var refEl=document.getElementById('succRef');
     if(refEl) refEl.textContent='Reference: '+ref;
     document.getElementById('succOverlay').classList.add('show');
   })
   .catch(function(err){
-    alert('Could not connect. Please email us at enquiries@tribalsand.com');
+    alert((err&&err.message&&err.message!=='Failed to fetch'?err.message+' ':'')+'If this keeps happening, please email us at enquiries@tribalsand.com');
     console.error(err);
+    if(window.turnstile){ try{ window.turnstile.reset(); }catch(e){} }
   })
-  .finally(function(){
-    btn.innerHTML='Send My Trip <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 8h10M9 4l4 4-4 4"/></svg>';
-    btn.disabled=false;
-  });
+  .finally(resetBtn);
 }
 
 /* ── INIT ── */

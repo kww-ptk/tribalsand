@@ -44,7 +44,7 @@ function trend_bars(array $rows): void {
     foreach ($rows as $r) {
         $pct = max(2, round((int)$r['count'] / $max * 100));
         echo '<li class="tb__row">'
-           . '<span class="tb__label">' . e((string)$r['label']) . '</span>'
+           . '<span class="tb__label" title="' . e((string)$r['label']) . '">' . e((string)$r['label']) . '</span>'
            . '<span class="tb__track"><span class="tb__fill" style="width:' . $pct . '%"></span></span>'
            . '<span class="tb__val">' . (int)$r['count'] . '</span>'
            . '</li>';
@@ -82,6 +82,8 @@ include __DIR__ . '/_layout.php';
   <div class="tr-kpi"><div class="tr-kpi__n"><?= number_format($t['total']) ?></div><div class="tr-kpi__l">Enquiries</div></div>
   <div class="tr-kpi"><div class="tr-kpi__n"><?= $t['total'] ? round($t['with_dates'] / $t['total'] * 100) : 0 ?>%</div><div class="tr-kpi__l">Include dates</div></div>
   <div class="tr-kpi"><div class="tr-kpi__n"><?= $t['avg_party'] ?: '—' ?></div><div class="tr-kpi__l">Avg party size</div></div>
+  <div class="tr-kpi"><div class="tr-kpi__n"><?= $t['total'] ? round($t['with_children'] / $t['total'] * 100) : 0 ?>%</div><div class="tr-kpi__l">Travel with children</div></div>
+  <div class="tr-kpi"><div class="tr-kpi__n" style="font-size:16px"><?= e($t['by_source'][0]['label'] ?? '—') ?></div><div class="tr-kpi__l">Top lead source</div></div>
   <div class="tr-kpi"><div class="tr-kpi__n" style="font-size:16px"><?= e($t['by_property'][0]['label'] ?? '—') ?></div><div class="tr-kpi__l">Most-requested property</div></div>
 </div>
 
@@ -91,6 +93,13 @@ include __DIR__ . '/_layout.php';
 
   <div class="card"><div class="card__head"><span class="card__title">Party size</span></div>
     <div class="card__body" style="padding:16px 18px"><?php trend_bars($t['by_party']); ?></div></div>
+
+  <div class="card"><div class="card__head"><span class="card__title">Lead source</span></div>
+    <div class="card__body" style="padding:16px 18px"><?php trend_bars($t['by_source']); ?>
+      <p class="text-muted" style="font-size:11.5px;margin:10px 0 0">From the campaign link (UTM) when there is one, otherwise the website the guest came from.</p></div></div>
+
+  <div class="card"><div class="card__head"><span class="card__title">Children</span></div>
+    <div class="card__body" style="padding:16px 18px"><?php trend_bars($t['by_children']); ?></div></div>
 
   <div class="card"><div class="card__head"><span class="card__title">Requested stay month</span></div>
     <div class="card__body" style="padding:16px 18px"><?php trend_bars($t['by_month']); ?></div></div>

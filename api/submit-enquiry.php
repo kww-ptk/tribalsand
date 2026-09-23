@@ -3,6 +3,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/upsells.php';
 require_once __DIR__ . '/../includes/mail.php';
+require_once __DIR__ . '/../includes/ghl.php';
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
@@ -220,7 +221,9 @@ try {
             'hold_id'     => $hold_id,
             'access_code' => $hold_row['access_code'] ?? '',
         ]);
-        echo json_encode(['ok' => true, 'id' => $id, 'mode' => 'hold']);
+        // Answer the guest first, then sync the lead to GHL (best-effort, never blocks).
+        ghl_respond_json(['ok' => true, 'id' => $id, 'mode' => 'hold']);
+        ghl_push_submission($id, ['tags' => ['website-enquiry', 'website-hold'], 'source' => 'Website Hold (24h)']);
     } else {
         send_notification([
             'id'         => $id,
@@ -248,7 +251,9 @@ try {
             'guests_children' => max(0, (int)($data['children'] ?? 0)),
             'message'     => trim($data['message'] ?? ''),
         ]);
-        echo json_encode(['ok' => true, 'id' => $id, 'mode' => 'enquiry']);
+        // Answer the guest first, then sync the lead to GHL (best-effort, never blocks).
+        ghl_respond_json(['ok' => true, 'id' => $id, 'mode' => 'enquiry']);
+        ghl_push_submission($id);
     }
 } catch (Throwable $e) {
     error_log('[submit-enquiry] failed: ' . $e->getMessage());

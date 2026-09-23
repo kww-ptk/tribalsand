@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/mail.php';
+require_once __DIR__ . '/../includes/ghl.php';
 
 header('Content-Type: application/json');
 header('Access-Control-Allow-Origin: *');
@@ -129,4 +130,6 @@ send_guest_acknowledgement([
     'message'     => $message,
 ]);
 
-echo json_encode(['ok' => true, 'id' => $id]);
+// Answer the guest first, then sync the lead to GHL (best-effort, never blocks).
+ghl_respond_json(['ok' => true, 'id' => $id]);
+ghl_push_submission($id);

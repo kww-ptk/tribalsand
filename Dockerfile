@@ -7,6 +7,11 @@ RUN apt-get update && apt-get install -y libpq-dev postgresql-client curl libgd-
     && docker-php-ext-install pdo pdo_pgsql gd \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
+# Upload limits. The base image ships PHP's defaults (2 MB per file, 8 MB per
+# request), which silently drops a scanned contract or passport before our own
+# size checks run. Our handlers cap files themselves (8–15 MB), so allow a bit more.
+RUN printf 'upload_max_filesize=16M\npost_max_size=40M\nmax_file_uploads=20\n' > /usr/local/etc/php/conf.d/tribalsand-uploads.ini
+
 # Copy project files
 COPY . /var/www/html/
 
