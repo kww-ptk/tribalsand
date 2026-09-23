@@ -33,8 +33,9 @@ if (!sync_supported()) {
 $entity = (string) ($_GET['entity'] ?? '');
 $uuid   = (string) ($_GET['sync_uuid'] ?? '');
 if ($entity !== '' || $uuid !== '') {
-    require_once __DIR__ . '/../../includes/sync-mappers.php';
-    $tables = ['menu_category' => 'menu_categories', 'menu_item' => 'menu_items', 'restaurant_table' => 'restaurant_tables'];
+    require_once __DIR__ . '/../../includes/menu-sync.php';
+    $tables = menu_sync_tables();
+    unset($tables['menu']);                                  // not a Zuri entity
     if (!isset($tables[$entity]) || !preg_match('/^[0-9a-f-]{36}$/i', $uuid)) {
         sync_api_json(['ok' => false, 'error' => 'invalid_payload'], 400);
     }
@@ -45,11 +46,7 @@ if ($entity !== '' || $uuid !== '') {
     }
     $row = $id ? (sync_menu_rows($entity, $id)[0] ?? null) : null;
     if ($row) {
-        $data = match ($entity) {
-            'menu_category'    => sync_map_menu_category($row),
-            'menu_item'        => sync_map_menu_item($row),
-            'restaurant_table' => sync_map_restaurant_table($row),
-        };
+        $data = menu_sync_map($entity, $row);
         $deleted = (bool) db_query("SELECT is_deleted FROM {$tables[$entity]} WHERE id = :id", [':id' => $id])->fetchColumn();
         $events[] = sync_make_event($entity, $deleted ? 'delete' : 'update', $uuid, (int) $row['sync_version'], $data, $deleted);
     }

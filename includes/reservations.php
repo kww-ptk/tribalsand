@@ -235,6 +235,10 @@ function _reservations_where(?array $venueIds, array $filters): array {
     $clauses = [];
     $params  = [];
 
+    // A reservation Zuri deleted is soft-deleted (is_deleted exists once
+    // add_restaurant_sync.sql has run); lists never show it.
+    if (sync_supported()) $clauses[] = 'r.is_deleted = FALSE';
+
     if ($venueIds !== null) {
         if (!$venueIds) return ['WHERE FALSE', []];       // scoped, no venues → nothing
         $in = implode(',', array_map('intval', $venueIds));

@@ -55,6 +55,15 @@ function menu_badge_defs(): array {
 }
 
 /**
+ * Is this item sold out today? Zuri owns this (item_availability, applied by
+ * bin/sync-apply.php into menu_items.is_sold_out) — it is NOT our "Hidden"
+ * toggle (is_available), and staff don't edit it here. False pre-migration.
+ */
+function menu_item_sold_out(array $it): bool {
+    return !empty($it['is_sold_out']) && $it['is_sold_out'] !== 'f';
+}
+
+/**
  * Format a menu price for display, e.g. 1000 → "1,000 Kes". NULL / '' → ''.
  * $label is the menu's currency_label (default 'Kes'), rendered as a suffix.
  */

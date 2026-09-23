@@ -395,6 +395,7 @@ function menu_badge_checkboxes(?array $it): void {
               <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="toggle_item"><input type="hidden" name="item_id" value="<?= (int)$it['id'] ?>">
                 <button class="badge <?= ($it['is_available']&&$it['is_available']!=='f')?'badge--green':'badge--red' ?>" style="border:none;cursor:pointer"><?= ($it['is_available']&&$it['is_available']!=='f')?'Available':'Hidden' ?></button>
               </form>
+              <?php if (menu_item_sold_out($it)): ?><span class="badge badge--orange" data-tip="Marked sold out on Zuri's system — it clears there" style="margin-left:4px">Sold out</span><?php endif; ?>
             </td>
             <td style="text-align:right">
               <span class="dt-actions" style="display:inline-flex;gap:4px">

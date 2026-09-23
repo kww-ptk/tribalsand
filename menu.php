@@ -111,6 +111,9 @@ body{font-family:'Jost',sans-serif;background:var(--off);color:var(--dark);-webk
 .badge.gluten{background:rgba(120,100,60,.1);color:#6d5c2a;}
 .badge.sig{background:rgba(30,92,107,.1);color:var(--teal);}
 .badge.gf{background:rgba(76,150,80,.08);color:#3a7a3d;}
+.is-sold-out .item-name,.is-sold-out .drink-name,.is-sold-out .side-name{color:#9b958c;}
+.is-sold-out .item-price,.is-sold-out .drink-price,.is-sold-out .side-price,.is-sold-out .item-desc,.is-sold-out .drink-desc{opacity:.45;}
+.so-pill{display:inline-block;vertical-align:middle;margin-left:.4rem;font-size:.62rem;letter-spacing:.08em;text-transform:uppercase;padding:.12rem .45rem;border-radius:2px;background:rgba(140,122,96,.14);color:#6d5c2a;font-weight:500;}
 .item.sig-item{border-left:2px solid var(--sand);}
 
 .sides-grid{padding:.5rem 1.4rem;display:flex;flex-direction:column;gap:0;background:var(--white);}
@@ -204,8 +207,8 @@ $renderSection = function(string $key, array $sectionCats, bool $on, string $cur
 
       <?php if ($isDrinks): ?>
         <?php foreach ($c['items'] as $it): $price = menu_price_label($it['price'], $curLabel); ?>
-        <div class="drink-item">
-          <div class="drink-name"><?= e($it['name']) ?></div>
+        <div class="drink-item<?= menu_item_sold_out($it) ? ' is-sold-out' : '' ?>">
+          <div class="drink-name"><?= e($it['name']) ?><?= menu_item_sold_out($it) ? ' <span class="so-pill">Sold out</span>' : '' ?></div>
           <?php if (trim((string)$it['description']) !== ''): ?><div class="drink-desc"><?= e($it['description']) ?></div><?php endif; ?>
           <?php if ($price !== ''): ?><div class="drink-price"><?= e($price) ?></div><?php endif; ?>
         </div>
@@ -213,14 +216,14 @@ $renderSection = function(string $key, array $sectionCats, bool $on, string $cur
       <?php elseif (menu_cat_is_simple($c)): ?>
         <div class="sides-grid">
           <?php foreach ($c['items'] as $it): $price = menu_price_label($it['price'], $curLabel); ?>
-          <div class="side-row"><span class="side-name"><?= e($it['name']) ?></span><?php if ($price !== ''): ?><span class="side-price"><?= e($price) ?></span><?php endif; ?></div>
+          <div class="side-row<?= menu_item_sold_out($it) ? ' is-sold-out' : '' ?>"><span class="side-name"><?= e($it['name']) ?><?= menu_item_sold_out($it) ? ' <span class="so-pill">Sold out</span>' : '' ?></span><?php if ($price !== ''): ?><span class="side-price"><?= e($price) ?></span><?php endif; ?></div>
           <?php endforeach; ?>
         </div>
       <?php else: ?>
         <?php foreach ($c['items'] as $it): $price = menu_price_label($it['price'], $curLabel); $sig = (!empty($it['is_signature']) && $it['is_signature'] !== 'f'); ?>
-        <div class="item<?= $sig ? ' sig-item' : '' ?>">
+        <div class="item<?= $sig ? ' sig-item' : '' ?><?= menu_item_sold_out($it) ? ' is-sold-out' : '' ?>">
           <div class="item-top">
-            <div class="item-name"><?= e($it['name']) ?></div>
+            <div class="item-name"><?= e($it['name']) ?><?= menu_item_sold_out($it) ? ' <span class="so-pill">Sold out</span>' : '' ?></div>
             <?php if ($price !== ''): ?><div class="item-price"><?= e($price) ?></div><?php endif; ?>
           </div>
           <?php if (trim((string)$it['description']) !== ''): ?><div class="item-desc"><?= e($it['description']) ?></div><?php endif; ?>

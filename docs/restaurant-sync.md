@@ -107,11 +107,31 @@ matcher against real data (the field map itself is agreed — see above).
   they drain in order when it comes on). Test: `php tests/menu_sync_logic.php`.
 - **Reservation outbox hooks** — same pattern for reservations; staff-created
   bookings must first call Zuri's `/reserve` (§1 rule 1).
-- **The applier** (`bin/sync-apply.php`) — drain `sync_inbox` in order under a
-  lock, run `sync_resolve()`, write locally via per-entity mappers (reservation,
-  customer, item_availability — field list in Zuri's handover §6). Retry an event
-  whose reference hasn't arrived yet a few times before failing it (the ordering
-  race Zuri found in testing).
+- ~~**The applier**~~ — **DONE.** [`includes/sync-apply.php`](../includes/sync-apply.php)
+  + `bin/sync-apply.php` (scheduled, gated on `SYNC_ZURI_TO_TS`), migration
+  `add_sync_applier.sql`. Drains `sync_inbox` oldest first, one transaction per
+  event, inside `SyncContext::applying()` (nothing it writes is echoed back).
+  - `item_availability` → `menu_items.is_sold_out` (+ `sold_out_at`), with its
+    **own** version counter `sold_out_version` — it never bumps the menu item's
+    `sync_version`, and it is separate from our "Hidden" toggle. `menu.php` shows
+    a "Sold out" pill; the admin menu editor shows it read-only.
+  - `customer` → `customers` (partial updates merge; never null a field the event
+    didn't carry).
+  - `reservation` → `reservations`; `special_requests` → our `notes`, contract
+    `notes` → `staff_notes`; `customer_uuid`/`table_uuid` resolve to local ids.
+    New Zuri bookings land on the synced venue with `sync_source='zuri'`. On a
+    booking **we** created, Zuri may change only status, cancellation_reason, the
+    status timestamps, its reference and the table — anything else is ignored and
+    noted on the inbox row. **Terminal never revives** (`terminal_state` conflict).
+  - Resolution per S§6: unknown+create → insert (+ `sync_id_map`); unknown+partial
+    update → signed pull `GET /changes?entity=&sync_uuid=` then insert; lower
+    version → `rejected stale_version`; equal version + different data → a
+    `sync_conflicts` row (both sides kept, `resolved_at` NULL until reviewed).
+  - **Ordering race (H§8):** a reservation whose customer hasn't arrived waits
+    (`attempts` + back-off 10s/20s/40s/80s) and fails `missing_reference` after 5
+    tries. A waiting row holds back every LATER row for the same record.
+  - Test: `php tests/sync_apply_logic.php` (peer stubbed via the
+    `function_exists`-guarded `sync_peer_request()`).
 - ~~**Opening hours as ONE record**~~ + ~~**table editor**~~ — **DONE.**
   `admin/restaurant-setup.php` (owner + manager, scoped by `admin_venue_ids()`;
   sidebar "Hours & tables"): the hours form (`includes/restaurant-hours.php` —
@@ -185,6 +205,7 @@ php tests/sync_logic.php
 php tests/menu_sync_logic.php
 php tests/restaurant_sync_models.php
 php tests/restaurant_setup_sync.php
+php tests/sync_apply_logic.php
 ```
 
 Pure logic (HMAC, ownership, state machine, resolver, envelope) runs anywhere. The
