@@ -161,8 +161,13 @@ include __DIR__ . '/_layout.php';
 </div>
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?> is-flash"><?= e($flash['msg']) ?></div><?php endif; ?>
 
-<div class="emp-grid">
-  <!-- Overview -->
+<nav class="tabs" aria-label="Employee sections">
+  <button type="button" class="tab-btn is-active" data-tab="overview">Overview</button>
+  <button type="button" class="tab-btn" data-tab="employment">Employment</button>
+  <button type="button" class="tab-btn" data-tab="documents">Documents</button>
+</nav>
+
+<div class="tab-panel is-active" id="tab-overview">
   <div class="card">
     <div class="card__head"><span class="card__title">Overview</span></div>
     <div class="card__body" style="padding:18px">
@@ -180,8 +185,9 @@ include __DIR__ . '/_layout.php';
       </div>
     </div>
   </div>
+</div>
 
-  <!-- Employment / contract -->
+<div class="tab-panel" id="tab-employment">
   <div class="card">
     <div class="card__head"><span class="card__title">Employment &amp; contract</span></div>
     <div class="card__body" style="padding:18px">
@@ -220,9 +226,11 @@ include __DIR__ . '/_layout.php';
       <?php endif; ?>
     </div>
   </div>
+</div>
 
+<div class="tab-panel" id="tab-documents">
   <!-- Documents (contracts, ID copies, certificates) — private files -->
-  <div class="card" id="documents">
+  <div class="card">
     <div class="card__head" style="display:flex;justify-content:space-between;align-items:center">
       <span class="card__title">Documents</span>
       <?php if ($docs): ?><span class="text-muted" style="font-size:12px"><?= count($docs) ?> file<?= count($docs) === 1 ? '' : 's' ?></span><?php endif; ?>
@@ -283,7 +291,9 @@ include __DIR__ . '/_layout.php';
       <?php endif; ?>
     </div>
   </div>
+</div>
 
+<div class="emp-stack">
   <!-- Tasks / timetable -->
   <div class="card">
     <div class="card__head"><span class="card__title">Assigned tasks &amp; timetable</span></div>
@@ -308,8 +318,8 @@ include __DIR__ . '/_layout.php';
     </div>
   </div>
 
-  <!-- Attendance / clock in-out — full width: its 7-column table was cramped in a half-width card -->
-  <div class="card emp-span">
+  <!-- Attendance / clock in-out -->
+  <div class="card">
     <div class="card__head" style="display:flex;justify-content:space-between;align-items:center">
       <span class="card__title">Clock in / out</span>
       <?php if (attendance_supported()): ?><a href="/admin/attendance.php" class="btn-outline btn-sm">Full attendance</a><?php endif; ?>
@@ -344,7 +354,7 @@ include __DIR__ . '/_layout.php';
   </div>
 
   <!-- Activity log -->
-  <div class="card emp-span">
+  <div class="card">
     <div class="card__head"><span class="card__title">Activity log</span></div>
     <div class="card__body" style="padding:14px 20px"><?php activity_log_html('hr_staff', $id); ?></div>
   </div>
@@ -352,7 +362,7 @@ include __DIR__ . '/_layout.php';
 
 <style>
 .emp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;align-items:start}
-.emp-span{grid-column:1/-1}
+.emp-stack{display:flex;flex-direction:column;gap:16px;margin-top:16px}
 .emp-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
 .emp-form .field label{display:block;font-size:12px;color:var(--muted,#6b7280);margin-bottom:4px}
 .emp-tasks{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
@@ -372,6 +382,24 @@ include __DIR__ . '/_layout.php';
 </style>
 
 <script>
+/* Tabs: Overview / Employment / Documents. If we landed on #documents (after an
+   upload or delete redirect), open the Documents tab — otherwise it sits inside
+   a hidden panel and the anchor does nothing. */
+(function () {
+  var btns = document.querySelectorAll('.tab-btn');
+  if (!btns.length) return;
+  function activate(tab) {
+    document.querySelectorAll('.tab-btn').forEach(function (b) { b.classList.toggle('is-active', b.dataset.tab === tab); });
+    document.querySelectorAll('.tab-panel').forEach(function (p) { p.classList.toggle('is-active', p.id === 'tab-' + tab); });
+  }
+  btns.forEach(function (b) {
+    b.addEventListener('click', function () { activate(b.dataset.tab); });
+  });
+  if (window.location.hash === '#documents') {
+    activate('documents');
+  }
+})();
+
 /* Styled file input (.filefield): show what was picked — one name, or "N files". */
 (function(){
   document.querySelectorAll('.emp-docs__up [data-file-input]').forEach(function(fi){
