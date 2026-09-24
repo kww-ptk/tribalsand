@@ -285,7 +285,12 @@ include __DIR__ . '/_layout.php';
 
 <style>
 /* ── Gantt ── */
-.gantt-outer { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; margin-bottom: 24px; }
+/* The grid scrolls BOTH ways inside its own viewport-tall box. It has to: the
+   overflow-x it needs makes it the sticky container for the date header, so a
+   box that only scrolled sideways would let the header scroll away with the
+   page. Capping the height puts the vertical scroll here, and the months + dates
+   stay pinned while the unit rows scroll under them. */
+.gantt-outer { overflow: auto; max-height: calc(100vh - 140px); min-height: 320px; border: 1px solid var(--border); border-radius: var(--radius); background: #fff; margin-bottom: 24px; }
 .gantt-head, .gantt-row { display: flex; min-width: max-content; }
 .gantt-head { border-bottom: 2px solid var(--border); background: #f9fafb; position: sticky; top: 0; z-index: 20; }
 .gantt-label { width: 150px; min-width: 150px; padding: 6px 10px; font-size: 11.5px; font-weight: 600; border-right: 2px solid var(--border); position: sticky; left: 0; background: inherit; z-index: 5; }
