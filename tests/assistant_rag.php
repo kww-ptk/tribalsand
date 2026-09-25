@@ -57,6 +57,41 @@ check('every chunk within limit',        !array_filter($multi, fn($c) => mb_strl
 $long = rag_chunk(str_repeat('word ', 200), 100);   // one 1000-char paragraph
 check('oversized paragraph hard-splits', count($long) >= 9 && !array_filter($long, fn($c) => mb_strlen($c) > 100));
 
+// ── Pure logic: website pages → text ─────────────────────────────────────────
+$page = <<<'HTML'
+<!doctype html><html><head><title>T</title><style>.x{color:red}</style><script>var secret=1;</script></head>
+<body>
+<nav class="ts-nav"><a href="/">Home</a> Menu link text</nav>
+<div class="ts-drawer" id="tsDrawer">Drawer link text</div>
+<main>
+  <h1>Terms &amp; Conditions</h1>
+  <p>Deposits are   <strong>non-refundable</strong> within 30 days.</p>
+  <ul><li>Pets on request</li><li>Kids welcome</li></ul>
+  <form><input value="typed"><button>Send enquiry</button></form>
+  <div class="booking-modal">Modal text</div>
+  <svg><text>icon</text></svg>
+</main>
+<footer class="ts-footer">Footer text</footer>
+<div class="cookie-banner" id="cookieBanner">Cookie text</div>
+</body></html>
+HTML;
+$txt = rag_html_to_text($page);
+check('page text: keeps the heading',       str_contains($txt, 'Terms & Conditions'));
+check('page text: entities decoded',        !str_contains($txt, '&amp;'));
+check('page text: inline text joined',      str_contains($txt, 'Deposits are non-refundable within 30 days.'));
+check('page text: list items on own lines', str_contains($txt, "- Pets on request\n") && str_contains($txt, '- Kids welcome'));
+check('page text: nav/drawer dropped',      !str_contains($txt, 'Menu link') && !str_contains($txt, 'Drawer link'));
+check('page text: footer/cookie dropped',   !str_contains($txt, 'Footer text') && !str_contains($txt, 'Cookie text'));
+check('page text: script/style dropped',    !str_contains($txt, 'secret') && !str_contains($txt, 'color:red'));
+check('page text: forms/modals/svg dropped', !str_contains($txt, 'Send enquiry') && !str_contains($txt, 'Modal text') && !str_contains($txt, 'icon'));
+check('page text: empty html → empty',      rag_html_to_text('   ') === '');
+check('page text: no <main> → uses body',   str_contains(rag_html_to_text('<html><body><p>Only body copy</p></body></html>'), 'Only body copy'));
+
+$sitePages = rag_site_pages();
+check('site pages: terms page included',    isset($sitePages['/tc']));
+check('site pages: clean paths, titled',    !array_filter(array_keys($sitePages), fn($p) => $p[0] !== '/' || str_ends_with($p, '.php'))
+                                            && !array_filter($sitePages, fn($t) => trim($t) === ''));
+
 // ── Pure logic: vector literal ───────────────────────────────────────────────
 check('vector literal format',           rag_vector_literal([1.0, 2.5, -0.25]) === '[1,2.5,-0.25]');
 

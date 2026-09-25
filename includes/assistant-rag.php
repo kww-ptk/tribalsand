@@ -214,7 +214,157 @@ function rag_gather_documents(): array {
         }
     }
 
+    // ── Arrival & check-in information (admin-editable settings) ──────────────
+    $lines = [];
+    foreach ([
+        'checkin_instructions'   => 'Arrival and check-in instructions',
+        'checkin_early_late_note' => 'Early arrival and late departure',
+        'checkin_deposit_note'   => 'Security deposit',
+    ] as $key => $label) {
+        try { $val = trim((string)setting($key, '')); } catch (Throwable $e) { $val = ''; }
+        if ($val !== '') $lines[] = "{$label}: {$val}";
+    }
+    $text = rag_clean(implode("\n\n", $lines));
+    if ($text !== '') {
+        $docs[] = ['source' => 'page', 'source_id' => 'arrival-checkin', 'venue_id' => null,
+                   'title' => 'Arrival, check-in and security deposit', 'text' => $text];
+    }
+
+    // ── Current offers (published + in date). The badge ("From $120/night")
+    //    is left out: this index never holds a price — figures come from the
+    //    pricing tools. Expired offers drop out on the next daily reindex. ────
+    if (is_file(__DIR__ . '/offers.php')) {
+        require_once __DIR__ . '/offers.php';
+        try { $offers = function_exists('fetch_published_offers') ? fetch_published_offers() : []; }
+        catch (Throwable $e) { $offers = []; }
+        $lines = [];
+        foreach ($offers as $o) {
+            $parts = [trim((string)($o['title'] ?? ''))];
+            foreach (['subtitle', 'body'] as $f) {
+                if (trim((string)($o[$f] ?? '')) !== '') $parts[] = trim((string)$o[$f]);
+            }
+            if (!empty($o['valid_to'])) $parts[] = 'Valid until ' . date('j F Y', strtotime((string)$o['valid_to'])) . '.';
+            $line = trim(implode('. ', array_filter($parts)));
+            if ($line !== '') $lines[] = 'Offer: ' . $line;
+        }
+        $text = rag_clean(implode("\n\n", $lines));
+        if ($text !== '') {
+            $docs[] = ['source' => 'page', 'source_id' => 'offers', 'venue_id' => null,
+                       'title' => 'Current offers', 'text' => $text];
+        }
+    }
+
+    // ── Public website pages (policies, dining, events, guides, contact) ──────
+    // Read as RENDERED html, the way a guest sees them, so text edited in admin
+    // (page content overrides) is what the assistant learns. When a page fails
+    // to load (network blip, deploy in progress) it is marked keep_existing:
+    // rag_reindex() then leaves its previous chunks alone instead of pruning
+    // them, so one bad fetch never makes the assistant forget the page.
+    foreach (rag_site_pages() as $path => $title) {
+        $html = rag_fetch_page(site_url($path));
+        if ($html === null) {
+            $docs[] = ['source' => 'site', 'source_id' => $path, 'venue_id' => null,
+                       'title' => $title, 'text' => '', 'keep_existing' => true];
+            continue;
+        }
+        $text = rag_clean(rag_html_to_text($html));
+        if (mb_strlen($text) < 80) continue;   // redirect stub / empty shell — nothing worth knowing
+        $docs[] = ['source' => 'site', 'source_id' => $path, 'venue_id' => null,
+                   'title' => $title, 'text' => $text];
+    }
+
     return $docs;
+}
+
+/**
+ * Public pages the assistant should know, beyond the DB-driven property/room
+ * copy. Keyed by clean path (the site 301s *.php to these). Add a page here
+ * and it is learned on the next reindex. Titles tell the model what the page is.
+ */
+function rag_site_pages(): array {
+    return [
+        '/tc'                => 'Terms and conditions: bookings, payments, deposits, cancellations and refunds',
+        '/contact'           => 'Contact Tribal Sand: phone, email, WhatsApp and how to reach us',
+        '/events'            => 'Events, weddings, celebrations and private hire',
+        '/zuri-restaurant'   => 'Zuri restaurant',
+        '/a-la-carte-dining' => 'À la carte dining',
+        '/activities'        => 'Activities and experiences',
+        '/kenya-coast-guide' => 'Kenya coast travel guide: getting here, transfers, weather and the area',
+        '/kilifi'            => 'Kilifi area guide',
+        '/watamu'            => 'Watamu area guide',
+        '/finding-the-best-luxury-wedding-venue-kenya-coast' => 'Weddings on the Kenya coast',
+        '/how-to-plan-a-group-vacation-on-the-kenyan-coast-a-perfect-guide-for-unforgettable-moments' => 'Planning a group trip',
+    ];
+}
+
+/**
+ * GET a page's HTML. Returns null on any failure (network, non-200), so the
+ * caller can keep what was indexed before instead of wiping it. Guarded by
+ * function_exists so tests stub it — the reindex test never hits the network.
+ */
+if (!function_exists('rag_fetch_page')) {
+function rag_fetch_page(string $url): ?string {
+    $ch = curl_init($url);
+    curl_setopt_array($ch, [
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => true,
+        CURLOPT_MAXREDIRS      => 3,
+        CURLOPT_TIMEOUT        => 20,
+        CURLOPT_USERAGENT      => 'TribalSand-AI-Reindex/1.0',
+    ]);
+    $body = curl_exec($ch);
+    $code = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    @curl_close($ch);
+    return ($body !== false && $code === 200 && is_string($body) && $body !== '') ? $body : null;
+}
+}
+
+/**
+ * The readable text of a page: the site chrome (nav, drawer, footer, cookie
+ * banner), scripts/styles, forms and pop-up modals are removed, and block
+ * elements become line breaks so rag_chunk() can split on paragraphs.
+ */
+function rag_html_to_text(string $html): string {
+    if (trim($html) === '') return '';
+    $doc = new DOMDocument();
+    $prev = libxml_use_internal_errors(true);
+    $doc->loadHTML('<?xml encoding="utf-8" ?>' . $html, LIBXML_NOWARNING | LIBXML_NOERROR);
+    libxml_clear_errors();
+    libxml_use_internal_errors($prev);
+    $xp = new DOMXPath($doc);
+
+    $drop = '//script|//style|//noscript|//svg|//template|//iframe|//nav|//header|//footer|//form'
+          . '|//button|//select|//input|//textarea|//dialog'
+          . '|//*[@id="tsDrawer" or @id="cookieBanner"]'
+          . '|//*[contains(concat(" ", normalize-space(@class), " "), " ts-drawer ")]'
+          . '|//*[contains(@class, "modal")]'
+          . '|//*[@aria-hidden="true"]';
+    foreach (iterator_to_array($xp->query($drop)) as $n) {
+        if ($n->parentNode) $n->parentNode->removeChild($n);
+    }
+
+    $root = $xp->query('//main')->item(0) ?? $xp->query('//body')->item(0) ?? $doc->documentElement;
+    if (!$root) return '';
+
+    $block = ['p', 'div', 'section', 'article', 'li', 'ul', 'ol', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
+              'tr', 'table', 'blockquote', 'br', 'dt', 'dd', 'figcaption', 'hr', 'aside'];
+    $out = '';
+    $walk = function (DOMNode $n) use (&$walk, &$out, $block): void {
+        if ($n instanceof DOMText) { $out .= $n->nodeValue; return; }
+        if (!($n instanceof DOMElement)) return;
+        $isBlock = in_array(strtolower($n->nodeName), $block, true);
+        if ($isBlock) $out .= "\n";
+        if (strtolower($n->nodeName) === 'li') $out .= '- ';
+        foreach ($n->childNodes as $c) $walk($c);
+        if ($isBlock) $out .= "\n";
+    };
+    $walk($root);
+
+    $out = html_entity_decode($out, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $out = preg_replace('/[ \t\x{00A0}]+/u', ' ', $out);
+    $out = preg_replace('/ *\n */', "\n", (string)$out);
+    $out = preg_replace('/\n{3,}/', "\n\n", (string)$out);
+    return trim((string)$out);
 }
 
 /** True if a table exists (used to skip optional sources pre-migration). */
@@ -242,6 +392,12 @@ function rag_reindex(bool $dryRun = false, ?callable $log = null): array {
     $seen = [];   // "source\0source_id" => chunk count kept
 
     foreach ($docs as $doc) {
+        if (!empty($doc['keep_existing'])) {
+            // Could not be read this run — keep whatever was indexed before.
+            $seen[$doc['source'] . "\0" . $doc['source_id']] = -1;
+            $say("  ! {$doc['source']}/{$doc['source_id']} could not be loaded — keeping the previous version");
+            continue;
+        }
         $chunks = rag_chunk($doc['text']);
         if (!$chunks) continue;
         $stats['documents']++;
