@@ -562,6 +562,10 @@ $__restoDrawer     = '<div><span class="ts-mob-lbl">Restaurants</span>' . $__res
             <img src="<?= asset_url('images/maya_illai/best6.jpg') ?>" alt="Somewhere Cafe">
             <div><div class="ts-prop-name">Somewhere Café <span style="font-size:.54rem;color:rgba(184,150,90,.4);">— Soon</span></div><div class="ts-prop-loc">Beachfront Café · Kilifi</div></div>
           </a>
+          <a href="tribal-gym.php" class="ts-prop-row">
+            <img src="<?= asset_url('images/maya-kobe/Maya Kobe - Day Outdoor, Pool, Beach/Maya Kobe Best3.jpg') ?>" alt="Tribal Gym">
+            <div><div class="ts-prop-name">Tribal Gym</div><div class="ts-prop-loc">Coming Soon · Kilifi</div></div>
+          </a>
           <a href="#" class="ts-prop-row">
             <img src="<?= asset_url('images/34t.jpg') ?>" alt="Kite School">
             <div><div class="ts-prop-name">Kite & Watersport School <span style="font-size:.54rem;color:rgba(184,150,90,.4);">— Soon</span></div><div class="ts-prop-loc">Ocean Sports · Kilifi</div></div>
@@ -682,6 +686,7 @@ $__restoDrawer     = '<div><span class="ts-mob-lbl">Restaurants</span>' . $__res
     <span class="ts-mob-lbl">Tribal Dunes</span>
     <a href="maya_ilai.php" class="ts-mob-prop"><img src="<?= asset_url('images/maya_illai/Best1.jpg') ?>" alt="Maya Ilai"><div><div class="ts-mob-prop-name">Maya Ilai</div><div class="ts-mob-prop-loc">Kilifi · Eco Compound</div></div></a>
     <a href="off-duty.php" class="ts-mob-prop"><img src="<?= asset_url('images/maya_illai/Studios/Studio1.jpeg') ?>" alt="Off Duty"><div><div class="ts-mob-prop-name">Off Duty</div><div class="ts-mob-prop-loc">Kilifi · Coworking Hotel</div></div></a>
+    <a href="tribal-gym.php" class="ts-mob-prop"><img src="<?= asset_url('images/maya-kobe/Maya Kobe - Day Outdoor, Pool, Beach/Maya Kobe Best3.jpg') ?>" alt="Tribal Gym"><div><div class="ts-mob-prop-name">Tribal Gym</div><div class="ts-mob-prop-loc">Kilifi · Coming Soon</div></div></a>
   </div>
 
   <div class="ts-mob-div"></div>

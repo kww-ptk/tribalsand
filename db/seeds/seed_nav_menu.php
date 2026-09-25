@@ -63,6 +63,7 @@ $tree = [
         ['label' => 'Dining & Lifestyle', 'rows' => [
             ['label' => 'Tribal Table',   'href' => 'tribal-table.php',  'sub' => 'Restaurant & Bar · Kilifi', 'img' => 'images/maya-kobe/Maya Kobe - Day Outdoor, Pool, Beach/Maya Kobe Best4.jpg', 'tag' => 'open'],
             ['label' => 'Somewhere Café', 'href' => 'somewhere-cafe.php', 'sub' => 'Beachfront Café · Kilifi',  'img' => 'images/maya_illai/best6.jpg', 'tag' => 'soon'],
+            ['label' => 'Tribal Gym',     'href' => 'tribal-gym.php',     'sub' => 'Coming Soon · Kilifi',      'img' => 'images/maya-kobe/Maya Kobe - Day Outdoor, Pool, Beach/Maya Kobe Best3.jpg'],
             ['label' => 'Kite & Watersport School', 'href' => '#', 'sub' => 'Ocean Sports · Kilifi', 'img' => 'images/34t.jpg', 'tag' => 'soon'],
             ['label' => 'View Interactive Site Map →', 'href' => 'interactive-site-map.php', 'role' => 'footer_link'],
         ]],

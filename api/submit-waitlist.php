@@ -1,9 +1,9 @@
 <?php
 /**
  * "Join the waitlist" sign-ups for the coming-soon pages (off-duty.php,
- * somewhere-cafe.php). These used to POST straight from the browser to a GHL
- * webhook — no bot check, no rate limit, invisible in our admin. Now they come
- * here first like every other public form:
+ * somewhere-cafe.php, tribal-gym.php). These used to POST straight from the
+ * browser to a GHL webhook — no bot check, no rate limit, invisible in our
+ * admin. Now they come here first like every other public form:
  *
  *   honeypot → Turnstile (fail-closed) → IP rate limit → email check →
  *   save a `contact` submission (admin inbox) → answer → forward to the SAME GHL
@@ -29,6 +29,7 @@ function waitlist_lists(): array {
     return [
         'off-duty'       => ['Off Duty', 'off-duty.php'],
         'somewhere-cafe' => ['Somewhere Café', 'somewhere-cafe.php'],
+        'tribal-gym'     => ['Tribal Gym', 'tribal-gym.php'],
     ];
 }
 

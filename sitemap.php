@@ -36,6 +36,7 @@ $core = [
     ['off-duty.php',              '0.6', 'monthly'],
     ['tribal-table.php',          '0.6', 'monthly'],
     ['somewhere-cafe.php',        '0.6', 'monthly'],
+    ['tribal-gym.php',            '0.6', 'monthly'],
     // Experiences
     ['activities.php',            '0.7', 'monthly'],
     ['events.php',                '0.6', 'monthly'],
