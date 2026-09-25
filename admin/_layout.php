@@ -37,6 +37,7 @@ $__navMyWork    = $__isOps   || $__isReception;
 // only when a provider key is configured (feature hides itself otherwise).
 $__navAssistant = ($__isOwner || $__isManager || $__isReception || $__isFrontdeskStaff) && ai_assistant_supported();
 $__navAiSettings = $__isOwner;   // AI tone/knowledge tuning — site-wide config, owner-only (visible even before a key is set, so it can be prepared)
+$__navAiGaps     = $__isOwner || $__isManager;   // AI gaps — questions the guest concierge couldn't answer (read-only list)
 $__navBookings  = $__isOwner || $__isReception;   // holds / calendar / submissions / conflicts
 $__navReports   = $__isOwner || $__isManager;     // financial reports (scoped to their venues)
 
@@ -141,6 +142,12 @@ if ($__shellFrag) { ob_start(); return; }
         <a href="/admin/ai-settings.php"  class="sidebar__link <?= ($activeMenu??'')==='ai_settings'  ? 'is-active':'' ?>">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5 10.1 10.9 5.5 9l4.6-1.4L12 3z"/><circle cx="18.5" cy="17.5" r="2.4"/><path d="M18.5 13.6v1.1M18.5 20.3v1.1M22 17.5h-1.1M16.1 17.5H15M20.9 15.1l-.8.8M17 18.6l-.8.8M20.9 19.9l-.8-.8M17 16.4l-.8-.8"/></svg>
           AI settings
+        </a>
+        <?php endif; ?>
+        <?php if ($__navAiGaps): ?>
+        <a href="/admin/ai-gaps.php"      class="sidebar__link <?= ($activeMenu??'')==='ai_gaps'      ? 'is-active':'' ?>">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M9.5 8.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5"/><path d="M12 14.5h.01"/></svg>
+          AI gaps
         </a>
         <?php endif; ?>
         <?php if ($__navMyWork): ?>

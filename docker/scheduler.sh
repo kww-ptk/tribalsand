@@ -121,4 +121,17 @@ log "scheduler started"
   done
 ) &
 
+# ── Job 7: refresh the AI assistant's description index daily ───────────────
+# Without it, property/room/tour copy edited in admin never reaches the AI until
+# someone runs bin/reindex-content.php by hand. Cheap: only chunks whose text
+# changed are re-embedded, removed ones are pruned. Safe on several ECS tasks —
+# rows upsert on (source, source_id, chunk_index). Exits non-zero (one log line
+# a day) when the migration or the embeddings key is missing; nothing breaks.
+(
+  while true; do
+    php "$APP_DIR/bin/reindex-content.php" >> "$LOG" 2>&1 || log "reindex-content skipped or failed"
+    sleep 86400
+  done
+) &
+
 wait

@@ -101,28 +101,42 @@ function rates_window_ymd(string $s): ?string {
  * empty map, and callers fall back to the room's default price.
  */
 function rates_nightly_map(int $roomId, float $default, string $fromYmd, string $toExclYmd): array {
+    return rates_nightly_maps([$roomId => $default], $fromYmd, $toExclYmd)[$roomId] ?? [];
+}
+
+/**
+ * rates_nightly_map() for MANY rooms in ONE query: [room_id => default price]
+ * in, [room_id => nightly map] out. It IS the resolver — rates_nightly_map() is
+ * a one-room call into it — so a batch caller (the Gantt's "Show rates") and a
+ * quote can never disagree about a night. Same window rules: a window it cannot
+ * parse yields an empty map per room.
+ */
+function rates_nightly_maps(array $defaults, string $fromYmd, string $toExclYmd): array {
     $out = [];
+    foreach ($defaults as $rid => $_) $out[(int)$rid] = [];
     $fromYmd    = rates_window_ymd($fromYmd);
     $toExclYmd  = rates_window_ymd($toExclYmd);
-    if ($fromYmd === null || $toExclYmd === null || $fromYmd >= $toExclYmd) return $out;
+    if (!$defaults || $fromYmd === null || $toExclYmd === null || $fromYmd >= $toExclYmd) return $out;
 
+    $ids = implode(',', array_map('intval', array_keys($defaults)));
     $rows = db_query(
-        "SELECT id, date_from, date_to, price_amount, label
+        "SELECT id, room_id, date_from, date_to, price_amount, label
            FROM rates
-          WHERE room_id = :rid AND date_from < :to AND date_to > :from
+          WHERE room_id IN ({$ids}) AND date_from < :to AND date_to > :from
           ORDER BY created_at DESC, id DESC",
-        [':rid' => $roomId, ':from' => $fromYmd, ':to' => $toExclYmd]
+        [':from' => $fromYmd, ':to' => $toExclYmd]
     )->fetchAll();
 
     $claimed = [];
     foreach ($rows as $r) {
+        $rid = (int)$r['room_id'];
         $d = new DateTime(max((string)$r['date_from'], $fromYmd));
         $e = new DateTime(min((string)$r['date_to'],   $toExclYmd));
         while ($d < $e) {
             $k = $d->format('Y-m-d');
-            if (!isset($claimed[$k])) {
+            if (!isset($claimed[$rid][$k])) {
                 $lbl = (string)($r['label'] ?? '');
-                $claimed[$k] = [
+                $claimed[$rid][$k] = [
                     'price'       => (float)$r['price_amount'],
                     'label'       => $lbl !== '' ? $lbl : null,
                     'rate_id'     => (int)$r['id'],
@@ -133,19 +147,32 @@ function rates_nightly_map(int $roomId, float $default, string $fromYmd, string 
         }
     }
 
-    $d = new DateTime($fromYmd);
-    $e = new DateTime($toExclYmd);
-    while ($d < $e) {
-        $k = $d->format('Y-m-d');
-        $out[$k] = $claimed[$k] ?? [
-            'price'       => $default,
-            'label'       => null,
-            'rate_id'     => null,
-            'is_override' => false,
-        ];
-        $d->modify('+1 day');
+    foreach ($defaults as $rid => $default) {
+        $rid = (int)$rid;
+        $d = new DateTime($fromYmd);
+        $e = new DateTime($toExclYmd);
+        while ($d < $e) {
+            $k = $d->format('Y-m-d');
+            $out[$rid][$k] = $claimed[$rid][$k] ?? [
+                'price'       => (float)$default,
+                'label'       => null,
+                'rate_id'     => null,
+                'is_override' => false,
+            ];
+            $d->modify('+1 day');
+        }
     }
     return $out;
+}
+
+/** Nightly price shortened for a ~28px calendar cell: 950, 61.5k, 150k; '—' when unset. */
+function rates_compact_price(float $v): string {
+    if ($v <= 0) return '—';
+    if ($v < 1000) return number_format($v, fmod($v, 1.0) === 0.0 ? 0 : 2);
+    $k = $v / 1000;
+    $s = number_format($k, $k < 100 ? 1 : 0);
+    if (strpos($s, '.') !== false) $s = rtrim(rtrim($s, '0'), '.');
+    return $s . 'k';
 }
 
 /**

@@ -127,15 +127,27 @@ function ai_claude_loop(string $system, array $messages, array $tools, callable 
         'input_schema' => $t['input_schema'],
     ], $tools);
 
+    // Prompt caching. Every loop step resends the tool list + system prompt
+    // (thousands of tokens, identical per audience); cached, a repeat costs ~10%
+    // of the input price and the answer starts sooner. Two breakpoints: an
+    // explicit one closing the system prompt (the render order is tools →
+    // system → messages, so it covers both) and top-level automatic caching for
+    // the growing conversation tail, which each tool step re-reads. The prompt
+    // carries today's date, so it re-caches once a day — entries only live ~5
+    // minutes anyway. Below the model's minimum size nothing caches: no error.
+    $systemBlocks = [['type' => 'text', 'text' => $system, 'cache_control' => ['type' => 'ephemeral']]];
+
     $toolCalls = [];
+    $usage     = ['input' => 0, 'cache_read' => 0, 'cache_write' => 0, 'output' => 0];
     for ($i = 0; $i < AI_MAX_ITERATIONS; $i++) {
         $model = ai_model();
         $payload = [
-            'model'      => $model,
-            'max_tokens' => AI_MAX_TOKENS,
-            'system'     => $system,
-            'tools'      => $claudeTools,
-            'messages'   => $wire,
+            'model'         => $model,
+            'max_tokens'    => AI_MAX_TOKENS,
+            'system'        => $systemBlocks,
+            'tools'         => $claudeTools,
+            'messages'      => $wire,
+            'cache_control' => ['type' => 'ephemeral'],
         ];
         // `effort` is a cheap-thinking knob on the Opus/Sonnet-5/Fable families
         // but 400s on Haiku/older — only send it when the model supports it, so
@@ -150,6 +162,11 @@ function ai_claude_loop(string $system, array $messages, array $tools, callable 
         $body    = $resp['data'];
         $content = $body['content'] ?? [];
         $stop    = $body['stop_reason'] ?? '';
+        $u       = is_array($body['usage'] ?? null) ? $body['usage'] : [];
+        $usage['input']       += (int)($u['input_tokens'] ?? 0);
+        $usage['cache_read']  += (int)($u['cache_read_input_tokens'] ?? 0);
+        $usage['cache_write'] += (int)($u['cache_creation_input_tokens'] ?? 0);
+        $usage['output']      += (int)($u['output_tokens'] ?? 0);
 
         // Record the assistant's own turn verbatim (keeps thinking + tool_use blocks intact for replay).
         $wire[] = ['role' => 'assistant', 'content' => $content];
@@ -164,7 +181,7 @@ function ai_claude_loop(string $system, array $messages, array $tools, callable 
             if ($stop === 'refusal') {
                 $answer = $answer !== '' ? $answer : 'I’m not able to help with that request.';
             }
-            return ['ok' => true, 'answer' => $answer, 'tool_calls' => $toolCalls, 'iterations' => $i + 1];
+            return ['ok' => true, 'answer' => $answer, 'tool_calls' => $toolCalls, 'iterations' => $i + 1, 'usage' => $usage];
         }
 
         // The model asked for one or more tools. Run each, gather ALL results

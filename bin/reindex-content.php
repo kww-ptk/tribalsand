@@ -13,8 +13,8 @@
  *
  * Idempotent and cheap to re-run: a chunk whose text is unchanged (same
  * content_hash) is not re-embedded, and documents/chunks that disappeared are
- * pruned. Re-run it whenever property/room/tour copy is edited (a manual step
- * for now; on-save/scheduled reindex is a documented follow-up).
+ * pruned. docker/scheduler.sh runs it daily; run it by hand after editing
+ * property/room/tour copy for an immediate refresh.
  *
  * Local Windows dev note: PHP cURL needs a CA bundle for the HTTPS embed call —
  *   php -d curl.cainfo=<bundle> -d openssl.cafile=<bundle> bin/reindex-content.php

@@ -191,6 +191,7 @@ $filterRoomName = $filterRoom
 
 $units = db_query(
     "SELECT u.*, r.name AS room_name, r.id AS room_db_id,
+            r.price_amount AS room_price, r.price_currency AS room_currency,
             v.id AS venue_id, v.name AS venue_name, v.location AS venue_location,
             u.feed_token,
             COALESCE(f.feed_count,0) AS feed_count
@@ -265,6 +266,14 @@ foreach ($rates as $r) {
         $rd->modify('+1 day');
     }
 }
+
+// Nightly prices for "Show rates" — every visible room in ONE query through
+// the canonical resolver (rates_nightly_maps), so a figure on this grid is the
+// figure a guest is quoted. The loop above only tints override nights.
+require_once __DIR__ . '/../includes/rates.php';
+$room_defaults = [];
+foreach ($units as $__u) $room_defaults[(int)$__u['room_db_id']] = (float)($__u['room_price'] ?? 0);
+$room_prices = rates_nightly_maps($room_defaults, $start_str, $end_str);
 
 $ical_feeds = db_query(
     "SELECT f.*, u.name AS unit_name, r.name AS room_name
@@ -406,6 +415,17 @@ include __DIR__ . '/_layout.php';
   content: ''; position: absolute; left: 0; right: -1px; top: 0; height: 4px; background: #f59e0b; pointer-events: none; z-index: 1;
 }
 .gantt-day-cell { position: relative; }
+/* Nightly prices — a second FILTER ("Show rates"), off by default. Each free
+   night shows what it sells for; booking bars sit above (z-index 3) and cover
+   sold nights, which is the point: the grid then reads as "what's left, at what
+   price". Override nights are amber so they match the override marker. */
+.gd-price { display: none; position: absolute; inset: 0; align-items: center; justify-content: center;
+  font-size: 8.5px; font-weight: 700; letter-spacing: -.02em; color: #334155; pointer-events: none; white-space: nowrap; overflow: hidden; }
+.gantt-outer.show-prices .gd-price { display: flex; }
+.gd-price.is-override { color: #b45309; }
+.gd-price.is-unset { color: #b6c2c8; font-weight: 600; }
+.gantt-cur { display: none; font-size: 9.5px; color: #b45309; font-weight: 600; }
+.gantt-outer.show-prices .gantt-cur { display: block; }
 /* Drag-move / resize */
 .gantt-block--dragging { opacity:.3 !important; }
 .gantt-day-cell.is-drag-target { background:#bfdbfe !important; }
@@ -436,6 +456,7 @@ include __DIR__ . '/_layout.php';
 .gl--booked { background: #2e7d32; } .gl--hold { background: #e07b39; } .gl--blocked { background: #6b7c85; }
 .gl--today { background: #eff5ff; box-shadow: inset 2px 0 0 #1d4ed8, inset -2px 0 0 #1d4ed8; border-color: #1d4ed8; }
 .gl--weekend { background: #dde3ea; border-color: #c5ced9; } .gl--holiday { background: #fbd5d5; border-color: #f1a9b1; }
+.gl--price { display: inline-flex; align-items: center; justify-content: center; font-style: normal; font-size: 8px; font-weight: 800; color: #334155; background: #fff; }
 .gl--rate { background: linear-gradient(#f59e0b 0 4px, #fff 4px); border-color: #fcd34d; }
 .gantt-legend .gl-sep { width: 1px; height: 14px; background: var(--border); border: 0; }
 /* The rate-override filter chip — the house .optchip, compact to sit in the legend */
@@ -503,6 +524,9 @@ include __DIR__ . '/_layout.php';
   <span class="gl-sep" aria-hidden="true"></span>
   <label class="optchip" title="Mark nights that have a nightly-rate override">
     <input type="checkbox" id="ganttShowRates"> <i class="gl gl--rate"></i> Show rate overrides
+  </label>
+  <label class="optchip" title="Show each night's selling price in the calendar (override nights in amber)">
+    <input type="checkbox" id="ganttShowPrices"> <i class="gl gl--price">k</i> Show rates
   </label>
 </div>
 
@@ -617,6 +641,7 @@ include __DIR__ . '/_layout.php';
       <small><?= e($unit['room_name']) ?></small>
       <?php endif; ?>
       <?= e($unit['name']) ?>
+      <span class="gantt-cur"><?= e((string)($unit['room_currency'] ?: 'USD')) ?> / night</span>
     </div>
     <div class="gantt-cells" data-unit-id="<?= e($unit['id']) ?>"<?= $row_style ?>>
       <?php foreach ($days as $i => $day):
@@ -629,7 +654,12 @@ include __DIR__ . '/_layout.php';
              . ($dow === 7 ? ' is-sun' : '')
              . ($hlCls !== '' ? ' ' . $hlCls : '') . ($isRate ? ' is-rate' : '') . ($isMonthStart ? ' is-month-start' : '');
       ?>
-      <div class="gantt-day-cell<?= $cls ?>" data-date="<?= e($day) ?>" data-unit="<?= e($unit['id']) ?>"></div>
+      <?php
+        $__n  = $room_prices[(int)$unit['room_db_id']][$day] ?? null;
+        $__pv = $__n ? (float)$__n['price'] : 0.0;
+        $__pc = $__n && $__n['is_override'] ? ' is-override' : ($__pv <= 0 ? ' is-unset' : '');
+      ?>
+      <div class="gantt-day-cell<?= $cls ?>" data-date="<?= e($day) ?>" data-unit="<?= e($unit['id']) ?>"><span class="gd-price<?= $__pc ?>"><?= e(rates_compact_price($__pv)) ?></span></div>
       <?php endforeach; ?>
 
       <?php foreach ($unit_blocks as $b):
@@ -1158,19 +1188,19 @@ function setVenueCollapsed(key, collapsed) {
 // ── Rate-override filter ──────────────────────────────────────────
 // Off by default so the grid shows occupancy first; remembered across the
 // PRG reloads like the collapsed properties above.
-(function initRateFilter() {
-  const box = document.getElementById('ganttShowRates');
+// "Show rates" (nightly prices) is the same kind of remembered toggle.
+[['ganttShowRates', 'show-rates'], ['ganttShowPrices', 'show-prices']].forEach(function ([id, cls]) {
+  const box = document.getElementById(id);
   const outer = document.getElementById('ganttOuter');
   if (!box || !outer) return;
-  const KEY = 'ganttShowRates';
-  try { box.checked = localStorage.getItem(KEY) === '1'; } catch (e) {}
-  const apply = () => outer.classList.toggle('show-rates', box.checked);
+  try { box.checked = localStorage.getItem(id) === '1'; } catch (e) {}
+  const apply = () => outer.classList.toggle(cls, box.checked);
   apply();
   box.addEventListener('change', () => {
     apply();
-    try { localStorage.setItem(KEY, box.checked ? '1' : '0'); } catch (e) {}
+    try { localStorage.setItem(id, box.checked ? '1' : '0'); } catch (e) {}
   });
-})();
+});
 
 // ── Block drag-move / resize ──────────────────────────────────────
 let dragState = null; // { block, mode, blockId, unitId, dateFrom, dateTo, duration, dayOffset, startX, moved, highlights }

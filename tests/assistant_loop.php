@@ -107,5 +107,16 @@ reset_turns([['ok' => true, 'data' => ['stop_reason' => 'end_turn', 'content' =>
 chat_with_tools('sys', [['role' => 'assistant', 'text' => 'Hi!'], ['role' => 'user', 'text' => 'still there?']], $tools, fn($n, $a) => []);
 check('opens on a user turn',            ($GLOBALS['__seen'][0]['messages'][0]['role'] ?? '') === 'user');
 
+// ── 7) Prompt caching: system prompt ends in a breakpoint, tail auto-cached ──
+reset_turns([['ok' => true, 'data' => ['stop_reason' => 'end_turn',
+    'content' => [['type' => 'text', 'text' => 'ok']],
+    'usage'   => ['input_tokens' => 40, 'cache_read_input_tokens' => 3000, 'cache_creation_input_tokens' => 0, 'output_tokens' => 12]]]]);
+$r = chat_with_tools('sys prompt', [['role' => 'user', 'text' => 'hi']], $tools, fn($n, $a) => []);
+$p = $GLOBALS['__seen'][0] ?? [];
+check('system sent as a cached text block', ($p['system'][0]['text'] ?? '') === 'sys prompt'
+    && ($p['system'][0]['cache_control']['type'] ?? '') === 'ephemeral');
+check('top-level automatic caching on',     ($p['cache_control']['type'] ?? '') === 'ephemeral');
+check('cache usage reported back',          ($r['usage']['cache_read'] ?? 0) === 3000 && ($r['usage']['output'] ?? 0) === 12);
+
 echo ($failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n");
 exit($failures ? 1 : 0);

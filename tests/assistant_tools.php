@@ -334,7 +334,7 @@ $fn = assistant_tool_find_next_availability(['guests' => 1, 'nights' => 2, 'earl
 check('find_next_availability: finds a date', ($fn['found'] ?? false) === true && !empty($fn['properties']));
 $fnScoped = assistant_tool_find_next_availability(['guests' => 1, 'nights' => 2, 'earliest' => $ci, 'search_days' => 2], []);
 check('find_next_availability: empty scope → none', ($fnScoped['found'] ?? true) === false);
-$fnBadDate = assistant_tool_find_next_availability(['earliest' => 'not-a-date']);
+$fnBadDate = assistant_tool_find_next_availability(['earliest' => 'not-a-date'], null);
 check('find_next_availability: bad date → error', isset($fnBadDate['error']));
 
 // ── Phase I: staff-only occupancy_report + daily_operations ──────────────────
