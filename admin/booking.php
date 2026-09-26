@@ -12,6 +12,7 @@ require_once __DIR__ . '/../includes/admin-pagination.php'; // dt_empty() for th
 require_once __DIR__ . '/../includes/copy-link.php';        // copy_link_control() for the Details tab
 require_once __DIR__ . '/../includes/services.php';         // format_price() for a trade booking's net figure
 require_once __DIR__ . '/../includes/activity-log.php';     // activity_log_html() — Item 3
+require_once __DIR__ . '/../includes/pos-support.php';      // pos_bill_link_supported() — POS room charges can't be deleted here
 require_login();
 
 $holdId = (int)($_GET['hold'] ?? $_POST['hold_id'] ?? 0);
@@ -154,7 +155,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: /admin/booking.php?hold=$holdId&tab=bill"); exit;
     }
     if ($act === 'bill_del') {
-        db_query("DELETE FROM bill_items WHERE id=:i AND hold_id=:h", [':i'=>(int)($_POST['item_id'] ?? 0), ':h'=>$holdId]);
+        // A POS room charge is owned by its sale: deleting the bill line alone would
+        // leave a completed sale (and its stock movement) behind. It is reversed only
+        // by voiding the sale (Admin → POS sales), which removes this line itself.
+        $iid = (int)($_POST['item_id'] ?? 0);
+        if (pos_bill_link_supported()
+            && db_query('SELECT 1 FROM bill_items WHERE id=:i AND hold_id=:h AND pos_sale_id IS NOT NULL', [':i'=>$iid, ':h'=>$holdId])->fetchColumn()) {
+            $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'That charge came from the POS — void the sale in Admin → POS sales to remove it.'];
+            header("Location: /admin/booking.php?hold=$holdId&tab=bill"); exit;
+        }
+        db_query("DELETE FROM bill_items WHERE id=:i AND hold_id=:h", [':i'=>$iid, ':h'=>$holdId]);
         audit_log('bill.del', 'hold', $holdId, '');
         header("Location: /admin/booking.php?hold=$holdId&tab=bill"); exit;
     }

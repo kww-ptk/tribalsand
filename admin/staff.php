@@ -44,6 +44,11 @@ const STAFF_JOB_TYPES = [
     'driver'       => 'Driver',
 ];
 
+/** Job types offered in the forms: the ops/desk jobs, plus the POS jobs once their migration ran. */
+function staff_job_types(): array {
+    return STAFF_JOB_TYPES + (pos_jobs_supported() ? ['shop' => 'Shop (POS till)', 'spa' => 'Salon & Spa (POS till)', 'kite' => 'Kite school (POS till)'] : []);
+}
+
 $venues    = db_query('SELECT id, name FROM venues ORDER BY sort_order ASC, name ASC')->fetchAll();
 $venueIds  = array_map('intval', array_column($venues, 'id'));
 $flash     = '';
@@ -182,7 +187,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             staff_flash("{$label} account created.");
         } else {
             $job = $_POST['job_type'] ?? 'frontdesk';
-            if (!array_key_exists($job, STAFF_JOB_TYPES)) $job = 'frontdesk';
+            if (!array_key_exists($job, staff_job_types())) $job = 'frontdesk';
             db_query(
                 "INSERT INTO admin_users (name, role, job_type, access_code, is_active) VALUES (:n, 'staff', :j, :c, TRUE)",
                 [':n' => $name, ':j' => $job, ':c' => gen_staff_code()]
@@ -210,7 +215,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Change a staff member's operational specialty (staff only — managers aren't job-driven).
         $sid = (int)($_POST['staff_id'] ?? 0);
         $job = $_POST['job_type'] ?? '';
-        if (array_key_exists($job, STAFF_JOB_TYPES)) {
+        if (array_key_exists($job, staff_job_types())) {
             $n = db_query("UPDATE admin_users SET job_type = :j WHERE id = :s AND role = 'staff'", [':j' => $job, ':s' => $sid])->rowCount();
             if ($n) { audit_log('staff_job', 'admin_user', $sid, $job); staff_flash('Job updated.'); }
         }
@@ -317,7 +322,7 @@ ob_start(); ?>
           $isPwAcct    = $isManager || $isReception;
           $job         = $s['job_type'] ?? null;
           $jobEff      = $job ?: 'frontdesk';
-          $jobLabel    = $isPwAcct ? '—' : (array_key_exists($jobEff, STAFF_JOB_TYPES) ? STAFF_JOB_TYPES[$jobEff] : STAFF_JOB_TYPES['frontdesk']);
+          $jobLabel    = $isPwAcct ? '—' : (array_key_exists($jobEff, staff_job_types()) ? staff_job_types()[$jobEff] : STAFF_JOB_TYPES['frontdesk']);
           $assigned  = $assignMap[$sid] ?? [];
           $names     = array_values(array_filter(array_map(fn($vid) => $venueNames[$vid] ?? null, $assigned)));
         ?>
@@ -386,7 +391,7 @@ ob_start(); ?>
               <input type="hidden" name="staff_id" value="<?= $sid ?>">
               <span class="text-muted">Job:</span>
               <select name="job_type" class="filter-select" aria-label="Job type">
-                <?php foreach (STAFF_JOB_TYPES as $jk => $jl): ?>
+                <?php foreach (staff_job_types() as $jk => $jl): ?>
                 <option value="<?= e($jk) ?>" <?= ($job ?? 'frontdesk') === $jk ? 'selected' : '' ?>><?= e($jl) ?></option>
                 <?php endforeach; ?>
               </select>
@@ -704,11 +709,11 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
         <div class="field" style="max-width:360px">
           <label>Job type</label>
           <select name="job_type" class="filter-select eselect--block" aria-label="Job type">
-            <?php foreach (STAFF_JOB_TYPES as $jk => $jl): ?>
+            <?php foreach (staff_job_types() as $jk => $jl): ?>
             <option value="<?= e($jk) ?>"><?= e($jl) ?></option>
             <?php endforeach; ?>
           </select>
-          <span class="field-hint">Ops jobs land on “My work”; gate security lands on “Gate”; front desk lands on “Front desk”.</span>
+          <span class="field-hint">Ops jobs land on “My work”; gate security lands on “Gate”; shop/spa/kite land on the POS till; front desk lands on “Front desk”.</span>
         </div>
       </div>
 

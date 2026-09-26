@@ -148,6 +148,9 @@ function team_job_types(): array {
         'gardening'    => 'Gardening',
         'security'     => 'Gate security',
         'driver'       => 'Driver',
+        'shop'         => 'Shop (POS)',
+        'spa'          => 'Salon & Spa (POS)',
+        'kite'         => 'Kite school (POS)',
     ];
 }
 

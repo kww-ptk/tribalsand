@@ -7,6 +7,7 @@ require_once __DIR__ . '/../includes/ai.php';          // ai_assistant_supported
 require_once __DIR__ . '/../includes/internal-messages.php'; // internal_unread_total() — Team chat nav badge
 require_once __DIR__ . '/../includes/submission-notes.php';  // submission_unread_reply_count() — Submissions nav badge
 require_once __DIR__ . '/../includes/attendance-clock.php';  // clock_kiosk_enabled() — gates the Clock nav links
+require_once __DIR__ . '/../includes/pos-support.php';       // pos_supported() — gates the Point of Sale nav group
 $admin = current_admin();
 
 // ── Role / job aware nav visibility ──────────────────────────────────────
@@ -18,7 +19,8 @@ $__isReception      = is_reception();             // front of house: Operations 
 $__job              = admin_job();               // null for owner/manager/reception; specialty for staff
 $__isOps            = job_is_ops($__job);         // housekeeping / maintenance / gardening / driver
 $__isSecurity       = ($__job === 'security');
-$__isFrontdeskStaff = is_staff() && !$__isOps && !$__isSecurity;   // frontdesk or job-less staff
+$__isPosStaff       = job_is_pos($__job);          // shop / spa / kite — they work at the till (/pos/)
+$__isFrontdeskStaff = is_staff() && !$__isOps && !$__isSecurity && !$__isPosStaff;   // frontdesk or job-less staff
 
 $__navFrontdesk = $__isOwner || $__isManager || $__isReception || $__isFrontdeskStaff;
 $__navConcierge = $__isOwner || $__isManager || $__isReception || $__isFrontdeskStaff;
@@ -40,6 +42,8 @@ $__navAiSettings = $__isOwner;   // AI tone/knowledge tuning — site-wide confi
 $__navAiGaps     = $__isOwner || $__isManager;   // AI gaps — questions the guest concierge couldn't answer (read-only list)
 $__navBookings  = $__isOwner || $__isReception;   // holds / calendar / submissions / conflicts
 $__navReports   = $__isOwner || $__isManager;     // financial reports (scoped to their venues)
+$__navPos       = ($__isOwner || $__isManager) && pos_supported();   // POS catalogue/stock/sales (managers scoped to their outlets); outlets = owner
+$__navPosTill   = $admin && pos_is_seller($admin);                    // "Open till" + own PIN — anyone who can sell
 
 // Chip shown under the logo for non-owner accounts.
 $__roleBadge = $__isManager ? 'Manager' : ($__isReception ? 'Reception' : (is_staff() ? ucfirst((string)$__job) : ''));
@@ -223,6 +227,53 @@ if ($__shellFrag) { ob_start(); return; }
           Reservations
         </a>
       <?php $__navgroup('restaurant', 'Restaurant', ob_get_clean()); ?>
+      <?php endif; ?>
+
+      <?php if ($__navPos || $__navPosTill): ?>
+      <?php ob_start(); ?>
+        <?php if ($__navPosTill): ?>
+        <a href="/pos/" class="sidebar__link" target="_blank" rel="noopener">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
+          Open till
+        </a>
+        <?php endif; ?>
+        <?php if ($__navPos): ?>
+        <a href="/admin/pos-sales.php" class="sidebar__link <?= ($activeMenu??'')==='pos_sales' ? 'is-active':'' ?>">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 17.5v-11"/></svg>
+          Sales
+        </a>
+        <?php endif; ?>
+        <?php if ($__isOwner && $__navPos): ?>
+        <a href="/admin/pos-outlets.php" class="sidebar__link <?= ($activeMenu??'')==='pos_outlets' ? 'is-active':'' ?>">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/><path d="M2 7h20"/></svg>
+          Outlets
+        </a>
+        <?php endif; ?>
+        <?php if ($__navPos): ?>
+        <a href="/admin/pos-items.php" class="sidebar__link <?= ($activeMenu??'')==='pos_items' ? 'is-active':'' ?>">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+          Catalogue
+        </a>
+        <a href="/admin/pos-stock.php" class="sidebar__link <?= ($activeMenu??'')==='pos_stock' ? 'is-active':'' ?>">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+          Stock
+        </a>
+        <a href="/admin/pos-consignors.php" class="sidebar__link <?= ($activeMenu??'')==='pos_consignors' ? 'is-active':'' ?>">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m11 17 2 2a1 1 0 1 0 3-3"/><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"/><path d="m21 3 1 11h-2"/><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"/><path d="M3 4h8"/></svg>
+          Suppliers
+        </a>
+        <a href="/admin/pos-terminals.php" class="sidebar__link <?= ($activeMenu??'')==='pos_terminals' ? 'is-active':'' ?>">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18.01"/></svg>
+          Terminals
+        </a>
+        <?php endif; ?>
+        <?php if ($__navPosTill): ?>
+        <a href="/admin/pos-pins.php" class="sidebar__link <?= ($activeMenu??'')==='pos_pins' ? 'is-active':'' ?>">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+          <?= $__navPos ? 'Staff PINs' : 'My till PIN' ?>
+        </a>
+        <?php endif; ?>
+      <?php $__navgroup('pos', 'Point of Sale', ob_get_clean()); ?>
       <?php endif; ?>
 
       <?php if ($__navBookings): ?>

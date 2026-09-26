@@ -1,0 +1,14 @@
+{
+  "name": "Tribal Sand POS",
+  "short_name": "POS",
+  "start_url": "/pos/",
+  "scope": "/pos/",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#102F3A",
+  "theme_color": "#102F3A",
+  "icons": [
+    { "src": "/images/favicon.png", "sizes": "64x64", "type": "image/png" },
+    { "src": "/images/apple-touch-icon.png", "sizes": "180x180", "type": "image/png" }
+  ]
+}

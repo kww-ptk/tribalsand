@@ -49,10 +49,14 @@ $__numval = fn($v) => ($v === null || $v === '') ? '' : rtrim(rtrim(number_forma
     <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)">
       <span style="flex:1"><?= e($it['label']) ?><?php if (!empty($it['guest_name']) || !empty($it['guest_is_lead'])): ?> <span class="text-muted" style="font-size:12px">· <?= e(attributed_display_name((string)$it['guest_name'], !empty($it['guest_is_lead']), (string)($hold['guest_name'] ?? ''))) ?></span><?php endif; ?></span>
       <span style="white-space:nowrap;font-variant-numeric:tabular-nums"><?= e(format_price((float)$it['amount'], $__cur)) ?></span>
+      <?php if (!empty($it['pos_sale_id'])): ?>
+      <a href="/admin/pos-sales.php?sale=<?= (int)$it['pos_sale_id'] ?>" class="badge badge--teal" data-tip="Point-of-sale charge — void the sale to remove it">POS</a>
+      <?php else: ?>
       <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=bill" style="margin:0">
         <?= csrf_field() ?><input type="hidden" name="action" value="bill_del"><input type="hidden" name="hold_id" value="<?= $holdId ?>"><input type="hidden" name="item_id" value="<?= (int)$it['id'] ?>">
         <button type="submit" class="btn-icon btn-icon--danger" data-confirm="Remove this charge?" data-tip="Remove charge" aria-label="Remove charge"><?= admin_icon('trash') ?></button>
       </form>
+      <?php endif; ?>
     </div>
     <?php endforeach; ?>
     <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=bill" class="ws-addform" style="margin-top:14px">

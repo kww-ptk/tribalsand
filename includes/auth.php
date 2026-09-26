@@ -103,6 +103,29 @@ function job_is_ops(?string $job): bool {
     return in_array($job, ['housekeeping','laundry','maintenance','gardening','driver'], true);
 }
 
+/** The POS job types — staff who sell at an outlet till (shop / salon & spa / kite school). */
+function job_is_pos(?string $job): bool {
+    return in_array($job, ['shop','spa','kite'], true);
+}
+
+/**
+ * True once add_pos_job_types.sql has widened the job_type CHECK. Used to hide
+ * the POS jobs in the Team forms pre-migration (the UPDATE would be rejected).
+ * A catalog lookup, never a failing statement.
+ */
+function pos_jobs_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try {
+        $ok = (bool) db_query(
+            "SELECT 1 FROM pg_constraint
+              WHERE conname = 'admin_users_job_type_check'
+                AND pg_get_constraintdef(oid) LIKE '%kite%'"
+        )->fetchColumn();
+    } catch (\Throwable $e) { $ok = false; }
+    return $ok;
+}
+
 /**
  * Post-login home for the current admin:
  *   owner → dashboard · manager → front desk · security staff → gate ·
@@ -114,6 +137,7 @@ function admin_home_url(): string {
     $job = admin_job();
     if ($job === 'security') return '/admin/gate.php';
     if (job_is_ops($job))    return '/admin/mywork.php';
+    if (job_is_pos($job))    return '/pos/';            // shop / spa / kite staff work at the till
     return '/admin/frontdesk.php';
 }
 
@@ -170,7 +194,7 @@ function require_bookings(): void {
 function require_frontdesk(): void {
     require_login();
     $job = admin_job();
-    if (is_staff() && (job_is_ops($job) || $job === 'security')) {
+    if (is_staff() && (job_is_ops($job) || job_is_pos($job) || $job === 'security')) {
         $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Messages aren’t available for your account.'];
         header('Location: ' . admin_home_url()); exit;
     }
@@ -294,9 +318,14 @@ function logout(): void {
 
 function is_rate_limited(string $email, string $ip): bool {
     $window = date('Y-m-d H:i:s', time() - 600); // 10 minutes
+    // POS PIN attempts share this table (keyed 'pos:<id>', includes/pos-auth.php) and
+    // are rate-limited there. They must not count here: a till sits on the same
+    // property network as the office, so a few wrong PINs would otherwise lock
+    // every admin sign-in from that IP.
     $row = db_query(
         "SELECT COUNT(*) AS cnt FROM login_attempts
          WHERE (email = :email OR ip_address = :ip)
+           AND email NOT LIKE 'pos:%'
            AND success = FALSE
            AND created_at > :window",
         [':email' => $email, ':ip' => $ip, ':window' => $window]
