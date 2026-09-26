@@ -29,6 +29,7 @@ const POS_PAYMENT_METHODS  = ['card' => 'Card', 'cash' => 'Cash', 'room_charge' 
 const POS_MAX_LINES        = 100;
 const POS_MAX_QTY          = 999;
 const POS_MAX_OPEN_PRICE   = 1000000.0;
+const POS_DEFAULT_CURRENCY = 'KES';   // outlets sell in Kenyan shillings (owner, Sept 2026); editable per outlet
 
 // ── Pure helpers ────────────────────────────────────────────────────────────
 
@@ -47,32 +48,71 @@ function pos_from_cents(int $cents): float {
     return round($cents / 100, 2);
 }
 
+/** Integer division rounded half-up, for non-negative numerators — PURE. */
+function pos_div_round(int $num, int $den): int {
+    return intdiv(2 * $num + $den, 2 * $den);
+}
+
 /**
  * Cart totals — PURE, integer-cents math. $lines: each has `line_total`, or
- * `unit_price` + `qty`. Service charge = subtotal × pct, rounded half-up to the cent.
- * Returns floats: ['subtotal','service_charge','total'].
+ * `unit_price` + `qty`.
+ *
+ *   subtotal        Σ lines
+ *   service_charge  subtotal × service %                       (half-up to the cent)
+ *   vat             inclusive: (subtotal + service) × v/(100+v) — already inside the price
+ *                   exclusive: (subtotal + service) × v/100     — added on top
+ *   tip             added last; never carries service charge or VAT
+ *   total           subtotal + service (+ VAT when exclusive) + tip
+ *
+ * Returns floats: subtotal, service_charge, vat, vat_inclusive, before_tip, tip, total.
  */
-function pos_cart_totals(array $lines, float $servicePct): array {
+function pos_cart_totals(array $lines, float $servicePct, float $vatPct = 0.0, bool $vatInclusive = true, float $tip = 0.0): array {
     $sub = 0;
     foreach ($lines as $l) {
         $sub += array_key_exists('line_total', $l)
             ? pos_cents($l['line_total'])
             : pos_cents($l['unit_price'] ?? 0) * max(0, (int)($l['qty'] ?? 0));
     }
-    $bp  = (int) round(max(0.0, min(100.0, $servicePct)) * 100);   // 10.00% → 1000 basis-hundredths
-    $svc = intdiv($sub * $bp + 5000, 10000);                          // half-up for non-negative
+    $svcBp = (int) round(max(0.0, min(100.0, $servicePct)) * 100);   // 10.00% → 1000
+    $svc   = pos_div_round($sub * $svcBp, 10000);
+    $base  = $sub + $svc;
+    $vatBp = (int) round(max(0.0, min(100.0, $vatPct)) * 100);
+    $vat   = $vatBp === 0 ? 0 : ($vatInclusive ? pos_div_round($base * $vatBp, 10000 + $vatBp) : pos_div_round($base * $vatBp, 10000));
+    $before = $base + ($vatInclusive ? 0 : $vat);
+    $tipC  = max(0, pos_cents($tip));
     return [
         'subtotal'       => pos_from_cents($sub),
         'service_charge' => pos_from_cents($svc),
-        'total'          => pos_from_cents($sub + $svc),
+        'vat'            => pos_from_cents($vat),
+        'vat_inclusive'  => $vatInclusive,
+        'before_tip'     => pos_from_cents($before),
+        'tip'            => pos_from_cents($tipC),
+        'total'          => pos_from_cents($before + $tipC),
     ];
+}
+
+/**
+ * The tip in cents, from a percentage of the pre-tip total or a typed amount — PURE.
+ * Returns an error string for nonsense; a tip above the bill itself is refused as a
+ * fat-finger (100% is the ceiling).
+ */
+function pos_tip_cents(int $beforeTipCents, mixed $pct, mixed $amount): int|string {
+    if ($pct !== null && $pct !== '') {
+        if (!is_numeric($pct) || (float)$pct < 0 || (float)$pct > 100) return 'Pick a tip between 0 and 100%.';
+        return pos_div_round($beforeTipCents * (int) round((float)$pct * 100), 10000);
+    }
+    if ($amount === null || $amount === '') return 0;
+    if (!is_numeric($amount) || (float)$amount < 0) return 'The tip must be zero or more.';
+    $c = pos_cents($amount);
+    if ($c > $beforeTipCents) return 'That tip is more than the bill — check the amount.';
+    return $c;
 }
 
 /**
  * Resolve one cart line against the live catalogue — PURE.
  * Price precedence: item price → linked tour price → open price entered at sale.
- * $item is a pos_items row (optionally carrying `consignor_commission_pct` from the
- * joined consignor); $tour is the linked tours row or null.
+ * $item is a pos_items row (its own `consign_pct`, plus `consignor_commission_pct` =
+ * the joined supplier's default); $tour is the linked tours row or null.
  * Returns the line array, or an error string.
  */
 function pos_resolve_line(array $item, ?array $tour, int $qty, ?float $openPrice): array|string {
@@ -100,9 +140,13 @@ function pos_resolve_line(array $item, ?array $tour, int $qty, ?float $openPrice
     $consignorId = isset($item['consignor_id']) && $item['consignor_id'] !== null ? (int)$item['consignor_id'] : null;
     $cost = ($consignorId && isset($item['consignor_cost']) && $item['consignor_cost'] !== null && $item['consignor_cost'] !== '')
         ? (float)$item['consignor_cost'] : null;
-    // Q4: a fixed "cost to us" wins; otherwise the supplier's commission % applies.
-    $pct  = ($consignorId && $cost === null && isset($item['consignor_commission_pct']) && $item['consignor_commission_pct'] !== null)
-        ? (float)$item['consignor_commission_pct'] : null;
+    // Terms, most specific first: a fixed amount per unit we owe; else this item's own
+    // commission % (set when the delivery was received); else the supplier's default %.
+    $pct = null;
+    if ($consignorId && $cost === null) {
+        if (isset($item['consign_pct']) && $item['consign_pct'] !== null && $item['consign_pct'] !== '') $pct = (float)$item['consign_pct'];
+        elseif (isset($item['consignor_commission_pct']) && $item['consignor_commission_pct'] !== null) $pct = (float)$item['consignor_commission_pct'];
+    }
 
     return [
         'item_id'                  => (int)($item['id'] ?? 0) ?: null,
@@ -131,10 +175,13 @@ function pos_stock_shortfall(array $item, int $qty): ?string {
 
 /**
  * Whether a booking can take a room charge from this outlet — PURE.
- * $hold: status, expires_at, check_in, check_out, venue_id. Returns null when OK,
- * else the reason shown under the disabled Room charge button.
+ * $hold: status, expires_at, check_in, check_out, venue_id, venue_name.
+ * $outlet: allow_room_charge, charge_venue_ids (int[]; EMPTY = every property).
+ * Currency is NOT a reason any more: a KES outlet posts to a USD bill at the
+ * day's rate (pos_fx_rate()). Returns null when OK, else the reason shown under
+ * the disabled Room charge button.
  */
-function pos_room_charge_eligible(array $hold, string $todayYmd, array $outlet, string $billCurrency): ?string {
+function pos_room_charge_eligible(array $hold, string $todayYmd, array $outlet): ?string {
     if (!pos_bool($outlet['allow_room_charge'] ?? true)) return 'Room charge is turned off for this outlet.';
     $status = (string)($hold['status'] ?? '');
     // Same "real booking" rule as the Front Desk: confirmed, or a staff-typed pending
@@ -144,11 +191,46 @@ function pos_room_charge_eligible(array $hold, string $todayYmd, array $outlet, 
     $in  = substr((string)($hold['check_in']  ?? ''), 0, 10);
     $out = substr((string)($hold['check_out'] ?? ''), 0, 10);
     if ($in === '' || $out === '' || $todayYmd < $in || $todayYmd > $out) return 'This guest is not in house today.';
-    $ov = $outlet['venue_id'] ?? null;
-    if ($ov !== null && $ov !== '' && (int)$ov !== (int)($hold['venue_id'] ?? 0)) return 'This booking is at another property.';
-    $oc = strtoupper((string)($outlet['currency'] ?? ''));
-    if ($oc !== strtoupper($billCurrency)) return "This outlet sells in {$oc} but the room bill is in " . strtoupper($billCurrency) . '.';
+    $allowed = array_map('intval', (array)($outlet['charge_venue_ids'] ?? []));
+    if ($allowed && !in_array((int)($hold['venue_id'] ?? 0), $allowed, true)) {
+        $v = trim((string)($hold['venue_name'] ?? ''));
+        return ($v !== '' ? "Guests of {$v}" : 'Guests of that property') . ' can’t charge to their room here.';
+    }
     return null;
+}
+
+/**
+ * Exchange rate between two currencies from a USD-based rate table — PURE.
+ * Returns units of $from per 1 unit of $to (KES→USD at 129 KES/USD → 129.0),
+ * 1.0 for the same currency, or null when a rate is missing.
+ */
+function pos_fx_rate_from(array $rates, string $from, string $to): ?float {
+    $from = strtoupper($from); $to = strtoupper($to);
+    if ($from === $to) return 1.0;
+    $rf = (float)($rates[$from] ?? 0); $rt = (float)($rates[$to] ?? 0);
+    if ($rf <= 0 || $rt <= 0) return null;
+    return round($rf / $rt, 6);
+}
+
+/** Today's rate from the site FX table (Admin → currency settings). */
+function pos_fx_rate(string $from, string $to): ?float {
+    return pos_fx_rate_from(fx_rates()['rates'] ?? [], $from, $to);
+}
+
+/** Convert an amount in the sale currency to the bill currency at $rate — PURE, to the cent. */
+function pos_fx_convert(float $amount, float $rate): float {
+    if ($rate <= 0) return 0.0;
+    return pos_from_cents((int) round(pos_cents($amount) / $rate, 0, PHP_ROUND_HALF_UP));
+}
+
+/** A guest signature: a PNG data URL, 8 B – 250 KB, real PNG bytes — PURE. */
+function pos_valid_signature(string $s): bool {
+    $prefix = 'data:image/png;base64,';
+    if (strncmp($s, $prefix, strlen($prefix)) !== 0) return false;
+    $bin = base64_decode(substr($s, strlen($prefix)), true);
+    if ($bin === false) return false;
+    $len = strlen($bin);
+    return $len >= 8 && $len <= 250 * 1024 && strncmp($bin, "\x89PNG\r\n\x1a\n", 8) === 0;
 }
 
 /** Receipt prefix from an outlet slug: 'salon-spa' → 'SALONSPA' (max 10). */
@@ -164,16 +246,18 @@ function pos_slugify(string $name): string {
 }
 
 /**
- * Bill line label for a room charge — PURE. Always ends with the reference, even
- * when the item summary is cut to fit bill_items.label (VARCHAR 200).
+ * Bill line label for a room charge — PURE. "<Outlet (property)>: <items> — <note>
+ * (<ref>)". The note carries the original amount + rate for a converted charge.
+ * The note and the reference always survive; only the item summary is cut to fit
+ * bill_items.label (VARCHAR 200).
  */
-function pos_bill_label(string $outletName, array $lines, string $reference): string {
+function pos_bill_label(string $outletName, array $lines, string $reference, string $note = ''): string {
     $parts = [];
     foreach ($lines as $l) {
         $q = (int)($l['qty'] ?? 1);
         $parts[] = ($q > 1 ? $q . '× ' : '') . (string)($l['name'] ?? '');
     }
-    $tail = ' (' . $reference . ')';
+    $tail = ($note !== '' ? ' — ' . $note : '') . ' (' . $reference . ')';
     $head = $outletName . ': ' . implode(', ', $parts);
     $room = 200 - mb_strlen($tail);
     if (mb_strlen($head) > $room) $head = rtrim(mb_substr($head, 0, $room - 1)) . '…';
@@ -255,6 +339,20 @@ function pos_fetch_outlet(int $id): array|false {
 function pos_fetch_categories(int $outletId): array {
     if (!pos_supported()) return [];
     return db_query("SELECT * FROM pos_categories WHERE outlet_id = :o ORDER BY sort_order, name", [':o' => $outletId])->fetchAll();
+}
+
+/** Properties whose guests may room-charge at an outlet. [] = every property (the default). */
+function pos_outlet_charge_venue_ids(int $outletId): array {
+    if (!pos_v2_supported()) return [];
+    return array_map('intval', db_query('SELECT venue_id FROM pos_outlet_charge_venues WHERE outlet_id = :o ORDER BY venue_id', [':o' => $outletId])->fetchAll(PDO::FETCH_COLUMN));
+}
+
+/** "All properties" or "Tribal Dunes, Maya Ilai" — for the admin + till. */
+function pos_charge_venue_label(array $venueIds): string {
+    if (!$venueIds) return 'All properties';
+    $ph = []; $p = [];
+    foreach (array_values($venueIds) as $i => $v) { $ph[] = ":v{$i}"; $p[":v{$i}"] = (int)$v; }
+    return implode(', ', db_query('SELECT name FROM venues WHERE id IN (' . implode(',', $ph) . ') ORDER BY sort_order, name', $p)->fetchAll(PDO::FETCH_COLUMN));
 }
 
 /** Outlets whose items $outletId may sell: itself + its "also sells from" sources. */
@@ -376,9 +474,9 @@ function pos_can_sell_item(array $user, int $outletId, int $itemId): bool {
  * Refuses (PosRefusal) a move that would take a non-negative item below zero.
  * Returns the new stock_qty.
  */
-function pos_stock_move(int $itemId, int $delta, string $reason, ?int $saleId = null, ?float $unitCost = null, string $note = '', ?int $userId = null): int {
+function pos_stock_move(int $itemId, int $delta, string $reason, ?int $saleId = null, ?float $unitCost = null, string $note = '', ?int $userId = null, array $terms = []): int {
     if (!in_array($reason, ['receive','sale','void','adjust','return'], true)) throw new InvalidArgumentException('bad stock reason');
-    return pos_tx(function () use ($itemId, $delta, $reason, $saleId, $unitCost, $note, $userId): int {
+    return pos_tx(function () use ($itemId, $delta, $reason, $saleId, $unitCost, $note, $userId, $terms): int {
         $it = db_query('SELECT id, name, track_stock, stock_qty, allow_negative FROM pos_items WHERE id = :id FOR UPDATE', [':id' => $itemId])->fetch();
         if (!$it) throw new PosRefusal('That item no longer exists.');
         if (!pos_bool($it['track_stock'])) throw new PosRefusal("{$it['name']} does not track stock.");
@@ -386,20 +484,58 @@ function pos_stock_move(int $itemId, int $delta, string $reason, ?int $saleId = 
         if ($new < 0 && !pos_bool($it['allow_negative'])) {
             throw new PosRefusal(pos_stock_shortfall($it, -$delta) ?? "Not enough stock of {$it['name']}.");
         }
-        db_query('INSERT INTO pos_stock_moves (item_id, qty_delta, reason, sale_id, unit_cost, note, admin_user_id)
-                  VALUES (:i, :d, :r, :s, :c, :n, :u)',
-            [':i' => $itemId, ':d' => $delta, ':r' => $reason, ':s' => $saleId, ':c' => $unitCost,
-             ':n' => $note !== '' ? mb_substr($note, 0, 500) : null, ':u' => $userId ?: null]);
+        $p = [':i' => $itemId, ':d' => $delta, ':r' => $reason, ':s' => $saleId, ':c' => $unitCost,
+              ':n' => $note !== '' ? mb_substr($note, 0, 500) : null, ':u' => $userId ?: null];
+        if ($terms && pos_v2_supported()) {
+            db_query('INSERT INTO pos_stock_moves (item_id, qty_delta, reason, sale_id, unit_cost, note, admin_user_id, consignor_id, consign_pct, consignor_cost)
+                      VALUES (:i, :d, :r, :s, :c, :n, :u, :ci, :cp, :cc)',
+                $p + [':ci' => $terms['consignor_id'] ?? null, ':cp' => $terms['consign_pct'] ?? null, ':cc' => $terms['consignor_cost'] ?? null]);
+        } else {
+            db_query('INSERT INTO pos_stock_moves (item_id, qty_delta, reason, sale_id, unit_cost, note, admin_user_id)
+                      VALUES (:i, :d, :r, :s, :c, :n, :u)', $p);
+        }
         db_query('UPDATE pos_items SET stock_qty = :q, updated_at = now() WHERE id = :id', [':q' => $new, ':id' => $itemId]);
         return $new;
     });
 }
 
-/** Receive a delivery. */
-function pos_stock_receive(int $itemId, int $qty, ?float $unitCost, string $note, ?int $userId): int {
+/**
+ * Consignment terms for a delivery, from the receive form — PURE.
+ *   ['mode' => 'own']                                         our own stock
+ *   ['mode' => 'commission', 'consignor_id' => 3, 'value' => 20]   we keep 20%
+ *   ['mode' => 'fixed',      'consignor_id' => 3, 'value' => 800]  we owe 800 per unit
+ * Returns ['consignor_id','consign_pct','consignor_cost'] or an error string.
+ */
+function pos_consign_terms(array $in, array $consignorIds): array|string {
+    $mode = (string)($in['mode'] ?? 'own');
+    if ($mode === 'own' || $mode === '') return ['consignor_id' => null, 'consign_pct' => null, 'consignor_cost' => null];
+    if (!in_array($mode, ['commission', 'fixed'], true)) return 'Pick how this supplier is paid.';
+    $cid = (int)($in['consignor_id'] ?? 0);
+    if (!$cid || !in_array($cid, $consignorIds, true)) return 'Pick the supplier these goods belong to.';
+    $v = $in['value'] ?? '';
+    if ($v === '' || !is_numeric($v) || (float)$v < 0) return $mode === 'commission' ? 'Enter the commission % we keep.' : 'Enter what we owe per item.';
+    if ($mode === 'commission' && (float)$v > 100) return 'Commission must be 100% or less.';
+    return $mode === 'commission'
+        ? ['consignor_id' => $cid, 'consign_pct' => round((float)$v, 2), 'consignor_cost' => null]
+        : ['consignor_id' => $cid, 'consign_pct' => null, 'consignor_cost' => round((float)$v, 2)];
+}
+
+/**
+ * Receive a delivery. With $terms (pos_consign_terms()), the item's consignment
+ * terms are set to what the stock manager chose for THIS delivery, and the ledger
+ * row records them. Sales from then on follow the new terms; past sales keep the
+ * terms they were sold on (snapshotted on the sale line).
+ */
+function pos_stock_receive(int $itemId, int $qty, ?float $unitCost, string $note, ?int $userId, ?array $terms = null): int {
     if ($qty < 1) throw new PosRefusal('Enter how many arrived (at least 1).');
     if ($unitCost !== null && $unitCost < 0) throw new PosRefusal('Unit cost cannot be negative.');
-    return pos_stock_move($itemId, $qty, 'receive', null, $unitCost, $note, $userId);
+    return pos_tx(function () use ($itemId, $qty, $unitCost, $note, $userId, $terms): int {
+        if ($terms !== null && pos_v2_supported()) {
+            db_query('UPDATE pos_items SET consignor_id = :c, consign_pct = :p, consignor_cost = :k, updated_at = now() WHERE id = :i',
+                [':c' => $terms['consignor_id'], ':p' => $terms['consign_pct'], ':k' => $terms['consignor_cost'], ':i' => $itemId]);
+        }
+        return pos_stock_move($itemId, $qty, 'receive', null, $unitCost, $note, $userId, $terms ?? []);
+    });
 }
 
 /** Count correction: set the stock to what is physically on the shelf. Reason required. */
@@ -418,10 +554,10 @@ function pos_stock_adjust(int $itemId, int $counted, string $note, ?int $userId)
 function pos_stock_moves(int $itemId, int $limit = 100): array {
     if (!pos_supported()) return [];
     return db_query(
-        "SELECT m.*, a.name AS user_name, s.reference AS sale_reference
+        "SELECT m.*, a.name AS user_name, s.reference AS sale_reference" . (pos_v2_supported() ? ", c.name AS consignor_name" : '') . "
            FROM pos_stock_moves m
            LEFT JOIN admin_users a ON a.id = m.admin_user_id
-           LEFT JOIN pos_sales s   ON s.id = m.sale_id
+           LEFT JOIN pos_sales s   ON s.id = m.sale_id" . (pos_v2_supported() ? " LEFT JOIN pos_consignors c ON c.id = m.consignor_id" : '') . "
           WHERE m.item_id = :i ORDER BY m.created_at DESC, m.id DESC LIMIT " . max(1, min(500, $limit)),
         [':i' => $itemId]
     )->fetchAll();
@@ -477,15 +613,27 @@ function pos_inhouse_search(?array $venueIds, string $q, string $todayYmd): arra
 
 function pos_fetch_sale(int $saleId): array|false {
     if (!pos_supported() || $saleId <= 0) return false;
+    $extra = pos_v2_supported()
+        ? ", gv.name AS guest_venue_name, EXISTS (SELECT 1 FROM pos_sale_signatures ss WHERE ss.sale_id = s.id) AS signed"
+        : ", NULL AS guest_venue_name, FALSE AS signed";
+    $join  = pos_v2_supported() ? 'LEFT JOIN venues gv ON gv.id = s.guest_venue_id' : '';
     $s = db_query(
-        "SELECT s.*, o.name AS outlet_name, a.name AS user_name
+        "SELECT s.*, o.name AS outlet_name, a.name AS user_name{$extra}
            FROM pos_sales s JOIN pos_outlets o ON o.id = s.outlet_id
-           LEFT JOIN admin_users a ON a.id = s.admin_user_id
+           LEFT JOIN admin_users a ON a.id = s.admin_user_id {$join}
           WHERE s.id = :id", [':id' => $saleId]
     )->fetch();
     if (!$s) return false;
+    $s['signed'] = pos_bool($s['signed']);
     $s['lines'] = db_query('SELECT * FROM pos_sale_lines WHERE sale_id = :s ORDER BY id', [':s' => $saleId])->fetchAll();
     return $s;
+}
+
+/** The guest's signature for a room charge: ['signature' (PNG data URL), signer_name, signed_at] or null. */
+function pos_sale_signature(int $saleId): ?array {
+    if (!pos_v2_supported()) return null;
+    $r = db_query('SELECT signature, signer_name, signed_at FROM pos_sale_signatures WHERE sale_id = :s', [':s' => $saleId])->fetch();
+    return $r ?: null;
 }
 
 /** Next receipt number for an outlet, e.g. POS-SHOP-1001. Row-locked, so gap-free under concurrency. */
@@ -549,7 +697,7 @@ function pos_complete_sale_tx(array $req, string $uuid, int $userId, ?int $termi
     $user = pos_user($userId);
     if (!$user) throw new PosRefusal('Your account is not active.');
     $outletId = (int)($req['outlet_id'] ?? 0);
-    $outlet = db_query('SELECT * FROM pos_outlets WHERE id = :id FOR SHARE', [':id' => $outletId])->fetch();
+    $outlet = db_query('SELECT o.*, v.name AS venue_name FROM pos_outlets o LEFT JOIN venues v ON v.id = o.venue_id WHERE o.id = :id FOR SHARE OF o', [':id' => $outletId])->fetch();
     if (!$outlet || !pos_bool($outlet['is_active'])) throw new PosRefusal('That outlet is not open.');
     if (!in_array($outletId, pos_user_outlet_ids($user), true)) throw new PosRefusal('You are not set up to sell at this outlet.');
 
@@ -588,10 +736,22 @@ function pos_complete_sale_tx(array $req, string $uuid, int $userId, ?int $termi
         if ($why = pos_stock_shortfall($items[$iid], $qty)) throw new PosRefusal($why);
     }
 
-    // 4. Totals — server-side, from the re-priced lines.
-    $tot = pos_cart_totals($lines, (float)$outlet['service_charge_pct']);
+    // 4. Outlet money settings (defaults when add_pos_v2.sql hasn't run yet).
+    $v2       = pos_v2_supported();
+    $vatPct   = $v2 ? (float)$outlet['vat_pct'] : 0.0;
+    $vatIncl  = $v2 ? pos_bool($outlet['vat_inclusive']) : true;
+    $tipsOn   = $v2 && pos_bool($outlet['tips_enabled']);
+    $cur      = strtoupper((string)$outlet['currency']);
 
-    // 5. Payment.
+    // 5. Totals — server-side, from the re-priced lines. The tip is resolved against
+    //    the pre-tip total, which is exactly what the customer saw at review.
+    $pre = pos_cart_totals($lines, (float)$outlet['service_charge_pct'], $vatPct, $vatIncl);
+    $tipC = pos_tip_cents(pos_cents($pre['before_tip']), $req['tip_pct'] ?? null, $req['tip_amount'] ?? null);
+    if (is_string($tipC)) throw new PosRefusal($tipC);
+    if ($tipC > 0 && !$tipsOn) throw new PosRefusal('Tips are turned off for this outlet.');
+    $tot = pos_cart_totals($lines, (float)$outlet['service_charge_pct'], $vatPct, $vatIncl, pos_from_cents($tipC));
+
+    // 6. Payment.
     $method = (string)($req['payment_method'] ?? '');
     if (!isset(POS_PAYMENT_METHODS[$method])) throw new PosRefusal('Choose how the customer is paying.');
     $payRef = trim((string)($req['payment_ref'] ?? ''));
@@ -599,17 +759,17 @@ function pos_complete_sale_tx(array $req, string $uuid, int $userId, ?int $termi
     if ($method === 'cash' && $tender !== null && pos_cents($tender) < pos_cents($tot['total'])) throw new PosRefusal('Cash tendered is less than the total.');
     if ($method !== 'cash') $tender = null;
 
-    // 6. Customer.
+    // 7. Customer.
     $cust = (array)($req['customer'] ?? []);
     $type = ($cust['type'] ?? '') === 'inhouse' ? 'inhouse' : 'walkin';
-    $holdId = null; $guestId = null; $posCustomerId = null; $custName = '';
+    $holdId = null; $guestId = null; $posCustomerId = null; $custName = ''; $guestVenue = null;
     $hold = null;
+    $chargeVenues = pos_outlet_charge_venue_ids($outletId);
     if ($type === 'inhouse') {
         $hold = pos_fetch_hold((int)($cust['hold_id'] ?? 0));
         if (!$hold) throw new PosRefusal('That booking could not be found.');
-        $ov = $outlet['venue_id'];
-        if ($ov !== null && (int)$ov !== (int)$hold['venue_id']) throw new PosRefusal('This booking is at another property.');
         $holdId = (int)$hold['id'];
+        $guestVenue = $hold['venue_id'] !== null ? (int)$hold['venue_id'] : null;
         $custName = (string)$hold['guest_name'];
         $gid = (int)($cust['guest_id'] ?? 0);
         if ($gid > 0) {
@@ -638,26 +798,47 @@ function pos_complete_sale_tx(array $req, string $uuid, int $userId, ?int $termi
             $custName = 'Walk-in';
         }
     }
+
+    // 8. Room charge: eligibility (property list), currency conversion, signature.
+    $billCur = null; $billAmt = null; $fxRate = null; $signature = null;
     if ($method === 'room_charge') {
         if (!$hold) throw new PosRefusal('Room charge needs an in-house guest.');
-        $why = pos_room_charge_eligible($hold, frontdesk_today_ymd(), $outlet, setting('site_currency', 'USD'));
+        $why = pos_room_charge_eligible($hold, frontdesk_today_ymd(), $outlet + ['charge_venue_ids' => $chargeVenues]);
         if ($why) throw new PosRefusal($why);
         if (!pos_bill_link_supported()) throw new PosRefusal('Room charge is not enabled yet.');
+        $billCur = strtoupper(setting('site_currency', 'USD'));
+        if ($cur !== $billCur) {
+            // A KES outlet onto a USD bill: convert at today's site rate and keep the
+            // rate on the sale, so the bill line can always be traced back.
+            if (!$v2) throw new PosRefusal("This outlet sells in {$cur} but room bills are in {$billCur}. Run the POS update (add_pos_v2.sql) to allow conversion.");
+            $fxRate = pos_fx_rate($cur, $billCur);
+            if (!$fxRate) throw new PosRefusal("There is no {$cur}→{$billCur} exchange rate yet — ask a manager to check the currency settings.");
+            $billAmt = pos_fx_convert($tot['total'], $fxRate);
+        } else {
+            $billAmt = $tot['total'];
+        }
+        if ($v2 && pos_bool($outlet['require_signature'])) {
+            $signature = (string)($req['signature'] ?? '');
+            if (!pos_valid_signature($signature)) throw new PosRefusal('The guest needs to sign for a room charge.');
+        }
     }
 
-    // 7. Write the sale.
-    $ref = pos_next_reference($outletId);
-    db_query(
-        "INSERT INTO pos_sales (reference, outlet_id, terminal_id, admin_user_id, customer_type, hold_id, guest_id,
-                                pos_customer_id, customer_name, currency, subtotal, service_charge, total,
-                                payment_method, payment_ref, cash_tendered, status, client_uuid)
-         VALUES (:ref, :o, :t, :u, :ct, :h, :g, :pc, :cn, :cur, :sub, :svc, :tot, :pm, :pr, :cash, 'completed', :uuid)",
-        [':ref' => $ref, ':o' => $outletId, ':t' => $terminalId ?: null, ':u' => $userId,
-         ':ct' => $type, ':h' => $holdId, ':g' => $guestId, ':pc' => $posCustomerId,
-         ':cn' => mb_substr($custName, 0, 160), ':cur' => strtoupper((string)$outlet['currency']),
-         ':sub' => $tot['subtotal'], ':svc' => $tot['service_charge'], ':tot' => $tot['total'],
-         ':pm' => $method, ':pr' => $payRef !== '' ? mb_substr($payRef, 0, 80) : null, ':cash' => $tender, ':uuid' => $uuid]
-    );
+    // 9. Write the sale.
+    $ref  = pos_next_reference($outletId);
+    $cols = ['reference', 'outlet_id', 'terminal_id', 'admin_user_id', 'customer_type', 'hold_id', 'guest_id',
+             'pos_customer_id', 'customer_name', 'currency', 'subtotal', 'service_charge', 'total',
+             'payment_method', 'payment_ref', 'cash_tendered', 'status', 'client_uuid'];
+    $vals = [$ref, $outletId, $terminalId ?: null, $userId, $type, $holdId, $guestId,
+             $posCustomerId, mb_substr($custName, 0, 160), $cur, $tot['subtotal'], $tot['service_charge'], $tot['total'],
+             $method, $payRef !== '' ? mb_substr($payRef, 0, 80) : null, $tender, 'completed', $uuid];
+    if ($v2) {
+        array_push($cols, 'service_pct', 'vat_pct', 'vat_inclusive', 'vat_amount', 'tip_amount', 'bill_currency', 'bill_amount', 'fx_rate', 'guest_venue_id');
+        array_push($vals, (float)$outlet['service_charge_pct'], $vatPct, $vatIncl ? 'TRUE' : 'FALSE', $tot['vat'], $tot['tip'],
+                   $billCur, $billAmt, $fxRate, $guestVenue);
+    }
+    $ph = []; $p = [];
+    foreach ($vals as $i => $v) { $ph[] = ":v{$i}"; $p[":v{$i}"] = $v; }
+    db_query('INSERT INTO pos_sales (' . implode(', ', $cols) . ') VALUES (' . implode(', ', $ph) . ')', $p);
     $saleId = (int) db()->lastInsertId();
 
     foreach ($lines as $l) {
@@ -674,15 +855,23 @@ function pos_complete_sale_tx(array $req, string $uuid, int $userId, ?int $termi
         if (pos_bool($items[$iid]['track_stock'])) pos_stock_move($iid, -$qty, 'sale', $saleId, null, $ref, $userId);
     }
 
-    // 8. Room charge → exactly one bill line, attributed to the guest when chosen.
+    // 10. Room charge → exactly one bill line, in the BILL's currency, attributed to
+    //     the guest when chosen, labelled with where it was bought.
     if ($method === 'room_charge') {
-        $label = pos_bill_label((string)$outlet['name'], $lines, $ref);
+        $where = (string)$outlet['name'] . (!empty($outlet['venue_name']) ? ' (' . $outlet['venue_name'] . ')' : '');
+        $note  = $fxRate && $fxRate !== 1.0 ? pos_money($tot['total'], $cur) . ' @ ' . rtrim(rtrim(number_format($fxRate, 4, '.', ''), '0'), '.') . " {$cur}/{$billCur}" : '';
+        $label = pos_bill_label($where, $lines, $ref, $note);
         if (bill_item_guest_supported()) {
             db_query('INSERT INTO bill_items (hold_id, label, amount, guest_id, pos_sale_id) VALUES (:h, :l, :a, :g, :s)',
-                [':h' => $holdId, ':l' => $label, ':a' => $tot['total'], ':g' => $guestId, ':s' => $saleId]);
+                [':h' => $holdId, ':l' => $label, ':a' => $billAmt, ':g' => $guestId, ':s' => $saleId]);
         } else {
             db_query('INSERT INTO bill_items (hold_id, label, amount, pos_sale_id) VALUES (:h, :l, :a, :s)',
-                [':h' => $holdId, ':l' => $label, ':a' => $tot['total'], ':s' => $saleId]);
+                [':h' => $holdId, ':l' => $label, ':a' => $billAmt, ':s' => $saleId]);
+        }
+        if ($signature !== null) {
+            db_query('INSERT INTO pos_sale_signatures (sale_id, signature, signer_name, ip, user_agent) VALUES (:s, :sig, :n, :ip, :ua)',
+                [':s' => $saleId, ':sig' => $signature, ':n' => mb_substr($custName, 0, 160),
+                 ':ip' => mb_substr(client_ip(), 0, 45), ':ua' => mb_substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 300)]);
         }
     }
     return $saleId;
@@ -788,11 +977,19 @@ function pos_item_from_post(array $in, array $categoryIds, array $tourIds, array
     }
     $cons = (int)($in['consignor_id'] ?? 0);
     if ($cons && !in_array($cons, $consignorIds, true)) { $err['consignor_id'] = 'Pick a supplier from the list.'; $cons = 0; }
+    // Consignment terms: a fixed amount per unit, or this item's own commission %
+    // (blank = the supplier's default). Only one applies — fixed wins when both are typed.
     $costRaw = trim((string)($in['consignor_cost'] ?? ''));
     $cost = null;
     if ($cons && $costRaw !== '') {
-        if (!is_numeric($costRaw) || (float)$costRaw < 0) $err['consignor_cost'] = 'Cost to us must be 0 or more.';
+        if (!is_numeric($costRaw) || (float)$costRaw < 0) $err['consignor_cost'] = 'What we owe per item must be 0 or more.';
         else $cost = round((float)$costRaw, 2);
+    }
+    $pctRaw = trim((string)($in['consign_pct'] ?? ''));
+    $cpct = null;
+    if ($cons && $cost === null && $pctRaw !== '') {
+        if (!is_numeric($pctRaw) || (float)$pctRaw < 0 || (float)$pctRaw > 100) $err['consign_pct'] = 'Commission is a percentage from 0 to 100.';
+        else $cpct = round((float)$pctRaw, 2);
     }
     $sku = trim((string)($in['sku'] ?? ''));
 
@@ -809,6 +1006,7 @@ function pos_item_from_post(array $in, array $categoryIds, array $tourIds, array
         'allow_negative' => $track && !empty($in['allow_negative']),
         'consignor_id'   => $cons ?: null,
         'consignor_cost' => $cost,
+        'consign_pct'    => $cpct,
         'is_active'      => !empty($in['is_active']),
     ], $err];
 }
@@ -886,14 +1084,24 @@ function pos_catalog_payload(array $outlet): array {
     }
     $cur     = strtoupper((string)$outlet['currency']);
     $billCur = strtoupper(setting('site_currency', 'USD'));
+    $v2      = pos_v2_supported();
+    $fx      = $cur === $billCur ? 1.0 : ($v2 ? pos_fx_rate($cur, $billCur) : null);
     $rcNote  = !pos_bool($outlet['allow_room_charge']) ? 'Room charge is turned off for this outlet.'
-             : ($cur !== $billCur ? "This outlet sells in {$cur} but room bills are in {$billCur}." : null);
+             : ($fx === null ? "No {$cur}→{$billCur} exchange rate — room charge is unavailable." : null);
+    $charge  = pos_outlet_charge_venue_ids($oid);
     return [
         'outlet' => [
             'id' => $oid, 'name' => (string)$outlet['name'], 'kind' => (string)$outlet['kind'], 'currency' => $cur,
-            'service_pct' => (float)$outlet['service_charge_pct'],
-            'room_charge' => $rcNote === null, 'room_charge_note' => $rcNote,
-            'venue_name' => $outlet['venue_name'] ?? null,
+            'service_pct'   => (float)$outlet['service_charge_pct'],
+            'vat_pct'       => $v2 ? (float)$outlet['vat_pct'] : 0.0,
+            'vat_inclusive' => $v2 ? pos_bool($outlet['vat_inclusive']) : true,
+            'tips'          => $v2 && pos_bool($outlet['tips_enabled']),
+            'signature'     => $v2 && pos_bool($outlet['require_signature']),
+            'room_charge'   => $rcNote === null, 'room_charge_note' => $rcNote,
+            'bill_currency' => $billCur,
+            'fx_rate'       => $fx,                       // units of the outlet currency per 1 unit of the bill currency
+            'charge_from'   => pos_charge_venue_label($charge),
+            'venue_name'    => $outlet['venue_name'] ?? null,
         ],
         'categories' => $cats,
         'sources'    => $sources,
@@ -909,6 +1117,11 @@ function pos_sale_payload(array $s): array {
         'customer' => (string)$s['customer_name'], 'customer_type' => (string)$s['customer_type'],
         'hold_id' => $s['hold_id'] !== null ? (int)$s['hold_id'] : null,
         'currency' => (string)$s['currency'], 'subtotal' => (float)$s['subtotal'], 'service_charge' => (float)$s['service_charge'], 'total' => (float)$s['total'],
+        'service_pct' => (float)($s['service_pct'] ?? 0), 'vat_pct' => (float)($s['vat_pct'] ?? 0),
+        'vat_inclusive' => pos_bool($s['vat_inclusive'] ?? true), 'vat' => (float)($s['vat_amount'] ?? 0), 'tip' => (float)($s['tip_amount'] ?? 0),
+        'bill_currency' => $s['bill_currency'] ?? null, 'bill_amount' => isset($s['bill_amount']) && $s['bill_amount'] !== null ? (float)$s['bill_amount'] : null,
+        'fx_rate' => isset($s['fx_rate']) && $s['fx_rate'] !== null ? (float)$s['fx_rate'] : null,
+        'guest_venue' => $s['guest_venue_name'] ?? null, 'signed' => !empty($s['signed']),
         'payment_method' => (string)$s['payment_method'], 'payment_label' => POS_PAYMENT_METHODS[$s['payment_method']] ?? (string)$s['payment_method'],
         'payment_ref' => $s['payment_ref'], 'cash_tendered' => $s['cash_tendered'] !== null ? (float)$s['cash_tendered'] : null,
         'created_at' => date('c', strtotime((string)$s['created_at'])), 'time' => date('H:i', strtotime((string)$s['created_at'])),
@@ -940,7 +1153,8 @@ function pos_sales_query(array $f, int $limit = 200, int $offset = 0): array {
     $where = implode(' AND ', $w);
     $total = (int) db_query("SELECT COUNT(*) FROM pos_sales s WHERE {$where}", $p)->fetchColumn();
     // Per currency — money is never summed across currencies. Voided sales excluded.
-    $sums = db_query("SELECT s.currency, COUNT(*) AS n, SUM(s.total) AS total, SUM(s.service_charge) AS service
+    $v2cols = pos_v2_supported() ? ', SUM(s.tip_amount) AS tips, SUM(s.vat_amount) AS vat' : ', 0 AS tips, 0 AS vat';
+    $sums = db_query("SELECT s.currency, COUNT(*) AS n, SUM(s.total) AS total, SUM(s.service_charge) AS service{$v2cols}
                         FROM pos_sales s WHERE {$where} AND s.status = 'completed' GROUP BY s.currency ORDER BY s.currency", $p)->fetchAll();
     $rows = db_query(
         "SELECT s.*, o.name AS outlet_name, a.name AS user_name
@@ -950,22 +1164,29 @@ function pos_sales_query(array $f, int $limit = 200, int $offset = 0): array {
     return ['rows' => $rows, 'total' => $total, 'sums' => $sums];
 }
 
-/** In-house search for the till, with the room-charge verdict per booking. */
+/**
+ * In-house search for the till, with the room-charge verdict per booking.
+ * Scope = the properties this outlet accepts room charges from (all by default),
+ * so a guest of Maya Ilai shopping at Tribal Dunes is found. Each result says
+ * which property the guest is staying at and flags a guest from another property.
+ */
 function pos_inhouse_payload(array $outlet, string $q): array {
-    $venue   = $outlet['venue_id'] !== null ? [(int)$outlet['venue_id']] : null;
+    $charge  = pos_outlet_charge_venue_ids((int)$outlet['id']);
     $today   = frontdesk_today_ymd();
-    $billCur = strtoupper(setting('site_currency', 'USD'));
     $out = [];
-    foreach (array_slice(pos_inhouse_search($venue, $q, $today), 0, 12) as $r) {
+    foreach (array_slice(pos_inhouse_search($charge ?: null, $q, $today), 0, 12) as $r) {
         $h = pos_fetch_hold((int)$r['id']);
         if (!$h) continue;
+        $gv = $r['venue_id'] !== null ? (int)$r['venue_id'] : null;
         $out[] = [
             'hold_id' => (int)$r['id'], 'name' => (string)$r['guest_name'],
             'room'    => trim(($r['venue_name'] ? $r['venue_name'] . ' · ' : '') . ($r['unit_name'] ?: $r['room_name'])),
+            'venue'   => (string)($r['venue_name'] ?? ''),
+            'other_property' => $outlet['venue_id'] !== null && $gv !== null && $gv !== (int)$outlet['venue_id'],
             'dates'   => date('j M', strtotime((string)$r['check_in'])) . ' – ' . date('j M', strtotime((string)$r['check_out'])),
             'ref'     => (string)($r['access_code'] ?? ''),
             'guests'  => array_map(fn($g) => ['id' => (int)$g['id'], 'name' => trim((string)$g['passport_name']) ?: 'Guest', 'lead' => pos_bool($g['is_lead'])], $r['guests']),
-            'room_charge_block' => pos_room_charge_eligible($h, $today, $outlet, $billCur),
+            'room_charge_block' => pos_room_charge_eligible($h, $today, $outlet + ['charge_venue_ids' => $charge]),
         ];
     }
     return $out;
@@ -986,8 +1207,10 @@ function pos_z_report(array $outletIds, string $ymd): array {
     $ph = []; $p = [':d' => $ymd, ':d2' => $ymd];
     foreach (array_values($outletIds) as $i => $v) { $ph[] = ":o{$i}"; $p[":o{$i}"] = (int)$v; }
     $w = 's.outlet_id IN (' . implode(',', $ph) . ") AND s.created_at >= CAST(:d AS date) AND s.created_at < CAST(:d2 AS date) + INTERVAL '1 day'";
+    $zx = pos_v2_supported() ? ', SUM(s.tip_amount) AS tips, SUM(s.vat_amount) AS vat' : ', 0 AS tips, 0 AS vat';
+    $zt = pos_v2_supported() ? ', SUM(s.tip_amount) AS tips' : ', 0 AS tips';
     return [
-        'by_method' => db_query("SELECT s.outlet_id, o.name AS outlet, s.payment_method, s.currency, COUNT(*) AS n, SUM(s.total) AS total, SUM(s.service_charge) AS service
+        'by_method' => db_query("SELECT s.outlet_id, o.name AS outlet, s.payment_method, s.currency, COUNT(*) AS n, SUM(s.total) AS total, SUM(s.service_charge) AS service{$zx}
                                    FROM pos_sales s JOIN pos_outlets o ON o.id = s.outlet_id
                                   WHERE {$w} AND s.status = 'completed'
                                   GROUP BY s.outlet_id, o.name, o.sort_order, s.payment_method, s.currency
@@ -998,7 +1221,7 @@ function pos_z_report(array $outletIds, string $ymd): array {
                                   GROUP BY oo.name, l.name, s.currency ORDER BY gross DESC, l.name", $p)->fetchAll(),
         'voids'     => db_query("SELECT s.currency, COUNT(*) AS n, SUM(s.total) AS total FROM pos_sales s
                                   WHERE {$w} AND s.status = 'voided' GROUP BY s.currency ORDER BY s.currency", $p)->fetchAll(),
-        'staff'     => db_query("SELECT COALESCE(a.name, a.email, '—') AS name, s.currency, COUNT(*) AS n, SUM(s.total) AS total
+        'staff'     => db_query("SELECT COALESCE(a.name, a.email, '—') AS name, s.currency, COUNT(*) AS n, SUM(s.total) AS total{$zt}
                                    FROM pos_sales s LEFT JOIN admin_users a ON a.id = s.admin_user_id
                                   WHERE {$w} AND s.status = 'completed'
                                   GROUP BY a.name, a.email, s.currency ORDER BY total DESC", $p)->fetchAll(),

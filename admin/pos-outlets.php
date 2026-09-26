@@ -41,7 +41,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
         while (db_query('SELECT 1 FROM pos_outlets WHERE slug = :s', [':s' => $slug])->fetchColumn()) { $slug = substr($base, 0, 55) . '-' . $n++; }
         $max = (int) db_query('SELECT COALESCE(MAX(sort_order), -1) FROM pos_outlets')->fetchColumn();
         db_query('INSERT INTO pos_outlets (name, slug, kind, currency, sort_order) VALUES (:n, :s, :k, :c, :o)',
-            [':n' => $name, ':s' => $slug, ':k' => $kind, ':c' => strtoupper(setting('site_currency', 'USD')), ':o' => $max + 1]);
+            [':n' => $name, ':s' => $slug, ':k' => $kind, ':c' => POS_DEFAULT_CURRENCY, ':o' => $max + 1]);
         $new = (int) db()->lastInsertId();
         audit_log('pos.outlet_add', 'pos_outlet', $new, $name);
         posx_flash('success', "{$name} added — set its property, staff and categories below.");
@@ -70,13 +70,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
         if ($name === '' || mb_strlen($name) > 120)            { posx_flash('error', 'Give the outlet a name (up to 120 characters).'); posx_back($oid); }
         if (!isset(TS_CURRENCIES[$cur]))                        { posx_flash('error', 'Pick a currency from the list.'); posx_back($oid); }
         if (!is_numeric($pct) || (float)$pct < 0 || (float)$pct > 100) { posx_flash('error', 'Service charge must be between 0 and 100%.'); posx_back($oid); }
+        $vat = (string)($_POST['vat_pct'] ?? '0');
+        if (!is_numeric($vat) || (float)$vat < 0 || (float)$vat > 100) { posx_flash('error', 'VAT must be between 0 and 100%.'); posx_back($oid); }
+        $v2 = pos_v2_supported();
+        // Room charge: which properties' guests may charge here. None ticked = all.
+        $chargeVenues = array_values(array_intersect(posx_ids('charge_venues'), array_map(fn($v) => (int)$v['id'], db_query('SELECT id FROM venues')->fetchAll())));
         // Changing currency re-prices nothing, so warn when the outlet already has sales.
         $hadSales = strtoupper((string)$outlet['currency']) !== $cur
             && db_query('SELECT 1 FROM pos_sales WHERE outlet_id = :o LIMIT 1', [':o' => $oid])->fetchColumn();
 
         $staff = posx_ids('staff');
         $links = array_values(array_filter(posx_ids('links'), fn($x) => $x !== $oid));
-        pos_tx(function () use ($oid, $name, $kind, $vid, $cur, $pct, $staff, $links): void {
+        pos_tx(function () use ($oid, $name, $kind, $vid, $cur, $pct, $staff, $links, $vat, $v2, $chargeVenues): void {
+            if ($v2) {
+                db_query('UPDATE pos_outlets SET vat_pct = :v, vat_inclusive = :vi, tips_enabled = :t, require_signature = :sg WHERE id = :id',
+                    [':v' => round((float)$vat, 2), ':vi' => !empty($_POST['vat_inclusive']) ? 'TRUE' : 'FALSE',
+                     ':t' => !empty($_POST['tips_enabled']) ? 'TRUE' : 'FALSE', ':sg' => !empty($_POST['require_signature']) ? 'TRUE' : 'FALSE', ':id' => $oid]);
+                db_query('DELETE FROM pos_outlet_charge_venues WHERE outlet_id = :o', [':o' => $oid]);
+                foreach ($chargeVenues as $cv) db_query('INSERT INTO pos_outlet_charge_venues (outlet_id, venue_id) VALUES (:o, :v) ON CONFLICT DO NOTHING', [':o' => $oid, ':v' => $cv]);
+            }
             db_query('UPDATE pos_outlets SET name = :n, kind = :k, venue_id = :v, currency = :c, service_charge_pct = :p,
                              allow_room_charge = :rc, is_active = :a WHERE id = :id',
                 [':n' => $name, ':k' => $kind, ':v' => $vid, ':c' => $cur, ':p' => round((float)$pct, 2),
@@ -155,6 +167,9 @@ if ($supported) {
     foreach (db_query('SELECT outlet_id, source_outlet_id FROM pos_outlet_links')->fetchAll() as $r) $linksOf[(int)$r['outlet_id']][] = (int)$r['source_outlet_id'];
     foreach (db_query('SELECT outlet_id, COUNT(*) AS n FROM pos_items WHERE is_active = TRUE GROUP BY outlet_id')->fetchAll() as $r) $itemCount[(int)$r['outlet_id']] = (int)$r['n'];
 }
+$v2 = $supported && pos_v2_supported();
+$chargeOf = [];
+if ($v2) foreach (db_query('SELECT outlet_id, venue_id FROM pos_outlet_charge_venues')->fetchAll() as $r) $chargeOf[(int)$r['outlet_id']][] = (int)$r['venue_id'];
 $roleLabel = fn(array $p) => $p['role'] === 'staff' ? ucfirst((string)($p['job_type'] ?: 'frontdesk')) : ucfirst((string)$p['role']);
 
 include __DIR__ . '/_layout.php';
@@ -182,7 +197,7 @@ include __DIR__ . '/_layout.php';
       <span class="posx__meta">
         <span class="badge badge--grey"><?= e(POS_KINDS[$o['kind']] ?? $o['kind']) ?></span>
         <span class="badge badge--blue"><?= e($o['venue_name'] ?? 'All properties') ?></span>
-        <span class="badge badge--teal"><?= e($o['currency']) ?><?= (float)$o['service_charge_pct'] > 0 ? ' · ' . e(rtrim(rtrim((string)$o['service_charge_pct'], '0'), '.')) . '% service' : '' ?></span>
+        <span class="badge badge--teal"><?= e($o['currency']) ?><?= (float)$o['service_charge_pct'] > 0 ? ' · ' . e(rtrim(rtrim((string)$o['service_charge_pct'], '0'), '.')) . '% service' : '' ?><?= $v2 && (float)$o['vat_pct'] > 0 ? ' · VAT ' . e(rtrim(rtrim((string)$o['vat_pct'], '0'), '.')) . '%' : '' ?></span>
         <span class="text-muted"><?= (int)($itemCount[$oid] ?? 0) ?> items · <?= count($mine) ?> staff</span>
         <?php if (!pos_bool($o['is_active'])): ?><span class="badge badge--orange">Closed</span><?php endif; ?>
       </span>
@@ -204,11 +219,29 @@ include __DIR__ . '/_layout.php';
           <div class="field"><label>Currency</label>
             <select name="currency" class="eselect"><?php foreach (TS_CURRENCIES as $c => $meta): ?><option value="<?= e($c) ?>" <?= strtoupper($o['currency']) === $c ? 'selected' : '' ?>><?= e($c . ' — ' . $meta['name']) ?></option><?php endforeach; ?></select></div>
           <div class="field"><label>Service charge (%)</label><input name="service_charge_pct" type="number" class="inp inp--num no-spin" min="0" max="100" step="0.01" value="<?= e(rtrim(rtrim((string)$o['service_charge_pct'], '0'), '.') ?: '0') ?>"></div>
+          <?php if ($v2): ?>
+          <div class="field"><label>VAT / tax (%)</label><input name="vat_pct" type="number" class="inp inp--num no-spin" min="0" max="100" step="0.01" value="<?= e(rtrim(rtrim((string)$o['vat_pct'], '0'), '.') ?: '0') ?>" placeholder="e.g. 16"></div>
+          <?php endif; ?>
         </div>
         <div class="posx-toggles">
-          <label class="togglerow"><span class="toggle"><input type="checkbox" name="allow_room_charge" value="1" <?= pos_bool($o['allow_room_charge']) ? 'checked' : '' ?>><span class="toggle-slider"></span></span><span>Room charge — in-house guests can put it on their bill<?= strtoupper($o['currency']) !== strtoupper(setting('site_currency', 'USD')) ? ' <span class="badge badge--orange">bills are ' . e(strtoupper(setting('site_currency', 'USD'))) . ' — room charge stays off</span>' : '' ?></span></label>
+          <label class="togglerow"><span class="toggle"><input type="checkbox" name="allow_room_charge" value="1" <?= pos_bool($o['allow_room_charge']) ? 'checked' : '' ?>><span class="toggle-slider"></span></span><span>Room charge — in-house guests can put it on their bill<?= strtoupper($o['currency']) !== strtoupper(setting('site_currency', 'USD')) ? ' <span class="badge badge--blue">converted to ' . e(strtoupper(setting('site_currency', 'USD'))) . ' on the bill at the day’s rate</span>' : '' ?></span></label>
           <label class="togglerow"><span class="toggle"><input type="checkbox" name="is_active" value="1" <?= pos_bool($o['is_active']) ? 'checked' : '' ?>><span class="toggle-slider"></span></span><span>Open — shows on the till</span></label>
+          <?php if ($v2): ?>
+          <label class="togglerow"><span class="toggle"><input type="checkbox" name="vat_inclusive" value="1" <?= pos_bool($o['vat_inclusive']) ? 'checked' : '' ?>><span class="toggle-slider"></span></span><span>Prices already include VAT <span class="text-muted">(off = VAT is added on top at the till)</span></span></label>
+          <label class="togglerow"><span class="toggle"><input type="checkbox" name="tips_enabled" value="1" <?= pos_bool($o['tips_enabled']) ? 'checked' : '' ?>><span class="toggle-slider"></span></span><span>Ask for a tip at checkout</span></label>
+          <label class="togglerow"><span class="toggle"><input type="checkbox" name="require_signature" value="1" <?= pos_bool($o['require_signature']) ? 'checked' : '' ?>><span class="toggle-slider"></span></span><span>Guest signs on the tablet for a room charge</span></label>
+          <?php endif; ?>
         </div>
+
+        <?php if ($v2): $cv = $chargeOf[$oid] ?? []; ?>
+        <div class="posx-sub">Room charge — whose guests can charge here</div>
+        <div class="posx-chips">
+          <?php foreach ($venues as $v): ?>
+          <label class="optchip"><input type="checkbox" name="charge_venues[]" value="<?= (int)$v['id'] ?>" <?= in_array((int)$v['id'], $cv, true) ? 'checked' : '' ?>><?= e($v['name']) ?></label>
+          <?php endforeach; ?>
+        </div>
+        <p class="text-muted posx-hint">None ticked = guests of <strong>every</strong> property. Tick properties to limit it — e.g. the Tribal Dunes shop for Tribal Dunes, Maya Ilai and Off Duty guests. The till shows which property each guest is staying at, and the bill line says where it was bought.</p>
+        <?php endif; ?>
 
         <div class="posx-sub">Who can sell here</div>
         <?php if (!$people): ?><p class="text-muted posx-hint">No staff accounts yet — add them under Admin → Team.</p><?php else: ?>
@@ -280,6 +313,7 @@ include __DIR__ . '/_layout.php';
 </div>
 
 <style>
+.card__head{flex-wrap:wrap;gap:8px 12px}
 .posx-intro{margin:-6px 0 18px;font-size:13px;max-width:820px}
 .posx-list{display:grid;gap:12px}
 .posx{overflow:hidden}
@@ -303,10 +337,18 @@ include __DIR__ . '/_layout.php';
 .posx-cat{display:flex;align-items:center;gap:8px;margin:0}
 .posx-cat .inp{flex:1}
 .posx-cat.is-dragging,.posx.is-dragging{opacity:.5}
-.posx-catadd{display:flex;gap:8px;margin-top:8px;max-width:460px}
-.posx-catadd .inp{flex:1}
+.posx-catadd{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;max-width:460px}
+.posx-catadd .inp{flex:1 1 160px;min-width:0}
+.posx-cat .inp{min-width:0}
 .posx-foot{display:flex;justify-content:space-between;align-items:center;margin-top:20px;padding-top:14px;border-top:1px solid var(--border)}
-@media (max-width:640px){.posx__meta .text-muted{display:none}}
+@media (max-width:640px){
+  .posx__head{flex-wrap:wrap;padding:12px 14px;gap:8px}
+  .posx__meta{flex-basis:100%;order:3}
+  .posx__meta .text-muted{display:none}
+  .posx__body{padding:14px}
+  .posx-cat,.posx-catadd{max-width:none}
+  .posx-foot{flex-wrap:wrap;gap:10px}
+}
 </style>
 <script>
 (function(){

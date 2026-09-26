@@ -124,7 +124,8 @@ include __DIR__ . '/_layout.php';
 <?php endif; ?>
 
 <style>
-.postm-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px}
+.card__head{flex-wrap:wrap;gap:8px 12px}
+.postm-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(340px,100%),1fr));gap:14px}
 .postm.is-off{opacity:.7}
 .postm__body{padding:16px 18px;margin:0}
 .postm__top{display:flex;align-items:center;gap:10px}

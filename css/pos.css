@@ -138,7 +138,10 @@ a{color:inherit}
 .sheet h2{margin:0 0 4px;font-size:18px}
 .sheet .sub{color:var(--muted);margin-bottom:14px}
 .rrow{display:flex;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px dashed var(--border);font-variant-numeric:tabular-nums}
+.rrow span:first-child{min-width:0}
 .rrow span:last-child{text-align:right;white-space:nowrap}
+.rrow span:last-child:not(:only-child){max-width:62%;white-space:normal;overflow-wrap:anywhere}
+.sheet{min-width:0}
 .rrow small{color:var(--muted)}
 .rrow.b{font-weight:600;font-size:16px;border:0;padding-top:10px}
 .pill{display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:12px;background:var(--bg);border:1px solid var(--border);font-size:12px}
@@ -159,6 +162,18 @@ a{color:inherit}
 .err{color:var(--red);font-size:13px;margin-top:10px}
 .lbl{display:block;font-size:12px;color:var(--muted);margin:14px 0 0}
 .bignum{font-size:28px;font-weight:600;text-align:center;padding:10px 0;font-variant-numeric:tabular-nums}
+
+/* ── VAT note, tips, guest property tag, signature ─────────────────── */
+.totals .totals__note{font-size:12px;padding-top:4px}
+.rrow--note{border:0;padding-top:2px;font-size:12.5px;color:var(--muted)}
+.muted{color:var(--muted)}
+.gtag{display:inline-block;font-style:normal;font-size:11px;font-weight:600;padding:1px 8px;border-radius:10px;background:#fdf1dc;color:#8a5a00;vertical-align:middle;white-space:nowrap}
+.tips{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:8px}
+.tips button{height:42px;border-radius:8px;border:1px solid var(--border);font-size:13px}
+.tips button.is-on{background:var(--brand);border-color:var(--brand);color:#fff}
+.sig{margin-top:8px;border:1px dashed #b9ada3;border-radius:10px;background:#fffdf8;overflow:hidden}
+.sig__pad{display:block;width:100%;height:150px;touch-action:none;cursor:crosshair}
+.sig__foot{display:flex;justify-content:space-between;align-items:center;padding:6px 10px;border-top:1px dashed #e0d6cc;font-size:12px;color:var(--muted)}
 
 /* ── History ───────────────────────────────────────────────────────── */
 .hist table{width:100%;border-collapse:collapse;font-size:13px}
@@ -196,6 +211,14 @@ a{color:inherit}
   .panel.is-open .panel__handle svg{transform:rotate(180deg)}
 }
 @media (max-width:560px){
+  .modal{padding:0;place-items:end stretch}
+  .sheet{max-width:none;border-radius:16px 16px 0 0;max-height:94vh;max-height:94dvh;padding:18px 16px calc(18px + env(safe-area-inset-bottom))}
+  .tips{grid-template-columns:repeat(3,1fr)}
+  .cash{grid-template-columns:repeat(2,1fr)}
+  .btns{position:sticky;bottom:-18px;background:var(--white);padding:10px 0 4px;margin-bottom:-4px}
+  .hist table{font-size:12px}
+  .top{padding:12px 16px 6px}.top h1{font-size:18px}
+  .who{padding:4px 10px 4px 4px}.who__r{display:none}
   .grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
   .tile__img{height:76px}
   .keypad{grid-template-columns:repeat(3,68px)}

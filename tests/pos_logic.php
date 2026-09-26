@@ -68,20 +68,55 @@ check('stock: allow_negative never short', pos_stock_shortfall(['track_stock' =>
 
 // ── Room-charge eligibility ────────────────────────────────────────────────
 $today  = '2026-09-26';
-$outlet = ['allow_room_charge' => 't', 'venue_id' => 3, 'currency' => 'USD'];
-$hold   = ['status' => 'confirmed', 'expires_at' => null, 'check_in' => '2026-09-24', 'check_out' => '2026-09-30', 'venue_id' => 3];
-check('room charge: in house today ✔', pos_room_charge_eligible($hold, $today, $outlet, 'USD') === null);
-check('room charge: arrival day ✔', pos_room_charge_eligible(['check_in' => $today] + $hold, $today, $outlet, 'USD') === null);
-check('room charge: departure day ✔', pos_room_charge_eligible(['check_out' => $today] + $hold, $today, $outlet, 'USD') === null);
-check('room charge: arrives tomorrow ✘', pos_room_charge_eligible(['check_in' => '2026-09-27'] + $hold, $today, $outlet, 'USD') !== null);
-check('room charge: checked out yesterday ✘', pos_room_charge_eligible(['check_out' => '2026-09-25'] + $hold, $today, $outlet, 'USD') !== null);
-check('room charge: pending web enquiry (has expiry) ✘', pos_room_charge_eligible(['status' => 'pending', 'expires_at' => '2026-09-27 10:00'] + $hold, $today, $outlet, 'USD') !== null);
-check('room charge: staff-typed pending (no expiry) ✔', pos_room_charge_eligible(['status' => 'pending', 'expires_at' => null] + $hold, $today, $outlet, 'USD') === null);
-check('room charge: cancelled ✘', pos_room_charge_eligible(['status' => 'cancelled'] + $hold, $today, $outlet, 'USD') !== null);
-check('room charge: another property ✘', pos_room_charge_eligible(['venue_id' => 4] + $hold, $today, $outlet, 'USD') !== null);
-check('room charge: shared outlet (no venue) takes any property ✔', pos_room_charge_eligible(['venue_id' => 4] + $hold, $today, ['venue_id' => null] + $outlet, 'USD') === null);
-check('room charge: currency mismatch ✘', str_contains((string)pos_room_charge_eligible($hold, $today, ['currency' => 'KES'] + $outlet, 'USD'), 'KES'));
-check('room charge: outlet has room charge off ✘', pos_room_charge_eligible($hold, $today, ['allow_room_charge' => 'f'] + $outlet, 'USD') !== null);
+$outlet = ['allow_room_charge' => 't', 'venue_id' => 3, 'currency' => 'KES', 'charge_venue_ids' => []];
+$hold   = ['status' => 'confirmed', 'expires_at' => null, 'check_in' => '2026-09-24', 'check_out' => '2026-09-30', 'venue_id' => 3, 'venue_name' => 'Tribal Dunes'];
+check('room charge: in house today ✔', pos_room_charge_eligible($hold, $today, $outlet) === null);
+check('room charge: arrival day ✔', pos_room_charge_eligible(['check_in' => $today] + $hold, $today, $outlet) === null);
+check('room charge: departure day ✔', pos_room_charge_eligible(['check_out' => $today] + $hold, $today, $outlet) === null);
+check('room charge: arrives tomorrow ✘', pos_room_charge_eligible(['check_in' => '2026-09-27'] + $hold, $today, $outlet) !== null);
+check('room charge: checked out yesterday ✘', pos_room_charge_eligible(['check_out' => '2026-09-25'] + $hold, $today, $outlet) !== null);
+check('room charge: pending web enquiry (has expiry) ✘', pos_room_charge_eligible(['status' => 'pending', 'expires_at' => '2026-09-27 10:00'] + $hold, $today, $outlet) !== null);
+check('room charge: staff-typed pending (no expiry) ✔', pos_room_charge_eligible(['status' => 'pending', 'expires_at' => null] + $hold, $today, $outlet) === null);
+check('room charge: cancelled ✘', pos_room_charge_eligible(['status' => 'cancelled'] + $hold, $today, $outlet) !== null);
+check('room charge: no property list = guests of EVERY property ✔', pos_room_charge_eligible(['venue_id' => 4, 'venue_name' => 'Maya Ilai'] + $hold, $today, $outlet) === null);
+check('room charge: property on the list ✔', pos_room_charge_eligible(['venue_id' => 4] + $hold, $today, ['charge_venue_ids' => [3, 4]] + $outlet) === null);
+$why = (string) pos_room_charge_eligible(['venue_id' => 5, 'venue_name' => 'Zuri'] + $hold, $today, ['charge_venue_ids' => [3, 4]] + $outlet);
+check('room charge: property not on the list ✘, names it', str_contains($why, 'Zuri'));
+check('room charge: a KES outlet is NOT refused for currency (it converts)', pos_room_charge_eligible($hold, $today, ['currency' => 'KES'] + $outlet) === null);
+check('room charge: outlet has room charge off ✘', pos_room_charge_eligible($hold, $today, ['allow_room_charge' => 'f'] + $outlet) !== null);
+
+// ── VAT, tips, FX, signatures, consignment terms (v2) ─────────────────────
+$t = pos_cart_totals([['line_total' => 1160]], 0, 16, true);
+check('vat inclusive: 1160 incl. 16% → VAT 160, total unchanged', near($t['vat'], 160) && near($t['total'], 1160));
+$t = pos_cart_totals([['line_total' => 1000]], 0, 16, false);
+check('vat exclusive: 1000 + 16% → VAT 160, total 1160', near($t['vat'], 160) && near($t['total'], 1160));
+$t = pos_cart_totals([['line_total' => 1000]], 10, 16, false);
+check('vat exclusive on top of service: (1000+100) × 16% = 176 → 1276', near($t['service_charge'], 100) && near($t['vat'], 176) && near($t['total'], 1276));
+$t = pos_cart_totals([['line_total' => 1000]], 10, 16, false, 50);
+check('tip added last, no service/VAT on it → 1326', near($t['tip'], 50) && near($t['before_tip'], 1276) && near($t['total'], 1326));
+$t = pos_cart_totals([['line_total' => 99.99]], 0, 16, true);
+check('vat inclusive rounds half-up to the cent (99.99 → 13.79)', near($t['vat'], 13.79));
+check('tip: 10% of 1276.00 = 127.60', pos_tip_cents(127600, 10, null) === 12760);
+check('tip: typed amount', pos_tip_cents(127600, null, '50') === 5000);
+check('tip: none', pos_tip_cents(127600, null, null) === 0);
+check('tip: more than the bill refused', is_string(pos_tip_cents(1000, null, 11)));
+check('tip: negative / >100% refused', is_string(pos_tip_cents(1000, null, -1)) && is_string(pos_tip_cents(1000, 150, null)));
+$rates = ['USD' => 1.0, 'KES' => 129.0, 'EUR' => 0.92];
+check('fx: KES per USD = 129', near((float)pos_fx_rate_from($rates, 'KES', 'USD'), 129));
+check('fx: same currency = 1', pos_fx_rate_from($rates, 'USD', 'USD') === 1.0);
+check('fx: missing rate → null', pos_fx_rate_from($rates, 'GBP', 'USD') === null);
+check('fx: KES 1,500 → USD 11.63 (to the cent)', near(pos_fx_convert(1500, 129), 11.63));
+$png = 'data:image/png;base64,' . base64_encode("\x89PNG\r\n\x1a\n" . str_repeat("\0", 24));
+check('signature: a PNG data URL is valid', pos_valid_signature($png));
+check('signature: junk / JPEG / empty refused', !pos_valid_signature('') && !pos_valid_signature('data:image/png;base64,AAAA') && !pos_valid_signature('data:image/jpeg;base64,' . base64_encode('xxxxxxxxxx')));
+check('terms: our own stock', pos_consign_terms(['mode' => 'own'], [3]) === ['consignor_id' => null, 'consign_pct' => null, 'consignor_cost' => null]);
+check('terms: commission 25%', pos_consign_terms(['mode' => 'commission', 'consignor_id' => 3, 'value' => '25'], [3]) === ['consignor_id' => 3, 'consign_pct' => 25.0, 'consignor_cost' => null]);
+check('terms: fixed 800 per item', pos_consign_terms(['mode' => 'fixed', 'consignor_id' => 3, 'value' => '800'], [3]) === ['consignor_id' => 3, 'consign_pct' => null, 'consignor_cost' => 800.0]);
+check('terms: unknown supplier / missing value / >100% refused', is_string(pos_consign_terms(['mode' => 'fixed', 'consignor_id' => 9, 'value' => 1], [3]))
+    && is_string(pos_consign_terms(['mode' => 'commission', 'consignor_id' => 3, 'value' => ''], [3])) && is_string(pos_consign_terms(['mode' => 'commission', 'consignor_id' => 3, 'value' => 101], [3])));
+$l = pos_resolve_line(['id' => 1, 'outlet_id' => 1, 'name' => 'Kikoy', 'price' => 100, 'is_active' => 't', 'consignor_id' => 3, 'consign_pct' => '30', 'consignor_commission_pct' => '20'], null, 1, null);
+check('terms: the item\'s own % beats the supplier default', is_array($l) && near((float)$l['consignor_commission_pct'], 30));
+check('bill label: carries the FX note and still ends with the ref', str_ends_with(pos_bill_label('Shop (Tribal Dunes)', [['name' => 'Cap', 'qty' => 1]], 'POS-SHOP-1', 'KES 1,500 @ 129 KES/USD'), '— KES 1,500 @ 129 KES/USD (POS-SHOP-1)'));
 
 // ── Small helpers ──────────────────────────────────────────────────────────
 check('ref prefix: salon-spa → SALONSPA', pos_ref_prefix('salon-spa') === 'SALONSPA');
@@ -197,10 +232,14 @@ try {
     $req   = $ins("INSERT INTO pos_items (outlet_id, name, kind, price) VALUES (:o, 'ZZ Private Charter', 'service', NULL)", [':o' => $exp]);
     $kesTee= $ins("INSERT INTO pos_items (outlet_id, name, kind, price) VALUES (:o, 'ZZ Tee', 'product', 1500)", [':o' => $kes]);
 
-    $sale = fn(int $outlet, array $lines, string $pay, array $cust, int $user, ?string $key = null) => pos_complete_sale([
+    $v2  = pos_v2_supported();
+    $sig = 'data:image/png;base64,' . base64_encode("\x89PNG\r\n\x1a\n" . str_repeat("\0", 24));
+    $sale = fn(int $outlet, array $lines, string $pay, array $cust, int $user, ?string $key = null, array $extra = []) => pos_complete_sale([
         'outlet_id' => $outlet, 'client_uuid' => $key ?? $uuid(), 'lines' => $lines,
         'payment_method' => $pay, 'customer' => $cust,
-    ], $user);
+        // Room charges carry the guest's signature unless a test says otherwise.
+        'signature' => $pay === 'room_charge' ? $sig : null,
+    ] + $extra, $user);
     $walkin = ['type' => 'walkin'];
 
     // Permissions.
@@ -283,6 +322,7 @@ try {
     $billBefore = bill_total($hA);
     $rc = $sale($shop, [['item_id' => $cap, 'qty' => 2]], 'room_charge', ['type' => 'inhouse', 'hold_id' => $hA, 'guest_id' => $g2], $amina);
     check('room charge: in-house guest at this property', $rc['ok'] === true);
+    if (!$rc['ok']) echo '      → ' . ($rc['error'] ?? '') . "\n";
     $rcId = (int)($rc['sale']['id'] ?? 0);
     $rows = db_query('SELECT * FROM bill_items WHERE pos_sale_id = :s', [':s' => $rcId])->fetchAll();
     check('room charge: exactly one bill_items row linked to the sale', count($rows) === 1);
@@ -293,16 +333,68 @@ try {
 
     $r = $sale($shop, [['item_id' => $cap, 'qty' => 1]], 'room_charge', $walkin, $amina);
     check('room charge: walk-in refused', $r['ok'] === false);
-    $r = $sale($shop, [['item_id' => $cap, 'qty' => 1]], 'room_charge', ['type' => 'inhouse', 'hold_id' => $hB], $owner);
-    check('room charge: booking at another property refused', $r['ok'] === false);
     $r = $sale($exp, [['item_id' => $lesson, 'qty' => 1]], 'room_charge', ['type' => 'inhouse', 'hold_id' => $hB, 'guest_id' => $gB], $owner);
     check('room charge: shared outlet charges any property\'s guest', $r['ok'] === true);
     $r = $sale($shop, [['item_id' => $cap, 'qty' => 1]], 'room_charge', ['type' => 'inhouse', 'hold_id' => $hWeb], $owner);
     check('room charge: pending web enquiry refused', $r['ok'] === false);
-    $r = $sale($kes, [['item_id' => $kesTee, 'qty' => 1]], 'room_charge', ['type' => 'inhouse', 'hold_id' => $hA], $owner);
-    check('room charge: outlet currency ≠ bill currency refused', $r['ok'] === false && str_contains($r['error'], $other));
     $r = $sale($shop, [['item_id' => $cap, 'qty' => 1]], 'room_charge', ['type' => 'inhouse', 'hold_id' => $hA, 'guest_id' => $gB], $owner);
     check('room charge: guest from another booking refused', $r['ok'] === false);
+    if ($v2) {
+        // Property list: by default any property's guest may charge at the shop (venue A)…
+        $r = $sale($shop, [['item_id' => $cap, 'qty' => 1]], 'room_charge', ['type' => 'inhouse', 'hold_id' => $hB, 'guest_id' => $gB], $owner);
+        check('room charge: a guest of ANOTHER property charges by default', $r['ok'] === true && (int)($r['sale']['guest_venue_id'] ?? 0) === $vB);
+        $lbl = (string) db_query('SELECT label FROM bill_items WHERE pos_sale_id = :s', [':s' => (int)($r['sale']['id'] ?? 0)])->fetchColumn();
+        check('room charge: the bill line says where it was bought', str_starts_with($lbl, 'ZZ Shop (ZZ Venue A):'));
+        // …and once the shop limits it to venue A, venue B's guest is refused.
+        db_query('INSERT INTO pos_outlet_charge_venues (outlet_id, venue_id) VALUES (:o, :v)', [':o' => $shop, ':v' => $vA]);
+        $r = $sale($shop, [['item_id' => $cap, 'qty' => 1]], 'room_charge', ['type' => 'inhouse', 'hold_id' => $hB, 'guest_id' => $gB], $owner);
+        check('room charge: property not ticked for the outlet → refused, named', $r['ok'] === false && str_contains($r['error'], 'ZZ Venue B'));
+        check('in-house search: limited to the ticked properties', !array_filter(pos_inhouse_payload(pos_fetch_outlet($shop), ''), fn($x) => $x['hold_id'] === $hB));
+        db_query('DELETE FROM pos_outlet_charge_venues WHERE outlet_id = :o', [':o' => $shop]);
+        $found = array_values(array_filter(pos_inhouse_payload(pos_fetch_outlet($shop), ''), fn($x) => $x['hold_id'] === $hB));
+        check('in-house search: another property\'s guest is flagged', count($found) === 1 && $found[0]['other_property'] === true && $found[0]['venue'] === 'ZZ Venue B');
+
+        // Signature is required for a room charge by default.
+        $r = pos_complete_sale(['outlet_id' => $shop, 'client_uuid' => $uuid(), 'lines' => [['item_id' => $cap, 'qty' => 1]],
+                                'payment_method' => 'room_charge', 'customer' => ['type' => 'inhouse', 'hold_id' => $hA]], $owner);
+        check('signature: room charge without one refused', $r['ok'] === false && str_contains($r['error'], 'sign'));
+        $rs = pos_sale_signature($rcId);
+        check('signature: stored with the signer name', $rs && $rs['signature'] === $sig && $rs['signer_name'] === 'ZZ Liam Carter');
+        check('signature: the sale knows it was signed', pos_fetch_sale($rcId)['signed'] === true);
+
+        // A KES (or other-currency) outlet posts to the bill converted, rate kept.
+        $rate = pos_fx_rate($other, $cur);
+        $r = $sale($kes, [['item_id' => $kesTee, 'qty' => 1]], 'room_charge', ['type' => 'inhouse', 'hold_id' => $hA, 'guest_id' => $gLead], $owner);
+        check('fx: other-currency outlet CAN room-charge', $r['ok'] === true);
+        $bi = db_query('SELECT amount, label FROM bill_items WHERE pos_sale_id = :s', [':s' => (int)($r['sale']['id'] ?? 0)])->fetch();
+        check('fx: bill line is the converted amount in the bill currency', $rate && $bi && near((float)$bi['amount'], pos_fx_convert(1500, $rate)));
+        check('fx: sale keeps the rate, bill currency and amount', $rate && near((float)$r['sale']['fx_rate'], $rate) && $r['sale']['bill_currency'] === $cur && near((float)$r['sale']['bill_amount'], pos_fx_convert(1500, $rate)));
+        check('fx: bill label shows the original amount and rate', $bi && str_contains((string)$bi['label'], '@'));
+        check('catalog: other-currency outlet offers room charge with its rate', ($c = pos_catalog_payload(pos_fetch_outlet($kes))['outlet'])['room_charge'] === true && near((float)$c['fx_rate'], (float)$rate));
+
+        // VAT + service + tip, server-computed.
+        db_query('UPDATE pos_outlets SET vat_pct = 16, vat_inclusive = FALSE, tips_enabled = TRUE WHERE id = :o', [':o' => $exp]);
+        $r = $sale($exp, [['item_id' => $lesson, 'qty' => 1]], 'card', $walkin, $owner, null, ['tip_pct' => 10]);
+        // 120 + 10% service = 132; + 16% VAT = 21.12 → 153.12; tip 10% = 15.31 → 168.43
+        check('vat+tip: 120 +svc 12 +VAT 21.12 +tip 15.31 = 168.43', $r['ok'] && near((float)$r['sale']['vat_amount'], 21.12) && near((float)$r['sale']['tip_amount'], 15.31) && near((float)$r['sale']['total'], 168.43));
+        check('vat+tip: the sale snapshots the rates', $r['ok'] && near((float)$r['sale']['vat_pct'], 16) && !pos_bool($r['sale']['vat_inclusive']) && near((float)$r['sale']['service_pct'], 10));
+        db_query('UPDATE pos_outlets SET tips_enabled = FALSE WHERE id = :o', [':o' => $exp]);
+        $r = $sale($exp, [['item_id' => $lesson, 'qty' => 1]], 'card', $walkin, $owner, null, ['tip_amount' => 5]);
+        check('tips off: a tip is refused', $r['ok'] === false);
+        db_query('UPDATE pos_outlets SET vat_pct = 0, vat_inclusive = TRUE, tips_enabled = TRUE WHERE id = :o', [':o' => $exp]);
+
+        // Consignment terms chosen when the delivery arrives.
+        $cons2 = $ins("INSERT INTO pos_consignors (name, commission_pct) VALUES ('ZZ Watamu Weavers', 15)");
+        pos_stock_receive($cap, 4, 6.0, 'Kikoy delivery', $manager, pos_consign_terms(['mode' => 'fixed', 'consignor_id' => $cons2, 'value' => '9'], [$cons2]));
+        $mv = db_query("SELECT consignor_id, consignor_cost FROM pos_stock_moves WHERE item_id = :i AND reason = 'receive' ORDER BY id DESC LIMIT 1", [':i' => $cap])->fetch();
+        check('delivery terms: the ledger row records supplier + fixed cost', $mv && (int)$mv['consignor_id'] === $cons2 && near((float)$mv['consignor_cost'], 9));
+        $r = $sale($shop, [['item_id' => $cap, 'qty' => 1]], 'cash', $walkin, $owner);
+        check('delivery terms: the next sale owes the fixed 9 per item', $r['ok'] && near(pos_consignor_owed($r['sale']['lines'][0]), 9));
+        pos_stock_receive($cap, 1, null, '', $manager, pos_consign_terms(['mode' => 'own'], [$cons2]));
+        check('delivery terms: switching back to our own stock clears the supplier', db_query('SELECT consignor_id FROM pos_items WHERE id = :i', [':i' => $cap])->fetchColumn() === null);
+    } else {
+        echo "SKIP  v2 (add_pos_v2.sql not applied)\n";
+    }
     db_query('UPDATE pos_outlets SET allow_room_charge = FALSE WHERE id = :o', [':o' => $shop]);
     $r = $sale($shop, [['item_id' => $cap, 'qty' => 1]], 'room_charge', ['type' => 'inhouse', 'hold_id' => $hA], $owner);
     check('room charge: outlet with room charge off refused', $r['ok'] === false);
@@ -314,11 +406,12 @@ try {
     check('void: staff cannot void', $v['ok'] === false);
     $v = pos_void_sale($rcId, '', $manager);
     check('void: reason required', $v['ok'] === false);
+    $billPreVoid = bill_total($hA);
     $v = pos_void_sale($rcId, 'wrong guest', $manager);
     check('void: manager of the outlet voids', $v['ok'] === true && ($v['sale']['status'] ?? '') === 'voided');
     check('void: stock restored', $stock($cap) === $capBefore + 2);
     check('void: bill line removed', $count('SELECT COUNT(*) FROM bill_items WHERE pos_sale_id = :s', [':s' => $rcId]) === 0);
-    check('void: bill_total back to where it was', near(bill_total($hA), $billBefore));
+    check('void: bill_total drops by exactly the voided charge', near($billPreVoid - bill_total($hA), 56));
     check('void: one "void" stock move', $count("SELECT COUNT(*) FROM pos_stock_moves WHERE sale_id = :s AND reason = 'void'", [':s' => $rcId]) === 1);
     check('void: cannot void twice', pos_void_sale($rcId, 'again', $manager)['ok'] === false);
 
@@ -384,7 +477,7 @@ try {
     $row = array_values(array_filter($cat['items'], fn($x) => $x['id'] === $req))[0];
     check('catalog: an unpriced item shows price null (open price)', $row['price'] === null);
     check('catalog: room charge allowed for a same-currency outlet', $cat['outlet']['room_charge'] === true);
-    check('catalog: a foreign-currency outlet has room charge off', pos_catalog_payload(pos_fetch_outlet($kes))['outlet']['room_charge'] === false);
+    check('catalog: a foreign-currency outlet can room-charge (converted) once v2 is in', pos_catalog_payload(pos_fetch_outlet($kes))['outlet']['room_charge'] === $v2);
     $ih = pos_inhouse_payload(pos_fetch_outlet($shop), 'carter');
     $mine = array_values(array_filter($ih, fn($x) => $x['hold_id'] === $hA));
     check('in-house payload: finds the guest with adults and no room-charge block', count($mine) === 1 && count($mine[0]['guests']) === 2 && $mine[0]['room_charge_block'] === null);

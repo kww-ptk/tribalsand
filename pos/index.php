@@ -170,6 +170,7 @@ $v = fn(string $rel) => (int) @filemtime(__DIR__ . '/../' . $rel);
 <div class="toast hidden" id="toast" role="status"></div>
 <script>window.POS_BOOT = <?= json_encode($boot, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT) ?>;</script>
 <?php endif; ?>
+<?php if ($state === 'till'): ?><script src="/js/signature-pad.js?v=<?= $v('js/signature-pad.js') ?>"></script><?php endif; ?>
 <script src="/js/pos.js?v=<?= $v('js/pos.js') ?>"></script>
 </body>
 </html>

@@ -65,24 +65,27 @@ if (($_GET['export'] ?? '') === 'csv' && $supported) {
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="pos-sales-' . $from . '_' . $to . '.csv"');
     $out = fopen('php://output', 'w');
-    fputcsv($out, ['Reference', 'Date', 'Time', 'Outlet', 'Staff', 'Customer', 'Type', 'Payment', 'Payment ref', 'Currency', 'Subtotal', 'Service', 'Total', 'Status', 'Void reason']);
+    fputcsv($out, ['Reference', 'Date', 'Time', 'Outlet', 'Staff', 'Customer', 'Type', 'Payment', 'Payment ref', 'Currency', 'Subtotal', 'Service', 'VAT', 'VAT included', 'Tip', 'Total',
+                   'Room bill currency', 'Room bill amount', 'FX rate', 'Status', 'Void reason'], ',', '"', '');
     foreach ($res['rows'] as $r) {
         $t = strtotime((string)$r['created_at']);
         fputcsv($out, [$r['reference'], date('Y-m-d', $t), date('H:i', $t), $r['outlet_name'], $r['user_name'], $r['customer_name'], $r['customer_type'],
             POS_PAYMENT_METHODS[$r['payment_method']] ?? $r['payment_method'], $r['payment_ref'], $r['currency'],
-            $r['subtotal'], $r['service_charge'], $r['total'], $r['status'], $r['void_reason']]);
+            $r['subtotal'], $r['service_charge'], $r['vat_amount'] ?? 0, pos_bool($r['vat_inclusive'] ?? true) ? 'yes' : 'no', $r['tip_amount'] ?? 0, $r['total'],
+            $r['bill_currency'] ?? '', $r['bill_amount'] ?? '', $r['fx_rate'] ?? '', $r['status'], $r['void_reason']], ',', '"', '');
     }
     fclose($out); exit;
 }
 
 $view = isset($_GET['sale']) ? 'sale' : (($_GET['view'] ?? '') === 'z' ? 'z' : 'list');
-$sale = null; $hold = null; $canVoid = false;
+$sale = null; $hold = null; $canVoid = false; $sig = null;
 if ($view === 'sale' && $supported) {
     $sale = pos_fetch_sale((int)$_GET['sale']);
     if (!$sale || !in_array((int)$sale['outlet_id'], $scope, true)) $sale = null;
     if ($sale) {
         $hold = $sale['hold_id'] ? pos_fetch_hold((int)$sale['hold_id']) : null;
         $canVoid = $sale['status'] === 'completed' && pos_user_manages_outlet($me, (int)$sale['outlet_id']);
+        $sig = $sale['signed'] ? pos_sale_signature((int)$sale['id']) : null;
     }
 }
 
@@ -176,8 +179,12 @@ include __DIR__ . '/_layout.php';
         </tbody>
         <tfoot>
           <tr><td colspan="3">Subtotal</td><td class="num"><?= e($m($sale['subtotal'], $cur)) ?></td></tr>
-          <?php if ((float)$sale['service_charge'] > 0): ?><tr><td colspan="3">Service charge</td><td class="num"><?= e($m($sale['service_charge'], $cur)) ?></td></tr><?php endif; ?>
+          <?php $vA = (float)($sale['vat_amount'] ?? 0); $vIn = pos_bool($sale['vat_inclusive'] ?? true); $vP = rtrim(rtrim((string)($sale['vat_pct'] ?? '0'), '0'), '.'); ?>
+          <?php if ((float)$sale['service_charge'] > 0): ?><tr><td colspan="3">Service charge<?= (float)($sale['service_pct'] ?? 0) > 0 ? ' (' . e(rtrim(rtrim((string)$sale['service_pct'], '0'), '.')) . '%)' : '' ?></td><td class="num"><?= e($m($sale['service_charge'], $cur)) ?></td></tr><?php endif; ?>
+          <?php if ($vA > 0 && !$vIn): ?><tr><td colspan="3">VAT (<?= e($vP) ?>%)</td><td class="num"><?= e($m($vA, $cur)) ?></td></tr><?php endif; ?>
+          <?php if ((float)($sale['tip_amount'] ?? 0) > 0): ?><tr><td colspan="3">Tip</td><td class="num"><?= e($m($sale['tip_amount'], $cur)) ?></td></tr><?php endif; ?>
           <tr class="pss-total"><td colspan="3">Total</td><td class="num"><?= e($m($sale['total'], $cur)) ?></td></tr>
+          <?php if ($vA > 0 && $vIn): ?><tr><td colspan="3">Includes VAT <?= e($vP) ?>%</td><td class="num"><?= e($m($vA, $cur)) ?></td></tr><?php endif; ?>
         </tfoot>
       </table></div>
     </div>
@@ -187,10 +194,15 @@ include __DIR__ . '/_layout.php';
         <div><span>Outlet</span><strong><?= e($sale['outlet_name']) ?></strong></div>
         <div><span>Served by</span><strong><?= e($sale['user_name'] ?? '—') ?></strong></div>
         <div><span>Customer</span><strong><?= e($sale['customer_name']) ?></strong></div>
-        <?php if ($hold): ?><div><span>Booking</span><strong><a href="/admin/booking.php?hold=<?= (int)$hold['id'] ?>&tab=bill"><?= e($hold['guest_name']) ?> · <?= e($hold['unit_name'] ?: $hold['room_name']) ?></a></strong></div><?php endif; ?>
+        <?php if ($hold): ?><div><span>Booking</span><strong><a href="/admin/booking.php?hold=<?= (int)$hold['id'] ?>&tab=bill"><?= e($hold['guest_name']) ?> · <?= e($hold['unit_name'] ?: $hold['room_name']) ?></a></strong></div>
+        <div><span>Staying at</span><strong><?= e($sale['guest_venue_name'] ?? ($hold['venue_name'] ?? '—')) ?></strong></div><?php endif; ?>
+        <?php if (!empty($sale['bill_currency']) && $sale['bill_currency'] !== $cur && $sale['bill_amount'] !== null): ?>
+        <div><span>On the room bill</span><strong><?= e(pos_money((float)$sale['bill_amount'], (string)$sale['bill_currency'])) ?> <span class="text-muted">(1 <?= e($sale['bill_currency']) ?> = <?= e(rtrim(rtrim(number_format((float)$sale['fx_rate'], 4, '.', ''), '0'), '.')) ?> <?= e($cur) ?>)</span></strong></div>
+        <?php endif; ?>
         <div><span>Payment</span><strong><?= e(POS_PAYMENT_METHODS[$sale['payment_method']] ?? $sale['payment_method']) ?><?= $sale['payment_ref'] ? ' · ' . e($sale['payment_ref']) : '' ?></strong></div>
         <?php if ($sale['cash_tendered'] !== null): ?><div><span>Cash / change</span><strong><?= e($m($sale['cash_tendered'], $cur)) ?> / <?= e($m(max(0, pos_from_cents(pos_cents($sale['cash_tendered']) - pos_cents($sale['total']))), $cur)) ?></strong></div><?php endif; ?>
         <?php if ($sale['status'] === 'voided'): ?><div><span>Voided</span><strong><?= e(date('j M Y, H:i', strtotime((string)$sale['voided_at']))) ?> — <?= e((string)$sale['void_reason']) ?></strong></div><?php endif; ?>
+        <?php if ($sig): ?><div class="pss-sig"><span>Guest signature</span><img src="<?= e($sig['signature']) ?>" alt="Guest signature"><em><?= e($sig['signer_name'] ?? '') ?> · <?= e(date('j M Y, H:i', strtotime((string)$sig['signed_at']))) ?></em></div><?php endif; ?>
         <a href="/pos/receipt.php?sale=<?= (int)$sale['id'] ?>" target="_blank" rel="noopener" class="btn-outline btn-sm" style="margin-top:6px"><?= admin_icon('external-link', 14) ?> Receipt</a>
       </div></div>
       <?php if ($canVoid): ?>
@@ -257,7 +269,7 @@ include __DIR__ . '/_layout.php';
     <div class="pss-kpis">
       <?php if (!$res['sums']): ?><div class="pss-kpi"><div class="n">0</div><div class="l">Completed sales</div></div><?php endif; ?>
       <?php foreach ($res['sums'] as $su): ?>
-        <div class="pss-kpi"><div class="n"><?= e($m($su['total'], $su['currency'])) ?></div><div class="l"><?= (int)$su['n'] ?> sale<?= (int)$su['n'] === 1 ? '' : 's' ?> · <?= e($su['currency']) ?><?= (float)$su['service'] > 0 ? ' · incl. ' . e($m($su['service'], $su['currency'])) . ' service' : '' ?></div></div>
+        <div class="pss-kpi"><div class="n"><?= e($m($su['total'], $su['currency'])) ?></div><div class="l"><?= (int)$su['n'] ?> sale<?= (int)$su['n'] === 1 ? '' : 's' ?> · <?= e($su['currency']) ?><?= (float)$su['service'] > 0 ? ' · ' . e($m($su['service'], $su['currency'])) . ' service' : '' ?><?= (float)$su['vat'] > 0 ? ' · ' . e($m($su['vat'], $su['currency'])) . ' VAT' : '' ?><?= (float)$su['tips'] > 0 ? ' · ' . e($m($su['tips'], $su['currency'])) . ' tips' : '' ?></div></div>
       <?php endforeach; ?>
     </div>
     <div class="card dt" data-dt>
@@ -281,11 +293,11 @@ include __DIR__ . '/_layout.php';
         <div class="card">
           <div class="card__head"><span class="card__title">By outlet and payment</span><span class="text-muted" style="font-size:12.5px">Count the drawer against Cash; card slips against Card</span></div>
           <div class="table-wrap"><table class="data-table">
-            <thead><tr><th>Outlet</th><th>Payment</th><th class="num">Sales</th><th class="num">Service</th><th class="num">Total</th></tr></thead>
+            <thead><tr><th>Outlet</th><th>Payment</th><th class="num">Sales</th><th class="num">Service</th><th class="num">VAT</th><th class="num">Tips</th><th class="num">Total</th></tr></thead>
             <tbody>
             <?php foreach ($byOutlet as $on => $rs): foreach ($rs as $i => $r): ?>
               <tr><td><?= $i === 0 ? '<strong>' . e($on) . '</strong>' : '' ?></td><td><?= e(POS_PAYMENT_METHODS[$r['payment_method']] ?? $r['payment_method']) ?></td>
-                <td class="num"><?= (int)$r['n'] ?></td><td class="num"><?= e($m($r['service'], $r['currency'])) ?></td><td class="num"><strong><?= e($m($r['total'], $r['currency'])) ?></strong></td></tr>
+                <td class="num"><?= (int)$r['n'] ?></td><td class="num"><?= e($m($r['service'], $r['currency'])) ?></td><td class="num"><?= e($m($r['vat'], $r['currency'])) ?></td><td class="num"><?= e($m($r['tips'], $r['currency'])) ?></td><td class="num"><strong><?= e($m($r['total'], $r['currency'])) ?></strong></td></tr>
             <?php endforeach; endforeach; ?>
             </tbody>
           </table></div>
@@ -293,8 +305,8 @@ include __DIR__ . '/_layout.php';
         <div class="card">
           <div class="card__head"><span class="card__title">By staff</span></div>
           <div class="table-wrap"><table class="data-table">
-            <thead><tr><th>Staff</th><th class="num">Sales</th><th class="num">Total</th></tr></thead>
-            <tbody><?php foreach ($z['staff'] as $r): ?><tr><td><?= e($r['name']) ?></td><td class="num"><?= (int)$r['n'] ?></td><td class="num"><?= e($m($r['total'], $r['currency'])) ?></td></tr><?php endforeach; ?></tbody>
+            <thead><tr><th>Staff</th><th class="num">Sales</th><th class="num">Tips</th><th class="num">Total</th></tr></thead>
+            <tbody><?php foreach ($z['staff'] as $r): ?><tr><td><?= e($r['name']) ?></td><td class="num"><?= (int)$r['n'] ?></td><td class="num"><?= e($m($r['tips'], $r['currency'])) ?></td><td class="num"><?= e($m($r['total'], $r['currency'])) ?></td></tr><?php endforeach; ?></tbody>
           </table></div>
         </div>
       </div>
@@ -321,7 +333,8 @@ include __DIR__ . '/_layout.php';
 .pss-kpi--warn .n{color:var(--red)}
 .pss-void td{opacity:.6}
 .pss-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,1fr);gap:18px;align-items:start}
-@media (max-width:900px){.pss-grid{grid-template-columns:1fr}}
+@media (max-width:900px){.pss-grid{grid-template-columns:minmax(0,1fr)}}
+.card__head{flex-wrap:wrap;gap:8px 12px}
 .pss-grid .table-wrap .data-table{min-width:0}
 .data-table .num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
 .pss-lines tfoot td{padding:8px 14px;color:var(--muted)}
@@ -331,6 +344,16 @@ include __DIR__ . '/_layout.php';
 .pss-facts span{color:var(--muted)}
 .pss-facts strong{text-align:right;font-weight:500}
 .pss-voidbtn{margin-top:10px}
+.pss-sig{display:flex!important;flex-direction:column;gap:4px;border-top:1px dashed var(--border);padding-top:10px}
+.pss-sig img{max-width:100%;max-height:110px;object-fit:contain;background:#fffdf8;border:1px solid var(--border);border-radius:8px}
+.pss-sig em{font-size:12px;color:var(--muted);font-style:normal}
+@media (max-width:640px){
+  .pss-filters{gap:6px}
+  .pss-filters .eselect{flex:1 1 45%}
+  .pss-kpi .n{font-size:19px}
+  .pss-facts div{flex-direction:column;gap:2px}
+  .pss-facts strong{text-align:left}
+}
 </style>
 <script>
 document.querySelectorAll('#pssFilters [data-autosubmit]').forEach(function (i) {

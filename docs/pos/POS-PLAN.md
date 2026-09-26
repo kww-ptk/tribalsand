@@ -8,18 +8,17 @@
 > `client_ip()` never `REMOTE_ADDR`, Africa/Nairobi time, pre-migration-safe reads.
 
 
-> **Status 2026-09-26: P1–P6 BUILT** (branch `claude/pos-implementation-steps-1-2-addf47`, not yet merged).
-> `tests/pos_logic.php` 156/156 against a local Postgres 16 with every migration applied; `bill_logic`,
-> `frontdesk_logic`, `reception_role`, `services_logic`, `agent_portal_logic` green (`team_logic` has one
-> pre-existing stale assertion about the owner's home page — unrelated). Browser-verified: admin-mode till
-> sale with room charge → Bill tab (POS badge, forged delete refused); terminal registration → PIN unlock →
-> walk-in cash sale → lock → lockout; revoke; sales list, sale detail, Z-report, consignment statement; phone layout.
-> Deviations from the text below: permission helpers live in `includes/pos.php`; the light guards in
-> `includes/pos-support.php`; `pos_outlets.next_ref` is the receipt sequence; `pos_consignor_payouts.currency`
-> added; PIN management is its own page (`admin/pos-pins.php`) rather than inside `admin/staff.php`;
-> "lock after each sale" per terminal is not built (idle lock + Lock button only); spa seed items are
-> inactive + unpriced. Found + fixed during the build: PIN failures were locking ADMIN logins from the
-> same IP (`is_rate_limited()` now ignores `pos:%` rows). P7 items remain open.
+> **Status 2026-09-26: P1–P6 BUILT + owner answers implemented (v2).** Owner decisions (Q1–Q7):
+> service charge + VAT % editable per outlet (VAT inclusive by default, shown on receipts); outlets sell
+> in **KES** and room charges convert to the USD bill at the site FX rate (rate kept on the sale); consignment
+> terms (commission % or fixed per item) chosen per delivery on the Stock page; room charge open to guests of
+> every property by default with a per-outlet property picker, and the guest's property shown; tips on
+> (per outlet); guest signs on the tablet for a room charge (stored privately). Migration `add_pos_v2.sql`.
+> The whole POS was re-checked for horizontal overflow at 360/375/768/1024/1366. `tests/pos_logic.php` 196/196.
+> Deviations from the text below: permission helpers live in `includes/pos.php`; light guards in
+> `includes/pos-support.php`; `pos_outlets.next_ref` is the receipt sequence; PIN management is
+> `admin/pos-pins.php`; "lock after each sale" per terminal is not built. Found + fixed: PIN failures were
+> locking ADMIN logins from the same IP. P7 items remain open.
 
 ---
 
@@ -84,7 +83,7 @@ catalogue/stock/consignment management and reports inside the existing admin.
 - **D7 — Experiences link to `tours`, never copy them.** Price read from `tours.price_amount` at
   sale time and **snapshotted onto the sale line**. Per-person tours: quantity = pax.
 
-**Open — ask the owner (Patrik) before/while building; defaults in brackets:**
+**Answered by the owner 2026-09-26 — see the status block at the top (implemented in v2). Original questions:**
 
 - **Q1** Service charge % per outlet? (image shows 10%) [configurable per outlet, default 0].
 - **Q2** VAT/tax lines on receipts? [none in v1; prices tax-inclusive].

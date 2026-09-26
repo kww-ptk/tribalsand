@@ -74,21 +74,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
               ':p' => $v['price'], ':pp' => $v['per_person'] ? 'TRUE' : 'FALSE', ':ts' => $v['track_stock'] ? 'TRUE' : 'FALSE',
               ':low' => $v['low_stock_at'], ':neg' => $v['allow_negative'] ? 'TRUE' : 'FALSE', ':cs' => $v['consignor_id'],
               ':cc' => $v['consignor_cost'], ':a' => $v['is_active'] ? 'TRUE' : 'FALSE'];
+        $v2  = pos_v2_supported();
+        $pct = $v2 ? ', consign_pct = :cpct' : '';
+        if ($v2) $p[':cpct'] = $v['consign_pct'];
+        // Moving an item to another outlet this account manages (edit only).
+        $moveTo = (int)($_POST['move_to'] ?? $oid);
+        $moveTo = ($iid && $moveTo !== $oid && in_array($moveTo, $allowed, true)) ? $moveTo : 0;
         $imgSql = '';
         if ($img !== '')                       { $imgSql = ', image_key = :img'; $p[':img'] = $img; }
         elseif (!empty($_POST['remove_image'])) { $imgSql = ', image_key = NULL'; }
-        $newId = pos_tx(function () use ($iid, $oid, $p, $imgSql, $img, $v, $opening, $me): int {
+        $newId = pos_tx(function () use ($iid, $oid, $p, $imgSql, $img, $v, $opening, $me, $pct, $v2, $moveTo): int {
             if ($iid) {
                 db_query("UPDATE pos_items SET category_id = :c, kind = :k, tour_id = :t, name = :n, sku = :sku, price = :p,
                                  per_person = :pp, track_stock = :ts, low_stock_at = :low, allow_negative = :neg,
-                                 consignor_id = :cs, consignor_cost = :cc, is_active = :a, updated_at = now(){$imgSql}
+                                 consignor_id = :cs, consignor_cost = :cc{$pct}, is_active = :a, updated_at = now(){$imgSql}
                            WHERE id = :id AND outlet_id = :o", $p + [':id' => $iid, ':o' => $oid]);
+                if ($moveTo) {
+                    // Categories belong to an outlet, so a moved item starts uncategorised
+                    // at the end of its new outlet. Its stock and sales history move with it;
+                    // past sale lines keep the outlet they were sold for.
+                    $max = (int) db_query('SELECT COALESCE(MAX(sort_order), -1) FROM pos_items WHERE outlet_id = :o', [':o' => $moveTo])->fetchColumn();
+                    db_query('UPDATE pos_items SET outlet_id = :t, category_id = NULL, sort_order = :s WHERE id = :id', [':t' => $moveTo, ':s' => $max + 1, ':id' => $iid]);
+                }
                 return $iid;
             }
             $max = (int) db_query('SELECT COALESCE(MAX(sort_order), -1) FROM pos_items WHERE outlet_id = :o', [':o' => $oid])->fetchColumn();
             db_query("INSERT INTO pos_items (outlet_id, category_id, kind, tour_id, name, sku, price, per_person, track_stock,
-                                             low_stock_at, allow_negative, consignor_id, consignor_cost, is_active, sort_order, image_key)
-                      VALUES (:o, :c, :k, :t, :n, :sku, :p, :pp, :ts, :low, :neg, :cs, :cc, :a, :so, :img)",
+                                             low_stock_at, allow_negative, consignor_id, consignor_cost, is_active, sort_order, image_key" . ($v2 ? ', consign_pct' : '') . ")
+                      VALUES (:o, :c, :k, :t, :n, :sku, :p, :pp, :ts, :low, :neg, :cs, :cc, :a, :so, :img" . ($v2 ? ', :cpct' : '') . ")",
                 array_diff_key($p, [':img' => 1]) + [':o' => $oid, ':so' => $max + 1, ':img' => $img !== '' ? $img : null]);
             $id = (int) db()->lastInsertId();
             if ($v['track_stock'] && $opening !== '' && (int)$opening > 0) {
@@ -96,8 +109,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
             }
             return $id;
         });
-        audit_log($iid ? 'pos.item_save' : 'pos.item_add', 'pos_item', $newId, $v['name']);
-        posi_flash('success', $iid ? "{$v['name']} saved." : "{$v['name']} added.");
+        audit_log($iid ? ($moveTo ? 'pos.item_move' : 'pos.item_save') : 'pos.item_add', 'pos_item', $newId, $v['name']);
+        if ($moveTo) {
+            $toName = (string)(pos_fetch_outlet($moveTo)['name'] ?? 'the other outlet');
+            posi_flash('success', "{$v['name']} moved to {$toName}.");
+            posi_back($moveTo, '#item-' . $newId);
+        }
+        posi_flash('success', $iid ? "{$v['name']} saved." : "{$v['name']} added to " . ($outlet['name'] ?? 'this outlet') . '.');
         posi_back($oid, '#item-' . $newId);
     }
 
@@ -156,9 +174,9 @@ if ($editId) foreach ($items as $it) if ((int)$it['id'] === $editId) { $editing 
 $showForm = $editing || !empty($_GET['new']) || $errs;
 $form = $editing ?: ['id' => 0, 'name' => '', 'kind' => 'product', 'category_id' => null, 'tour_id' => null, 'price' => null,
                      'per_person' => false, 'sku' => '', 'track_stock' => false, 'low_stock_at' => null, 'allow_negative' => false,
-                     'consignor_id' => null, 'consignor_cost' => null, 'is_active' => true, 'image_key' => null];
+                     'consignor_id' => null, 'consignor_cost' => null, 'consign_pct' => null, 'is_active' => true, 'image_key' => null];
 if ($old) {   // re-show a failed post
-    foreach (['name','kind','category_id','tour_id','price','sku','low_stock_at','consignor_id','consignor_cost'] as $k) $form[$k] = $old[$k] ?? $form[$k];
+    foreach (['name','kind','category_id','tour_id','price','sku','low_stock_at','consignor_id','consignor_cost','consign_pct'] as $k) $form[$k] = $old[$k] ?? ($form[$k] ?? null);
     foreach (['per_person','track_stock','allow_negative','is_active'] as $k) $form[$k] = !empty($old[$k]);
 }
 $linked   = array_filter(array_map(fn($i) => (int)($i['tour_id'] ?? 0), $items));
@@ -196,7 +214,7 @@ include __DIR__ . '/_layout.php';
 
 <?php if ($showForm): ?>
 <div class="card posi-formcard" id="form">
-  <div class="card__head"><span class="card__title"><?= $editing ? 'Edit ' . e($editing['name']) : 'Add an item' ?></span>
+  <div class="card__head"><span class="card__title"><?= $editing ? 'Edit ' . e($editing['name']) . ' <span class="posi-in">in ' . e($outlet['name']) . '</span>' : 'Add an item to <span class="posi-in">' . e($outlet['name']) . '</span>' ?></span>
     <a href="<?= $self ?>?outlet=<?= $oid ?>" class="btn-icon" data-tip="Close" aria-label="Close"><?= admin_icon('x', 16) ?></a></div>
   <div class="card__body" style="padding:18px 20px">
     <?php if (!empty($errs)): ?><div class="alert alert--error">Please fix the highlighted fields.</div><?php endif; ?>
@@ -252,12 +270,28 @@ include __DIR__ . '/_layout.php';
       <div class="posi-grid">
         <div class="field"><label>Supplier <span class="text-muted">(blank = our own stock)</span></label>
           <select name="consignor_id" class="eselect"><option value="0">Our own stock</option>
-            <?php foreach ($consignors as $c): ?><option value="<?= (int)$c['id'] ?>" <?= (int)$form['consignor_id'] === (int)$c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?> — <?= e($num($c['commission_pct']) ?: '0') ?>% commission<?= pos_bool($c['is_active']) ? '' : ' (inactive)' ?></option><?php endforeach; ?>
+            <?php foreach ($consignors as $c): ?><option value="<?= (int)$c['id'] ?>" <?= (int)$form['consignor_id'] === (int)$c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?> — keeps <?= e($num($c['commission_pct']) ?: '0') ?>% by default<?= pos_bool($c['is_active']) ? '' : ' (inactive)' ?></option><?php endforeach; ?>
           </select><?= $err('consignor_id') ?></div>
-        <div class="field"><label>Fixed cost to us <span class="text-muted">(optional — replaces the %)</span></label>
+        <?php if (pos_v2_supported()): ?>
+        <div class="field"><label>We keep (%) <span class="text-muted">(blank = supplier default)</span></label>
+          <input name="consign_pct" type="number" class="inp inp--num no-spin" min="0" max="100" step="0.01" value="<?= e($num($form['consign_pct'] ?? null)) ?>" placeholder="default"><?= $err('consign_pct') ?></div>
+        <?php endif; ?>
+        <div class="field"><label>Or: fixed amount we owe per item</label>
           <span class="inp-money"><span class="inp-money__cur"><?= e($cur) ?></span>
-            <input name="consignor_cost" type="number" class="inp inp--num no-spin" min="0" step="0.01" value="<?= e($num($form['consignor_cost'])) ?>" placeholder="use %"></span><?= $err('consignor_cost') ?></div>
+            <input name="consignor_cost" type="number" class="inp inp--num no-spin" min="0" step="0.01" value="<?= e($num($form['consignor_cost'])) ?>" placeholder="—"></span><?= $err('consignor_cost') ?></div>
       </div>
+      <p class="posi-help">A fixed amount wins over the %. Terms can also be set each time a delivery is received (Stock page). Past sales keep the terms they were sold on.</p>
+
+      <?php if ($editing && count($outlets) > 1): ?>
+      <div class="posi-sub">Outlet</div>
+      <div class="posi-grid">
+        <div class="field"><label>Sold at</label>
+          <select name="move_to" class="eselect">
+            <?php foreach ($outlets as $o): ?><option value="<?= (int)$o['id'] ?>" <?= (int)$o['id'] === $oid ? 'selected' : '' ?>><?= e($o['name']) ?></option><?php endforeach; ?>
+          </select>
+          <div class="posi-help">Moving an item takes its stock with it and clears its category.</div></div>
+      </div>
+      <?php endif; ?>
 
       <div class="posi-sub">Photo</div>
       <div class="posi-photo">
@@ -350,6 +384,7 @@ include __DIR__ . '/_layout.php';
 <?php endif; ?>
 
 <style>
+.card__head{flex-wrap:wrap;gap:8px 12px}
 .posi-pick{display:flex;align-items:center;gap:10px;margin:-6px 0 18px;flex-wrap:wrap;font-size:13px}
 .posi-pick__meta{font-size:12.5px}
 .posi-formcard{margin-bottom:18px}
@@ -361,6 +396,7 @@ include __DIR__ . '/_layout.php';
 .posi-chip-sub{opacity:.65;font-size:11.5px;margin-left:3px}
 .field .inp-money{display:flex;width:100%}.field .inp-money .inp{flex:1;min-width:0;width:auto}
 .posi-help{font-size:12px;color:var(--muted);margin-top:5px}
+.posi-in{color:var(--brand);font-weight:600}
 .posi-toggles{display:flex;flex-direction:column;gap:10px;margin:4px 0}
 .posi-sub{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:20px 0 10px}
 .posi-stock{margin-top:12px}

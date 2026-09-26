@@ -221,7 +221,7 @@
     if (S.custMode === 'inhouse') {
       if (S.cust) {
         h = '<div class="cust"><span class="avatar">' + esc(initials(S.cust.name)) + '</span>' +
-          '<div><strong>' + esc(S.cust.name) + '</strong><small>' + esc(S.cust.room) + ' · ' + esc(S.cust.dates) + (S.cust.ref ? ' · Ref ' + esc(S.cust.ref) : '') + '</small></div>' +
+          '<div><strong>' + esc(S.cust.name) + '</strong>' + (S.cust.other_property ? ' <em class="gtag">guest of ' + esc(S.cust.venue) + '</em>' : '') + '<small>' + esc(S.cust.room) + ' · ' + esc(S.cust.dates) + (S.cust.ref ? ' · Ref ' + esc(S.cust.ref) : '') + '</small></div>' +
           '<button type="button" class="x" id="custX" aria-label="Remove guest">' + ico('x') + '</button></div>';
         if (S.cust.guests.length > 1) {
           h += '<div class="guests">' + S.cust.guests.map(function (g) {
@@ -244,7 +244,7 @@
           if (!$('#gres')) return;
           S._guestResults = d.results || [];
           $('#gres').innerHTML = '<div class="results">' + (S._guestResults.map(function (x, i) {
-            return '<button type="button" data-h="' + i + '"><strong>' + esc(x.name) + '</strong><small>' + esc(x.room) + ' · ' + esc(x.dates) + '</small></button>';
+            return '<button type="button" data-h="' + i + '"><strong>' + esc(x.name) + '</strong>' + (x.other_property ? ' <em class="gtag">guest of ' + esc(x.venue) + '</em>' : '') + '<small>' + esc(x.room) + ' · ' + esc(x.dates) + '</small></button>';
           }).join('') || '<div class="empty">No in-house guest found.</div>') + '</div>';
         });
       };
@@ -284,12 +284,29 @@
   $('#segIn').onclick = function () { S.custMode = 'inhouse'; render(); };
   $('#segWalk').onclick = function () { S.custMode = 'walkin'; if (S.pay === 'room_charge') S.pay = null; render(); };
 
-  /* ── Cart + totals (display only — the server re-prices) ──────────── */
+  /* ── Cart + totals (display only — the server re-prices, same cents maths) ── */
   function unitPrice(l) { var it = item(l.id); return it.price === null ? (l.open || 0) : it.price; }
-  function totals() {
+  function divRound(n, d) { return Math.floor((2 * n + d) / (2 * d)); }   // half-up, non-negative
+  // Mirrors pos_cart_totals(): service on the subtotal; VAT either inside the price
+  // (inclusive) or added on top; the tip last, carrying neither.
+  function totals(tipCents) {
     var sub = 0; S.cart.forEach(function (l) { sub += cents(unitPrice(l)) * l.qty; });
-    var svc = Math.floor((sub * Math.round(S.outlet.service_pct * 100) + 5000) / 10000);
-    return { sub: sub / 100, svc: svc / 100, total: (sub + svc) / 100 };
+    var svc = divRound(sub * Math.round(S.outlet.service_pct * 100), 10000);
+    var base = sub + svc, vbp = Math.round((S.outlet.vat_pct || 0) * 100), incl = S.outlet.vat_inclusive !== false;
+    var vat = vbp ? (incl ? divRound(base * vbp, 10000 + vbp) : divRound(base * vbp, 10000)) : 0;
+    var before = base + (incl ? 0 : vat), tip = Math.max(0, tipCents || 0);
+    return { sub: sub / 100, svc: svc / 100, vat: vat / 100, incl: incl, before: before / 100, beforeC: before, tip: tip / 100, total: (before + tip) / 100, totalC: before + tip };
+  }
+  function tipCents(t) {
+    if (!S.tip) return 0;
+    if (S.tip.pct !== null && S.tip.pct !== undefined) return divRound(t.beforeC * Math.round(S.tip.pct * 100), 10000);
+    return Math.max(0, cents(S.tip.amount || 0));
+  }
+  function vatRow(t) {
+    if (!S.outlet.vat_pct) return '';
+    return t.incl
+      ? '<div class="totals__note"><span>incl. VAT ' + S.outlet.vat_pct + '%</span><span>' + fmt(t.vat) + '</span></div>'
+      : '<div><span>VAT (' + S.outlet.vat_pct + '%)</span><span>' + fmt(t.vat) + '</span></div>';
   }
   function renderLines() {
     var n = 0; S.cart.forEach(function (l) { n += l.qty; });
@@ -303,10 +320,12 @@
         '<span class="qty__at">× ' + fmt(unitPrice(l)) + '</span>' + (i.price === null ? '<button type="button" class="qty__edit" data-edit="' + idx + '">edit</button>' : '') +
         '</div></div><div class="line__t">' + fmt(unitPrice(l) * l.qty) + '</div></div>';
     }).join('') : '<div class="empty">Tap an item to add it.</div>';
-    var t = totals();
+    var t = totals(0);
     $('#totals').innerHTML = '<div><span>Subtotal</span><span>' + fmt(t.sub) + '</span></div>' +
       (S.outlet.service_pct ? '<div><span>Service charge (' + S.outlet.service_pct + '%)</span><span>' + fmt(t.svc) + '</span></div>' : '') +
-      '<div class="grand"><span>Total</span><span>' + fmt(t.total) + '</span></div>';
+      (t.incl ? '' : vatRow(t)) +
+      '<div class="grand"><span>Total</span><span>' + fmt(t.total) + '</span></div>' +
+      (t.incl ? vatRow(t) : '');
     $('#handleText').textContent = n ? 'Order · ' + n + ' item' + (n === 1 ? '' : 's') + ' · ' + fmt(t.total) : 'Order';
   }
   $('#lines').addEventListener('click', function (e) {
@@ -326,27 +345,39 @@
     return S.cust.room_charge_block || null;
   }
   function roomOk() { return S.outlet && !roomBlock(); }
+  function guestName() {
+    if (!S.cust) return '';
+    var g = S.cust.guests.filter(function (x) { return x.id === S.guest; })[0];
+    return g ? g.name : S.cust.name;
+  }
+  function billFmt(amount) {
+    var c = S.outlet.bill_currency, sym = { USD: '$', EUR: '€', GBP: '£' }[c];
+    var s = Number(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return sym ? sym + s : c + ' ' + s;
+  }
+  // A room charge from an outlet in another currency posts to the bill converted.
+  function billLine(totalC) {
+    var r = S.outlet.fx_rate;
+    if (!r || r === 1) return '';
+    var billC = Math.round(totalC / r);
+    return 'Charged to the room bill as <strong>' + billFmt(billC / 100) + '</strong> <span class="muted">(1 ' + esc(S.outlet.bill_currency) + ' = ' + (Math.round(r * 100) / 100) + ' ' + esc(S.outlet.currency) + ')</span>';
+  }
   function renderPay() {
     var block = roomBlock();
     $('#pay').innerHTML = PAY.map(function (p) {
       var k = p[0];
       return '<button type="button" data-pay="' + k + '" class="' + (S.pay === k ? 'is-on' : '') + '"' + (k === 'room_charge' && block ? ' disabled' : '') + '>' + ico(p[1]) + esc(B.payments[k]) + '</button>';
     }).join('');
-    var guestName = '';
-    if (S.cust) { var g = S.cust.guests.filter(function (x) { return x.id === S.guest; })[0]; guestName = g ? g.name : S.cust.name; }
-    $('#payNote').textContent = S.pay === 'room_charge' && S.cust ? 'Posts to ' + guestName + '’s bill (' + S.cust.room + ').' : (block && S.custMode === 'inhouse' && S.cust ? block : '');
+    $('#payNote').textContent = S.pay === 'room_charge' && S.cust ? 'Posts to ' + guestName() + '’s bill (' + S.cust.room + ').' : (block && S.custMode === 'inhouse' && S.cust ? block : '');
     var ready = S.cart.length && S.pay && (S.custMode === 'walkin' || S.cust);
     $('#cta').disabled = !ready;
-    $('#cta').innerHTML = 'Review sale ' + (S.cart.length ? fmt(totals().total) : '') + ' ' + ico('arrow');
+    $('#cta').innerHTML = 'Review sale ' + (S.cart.length ? fmt(totals(0).total) : '') + ' ' + ico('arrow');
   }
   $('#pay').addEventListener('click', function (e) { var b = e.target.closest('[data-pay]'); if (!b || b.disabled) return; S.pay = b.dataset.pay; renderPay(); });
 
   /* ── Review → Complete → Receipt ──────────────────────────────────── */
   function custLabel() {
-    if (S.custMode === 'inhouse' && S.cust) {
-      var g = S.cust.guests.filter(function (x) { return x.id === S.guest; })[0];
-      return (g ? g.name : S.cust.name) + ' · ' + S.cust.room;
-    }
+    if (S.custMode === 'inhouse' && S.cust) return guestName() + ' · ' + S.cust.room;
     return (S.walk.name.trim() || 'Walk-in') + ' (walk-in)';
   }
   function openModal(html) { $('#sheet').innerHTML = html; $('#modal').classList.remove('hidden'); }
@@ -356,50 +387,90 @@
     if (e.target.id === 'modal' || e.target.closest('[data-close]')) { if (!S.sending) closeModal(); }
   });
 
+  var TIP_PCTS = [5, 10, 15];
   $('#cta').onclick = function () {
     if ($('#cta').disabled) return;
-    var t = totals();
     S.saleKey = S.saleKey || uuid();            // same key for every retry of THIS sale
-    S.tender = null;
+    S.tender = null; S.tip = null;
     var refLabel = { card: 'Card slip / last 4 digits (optional)', mobile_money: 'M-Pesa code (optional)', other: 'What was it paid with?' }[S.pay];
-    var tenders = [];
-    if (S.pay === 'cash') {
-      [t.total, Math.ceil(t.total / 10) * 10, Math.ceil(t.total / 50) * 50, Math.ceil(t.total / 100) * 100, Math.ceil(t.total / 1000) * 1000]
-        .forEach(function (v) { if (tenders.indexOf(v) === -1 && tenders.length < 4) tenders.push(v); });
-    }
+    var needSig = S.pay === 'room_charge' && S.outlet.signature;
     openModal('<h2>Review sale</h2><div class="sub">' + esc(S.outlet.name) + ' · ' + esc(B.user.name) + '</div>' +
-      '<div class="rrow"><span>Customer</span><span>' + esc(custLabel()) + '</span></div>' +
+      '<div class="rrow"><span>Customer</span><span>' + esc(custLabel()) + (S.cust && S.cust.other_property ? ' <em class="gtag">guest of ' + esc(S.cust.venue) + '</em>' : '') + '</span></div>' +
       S.cart.map(function (l) { var i = item(l.id); return '<div class="rrow"><span>' + l.qty + (i.per_person ? ' pax' : '') + ' × ' + esc(i.name) + '</span><span>' + fmt(unitPrice(l) * l.qty) + '</span></div>'; }).join('') +
-      (t.svc ? '<div class="rrow"><span>Service charge (' + S.outlet.service_pct + '%)</span><span>' + fmt(t.svc) + '</span></div>' : '') +
-      '<div class="rrow b"><span>Total</span><span>' + fmt(t.total) + '</span></div>' +
-      '<div style="margin-top:10px"><span class="pill">' + ico(PAY.filter(function (p) { return p[0] === S.pay; })[0][1]) + ' ' + esc(B.payments[S.pay]) + '</span></div>' +
-      (S.pay === 'cash' ? '<span class="lbl">Cash received</span><div class="cash">' + tenders.map(function (v) { return '<button type="button" data-tend="' + v + '">' + fmt(v) + '</button>'; }).join('') + '</div>' +
+      '<div id="revTotals"></div>' +
+      (S.outlet.tips ? '<span class="lbl">Tip</span><div class="tips" id="tips"><button type="button" data-tip="0" class="is-on">No tip</button>' +
+        TIP_PCTS.map(function (p) { return '<button type="button" data-tip="' + p + '">' + p + '%</button>'; }).join('') +
+        '<button type="button" data-tip="custom">Other</button></div>' +
+        '<label class="field hidden" id="tipCustomWrap"><span>' + esc(S.outlet.currency) + '</span><input id="tipCustom" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Tip amount"></label>' : '') +
+      '<div style="margin-top:12px"><span class="pill">' + ico(PAY.filter(function (p) { return p[0] === S.pay; })[0][1]) + ' ' + esc(B.payments[S.pay]) + '</span></div>' +
+      (S.pay === 'cash' ? '<span class="lbl">Cash received</span><div class="cash" id="cashBtns"></div>' +
         '<label class="field"><span>' + esc(S.outlet.currency) + '</span><input id="tendIn" type="number" inputmode="decimal" min="0" step="0.01" placeholder="Other amount"></label><div id="change" class="change"></div>' : '') +
       (refLabel ? '<span class="lbl">' + esc(refLabel) + '</span><label class="field"><input id="payRef" maxlength="80" autocomplete="off"></label>' : '') +
-      (S.pay === 'room_charge' ? '<p class="sub" style="margin:12px 0 0">Added to the guest’s bill for booking <strong>' + esc(S.cust.ref || '#' + S.cust.hold_id) + '</strong> and settled at check-out.</p>' : '') +
+      (S.pay === 'room_charge' ? '<p class="sub" style="margin:12px 0 0">Added to ' + esc(guestName()) + '’s bill for booking <strong>' + esc(S.cust.ref || '#' + S.cust.hold_id) + '</strong> (' + esc(S.cust.venue || S.cust.room) + ') and settled at check-out.</p><p class="sub" id="fxLine" style="margin:6px 0 0"></p>' : '') +
+      (needSig ? '<span class="lbl">Guest signature</span><div class="ci-sign sig"><canvas class="ci-sign-pad sig__pad" data-target="#sigData" aria-label="Sign here"></canvas>' +
+        '<div class="sig__foot"><span>' + esc(guestName()) + ' — sign above</span><button type="button" class="ci-sign-clear linkbtn">Clear</button></div><input type="hidden" id="sigData"></div>' : '') +
       '<div class="err" id="saleErr" role="alert"></div>' +
       '<div class="btns"><button type="button" class="btn" data-close>Back</button><button type="button" class="btn btn--p" id="confirm">Confirm &amp; complete</button></div>');
-    var setTender = function (v) {
+    if (needSig && window.ciSignInitAll) window.ciSignInitAll();
+
+    function draw() {
+      var t0 = totals(0), t = totals(tipCents(t0));
+      $('#revTotals').innerHTML =
+        (t.svc ? '<div class="rrow"><span>Service charge (' + S.outlet.service_pct + '%)</span><span>' + fmt(t.svc) + '</span></div>' : '') +
+        (S.outlet.vat_pct && !t.incl ? '<div class="rrow"><span>VAT (' + S.outlet.vat_pct + '%)</span><span>' + fmt(t.vat) + '</span></div>' : '') +
+        (t.tip ? '<div class="rrow"><span>Tip</span><span>' + fmt(t.tip) + '</span></div>' : '') +
+        '<div class="rrow b"><span>Total</span><span>' + fmt(t.total) + '</span></div>' +
+        (S.outlet.vat_pct && t.incl ? '<div class="rrow rrow--note"><span>incl. VAT ' + S.outlet.vat_pct + '%</span><span>' + fmt(t.vat) + '</span></div>' : '');
+      var fx = $('#fxLine'); if (fx) fx.innerHTML = billLine(t.totalC);
+      var cb = $('#cashBtns');
+      if (cb) {
+        var opts = [];
+        [t.total, Math.ceil(t.total / 10) * 10, Math.ceil(t.total / 50) * 50, Math.ceil(t.total / 100) * 100, Math.ceil(t.total / 500) * 500, Math.ceil(t.total / 1000) * 1000]
+          .forEach(function (v) { if (opts.indexOf(v) === -1 && opts.length < 4) opts.push(v); });
+        cb.innerHTML = opts.map(function (v) { return '<button type="button" data-tend="' + v + '"' + (S.tender === v ? ' class="is-on"' : '') + '>' + fmt(v) + '</button>'; }).join('');
+      }
+      setTender(S.tender);
+      return t;
+    }
+    function setTender(v) {
       S.tender = v;
       var ch = $('#change'); if (!ch) return;
-      if (v === null || isNaN(v)) { ch.textContent = ''; return; }
-      var diff = cents(v) - cents(t.total);
+      if (v === null || v === undefined || isNaN(v)) { ch.textContent = ''; return; }
+      var t = totals(tipCents(totals(0)));
+      var diff = cents(v) - t.totalC;
       ch.className = 'change' + (diff < 0 ? ' change--bad' : '');
       ch.textContent = diff < 0 ? 'Short by ' + fmt(-diff / 100) : 'Change due: ' + fmt(diff / 100);
+    }
+    var sheet = $('#sheet');
+    sheet.onclick = function (e) {
+      var tb = e.target.closest('[data-tend]');
+      if (tb) { var ti = $('#tendIn'); if (ti) ti.value = ''; S.tender = +tb.dataset.tend; draw(); return; }
+      var tp = e.target.closest('[data-tip]');
+      if (tp) {
+        sheet.querySelectorAll('[data-tip]').forEach(function (x) { x.classList.toggle('is-on', x === tp); });
+        var custom = tp.dataset.tip === 'custom';
+        $('#tipCustomWrap').classList.toggle('hidden', !custom);
+        if (custom) { var tc = $('#tipCustom'); S.tip = { amount: parseFloat(tc.value) || 0 }; setTimeout(function () { tc.focus(); }, 30); }
+        else S.tip = +tp.dataset.tip ? { pct: +tp.dataset.tip } : null;
+        if (S.tender !== null) S.tender = null;   // the total moved — pick the cash again
+        draw();
+      }
     };
-    $('#sheet').querySelectorAll('[data-tend]').forEach(function (b) {
-      b.onclick = function () { $('#sheet').querySelectorAll('[data-tend]').forEach(function (x) { x.classList.toggle('is-on', x === b); }); var ti = $('#tendIn'); if (ti) ti.value = ''; setTender(+b.dataset.tend); };
-    });
-    var ti = $('#tendIn'); if (ti) ti.addEventListener('input', function () { $('#sheet').querySelectorAll('[data-tend]').forEach(function (x) { x.classList.remove('is-on'); }); setTender(ti.value === '' ? null : parseFloat(ti.value)); });
+    var tc = $('#tipCustom'); if (tc) tc.addEventListener('input', function () { S.tip = { amount: parseFloat(tc.value) || 0 }; draw(); });
+    var ti = $('#tendIn'); if (ti) ti.addEventListener('input', function () { sheet.querySelectorAll('[data-tend]').forEach(function (x) { x.classList.remove('is-on'); }); setTender(ti.value === '' ? null : parseFloat(ti.value)); });
+    draw();
     $('#confirm').onclick = complete;
   };
 
   function complete() {
     if (S.sending) return;
-    var t = totals();
-    if (S.pay === 'cash' && S.tender !== null && cents(S.tender) < cents(t.total)) { $('#saleErr').textContent = 'Cash received is less than the total.'; return; }
+    var t = totals(tipCents(totals(0)));
+    if (S.pay === 'cash' && S.tender !== null && S.tender !== undefined && cents(S.tender) < t.totalC) { $('#saleErr').textContent = 'Cash received is less than the total.'; return; }
     var pr = $('#payRef'); S.payRef = pr ? pr.value.trim() : '';
     if (S.pay === 'other' && !S.payRef) { $('#saleErr').textContent = 'Say how it was paid.'; return; }
+    var sig = $('#sigData') ? $('#sigData').value : '';
+    if (S.pay === 'room_charge' && S.outlet.signature && !sig) { $('#saleErr').textContent = 'Ask the guest to sign in the box first.'; return; }
+    if (S.tip && S.tip.amount !== undefined && cents(S.tip.amount) > t.beforeC) { $('#saleErr').textContent = 'That tip is more than the bill — check the amount.'; return; }
     S.sending = true;
     var btn = $('#confirm'); btn.disabled = true; btn.textContent = 'Saving…';
     var customer = S.custMode === 'inhouse' && S.cust
@@ -408,7 +479,9 @@
     api('/api/pos/sale.php', {
       outlet_id: S.outlet.id, client_uuid: S.saleKey,
       lines: S.cart.map(function (l) { return { item_id: l.id, qty: l.qty, open_price: item(l.id).price === null ? l.open : null }; }),
-      payment_method: S.pay, payment_ref: S.payRef, cash_tendered: S.pay === 'cash' ? S.tender : null, customer: customer
+      payment_method: S.pay, payment_ref: S.payRef, cash_tendered: S.pay === 'cash' ? S.tender : null, customer: customer,
+      tip_pct: S.tip && S.tip.pct ? S.tip.pct : null, tip_amount: S.tip && S.tip.amount !== undefined ? S.tip.amount : null,
+      signature: sig || null
     }).then(function (d) {
       S.sending = false;
       if (!d.ok) {
@@ -421,7 +494,8 @@
       }
       S.saleKey = null;
       var tendered = S.tender;
-      S.cart = []; S.pay = null; S.cust = null; S.guest = null; S.walk = { name: '', phone: '', id: null }; S.tender = null;
+      S.cart = []; S.pay = null; S.cust = null; S.guest = null; S.walk = { name: '', phone: '', id: null }; S.tender = null; S.tip = null;
+      $('#panel').classList.remove('is-open');
       showReceipt(d.sale, tendered);
       loadOutlet(S.outlet.id, true);
     }).catch(function (err) {
@@ -433,12 +507,17 @@
   }
 
   function receiptHtml(s, tendered) {
-    var money = function (n) { var sym = { USD: '$', EUR: '€', GBP: '£' }[s.currency]; var v = Number(n).toLocaleString('en-US', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }); return sym ? sym + v : s.currency + ' ' + v; };
-    return '<div class="rrow"><span>Customer</span><span>' + esc(s.customer) + '</span></div>' +
+    var money = function (n, cur) { cur = cur || s.currency; var sym = { USD: '$', EUR: '€', GBP: '£' }[cur]; var v = Number(n).toLocaleString('en-US', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }); return sym ? sym + v : cur + ' ' + v; };
+    return '<div class="rrow"><span>Customer</span><span>' + esc(s.customer) + (s.guest_venue ? '<br><small>' + esc(s.guest_venue) + '</small>' : '') + '</span></div>' +
       s.lines.map(function (l) { return '<div class="rrow"><span>' + l.qty + ' × ' + esc(l.name) + (l.consignment ? '<br><small>Consignment</small>' : '') + '</span><span>' + money(l.line_total) + '</span></div>'; }).join('') +
-      (s.service_charge ? '<div class="rrow"><span>Service charge</span><span>' + money(s.service_charge) + '</span></div>' : '') +
+      (s.service_charge ? '<div class="rrow"><span>Service charge' + (s.service_pct ? ' (' + s.service_pct + '%)' : '') + '</span><span>' + money(s.service_charge) + '</span></div>' : '') +
+      (s.vat && !s.vat_inclusive ? '<div class="rrow"><span>VAT (' + s.vat_pct + '%)</span><span>' + money(s.vat) + '</span></div>' : '') +
+      (s.tip ? '<div class="rrow"><span>Tip</span><span>' + money(s.tip) + '</span></div>' : '') +
       '<div class="rrow b"><span>Total · ' + esc(s.payment_label) + '</span><span>' + money(s.total) + '</span></div>' +
+      (s.vat && s.vat_inclusive ? '<div class="rrow rrow--note"><span>incl. VAT ' + s.vat_pct + '%</span><span>' + money(s.vat) + '</span></div>' : '') +
+      (s.bill_amount !== null && s.bill_currency && s.bill_currency !== s.currency ? '<div class="sub" style="margin:6px 0 0">On the room bill: ' + money(s.bill_amount, s.bill_currency) + ' (1 ' + esc(s.bill_currency) + ' = ' + (Math.round(s.fx_rate * 100) / 100) + ' ' + esc(s.currency) + ')</div>' : '') +
       (s.payment_ref ? '<div class="sub" style="margin:6px 0 0">Ref: ' + esc(s.payment_ref) + '</div>' : '') +
+      (s.signed ? '<div class="sub" style="margin:6px 0 0">' + ico('check') + ' Signed by the guest</div>' : '') +
       (tendered ? '<div class="sub" style="margin:6px 0 0">Cash ' + money(tendered) + ' · change ' + money(Math.max(0, (Math.round(tendered * 100) - Math.round(s.total * 100)) / 100)) + '</div>' : '');
   }
   function showReceipt(s, tendered) {

@@ -49,8 +49,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported && $outlet) {
             $cost = trim((string)($_POST['unit_cost'] ?? ''));
             if (!ctype_digit($qty)) throw new PosRefusal('Enter how many arrived as a whole number.');
             if ($cost !== '' && !is_numeric($cost)) throw new PosRefusal('Unit cost must be a number.');
-            $n = pos_stock_receive($iid, (int)$qty, $cost === '' ? null : round((float)$cost, 2), $note, (int)$me['id']);
-            audit_log('pos.stock_receive', 'pos_item', $iid, "+{$qty} → {$n}");
+            // Whose goods these are, and on what terms — decided per delivery.
+            $terms = null;
+            if (pos_v2_supported() && isset($_POST['terms_mode'])) {
+                $terms = pos_consign_terms(['mode' => (string)$_POST['terms_mode'], 'consignor_id' => $_POST['consignor_id'] ?? 0,
+                    'value' => (string)$_POST['terms_mode'] === 'fixed' ? ($_POST['terms_fixed'] ?? '') : ($_POST['terms_pct'] ?? '')],
+                    array_map(fn($c) => (int)$c['id'], pos_fetch_consignors(true)));
+                if (is_string($terms)) throw new PosRefusal($terms);
+            }
+            $n = pos_stock_receive($iid, (int)$qty, $cost === '' ? null : round((float)$cost, 2), $note, (int)$me['id'], $terms);
+            audit_log('pos.stock_receive', 'pos_item', $iid, "+{$qty} → {$n}" . ($terms && $terms['consignor_id'] ? ' (consignment)' : ''));
             $_SESSION['poss_flash'] = ['type' => 'success', 'msg' => "Received {$qty} × {$item['name']} — {$n} on hand."];
         } elseif ($act === 'count') {
             $counted = (string)($_POST['counted'] ?? '');
@@ -75,6 +83,19 @@ $pickId  = (int)($_GET['item'] ?? 0);
 $picked  = null;
 foreach ($items as $i) if ((int)$i['id'] === $pickId) { $picked = $i; break; }
 $moves   = $picked ? pos_stock_moves((int)$picked['id'], 100) : [];
+$consignors = $supported ? pos_fetch_consignors(true) : [];
+$v2 = $supported && pos_v2_supported();
+// Current terms per item, so the form pre-selects them when an item is picked.
+$termsOf = [];
+foreach ($items as $i) {
+    $termsOf[(int)$i['id']] = [
+        'mode' => empty($i['consignor_id']) ? 'own' : ($i['consignor_cost'] !== null ? 'fixed' : 'commission'),
+        'consignor_id' => (int)($i['consignor_id'] ?? 0),
+        'pct' => $i['consign_pct'] ?? ($i['consignor_commission_pct'] ?? null),
+        'fixed' => $i['consignor_cost'],
+    ];
+}
+$defaultPct = []; foreach ($consignors as $c) $defaultPct[(int)$c['id']] = (float)$c['commission_pct'];
 $cur     = $outlet ? strtoupper((string)$outlet['currency']) : 'USD';
 $REASONS = ['receive' => ['Received', 'badge--green'], 'sale' => ['Sale', 'badge--blue'], 'void' => ['Void', 'badge--orange'],
             'adjust' => ['Count', 'badge--purple'], 'return' => ['Return', 'badge--teal']];
@@ -147,6 +168,31 @@ include __DIR__ . '/_layout.php';
         <div class="poss-row" data-when="count" hidden>
           <div class="field"><label>Counted on the shelf</label><input name="counted" type="number" class="inp inp--num no-spin" min="0" step="1" placeholder="0"></div>
         </div>
+        <?php if ($v2): ?>
+        <div data-when="receive">
+          <div class="field"><label>Whose stock is this?</label>
+            <div class="poss-chips" id="possTerms">
+              <label class="optchip"><input type="radio" name="terms_mode" value="own" checked>Ours</label>
+              <?php if ($consignors): ?>
+              <label class="optchip"><input type="radio" name="terms_mode" value="commission">Consignment — we keep a %</label>
+              <label class="optchip"><input type="radio" name="terms_mode" value="fixed">Consignment — fixed per item</label>
+              <?php endif; ?>
+            </div>
+            <?php if (!$consignors): ?><div class="text-muted" style="font-size:12px;margin-top:6px">Add suppliers under Point of Sale → Suppliers to receive consignment stock.</div><?php endif; ?>
+          </div>
+          <div class="poss-cons" id="possCons" hidden>
+            <div class="field"><label>Supplier</label>
+              <select name="consignor_id" class="eselect eselect--block" id="possConsignor">
+                <?php foreach ($consignors as $c): ?><option value="<?= (int)$c['id'] ?>"><?= e($c['name']) ?></option><?php endforeach; ?>
+              </select></div>
+            <div class="field" data-terms="commission"><label>We keep (%)</label>
+              <input name="terms_pct" id="possPct" type="number" class="inp inp--num no-spin" min="0" max="100" step="0.01" style="width:100%"></div>
+            <div class="field" data-terms="fixed" hidden><label>We owe per item</label>
+              <span class="inp-money"><span class="inp-money__cur"><?= e($cur) ?></span><input name="terms_fixed" id="possFixed" type="number" class="inp inp--num no-spin" min="0" step="0.01"></span></div>
+            <div class="text-muted" style="font-size:12px;margin:-6px 0 12px">Applies to this item from now on. Earlier sales keep their own terms.</div>
+          </div>
+        </div>
+        <?php endif; ?>
         <div class="field"><label>Note <span class="text-muted" data-when="receive">(optional — supplier, invoice #)</span><span class="text-muted" data-when="count" hidden>(required — e.g. stock take, damaged)</span></label>
           <input name="note" class="inp" maxlength="500" style="width:100%"></div>
         <button type="submit" class="btn-primary btn-sm"><?= admin_icon('check', 15) ?> Record</button>
@@ -169,7 +215,7 @@ include __DIR__ . '/_layout.php';
         <td class="text-muted"><?= e(date('j M Y, H:i', strtotime((string)$m['created_at']))) ?></td>
         <td><span class="badge <?= e($cls) ?>"><?= e($lbl) ?></span></td>
         <td class="poss-num"><strong class="<?= $dq < 0 ? 'poss-neg' : 'poss-pos' ?>"><?= $dq > 0 ? '+' : '' ?><?= $dq ?></strong></td>
-        <td><?= e((string)($m['note'] ?: ($m['sale_reference'] ?? ''))) ?><?= $m['unit_cost'] !== null ? ' <span class="text-muted">@ ' . e(pos_money((float)$m['unit_cost'], $cur)) . '</span>' : '' ?></td>
+        <td><?= e((string)($m['note'] ?: ($m['sale_reference'] ?? ''))) ?><?php if (!empty($m['consignor_id'])): ?> <span class="badge badge--purple"><?= e($m['consignor_name'] ?? 'Consignment') ?> · <?= $m['consignor_cost'] !== null ? e(pos_money((float)$m['consignor_cost'], $cur)) . '/item' : e(rtrim(rtrim((string)$m['consign_pct'], '0'), '.')) . '% ours' ?></span><?php endif; ?><?= $m['unit_cost'] !== null ? ' <span class="text-muted">@ ' . e(pos_money((float)$m['unit_cost'], $cur)) . '</span>' : '' ?></td>
         <td class="text-muted"><?= e($m['user_name'] ?? '—') ?></td>
       </tr>
     <?php endforeach; ?>
@@ -183,7 +229,9 @@ include __DIR__ . '/_layout.php';
 <style>
 .poss-pick{display:flex;align-items:center;gap:10px;margin:-6px 0 18px;flex-wrap:wrap;font-size:13px}
 .poss-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(280px,1fr);gap:18px;align-items:start}
-@media (max-width:900px){.poss-grid{grid-template-columns:1fr}}
+@media (max-width:900px){.poss-grid{grid-template-columns:minmax(0,1fr)}}
+.card__head{flex-wrap:wrap;gap:8px 12px}
+@media (max-width:560px){.poss-row{grid-template-columns:1fr}}
 .poss-grid .table-wrap .data-table{min-width:0}
 .poss-num{text-align:right;white-space:nowrap}
 .poss-table tr.is-picked td{background:rgba(30,92,107,.06)}
@@ -192,7 +240,8 @@ include __DIR__ . '/_layout.php';
 .poss-row{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
 .poss-row .inp{width:100%}
 .field .inp-money{display:flex;width:100%}.field .inp-money .inp{flex:1;min-width:0;width:auto}
-.poss-row[hidden],[data-when][hidden]{display:none}
+.poss-row[hidden],[data-when][hidden],.poss-cons[hidden],[data-terms][hidden]{display:none}
+.poss-cons .inp-money{display:flex;width:100%}.poss-cons .inp-money .inp{flex:1;min-width:0}
 .poss-neg{color:var(--red)}
 .poss-pos{color:var(--green)}
 </style>
@@ -203,6 +252,25 @@ include __DIR__ . '/_layout.php';
     form.querySelectorAll('[data-when]').forEach(function(el){ el.hidden = el.getAttribute('data-when') !== m; }); }
   form.querySelectorAll('input[name=action]').forEach(function(r){ r.addEventListener('change', sync); });
   sync();
+  // Consignment terms: pre-fill from the item's current terms, show only what applies.
+  var TERMS = <?= json_encode($termsOf) ?>, DEF = <?= json_encode($defaultPct) ?>;
+  var box = document.getElementById('possCons'); if (!box) return;
+  var sel = form.querySelector('select[name=item_id]'), cons = document.getElementById('possConsignor');
+  var pct = document.getElementById('possPct'), fixed = document.getElementById('possFixed');
+  function mode(){ var m = form.querySelector('input[name=terms_mode]:checked'); return m ? m.value : 'own'; }
+  function show(){ var m = mode(); box.hidden = m === 'own';
+    box.querySelectorAll('[data-terms]').forEach(function(el){ el.hidden = el.getAttribute('data-terms') !== m; }); }
+  function load(){ var t = TERMS[sel.value]; if (!t) return;
+    var r = form.querySelector('input[name=terms_mode][value="' + t.mode + '"]'); if (r) r.checked = true;
+    if (t.consignor_id && cons) { cons.value = t.consignor_id; cons.dispatchEvent(new Event('change')); }
+    pct.value = t.pct !== null && t.pct !== undefined ? t.pct : (DEF[cons && cons.value] !== undefined ? DEF[cons.value] : '');
+    fixed.value = t.fixed !== null && t.fixed !== undefined ? t.fixed : '';
+    show(); }
+  form.querySelectorAll('input[name=terms_mode]').forEach(function(r){ r.addEventListener('change', function(){
+    if (mode() === 'commission' && pct.value === '' && cons) pct.value = DEF[cons.value] !== undefined ? DEF[cons.value] : '';
+    show(); }); });
+  if (cons) cons.addEventListener('change', function(){ if (mode() === 'commission' && pct.value === '') pct.value = DEF[cons.value] !== undefined ? DEF[cons.value] : ''; });
+  sel.addEventListener('change', load); load();
 })();
 </script>
 <?php endif; ?>

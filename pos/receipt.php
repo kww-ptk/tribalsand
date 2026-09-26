@@ -24,6 +24,10 @@ $outlet = pos_fetch_outlet((int)$sale['outlet_id']);
 $cur    = (string)$sale['currency'];
 $m      = fn($v) => pos_money((float)$v, $cur);
 $hold   = $sale['hold_id'] ? pos_fetch_hold((int)$sale['hold_id']) : null;
+$sig    = $sale['signed'] ? pos_sale_signature((int)$sale['id']) : null;
+$vatAmt = (float)($sale['vat_amount'] ?? 0);
+$vatInc = pos_bool($sale['vat_inclusive'] ?? true);
+$vatPct = rtrim(rtrim((string)($sale['vat_pct'] ?? '0'), '0'), '.');
 ?><!DOCTYPE html>
 <html lang="en">
 <head>
@@ -43,6 +47,8 @@ $hold   = $sale['hold_id'] ? pos_fetch_hold((int)$sale['hold_id']) : null;
   .row { display: flex; justify-content: space-between; gap: 10px; }
   .row span:last-child { white-space: nowrap; text-align: right; }
   .tot { font-weight: 700; font-size: 15px; margin-top: 4px; }
+  .sig { margin-top: 8px; border-top: 1px dashed #999; padding-top: 6px; }
+  .sig img { display: block; width: 100%; max-height: 90px; object-fit: contain; }
   .void { border: 2px solid #c0392b; color: #c0392b; text-align: center; font-weight: 700; padding: 4px; margin: 8px 0; letter-spacing: .15em; }
   .actions { width: 80mm; max-width: 100%; margin: 0 auto 20px; display: flex; gap: 8px; }
   .actions button { flex: 1; height: 42px; border: 0; border-radius: 8px; background: #1E5C6B; color: #fff; font: 600 14px system-ui, sans-serif; cursor: pointer; }
@@ -59,7 +65,7 @@ $hold   = $sale['hold_id'] ? pos_fetch_hold((int)$sale['hold_id']) : null;
   <div class="row"><span>Date</span><span><?= e(date('j M Y, H:i', strtotime((string)$sale['created_at']))) ?></span></div>
   <div class="row"><span>Served by</span><span><?= e($sale['user_name'] ?? '—') ?></span></div>
   <div class="row"><span>Customer</span><span><?= e($sale['customer_name']) ?></span></div>
-  <?php if ($hold): ?><div class="row"><span>Stay</span><span><?= e(trim(($hold['venue_name'] ? $hold['venue_name'] . ' · ' : '') . ($hold['unit_name'] ?: $hold['room_name']))) ?></span></div><?php endif; ?>
+  <?php if ($hold): ?><div class="row"><span>Staying at</span><span><?= e(trim(($hold['venue_name'] ? $hold['venue_name'] . ' · ' : '') . ($hold['unit_name'] ?: $hold['room_name']))) ?></span></div><?php endif; ?>
   <?php if ($sale['status'] === 'voided'): ?><div class="void">VOIDED</div><?php if ($sale['void_reason']): ?><div class="muted c"><?= e($sale['void_reason']) ?></div><?php endif; ?><?php endif; ?>
   <hr>
   <?php foreach ($sale['lines'] as $l): ?>
@@ -68,8 +74,11 @@ $hold   = $sale['hold_id'] ? pos_fetch_hold((int)$sale['hold_id']) : null;
   <?php endforeach; ?>
   <hr>
   <div class="row"><span>Subtotal</span><span><?= e($m($sale['subtotal'])) ?></span></div>
-  <?php if ((float)$sale['service_charge'] > 0): ?><div class="row"><span>Service charge</span><span><?= e($m($sale['service_charge'])) ?></span></div><?php endif; ?>
+  <?php if ((float)$sale['service_charge'] > 0): ?><div class="row"><span>Service charge<?= (float)($sale['service_pct'] ?? 0) > 0 ? ' (' . e(rtrim(rtrim((string)$sale['service_pct'], '0'), '.')) . '%)' : '' ?></span><span><?= e($m($sale['service_charge'])) ?></span></div><?php endif; ?>
+  <?php if ($vatAmt > 0 && !$vatInc): ?><div class="row"><span>VAT (<?= e($vatPct) ?>%)</span><span><?= e($m($vatAmt)) ?></span></div><?php endif; ?>
+  <?php if ((float)($sale['tip_amount'] ?? 0) > 0): ?><div class="row"><span>Tip</span><span><?= e($m($sale['tip_amount'])) ?></span></div><?php endif; ?>
   <div class="row tot"><span>TOTAL</span><span><?= e($m($sale['total'])) ?></span></div>
+  <?php if ($vatAmt > 0 && $vatInc): ?><div class="row muted"><span>Includes VAT <?= e($vatPct) ?>%</span><span><?= e($m($vatAmt)) ?></span></div><?php endif; ?>
   <hr>
   <div class="row"><span>Paid by</span><span><?= e(POS_PAYMENT_METHODS[$sale['payment_method']] ?? $sale['payment_method']) ?></span></div>
   <?php if (!empty($sale['payment_ref'])): ?><div class="row"><span>Ref</span><span><?= e($sale['payment_ref']) ?></span></div><?php endif; ?>
@@ -77,7 +86,14 @@ $hold   = $sale['hold_id'] ? pos_fetch_hold((int)$sale['hold_id']) : null;
   <div class="row"><span>Cash</span><span><?= e($m($sale['cash_tendered'])) ?></span></div>
   <div class="row"><span>Change</span><span><?= e($m(max(0, pos_from_cents(pos_cents($sale['cash_tendered']) - pos_cents($sale['total']))))) ?></span></div>
   <?php endif; ?>
-  <?php if ($sale['payment_method'] === 'room_charge'): ?><div class="muted" style="margin-top:6px">Charged to the room bill — settled at check-out.</div><?php endif; ?>
+  <?php if ($sale['payment_method'] === 'room_charge'): ?>
+  <?php if (!empty($sale['bill_currency']) && $sale['bill_currency'] !== $cur && $sale['bill_amount'] !== null): ?>
+  <div class="row"><span>On room bill</span><span><?= e(pos_money((float)$sale['bill_amount'], (string)$sale['bill_currency'])) ?></span></div>
+  <div class="muted">Rate: 1 <?= e($sale['bill_currency']) ?> = <?= e(rtrim(rtrim(number_format((float)$sale['fx_rate'], 4, '.', ''), '0'), '.')) ?> <?= e($cur) ?></div>
+  <?php endif; ?>
+  <div class="muted" style="margin-top:6px">Charged to the room bill — settled at check-out.</div>
+  <?php if ($sig): ?><div class="sig"><img src="<?= e($sig['signature']) ?>" alt="Guest signature"><div class="muted c"><?= e($sig['signer_name'] ?? '') ?> · signed <?= e(date('j M Y, H:i', strtotime((string)$sig['signed_at']))) ?></div></div><?php endif; ?>
+  <?php endif; ?>
   <hr>
   <div class="c muted">Asante sana — thank you!</div>
 </div>

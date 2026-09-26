@@ -46,3 +46,20 @@ function pos_is_seller(array $admin): bool {
                                  WHERE s.admin_user_id = :u LIMIT 1', [':u' => (int)($admin['id'] ?? 0)])->fetchColumn();
     } catch (Throwable $e) { return false; }
 }
+
+/**
+ * True once add_pos_v2.sql has run (VAT, tips, room-charge properties, FX,
+ * signatures, per-item consignment terms). Catalog lookup — transaction-safe.
+ * Everything v2 degrades to the v1 behaviour until then.
+ */
+function pos_v2_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try {
+        $ok = (bool) db_query(
+            "SELECT 1 FROM information_schema.columns
+              WHERE table_schema = current_schema() AND table_name = 'pos_sales' AND column_name = 'tip_amount'"
+        )->fetchColumn();
+    } catch (Throwable $e) { $ok = false; }
+    return $ok;
+}

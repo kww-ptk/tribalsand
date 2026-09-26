@@ -225,7 +225,9 @@ document.querySelectorAll('#poscPeriod input[type=hidden]').forEach(function (i)
 .posc-pay{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0}
 .posc-due{color:var(--red)}
 .posc-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,1fr);gap:18px;align-items:start}
-@media (max-width:900px){.posc-grid{grid-template-columns:1fr}}
+@media (max-width:900px){.posc-grid{grid-template-columns:minmax(0,1fr)}}
+.card__head{flex-wrap:wrap;gap:8px 12px}
+@media (max-width:560px){.posc-two{grid-template-columns:1fr}.posc-pay .inp{width:100%!important}.posc-period{flex-wrap:wrap}}
 .posc-grid .table-wrap .data-table{min-width:0}
 .posc-num{text-align:right;white-space:nowrap}
 .posc-act{display:flex;gap:4px;justify-content:flex-end}

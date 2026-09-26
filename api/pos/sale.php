@@ -3,7 +3,7 @@ declare(strict_types=1);
 /**
  * POS till — complete a sale (POST JSON, csrf_token in the body) → {ok, sale, duplicate}.
  * Body: {outlet_id, client_uuid, lines:[{item_id,qty,open_price?}], payment_method,
- *        payment_ref?, cash_tendered?, customer:{type:'inhouse',hold_id,guest_id?}|{type:'walkin',name?,phone?,pos_customer_id?}}
+ *        payment_ref?, cash_tendered?, tip_pct?|tip_amount?, signature? (room charge), customer:{type:'inhouse',hold_id,guest_id?}|{type:'walkin',name?,phone?,pos_customer_id?}}
  * The outlet must be one this till may sell at (user ∩ terminal); everything else
  * — prices, stock, room-charge eligibility — is re-decided by pos_complete_sale().
  */
@@ -25,6 +25,9 @@ $r = pos_complete_sale([
     'payment_ref'    => (string)($body['payment_ref'] ?? ''),
     'cash_tendered'  => $body['cash_tendered'] ?? null,
     'customer'       => is_array($body['customer'] ?? null) ? $body['customer'] : [],
+    'tip_pct'        => $body['tip_pct'] ?? null,
+    'tip_amount'     => $body['tip_amount'] ?? null,
+    'signature'      => is_string($body['signature'] ?? null) ? $body['signature'] : null,   // PNG data URL, validated in pos_complete_sale()
 ], (int)$ctx['user']['id'], $ctx['terminal'] ? (int)$ctx['terminal']['id'] : null);
 
 if (!$r['ok']) { http_response_code(422); exit(json_encode(['ok' => false, 'error' => $r['error']])); }

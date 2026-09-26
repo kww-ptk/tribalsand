@@ -31,7 +31,7 @@ if (!pos_supported()) {
     exit(1);
 }
 
-$currency = strtoupper(setting('site_currency', 'USD'));
+$currency = POS_DEFAULT_CURRENCY;   // outlets sell in KES; room charges convert to the bill currency
 
 $OUTLETS = [
     ['slug' => 'experiences', 'name' => 'Experiences', 'kind' => 'experiences', 'cats' => ['Water sports', 'Land & culture', 'Sunset', 'Private']],

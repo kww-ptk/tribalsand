@@ -131,6 +131,7 @@ include __DIR__ . '/_layout.php';
 <?php endif; ?>
 
 <style>
+.card__head{flex-wrap:wrap;gap:8px 12px}
 .posp-form{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0}
 .posp-pin{width:110px;letter-spacing:.3em;text-align:center}
 .posp-table td{vertical-align:middle}
