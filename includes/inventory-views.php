@@ -375,7 +375,7 @@ function inv_categories(): array {
 function inv_location_stock(int $locationId): array {
     if (!inv_supported()) return [];
     $rows = db_query("SELECT i.id AS item_id, i.name, i.category, i.image_key, i.icon, i.tracking, i.replacement_value, i.currency,
-                             i.unit_label, b.qty, b.par_qty
+                             i.unit_label, i.is_active, b.qty, b.par_qty
                         FROM inv_balances b JOIN inv_items i ON i.id = b.item_id
                        WHERE b.location_id = :l AND (b.qty <> 0 OR b.par_qty IS NOT NULL)
                        ORDER BY i.category NULLS LAST, i.name", [':l' => $locationId])->fetchAll();

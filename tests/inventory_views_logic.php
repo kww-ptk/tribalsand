@@ -222,6 +222,12 @@ try {
     check('list: "assigned" shows what people hold', $row !== null && (int)$row['qty'] === 1);
     check('list: the person filter', count(inv_central_list(['q' => 'ZZ View', 'person' => $jane], null, 50, 0)['rows']) === 2);
 
+    // ── Location stock rows carry what the page's short-of-par total needs ──
+    $kStock = inv_location_stock($kitchen);
+    check('location view: rows carry is_active and tracking', $kStock && array_key_exists('is_active', $kStock[0]) && array_key_exists('tracking', $kStock[0]));
+    check('store: Main stock is read back, not re-inserted', inv_store_location_id() === $store
+        && $count("SELECT COUNT(*) FROM inv_locations WHERE kind = 'store'") === 1);
+
     // ── DB checks (tasks 2–3 insert their blocks above this line) ──
 } catch (Throwable $e) {
     echo "FAIL  DB block threw: " . $e->getMessage() . "\n" . $e->getTraceAsString() . "\n";

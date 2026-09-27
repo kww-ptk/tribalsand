@@ -24,7 +24,7 @@ $id        = (int)($_GET['id'] ?? $_POST['location_id'] ?? 0);
 $loc       = $supported && $id ? inv_fetch_location($id) : false;
 $self      = '/admin/inventory-location.php?id=' . $id;
 
-if (!$loc || !inv_location_visible($loc, $vids)) {
+if (!$loc || $loc['kind'] === 'person' || !inv_location_visible($loc, $vids)) {   // a team member's items live on their profile
     http_response_code(404);
     $pageTitle = 'Inventory location'; $activeMenu = 'inventory_location';
     include __DIR__ . '/_layout.php';
@@ -32,7 +32,9 @@ if (!$loc || !inv_location_visible($loc, $vids)) {
     include __DIR__ . '/_layout_end.php';
     exit;
 }
-$editable = inv_location_editable($loc, $vids);
+$editable  = inv_location_editable($loc, $vids);
+$open      = inv_bool($loc['is_active']);
+$storeName = (string)(inv_fetch_location(inv_store_location_id())['name'] ?? 'Main stock');
 $flash = $_SESSION['inv_flash'] ?? null; unset($_SESSION['inv_flash']);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -46,6 +48,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($raw !== '' && !ctype_digit($raw)) throw new InvRefusal('Par level must be a whole number (blank to clear it).');
             $it = inv_fetch_item($itemId);
             if (!$it) throw new InvRefusal('Pick an item.');
+            if ($it['tracking'] !== 'qty') throw new InvRefusal('Serial-tracked items are assigned one unit at a time.');
+            if ($raw !== '' && !inv_bool($it['is_active'])) throw new InvRefusal("{$it['name']} is switched off — it takes no par level.");
+            // Adding an item to this list means giving it a par; a blank one would add nothing.
+            $bal    = db_query('SELECT qty, par_qty FROM inv_balances WHERE item_id = :i AND location_id = :l', [':i' => $itemId, ':l' => (int)$loc['id']])->fetch();
+            $listed = $bal && ((int)$bal['qty'] !== 0 || $bal['par_qty'] !== null);
+            if (!$listed && $raw === '') throw new InvRefusal('Give it a par level to add it here.');
             inv_set_par($itemId, (int)$loc['id'], $raw === '' ? null : (int)$raw);
             audit_log('inv.par', 'inv_location', (int)$loc['id'], "{$it['name']}: " . ($raw === '' ? 'cleared' : $raw));
             $_SESSION['inv_flash'] = ['type' => 'success', 'msg' => $raw === '' ? "Par level for {$it['name']} cleared." : "{$loc['name']} should always have {$raw} × {$it['name']}."];
@@ -53,12 +61,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $store = inv_fetch_location(inv_store_location_id());
             if (!inv_move_in_scope($store, $loc, $vids)) throw new InvRefusal('That restock is outside your properties.');
             $r = inv_restock_to_par((int)$loc['id'], (int)$me['id']);
-            $moved = array_sum($r['moved']);
-            $short = count($r['short']);
-            audit_log('inv.restock', 'inv_location', (int)$loc['id'], "moved {$moved}, short {$short}");
-            $_SESSION['inv_flash'] = ['type' => $short ? 'info' : 'success', 'msg' =>
-                ($moved ? "Moved {$moved} unit" . ($moved === 1 ? '' : 's') . " from Main stock." : 'Nothing could be moved.')
-                . ($short ? " {$short} item" . ($short === 1 ? ' is' : 's are') . ' still short — Main stock has run out.' : '')];
+            $moved   = array_sum($r['moved']);
+            $short   = count($r['short']);
+            $skipped = count($r['skipped']);
+            audit_log('inv.restock', 'inv_location', (int)$loc['id'], "moved {$moved}, short {$short}, skipped {$skipped}");
+            $_SESSION['inv_flash'] = ['type' => ($short || $skipped) ? 'info' : 'success', 'msg' =>
+                ($moved ? "Moved {$moved} unit" . ($moved === 1 ? '' : 's') . " from {$storeName}." : 'Nothing could be moved.')
+                . ($short ? " {$short} item" . ($short === 1 ? ' is' : 's are') . " still short — {$storeName} has run out." : '')
+                . ($skipped ? " {$skipped} serial-tracked item" . ($skipped === 1 ? ' was' : 's were') . ' skipped — assign those one unit at a time.' : '')];
         }
     } catch (InvRefusal $e) {
         $_SESSION['inv_flash'] = ['type' => 'error', 'msg' => $e->getMessage()];
@@ -69,13 +79,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $parentName = $loc['parent_id'] ? (string)(inv_fetch_location((int)$loc['parent_id'])['name'] ?? '') : '';
 $stock      = inv_location_stock((int)$loc['id']);
 $areas      = $loc['kind'] === 'property' ? inv_child_areas((int)$loc['id']) : [];
-$needs      = array_sum(array_map(fn($r) => (int)$r['need'], $stock));
+// Only switched-on counted items are restocked (inv_restock_to_par()), so only they count as short.
+$needs      = array_sum(array_map(fn($r) => ($r['tracking'] === 'qty' && inv_bool($r['is_active'])) ? (int)$r['need'] : 0, $stock));
 $values     = inv_sum_by_currency($stock);
 $status     = inv_count_status($loc['last_counted_at'], $loc['count_every_days'] !== null ? (int)$loc['count_every_days'] : null, frontdesk_today_ymd());
 $listed     = array_map(fn($r) => (int)$r['item_id'], $stock);
 $addable    = $editable ? array_values(array_filter(
     db_query("SELECT id, name FROM inv_items WHERE is_active = TRUE AND tracking = 'qty' ORDER BY name")->fetchAll(),
     fn($i) => !in_array((int)$i['id'], $listed, true))) : [];
+$everyDays  = $loc['count_every_days'] !== null ? (int)$loc['count_every_days'] : null;
+$nextDue    = $everyDays ? inv_count_due_ymd($loc['last_counted_at'], $everyDays) : null;
 $STATUS     = ['manual' => ['Counted by hand', 'badge--grey'], 'ok' => ['Up to date', 'badge--green'], 'due' => ['Count due today', 'badge--orange'], 'overdue' => ['Count overdue', 'badge--red']];
 
 $pageTitle  = (string)$loc['name'];
@@ -93,11 +106,12 @@ include __DIR__ . '/_layout.php';
     <div class="inv-kpi"><span><?= e(INV_LOCATION_KINDS[$loc['kind']] ?? $loc['kind']) ?></span><strong><?= count($stock) ?> item<?= count($stock) === 1 ? '' : 's' ?></strong></div>
     <div class="inv-kpi"><span>Value here</span><strong><?php if (!$values): ?>—<?php else: foreach ($values as $c => $amt): ?><?= e(inv_money((float)$amt, (string)$c)) ?> <?php endforeach; endif; ?></strong></div>
     <div class="inv-kpi"><span>Short of par</span><strong><?= (int)$needs ?></strong></div>
-    <div class="inv-kpi"><span><?= $loc['last_counted_at'] ? 'Last counted ' . e(date('j M', strtotime((string)$loc['last_counted_at']))) : 'Never counted' ?></span><span class="badge <?= e($STATUS[$status][1]) ?>"><?= e($STATUS[$status][0]) ?></span></div>
-    <?php if ($editable && $needs > 0 && $loc['kind'] !== 'store'): ?>
+    <div class="inv-kpi"><span><?= $loc['last_counted_at'] ? 'Last counted ' . e(date('j M', strtotime((string)$loc['last_counted_at']))) : 'Never counted' ?></span><span class="badge <?= e($STATUS[$status][1]) ?>"><?= e($STATUS[$status][0]) ?></span>
+      <?php if ($nextDue): ?><span class="inv-sub">Next count due <?= e(date('j M', strtotime($nextDue))) ?></span><?php endif; ?></div>
+    <?php if ($editable && $open && $needs > 0 && $loc['kind'] !== 'store'): ?>
     <form method="POST" action="<?= e($self) ?>" style="margin-left:auto;align-self:center">
       <?= csrf_field() ?><input type="hidden" name="action" value="restock"><input type="hidden" name="location_id" value="<?= (int)$loc['id'] ?>">
-      <button type="submit" class="btn-primary btn-sm" onclick="return confirm('Move what is short from Main stock to here?')"><?= admin_icon('arrow-right', 15) ?> Restock to par from Main stock</button>
+      <button type="submit" class="btn-primary btn-sm" onclick="return confirm(<?= e(json_encode("Move what is short from {$storeName} to here?")) ?>)"><?= admin_icon('arrow-right', 15) ?> Restock to par from <?= e($storeName) ?></button>
     </form>
     <?php endif; ?>
   </div>
@@ -116,9 +130,10 @@ include __DIR__ . '/_layout.php';
   <div class="table-wrap"><table class="data-table">
     <thead><tr><th>Item</th><th class="inv-num">On hand</th><th class="inv-num">Par</th><th class="inv-num">Short</th><th class="inv-num">Value</th></tr></thead>
     <tbody>
-    <?php foreach ($stock as $r): ?>
+    <?php foreach ($stock as $r): $on = inv_bool($r['is_active']); ?>
       <tr>
-        <td><a href="/admin/inventory-item.php?id=<?= (int)$r['item_id'] ?>" class="inv-name"><?= inv_thumb_html($r, 32) ?><span><strong><?= e($r['name']) ?></strong><?= $r['category'] ? '<span class="inv-sub">' . e($r['category']) . '</span>' : '' ?></span></a></td>
+        <td><a href="/admin/inventory-item.php?id=<?= (int)$r['item_id'] ?>" class="inv-name"><?= inv_thumb_html($r, 32) ?><span><strong><?= e($r['name']) ?></strong><?= $r['category'] ? '<span class="inv-sub">' . e($r['category']) . '</span>' : '' ?></span></a>
+          <?php if (!$on): ?><span class="badge badge--grey">Switched off</span><?php endif; ?></td>
         <td class="inv-num"><strong><?= (int)$r['qty'] ?></strong></td>
         <td class="inv-num">
           <?php if ($editable && $r['tracking'] === 'qty'): ?>
@@ -129,7 +144,7 @@ include __DIR__ . '/_layout.php';
           </form>
           <?php else: ?><?= $r['par_qty'] === null ? '—' : (int)$r['par_qty'] ?><?php endif; ?>
         </td>
-        <td class="inv-num"><?= (int)$r['need'] > 0 ? '<span class="badge badge--orange">' . (int)$r['need'] . '</span>' : '<span class="text-muted">—</span>' ?></td>
+        <td class="inv-num"><?= $on && $r['tracking'] === 'qty' && (int)$r['need'] > 0 ? '<span class="badge badge--orange">' . (int)$r['need'] . '</span>' : '<span class="text-muted">—</span>' ?></td>
         <td class="inv-num text-muted"><?= e(inv_money($r['value'], (string)$r['currency'])) ?></td>
       </tr>
     <?php endforeach; ?>

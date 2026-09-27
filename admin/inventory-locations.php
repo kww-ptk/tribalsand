@@ -37,7 +37,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
             $loc = inv_fetch_location((int)($_POST['location_id'] ?? 0));
             if (!$loc || !inv_location_editable($loc, $vids)) throw new InvRefusal('You can only change your own properties’ locations.');
             $v = ['count_every_days' => (string)($_POST['count_every_days'] ?? ''), 'count_assignee_id' => (int)($_POST['count_assignee_id'] ?? 0)];
-            if (in_array($loc['kind'], ['area', 'store'], true) && isset($_POST['name'])) $v['name'] = (string)$_POST['name'];
+            if (in_array($loc['kind'], ['area', 'store'], true) && isset($_POST['name']) && trim((string)$_POST['name']) !== (string)$loc['name']) {
+                $v['name'] = (string)$_POST['name'];   // only a real rename (an unchanged name skips the duplicate check)
+            }
             if ($loc['kind'] === 'area') $v['is_active'] = !empty($_POST['is_active']);
             inv_update_location((int)$loc['id'], $v);
             audit_log('inv.location_save', 'inv_location', (int)$loc['id'], (string)$loc['name']);
@@ -50,7 +52,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
 }
 
 $rows      = $supported ? array_values(array_filter(inv_locations_visible($vids, false), fn($l) => $l['kind'] !== 'person')) : [];
-$props     = array_values(array_filter($rows, fn($l) => $l['kind'] === 'property' && inv_location_editable($l, $vids)));
+$props     = array_values(array_filter($rows, fn($l) => $l['kind'] === 'property' && inv_bool($l['is_active']) && inv_location_editable($l, $vids)));
 $today     = frontdesk_today_ymd();
 $STATUS    = ['manual' => ['Manual', 'badge--grey'], 'ok' => ['Up to date', 'badge--green'], 'due' => ['Due today', 'badge--orange'], 'overdue' => ['Overdue', 'badge--red']];
 $usersFor  = [];   // venue id => [user id => label], cached per venue
@@ -75,7 +77,7 @@ include __DIR__ . '/_layout.php';
       <?php dt_empty('No locations yet.'); ?>
     <?php else: ?>
     <div class="table-wrap"><table class="data-table">
-      <thead><tr><th>Location</th><th class="inv-num">Items</th><th>Counted</th><th>Responsible</th><th></th></tr></thead>
+      <thead><tr><th>Location</th><th class="inv-num">Items</th><th>Counted</th><th>Responsible</th></tr></thead>
       <tbody>
       <?php foreach ($rows as $l):
         $st = inv_count_status($l['last_counted_at'], $l['count_every_days'] !== null ? (int)$l['count_every_days'] : null, $today);
@@ -87,12 +89,6 @@ include __DIR__ . '/_layout.php';
         <tr class="<?= $closed ? 'text-muted' : '' ?>">
           <td style="<?= $l['kind'] === 'area' ? 'padding-left:28px' : '' ?>">
             <a href="/admin/inventory-location.php?id=<?= (int)$l['id'] ?>"><strong><?= e($l['kind'] === 'area' ? (string)$l['name'] : inv_location_label($l)) ?></strong></a>
-            <span class="inv-sub"><?= e(INV_LOCATION_KINDS[$l['kind']] ?? $l['kind']) ?><?= $closed ? ' · closed' : '' ?></span></td>
-          <td class="inv-num"><?= (int)$l['item_count'] ?></td>
-          <td><span class="badge <?= e($sc) ?>"><?= e($sl) ?></span>
-            <span class="inv-sub"><?= $l['count_every_days'] ? e(INV_COUNT_EVERY[(string)$l['count_every_days']] ?? 'Every ' . (int)$l['count_every_days'] . ' days') : '' ?><?= $l['last_counted_at'] ? ' · last ' . e(date('j M', strtotime((string)$l['last_counted_at']))) : '' ?></span></td>
-          <td><?= e($l['assignee_name'] ?? '—') ?></td>
-          <td style="text-align:right">
             <?php if ($editable): ?>
             <details class="inv-set"><summary class="btn-icon" data-tip="Settings" aria-label="Settings for <?= e((string)$l['name']) ?>"><?= admin_icon('settings', 15) ?></summary>
               <form method="POST" action="<?= $self ?>" class="inv-form inv-set__form">
@@ -110,11 +106,18 @@ include __DIR__ . '/_layout.php';
                 <?php if ($l['kind'] === 'area'): ?>
                 <div class="field"><label class="optchip"><input type="checkbox" name="is_active" value="1" <?= $closed ? '' : 'checked' ?>>Open</label></div>
                 <?php endif; ?>
-                <button type="submit" class="btn-primary btn-sm"><?= admin_icon('check', 15) ?> Save</button>
+                <div class="inv-set__actions">
+                  <button type="submit" class="btn-primary btn-sm"><?= admin_icon('check', 15) ?> Save</button>
+                  <button type="button" class="btn-outline btn-sm" data-inv-set-cancel>Cancel</button>
+                </div>
               </form>
             </details>
             <?php endif; ?>
-          </td>
+            <span class="inv-sub"><?= e(INV_LOCATION_KINDS[$l['kind']] ?? $l['kind']) ?><?= $closed ? ' · closed' : '' ?></span></td>
+          <td class="inv-num"><?= (int)$l['item_count'] ?></td>
+          <td><span class="badge <?= e($sc) ?>"><?= e($sl) ?></span>
+            <span class="inv-sub"><?= $l['count_every_days'] ? e(INV_COUNT_EVERY[(string)$l['count_every_days']] ?? 'Every ' . (int)$l['count_every_days'] . ' days') : '' ?><?= $l['last_counted_at'] ? ' · last ' . e(date('j M', strtotime((string)$l['last_counted_at']))) : '' ?></span></td>
+          <td><?= e($l['assignee_name'] ?? '—') ?></td>
         </tr>
       <?php endforeach; ?>
       </tbody>
@@ -146,10 +149,26 @@ include __DIR__ . '/_layout.php';
 
 <?= inv_shared_css() ?>
 <style>
-.inv-set{display:inline-block;position:relative;text-align:left}
+.inv-set{display:inline-block;vertical-align:middle;margin-left:6px;text-align:left}
 .inv-set summary{list-style:none;cursor:pointer}
 .inv-set summary::-webkit-details-marker{display:none}
-.inv-set__form{position:absolute;right:0;top:calc(100% + 6px);z-index:20;width:280px;background:var(--white);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px}
-@media (max-width:560px){.inv-set__form{position:fixed;left:16px;right:16px;top:auto;bottom:16px;width:auto}}
+/* A bottom-anchored sheet at every width — fixed, so .table-wrap's overflow never clips it. */
+.inv-set__form{position:fixed;left:50%;transform:translateX(-50%);bottom:24px;z-index:60;width:min(360px, calc(100vw - 32px));max-height:calc(100vh - 48px);overflow:auto;background:var(--white);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);padding:14px}
+.inv-set__actions{display:flex;gap:8px;flex-wrap:wrap}
 </style>
+<script>
+(function () {
+  // One settings sheet at a time; Cancel closes its own.
+  var sets = document.querySelectorAll('.inv-set');
+  sets.forEach(function (d) {
+    d.addEventListener('toggle', function () {
+      if (!d.open) return;
+      sets.forEach(function (o) { if (o !== d) o.open = false; });
+    });
+  });
+  document.querySelectorAll('[data-inv-set-cancel]').forEach(function (b) {
+    b.addEventListener('click', function () { var d = b.closest('details'); if (d) d.open = false; });
+  });
+})();
+</script>
 <?php include __DIR__ . '/_layout_end.php'; ?>
