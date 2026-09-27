@@ -228,6 +228,15 @@ try {
     check('store: Main stock is read back, not re-inserted', inv_store_location_id() === $store
         && $count("SELECT COUNT(*) FROM inv_locations WHERE kind = 'store'") === 1);
 
+    // ── Reopening an area never makes two open areas with one name ──
+    $dupOld = inv_create_area($locA, 'ZZ Dup');
+    inv_update_location($dupOld, ['is_active' => false]);
+    inv_create_area($locA, 'ZZ Dup');
+    check('area: reopening one whose name an open sibling now uses is refused',
+        str_contains($refused(fn() => inv_update_location($dupOld, ['is_active' => true])), 'Another open area here'));
+    inv_update_location($dupOld, ['is_active' => true, 'name' => 'ZZ Dup (old)']);
+    check('area: reopening under a fresh name is allowed', inv_bool(inv_fetch_location($dupOld)['is_active']));
+
     // ── DB checks (tasks 2–3 insert their blocks above this line) ──
 } catch (Throwable $e) {
     echo "FAIL  DB block threw: " . $e->getMessage() . "\n" . $e->getTraceAsString() . "\n";

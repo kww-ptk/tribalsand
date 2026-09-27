@@ -484,6 +484,14 @@ function inv_update_location(int $id, array $v): void {
             && db_query('SELECT 1 FROM inv_balances WHERE location_id = :l AND qty <> 0 LIMIT 1', [':l' => $id])->fetchColumn()) {
             throw new InvRefusal('Move its stock out before closing this area.');
         }
+        // Reopening must not leave two OPEN areas with one name (checked against the new name when renaming too).
+        if ($active && !inv_bool($loc['is_active']) && $loc['parent_id'] !== null) {
+            $reName = array_key_exists('name', $v) ? trim((string)$v['name']) : (string)$loc['name'];
+            if (db_query('SELECT 1 FROM inv_locations WHERE parent_id = :p AND is_active = TRUE AND id <> :id AND lower(name) = lower(:n)',
+                    [':p' => (int)$loc['parent_id'], ':id' => $id, ':n' => $reName])->fetchColumn()) {
+                throw new InvRefusal("Another open area here is already called {$reName} — rename one first.");
+            }
+        }
         $set[] = 'is_active = :act'; $p[':act'] = $active ? 'TRUE' : 'FALSE';
     }
     db_query('UPDATE inv_locations SET ' . implode(', ', $set) . ' WHERE id = :id', $p);

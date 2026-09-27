@@ -48,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($raw !== '' && !ctype_digit($raw)) throw new InvRefusal('Par level must be a whole number (blank to clear it).');
             $it = inv_fetch_item($itemId);
             if (!$it) throw new InvRefusal('Pick an item.');
-            if ($it['tracking'] !== 'qty') throw new InvRefusal('Serial-tracked items are assigned one unit at a time.');
+            if ($raw !== '' && $it['tracking'] !== 'qty') throw new InvRefusal('Serial-tracked items are assigned one unit at a time.');   // clearing an old par is fine
             if ($raw !== '' && !inv_bool($it['is_active'])) throw new InvRefusal("{$it['name']} is switched off — it takes no par level.");
             // Adding an item to this list means giving it a par; a blank one would add nothing.
             $bal    = db_query('SELECT qty, par_qty FROM inv_balances WHERE item_id = :i AND location_id = :l', [':i' => $itemId, ':l' => (int)$loc['id']])->fetch();
