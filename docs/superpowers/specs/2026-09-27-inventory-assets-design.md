@@ -39,15 +39,13 @@ low_stock_at INT, is_active, created_at, updated_at`
 
 ### `inv_locations` — a tree
 `id, parent_id → inv_locations, kind, name, venue_id → venues, pos_outlet_id → pos_outlets,
-hr_staff_id → hr_staff, owner_venue_id → venues, count_every_days INT NULL,
+hr_staff_id → hr_staff, count_every_days INT NULL,
 count_assignee_id → admin_users, last_counted_at, is_active, sort_order`
 
 - `kind` ∈ `store | property | area | outlet | person`.
 - `property` has `venue_id`; `area` has a `parent_id` (a property); `outlet` has
   `pos_outlet_id` (UNIQUE); `person` has `hr_staff_id` (UNIQUE), created on first assignment.
-- `owner_venue_id` is the accounting seam (§8): every location must resolve to an
-  owning property — a property/area via its venue, an outlet via its outlet's venue,
-  a person via their `hr_staff.venue_id`, a store via `owner_venue_id` (optional in v1).
+- `venue_id` is the **owning venue of every location** and the accounting seam (§8): a property/area/outlet/person carries its venue (an area copies its property's, an outlet its outlet's, a person their home venue); a store carries NULL (shared).
 - `count_every_days` NULL = manual only; 1 = daily, 7 = weekly, any N. Due date =
   `last_counted_at + N days` (Nairobi-local).
 
@@ -86,7 +84,7 @@ A serial unit also counts in `inv_balances` (qty 1 per unit); its moves carry `a
 
 ### POS links
 - `pos_items.inv_item_id → inv_items` (NULL for services/tours = untracked).
-- `pos_outlets.inv_location_id → inv_locations`.
+- The outlet link is one-directional: `inv_locations.pos_outlet_id` (UNIQUE).
 - `pos_items.stock_qty` and `pos_stock_moves` are **no longer written**; kept one
   release for rollback, then dropped in a follow-up migration.
 
@@ -186,8 +184,7 @@ currencies, owning-venue seam).
 ## 8. Accounting seam (not built here)
 
 Accounting (legal entities, KRA PINs, bank accounts, purchases, eTIMS) is a
-separate project. This design keeps it cheap to add: every location resolves to an
-owning venue; every move is append-only and carries its value snapshot. Accounting
+separate project. This design keeps it cheap to add: every location carries its owning venue (`inv_locations.venue_id`); every move is append-only and carries its value snapshot. Accounting
 will add `companies`, map venues to them, and read `inv_moves`, `pos_sales` and
 `bookings` — a cross-venue transfer then becomes an inter-company movement with no
 inventory rework.
