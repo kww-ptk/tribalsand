@@ -296,6 +296,38 @@ try {
         [':a' => $plates, ':b' => $laptop])->fetchAll());
     check('money: losses per currency (3 plates × 850 + 1 laptop × 95,000)', $losses === ['KES' => 97550.0]);
 
+    // ── Counts flag; a manager's resolution moves stock ──
+    $counter = $ins("INSERT INTO admin_users (email, role, name, is_active) VALUES (:e, 'staff', 'ZZ Counter', TRUE)",
+        [':e' => "zz-inv-counter-{$sfx}@example.com"]);
+    $cid = inv_count_start($locA, $counter);
+    check('count: starting twice reuses the open count', inv_count_start($locA, $counter) === $cid);
+    $exp = db_query('SELECT item_id, expected FROM inv_count_lines WHERE count_id = :c', [':c' => $cid])->fetchAll(PDO::FETCH_KEY_PAIR);
+    check('count: expected is snapshotted from the system', (int)($exp[$plates] ?? -1) === 24 && (int)($exp[$glasses] ?? -1) === 3);
+    $threw = false; try { inv_count_submit($cid, [$plates => 23], $counter); } catch (InvRefusal $e) { $threw = true; }
+    check('count: every line needs a number', $threw);
+    $res = inv_count_submit($cid, [$plates => 23, $glasses => 3], $counter);
+    check('count: submitting never moves stock', $res['gaps'] === 1 && inv_balance($plates, $locA) === 24);
+    check('count: a matching line is accepted automatically',
+        db_query('SELECT resolution FROM inv_count_lines WHERE count_id = :c AND item_id = :i', [':c' => $cid, ':i' => $glasses])->fetchColumn() === 'accepted');
+    check('count: the location records when it was counted', inv_fetch_location($locA)['last_counted_at'] !== null);
+    $line = (int) db_query('SELECT id FROM inv_count_lines WHERE count_id = :c AND item_id = :i', [':c' => $cid, ':i' => $plates])->fetchColumn();
+    $threw = false; try { inv_count_resolve_line($line, 'found', $counter); } catch (InvRefusal $e) { $threw = true; }
+    check('count: "found" on a short line is refused', $threw);
+    inv_move(['item_id' => $plates, 'qty' => 1, 'from' => $store, 'to' => $locA, 'reason' => 'transfer']);
+    $msg = ''; try { inv_count_resolve_line($line, 'missing', $counter); } catch (InvRefusal $e) { $msg = $e->getMessage(); }
+    check('count: refused when stock changed since the count', str_contains($msg, 'changed since'));
+    inv_move(['item_id' => $plates, 'qty' => 1, 'from' => $locA, 'to' => $store, 'reason' => 'transfer']);
+    $mid = inv_count_resolve_line($line, 'missing', $counter);
+    check('count: resolving "missing" writes the loss, linked to the line',
+        $mid !== null && inv_balance($plates, $locA) === 23
+        && (int)db_query('SELECT count_line_id FROM inv_moves WHERE id = :m', [':m' => $mid])->fetchColumn() === $line);
+    check('count: the count is resolved once every line is',
+        db_query('SELECT status FROM inv_counts WHERE id = :c', [':c' => $cid])->fetchColumn() === 'resolved');
+    $threw = false; try { inv_count_resolve_line($line, 'missing', $counter); } catch (InvRefusal $e) { $threw = true; }
+    check('count: a line resolves only once', $threw && inv_balance($plates, $locA) === 23);
+    check('ledger: still equals every balance after all of it',
+        $ledger($plates, $locA) === 23 && $ledger($plates, $store) === inv_balance($plates, $store) && $ledger($glasses, $locA) === 3);
+
     // ── DB checks (tasks 4–8 insert their blocks above this line) ──
 } catch (Throwable $e) {
     echo "FAIL  DB block threw: " . $e->getMessage() . "\n" . $e->getTraceAsString() . "\n";

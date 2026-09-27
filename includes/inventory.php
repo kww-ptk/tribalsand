@@ -608,3 +608,125 @@ function inv_restock_to_par(int $locationId, ?int $userId, ?int $sourceId = null
         return ['moved' => $moved, 'short' => $short];
     });
 }
+
+// ── Counts (the check) ──────────────────────────────────────────────────────
+
+/**
+ * Open a count at a location, snapshotting what the system expects there (every
+ * active item with stock or a par level). An open count is reused, so a counter
+ * who reloads the page keeps their lines. Returns the count id.
+ */
+function inv_count_start(int $locationId, int $userId): int {
+    $loc = inv_fetch_location($locationId);
+    if (!$loc || !inv_bool($loc['is_active'])) throw new InvRefusal('That location is not open.');
+    return inv_tx(function () use ($locationId, $userId): int {
+        $open = db_query("SELECT id FROM inv_counts WHERE location_id = :l AND status = 'open' ORDER BY id DESC LIMIT 1 FOR UPDATE",
+            [':l' => $locationId])->fetchColumn();
+        if ($open) return (int)$open;
+        db_query('INSERT INTO inv_counts (location_id, counted_by) VALUES (:l, :u)', [':l' => $locationId, ':u' => $userId]);
+        $countId = (int) db()->lastInsertId();
+        db_query('INSERT INTO inv_count_lines (count_id, item_id, expected)
+                  SELECT :c, b.item_id, b.qty FROM inv_balances b JOIN inv_items i ON i.id = b.item_id
+                   WHERE b.location_id = :l AND i.is_active = TRUE AND (b.qty <> 0 OR b.par_qty IS NOT NULL)',
+            [':c' => $countId, ':l' => $locationId]);
+        return $countId;
+    });
+}
+
+/**
+ * Save the counted numbers and submit. $counted = [item_id => whole number];
+ * every line needs one. Matching lines close as 'accepted'; gaps wait for a
+ * manager. Stock never changes here. Returns ['gaps' => int].
+ */
+function inv_count_submit(int $countId, array $counted, int $userId): array {
+    return inv_tx(function () use ($countId, $counted, $userId): array {
+        $c = db_query('SELECT id, location_id, status FROM inv_counts WHERE id = :c FOR UPDATE', [':c' => $countId])->fetch();
+        if (!$c) throw new InvRefusal('That count does not exist.');
+        if ($c['status'] !== 'open') throw new InvRefusal('This count was already submitted.');
+        $lines = db_query('SELECT id, item_id, expected FROM inv_count_lines WHERE count_id = :c ORDER BY id', [':c' => $countId])->fetchAll();
+        $gaps = 0;
+        foreach ($lines as $l) {
+            $v = $counted[(int)$l['item_id']] ?? null;
+            if ($v === null || $v === '' || !ctype_digit((string)$v)) throw new InvRefusal('Enter a number for every item (0 if there are none).');
+            $v = (int)$v;
+            if ($v > INV_MAX_QTY) throw new InvRefusal('That count is too large.');
+            if ($v === (int)$l['expected']) {
+                db_query("UPDATE inv_count_lines SET counted = :v, resolution = 'accepted', resolved_by = :u, resolved_at = now(), balance_at_resolve = :b WHERE id = :id",
+                    [':v' => $v, ':u' => $userId, ':b' => (int)$l['expected'], ':id' => (int)$l['id']]);
+            } else {
+                db_query('UPDATE inv_count_lines SET counted = :v WHERE id = :id', [':v' => $v, ':id' => (int)$l['id']]);
+                $gaps++;
+            }
+        }
+        db_query('UPDATE inv_counts SET status = :s, submitted_at = now() WHERE id = :c', [':s' => $gaps ? 'submitted' : 'resolved', ':c' => $countId]);
+        db_query('UPDATE inv_locations SET last_counted_at = now() WHERE id = :l', [':l' => (int)$c['location_id']]);
+        return ['gaps' => $gaps];
+    });
+}
+
+/**
+ * A manager resolves one gap: missing / broken / stolen (loss out of the
+ * location), found (back in), recount or accepted (no move). Refused while the
+ * live balance differs from what the counter was shown. Returns the move id, or
+ * null when nothing moved.
+ */
+function inv_count_resolve_line(int $lineId, string $resolution, int $userId, string $note = ''): ?int {
+    return inv_tx(function () use ($lineId, $resolution, $userId, $note): ?int {
+        $l = db_query('SELECT cl.*, c.location_id, c.status AS count_status, i.name AS item_name, i.tracking
+                         FROM inv_count_lines cl
+                         JOIN inv_counts c ON c.id = cl.count_id
+                         JOIN inv_items i  ON i.id = cl.item_id
+                        WHERE cl.id = :id FOR UPDATE OF cl', [':id' => $lineId])->fetch();
+        if (!$l) throw new InvRefusal('That count line does not exist.');
+        if ($l['count_status'] === 'open') throw new InvRefusal('This count has not been submitted yet.');
+        if ($l['resolution'] !== null) throw new InvRefusal('This line is already resolved.');
+        $plan = inv_resolution_move($resolution, (int)$l['expected'], (int)$l['counted']);
+        if (is_string($plan)) throw new InvRefusal($plan);
+        $loc = (int)$l['location_id'];
+        $bal = inv_balance_lock((int)$l['item_id'], $loc);
+        $moveId = null;
+        if ($plan !== null) {
+            if ($bal !== (int)$l['expected']) {
+                throw new InvRefusal("Stock of {$l['item_name']} changed since this count (now {$bal}) — mark it recount and count again.");
+            }
+            if ($l['tracking'] === 'serial') {
+                throw new InvRefusal("{$l['item_name']} is tracked by serial number — report the specific unit from its page, then mark this line recount.");
+            }
+            $moveId = inv_move(['item_id' => (int)$l['item_id'], 'qty' => $plan['qty'],
+                                'from' => $plan['dir'] === 'out' ? $loc : null, 'to' => $plan['dir'] === 'in' ? $loc : null,
+                                'reason' => $plan['reason'], 'user_id' => $userId, 'count_line_id' => $lineId,
+                                'note' => $note !== '' ? $note : 'Count #' . (int)$l['count_id']]);
+        }
+        db_query('UPDATE inv_count_lines SET resolution = :r, resolved_by = :u, resolved_at = now(), balance_at_resolve = :b WHERE id = :id',
+            [':r' => $resolution, ':u' => $userId, ':b' => $bal, ':id' => $lineId]);
+        $open = (int) db_query('SELECT COUNT(*) FROM inv_count_lines WHERE count_id = :c AND resolution IS NULL', [':c' => (int)$l['count_id']])->fetchColumn();
+        if ($open === 0) db_query("UPDATE inv_counts SET status = 'resolved' WHERE id = :c", [':c' => (int)$l['count_id']]);
+        return $moveId;
+    });
+}
+
+// ── History reads ───────────────────────────────────────────────────────────
+
+/** Moves of an item, newest first; with $locationId only those in or out of it. */
+function inv_item_moves(int $itemId, ?int $locationId = null, int $limit = 100): array {
+    if (!inv_supported()) return [];
+    $p = [':i' => $itemId];
+    $w = 'm.item_id = :i';
+    if ($locationId !== null) {
+        $w .= ' AND (m.from_location_id = :l1 OR m.to_location_id = :l2)';
+        $p[':l1'] = $locationId;
+        $p[':l2'] = $locationId;
+    }
+    return db_query(
+        "SELECT m.*, a.name AS user_name, s.reference AS sale_reference, c.name AS consignor_name,
+                lf.name AS from_name, lt.name AS to_name
+           FROM inv_moves m
+           LEFT JOIN admin_users a    ON a.id = m.admin_user_id
+           LEFT JOIN pos_sales s      ON s.id = m.pos_sale_id
+           LEFT JOIN pos_consignors c ON c.id = m.consignor_id
+           LEFT JOIN inv_locations lf ON lf.id = m.from_location_id
+           LEFT JOIN inv_locations lt ON lt.id = m.to_location_id
+          WHERE {$w}
+          ORDER BY m.created_at DESC, m.id DESC LIMIT " . max(1, min(500, $limit)), $p
+    )->fetchAll();
+}
