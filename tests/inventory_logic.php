@@ -112,6 +112,46 @@ try {
            FROM inv_moves WHERE item_id = :i AND (to_location_id = :b OR from_location_id = :c)',
         [':a' => $loc, ':i' => $item, ':b' => $loc, ':c' => $loc])->fetchColumn();
 
+    // ── Locations + items ──
+    $vA = $ins("INSERT INTO venues (slug, name) VALUES (:s, 'ZZ Inv A')", [':s' => "zz-inv-a-{$sfx}"]);
+    $vB = $ins("INSERT INTO venues (slug, name) VALUES (:s, 'ZZ Inv B')", [':s' => "zz-inv-b-{$sfx}"]);
+    $store = inv_store_location_id();
+    check('locations: Main stock exists exactly once',
+        $store > 0 && inv_store_location_id() === $store && $count("SELECT COUNT(*) FROM inv_locations WHERE kind = 'store'") === 1);
+    $locA = inv_property_location_id($vA);
+    check('locations: one property location per venue', $locA > 0 && inv_property_location_id($vA) === $locA);
+    $la = inv_fetch_location($locA);
+    check('locations: a property carries its venue', $la && (int)$la['venue_id'] === $vA && $la['kind'] === 'property');
+    $locB = inv_property_location_id($vB);
+    $outlet = $ins("INSERT INTO pos_outlets (name, slug, kind, venue_id, currency) VALUES ('ZZ Inv Shop', :s, 'shop', :v, 'KES')",
+        [':s' => "zz-inv-shop-{$sfx}", ':v' => $vA]);
+    $locShop = inv_outlet_location_id($outlet);
+    check('locations: an outlet location is tied to the outlet and its venue',
+        $locShop === inv_outlet_location_id($outlet) && (int)inv_fetch_location($locShop)['venue_id'] === $vA);
+    $staff = $ins("INSERT INTO hr_staff (full_name, venue_id) VALUES ('ZZ Jane Wanjiru', :v)", [':v' => $vA]);
+    $locJane = inv_person_location_id($staff);
+    check('locations: a person location is created on demand, once',
+        $locJane === inv_person_location_id($staff) && inv_fetch_location($locJane)['kind'] === 'person');
+    db_query("UPDATE pos_outlets SET venue_id = :v, name = 'ZZ Inv Shop 2' WHERE id = :o", [':v' => $vB, ':o' => $outlet]);
+    inv_refresh_location_owners();
+    $ls = inv_fetch_location($locShop);
+    check('locations: an outlet location follows its outlet (venue + name)', (int)$ls['venue_id'] === $vB && $ls['name'] === 'ZZ Inv Shop 2');
+    db_query("UPDATE pos_outlets SET venue_id = :v, name = 'ZZ Inv Shop' WHERE id = :o", [':v' => $vA, ':o' => $outlet]);
+    check('locations: the ensure call refreshes the owner too',
+        inv_outlet_location_id($outlet) === $locShop && (int)inv_fetch_location($locShop)['venue_id'] === $vA);
+    $plates = inv_create_item(['name' => 'ZZ Dinner plate', 'item_type' => 'operational', 'category' => 'Kitchen', 'replacement_value' => '850', 'currency' => 'KES']);
+    $laptop = inv_create_item(['name' => 'ZZ Laptop', 'item_type' => 'employee', 'tracking' => 'serial', 'replacement_value' => 95000]);
+    $p = inv_fetch_item($plates);
+    check('items: created with type, value and qty tracking',
+        $p && $p['item_type'] === 'operational' && (float)$p['replacement_value'] === 850.0 && $p['tracking'] === 'qty' && $p['currency'] === 'KES');
+    check('items: a serial item', inv_fetch_item($laptop)['tracking'] === 'serial');
+    $threw = false; try { inv_create_item(['name' => '  ', 'item_type' => 'operational']); } catch (InvRefusal $e) { $threw = true; }
+    check('items: a name is required', $threw);
+    $threw = false; try { inv_create_item(['name' => 'X', 'item_type' => 'gadget']); } catch (InvRefusal $e) { $threw = true; }
+    check('items: an unknown type is refused', $threw);
+    $threw = false; try { inv_create_item(['name' => 'X', 'item_type' => 'spare', 'replacement_value' => '-3']); } catch (InvRefusal $e) { $threw = true; }
+    check('items: a negative value is refused', $threw);
+
     // ── DB checks (tasks 4–8 insert their blocks above this line) ──
 } catch (Throwable $e) {
     echo "FAIL  DB block threw: " . $e->getMessage() . "\n" . $e->getTraceAsString() . "\n";

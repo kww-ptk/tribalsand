@@ -176,3 +176,137 @@ function inv_restock_plan(array $rows): array {
     ksort($plan);
     return $plan;
 }
+
+// ── Reads ───────────────────────────────────────────────────────────────────
+
+function inv_fetch_item(int $id): array|false {
+    if (!inv_supported() || $id <= 0) return false;
+    return db_query('SELECT * FROM inv_items WHERE id = :id', [':id' => $id])->fetch();
+}
+
+function inv_fetch_location(int $id): array|false {
+    if (!inv_supported() || $id <= 0) return false;
+    return db_query('SELECT * FROM inv_locations WHERE id = :id', [':id' => $id])->fetch();
+}
+
+/** Current quantity of an item at a location (0 when there is no balance row). */
+function inv_balance(int $itemId, int $locationId): int {
+    if (!inv_supported()) return 0;
+    $q = db_query('SELECT qty FROM inv_balances WHERE item_id = :i AND location_id = :l', [':i' => $itemId, ':l' => $locationId])->fetchColumn();
+    return $q === false ? 0 : (int)$q;
+}
+
+/** Lock (creating if needed) an item's balance row at a location; returns its qty. Call inside inv_tx(). */
+function inv_balance_lock(int $itemId, int $locationId): int {
+    db_query('INSERT INTO inv_balances (item_id, location_id, qty) VALUES (:i, :l, 0) ON CONFLICT (item_id, location_id) DO NOTHING',
+        [':i' => $itemId, ':l' => $locationId]);
+    return (int) db_query('SELECT qty FROM inv_balances WHERE item_id = :i AND location_id = :l FOR UPDATE',
+        [':i' => $itemId, ':l' => $locationId])->fetchColumn();
+}
+
+// ── Locations (created on demand, once) ─────────────────────────────────────
+
+/** The one Main stock location. */
+function inv_store_location_id(): int {
+    if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
+    db_query("INSERT INTO inv_locations (kind, name) VALUES ('store', 'Main stock') ON CONFLICT (kind) WHERE kind = 'store' DO NOTHING");
+    return (int) db_query("SELECT id FROM inv_locations WHERE kind = 'store'")->fetchColumn();
+}
+
+/** A property's location (named after the venue). */
+function inv_property_location_id(int $venueId): int {
+    if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
+    $name = db_query('SELECT name FROM venues WHERE id = :v', [':v' => $venueId])->fetchColumn();
+    if ($name === false) throw new InvRefusal('That property does not exist.');
+    db_query("INSERT INTO inv_locations (kind, name, venue_id) VALUES ('property', :n, :v)
+              ON CONFLICT (venue_id) WHERE kind = 'property' DO UPDATE SET name = EXCLUDED.name",
+        [':n' => mb_substr((string)$name, 0, 120), ':v' => $venueId]);
+    return (int) db_query("SELECT id FROM inv_locations WHERE kind = 'property' AND venue_id = :v", [':v' => $venueId])->fetchColumn();
+}
+
+/** A POS outlet's shelf. Owning venue = the outlet's venue (NULL = shared). */
+function inv_outlet_location_id(int $outletId): int {
+    if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
+    $o = db_query('SELECT name, venue_id FROM pos_outlets WHERE id = :o', [':o' => $outletId])->fetch();
+    if (!$o) throw new InvRefusal('That outlet does not exist.');
+    // DO UPDATE: the location follows its outlet's name and venue (the owning venue must never go stale).
+    db_query("INSERT INTO inv_locations (kind, name, pos_outlet_id, venue_id) VALUES ('outlet', :n, :o, :v)
+              ON CONFLICT (pos_outlet_id) DO UPDATE SET name = EXCLUDED.name, venue_id = EXCLUDED.venue_id",
+        [':n' => mb_substr((string)$o['name'], 0, 120), ':o' => $outletId, ':v' => $o['venue_id']]);
+    return (int) db_query('SELECT id FROM inv_locations WHERE pos_outlet_id = :o', [':o' => $outletId])->fetchColumn();
+}
+
+/** A team member's location — "assigned to Jane" means "at Jane's location". Owning venue = their home venue. */
+function inv_person_location_id(int $hrStaffId): int {
+    if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
+    $s = db_query('SELECT full_name, venue_id FROM hr_staff WHERE id = :s', [':s' => $hrStaffId])->fetch();
+    if (!$s) throw new InvRefusal('That team member does not exist.');
+    db_query("INSERT INTO inv_locations (kind, name, hr_staff_id, venue_id) VALUES ('person', :n, :s, :v)
+              ON CONFLICT (hr_staff_id) DO UPDATE SET name = EXCLUDED.name, venue_id = EXCLUDED.venue_id",
+        [':n' => mb_substr((string)$s['full_name'], 0, 120), ':s' => $hrStaffId, ':v' => $s['venue_id']]);
+    return (int) db_query('SELECT id FROM inv_locations WHERE hr_staff_id = :s', [':s' => $hrStaffId])->fetchColumn();
+}
+
+/**
+ * Re-copy name + owning venue onto every outlet and person location whose source
+ * record changed. Called after an outlet or a staff record is saved, so scope and
+ * (later) accounting never follow a stale venue.
+ */
+function inv_refresh_location_owners(): void {
+    if (!inv_supported()) return;
+    db_query("UPDATE inv_locations l SET name = LEFT(o.name, 120), venue_id = o.venue_id FROM pos_outlets o
+               WHERE l.pos_outlet_id = o.id AND (l.name IS DISTINCT FROM LEFT(o.name, 120) OR l.venue_id IS DISTINCT FROM o.venue_id)");
+    db_query("UPDATE inv_locations l SET name = LEFT(s.full_name, 120), venue_id = s.venue_id FROM hr_staff s
+               WHERE l.hr_staff_id = s.id AND (l.name IS DISTINCT FROM LEFT(s.full_name, 120) OR l.venue_id IS DISTINCT FROM s.venue_id)");
+}
+
+/**
+ * Units (absolute) still held at the locations linked to an outlet, a staff
+ * member or a venue — a delete of that record must be refused while this is > 0,
+ * or its stock would sit at an orphaned (or, for a venue, "shared") location.
+ * $link: 'pos_outlet_id' | 'hr_staff_id' | 'venue_id'.
+ */
+function inv_linked_stock_count(string $link, int $id): int {
+    if (!inv_supported()) return 0;
+    if (!in_array($link, ['pos_outlet_id', 'hr_staff_id', 'venue_id'], true)) throw new InvalidArgumentException('bad link column');
+    return (int) db_query("SELECT COALESCE(SUM(ABS(b.qty)), 0) FROM inv_balances b JOIN inv_locations l ON l.id = b.location_id
+                            WHERE l.{$link} = :id AND b.qty <> 0", [':id' => $id])->fetchColumn();
+}
+
+// ── Items ───────────────────────────────────────────────────────────────────
+
+/**
+ * Create a catalogue item. $v: name, item_type, and optionally category, sku,
+ * image_key, icon, tracking ('qty'|'serial'), unit_label, replacement_value,
+ * currency, consignor_id, low_stock_at. Returns the new id.
+ */
+function inv_create_item(array $v): int {
+    if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
+    $name = trim((string)($v['name'] ?? ''));
+    if ($name === '') throw new InvRefusal('Give the item a name.');
+    $type = (string)($v['item_type'] ?? 'operational');
+    if (!isset(INV_TYPES[$type])) throw new InvRefusal('Pick an item type.');
+    $val = $v['replacement_value'] ?? null;
+    if ($val !== null && $val !== '' && (!is_numeric($val) || (float)$val < 0)) throw new InvRefusal('Replacement value must be zero or more.');
+    $cur = strtoupper(trim((string)($v['currency'] ?? '')));
+    if (!preg_match('/^[A-Z]{3}$/', $cur)) $cur = INV_DEFAULT_CURRENCY;
+    $opt = fn(string $k, int $max) => ($s = trim((string)($v[$k] ?? ''))) !== '' ? mb_substr($s, 0, $max) : null;
+    $low = $v['low_stock_at'] ?? null;
+    db_query('INSERT INTO inv_items (name, item_type, category, sku, image_key, icon, tracking, unit_label,
+                                     replacement_value, currency, consignor_id, low_stock_at)
+              VALUES (:n, :t, :c, :s, :img, :ic, :tr, :u, :v, :cur, :cs, :low)', [
+        ':n'   => mb_substr($name, 0, 160),
+        ':t'   => $type,
+        ':c'   => $opt('category', 60),
+        ':s'   => $opt('sku', 60),
+        ':img' => !empty($v['image_key']) ? (string)$v['image_key'] : null,
+        ':ic'  => $opt('icon', 40),
+        ':tr'  => ($v['tracking'] ?? 'qty') === 'serial' ? 'serial' : 'qty',
+        ':u'   => $opt('unit_label', 20) ?? 'pcs',
+        ':v'   => ($val === null || $val === '') ? null : round((float)$val, 2),
+        ':cur' => $cur,
+        ':cs'  => !empty($v['consignor_id']) ? (int)$v['consignor_id'] : null,
+        ':low' => ($low === null || $low === '') ? null : max(0, (int)$low),
+    ]);
+    return (int) db()->lastInsertId();
+}
