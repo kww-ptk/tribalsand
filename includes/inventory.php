@@ -278,6 +278,13 @@ function inv_outlet_location_id(int $outletId): int {
     return (int) db_query('SELECT id FROM inv_locations WHERE pos_outlet_id = :o', [':o' => $outletId])->fetchColumn();
 }
 
+/** Read-only: the outlet's location id, or null when none exists yet (never creates one). */
+function inv_outlet_location_find(int $outletId): ?int {
+    if (!inv_supported()) return null;
+    $id = db_query('SELECT id FROM inv_locations WHERE pos_outlet_id = :o', [':o' => $outletId])->fetchColumn();
+    return $id === false ? null : (int)$id;
+}
+
 /** A team member's location — "assigned to Jane" means "at Jane's location". Owning venue = their home venue. */
 function inv_person_location_id(int $hrStaffId): int {
     if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
@@ -401,7 +408,8 @@ function inv_move_tx(array $n): int {
     foreach ($locs as $l) {
         $loc = db_query('SELECT id, name, is_active FROM inv_locations WHERE id = :l', [':l' => $l])->fetch();
         if (!$loc) throw new InvRefusal('That location no longer exists.');
-        if ($l === $to && !inv_bool($loc['is_active'])) throw new InvRefusal("{$loc['name']} is closed — reopen it before moving stock in.");
+        // A void is a financial correction — inventory state (a closed shelf) must never block it.
+        if ($l === $to && !inv_bool($loc['is_active']) && $n['reason'] !== 'void') throw new InvRefusal("{$loc['name']} is closed — reopen it before moving stock in.");
         $names[$l] = (string)$loc['name'];
         $have[$l]  = inv_balance_lock($n['item_id'], $l);
     }

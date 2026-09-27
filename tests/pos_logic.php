@@ -65,6 +65,7 @@ check('stock: short → "Only 2 left"', (string)pos_stock_shortfall(['track_stoc
 check('stock: none → out of stock', str_contains((string)pos_stock_shortfall(['track_stock' => 't', 'stock_qty' => 0, 'name' => 'Cap'], 1), 'out of stock'));
 check('stock: untracked never short', pos_stock_shortfall(['track_stock' => 'f', 'stock_qty' => 0], 5) === null);
 check('stock: allow_negative never short', pos_stock_shortfall(['track_stock' => 't', 'allow_negative' => 't', 'stock_qty' => 0], 5) === null);
+check('stock: on-hand inventory wins over the stale stock_qty', str_contains((string)pos_stock_shortfall(['track_stock' => 't', 'stock_on_hand' => 0, 'stock_qty' => 10, 'name' => 'Cap'], 1), 'out of stock'));
 
 // ── Room-charge eligibility ────────────────────────────────────────────────
 $today  = '2026-09-26';
@@ -453,6 +454,43 @@ try {
             db_query('SELECT item_type FROM inv_items WHERE id = :i', [':i' => $capInv])->fetchColumn() === 'sellable');
         check('stock: a consignment product is a consignment inventory item',
             db_query('SELECT v.item_type FROM inv_items v JOIN pos_items p ON p.inv_item_id = v.id WHERE p.id = :i', [':i' => $brace])->fetchColumn() === 'consignment');
+
+        // An item moved to another outlet takes its shelf stock with it — atomically with the outlet change.
+        $kiteLoc = inv_outlet_location_id($kite);
+        $mug     = $ins("INSERT INTO pos_items (outlet_id, name, kind, price, track_stock) VALUES (:o, 'ZZ Mug', 'product', 15, TRUE)", [':o' => $shop]);
+        pos_stock_receive($mug, 4, null, 'delivery', $manager);
+        $mugInv  = (int) db_query('SELECT inv_item_id FROM pos_items WHERE id = :i', [':i' => $mug])->fetchColumn();
+        $moveMug = function (int $from, int $to) use ($mug, $owner): void {
+            pos_tx(function () use ($mug, $from, $to, $owner): void {
+                pos_item_move_stock($mug, $from, $to, $owner);
+                db_query('UPDATE pos_items SET outlet_id = :o WHERE id = :i', [':o' => $to, ':i' => $mug]);
+            });
+        };
+        $moveMug($shop, $kite);
+        check('outlet move: the stock arrives at the new outlet', inv_balance($mugInv, $kiteLoc) === 4);
+        check('outlet move: and leaves the old one', inv_balance($mugInv, $shopLoc) === 0);
+        check('outlet move: on-hand follows the item', pos_item_stock_on_hand($mug) === 4);
+        $r = $sale($kite, [['item_id' => $mug, 'qty' => 1]], 'cash', $walkin, $owner);
+        $mugSale = (int)($r['sale']['id'] ?? 0);
+        $moveMug($kite, $shop);
+        $v = pos_void_sale($mugSale, 'moved item', $owner);
+        check('outlet move: a later void restores to where it was sold',
+            $r['ok'] === true && $v['ok'] === true && inv_balance($mugInv, $kiteLoc) === 1 && inv_balance($mugInv, $shopLoc) === 3);
+
+        // A cross-sold tracked item leaves its OWNING outlet's shelf.
+        $board   = $ins("INSERT INTO pos_items (outlet_id, name, kind, price, track_stock) VALUES (:o, 'ZZ Kite Leash', 'product', 50, TRUE)", [':o' => $kite]);
+        pos_stock_receive($board, 3, null, 'delivery', $owner);
+        $boardInv = (int) db_query('SELECT inv_item_id FROM pos_items WHERE id = :i', [':i' => $board])->fetchColumn();
+        $r = $sale($exp, [['item_id' => $board, 'qty' => 1]], 'cash', $walkin, $owner);
+        check('cross-sell stock: sold at Experiences, taken from the Kite shelf', $r['ok'] === true && inv_balance($boardInv, $kiteLoc) === 2);
+        check('cross-sell stock: the selling outlet holds no balance for it', $count(
+            'SELECT COUNT(*) FROM inv_balances b JOIN inv_locations l ON l.id = b.location_id WHERE l.pos_outlet_id = :o AND b.item_id = :i',
+            [':o' => $exp, ':i' => $boardInv]) === 0);
+        // allow_negative still works through inventory.
+        db_query('UPDATE pos_items SET allow_negative = TRUE WHERE id = :i', [':i' => $board]);
+        $r = $sale($kite, [['item_id' => $board, 'qty' => 5]], 'cash', $walkin, $owner);
+        check('allow_negative: 5 of 2 sells', $r['ok'] === true);
+        check('allow_negative: on-hand goes to -3', pos_item_stock_on_hand($board) === -3);
     } else {
         $ledger = (int) db_query('SELECT COALESCE(SUM(qty_delta),0) FROM pos_stock_moves WHERE item_id = :i', [':i' => $cap])->fetchColumn();
         check('stock: cached stock_qty equals 10 + the ledger', 10 + $ledger === $stock($cap));
@@ -536,6 +574,20 @@ try {
     db_query('UPDATE pos_items SET low_stock_at = 5 WHERE id = :i', [':i' => $cap]);
     check('low stock: not listed while above the alert', !array_filter(pos_low_stock([$exp]), fn($r) => (int)$r['id'] === $cap));
     check('low stock: an out/low item is listed', (bool) array_filter(pos_low_stock([$shop]), fn($r) => (int)$r['id'] === $cap));
+
+    if ($inv) {
+        // 14. Void of a sale made before inventory existed: its stock move lives only in the
+        //     legacy ledger. (Last, so the sales-query / z-report void counts above stay exact.)
+        $r = $sale($shop, [['item_id' => $cap, 'qty' => 1]], 'cash', $walkin, $amina);
+        $legId = (int)($r['sale']['id'] ?? 0);
+        db_query("UPDATE inv_moves SET pos_sale_id = NULL, note = 'carried over' WHERE pos_sale_id = :s", [':s' => $legId]);
+        db_query("INSERT INTO pos_stock_moves (item_id, qty_delta, reason, sale_id) VALUES (:i, -1, 'sale', :s)", [':i' => $cap, ':s' => $legId]);
+        $before = $stock($cap);
+        $v = pos_void_sale($legId, 'pre-inventory sale', $manager);
+        check('void: a pre-inventory sale can be voided', $r['ok'] === true && $v['ok'] === true);
+        check('void: a pre-inventory sale restocks from the legacy ledger', $stock($cap) === $before + 1);
+        check('void: …as one inventory "void" move', $count("SELECT COUNT(*) FROM inv_moves WHERE pos_sale_id = :s AND reason = 'void'", [':s' => $legId]) === 1);
+    }
 } catch (Throwable $e) {
     echo "FAIL  DB block threw: " . $e->getMessage() . "\n" . $e->getTraceAsString() . "\n";
     $failures++;

@@ -362,7 +362,7 @@ function pos_item_select_sql(): string {
     $stock = $inv ? 'COALESCE(ib.qty, 0) AS stock_on_hand' : 'i.stock_qty AS stock_on_hand';
     $join  = $inv ? " LEFT JOIN inv_locations il ON il.pos_outlet_id = i.outlet_id
                       LEFT JOIN inv_balances ib  ON ib.item_id = i.inv_item_id AND ib.location_id = il.id" : '';
-    return "SELECT i.*, {$stock}, c.name AS category_name, o.name AS outlet_name,
+    return "SELECT i.*, {$stock}, c.name AS category_name, o.name AS outlet_name, o.sort_order AS outlet_sort,
                    t.name AS tour_name, t.price_amount AS tour_price, t.price_per_person AS tour_per_person,
                    t.is_published AS tour_published,
                    cs.name AS consignor_name, cs.commission_pct AS consignor_commission_pct
@@ -519,8 +519,12 @@ function pos_item_stock_on_hand(int $posItemId, bool $lock = false): int {
     }
     $it = db_query('SELECT outlet_id, inv_item_id FROM pos_items WHERE id = :id', [':id' => $posItemId])->fetch();
     if (!$it || $it['inv_item_id'] === null) return 0;
+    if (!$lock) {   // a read never creates the location
+        $loc = inv_outlet_location_find((int)$it['outlet_id']);
+        return $loc === null ? 0 : inv_balance((int)$it['inv_item_id'], $loc);
+    }
     $loc = pos_inv(fn(): int => inv_outlet_location_id((int)$it['outlet_id']));
-    return $lock ? inv_balance_lock((int)$it['inv_item_id'], $loc) : inv_balance((int)$it['inv_item_id'], $loc);
+    return inv_balance_lock((int)$it['inv_item_id'], $loc);
 }
 
 /**
@@ -531,6 +535,9 @@ function pos_item_stock_on_hand(int $posItemId, bool $lock = false): int {
  */
 function pos_stock_move(int $itemId, int $delta, string $reason, ?int $saleId = null, ?float $unitCost = null, string $note = '', ?int $userId = null, array $terms = []): int {
     if (!in_array($reason, ['receive','sale','void','adjust','return'], true)) throw new InvalidArgumentException('bad stock reason');
+    if ($delta !== 0 && ($reason === 'sale' ? $delta > 0 : ($reason !== 'adjust' && $delta < 0))) {
+        throw new InvalidArgumentException('stock delta sign does not match reason');
+    }
     if (inv_supported()) return pos_stock_move_inv($itemId, $delta, $reason, $saleId, $unitCost, $note, $userId, $terms);
     return pos_tx(function () use ($itemId, $delta, $reason, $saleId, $unitCost, $note, $userId, $terms): int {
         $it = db_query('SELECT id, name, track_stock, stock_qty, allow_negative FROM pos_items WHERE id = :id FOR UPDATE', [':id' => $itemId])->fetch();
@@ -646,7 +653,8 @@ function pos_stock_moves(int $itemId, int $limit = 100): array {
     if (inv_supported()) {
         $it = db_query('SELECT outlet_id, inv_item_id FROM pos_items WHERE id = :id', [':id' => $itemId])->fetch();
         if (!$it || $it['inv_item_id'] === null) return [];
-        $loc = pos_inv(fn(): int => inv_outlet_location_id((int)$it['outlet_id']));
+        $loc = inv_outlet_location_find((int)$it['outlet_id']);   // a read never creates the location
+        if ($loc === null) return [];
         return array_map(fn(array $m): array => $m + [
             'qty_delta' => ($m['to_location_id'] !== null && (int)$m['to_location_id'] === $loc) ? (int)$m['qty'] : -(int)$m['qty'],
             'unit_cost' => $m['unit_value'],
@@ -662,17 +670,28 @@ function pos_stock_moves(int $itemId, int $limit = 100): array {
     )->fetchAll();
 }
 
-/** An item moved to another outlet takes its shelf stock with it (a transfer between the two outlet locations). */
+/**
+ * An item moved to another outlet takes its shelf stock with it (a transfer between
+ * the two outlet locations). Call in the same transaction as the UPDATE of
+ * pos_items.outlet_id. Refuses when the old shelf is below zero (count it first).
+ */
 function pos_item_move_stock(int $posItemId, int $fromOutletId, int $toOutletId, ?int $userId): void {
     if (!inv_supported()) return;   // legacy: stock_qty lives on the row and moves with it
-    $invId = pos_item_ensure_inventory($posItemId);
-    $from  = pos_inv(fn(): int => inv_outlet_location_id($fromOutletId));
-    $to    = pos_inv(fn(): int => inv_outlet_location_id($toOutletId));
-    $qty   = inv_balance($invId, $from);
-    if ($qty > 0) {
-        pos_inv(fn(): int => inv_move(['item_id' => $invId, 'qty' => $qty, 'from' => $from, 'to' => $to,
-                                       'reason' => 'transfer', 'user_id' => $userId, 'note' => 'Item moved to another outlet']));
-    }
+    pos_tx(function () use ($posItemId, $fromOutletId, $toOutletId, $userId): void {
+        if (db_query('SELECT id FROM pos_items WHERE id = :id FOR UPDATE', [':id' => $posItemId])->fetchColumn() === false) {
+            throw new PosRefusal('That item no longer exists.');
+        }
+        $invId = pos_item_ensure_inventory($posItemId);
+        $from  = pos_inv(fn(): int => inv_outlet_location_id($fromOutletId));
+        $to    = pos_inv(fn(): int => inv_outlet_location_id($toOutletId));
+        inv_lock_balances([[$invId, $from], [$invId, $to]]);
+        $qty   = inv_balance_lock($invId, $from);
+        if ($qty < 0) throw new PosRefusal('Count this item before moving it — its shelf is below zero.');
+        if ($qty > 0) {
+            pos_inv(fn(): int => inv_move(['item_id' => $invId, 'qty' => $qty, 'from' => $from, 'to' => $to,
+                                           'reason' => 'transfer', 'user_id' => $userId, 'note' => 'Item moved to another outlet']));
+        }
+    });
 }
 
 // ── In-house guests ─────────────────────────────────────────────────────────
@@ -963,6 +982,7 @@ function pos_complete_sale_tx(array $req, string $uuid, int $userId, ?int $termi
              ':c' => $l['consignor_id'], ':cp' => $l['consignor_commission_pct'], ':cc' => $l['consignor_cost']]
         );
     }
+    ksort($need);   // item-id order for every lock taken below (and any created on the way)
     if (inv_supported()) {
         // Lock every shelf row this sale touches in the global (item, location) order
         // before moving any — so a sale can never deadlock with a restock or transfer.
@@ -1022,8 +1042,25 @@ function pos_void_sale(int $saleId, string $reason, int $userId): array {
                 $moves = db_query("SELECT item_id, from_location_id, SUM(qty) AS q FROM inv_moves
                                     WHERE pos_sale_id = :s AND reason = 'sale'
                                     GROUP BY item_id, from_location_id ORDER BY item_id, from_location_id", [':s' => $saleId])->fetchAll();
-                foreach ($moves as $m) {
-                    pos_inv(fn(): int => inv_move(['item_id' => (int)$m['item_id'], 'qty' => (int)$m['q'], 'to' => (int)$m['from_location_id'],
+                $back = array_map(fn(array $m): array => [(int)$m['item_id'], (int)$m['from_location_id'], (int)$m['q']], $moves);
+                if (!$back) {
+                    // A sale made before inventory existed: its stock left through the legacy
+                    // ledger, so it goes back to the item's (current) outlet shelf.
+                    $legacy = db_query("SELECT item_id, -SUM(qty_delta) AS q FROM pos_stock_moves
+                                         WHERE sale_id = :s AND reason = 'sale' GROUP BY item_id ORDER BY item_id", [':s' => $saleId])->fetchAll();
+                    foreach ($legacy as $m) {
+                        $q = (int)$m['q'];
+                        if ($q <= 0) continue;
+                        $it = db_query('SELECT id, outlet_id FROM pos_items WHERE id = :id FOR UPDATE', [':id' => (int)$m['item_id']])->fetch();
+                        if (!$it) continue;   // item deleted since — nothing to restock
+                        $invId  = pos_item_ensure_inventory((int)$it['id']);
+                        $back[] = [$invId, pos_inv(fn(): int => inv_outlet_location_id((int)$it['outlet_id'])), $q];
+                    }
+                }
+                // Lock every shelf row first, in the global (item, location) order.
+                inv_lock_balances(array_map(fn(array $b): array => [$b[0], $b[1]], $back));
+                foreach ($back as [$invItem, $loc, $q]) {
+                    pos_inv(fn(): int => inv_move(['item_id' => $invItem, 'qty' => $q, 'to' => $loc,
                                                    'reason' => 'void', 'pos_sale_id' => $saleId, 'user_id' => $userId,
                                                    'note' => 'Void ' . $sale['reference']]));
                 }
@@ -1429,7 +1466,7 @@ function pos_low_stock(array $outletIds): array {
     $rows = db_query(pos_item_select_sql() . ' WHERE i.outlet_id IN (' . implode(',', $ph) . ') AND i.is_active = TRUE AND i.track_stock = TRUE', $p)->fetchAll();
     $low = array_values(array_filter($rows, fn(array $r): bool =>
         (int)$r['stock_on_hand'] <= 0 || ($r['low_stock_at'] !== null && (int)$r['stock_on_hand'] <= (int)$r['low_stock_at'])));
-    usort($low, fn(array $a, array $b): int => [(int)$a['stock_on_hand'], $a['outlet_name'], $a['name']] <=> [(int)$b['stock_on_hand'], $b['outlet_name'], $b['name']]);
+    usort($low, fn(array $a, array $b): int => [(int)$a['stock_on_hand'], (int)$a['outlet_sort'], $a['name']] <=> [(int)$b['stock_on_hand'], (int)$b['outlet_sort'], $b['name']]);
     return array_map(fn(array $r): array => [
         'id' => (int)$r['id'], 'name' => $r['name'], 'stock_qty' => (int)$r['stock_on_hand'],
         'low_stock_at' => $r['low_stock_at'], 'outlet_id' => (int)$r['outlet_id'], 'outlet' => $r['outlet_name'],
