@@ -1338,6 +1338,7 @@ function inv_replace(int $itemId, int $qty, int $atId, string $lossReason, ?int 
     $sourceId ??= inv_store_location_id();
     if ($sourceId === $atId) throw new InvRefusal('The replacement has to come from somewhere else.');
     return inv_tx(function () use ($itemId, $qty, $atId, $lossReason, $userId, $note, $sourceId): array {
+        inv_lock_balances([[$itemId, $atId], [$itemId, $sourceId]]);   // both rows, global order, before the two moves
         $loss = inv_report_loss($itemId, $qty, $atId, $lossReason, $userId, $note);
         $rep  = inv_move(['item_id' => $itemId, 'qty' => $qty, 'from' => $sourceId, 'to' => $atId,
                           'reason' => 'replaced', 'user_id' => $userId, 'note' => $note]);
@@ -1363,15 +1364,22 @@ function inv_restock_to_par(int $locationId, ?int $userId, ?int $sourceId = null
     $sourceId ??= inv_store_location_id();
     if ($sourceId === $locationId) throw new InvRefusal('Restock from a different location.');
     return inv_tx(function () use ($locationId, $userId, $sourceId): array {
-        $rows = db_query("SELECT b.item_id, b.qty, b.par_qty FROM inv_balances b JOIN inv_items i ON i.id = b.item_id
-                           WHERE b.location_id = :l AND b.par_qty IS NOT NULL AND i.is_active = TRUE AND i.tracking = 'qty'
-                           ORDER BY b.item_id", [':l' => $locationId])->fetchAll();
+        $sql = "SELECT b.item_id, b.qty, b.par_qty FROM inv_balances b JOIN inv_items i ON i.id = b.item_id
+                 WHERE b.location_id = :l AND b.par_qty IS NOT NULL AND i.is_active = TRUE AND i.tracking = 'qty'
+                 ORDER BY b.item_id";
+        // Lock every (item, here) and (item, source) row in the global order first, then
+        // read the quantities under that lock — no deadlock with a concurrent transfer or sale.
+        $pairs = [];
+        foreach (db_query($sql, [':l' => $locationId])->fetchAll() as $r) {
+            $pairs[] = [(int)$r['item_id'], $locationId];
+            $pairs[] = [(int)$r['item_id'], $sourceId];
+        }
+        inv_lock_balances($pairs);
+        $rows  = db_query($sql, [':l' => $locationId])->fetchAll();
         $moved = [];
         $short = [];
         foreach (inv_restock_plan($rows) as $itemId => $need) {
-            // Unlocked read: inv_move() below locks both rows in id order and re-checks,
-            // so locking the source here first could deadlock a concurrent reverse transfer.
-            $take = min($need, max(0, inv_balance($itemId, $sourceId)));
+            $take = min($need, max(0, inv_balance($itemId, $sourceId)));   // locked above
             if ($take > 0) {
                 inv_move(['item_id' => $itemId, 'qty' => $take, 'from' => $sourceId, 'to' => $locationId,
                           'reason' => 'transfer', 'user_id' => $userId, 'note' => 'Restock to par']);
@@ -2011,6 +2019,32 @@ with
             }
 ```
 
+f2) In `pos_complete_sale_tx()`, replace
+
+```php
+    foreach ($need as $iid => $qty) {
+        if (pos_bool($items[$iid]['track_stock'])) pos_stock_move($iid, -$qty, 'sale', $saleId, null, $ref, $userId);
+    }
+```
+
+with
+
+```php
+    if (inv_supported()) {
+        // Lock every shelf row this sale touches in the global (item, location) order
+        // before moving any — so a sale can never deadlock with a restock or transfer.
+        $pairs = [];
+        foreach ($need as $iid => $qty) {
+            if (!pos_bool($items[$iid]['track_stock'])) continue;
+            $pairs[] = [pos_item_ensure_inventory($iid), pos_inv(fn(): int => inv_outlet_location_id((int)$items[$iid]['outlet_id']))];
+        }
+        inv_lock_balances($pairs);
+    }
+    foreach ($need as $iid => $qty) {
+        if (pos_bool($items[$iid]['track_stock'])) pos_stock_move($iid, -$qty, 'sale', $saleId, null, $ref, $userId);
+    }
+```
+
 g) In `pos_catalog_payload()`, replace
 
 ```php
@@ -2296,7 +2330,9 @@ Migration `add_inventory.sql` (after `add_pos_v2.sql` + `add_hr_staff.sql`). Log
 - **`inv_move()` is the ONLY writer of `inv_moves` and `inv_balances`.** It locks both balance rows in location-id order, refuses going below zero (only a POS listing flagged `allow_negative` passes `allow_negative`), snapshots `unit_value`/`value`/`currency`, and updates both balances in one transaction. Compound actions (`inv_replace()`, `inv_restock_to_par()`, count resolution) are several `inv_move()` calls inside one `inv_tx()`. Never `UPDATE inv_balances.qty` anywhere else — `par_qty` (a target, not a quantity) is the one column edited directly (`inv_set_par()`).
 - **Move shape is the reason:** `from = NULL` = stock entering (receive/found/opening/void), `to = NULL` = leaving (sale/broken/missing/stolen/written_off), both = transfer/assign/return/replaced. Moves are append-only — a correction is a new move.
 - **A location's `venue_id` is its OWNING venue for every kind** (property; area → its property's; outlet → the outlet's; person → home venue; Main stock = NULL, shared). That is the accounting seam (venue → company later) and the scope rule: `inv_move_in_scope()` lets a manager move only between their own locations and shared ones, with at least one end their own. "Assigned to Jane" = stock at Jane's `kind='person'` location (`inv_person_location_id()`).
-- **Serial-tracked items** (`tracking='serial'`) move one unit at a time with `asset_id`; the unit must be at `from`; a unit already in stock cannot come in again. Invariant: balance at L = active units at L.
+- **Lock order is global:** balance rows by `(item_id, location_id)`, then `inv_assets`. Any transaction that makes several moves (replace, restock, a POS sale) pre-locks every pair with `inv_lock_balances()` first — never lock ad hoc, or a sale and a restock can deadlock.
+- **Serial-tracked items** (`tracking='serial'`) move one unit at a time with `asset_id`; the unit must be at `from`. Coming back in is state-checked: `found` only for a written-off unit, `void` only for a sold one, `receive`/`opening` only for a never-moved unit; a returning unit is valued at what it left at. Invariant: balance at L = active units at L. **`tracking` must never change once an item has moves**, and a POS listing never links to a serial item — both break every later move.
+- `inv_move()` and the everyday actions do **no venue scoping** — callers check `inv_move_in_scope()`.
 - **Counting never moves stock.** `inv_count_start()` snapshots `expected`; `inv_count_submit()` saves numbers (matches auto-accept); a manager's `inv_count_resolve_line()` writes the move — refused while the live balance differs from `expected` (recount instead). A line resolves once.
 - **POS on top:** a stock-tracked `pos_items` row links to `inv_items` via `pos_items.inv_item_id` (created on first use by `pos_item_ensure_inventory()`); its shelf is the outlet's `inv_locations` row (`pos_outlet_id`, UNIQUE). `pos_item_select_sql()` exposes **`stock_on_hand`** — read that, never `stock_qty`, which is no longer written (kept one release, then dropped). The legacy `pos_stock_moves` path runs only when `inv_supported()` is false. Inventory refusals inside POS paths are converted by `pos_inv()`.
 - **Money is never summed across currencies** — `inv_sum_by_currency()`.
