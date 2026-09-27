@@ -5,6 +5,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/checkin.php';
 require_once __DIR__ . '/../includes/upsells.php';   // checkin_deposit_supported()
 require_once __DIR__ . '/../includes/rates.php';
+require_once __DIR__ . '/../includes/inventory.php';   // delete guard: a property holding stock
 require_login();
 require_owner();
 
@@ -252,10 +253,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     }
 
     if ($action === 'delete_venue' && !$isNew) {
-        db_query('DELETE FROM venues WHERE id = :id', [':id' => $id]); // rooms.venue_id → NULL via FK ON DELETE SET NULL
-        audit_log('venue.delete', 'venue', $id);
-        header('Location: /admin/venues.php');
-        exit;
+        // A deleted venue would turn its inventory locations into "shared" ones (venue_id NULL).
+        if (($held = inv_linked_stock_count('venue_id', $id)) > 0) {
+            $error = "This property still holds {$held} inventory item(s) — move them or write them off before deleting it.";
+        } else {
+            db_query('DELETE FROM venues WHERE id = :id', [':id' => $id]); // rooms.venue_id → NULL via FK ON DELETE SET NULL
+            audit_log('venue.delete', 'venue', $id);
+            header('Location: /admin/venues.php');
+            exit;
+        }
     }
 }
 

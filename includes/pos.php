@@ -678,9 +678,11 @@ function pos_stock_moves(int $itemId, int $limit = 100): array {
 function pos_item_move_stock(int $posItemId, int $fromOutletId, int $toOutletId, ?int $userId): void {
     if (!inv_supported()) return;   // legacy: stock_qty lives on the row and moves with it
     pos_tx(function () use ($posItemId, $fromOutletId, $toOutletId, $userId): void {
-        if (db_query('SELECT id FROM pos_items WHERE id = :id FOR UPDATE', [':id' => $posItemId])->fetchColumn() === false) {
+        $row = db_query('SELECT id, inv_item_id FROM pos_items WHERE id = :id FOR UPDATE', [':id' => $posItemId])->fetch();
+        if ($row === false) {
             throw new PosRefusal('That item no longer exists.');
         }
+        if ($row['inv_item_id'] === null) return;   // never linked to inventory — nothing on any shelf
         $invId = pos_item_ensure_inventory($posItemId);
         $from  = pos_inv(fn(): int => inv_outlet_location_id($fromOutletId));
         $to    = pos_inv(fn(): int => inv_outlet_location_id($toOutletId));

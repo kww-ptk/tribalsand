@@ -23,6 +23,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/hr.php';
+require_once __DIR__ . '/../includes/inventory.php';   // assigned-asset owner refresh + delete guard
 require_once __DIR__ . '/../includes/internal-messages.php';  // DM a teammate (Item 6)
 require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/pagination.php';
@@ -119,6 +120,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $params + [':id' => $sid]
                 );
                 hr_set_staff_venues($sid, $alsoVenues, $vid ?: null, $venueIds);
+                inv_refresh_location_owners();   // their assets follow a new name/home venue
                 audit_log('hr_staff_update', 'hr_staff', $sid, $name);
                 staff_flash('Directory entry updated.', 'success', 'directory');
             } else {
@@ -140,6 +142,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             staff_flash('No change.', 'error', 'directory');
         } elseif ($action === 'hr_delete') {
             $sid = (int)($_POST['hr_id'] ?? 0);
+            if (($held = inv_linked_stock_count('hr_staff_id', $sid)) > 0) {
+                staff_flash("This person still holds {$held} assigned item(s) — return them to stock before removing the entry.", 'error', 'directory');
+            }
             $n = db_query("DELETE FROM hr_staff WHERE id = :id", [':id' => $sid])->rowCount();
             if ($n) { audit_log('hr_staff_delete', 'hr_staff', $sid, ''); staff_flash('Directory entry removed.', 'success', 'directory'); }
             staff_flash('No change.', 'error', 'directory');
