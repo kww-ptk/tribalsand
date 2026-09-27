@@ -3,10 +3,10 @@
  * Admin: POS stock — receive deliveries, correct counts, read the ledger.
  * Owner, or a manager for their property's outlets (pos_manageable_outlet_ids()).
  *
- * Stock is a LEDGER: every change is a pos_stock_moves row and pos_items.stock_qty
- * is its cached total, written together under a row lock (pos_stock_move()).
- * Nothing here edits stock_qty directly. A count correction records the
- * difference as an "adjust" move with a required reason.
+ * Stock is the outlet's shelf in the shared inventory: every change is an
+ * inv_moves row written by inv_move() (via pos_stock_move()). Nothing here edits
+ * a quantity directly. A count correction records the difference as a
+ * found/missing move with a required reason.
  */
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
@@ -63,7 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported && $outlet) {
         } elseif ($act === 'count') {
             $counted = (string)($_POST['counted'] ?? '');
             if (!ctype_digit($counted)) throw new PosRefusal('Enter the counted quantity as a whole number.');
-            $before = (int)$item['stock_qty'];
+            $before = (int)$item['stock_on_hand'];
             $n = pos_stock_adjust($iid, (int)$counted, $note, (int)$me['id']);
             audit_log('pos.stock_adjust', 'pos_item', $iid, "{$before} → {$n}: {$note}");
             $_SESSION['poss_flash'] = ['type' => 'success', 'msg' => $n === $before
@@ -77,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported && $outlet) {
 }
 
 $items   = $outlet ? array_values(array_filter(pos_fetch_items($oid, false, false), fn($i) => pos_bool($i['track_stock']))) : [];
-$isLow   = fn(array $i) => (int)$i['stock_qty'] <= 0 || ($i['low_stock_at'] !== null && (int)$i['stock_qty'] <= (int)$i['low_stock_at']);
+$isLow   = fn(array $i) => (int)$i['stock_on_hand'] <= 0 || ($i['low_stock_at'] !== null && (int)$i['stock_on_hand'] <= (int)$i['low_stock_at']);
 $low     = array_values(array_filter($items, $isLow));
 $pickId  = (int)($_GET['item'] ?? 0);
 $picked  = null;
@@ -97,8 +97,11 @@ foreach ($items as $i) {
 }
 $defaultPct = []; foreach ($consignors as $c) $defaultPct[(int)$c['id']] = (float)$c['commission_pct'];
 $cur     = $outlet ? strtoupper((string)$outlet['currency']) : 'USD';
-$REASONS = ['receive' => ['Received', 'badge--green'], 'sale' => ['Sale', 'badge--blue'], 'void' => ['Void', 'badge--orange'],
-            'adjust' => ['Count', 'badge--purple'], 'return' => ['Return', 'badge--teal']];
+$REASONS = ['receive' => ['Received', 'badge--green'], 'opening' => ['Opening', 'badge--green'], 'sale' => ['Sale', 'badge--blue'],
+            'void' => ['Void', 'badge--orange'], 'adjust' => ['Count', 'badge--purple'], 'found' => ['Count +', 'badge--purple'],
+            'missing' => ['Count −', 'badge--purple'], 'return' => ['Return', 'badge--teal'], 'transfer' => ['Transfer', 'badge--teal'],
+            'assign' => ['Assigned', 'badge--teal'], 'replaced' => ['Replacement', 'badge--teal'], 'broken' => ['Broken', 'badge--red'],
+            'stolen' => ['Stolen', 'badge--red'], 'written_off' => ['Written off', 'badge--red']];
 
 include __DIR__ . '/_layout.php';
 ?>
@@ -131,7 +134,7 @@ include __DIR__ . '/_layout.php';
     <div class="table-wrap"><table class="data-table poss-table">
       <thead><tr><th>Item</th><th class="poss-num">On hand</th><th class="poss-num">Alert at</th><th></th></tr></thead>
       <tbody>
-      <?php foreach ($items as $i): $q = (int)$i['stock_qty']; ?>
+      <?php foreach ($items as $i): $q = (int)$i['stock_on_hand']; ?>
         <tr class="<?= (int)$i['id'] === $pickId ? 'is-picked' : '' ?>">
           <td><a href="<?= $self ?>?outlet=<?= $oid ?>&item=<?= (int)$i['id'] ?>#ledger" class="poss-link"><?= e($i['name']) ?></a>
             <?php if (!empty($i['consignor_id'])): ?><span class="badge badge--purple">Consignment</span><?php endif; ?>
@@ -153,7 +156,7 @@ include __DIR__ . '/_layout.php';
         <input type="hidden" name="outlet_id" value="<?= $oid ?>">
         <div class="field"><label>Item</label>
           <select name="item_id" class="eselect eselect--block" required>
-            <?php foreach ($items as $i): ?><option value="<?= (int)$i['id'] ?>" <?= (int)$i['id'] === $pickId ? 'selected' : '' ?>><?= e($i['name']) ?> — <?= (int)$i['stock_qty'] ?> on hand</option><?php endforeach; ?>
+            <?php foreach ($items as $i): ?><option value="<?= (int)$i['id'] ?>" <?= (int)$i['id'] === $pickId ? 'selected' : '' ?>><?= e($i['name']) ?> — <?= (int)$i['stock_on_hand'] ?> on hand</option><?php endforeach; ?>
           </select></div>
         <div class="field"><label>What happened</label>
           <div class="poss-chips">
@@ -203,7 +206,7 @@ include __DIR__ . '/_layout.php';
 
 <?php if ($picked): ?>
 <div class="card" id="ledger" style="margin-top:18px">
-  <div class="card__head"><span class="card__title"><?= e($picked['name']) ?> — history</span><span class="text-muted" style="font-size:12.5px"><?= (int)$picked['stock_qty'] ?> on hand</span></div>
+  <div class="card__head"><span class="card__title"><?= e($picked['name']) ?> — history</span><span class="text-muted" style="font-size:12.5px"><?= (int)$picked['stock_on_hand'] ?> on hand</span></div>
   <?php if (!$moves): ?>
     <?php dt_empty('No stock movements yet.'); ?>
   <?php else: ?>

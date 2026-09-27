@@ -5,7 +5,7 @@
  * Add / edit / hide / delete items, link activities (price read live from the
  * activity), photos, stock tracking, consignment supplier, drag reorder.
  *
- * Stock is NEVER edited here — stock_qty is the cached total of the stock ledger,
+ * Stock is NEVER edited here — on-hand stock is the outlet's inventory balance,
  * so every change goes through Admin → POS stock (receive / count), except the
  * opening quantity when an item is created (written as a "receive" move).
  * Every mutation re-checks that the item belongs to an outlet this account manages.
@@ -60,6 +60,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
                                       array_map(fn($c) => (int)$c['id'], $consignors));
         $opening = trim((string)($_POST['opening_stock'] ?? ''));
         if (!$iid && $v['track_stock'] && $opening !== '' && !ctype_digit($opening)) $e['opening_stock'] = 'Opening stock must be a whole number.';
+        elseif (!$iid && $v['track_stock'] && $opening !== '' && (int)$opening > INV_MAX_QTY) $e['opening_stock'] = 'Opening stock is too large.';
+        if ($iid && $item && pos_bool($item['track_stock']) && !$v['track_stock'] && inv_supported() && (int)$item['stock_on_hand'] !== 0) $e['track_stock'] = 'Count this item to 0 before turning stock tracking off (' . (int)$item['stock_on_hand'] . ' on hand).';
         $img = '';
         if (!$e) {
             try { $img = pos_upload_item_image($_FILES['image'] ?? []); }
@@ -83,32 +85,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
         $imgSql = '';
         if ($img !== '')                       { $imgSql = ', image_key = :img'; $p[':img'] = $img; }
         elseif (!empty($_POST['remove_image'])) { $imgSql = ', image_key = NULL'; }
-        $newId = pos_tx(function () use ($iid, $oid, $p, $imgSql, $img, $v, $opening, $me, $pct, $v2, $moveTo): int {
-            if ($iid) {
-                db_query("UPDATE pos_items SET category_id = :c, kind = :k, tour_id = :t, name = :n, sku = :sku, price = :p,
-                                 per_person = :pp, track_stock = :ts, low_stock_at = :low, allow_negative = :neg,
-                                 consignor_id = :cs, consignor_cost = :cc{$pct}, is_active = :a, updated_at = now(){$imgSql}
-                           WHERE id = :id AND outlet_id = :o", $p + [':id' => $iid, ':o' => $oid]);
-                if ($moveTo) {
-                    // Categories belong to an outlet, so a moved item starts uncategorised
-                    // at the end of its new outlet. Its stock and sales history move with it;
-                    // past sale lines keep the outlet they were sold for.
-                    $max = (int) db_query('SELECT COALESCE(MAX(sort_order), -1) FROM pos_items WHERE outlet_id = :o', [':o' => $moveTo])->fetchColumn();
-                    db_query('UPDATE pos_items SET outlet_id = :t, category_id = NULL, sort_order = :s WHERE id = :id', [':t' => $moveTo, ':s' => $max + 1, ':id' => $iid]);
+        try {
+            $newId = pos_tx(function () use ($iid, $oid, $p, $imgSql, $img, $v, $opening, $me, $pct, $v2, $moveTo): int {
+                if ($iid) {
+                    db_query("UPDATE pos_items SET category_id = :c, kind = :k, tour_id = :t, name = :n, sku = :sku, price = :p,
+                                     per_person = :pp, track_stock = :ts, low_stock_at = :low, allow_negative = :neg,
+                                     consignor_id = :cs, consignor_cost = :cc{$pct}, is_active = :a, updated_at = now(){$imgSql}
+                               WHERE id = :id AND outlet_id = :o", $p + [':id' => $iid, ':o' => $oid]);
+                    if ($v['track_stock'] && inv_supported()) pos_item_sync_inventory($iid);
+                    if ($moveTo) {
+                        // Categories belong to an outlet, so a moved item starts uncategorised
+                        // at the end of its new outlet. Its stock and sales history move with it;
+                        // past sale lines keep the outlet they were sold for.
+                        if (inv_supported()) pos_item_move_stock($iid, $oid, $moveTo, (int)$me['id']);
+                        $max = (int) db_query('SELECT COALESCE(MAX(sort_order), -1) FROM pos_items WHERE outlet_id = :o', [':o' => $moveTo])->fetchColumn();
+                        db_query('UPDATE pos_items SET outlet_id = :t, category_id = NULL, sort_order = :s WHERE id = :id', [':t' => $moveTo, ':s' => $max + 1, ':id' => $iid]);
+                    }
+                    return $iid;
                 }
-                return $iid;
-            }
-            $max = (int) db_query('SELECT COALESCE(MAX(sort_order), -1) FROM pos_items WHERE outlet_id = :o', [':o' => $oid])->fetchColumn();
-            db_query("INSERT INTO pos_items (outlet_id, category_id, kind, tour_id, name, sku, price, per_person, track_stock,
-                                             low_stock_at, allow_negative, consignor_id, consignor_cost, is_active, sort_order, image_key" . ($v2 ? ', consign_pct' : '') . ")
-                      VALUES (:o, :c, :k, :t, :n, :sku, :p, :pp, :ts, :low, :neg, :cs, :cc, :a, :so, :img" . ($v2 ? ', :cpct' : '') . ")",
-                array_diff_key($p, [':img' => 1]) + [':o' => $oid, ':so' => $max + 1, ':img' => $img !== '' ? $img : null]);
-            $id = (int) db()->lastInsertId();
-            if ($v['track_stock'] && $opening !== '' && (int)$opening > 0) {
-                pos_stock_receive($id, (int)$opening, null, 'Opening stock', (int)$me['id']);
-            }
-            return $id;
-        });
+                $max = (int) db_query('SELECT COALESCE(MAX(sort_order), -1) FROM pos_items WHERE outlet_id = :o', [':o' => $oid])->fetchColumn();
+                db_query("INSERT INTO pos_items (outlet_id, category_id, kind, tour_id, name, sku, price, per_person, track_stock,
+                                                 low_stock_at, allow_negative, consignor_id, consignor_cost, is_active, sort_order, image_key" . ($v2 ? ', consign_pct' : '') . ")
+                          VALUES (:o, :c, :k, :t, :n, :sku, :p, :pp, :ts, :low, :neg, :cs, :cc, :a, :so, :img" . ($v2 ? ', :cpct' : '') . ")",
+                    array_diff_key($p, [':img' => 1]) + [':o' => $oid, ':so' => $max + 1, ':img' => $img !== '' ? $img : null]);
+                $id = (int) db()->lastInsertId();
+                if ($v['track_stock'] && inv_supported()) pos_item_sync_inventory($id);
+                if ($v['track_stock'] && $opening !== '' && (int)$opening > 0) {
+                    pos_stock_receive($id, (int)$opening, null, 'Opening stock', (int)$me['id']);
+                }
+                return $id;
+            });
+        } catch (PosRefusal $ex) {
+            posi_flash('error', $ex->getMessage());
+            $_SESSION['posi_old'] = $_POST;
+            posi_back($oid, $iid ? '&edit=' . $iid . '#form' : '&new=1#form');
+        }
         audit_log($iid ? ($moveTo ? 'pos.item_move' : 'pos.item_save') : 'pos.item_add', 'pos_item', $newId, $v['name']);
         if ($moveTo) {
             $toName = (string)(pos_fetch_outlet($moveTo)['name'] ?? 'the other outlet');
@@ -120,6 +131,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
     }
 
     if ($act === 'delete' && $item) {
+        if (inv_supported() && (int)($item['stock_on_hand'] ?? 0) !== 0) {
+            db_query('UPDATE pos_items SET is_active = FALSE, updated_at = now() WHERE id = :id', [':id' => $iid]);
+            posi_flash('info', "{$item['name']} still has " . (int)$item['stock_on_hand'] . " on hand, so it was hidden instead of deleted. Count it to 0 on the Stock page first to delete it.");
+            audit_log('pos.item_delete', 'pos_item', $iid, (string)$item['name']);
+            posi_back($oid);
+        }
         if (pos_item_has_sales($iid)) {
             db_query('UPDATE pos_items SET is_active = FALSE, updated_at = now() WHERE id = :id', [':id' => $iid]);
             posi_flash('info', "{$item['name']} has sales history, so it was hidden from the till instead of deleted.");
@@ -259,7 +276,7 @@ include __DIR__ . '/_layout.php';
         <?php if (!$editing): ?>
         <div class="field"><label>Opening stock</label><input name="opening_stock" type="number" class="inp inp--num no-spin" min="0" step="1" value="<?= e((string)($old['opening_stock'] ?? '')) ?>" placeholder="0"><?= $err('opening_stock') ?></div>
         <?php else: ?>
-        <div class="field"><label>On hand</label><div class="posi-onhand"><?= (int)$editing['stock_qty'] ?> <a href="/admin/pos-stock.php?outlet=<?= $oid ?>&item=<?= (int)$editing['id'] ?>">receive / count →</a></div></div>
+        <div class="field"><label>On hand</label><div class="posi-onhand"><?= (int)$editing['stock_on_hand'] ?> <a href="/admin/pos-stock.php?outlet=<?= $oid ?>&item=<?= (int)$editing['id'] ?>">receive / count →</a></div></div>
         <?php endif; ?>
         <div class="field"><label>Low-stock alert at</label><input name="low_stock_at" type="number" class="inp inp--num no-spin" min="0" step="1" value="<?= e((string)($form['low_stock_at'] ?? '')) ?>" placeholder="off"><?= $err('low_stock_at') ?></div>
         <div class="field posi-span2" style="align-self:end">
@@ -324,7 +341,7 @@ include __DIR__ . '/_layout.php';
     <tbody id="posiRows">
     <?php foreach ($items as $it):
         $price = pos_item_display_price($it);
-        $low   = pos_bool($it['track_stock']) && $it['low_stock_at'] !== null && (int)$it['stock_qty'] <= (int)$it['low_stock_at']; ?>
+        $low   = pos_bool($it['track_stock']) && $it['low_stock_at'] !== null && (int)$it['stock_on_hand'] <= (int)$it['low_stock_at']; ?>
       <tr id="item-<?= (int)$it['id'] ?>" data-id="<?= (int)$it['id'] ?>" draggable="true" class="<?= pos_bool($it['is_active']) ? '' : 'is-off' ?>">
         <td><span class="posi-grip" aria-hidden="true"><?= admin_icon('grip', 16) ?></span></td>
         <td>
@@ -341,7 +358,7 @@ include __DIR__ . '/_layout.php';
         </td>
         <td><?= e($it['category_name'] ?? '—') ?></td>
         <td class="posi-num"><?= $price === null ? '<span class="text-muted">Open price</span>' : e(pos_money($price, $cur)) . (pos_bool($it['per_person']) || (!empty($it['tour_id']) && $it['price'] === null && pos_bool($it['tour_per_person'])) ? ' <span class="text-muted">pp</span>' : '') ?></td>
-        <td class="posi-num"><?php if (pos_bool($it['track_stock'])): ?><?= (int)$it['stock_qty'] ?><?php if ((int)$it['stock_qty'] <= 0): ?> <span class="badge badge--red">Out</span><?php elseif ($low): ?> <span class="badge badge--orange">Low</span><?php endif; ?><?php else: ?><span class="text-muted">—</span><?php endif; ?></td>
+        <td class="posi-num"><?php if (pos_bool($it['track_stock'])): ?><?= (int)$it['stock_on_hand'] ?><?php if ((int)$it['stock_on_hand'] <= 0): ?> <span class="badge badge--red">Out</span><?php elseif ($low): ?> <span class="badge badge--orange">Low</span><?php endif; ?><?php else: ?><span class="text-muted">—</span><?php endif; ?></td>
         <td>
           <form method="POST" action="<?= $self ?>" style="margin:0">
             <?= csrf_field() ?><input type="hidden" name="action" value="toggle"><input type="hidden" name="outlet_id" value="<?= $oid ?>"><input type="hidden" name="item_id" value="<?= (int)$it['id'] ?>">

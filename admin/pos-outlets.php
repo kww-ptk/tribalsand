@@ -106,6 +106,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
                           SELECT :o, id FROM pos_outlets WHERE id = :s ON CONFLICT DO NOTHING', [':o' => $oid, ':s' => $s]);
             }
         });
+        inv_refresh_location_owners();   // the outlet's shelf follows its new name/venue
+        if (inv_supported()) foreach (db_query('SELECT id FROM pos_items WHERE outlet_id = :o AND inv_item_id IS NOT NULL', [':o' => $oid])->fetchAll(PDO::FETCH_COLUMN) as $pid) pos_item_sync_inventory((int)$pid);
         audit_log('pos.outlet_save', 'pos_outlet', $oid, $name);
         posx_flash($hadSales ? 'info' : 'success', $hadSales
             ? "{$name} saved. Its currency changed: earlier sales keep their original currency, and item prices were NOT converted — check them."
@@ -114,10 +116,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
     }
 
     if ($act === 'outlet_delete') {
-        if (db_query('SELECT 1 FROM pos_sales WHERE outlet_id = :o LIMIT 1', [':o' => $oid])->fetchColumn()) {
+        $held = inv_linked_stock_count('pos_outlet_id', $oid);
+        if ($held > 0 || db_query('SELECT 1 FROM pos_sales WHERE outlet_id = :o LIMIT 1', [':o' => $oid])->fetchColumn()) {
             db_query('UPDATE pos_outlets SET is_active = FALSE WHERE id = :o', [':o' => $oid]);
-            posx_flash('info', "{$outlet['name']} has sales history, so it was closed instead of deleted.");
+            posx_flash('info', $held > 0
+                ? "{$outlet['name']} still has {$held} item(s) on its shelf, so it was closed instead of deleted. Move that stock out first to delete it."
+                : "{$outlet['name']} has sales history, so it was closed instead of deleted.");
         } else {
+            inv_deactivate_linked_locations('pos_outlet_id', $oid);
             db_query('DELETE FROM pos_outlets WHERE id = :o', [':o' => $oid]);
             posx_flash('success', "{$outlet['name']} deleted.");
         }

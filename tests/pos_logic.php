@@ -65,6 +65,7 @@ check('stock: short → "Only 2 left"', (string)pos_stock_shortfall(['track_stoc
 check('stock: none → out of stock', str_contains((string)pos_stock_shortfall(['track_stock' => 't', 'stock_qty' => 0, 'name' => 'Cap'], 1), 'out of stock'));
 check('stock: untracked never short', pos_stock_shortfall(['track_stock' => 'f', 'stock_qty' => 0], 5) === null);
 check('stock: allow_negative never short', pos_stock_shortfall(['track_stock' => 't', 'allow_negative' => 't', 'stock_qty' => 0], 5) === null);
+check('stock: on-hand inventory wins over the stale stock_qty', str_contains((string)pos_stock_shortfall(['track_stock' => 't', 'stock_on_hand' => 0, 'stock_qty' => 10, 'name' => 'Cap'], 1), 'out of stock'));
 
 // ── Room-charge eligibility ────────────────────────────────────────────────
 $today  = '2026-09-26';
@@ -182,7 +183,7 @@ try {
     $d     = fn(int $days) => (new DateTime($today))->modify(($days >= 0 ? '+' : '') . $days . ' days')->format('Y-m-d');
     $ins   = function (string $sql, array $p = []): int { db_query($sql, $p); return (int) db()->lastInsertId(); };
     $uuid  = fn() => 'zz-' . bin2hex(random_bytes(12));
-    $stock = fn(int $id) => (int) db_query('SELECT stock_qty FROM pos_items WHERE id = :i', [':i' => $id])->fetchColumn();
+    $stock = fn(int $id) => pos_item_stock_on_hand($id);
     $count = fn(string $sql, array $p = []) => (int) db_query($sql, $p)->fetchColumn();
 
     // Two properties, a room + unit each, an in-house booking at A and one at B.
@@ -227,6 +228,11 @@ try {
     $tourId = $ins("INSERT INTO tours (slug, name, price_amount, price_per_person) VALUES (:s, 'ZZ Snorkelling', 40, TRUE)", [':s' => "zz-pos-tour-{$sfx}"]);
     $cap   = $ins("INSERT INTO pos_items (outlet_id, name, kind, price, track_stock, stock_qty) VALUES (:o, 'ZZ Cap', 'product', 28, TRUE, 10)", [':o' => $shop]);
     $brace = $ins("INSERT INTO pos_items (outlet_id, name, kind, price, track_stock, stock_qty, consignor_id) VALUES (:o, 'ZZ Bracelet', 'product', 12, TRUE, 9, :c)", [':o' => $shop, ':c' => $cons]);
+    $inv = inv_supported();
+    if ($inv) {   // stock lives in the outlet's inventory now; the raw stock_qty seeded above is not read
+        pos_stock_receive($cap, 10, null, 'Opening stock', null);
+        pos_stock_receive($brace, 9, null, 'Opening stock', null);
+    }
     $lesson= $ins("INSERT INTO pos_items (outlet_id, name, kind, price) VALUES (:o, 'ZZ Kite Taster', 'service', 120)", [':o' => $kite]);
     $snork = $ins("INSERT INTO pos_items (outlet_id, name, kind, price, tour_id) VALUES (:o, 'ZZ Snorkelling', 'service', NULL, :t)", [':o' => $exp, ':t' => $tourId]);
     $req   = $ins("INSERT INTO pos_items (outlet_id, name, kind, price) VALUES (:o, 'ZZ Private Charter', 'service', NULL)", [':o' => $exp]);
@@ -264,7 +270,14 @@ try {
     $s1 = $r['sale'] ?? [];
     check('sale: total re-priced server-side (2 × 28 = 56)', near((float)($s1['total'] ?? 0), 56));
     check('sale: stock 10 → 8', $stock($cap) === 8);
-    check('sale: one "sale" stock move of -2', $count("SELECT COUNT(*) FROM pos_stock_moves WHERE item_id = :i AND reason = 'sale' AND qty_delta = -2 AND sale_id = :s", [':i' => $cap, ':s' => (int)($s1['id'] ?? 0)]) === 1);
+    check('sale: one "sale" stock move of 2', $inv
+        ? $count("SELECT COUNT(*) FROM inv_moves m JOIN pos_items p ON p.inv_item_id = m.item_id
+                   WHERE p.id = :i AND m.reason = 'sale' AND m.qty = 2 AND m.pos_sale_id = :s", [':i' => $cap, ':s' => (int)($s1['id'] ?? 0)]) === 1
+        : $count("SELECT COUNT(*) FROM pos_stock_moves WHERE item_id = :i AND reason = 'sale' AND qty_delta = -2 AND sale_id = :s", [':i' => $cap, ':s' => (int)($s1['id'] ?? 0)]) === 1);
+    if ($inv) {
+        $capInv = (int) db_query('SELECT inv_item_id FROM pos_items WHERE id = :i', [':i' => $cap])->fetchColumn();
+        check('sale: taken from the owning outlet\'s inventory location', inv_balance($capInv, inv_outlet_location_id($shop)) === 8);
+    }
     check('sale: reference is POS-<OUTLET>-1001', ($s1['reference'] ?? '') === 'POS-' . pos_ref_prefix("zzshop-{$sfx}") . '-1001');
     check('sale: walk-in with no name is "Walk-in"', ($s1['customer_name'] ?? '') === 'Walk-in');
 
@@ -386,7 +399,10 @@ try {
         // Consignment terms chosen when the delivery arrives.
         $cons2 = $ins("INSERT INTO pos_consignors (name, commission_pct) VALUES ('ZZ Watamu Weavers', 15)");
         pos_stock_receive($cap, 4, 6.0, 'Kikoy delivery', $manager, pos_consign_terms(['mode' => 'fixed', 'consignor_id' => $cons2, 'value' => '9'], [$cons2]));
-        $mv = db_query("SELECT consignor_id, consignor_cost FROM pos_stock_moves WHERE item_id = :i AND reason = 'receive' ORDER BY id DESC LIMIT 1", [':i' => $cap])->fetch();
+        $mv = $inv
+            ? db_query("SELECT m.consignor_id, m.consignor_cost FROM inv_moves m JOIN pos_items p ON p.inv_item_id = m.item_id
+                         WHERE p.id = :i AND m.reason = 'receive' ORDER BY m.id DESC LIMIT 1", [':i' => $cap])->fetch()
+            : db_query("SELECT consignor_id, consignor_cost FROM pos_stock_moves WHERE item_id = :i AND reason = 'receive' ORDER BY id DESC LIMIT 1", [':i' => $cap])->fetch();
         check('delivery terms: the ledger row records supplier + fixed cost', $mv && (int)$mv['consignor_id'] === $cons2 && near((float)$mv['consignor_cost'], 9));
         $r = $sale($shop, [['item_id' => $cap, 'qty' => 1]], 'cash', $walkin, $owner);
         check('delivery terms: the next sale owes the fixed 9 per item', $r['ok'] && near(pos_consignor_owed($r['sale']['lines'][0]), 9));
@@ -412,7 +428,9 @@ try {
     check('void: stock restored', $stock($cap) === $capBefore + 2);
     check('void: bill line removed', $count('SELECT COUNT(*) FROM bill_items WHERE pos_sale_id = :s', [':s' => $rcId]) === 0);
     check('void: bill_total drops by exactly the voided charge', near($billPreVoid - bill_total($hA), 56));
-    check('void: one "void" stock move', $count("SELECT COUNT(*) FROM pos_stock_moves WHERE sale_id = :s AND reason = 'void'", [':s' => $rcId]) === 1);
+    check('void: one "void" stock move', $count($inv
+        ? "SELECT COUNT(*) FROM inv_moves WHERE pos_sale_id = :s AND reason = 'void'"
+        : "SELECT COUNT(*) FROM pos_stock_moves WHERE sale_id = :s AND reason = 'void'", [':s' => $rcId]) === 1);
     check('void: cannot void twice', pos_void_sale($rcId, 'again', $manager)['ok'] === false);
 
     // 11. Stock admin.
@@ -424,8 +442,69 @@ try {
     check('stock: adjust needs a reason', $threw && $stock($cap) === 3);
     $threw = false; try { pos_stock_receive($cap, 0, null, '', $manager); } catch (PosRefusal $e) { $threw = true; }
     check('stock: receive needs qty ≥ 1', $threw);
-    $ledger = (int) db_query('SELECT COALESCE(SUM(qty_delta),0) FROM pos_stock_moves WHERE item_id = :i', [':i' => $cap])->fetchColumn();
-    check('stock: cached stock_qty equals 10 + the ledger', 10 + $ledger === $stock($cap));
+    if ($inv) {
+        $shopLoc = inv_outlet_location_id($shop);
+        $ledger  = (int) db_query('SELECT COALESCE(SUM(CASE WHEN to_location_id = :a THEN qty ELSE -qty END), 0)
+                                     FROM inv_moves WHERE item_id = :i AND (to_location_id = :b OR from_location_id = :c)',
+            [':a' => $shopLoc, ':i' => $capInv, ':b' => $shopLoc, ':c' => $shopLoc])->fetchColumn();
+        check('stock: the outlet balance equals its inventory ledger', $ledger === $stock($cap));
+        check('stock: pos_items.stock_qty is no longer written (still the seeded 10)',
+            (int) db_query('SELECT stock_qty FROM pos_items WHERE id = :i', [':i' => $cap])->fetchColumn() === 10);
+        check('stock: a POS product is a sellable inventory item',
+            db_query('SELECT item_type FROM inv_items WHERE id = :i', [':i' => $capInv])->fetchColumn() === 'sellable');
+        check('stock: a consignment product is a consignment inventory item',
+            db_query('SELECT v.item_type FROM inv_items v JOIN pos_items p ON p.inv_item_id = v.id WHERE p.id = :i', [':i' => $brace])->fetchColumn() === 'consignment');
+
+        // An item moved to another outlet takes its shelf stock with it — atomically with the outlet change.
+        $kiteLoc = inv_outlet_location_id($kite);
+        $mug     = $ins("INSERT INTO pos_items (outlet_id, name, kind, price, track_stock) VALUES (:o, 'ZZ Mug', 'product', 15, TRUE)", [':o' => $shop]);
+        pos_stock_receive($mug, 4, null, 'delivery', $manager);
+        $mugInv  = (int) db_query('SELECT inv_item_id FROM pos_items WHERE id = :i', [':i' => $mug])->fetchColumn();
+        $moveMug = function (int $from, int $to) use ($mug, $owner): void {
+            pos_tx(function () use ($mug, $from, $to, $owner): void {
+                pos_item_move_stock($mug, $from, $to, $owner);
+                db_query('UPDATE pos_items SET outlet_id = :o WHERE id = :i', [':o' => $to, ':i' => $mug]);
+            });
+        };
+        $moveMug($shop, $kite);
+        check('outlet move: the stock arrives at the new outlet', inv_balance($mugInv, $kiteLoc) === 4);
+        check('outlet move: and leaves the old one', inv_balance($mugInv, $shopLoc) === 0);
+        check('outlet move: on-hand follows the item', pos_item_stock_on_hand($mug) === 4);
+        $r = $sale($kite, [['item_id' => $mug, 'qty' => 1]], 'cash', $walkin, $owner);
+        $mugSale = (int)($r['sale']['id'] ?? 0);
+        $moveMug($kite, $shop);
+        $v = pos_void_sale($mugSale, 'moved item', $owner);
+        check('outlet move: a later void restores to where it was sold',
+            $r['ok'] === true && $v['ok'] === true && inv_balance($mugInv, $kiteLoc) === 1 && inv_balance($mugInv, $shopLoc) === 3);
+
+        // A cross-sold tracked item leaves its OWNING outlet's shelf.
+        $board   = $ins("INSERT INTO pos_items (outlet_id, name, kind, price, track_stock) VALUES (:o, 'ZZ Kite Leash', 'product', 50, TRUE)", [':o' => $kite]);
+        pos_stock_receive($board, 3, null, 'delivery', $owner);
+        $boardInv = (int) db_query('SELECT inv_item_id FROM pos_items WHERE id = :i', [':i' => $board])->fetchColumn();
+        $r = $sale($exp, [['item_id' => $board, 'qty' => 1]], 'cash', $walkin, $owner);
+        check('cross-sell stock: sold at Experiences, taken from the Kite shelf', $r['ok'] === true && inv_balance($boardInv, $kiteLoc) === 2);
+        check('cross-sell stock: the selling outlet holds no balance for it', $count(
+            'SELECT COUNT(*) FROM inv_balances b JOIN inv_locations l ON l.id = b.location_id WHERE l.pos_outlet_id = :o AND b.item_id = :i',
+            [':o' => $exp, ':i' => $boardInv]) === 0);
+        // allow_negative still works through inventory.
+        db_query('UPDATE pos_items SET allow_negative = TRUE WHERE id = :i', [':i' => $board]);
+        $r = $sale($kite, [['item_id' => $board, 'qty' => 5]], 'cash', $walkin, $owner);
+        check('allow_negative: 5 of 2 sells', $r['ok'] === true);
+        check('allow_negative: on-hand goes to -3', pos_item_stock_on_hand($board) === -3);
+
+        // A changed outlet currency reaches a linked item only when it is re-synced.
+        db_query('UPDATE pos_outlets SET currency = :c WHERE id = :o', [':c' => $other, ':o' => $shop]);
+        pos_item_sync_inventory($cap);
+        check('sync: outlet currency change reaches the linked inventory item',
+            db_query('SELECT currency FROM inv_items WHERE id = :i', [':i' => $capInv])->fetchColumn() === $other);
+        db_query('UPDATE pos_outlets SET currency = :c WHERE id = :o', [':c' => $cur, ':o' => $shop]);
+        pos_item_sync_inventory($cap);
+        check('sync: currency restored on re-sync',
+            db_query('SELECT currency FROM inv_items WHERE id = :i', [':i' => $capInv])->fetchColumn() === $cur);
+    } else {
+        $ledger = (int) db_query('SELECT COALESCE(SUM(qty_delta),0) FROM pos_stock_moves WHERE item_id = :i', [':i' => $cap])->fetchColumn();
+        check('stock: cached stock_qty equals 10 + the ledger', 10 + $ledger === $stock($cap));
+    }
 
     // 12. In-house search.
     $found = pos_inhouse_search([$vA], 'emma', $today);
@@ -505,6 +584,20 @@ try {
     db_query('UPDATE pos_items SET low_stock_at = 5 WHERE id = :i', [':i' => $cap]);
     check('low stock: not listed while above the alert', !array_filter(pos_low_stock([$exp]), fn($r) => (int)$r['id'] === $cap));
     check('low stock: an out/low item is listed', (bool) array_filter(pos_low_stock([$shop]), fn($r) => (int)$r['id'] === $cap));
+
+    if ($inv) {
+        // 14. Void of a sale made before inventory existed: its stock move lives only in the
+        //     legacy ledger. (Last, so the sales-query / z-report void counts above stay exact.)
+        $r = $sale($shop, [['item_id' => $cap, 'qty' => 1]], 'cash', $walkin, $amina);
+        $legId = (int)($r['sale']['id'] ?? 0);
+        db_query("UPDATE inv_moves SET pos_sale_id = NULL, note = 'carried over' WHERE pos_sale_id = :s", [':s' => $legId]);
+        db_query("INSERT INTO pos_stock_moves (item_id, qty_delta, reason, sale_id) VALUES (:i, -1, 'sale', :s)", [':i' => $cap, ':s' => $legId]);
+        $before = $stock($cap);
+        $v = pos_void_sale($legId, 'pre-inventory sale', $manager);
+        check('void: a pre-inventory sale can be voided', $r['ok'] === true && $v['ok'] === true);
+        check('void: a pre-inventory sale restocks from the legacy ledger', $stock($cap) === $before + 1);
+        check('void: …as one inventory "void" move', $count("SELECT COUNT(*) FROM inv_moves WHERE pos_sale_id = :s AND reason = 'void'", [':s' => $legId]) === 1);
+    }
 } catch (Throwable $e) {
     echo "FAIL  DB block threw: " . $e->getMessage() . "\n" . $e->getTraceAsString() . "\n";
     $failures++;
