@@ -272,6 +272,30 @@ try {
     $threw = false; try { inv_move(['item_id' => $plates, 'qty' => 1, 'from' => $store, 'to' => $locA, 'reason' => 'transfer', 'terms' => ['consignor_id' => $cons]]); } catch (InvRefusal $e) { $threw = true; }
     check('terms: only a delivery carries consignment terms', $threw);
 
+    // ── Replace, par, restock ──
+    $r = inv_replace($plates, 2, $locA, 'broken', null, 'dinner party');
+    check('replace: breakage + refill in one step', inv_balance($plates, $locA) === 19 && inv_balance($plates, $store) === 58);
+    $loss = db_query('SELECT reason, value FROM inv_moves WHERE id = :id', [':id' => $r['loss_move_id']])->fetch();
+    check('replace: the loss carries its value (2 × 850)', $loss['reason'] === 'broken' && (float)$loss['value'] === 1700.0);
+    check('replace: the refill is a "replaced" move from Main stock',
+        db_query('SELECT reason FROM inv_moves WHERE id = :id', [':id' => $r['replace_move_id']])->fetchColumn() === 'replaced');
+    $threw = false; try { inv_replace($laptop, 1, $store, 'broken', null); } catch (InvRefusal $e) { $threw = true; }
+    check('replace: serial items are replaced unit by unit, not here', $threw);
+    inv_set_par($plates, $locA, 24);
+    $glasses = inv_create_item(['name' => 'ZZ Wine glass', 'item_type' => 'operational', 'replacement_value' => 400]);
+    inv_move(['item_id' => $glasses, 'qty' => 3, 'to' => $store, 'reason' => 'receive']);
+    inv_set_par($glasses, $locA, 12);
+    $res = inv_restock_to_par($locA, null);
+    check('restock: plates topped up to par 24', inv_balance($plates, $locA) === 24 && ($res['moved'][$plates] ?? 0) === 5);
+    check('restock: glasses limited by Main stock, shortfall reported',
+        inv_balance($glasses, $locA) === 3 && ($res['short'][$glasses] ?? 0) === 9 && inv_balance($glasses, $store) === 0);
+    $threw = false; try { inv_set_par($plates, $locA, -1); } catch (InvRefusal $e) { $threw = true; }
+    check('par: cannot be negative', $threw);
+    $losses = inv_sum_by_currency(db_query(
+        "SELECT value, currency FROM inv_moves WHERE item_id IN (:a, :b) AND reason IN ('broken','missing','stolen','written_off')",
+        [':a' => $plates, ':b' => $laptop])->fetchAll());
+    check('money: losses per currency (3 plates × 850 + 1 laptop × 95,000)', $losses === ['KES' => 97550.0]);
+
     // ── DB checks (tasks 4–8 insert their blocks above this line) ──
 } catch (Throwable $e) {
     echo "FAIL  DB block threw: " . $e->getMessage() . "\n" . $e->getTraceAsString() . "\n";

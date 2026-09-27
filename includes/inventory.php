@@ -539,3 +539,72 @@ function inv_asset_create(int $itemId, int $toLocationId, array $f, ?int $userId
         throw $e;
     }
 }
+
+/**
+ * Replace lost stock in one step: record the loss at $atId, then refill the same
+ * quantity from $sourceId (default Main stock). Counted items only — a serial unit
+ * is reported lost and another unit assigned. Returns both move ids.
+ */
+function inv_replace(int $itemId, int $qty, int $atId, string $lossReason, ?int $userId, string $note = '', ?int $sourceId = null): array {
+    if (!in_array($lossReason, INV_LOSS_REASONS, true)) throw new InvRefusal('Pick what happened: broken, missing, stolen or written off.');
+    $item = inv_fetch_item($itemId);
+    if (!$item) throw new InvRefusal('That item no longer exists.');
+    if ($item['tracking'] === 'serial') throw new InvRefusal("Report the {$item['name']} unit lost, then assign another unit.");
+    $sourceId ??= inv_store_location_id();
+    if ($sourceId === $atId) throw new InvRefusal('The replacement has to come from somewhere else.');
+    return inv_tx(function () use ($itemId, $qty, $atId, $lossReason, $userId, $note, $sourceId): array {
+        inv_lock_balances([[$itemId, $atId], [$itemId, $sourceId]]);   // both rows, global order, before the two moves
+        $loss = inv_report_loss($itemId, $qty, $atId, $lossReason, $userId, $note);
+        $rep  = inv_move(['item_id' => $itemId, 'qty' => $qty, 'from' => $sourceId, 'to' => $atId,
+                          'reason' => 'replaced', 'user_id' => $userId, 'note' => $note]);
+        return ['loss_move_id' => $loss, 'replace_move_id' => $rep];
+    });
+}
+
+/** Set (or clear with null) the par level — "should always have N" — of an item at a location. */
+function inv_set_par(int $itemId, int $locationId, ?int $par): void {
+    if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
+    if ($par !== null && $par < 0) throw new InvRefusal('Par level cannot be negative.');
+    db_query('INSERT INTO inv_balances (item_id, location_id, qty, par_qty) VALUES (:i, :l, 0, :p)
+              ON CONFLICT (item_id, location_id) DO UPDATE SET par_qty = EXCLUDED.par_qty',
+        [':i' => $itemId, ':l' => $locationId, ':p' => $par]);
+}
+
+/**
+ * Top every counted item at $locationId up to its par level from $sourceId
+ * (default Main stock), as far as the source has stock — one transaction.
+ * Returns ['moved' => [item_id => qty], 'short' => [item_id => qty still missing]].
+ */
+function inv_restock_to_par(int $locationId, ?int $userId, ?int $sourceId = null): array {
+    $sourceId ??= inv_store_location_id();
+    if ($sourceId === $locationId) throw new InvRefusal('Restock from a different location.');
+    return inv_tx(function () use ($locationId, $userId, $sourceId): array {
+        $sql = "SELECT b.item_id, b.qty, b.par_qty FROM inv_balances b JOIN inv_items i ON i.id = b.item_id
+                 WHERE b.location_id = :l AND b.par_qty IS NOT NULL AND i.is_active = TRUE AND i.tracking = 'qty'
+                 ORDER BY b.item_id";
+        // Lock every (item, here) and (item, source) row in the global order first, then
+        // read the quantities under that lock — no deadlock with a concurrent transfer or sale.
+        $pairs = [];
+        foreach (db_query($sql, [':l' => $locationId])->fetchAll() as $r) {
+            $pairs[] = [(int)$r['item_id'], $locationId];
+            $pairs[] = [(int)$r['item_id'], $sourceId];
+        }
+        inv_lock_balances($pairs);
+        // Re-read under the lock, keeping only the items locked above (a par row added in between waits for the next restock).
+        $lockedIds = array_map(fn(array $p): int => $p[0], $pairs);
+        $rows  = array_values(array_filter(db_query($sql, [':l' => $locationId])->fetchAll(),
+                                           fn(array $r): bool => in_array((int)$r['item_id'], $lockedIds, true)));
+        $moved = [];
+        $short = [];
+        foreach (inv_restock_plan($rows) as $itemId => $need) {
+            $take = min($need, max(0, inv_balance($itemId, $sourceId)));   // locked above
+            if ($take > 0) {
+                inv_move(['item_id' => $itemId, 'qty' => $take, 'from' => $sourceId, 'to' => $locationId,
+                          'reason' => 'transfer', 'user_id' => $userId, 'note' => 'Restock to par']);
+                $moved[$itemId] = $take;
+            }
+            if ($take < $need) $short[$itemId] = $need - $take;
+        }
+        return ['moved' => $moved, 'short' => $short];
+    });
+}
