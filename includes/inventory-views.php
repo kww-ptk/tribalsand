@@ -19,7 +19,7 @@ declare(strict_types=1);
  */
 
 require_once __DIR__ . '/db.php';
-require_once __DIR__ . '/hr.php';          // hr_staff_in_venue_scope(), hr_staff_supported()
+require_once __DIR__ . '/hr.php';          // hr_staff_supported()
 require_once __DIR__ . '/inventory.php';
 
 const INV_STATUS_FILTERS = ['' => 'Everything', 'in_stock' => 'In stock', 'assigned' => 'Assigned to people', 'sold' => 'Sold', 'written_off' => 'Lost / written off'];
@@ -220,8 +220,10 @@ function inv_central_list(array $f, ?array $venueIds, int $limit, int $offset): 
     }
     $where = implode(' AND ', $iw);
     $total = (int) db_query("{$cte} SELECT COUNT(*) FROM inv_items i WHERE {$where}", $pl + $pi)->fetchColumn();
-    $rows  = db_query("{$cte} SELECT i.*, COALESCE((SELECT SUM(vb.qty) FROM vb WHERE vb.item_id = i.id), 0) AS qty
-                          FROM inv_items i WHERE {$where}
+    $rows  = db_query("{$cte} SELECT i.*, COALESCE(t.qty, 0) AS qty
+                          FROM inv_items i
+                          LEFT JOIN (SELECT item_id, SUM(qty) AS qty FROM vb GROUP BY item_id) t ON t.item_id = i.id
+                         WHERE {$where}
                          ORDER BY i.category NULLS LAST, i.name, i.id
                          LIMIT " . max(1, $limit) . ' OFFSET ' . max(0, $offset), $pl + $pi)->fetchAll();
     if (!$rows) return ['total' => $total, 'rows' => []];
@@ -253,12 +255,14 @@ function inv_gone_moves(array $f, ?array $venueIds, int $limit, int $offset): ar
     $from = inv_ymd_or($f['from'] ?? null, date('Y-m-d', strtotime('-30 days')));
     $to   = inv_ymd_or($f['to'] ?? null, date('Y-m-d'));
     if (!inv_supported()) return ['total' => 0, 'rows' => [], 'totals' => [], 'from' => $from, 'to' => $to];
-    $reasons = ($f['status'] ?? '') === 'sold' ? ['sale'] : INV_LOSS_REASONS;
+    $status  = (string)($f['status'] ?? '');
+    $reasons = $status === 'sold' ? ['sale'] : INV_LOSS_REASONS;
     $p = [];
     $w = [inv_visible_sql('l', $venueIds, $p), 'm.to_location_id IS NULL'];
     $rp = [];
     foreach ($reasons as $k => $r) { $rp[] = ":r{$k}"; $p[":r{$k}"] = $r; }
     $w[] = 'm.reason IN (' . implode(',', $rp) . ')';
+    if ($status === 'sold') $w[] = "(s.id IS NULL OR s.status <> 'voided')";   // a voided sale never leaves stock "sold"
     $w[] = 'm.created_at >= CAST(:dfrom AS date)';        $p[':dfrom'] = $from;
     $w[] = 'm.created_at < CAST(:dto AS date) + 1';       $p[':dto']   = $to;
     if (!empty($f['venue']))    { $w[] = 'l.venue_id = :fv'; $p[':fv'] = (int)$f['venue']; }
@@ -266,7 +270,11 @@ function inv_gone_moves(array $f, ?array $venueIds, int $limit, int $offset): ar
     if (!empty($f['person']))   { $w[] = 'l.hr_staff_id = :fp'; $p[':fp'] = (int)$f['person']; }
     if (!empty($f['type']) && isset(INV_TYPES[$f['type']])) { $w[] = 'i.item_type = :ft'; $p[':ft'] = (string)$f['type']; }
     $q = trim((string)($f['q'] ?? ''));
-    if ($q !== '') { $w[] = 'i.name ILIKE :q1'; $p[':q1'] = '%' . addcslashes($q, '%_\\') . '%'; }
+    if ($q !== '') {
+        $like = '%' . addcslashes($q, '%_\\') . '%';
+        $w[] = "(i.name ILIKE :q1 OR COALESCE(i.sku, '') ILIKE :q2 OR COALESCE(i.category, '') ILIKE :q3)";
+        $p[':q1'] = $like; $p[':q2'] = $like; $p[':q3'] = $like;
+    }
     $base = 'FROM inv_moves m
                JOIN inv_items i     ON i.id = m.item_id
                JOIN inv_locations l ON l.id = m.from_location_id
@@ -277,7 +285,7 @@ function inv_gone_moves(array $f, ?array $venueIds, int $limit, int $offset): ar
     $rows   = db_query("SELECT m.*, i.name AS item_name, i.image_key, i.icon, l.name AS location_name, a.name AS user_name, s.reference AS sale_reference
                         {$base} ORDER BY m.created_at DESC, m.id DESC
                         LIMIT " . max(1, $limit) . ' OFFSET ' . max(0, $offset), $p)->fetchAll();
-    $totals = inv_sum_by_currency(db_query("SELECT m.value, m.currency {$base}", $p)->fetchAll());
+    $totals = inv_sum_by_currency(db_query("SELECT m.currency, SUM(m.value) AS value {$base} GROUP BY m.currency", $p)->fetchAll());
     return ['total' => $total, 'rows' => $rows, 'totals' => $totals, 'from' => $from, 'to' => $to];
 }
 
@@ -310,13 +318,20 @@ function inv_item_units(int $itemId, ?array $venueIds): array {
         : $venueIds === null));
 }
 
-/** An item's movement history, newest first — only moves touching a location the account may see. */
+/**
+ * An item's movement history, newest first — only moves touching a location the
+ * account may see. A move that touches ONE end the account may see and one it may
+ * not (e.g. a manager's own property receiving from shared Main stock is visible,
+ * but a transfer out to another owner's property is not) still shows — the name of
+ * the end outside scope is masked as "Another location" so it is never leaked.
+ */
 function inv_item_history(int $itemId, ?array $venueIds, int $limit = 100): array {
     if (!inv_supported()) return [];
     $p  = [':i' => $itemId];
     $vf = inv_visible_sql('lf', $venueIds, $p, 'vf');
     $vt = inv_visible_sql('lt', $venueIds, $p, 'vt');
-    return db_query("SELECT m.*, a.name AS user_name, s.reference AS sale_reference, lf.name AS from_name, lt.name AS to_name, u.serial
+    $rows = db_query("SELECT m.*, a.name AS user_name, s.reference AS sale_reference, lf.name AS from_name, lt.name AS to_name,
+                             lf.venue_id AS from_venue, lf.kind AS from_kind, lt.venue_id AS to_venue, lt.kind AS to_kind, u.serial
                        FROM inv_moves m
                        LEFT JOIN inv_locations lf ON lf.id = m.from_location_id
                        LEFT JOIN inv_locations lt ON lt.id = m.to_location_id
@@ -325,6 +340,16 @@ function inv_item_history(int $itemId, ?array $venueIds, int $limit = 100): arra
                        LEFT JOIN inv_assets u     ON u.id = m.asset_id
                       WHERE m.item_id = :i AND ((lf.id IS NOT NULL AND {$vf}) OR (lt.id IS NOT NULL AND {$vt}))
                       ORDER BY m.created_at DESC, m.id DESC LIMIT " . max(1, min(500, $limit)), $p)->fetchAll();
+    foreach ($rows as &$r) {
+        if ($r['from_location_id'] !== null && !inv_location_visible(['venue_id' => $r['from_venue'], 'kind' => $r['from_kind']], $venueIds)) {
+            $r['from_name'] = 'Another location';
+        }
+        if ($r['to_location_id'] !== null && !inv_location_visible(['venue_id' => $r['to_venue'], 'kind' => $r['to_kind']], $venueIds)) {
+            $r['to_name'] = 'Another location';
+        }
+    }
+    unset($r);
+    return $rows;
 }
 
 /** POS listings selling this item (they own its name, SKU, photo, currency and alert). */
@@ -370,13 +395,25 @@ function inv_child_areas(int $propertyLocationId): array {
                       ORDER BY l.is_active DESC, l.sort_order, l.name", [':p' => $propertyLocationId])->fetchAll();
 }
 
-/** Active team members the account may assign items to: [hr_staff id => name]. */
+/**
+ * Active team members the account may assign items to: [hr_staff id => name].
+ * A person's inventory location follows their HOME venue only
+ * (inv_person_location_id()), never any additional venue hr_staff_venues grants —
+ * so this filters on hr_staff.venue_id exactly like inv_move_in_scope(), not the
+ * broader hr_staff_in_venue_scope() (home OR additional venue). A manager never
+ * sees a venue-less (owner-business) team member.
+ */
 function inv_assignable_staff(?array $venueIds): array {
     if (!hr_staff_supported()) return [];
-    $out = [];
-    foreach (db_query("SELECT id, full_name, venue_id FROM hr_staff WHERE status = 'active' ORDER BY full_name")->fetchAll() as $r) {
-        if (hr_staff_in_venue_scope((int)$r['id'], $r['venue_id'] !== null ? (int)$r['venue_id'] : null, $venueIds)) $out[(int)$r['id']] = (string)$r['full_name'];
+    $sql = "SELECT id, full_name FROM hr_staff WHERE status = 'active'";
+    $p   = [];
+    if ($venueIds !== null) {
+        $ph = [];
+        foreach (array_values($venueIds) as $i => $vid) { $ph[] = ":v{$i}"; $p[":v{$i}"] = (int)$vid; }
+        $sql .= $ph ? (' AND venue_id IN (' . implode(',', $ph) . ')') : ' AND FALSE';
     }
+    $out = [];
+    foreach (db_query($sql . ' ORDER BY full_name', $p)->fetchAll() as $r) $out[(int)$r['id']] = (string)$r['full_name'];
     return $out;
 }
 
@@ -400,6 +437,7 @@ function inv_create_area(int $parentId, string $name): int {
     if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
     $parent = inv_fetch_location($parentId);
     if (!$parent || $parent['kind'] !== 'property') throw new InvRefusal('Areas go under a property.');
+    if (!inv_bool($parent['is_active'])) throw new InvRefusal("{$parent['name']} is closed.");
     $name = trim($name);
     if ($name === '' || mb_strlen($name) > 120) throw new InvRefusal('Give the area a name (up to 120 characters).');
     if (db_query('SELECT 1 FROM inv_locations WHERE parent_id = :p AND is_active = TRUE AND lower(name) = lower(:n)', [':p' => $parentId, ':n' => $name])->fetchColumn()) {
@@ -425,14 +463,19 @@ function inv_update_location(int $id, array $v): void {
     $every = trim((string)($v['count_every_days'] ?? ''));
     if ($every !== '' && (!ctype_digit($every) || (int)$every < 1 || (int)$every > 365)) throw new InvRefusal('Count every 1–365 days, or choose manual only.');
     $assignee = (int)($v['count_assignee_id'] ?? 0);
-    if ($assignee > 0 && !db_query('SELECT 1 FROM admin_users WHERE id = :u AND is_active = TRUE', [':u' => $assignee])->fetchColumn()) {
-        throw new InvRefusal('Pick an active team account.');
+    if ($assignee > 0 && !isset(inv_assignable_users($loc['venue_id'] !== null ? (int)$loc['venue_id'] : null)[$assignee])) {
+        throw new InvRefusal('Pick someone who works at this property.');
     }
     $set = ['count_every_days = :e', 'count_assignee_id = :a'];
     $p   = [':e' => $every === '' ? null : (int)$every, ':a' => $assignee > 0 ? $assignee : null, ':id' => $id];
     if (in_array($loc['kind'], ['area', 'store'], true) && array_key_exists('name', $v)) {
         $name = trim((string)$v['name']);
         if ($name === '' || mb_strlen($name) > 120) throw new InvRefusal('Give it a name (up to 120 characters).');
+        if ($loc['kind'] === 'area' && $loc['parent_id'] !== null
+            && db_query('SELECT 1 FROM inv_locations WHERE parent_id = :p AND is_active = TRUE AND id <> :id AND lower(name) = lower(:n)',
+                [':p' => (int)$loc['parent_id'], ':id' => $id, ':n' => $name])->fetchColumn()) {
+            throw new InvRefusal("Another area here is already called {$name}.");
+        }
         $set[] = 'name = :n'; $p[':n'] = $name;
     }
     if ($loc['kind'] === 'area' && array_key_exists('is_active', $v)) {
@@ -449,15 +492,30 @@ function inv_update_location(int $id, array $v): void {
 /**
  * Save an item's details ($v from inv_item_from_post(), plus optional image_key —
  * null removes the photo). Tracking can't change once the item has stock history.
- * A POS-linked item keeps the name, SKU, photo, currency, alert and tracking its
- * POS listing owns ($posLinked = true skips them).
+ * Switching an item off is refused while it still holds stock anywhere (at any
+ * location, in or out of scope) — the item would otherwise vanish from view while
+ * still carrying real balances. A POS-linked item keeps the name, SKU, photo,
+ * currency, alert and tracking its POS listing owns ($posLinked = true skips them).
+ * Only the OWNER may change an existing item's replacement value, currency or
+ * active flag — the value drives every loss figure site-wide, so a manager
+ * ($ownerLevel = false) can describe the item and move its stock, but those three
+ * fields are always kept as stored, whatever the form posted.
  */
-function inv_update_item(int $id, array $v, bool $posLinked = false): void {
+function inv_update_item(int $id, array $v, bool $posLinked = false, bool $ownerLevel = true): void {
     if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
     $item = inv_fetch_item($id);
     if (!$item) throw new InvRefusal('That item no longer exists.');
     if (!$posLinked && $v['tracking'] !== $item['tracking'] && inv_item_has_moves($id)) {
         throw new InvRefusal('Tracking can’t change once the item has stock history.');
+    }
+    if (!$ownerLevel) {
+        $v['replacement_value'] = $item['replacement_value'] !== null ? (float)$item['replacement_value'] : null;
+        $v['currency']          = (string)$item['currency'];
+        $v['is_active']         = inv_bool($item['is_active']);
+    }
+    if (!$v['is_active'] && inv_bool($item['is_active'])
+        && (int) db_query('SELECT COALESCE(SUM(ABS(qty)), 0) FROM inv_balances WHERE item_id = :i', [':i' => $id])->fetchColumn() > 0) {
+        throw new InvRefusal('Move or write off its stock before switching it off.');
     }
     $set = ['item_type = :t', 'category = :c', 'icon = :ic', 'unit_label = :u', 'replacement_value = :rv', 'is_active = :a', 'updated_at = now()'];
     $p   = [':t' => $v['item_type'], ':c' => $v['category'] !== '' ? $v['category'] : null, ':ic' => $v['icon'] !== '' ? $v['icon'] : null,
@@ -555,8 +613,8 @@ function inv_apply_item_action(array $in, array $item, ?array $venueIds, int $us
             $reason = (string)($in['reason'] ?? '');
             if (!$from) throw new InvRefusal('Pick where it was lost.');
             $scope($from, null);
-            inv_report_loss($itemId, $qty, (int)$from['id'], $reason, $userId, $note, $asset);
-            $value = db_query('SELECT value, currency FROM inv_moves WHERE item_id = :i ORDER BY id DESC LIMIT 1', [':i' => $itemId])->fetch();
+            $moveId = inv_report_loss($itemId, $qty, (int)$from['id'], $reason, $userId, $note, $asset);
+            $value = db_query('SELECT value, currency FROM inv_moves WHERE id = :id', [':id' => $moveId])->fetch();
             $label = mb_strtolower(INV_LOSS_LABELS[$reason] ?? $reason);
             return 'Recorded ' . $units($qty) . " {$label} at {$from['name']}"
                 . ($value && $value['value'] !== null ? ' (' . inv_money((float)$value['value'], (string)$value['currency']) . ')' : '') . '.';

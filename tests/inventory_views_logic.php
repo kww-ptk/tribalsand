@@ -5,6 +5,7 @@ declare(strict_types=1);
 // SKIPs when no DB is reachable or add_inventory.sql is missing.
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/inventory-views.php';
+require_once __DIR__ . '/../includes/pos.php';
 
 $failures = 0;
 function check(string $label, bool $cond): void {
@@ -119,6 +120,9 @@ try {
     $hist = inv_item_history($plates, [$vA]);
     check('item view: history hides moves entirely outside the manager’s places',
         !array_filter($hist, fn($m) => $m['reason'] === 'broken') && count(inv_item_history($plates, null)) > count($hist));
+    $maskedRow = array_values(array_filter($hist, fn($m) => (int)$m['from_location_id'] === $store && (int)($m['to_location_id'] ?? 0) === $locB))[0] ?? null;
+    check('item view: a partly-visible move masks the location the manager cannot see',
+        $maskedRow !== null && $maskedRow['to_name'] === 'Another location');
     inv_set_par($plates, $kitchen, 12);
     $stock = inv_location_stock($kitchen);
     check('location view: qty, par and what is short', count($stock) === 1 && (int)$stock[0]['qty'] === 10 && (int)$stock[0]['need'] === 2);
@@ -129,15 +133,48 @@ try {
         in_array($store, $visIds, true) && in_array($locA, $visIds, true) && in_array($kitchen, $visIds, true) && !in_array($locB, $visIds, true));
     check('venues: a manager’s venues only', array_keys(inv_visible_venues([$vA])) === [$vA]);
     check('staff: a manager can pick their own team', isset(inv_assignable_staff([$vA])[$jane]) && !isset(inv_assignable_staff([$vB])[$jane]));
+    $ben = $ins("INSERT INTO hr_staff (full_name, venue_id) VALUES ('ZZ Ben', :v)", [':v' => $vB]);
+    if (hr_staff_venues_supported()) {
+        db_query('INSERT INTO hr_staff_venues (hr_staff_id, venue_id) VALUES (:s, :v)', [':s' => $ben, ':v' => $vA]);
+    }
+    check('staff: an additional (non-home) venue does not make someone assignable there — inventory follows the home venue only',
+        !isset(inv_assignable_staff([$vA])[$ben]));
+
+    if (pos_supported()) {
+        $uuidZ = fn() => 'zz-' . bin2hex(random_bytes(12));
+        $gShop = $ins("INSERT INTO pos_outlets (name, slug, kind, venue_id, currency) VALUES ('ZZ View Shop', :s, 'shop', :v, 'KES')",
+            [':s' => "zz-view-shop-{$sfx}", ':v' => $vA]);
+        $gItem = $ins("INSERT INTO pos_items (outlet_id, name, kind, price, track_stock) VALUES (:o, 'ZZ View shop item', 'product', 100, TRUE)", [':o' => $gShop]);
+        pos_stock_receive($gItem, 5, null, 'Opening stock', $owner);
+        $voided = pos_complete_sale(['outlet_id' => $gShop, 'client_uuid' => $uuidZ(), 'lines' => [['item_id' => $gItem, 'qty' => 1]],
+            'payment_method' => 'cash', 'customer' => ['type' => 'walkin']], $owner);
+        check('gone: setting up the voided sale', $voided['ok']);
+        pos_void_sale((int)$voided['sale']['id'], 'test', $owner);
+        check('gone: a voided sale is not "sold"', inv_gone_moves(['q' => 'ZZ View shop item', 'status' => 'sold'], null, 50, 0)['total'] === 0);
+        $kept = pos_complete_sale(['outlet_id' => $gShop, 'client_uuid' => $uuidZ(), 'lines' => [['item_id' => $gItem, 'qty' => 1]],
+            'payment_method' => 'cash', 'customer' => ['type' => 'walkin']], $owner);
+        check('gone: setting up the kept sale', $kept['ok']);
+        check('gone: a completed sale still counts as "sold"', inv_gone_moves(['q' => 'ZZ View shop item', 'status' => 'sold'], null, 50, 0)['total'] === 1);
+    }
 
     // ── Settings + actions ──
     check('area: a duplicate name under one property is refused', str_contains($refused(fn() => inv_create_area($locA, 'zz kitchen')), 'already has'));
     check('area: only under a property', $refused(fn() => inv_create_area($store, 'Shelf')) !== '');
+    db_query('UPDATE inv_locations SET is_active = FALSE WHERE id = :id', [':id' => $locB]);
+    check('area: a closed property refuses a new area', $refused(fn() => inv_create_area($locB, 'ZZ New Area')) !== '');
+    db_query('UPDATE inv_locations SET is_active = TRUE WHERE id = :id', [':id' => $locB]);
     inv_update_location($kitchen, ['count_every_days' => '7', 'count_assignee_id' => $mgr, 'name' => 'ZZ Main kitchen', 'is_active' => true]);
     $k = inv_fetch_location($kitchen);
     check('location: schedule, responsible person and name saved', (int)$k['count_every_days'] === 7 && (int)$k['count_assignee_id'] === $mgr && $k['name'] === 'ZZ Main kitchen');
     check('location: a silly schedule is refused', $refused(fn() => inv_update_location($kitchen, ['count_every_days' => '400'])) !== '');
     check('location: an area holding stock cannot be closed', str_contains($refused(fn() => inv_update_location($kitchen, ['is_active' => false])), 'Move its stock'));
+    $vBMgr = $ins("INSERT INTO admin_users (email, role, name, is_active) VALUES (:e, 'manager', 'ZZ B Manager', TRUE)", [':e' => "zz-view-bm-{$sfx}@example.com"]);
+    db_query('INSERT INTO admin_user_venues (admin_user_id, venue_id) VALUES (:u, :v)', [':u' => $vBMgr, ':v' => $vB]);
+    check('location: an assignee who does not work at this property is refused',
+        str_contains($refused(fn() => inv_update_location($kitchen, ['count_assignee_id' => $vBMgr])), 'Pick someone who works at this property'));
+    $pantry = inv_create_area($locA, 'ZZ Pantry');
+    check('location: renaming an area to a duplicate sibling name is refused',
+        str_contains($refused(fn() => inv_update_location($pantry, ['name' => 'zz main kitchen'])), 'already'));
     inv_update_location($locA, ['name' => 'Renamed', 'count_every_days' => '']);
     check('location: a property keeps its venue name', inv_fetch_location($locA)['name'] !== 'Renamed');
 
@@ -146,6 +183,13 @@ try {
     [$v] = inv_item_from_post(['name' => 'ZZ View plate (large)', 'item_type' => 'operational', 'replacement_value' => '900', 'currency' => 'KES', 'is_active' => '1']);
     inv_update_item($plates, $v);
     check('item: details saved', inv_fetch_item($plates)['name'] === 'ZZ View plate (large)' && (float)inv_fetch_item($plates)['replacement_value'] === 900.0);
+    [$vOff] = inv_item_from_post(['name' => 'ZZ View plate (large)', 'item_type' => 'operational', 'replacement_value' => '900', 'currency' => 'KES', 'is_active' => '']);
+    check('item: switching off an item that still holds stock is refused', str_contains($refused(fn() => inv_update_item($plates, $vOff)), 'stock'));
+    [$vMgr] = inv_item_from_post(['name' => 'ZZ View plate (large)', 'item_type' => 'operational', 'replacement_value' => '1', 'currency' => 'USD', 'is_active' => '']);
+    inv_update_item($plates, $vMgr, false, false);
+    $after = inv_fetch_item($plates);
+    check('item: a manager-level save keeps the owner-controlled value, currency and active flag',
+        (float)$after['replacement_value'] === 900.0 && $after['currency'] === 'KES' && inv_bool($after['is_active']));
 
     $item = inv_fetch_item($plates);
     $msg = inv_apply_item_action(['action' => 'receive', 'qty' => '4', 'to_id' => (string)$kitchen, 'note' => 'delivery'], $item, [$vA], $mgr);
