@@ -91,6 +91,45 @@ try {
     $plates = inv_create_item(['name' => 'ZZ View plate', 'item_type' => 'operational', 'category' => 'ZZ Kitchen', 'replacement_value' => 850]);
     $laptop = inv_create_item(['name' => 'ZZ View laptop', 'item_type' => 'employee', 'tracking' => 'serial', 'replacement_value' => 95000]);
 
+    // ── Read models ──
+    $kitchen = inv_create_area($locA, 'ZZ Kitchen');
+    inv_move(['item_id' => $plates, 'qty' => 30, 'to' => $store, 'reason' => 'receive']);
+    inv_transfer($plates, 10, $store, $kitchen, $owner);
+    inv_transfer($plates, 5, $store, $locB, $owner);
+    $pick = fn(array $rows, int $id) => array_values(array_filter($rows, fn($r) => (int)$r['id'] === $id))[0] ?? null;
+
+    $own = inv_central_list(['q' => 'ZZ View'], null, 50, 0);
+    $row = $pick($own['rows'], $plates);
+    check('list: owner sees every unit (15 Main + 10 kitchen + 5 B)', $row && (int)$row['qty'] === 30 && count($row['breakdown']) === 3);
+    check('list: the value is qty × replacement value', $row && (float)$row['value'] === 25500.0);
+    $mine = inv_central_list(['q' => 'ZZ View'], [$vA], 50, 0);
+    $row  = $pick($mine['rows'], $plates);
+    check('list: a manager sees only their property + shared Main stock', $row && (int)$row['qty'] === 25
+        && !in_array($locB, array_map(fn($b) => (int)$b['location_id'], $row['breakdown']), true));
+    $row = $pick(inv_central_list(['q' => 'ZZ View', 'location' => $locA], null, 50, 0)['rows'], $plates);
+    check('list: a property filter includes its areas', $row && (int)$row['qty'] === 10);
+    check('list: an empty filter still lists items with no stock', $pick($own['rows'], $laptop) !== null);
+    check('list: a location filter hides items that are not there',
+        $pick(inv_central_list(['q' => 'ZZ View', 'location' => $locA], null, 50, 0)['rows'], $laptop) === null);
+    inv_report_loss($plates, 2, $locB, 'broken', $owner, 'dropped');
+    $gone = inv_gone_moves(['q' => 'ZZ View', 'status' => 'written_off'], null, 50, 0);
+    check('gone: losses listed with their value', $gone['total'] === 1 && ($gone['totals']['KES'] ?? 0) === 1700.0);
+    check('gone: a manager does not see another property’s losses', inv_gone_moves(['q' => 'ZZ View', 'status' => 'written_off'], [$vA], 50, 0)['total'] === 0);
+    check('item view: where it is, scoped', count(inv_item_locations($plates, null)) === 3 && count(inv_item_locations($plates, [$vA])) === 2);
+    $hist = inv_item_history($plates, [$vA]);
+    check('item view: history hides moves entirely outside the manager’s places',
+        !array_filter($hist, fn($m) => $m['reason'] === 'broken') && count(inv_item_history($plates, null)) > count($hist));
+    inv_set_par($plates, $kitchen, 12);
+    $stock = inv_location_stock($kitchen);
+    check('location view: qty, par and what is short', count($stock) === 1 && (int)$stock[0]['qty'] === 10 && (int)$stock[0]['need'] === 2);
+    check('location view: child areas of a property', array_column(inv_child_areas($locA), 'id') === [$kitchen]);
+    $vis = inv_locations_visible([$vA]);
+    $visIds = array_map(fn($l) => (int)$l['id'], $vis);
+    check('locations: a manager sees Main stock, their property and its area — not B',
+        in_array($store, $visIds, true) && in_array($locA, $visIds, true) && in_array($kitchen, $visIds, true) && !in_array($locB, $visIds, true));
+    check('venues: a manager’s venues only', array_keys(inv_visible_venues([$vA])) === [$vA]);
+    check('staff: a manager can pick their own team', isset(inv_assignable_staff([$vA])[$jane]) && !isset(inv_assignable_staff([$vB])[$jane]));
+
     // ── DB checks (tasks 2–3 insert their blocks above this line) ──
 } catch (Throwable $e) {
     echo "FAIL  DB block threw: " . $e->getMessage() . "\n" . $e->getTraceAsString() . "\n";
