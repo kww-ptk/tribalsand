@@ -206,19 +206,29 @@ CREATE INDEX IF NOT EXISTS idx_inv_moves_asset    ON inv_moves (asset_id)    WHE
 ALTER TABLE pos_items ADD COLUMN IF NOT EXISTS inv_item_id INT REFERENCES inv_items(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_pos_items_inv_item ON pos_items (inv_item_id) WHERE inv_item_id IS NOT NULL;
 
+-- ── Backstops: a move's shape matches its reason; a link column only on its kind ──
+ALTER TABLE inv_moves DROP CONSTRAINT IF EXISTS inv_moves_reason_shape_check;
+ALTER TABLE inv_moves ADD CONSTRAINT inv_moves_reason_shape_check CHECK (
+       (reason IN ('receive','found','opening','void')                   AND from_location_id IS NULL     AND to_location_id IS NOT NULL)
+    OR (reason IN ('sale','broken','missing','stolen','written_off')     AND from_location_id IS NOT NULL AND to_location_id IS NULL)
+    OR (reason IN ('transfer','assign','return','replaced')              AND from_location_id IS NOT NULL AND to_location_id IS NOT NULL));
+ALTER TABLE inv_locations DROP CONSTRAINT IF EXISTS inv_locations_link_kind_check;
+ALTER TABLE inv_locations ADD CONSTRAINT inv_locations_link_kind_check CHECK (
+    (pos_outlet_id IS NULL OR kind = 'outlet') AND (hr_staff_id IS NULL OR kind = 'person'));
+
 -- ── Default locations ───────────────────────────────────────────────────────
 INSERT INTO inv_locations (kind, name, sort_order)
 SELECT 'store', 'Main stock', 0
  WHERE NOT EXISTS (SELECT 1 FROM inv_locations WHERE kind = 'store');
 
 INSERT INTO inv_locations (kind, name, venue_id, sort_order)
-SELECT 'property', v.name, v.id, 10 + v.sort_order
+SELECT 'property', LEFT(v.name, 120), v.id, 10 + v.sort_order
   FROM venues v
  WHERE v.is_published = TRUE
    AND NOT EXISTS (SELECT 1 FROM inv_locations l WHERE l.kind = 'property' AND l.venue_id = v.id);
 
 INSERT INTO inv_locations (kind, name, pos_outlet_id, venue_id, sort_order)
-SELECT 'outlet', o.name, o.id, o.venue_id, 100 + o.sort_order
+SELECT 'outlet', LEFT(o.name, 120), o.id, o.venue_id, 100 + o.sort_order
   FROM pos_outlets o
  WHERE NOT EXISTS (SELECT 1 FROM inv_locations l WHERE l.pos_outlet_id = o.id);
 
@@ -769,6 +779,13 @@ In `tests/inventory_logic.php`, insert above the line `    // ── DB checks (
     $locJane = inv_person_location_id($staff);
     check('locations: a person location is created on demand, once',
         $locJane === inv_person_location_id($staff) && inv_fetch_location($locJane)['kind'] === 'person');
+    db_query("UPDATE pos_outlets SET venue_id = :v, name = 'ZZ Inv Shop 2' WHERE id = :o", [':v' => $vB, ':o' => $outlet]);
+    inv_refresh_location_owners();
+    $ls = inv_fetch_location($locShop);
+    check('locations: an outlet location follows its outlet (venue + name)', (int)$ls['venue_id'] === $vB && $ls['name'] === 'ZZ Inv Shop 2');
+    db_query("UPDATE pos_outlets SET venue_id = :v, name = 'ZZ Inv Shop' WHERE id = :o", [':v' => $vA, ':o' => $outlet]);
+    check('locations: the ensure call refreshes the owner too',
+        inv_outlet_location_id($outlet) === $locShop && (int)inv_fetch_location($locShop)['venue_id'] === $vA);
     $plates = inv_create_item(['name' => 'ZZ Dinner plate', 'item_type' => 'operational', 'category' => 'Kitchen', 'replacement_value' => '850', 'currency' => 'KES']);
     $laptop = inv_create_item(['name' => 'ZZ Laptop', 'item_type' => 'employee', 'tracking' => 'serial', 'replacement_value' => 95000]);
     $p = inv_fetch_item($plates);
@@ -835,7 +852,8 @@ function inv_property_location_id(int $venueId): int {
     $name = db_query('SELECT name FROM venues WHERE id = :v', [':v' => $venueId])->fetchColumn();
     if ($name === false) throw new InvRefusal('That property does not exist.');
     db_query("INSERT INTO inv_locations (kind, name, venue_id) VALUES ('property', :n, :v)
-              ON CONFLICT (venue_id) WHERE kind = 'property' DO NOTHING", [':n' => $name, ':v' => $venueId]);
+              ON CONFLICT (venue_id) WHERE kind = 'property' DO UPDATE SET name = EXCLUDED.name",
+        [':n' => mb_substr((string)$name, 0, 120), ':v' => $venueId]);
     return (int) db_query("SELECT id FROM inv_locations WHERE kind = 'property' AND venue_id = :v", [':v' => $venueId])->fetchColumn();
 }
 
@@ -844,8 +862,10 @@ function inv_outlet_location_id(int $outletId): int {
     if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
     $o = db_query('SELECT name, venue_id FROM pos_outlets WHERE id = :o', [':o' => $outletId])->fetch();
     if (!$o) throw new InvRefusal('That outlet does not exist.');
+    // DO UPDATE: the location follows its outlet's name and venue (the owning venue must never go stale).
     db_query("INSERT INTO inv_locations (kind, name, pos_outlet_id, venue_id) VALUES ('outlet', :n, :o, :v)
-              ON CONFLICT (pos_outlet_id) DO NOTHING", [':n' => $o['name'], ':o' => $outletId, ':v' => $o['venue_id']]);
+              ON CONFLICT (pos_outlet_id) DO UPDATE SET name = EXCLUDED.name, venue_id = EXCLUDED.venue_id",
+        [':n' => mb_substr((string)$o['name'], 0, 120), ':o' => $outletId, ':v' => $o['venue_id']]);
     return (int) db_query('SELECT id FROM inv_locations WHERE pos_outlet_id = :o', [':o' => $outletId])->fetchColumn();
 }
 
@@ -855,8 +875,35 @@ function inv_person_location_id(int $hrStaffId): int {
     $s = db_query('SELECT full_name, venue_id FROM hr_staff WHERE id = :s', [':s' => $hrStaffId])->fetch();
     if (!$s) throw new InvRefusal('That team member does not exist.');
     db_query("INSERT INTO inv_locations (kind, name, hr_staff_id, venue_id) VALUES ('person', :n, :s, :v)
-              ON CONFLICT (hr_staff_id) DO NOTHING", [':n' => mb_substr((string)$s['full_name'], 0, 120), ':s' => $hrStaffId, ':v' => $s['venue_id']]);
+              ON CONFLICT (hr_staff_id) DO UPDATE SET name = EXCLUDED.name, venue_id = EXCLUDED.venue_id",
+        [':n' => mb_substr((string)$s['full_name'], 0, 120), ':s' => $hrStaffId, ':v' => $s['venue_id']]);
     return (int) db_query('SELECT id FROM inv_locations WHERE hr_staff_id = :s', [':s' => $hrStaffId])->fetchColumn();
+}
+
+/**
+ * Re-copy name + owning venue onto every outlet and person location whose source
+ * record changed. Called after an outlet or a staff record is saved, so scope and
+ * (later) accounting never follow a stale venue.
+ */
+function inv_refresh_location_owners(): void {
+    if (!inv_supported()) return;
+    db_query("UPDATE inv_locations l SET name = LEFT(o.name, 120), venue_id = o.venue_id FROM pos_outlets o
+               WHERE l.pos_outlet_id = o.id AND (l.name IS DISTINCT FROM LEFT(o.name, 120) OR l.venue_id IS DISTINCT FROM o.venue_id)");
+    db_query("UPDATE inv_locations l SET name = LEFT(s.full_name, 120), venue_id = s.venue_id FROM hr_staff s
+               WHERE l.hr_staff_id = s.id AND (l.name IS DISTINCT FROM LEFT(s.full_name, 120) OR l.venue_id IS DISTINCT FROM s.venue_id)");
+}
+
+/**
+ * Units (absolute) still held at the locations linked to an outlet, a staff
+ * member or a venue — a delete of that record must be refused while this is > 0,
+ * or its stock would sit at an orphaned (or, for a venue, "shared") location.
+ * $link: 'pos_outlet_id' | 'hr_staff_id' | 'venue_id'.
+ */
+function inv_linked_stock_count(string $link, int $id): int {
+    if (!inv_supported()) return 0;
+    if (!in_array($link, ['pos_outlet_id', 'hr_staff_id', 'venue_id'], true)) throw new InvalidArgumentException('bad link column');
+    return (int) db_query("SELECT COALESCE(SUM(ABS(b.qty)), 0) FROM inv_balances b JOIN inv_locations l ON l.id = b.location_id
+                            WHERE l.{$link} = :id AND b.qty <> 0", [':id' => $id])->fetchColumn();
 }
 
 // ── Items ───────────────────────────────────────────────────────────────────
@@ -935,6 +982,8 @@ Insert above the marker:
     inv_move(['item_id' => $plates, 'qty' => 20, 'from' => $store, 'to' => $locB, 'reason' => 'transfer']);
     check('move: 60 left in Main stock, 20 at each property',
         inv_balance($plates, $store) === 60 && inv_balance($plates, $locA) === 20 && inv_balance($plates, $locB) === 20);
+    check('guard: stock held under a venue is seen; an empty person holds none',
+        inv_linked_stock_count('venue_id', $vA) === 20 && inv_linked_stock_count('hr_staff_id', $staff) === 0);
     $uv = db_query("SELECT unit_value FROM inv_moves WHERE item_id = :i AND reason = 'transfer' ORDER BY id DESC LIMIT 1", [':i' => $plates])->fetchColumn();
     check('move: without a value it snapshots the replacement value', (float)$uv === 850.0);
     $msg = ''; try { inv_move(['item_id' => $plates, 'qty' => 21, 'from' => $locA, 'reason' => 'broken']); } catch (InvRefusal $e) { $msg = $e->getMessage(); }
@@ -1975,6 +2024,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 **Files:**
 - Modify: `admin/pos-items.php`
 - Modify: `admin/pos-stock.php`
+- Modify: `admin/pos-outlets.php`, `admin/staff.php`, `admin/venue-edit.php` (owner refresh + delete guards)
 
 - [ ] **Step 1: Read on-hand stock from inventory on both pages**
 
@@ -2074,10 +2124,105 @@ with
 
 (`pos_item_move_stock()` runs BEFORE `outlet_id` changes because it reads the listing's link, not its outlet; both outlet ids are passed explicitly.)
 
-- [ ] **Step 5: Lint and exercise the pages in the browser**
+- [ ] **Step 5: Keep location owners fresh, and refuse deletes that would orphan stock**
 
-Run: `php -l admin/pos-items.php && php -l admin/pos-stock.php && php -l includes/pos.php && php -l includes/inventory.php`
-Expected: `No syntax errors detected` ×4.
+A location copies its owning venue from its outlet / staff member; those records are edited elsewhere, and all three can be hard-deleted. (Found in review of Tasks 1–2.)
+
+a) `admin/pos-outlets.php`, `outlet_save` branch — directly after the closing `});` of its `pos_tx(function () use ($oid, $name, …): void { … });` call and before `audit_log('pos.outlet_save', …)`, add:
+
+```php
+        inv_refresh_location_owners();   // the outlet's shelf follows its new name/venue
+```
+
+b) `admin/pos-outlets.php`, `outlet_delete` branch — replace
+
+```php
+        if (db_query('SELECT 1 FROM pos_sales WHERE outlet_id = :o LIMIT 1', [':o' => $oid])->fetchColumn()) {
+            db_query('UPDATE pos_outlets SET is_active = FALSE WHERE id = :o', [':o' => $oid]);
+            posx_flash('info', "{$outlet['name']} has sales history, so it was closed instead of deleted.");
+        } else {
+```
+
+with
+
+```php
+        $held = inv_linked_stock_count('pos_outlet_id', $oid);
+        if ($held > 0 || db_query('SELECT 1 FROM pos_sales WHERE outlet_id = :o LIMIT 1', [':o' => $oid])->fetchColumn()) {
+            db_query('UPDATE pos_outlets SET is_active = FALSE WHERE id = :o', [':o' => $oid]);
+            posx_flash('info', $held > 0
+                ? "{$outlet['name']} still has {$held} item(s) on its shelf, so it was closed instead of deleted. Move that stock out first to delete it."
+                : "{$outlet['name']} has sales history, so it was closed instead of deleted.");
+        } else {
+```
+
+c) `admin/staff.php` — add to the `require_once` block (after `includes/hr.php`):
+
+```php
+require_once __DIR__ . '/../includes/inventory.php';   // assigned-asset owner refresh + delete guard
+```
+
+In the directory-save branch, directly after `hr_set_staff_venues($sid, $alsoVenues, $vid ?: null, $venueIds);` (the UPDATE path, before `audit_log('hr_staff_update', …)`), add:
+
+```php
+                inv_refresh_location_owners();   // their assets follow a new name/home venue
+```
+
+In the `hr_delete` branch, replace
+
+```php
+            $sid = (int)($_POST['hr_id'] ?? 0);
+            $n = db_query("DELETE FROM hr_staff WHERE id = :id", [':id' => $sid])->rowCount();
+```
+
+with
+
+```php
+            $sid = (int)($_POST['hr_id'] ?? 0);
+            if (($held = inv_linked_stock_count('hr_staff_id', $sid)) > 0) {
+                staff_flash("This person still holds {$held} assigned item(s) — return them to stock before removing the entry.", 'error', 'directory');
+            }
+            $n = db_query("DELETE FROM hr_staff WHERE id = :id", [':id' => $sid])->rowCount();
+```
+
+(`staff_flash()` redirects and exits.)
+
+d) `admin/venue-edit.php` — add to the `require_once` block (after `includes/rates.php`):
+
+```php
+require_once __DIR__ . '/../includes/inventory.php';   // delete guard: a property holding stock
+```
+
+Replace the `delete_venue` branch
+
+```php
+    if ($action === 'delete_venue' && !$isNew) {
+        db_query('DELETE FROM venues WHERE id = :id', [':id' => $id]); // rooms.venue_id → NULL via FK ON DELETE SET NULL
+        audit_log('venue.delete', 'venue', $id);
+        header('Location: /admin/venues.php');
+        exit;
+    }
+```
+
+with
+
+```php
+    if ($action === 'delete_venue' && !$isNew) {
+        // A deleted venue would turn its inventory locations into "shared" ones (venue_id NULL).
+        if (($held = inv_linked_stock_count('venue_id', $id)) > 0) {
+            $error = "This property still holds {$held} inventory item(s) — move them or write them off before deleting it.";
+        } else {
+            db_query('DELETE FROM venues WHERE id = :id', [':id' => $id]); // rooms.venue_id → NULL via FK ON DELETE SET NULL
+            audit_log('venue.delete', 'venue', $id);
+            header('Location: /admin/venues.php');
+            exit;
+        }
+    }
+```
+
+- [ ] **Step 6: Lint and exercise the pages in the browser**
+
+Run: `for f in admin/pos-items.php admin/pos-stock.php admin/pos-outlets.php admin/staff.php admin/venue-edit.php includes/pos.php includes/inventory.php; do php -l $f; done`
+Expected: `No syntax errors detected` ×7.
 
 Then start the dev server (`preview_start` — add a `.claude/launch.json` entry `php -S localhost:8765` if one does not exist), sign in as the owner, and:
 1. Admin → Point of Sale → Items: create a product "Test Tee" with stock tracking on and opening stock 5 → the list shows **5** on hand.
@@ -2086,11 +2231,11 @@ Then start the dev server (`preview_start` — add a `.claude/launch.json` entry
 4. `psql -d tribalsand -Atc "SELECT reason, qty FROM inv_moves m JOIN pos_items p ON p.inv_item_id = m.item_id WHERE p.name = 'Test Tee' ORDER BY m.id"` → `receive|5`, `receive|3`, `missing|1`, `sale|2`.
 5. Delete Test Tee from the catalogue afterwards.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 7: Commit**
 
 ```bash
-git add admin/pos-items.php admin/pos-stock.php
-git commit -m "feat(pos): admin catalogue + stock pages read and write the shared inventory
+git add admin/pos-items.php admin/pos-stock.php admin/pos-outlets.php admin/staff.php admin/venue-edit.php
+git commit -m "feat(pos): admin catalogue + stock pages read and write the shared inventory; owner refresh + delete guards
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
@@ -2116,6 +2261,7 @@ Migration `add_inventory.sql` (after `add_pos_v2.sql` + `add_hr_staff.sql`). Log
 - **Counting never moves stock.** `inv_count_start()` snapshots `expected`; `inv_count_submit()` saves numbers (matches auto-accept); a manager's `inv_count_resolve_line()` writes the move — refused while the live balance differs from `expected` (recount instead). A line resolves once.
 - **POS on top:** a stock-tracked `pos_items` row links to `inv_items` via `pos_items.inv_item_id` (created on first use by `pos_item_ensure_inventory()`); its shelf is the outlet's `inv_locations` row (`pos_outlet_id`, UNIQUE). `pos_item_select_sql()` exposes **`stock_on_hand`** — read that, never `stock_qty`, which is no longer written (kept one release, then dropped). The legacy `pos_stock_moves` path runs only when `inv_supported()` is false. Inventory refusals inside POS paths are converted by `pos_inv()`.
 - **Money is never summed across currencies** — `inv_sum_by_currency()`.
+- **A location's owner must never go stale:** the outlet/person ensure-functions `DO UPDATE` name + venue, and outlet-save / staff-save call `inv_refresh_location_owners()`. Deleting an outlet, staff member or venue whose locations still hold stock is refused (`inv_linked_stock_count()`; an outlet is closed instead) — otherwise the stock would sit at an orphaned or, for a venue, "shared" location. DB backstops: `inv_moves_reason_shape_check` (from/to shape per reason) and `inv_locations_link_kind_check`.
 ```
 
 - [ ] **Step 2: Run the full relevant test set**
