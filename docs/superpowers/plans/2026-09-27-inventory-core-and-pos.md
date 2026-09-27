@@ -2198,6 +2198,19 @@ with
             if ($v['track_stock'] && $opening !== '' && (int)$opening > 0) {
 ```
 
+Also cap the opening stock at the inventory maximum (the inventory path refuses more than `INV_MAX_QTY`, and this `pos_tx` has no `PosRefusal` catch). Replace
+
+```php
+        if (!$iid && $v['track_stock'] && $opening !== '' && !ctype_digit($opening)) $e['opening_stock'] = 'Opening stock must be a whole number.';
+```
+
+with
+
+```php
+        if (!$iid && $v['track_stock'] && $opening !== '' && !ctype_digit($opening)) $e['opening_stock'] = 'Opening stock must be a whole number.';
+        elseif (!$iid && $v['track_stock'] && $opening !== '' && (int)$opening > INV_MAX_QTY) $e['opening_stock'] = 'Opening stock is too large.';
+```
+
 (`pos_item_move_stock()` runs BEFORE `outlet_id` changes because it reads the listing's link, not its outlet; both outlet ids are passed explicitly.)
 
 - [ ] **Step 5: Keep location owners fresh, and refuse deletes that would orphan stock**
