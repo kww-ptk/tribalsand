@@ -20,6 +20,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/pos-support.php';   // pos_supported(), pos_bill_link_supported()
+require_once __DIR__ . '/inventory-support.php';   // inv_supported(), InvRefusal, inv_tx()
 require_once __DIR__ . '/booking.php';     // bill_item_guest_supported(), fetch_bill_items()
 require_once __DIR__ . '/frontdesk.php';   // frontdesk_rows(), frontdesk_today_ymd()
 
@@ -290,25 +291,11 @@ function pos_valid_uuid(string $u): bool {
  * so a refused sale discards its own partial writes without aborting the caller's.
  */
 function pos_tx(callable $fn): mixed {
-    static $depth = 0;
-    $pdo = db();
-    if (!$pdo->inTransaction()) {
-        $pdo->beginTransaction();
-        try { $r = $fn(); $pdo->commit(); return $r; }
-        catch (Throwable $e) { if ($pdo->inTransaction()) $pdo->rollBack(); throw $e; }
-    }
-    $sp = 'pos_sp_' . (++$depth);
-    $pdo->exec("SAVEPOINT {$sp}");
-    try { $r = $fn(); $pdo->exec("RELEASE SAVEPOINT {$sp}"); $depth--; return $r; }
-    catch (Throwable $e) {
-        try { $pdo->exec("ROLLBACK TO SAVEPOINT {$sp}"); $pdo->exec("RELEASE SAVEPOINT {$sp}"); } catch (Throwable $ignored) {}
-        $depth--;
-        throw $e;
-    }
+    return inv_tx($fn);
 }
 
 /** A refusal the caller shows to the user (vs an unexpected error). */
-final class PosRefusal extends RuntimeException {}
+final class PosRefusal extends InvRefusal {}
 
 // ── Catalogue reads ─────────────────────────────────────────────────────────
 
