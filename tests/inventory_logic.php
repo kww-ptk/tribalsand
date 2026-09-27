@@ -156,6 +156,11 @@ try {
     check('locations: the person ensure call refreshes the owner too', inv_person_location_id($staff) === $locJane && (int)inv_fetch_location($locJane)['venue_id'] === $vA);
     $threw = false; try { inv_linked_stock_count('id; DROP TABLE x', 1); } catch (InvalidArgumentException $e) { $threw = true; }
     check('guard: the link column is whitelisted', $threw);
+    $threw = false; try { inv_deactivate_linked_locations('id; DROP TABLE x', 1); } catch (InvalidArgumentException $e) { $threw = true; }
+    check('guard: inv_deactivate_linked_locations link column is whitelisted', $threw);
+    inv_deactivate_linked_locations('pos_outlet_id', $outlet);
+    check('locations: deactivating an outlet closes its shelf location', inv_fetch_location($locShop)['is_active'] === false);
+    db_query('UPDATE inv_locations SET is_active = TRUE WHERE id = :l', [':l' => $locShop]);
     $plates = inv_create_item(['name' => 'ZZ Dinner plate', 'item_type' => 'operational', 'category' => 'Kitchen', 'replacement_value' => '850', 'currency' => 'KES']);
     $laptop = inv_create_item(['name' => 'ZZ Laptop', 'item_type' => 'employee', 'tracking' => 'serial', 'replacement_value' => 95000]);
     $p = inv_fetch_item($plates);

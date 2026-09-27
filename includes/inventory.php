@@ -326,6 +326,18 @@ function inv_linked_stock_count(string $link, int $id): int {
                             WHERE l.{$link} = :id AND b.qty <> 0", [':id' => $id])->fetchColumn();
 }
 
+/**
+ * Close the locations linked to a record that is about to be deleted, so they can
+ * never turn into ownerless "shared" locations (the FK only NULLs the link).
+ * Call AFTER inv_linked_stock_count() said 0, right before the DELETE.
+ * $link: 'pos_outlet_id' | 'hr_staff_id' | 'venue_id'.
+ */
+function inv_deactivate_linked_locations(string $link, int $id): void {
+    if (!inv_supported()) return;
+    if (!in_array($link, ['pos_outlet_id', 'hr_staff_id', 'venue_id'], true)) throw new InvalidArgumentException('bad link column');
+    db_query("UPDATE inv_locations SET is_active = FALSE WHERE {$link} = :id", [':id' => $id]);
+}
+
 // ── Items ───────────────────────────────────────────────────────────────────
 
 /**

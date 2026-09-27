@@ -163,6 +163,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 db_query('UPDATE venues SET upsell_enabled = :u WHERE id = :id',
                          [':u' => $upsOn ? 'TRUE' : 'FALSE', ':id' => $id]);
             }
+            inv_refresh_location_owners();   // a renamed property's inventory location follows immediately
             audit_log('venue.update', 'venue', $id, $name);
             header("Location: /admin/venue-edit.php?id={$id}&saved=1");
             exit;
@@ -257,6 +258,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         if (($held = inv_linked_stock_count('venue_id', $id)) > 0) {
             $error = "This property still holds {$held} inventory item(s) — move them or write them off before deleting it.";
         } else {
+            inv_deactivate_linked_locations('venue_id', $id);
             db_query('DELETE FROM venues WHERE id = :id', [':id' => $id]); // rooms.venue_id → NULL via FK ON DELETE SET NULL
             audit_log('venue.delete', 'venue', $id);
             header('Location: /admin/venues.php');

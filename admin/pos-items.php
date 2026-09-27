@@ -61,6 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
         $opening = trim((string)($_POST['opening_stock'] ?? ''));
         if (!$iid && $v['track_stock'] && $opening !== '' && !ctype_digit($opening)) $e['opening_stock'] = 'Opening stock must be a whole number.';
         elseif (!$iid && $v['track_stock'] && $opening !== '' && (int)$opening > INV_MAX_QTY) $e['opening_stock'] = 'Opening stock is too large.';
+        if ($iid && $item && pos_bool($item['track_stock']) && !$v['track_stock'] && inv_supported() && (int)$item['stock_on_hand'] !== 0) $e['track_stock'] = 'Count this item to 0 before turning stock tracking off (' . (int)$item['stock_on_hand'] . ' on hand).';
         $img = '';
         if (!$e) {
             try { $img = pos_upload_item_image($_FILES['image'] ?? []); }
@@ -96,7 +97,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
                         // Categories belong to an outlet, so a moved item starts uncategorised
                         // at the end of its new outlet. Its stock and sales history move with it;
                         // past sale lines keep the outlet they were sold for.
-                        if ($v['track_stock']) pos_item_move_stock($iid, $oid, $moveTo, (int)$me['id']);
+                        if (inv_supported()) pos_item_move_stock($iid, $oid, $moveTo, (int)$me['id']);
                         $max = (int) db_query('SELECT COALESCE(MAX(sort_order), -1) FROM pos_items WHERE outlet_id = :o', [':o' => $moveTo])->fetchColumn();
                         db_query('UPDATE pos_items SET outlet_id = :t, category_id = NULL, sort_order = :s WHERE id = :id', [':t' => $moveTo, ':s' => $max + 1, ':id' => $iid]);
                     }
@@ -116,6 +117,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
             });
         } catch (PosRefusal $ex) {
             posi_flash('error', $ex->getMessage());
+            $_SESSION['posi_old'] = $_POST;
             posi_back($oid, $iid ? '&edit=' . $iid . '#form' : '&new=1#form');
         }
         audit_log($iid ? ($moveTo ? 'pos.item_move' : 'pos.item_save') : 'pos.item_add', 'pos_item', $newId, $v['name']);
@@ -129,6 +131,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
     }
 
     if ($act === 'delete' && $item) {
+        if (inv_supported() && (int)($item['stock_on_hand'] ?? 0) !== 0) {
+            db_query('UPDATE pos_items SET is_active = FALSE, updated_at = now() WHERE id = :id', [':id' => $iid]);
+            posi_flash('info', "{$item['name']} still has " . (int)$item['stock_on_hand'] . " on hand, so it was hidden instead of deleted. Count it to 0 on the Stock page first to delete it.");
+            audit_log('pos.item_delete', 'pos_item', $iid, (string)$item['name']);
+            posi_back($oid);
+        }
         if (pos_item_has_sales($iid)) {
             db_query('UPDATE pos_items SET is_active = FALSE, updated_at = now() WHERE id = :id', [':id' => $iid]);
             posi_flash('info', "{$item['name']} has sales history, so it was hidden from the till instead of deleted.");

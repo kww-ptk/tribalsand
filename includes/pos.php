@@ -493,9 +493,10 @@ function pos_item_ensure_inventory(int $posItemId): int {
 }
 
 /**
- * Ensure the link, then copy the listing's name, SKU, photo, low-stock alert and
- * consignor onto its inventory item. A sellable/consignment item flips between
- * those two types with the consignor; any other type is left as the owner set it.
+ * Ensure the link, then copy the listing's name, SKU, photo, low-stock alert,
+ * consignor and outlet currency onto its inventory item. A sellable/consignment
+ * item flips between those two types with the consignor; any other type is left
+ * as the owner set it.
  */
 function pos_item_sync_inventory(int $posItemId): int {
     $invId = pos_item_ensure_inventory($posItemId);
@@ -505,8 +506,9 @@ function pos_item_sync_inventory(int $posItemId): int {
                      item_type = CASE WHEN v.item_type IN ('sellable', 'consignment')
                                       THEN CASE WHEN i.consignor_id IS NULL THEN 'sellable' ELSE 'consignment' END
                                       ELSE v.item_type END,
-                     updated_at = now()
+                     currency = o.currency, updated_at = now()
                 FROM pos_items i
+                JOIN pos_outlets o ON o.id = i.outlet_id
                WHERE i.id = :p AND v.id = i.inv_item_id", [':p' => $posItemId]);
     return $invId;
 }

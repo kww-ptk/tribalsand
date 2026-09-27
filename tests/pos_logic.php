@@ -491,6 +491,16 @@ try {
         $r = $sale($kite, [['item_id' => $board, 'qty' => 5]], 'cash', $walkin, $owner);
         check('allow_negative: 5 of 2 sells', $r['ok'] === true);
         check('allow_negative: on-hand goes to -3', pos_item_stock_on_hand($board) === -3);
+
+        // A changed outlet currency reaches a linked item only when it is re-synced.
+        db_query('UPDATE pos_outlets SET currency = :c WHERE id = :o', [':c' => $other, ':o' => $shop]);
+        pos_item_sync_inventory($cap);
+        check('sync: outlet currency change reaches the linked inventory item',
+            db_query('SELECT currency FROM inv_items WHERE id = :i', [':i' => $capInv])->fetchColumn() === $other);
+        db_query('UPDATE pos_outlets SET currency = :c WHERE id = :o', [':c' => $cur, ':o' => $shop]);
+        pos_item_sync_inventory($cap);
+        check('sync: currency restored on re-sync',
+            db_query('SELECT currency FROM inv_items WHERE id = :i', [':i' => $capInv])->fetchColumn() === $cur);
     } else {
         $ledger = (int) db_query('SELECT COALESCE(SUM(qty_delta),0) FROM pos_stock_moves WHERE item_id = :i', [':i' => $cap])->fetchColumn();
         check('stock: cached stock_qty equals 10 + the ledger', 10 + $ledger === $stock($cap));

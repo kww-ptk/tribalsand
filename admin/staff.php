@@ -145,6 +145,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (($held = inv_linked_stock_count('hr_staff_id', $sid)) > 0) {
                 staff_flash("This person still holds {$held} assigned item(s) — return them to stock before removing the entry.", 'error', 'directory');
             }
+            inv_deactivate_linked_locations('hr_staff_id', $sid);
             $n = db_query("DELETE FROM hr_staff WHERE id = :id", [':id' => $sid])->rowCount();
             if ($n) { audit_log('hr_staff_delete', 'hr_staff', $sid, ''); staff_flash('Directory entry removed.', 'success', 'directory'); }
             staff_flash('No change.', 'error', 'directory');
