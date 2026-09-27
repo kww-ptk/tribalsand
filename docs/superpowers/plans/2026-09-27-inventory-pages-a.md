@@ -1274,7 +1274,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
             if ($item) {
                 if ($img !== null) $v['image_key'] = $img;
                 elseif (!empty($_POST['remove_image']) && !$posLinked) $v['image_key'] = null;
-                inv_update_item($id, $v, $posLinked);
+                inv_update_item($id, $v, $posLinked, is_owner());   // managers can't change an existing item's value, currency or switch it off
                 audit_log('inv.item_save', 'inv_item', $id, $v['name']);
                 $_SESSION['inv_flash'] = ['type' => 'success', 'msg' => "{$item['name']} saved."];
                 inv_item_go("{$self}?id={$id}");
@@ -1319,6 +1319,7 @@ $staff     = $supported ? inv_assignable_staff($vids) : [];
 $listings  = $item ? inv_item_pos_listings($id) : [];
 $posLinked = (bool)$listings;
 $hasMoves  = $item ? inv_item_has_moves($id) : false;
+$ownerOnly = $item && !is_owner();   // an existing item's value, currency and on/off switch are owner business
 $holding   = array_values(array_filter($where, fn($w) => (int)$w['qty'] > 0));
 $totalQty  = array_sum(array_map(fn($w) => (int)$w['qty'], $where));
 $form      = $old ?? ($item ?: ['item_type' => 'operational', 'tracking' => 'qty', 'currency' => INV_DEFAULT_CURRENCY, 'is_active' => true, 'unit_label' => 'pcs']);
@@ -1556,9 +1557,9 @@ include __DIR__ . '/_layout.php';
               <datalist id="invCats"><?php foreach (inv_categories() as $c): ?><option value="<?= e($c) ?>"><?php endforeach; ?></datalist></div>
           </div>
           <div class="inv-row2">
-            <div class="field"><label>Replacement value <span class="text-muted">(each)</span></label><input name="replacement_value" type="number" class="inp inp--num no-spin" min="0" step="0.01" value="<?= e($val('replacement_value')) ?>"><?= $err('replacement_value') ?></div>
+            <div class="field"><label>Replacement value <span class="text-muted">(each)</span></label><input name="replacement_value" type="number" class="inp inp--num no-spin" min="0" step="0.01" value="<?= e($val('replacement_value')) ?>" <?= $ownerOnly ? 'readonly title="Only the owner changes an item’s value"' : '' ?>><?= $err('replacement_value') ?></div>
             <?php if (!$posLinked): ?>
-            <div class="field"><label>Currency</label><select name="currency" class="eselect eselect--block">
+            <div class="field"><label>Currency</label><select name="currency" class="eselect eselect--block" <?= $ownerOnly ? 'disabled' : '' ?>>
               <?php foreach (array_keys(TS_CURRENCIES) as $c): ?><option value="<?= e($c) ?>" <?= strtoupper($val('currency') ?: INV_DEFAULT_CURRENCY) === $c ? 'selected' : '' ?>><?= e($c) ?></option><?php endforeach; ?></select></div>
             <?php endif; ?>
           </div>
@@ -1585,7 +1586,13 @@ include __DIR__ . '/_layout.php';
             <?php if ($item && $item['image_key']): ?><label class="optchip" style="margin-top:8px"><input type="checkbox" name="remove_image" value="1">Remove photo</label><?php endif; ?>
             <?= $err('image') ?></div>
           <?php endif; ?>
+          <?php if ($ownerOnly): ?>
+          <?php if (inv_bool($form['is_active'] ?? true)): ?><input type="hidden" name="is_active" value="1"><?php endif; ?>
+          <?php if (!$posLinked): ?><input type="hidden" name="currency" value="<?= e($val('currency') ?: INV_DEFAULT_CURRENCY) ?>"><?php endif; ?>
+          <p class="text-muted" style="font-size:12px;margin:0 0 12px">Only the owner can change this item’s value or currency, or switch it off.</p>
+          <?php else: ?>
           <div class="field"><label class="optchip"><input type="checkbox" name="is_active" value="1" <?= inv_bool($form['is_active'] ?? true) ? 'checked' : '' ?>>In use (shows in lists)</label></div>
+          <?php endif; ?>
           <button type="submit" class="btn-primary btn-sm"><?= admin_icon('check', 15) ?> <?= $item ? 'Save' : 'Add item' ?></button>
         </form>
       </div>
