@@ -667,7 +667,7 @@ function inv_shared_css(): string {
 .inv-where{font-size:13px;color:var(--text)}
 .inv-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(300px,1fr);gap:18px;align-items:start}
 @media (max-width:980px){.inv-grid{grid-template-columns:minmax(0,1fr)}}
-.inv-stack{display:grid;gap:18px;min-width:0}
+.inv-stack{display:grid;gap:18px;min-width:0;grid-template-columns:minmax(0,1fr)}
 .inv-form .field{margin-bottom:12px}
 .inv-form .inp,.inv-form .eselect--block{width:100%}
 .inv-row2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
