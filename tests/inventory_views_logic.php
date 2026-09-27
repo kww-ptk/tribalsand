@@ -130,6 +130,54 @@ try {
     check('venues: a manager’s venues only', array_keys(inv_visible_venues([$vA])) === [$vA]);
     check('staff: a manager can pick their own team', isset(inv_assignable_staff([$vA])[$jane]) && !isset(inv_assignable_staff([$vB])[$jane]));
 
+    // ── Settings + actions ──
+    check('area: a duplicate name under one property is refused', str_contains($refused(fn() => inv_create_area($locA, 'zz kitchen')), 'already has'));
+    check('area: only under a property', $refused(fn() => inv_create_area($store, 'Shelf')) !== '');
+    inv_update_location($kitchen, ['count_every_days' => '7', 'count_assignee_id' => $mgr, 'name' => 'ZZ Main kitchen', 'is_active' => true]);
+    $k = inv_fetch_location($kitchen);
+    check('location: schedule, responsible person and name saved', (int)$k['count_every_days'] === 7 && (int)$k['count_assignee_id'] === $mgr && $k['name'] === 'ZZ Main kitchen');
+    check('location: a silly schedule is refused', $refused(fn() => inv_update_location($kitchen, ['count_every_days' => '400'])) !== '');
+    check('location: an area holding stock cannot be closed', str_contains($refused(fn() => inv_update_location($kitchen, ['is_active' => false])), 'Move its stock'));
+    inv_update_location($locA, ['name' => 'Renamed', 'count_every_days' => '']);
+    check('location: a property keeps its venue name', inv_fetch_location($locA)['name'] !== 'Renamed');
+
+    [$v] = inv_item_from_post(['name' => 'ZZ View plate', 'item_type' => 'operational', 'tracking' => 'serial', 'currency' => 'KES', 'is_active' => '1']);
+    check('item: tracking cannot change once it has history', str_contains($refused(fn() => inv_update_item($plates, $v)), 'Tracking'));
+    [$v] = inv_item_from_post(['name' => 'ZZ View plate (large)', 'item_type' => 'operational', 'replacement_value' => '900', 'currency' => 'KES', 'is_active' => '1']);
+    inv_update_item($plates, $v);
+    check('item: details saved', inv_fetch_item($plates)['name'] === 'ZZ View plate (large)' && (float)inv_fetch_item($plates)['replacement_value'] === 900.0);
+
+    $item = inv_fetch_item($plates);
+    $msg = inv_apply_item_action(['action' => 'receive', 'qty' => '4', 'to_id' => (string)$kitchen, 'note' => 'delivery'], $item, [$vA], $mgr);
+    check('action: a manager receives into their own area', str_contains($msg, 'Received 4') && inv_balance($plates, $kitchen) === 14);
+    check('action: a manager cannot receive into another property',
+        str_contains($refused(fn() => inv_apply_item_action(['action' => 'receive', 'qty' => '1', 'to_id' => (string)$locB], $item, [$vA], $mgr)), 'location you manage'));
+    $msg = inv_apply_item_action(['action' => 'transfer', 'qty' => '2', 'from_id' => (string)$kitchen, 'to' => 'staff:' . $jane], $item, [$vA], $mgr);
+    $janeLoc = inv_person_location_id($jane);
+    check('action: assigning to a team member', str_contains($msg, 'ZZ Jane') && inv_balance($plates, $janeLoc) === 2
+        && db_query("SELECT reason FROM inv_moves WHERE item_id = :i ORDER BY id DESC LIMIT 1", [':i' => $plates])->fetchColumn() === 'assign');
+    check('action: restock from shared Main stock into their own area is allowed',
+        str_contains(inv_apply_item_action(['action' => 'transfer', 'qty' => '1', 'from_id' => (string)$store, 'to' => 'loc:' . $kitchen], $item, [$vA], $mgr), 'Moved'));
+    check('action: moving shared stock to another property is refused',
+        $refused(fn() => inv_apply_item_action(['action' => 'transfer', 'qty' => '1', 'from_id' => (string)$store, 'to' => 'loc:' . $locB], $item, [$vA], $mgr)) !== '');
+    $msg = inv_apply_item_action(['action' => 'loss', 'qty' => '1', 'from_id' => (string)$kitchen, 'reason' => 'broken', 'note' => 'dropped'], $item, [$vA], $mgr);
+    check('action: a loss reports its value', str_contains($msg, 'KES 900') && inv_balance($plates, $kitchen) === 12);
+    $mainBefore = inv_balance($plates, $store);
+    $msg = inv_apply_item_action(['action' => 'replace', 'qty' => '1', 'at_id' => (string)$kitchen, 'reason' => 'broken'], $item, null, $owner);
+    check('action: replace = loss here + refill from Main stock', inv_balance($plates, $kitchen) === 12 && inv_balance($plates, $store) === $mainBefore - 1);
+    check('action: an unknown action is refused', $refused(fn() => inv_apply_item_action(['action' => 'teleport'], $item, null, $owner)) !== '');
+
+    $lap = inv_fetch_item($laptop);
+    check('action: counted receive is refused for a serial item',
+        $refused(fn() => inv_apply_item_action(['action' => 'receive', 'qty' => '1', 'to_id' => (string)$store], $lap, null, $owner)) !== '');
+    inv_apply_item_action(['action' => 'add_unit', 'to_id' => (string)$store, 'serial' => "ZZ-V-{$sfx}", 'condition' => 'new', 'purchase_value' => '90000'], $lap, null, $owner);
+    $unit = (int) db_query('SELECT id FROM inv_assets WHERE item_id = :i', [':i' => $laptop])->fetchColumn();
+    inv_apply_item_action(['action' => 'transfer', 'asset_id' => (string)$unit, 'to' => 'staff:' . $jane], $lap, null, $owner);
+    check('action: a serial unit is assigned by unit', (int) db_query('SELECT location_id FROM inv_assets WHERE id = :a', [':a' => $unit])->fetchColumn() === $janeLoc);
+    $row = array_values(array_filter(inv_central_list(['q' => 'ZZ View', 'status' => 'assigned'], null, 50, 0)['rows'], fn($r) => (int)$r['id'] === $laptop))[0] ?? null;
+    check('list: "assigned" shows what people hold', $row !== null && (int)$row['qty'] === 1);
+    check('list: the person filter', count(inv_central_list(['q' => 'ZZ View', 'person' => $jane], null, 50, 0)['rows']) === 2);
+
     // ── DB checks (tasks 2–3 insert their blocks above this line) ──
 } catch (Throwable $e) {
     echo "FAIL  DB block threw: " . $e->getMessage() . "\n" . $e->getTraceAsString() . "\n";

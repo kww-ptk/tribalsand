@@ -410,3 +410,166 @@ function inv_create_area(int $parentId, string $name): int {
         [':n' => $name, ':p' => $parentId, ':v' => $parent['venue_id'], ':s' => $sort]);
     return (int) db()->lastInsertId();
 }
+
+/**
+ * Save a location's settings. $v: count_every_days ('' = manual, 1–365),
+ * count_assignee_id (0 = nobody), name (areas and Main stock only — properties,
+ * outlets and people take their name from their own record), is_active (areas
+ * only; refused while it holds stock). The CALLER checks inv_location_editable().
+ */
+function inv_update_location(int $id, array $v): void {
+    if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
+    $loc = inv_fetch_location($id);
+    if (!$loc) throw new InvRefusal('That location no longer exists.');
+    if ($loc['kind'] === 'person') throw new InvRefusal('A team member’s items are managed from their profile.');
+    $every = trim((string)($v['count_every_days'] ?? ''));
+    if ($every !== '' && (!ctype_digit($every) || (int)$every < 1 || (int)$every > 365)) throw new InvRefusal('Count every 1–365 days, or choose manual only.');
+    $assignee = (int)($v['count_assignee_id'] ?? 0);
+    if ($assignee > 0 && !db_query('SELECT 1 FROM admin_users WHERE id = :u AND is_active = TRUE', [':u' => $assignee])->fetchColumn()) {
+        throw new InvRefusal('Pick an active team account.');
+    }
+    $set = ['count_every_days = :e', 'count_assignee_id = :a'];
+    $p   = [':e' => $every === '' ? null : (int)$every, ':a' => $assignee > 0 ? $assignee : null, ':id' => $id];
+    if (in_array($loc['kind'], ['area', 'store'], true) && array_key_exists('name', $v)) {
+        $name = trim((string)$v['name']);
+        if ($name === '' || mb_strlen($name) > 120) throw new InvRefusal('Give it a name (up to 120 characters).');
+        $set[] = 'name = :n'; $p[':n'] = $name;
+    }
+    if ($loc['kind'] === 'area' && array_key_exists('is_active', $v)) {
+        $active = (bool)$v['is_active'];
+        if (!$active && inv_bool($loc['is_active'])
+            && db_query('SELECT 1 FROM inv_balances WHERE location_id = :l AND qty <> 0 LIMIT 1', [':l' => $id])->fetchColumn()) {
+            throw new InvRefusal('Move its stock out before closing this area.');
+        }
+        $set[] = 'is_active = :act'; $p[':act'] = $active ? 'TRUE' : 'FALSE';
+    }
+    db_query('UPDATE inv_locations SET ' . implode(', ', $set) . ' WHERE id = :id', $p);
+}
+
+/**
+ * Save an item's details ($v from inv_item_from_post(), plus optional image_key —
+ * null removes the photo). Tracking can't change once the item has stock history.
+ * A POS-linked item keeps the name, SKU, photo, currency, alert and tracking its
+ * POS listing owns ($posLinked = true skips them).
+ */
+function inv_update_item(int $id, array $v, bool $posLinked = false): void {
+    if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
+    $item = inv_fetch_item($id);
+    if (!$item) throw new InvRefusal('That item no longer exists.');
+    if (!$posLinked && $v['tracking'] !== $item['tracking'] && inv_item_has_moves($id)) {
+        throw new InvRefusal('Tracking can’t change once the item has stock history.');
+    }
+    $set = ['item_type = :t', 'category = :c', 'icon = :ic', 'unit_label = :u', 'replacement_value = :rv', 'is_active = :a', 'updated_at = now()'];
+    $p   = [':t' => $v['item_type'], ':c' => $v['category'] !== '' ? $v['category'] : null, ':ic' => $v['icon'] !== '' ? $v['icon'] : null,
+            ':u' => $v['unit_label'] !== '' ? $v['unit_label'] : 'pcs', ':rv' => $v['replacement_value'],
+            ':a' => $v['is_active'] ? 'TRUE' : 'FALSE', ':id' => $id];
+    if (!$posLinked) {
+        array_push($set, 'name = :n', 'sku = :s', 'tracking = :tr', 'currency = :cur', 'low_stock_at = :low');
+        $p += [':n' => $v['name'], ':s' => $v['sku'] !== '' ? $v['sku'] : null, ':tr' => $v['tracking'], ':cur' => $v['currency'], ':low' => $v['low_stock_at']];
+        if (array_key_exists('image_key', $v)) { $set[] = 'image_key = :img'; $p[':img'] = $v['image_key']; }
+    }
+    db_query('UPDATE inv_items SET ' . implode(', ', $set) . ' WHERE id = :id', $p);
+}
+
+/**
+ * The item page's everyday actions, all through the inventory core. $in is the
+ * posted form: action = receive | add_unit | transfer | loss | replace, plus
+ * qty / asset_id, to_id / from_id / at_id / to ("loc:ID" | "staff:ID"), reason,
+ * unit_cost, note and the unit fields. Every location and team member is
+ * re-checked against the account's scope; inv_move() re-checks stock under lock.
+ * Returns the success message; throws InvRefusal.
+ */
+function inv_apply_item_action(array $in, array $item, ?array $venueIds, int $userId): string {
+    if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
+    $itemId = (int)$item['id'];
+    $name   = (string)$item['name'];
+    $serial = $item['tracking'] === 'serial';
+    $qty    = $serial ? 1 : (ctype_digit((string)($in['qty'] ?? '')) ? (int)$in['qty'] : 0);
+    $asset  = $serial ? ((int)($in['asset_id'] ?? 0) ?: null) : null;
+    $note   = mb_substr(trim((string)($in['note'] ?? '')), 0, 500);
+    $loc = function (string $key) use ($in, $venueIds): ?array {
+        $id = (int)($in[$key] ?? 0);
+        if ($id <= 0) return null;
+        $l = inv_fetch_location($id);
+        if (!$l || !inv_location_visible($l, $venueIds)) throw new InvRefusal('Pick a location you manage.');
+        return $l;
+    };
+    $scope = function (?array $from, ?array $to) use ($venueIds): void {
+        if (!inv_move_in_scope($from, $to, $venueIds)) throw new InvRefusal('That involves a location outside your properties.');
+    };
+    $units = fn(int $n): string => $serial ? $name : "{$n} × {$name}";
+    // A serial unit moves from wherever it is — the server looks that up, it is never taken from the form.
+    $unitFrom = function () use ($asset, $itemId, $venueIds): ?array {
+        if (!$asset) return null;
+        $locId = db_query("SELECT location_id FROM inv_assets WHERE id = :a AND item_id = :i AND status = 'active'",
+            [':a' => $asset, ':i' => $itemId])->fetchColumn();
+        if (!$locId) throw new InvRefusal('That unit is not in stock.');
+        $l = inv_fetch_location((int)$locId);
+        if (!$l || !inv_location_visible($l, $venueIds)) throw new InvRefusal('Pick a unit you manage.');
+        return $l;
+    };
+
+    switch ((string)($in['action'] ?? '')) {
+        case 'receive':
+            if ($serial) throw new InvRefusal("{$name} is tracked by serial number — add each unit instead.");
+            $to = $loc('to_id');
+            if (!$to) throw new InvRefusal('Pick where it arrived.');
+            $scope(null, $to);
+            $cost = trim((string)($in['unit_cost'] ?? ''));
+            if ($cost !== '' && (!is_numeric($cost) || (float)$cost < 0)) throw new InvRefusal('Unit cost must be zero or more.');
+            inv_move(['item_id' => $itemId, 'qty' => $qty, 'to' => (int)$to['id'], 'reason' => 'receive',
+                      'user_id' => $userId, 'note' => $note, 'unit_value' => $cost === '' ? null : $cost]);
+            return 'Received ' . $units($qty) . " at {$to['name']}.";
+
+        case 'add_unit':
+            if (!$serial) throw new InvRefusal("{$name} is counted, not tracked by serial number — receive a quantity instead.");
+            $to = $loc('to_id');
+            if (!$to) throw new InvRefusal('Pick where the unit is.');
+            $scope(null, $to);
+            $sn = trim((string)($in['serial'] ?? ''));
+            inv_asset_create($itemId, (int)$to['id'], [
+                'serial' => $sn, 'tag' => $in['tag'] ?? '', 'condition' => $in['condition'] ?? 'good',
+                'purchase_date' => $in['purchase_date'] ?? '', 'purchase_value' => $in['purchase_value'] ?? null, 'notes' => $note,
+            ], $userId);
+            return "Added {$name}" . ($sn !== '' ? " ({$sn})" : '') . " at {$to['name']}.";
+
+        case 'transfer':
+            $from   = $serial ? $unitFrom() : $loc('from_id');
+            $target = inv_parse_target((string)($in['to'] ?? ''));
+            if (!$from || !$target) throw new InvRefusal('Pick where it comes from and where it goes.');
+            if ($target[0] === 'staff') {
+                $staff = inv_assignable_staff($venueIds);
+                if (!isset($staff[$target[1]])) throw new InvRefusal('Pick a team member you manage.');
+                $to = inv_fetch_location(inv_person_location_id($target[1]));
+            } else {
+                $to = inv_fetch_location($target[1]);
+                if (!$to || !inv_location_visible($to, $venueIds)) throw new InvRefusal('Pick a location you manage.');
+                if (!inv_bool($to['is_active'])) throw new InvRefusal("{$to['name']} is closed.");
+            }
+            $scope($from, $to);
+            inv_transfer($itemId, $qty, (int)$from['id'], (int)$to['id'], $userId, $note, $asset);
+            return 'Moved ' . $units($qty) . " from {$from['name']} to {$to['name']}.";
+
+        case 'loss':
+            $from   = $serial ? $unitFrom() : $loc('from_id');
+            $reason = (string)($in['reason'] ?? '');
+            if (!$from) throw new InvRefusal('Pick where it was lost.');
+            $scope($from, null);
+            inv_report_loss($itemId, $qty, (int)$from['id'], $reason, $userId, $note, $asset);
+            $value = db_query('SELECT value, currency FROM inv_moves WHERE item_id = :i ORDER BY id DESC LIMIT 1', [':i' => $itemId])->fetch();
+            $label = mb_strtolower(INV_LOSS_LABELS[$reason] ?? $reason);
+            return 'Recorded ' . $units($qty) . " {$label} at {$from['name']}"
+                . ($value && $value['value'] !== null ? ' (' . inv_money((float)$value['value'], (string)$value['currency']) . ')' : '') . '.';
+
+        case 'replace':
+            $at     = $loc('at_id');
+            $reason = (string)($in['reason'] ?? '');
+            if (!$at) throw new InvRefusal('Pick where it is being replaced.');
+            $source = inv_fetch_location(inv_store_location_id());
+            $scope($at, null);
+            $scope($source, $at);
+            inv_replace($itemId, $qty, (int)$at['id'], $reason, $userId, $note);
+            return 'Replaced ' . $units($qty) . " at {$at['name']} from {$source['name']}.";
+    }
+    throw new InvRefusal('Unknown action.');
+}
