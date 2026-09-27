@@ -6,15 +6,17 @@ declare(strict_types=1);
  * Migration: db/migrations/add_inventory.sql. Test: php tests/inventory_logic.php
  *
  * Load-bearing rules:
- *   • inv_move() is the ONLY writer of inv_moves and inv_balances. It locks
- *     balance rows in the global (item_id, location_id) order — compound actions
- *     pre-lock every pair with inv_lock_balances() — then inv_assets rows, refuses
- *     going below zero (except a POS listing flagged allow_negative), snapshots
- *     value, and updates both balances in one transaction. Compound actions
- *     (replace, restock, count resolution) are several inv_move() calls inside
- *     ONE inv_tx().
+ *   • inv_move() is the ONLY writer of inv_moves and of quantities (inv_balances.qty);
+ *     par_qty is a target set by inv_set_par(). inv_move() locks balance rows in
+ *     the global (item_id, location_id) order — compound actions pre-lock every
+ *     pair with inv_lock_balances() — then inv_assets rows, refuses going below
+ *     zero (except a POS listing flagged allow_negative), snapshots value, and
+ *     updates both balances in one transaction. Compound actions (replace,
+ *     restock, count resolution) are several inv_move() calls inside ONE inv_tx().
  *   • Counting never moves stock. A manager's resolution does, and only while the
- *     live balance still equals what the counter was shown.
+ *     live balance still equals what the counter was shown. Lock order there is
+ *     count → line → balance (inv_count_resolve_line() locks the count and its
+ *     line with FOR UPDATE before it locks the item's balance row).
  *   • Money is never summed across currencies (inv_sum_by_currency()).
  *   • Every surface checks inv_supported() first (catalog lookup — safe in a tx).
  */
@@ -565,6 +567,8 @@ function inv_replace(int $itemId, int $qty, int $atId, string $lossReason, ?int 
 function inv_set_par(int $itemId, int $locationId, ?int $par): void {
     if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
     if ($par !== null && $par < 0) throw new InvRefusal('Par level cannot be negative.');
+    if ($par !== null && $par > INV_MAX_QTY) throw new InvRefusal('That par level is too large.');
+    if (!inv_fetch_item($itemId) || !inv_fetch_location($locationId)) throw new InvRefusal('That item or location does not exist.');
     db_query('INSERT INTO inv_balances (item_id, location_id, qty, par_qty) VALUES (:i, :l, 0, :p)
               ON CONFLICT (item_id, location_id) DO UPDATE SET par_qty = EXCLUDED.par_qty',
         [':i' => $itemId, ':l' => $locationId, ':p' => $par]);
@@ -572,20 +576,31 @@ function inv_set_par(int $itemId, int $locationId, ?int $par): void {
 
 /**
  * Top every counted item at $locationId up to its par level from $sourceId
- * (default Main stock), as far as the source has stock — one transaction.
- * Returns ['moved' => [item_id => qty], 'short' => [item_id => qty still missing]].
+ * (default Main stock), as far as the source has stock — one transaction. A
+ * serial-tracked item with a par set at the location is never auto-restocked
+ * (its unit has to be assigned individually) — its item id is listed under
+ * 'skipped' instead. Returns ['moved' => [item_id => qty],
+ * 'short' => [item_id => qty still missing], 'skipped' => [item_id, …]].
  */
 function inv_restock_to_par(int $locationId, ?int $userId, ?int $sourceId = null): array {
+    if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
     $sourceId ??= inv_store_location_id();
     if ($sourceId === $locationId) throw new InvRefusal('Restock from a different location.');
-    return inv_tx(function () use ($locationId, $userId, $sourceId): array {
-        $sql = "SELECT b.item_id, b.qty, b.par_qty FROM inv_balances b JOIN inv_items i ON i.id = b.item_id
-                 WHERE b.location_id = :l AND b.par_qty IS NOT NULL AND i.is_active = TRUE AND i.tracking = 'qty'
+    $dest   = inv_fetch_location($locationId);
+    $source = inv_fetch_location($sourceId);
+    if (!$dest || !$source) throw new InvRefusal('Pick where it comes from and where it goes.');
+    return inv_tx(function () use ($locationId, $userId, $sourceId, $dest, $source): array {
+        $sql = "SELECT b.item_id, b.qty, b.par_qty, i.tracking FROM inv_balances b JOIN inv_items i ON i.id = b.item_id
+                 WHERE b.location_id = :l AND b.par_qty IS NOT NULL AND i.is_active = TRUE
                  ORDER BY b.item_id";
+        $allRows = db_query($sql, [':l' => $locationId])->fetchAll();
+        $skipped = array_values(array_map(fn(array $r): int => (int)$r['item_id'],
+            array_filter($allRows, fn(array $r): bool => $r['tracking'] !== 'qty')));
         // Lock every (item, here) and (item, source) row in the global order first, then
         // read the quantities under that lock — no deadlock with a concurrent transfer or sale.
         $pairs = [];
-        foreach (db_query($sql, [':l' => $locationId])->fetchAll() as $r) {
+        foreach ($allRows as $r) {
+            if ($r['tracking'] !== 'qty') continue;   // serial units are assigned individually, never auto-restocked
             $pairs[] = [(int)$r['item_id'], $locationId];
             $pairs[] = [(int)$r['item_id'], $sourceId];
         }
@@ -594,18 +609,19 @@ function inv_restock_to_par(int $locationId, ?int $userId, ?int $sourceId = null
         $lockedIds = array_map(fn(array $p): int => $p[0], $pairs);
         $rows  = array_values(array_filter(db_query($sql, [':l' => $locationId])->fetchAll(),
                                            fn(array $r): bool => in_array((int)$r['item_id'], $lockedIds, true)));
-        $moved = [];
-        $short = [];
+        $moved  = [];
+        $short  = [];
+        $reason = inv_transfer_reason((string)$source['kind'], (string)$dest['kind']);
         foreach (inv_restock_plan($rows) as $itemId => $need) {
             $take = min($need, max(0, inv_balance($itemId, $sourceId)));   // locked above
             if ($take > 0) {
                 inv_move(['item_id' => $itemId, 'qty' => $take, 'from' => $sourceId, 'to' => $locationId,
-                          'reason' => 'transfer', 'user_id' => $userId, 'note' => 'Restock to par']);
+                          'reason' => $reason, 'user_id' => $userId, 'note' => 'Restock to par']);
                 $moved[$itemId] = $take;
             }
             if ($take < $need) $short[$itemId] = $need - $take;
         }
-        return ['moved' => $moved, 'short' => $short];
+        return ['moved' => $moved, 'short' => $short, 'skipped' => $skipped];
     });
 }
 
@@ -613,18 +629,28 @@ function inv_restock_to_par(int $locationId, ?int $userId, ?int $sourceId = null
 
 /**
  * Open a count at a location, snapshotting what the system expects there (every
- * active item with stock or a par level). An open count is reused, so a counter
- * who reloads the page keeps their lines. Returns the count id.
+ * active item with stock or a par level). An open count is reused only when it
+ * was started the same Nairobi-local day, so a counter who reloads the page
+ * keeps their (unsubmitted) lines — a stale open count from an earlier day is
+ * cancelled and a fresh one started, never resumed with a day-old snapshot.
+ * Returns the count id.
  */
 function inv_count_start(int $locationId, int $userId): int {
     $loc = inv_fetch_location($locationId);
     if (!$loc || !inv_bool($loc['is_active'])) throw new InvRefusal('That location is not open.');
     return inv_tx(function () use ($locationId, $userId): int {
-        $open = db_query("SELECT id FROM inv_counts WHERE location_id = :l AND status = 'open' ORDER BY id DESC LIMIT 1 FOR UPDATE",
-            [':l' => $locationId])->fetchColumn();
-        if ($open) return (int)$open;
-        db_query('INSERT INTO inv_counts (location_id, counted_by) VALUES (:l, :u)', [':l' => $locationId, ':u' => $userId]);
-        $countId = (int) db()->lastInsertId();
+        $open = db_query("SELECT id, (started_at::date = CURRENT_DATE) AS today FROM inv_counts
+                           WHERE location_id = :l AND status = 'open' FOR UPDATE", [':l' => $locationId])->fetch();
+        if ($open && inv_bool($open['today'])) return (int)$open['id'];
+        // An open count from an earlier day holds a stale snapshot: cancel it and start fresh.
+        if ($open) db_query("UPDATE inv_counts SET status = 'cancelled' WHERE id = :c", [':c' => (int)$open['id']]);
+        $countId = db_query("INSERT INTO inv_counts (location_id, counted_by) VALUES (:l, :u)
+                              ON CONFLICT (location_id) WHERE status = 'open' DO NOTHING RETURNING id",
+            [':l' => $locationId, ':u' => $userId])->fetchColumn();
+        if ($countId === false) {   // a concurrent start won the race — use its count
+            return (int) db_query("SELECT id FROM inv_counts WHERE location_id = :l AND status = 'open'", [':l' => $locationId])->fetchColumn();
+        }
+        $countId = (int)$countId;
         db_query('INSERT INTO inv_count_lines (count_id, item_id, expected)
                   SELECT :c, b.item_id, b.qty FROM inv_balances b JOIN inv_items i ON i.id = b.item_id
                    WHERE b.location_id = :l AND i.is_active = TRUE AND (b.qty <> 0 OR b.par_qty IS NOT NULL)',
@@ -639,6 +665,7 @@ function inv_count_start(int $locationId, int $userId): int {
  * manager. Stock never changes here. Returns ['gaps' => int].
  */
 function inv_count_submit(int $countId, array $counted, int $userId): array {
+    if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
     return inv_tx(function () use ($countId, $counted, $userId): array {
         $c = db_query('SELECT id, location_id, status FROM inv_counts WHERE id = :c FOR UPDATE', [':c' => $countId])->fetch();
         if (!$c) throw new InvRefusal('That count does not exist.');
@@ -651,14 +678,16 @@ function inv_count_submit(int $countId, array $counted, int $userId): array {
             $v = (int)$v;
             if ($v > INV_MAX_QTY) throw new InvRefusal('That count is too large.');
             if ($v === (int)$l['expected']) {
+                $bal = inv_balance((int)$l['item_id'], (int)$c['location_id']);
                 db_query("UPDATE inv_count_lines SET counted = :v, resolution = 'accepted', resolved_by = :u, resolved_at = now(), balance_at_resolve = :b WHERE id = :id",
-                    [':v' => $v, ':u' => $userId, ':b' => (int)$l['expected'], ':id' => (int)$l['id']]);
+                    [':v' => $v, ':u' => $userId, ':b' => $bal, ':id' => (int)$l['id']]);
             } else {
                 db_query('UPDATE inv_count_lines SET counted = :v WHERE id = :id', [':v' => $v, ':id' => (int)$l['id']]);
                 $gaps++;
             }
         }
-        db_query('UPDATE inv_counts SET status = :s, submitted_at = now() WHERE id = :c', [':s' => $gaps ? 'submitted' : 'resolved', ':c' => $countId]);
+        db_query('UPDATE inv_counts SET status = :s, submitted_at = now(), counted_by = :u WHERE id = :c',
+            [':s' => $gaps ? 'submitted' : 'resolved', ':u' => $userId, ':c' => $countId]);
         db_query('UPDATE inv_locations SET last_counted_at = now() WHERE id = :l', [':l' => (int)$c['location_id']]);
         return ['gaps' => $gaps];
     });
@@ -671,12 +700,13 @@ function inv_count_submit(int $countId, array $counted, int $userId): array {
  * null when nothing moved.
  */
 function inv_count_resolve_line(int $lineId, string $resolution, int $userId, string $note = ''): ?int {
+    if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
     return inv_tx(function () use ($lineId, $resolution, $userId, $note): ?int {
         $l = db_query('SELECT cl.*, c.location_id, c.status AS count_status, i.name AS item_name, i.tracking
                          FROM inv_count_lines cl
                          JOIN inv_counts c ON c.id = cl.count_id
                          JOIN inv_items i  ON i.id = cl.item_id
-                        WHERE cl.id = :id FOR UPDATE OF cl', [':id' => $lineId])->fetch();
+                        WHERE cl.id = :id FOR UPDATE OF cl, c', [':id' => $lineId])->fetch();
         if (!$l) throw new InvRefusal('That count line does not exist.');
         if ($l['count_status'] === 'open') throw new InvRefusal('This count has not been submitted yet.');
         if ($l['resolution'] !== null) throw new InvRefusal('This line is already resolved.');
@@ -686,11 +716,11 @@ function inv_count_resolve_line(int $lineId, string $resolution, int $userId, st
         $bal = inv_balance_lock((int)$l['item_id'], $loc);
         $moveId = null;
         if ($plan !== null) {
-            if ($bal !== (int)$l['expected']) {
-                throw new InvRefusal("Stock of {$l['item_name']} changed since this count (now {$bal}) — mark it recount and count again.");
-            }
             if ($l['tracking'] === 'serial') {
                 throw new InvRefusal("{$l['item_name']} is tracked by serial number — report the specific unit from its page, then mark this line recount.");
+            }
+            if ($bal !== (int)$l['expected']) {
+                throw new InvRefusal("Stock of {$l['item_name']} changed since this count (now {$bal}) — mark it recount and count again.");
             }
             $moveId = inv_move(['item_id' => (int)$l['item_id'], 'qty' => $plan['qty'],
                                 'from' => $plan['dir'] === 'out' ? $loc : null, 'to' => $plan['dir'] === 'in' ? $loc : null,
@@ -707,7 +737,10 @@ function inv_count_resolve_line(int $lineId, string $resolution, int $userId, st
 
 // ── History reads ───────────────────────────────────────────────────────────
 
-/** Moves of an item, newest first; with $locationId only those in or out of it. */
+/**
+ * Moves of an item, newest first; with $locationId only those in or out of it.
+ * Does NO venue scoping — callers show it only for locations in scope.
+ */
 function inv_item_moves(int $itemId, ?int $locationId = null, int $limit = 100): array {
     if (!inv_supported()) return [];
     $p = [':i' => $itemId];

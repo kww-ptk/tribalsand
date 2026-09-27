@@ -328,6 +328,41 @@ try {
     check('ledger: still equals every balance after all of it',
         $ledger($plates, $locA) === 23 && $ledger($plates, $store) === inv_balance($plates, $store) && $ledger($glasses, $locA) === 3);
 
+    // ── Count lifecycle, atomicity, history ──
+    $cstatus = fn(int $c) => db_query('SELECT status FROM inv_counts WHERE id = :c', [':c' => $c])->fetchColumn();
+    $threw = false; try { inv_replace($glasses, 1, $locA, 'broken', null); } catch (InvRefusal $e) { $threw = true; }
+    check('replace: all-or-nothing — no refill stock means no loss is recorded either',
+        $threw && inv_balance($glasses, $locA) === 3 && $count("SELECT COUNT(*) FROM inv_moves WHERE item_id = :i AND reason = 'broken'", [':i' => $glasses]) === 0);
+    $towels = inv_create_item(['name' => 'ZZ Towel', 'item_type' => 'operational', 'replacement_value' => 1500]);
+    inv_move(['item_id' => $towels, 'qty' => 5, 'to' => $locB, 'reason' => 'receive']);
+    inv_transfer($laptop, 1, $store, $locB, null, 'Villa laptop', $a2);
+    $c2 = inv_count_start($locB, $counter);
+    db_query("UPDATE inv_counts SET started_at = now() - INTERVAL '2 days' WHERE id = :c", [':c' => $c2]);
+    $c3 = inv_count_start($locB, $counter);
+    check('count: an open count from an earlier day is cancelled, not reused', $c3 !== $c2 && $cstatus($c2) === 'cancelled' && $cstatus($c3) === 'open');
+    $threw = false; try { inv_tx(fn() => db_query('INSERT INTO inv_counts (location_id) VALUES (:l)', [':l' => $locB])); } catch (PDOException $e) { $threw = true; }
+    check('count: the DB allows one open count per location', $threw);
+    $line = fn(int $item) => (int) db_query('SELECT id FROM inv_count_lines WHERE count_id = :c AND item_id = :i', [':c' => $c3, ':i' => $item])->fetchColumn();
+    $msg = ''; try { inv_count_resolve_line($line($plates), 'found', $counter); } catch (InvRefusal $e) { $msg = $e->getMessage(); }
+    check('count: nothing resolves before the count is submitted', str_contains($msg, 'not been submitted'));
+    $res = inv_count_submit($c3, [$plates => 23, $towels => 4, $laptop => 0], $counter);
+    check('count: three gaps flagged, stock untouched', $res['gaps'] === 3 && inv_balance($plates, $locB) === 21 && inv_balance($towels, $locB) === 5);
+    $threw = false; try { inv_count_submit($c3, [$plates => 23, $towels => 4, $laptop => 0], $counter); } catch (InvRefusal $e) { $threw = true; }
+    check('count: a count is submitted once', $threw);
+    inv_count_resolve_line($line($plates), 'found', $counter);
+    check('count: "found" brings the extra in', inv_balance($plates, $locB) === 23);
+    check('count: "recount" closes a line without moving stock', inv_count_resolve_line($line($towels), 'recount', $counter) === null && inv_balance($towels, $locB) === 5);
+    $msg = ''; try { inv_count_resolve_line($line($laptop), 'missing', $counter); } catch (InvRefusal $e) { $msg = $e->getMessage(); }
+    check('count: a serial line points to reporting the unit itself', str_contains($msg, 'serial number') && inv_balance($laptop, $locB) === 1);
+    inv_count_resolve_line($line($laptop), 'recount', $counter);
+    check('count: resolved once the last line is', $cstatus($c3) === 'resolved');
+    $hist = inv_item_moves($plates, $locB, 5);
+    check('history: filtered to a location, newest first', ($hist[0]['reason'] ?? '') === 'found' && (int)$hist[0]['to_location_id'] === $locB);
+    $threw = false; try { inv_set_par($plates, $locA, INV_MAX_QTY + 1); } catch (InvRefusal $e) { $threw = true; }
+    check('par: capped', $threw);
+    $threw = false; try { inv_set_par($plates, 999999999, 5); } catch (InvRefusal $e) { $threw = true; }
+    check('par: an unknown location is a refusal, not a DB error', $threw);
+
     // ── DB checks (tasks 4–8 insert their blocks above this line) ──
 } catch (Throwable $e) {
     echo "FAIL  DB block threw: " . $e->getMessage() . "\n" . $e->getTraceAsString() . "\n";

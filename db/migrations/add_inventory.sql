@@ -94,7 +94,7 @@ CREATE TABLE IF NOT EXISTS inv_counts (
     counted_by   INT REFERENCES admin_users(id) ON DELETE SET NULL,
     started_at   TIMESTAMPTZ NOT NULL DEFAULT now(),
     submitted_at TIMESTAMPTZ,
-    status       VARCHAR(10) NOT NULL DEFAULT 'open' CHECK (status IN ('open','submitted','resolved'))
+    status       VARCHAR(10) NOT NULL DEFAULT 'open' CHECK (status IN ('open','submitted','resolved','cancelled'))
 );
 CREATE INDEX IF NOT EXISTS idx_inv_counts_location ON inv_counts (location_id, started_at DESC);
 
@@ -157,6 +157,9 @@ ALTER TABLE inv_moves ADD CONSTRAINT inv_moves_reason_shape_check CHECK (
 ALTER TABLE inv_locations DROP CONSTRAINT IF EXISTS inv_locations_link_kind_check;
 ALTER TABLE inv_locations ADD CONSTRAINT inv_locations_link_kind_check CHECK (
     (pos_outlet_id IS NULL OR kind = 'outlet') AND (hr_staff_id IS NULL OR kind = 'person'));
+ALTER TABLE inv_counts DROP CONSTRAINT IF EXISTS inv_counts_status_check;
+ALTER TABLE inv_counts ADD CONSTRAINT inv_counts_status_check CHECK (status IN ('open','submitted','resolved','cancelled'));
+CREATE UNIQUE INDEX IF NOT EXISTS uq_inv_counts_open ON inv_counts (location_id) WHERE status = 'open';   -- one open count per location
 
 -- ── Default locations ───────────────────────────────────────────────────────
 INSERT INTO inv_locations (kind, name, sort_order)
