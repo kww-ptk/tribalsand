@@ -669,7 +669,7 @@ function inv_count_submit(int $countId, array $counted, int $userId): array {
     return inv_tx(function () use ($countId, $counted, $userId): array {
         $c = db_query('SELECT id, location_id, status FROM inv_counts WHERE id = :c FOR UPDATE', [':c' => $countId])->fetch();
         if (!$c) throw new InvRefusal('That count does not exist.');
-        if ($c['status'] !== 'open') throw new InvRefusal('This count was already submitted.');
+        if ($c['status'] !== 'open') throw new InvRefusal($c['status'] === 'cancelled' ? 'This count is closed — start a new one.' : 'This count was already submitted.');
         $lines = db_query('SELECT id, item_id, expected FROM inv_count_lines WHERE count_id = :c ORDER BY id', [':c' => $countId])->fetchAll();
         $gaps = 0;
         foreach ($lines as $l) {
@@ -702,14 +702,17 @@ function inv_count_submit(int $countId, array $counted, int $userId): array {
 function inv_count_resolve_line(int $lineId, string $resolution, int $userId, string $note = ''): ?int {
     if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
     return inv_tx(function () use ($lineId, $resolution, $userId, $note): ?int {
-        $l = db_query('SELECT cl.*, c.location_id, c.status AS count_status, i.name AS item_name, i.tracking
+        $countId = db_query('SELECT count_id FROM inv_count_lines WHERE id = :id', [':id' => $lineId])->fetchColumn();
+        if ($countId === false) throw new InvRefusal('That count line does not exist.');
+        $cs = db_query('SELECT status FROM inv_counts WHERE id = :c FOR UPDATE', [':c' => (int)$countId])->fetchColumn();
+        if ($cs !== 'submitted') throw new InvRefusal($cs === 'open' ? 'This count has not been submitted yet.' : 'This count is closed.');
+        $l = db_query('SELECT cl.*, c.location_id, i.name AS item_name, i.tracking
                          FROM inv_count_lines cl
                          JOIN inv_counts c ON c.id = cl.count_id
                          JOIN inv_items i  ON i.id = cl.item_id
-                        WHERE cl.id = :id FOR UPDATE OF cl, c', [':id' => $lineId])->fetch();
-        if (!$l) throw new InvRefusal('That count line does not exist.');
-        if ($l['count_status'] === 'open') throw new InvRefusal('This count has not been submitted yet.');
+                        WHERE cl.id = :id FOR UPDATE OF cl', [':id' => $lineId])->fetch();
         if ($l['resolution'] !== null) throw new InvRefusal('This line is already resolved.');
+        if ($l['counted'] === null) throw new InvRefusal('This line was never counted.');
         $plan = inv_resolution_move($resolution, (int)$l['expected'], (int)$l['counted']);
         if (is_string($plan)) throw new InvRefusal($plan);
         $loc = (int)$l['location_id'];

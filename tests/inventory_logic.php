@@ -340,6 +340,12 @@ try {
     db_query("UPDATE inv_counts SET started_at = now() - INTERVAL '2 days' WHERE id = :c", [':c' => $c2]);
     $c3 = inv_count_start($locB, $counter);
     check('count: an open count from an earlier day is cancelled, not reused', $c3 !== $c2 && $cstatus($c2) === 'cancelled' && $cstatus($c3) === 'open');
+    $staleLine = (int) db_query('SELECT id FROM inv_count_lines WHERE count_id = :c ORDER BY id LIMIT 1', [':c' => $c2])->fetchColumn();
+    $platesB = inv_balance($plates, $locB);
+    $msg = ''; try { inv_count_resolve_line($staleLine, 'missing', $counter); } catch (InvRefusal $e) { $msg = $e->getMessage(); }
+    check('count: a line of a cancelled count can never be resolved (no false loss)', str_contains($msg, 'closed') && inv_balance($plates, $locB) === $platesB);
+    $msg = ''; try { inv_count_submit($c2, [], $counter); } catch (InvRefusal $e) { $msg = $e->getMessage(); }
+    check('count: a cancelled count cannot be submitted', str_contains($msg, 'closed'));
     $threw = false; try { inv_tx(fn() => db_query('INSERT INTO inv_counts (location_id) VALUES (:l)', [':l' => $locB])); } catch (PDOException $e) { $threw = true; }
     check('count: the DB allows one open count per location', $threw);
     $line = fn(int $item) => (int) db_query('SELECT id FROM inv_count_lines WHERE count_id = :c AND item_id = :i', [':c' => $c3, ':i' => $item])->fetchColumn();
