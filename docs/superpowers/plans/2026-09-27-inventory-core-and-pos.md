@@ -786,6 +786,14 @@ In `tests/inventory_logic.php`, insert above the line `    // ── DB checks (
     db_query("UPDATE pos_outlets SET venue_id = :v, name = 'ZZ Inv Shop' WHERE id = :o", [':v' => $vA, ':o' => $outlet]);
     check('locations: the ensure call refreshes the owner too',
         inv_outlet_location_id($outlet) === $locShop && (int)inv_fetch_location($locShop)['venue_id'] === $vA);
+    db_query("UPDATE hr_staff SET full_name = 'ZZ Jane W.', venue_id = :v WHERE id = :s", [':v' => $vB, ':s' => $staff]);
+    inv_refresh_location_owners();
+    $lj = inv_fetch_location($locJane);
+    check('locations: a person location follows the staff record', $lj['name'] === 'ZZ Jane W.' && (int)$lj['venue_id'] === $vB);
+    db_query("UPDATE hr_staff SET full_name = 'ZZ Jane Wanjiru', venue_id = :v WHERE id = :s", [':v' => $vA, ':s' => $staff]);
+    check('locations: the person ensure call refreshes the owner too', inv_person_location_id($staff) === $locJane && (int)inv_fetch_location($locJane)['venue_id'] === $vA);
+    $threw = false; try { inv_linked_stock_count('id; DROP TABLE x', 1); } catch (InvalidArgumentException $e) { $threw = true; }
+    check('guard: the link column is whitelisted', $threw);
     $plates = inv_create_item(['name' => 'ZZ Dinner plate', 'item_type' => 'operational', 'category' => 'Kitchen', 'replacement_value' => '850', 'currency' => 'KES']);
     $laptop = inv_create_item(['name' => 'ZZ Laptop', 'item_type' => 'employee', 'tracking' => 'serial', 'replacement_value' => 95000]);
     $p = inv_fetch_item($plates);
@@ -798,6 +806,10 @@ In `tests/inventory_logic.php`, insert above the line `    // ── DB checks (
     check('items: an unknown type is refused', $threw);
     $threw = false; try { inv_create_item(['name' => 'X', 'item_type' => 'spare', 'replacement_value' => '-3']); } catch (InvRefusal $e) { $threw = true; }
     check('items: a negative value is refused', $threw);
+    $threw = false; try { inv_create_item(['name' => 'X', 'item_type' => 'spare', 'replacement_value' => '99999999999']); } catch (InvRefusal $e) { $threw = true; }
+    check('items: an absurd value is refused, not a DB error', $threw);
+    $threw = false; try { inv_create_item(['name' => 'X', 'item_type' => 'consignment', 'consignor_id' => 999999999]); } catch (InvRefusal $e) { $threw = true; }
+    check('items: an unknown supplier is refused, not a DB error', $threw);
 
 ```
 
@@ -839,6 +851,18 @@ function inv_balance_lock(int $itemId, int $locationId): int {
 
 // ── Locations (created on demand, once) ─────────────────────────────────────
 
+/**
+ * Bring a location's name/owning venue up to date — writes (and so locks) the row
+ * ONLY when something changed. The ensure-functions below run inside the POS sale
+ * transaction, where an unconditional upsert would serialise every sale at an outlet.
+ */
+function inv_location_touch(array $row, string $name, ?int $venueId): void {
+    $name = mb_substr($name, 0, 120);
+    $cur  = $row['venue_id'] !== null ? (int)$row['venue_id'] : null;
+    if ((string)$row['name'] === $name && $cur === $venueId) return;
+    db_query('UPDATE inv_locations SET name = :n, venue_id = :v WHERE id = :id', [':n' => $name, ':v' => $venueId, ':id' => (int)$row['id']]);
+}
+
 /** The one Main stock location. */
 function inv_store_location_id(): int {
     if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
@@ -851,8 +875,10 @@ function inv_property_location_id(int $venueId): int {
     if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
     $name = db_query('SELECT name FROM venues WHERE id = :v', [':v' => $venueId])->fetchColumn();
     if ($name === false) throw new InvRefusal('That property does not exist.');
+    $row = db_query("SELECT id, name, venue_id FROM inv_locations WHERE kind = 'property' AND venue_id = :v", [':v' => $venueId])->fetch();
+    if ($row) { inv_location_touch($row, (string)$name, $venueId); return (int)$row['id']; }
     db_query("INSERT INTO inv_locations (kind, name, venue_id) VALUES ('property', :n, :v)
-              ON CONFLICT (venue_id) WHERE kind = 'property' DO UPDATE SET name = EXCLUDED.name",
+              ON CONFLICT (venue_id) WHERE kind = 'property' DO NOTHING",
         [':n' => mb_substr((string)$name, 0, 120), ':v' => $venueId]);
     return (int) db_query("SELECT id FROM inv_locations WHERE kind = 'property' AND venue_id = :v", [':v' => $venueId])->fetchColumn();
 }
@@ -862,10 +888,12 @@ function inv_outlet_location_id(int $outletId): int {
     if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
     $o = db_query('SELECT name, venue_id FROM pos_outlets WHERE id = :o', [':o' => $outletId])->fetch();
     if (!$o) throw new InvRefusal('That outlet does not exist.');
-    // DO UPDATE: the location follows its outlet's name and venue (the owning venue must never go stale).
+    $venue = $o['venue_id'] !== null ? (int)$o['venue_id'] : null;
+    $row = db_query('SELECT id, name, venue_id FROM inv_locations WHERE pos_outlet_id = :o', [':o' => $outletId])->fetch();
+    // The location follows its outlet's name and venue (the owning venue must never go stale).
+    if ($row) { inv_location_touch($row, (string)$o['name'], $venue); return (int)$row['id']; }
     db_query("INSERT INTO inv_locations (kind, name, pos_outlet_id, venue_id) VALUES ('outlet', :n, :o, :v)
-              ON CONFLICT (pos_outlet_id) DO UPDATE SET name = EXCLUDED.name, venue_id = EXCLUDED.venue_id",
-        [':n' => mb_substr((string)$o['name'], 0, 120), ':o' => $outletId, ':v' => $o['venue_id']]);
+              ON CONFLICT (pos_outlet_id) DO NOTHING", [':n' => mb_substr((string)$o['name'], 0, 120), ':o' => $outletId, ':v' => $venue]);
     return (int) db_query('SELECT id FROM inv_locations WHERE pos_outlet_id = :o', [':o' => $outletId])->fetchColumn();
 }
 
@@ -874,9 +902,11 @@ function inv_person_location_id(int $hrStaffId): int {
     if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
     $s = db_query('SELECT full_name, venue_id FROM hr_staff WHERE id = :s', [':s' => $hrStaffId])->fetch();
     if (!$s) throw new InvRefusal('That team member does not exist.');
+    $venue = $s['venue_id'] !== null ? (int)$s['venue_id'] : null;
+    $row = db_query('SELECT id, name, venue_id FROM inv_locations WHERE hr_staff_id = :s', [':s' => $hrStaffId])->fetch();
+    if ($row) { inv_location_touch($row, (string)$s['full_name'], $venue); return (int)$row['id']; }
     db_query("INSERT INTO inv_locations (kind, name, hr_staff_id, venue_id) VALUES ('person', :n, :s, :v)
-              ON CONFLICT (hr_staff_id) DO UPDATE SET name = EXCLUDED.name, venue_id = EXCLUDED.venue_id",
-        [':n' => mb_substr((string)$s['full_name'], 0, 120), ':s' => $hrStaffId, ':v' => $s['venue_id']]);
+              ON CONFLICT (hr_staff_id) DO NOTHING", [':n' => mb_substr((string)$s['full_name'], 0, 120), ':s' => $hrStaffId, ':v' => $venue]);
     return (int) db_query('SELECT id FROM inv_locations WHERE hr_staff_id = :s', [':s' => $hrStaffId])->fetchColumn();
 }
 
@@ -891,6 +921,8 @@ function inv_refresh_location_owners(): void {
                WHERE l.pos_outlet_id = o.id AND (l.name IS DISTINCT FROM LEFT(o.name, 120) OR l.venue_id IS DISTINCT FROM o.venue_id)");
     db_query("UPDATE inv_locations l SET name = LEFT(s.full_name, 120), venue_id = s.venue_id FROM hr_staff s
                WHERE l.hr_staff_id = s.id AND (l.name IS DISTINCT FROM LEFT(s.full_name, 120) OR l.venue_id IS DISTINCT FROM s.venue_id)");
+    db_query("UPDATE inv_locations l SET name = LEFT(v.name, 120) FROM venues v
+               WHERE l.kind = 'property' AND l.venue_id = v.id AND l.name IS DISTINCT FROM LEFT(v.name, 120)");
 }
 
 /**
@@ -921,10 +953,15 @@ function inv_create_item(array $v): int {
     if (!isset(INV_TYPES[$type])) throw new InvRefusal('Pick an item type.');
     $val = $v['replacement_value'] ?? null;
     if ($val !== null && $val !== '' && (!is_numeric($val) || (float)$val < 0)) throw new InvRefusal('Replacement value must be zero or more.');
+    if ($val !== null && $val !== '' && (float)$val > 9999999999.99) throw new InvRefusal('That replacement value is too large.');
     $cur = strtoupper(trim((string)($v['currency'] ?? '')));
     if (!preg_match('/^[A-Z]{3}$/', $cur)) $cur = INV_DEFAULT_CURRENCY;
     $opt = fn(string $k, int $max) => ($s = trim((string)($v[$k] ?? ''))) !== '' ? mb_substr($s, 0, $max) : null;
     $low = $v['low_stock_at'] ?? null;
+    $consignorId = !empty($v['consignor_id']) ? (int)$v['consignor_id'] : null;
+    if ($consignorId !== null && !db_query('SELECT 1 FROM pos_consignors WHERE id = :c', [':c' => $consignorId])->fetchColumn()) {
+        throw new InvRefusal('That supplier does not exist.');
+    }
     db_query('INSERT INTO inv_items (name, item_type, category, sku, image_key, icon, tracking, unit_label,
                                      replacement_value, currency, consignor_id, low_stock_at)
               VALUES (:n, :t, :c, :s, :img, :ic, :tr, :u, :v, :cur, :cs, :low)', [
@@ -938,8 +975,8 @@ function inv_create_item(array $v): int {
         ':u'   => $opt('unit_label', 20) ?? 'pcs',
         ':v'   => ($val === null || $val === '') ? null : round((float)$val, 2),
         ':cur' => $cur,
-        ':cs'  => !empty($v['consignor_id']) ? (int)$v['consignor_id'] : null,
-        ':low' => ($low === null || $low === '') ? null : max(0, (int)$low),
+        ':cs'  => $consignorId,
+        ':low' => ($low === null || $low === '') ? null : min(INV_MAX_QTY, max(0, (int)$low)),
     ]);
     return (int) db()->lastInsertId();
 }
@@ -1332,7 +1369,9 @@ function inv_restock_to_par(int $locationId, ?int $userId, ?int $sourceId = null
         $moved = [];
         $short = [];
         foreach (inv_restock_plan($rows) as $itemId => $need) {
-            $take = min($need, max(0, inv_balance_lock($itemId, $sourceId)));
+            // Unlocked read: inv_move() below locks both rows in id order and re-checks,
+            // so locking the source here first could deadlock a concurrent reverse transfer.
+            $take = min($need, max(0, inv_balance($itemId, $sourceId)));
             if ($take > 0) {
                 inv_move(['item_id' => $itemId, 'qty' => $take, 'from' => $sourceId, 'to' => $locationId,
                           'reason' => 'transfer', 'user_id' => $userId, 'note' => 'Restock to par']);

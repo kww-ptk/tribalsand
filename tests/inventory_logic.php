@@ -31,10 +31,14 @@ check('move: a serial unit moves one at a time', inv_move_error(['reason' => 're
     && inv_move_error(['reason' => 'receive', 'to' => 5, 'asset_id' => 9, 'qty' => 1] + $base) === null);
 check('move: negative value refused', inv_move_error(['reason' => 'receive', 'to' => 5, 'unit_value' => -1.0] + $base) !== null);
 
+check('bool: Postgres t/f', inv_bool('t') && inv_bool(true) && !inv_bool('f') && !inv_bool(false) && !inv_bool(null));
+
 $n = inv_normalize_move(['item_id' => '7', 'qty' => '3', 'from' => '0', 'to' => '12', 'reason' => 'receive', 'unit_value' => '4.556']);
 check('normalize: strings → ints, 0 → null, value rounded to the cent',
     $n['item_id'] === 7 && $n['qty'] === 3 && $n['from'] === null && $n['to'] === 12 && $n['unit_value'] === 4.56);
 check('normalize: a negative qty becomes 0 (and is refused)', inv_normalize_move(['qty' => '-2'])['qty'] === 0);
+check('normalize: a Postgres "f" never allows negative stock',
+    inv_normalize_move(['allow_negative' => 'f'])['allow_negative'] === false && inv_normalize_move(['allow_negative' => true])['allow_negative'] === true);
 
 check('reason: store → property is a transfer', inv_transfer_reason('store', 'property') === 'transfer');
 check('reason: anything → person is an assignment', inv_transfer_reason('store', 'person') === 'assign');
@@ -53,6 +57,9 @@ check('scope: manager cannot move out of another property', !inv_move_in_scope($
 check('scope: manager cannot shuffle shared stock only', !inv_move_in_scope($main, ['venue_id' => null], [1]));
 check('scope: manager writes off at own property', inv_move_in_scope($amani, null, [1]));
 check('scope: an account with no properties does nothing', !inv_move_in_scope($main, $amani, []));
+check('scope: a venue-less team member is owner-only',
+    !inv_move_in_scope(['venue_id' => null, 'kind' => 'person'], $amani, [1]) && inv_move_in_scope(['venue_id' => null, 'kind' => 'person'], $amani, null));
+check('scope: a venue id read from the DB as a string still matches', inv_move_in_scope(['venue_id' => '1'], null, [1]));
 
 // ── Count resolutions ───────────────────────────────────────────────────────
 check('count: short line → missing move of the gap', inv_resolution_move('missing', 12, 11) === ['reason' => 'missing', 'qty' => 1, 'dir' => 'out']);
@@ -79,6 +86,7 @@ $tot = inv_sum_by_currency([
     ['value' => null, 'currency' => 'KES'],     ['value' => '49.50', 'currency' => 'KES'],
 ]);
 check('money: summed per currency, never across', $tot === ['KES' => 150.0, 'USD' => 20.0]);
+check('money: a blank currency counts as the default', inv_sum_by_currency([['value' => 5, 'currency' => '']]) === ['KES' => 5.0]);
 
 // ── Restock plan ────────────────────────────────────────────────────────────
 $plan = inv_restock_plan([
@@ -139,6 +147,14 @@ try {
     db_query("UPDATE pos_outlets SET venue_id = :v, name = 'ZZ Inv Shop' WHERE id = :o", [':v' => $vA, ':o' => $outlet]);
     check('locations: the ensure call refreshes the owner too',
         inv_outlet_location_id($outlet) === $locShop && (int)inv_fetch_location($locShop)['venue_id'] === $vA);
+    db_query("UPDATE hr_staff SET full_name = 'ZZ Jane W.', venue_id = :v WHERE id = :s", [':v' => $vB, ':s' => $staff]);
+    inv_refresh_location_owners();
+    $lj = inv_fetch_location($locJane);
+    check('locations: a person location follows the staff record', $lj['name'] === 'ZZ Jane W.' && (int)$lj['venue_id'] === $vB);
+    db_query("UPDATE hr_staff SET full_name = 'ZZ Jane Wanjiru', venue_id = :v WHERE id = :s", [':v' => $vA, ':s' => $staff]);
+    check('locations: the person ensure call refreshes the owner too', inv_person_location_id($staff) === $locJane && (int)inv_fetch_location($locJane)['venue_id'] === $vA);
+    $threw = false; try { inv_linked_stock_count('id; DROP TABLE x', 1); } catch (InvalidArgumentException $e) { $threw = true; }
+    check('guard: the link column is whitelisted', $threw);
     $plates = inv_create_item(['name' => 'ZZ Dinner plate', 'item_type' => 'operational', 'category' => 'Kitchen', 'replacement_value' => '850', 'currency' => 'KES']);
     $laptop = inv_create_item(['name' => 'ZZ Laptop', 'item_type' => 'employee', 'tracking' => 'serial', 'replacement_value' => 95000]);
     $p = inv_fetch_item($plates);
@@ -151,6 +167,10 @@ try {
     check('items: an unknown type is refused', $threw);
     $threw = false; try { inv_create_item(['name' => 'X', 'item_type' => 'spare', 'replacement_value' => '-3']); } catch (InvRefusal $e) { $threw = true; }
     check('items: a negative value is refused', $threw);
+    $threw = false; try { inv_create_item(['name' => 'X', 'item_type' => 'spare', 'replacement_value' => '99999999999']); } catch (InvRefusal $e) { $threw = true; }
+    check('items: an absurd value is refused, not a DB error', $threw);
+    $threw = false; try { inv_create_item(['name' => 'X', 'item_type' => 'consignment', 'consignor_id' => 999999999]); } catch (InvRefusal $e) { $threw = true; }
+    check('items: an unknown supplier is refused, not a DB error', $threw);
 
     // ── DB checks (tasks 4–8 insert their blocks above this line) ──
 } catch (Throwable $e) {
