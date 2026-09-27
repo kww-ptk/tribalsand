@@ -338,3 +338,92 @@ function inv_create_item(array $v): int {
     ]);
     return (int) db()->lastInsertId();
 }
+
+// ── The ONE write path ──────────────────────────────────────────────────────
+
+/**
+ * Record one movement and update the balances. The only writer of inv_moves and
+ * inv_balances. $m keys:
+ *   item_id, qty, reason, from (location id|null), to (location id|null),
+ *   user_id?, note?, asset_id? (serial unit), pos_sale_id?, count_line_id?,
+ *   unit_value? (defaults to the item's replacement_value),
+ *   terms? ['consignor_id','consign_pct','consignor_cost'] (a consignment delivery),
+ *   allow_negative? (only a POS listing flagged allow_negative passes true).
+ * Returns the new move id. Throws InvRefusal to refuse.
+ */
+function inv_move(array $m): int {
+    if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
+    $n = inv_normalize_move($m);
+    if ($err = inv_move_error($n)) throw new InvRefusal($err);
+    return inv_tx(fn(): int => inv_move_tx($n));
+}
+
+/** Body of inv_move(), inside the transaction. */
+function inv_move_tx(array $n): int {
+    $item = db_query('SELECT id, name, tracking, replacement_value, currency FROM inv_items WHERE id = :i', [':i' => $n['item_id']])->fetch();
+    if (!$item) throw new InvRefusal('That item no longer exists.');
+    $from = $n['from'];
+    $to   = $n['to'];
+    $qty  = $n['qty'];
+
+    // Lock both balance rows in location-id order, so two moves never deadlock.
+    $locs = array_values(array_filter([$from, $to], fn($l) => $l !== null));
+    sort($locs);
+    $names = [];
+    $have  = [];
+    foreach ($locs as $l) {
+        $loc = db_query('SELECT id, name, is_active FROM inv_locations WHERE id = :l', [':l' => $l])->fetch();
+        if (!$loc) throw new InvRefusal('That location no longer exists.');
+        if ($l === $to && !inv_bool($loc['is_active'])) throw new InvRefusal("{$loc['name']} is closed — reopen it before moving stock in.");
+        $names[$l] = (string)$loc['name'];
+        $have[$l]  = inv_balance_lock($n['item_id'], $l);
+    }
+    if ($from !== null && !$n['allow_negative'] && $have[$from] < $qty) {
+        throw new InvRefusal(inv_shortfall_message((string)$item['name'], $have[$from], $names[$from]));
+    }
+
+    // Serial units: name the unit, move it from where it actually is.
+    $isSerial = $item['tracking'] === 'serial';
+    if ($isSerial && $n['asset_id'] === null) throw new InvRefusal("Pick which {$item['name']} — it is tracked by serial number.");
+    if (!$isSerial && $n['asset_id'] !== null) throw new InvRefusal("{$item['name']} is not tracked by serial number.");
+    if ($isSerial) {
+        $a = db_query('SELECT id, status, location_id FROM inv_assets WHERE id = :a AND item_id = :i FOR UPDATE',
+            [':a' => $n['asset_id'], ':i' => $n['item_id']])->fetch();
+        if (!$a) throw new InvRefusal('That unit does not belong to this item.');
+        $aLoc = $a['location_id'] !== null ? (int)$a['location_id'] : null;
+        if ($from !== null) {
+            if ($a['status'] !== 'active' || $aLoc !== $from) throw new InvRefusal("That unit is not at {$names[$from]}.");
+        } else {
+            $moved = (bool) db_query('SELECT 1 FROM inv_moves WHERE asset_id = :a LIMIT 1', [':a' => $n['asset_id']])->fetchColumn();
+            if ($a['status'] === 'active' && $moved) throw new InvRefusal('That unit is already in stock.');
+        }
+    }
+
+    $unit  = $n['unit_value'] ?? ($item['replacement_value'] !== null ? (float)$item['replacement_value'] : null);
+    $terms = $n['terms'];
+    db_query(
+        'INSERT INTO inv_moves (item_id, qty, from_location_id, to_location_id, reason, unit_value, value, currency,
+                                asset_id, pos_sale_id, count_line_id, consignor_id, consign_pct, consignor_cost, note, admin_user_id)
+         VALUES (:i, :q, :f, :t, :r, :uv, :v, :cur, :a, :s, :cl, :ci, :cp, :cc, :n, :u)',
+        [':i' => $n['item_id'], ':q' => $qty, ':f' => $from, ':t' => $to, ':r' => $n['reason'],
+         ':uv' => $unit, ':v' => $unit === null ? null : round($unit * $qty, 2), ':cur' => (string)$item['currency'],
+         ':a' => $n['asset_id'], ':s' => $n['pos_sale_id'], ':cl' => $n['count_line_id'],
+         ':ci' => !empty($terms['consignor_id']) ? (int)$terms['consignor_id'] : null,
+         ':cp' => isset($terms['consign_pct']) && $terms['consign_pct'] !== null ? (float)$terms['consign_pct'] : null,
+         ':cc' => isset($terms['consignor_cost']) && $terms['consignor_cost'] !== null ? (float)$terms['consignor_cost'] : null,
+         ':n' => $n['note'] !== '' ? $n['note'] : null, ':u' => $n['user_id']]
+    );
+    $moveId = (int) db()->lastInsertId();
+
+    if ($from !== null) db_query('UPDATE inv_balances SET qty = qty - :q WHERE item_id = :i AND location_id = :l', [':q' => $qty, ':i' => $n['item_id'], ':l' => $from]);
+    if ($to !== null)   db_query('UPDATE inv_balances SET qty = qty + :q WHERE item_id = :i AND location_id = :l', [':q' => $qty, ':i' => $n['item_id'], ':l' => $to]);
+    if ($isSerial) {
+        if ($to !== null) {
+            db_query("UPDATE inv_assets SET status = 'active', location_id = :l WHERE id = :a", [':l' => $to, ':a' => $n['asset_id']]);
+        } else {
+            db_query('UPDATE inv_assets SET status = :s, location_id = NULL WHERE id = :a',
+                [':s' => $n['reason'] === 'sale' ? 'sold' : 'written_off', ':a' => $n['asset_id']]);
+        }
+    }
+    return $moveId;
+}

@@ -172,6 +172,38 @@ try {
     $threw = false; try { inv_create_item(['name' => 'X', 'item_type' => 'consignment', 'consignor_id' => 999999999]); } catch (InvRefusal $e) { $threw = true; }
     check('items: an unknown supplier is refused, not a DB error', $threw);
 
+    // ── The one write path ──
+    $m1 = inv_move(['item_id' => $plates, 'qty' => 100, 'to' => $store, 'reason' => 'receive', 'unit_value' => 800]);
+    check('move: receive 100 plates into Main stock', inv_balance($plates, $store) === 100);
+    $mv = db_query('SELECT * FROM inv_moves WHERE id = :id', [':id' => $m1])->fetch();
+    check('move: a receive keeps its unit value, total and currency',
+        (float)$mv['unit_value'] === 800.0 && (float)$mv['value'] === 80000.0 && $mv['currency'] === 'KES');
+    inv_move(['item_id' => $plates, 'qty' => 20, 'from' => $store, 'to' => $locA, 'reason' => 'transfer']);
+    inv_move(['item_id' => $plates, 'qty' => 20, 'from' => $store, 'to' => $locB, 'reason' => 'transfer']);
+    check('move: 60 left in Main stock, 20 at each property',
+        inv_balance($plates, $store) === 60 && inv_balance($plates, $locA) === 20 && inv_balance($plates, $locB) === 20);
+    check('guard: stock held under a venue is seen; an empty person holds none',
+        inv_linked_stock_count('venue_id', $vA) === 20 && inv_linked_stock_count('hr_staff_id', $staff) === 0);
+    $uv = db_query("SELECT unit_value FROM inv_moves WHERE item_id = :i AND reason = 'transfer' ORDER BY id DESC LIMIT 1", [':i' => $plates])->fetchColumn();
+    check('move: without a value it snapshots the replacement value', (float)$uv === 850.0);
+    $msg = ''; try { inv_move(['item_id' => $plates, 'qty' => 21, 'from' => $locA, 'reason' => 'broken']); } catch (InvRefusal $e) { $msg = $e->getMessage(); }
+    check('move: cannot take more than is there', str_contains($msg, 'Only 20') && inv_balance($plates, $locA) === 20);
+    check('move: the outer transaction survives a refusal', $count('SELECT 1') === 1);
+    inv_move(['item_id' => $plates, 'qty' => 1, 'from' => $locA, 'reason' => 'broken', 'note' => 'dropped']);
+    check('move: a breakage leaves the property', inv_balance($plates, $locA) === 19);
+    check('ledger: every balance equals the sum of its moves',
+        $ledger($plates, $store) === 60 && $ledger($plates, $locA) === 19 && $ledger($plates, $locB) === 20);
+    db_query('UPDATE inv_locations SET is_active = FALSE WHERE id = :l', [':l' => $locB]);
+    $threw = false; try { inv_move(['item_id' => $plates, 'qty' => 1, 'from' => $store, 'to' => $locB, 'reason' => 'transfer']); } catch (InvRefusal $e) { $threw = true; }
+    check('move: nothing moves into a closed location', $threw && inv_balance($plates, $store) === 60);
+    db_query('UPDATE inv_locations SET is_active = TRUE WHERE id = :l', [':l' => $locB]);
+    $cap = inv_create_item(['name' => 'ZZ Cap', 'item_type' => 'sellable', 'replacement_value' => 1200]);
+    inv_move(['item_id' => $cap, 'qty' => 2, 'from' => $locShop, 'reason' => 'sale', 'allow_negative' => true]);
+    check('move: allow_negative (POS only) may go below zero, ledger still agrees',
+        inv_balance($cap, $locShop) === -2 && $ledger($cap, $locShop) === -2);
+    $threw = false; try { inv_move(['item_id' => $cap, 'qty' => 1, 'from' => $locShop, 'reason' => 'sale']); } catch (InvRefusal $e) { $threw = true; }
+    check('move: without allow_negative a negative shelf sells nothing', $threw);
+
     // ── DB checks (tasks 4–8 insert their blocks above this line) ──
 } catch (Throwable $e) {
     echo "FAIL  DB block threw: " . $e->getMessage() . "\n" . $e->getTraceAsString() . "\n";
