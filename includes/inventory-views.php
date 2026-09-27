@@ -631,3 +631,45 @@ function inv_apply_item_action(array $in, array $item, ?array $venueIds, int $us
     }
     throw new InvRefusal('Unknown action.');
 }
+
+// ── Shared page chrome ──────────────────────────────────────────────────────
+
+/** Photo, else the item's emoji, else its initial — a square thumbnail. */
+function inv_thumb_html(array $item, int $size = 36): string {
+    $s = max(16, $size);
+    if (!empty($item['image_key'])) {
+        return '<img class="inv-thumb" src="' . e(storage_url((string)$item['image_key'])) . '" alt="" width="' . $s . '" height="' . $s . '" loading="lazy">';
+    }
+    $glyph = trim((string)($item['icon'] ?? ''));
+    if ($glyph === '') $glyph = mb_strtoupper(mb_substr((string)($item['name'] ?? '?'), 0, 1));
+    return '<span class="inv-thumb inv-thumb--glyph" style="width:' . $s . 'px;height:' . $s . 'px;font-size:' . (int)round($s * 0.5) . 'px">' . e($glyph) . '</span>';
+}
+
+/** CSS shared by every inventory page — echo once per page. */
+function inv_shared_css(): string {
+    return '<style>
+.inv-thumb{width:36px;height:36px;border-radius:8px;object-fit:cover;flex:0 0 auto;background:var(--bg)}
+.inv-thumb--glyph{display:inline-flex;align-items:center;justify-content:center;color:var(--muted);font-weight:600;border:1px solid var(--border)}
+.inv-name{display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none}
+.inv-name:hover strong,.inv-name:hover span{text-decoration:underline}
+.inv-sub{display:block;font-size:12px;color:var(--muted);font-weight:400}
+.inv-num{text-align:right;white-space:nowrap}
+.inv-nowrap{white-space:nowrap}
+.inv-note{font-size:12px;margin-top:2px}
+.inv-where{font-size:13px;color:var(--text)}
+.inv-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(300px,1fr);gap:18px;align-items:start}
+@media (max-width:980px){.inv-grid{grid-template-columns:minmax(0,1fr)}}
+.inv-stack{display:grid;gap:18px;min-width:0}
+.inv-form .field{margin-bottom:12px}
+.inv-form .inp,.inv-form .eselect--block{width:100%}
+.inv-row2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+@media (max-width:560px){.inv-row2{grid-template-columns:1fr}}
+.inv-chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+[data-inv-panel][hidden]{display:none}
+.inv-err{color:var(--red);font-size:12px;margin-top:4px}
+.inv-kpis{display:flex;flex-wrap:wrap;gap:10px 24px;padding:14px 18px;border-bottom:1px solid var(--border)}
+.inv-kpi span{display:block;font-size:12px;color:var(--muted)}
+.inv-kpi strong{font-size:18px}
+.table-wrap .data-table{min-width:0}
+</style>';
+}

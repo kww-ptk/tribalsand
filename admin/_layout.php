@@ -8,6 +8,7 @@ require_once __DIR__ . '/../includes/internal-messages.php'; // internal_unread_
 require_once __DIR__ . '/../includes/submission-notes.php';  // submission_unread_reply_count() — Submissions nav badge
 require_once __DIR__ . '/../includes/attendance-clock.php';  // clock_kiosk_enabled() — gates the Clock nav links
 require_once __DIR__ . '/../includes/pos-support.php';       // pos_supported() — gates the Point of Sale nav group
+require_once __DIR__ . '/../includes/inventory-support.php'; // inv_supported() — gates the Inventory nav group
 $admin = current_admin();
 
 // ── Role / job aware nav visibility ──────────────────────────────────────
@@ -44,6 +45,7 @@ $__navBookings  = $__isOwner || $__isReception;   // holds / calendar / submissi
 $__navReports   = $__isOwner || $__isManager;     // financial reports (scoped to their venues)
 $__navPos       = ($__isOwner || $__isManager) && pos_supported();   // POS catalogue/stock/sales (managers scoped to their outlets); outlets = owner
 $__navPosTill   = $admin && pos_is_seller($admin);                    // "Open till" + own PIN — anyone who can sell
+$__navInventory = ($__isOwner || $__isManager) && inv_supported();   // Inventory & Assets (managers scoped to their properties)
 
 // Chip shown under the logo for non-owner accounts.
 $__roleBadge = $__isManager ? 'Manager' : ($__isReception ? 'Reception' : (is_staff() ? ucfirst((string)$__job) : ''));
@@ -274,6 +276,19 @@ if ($__shellFrag) { ob_start(); return; }
         </a>
         <?php endif; ?>
       <?php $__navgroup('pos', 'Point of Sale', ob_get_clean()); ?>
+      <?php endif; ?>
+
+      <?php if ($__navInventory): ?>
+      <?php ob_start(); ?>
+        <a href="/admin/inventory.php" class="sidebar__link <?= in_array($activeMenu ?? '', ['inventory', 'inventory_item'], true) ? 'is-active' : '' ?>">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+          Inventory
+        </a>
+        <a href="/admin/inventory-locations.php" class="sidebar__link <?= in_array($activeMenu ?? '', ['inventory_locations', 'inventory_location'], true) ? 'is-active' : '' ?>">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+          Locations
+        </a>
+      <?php $__navgroup('inventory', 'Inventory', ob_get_clean()); ?>
       <?php endif; ?>
 
       <?php if ($__navBookings): ?>
