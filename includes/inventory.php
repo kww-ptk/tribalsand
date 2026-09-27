@@ -441,6 +441,7 @@ function inv_move_tx(array $n): int {
         $unit = ($last !== false && $last !== null) ? (float)$last : null;
     }
     $unit  = $unit ?? ($item['replacement_value'] !== null ? (float)$item['replacement_value'] : null);
+    if ($unit !== null && $unit * $qty > 999999999999.99) throw new InvRefusal('That total value is too large.');
     $terms = $n['terms'];
     if (!empty($terms['consignor_id'])) {
         if ($n['reason'] !== 'receive') throw new InvRefusal('Consignment terms only apply to a delivery.');

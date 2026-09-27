@@ -228,12 +228,17 @@ try {
     $active = fn(int $loc) => $count("SELECT COUNT(*) FROM inv_assets WHERE item_id = :i AND location_id = :l AND status = 'active'", [':i' => $laptop, ':l' => $loc]);
     check('serial: balance = active units at every location',
         inv_balance($laptop, $store) === $active($store) && inv_balance($laptop, $locJane) === $active($locJane));
+    db_query('UPDATE inv_items SET replacement_value = 99000 WHERE id = :i', [':i' => $laptop]);
     inv_move(['item_id' => $laptop, 'qty' => 1, 'to' => $store, 'reason' => 'found', 'asset_id' => $a1]);
+    db_query('UPDATE inv_items SET replacement_value = 95000 WHERE id = :i', [':i' => $laptop]);
     check('serial: a found unit comes back into stock', inv_balance($laptop, $store) === 2 && $status($a1) === 'active');
     $threw = false; try { inv_move(['item_id' => $laptop, 'qty' => 1, 'to' => $store, 'reason' => 'found', 'asset_id' => $a2]); } catch (InvRefusal $e) { $threw = true; }
     check('serial: a unit already in stock cannot come in twice', $threw && inv_balance($laptop, $store) === 2);
     $threw = false; try { inv_report_loss($plates, 1, $locA, 'vanished', null); } catch (InvRefusal $e) { $threw = true; }
     check('loss: only broken / missing / stolen / written off', $threw);
+    $bigItem = inv_create_item(['name' => 'ZZ Big Value', 'item_type' => 'spare', 'replacement_value' => 50000000]);
+    $threw = false; try { inv_move(['item_id' => $bigItem, 'qty' => 100000, 'to' => $store, 'reason' => 'receive']); } catch (InvRefusal $e) { $threw = true; }
+    check('move: a total value beyond NUMERIC(14,2) is refused, nothing written', $threw && inv_balance($bigItem, $store) === 0);
     check('transfer: person → store is a return', inv_transfer_reason('person', 'store') === 'return');
 
     // Serial revival rules.
@@ -251,8 +256,9 @@ try {
     $sv = db_query("SELECT unit_value FROM inv_moves WHERE asset_id = :a AND reason = 'stolen'", [':a' => $a1])->fetchColumn();
     check('serial: a found unit comes back at the value it was lost at', (float)$fv === (float)$sv);
     $otherSerial = inv_create_item(['name' => 'ZZ Phone', 'item_type' => 'employee', 'tracking' => 'serial']);
-    $threw = false; try { inv_move(['item_id' => $otherSerial, 'qty' => 1, 'from' => $store, 'to' => $locJane, 'reason' => 'assign', 'asset_id' => $a1]); } catch (InvRefusal $e) { $threw = true; }
-    check('serial: a unit of another item is refused', $threw);
+    inv_asset_create($otherSerial, $store, ['serial' => 'ZZ-PH-001'], null);
+    $msg = ''; try { inv_move(['item_id' => $otherSerial, 'qty' => 1, 'from' => $store, 'to' => $locJane, 'reason' => 'assign', 'asset_id' => $a1]); } catch (InvRefusal $e) { $msg = $e->getMessage(); }
+    check('serial: a unit of another item is refused', str_contains($msg, 'does not belong'));
     db_query('UPDATE inv_locations SET is_active = FALSE WHERE id = :l', [':l' => $locB]);
     $threw = false; try { inv_asset_create($laptop, $locB, ['serial' => 'ZZ-SN-009'], null); } catch (InvRefusal $e) { $threw = true; }
     check('serial: a unit cannot be registered into a closed location', $threw);
