@@ -30,6 +30,7 @@ check('move: no item refused', inv_move_error(['reason' => 'receive', 'to' => 5,
 check('move: a serial unit moves one at a time', inv_move_error(['reason' => 'receive', 'to' => 5, 'asset_id' => 9] + $base) !== null
     && inv_move_error(['reason' => 'receive', 'to' => 5, 'asset_id' => 9, 'qty' => 1] + $base) === null);
 check('move: negative value refused', inv_move_error(['reason' => 'receive', 'to' => 5, 'unit_value' => -1.0] + $base) !== null);
+check('move: an absurd value refused', inv_move_error(['reason' => 'receive', 'to' => 5, 'unit_value' => 1e11] + $base) !== null);
 
 check('bool: Postgres t/f', inv_bool('t') && inv_bool(true) && !inv_bool('f') && !inv_bool(false) && !inv_bool(null));
 
@@ -203,6 +204,8 @@ try {
         inv_balance($cap, $locShop) === -2 && $ledger($cap, $locShop) === -2);
     $threw = false; try { inv_move(['item_id' => $cap, 'qty' => 1, 'from' => $locShop, 'reason' => 'sale']); } catch (InvRefusal $e) { $threw = true; }
     check('move: without allow_negative a negative shelf sells nothing', $threw);
+    inv_tx(function () use ($plates, $store, $locA): void { inv_lock_balances([[$plates, $locA], [$plates, $store], [$plates, $locA], [0, 5]]); });
+    check('lock: pre-locking a set of balances is harmless and re-entrant', inv_balance($plates, $store) === 60);
 
     // ── Serial units, transfers, losses ──
     $a1 = inv_asset_create($laptop, $store, ['serial' => 'ZZ-SN-001', 'condition' => 'new', 'purchase_value' => 92000], null);
@@ -232,6 +235,36 @@ try {
     $threw = false; try { inv_report_loss($plates, 1, $locA, 'vanished', null); } catch (InvRefusal $e) { $threw = true; }
     check('loss: only broken / missing / stolen / written off', $threw);
     check('transfer: person → store is a return', inv_transfer_reason('person', 'store') === 'return');
+
+    // Serial revival rules.
+    $threw = false; try { inv_move(['item_id' => $laptop, 'qty' => 1, 'to' => $store, 'reason' => 'void', 'asset_id' => $a1]); } catch (InvRefusal $e) { $threw = true; }
+    check('serial: an unsold unit cannot come back through a void', $threw);
+    inv_move(['item_id' => $laptop, 'qty' => 1, 'from' => $store, 'reason' => 'sale', 'asset_id' => $a2]);
+    check('serial: a sale marks the unit sold', $status($a2) === 'sold' && inv_balance($laptop, $store) === 1);
+    $threw = false; try { inv_move(['item_id' => $laptop, 'qty' => 1, 'to' => $store, 'reason' => 'found', 'asset_id' => $a2]); } catch (InvRefusal $e) { $threw = true; }
+    check('serial: a sold unit cannot be "found"', $threw);
+    inv_move(['item_id' => $laptop, 'qty' => 1, 'to' => $store, 'reason' => 'void', 'asset_id' => $a2]);
+    check('serial: a void brings a sold unit back', $status($a2) === 'active' && inv_balance($laptop, $store) === 2);
+    $uv = db_query("SELECT unit_value FROM inv_moves WHERE asset_id = :a AND reason = 'receive'", [':a' => $a1])->fetchColumn();
+    check('serial: the receive snapshots the purchase value', (float)$uv === 92000.0);
+    $fv = db_query("SELECT unit_value FROM inv_moves WHERE asset_id = :a AND reason = 'found'", [':a' => $a1])->fetchColumn();
+    $sv = db_query("SELECT unit_value FROM inv_moves WHERE asset_id = :a AND reason = 'stolen'", [':a' => $a1])->fetchColumn();
+    check('serial: a found unit comes back at the value it was lost at', (float)$fv === (float)$sv);
+    $otherSerial = inv_create_item(['name' => 'ZZ Phone', 'item_type' => 'employee', 'tracking' => 'serial']);
+    $threw = false; try { inv_move(['item_id' => $otherSerial, 'qty' => 1, 'from' => $store, 'to' => $locJane, 'reason' => 'assign', 'asset_id' => $a1]); } catch (InvRefusal $e) { $threw = true; }
+    check('serial: a unit of another item is refused', $threw);
+    db_query('UPDATE inv_locations SET is_active = FALSE WHERE id = :l', [':l' => $locB]);
+    $threw = false; try { inv_asset_create($laptop, $locB, ['serial' => 'ZZ-SN-009'], null); } catch (InvRefusal $e) { $threw = true; }
+    check('serial: a unit cannot be registered into a closed location', $threw);
+    db_query('UPDATE inv_locations SET is_active = TRUE WHERE id = :l', [':l' => $locB]);
+    check('ledger: the laptop balance equals its moves', $ledger($laptop, $store) === inv_balance($laptop, $store) && $ledger($laptop, $locJane) === 0);
+    // Consignment terms on the move.
+    $cons = $ins("INSERT INTO pos_consignors (name, commission_pct) VALUES ('ZZ Inv Weavers', 20)");
+    $mt = inv_move(['item_id' => $plates, 'qty' => 1, 'to' => $locB, 'reason' => 'receive', 'terms' => ['consignor_id' => $cons, 'consign_pct' => 15]]);
+    check('terms: a delivery records its consignment terms',
+        (int)db_query('SELECT consignor_id FROM inv_moves WHERE id = :m', [':m' => $mt])->fetchColumn() === $cons);
+    $threw = false; try { inv_move(['item_id' => $plates, 'qty' => 1, 'from' => $store, 'to' => $locA, 'reason' => 'transfer', 'terms' => ['consignor_id' => $cons]]); } catch (InvRefusal $e) { $threw = true; }
+    check('terms: only a delivery carries consignment terms', $threw);
 
     // ── DB checks (tasks 4–8 insert their blocks above this line) ──
 } catch (Throwable $e) {

@@ -6,11 +6,13 @@ declare(strict_types=1);
  * Migration: db/migrations/add_inventory.sql. Test: php tests/inventory_logic.php
  *
  * Load-bearing rules:
- *   • inv_move() is the ONLY writer of inv_moves and inv_balances. It locks the
- *     balance rows in location-id order, refuses going below zero (except a POS
- *     listing flagged allow_negative), snapshots value, and updates both balances
- *     in one transaction. Compound actions (replace, restock, count resolution)
- *     are several inv_move() calls inside ONE inv_tx().
+ *   • inv_move() is the ONLY writer of inv_moves and inv_balances. It locks
+ *     balance rows in the global (item_id, location_id) order — compound actions
+ *     pre-lock every pair with inv_lock_balances() — then inv_assets rows, refuses
+ *     going below zero (except a POS listing flagged allow_negative), snapshots
+ *     value, and updates both balances in one transaction. Compound actions
+ *     (replace, restock, count resolution) are several inv_move() calls inside
+ *     ONE inv_tx().
  *   • Counting never moves stock. A manager's resolution does, and only while the
  *     live balance still equals what the counter was shown.
  *   • Money is never summed across currencies (inv_sum_by_currency()).
@@ -88,6 +90,7 @@ function inv_move_error(array $m): ?string {
     }
     if (($m['asset_id'] ?? null) !== null && $qty !== 1) return 'A serial-tracked unit moves one at a time.';
     if (($m['unit_value'] ?? null) !== null && $m['unit_value'] < 0) return 'Value cannot be negative.';
+    if (($m['unit_value'] ?? null) !== null && $m['unit_value'] > 9999999999.99) return 'That value is too large.';
     return null;
 }
 
@@ -205,6 +208,24 @@ function inv_balance_lock(int $itemId, int $locationId): int {
         [':i' => $itemId, ':l' => $locationId]);
     return (int) db_query('SELECT qty FROM inv_balances WHERE item_id = :i AND location_id = :l FOR UPDATE',
         [':i' => $itemId, ':l' => $locationId])->fetchColumn();
+}
+
+/**
+ * Lock several balance rows in ONE global order — (item_id, location_id) — before a
+ * compound action (replace, restock, a POS sale) makes several moves. inv_move()
+ * locks its own pair in that same order, and a row lock already held is re-entrant,
+ * so every multi-move transaction acquires locks consistently: no deadlock cycles.
+ * $pairs = [[item_id, location_id], …] (duplicates and empty ids ignored). Call inside inv_tx().
+ */
+function inv_lock_balances(array $pairs): void {
+    $keys = [];
+    foreach ($pairs as $p) {
+        $i = (int)($p[0] ?? 0); $l = (int)($p[1] ?? 0);
+        if ($i > 0 && $l > 0) $keys["{$i}:{$l}"] = [$i, $l];
+    }
+    $list = array_values($keys);
+    usort($list, fn(array $a, array $b): int => $a <=> $b);
+    foreach ($list as [$i, $l]) inv_balance_lock($i, $l);
 }
 
 // ── Locations (created on demand, once) ─────────────────────────────────────
@@ -350,6 +371,7 @@ function inv_create_item(array $v): int {
  *   terms? ['consignor_id','consign_pct','consignor_cost'] (a consignment delivery),
  *   allow_negative? (only a POS listing flagged allow_negative passes true).
  * Returns the new move id. Throws InvRefusal to refuse.
+ * Does NO venue scoping — the caller must check inv_move_in_scope() (spec §3.8).
  */
 function inv_move(array $m): int {
     if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
@@ -358,7 +380,10 @@ function inv_move(array $m): int {
     return inv_tx(fn(): int => inv_move_tx($n));
 }
 
-/** Body of inv_move(), inside the transaction. */
+/**
+ * Body of inv_move(), inside the transaction.
+ * @internal Call inv_move(), which normalizes, validates and opens the transaction.
+ */
 function inv_move_tx(array $n): int {
     $item = db_query('SELECT id, name, tracking, replacement_value, currency FROM inv_items WHERE id = :i', [':i' => $n['item_id']])->fetch();
     if (!$item) throw new InvRefusal('That item no longer exists.');
@@ -386,6 +411,7 @@ function inv_move_tx(array $n): int {
     $isSerial = $item['tracking'] === 'serial';
     if ($isSerial && $n['asset_id'] === null) throw new InvRefusal("Pick which {$item['name']} — it is tracked by serial number.");
     if (!$isSerial && $n['asset_id'] !== null) throw new InvRefusal("{$item['name']} is not tracked by serial number.");
+    $assetMoved = false;
     if ($isSerial) {
         $a = db_query('SELECT id, status, location_id FROM inv_assets WHERE id = :a AND item_id = :i FOR UPDATE',
             [':a' => $n['asset_id'], ':i' => $n['item_id']])->fetch();
@@ -394,13 +420,34 @@ function inv_move_tx(array $n): int {
         if ($from !== null) {
             if ($a['status'] !== 'active' || $aLoc !== $from) throw new InvRefusal("That unit is not at {$names[$from]}.");
         } else {
-            $moved = (bool) db_query('SELECT 1 FROM inv_moves WHERE asset_id = :a LIMIT 1', [':a' => $n['asset_id']])->fetchColumn();
-            if ($a['status'] === 'active' && $moved) throw new InvRefusal('That unit is already in stock.');
+            $assetMoved = (bool) db_query('SELECT 1 FROM inv_moves WHERE asset_id = :a LIMIT 1', [':a' => $n['asset_id']])->fetchColumn();
+            $ok = match ($n['reason']) {
+                'found'              => $a['status'] === 'written_off',
+                'void'               => $a['status'] === 'sold',
+                'receive', 'opening' => !$assetMoved,
+                default              => false,
+            };
+            if (!$ok) throw new InvRefusal(match ($n['reason']) {
+                'found'  => 'Only a unit that was written off can be found again.',
+                'void'   => 'Only a sold unit can come back through a void.',
+                default  => 'That unit is already registered — move it, or report it found.',
+            });
         }
     }
 
-    $unit  = $n['unit_value'] ?? ($item['replacement_value'] !== null ? (float)$item['replacement_value'] : null);
+    $unit = $n['unit_value'];
+    if ($unit === null && $isSerial && $from === null && $assetMoved) {
+        $last = db_query('SELECT unit_value FROM inv_moves WHERE asset_id = :a ORDER BY id DESC LIMIT 1', [':a' => $n['asset_id']])->fetchColumn();
+        $unit = ($last !== false && $last !== null) ? (float)$last : null;
+    }
+    $unit  = $unit ?? ($item['replacement_value'] !== null ? (float)$item['replacement_value'] : null);
     $terms = $n['terms'];
+    if (!empty($terms['consignor_id'])) {
+        if ($n['reason'] !== 'receive') throw new InvRefusal('Consignment terms only apply to a delivery.');
+        if (!db_query('SELECT 1 FROM pos_consignors WHERE id = :c', [':c' => (int)$terms['consignor_id']])->fetchColumn()) {
+            throw new InvRefusal('That supplier does not exist.');
+        }
+    }
     db_query(
         'INSERT INTO inv_moves (item_id, qty, from_location_id, to_location_id, reason, unit_value, value, currency,
                                 asset_id, pos_sale_id, count_line_id, consignor_id, consign_pct, consignor_cost, note, admin_user_id)
@@ -430,7 +477,10 @@ function inv_move_tx(array $n): int {
 
 // ── Everyday actions (each is one or more inv_move() calls) ─────────────────
 
-/** Move stock between two locations; recorded as transfer / assign / return by the location kinds. */
+/**
+ * Move stock between two locations; recorded as transfer / assign / return by the location kinds.
+ * Does NO venue scoping — the caller must check inv_move_in_scope() (spec §3.8).
+ */
 function inv_transfer(int $itemId, int $qty, int $fromId, int $toId, ?int $userId, string $note = '', ?int $assetId = null): int {
     $from = inv_fetch_location($fromId);
     $to   = inv_fetch_location($toId);
@@ -440,7 +490,10 @@ function inv_transfer(int $itemId, int $qty, int $fromId, int $toId, ?int $userI
                      'user_id' => $userId, 'note' => $note, 'asset_id' => $assetId]);
 }
 
-/** Record stock lost from a location: broken, missing, stolen or written off (value snapshotted). */
+/**
+ * Record stock lost from a location: broken, missing, stolen or written off (value snapshotted).
+ * Does NO venue scoping — the caller must check inv_move_in_scope() (spec §3.8).
+ */
 function inv_report_loss(int $itemId, int $qty, int $fromId, string $reason, ?int $userId, string $note = '', ?int $assetId = null): int {
     if (!in_array($reason, INV_LOSS_REASONS, true)) throw new InvRefusal('Pick what happened: broken, missing, stolen or written off.');
     return inv_move(['item_id' => $itemId, 'qty' => $qty, 'from' => $fromId, 'reason' => $reason,
@@ -451,8 +504,10 @@ function inv_report_loss(int $itemId, int $qty, int $fromId, string $reason, ?in
  * Register a serial-tracked unit and receive it into a location. $f: serial, tag,
  * condition (new|good|fair|poor), purchase_date (Y-m-d), purchase_value, notes.
  * Returns the unit (inv_assets) id.
+ * Does NO venue scoping — the caller must check inv_move_in_scope() (spec §3.8).
  */
 function inv_asset_create(int $itemId, int $toLocationId, array $f, ?int $userId): int {
+    if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
     $item = inv_fetch_item($itemId);
     if (!$item || $item['tracking'] !== 'serial') throw new InvRefusal('Units can only be added to a serial-tracked item.');
     $serial = trim((string)($f['serial'] ?? ''));
@@ -460,7 +515,10 @@ function inv_asset_create(int $itemId, int $toLocationId, array $f, ?int $userId
     $date   = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)($f['purchase_date'] ?? '')) ? (string)$f['purchase_date'] : null;
     $pv     = $f['purchase_value'] ?? null;
     if ($pv !== null && $pv !== '' && (!is_numeric($pv) || (float)$pv < 0)) throw new InvRefusal('Purchase value must be zero or more.');
+    if ($pv !== null && $pv !== '' && (float)$pv > 9999999999.99) throw new InvRefusal('That purchase value is too large.');
     $pv = ($pv === null || $pv === '') ? null : round((float)$pv, 2);
+    $loc = inv_fetch_location($toLocationId);
+    if (!$loc || !inv_bool($loc['is_active'])) throw new InvRefusal('Pick an open location for this unit.');
     try {
         return inv_tx(function () use ($itemId, $toLocationId, $serial, $cond, $date, $pv, $f, $userId): int {
             db_query("INSERT INTO inv_assets (item_id, serial, tag, condition, status, location_id, purchase_date, purchase_value, notes)
