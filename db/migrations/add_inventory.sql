@@ -148,19 +148,29 @@ CREATE INDEX IF NOT EXISTS idx_inv_moves_asset    ON inv_moves (asset_id)    WHE
 ALTER TABLE pos_items ADD COLUMN IF NOT EXISTS inv_item_id INT REFERENCES inv_items(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_pos_items_inv_item ON pos_items (inv_item_id) WHERE inv_item_id IS NOT NULL;
 
+-- ── Backstops: a move's shape matches its reason; a link column only on its kind ──
+ALTER TABLE inv_moves DROP CONSTRAINT IF EXISTS inv_moves_reason_shape_check;
+ALTER TABLE inv_moves ADD CONSTRAINT inv_moves_reason_shape_check CHECK (
+       (reason IN ('receive','found','opening','void')                   AND from_location_id IS NULL     AND to_location_id IS NOT NULL)
+    OR (reason IN ('sale','broken','missing','stolen','written_off')     AND from_location_id IS NOT NULL AND to_location_id IS NULL)
+    OR (reason IN ('transfer','assign','return','replaced')              AND from_location_id IS NOT NULL AND to_location_id IS NOT NULL));
+ALTER TABLE inv_locations DROP CONSTRAINT IF EXISTS inv_locations_link_kind_check;
+ALTER TABLE inv_locations ADD CONSTRAINT inv_locations_link_kind_check CHECK (
+    (pos_outlet_id IS NULL OR kind = 'outlet') AND (hr_staff_id IS NULL OR kind = 'person'));
+
 -- ── Default locations ───────────────────────────────────────────────────────
 INSERT INTO inv_locations (kind, name, sort_order)
 SELECT 'store', 'Main stock', 0
  WHERE NOT EXISTS (SELECT 1 FROM inv_locations WHERE kind = 'store');
 
 INSERT INTO inv_locations (kind, name, venue_id, sort_order)
-SELECT 'property', v.name, v.id, 10 + v.sort_order
+SELECT 'property', LEFT(v.name, 120), v.id, 10 + v.sort_order
   FROM venues v
  WHERE v.is_published = TRUE
    AND NOT EXISTS (SELECT 1 FROM inv_locations l WHERE l.kind = 'property' AND l.venue_id = v.id);
 
 INSERT INTO inv_locations (kind, name, pos_outlet_id, venue_id, sort_order)
-SELECT 'outlet', o.name, o.id, o.venue_id, 100 + o.sort_order
+SELECT 'outlet', LEFT(o.name, 120), o.id, o.venue_id, 100 + o.sort_order
   FROM pos_outlets o
  WHERE NOT EXISTS (SELECT 1 FROM inv_locations l WHERE l.pos_outlet_id = o.id);
 
