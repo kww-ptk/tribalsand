@@ -1375,7 +1375,10 @@ function inv_restock_to_par(int $locationId, ?int $userId, ?int $sourceId = null
             $pairs[] = [(int)$r['item_id'], $sourceId];
         }
         inv_lock_balances($pairs);
-        $rows  = db_query($sql, [':l' => $locationId])->fetchAll();
+        // Re-read under the lock, keeping only the items locked above (a par row added in between waits for the next restock).
+        $lockedIds = array_map(fn(array $p): int => $p[0], $pairs);
+        $rows  = array_values(array_filter(db_query($sql, [':l' => $locationId])->fetchAll(),
+                                           fn(array $r): bool => in_array((int)$r['item_id'], $lockedIds, true)));
         $moved = [];
         $short = [];
         foreach (inv_restock_plan($rows) as $itemId => $need) {
