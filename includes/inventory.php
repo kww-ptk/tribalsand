@@ -427,3 +427,56 @@ function inv_move_tx(array $n): int {
     }
     return $moveId;
 }
+
+// ── Everyday actions (each is one or more inv_move() calls) ─────────────────
+
+/** Move stock between two locations; recorded as transfer / assign / return by the location kinds. */
+function inv_transfer(int $itemId, int $qty, int $fromId, int $toId, ?int $userId, string $note = '', ?int $assetId = null): int {
+    $from = inv_fetch_location($fromId);
+    $to   = inv_fetch_location($toId);
+    if (!$from || !$to) throw new InvRefusal('Pick where it comes from and where it goes.');
+    return inv_move(['item_id' => $itemId, 'qty' => $qty, 'from' => $fromId, 'to' => $toId,
+                     'reason' => inv_transfer_reason((string)$from['kind'], (string)$to['kind']),
+                     'user_id' => $userId, 'note' => $note, 'asset_id' => $assetId]);
+}
+
+/** Record stock lost from a location: broken, missing, stolen or written off (value snapshotted). */
+function inv_report_loss(int $itemId, int $qty, int $fromId, string $reason, ?int $userId, string $note = '', ?int $assetId = null): int {
+    if (!in_array($reason, INV_LOSS_REASONS, true)) throw new InvRefusal('Pick what happened: broken, missing, stolen or written off.');
+    return inv_move(['item_id' => $itemId, 'qty' => $qty, 'from' => $fromId, 'reason' => $reason,
+                     'user_id' => $userId, 'note' => $note, 'asset_id' => $assetId]);
+}
+
+/**
+ * Register a serial-tracked unit and receive it into a location. $f: serial, tag,
+ * condition (new|good|fair|poor), purchase_date (Y-m-d), purchase_value, notes.
+ * Returns the unit (inv_assets) id.
+ */
+function inv_asset_create(int $itemId, int $toLocationId, array $f, ?int $userId): int {
+    $item = inv_fetch_item($itemId);
+    if (!$item || $item['tracking'] !== 'serial') throw new InvRefusal('Units can only be added to a serial-tracked item.');
+    $serial = trim((string)($f['serial'] ?? ''));
+    $cond   = in_array($f['condition'] ?? '', INV_CONDITIONS, true) ? (string)$f['condition'] : 'good';
+    $date   = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)($f['purchase_date'] ?? '')) ? (string)$f['purchase_date'] : null;
+    $pv     = $f['purchase_value'] ?? null;
+    if ($pv !== null && $pv !== '' && (!is_numeric($pv) || (float)$pv < 0)) throw new InvRefusal('Purchase value must be zero or more.');
+    $pv = ($pv === null || $pv === '') ? null : round((float)$pv, 2);
+    try {
+        return inv_tx(function () use ($itemId, $toLocationId, $serial, $cond, $date, $pv, $f, $userId): int {
+            db_query("INSERT INTO inv_assets (item_id, serial, tag, condition, status, location_id, purchase_date, purchase_value, notes)
+                      VALUES (:i, :s, :t, :c, 'active', :l, :d, :pv, :n)", [
+                ':i' => $itemId, ':s' => $serial !== '' ? mb_substr($serial, 0, 80) : null,
+                ':t' => ($t = trim((string)($f['tag'] ?? ''))) !== '' ? mb_substr($t, 0, 40) : null,
+                ':c' => $cond, ':l' => $toLocationId, ':d' => $date, ':pv' => $pv,
+                ':n' => ($nt = trim((string)($f['notes'] ?? ''))) !== '' ? $nt : null,
+            ]);
+            $assetId = (int) db()->lastInsertId();
+            inv_move(['item_id' => $itemId, 'qty' => 1, 'to' => $toLocationId, 'reason' => 'receive', 'asset_id' => $assetId,
+                      'unit_value' => $pv, 'user_id' => $userId, 'note' => $serial !== '' ? "Serial {$serial}" : '']);
+            return $assetId;
+        });
+    } catch (PDOException $e) {
+        if ($e->getCode() === '23505') throw new InvRefusal("Serial {$serial} is already registered for this item.");
+        throw $e;
+    }
+}

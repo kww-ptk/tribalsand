@@ -204,6 +204,35 @@ try {
     $threw = false; try { inv_move(['item_id' => $cap, 'qty' => 1, 'from' => $locShop, 'reason' => 'sale']); } catch (InvRefusal $e) { $threw = true; }
     check('move: without allow_negative a negative shelf sells nothing', $threw);
 
+    // ── Serial units, transfers, losses ──
+    $a1 = inv_asset_create($laptop, $store, ['serial' => 'ZZ-SN-001', 'condition' => 'new', 'purchase_value' => 92000], null);
+    $a2 = inv_asset_create($laptop, $store, ['serial' => 'ZZ-SN-002'], null);
+    $status = fn(int $a) => db_query('SELECT status FROM inv_assets WHERE id = :a', [':a' => $a])->fetchColumn();
+    check('serial: two units received into Main stock', inv_balance($laptop, $store) === 2);
+    $threw = false; try { inv_asset_create($laptop, $store, ['serial' => 'ZZ-SN-001'], null); } catch (InvRefusal $e) { $threw = true; }
+    check('serial: a duplicate serial is refused, nothing added', $threw && inv_balance($laptop, $store) === 2);
+    $threw = false; try { inv_move(['item_id' => $laptop, 'qty' => 1, 'from' => $store, 'to' => $locJane, 'reason' => 'assign']); } catch (InvRefusal $e) { $threw = true; }
+    check('serial: moving without naming the unit is refused', $threw);
+    inv_transfer($laptop, 1, $store, $locJane, null, 'Laptop for Jane', $a1);
+    check('serial: assigned to Jane',
+        inv_balance($laptop, $locJane) === 1 && (int)db_query('SELECT location_id FROM inv_assets WHERE id = :a', [':a' => $a1])->fetchColumn() === $locJane);
+    check('serial: recorded as an assignment',
+        db_query('SELECT reason FROM inv_moves WHERE asset_id = :a ORDER BY id DESC LIMIT 1', [':a' => $a1])->fetchColumn() === 'assign');
+    $threw = false; try { inv_transfer($laptop, 1, $store, $locA, null, '', $a1); } catch (InvRefusal $e) { $threw = true; }
+    check('serial: a unit only leaves from where it is', $threw);
+    inv_report_loss($laptop, 1, $locJane, 'stolen', null, 'taken from car', $a1);
+    check('serial: a stolen unit is written off and leaves Jane', inv_balance($laptop, $locJane) === 0 && $status($a1) === 'written_off');
+    $active = fn(int $loc) => $count("SELECT COUNT(*) FROM inv_assets WHERE item_id = :i AND location_id = :l AND status = 'active'", [':i' => $laptop, ':l' => $loc]);
+    check('serial: balance = active units at every location',
+        inv_balance($laptop, $store) === $active($store) && inv_balance($laptop, $locJane) === $active($locJane));
+    inv_move(['item_id' => $laptop, 'qty' => 1, 'to' => $store, 'reason' => 'found', 'asset_id' => $a1]);
+    check('serial: a found unit comes back into stock', inv_balance($laptop, $store) === 2 && $status($a1) === 'active');
+    $threw = false; try { inv_move(['item_id' => $laptop, 'qty' => 1, 'to' => $store, 'reason' => 'found', 'asset_id' => $a2]); } catch (InvRefusal $e) { $threw = true; }
+    check('serial: a unit already in stock cannot come in twice', $threw && inv_balance($laptop, $store) === 2);
+    $threw = false; try { inv_report_loss($plates, 1, $locA, 'vanished', null); } catch (InvRefusal $e) { $threw = true; }
+    check('loss: only broken / missing / stolen / written off', $threw);
+    check('transfer: person → store is a return', inv_transfer_reason('person', 'store') === 'return');
+
     // ── DB checks (tasks 4–8 insert their blocks above this line) ──
 } catch (Throwable $e) {
     echo "FAIL  DB block threw: " . $e->getMessage() . "\n" . $e->getTraceAsString() . "\n";
