@@ -35,6 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
     verify_csrf();
     $act = (string)($_POST['action'] ?? '');
     if ($act === 'save') {
+        if ($id && !$item) { $_SESSION['inv_flash'] = ['type' => 'error', 'msg' => 'That item no longer exists.']; inv_item_go('/admin/inventory.php'); }
         $listings  = $item ? inv_item_pos_listings((int)$item['id']) : [];
         $posLinked = (bool)$listings;
         // A POS-linked item's POS-owned fields are not on the form — keep the stored ones.
@@ -102,25 +103,39 @@ $hasMoves  = $item ? inv_item_has_moves($id) : false;
 $ownerOnly = $item && !is_owner();   // an existing item's value, currency and on/off switch are owner business
 $holding   = array_values(array_filter($where, fn($w) => (int)$w['qty'] > 0));
 $totalQty  = array_sum(array_map(fn($w) => (int)$w['qty'], $where));
-$form      = $old ?? ($item ?: ['item_type' => 'operational', 'tracking' => 'qty', 'currency' => INV_DEFAULT_CURRENCY, 'is_active' => true, 'unit_label' => 'pcs']);
+// The details form refills from old input only after a refused SAVE — a refused stock
+// action's post carries none of the details, and would blank them on the next Save.
+$saveOld   = (($old['action'] ?? '') === 'save') ? $old : null;
+$form      = $saveOld ?? ($item ?: ['item_type' => 'operational', 'tracking' => 'qty', 'currency' => INV_DEFAULT_CURRENCY, 'is_active' => true, 'unit_label' => 'pcs']);
 $val       = fn(string $k): string => (string)($form[$k] ?? '');
 $err       = fn(string $k): string => isset($errors[$k]) ? '<div class="inv-err">' . e($errors[$k]) . '</div>' : '';
 $cur       = $item ? (string)$item['currency'] : INV_DEFAULT_CURRENCY;
 $oldAct    = (string)($old['action'] ?? '');
 $panel     = in_array($oldAct, ['receive', 'add_unit', 'transfer', 'loss', 'replace'], true) ? $oldAct : ($serial ? 'add_unit' : 'receive');
-$locOpts   = function (int $selected = 0) use ($locs): string {
+// Single-ended actions (receive / add a unit / loss / replace) need a place the account
+// OWNS: inv_move_in_scope() only lets a manager use a shared place (Main stock, a
+// venue-less outlet) as the other end of a move touching their own property. Transfer
+// keeps the full visible lists.
+$ownLocs     = array_values(array_filter($locs, fn($l) => inv_location_editable($l, $vids)));
+$ownHolding  = array_values(array_filter($holding, fn($w) => inv_location_editable($w, $vids)));
+$ownActive   = array_values(array_filter($active, fn($u) => inv_location_editable(['venue_id' => $u['venue_id'], 'kind' => $u['kind']], $vids)));
+$eachValue   = $item && $item['replacement_value'] !== null ? inv_money((float)$item['replacement_value'], $cur) : null;
+$eachLine    = '<p class="text-muted" style="font-size:13px;margin:0 0 12px">' . ($eachValue !== null ? 'Each: ' . e($eachValue) : 'Value not set') . '</p>';
+$lossConfirm = 'Record this loss? It is written to the history' . ($eachValue !== null ? " at {$eachValue} each." : ' with no value (none is set).');
+$noOpts      = fn(string $msg): string => '<p class="text-muted" style="font-size:13px;margin:0 0 12px">' . e($msg) . '</p>';
+$locOpts   = function (array $list, int $selected = 0): string {
     $h = '';
-    foreach ($locs as $l) $h .= '<option value="' . (int)$l['id'] . '"' . ((int)$l['id'] === $selected ? ' selected' : '') . '>' . e(inv_location_label($l)) . '</option>';
+    foreach ($list as $l) $h .= '<option value="' . (int)$l['id'] . '"' . ((int)$l['id'] === $selected ? ' selected' : '') . '>' . e(inv_location_label($l)) . '</option>';
     return $h;
 };
-$holdOpts  = function () use ($holding): string {
+$holdOpts  = function (array $list): string {
     $h = '';
-    foreach ($holding as $w) $h .= '<option value="' . (int)$w['id'] . '">' . e(inv_location_label($w)) . ' — ' . (int)$w['qty'] . '</option>';
+    foreach ($list as $w) $h .= '<option value="' . (int)$w['id'] . '">' . e(inv_location_label($w)) . ' — ' . (int)$w['qty'] . '</option>';
     return $h;
 };
-$unitOpts  = function () use ($active): string {
+$unitOpts  = function (array $list): string {
     $h = '';
-    foreach ($active as $u) $h .= '<option value="' . (int)$u['id'] . '">'
+    foreach ($list as $u) $h .= '<option value="' . (int)$u['id'] . '">'
         . e(($u['serial'] ?: 'Unit #' . $u['id']) . ' — ' . inv_location_label(['kind' => $u['kind'], 'name' => $u['location_name'], 'parent_name' => $u['parent_name']])) . '</option>';
     return $h;
 };
@@ -149,7 +164,9 @@ include __DIR__ . '/_layout.php';
         <div class="inv-kpi"><span>Each</span><strong><?= e(inv_money($item['replacement_value'] !== null ? (float)$item['replacement_value'] : null, $cur)) ?></strong></div>
         <div class="inv-kpi"><span>Total value</span><strong><?= e(inv_money($item['replacement_value'] !== null ? round((float)$item['replacement_value'] * $totalQty, 2) : null, $cur)) ?></strong></div>
       </div>
-      <?php if ($listings): ?>
+      <?php if ($listings && !is_owner()): ?>
+      <div style="padding:10px 18px;font-size:13px" class="text-muted">Sold at the till (<?= count($listings) ?> outlet<?= count($listings) === 1 ? '' : 's' ?>)</div>
+      <?php elseif ($listings): ?>
       <div style="padding:10px 18px;font-size:13px" class="text-muted">Sold at the till: <?php foreach ($listings as $i => $pl): ?><?= $i ? ', ' : '' ?><a href="/admin/pos-items.php?outlet=<?= (int)$pl['outlet_id'] ?>&edit=<?= (int)$pl['id'] ?>#form"><?= e($pl['outlet_name']) ?></a><?php endforeach; ?></div>
       <?php endif; ?>
     </div>
@@ -229,7 +246,7 @@ include __DIR__ . '/_layout.php';
     <div class="card" id="actions">
       <div class="card__head"><span class="card__title">Move stock</span></div>
       <div class="card__body" style="padding:16px 18px">
-        <div class="inv-chips" role="tablist">
+        <div class="inv-chips" role="radiogroup" aria-label="Stock action">
           <?php $tabs = $serial ? ['add_unit' => 'Add a unit', 'transfer' => 'Move / assign', 'loss' => 'Report a loss']
                                 : ['receive' => 'Receive', 'transfer' => 'Move / assign', 'loss' => 'Report a loss', 'replace' => 'Replace'];
           foreach ($tabs as $k => $lbl): ?>
@@ -244,9 +261,11 @@ include __DIR__ . '/_layout.php';
             <div class="field"><label>Quantity</label><input name="qty" type="number" class="inp inp--num no-spin" min="1" step="1" required></div>
             <div class="field"><label>Unit cost <span class="text-muted">(optional)</span></label><input name="unit_cost" type="number" class="inp inp--num no-spin" min="0" step="0.01" placeholder="<?= e($cur) ?>"></div>
           </div>
-          <div class="field"><label>Arrived at</label><select name="to_id" class="eselect eselect--block" required><?= $locOpts(0) ?></select></div>
+          <?php if ($ownLocs): ?>
+          <div class="field"><label>Arrived at</label><select name="to_id" class="eselect eselect--block" required><?= $locOpts($ownLocs) ?></select></div>
+          <?php else: ?><?= $noOpts('No places you manage.') ?><?php endif; ?>
           <div class="field"><label>Note <span class="text-muted">(supplier, invoice #)</span></label><input name="note" class="inp" maxlength="500"></div>
-          <button type="submit" class="btn-primary btn-sm"><?= admin_icon('check', 15) ?> Receive</button>
+          <?php if ($ownLocs): ?><button type="submit" class="btn-primary btn-sm"><?= admin_icon('check', 15) ?> Receive</button><?php endif; ?>
         </form>
         <?php else: ?>
         <form method="POST" action="<?= $self ?>" class="inv-form" data-inv-panel="add_unit" novalidate>
@@ -262,19 +281,21 @@ include __DIR__ . '/_layout.php';
           <div class="field"><label>Bought on <span class="text-muted">(optional)</span></label>
             <button type="button" class="dp-btn" data-dp-target="invBought" data-dp-past data-dp-placeholder="Pick a date" style="width:100%">Pick a date</button>
             <input type="hidden" id="invBought" name="purchase_date" value=""></div>
-          <div class="field"><label>Where it is</label><select name="to_id" class="eselect eselect--block" required><?= $locOpts(0) ?></select></div>
+          <?php if ($ownLocs): ?>
+          <div class="field"><label>Where it is</label><select name="to_id" class="eselect eselect--block" required><?= $locOpts($ownLocs) ?></select></div>
+          <?php else: ?><?= $noOpts('No places you manage.') ?><?php endif; ?>
           <div class="field"><label>Note</label><input name="note" class="inp" maxlength="500"></div>
-          <button type="submit" class="btn-primary btn-sm"><?= admin_icon('plus', 15) ?> Add unit</button>
+          <?php if ($ownLocs): ?><button type="submit" class="btn-primary btn-sm"><?= admin_icon('plus', 15) ?> Add unit</button><?php endif; ?>
         </form>
         <?php endif; ?>
 
         <form method="POST" action="<?= $self ?>" class="inv-form" data-inv-panel="transfer" novalidate>
           <?= csrf_field() ?><input type="hidden" name="item_id" value="<?= $id ?>"><input type="hidden" name="action" value="transfer">
           <?php if ($serial): ?>
-          <div class="field"><label>Which unit</label><select name="asset_id" class="eselect eselect--block" required><?= $unitOpts() ?></select></div>
+          <div class="field"><label>Which unit</label><select name="asset_id" class="eselect eselect--block" required><?= $unitOpts($active) ?></select></div>
           <?php else: ?>
           <div class="inv-row2">
-            <div class="field"><label>From</label><select name="from_id" class="eselect eselect--block" required><?= $holdOpts() ?></select></div>
+            <div class="field"><label>From</label><select name="from_id" class="eselect eselect--block" required><?= $holdOpts($holding) ?></select></div>
             <div class="field"><label>Quantity</label><input name="qty" type="number" class="inp inp--num no-spin" min="1" step="1" required></div>
           </div>
           <?php endif; ?>
@@ -289,32 +310,39 @@ include __DIR__ . '/_layout.php';
 
         <form method="POST" action="<?= $self ?>" class="inv-form" data-inv-panel="loss" novalidate>
           <?= csrf_field() ?><input type="hidden" name="item_id" value="<?= $id ?>"><input type="hidden" name="action" value="loss">
-          <?php if ($serial): ?>
-          <div class="field"><label>Which unit</label><select name="asset_id" class="eselect eselect--block" required><?= $unitOpts() ?></select></div>
+          <?= $eachLine ?>
+          <?php $lossOk = $serial ? (bool)$ownActive : (bool)$ownHolding; ?>
+          <?php if (!$lossOk): ?>
+          <?= $noOpts($serial ? 'No units in stock you manage.' : 'Nothing in stock at your places — receive first.') ?>
+          <?php elseif ($serial): ?>
+          <div class="field"><label>Which unit</label><select name="asset_id" class="eselect eselect--block" required><?= $unitOpts($ownActive) ?></select></div>
           <?php else: ?>
           <div class="inv-row2">
-            <div class="field"><label>Where</label><select name="from_id" class="eselect eselect--block" required><?= $holdOpts() ?></select></div>
+            <div class="field"><label>Where</label><select name="from_id" class="eselect eselect--block" required><?= $holdOpts($ownHolding) ?></select></div>
             <div class="field"><label>Quantity</label><input name="qty" type="number" class="inp inp--num no-spin" min="1" step="1" required></div>
           </div>
           <?php endif; ?>
           <div class="field"><label>What happened</label>
             <div class="inv-chips"><?php foreach (INV_LOSS_LABELS as $k => $lbl): ?><label class="optchip"><input type="radio" name="reason" value="<?= e($k) ?>" <?= $k === 'broken' ? 'checked' : '' ?>><?= e($lbl) ?></label><?php endforeach; ?></div></div>
           <div class="field"><label>Note</label><input name="note" class="inp" maxlength="500" placeholder="What happened, who reported it"></div>
-          <button type="submit" class="btn-primary btn-sm" onclick="return confirm('Record this loss? It is written to the history with its value.')"><?= admin_icon('check', 15) ?> Record loss</button>
+          <?php if ($lossOk): ?><button type="submit" class="btn-primary btn-sm" onclick="return confirm(<?= e(json_encode($lossConfirm)) ?>)"><?= admin_icon('check', 15) ?> Record loss</button><?php endif; ?>
         </form>
 
         <?php if (!$serial): ?>
         <form method="POST" action="<?= $self ?>" class="inv-form" data-inv-panel="replace" novalidate>
           <?= csrf_field() ?><input type="hidden" name="item_id" value="<?= $id ?>"><input type="hidden" name="action" value="replace">
           <p class="text-muted" style="font-size:13px;margin:0 0 12px">Records the loss and brings the same number in from Main stock, in one step.</p>
+          <?= $eachLine ?>
+          <?php if ($ownHolding): ?>
           <div class="inv-row2">
-            <div class="field"><label>Where</label><select name="at_id" class="eselect eselect--block" required><?= $holdOpts() ?></select></div>
+            <div class="field"><label>Where</label><select name="at_id" class="eselect eselect--block" required><?= $holdOpts($ownHolding) ?></select></div>
             <div class="field"><label>Quantity</label><input name="qty" type="number" class="inp inp--num no-spin" min="1" step="1" required></div>
           </div>
+          <?php else: ?><?= $noOpts('Nothing in stock at your places — receive first.') ?><?php endif; ?>
           <div class="field"><label>What happened</label>
             <div class="inv-chips"><?php foreach (INV_LOSS_LABELS as $k => $lbl): ?><label class="optchip"><input type="radio" name="reason" value="<?= e($k) ?>" <?= $k === 'broken' ? 'checked' : '' ?>><?= e($lbl) ?></label><?php endforeach; ?></div></div>
           <div class="field"><label>Note</label><input name="note" class="inp" maxlength="500"></div>
-          <button type="submit" class="btn-primary btn-sm"><?= admin_icon('rotate', 15) ?> Replace</button>
+          <?php if ($ownHolding): ?><button type="submit" class="btn-primary btn-sm"><?= admin_icon('rotate', 15) ?> Replace</button><?php endif; ?>
         </form>
         <?php endif; ?>
       </div>
@@ -336,13 +364,19 @@ include __DIR__ . '/_layout.php';
             <div class="field"><label>Category</label><input name="category" class="inp" maxlength="60" list="invCats" value="<?= e($val('category')) ?>" placeholder="Kitchen, Linen, Electronics…"><?= $err('category') ?>
               <datalist id="invCats"><?php foreach (inv_categories() as $c): ?><option value="<?= e($c) ?>"><?php endforeach; ?></datalist></div>
           </div>
+          <?php if ($ownerOnly): ?>
+          <div class="field"><label>Replacement value <span class="text-muted">(each)</span></label>
+            <div><strong><?= e(inv_money($item['replacement_value'] !== null ? (float)$item['replacement_value'] : null, $cur)) ?></strong>
+              <span class="text-muted" style="font-size:12px">· set by the owner</span></div></div>
+          <?php else: ?>
           <div class="inv-row2">
-            <div class="field"><label>Replacement value <span class="text-muted">(each)</span></label><input name="replacement_value" type="number" class="inp inp--num no-spin" min="0" step="0.01" value="<?= e($val('replacement_value')) ?>" <?= $ownerOnly ? 'readonly title="Only the owner changes an item’s value"' : '' ?>><?= $err('replacement_value') ?></div>
+            <div class="field"><label>Replacement value <span class="text-muted">(each)</span></label><input name="replacement_value" type="number" class="inp inp--num no-spin" min="0" step="0.01" value="<?= e($val('replacement_value')) ?>"><?= $err('replacement_value') ?></div>
             <?php if (!$posLinked): ?>
-            <div class="field"><label>Currency</label><select name="currency" class="eselect eselect--block" <?= $ownerOnly ? 'disabled' : '' ?>>
-              <?php foreach (array_keys(TS_CURRENCIES) as $c): ?><option value="<?= e($c) ?>" <?= strtoupper($val('currency') ?: INV_DEFAULT_CURRENCY) === $c ? 'selected' : '' ?>><?= e($c) ?></option><?php endforeach; ?></select></div>
+            <div class="field"><label>Currency</label><select name="currency" class="eselect eselect--block">
+              <?php foreach (array_keys(TS_CURRENCIES) as $c): ?><option value="<?= e($c) ?>" <?= strtoupper($val('currency') ?: INV_DEFAULT_CURRENCY) === $c ? 'selected' : '' ?>><?= e($c) ?></option><?php endforeach; ?></select><?= $err('currency') ?></div>
             <?php endif; ?>
           </div>
+          <?php endif; ?>
           <div class="inv-row2">
             <div class="field"><label>Icon <span class="text-muted">(one emoji)</span></label><input name="icon" class="inp" maxlength="8" value="<?= e($val('icon')) ?>" placeholder="🍽️"><?= $err('icon') ?></div>
             <div class="field"><label>Unit</label><input name="unit_label" class="inp" maxlength="20" value="<?= e($val('unit_label')) ?>" placeholder="pcs"></div>
@@ -368,9 +402,8 @@ include __DIR__ . '/_layout.php';
           <?php endif; ?>
           <?php if ($ownerOnly): ?>
           <?php if (inv_bool($form['is_active'] ?? true)): ?><input type="hidden" name="is_active" value="1"><?php endif; ?>
-          <?php if (!$posLinked): ?><input type="hidden" name="currency" value="<?= e($val('currency') ?: INV_DEFAULT_CURRENCY) ?>"><?php endif; ?>
           <p class="text-muted" style="font-size:12px;margin:0 0 12px">Only the owner can change this item’s value or currency, or switch it off.</p>
-          <?php else: ?>
+          <?php elseif ($item): ?>
           <div class="field"><label class="optchip"><input type="checkbox" name="is_active" value="1" <?= inv_bool($form['is_active'] ?? true) ? 'checked' : '' ?>>In use (shows in lists)</label></div>
           <?php endif; ?>
           <button type="submit" class="btn-primary btn-sm"><?= admin_icon('check', 15) ?> <?= $item ? 'Save' : 'Add item' ?></button>
@@ -392,6 +425,13 @@ include __DIR__ . '/_layout.php';
   }
   chips.forEach(function (c) { c.addEventListener('change', show); });
   show();
+  // Show the chosen photo's file name.
+  document.querySelectorAll('#details [data-file-input]').forEach(function (fi) {
+    fi.addEventListener('change', function () {
+      var box = fi.closest('.filefield'), out = box ? box.querySelector('[data-file-name]') : null;
+      if (out && fi.files && fi.files[0]) out.textContent = fi.files[0].name;
+    });
+  });
 })();
 </script>
 <?php include __DIR__ . '/_layout_end.php'; ?>

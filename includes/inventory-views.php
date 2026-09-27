@@ -638,7 +638,7 @@ function inv_apply_item_action(array $in, array $item, ?array $venueIds, int $us
 function inv_thumb_html(array $item, int $size = 36): string {
     $s = max(16, $size);
     if (!empty($item['image_key'])) {
-        return '<img class="inv-thumb" src="' . e(storage_url((string)$item['image_key'])) . '" alt="" width="' . $s . '" height="' . $s . '" loading="lazy">';
+        return '<img class="inv-thumb" src="' . e(storage_url((string)$item['image_key'])) . '" alt="" width="' . $s . '" height="' . $s . '" style="width:' . $s . 'px;height:' . $s . 'px" loading="lazy">';
     }
     $glyph = trim((string)($item['icon'] ?? ''));
     if ($glyph === '') $glyph = mb_strtoupper(mb_substr((string)($item['name'] ?? '?'), 0, 1));
@@ -648,7 +648,7 @@ function inv_thumb_html(array $item, int $size = 36): string {
 /** CSS shared by every inventory page — echo once per page. */
 function inv_shared_css(): string {
     return '<style>
-.inv-thumb{width:36px;height:36px;border-radius:8px;object-fit:cover;flex:0 0 auto;background:var(--bg)}
+.inv-thumb{border-radius:8px;object-fit:cover;flex:0 0 auto;background:var(--bg)}
 .inv-thumb--glyph{display:inline-flex;align-items:center;justify-content:center;color:var(--muted);font-weight:600;border:1px solid var(--border)}
 .inv-name{display:flex;align-items:center;gap:10px;color:inherit;text-decoration:none}
 .inv-name:hover strong,.inv-name:hover span{text-decoration:underline}
@@ -670,6 +670,5 @@ function inv_shared_css(): string {
 .inv-kpis{display:flex;flex-wrap:wrap;gap:10px 24px;padding:14px 18px;border-bottom:1px solid var(--border)}
 .inv-kpi span{display:block;font-size:12px;color:var(--muted)}
 .inv-kpi strong{font-size:18px}
-.table-wrap .data-table{min-width:0}
 </style>';
 }
