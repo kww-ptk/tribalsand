@@ -13,8 +13,9 @@
  *   · single rooms / the whole property → "Select" opens the existing booking
  *     modal (tsOpenBookingModal) with dates + guests prefilled = the normal
  *     24h-hold / enquiry flow, unchanged.
- *   · a multi-room COMBINATION (v1) → "Request these rooms" opens a prefilled
- *     enquiry (posted to /api/submit-contact.php; Turnstile fail-closed + IP
+ *   · a multi-room COMBINATION → "Request these rooms" posts the rooms to
+ *     /api/submit-combo.php, which HOLDS every room for 24h in one go when they
+ *     all take online holds (else sends one enquiry — the old v1 path) (Turnstile fail-closed + IP
  *     rate-limit on the endpoint). A true atomic multi-room hold is a v2
  *     follow-up — see the plan §6.4.
  *
@@ -163,7 +164,7 @@ if (empty($GLOBALS['__pa_modal_done'])) {
 ?>
 
 <?php if (empty($GLOBALS['__pa_enq_done'])): $GLOBALS['__pa_enq_done'] = true; ?>
-<!-- Combo → prefilled enquiry (v1). Posts to /api/submit-contact.php. -->
+<!-- Combo → one request for all the rooms. Posts to /api/submit-combo.php (holds them all, or none). -->
 <div class="pae-back" id="paEnq" hidden>
   <div class="pae-dlg" role="dialog" aria-modal="true" aria-labelledby="paEnqTitle">
     <h3 id="paEnqTitle">Request these rooms</h3>
@@ -214,7 +215,7 @@ if (empty($GLOBALS['__pa_modal_done'])) {
   var enqCtx = null;
   function openEnq(ctx) {
     enqCtx = ctx;
-    if (enqIntro) enqIntro.textContent = 'For ' + ctx.guests + ' guest' + (ctx.guests === 1 ? '' : 's') + ', ' + ctx.dates + '. We’ll confirm this combination by email — nothing is charged now.';
+    if (enqIntro) enqIntro.textContent = 'For ' + ctx.guests + ' guest' + (ctx.guests === 1 ? '' : 's') + ', ' + ctx.dates + '. We’ll hold these rooms for you for 24 hours while we confirm by email — nothing is charged now.';
     if (enqMsg) { enqMsg.hidden = true; enqMsg.textContent = ''; }
     if (enq) { enq.hidden = false; document.body.style.overflow = 'hidden'; }
   }
@@ -230,16 +231,15 @@ if (empty($GLOBALS['__pa_modal_done'])) {
       var fd = new FormData(enqForm);
       if ((fd.get('website') || '').trim() !== '') { closeEnq(); return; } // honeypot
       var note = (fd.get('note') || '').trim();
-      var message = 'Room-combination request for ' + enqCtx.venueName + ' (' + enqCtx.dates + ', ' + enqCtx.guests +
-                    ' guest' + (enqCtx.guests === 1 ? '' : 's') + '):\n' + enqCtx.roomsText +
-                    '\nEstimated total: ' + enqCtx.totalText + (note ? ('\n\nGuest note: ' + note) : '');
       var btn = enqForm.querySelector('.pae-send');
       btn.disabled = true; btn.textContent = 'Sending…';
-      fetch('/api/submit-contact.php', {
+      fetch('/api/submit-combo.php', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          name: fd.get('name'), email: fd.get('email'), phone: fd.get('phone'),
-          subject: 'Room combination — ' + enqCtx.venueName, message: message,
+          name: fd.get('name'), email: fd.get('email'), phone: fd.get('phone'), message: note,
+          venue: enqCtx.venue, checkin: enqCtx.ci, checkout: enqCtx.co,
+          adults: enqCtx.adults, children: enqCtx.children,
+          rooms: enqCtx.rooms,   // [{slug, units}] — re-checked on the server
           // Snapshot of the combo total shown, so the admin enquiry view can show
           // a structured "Price at enquiry" for multi-room requests too.
           quoted_total: enqCtx.total, quoted_currency: enqCtx.currency,
@@ -252,12 +252,16 @@ if (empty($GLOBALS['__pa_modal_done'])) {
           var err = (res.j && (res.j.error || (res.j.errors && Object.values(res.j.errors)[0]))) || 'Could not send your request.';
           throw new Error(err);
         }
+        var held = res.j.mode === 'hold';
+        var body = held
+          ? 'Thanks! All ' + (res.j.rooms || '') + ' rooms are held for you for 24 hours. We’ll confirm by email shortly.'
+          : 'Thanks! We’ll confirm this room combination and pricing by email shortly.';
         if (typeof window.showSuccessModal === 'function') {
           closeEnq();
-          window.showSuccessModal('Request received', 'Thanks! We’ll confirm this room combination and pricing by email shortly.');
+          window.showSuccessModal(held ? 'Rooms held' : 'Request received', body, held);
         } else if (enqMsg) {
           enqMsg.hidden = false; enqMsg.style.color = '#15803d';
-          enqMsg.textContent = 'Request sent — we’ll confirm by email shortly.';
+          enqMsg.textContent = body;
         }
         enqForm.reset();
       })
@@ -371,7 +375,9 @@ if (empty($GLOBALS['__pa_modal_done'])) {
           var btn = el('<button type="button" class="pa-opt__btn pa-opt__btn--ghost">Request these rooms</button>');
           btn.addEventListener('click', function () {
             openEnq({
-              venueName: venueName, guests: guests, dates: fmtRange(ci, co),
+              venueName: venueName, venue: venue, guests: guests, dates: fmtRange(ci, co),
+              ci: ci, co: co, adults: data.adults, children: data.children,   // the party that was searched, not the steppers now
+              rooms: combo.rooms.map(function (cr) { return { slug: cr.slug, units: cr.units_used }; }),
               roomsText: roomsText.join('\n'), totalText: money(combo.total, combo.currency),
               total: combo.total, currency: combo.currency
             });

@@ -14,6 +14,7 @@ require_once __DIR__ . '/../includes/services.php';         // format_price() fo
 require_once __DIR__ . '/../includes/activity-log.php';     // activity_log_html() — Item 3
 require_once __DIR__ . '/../includes/pos-support.php';      // pos_bill_link_supported() — POS room charges can't be deleted here
 require_once __DIR__ . '/../includes/acct.php';             // folio: payments, invoices, credit notes (Accounting P2a)
+require_once __DIR__ . '/../includes/hold-groups.php';      // a multi-room request is confirmed / cancelled as one
 require_login();
 
 $holdId = (int)($_GET['hold'] ?? $_POST['hold_id'] ?? 0);
@@ -50,23 +51,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: /admin/booking.php?hold=$holdId&tab=requests"); exit;
     }
     if ($act === 'confirm' && $hold['status'] === 'pending') {
-        db_query("UPDATE holds SET status='confirmed', confirmed_at=NOW() WHERE id=:id", [':id'=>$holdId]);
-        db_query("UPDATE availability_blocks SET block_type='booked' WHERE hold_id=:hid", [':hid'=>$holdId]);
-        bookings_sync_hold($holdId);   // snapshot revenue at confirm
-        $__acct = acct_hook_hold_confirmed($holdId, (int)($_SESSION['admin_id'] ?? 0) ?: null);   // companies that invoice at confirmation
-        if ($hold['guest_email']) send_hold_confirmed($hold);
-        audit_log('hold.confirm', 'hold', $holdId, "{$hold['guest_name']}");
-        $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Confirmed — guest notified.' . $__acct];
+        // A multi-room request is ONE request: every room is confirmed, one email goes out.
+        $__g = hold_group_confirm($holdId, (int)($_SESSION['admin_id'] ?? 0) ?: null);   // status, blocks, ledger snapshot, invoice-at-confirmation
+        if ($hold['guest_email'] && $__g['mail_row']) send_hold_confirmed($__g['mail_row']);
+        foreach ($__g['ids'] as $__id) audit_log('hold.confirm', 'hold', $__id, "{$hold['guest_name']}");
+        $_SESSION['hold_flash'] = ['type'=>'success','msg'=>(count($__g['ids']) > 1 ? 'All ' . count($__g['ids']) . ' rooms confirmed' : 'Confirmed') . ' — guest notified.' . $__g['acct']];
         header("Location: /admin/booking.php?hold=$holdId&tab=details"); exit;
     }
     if ($act === 'cancel' && in_array($hold['status'], ['pending','confirmed'], true)) {
-        db_query("UPDATE holds SET status='cancelled', cancelled_at=NOW() WHERE id=:id", [':id'=>$holdId]);
-        db_query("DELETE FROM availability_blocks WHERE hold_id=:hid", [':hid'=>$holdId]);
-        bookings_mark_hold_cancelled($holdId);
-        $__acct = acct_hook_hold_cancelled($holdId, (int)($_SESSION['admin_id'] ?? 0) ?: null);   // an invoiced stay is credited
-        if ($hold['guest_email']) send_hold_cancelled($hold, 'cancelled');
-        audit_log('hold.cancel', 'hold', $holdId, "{$hold['guest_name']}");
-        $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Cancelled — dates freed, guest notified.' . $__acct];
+        $__g = hold_group_cancel($holdId, (int)($_SESSION['admin_id'] ?? 0) ?: null);   // every room of a multi-room request; an invoiced stay is credited
+        if ($hold['guest_email'] && $__g['mail_row']) send_hold_cancelled($__g['mail_row'], 'cancelled');
+        foreach ($__g['ids'] as $__id) audit_log('hold.cancel', 'hold', $__id, "{$hold['guest_name']}");
+        $_SESSION['hold_flash'] = ['type'=>'success','msg'=>(count($__g['ids']) > 1 ? 'All ' . count($__g['ids']) . ' rooms cancelled' : 'Cancelled') . ' — dates freed, guest notified.' . $__g['acct']];
         header("Location: /admin/booking.php?hold=$holdId&tab=details"); exit;
     }
     // Assign / reassign this booking to a team member (Item 2). Front-desk audience only.
@@ -417,6 +413,16 @@ include __DIR__ . '/_layout.php';
 </div>
 <p class="text-muted" style="margin:-8px 0 14px;font-size:13px"><?= e(date('j M Y',strtotime($hold['check_in']))) ?> → <?= e(date('j M Y',strtotime($hold['check_out']))) ?> · <span class="badge badge--<?= ['pending'=>'orange','confirmed'=>'green','cancelled'=>'red','expired'=>'grey'][$hold['status']] ?? 'grey' ?>"><?= e($hold['status']) ?></span> · <code><?= e($hold['access_code']) ?></code><?php if (!empty($hold['agent_id'])): ?> · <span class="badge badge--blue">Trade booking</span> via <strong><?= e(trim((string)($hold['agent_agency'] ?? '')) ?: (string)($hold['agent_name'] ?? '')) ?></strong> (<?= e((string)($hold['agent_name'] ?? '')) ?>, <a href="mailto:<?= e((string)($hold['agent_email'] ?? '')) ?>"><?= e((string)($hold['agent_email'] ?? '')) ?></a>)<?php if (!empty($hold['quoted_amount'])): ?> · net <?= e(format_price((float)$hold['quoted_amount'], (string)(($hold['quoted_currency'] ?? '') ?: 'USD'))) ?><?php endif; ?><?php endif; ?></p>
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?> is-flash"><?= e($flash['msg']) ?></div><?php endif; ?>
+<?php if (!empty($hold['group_ref'])): $__grp = hold_group_rows($holdId); if (count($__grp) > 1): ?>
+<div class="alert alert--info ws-group">
+  <strong>One of <?= count($__grp) ?> rooms in one request</strong> (<?= e(hold_group_label($__grp)) ?>) — confirming or cancelling any room applies to all of them, with one email to the guest.
+  <span class="ws-group__rooms"><?php foreach ($__grp as $__r): ?>
+    <?php if ((int)$__r['id'] === $holdId): ?><span class="badge badge--blue"><?= e($__r['room_name']) ?> · <?= e($__r['unit_name']) ?></span>
+    <?php else: ?><a class="badge badge--grey" href="/admin/booking.php?hold=<?= (int)$__r['id'] ?>" data-shell-link><?= e($__r['room_name']) ?> · <?= e($__r['unit_name']) ?></a><?php endif; ?>
+  <?php endforeach; ?></span>
+</div>
+<style>.ws-group{margin:0 0 14px;font-size:13px}.ws-group__rooms{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}.ws-group__rooms a{text-decoration:none}</style>
+<?php endif; endif; ?>
 
 <div class="ws" data-ws>
   <nav class="tabs ws-tabs" data-ws-tabs aria-label="Booking sections">
