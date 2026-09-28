@@ -235,6 +235,17 @@ check('sku: a group with 30 long codes is capped at 60 chars', mb_strlen(inv_imp
 check('sku: codes are unique, in list order', inv_import_sku(['lines' => [0, 1, 2]],
     [['code' => 'A1'], ['code' => 'A2'], ['code' => 'A1']]) === 'A1, A2');
 
+// ── Par levels: item-code prefix → place ────────────────────────────────────
+check('prefix: leading letters, upper-cased', inv_ship_prefix('R006MB') === 'R' && inv_ship_prefix('OV003') === 'OV'
+    && inv_ship_prefix('APP001') === 'APP' && inv_ship_prefix('CVL102') === 'CVL' && inv_ship_prefix('123') === '');
+$parLines = [['code' => 'V001', 'qty' => 5], ['code' => 'V002', 'qty' => 3], ['code' => 'HS001', 'qty' => 2], ['code' => '007', 'qty' => 9]];
+check('par plan: two lines of the same item at the same place sum into one entry', inv_import_par_plan($parLines,
+    [0 => 100, 1 => 100, 2 => 200, 3 => 300], ['V' => 5, 'HS' => 6]) === ['100:5' => 8, '200:6' => 2]);
+check('par plan: skips a line with no item, and a line whose prefix has no place', inv_import_par_plan($parLines,
+    [0 => 100, 2 => 200], ['V' => 5]) === ['100:5' => 5]);
+check('par plan: an unmapped prefix (0 or absent) contributes nothing', inv_import_par_plan($parLines,
+    [0 => 100, 2 => 200], ['V' => 5, 'HS' => 0]) === ['100:5' => 5]);
+
 // ── Pure checks (each task inserts its section above this line) ──
 
 // ── DB-backed ───────────────────────────────────────────────────────────────
@@ -348,6 +359,64 @@ try {
 
     $res2 = inv_import_items($wb['lines'], $g);
     check('import: importing the same list again creates nothing — every group already exists', $res2['created'] === 0 && $res2['existing'] === 154);
+
+    // ── Par levels: item-code prefix → place (DB) ──
+    // Force a clean slate for the remembered mapping, so the defaults asserted
+    // below never depend on whatever an earlier manual test of the admin page
+    // may have saved to this DB.
+    db_query("DELETE FROM settings WHERE setting_key = :k", [':k' => INV_IMPORT_PREFIX_PLACES_SETTING]);
+
+    $vTDreal = (int) db_query("SELECT id FROM venues WHERE slug = 'tribal-dunes'")->fetchColumn();
+    if (!$vTDreal) $vTDreal = $ins("INSERT INTO venues (slug, name) VALUES (:s, 'Tribal Dunes')", [':s' => "zz-tdreal-{$sfx}"]);
+    $tdLocReal = inv_property_location_id($vTDreal);
+    $hsId = (int) db_query("SELECT id FROM inv_locations WHERE parent_id = :p AND kind = 'area' AND lower(name) = 'hair salon'", [':p' => $tdLocReal])->fetchColumn();
+    if (!$hsId) $hsId = inv_create_area($tdLocReal, 'Hair Salon');
+    $rrId = (int) db_query("SELECT id FROM inv_locations WHERE parent_id = :p AND kind = 'area' AND lower(name) = 'tribal table'", [':p' => $tdLocReal])->fetchColumn();
+    if (!$rrId) $rrId = inv_create_area($tdLocReal, 'Tribal Table');
+
+    $vMIreal = (int) db_query("SELECT id FROM venues WHERE lower(name) = 'maya ilai'")->fetchColumn();
+    if (!$vMIreal) $vMIreal = $ins("INSERT INTO venues (slug, name) VALUES (:s, 'Maya Ilai')", [':s' => "zz-mireal-{$sfx}"]);
+    $miLocReal = inv_property_location_id($vMIreal);
+
+    $vODreal = (int) db_query("SELECT id FROM venues WHERE lower(name) = 'off-duty'")->fetchColumn();
+    if (!$vODreal) $vODreal = $ins("INSERT INTO venues (slug, name, is_published) VALUES (:s, 'Off-Duty', FALSE)", [':s' => "zz-odreal-{$sfx}"]);
+    inv_ensure_default_locations();
+    $odLocReal = inv_property_location_id($vODreal);
+
+    $prefixes = [];
+    foreach ($wb['lines'] as $l) { $pfx = inv_ship_prefix((string)$l['code']); if ($pfx !== '' && !in_array($pfx, $prefixes, true)) $prefixes[] = $pfx; }
+    $placeOptions = inv_import_place_options(null);
+    $prefixPlace  = inv_import_default_places($prefixes, $placeOptions);
+    check('default places: V/S/OV/WT/SP/G/APP/B/CVL/DR/BL → Maya Ilai', ($prefixPlace['V'] ?? 0) === $miLocReal && ($prefixPlace['S'] ?? 0) === $miLocReal
+        && ($prefixPlace['OV'] ?? 0) === $miLocReal && ($prefixPlace['G'] ?? 0) === $miLocReal);
+    check('default places: HS → the Hair Salon area, R → Tribal Table area', ($prefixPlace['HS'] ?? 0) === $hsId && ($prefixPlace['R'] ?? 0) === $rrId);
+    check('default places: OD → Off-Duty', ($prefixPlace['OD'] ?? 0) === $odLocReal);
+
+    $lineItem = [];
+    foreach ($g as $gkey => $grp) {
+        $itemId = $res2['group_items'][$gkey] ?? null;
+        if (!$itemId) continue;
+        foreach ($grp['lines'] as $i) $lineItem[$i] = $itemId;
+    }
+    $plan    = inv_import_par_plan($wb['lines'], $lineItem, $prefixPlace);
+    $parsSet = inv_import_apply_pars($plan);
+
+    $couchId    = $res2['group_items'][inv_ship_key('Couch 2.6m x 1m')] ?? 0;
+    $canvasId   = $res2['group_items'][inv_ship_key('Wall Art - Canvas Print')] ?? 0;
+    $barstoolId = $res2['group_items'][inv_ship_key('Barstool')] ?? 0;
+    $fridgeId   = $res2['group_items'][inv_ship_key('Mini Bar Fridge')] ?? 0;
+    $parOf = fn(int $item, int $loc) => db_query('SELECT par_qty FROM inv_balances WHERE item_id = :i AND location_id = :l', [':i' => $item, ':l' => $loc])->fetchColumn();
+
+    check('par: Couch 2.6m x 1m at Maya Ilai = 8', (int)$parOf($couchId, $miLocReal) === 8);
+    check('par: Wall Art - Canvas Print at Maya Ilai = 96', (int)$parOf($canvasId, $miLocReal) === 96);
+    check('par: Barstool at Off-Duty = 15', (int)$parOf($barstoolId, $odLocReal) === 15);
+    check('par: Mini Bar Fridge (serial) got no par', $parOf($fridgeId, $miLocReal) === false);
+    check('par: no stock was moved for the imported items',
+        $count('SELECT COUNT(*) FROM inv_moves WHERE item_id = ANY(CAST(:ids AS int[]))', [':ids' => inv_pg_int_array_literal($res1['created_ids'])]) === 0);
+
+    $plan2    = inv_import_par_plan($wb['lines'], $lineItem, $prefixPlace);
+    $parsSet2 = inv_import_apply_pars($plan2);
+    check('par: re-importing gives the same par, never doubled', $parsSet2 === $parsSet && (int)$parOf($couchId, $miLocReal) === 8);
 
     // ── DB checks (each task inserts its block above this line) ──
 } catch (Throwable $e) {

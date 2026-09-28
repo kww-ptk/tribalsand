@@ -249,3 +249,45 @@ function inv_ship_group(array $lines, array $names = []): array {
     }
     return $g;
 }
+
+// ── Item-code prefix → place (par levels) ───────────────────────────────────
+
+/** The leading ASCII letters of an item code, upper-cased ('' when it starts with none) — PURE.
+ *  "R006MB" → "R", "OV003" → "OV", "APP001" → "APP", "CVL102" → "CVL", "123" → "". */
+function inv_ship_prefix(string $code): string {
+    return preg_match('/^[A-Za-z]+/', trim($code), $m) ? strtoupper($m[0]) : '';
+}
+
+/**
+ * The owner's mapping for the Maya Ilai fit-out lists: item-code prefix → the
+ * NAME of the inventory location whose par levels that prefix's items feed.
+ * Used only as a DEFAULT when a location with this exact name (case-insensitive)
+ * exists — see inv_import_default_places(). V/S/OV/WT/SP/G and APP/B/CVL/DR/BL
+ * are all Maya Ilai components/spares; OD is the (hidden) Off-Duty property; HS
+ * and R are areas under Tribal Dunes (Hair Salon, Tribal Table); MK is Maya Kobe.
+ */
+const INV_IMPORT_DEFAULT_PREFIX_PLACES = [
+    'V' => 'Maya Ilai', 'S' => 'Maya Ilai', 'OV' => 'Maya Ilai', 'WT' => 'Maya Ilai', 'SP' => 'Maya Ilai', 'G' => 'Maya Ilai',
+    'APP' => 'Maya Ilai', 'B' => 'Maya Ilai', 'CVL' => 'Maya Ilai', 'DR' => 'Maya Ilai', 'BL' => 'Maya Ilai',
+    'OD' => 'Off-Duty', 'HS' => 'Hair Salon', 'MK' => 'Maya Kobe', 'R' => 'Tribal Table',
+];
+
+/**
+ * The par levels an import would set — PURE, no DB. $lineItem: [line index =>
+ * item id] (from inv_import_items()'s 'group_items', expanded per line);
+ * $prefixPlace: [prefix => location id] (0 or missing = no place chosen).
+ * A line with no resolved item, or whose prefix has no place, sets nothing.
+ * Returns ["<item id>:<location id>" => qty summed over every matching line].
+ */
+function inv_import_par_plan(array $lines, array $lineItem, array $prefixPlace): array {
+    $out = [];
+    foreach ($lines as $i => $l) {
+        $itemId = $lineItem[$i] ?? null;
+        if (!$itemId) continue;
+        $locId = (int)($prefixPlace[inv_ship_prefix((string)($l['code'] ?? ''))] ?? 0);
+        if ($locId <= 0) continue;
+        $key = $itemId . ':' . $locId;
+        $out[$key] = ($out[$key] ?? 0) + (int)($l['qty'] ?? 0);
+    }
+    return $out;
+}
