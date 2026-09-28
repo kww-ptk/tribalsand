@@ -160,6 +160,84 @@ check('preview: a split wins for its line', $g2[inv_ship_key('Canvas print (spar
 check('preview: choices follow the lines', $g2[inv_ship_key('Canvas print')]['category'] === 'Art' && $g2[inv_ship_key('Canvas print (spare)')]['category'] === 'Art');
 check('preview: an unknown kind falls back to the suggestion', inv_ship_apply_preview($g, ['g' => [$canvasGid => ['kind' => 'gadget']]], [], [])[1][$idx('V008')]['kind'] === 'operational');
 
+// ── Importer — review fixes ─────────────────────────────────────────────────
+// Synthetic sheets: sparse rows of ['v' => .., 'b' => ..] cells.
+$cv  = fn($v, bool $b = false): array => ['v' => (string)$v, 'b' => $b];
+$hdr = [$cv('Item No'), $cv('Qty'), $cv('Description')];
+
+// no-bold sheet: sections come from "after a blank row"; a continuation joins the line above.
+$noBold = [
+    0 => $hdr,
+    1 => [$cv(''), $cv(''), $cv('Villas')],
+    2 => [$cv('V1'), $cv('2'), $cv('Villa Item')],
+    3 => [$cv(''), $cv(''), $cv('extra spec')],
+    // row 4 skipped: a blank row
+    5 => [$cv(''), $cv(''), $cv('Pool')],
+    6 => [$cv('P1'), $cv('3'), $cv('Pool Item')],
+];
+$rNoBold = inv_ship_parse_sheet('NoBold', $noBold);
+check('parse: no-bold sheet — sections from a blank row, continuations join', $rNoBold !== null && count($rNoBold['lines']) === 2
+    && $rNoBold['lines'][0]['section'] === 'Villas' && $rNoBold['lines'][0]['description'] === 'Villa Item · extra spec'
+    && $rNoBold['lines'][1]['section'] === 'Pool' && $rNoBold['lines'][1]['description'] === 'Pool Item');
+
+// Bad quantities land in skipped, with their row numbers; a sheet where every row
+// fails still reports its skipped rows via inv_ship_parse_workbook() but is not
+// counted as a sheet with lines.
+$allFail = [
+    0 => $hdr,
+    1 => [$cv('X1'), $cv('0'), $cv('Bad Qty Zero')],
+    2 => [$cv('X2'), $cv('2.5'), $cv('Bad Qty Frac')],
+    3 => [$cv('X3'), $cv('8 pcs'), $cv('Bad Qty Unit')],
+];
+$rAllFail = inv_ship_parse_sheet('AllFail', $allFail);
+check('parse: bad quantities are skipped, with their row numbers', $rAllFail !== null && $rAllFail['lines'] === []
+    && array_column($rAllFail['skipped'], 'row') === [2, 3, 4]);
+$wbAllFail = inv_ship_parse_workbook(['AllFail' => $allFail]);
+check('parse: a sheet where every row fails still reports skipped, not listed in sheets',
+    count($wbAllFail['skipped']) === 3 && $wbAllFail['sheets'] === [] && $wbAllFail['lines'] === []);
+
+// A packing column disqualifies only the row that would be the header.
+$packing = [0 => [$cv('Item No'), $cv('Qty'), $cv('Description'), $cv('Length'), $cv('Weight'), $cv('Cubes')]];
+check('parse: a header row with Length/Weight/Cubes is a packing list', inv_ship_parse_sheet('Packing', $packing) === null);
+$strayWeight = [0 => [$cv('Weight')], 1 => $hdr, 2 => [$cv('X1'), $cv('5'), $cv('ok')]];
+$rStray = inv_ship_parse_sheet('StrayWeight', $strayWeight);
+check('parse: a stray "Weight" cell before the header does not disqualify the sheet', $rStray !== null && count($rStray['lines']) === 1);
+
+// A "Containers:" row (optional colon) anywhere in the sheet is captured, not a section.
+$withContainers = [0 => $hdr, 1 => [$cv('Containers:'), $cv('MSBU123456 45G1')], 2 => [$cv('X1'), $cv('2'), $cv('Item A')]];
+$rContainers = inv_ship_parse_sheet('Containers', $withContainers);
+check('parse: a "Containers:" row after the header is captured, not a section',
+    $rContainers !== null && $rContainers['containers'] === ['MSBU123456 45G1']
+    && count($rContainers['lines']) === 1 && $rContainers['lines'][0]['section'] === '');
+
+// Bold mode: a plain description-only row right after a blank row is not a section — it's skipped.
+$boldSheet = [0 => $hdr, 1 => [$cv(''), $cv(''), $cv('Section Bold', true)], 2 => [$cv('X1'), $cv('2'), $cv('Item A')],
+    // row 3 skipped: a blank row
+    4 => [$cv(''), $cv(''), $cv('stray plain line')]];
+$rBold = inv_ship_parse_sheet('Bold', $boldSheet);
+check('parse: bold mode — a plain desc-only row after a blank row is skipped, not a section',
+    $rBold !== null && count($rBold['lines']) === 1 && count($rBold['skipped']) === 1 && $rBold['skipped'][0]['text'] === 'stray plain line');
+
+// HS code: only long float noise gets truncated.
+check('norm: a genuine long HS code is left alone', inv_ship_hs('8471.300010') === '8471.300010');
+
+// Tampered preview POSTs never throw and never apply a non-string value.
+[$tNames, ] = inv_ship_apply_preview($g, ['g' => [$canvasGid => ['kind' => ['x'], 'name' => ['y']]],
+                                          'split' => ['0.9' => 'Z', '1e0' => 'Z']], [], []);
+check('preview: tampered (non-string) posts are ignored, not fatal', $tNames === []);
+
+// An empty merge key (e.g. a description of only dots) falls back to "Item <code>".
+$dotsLine  = [['sheet' => 'T', 'row' => 2, 'section' => '', 'code' => 'X1', 'hs_code' => '', 'description' => '...', 'qty' => 3]];
+$dotsGroup = inv_ship_group($dotsLine);
+check('group: an empty merge key falls back to "Item <code>"', count($dotsGroup) === 1 && array_values($dotsGroup)[0]['name'] === 'Item X1');
+
+// Suggestions: serial only for the named appliances; a bare "set"/"bed" no longer over-matches; whitespace is collapsed first.
+check('suggest: only named appliances are serial-tracked', inv_ship_suggest_kind('Appliances', 'Russel Hobbs Kettle / Toaster Set') === 'operational'
+    && inv_ship_suggest_kind('Appliances', 'Mini Bar Fridge') === 'serial');
+check('suggest: a bare "set" no longer forces Furniture', inv_ship_suggest_category('Dinner Set') === 'Décor');
+check('suggest: "bed" only matches the whole word', inv_ship_suggest_category('Bedroom mirror') === 'Décor' && inv_ship_suggest_category('Massage Beds') === 'Furniture');
+check('suggest: extra whitespace is collapsed before matching', inv_ship_suggest_category('Napkin  Holder') === 'Kitchen & dining');
+
 // ── Pure checks (each task inserts its section above this line) ──
 
 // ── DB-backed ───────────────────────────────────────────────────────────────
