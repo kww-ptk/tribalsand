@@ -7,6 +7,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/inventory-views.php';
 require_once __DIR__ . '/../includes/xlsx-reader.php';
 require_once __DIR__ . '/../includes/inventory-shipment-import.php';
+require_once __DIR__ . '/../includes/inventory-item-import.php';
 
 $failures = 0;
 function check(string $label, bool $cond): void {
@@ -226,6 +227,14 @@ check('suggest: a bare "set" no longer forces Furniture', inv_ship_suggest_categ
 check('suggest: "bed" only matches the whole word', inv_ship_suggest_category('Bedroom mirror') === 'Décor' && inv_ship_suggest_category('Massage Beds') === 'Furniture');
 check('suggest: extra whitespace is collapsed before matching', inv_ship_suggest_category('Napkin  Holder') === 'Kitchen & dining');
 
+// ── Import (pure) ────────────────────────────────────────────────────────────
+check('sku: a group with 30 long codes is capped at 60 chars', mb_strlen(inv_import_sku(
+    ['lines' => range(0, 29)],
+    array_map(fn($i) => ['code' => 'VERYLONGITEMCODE' . str_pad((string)$i, 4, '0', STR_PAD_LEFT)], range(0, 29))
+)) <= 60);
+check('sku: codes are unique, in list order', inv_import_sku(['lines' => [0, 1, 2]],
+    [['code' => 'A1'], ['code' => 'A2'], ['code' => 'A1']]) === 'A1, A2');
+
 // ── Pure checks (each task inserts its section above this line) ──
 
 // ── DB-backed ───────────────────────────────────────────────────────────────
@@ -313,6 +322,32 @@ try {
     inv_asset_create($unit, $tdStore, ['serial' => "ZZU-{$sfx}"], null);
     check('units: a serial unit at a shared store is visible to a sharing manager', count(inv_item_units($unit, [$vMI])) === 1);
     check('units: not visible to a non-sharing manager', count(inv_item_units($unit, [$vZ])) === 0);
+
+    // ── Import items from Excel (DB) ──
+    $existingKeys = array_keys(inv_import_existing_items());
+    $expectFresh  = true;
+    foreach (array_keys($g) as $__k) if (in_array($__k, $existingKeys, true)) { $expectFresh = false; break; }
+
+    $res1 = inv_import_items($wb['lines'], $g);
+    if ($expectFresh) {
+        check('import: the real fixture’s 154 groups become 154 new items', $res1['created'] === 154 && $res1['existing'] === 0);
+    } else {
+        check('import: created + existing accounts for every one of the 154 groups', $res1['created'] + $res1['existing'] === 154);
+    }
+    check('import: no stock moves were written for the created items', $res1['created_ids'] === []
+        || $count('SELECT COUNT(*) FROM inv_moves WHERE item_id = ANY(CAST(:ids AS int[]))', [':ids' => inv_pg_int_array_literal($res1['created_ids'])]) === 0);
+
+    $fridge = db_query("SELECT tracking, category FROM inv_items WHERE name = 'Mini Bar Fridge' AND is_active = TRUE ORDER BY id DESC LIMIT 1")->fetch();
+    check('import: Mini Bar Fridge is created serial-tracked, category Appliances', $fridge && $fridge['tracking'] === 'serial' && $fridge['category'] === 'Appliances');
+
+    $canvasItem = db_query("SELECT sku FROM inv_items WHERE name = 'Wall Art - Canvas Print' AND is_active = TRUE ORDER BY id DESC LIMIT 1")->fetch();
+    check('import: sku is the group’s item codes, unique, in order', $canvasItem && $canvasItem['sku'] === 'V008, V028, S001, G009, G010');
+
+    $dining = db_query("SELECT unit_label FROM inv_items WHERE name = 'Outdoor Dining Set (9 pce)' AND is_active = TRUE ORDER BY id DESC LIMIT 1")->fetch();
+    check('import: unit_label follows the suggestion (sets)', $dining && $dining['unit_label'] === 'sets');
+
+    $res2 = inv_import_items($wb['lines'], $g);
+    check('import: importing the same list again creates nothing — every group already exists', $res2['created'] === 0 && $res2['existing'] === 154);
 
     // ── DB checks (each task inserts its block above this line) ──
 } catch (Throwable $e) {

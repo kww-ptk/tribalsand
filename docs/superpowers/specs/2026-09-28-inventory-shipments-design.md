@@ -1,5 +1,11 @@
 # Inventory — Shipments: import a supplier list, receive on a phone, put away
 
+> **Scope reduced (2026-09-28, owner):** built = shared stores (§2, shares as
+> `inv_locations.share_venue_ids INT[]`, migration `add_inventory_stores.sql`) + the
+> Excel reader/parser (§4.1) + a one-step **Import items** page (items only, no
+> stock, no preview editing). Shipments, receiving, damage and claims (§3 tables,
+> §4.2, §5–§7) were dropped as over-engineering.
+
 **Date:** 2026-09-28 · **Status:** design approved, awaiting spec review
 **Depends on:** Inventory & Assets (`add_inventory.sql`, Plans 1 / 2A / 2B, on master)
 **First use:** Maya Ilai fit-out — "Inventory List Maya Ilai 4 Containers Shipment 1.xlsx"

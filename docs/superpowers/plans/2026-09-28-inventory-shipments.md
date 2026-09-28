@@ -1,5 +1,11 @@
 # Inventory Shipments Implementation Plan
 
+> **Scope reduced (2026-09-28, owner):** built = shared stores (§2, shares as
+> `inv_locations.share_venue_ids INT[]`, migration `add_inventory_stores.sql`) + the
+> Excel reader/parser (§4.1) + a one-step **Import items** page (items only, no
+> stock, no preview editing). Shipments, receiving, damage and claims (§3 tables,
+> §4.2, §5–§7) were dropped as over-engineering.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Import a supplier's shipment Excel (first use: Maya Ilai, 4 containers), receive it on a phone (good / damaged / note / photo), put the good stock into a store that can belong to one property and be shared with others ("TD Main Stock"), and keep the ordered-vs-received record for claims.

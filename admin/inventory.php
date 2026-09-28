@@ -113,6 +113,7 @@ include __DIR__ . '/_layout.php';
   <h1>Inventory</h1>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
     <a href="/admin/inventory-locations.php" class="btn-outline btn-sm">Locations</a>
+    <?php if ($supported): ?><a href="/admin/inventory-import.php" class="btn-outline btn-sm"><?= admin_icon('download', 15) ?> Import from Excel</a><?php endif; ?>
     <?php if ($supported): ?><a href="/admin/inventory-item.php?new=1" class="btn-primary btn-sm"><?= admin_icon('plus', 15) ?> Add item</a><?php endif; ?>
   </div>
 </div>
