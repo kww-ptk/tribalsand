@@ -79,13 +79,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
         if (!is_owner()) { $_SESSION['inv_flash'] = ['type' => 'error', 'msg' => 'Owner only.']; inv_item_go("{$self}?id={$id}#actions"); }
         try {
             if ($act === 'undo_move') {
-                $moveId = (int)($_POST['move_id'] ?? 0);
+                $moveId     = (int)($_POST['move_id'] ?? 0);
+                $moveItemId = (int) db_query('SELECT item_id FROM inv_moves WHERE id = :id', [':id' => $moveId])->fetchColumn();
+                if ($moveItemId !== $id) throw new InvRefusal("That movement isn't on this item.");
                 inv_undo_move($moveId, (int)$me['id']);
                 audit_log('inv.undo_move', 'inv_item', $id, "{$item['name']} — move #{$moveId}");
                 $_SESSION['inv_flash'] = ['type' => 'success', 'msg' => 'Movement undone.'];
             } elseif ($act === 'clear_zero') {
                 $locId = (int)($_POST['location_id'] ?? 0);
                 $loc   = inv_fetch_location($locId);
+                if (!$loc) throw new InvRefusal('That location no longer exists.');
                 $moved = inv_clear_to_zero($id, $locId, (int)$me['id']);
                 audit_log('inv.clear_zero', 'inv_item', $id, $item['name'] . ' at ' . ($loc['name'] ?? "#{$locId}") . " (was {$moved})");
                 $_SESSION['inv_flash'] = ['type' => 'success', 'msg' => $item['name'] . ' at ' . ($loc['name'] ?? 'that location') . ' set to 0.'];

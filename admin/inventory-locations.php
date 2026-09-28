@@ -22,6 +22,7 @@ $vids      = admin_venue_ids();
 $me        = current_admin();
 $supported = inv_supported();
 if ($supported) inv_ensure_default_locations();
+$mainStoreId = $supported ? inv_store_location_id() : 0;   // never offered for delete — mirrors inv_delete_location()
 // ONE venue-name lookup, reused for the "belongs to" pickers, the "for <venues>" row
 // label, and the owner/share audit line — never a query per row or per share id.
 $venueNames = $supported ? db_query('SELECT id, name FROM venues ORDER BY sort_order, name')->fetchAll(PDO::FETCH_KEY_PAIR) : [];
@@ -172,7 +173,7 @@ include __DIR__ . '/_layout.php';
                   <button type="button" class="btn-outline btn-sm" data-inv-set-cancel>Cancel</button>
                 </div>
               </form>
-              <?php if (is_owner() && ($l['kind'] === 'area' || ($l['kind'] === 'store' && !inv_bool($l['is_main'] ?? false)))): ?>
+              <?php if (is_owner() && ($l['kind'] === 'area' || ($l['kind'] === 'store' && (int)$l['id'] !== $mainStoreId))): ?>
               <form method="POST" action="<?= $self ?>" class="inv-form" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
                 <?= csrf_field() ?><input type="hidden" name="action" value="delete_location"><input type="hidden" name="location_id" value="<?= (int)$l['id'] ?>">
                 <div class="field"><label>Type the name to confirm</label><input name="confirm_name" class="inp" placeholder="<?= e((string)$l['name']) ?>" autocomplete="off"></div>

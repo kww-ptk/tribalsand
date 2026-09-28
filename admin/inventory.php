@@ -204,7 +204,7 @@ include __DIR__ . '/_layout.php';
 <div class="card" style="margin-top:18px">
   <div class="card__head"><span class="card__title">Start over</span></div>
   <div class="card__body" style="padding:16px 18px">
-    <p class="text-muted" style="font-size:13px;margin:0 0 12px">Deletes ALL items, stock, counts and history. Places and stores stay. Use this before going live to clear test data.</p>
+    <p class="text-muted" style="font-size:13px;margin:0 0 12px">Deletes ALL items, stock, counts and history. Places and stores stay. Shop shelves (POS items that track stock) also go to 0 — receive stock again before selling. Use this before going live to clear test data.</p>
     <form method="POST" action="/admin/inventory.php" class="inv-form">
       <?= csrf_field() ?><input type="hidden" name="action" value="reset_all">
       <div class="field"><label>Type RESET to confirm</label><input name="confirm_text" class="inp" placeholder="RESET" autocomplete="off"></div>

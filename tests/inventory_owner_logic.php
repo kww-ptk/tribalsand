@@ -51,6 +51,11 @@ try {
     $refused = function (callable $fn): string { try { $fn(); } catch (InvRefusal $e) { return $e->getMessage(); } return ''; };
     $mkUser  = fn(string $role, string $tag) => $ins("INSERT INTO admin_users (email, role, name, is_active) VALUES (:e, :r, :n, TRUE)",
         [':e' => "zz-inv-owner-{$tag}-{$sfx}@example.com", ':r' => $role, ':n' => "ZZ {$tag}"]);
+    // Σ moves into a location − Σ moves out of it: must always equal the cached balance.
+    $ledger = fn(int $item, int $loc) => (int) db_query(
+        'SELECT COALESCE(SUM(CASE WHEN to_location_id = :a THEN qty ELSE -qty END), 0)
+           FROM inv_moves WHERE item_id = :i AND (to_location_id = :b OR from_location_id = :c)',
+        [':a' => $loc, ':i' => $item, ':b' => $loc, ':c' => $loc])->fetchColumn();
 
     $vA    = $ins("INSERT INTO venues (slug, name) VALUES (:s, 'ZZ InvOwner A')", [':s' => "zz-invown-a-{$sfx}"]);
     $store = inv_store_location_id();
@@ -76,6 +81,19 @@ try {
     $msg = $refused(fn() => inv_undo_move($mT2, null));
     check('undo: refused — undoing would take the destination below zero', str_contains($msg, 'below zero'));
     check('undo: a refused undo changes nothing', inv_balance($widget, $store) === 1 && inv_balance($widget, $locA) === 6);
+    check('ledger: widget’s balance matches the sum of its moves, everywhere it is held',
+        inv_balance($widget, $locA) === $ledger($widget, $locA) && inv_balance($widget, $store) === $ledger($widget, $store));
+
+    // CRITICAL: two undos of the same move must not reverse it twice. inv_moves rows
+    // are immutable, so the fix is DELETE … RETURNING under lock — the second call's
+    // delete affects 0 rows and is refused, never double-crediting the balance.
+    $mDbl = inv_move(['item_id' => $widget, 'qty' => 2, 'to' => $locA, 'reason' => 'receive']);
+    check('undo (double): setup — an extra receive brings A to 8', inv_balance($widget, $locA) === 8);
+    inv_undo_move($mDbl, null);
+    check('undo (double): the first undo succeeds — A back to 6', inv_balance($widget, $locA) === 6);
+    check('undo (double): undoing the SAME move again is refused, not double-reversed',
+        str_contains($refused(fn() => inv_undo_move($mDbl, null)), 'no longer exists') && inv_balance($widget, $locA) === 6);
+    check('ledger: still consistent after the double-undo attempt', inv_balance($widget, $locA) === $ledger($widget, $locA));
 
     // count-resolution and serial moves, at the DB level
     $area3 = inv_create_area($locA, "ZZ CountArea {$sfx}");
@@ -147,6 +165,22 @@ try {
         check('undo: refused for a POS sale move', str_contains($refused(fn() => inv_undo_move($saleMoveId, null)), 'POS sales'));
     }
 
+    // Minor #8: deleting an item can leave a 'submitted' count with nothing left
+    // unresolved — it should become 'resolved', not stay stuck forever.
+    $area8    = inv_create_area($locA, "ZZ ResolveArea {$sfx}");
+    $keepItem = inv_create_item(['name' => "ZZ Owner KeepItem {$sfx}", 'item_type' => 'operational', 'replacement_value' => 12]);
+    $goneItem = inv_create_item(['name' => "ZZ Owner GoneItem {$sfx}", 'item_type' => 'operational', 'replacement_value' => 18]);
+    inv_move(['item_id' => $keepItem, 'qty' => 5, 'to' => $area8, 'reason' => 'receive']);
+    inv_move(['item_id' => $goneItem, 'qty' => 5, 'to' => $area8, 'reason' => 'receive']);
+    $resUser = $mkUser('owner', 'resolveowner');
+    $rcid    = inv_count_start($area8, $resUser);
+    inv_count_submit($rcid, [$keepItem => 5, $goneItem => 3], $resUser);   // keepItem matches → auto-accepted; goneItem gaps
+    check('resolve setup: the count is submitted with one gap open (goneItem)',
+        db_query('SELECT status FROM inv_counts WHERE id = :c', [':c' => $rcid])->fetchColumn() === 'submitted');
+    inv_delete_item($goneItem, $resUser);
+    check('delete item: a count left with every remaining line resolved becomes resolved',
+        db_query('SELECT status FROM inv_counts WHERE id = :c', [':c' => $rcid])->fetchColumn() === 'resolved');
+
     // ── 4. Delete a location ──
     $area2 = inv_create_area($locA, "ZZ Pantry {$sfx}");
     $itemL = inv_create_item(['name' => "ZZ Owner AreaItem {$sfx}", 'item_type' => 'operational', 'replacement_value' => 50]);
@@ -158,9 +192,42 @@ try {
     check('delete location: the area is gone', inv_fetch_location($area2) === false);
     check('delete location: both moves were undone — the item nets back to 0 everywhere',
         inv_balance($itemL, $area2) === 0 && inv_balance($itemL, $locA) === 0);
+    check('ledger: itemL’s history matches its (now empty) balance at A', inv_balance($itemL, $locA) === $ledger($itemL, $locA));
 
     check('delete location: refused for Main stock', str_contains($refused(fn() => inv_delete_location($store, null)), "can't be deleted"));
     check('delete location: refused for a property', str_contains($refused(fn() => inv_delete_location($locA, null)), 'property / outlet / staff'));
+
+    // A non-Main store deletes cleanly (only when the shipments migration is applied).
+    if (!inv_stores_supported()) {
+        echo "SKIP  delete location: a non-Main store deletes (add_inventory_stores.sql not applied)\n";
+    } else {
+        $extraStore = inv_create_store("ZZ Owner Extra Store {$sfx}", $vA, []);
+        inv_delete_location($extraStore, null);
+        check('delete location: a non-Main store deletes', inv_fetch_location($extraStore) === false);
+    }
+
+    // Refused when the FAR end (not the place being deleted) would go below zero.
+    $area6 = inv_create_area($locA, "ZZ NegFarArea {$sfx}");
+    $itemN = inv_create_item(['name' => "ZZ Owner NegFarEnd {$sfx}", 'item_type' => 'operational', 'replacement_value' => 40]);
+    inv_move(['item_id' => $itemN, 'qty' => 10, 'to' => $area6, 'reason' => 'receive']);
+    inv_move(['item_id' => $itemN, 'qty' => 5, 'from' => $area6, 'to' => $locA, 'reason' => 'transfer']);
+    inv_move(['item_id' => $itemN, 'qty' => 3, 'from' => $locA, 'reason' => 'written_off']);
+    check('delete location setup: A now holds only 2 of the 5 transferred out of the area', inv_balance($itemN, $locA) === 2);
+    $msgFar = $refused(fn() => inv_delete_location($area6, null));
+    check('delete location: refused — undoing the transfer would take the FAR end below zero', str_contains($msgFar, 'below zero'));
+    check('delete location: a refused delete changes nothing',
+        inv_fetch_location($area6) !== false && inv_balance($itemN, $area6) === 5 && inv_balance($itemN, $locA) === 2);
+
+    // Refused for serial-unit history, with the delete-location-specific message.
+    $area7       = inv_create_area($locA, "ZZ SerialArea {$sfx}");
+    $serialAreaN = "ZZ Owner SerialArea {$sfx}";
+    $serialItem2 = inv_create_item(['name' => $serialAreaN, 'item_type' => 'employee', 'tracking' => 'serial']);
+    inv_asset_create($serialItem2, $area7, ['serial' => "ZZ-SA-{$sfx}"], null);
+    $msgSerial = $refused(fn() => inv_delete_location($area7, null));
+    check('delete location: refused for serial-unit history, naming the item and pointing at deleting it',
+        str_contains($msgSerial, "{$serialAreaN}:") && str_contains($msgSerial, 'serial-unit history here')
+        && str_contains($msgSerial, "delete {$serialAreaN} first"));
+    check('delete location: a refused (serial) delete changes nothing', inv_fetch_location($area7) !== false);
 
     // A place that was counted must still be deletable — its own count-resolution
     // moves are undone (not refused), since the count they came from is deleted

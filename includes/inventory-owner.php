@@ -49,35 +49,53 @@ function inv_undo_refusal(array $move, ?int $toQty, bool $allowCountResolution =
  * (unless $allowCountResolution — see inv_undo_refusal()), a serial-unit
  * move, or when the "to" end would go below zero. $userId is accepted for
  * parity but not written anywhere — the row is deleted, not attributed.
+ *
+ * Race-safe against two concurrent undos of the SAME move: inv_moves rows
+ * are immutable (never updated, only deleted), so a first, unlocked read is
+ * safe to use ONLY to learn which balance rows to lock. The actual delete is
+ * `DELETE … RETURNING`, which returns a row for exactly ONE of two racing
+ * callers — the other's DELETE affects 0 rows (its balance locks were
+ * acquired after the first committed) and is refused as "no longer exists".
+ * Every refusal (including the below-zero check, run on the returned row)
+ * is thrown AFTER the DELETE, so the savepoint inv_tx() opened rolls the
+ * DELETE back right along with it.
  */
 function inv_undo_move(int $moveId, ?int $userId, bool $allowCountResolution = false): void {
     if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
     inv_tx(function () use ($moveId, $allowCountResolution): void {
+        $shape = db_query('SELECT item_id, from_location_id, to_location_id FROM inv_moves WHERE id = :id', [':id' => $moveId])->fetch();
+        if (!$shape) throw new InvRefusal('That movement no longer exists.');
+        $lockItem = (int)$shape['item_id'];
+        $lockFrom = $shape['from_location_id'] !== null ? (int)$shape['from_location_id'] : null;
+        $lockTo   = $shape['to_location_id']   !== null ? (int)$shape['to_location_id']   : null;
+
+        $pairs = [];
+        if ($lockFrom !== null) $pairs[] = [$lockItem, $lockFrom];
+        if ($lockTo   !== null) $pairs[] = [$lockItem, $lockTo];
+        inv_lock_balances($pairs);
+
         $m = db_query(
-            'SELECT m.*, i.name AS item_name, lt.name AS to_name
-               FROM inv_moves m
-               JOIN inv_items i           ON i.id = m.item_id
-               LEFT JOIN inv_locations lt ON lt.id = m.to_location_id
-              WHERE m.id = :id', [':id' => $moveId]
+            'DELETE FROM inv_moves WHERE id = :id
+             RETURNING item_id, qty, from_location_id, to_location_id, asset_id, pos_sale_id, count_line_id',
+            [':id' => $moveId]
         )->fetch();
-        if (!$m) throw new InvRefusal('That movement no longer exists.');
+        if (!$m) throw new InvRefusal('That movement no longer exists.');   // a racing undo won it first
+
         $itemId = (int)$m['item_id'];
         $from   = $m['from_location_id'] !== null ? (int)$m['from_location_id'] : null;
         $to     = $m['to_location_id']   !== null ? (int)$m['to_location_id']   : null;
         $qty    = (int)$m['qty'];
+        $toQty  = $to !== null ? inv_balance($itemId, $to) : null;
 
-        $pairs = [];
-        if ($from !== null) $pairs[] = [$itemId, $from];
-        if ($to   !== null) $pairs[] = [$itemId, $to];
-        inv_lock_balances($pairs);
-        $toQty = $to !== null ? inv_balance($itemId, $to) : null;
+        $names = db_query('SELECT i.name AS item_name, lt.name AS to_name FROM inv_items i
+                             LEFT JOIN inv_locations lt ON lt.id = :to WHERE i.id = :item',
+            [':to' => $to, ':item' => $itemId])->fetch() ?: [];
 
-        $err = inv_undo_refusal($m, $toQty, $allowCountResolution);
-        if ($err !== null) throw new InvRefusal($err);
+        $err = inv_undo_refusal($m + $names, $toQty, $allowCountResolution);
+        if ($err !== null) throw new InvRefusal($err);   // rolls back the DELETE too (same savepoint)
 
         if ($from !== null) db_query('UPDATE inv_balances SET qty = qty + :q WHERE item_id = :i AND location_id = :l', [':q' => $qty, ':i' => $itemId, ':l' => $from]);
         if ($to   !== null) db_query('UPDATE inv_balances SET qty = qty - :q WHERE item_id = :i AND location_id = :l', [':q' => $qty, ':i' => $itemId, ':l' => $to]);
-        db_query('DELETE FROM inv_moves WHERE id = :id', [':id' => $moveId]);
     });
 }
 
@@ -111,33 +129,62 @@ function inv_clear_to_zero(int $itemId, int $locationId, ?int $userId): int {
 // ── 3. Delete an item ────────────────────────────────────────────────────────
 
 /**
- * Hard-delete an item and everything about it: its moves, count lines, serial
- * units and balances, then the item row itself. Counts left with zero lines
- * because of this delete are removed too. Refused when it has a POS sale in
- * its history, or a POS listing still links to it.
+ * Hard-delete an item and everything about it: its moves, count lines,
+ * balances and serial units, then the item row itself. Counts left with zero
+ * lines because of this delete are removed too; a 'submitted' count left
+ * with lines that are now ALL resolved becomes 'resolved' (its gap was this
+ * item's — nothing is left to review). Refused when it has a POS sale in its
+ * history, or a POS listing still links to it.
+ *
+ * Both refusal checks and the item's existence are re-verified INSIDE the
+ * transaction, after `SELECT … FOR UPDATE` locks the item row — the item
+ * page already checked once before calling this, but only the locked
+ * re-check closes the window for a POS sale (or a new POS listing) landing
+ * between that check and this delete. Every one of the item's balance rows
+ * is locked (inv_lock_balances()) before anything is deleted.
  */
 function inv_delete_item(int $itemId, ?int $userId): void {
     if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
     $item = inv_fetch_item($itemId);
     if (!$item) throw new InvRefusal('That item no longer exists.');
+    $posSaleRefusal    = 'It has POS sales — switch it off instead.';
+    $posListingRefusal = 'It is linked to a POS listing — delete that listing first (count it to 0 on the POS Stock page).';
     if ((bool) db_query('SELECT 1 FROM inv_moves WHERE item_id = :i AND pos_sale_id IS NOT NULL LIMIT 1', [':i' => $itemId])->fetchColumn()) {
-        throw new InvRefusal('It has POS sales — switch it off instead.');
+        throw new InvRefusal($posSaleRefusal);
     }
     if ((bool) db_query('SELECT 1 FROM pos_items WHERE inv_item_id = :i LIMIT 1', [':i' => $itemId])->fetchColumn()) {
-        throw new InvRefusal('It is linked to a POS listing — unlink it in the POS catalogue first.');
+        throw new InvRefusal($posListingRefusal);
     }
-    inv_tx(function () use ($itemId): void {
+    inv_tx(function () use ($itemId, $posSaleRefusal, $posListingRefusal): void {
+        if (!db_query('SELECT 1 FROM inv_items WHERE id = :i FOR UPDATE', [':i' => $itemId])->fetchColumn()) {
+            throw new InvRefusal('That item no longer exists.');
+        }
+        if ((bool) db_query('SELECT 1 FROM inv_moves WHERE item_id = :i AND pos_sale_id IS NOT NULL LIMIT 1', [':i' => $itemId])->fetchColumn()) {
+            throw new InvRefusal($posSaleRefusal);
+        }
+        if ((bool) db_query('SELECT 1 FROM pos_items WHERE inv_item_id = :i LIMIT 1', [':i' => $itemId])->fetchColumn()) {
+            throw new InvRefusal($posListingRefusal);
+        }
+
+        $locIds = array_map('intval', db_query('SELECT location_id FROM inv_balances WHERE item_id = :i', [':i' => $itemId])->fetchAll(PDO::FETCH_COLUMN));
+        inv_lock_balances(array_map(fn(int $l): array => [$itemId, $l], $locIds));
+
         $countIds = db_query('SELECT DISTINCT count_id FROM inv_count_lines WHERE item_id = :i', [':i' => $itemId])->fetchAll(PDO::FETCH_COLUMN);
         db_query('DELETE FROM inv_moves WHERE item_id = :i', [':i' => $itemId]);
         db_query('DELETE FROM inv_count_lines WHERE item_id = :i', [':i' => $itemId]);
-        db_query('DELETE FROM inv_assets WHERE item_id = :i', [':i' => $itemId]);
         db_query('DELETE FROM inv_balances WHERE item_id = :i', [':i' => $itemId]);
+        db_query('DELETE FROM inv_assets WHERE item_id = :i', [':i' => $itemId]);
         db_query('DELETE FROM inv_items WHERE id = :i', [':i' => $itemId]);
         if ($countIds) {
             $ids = array_map('intval', $countIds);
             db_query(
                 'DELETE FROM inv_counts WHERE id = ANY(CAST(:ids AS int[]))
                    AND NOT EXISTS (SELECT 1 FROM inv_count_lines WHERE count_id = inv_counts.id)',
+                [':ids' => inv_pg_int_array_literal($ids)]
+            );
+            db_query(
+                "UPDATE inv_counts SET status = 'resolved' WHERE id = ANY(CAST(:ids AS int[])) AND status = 'submitted'
+                   AND NOT EXISTS (SELECT 1 FROM inv_count_lines WHERE count_id = inv_counts.id AND resolution IS NULL)",
                 [':ids' => inv_pg_int_array_literal($ids)]
             );
         }
@@ -147,13 +194,15 @@ function inv_delete_item(int $itemId, ?int $userId): void {
 // ── 4. Delete a location ─────────────────────────────────────────────────────
 
 /**
- * Delete an area, or an extra store (never Main stock, never a property /
- * outlet / person — those follow their own record). Refused when it has
- * child locations. Every move touching it is undone first (newest first,
- * same rules as inv_undo_move() — a POS sale, a serial move, a count
- * review tied to ANOTHER place, or a resulting negative balance aborts the
- * WHOLE delete, its message prefixed with the item's name), then its counts
- * and balance rows are removed, then the location itself.
+ * Delete an area, or an extra store (never Main stock — even before
+ * add_inventory_stores.sql, when the single 'store' row has no is_main
+ * column to check — never a property / outlet / person, which follow their
+ * own record). Refused when it has child locations. Every move touching it
+ * is undone first (newest first, same rules as inv_undo_move() — a POS
+ * sale, a count review tied to ANOTHER place, or a resulting negative
+ * balance aborts the WHOLE delete, its message prefixed with the item's
+ * name), then its counts and balance rows are removed, then the location
+ * itself.
  *
  * A count-resolution move IS undone (not refused) when the count line it
  * came from belongs to a count of THIS location — that count is deleted a
@@ -162,6 +211,11 @@ function inv_delete_item(int $itemId, ?int $userId): void {
  * deleted (inv_undo_move()) before the count lines are, so the FK
  * (inv_moves.count_line_id → inv_count_lines, ON DELETE SET NULL) is never
  * in play either way.
+ *
+ * A SERIAL-unit move is never liftable this way (a unit's whole history has
+ * to move or disappear together with the unit's item) — it always aborts
+ * the delete, naming the item: that place can only be deleted once the item
+ * itself is deleted (inv_delete_item()), which takes its moves with it.
  */
 function inv_delete_location(int $locationId, ?int $userId): void {
     if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
@@ -170,7 +224,10 @@ function inv_delete_location(int $locationId, ?int $userId): void {
     if (!in_array($loc['kind'], ['area', 'store'], true)) {
         throw new InvRefusal('Properties, shops and team members follow their property / outlet / staff record.');
     }
-    if ($loc['kind'] === 'store' && inv_bool($loc['is_main'] ?? false)) {
+    // Before add_inventory_stores.sql there is no is_main column at all — the single
+    // 'store' row IS Main stock, so it must be caught the same way either side of
+    // that migration. inv_store_location_id() works pre- and post-migration.
+    if ($loc['kind'] === 'store' && (inv_bool($loc['is_main'] ?? false) || $locationId === inv_store_location_id())) {
         throw new InvRefusal("Main stock can't be deleted.");
     }
     if ((int) db_query('SELECT COUNT(*) FROM inv_locations WHERE parent_id = :p', [':p' => $locationId])->fetchColumn() > 0) {
@@ -183,7 +240,7 @@ function inv_delete_location(int $locationId, ?int $userId): void {
         )->fetchAll(PDO::FETCH_COLUMN));
 
         $moves = db_query(
-            'SELECT m.id, m.item_id, m.from_location_id, m.to_location_id, m.count_line_id, i.name AS item_name
+            'SELECT m.id, m.item_id, m.from_location_id, m.to_location_id, m.count_line_id, m.asset_id, i.name AS item_name
                FROM inv_moves m JOIN inv_items i ON i.id = m.item_id
               WHERE m.from_location_id = :l1 OR m.to_location_id = :l2 ORDER BY m.id DESC',
             [':l1' => $locationId, ':l2' => $locationId]
@@ -195,6 +252,12 @@ function inv_delete_location(int $locationId, ?int $userId): void {
         }
         inv_lock_balances($pairs);   // the whole set, global order, before undoing any of them
         foreach ($moves as $mv) {
+            // A serial unit's history can never be undone (inv_undo_refusal()) — say so in
+            // terms of what actually clears it (delete the item), not the generic item-page
+            // wording, which talks about moving the unit instead (not offered here).
+            if ($mv['asset_id'] !== null) {
+                throw new InvRefusal("{$mv['item_name']}: it has serial-unit history here — delete {$mv['item_name']} first.");
+            }
             $allow = $mv['count_line_id'] !== null && in_array((int)$mv['count_line_id'], $ownCountLineIds, true);
             try {
                 inv_undo_move((int)$mv['id'], $userId, $allow);
