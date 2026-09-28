@@ -42,6 +42,12 @@ check('due card: skips places that are not due, and is empty when nothing is', i
 check('due card: shows the review count for managers', str_contains(inv_counts_due_card([], 3), '3 to review'));
 check('due card: escapes the label', str_contains(inv_counts_due_card([['id' => 1, 'label' => '<script>x</script>', 'count_status' => 'due', 'open_count_id' => null, 'line_count' => 1]], 0), '&lt;script&gt;'));
 check('due card: an open count links straight to it', str_contains(inv_counts_due_card([['id' => 4, 'label' => 'P', 'count_status' => 'due', 'open_count_id' => 77, 'line_count' => 2]], 0), 'inventory-count.php?count=77'));
+$six = array_map(fn(int $i) => ['id' => $i, 'label' => "Place {$i}", 'count_status' => 'due', 'open_count_id' => null, 'line_count' => 1], range(1, 6));
+$capped = inv_counts_due_card($six, 0, 5, '/admin/inventory-counts.php');
+check('due card: capped at 5 places with a See all link', substr_count($capped, 'Count now') === 5 && !str_contains($capped, 'Place 6')
+    && str_contains($capped, 'href="/admin/inventory-counts.php"') && str_contains($capped, 'See all — 1 more due'));
+check('due card: no See all when everything fits', !str_contains(inv_counts_due_card(array_slice($six, 0, 5), 0), 'See all'));
+check('due card: two-argument calls keep the default cap and link', str_contains($d = inv_counts_due_card($six, 0), 'href="/admin/inventory-count.php"') && substr_count($d, 'Count now') === 5);
 check('due card: a due row with nothing expected is skipped', inv_counts_due_card([['id' => 1, 'label' => 'X', 'count_status' => 'due', 'open_count_id' => null, 'line_count' => 0]], 0) === '');
 
 // ── DB-backed ───────────────────────────────────────────────────────────────
@@ -138,6 +144,11 @@ try {
     $held = inv_person_assets($jane);
     $ph = array_values(array_filter($held['rows'], fn($r) => (int)$r['item_id'] === $phone))[0] ?? null;
     check('person: the phone is listed with its serial', $ph && count($ph['units']) === 1 && $ph['units'][0]['serial'] === "ZZ-CP-{$sfx}");
+    // A person who moves property: the ensure call re-copies their home venue onto the location.
+    $jLoc = inv_person_location_id($jane);
+    db_query('UPDATE hr_staff SET venue_id = :v WHERE id = :s', [':v' => $vB, ':s' => $jane]);
+    check('person: the location still holds the old venue until refreshed', (int)inv_fetch_location($jLoc)['venue_id'] === $vA);
+    check('person: inv_person_location_id() refreshes the owning venue', inv_person_location_id($jane) === $jLoc && (int)inv_fetch_location($jLoc)['venue_id'] === $vB);
     // ── DB checks (later tasks insert above this line) ──
 } catch (Throwable $e) {
     echo "FAIL  DB block threw: " . $e->getMessage() . "\n" . $e->getTraceAsString() . "\n";

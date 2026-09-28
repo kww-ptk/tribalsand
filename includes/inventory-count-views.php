@@ -194,12 +194,15 @@ function inv_count_line_location(int $lineId): ?array {
 /**
  * A card listing places due/overdue for counting (from inv_countable_locations();
  * rows that are not due are skipped) and, for managers, how many counts wait for
- * review. Returns '' when there is nothing to show.
+ * review. Shows at most $max places (most urgent first, as given), with a
+ * "See all" link to $allUrl when more are due. Returns '' when there is nothing to show.
  */
-function inv_counts_due_card(array $places, int $reviewCount): string {
+function inv_counts_due_card(array $places, int $reviewCount, int $max = 5, string $allUrl = '/admin/inventory-count.php'): string {
     $due = array_values(array_filter($places, fn(array $r): bool =>
         in_array($r['count_status'], ['due', 'overdue'], true) && (int)($r['line_count'] ?? 1) !== 0));
     if (!$due && $reviewCount <= 0) return '';
+    $more = max(0, count($due) - max(1, $max));
+    $due  = array_slice($due, 0, max(1, $max));
     ob_start(); ?>
 <div class="card" style="margin-bottom:16px">
   <div class="card__head"><span class="card__title">Stock counts</span>
@@ -207,11 +210,16 @@ function inv_counts_due_card(array $places, int $reviewCount): string {
   <?php if ($due): ?>
   <div class="card__body" style="padding:0">
     <?php foreach ($due as $r): [$sl, $sc] = INV_COUNT_STATUS_LABELS[$r['count_status']]; ?>
-    <div style="display:flex;align-items:center;gap:10px;justify-content:space-between;padding:12px 16px;border-top:1px solid var(--border)">
+    <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;justify-content:space-between;padding:12px 16px;border-top:1px solid var(--border)">
       <span><strong><?= e($r['label']) ?></strong> <span class="badge <?= e($sc) ?>"><?= e($sl) ?></span></span>
       <a href="/admin/inventory-count.php?<?= $r['open_count_id'] ? 'count=' . (int)$r['open_count_id'] : 'location=' . (int)$r['id'] ?>" class="btn-primary btn-sm"><?= $r['open_count_id'] ? 'Continue' : 'Count now' ?></a>
     </div>
     <?php endforeach; ?>
+    <?php if ($more): ?>
+    <div style="padding:10px 16px;border-top:1px solid var(--border);font-size:13px">
+      <a href="<?= e($allUrl) ?>">See all — <?= $more ?> more due</a>
+    </div>
+    <?php endif; ?>
   </div>
   <?php endif; ?>
 </div>

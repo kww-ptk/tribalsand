@@ -116,7 +116,8 @@ include __DIR__ . '/_layout.php';
       <?php endforeach; ?>
     </div>
     <div class="invc-bar">
-      <span id="invcProgress" class="text-muted" aria-live="polite">0 of <?= count($lines) ?> counted</span>
+      <span id="invcProgress" class="text-muted">0 of <?= count($lines) ?> counted</span>
+      <span id="invcAlert" role="status" aria-live="polite" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap"></span>
       <button type="submit" class="btn-primary"><?= admin_icon('check', 16) ?> Submit count</button>
     </div>
   </form>
@@ -207,6 +208,7 @@ include __DIR__ . '/_layout.php';
   var key = 'invc-draft-' + form.getAttribute('data-count');
   var cards = Array.prototype.slice.call(form.querySelectorAll('.invc-card'));
   var pr = document.getElementById('invcProgress');
+  var alertBox = document.getElementById('invcAlert');   // announced only when a submit is blocked
   var draft = {};
   try { draft = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch (e) { draft = {}; }
   function whole(v) { return /^\d+$/.test(v); }
@@ -255,10 +257,13 @@ include __DIR__ . '/_layout.php';
     first.scrollIntoView({ behavior: 'smooth', block: 'center' });
     first.querySelector('.invc-inp').focus();
     bad.forEach(paint);
-    pr.textContent = missing.length
+    var warn = missing.length
       ? missing.length + ' still to count — enter 0 if there are none'
       : bad.length + (bad.length === 1 ? ' count is' : ' counts are') + ' not a whole number';
+    pr.textContent = warn;
     pr.classList.add('invc-warn');
+    alertBox.textContent = '';                                   // clear first so a repeat is announced again
+    setTimeout(function () { alertBox.textContent = warn; }, 50);
   });
 })();
 </script>

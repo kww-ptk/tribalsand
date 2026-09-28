@@ -80,6 +80,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_POST['action'] ?? '', ['
         if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
         $note = (string)($_POST['note'] ?? '');
         if ($_POST['action'] === 'asset_assign') {
+            if (($p['status'] ?? 'active') !== 'active') throw new InvRefusal('They have left — items can be returned, not handed over.');
             $pick = (string)($_POST['pick'] ?? '');
             if (preg_match('/^qty:(\d+):(\d+)$/', $pick, $m)) {
                 $item = inv_fetch_item((int)$m[1]);
@@ -93,10 +94,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_POST['action'] ?? '', ['
             }
         } else {
             $item  = inv_fetch_item((int)($_POST['item_id'] ?? 0));
-            $ploc  = inv_person_location_find($id);
-            if (!$ploc) throw new InvRefusal('They don’t hold anything.');
+            if (!inv_person_location_find($id)) throw new InvRefusal('They don’t hold anything.');
+            // The ensure call re-copies name + home venue onto their location, so a person
+            // who moved property is scoped to their NEW venue before the move is checked.
+            $ploc  = inv_person_location_id($id);
+            $assetId = (string)($_POST['asset_id'] ?? '');
+            if ($assetId !== '') {
+                $at = db_query("SELECT location_id FROM inv_assets WHERE id = :a AND status = 'active'", [':a' => (int)$assetId])->fetchColumn();
+                if ($at === false || (int)$at !== $ploc) throw new InvRefusal('That unit isn’t with this person.');
+            }
             $do    = (string)($_POST['do'] ?? '');
-            $base  = ['qty' => (string)($_POST['qty'] ?? '1'), 'asset_id' => (string)($_POST['asset_id'] ?? ''), 'from_id' => (string)$ploc, 'note' => $note];
+            $base  = ['qty' => (string)($_POST['qty'] ?? '1'), 'asset_id' => $assetId, 'from_id' => (string)$ploc, 'note' => $note];
             if (preg_match('/^loc:\d+$/', $do))                        $in = $base + ['action' => 'transfer', 'to' => $do];
             elseif (preg_match('/^loss:(broken|missing|stolen)$/', $do, $m)) $in = $base + ['action' => 'loss', 'reason' => $m[1]];
             else throw new InvRefusal('Pick where it goes back to, or what happened.');
@@ -163,10 +171,14 @@ $hasProfile = hr_staff_profile_supported();
 $hasDocs    = hr_staff_documents_supported();
 $docs       = $hasDocs ? fetch_hr_staff_documents($id) : [];
 
-// Assets tab: what they hold, and what this account may hand them.
+// Assets tab: what they hold, and what this account may hand them. Only the owner or
+// a manager of their HOME venue sees their items — a manager who sees the profile via
+// an extra venue gets the note only (a person's stock is hidden from them elsewhere too).
 $invOn       = inv_supported();
 $assetsOwned = $invOn && (is_owner() || ($p['venue_id'] !== null && in_array((int)$p['venue_id'], array_map('intval', $vids ?? []), true)));
-$assets      = $invOn ? inv_person_assets($id) : ['location' => null, 'rows' => []];
+$isActive    = ($p['status'] ?? 'active') === 'active';
+if ($invOn && inv_person_location_find($id) !== null) inv_person_location_id($id);   // keep the owning venue current
+$assets      = $assetsOwned ? inv_person_assets($id) : ['location' => null, 'rows' => []];
 $assetStock  = $assetsOwned ? inv_assignable_stock($vids) : [];
 $assetUnits  = $assetsOwned ? inv_assignable_units($vids) : [];
 $returnTo    = $assetsOwned ? array_values(array_filter(inv_locations_visible($vids), fn($l) => $l['kind'] !== 'person')) : [];
@@ -349,9 +361,9 @@ include __DIR__ . '/_layout.php';
       <span class="card__title">Assigned assets</span>
       <?php if ($assetValue): ?><span class="text-muted" style="font-size:12px"><?php foreach ($assetValue as $c => $amt): ?><?= e(inv_money((float)$amt, (string)$c)) ?> <?php endforeach; ?></span><?php endif; ?>
     </div>
-    <?php if (!$assets['rows']): ?>
+    <?php if ($assetsOwned && !$assets['rows']): ?>
       <div class="card__body" style="padding:18px"><p class="text-muted" style="margin:0;font-size:13px">Nothing assigned — phones, laptops, keys and tools handed to <?= e($p['full_name']) ?> show here.</p></div>
-    <?php else: ?>
+    <?php elseif ($assetsOwned): ?>
     <div class="table-wrap"><table class="data-table">
       <thead><tr><th>Item</th><th class="inv-num">Qty</th><th>Last given</th><th class="inv-num">Value</th><?php if ($assetsOwned): ?><th>Return / report</th><?php endif; ?></tr></thead>
       <tbody>
@@ -385,7 +397,9 @@ include __DIR__ . '/_layout.php';
     </table></div>
     <?php endif; ?>
 
-    <?php if ($assetsOwned && ($assetStock || $assetUnits)): ?>
+    <?php if ($assetsOwned && $isActive && !$assetStock && !$assetUnits): ?>
+    <div class="card__body" style="padding:12px 18px;border-top:1px solid var(--border)"><p class="text-muted" style="margin:0;font-size:12.5px">Nothing in stock to hand over.</p></div>
+    <?php elseif ($assetsOwned && $isActive): ?>
     <div class="card__body" style="padding:16px 18px;border-top:1px solid var(--border)">
       <form method="POST" action="/admin/employee.php?id=<?= $id ?>" class="emp-asset-assign">
         <?= csrf_field() ?><input type="hidden" name="action" value="asset_assign"><input type="hidden" name="hr_id" value="<?= $id ?>">
@@ -402,7 +416,7 @@ include __DIR__ . '/_layout.php';
       </form>
     </div>
     <?php elseif (!$assetsOwned): ?>
-    <div class="card__body" style="padding:12px 18px;border-top:1px solid var(--border)"><p class="text-muted" style="margin:0;font-size:12.5px">Items are handed over and returned by the owner or a manager of <?= e($homeVenue) ?>.</p></div>
+    <div class="card__body" style="padding:12px 18px"><p class="text-muted" style="margin:0;font-size:12.5px">Items are handed over and returned by the owner<?= $p['venue_id'] !== null ? ' or a manager of ' . e($homeVenue) : '' ?>.</p></div>
     <?php endif; ?>
   </div>
 </div>
@@ -501,9 +515,9 @@ include __DIR__ . '/_layout.php';
 </style>
 
 <script>
-/* Tabs: Overview / Employment / Documents. If we landed on #documents (after an
-   upload or delete redirect), open the Documents tab — otherwise it sits inside
-   a hidden panel and the anchor does nothing. */
+/* Tabs: Overview / Employment / Documents / Assets. If we landed on #documents or
+   #assets (after an upload, delete or hand-over redirect), open that tab — otherwise
+   it sits inside a hidden panel and the anchor does nothing. */
 (function () {
   var btns = document.querySelectorAll('.tab-btn');
   if (!btns.length) return;
@@ -514,9 +528,8 @@ include __DIR__ . '/_layout.php';
   btns.forEach(function (b) {
     b.addEventListener('click', function () { activate(b.dataset.tab); });
   });
-  if (window.location.hash === '#documents' || window.location.hash === '#assets') {
-    activate(window.location.hash.slice(1));
-  }
+  var h = window.location.hash.slice(1);
+  if ((h === 'documents' || h === 'assets') && document.getElementById('tab-' + h)) activate(h);
 })();
 
 /* Styled file input (.filefield): show what was picked — one name, or "N files". */

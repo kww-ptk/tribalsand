@@ -79,7 +79,7 @@ include __DIR__ . '/_layout.php';
       <div class="card"><?php dt_empty('No differences waiting — every submitted count matched or has been checked.', 'check'); ?></div>
     <?php endif; ?>
     <?php if ($more): ?>
-      <div class="alert alert--info">Showing the <?= INVQ_SHOW_MAX ?> oldest counts — <?= $more ?> more wait<?= $more === 1 ? 's' : '' ?> behind them. Check these first.</div>
+      <div class="alert alert--info">Showing the <?= INVQ_SHOW_MAX ?> oldest counts — <?= $more ?> more <?= $more === 1 ? 'is' : 'are' ?> waiting. Resolve these first.</div>
     <?php endif; ?>
     <?php foreach ($sheets as $s): if (!$s) continue;
       $canResolve = inv_can_resolve(['kind' => $s['kind'], 'venue_id' => $s['venue_id']], $role, $vids);

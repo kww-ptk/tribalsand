@@ -16,10 +16,7 @@ $activeMenu = 'frontdesk';
 
 // ── Scope: owner => null (all); manager/staff => their venue ids (empty => none) ──
 $isOwner = is_owner();
-$__me        = current_admin();
-$countsCard  = inv_supported() ? inv_counts_due_card(
-    inv_countable_locations((int)$__me['id'], admin_role(), admin_venue_ids(), frontdesk_today_ymd()),
-    ($isOwner || is_manager()) ? inv_count_queue_size(admin_venue_ids(), true) : 0) : '';   // only what this account can resolve
+$meId    = (int)($_SESSION['admin_id'] ?? 0);
 $allowed = $isOwner ? null : (admin_venue_ids() ?: []);   // null = all venues
 
 // Venue list for the filter (owner: all; staff: their venues).
@@ -42,6 +39,15 @@ if ($venueFilter > 0 && in_array($venueFilter, $validIds, true)) {
     $venueFilter = 0;
     $venueIds = $allowed;   // null (owner all) or the staff's full set
 }
+
+// "Stock counts" card — follows the property picker; the review badge counts only
+// what this account can resolve.
+$countScope = $venueFilter ? [$venueFilter] : $allowed;
+$reviewer   = $isOwner || is_manager();
+$countsCard = inv_supported() ? inv_counts_due_card(
+    inv_countable_locations($meId, admin_role(), $countScope, frontdesk_today_ymd()),
+    $reviewer ? inv_count_queue_size($countScope, true) : 0,
+    5, $reviewer ? '/admin/inventory-counts.php' : '/admin/inventory-count.php') : '';
 
 // Tab.
 $when = in_array($_GET['when'] ?? '', ['today','tomorrow','week'], true) ? $_GET['when'] : 'today';
