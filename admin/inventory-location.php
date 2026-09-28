@@ -3,7 +3,8 @@
  * Admin: one location's stock — every item there with its quantity, the par level
  * it should always have, and what is short. Set par levels (and add an item to
  * the list by giving it a par), then "Restock to par" pulls the shortfall from
- * Main stock in one transaction (inv_restock_to_par()). Owner + manager; the
+ * a store the account may use (default: the store serving this property, else
+ * Main stock), in one transaction (inv_restock_to_par()). Owner + manager; the
  * location must be visible, and changes need inv_location_editable() plus the
  * move scope. Quantities change only through the inventory core.
  */
@@ -35,7 +36,14 @@ if (!$loc || $loc['kind'] === 'person' || !inv_location_visible($loc, $vids)) { 
 }
 $editable  = inv_location_editable($loc, $vids);
 $open      = inv_bool($loc['is_active']);
-$storeName = (string)(inv_fetch_location(inv_store_location_id())['name'] ?? 'Main stock');
+// Where "Restock to par" may pull from: open stores this account can move out of into here.
+$sources = [];
+if ($loc['kind'] !== 'store') {
+    foreach (inv_locations_visible($vids) as $s) {
+        if ($s['kind'] === 'store' && (int)$s['id'] !== (int)$loc['id'] && inv_move_in_scope($s, $loc, $vids)) $sources[(int)$s['id']] = $s;
+    }
+}
+$defaultSource = inv_default_restock_source(array_values($sources), $loc);
 $flash = $_SESSION['inv_flash'] ?? null; unset($_SESSION['inv_flash']);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -59,9 +67,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             audit_log('inv.par', 'inv_location', (int)$loc['id'], "{$it['name']}: " . ($raw === '' ? 'cleared' : $raw));
             $_SESSION['inv_flash'] = ['type' => 'success', 'msg' => $raw === '' ? "Par level for {$it['name']} cleared." : "{$loc['name']} should always have {$raw} × {$it['name']}."];
         } elseif ($act === 'restock') {
-            $store = inv_fetch_location(inv_store_location_id());
-            if (!inv_move_in_scope($store, $loc, $vids)) throw new InvRefusal('That restock is outside your properties.');
-            $r = inv_restock_to_par((int)$loc['id'], (int)$me['id']);
+            $source = $sources[(int)($_POST['source_id'] ?? 0)] ?? null;   // only a store offered on this page
+            if (!$source) throw new InvRefusal('Pick a store you can restock from.');
+            $storeName = (string)$source['name'];
+            $r = inv_restock_to_par((int)$loc['id'], (int)$me['id'], (int)$source['id']);
             $moved   = array_sum($r['moved']);
             $short   = count($r['short']);
             $skipped = count($r['skipped']);
@@ -114,10 +123,13 @@ include __DIR__ . '/_layout.php';
     <div class="inv-kpi"><span><?= $loc['last_counted_at'] ? 'Last counted ' . e(date('j M', strtotime((string)$loc['last_counted_at']))) : 'Never counted' ?></span><span class="badge <?= e($STATUS[$status][1]) ?>"><?= e($STATUS[$status][0]) ?></span>
       <?php if ($nextDue): ?><span class="inv-sub">Next count due <?= e(date('j M', strtotime($nextDue))) ?></span><?php endif; ?>
       <?php if ($canCount): ?><a href="<?= e($countUrl) ?>" class="btn-outline btn-sm" style="margin-top:6px"><?= admin_icon('check', 14) ?> <?= $countState['open_count_id'] ? 'Continue count' : 'Count now' ?></a><?php endif; ?></div>
-    <?php if ($editable && $open && $needs > 0 && $loc['kind'] !== 'store'): ?>
-    <form method="POST" action="<?= e($self) ?>" style="margin-left:auto;align-self:center">
+    <?php if ($editable && $open && $needs > 0 && $loc['kind'] !== 'store' && $sources): ?>
+    <form method="POST" action="<?= e($self) ?>" class="inv-restock">
       <?= csrf_field() ?><input type="hidden" name="action" value="restock"><input type="hidden" name="location_id" value="<?= (int)$loc['id'] ?>">
-      <button type="submit" class="btn-primary btn-sm" data-confirm="<?= e("Move what is short from {$storeName} to here?") ?>"><?= admin_icon('arrow-right', 15) ?> Restock to par from <?= e($storeName) ?></button>
+      <select name="source_id" class="eselect" aria-label="Restock from">
+        <?php foreach ($sources as $sid => $s): ?><option value="<?= (int)$sid ?>" <?= $sid === $defaultSource ? 'selected' : '' ?>><?= e((string)$s['name']) ?></option><?php endforeach; ?>
+      </select>
+      <button type="submit" class="btn-primary btn-sm" data-confirm="Move what is short from the chosen store to here?"><?= admin_icon('arrow-right', 15) ?> Restock to par</button>
     </form>
     <?php endif; ?>
   </div>
@@ -179,5 +191,6 @@ include __DIR__ . '/_layout.php';
 .inv-par .inp{width:72px}
 .inv-add{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) auto;gap:0 12px}
 @media (max-width:560px){.inv-add{grid-template-columns:1fr}}
+.inv-restock{margin-left:auto;align-self:center;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 </style>
 <?php include __DIR__ . '/_layout_end.php'; ?>
