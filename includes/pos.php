@@ -1392,8 +1392,44 @@ function pos_catalog_payload(array $outlet): array {
 }
 
 /** A sale for the till / receipt. */
+const POS_RECEIPT_EMAIL_MAX = 3;   // copies of one receipt that can be emailed
+
+/** pos_sales has the receipt-email columns (add_pos_receipt_email.sql) — catalog lookup. */
+function pos_receipt_email_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { return $ok = (bool) db_query("SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'pos_sales' AND column_name = 'receipt_sent_count'")->fetchColumn(); }
+    catch (Throwable $e) { return $ok = false; }
+}
+
+/** The address to suggest for emailing a receipt: the last one used, the saved customer's, or the booking's. */
+function pos_sale_email_hint(array $s): string {
+    if (!empty($s['receipt_email'])) return (string)$s['receipt_email'];
+    if (!empty($s['pos_customer_id'])) {
+        $e = db_query('SELECT email FROM pos_customers WHERE id = :c', [':c' => (int)$s['pos_customer_id']])->fetchColumn();
+        if ($e) return (string)$e;
+    }
+    if (!empty($s['hold_id'])) {
+        $e = db_query('SELECT guest_email FROM holds WHERE id = :h', [':h' => (int)$s['hold_id']])->fetchColumn();
+        if ($e) return (string)$e;
+    }
+    return '';
+}
+
+/** Tax document numbers issued for a sale (accounting), e.g. ["TSS-INV-000012"]. */
+function pos_sale_document_numbers(int $saleId): array {
+    try {
+        if (!(bool) db_query("SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'acct_documents' AND column_name = 'pos_sale_id'")->fetchColumn()) return [];
+        return db_query("SELECT number FROM acct_documents WHERE pos_sale_id = :s AND doc_type IN ('invoice','ic_invoice') ORDER BY id", [':s' => $saleId])->fetchAll(PDO::FETCH_COLUMN);
+    } catch (Throwable $e) { return []; }
+}
+
 function pos_sale_payload(array $s): array {
+    $mailOn = pos_receipt_email_supported();
     return [
+        'can_email' => $mailOn && ($s['status'] ?? '') === 'completed' && (int)($s['receipt_sent_count'] ?? 0) < POS_RECEIPT_EMAIL_MAX,
+        'email_hint' => $mailOn ? pos_sale_email_hint($s) : '',
+        'receipt_sent' => (int)($s['receipt_sent_count'] ?? 0),
         'id' => (int)$s['id'], 'reference' => (string)$s['reference'], 'status' => (string)$s['status'],
         'outlet_id' => (int)$s['outlet_id'], 'outlet' => (string)($s['outlet_name'] ?? ''), 'staff' => (string)($s['user_name'] ?? ''),
         'customer' => (string)$s['customer_name'], 'customer_type' => (string)$s['customer_type'],

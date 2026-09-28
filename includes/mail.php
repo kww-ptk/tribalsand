@@ -1326,6 +1326,50 @@ function send_reservation_confirmed(array $res): void {
     _dispatch_mail($to, $subject, $text, $from, $reply, $env, $html);
 }
 
+/**
+ * Email a till receipt (a pos_fetch_sale() row) to $to. Returns whether it was handed
+ * to the mailer. Branded like the other guest emails; Reply-To is reservations@.
+ */
+function send_pos_receipt(array $s, string $to): bool {
+    if (!filter_var($to, FILTER_VALIDATE_EMAIL)) return false;
+    $env   = parse_env();
+    $from  = $env['MAIL_FROM'] ?? 'noreply@tribalsand.com';
+    $reply = setting('notify_email', 'reservations@tribalsand.com');
+    $site  = rtrim($env['SITE_URL'] ?? $env['APP_URL'] ?? 'https://tribalsand.com', '/');
+    $cur   = (string)$s['currency'];
+    $m     = fn($v) => $cur . ' ' . number_format((float)$v, 2);
+    $outlet = (string)($s['outlet_name'] ?? 'Tribal Sand');
+    $when  = date('j M Y, H:i', strtotime((string)$s['created_at']));
+    $docs  = function_exists('pos_sale_document_numbers') ? pos_sale_document_numbers((int)$s['id']) : [];
+    $labels = defined('POS_PAYMENT_METHODS') ? POS_PAYMENT_METHODS : [];
+    $incl   = in_array($s['vat_inclusive'] ?? true, [true, 't', 1, '1', 'true'], true);   // Postgres 't' or PHP true
+
+    $rows = [];
+    foreach ($s['lines'] ?? [] as $l) $rows[] = [(int)$l['qty'] . ' × ' . $l['name'], $m($l['line_total'])];
+    if ((float)$s['service_charge'] > 0) $rows[] = ['Service charge', $m($s['service_charge'])];
+    if ((float)($s['vat_amount'] ?? 0) > 0 && !$incl) $rows[] = ['VAT (' . rtrim(rtrim((string)$s['vat_pct'], '0'), '.') . '%)', $m($s['vat_amount'])];
+    if ((float)($s['tip_amount'] ?? 0) > 0) $rows[] = ['Tip', $m($s['tip_amount'])];
+    $rows[] = ['Total · ' . ($labels[$s['payment_method']] ?? $s['payment_method']), $m($s['total'])];
+    if ((float)($s['vat_amount'] ?? 0) > 0 && $incl) $rows[] = ['Includes VAT ' . rtrim(rtrim((string)$s['vat_pct'], '0'), '.') . '%', $m($s['vat_amount'])];
+    if ($s['payment_method'] === 'room_charge' && !empty($s['bill_amount'])) $rows[] = ['Charged to your room bill', ($s['bill_currency'] ?? '') . ' ' . number_format((float)$s['bill_amount'], 2)];
+
+    $subject = "Your receipt — {$outlet} ({$s['reference']})";
+    $text = "Thank you for visiting {$outlet}.\n\nReceipt {$s['reference']} · {$when}\n";
+    if ($docs) $text .= 'Tax invoice: ' . implode(', ', $docs) . "\n";
+    $text .= "\n";
+    foreach ($rows as [$k, $v]) $text .= "  {$k}: {$v}\n";
+    $text .= "\nQuestions? Reply to this email or write to {$reply}.\n\nTribal Sand";
+
+    $meta = [['Receipt', (string)$s['reference']], ['Date', $when], ['Served at', $outlet]];
+    if ($docs) $meta[] = ['Tax invoice', implode(', ', $docs)];
+    $inner = _email_lead("Thank you for visiting {$outlet}. Here is your receipt.")
+        . _email_detail_block($meta, 'Receipt')
+        . _email_detail_block($rows, 'What you bought')
+        . '<p style="font-size:13px;color:#777;line-height:1.6;margin-top:24px">Questions? Simply reply to this email, or write to '
+            . '<a href="mailto:' . _email_esc($reply) . '" style="color:#1E5C6B">' . _email_esc($reply) . '</a>.</p>';
+    return _dispatch_mail($to, $subject, $text, $from, $reply, $env, _email_shell('Your receipt', $inner, $site));
+}
+
 /** Best-effort front-desk notice on check-in completion. No-ops if mail is unconfigured. */
 function send_checkin_completed(array $hold, ?array $data): void {
     $env = parse_env();

@@ -526,8 +526,30 @@
     openModal('<div class="center"><div class="ok">' + ico('check') + '</div><h2>Sale complete</h2><div class="sub">' + esc(s.reference) + ' · ' + esc(s.time) + '</div></div>' +
       receiptHtml(s, tendered) +
       (s.payment_method === 'room_charge' ? '<p class="sub" style="margin:10px 0 0">Posted to the guest’s bill.</p>' : '') +
-      '<div class="btns"><a class="btn" href="/pos/receipt.php?sale=' + s.id + '&print=1" target="_blank" rel="noopener">' + ico('printer') + ' Print</a><button type="button" class="btn btn--p" data-close>New sale</button></div>');
+      '<div class="btns"><a class="btn" href="/pos/receipt.php?sale=' + s.id + '&print=1" target="_blank" rel="noopener">' + ico('printer') + ' Print</a>' + emailBtn(s) + '<button type="button" class="btn btn--p" data-close>New sale</button></div>');
   }
+
+  /* ── Email a receipt ───────────────────────────────────────────────── */
+  function emailBtn(s) {
+    return s.can_email ? '<button type="button" class="btn" data-email-receipt="' + s.id + '" data-hint="' + esc(s.email_hint || '') + '">' + ico('mail') + ' Email</button>' : '';
+  }
+  $('#sheet').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-email-receipt]'); if (!b) return;
+    var sid = +b.dataset.emailReceipt;
+    openModal('<h2>Email the receipt</h2><div class="sub">We’ll send a copy of this receipt to the customer.</div>' +
+      '<span class="lbl">Email address</span><label class="field"><input id="rcptEmail" type="email" maxlength="160" value="' + esc(b.dataset.hint || '') + '" placeholder="guest@example.com" autocomplete="off"></label>' +
+      '<div class="err" id="rcptErr"></div><div class="btns"><button type="button" class="btn" data-close>Cancel</button><button type="button" class="btn btn--p" id="rcptGo">' + ico('mail') + ' Send</button></div>');
+    var inp = $('#rcptEmail'); if (inp) inp.focus();
+    $('#rcptGo').onclick = function () {
+      var to = ($('#rcptEmail').value || '').trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) { $('#rcptErr').textContent = 'Check the email address.'; return; }
+      var go = this; go.disabled = true;
+      api('/api/pos/receipt-email.php', { sale_id: sid, email: to }).then(function (d) {
+        if (!d.ok) { $('#rcptErr').textContent = d.error || 'Could not send.'; go.disabled = false; return; }
+        closeModal(); toast('Receipt emailed to ' + d.sent_to + '.');
+      }).catch(function (err) { if (err && err.message === 'locked') return; $('#rcptErr').textContent = 'No connection — try again.'; go.disabled = false; });
+    };
+  });
 
   /* ── History + void ───────────────────────────────────────────────── */
   $('#histBtn').onclick = function () {
@@ -550,7 +572,7 @@
       openModal('<h2>' + esc(s.reference) + '</h2><div class="sub">' + esc(s.outlet) + ' · ' + esc(s.time) + ' · ' + esc(s.staff) + '</div>' +
         (s.status === 'voided' ? '<div style="margin-bottom:10px"><span class="pill pill--void">' + ico('ban') + ' Voided' + (s.void_reason ? ' — ' + esc(s.void_reason) : '') + '</span></div>' : '') +
         receiptHtml(s, null) +
-        '<div class="btns"><button type="button" class="btn" data-close>Close</button><a class="btn" href="/pos/receipt.php?sale=' + s.id + '&print=1" target="_blank" rel="noopener">' + ico('printer') + ' Print</a>' +
+        '<div class="btns"><button type="button" class="btn" data-close>Close</button><a class="btn" href="/pos/receipt.php?sale=' + s.id + '&print=1" target="_blank" rel="noopener">' + ico('printer') + ' Print</a>' + emailBtn(s) +
         (d.can_void ? '<button type="button" class="btn btn--d" id="voidBtn" data-sale="' + s.id + '">Void</button>' : '') + '</div>');
     });
   });
