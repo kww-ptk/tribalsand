@@ -16,6 +16,7 @@ require_once __DIR__ . '/../includes/booking.php';           // mywork_tasks() (
 require_once __DIR__ . '/../includes/internal-messages.php'; // DM button
 require_once __DIR__ . '/../includes/activity-log.php';
 require_once __DIR__ . '/../includes/hr-documents.php';      // Documents card (contracts / IDs)
+require_once __DIR__ . '/../includes/inventory-people.php';   // Assets tab (assigned items)
 require_once __DIR__ . '/../includes/icons.php';
 require_login();
 require_manager();   // owner or manager
@@ -72,6 +73,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
     header('Location: /admin/employee.php?id=' . $id); exit;
 }
 
+// ── Assets: assign / return / report lost (owner/manager, scoped above; every move re-checked) ──
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_POST['action'] ?? '', ['asset_assign', 'asset_return'], true)) {
+    verify_csrf();
+    try {
+        if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
+        $note = (string)($_POST['note'] ?? '');
+        if ($_POST['action'] === 'asset_assign') {
+            $pick = (string)($_POST['pick'] ?? '');
+            if (preg_match('/^qty:(\d+):(\d+)$/', $pick, $m)) {
+                $item = inv_fetch_item((int)$m[1]);
+                $in   = ['action' => 'transfer', 'qty' => (string)($_POST['qty'] ?? ''), 'from_id' => $m[2], 'to' => 'staff:' . $id, 'note' => $note];
+            } elseif (preg_match('/^unit:(\d+)$/', $pick, $m)) {
+                $itemId = db_query('SELECT item_id FROM inv_assets WHERE id = :a', [':a' => (int)$m[1]])->fetchColumn();
+                $item   = $itemId ? inv_fetch_item((int)$itemId) : false;
+                $in     = ['action' => 'transfer', 'asset_id' => $m[1], 'to' => 'staff:' . $id, 'note' => $note];
+            } else {
+                throw new InvRefusal('Pick what to hand over.');
+            }
+        } else {
+            $item  = inv_fetch_item((int)($_POST['item_id'] ?? 0));
+            $ploc  = inv_person_location_find($id);
+            if (!$ploc) throw new InvRefusal('They don’t hold anything.');
+            $do    = (string)($_POST['do'] ?? '');
+            $base  = ['qty' => (string)($_POST['qty'] ?? '1'), 'asset_id' => (string)($_POST['asset_id'] ?? ''), 'from_id' => (string)$ploc, 'note' => $note];
+            if (preg_match('/^loc:\d+$/', $do))                        $in = $base + ['action' => 'transfer', 'to' => $do];
+            elseif (preg_match('/^loss:(broken|missing|stolen)$/', $do, $m)) $in = $base + ['action' => 'loss', 'reason' => $m[1]];
+            else throw new InvRefusal('Pick where it goes back to, or what happened.');
+        }
+        if (!$item) throw new InvRefusal('That item no longer exists.');
+        $msg = inv_apply_item_action($in, $item, $vids, (int)(current_admin()['id'] ?? 0));
+        audit_log('inv.' . $_POST['action'], 'hr_staff', $id, $msg);
+        $_SESSION['emp_flash'] = ['type' => 'success', 'msg' => $msg];
+    } catch (InvRefusal $e) {
+        $_SESSION['emp_flash'] = ['type' => 'error', 'msg' => $e->getMessage()];
+    }
+    header('Location: /admin/employee.php?id=' . $id . '#assets'); exit;
+}
+
 // ── Documents: upload one or more / delete (owner/manager, scoped above) ──
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'upload_docs') {
     verify_csrf();
@@ -124,6 +163,15 @@ $hasProfile = hr_staff_profile_supported();
 $hasDocs    = hr_staff_documents_supported();
 $docs       = $hasDocs ? fetch_hr_staff_documents($id) : [];
 
+// Assets tab: what they hold, and what this account may hand them.
+$invOn       = inv_supported();
+$assetsOwned = $invOn && (is_owner() || ($p['venue_id'] !== null && in_array((int)$p['venue_id'], array_map('intval', $vids ?? []), true)));
+$assets      = $invOn ? inv_person_assets($id) : ['location' => null, 'rows' => []];
+$assetStock  = $assetsOwned ? inv_assignable_stock($vids) : [];
+$assetUnits  = $assetsOwned ? inv_assignable_units($vids) : [];
+$returnTo    = $assetsOwned ? array_values(array_filter(inv_locations_visible($vids), fn($l) => $l['kind'] !== 'person')) : [];
+$assetValue  = inv_sum_by_currency($assets['rows']);
+
 // Linked account's open tasks + recent activity.
 $tasks = ($acctId > 0) ? mywork_tasks($acctId) : [];
 
@@ -165,6 +213,7 @@ include __DIR__ . '/_layout.php';
   <button type="button" class="tab-btn is-active" data-tab="overview">Overview</button>
   <button type="button" class="tab-btn" data-tab="employment">Employment</button>
   <button type="button" class="tab-btn" data-tab="documents">Documents</button>
+  <?php if ($invOn): ?><button type="button" class="tab-btn" data-tab="assets">Assets<?= $assets['rows'] ? ' (' . count($assets['rows']) . ')' : '' ?></button><?php endif; ?>
 </nav>
 
 <div class="tab-panel is-active" id="tab-overview">
@@ -293,6 +342,72 @@ include __DIR__ . '/_layout.php';
   </div>
 </div>
 
+<?php if ($invOn): ?>
+<div class="tab-panel" id="tab-assets">
+  <div class="card">
+    <div class="card__head" style="display:flex;justify-content:space-between;align-items:center">
+      <span class="card__title">Assigned assets</span>
+      <?php if ($assetValue): ?><span class="text-muted" style="font-size:12px"><?php foreach ($assetValue as $c => $amt): ?><?= e(inv_money((float)$amt, (string)$c)) ?> <?php endforeach; ?></span><?php endif; ?>
+    </div>
+    <?php if (!$assets['rows']): ?>
+      <div class="card__body" style="padding:18px"><p class="text-muted" style="margin:0;font-size:13px">Nothing assigned — phones, laptops, keys and tools handed to <?= e($p['full_name']) ?> show here.</p></div>
+    <?php else: ?>
+    <div class="table-wrap"><table class="data-table">
+      <thead><tr><th>Item</th><th class="inv-num">Qty</th><th>Last given</th><th class="inv-num">Value</th><?php if ($assetsOwned): ?><th>Return / report</th><?php endif; ?></tr></thead>
+      <tbody>
+      <?php foreach ($assets['rows'] as $r): ?>
+        <tr>
+          <td><a href="/admin/inventory-item.php?id=<?= (int)$r['item_id'] ?>" class="inv-name"><?= inv_thumb_html($r, 32) ?><span><strong><?= e($r['name']) ?></strong>
+            <?php if ($r['units']): ?><span class="inv-sub"><?= e(implode(', ', array_map(fn($u) => $u['serial'] ?: 'Unit #' . $u['id'], $r['units']))) ?></span><?php endif; ?></span></a></td>
+          <td class="inv-num"><?= (int)$r['qty'] ?></td>
+          <td class="text-muted"><?= $r['since'] ? e(date('j M Y', strtotime((string)$r['since']))) : '—' ?></td>
+          <td class="inv-num"><?= e(inv_money($r['value'], (string)$r['currency'])) ?></td>
+          <?php if ($assetsOwned): ?>
+          <td>
+            <form method="POST" action="/admin/employee.php?id=<?= $id ?>" class="emp-asset-form">
+              <?= csrf_field() ?><input type="hidden" name="action" value="asset_return"><input type="hidden" name="hr_id" value="<?= $id ?>"><input type="hidden" name="item_id" value="<?= (int)$r['item_id'] ?>">
+              <?php if ($r['tracking'] === 'serial'): ?>
+              <select name="asset_id" class="eselect" aria-label="Which unit"><?php foreach ($r['units'] as $u): ?><option value="<?= (int)$u['id'] ?>"><?= e($u['serial'] ?: 'Unit #' . $u['id']) ?></option><?php endforeach; ?></select>
+              <?php else: ?>
+              <input name="qty" type="number" class="inp inp--num no-spin" min="1" max="<?= (int)$r['qty'] ?>" step="1" value="<?= (int)$r['qty'] ?>" aria-label="How many" style="width:70px">
+              <?php endif; ?>
+              <select name="do" class="eselect" aria-label="What happens">
+                <optgroup label="Back to"><?php foreach ($returnTo as $l): ?><option value="loc:<?= (int)$l['id'] ?>"><?= e(inv_location_label($l)) ?></option><?php endforeach; ?></optgroup>
+                <optgroup label="Report"><?php foreach (['broken' => 'Broken', 'missing' => 'Missing', 'stolen' => 'Stolen'] as $k => $lbl): ?><option value="loss:<?= $k ?>"><?= e($lbl) ?></option><?php endforeach; ?></optgroup>
+              </select>
+              <button type="submit" class="btn-outline btn-sm">Save</button>
+            </form>
+          </td>
+          <?php endif; ?>
+        </tr>
+      <?php endforeach; ?>
+      </tbody>
+    </table></div>
+    <?php endif; ?>
+
+    <?php if ($assetsOwned && ($assetStock || $assetUnits)): ?>
+    <div class="card__body" style="padding:16px 18px;border-top:1px solid var(--border)">
+      <form method="POST" action="/admin/employee.php?id=<?= $id ?>" class="emp-asset-assign">
+        <?= csrf_field() ?><input type="hidden" name="action" value="asset_assign"><input type="hidden" name="hr_id" value="<?= $id ?>">
+        <div class="field"><label>Hand over</label>
+          <select name="pick" class="eselect eselect--block" required>
+            <?php if ($assetUnits): ?><optgroup label="By serial number"><?php foreach ($assetUnits as $u): ?><option value="unit:<?= (int)$u['id'] ?>"><?= e($u['item_name'] . ' · ' . ($u['serial'] ?: 'Unit #' . $u['id']) . ' — ' . $u['location_label']) ?></option><?php endforeach; ?></optgroup><?php endif; ?>
+            <?php if ($assetStock): ?><optgroup label="Counted items"><?php foreach ($assetStock as $s): ?><option value="qty:<?= (int)$s['item_id'] ?>:<?= (int)$s['location_id'] ?>"><?= e($s['item_name'] . ' — ' . $s['location_label'] . ' (' . (int)$s['qty'] . ')') ?></option><?php endforeach; ?></optgroup><?php endif; ?>
+          </select></div>
+        <div class="emp-asset-row">
+          <div class="field"><label>How many <span class="text-muted">(counted items)</span></label><input name="qty" type="number" class="inp inp--num no-spin" min="1" step="1" value="1"></div>
+          <div class="field"><label>Note</label><input name="note" class="inp" maxlength="500" placeholder="e.g. work phone"></div>
+        </div>
+        <button type="submit" class="btn-primary btn-sm"><?= admin_icon('plus', 15) ?> Assign</button>
+      </form>
+    </div>
+    <?php elseif (!$assetsOwned): ?>
+    <div class="card__body" style="padding:12px 18px;border-top:1px solid var(--border)"><p class="text-muted" style="margin:0;font-size:12.5px">Items are handed over and returned by the owner or a manager of <?= e($homeVenue) ?>.</p></div>
+    <?php endif; ?>
+  </div>
+</div>
+<?php endif; ?>
+
 <div class="emp-stack">
   <!-- Tasks / timetable -->
   <div class="card">
@@ -379,6 +494,10 @@ include __DIR__ . '/_layout.php';
 .emp-docs__up .field label{display:block;font-size:12px;color:var(--muted,#6b7280);margin-bottom:4px}
 .emp-docs__uprow{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-top:10px}
 .emp-docs__uprow .filefield__name{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.emp-asset-form{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.emp-asset-assign .eselect--block,.emp-asset-assign .inp{width:100%}
+.emp-asset-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr);gap:0 12px}
+@media (max-width:560px){.emp-asset-row{grid-template-columns:1fr}}
 </style>
 
 <script>
@@ -395,8 +514,8 @@ include __DIR__ . '/_layout.php';
   btns.forEach(function (b) {
     b.addEventListener('click', function () { activate(b.dataset.tab); });
   });
-  if (window.location.hash === '#documents') {
-    activate('documents');
+  if (window.location.hash === '#documents' || window.location.hash === '#assets') {
+    activate(window.location.hash.slice(1));
   }
 })();
 
@@ -413,4 +532,5 @@ include __DIR__ . '/_layout.php';
 })();
 </script>
 
+<?= inv_shared_css() ?>
 <?php include __DIR__ . '/_layout_end.php'; ?>
