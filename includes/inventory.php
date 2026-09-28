@@ -315,14 +315,16 @@ function inv_assert_venues(array $ids): void {
 
 /**
  * Add a store (owner only — the caller checks). $venueId = the property it belongs
- * to (NULL = shared by all, like Main stock); $shareVenueIds = the other properties
- * whose managers may use it. Returns the new location id.
+ * to (NULL = shared by all, like Main stock — and then it can't be shared with
+ * specific properties); $shareVenueIds = the other properties whose managers may
+ * use it. Returns the new location id.
  */
 function inv_create_store(string $name, ?int $venueId, array $shareVenueIds): int {
     if (!inv_shipments_supported()) throw new InvRefusal('Run add_inventory_shipments.sql first.');
     $name = trim($name);
     if ($name === '' || mb_strlen($name) > 120) throw new InvRefusal('Give the store a name (up to 120 characters).');
     $shares = inv_clean_share_ids($shareVenueIds, $venueId);
+    if ($venueId === null && $shares) throw new InvRefusal('Pick the property it belongs to before sharing it.');
     inv_assert_venues(array_merge($venueId !== null ? [$venueId] : [], $shares));
     if (db_query("SELECT 1 FROM inv_locations WHERE kind = 'store' AND is_active = TRUE AND lower(name) = lower(:n)", [':n' => $name])->fetchColumn()) {
         throw new InvRefusal("A store is already called {$name}.");
@@ -339,6 +341,7 @@ function inv_update_store_owner(int $id, ?int $venueId, array $shareVenueIds): v
     if (!$loc || $loc['kind'] !== 'store') throw new InvRefusal('That store no longer exists.');
     if (inv_bool($loc['is_main'] ?? false)) throw new InvRefusal('Main stock is shared by every property — it has no owner.');
     $shares = inv_clean_share_ids($shareVenueIds, $venueId);
+    if ($venueId === null && $shares) throw new InvRefusal('Pick the property it belongs to before sharing it.');
     inv_assert_venues(array_merge($venueId !== null ? [$venueId] : [], $shares));
     db_query('UPDATE inv_locations SET venue_id = :v, share_venue_ids = CAST(:s AS int[]) WHERE id = :id',
         [':v' => $venueId, ':s' => inv_pg_int_array_literal($shares), ':id' => $id]);
@@ -422,13 +425,19 @@ function inv_linked_stock_count(string $link, int $id): int {
 /**
  * Close the locations linked to a record that is about to be deleted, so they can
  * never turn into ownerless "shared" locations (the FK only NULLs the link).
- * Call AFTER inv_linked_stock_count() said 0, right before the DELETE.
+ * Call AFTER inv_linked_stock_count() said 0, right before the DELETE. For a venue,
+ * also drops it from every store's share_venue_ids — a deleted venue must never
+ * linger in another store's share list.
  * $link: 'pos_outlet_id' | 'hr_staff_id' | 'venue_id'.
  */
 function inv_deactivate_linked_locations(string $link, int $id): void {
     if (!inv_supported()) return;
     if (!in_array($link, ['pos_outlet_id', 'hr_staff_id', 'venue_id'], true)) throw new InvalidArgumentException('bad link column');
     db_query("UPDATE inv_locations SET is_active = FALSE WHERE {$link} = :id", [':id' => $id]);
+    if ($link === 'venue_id' && inv_shipments_supported()) {
+        db_query('UPDATE inv_locations SET share_venue_ids = array_remove(share_venue_ids, :v) WHERE :w = ANY(share_venue_ids)',
+            [':v' => $id, ':w' => $id]);
+    }
 }
 
 // ── Items ───────────────────────────────────────────────────────────────────

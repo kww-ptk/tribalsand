@@ -63,15 +63,22 @@ function inv_location_label(array $l): string {
 }
 
 /**
- * The store a location restocks from by default — PURE: a store that belongs to,
- * or is shared with, the location's property; else Main stock; else the first one.
+ * The store a location restocks from by default — PURE, two-pass: a store the
+ * location's property OWNS wins first, then one merely SHARED with it, else Main
+ * stock, else the first one.
  */
 function inv_default_restock_source(array $stores, array $loc): ?int {
     $v    = isset($loc['venue_id']) && $loc['venue_id'] !== null && $loc['venue_id'] !== '' ? (int)$loc['venue_id'] : null;
     $main = null;
     foreach ($stores as $s) {
         if (inv_bool($s['is_main'] ?? false)) { $main ??= (int)$s['id']; continue; }
-        if ($v !== null && in_array($v, inv_location_venue_set($s), true)) return (int)$s['id'];
+        $sv = isset($s['venue_id']) && $s['venue_id'] !== null && $s['venue_id'] !== '' ? (int)$s['venue_id'] : null;
+        if ($v !== null && $sv === $v) return (int)$s['id'];   // pass 1: owned
+    }
+    if ($v !== null) {
+        foreach ($stores as $s) {
+            if (!inv_bool($s['is_main'] ?? false) && in_array($v, inv_location_venue_set($s), true)) return (int)$s['id'];   // pass 2: shared
+        }
     }
     return $main ?? (isset($stores[0]) ? (int)$stores[0]['id'] : null);
 }
@@ -501,6 +508,11 @@ function inv_update_location(int $id, array $v): void {
             && db_query('SELECT 1 FROM inv_locations WHERE parent_id = :p AND is_active = TRUE AND id <> :id AND lower(name) = lower(:n)',
                 [':p' => (int)$loc['parent_id'], ':id' => $id, ':n' => $name])->fetchColumn()) {
             throw new InvRefusal("Another area here is already called {$name}.");
+        }
+        if ($loc['kind'] === 'store'
+            && db_query("SELECT 1 FROM inv_locations WHERE kind = 'store' AND is_active = TRUE AND id <> :id2 AND lower(name) = lower(:n2)",
+                [':id2' => $id, ':n2' => $name])->fetchColumn()) {
+            throw new InvRefusal("A store is already called {$name}.");
         }
         $set[] = 'name = :n'; $p[':n'] = $name;
     }

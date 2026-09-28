@@ -40,6 +40,15 @@ check('restock source: otherwise Main stock', inv_default_restock_source([
         ['id' => 9, 'kind' => 'store', 'is_main' => 'f', 'venue_id' => 7, 'share_venue_ids' => '{6,8}']], $zuriP) === 1);
 check('restock source: none offered', inv_default_restock_source([], $mi) === null);
 
+// ── Review fixes ────────────────────────────────────────────────────────────
+check('scope: an account with no properties sees nothing and moves nothing', !inv_location_visible($td, []) && !inv_move_in_scope($td, $mi, []));
+check('shares: cleaned, owner dropped, sorted', inv_clean_share_ids(['6', '6', '0'], null) === [6]);
+check('shared store: a sharing manager may receive into it or write off from it', inv_move_in_scope(null, $td, [6]) && inv_move_in_scope($td, null, [6]) && !inv_move_in_scope(null, $td, [3]));
+check('restock source: an owned store beats one merely shared', inv_default_restock_source([
+        ['id' => 1, 'kind' => 'store', 'is_main' => 't', 'venue_id' => null, 'share_venue_ids' => '{}'],
+        ['id' => 9, 'kind' => 'store', 'is_main' => 'f', 'venue_id' => 7, 'share_venue_ids' => '{6,8}'],
+        ['id' => 12, 'kind' => 'store', 'is_main' => 'f', 'venue_id' => 6, 'share_venue_ids' => '{}']], $mi) === 12);
+
 // ── Pure checks (each task inserts its section above this line) ──
 
 // ── DB-backed ───────────────────────────────────────────────────────────────
@@ -98,6 +107,30 @@ try {
     inv_transfer($plate, 2, $tdStore, $miLoc, null);
     $hist = inv_item_history($plate, [$vMI]);
     check('history: a shared store is named for a manager who shares it', $hist && !array_filter($hist, fn($m) => $m['from_name'] === 'Another location' || $m['to_name'] === 'Another location'));
+
+    // ── Review fixes ──
+    check('store: no owner but shares is refused (create)',
+        str_contains($refused(fn() => inv_create_store("ZZ Shareless {$sfx}", null, [$vMI])), 'before sharing'));
+    check('store: no owner but shares is refused (update)',
+        str_contains($refused(fn() => inv_update_store_owner($tdStore, null, [$vMI])), 'before sharing'));
+    $freeStore = inv_create_store("ZZ Freehold {$sfx}", null, []);
+    check('store: no owner, no shares is allowed', inv_fetch_location($freeStore)['venue_id'] === null);
+
+    $mainName = (string) db_query('SELECT name FROM inv_locations WHERE id = :id', [':id' => $main])->fetchColumn();
+    check('store: renaming to another store’s name is refused',
+        str_contains($refused(fn() => inv_update_location($tdStore, ['name' => $mainName])), 'already called'));
+
+    $vThrow = $ins("INSERT INTO venues (slug, name) VALUES (:s, 'ZZ Throwaway')", [':s' => "zz-tw-{$sfx}"]);
+    inv_update_store_owner($tdStore, $vTD, [$vMI, $vOff, $vThrow]);
+    inv_deactivate_linked_locations('venue_id', $vThrow);
+    $afterShares = inv_pg_int_array(inv_fetch_location($tdStore)['share_venue_ids']); sort($afterShares);
+    $expectAfter = [$vMI, $vOff]; sort($expectAfter);
+    check('venue delete: dropped from a store’s shares, other shares remain', $afterShares === $expectAfter);
+
+    $unit = inv_create_item(['name' => "ZZ Ship unit {$sfx}", 'item_type' => 'operational', 'tracking' => 'serial', 'replacement_value' => 200]);
+    inv_asset_create($unit, $tdStore, ['serial' => "ZZU-{$sfx}"], null);
+    check('units: a serial unit at a shared store is visible to a sharing manager', count(inv_item_units($unit, [$vMI])) === 1);
+    check('units: not visible to a non-sharing manager', count(inv_item_units($unit, [$vZ])) === 0);
 
     // ── DB checks (each task inserts its block above this line) ──
 } catch (Throwable $e) {

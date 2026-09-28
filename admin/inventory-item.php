@@ -112,10 +112,11 @@ $err       = fn(string $k): string => isset($errors[$k]) ? '<div class="inv-err"
 $cur       = $item ? (string)$item['currency'] : INV_DEFAULT_CURRENCY;
 $oldAct    = (string)($old['action'] ?? '');
 $panel     = in_array($oldAct, ['receive', 'add_unit', 'transfer', 'loss', 'replace'], true) ? $oldAct : ($serial ? 'add_unit' : 'receive');
-// Single-ended actions (receive / add a unit / loss / replace) need a place the account
-// OWNS: inv_move_in_scope() only lets a manager use a shared place (Main stock, a
-// venue-less outlet) as the other end of a move touching their own property. Transfer
-// keeps the full visible lists.
+// Single-ended actions (receive / add a unit / loss / replace) are OFFERED here only
+// for places the account's OWN property owns (inv_location_editable) — a simpler list
+// than what the server allows. inv_move_in_scope() would also accept a store SHARED
+// with them (that's how shipments receive into a shared store), but this UI doesn't
+// offer that shortcut. Transfer keeps the full visible lists.
 $ownLocs     = array_values(array_filter($locs, fn($l) => inv_location_editable($l, $vids)));
 $ownHolding  = array_values(array_filter($holding, fn($w) => inv_location_editable($w, $vids)));
 $ownActive   = array_values(array_filter($active, fn($u) => inv_location_editable(['venue_id' => $u['venue_id'], 'kind' => $u['kind']], $vids)));
