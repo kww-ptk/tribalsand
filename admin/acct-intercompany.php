@@ -76,7 +76,16 @@ include __DIR__ . '/_layout.php';
       <?= csrf_field() ?>
       <label class="wsf"><span>Paid by</span><select name="payer" class="inp inp--sm"><?php foreach ($names as $id => $n): ?><option value="<?= $id ?>"><?= e($n) ?></option><?php endforeach; ?></select></label>
       <label class="wsf"><span>Paid to</span><select name="payee" class="inp inp--sm" data-ic-payee><?php foreach ($names as $id => $n): ?><option value="<?= $id ?>"><?= e($n) ?></option><?php endforeach; ?></select></label>
-      <label class="wsf"><span>Into account</span><select name="account_id" class="inp inp--sm" data-ic-acct><?php foreach ($banks as $a): ?><option value="<?= (int)$a['id'] ?>" data-co="<?= (int)$a['company_id'] ?>"><?= e($a['company_name'] . ' · ' . $a['label'] . ' · ' . $a['currency']) ?></option><?php endforeach; ?></select></label>
+      <?php $byCo = []; foreach ($banks as $a) $byCo[(int)$a['company_id']][] = $a; ?>
+      <?php foreach ($names as $cid => $cn): ?>
+      <label class="wsf ic-acct" data-ic-for="<?= (int)$cid ?>"><span>Into <?= e($cn) ?> account</span>
+        <?php if (!empty($byCo[$cid])): ?>
+        <select name="account_id" class="inp inp--sm"><?php foreach ($byCo[$cid] as $a): ?><option value="<?= (int)$a['id'] ?>"><?= e($a['label'] . ' · ' . $a['currency']) ?></option><?php endforeach; ?></select>
+        <?php else: ?>
+        <span class="text-muted ic-small ic-noacct">No bank account — add one under Accounting → Companies.</span>
+        <?php endif; ?>
+      </label>
+      <?php endforeach; ?>
       <label class="wsf"><span>Amount</span><input name="amount" type="number" step="0.01" min="0.01" class="inp inp--sm inp--num no-spin" style="width:130px" required></label>
       <label class="wsf"><span>Bank reference</span><input name="reference" class="inp inp--sm" maxlength="80" required></label>
       <button type="submit" class="btn-primary btn-sm" data-confirm="Record this settlement? It reduces what the paying company owes."><?= admin_icon('check', 15) ?> Record</button>
@@ -122,18 +131,23 @@ include __DIR__ . '/_layout.php';
 .ic-hint{font-size:12.5px;margin:8px 0 0}
 .ic-small{font-size:12px}
 .ic-num{font-family:ui-monospace,monospace;font-size:12.5px}
+.ic-acct[hidden]{display:none}
+.ic-noacct{display:block;max-width:220px;padding-top:6px}
 .data-table .num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
 @media (max-width:640px){ .ic-settle .ws-addform{flex-direction:column;align-items:stretch} .ic-settle .wsf{width:100%} .ic-settle .wsf input{width:100% !important} }
 </style>
 <script>
 (function(){
-  // Show only the payee's bank accounts.
-  var payee = document.querySelector('[data-ic-payee]'), acct = document.querySelector('[data-ic-acct]');
-  if (!payee || !acct) return;
+  // One account list per company; only the paid company's is shown and submitted
+  // (a hidden list is disabled, so it never posts). The server checks it again.
+  var payee = document.querySelector('[data-ic-payee]');
+  if (!payee) return;
   function sync(){
-    var first = null;
-    [].forEach.call(acct.options, function(o){ var ok = o.dataset.co === payee.value; o.disabled = !ok; o.hidden = !ok; if (ok && first === null) first = o; });
-    if (acct.selectedOptions[0] && acct.selectedOptions[0].disabled && first) { acct.value = first.value; acct.dispatchEvent(new Event('change', {bubbles:true})); }
+    document.querySelectorAll('[data-ic-for]').forEach(function(l){
+      var on = l.dataset.icFor === payee.value;
+      l.hidden = !on;
+      l.querySelectorAll('select').forEach(function(s){ s.disabled = !on; });
+    });
   }
   payee.addEventListener('change', sync); sync();
 })();

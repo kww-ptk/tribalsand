@@ -623,11 +623,12 @@ function acct_refund_payment(int $paymentId, string $amountRaw, string $reason, 
                 : 'All of this payment is on an invoice — credit the invoice first.');
         }
         db_query('INSERT INTO acct_payments (company_id, account_id, kind, refunds_payment_id, is_security_deposit, method, amount, currency, fx_to_home,
-                                             reference, payer_name, reason, hold_id, recorded_by)
-                  VALUES (:c, :a, \'refund\', :r, :dep, :m, :amt, :cur, :fx, :ref, :payer, :why, :h, :u)',
+                                             reference, payer_name, reason, hold_id, pos_sale_id, counterparty_company_id, recorded_by)
+                  VALUES (:c, :a, \'refund\', :r, :dep, :m, :amt, :cur, :fx, :ref, :payer, :why, :h, :ps, :cp, :u)',
             [':c' => $p['company_id'], ':a' => $p['account_id'], ':r' => $paymentId, ':dep' => companies_bool($p['is_security_deposit']) ? 'TRUE' : 'FALSE',
              ':m' => $p['method'], ':amt' => acct_from_cents($cents), ':cur' => $p['currency'], ':fx' => $p['fx_to_home'],
-             ':ref' => $p['reference'], ':payer' => $p['payer_name'], ':why' => $reason, ':h' => $p['hold_id'], ':u' => $userId]);
+             ':ref' => $p['reference'], ':payer' => $p['payer_name'], ':why' => $reason, ':h' => $p['hold_id'],
+             ':ps' => $p['pos_sale_id'] ?? null, ':cp' => $p['counterparty_company_id'] ?? null, ':u' => $userId]);   // a till refund stays linked to its sale
         return (int) db()->lastInsertId();
     });
 }

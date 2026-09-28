@@ -361,7 +361,7 @@ need Patrik or the accountant; the rest are the default the plan follows.
 - `inv_moves.transfer_ref`; one `ic_invoice` per cross-company transfer at the value snapshot + sender's VAT; no-value lines refused (correction #7c); `assign`/`return` never invoiced (correction #8 default).
 - Partial credit notes via `credits_line_id`; deposit → damages; `invoice_timing = confirm` + credit on cancel.
 - Fail closed: going live is refused while an open POS outlet has no company.
-- Limit: a line cross-sold from another company's outlet is invoiced by the selling outlet's company.
+- Cross-sold items in a directly paid sale are invoiced by the company that owns them (one invoice per company); room charges stay with the selling outlet's company.
 
 ### P2a build notes (room folio — what shipped)
 - Built: payments, allocation (cross-currency at the site FX rate), tax invoices per currency, full credit notes, refunds, security deposits, pro-forma, invoice print, documents list + CSV. Corrections **#1, #2, #3, #6 (for the disbursement line), #9** are implemented.

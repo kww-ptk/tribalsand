@@ -124,6 +124,29 @@ try {
     check('pos void: the till money is refunded', acct_payment_available((int)$pay['id']) === 0
         && (bool) db_query("SELECT 1 FROM acct_payments WHERE refunds_payment_id = :p AND kind = 'refund'", [':p' => $pay['id']])->fetchColumn());
 
+    // Cross-sold item from another company's outlet: each company invoices its own item.
+    $bar = $ins("INSERT INTO pos_outlets (name, slug, kind, currency, vat_pct, vat_inclusive, require_signature, company_id)
+                 VALUES ('ZZ Bar', :s, 'other', 'KES', 16, TRUE, FALSE, :c)", [':s' => "zz-bar-{$sfx}", ':c' => $prop]);
+    $beer = $ins("INSERT INTO pos_items (outlet_id, name, kind, price) VALUES (:o, 'ZZ Beer', 'product', 580)", [':o' => $bar]);
+    db_query('INSERT INTO pos_outlet_links (outlet_id, source_outlet_id) VALUES (:o, :s)', [':o' => $out, ':s' => $bar]);
+    $propCashKes = $acc($prop, ['label' => 'Bar cash', 'kind' => 'cash', 'currency' => 'KES']);
+    $n++;
+    $r = pos_complete_sale(['outlet_id' => $out, 'client_uuid' => sprintf('%08x-zz%02d-4000-8000-%012x', crc32($sfx), $n % 100, $n),
+                            'lines' => [['item_id' => $massage, 'qty' => 1], ['item_id' => $beer, 'qty' => 2]], 'payment_method' => 'cash',
+                            'customer' => ['type' => 'walkin']], $owner);
+    $xs = (int)($r['sale']['id'] ?? 0);
+    $docs = db_query("SELECT * FROM acct_documents WHERE pos_sale_id = :s AND doc_type = 'invoice' ORDER BY company_id", [':s' => $xs])->fetchAll();
+    $byCo = []; foreach ($docs as $x) $byCo[(int)$x['company_id']] = acct_cents($x['total']);
+    check('cross-sell: one invoice per company that owns the items', $r['ok'] && count($docs) === 2 && ($byCo[$svc] ?? 0) === 116000 && ($byCo[$prop] ?? 0) === 116000);
+    $paid = db_query('SELECT company_id, account_id, amount FROM acct_payments WHERE pos_sale_id = :s ORDER BY company_id', [':s' => $xs])->fetchAll();
+    check('cross-sell: each company is paid into its own till account', count($paid) === 2
+        && in_array($propCashKes, array_map(fn($x) => (int)$x['account_id'], $paid), true) && in_array($svcCash, array_map(fn($x) => (int)$x['account_id'], $paid), true));
+    check('cross-sell: VAT across both invoices equals the sale\'s VAT', abs(array_sum(array_map(fn($x) => acct_cents($x['vat_amount']), $docs)) - acct_cents($r['sale']['vat_amount'] ?? 0)) === 0);
+    $vv = pos_void_sale($xs, 'test', $owner);
+    check('cross-sell: a void credits and refunds both companies', count(array_filter(db_query("SELECT d.*, " . acct_doc_status_sql('d') . " FROM acct_documents d WHERE d.pos_sale_id = :s AND d.doc_type = 'invoice'", [':s' => $xs])->fetchAll(),
+        fn($x) => acct_doc_with_balance($x)['fully_credited'])) === 2 && (int) db_query("SELECT COUNT(*) FROM acct_payments WHERE pos_sale_id = :s AND kind = 'refund'", [':s' => $xs])->fetchColumn() === 2);
+    db_query('UPDATE pos_outlets SET is_active = FALSE WHERE id = :o', [':o' => $bar]);
+
     // Fail closed: an outlet with no company can't sell once invoicing is live.
     $r = $sell($bare, $gum, 1, 'cash');
     check('pos: an outlet with no company refuses the sale once invoicing is live', !$r['ok'] && str_contains($r['error'], 'no company'));

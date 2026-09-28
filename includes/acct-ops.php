@@ -273,12 +273,17 @@ function acct_pos_sale_issue(int $saleId, ?int $userId): ?int {
     }
     $co = company_fetch($coId);
     $today = date('Y-m-d');
-    if (!acct_company_live_on($co, $today)) return null;
     $cat = acct_category_for_outlet((string)$s['outlet_kind']);
-    $saleLines = array_map(fn($l) => $l + ['category' => $cat],
-        db_query('SELECT id, name, qty, line_total FROM pos_sale_lines WHERE sale_id = :s ORDER BY id', [':s' => $saleId])->fetchAll());
+    $saleLines = array_map(fn($l) => $l + ['category' => acct_category_for_outlet((string)$l['owning_kind'])],
+        db_query('SELECT l.id, l.name, l.qty, l.line_total, l.owning_outlet_id, o.kind AS owning_kind
+                    FROM pos_sale_lines l JOIN pos_outlets o ON o.id = l.owning_outlet_id WHERE l.sale_id = :s ORDER BY l.id', [':s' => $saleId])->fetchAll());
     $lines = acct_pos_document_lines($s, $saleLines);
 
+    if ($s['payment_method'] !== 'room_charge') return acct_pos_sale_issue_direct($s, $co, $saleLines, $lines, $userId);
+    if (!acct_company_live_on($co, $today)) return null;
+
+    // Room charges stay with the SELLING outlet's company: one folio line can't be split
+    // between companies. (A cross-sold item from another company's outlet is rare here.)
     if ($s['payment_method'] === 'room_charge') {
         $propCo = company_for_venue($s['guest_venue_id'] ? (int)$s['guest_venue_id'] : null)
                ?? company_for_venue($s['hold_id'] ? (int) db_query('SELECT r.venue_id FROM holds h JOIN units u ON u.id = h.unit_id JOIN rooms r ON r.id = ' . hold_room_id_sql('h', 'u') . ' WHERE h.id = :h', [':h' => $s['hold_id']])->fetchColumn() : null);
@@ -309,29 +314,57 @@ function acct_pos_sale_issue(int $saleId, ?int $userId): ?int {
             ['customer_kind' => 'guest', 'customer_name' => $s['customer_name'], 'hold_id' => null, 'pos_sale_id' => $saleId, 'issued_by' => $userId]);
     }
 
-    $docId = acct_insert_document($co, 'invoice', strtoupper((string)$s['currency']), $lines, [
-        'customer_kind' => $s['customer_type'] === 'inhouse' ? 'guest' : 'walkin',
-        'customer_name' => $s['customer_name'] ?: 'Walk-in', 'pos_sale_id' => $saleId, 'issued_by' => $userId]);
-    $method = acct_pos_method((string)$s['payment_method']);
-    if ($method !== null) {
-        $cur  = strtoupper((string)$s['currency']);
-        $kinds = ACCT_METHOD_ACCOUNTS[$method];
-        $acc = null;
-        foreach (company_accounts($coId, true) as $a) {
-            if ($a['currency'] === $cur && in_array($a['kind'], $kinds, true) && ($acc === null || companies_bool($a['is_default']))) $acc = $a;
+    return null;   // (unreachable: direct sales return above)
+}
+
+/**
+ * A directly paid POS sale (cash / card / M-Pesa / other). Each item belongs to the
+ * company of the outlet that OWNS it (a cross-sold item stays its own company's
+ * revenue); service charge and tip belong to the selling outlet's company. One
+ * invoice per company that is invoicing, each paid at once into that company's
+ * matching account. An item whose company can't be resolved refuses the sale once
+ * any company invoices. Returns the first document id (or null).
+ */
+function acct_pos_sale_issue_direct(array $s, array $sellerCo, array $saleLines, array $lines, ?int $userId): ?int {
+    $today = date('Y-m-d');
+    $ownerOf = [];
+    foreach ($saleLines as $l) $ownerOf[(int)$l['id']] = company_for_outlet((int)$l['owning_outlet_id']);
+    $groups = [];
+    foreach ($lines as $l) {
+        $cid = $l['source_kind'] === 'pos_line' ? ($ownerOf[(int)$l['source_id']] ?? null) : (int)$sellerCo['id'];
+        if (!$cid) {
+            if (acct_any_company_live()) throw new AcctRefusal("An item on this sale belongs to an outlet with no company — ask the owner to assign it before selling.");
+            continue;
         }
-        if ($acc) {
-            $total = acct_cents($s['total']);
-            db_query("INSERT INTO acct_payments (company_id, account_id, kind, method, amount, currency, fx_to_home, reference, payer_name, pos_sale_id, recorded_by)
-                      VALUES (:c, :a, 'receipt', :m, :amt, :cur, :fx, :ref, :payer, :s, :u)",
-                [':c' => $coId, ':a' => $acc['id'], ':m' => $method, ':amt' => acct_from_cents($total), ':cur' => $cur,
-                 ':fx' => acct_fx_rate((string)$co['home_currency'], $cur) ?? 1.0, ':ref' => trim((string)($s['payment_ref'] ?? '')) ?: $s['reference'],
-                 ':payer' => mb_substr((string)$s['customer_name'], 0, 200), ':s' => $saleId, ':u' => $userId]);
-            db_query('INSERT INTO acct_allocations (payment_id, document_id, amount, pay_amount, rate) VALUES (:p, :d, :a, :a, 1)',
-                [':p' => (int) db()->lastInsertId(), ':d' => $docId, ':a' => acct_from_cents($total)]);
-        }
+        $groups[$cid][] = $l;
     }
-    return $docId;
+    ksort($groups);
+    $first = null;
+    $cur = strtoupper((string)$s['currency']);
+    $method = acct_pos_method((string)$s['payment_method']);
+    foreach ($groups as $cid => $ls) {
+        $co = (int)$cid === (int)$sellerCo['id'] ? $sellerCo : company_fetch((int)$cid);
+        if (!acct_company_live_on($co, $today)) continue;   // that company is not invoicing yet
+        $docId = acct_insert_document($co, 'invoice', $cur, $ls, [
+            'customer_kind' => $s['customer_type'] === 'inhouse' ? 'guest' : 'walkin',
+            'customer_name' => $s['customer_name'] ?: 'Walk-in', 'pos_sale_id' => (int)$s['id'], 'issued_by' => $userId]);
+        $first ??= $docId;
+        if ($method === null) continue;   // "other": left for staff to reconcile
+        $acc = null;
+        foreach (company_accounts((int)$cid, true) as $a) {
+            if ($a['currency'] === $cur && in_array($a['kind'], ACCT_METHOD_ACCOUNTS[$method], true) && ($acc === null || companies_bool($a['is_default']))) $acc = $a;
+        }
+        if (!$acc) continue;   // no matching account: the invoice stays due and shows on the list
+        $total = acct_totals($ls)['gross'];
+        db_query("INSERT INTO acct_payments (company_id, account_id, kind, method, amount, currency, fx_to_home, reference, payer_name, pos_sale_id, recorded_by)
+                  VALUES (:c, :a, 'receipt', :m, :amt, :cur, :fx, :ref, :payer, :s, :u)",
+            [':c' => $cid, ':a' => $acc['id'], ':m' => $method, ':amt' => acct_from_cents($total), ':cur' => $cur,
+             ':fx' => acct_fx_rate((string)$co['home_currency'], $cur) ?? 1.0, ':ref' => trim((string)($s['payment_ref'] ?? '')) ?: $s['reference'],
+             ':payer' => mb_substr((string)$s['customer_name'], 0, 200), ':s' => (int)$s['id'], ':u' => $userId]);
+        db_query('INSERT INTO acct_allocations (payment_id, document_id, amount, pay_amount, rate) VALUES (:p, :d, :a, :a, 1)',
+            [':p' => (int) db()->lastInsertId(), ':d' => $docId, ':a' => acct_from_cents($total)]);
+    }
+    return $first;
 }
 
 /**
