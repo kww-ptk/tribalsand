@@ -28,6 +28,7 @@ $r = pos_complete_sale([
     'tip_pct'        => $body['tip_pct'] ?? null,
     'tip_amount'     => $body['tip_amount'] ?? null,
     'signature'      => is_string($body['signature'] ?? null) ? $body['signature'] : null,   // PNG data URL, validated in pos_complete_sale()
+    'offline_sold_at' => $body['offline_sold_at'] ?? null,   // set by the till's offline queue; pos_offline_sold_at() checks it
 ], (int)$ctx['user']['id'], $ctx['terminal'] ? (int)$ctx['terminal']['id'] : null);
 
 if (!$r['ok']) { http_response_code(422); exit(json_encode(['ok' => false, 'error' => $r['error']])); }

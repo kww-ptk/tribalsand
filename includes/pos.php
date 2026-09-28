@@ -1047,6 +1047,10 @@ function pos_complete_sale_tx(array $req, string $uuid, int $userId, ?int $termi
         array_push($vals, (float)$outlet['service_charge_pct'], $vatPct, $vatIncl ? 'TRUE' : 'FALSE', $tot['vat'], $tot['tip'],
                    $billCur, $billAmt, $fxRate, $guestVenue);
     }
+    // Offline mode: a sale saved on the tablet without a connection carries when it
+    // really happened — kept only when believable (the last 48 h, not the future).
+    $offAt = pos_offline_sold_at($req['offline_sold_at'] ?? null);
+    if ($offAt !== null && pos_offline_supported()) { $cols[] = 'offline_sold_at'; $vals[] = $offAt; }
     $ph = []; $p = [];
     foreach ($vals as $i => $v) { $ph[] = ":v{$i}"; $p[":v{$i}"] = $v; }
     db_query('INSERT INTO pos_sales (' . implode(', ', $cols) . ') VALUES (' . implode(', ', $ph) . ')', $p);
@@ -1392,6 +1396,27 @@ function pos_catalog_payload(array $outlet): array {
 }
 
 /** A sale for the till / receipt. */
+/** pos_sales.offline_sold_at exists (add_pos_offline.sql) — catalog lookup, safe in a transaction. */
+function pos_offline_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { return $ok = (bool) db_query("SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'pos_sales' AND column_name = 'offline_sold_at'")->fetchColumn(); }
+    catch (Throwable $e) { return $ok = false; }
+}
+
+/**
+ * The time an offline sale happened, from the till (ISO 8601), as 'Y-m-d H:i:sP' —
+ * or null when absent or not believable: more than 48 h ago or more than 5 min
+ * ahead (a tablet clock can drift). PURE apart from the current time ($now).
+ */
+function pos_offline_sold_at(mixed $v, ?int $now = null): ?string {
+    if (!is_string($v) || $v === '' || strlen($v) > 40) return null;
+    $t = strtotime($v);
+    $now ??= time();
+    if ($t === false || $t < $now - 48 * 3600 || $t > $now + 300) return null;
+    return date('Y-m-d H:i:sP', $t);
+}
+
 const POS_RECEIPT_EMAIL_MAX = 3;   // copies of one receipt that can be emailed
 
 /** pos_sales has the receipt-email columns (add_pos_receipt_email.sql) — catalog lookup. */
@@ -1430,6 +1455,7 @@ function pos_sale_payload(array $s): array {
         'can_email' => $mailOn && ($s['status'] ?? '') === 'completed' && (int)($s['receipt_sent_count'] ?? 0) < POS_RECEIPT_EMAIL_MAX,
         'email_hint' => $mailOn ? pos_sale_email_hint($s) : '',
         'receipt_sent' => (int)($s['receipt_sent_count'] ?? 0),
+        'offline_sold_at' => !empty($s['offline_sold_at']) ? date('j M H:i', strtotime((string)$s['offline_sold_at'])) : null,
         'id' => (int)$s['id'], 'reference' => (string)$s['reference'], 'status' => (string)$s['status'],
         'outlet_id' => (int)$s['outlet_id'], 'outlet' => (string)($s['outlet_name'] ?? ''), 'staff' => (string)($s['user_name'] ?? ''),
         'customer' => (string)$s['customer_name'], 'customer_type' => (string)$s['customer_type'],

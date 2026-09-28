@@ -477,13 +477,16 @@
     var customer = S.custMode === 'inhouse' && S.cust
       ? { type: 'inhouse', hold_id: S.cust.hold_id, guest_id: S.guest }
       : { type: 'walkin', name: S.walk.name.trim(), phone: S.walk.phone.trim(), pos_customer_id: S.walk.id };
-    api('/api/pos/sale.php', {
+    var body = {
       outlet_id: S.outlet.id, client_uuid: S.saleKey,
       lines: S.cart.map(function (l) { return { item_id: l.id, qty: l.qty, open_price: item(l.id).price === null ? l.open : null }; }),
       payment_method: S.pay, payment_ref: S.payRef, cash_tendered: S.pay === 'cash' ? S.tender : null, customer: customer,
       tip_pct: S.tip && S.tip.pct ? S.tip.pct : null, tip_amount: S.tip && S.tip.amount !== undefined ? S.tip.amount : null,
       signature: sig || null
-    }).then(function (d) {
+    };
+    S.lastAttempt = { body: JSON.parse(JSON.stringify(body)), totalC: t.totalC,
+                      names: S.cart.map(function (l) { return l.qty + ' × ' + (item(l.id) ? item(l.id).name : '?'); }) };
+    api('/api/pos/sale.php', body).then(function (d) {
       S.sending = false;
       if (!d.ok) {
         // A refusal is final for this cart; a fresh key lets the corrected cart go through.
@@ -503,9 +506,100 @@
       if (err && err.message === 'locked') return;
       S.sending = false;           // keep the SAME key: a retry returns the sale if it did go through
       btn.disabled = false; btn.textContent = 'Retry';
-      $('#saleErr').textContent = 'No connection — nothing is lost. Tap Retry.';
+      var canOffline = S.pay !== 'room_charge' && qAvailable();
+      $('#saleErr').textContent = 'No connection — nothing is lost. Tap Retry' + (canOffline ? ', or save the sale on this tablet and it will be sent when the connection is back.' : '.');
+      if (canOffline && !$('#saveOffline')) {
+        btn.insertAdjacentHTML('afterend', '<button type="button" class="btn" id="saveOffline" style="margin-top:8px;width:100%">Save offline</button>');
+        $('#saveOffline').onclick = saveOffline;
+      }
     });
   }
+
+  /* ── Offline mode: keep a sale on the tablet, send it when the connection is back ──
+   * The sale keeps its client_uuid, so sending it twice can never make two sales
+   * (the server returns the first). Room charges are never saved offline — they
+   * need the live guest check. What the server later refuses (e.g. out of stock)
+   * or totals differently lands in "Needs attention" for staff to handle. */
+  var KEY_Q = 'ts_pos_offline_q_v1', KEY_F = 'ts_pos_offline_failed_v1';
+  function qGet(k) { try { var v = JSON.parse(localStorage.getItem(k) || '[]'); return Array.isArray(v) ? v : []; } catch (e) { return []; } }
+  function qSet(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+  function qAvailable() { try { localStorage.setItem('ts_pos_probe', '1'); localStorage.removeItem('ts_pos_probe'); return true; } catch (e) { return false; } }
+  function queueBadge() {
+    var n = qGet(KEY_Q).length, f = qGet(KEY_F).length, hb = $('#histBtn'); if (!hb) return;
+    var b = hb.querySelector('.qbadge');
+    if (!n && !f) { if (b) b.remove(); return; }
+    if (!b) { hb.insertAdjacentHTML('beforeend', '<span class="qbadge"></span>'); b = hb.querySelector('.qbadge'); }
+    b.textContent = f ? '!' + f : String(n);
+    b.className = 'qbadge' + (f ? ' qbadge--bad' : '');
+    b.title = (n ? n + ' offline sale' + (n === 1 ? '' : 's') + ' waiting to send. ' : '') + (f ? f + ' need' + (f === 1 ? 's' : '') + ' attention.' : '');
+  }
+  function saveOffline() {
+    var a = S.lastAttempt; if (!a) return;
+    var entry = { body: a.body, expectC: a.totalC, names: a.names, outlet: S.outlet.name, currency: S.outlet.currency,
+                  seller: (B.user && B.user.name) || '', at: new Date().toISOString() };
+    entry.body.offline_sold_at = entry.at;
+    var q = qGet(KEY_Q);
+    if (q.some(function (x) { return x.body.client_uuid === entry.body.client_uuid; })) { toast('This sale is already saved offline.'); return; }
+    q.push(entry);
+    if (!qSet(KEY_Q, q)) { toast('This tablet can’t store sales offline — keep trying to send it.', true); return; }
+    S.saleKey = null;
+    S.cart = []; S.pay = null; S.cust = null; S.guest = null; S.walk = { name: '', phone: '', id: null }; S.tender = null; S.tip = null;
+    $('#panel').classList.remove('is-open');
+    render();
+    openModal('<div class="center"><div class="ok">' + ico('clock') + '</div><h2>Saved offline</h2><div class="sub">It will be sent automatically when the connection is back — the receipt number comes then.</div></div>' +
+      entry.names.map(function (n) { return '<div class="rrow"><span>' + esc(n) + '</span><span></span></div>'; }).join('') +
+      '<div class="rrow b"><span>Total</span><span>' + esc(fmt(entry.expectC / 100)) + '</span></div>' +
+      '<div class="btns"><button type="button" class="btn btn--p" data-close>New sale</button></div>');
+    queueBadge();
+  }
+  function syncQueue() {
+    if (syncQueue.busy || navigator.onLine === false) return;
+    var q = qGet(KEY_Q); queueBadge();
+    if (!q.length) return;
+    var it = q[0]; syncQueue.busy = true;
+    var drop = function () { qSet(KEY_Q, qGet(KEY_Q).filter(function (x) { return x.body.client_uuid !== it.body.client_uuid; })); };
+    api('/api/pos/sale.php', JSON.parse(JSON.stringify(it.body))).then(function (d) {
+      syncQueue.busy = false;
+      if (d.ok) {
+        drop();
+        if (cents(d.sale.total) !== it.expectC) {
+          qSet(KEY_F, qGet(KEY_F).concat([Object.assign({}, it, { ref: d.sale.reference,
+            error: 'Sent as ' + d.sale.reference + ', but the total came out ' + d.sale.currency + ' ' + d.sale.total + ' — a price changed while offline. Check it with the customer.' })]));
+        } else {
+          toast('Offline sale sent — ' + d.sale.reference + '.');
+        }
+        queueBadge(); if (S.outlet) loadOutlet(S.outlet.id, true);
+        syncQueue();
+      } else if (d.__status === 422) {
+        drop();   // refused for good (e.g. out of stock) — staff must handle it by hand
+        qSet(KEY_F, qGet(KEY_F).concat([Object.assign({}, it, { error: d.error || 'The sale was refused.' })]));
+        queueBadge(); toast('An offline sale could not be sent — see Sales history.', true);
+        syncQueue();
+      } else {
+        queueBadge();   // server trouble: try again on the next round
+      }
+    }).catch(function () { syncQueue.busy = false; });
+  }
+  function queueHtml() {
+    var q = qGet(KEY_Q), f = qGet(KEY_F); if (!q.length && !f.length) return '';
+    var row = function (x, i, failed) {
+      return '<div class="qrow' + (failed ? ' qrow--bad' : '') + '"><div><strong>' + esc(x.outlet) + '</strong> · ' + esc(new Date(x.at).toLocaleString('en-GB', { timeZone: 'Africa/Nairobi', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })) + (x.seller ? ' · ' + esc(x.seller) : '') +
+        '<div class="sub" style="margin:2px 0 0">' + esc(x.names.join(', ')) + ' — ' + esc(x.currency + ' ' + (x.expectC / 100)) + '</div>' +
+        (failed ? '<div class="err" style="margin:4px 0 0">' + esc(x.error) + '</div>' : '') + '</div>' +
+        (failed ? '<button type="button" class="btn" data-q-dismiss="' + i + '">Done</button>' : '') + '</div>';
+    };
+    return (q.length ? '<h3 class="qh">Waiting to send (' + q.length + ')</h3>' + q.map(function (x, i) { return row(x, i, false); }).join('') +
+                       '<div class="btns" style="margin:6px 0 12px"><button type="button" class="btn" data-q-sync>Send now</button></div>' : '') +
+           (f.length ? '<h3 class="qh">Needs attention (' + f.length + ')</h3><div class="sub">Ring these up again or sort them out with the customer, then tap Done.</div>' + f.map(function (x, i) { return row(x, i, true); }).join('') : '');
+  }
+  document.addEventListener('click', function (e) {
+    var d = e.target.closest('[data-q-dismiss]');
+    if (d) { var f = qGet(KEY_F); f.splice(+d.dataset.qDismiss, 1); qSet(KEY_F, f); d.closest('.qrow').remove(); queueBadge(); return; }
+    if (e.target.closest('[data-q-sync]')) { syncQueue(); toast('Sending…'); }
+  });
+  window.addEventListener('online', syncQueue);
+  setInterval(syncQueue, 30000);
+  setTimeout(syncQueue, 1500);
 
   function receiptHtml(s, tendered) {
     var money = function (n, cur) { cur = cur || s.currency; var sym = { USD: '$', EUR: '€', GBP: '£' }[cur]; var v = Number(n).toLocaleString('en-US', { minimumFractionDigits: n % 1 ? 2 : 0, maximumFractionDigits: 2 }); return sym ? sym + v : cur + ' ' + v; };
@@ -519,6 +613,7 @@
       (s.bill_amount !== null && s.bill_currency && s.bill_currency !== s.currency ? '<div class="sub" style="margin:6px 0 0">On the room bill: ' + money(s.bill_amount, s.bill_currency) + ' (1 ' + esc(s.bill_currency) + ' = ' + (Math.round(s.fx_rate * 100) / 100) + ' ' + esc(s.currency) + ')</div>' : '') +
       (s.payment_ref ? '<div class="sub" style="margin:6px 0 0">Ref: ' + esc(s.payment_ref) + '</div>' : '') +
       (s.signed ? '<div class="sub" style="margin:6px 0 0">' + ico('check') + ' Signed by the guest</div>' : '') +
+      (s.offline_sold_at ? '<div class="sub" style="margin:6px 0 0">' + ico('clock') + ' Rung up offline at ' + esc(s.offline_sold_at) + '</div>' : '') +
       (tendered ? '<div class="sub" style="margin:6px 0 0">Cash ' + money(tendered) + ' · change ' + money(Math.max(0, (Math.round(tendered * 100) - Math.round(s.total * 100)) / 100)) + '</div>' : '');
   }
   function showReceipt(s, tendered) {
@@ -553,7 +648,7 @@
 
   /* ── History + void ───────────────────────────────────────────────── */
   $('#histBtn').onclick = function () {
-    openModal('<h2>Sales history</h2><div class="sub">' + esc(S.outlet.name) + ' · today</div><div class="hist" id="hist"><div class="empty">Loading…</div></div><div class="btns"><button type="button" class="btn" data-close>Close</button></div>');
+    openModal('<h2>Sales history</h2><div class="sub">' + esc(S.outlet.name) + ' · today</div>' + queueHtml() + '<div class="hist" id="hist"><div class="empty">Loading…</div></div><div class="btns"><button type="button" class="btn" data-close>Close</button></div>');
     api('/api/pos/sales.php?outlet=' + S.outlet.id).then(function (d) {
       var el = $('#hist'); if (!el) return;
       if (!d.ok) { el.innerHTML = '<div class="empty">' + esc(d.error || 'Could not load sales.') + '</div>'; return; }

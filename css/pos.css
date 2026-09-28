@@ -224,3 +224,12 @@ a{color:inherit}
   .keypad{grid-template-columns:repeat(3,68px)}
   .pay{grid-template-columns:repeat(3,1fr)}
 }
+
+/* Offline queue (js/pos.js) */
+#histBtn{position:relative}
+.qbadge{position:absolute;top:4px;right:6px;min-width:18px;height:18px;padding:0 5px;border-radius:9px;background:#1E5C6B;color:#fff;font-size:11px;font-weight:700;line-height:18px;text-align:center}
+.qbadge--bad{background:#b91c1c}
+.qh{font-size:13px;letter-spacing:.04em;text-transform:uppercase;margin:14px 0 6px;color:#555}
+.qrow{display:flex;gap:10px;align-items:flex-start;justify-content:space-between;padding:10px 0;border-bottom:1px solid rgba(0,0,0,.08);font-size:13px}
+.qrow--bad{background:rgba(185,28,28,.04)}
+.qrow .btn{flex:none}

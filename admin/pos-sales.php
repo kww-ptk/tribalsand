@@ -166,7 +166,8 @@ include __DIR__ . '/_layout.php';
   <div class="pss-grid">
     <div class="card">
       <div class="card__head"><span class="card__title"><?= e($sale['reference']) ?></span>
-        <?= $sale['status'] === 'voided' ? '<span class="badge badge--red">Voided</span>' : '<span class="badge badge--green">Completed</span>' ?></div>
+        <?= $sale['status'] === 'voided' ? '<span class="badge badge--red">Voided</span>' : '<span class="badge badge--green">Completed</span>' ?>
+        <?php if (!empty($sale['offline_sold_at'])): ?><span class="badge badge--grey" data-tip="Saved on the till without a connection and sent later — this is when it really happened">Rung up offline <?= e(date('j M H:i', strtotime((string)$sale['offline_sold_at']))) ?></span><?php endif; ?></div>
       <div class="table-wrap"><table class="data-table pss-lines">
         <thead><tr><th>Item</th><th class="num">Qty</th><th class="num">Price</th><th class="num">Total</th></tr></thead>
         <tbody>
