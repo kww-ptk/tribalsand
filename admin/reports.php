@@ -14,6 +14,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/bookings.php';
+require_once __DIR__ . '/../includes/pos-support.php';   // pos_supported() — POS takings section
 require_login();
 require_manager();
 
@@ -69,7 +70,37 @@ $summary   = bookings_summarize($rows);
 $activeU   = bookings_active_unit_count($reportVenueIds);
 $occ       = bookings_occupancy($rows, $from, $toIncl, $activeU);
 
+// ── Point of sale (shop, spa, kite, experiences) ─────────────────────
+// Outlets in scope: the owner sees all; a manager the outlets they manage. A
+// property filter narrows to that property's own outlets (shared outlets have none).
+// A booking-source filter hides this section — POS takings have no booking source.
+$posRows = []; $pos = null;
+if (pos_supported() && $fSource === '') {
+    require_once __DIR__ . '/../includes/pos.php';
+    $me = current_admin();
+    $outletIds = $me ? pos_manageable_outlet_ids($me) : [];
+    if ($fVenue && $outletIds) {
+        $outletIds = array_map('intval', db_query('SELECT id FROM pos_outlets WHERE venue_id = :v AND id IN (' . implode(',', $outletIds) . ')',
+            [':v' => $fVenue])->fetchAll(PDO::FETCH_COLUMN));
+    }
+    $posRows = pos_report_sales($outletIds, $from, $toIncl);
+    $pos = pos_report_summarize($posRows);
+}
+
 // ── CSV export (same window/scope) ───────────────────────────────────
+if (($_GET['export'] ?? '') === 'pos_csv') {
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="pos_sales_' . $from . '_to_' . $toIncl . '.csv"');
+    $out = fopen('php://output', 'w');
+    fputcsv($out, ['Outlet', 'Month', 'Currency', 'Number of sales', 'Sales (excl. tips)', 'VAT', 'Net of VAT', 'Tips', 'Of which room-charged'], ',', '"', '');
+    foreach ($posRows as $r) {
+        $tips = (float)$r['tips']; $vat = (float)$r['vat']; $sales = (float)$r['total'] - $tips;
+        fputcsv($out, [$r['outlet'], $r['ym'], $r['currency'], (int)$r['n'], number_format($sales, 2, '.', ''), number_format($vat, 2, '.', ''),
+                       number_format($sales - $vat, 2, '.', ''), number_format($tips, 2, '.', ''), number_format((float)$r['room_charged'], 2, '.', '')], ',', '"', '');
+    }
+    fclose($out);
+    exit;
+}
 if (($_GET['export'] ?? '') === 'csv') {
     $fname = 'bookings_' . $from . '_to_' . $toIncl . '.csv';
     header('Content-Type: text/csv; charset=utf-8');
@@ -165,6 +196,7 @@ $monthLabel = fn(string $ym): string => $ym === '' ? '—' : date('M Y', strtoti
   <div class="card"><div class="card__body" style="padding:32px;text-align:center;color:var(--muted)">
     No confirmed bookings in this range. Website bookings appear here once confirmed; imported bookings once you run an import with amounts.
   </div></div>
+  <?php include __DIR__ . '/_pos_report.php'; ?>
   <?php include __DIR__ . '/_layout_end.php'; return; ?>
 <?php endif; ?>
 
@@ -240,5 +272,7 @@ $monthLabel = fn(string $ym): string => $ym === '' ? '—' : date('M Y', strtoti
     </tbody></table>
   </div></div>
 </div>
+
+<?php include __DIR__ . '/_pos_report.php'; ?>
 
 <?php include __DIR__ . '/_layout_end.php'; ?>

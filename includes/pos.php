@@ -1511,6 +1511,55 @@ function pos_z_report(array $outletIds, string $ymd): array {
 }
 
 /**
+ * POS takings for the financial report: completed sales of $outletIds between two
+ * Nairobi days (inclusive), grouped by outlet, currency and month. Voided sales are
+ * excluded (a void reverses the sale). Returns raw rows for pos_report_summarize().
+ */
+function pos_report_sales(array $outletIds, string $from, string $to): array {
+    if (!pos_supported() || !$outletIds) return [];
+    $ids = implode(',', array_map('intval', $outletIds));
+    $v2  = pos_v2_supported();
+    return db_query(
+        "SELECT s.outlet_id, o.name AS outlet, o.sort_order, s.currency, to_char(s.created_at, 'YYYY-MM') AS ym,
+                COUNT(*) AS n, SUM(s.total) AS total, SUM(s.service_charge) AS service,
+                " . ($v2 ? 'SUM(s.tip_amount) AS tips, SUM(s.vat_amount) AS vat' : '0 AS tips, 0 AS vat') . ",
+                SUM(CASE WHEN s.payment_method = 'room_charge' THEN s.total ELSE 0 END) AS room_charged
+           FROM pos_sales s JOIN pos_outlets o ON o.id = s.outlet_id
+          WHERE s.outlet_id IN ({$ids}) AND s.status = 'completed'
+            AND s.created_at >= CAST(:f AS date) AND s.created_at < CAST(:t AS date) + INTERVAL '1 day'
+          GROUP BY s.outlet_id, o.name, o.sort_order, s.currency, ym
+          ORDER BY o.sort_order, o.name, s.currency, ym", [':f' => $from, ':t' => $to])->fetchAll();
+}
+
+/**
+ * Summarise pos_report_sales() rows — PURE, integer cents, never across currencies.
+ * "sales" = what the outlets took excluding tips (tips belong to staff); "net" =
+ * sales less VAT. Returns ['currencies' => [cur => totals], 'by_outlet' => [name =>
+ * [cur => totals]], 'by_month' => [ym => [cur => totals]]]; totals = n, sales, net,
+ * vat, tips, room_charged (all cents but n).
+ */
+function pos_report_summarize(array $rows): array {
+    $blank = ['n' => 0, 'sales' => 0, 'net' => 0, 'vat' => 0, 'tips' => 0, 'room_charged' => 0];
+    $out = ['currencies' => [], 'by_outlet' => [], 'by_month' => []];
+    foreach ($rows as $r) {
+        $cur  = strtoupper((string)$r['currency']);
+        $tips = pos_cents($r['tips']);
+        $vat  = pos_cents($r['vat']);
+        $sale = pos_cents($r['total']) - $tips;
+        $add  = ['n' => (int)$r['n'], 'sales' => $sale, 'net' => $sale - $vat, 'vat' => $vat, 'tips' => $tips, 'room_charged' => pos_cents($r['room_charged'])];
+        foreach ([['currencies', null], ['by_outlet', (string)$r['outlet']], ['by_month', (string)$r['ym']]] as [$k, $key]) {
+            if ($key === null) { $t = &$out[$k][$cur]; } else { $t = &$out[$k][$key][$cur]; }
+            $t ??= $blank;
+            foreach ($add as $f => $v) $t[$f] += $v;
+            unset($t);
+        }
+    }
+    ksort($out['currencies']);
+    ksort($out['by_month']);
+    return $out;
+}
+
+/**
  * Consignment statement for [$from, $to] (inclusive, Nairobi days): per supplier
  * and currency — units sold, gross, what we keep, what we owe, what was paid out
  * for periods overlapping the range, and the balance. Owed is computed per LINE
