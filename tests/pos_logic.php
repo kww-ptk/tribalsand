@@ -34,7 +34,7 @@ check('totals: empty cart is zero', near($t['total'], 0));
 
 // ── Line resolution ────────────────────────────────────────────────────────
 $item = ['id' => 5, 'outlet_id' => 2, 'name' => 'Cap', 'kind' => 'product', 'price' => '28.00', 'is_active' => 't'];
-$tour = ['price_amount' => '40.00', 'price_per_person' => 't'];
+$tour = ['price_amount' => '40.00', 'price_per_person' => 't', 'currency' => 'USD', 'sale_currency' => 'USD', 'fx_rate' => 1.0];
 $l = pos_resolve_line($item + ['tour_id' => 9], $tour, 2, null);
 check('line: item price beats tour price', is_array($l) && near($l['unit_price'], 28) && near($l['line_total'], 56));
 $l = pos_resolve_line(['price' => null, 'tour_id' => 9] + $item, $tour, 3, null);
@@ -55,6 +55,23 @@ $l = pos_resolve_line(['consignor_id' => 4, 'consignor_commission_pct' => '20.00
 check('line: consignment snapshots consignor + commission', is_array($l) && $l['consignor_id'] === 4 && near((float)$l['consignor_commission_pct'], 20) && $l['consignor_cost'] === null);
 $l = pos_resolve_line(['consignor_id' => 4, 'consignor_commission_pct' => '20.00', 'consignor_cost' => '8.00'] + $item, null, 2, null);
 check('line: a fixed consignor cost wins over the commission %', is_array($l) && near((float)$l['consignor_cost'], 8) && $l['consignor_commission_pct'] === null);
+// ── Linked activity prices: entered in the site currency, sold in the outlet's ──
+$act = ['price' => null, 'tour_id' => 9] + $item;
+$usd = ['price_amount' => '80.00', 'price_per_person' => 't', 'currency' => 'USD', 'sale_currency' => 'KES', 'fx_rate' => 129.0];
+$l = pos_resolve_line($act, $usd, 2, null);
+check('activity fx: a $80 activity on a KES outlet rings up KES 10,320 (not KES 80)', is_array($l) && near($l['unit_price'], 10320) && near($l['line_total'], 20640) && $l['per_person'] === true);
+$l = pos_resolve_line($act, ['sale_currency' => 'USD', 'fx_rate' => 1.0] + $usd, 1, null);
+check('activity fx: same currency → price unchanged', is_array($l) && near($l['unit_price'], 80));
+$l = pos_resolve_line($act, ['fx_rate' => null] + $usd, 1, null);
+check('activity fx: no rate → refused, naming both currencies', is_string($l) && str_contains($l, 'USD') && str_contains($l, 'KES'));
+check('activity fx: an open price never stands in for a missing rate', is_string(pos_resolve_line($act, ['fx_rate' => null] + $usd, 1, 10320.0)));
+$noRate = $usd; unset($noRate['fx_rate']);
+check('activity fx: a tour row carrying no rate at all is refused (fail closed)', is_string(pos_resolve_line($act, $noRate, 1, null)));
+$l = pos_resolve_line($item + ['tour_id' => 9], $usd, 1, null);
+check('activity fx: an item\'s own price is never converted', is_array($l) && near($l['unit_price'], 28));
+check('activity fx: to the cent, half-up (EUR 85.50 × 140.217391 = 11,988.59)', near(pos_fx_to_sale(85.50, 140.217391), 11988.59));
+check('activity fx: half a cent rounds up', near(pos_fx_to_sale(0.01, 0.5), 0.01));
+check('activity fx: a room charge converts KES 10,320 back to exactly $80', near(pos_fx_convert(pos_fx_to_sale(80, 129), 129), 80));
 check('owed: 20% commission on 2×12 → supplier gets 19.20', near(pos_consignor_owed(['consignor_id' => 1, 'qty' => 2, 'line_total' => 24, 'consignor_commission_pct' => 20]), 19.2));
 check('owed: fixed cost 8 × 3 → 24', near(pos_consignor_owed(['consignor_id' => 1, 'qty' => 3, 'line_total' => 60, 'consignor_cost' => 8]), 24));
 check('owed: our own stock owes nothing', near(pos_consignor_owed(['consignor_id' => null, 'qty' => 3, 'line_total' => 60]), 0));
@@ -319,6 +336,23 @@ try {
     check('open price: missing → refused', $r['ok'] === false);
     $r = $sale($exp, [['item_id' => $req, 'qty' => 1, 'open_price' => 250]], 'card', $walkin, $owner);
     check('open price: 250 accepted', $r['ok'] && near((float)$r['sale']['subtotal'], 250));
+    // The same activity sold at an outlet in another currency converts from the site currency.
+    $kesSnork = $ins("INSERT INTO pos_items (outlet_id, name, kind, price, tour_id) VALUES (:o, 'ZZ Snorkelling (market)', 'service', NULL, :t)", [':o' => $kes, ':t' => $tourId]);
+    $actRate  = pos_fx_rate($other, $cur);
+    $actUnit  = $actRate ? pos_fx_to_sale(40, $actRate) : 0.0;
+    $r = $sale($kes, [['item_id' => $kesSnork, 'qty' => 2]], 'cash', $walkin, $owner);
+    check("tour link: at a {$other} outlet the {$cur} 40 activity converts at the site rate", $actRate && $r['ok'] && near((float)$r['sale']['subtotal'], 2 * $actUnit) && !near($actUnit, 40));
+    check('tour link: admin catalogue shows the converted price', near((float)pos_item_display_price(pos_fetch_item($kesSnork), $other), $actUnit));
+    $row = array_values(array_filter(pos_catalog_payload(pos_fetch_outlet($kes))['items'], fn($x) => $x['id'] === $kesSnork))[0] ?? [];
+    check('tour link: the till catalogue carries the converted price', near((float)($row['price'] ?? 0), $actUnit) && ($row['unavailable'] ?? null) === null);
+    check('tour link: admin label shows both figures when currencies differ', str_contains(pos_activity_price_label(40, $other), '(from ') && !str_contains(pos_activity_price_label(40, $cur), '(from '));
+    // An outlet in a currency the site FX table has no rate for: refused, never guessed.
+    $zzz      = $mkOutlet('ZZ Nowhere', 'zznowhere', 'shop', null, 'XTS', 0);
+    $zzzSnork = $ins("INSERT INTO pos_items (outlet_id, name, kind, price, tour_id) VALUES (:o, 'ZZ Snorkelling (XTS)', 'service', NULL, :t)", [':o' => $zzz, ':t' => $tourId]);
+    $r = $sale($zzz, [['item_id' => $zzzSnork, 'qty' => 1, 'open_price' => 40]], 'cash', $walkin, $owner);
+    check('tour link: no site→outlet rate → sale refused (open price no fallback)', $r['ok'] === false && str_contains((string)$r['error'], 'exchange rate'));
+    $row = array_values(array_filter(pos_catalog_payload(pos_fetch_outlet($zzz))['items'], fn($x) => $x['id'] === $zzzSnork))[0] ?? [];
+    check('tour link: no rate → the till tile is flagged unavailable', is_string($row['unavailable'] ?? null) && array_key_exists('price', $row) && $row['price'] === null);
 
     // 8. Consignment snapshot.
     $r = $sale($shop, [['item_id' => $brace, 'qty' => 2]], 'cash', ['type' => 'walkin', 'name' => 'ZZ Walker', 'phone' => '0700'], $amina);

@@ -13,7 +13,8 @@
  * Admin → Point of Sale.
  *
  * Activities are LINKED (pos_items.tour_id, price NULL), never copied: the till
- * reads tours.price_amount at sale time. An "on request" activity (no price)
+ * reads tours.price_amount at sale time, converted from the site currency to the
+ * outlet's (pos_tour_unit_price()). An "on request" activity (no price)
  * rings up with an open price.
  *
  * Spa items are seeded INACTIVE with no price — they stay off the till until the
@@ -97,7 +98,7 @@ $run = function () use ($OUTLETS, $SPA, $currency, $dry, &$made, $log): void {
         if ($oid && db_query('SELECT 1 FROM pos_items WHERE outlet_id = :o AND tour_id = :t', [':o' => $oid, ':t' => (int)$t['id']])->fetchColumn()) continue;
         $cat = $isKite ? 'Lessons' : (preg_match('/sunset|dhow/i', (string)$t['name']) ? 'Sunset'
              : (preg_match('/snorkel|dive|diving|fish|kayak|paddle|surf|boat|marine|dolphin/i', (string)$t['name']) ? 'Water sports' : 'Land & culture'));
-        $price = $t['price_amount'] === null ? 'open price' : pos_money((float)$t['price_amount'], $currency);
+        $price = $t['price_amount'] === null ? 'open price' : pos_activity_price_label($t['price_amount'], $currency);
         $log("activity + " . ($isKite ? 'Kite School' : 'Experiences') . " / {$t['name']} ({$price})");
         $made['activities']++;
         if (!$dry) {

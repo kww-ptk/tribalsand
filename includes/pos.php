@@ -116,7 +116,10 @@ function pos_tip_cents(int $beforeTipCents, mixed $pct, mixed $amount): int|stri
  * Resolve one cart line against the live catalogue — PURE.
  * Price precedence: item price → linked tour price → open price entered at sale.
  * $item is a pos_items row (its own `consign_pct`, plus `consignor_commission_pct` =
- * the joined supplier's default); $tour is the linked tours row or null.
+ * the joined supplier's default); $tour is pos_item_tour()'s shape or null — a
+ * linked activity's price is in the SITE currency and is converted to the sale
+ * currency by pos_tour_unit_price(). An item's own price is already in the outlet's
+ * currency and is never converted.
  * Returns the line array, or an error string.
  */
 function pos_resolve_line(array $item, ?array $tour, int $qty, ?float $openPrice): array|string {
@@ -128,8 +131,9 @@ function pos_resolve_line(array $item, ?array $tour, int $qty, ?float $openPrice
     $perPerson = pos_bool($item['per_person'] ?? false);
     if (isset($item['price']) && $item['price'] !== null && $item['price'] !== '') {
         $unit = (float) $item['price'];
-    } elseif ($tour !== null && isset($tour['price_amount']) && $tour['price_amount'] !== null && $tour['price_amount'] !== '') {
-        $unit      = (float) $tour['price_amount'];
+    } elseif (($tourUnit = pos_tour_unit_price($tour, $name)) !== null) {
+        if (is_string($tourUnit)) return $tourUnit;   // no rate — refused, never guessed (an open price can't stand in)
+        $unit      = $tourUnit;
         $perPerson = pos_bool($tour['price_per_person'] ?? false);
     } elseif ($openPrice !== null) {
         if (!is_finite($openPrice) || $openPrice <= 0) return "Enter a price above zero for {$name}.";
@@ -225,6 +229,40 @@ function pos_fx_rate(string $from, string $to): ?float {
 function pos_fx_convert(float $amount, float $rate): float {
     if ($rate <= 0) return 0.0;
     return pos_from_cents((int) round(pos_cents($amount) / $rate, 0, PHP_ROUND_HALF_UP));
+}
+
+/**
+ * Convert an amount in the bill (site) currency INTO the sale currency at $rate — PURE.
+ * $rate is the same number pos_fx_rate($saleCur, $billCur) gives a room charge (units
+ * of the sale currency per 1 bill unit), so this multiplies where pos_fx_convert()
+ * divides; a USD 80 activity rung up at KES 10,320 room-charges back to exactly USD 80.
+ * Rounding: half-up to the integer cent, like every other POS amount. (Feeding
+ * pos_fx_convert() the inverse rate instead would be lossy — pos_fx_rate() keeps 6
+ * decimals, so 1/129 → 0.007752 and USD 80 would come out KES 10,319.92.)
+ */
+function pos_fx_to_sale(float $amount, float $rate): float {
+    if ($rate <= 0) return 0.0;
+    return pos_from_cents((int) round(pos_cents($amount) * $rate, 0, PHP_ROUND_HALF_UP));
+}
+
+/**
+ * A linked activity's unit price in the sale currency — PURE.
+ * Activity prices (tours.price_amount) are entered in the site currency, the one room
+ * bills are in; outlets sell in their own. $tour: pos_item_tour()'s shape —
+ * price_amount, currency (site), sale_currency, fx_rate (units of the sale currency
+ * per 1 site unit; 1.0 when they match). Returns null when the activity has no price
+ * (the line falls through to an open price), the converted float, or — when the rate
+ * is missing — a refusal string: same rule as a room charge, never guessed.
+ */
+function pos_tour_unit_price(?array $tour, string $name = 'This activity'): float|string|null {
+    if ($tour === null || !isset($tour['price_amount']) || $tour['price_amount'] === null || $tour['price_amount'] === '') return null;
+    $rate = isset($tour['fx_rate']) && $tour['fx_rate'] !== null ? (float)$tour['fx_rate'] : 0.0;
+    if ($rate <= 0) {
+        $from = strtoupper((string)($tour['currency'] ?? '')) ?: 'the site currency';
+        $to   = strtoupper((string)($tour['sale_currency'] ?? '')) ?: 'this outlet\'s currency';
+        return "{$name} is priced in {$from} and there is no {$from}→{$to} exchange rate — add one in Settings → Display Currency Rates.";
+    }
+    return pos_fx_to_sale((float)$tour['price_amount'], $rate);
 }
 
 /** A guest signature: a PNG data URL, 8 B – 250 KB, real PNG bytes — PURE. */
@@ -388,17 +426,54 @@ function pos_fetch_item(int $id): array|false {
     return db_query(pos_item_select_sql() . ' WHERE i.id = :id', [':id' => $id])->fetch();
 }
 
-/** The tour row shape pos_resolve_line() expects, from a joined item row. */
-function pos_item_tour(array $item): ?array {
+/**
+ * The tour row shape pos_resolve_line() expects, from a joined item row, for a sale
+ * in $saleCur (the SELLING outlet's currency). Carries the site-currency → sale-
+ * currency rate from the site FX table; null rate = none available.
+ */
+function pos_item_tour(array $item, string $saleCur): ?array {
     if (empty($item['tour_id'])) return null;
-    return ['price_amount' => $item['tour_price'] ?? null, 'price_per_person' => $item['tour_per_person'] ?? false];
+    return pos_tour_row($item['tour_price'] ?? null, $item['tour_per_person'] ?? false, $saleCur);
 }
 
-/** Display price of an item: its own, else its tour's; null = open price at sale. */
-function pos_item_display_price(array $item): ?float {
+/** pos_tour_unit_price()'s input for an activity price sold in $saleCur, with today's site rate. */
+function pos_tour_row(mixed $priceAmount, mixed $perPerson, string $saleCur): array {
+    $saleCur = strtoupper($saleCur);
+    $siteCur = strtoupper(setting('site_currency', 'USD'));
+    return ['price_amount' => $priceAmount, 'price_per_person' => $perPerson,
+            'currency' => $siteCur, 'sale_currency' => $saleCur, 'fx_rate' => pos_fx_rate($saleCur, $siteCur)];
+}
+
+/**
+ * A linked activity's price as the POS admin shows it: in the outlet's currency, with
+ * the site-currency figure it comes from — "KES 10,320 (from $80.00)". 'on request'
+ * when the activity is unpriced; a no-rate warning when it can't be sold here.
+ */
+function pos_activity_price_label(mixed $priceAmount, string $saleCur): string {
+    if ($priceAmount === null || $priceAmount === '') return 'on request';
+    $row = pos_tour_row($priceAmount, false, $saleCur);
+    $p   = pos_tour_unit_price($row);
+    if (is_string($p)) return "no {$row['currency']}→{$row['sale_currency']} rate — can't be sold here";
+    $base = pos_money((float)$priceAmount, $row['currency']);
+    return $row['currency'] === $row['sale_currency'] ? $base : pos_money($p, $row['sale_currency']) . " (from {$base})";
+}
+
+/**
+ * Display price of an item in $saleCur: its own, else its activity's (converted from
+ * the site currency); null = open price at sale — or an activity that can't be priced
+ * for want of a rate (pos_item_price_problem() says which).
+ */
+function pos_item_display_price(array $item, string $saleCur): ?float {
     if (isset($item['price']) && $item['price'] !== null && $item['price'] !== '') return (float)$item['price'];
-    if (!empty($item['tour_id']) && isset($item['tour_price']) && $item['tour_price'] !== null && $item['tour_price'] !== '') return (float)$item['tour_price'];
-    return null;
+    $p = pos_tour_unit_price(pos_item_tour($item, $saleCur), (string)($item['name'] ?? 'This activity'));
+    return is_float($p) ? $p : null;
+}
+
+/** Why an item can't be sold in $saleCur (a linked activity with no exchange rate), or null. */
+function pos_item_price_problem(array $item, string $saleCur): ?string {
+    if (isset($item['price']) && $item['price'] !== null && $item['price'] !== '') return null;
+    $p = pos_tour_unit_price(pos_item_tour($item, $saleCur), (string)($item['name'] ?? 'This activity'));
+    return is_string($p) ? $p : null;
 }
 
 function pos_fetch_consignors(bool $activeOnly = false): array {
@@ -861,7 +936,7 @@ function pos_complete_sale_tx(array $req, string $uuid, int $userId, ?int $termi
         if (!$it) throw new PosRefusal('An item in this order no longer exists — refresh the till.');
         if (!in_array((int)$it['outlet_id'], $sellable, true)) throw new PosRefusal("{$it['name']} is not sold at this outlet.");
         $open = (isset($l['open_price']) && $l['open_price'] !== '' && $l['open_price'] !== null) ? (float)$l['open_price'] : null;
-        $line = pos_resolve_line($it, pos_item_tour($it), (int)($l['qty'] ?? 0), $open);
+        $line = pos_resolve_line($it, pos_item_tour($it, (string)$outlet['currency']), (int)($l['qty'] ?? 0), $open);
         if (is_string($line)) throw new PosRefusal($line);
         $lines[] = $line;
         $need[$iid] = ($need[$iid] ?? 0) + $line['qty'];
@@ -1247,7 +1322,8 @@ function pos_catalog_payload(array $outlet): array {
             'outlet_name'    => (string)$it['outlet_name'],
             'category_id'    => $iOutlet === $oid && $it['category_id'] !== null ? (int)$it['category_id'] : null,
             'kind'           => (string)$it['kind'],
-            'price'          => pos_item_display_price($it),     // null = open price at sale
+            'price'          => pos_item_display_price($it, (string)$outlet['currency']),   // null = open price at sale
+            'unavailable'    => pos_item_price_problem($it, (string)$outlet['currency']),   // non-null = can't be sold (no FX rate)
             'per_person'     => pos_bool($it['per_person']) || (!empty($it['tour_id']) && $it['price'] === null && pos_bool($it['tour_per_person'])),
             'track_stock'    => pos_bool($it['track_stock']),
             'stock'          => pos_bool($it['track_stock']) ? (int)$it['stock_on_hand'] : null,
