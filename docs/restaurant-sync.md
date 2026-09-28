@@ -197,6 +197,7 @@ SYNC_TS_TO_ZURI=false       # per-direction: push our menu/tables/hours to Zuri
 SYNC_ZURI_TO_TS=false       # per-direction: apply Zuri's availability/reservations
 SYNC_SHARED_SECRET=         # the HMAC secret, identical on both sides (never in Git)
 SYNC_PEER_URL=https://zuriwatamu.com/sync/v1   # for the dispatcher
+SYNC_EGRESS_PROXY=          # OPTIONAL http://<relay private IP>:3128 — sends our calls to Zuri from the relay's fixed Elastic IP (ECS Express has none). Unset = direct.
 SYNC_VENUE_SLUG=zuri        # the property whose menu/tables sync (default zuri)
 SYNC_PEER_IPS=13.60.72.12   # Zuri's outbound IP(s), comma-separated; empty = don't block
 SYNC_RESERVATIONS=false     # reservations stage: route Zuri bookings through /reserve (needs SYNC_ENABLED)

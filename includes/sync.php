@@ -76,6 +76,18 @@ function sync_peer_base_url(): string {
     return rtrim((string) ($env['SYNC_PEER_URL'] ?? ''), '/');
 }
 
+/**
+ * cURL options that route calls to the peer through the fixed-IP egress relay
+ * (SYNC_EGRESS_PROXY, e.g. http://10.0.1.25:3128). ECS Express tasks have no
+ * stable outbound IP, so Zuri allowlists the relay's Elastic IP instead.
+ * Unset = direct, exactly as before. HTTPS is tunnelled (CONNECT), so the relay
+ * never sees the body or the signature.
+ */
+function sync_curl_proxy_opts(): array {
+    $proxy = trim((string) (parse_env()['SYNC_EGRESS_PROXY'] ?? ''));
+    return $proxy === '' ? [] : [CURLOPT_PROXY => $proxy, CURLOPT_HTTPPROXYTUNNEL => true];
+}
+
 /* ─────────────────────────────────────────────────────────────────────────
  * Loop prevention (§2)
  *
@@ -444,7 +456,7 @@ if (!function_exists('sync_peer_request')) {
                 'X-Sync-Timestamp: ' . $ts,
                 'X-Sync-Signature: ' . sync_sign($ts, $body),
             ], $headers),
-        ]);
+        ] + sync_curl_proxy_opts());
         if ($method !== 'GET') curl_setopt($ch, CURLOPT_POSTFIELDS, $body);
         $resp = curl_exec($ch);
         $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);

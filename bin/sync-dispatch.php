@@ -61,7 +61,7 @@ function dispatch_send(string $rawBody): array {
             'X-Sync-Signature: ' . $sig,
             'Idempotency-Key: ' . sync_new_event_id(),
         ],
-    ]);
+    ] + sync_curl_proxy_opts());
     $resp = curl_exec($ch);
     $code = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
     if ($resp === false) dispatch_log('curl error: ' . curl_error($ch));
