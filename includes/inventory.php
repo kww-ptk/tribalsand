@@ -244,9 +244,14 @@ function inv_location_touch(array $row, string $name, ?int $venueId): void {
     db_query('UPDATE inv_locations SET name = :n, venue_id = :v WHERE id = :id', [':n' => $name, ':v' => $venueId, ':id' => (int)$row['id']]);
 }
 
-/** The one Main stock location. */
+/**
+ * The one Main stock location. Read first: it exists after the first call, and an
+ * INSERT … ON CONFLICT on every page view would burn a sequence value each time.
+ */
 function inv_store_location_id(): int {
     if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
+    $id = db_query("SELECT id FROM inv_locations WHERE kind = 'store'")->fetchColumn();
+    if ($id !== false) return (int)$id;
     db_query("INSERT INTO inv_locations (kind, name) VALUES ('store', 'Main stock') ON CONFLICT (kind) WHERE kind = 'store' DO NOTHING");
     return (int) db_query("SELECT id FROM inv_locations WHERE kind = 'store'")->fetchColumn();
 }
