@@ -624,6 +624,7 @@ $__restoDrawer     = '<div><span class="ts-mob-lbl">Restaurants</span>' . $__res
         <div class="ts-drop-div"></div>
         <a href="<?= asset_url('wp-content/uploads/2024/12/Watamu-Kenya-COMETA-2025.pdf') ?>" target="_blank">Press · Cometa</a>
         <a href="for-agents.php">For Agents</a>
+        <a href="concierge.php">Ask our concierge</a>
         <a href="contact.php">Contact Us</a>
       </div>
     </div>
@@ -725,6 +726,7 @@ $__restoDrawer     = '<div><span class="ts-mob-lbl">Restaurants</span>' . $__res
     <a href="kenya-coast-guide.php" class="ts-mob-link">Kenya Coast Guide <span class="ts-mob-arr">→</span></a>
     <a href="kenya-honeymoon.php" class="ts-mob-link">Honeymoon in Kenya <span class="ts-mob-arr">→</span></a>
     <a href="<?= asset_url('wp-content/uploads/2024/12/Watamu-Kenya-COMETA-2025.pdf') ?>" class="ts-mob-link" target="_blank">Press <span class="ts-mob-arr">→</span></a>
+    <a href="concierge.php" class="ts-mob-link">Ask our concierge <span class="ts-mob-arr">→</span></a>
     <a href="contact.php" class="ts-mob-link">Contact Us <span class="ts-mob-arr">→</span></a>
     <a href="for-agents.php" class="ts-mob-link">For Agents <span class="ts-mob-arr">→</span></a>
   </div>

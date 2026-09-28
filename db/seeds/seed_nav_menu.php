@@ -102,6 +102,7 @@ $tree = [
         ['rows' => [
             ['label' => 'Press · Cometa', 'href' => 'wp-content/uploads/2024/12/Watamu-Kenya-COMETA-2025.pdf', 'blank' => true],
             ['label' => 'For Agents',     'href' => 'for-agents.php'],
+            ['label' => 'Ask our concierge', 'href' => 'concierge.php'],
             ['label' => 'Contact Us',     'href' => 'contact.php'],
         ]],
     ]],
