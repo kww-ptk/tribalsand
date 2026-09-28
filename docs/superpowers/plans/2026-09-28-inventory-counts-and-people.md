@@ -931,7 +931,7 @@ After `$isOwner = is_owner();` add:
 $__me        = current_admin();
 $countsCard  = inv_supported() ? inv_counts_due_card(
     inv_countable_locations((int)$__me['id'], admin_role(), admin_venue_ids(), frontdesk_today_ymd()),
-    ($isOwner || is_manager()) ? inv_count_queue_size(admin_venue_ids()) : 0) : '';
+    ($isOwner || is_manager()) ? inv_count_queue_size(admin_venue_ids(), true) : 0) : '';   // only what this account can resolve
 ```
 
 Insert `<?= $countsCard ?>` on its own line directly before the line `<?php if ($when === 'week'): ?>` that comes right after the `fd-bar` block (the one followed by `  <?php if (!$weekRows): ?>`).
@@ -1051,7 +1051,7 @@ Directly before the line `<div class="emp-stack">` insert:
       <div class="card__body" style="padding:18px"><p class="text-muted" style="margin:0;font-size:13px">Nothing assigned — phones, laptops, keys and tools handed to <?= e($p['full_name']) ?> show here.</p></div>
     <?php else: ?>
     <div class="table-wrap"><table class="data-table">
-      <thead><tr><th>Item</th><th class="inv-num">Qty</th><th>Since</th><th class="inv-num">Value</th><?php if ($assetsOwned): ?><th>Return / report</th><?php endif; ?></tr></thead>
+      <thead><tr><th>Item</th><th class="inv-num">Qty</th><th>Last given</th><th class="inv-num">Value</th><?php if ($assetsOwned): ?><th>Return / report</th><?php endif; ?></tr></thead>
       <tbody>
       <?php foreach ($assets['rows'] as $r): ?>
         <tr>
