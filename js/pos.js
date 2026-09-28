@@ -148,8 +148,9 @@
     $('#chips').innerHTML = chips.join('');
     var list = visibleItems();
     $('#grid').innerHTML = list.map(function (i) {
-      var left = stockLeft(i), out = left !== null && left <= 0;
+      var left = stockLeft(i), out = (left !== null && left <= 0) || !!i.unavailable;
       var tags = [];
+      if (i.unavailable) tags.push('<span class="tag tag--warn" title="' + esc(i.unavailable) + '">No exchange rate</span>');
       if (i.outlet_id !== S.outlet.id) tags.push('<span class="tag">' + esc(i.outlet_name) + '</span>');
       if (i.track_stock) tags.push('<span class="tag ' + (out ? 'tag--warn' : (i.low_at !== null && left !== null && left <= i.low_at ? 'tag--low' : '')) + '">' + (out ? 'Out of stock' : (left === null ? i.stock : left) + ' in stock') + '</span>');
       if (i.consignor) tags.push('<span class="tag tag--cons">Consignment</span>');
@@ -186,7 +187,7 @@
     var b = e.target.closest('[data-i]'); if (!b || b.disabled) return;
     var it = item(+b.dataset.i); if (!it) return;
     var left = stockLeft(it);
-    if (left !== null && left <= 0) return;
+    if ((left !== null && left <= 0) || it.unavailable) return;
     if (it.price === null) { askPrice(it, null); return; }
     var l = S.cart.find(function (x) { return x.id === it.id; });
     if (l) l.qty++; else S.cart.push({ id: it.id, qty: 1, open: null });

@@ -255,7 +255,7 @@ include __DIR__ . '/_layout.php';
           </select></div>
         <div class="field posi-span2"><label>Linked activity <span class="text-muted">(optional — the till then uses the activity's price)</span></label>
           <select name="tour_id" class="eselect" id="posiTour"><option value="0">None</option>
-            <?php foreach ($tours as $tid => $t): ?><option value="<?= $tid ?>" data-price="<?= e($t['price_amount'] === null ? '' : pos_money((float)$t['price_amount'], $cur)) ?>" <?= (int)$form['tour_id'] === $tid ? 'selected' : '' ?>><?= e($t['name']) ?><?= $t['price_amount'] === null ? ' — on request' : ' — ' . e(pos_money((float)$t['price_amount'], $cur)) ?></option><?php endforeach; ?>
+            <?php foreach ($tours as $tid => $t): ?><option value="<?= $tid ?>" data-price="<?= e($t['price_amount'] === null ? '' : pos_activity_price_label($t['price_amount'], $cur)) ?>" <?= (int)$form['tour_id'] === $tid ? 'selected' : '' ?>><?= e($t['name']) ?> — <?= e(pos_activity_price_label($t['price_amount'], $cur)) ?></option><?php endforeach; ?>
           </select><?= $err('tour_id') ?></div>
         <div class="field"><label>Price (<?= e($cur) ?>)</label>
           <span class="inp-money"><span class="inp-money__cur"><?= e($cur) ?></span>
@@ -340,7 +340,8 @@ include __DIR__ . '/_layout.php';
     <thead><tr><th style="width:30px"></th><th>Item</th><th>Category</th><th class="posi-num">Price</th><th class="posi-num">Stock</th><th>Status</th><th style="width:1%"></th></tr></thead>
     <tbody id="posiRows">
     <?php foreach ($items as $it):
-        $price = pos_item_display_price($it);
+        $price = pos_item_display_price($it, $cur);
+        $noFx  = pos_item_price_problem($it, $cur);
         $low   = pos_bool($it['track_stock']) && $it['low_stock_at'] !== null && (int)$it['stock_on_hand'] <= (int)$it['low_stock_at']; ?>
       <tr id="item-<?= (int)$it['id'] ?>" data-id="<?= (int)$it['id'] ?>" draggable="true" class="<?= pos_bool($it['is_active']) ? '' : 'is-off' ?>">
         <td><span class="posi-grip" aria-hidden="true"><?= admin_icon('grip', 16) ?></span></td>
@@ -357,7 +358,7 @@ include __DIR__ . '/_layout.php';
           </div>
         </td>
         <td><?= e($it['category_name'] ?? '—') ?></td>
-        <td class="posi-num"><?= $price === null ? '<span class="text-muted">Open price</span>' : e(pos_money($price, $cur)) . (pos_bool($it['per_person']) || (!empty($it['tour_id']) && $it['price'] === null && pos_bool($it['tour_per_person'])) ? ' <span class="text-muted">pp</span>' : '') ?></td>
+        <td class="posi-num"><?= $noFx !== null ? '<span class="badge badge--orange" data-tip="' . e($noFx) . '">No exchange rate</span>' : ($price === null ? '<span class="text-muted">Open price</span>' : e(pos_money($price, $cur)) . (pos_bool($it['per_person']) || (!empty($it['tour_id']) && $it['price'] === null && pos_bool($it['tour_per_person'])) ? ' <span class="text-muted">pp</span>' : '')) ?></td>
         <td class="posi-num"><?php if (pos_bool($it['track_stock'])): ?><?= (int)$it['stock_on_hand'] ?><?php if ((int)$it['stock_on_hand'] <= 0): ?> <span class="badge badge--red">Out</span><?php elseif ($low): ?> <span class="badge badge--orange">Low</span><?php endif; ?><?php else: ?><span class="text-muted">—</span><?php endif; ?></td>
         <td>
           <form method="POST" action="<?= $self ?>" style="margin:0">
@@ -387,7 +388,7 @@ include __DIR__ . '/_layout.php';
       <?= csrf_field() ?><input type="hidden" name="action" value="link_tours"><input type="hidden" name="outlet_id" value="<?= $oid ?>">
       <div class="posi-chips posi-tourchips">
         <?php foreach ($unlinked as $tid => $t): ?>
-        <label class="optchip"><input type="checkbox" name="tours[]" value="<?= $tid ?>"><?= e($t['name']) ?> <span class="posi-chip-sub"><?= $t['price_amount'] === null ? 'on request' : e(pos_money((float)$t['price_amount'], $cur)) ?></span></label>
+        <label class="optchip"><input type="checkbox" name="tours[]" value="<?= $tid ?>"><?= e($t['name']) ?> <span class="posi-chip-sub"><?= e(pos_activity_price_label($t['price_amount'], $cur)) ?></span></label>
         <?php endforeach; ?>
       </div>
       <div class="ws-addform" style="margin-top:14px">
@@ -445,7 +446,7 @@ include __DIR__ . '/_layout.php';
   var tour = document.getElementById('posiTour'), help = document.getElementById('posiPriceHelp');
   function hint(){ if (!tour || !help) return; var o = tour.options[tour.selectedIndex], p = o ? o.getAttribute('data-price') : null;
     help.textContent = tour.value === '0' ? 'Blank = staff enter a price at the till.'
-      : (p ? 'Blank = the activity price (' + p + '), kept in step automatically.' : 'Blank = the activity is on request, so staff enter a price at the till.'); }
+      : (p ? 'Blank = the activity price: ' + p + '. Kept in step automatically.' : 'Blank = the activity is on request, so staff enter a price at the till.'); }
   if (tour) { tour.addEventListener('change', hint); hint(); }
   // Filename readout for the styled file field.
   document.querySelectorAll('.filefield input[type=file]').forEach(function(i){ i.addEventListener('change', function(){ var n = i.parentNode.querySelector('.filefield__name'); if (n) n.textContent = i.files[0] ? i.files[0].name : ''; }); });
