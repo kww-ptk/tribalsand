@@ -59,6 +59,53 @@ check('xlsx: row numbers kept (row 7 is index 6)', ($soc[6][3]['v'] ?? '') === '
 check('xlsx: bold section heading, plain line', ($soc[6][3]['b'] ?? false) === true && ($soc[7][3]['b'] ?? true) === false);
 check('xlsx: first-sheet reader unchanged (plain strings)', is_string(xlsx_read_rows($fixture)[0][3] ?? null));
 
+$xlsxStylesXml = '<?xml version="1.0"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="3">
+    <font><sz val="11"/><name val="Calibri"/></font>
+    <font><b/><sz val="11"/><name val="Calibri"/></font>
+    <font><b val="0"/><sz val="11"/><name val="Calibri"/></font>
+  </fonts>
+  <cellStyleXfs count="1"><xf fontId="1"/></cellStyleXfs>
+  <cellXfs count="3">
+    <xf fontId="0"/>
+    <xf fontId="1"/>
+    <xf fontId="2"/>
+  </cellXfs>
+  <dxfs count="1"><dxf><font><b/></font></dxf></dxfs>
+</styleSheet>';
+check('xlsx: bold styles read cellXfs/fonts, ignore cellStyleXfs and dxfs',
+    xlsx_bold_styles($xlsxStylesXml) === [false, true, false]);
+
+// The fixture's first sheet has no blank <row> elements the old fillGaps
+// behaviour would have kept as empty rows, so the sparse-by-row-number
+// sheet reader and the sequential first-sheet reader agree once compacted.
+check('xlsx: sparse sheet rows compact to the same values as the sequential reader',
+    array_values(array_map(fn($r) => array_map(fn($c) => $c['v'], $r), $soc)) === xlsx_read_rows($fixture));
+
+check('xlsx: column index caps at XFD (16383)', xlsx_col_index('XFD1') === 16383);
+check('xlsx: column past XFD throws', (function () {
+    try { xlsx_col_index('XFE1'); return false; } catch (RuntimeException $e) { return true; }
+})());
+
+$xlsxSparseXml = '<?xml version="1.0"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<sheetData>
+<row r="2"><c r="A2"><v>x</v></c></row>
+<row r="5"><c r="A5"><v>y</v></c></row>
+</sheetData></worksheet>';
+check('xlsx: keep-row-numbers mode stores rows sparsely by row − 1',
+    array_keys(xlsx_sheet_cells($xlsxSparseXml, [], [], true)) === [1, 4]);
+
+$xlsxHugeRowXml = '<?xml version="1.0"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<sheetData>
+<row r="2000000"><c r="A2000000"><v>z</v></c></row>
+</sheetData></worksheet>';
+check('xlsx: a row past Excel\'s 1,048,576-row cap throws', (function () use ($xlsxHugeRowXml) {
+    try { xlsx_sheet_cells($xlsxHugeRowXml, [], [], true); return false; } catch (RuntimeException $e) { return true; }
+})());
+
 // ── Pure checks (each task inserts its section above this line) ──
 
 // ── DB-backed ───────────────────────────────────────────────────────────────
