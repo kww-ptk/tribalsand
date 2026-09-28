@@ -855,7 +855,15 @@ include 'includes/video-feature.php';
     <h2 class="sec-h" id="reviews-heading">What Our <em>Guests Say</em></h2>
     <div class="sec-rule" style="margin:0 auto 1rem;"></div>
   </div>
+  <?php require_once __DIR__ . '/includes/reviews.php'; $__rv = reviews_for_home(3); ?>
   <div class="reviews-grid">
+    <?php if ($__rv): foreach ($__rv as $__r): ?>
+    <div class="review-card">
+      <div class="review-stars" aria-label="<?= (int)$__r['rating'] ?> stars"><?= review_stars((int)$__r['rating']) ?></div>
+      <div class="review-text">"<?= e($__r['quote']) ?>"</div>
+      <div class="review-author">— <?= e($__r['author']) ?><?= $__r['detail'] !== '' ? ' · ' . e($__r['detail']) : '' ?></div>
+    </div>
+    <?php endforeach; else: /* built-in reviews until some are picked for the home page (Admin → Reviews) */ ?>
     <div class="review-card">
       <div class="review-stars" aria-label="5 stars">★★★★★</div>
       <div class="review-text">"Stunning place, great staff — friendly and attentive. They made our visit perfect. Fabulous location, we will be coming back again and again."</div>
@@ -871,6 +879,7 @@ include 'includes/video-feature.php';
       <div class="review-text">"Thank you for helping create the most unforgettable birthday. A visual masterpiece — the staff made us feel like family. Every detail was perfect."</div>
       <div class="review-author">— Erin</div>
     </div>
+    <?php endif; ?>
   </div>
 </section>
 

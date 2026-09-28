@@ -555,6 +555,11 @@ Migration `add_acct_p2b.sql` (after `add_acct_documents`). **`acct_supported()` 
 - **Cross-sold items:** a directly paid sale is split — one invoice per company that OWNS the items (`pos_sale_lines.owning_outlet_id`), each paid into that company's own till account (`acct_pos_sale_issue_direct()`); service charge and tip stay with the selling outlet. A **room charge** stays with the selling outlet's company (one folio line can't be split). Till refunds keep their `pos_sale_id`.
 - **Known limits:** OTA folios are still open (spec §12 #4). P3 QuickBooks / P4 eTIMS need external accounts.
 
+### Guest reviews — DB-driven, owner-editable
+**Admin → Catalog → Reviews** (`admin/reviews.php`, `require_owner()`): author, detail line, 1–5 stars, text, published, *show on the home page*; one property or the whole group (`venue_id` NULL); drag to reorder. Migration `add_reviews.sql`; helpers `includes/reviews.php` (pre-migration-safe). Seed today's reviews with `php db/seeds/seed_reviews.php` (only when the table is empty). Test: `php tests/reviews_logic.php`.
+- **Pages keep their built-in reviews as the fallback**: `my-amani.php` and `maya-kobe.php` render `reviews_for_venue('<slug>')` when that property has published reviews (score = their average), else the hardcoded cards; `index.php` renders `reviews_for_home(3)` (whole-group reviews first). An empty table never blanks a section. Other property pages have no reviews section yet (the admin flags it).
+- Quotes are stored **without** quote marks (`review_plain_quote()`); the pages add them. Only publish genuine reviews with the guest's permission.
+
 ### Owner-editable AI tone & knowledge (Phase 5)
 **Admin → AI settings** (`admin/ai-settings.php`, **owner-only**, nav link under Assistant) tunes how the AI writes — **no migration**, stored in the `settings` KV: `ai_persona_staff`, `ai_persona_guest` (tone per audience), `ai_extra_knowledge` (freeform business facts), `ai_draft_instructions` (Phase-4 draft style). Read defensively via `ai_editable_setting()` (catches → `''`, so a settings/DB hiccup never breaks the assistant).
 - **Load-bearing composition:** `assistant_system_prompt()` appends the editable persona + knowledge **after the framing and BEFORE the hard Rules**, which stay **hardcoded and last** — so an owner edit can shape tone and add facts but can NEVER weaken the hard rules (ONE pricing path, Nairobi dates, never invent a price/availability/booking, read-only). With all keys empty the prompt is byte-identical to the built-in one (regression-tested). The admin UI states that prices/availability/booking rules are always enforced by the system. Tests in `tests/assistant_tools.php` (prompt composition + draft brief, in a rolled-back transaction).
@@ -675,14 +680,13 @@ Migration `add_acct_p2b.sql` (after `add_acct_documents`). **`acct_supported()` 
 - Form success modal (`window.showSuccessModal()`) added via `includes/footer.php` — used by booking widget and contact form
 - 24h countdown timer in booking success modal (via `js/booking-widget.js` + `showSuccessModal(…, true)`)
 - Auto-scroll to booking widget on successful hold (`wrap.scrollIntoView`)
-- Guest reviews section: `includes/room-reviews.php` — added to the 3 main booking-widget pages
+- Guest reviews: now DB-driven — see *Guest reviews* above (the old hardcoded `includes/room-reviews.php` partial was unused and is removed)
 - Cross-sell tours section: `includes/cross-sell-tours.php` — queries `tours` DB table, gracefully hidden when DB unavailable; added to 3 main booking-widget pages
 - Admin password reset flow: `admin/forgot-password.php` + `admin/reset-password.php`; token stored in `settings` table (`pwd_reset_<md5(email)>`, 1h expiry); email via Resend; link added to `admin/login.php`
 
 ## Still Pending
 - TripAdvisor listing — claim at tripadvisor.com/GetListedNew (2–5 day approval). Badge already in trust bar on `index.php` and placeholder `sameAs` comments in `includes/schema.php` — just swap in the real URL once approved.
 - Google Search Console — submit sitemap after SEO changes deploy
-- Per-room reviews DB table (future — currently hardcoded testimonials in room-reviews.php)
 - ~~Restaurant reservations (Phase 3)~~ — **DONE & shipped** (request model; commit `13a13fc` on master). Migration applied, 32/32 tests pass, full smoke test passed.
 
 ## Environment Variables Required

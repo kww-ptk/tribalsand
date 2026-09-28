@@ -524,13 +524,21 @@ include __DIR__ . '/includes/property-photo-grid.php';
       <div class="sec-rule"></div>
       <div class="review-bar">
         <div>
-          <div class="review-score">5.0</div>
+          <?php require_once __DIR__ . '/includes/reviews.php'; $__rv = reviews_for_venue('maya-kobe'); ?>
+          <div class="review-score"><?= $__rv ? e(reviews_average($__rv)) : '5.0' ?></div>
           <div class="review-stars">★★★★★</div>
           <div class="review-count">Verified guest stays</div>
         </div>
         <div class="review-summary-text">Guests at Maya Kobe consistently praise the Balinese atmosphere, the exceptional pool, the attentive service and the effortless sense of escape — all within a vibrant beachfront ecosystem unique to Kilifi.</div>
       </div>
       <div class="reviews-grid">
+        <?php if ($__rv): foreach ($__rv as $__r): ?>
+        <div class="review-card">
+          <div class="review-stars-sm" aria-label="<?= (int)$__r['rating'] ?> stars"><?= review_stars((int)$__r['rating']) ?></div>
+          <div class="review-text">"<?= e($__r['quote']) ?>"</div>
+          <div class="review-author">— <?= e($__r['author']) ?><?= $__r['detail'] !== '' ? ' · ' . e($__r['detail']) : '' ?></div>
+        </div>
+        <?php endforeach; else: /* built-in reviews until published ones exist (Admin → Reviews) */ ?>
         <div class="review-card">
           <div class="review-stars-sm">★★★★★</div>
           <div class="review-text">"Absolutely magical. The Balinese design, the sound of the ocean from our suite, the pool at golden hour — we never wanted to leave. Staff went above and beyond every single day."</div>
@@ -551,6 +559,7 @@ include __DIR__ . '/includes/property-photo-grid.php';
           <div class="review-text">"We booked the full property for a boutique wedding celebration. The team executed everything flawlessly. Our guests are still talking about it months later."</div>
           <div class="review-author">— Farai & Nadia</div>
         </div>
+        <?php endif; ?>
       </div>
     </div>
 

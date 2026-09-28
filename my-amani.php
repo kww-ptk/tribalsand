@@ -488,13 +488,21 @@ include __DIR__ . '/includes/property-photo-grid.php';
       <div class="sec-rule"></div>
       <div class="review-bar">
         <div>
-          <div class="review-score">5.0</div>
+          <?php require_once __DIR__ . '/includes/reviews.php'; $__rv = reviews_for_venue('my-amani'); ?>
+          <div class="review-score"><?= $__rv ? e(reviews_average($__rv)) : '5.0' ?></div>
           <div class="review-stars">★★★★★</div>
           <div class="review-count">Verified guest stays</div>
         </div>
         <div class="review-summary-text">Guests consistently praise My Amani for its impeccable staff, stunning Indian Ocean setting, and the feeling of complete seclusion — while remaining just minutes from Vipingo Ridge golf and the coast's finest activities.</div>
       </div>
       <div class="reviews-grid">
+        <?php if ($__rv): foreach ($__rv as $__r): ?>
+        <div class="review-card">
+          <div class="review-stars-sm" aria-label="<?= (int)$__r['rating'] ?> stars"><?= review_stars((int)$__r['rating']) ?></div>
+          <div class="review-text">"<?= e($__r['quote']) ?>"</div>
+          <div class="review-author">— <?= e($__r['author']) ?><?= $__r['detail'] !== '' ? ' · ' . e($__r['detail']) : '' ?></div>
+        </div>
+        <?php endforeach; else: /* built-in reviews until published ones exist (Admin → Reviews) */ ?>
         <div class="review-card">
           <div class="review-stars-sm">★★★★★</div>
           <div class="review-text">"Stunning place, great staff — friendly and attentive. They made our visit perfect. We will be coming back again and again."</div>
@@ -515,6 +523,7 @@ include __DIR__ . '/includes/property-photo-grid.php';
           <div class="review-text">"Thank you for helping create the most unforgettable birthday. A visual masterpiece — the staff made us feel like family."</div>
           <div class="review-author">— Erin</div>
         </div>
+        <?php endif; ?>
       </div>
     </div>
 
