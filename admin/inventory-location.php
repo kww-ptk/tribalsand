@@ -37,8 +37,9 @@ if (!$loc || $loc['kind'] === 'person' || !inv_location_visible($loc, $vids)) { 
 $editable  = inv_location_editable($loc, $vids);
 $open      = inv_bool($loc['is_active']);
 // Where "Restock to par" may pull from: open stores this account can move out of into here.
+// Only worth computing when the form could actually show (editable + open + not a store itself).
 $sources = [];
-if ($loc['kind'] !== 'store') {
+if ($editable && $open && $loc['kind'] !== 'store') {
     foreach (inv_locations_visible($vids) as $s) {
         if ($s['kind'] === 'store' && (int)$s['id'] !== (int)$loc['id'] && inv_move_in_scope($s, $loc, $vids)) $sources[(int)$s['id']] = $s;
     }
@@ -123,14 +124,18 @@ include __DIR__ . '/_layout.php';
     <div class="inv-kpi"><span><?= $loc['last_counted_at'] ? 'Last counted ' . e(date('j M', strtotime((string)$loc['last_counted_at']))) : 'Never counted' ?></span><span class="badge <?= e($STATUS[$status][1]) ?>"><?= e($STATUS[$status][0]) ?></span>
       <?php if ($nextDue): ?><span class="inv-sub">Next count due <?= e(date('j M', strtotime($nextDue))) ?></span><?php endif; ?>
       <?php if ($canCount): ?><a href="<?= e($countUrl) ?>" class="btn-outline btn-sm" style="margin-top:6px"><?= admin_icon('check', 14) ?> <?= $countState['open_count_id'] ? 'Continue count' : 'Count now' ?></a><?php endif; ?></div>
-    <?php if ($editable && $open && $needs > 0 && $loc['kind'] !== 'store' && $sources): ?>
+    <?php if ($editable && $open && $needs > 0 && $loc['kind'] !== 'store'): ?>
+      <?php if ($sources): $defaultSourceName = (string)($sources[$defaultSource]['name'] ?? ''); ?>
     <form method="POST" action="<?= e($self) ?>" class="inv-restock">
       <?= csrf_field() ?><input type="hidden" name="action" value="restock"><input type="hidden" name="location_id" value="<?= (int)$loc['id'] ?>">
-      <select name="source_id" class="eselect" aria-label="Restock from">
+      <select name="source_id" class="eselect" aria-label="Restock from" data-inv-restock-source>
         <?php foreach ($sources as $sid => $s): ?><option value="<?= (int)$sid ?>" <?= $sid === $defaultSource ? 'selected' : '' ?>><?= e((string)$s['name']) ?></option><?php endforeach; ?>
       </select>
-      <button type="submit" class="btn-primary btn-sm" data-confirm="Move what is short from the chosen store to here?"><?= admin_icon('arrow-right', 15) ?> Restock to par</button>
+      <button type="submit" class="btn-primary btn-sm" data-confirm="<?= e("Move what is short from {$defaultSourceName} to here?") ?>" data-inv-restock-btn><?= admin_icon('arrow-right', 15) ?> Restock to par</button>
     </form>
+      <?php else: ?>
+    <span class="text-muted inv-sub" style="margin-left:auto;align-self:center">No store you can restock from.</span>
+      <?php endif; ?>
     <?php endif; ?>
   </div>
   <?php if ($areas): ?>
@@ -143,7 +148,7 @@ include __DIR__ . '/_layout.php';
 <div class="card">
   <div class="card__head"><span class="card__title">Stock here</span><span class="text-muted" style="font-size:12.5px">Par = what this place should always have</span></div>
   <?php if (!$stock): ?>
-    <?php dt_empty('Nothing here yet. Give an item a par level below, then restock from Main stock — or receive stock on the item page.'); ?>
+    <?php dt_empty('Nothing here yet. Give an item a par level below, then restock from a store — or receive stock on the item page.'); ?>
   <?php else: ?>
   <div class="table-wrap"><table class="data-table">
     <thead><tr><th>Item</th><th class="inv-num">On hand</th><th class="inv-num">Par</th><th class="inv-num">Short</th><th class="inv-num">Value</th></tr></thead>
@@ -193,4 +198,16 @@ include __DIR__ . '/_layout.php';
 @media (max-width:560px){.inv-add{grid-template-columns:1fr}}
 .inv-restock{margin-left:auto;align-self:center;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 </style>
+<script>
+(function () {
+  // Keep the confirm dialog naming the store actually chosen, not the default it opened with.
+  var sel = document.querySelector('[data-inv-restock-source]');
+  var btn = document.querySelector('[data-inv-restock-btn]');
+  if (!sel || !btn) return;
+  sel.addEventListener('change', function () {
+    var opt = sel.options[sel.selectedIndex];
+    btn.setAttribute('data-confirm', 'Move what is short from ' + (opt ? opt.textContent : 'the chosen store') + ' to here?');
+  });
+})();
+</script>
 <?php include __DIR__ . '/_layout_end.php'; ?>

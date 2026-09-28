@@ -93,7 +93,8 @@ function inv_location_group_key(array $l): array {
     $kind   = (string)($l['kind'] ?? '');
     $isArea = $kind === 'area';
     $group  = $isArea ? mb_strtolower((string)($l['parent_name'] ?? '')) : mb_strtolower((string)($l['name'] ?? ''));
-    return [INV_KIND_ORDER[$kind] ?? 9, $group, $isArea ? 1 : 0, (int)($l['sort_order'] ?? 0), mb_strtolower((string)($l['name'] ?? ''))];
+    $order  = inv_bool($l['is_main'] ?? false) ? -1 : (INV_KIND_ORDER[$kind] ?? 9);   // Main stock always first, ahead of other stores
+    return [$order, $group, $isArea ? 1 : 0, (int)($l['sort_order'] ?? 0), mb_strtolower((string)($l['name'] ?? ''))];
 }
 
 function inv_sort_locations(array $rows): array {

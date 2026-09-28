@@ -51,6 +51,9 @@ check('restock source: an owned store beats one merely shared', inv_default_rest
         ['id' => 1, 'kind' => 'store', 'is_main' => 't', 'venue_id' => null, 'share_venue_ids' => '{}'],
         ['id' => 9, 'kind' => 'store', 'is_main' => 'f', 'venue_id' => 7, 'share_venue_ids' => '{6,8}'],
         ['id' => 12, 'kind' => 'store', 'is_main' => 'f', 'venue_id' => 6, 'share_venue_ids' => '{}']], $mi) === 12);
+check('sort: Main stock is pinned first, ahead of other stores', array_map(fn($l) => $l['name'], inv_sort_locations([
+        ['kind' => 'store', 'name' => 'A store', 'is_main' => false, 'sort_order' => 0],
+        ['kind' => 'store', 'name' => 'Main stock', 'is_main' => true, 'sort_order' => 0]])) === ['Main stock', 'A store']);
 
 // ── xlsx reader ─────────────────────────────────────────────────────────────
 $sheets = xlsx_read_sheets($fixture);
@@ -338,6 +341,12 @@ try {
     $afterShares = inv_pg_int_array(inv_fetch_location($tdStore)['share_venue_ids']); sort($afterShares);
     $expectAfter = [$vMI, $vOff]; sort($expectAfter);
     check('venue delete: dropped from a store’s shares, other shares remain', $afterShares === $expectAfter);
+
+    $vOwn2 = $ins("INSERT INTO venues (slug, name) VALUES (:s, 'ZZ Ownable')", [':s' => "zz-ow-{$sfx}"]);
+    $ownedStore = inv_create_store("ZZ Ownable Stock {$sfx}", $vOwn2, [$vMI, $vZ]);
+    inv_deactivate_linked_locations('venue_id', $vOwn2);
+    check('venue delete: a store it OWNS has its own shares cleared too (an ownerless store keeps no shares)',
+        inv_pg_int_array(inv_fetch_location($ownedStore)['share_venue_ids']) === []);
 
     $unit = inv_create_item(['name' => "ZZ Ship unit {$sfx}", 'item_type' => 'operational', 'tracking' => 'serial', 'replacement_value' => 200]);
     inv_asset_create($unit, $tdStore, ['serial' => "ZZU-{$sfx}"], null);

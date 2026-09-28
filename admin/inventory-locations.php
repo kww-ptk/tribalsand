@@ -20,6 +20,11 @@ $self      = '/admin/inventory-locations.php';
 $vids      = admin_venue_ids();
 $supported = inv_supported();
 if ($supported) inv_ensure_default_locations();
+// ONE venue-name lookup, reused for the "belongs to" pickers, the "for <venues>" row
+// label, and the owner/share audit line — never a query per row or per share id.
+$venueNames = $supported ? db_query('SELECT id, name FROM venues ORDER BY sort_order, name')->fetchAll(PDO::FETCH_KEY_PAIR) : [];
+$namesFor   = fn(array $ids): string => implode(', ', array_filter(array_map(fn($vid) => $venueNames[$vid] ?? null, $ids)));   // unknown ids are skipped, never "?"
+$ownerName  = fn(?int $vid): string => $vid === null ? 'none' : ($venueNames[$vid] ?? 'none');
 
 $flash = $_SESSION['inv_flash'] ?? null; unset($_SESSION['inv_flash']);
 
@@ -42,16 +47,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
         } elseif ($act === 'save_location') {
             $loc = inv_fetch_location((int)($_POST['location_id'] ?? 0));
             if (!$loc || !inv_location_editable($loc, $vids)) throw new InvRefusal('You can only change your own properties’ locations.');
+            // A manager of the OWNING property may rename a store and set its schedule, same
+            // as an area — only the owner + shares (below) are owner-only.
             $v = ['count_every_days' => (string)($_POST['count_every_days'] ?? ''), 'count_assignee_id' => (int)($_POST['count_assignee_id'] ?? 0)];
             if (in_array($loc['kind'], ['area', 'store'], true) && isset($_POST['name']) && trim((string)$_POST['name']) !== (string)$loc['name']) {
                 $v['name'] = (string)$_POST['name'];   // only a real rename (an unchanged name skips the duplicate check)
             }
             if ($loc['kind'] === 'area') $v['is_active'] = !empty($_POST['is_active']);
-            inv_update_location((int)$loc['id'], $v);
-            // A store's owner + shares are owner business (Main stock has neither).
-            if ($loc['kind'] === 'store' && is_owner() && inv_shipments_supported() && !inv_bool($loc['is_main'] ?? false) && isset($_POST['venue_id'])) {
-                $owner = (int)$_POST['venue_id'];
-                inv_update_store_owner((int)$loc['id'], $owner > 0 ? $owner : null, (array)($_POST['share'] ?? []));
+            // A store's owner + shares are owner business (Main stock has neither). Validate + write
+            // the owner change FIRST, in the SAME transaction as the rest of the settings, so the
+            // Responsible assignee below is checked against the NEW owning venue and a refusal
+            // (e.g. "shares need an owner") saves nothing at all.
+            $ownerChange = $loc['kind'] === 'store' && is_owner() && inv_shipments_supported() && !inv_bool($loc['is_main'] ?? false) && isset($_POST['venue_id']);
+            if ($ownerChange) {
+                $oldOwner  = $loc['venue_id'] !== null && $loc['venue_id'] !== '' ? (int)$loc['venue_id'] : null;
+                $oldShares = inv_pg_int_array($loc['share_venue_ids'] ?? null);
+                $newOwnerPosted = (int)$_POST['venue_id'];
+                $newOwner  = $newOwnerPosted > 0 ? $newOwnerPosted : null;
+                $newSharesPosted = (array)($_POST['share'] ?? []);
+                inv_tx(function () use ($loc, $v, $newOwner, $newSharesPosted): void {
+                    inv_update_store_owner((int)$loc['id'], $newOwner, $newSharesPosted);
+                    inv_update_location((int)$loc['id'], $v);
+                });
+                $newShares = inv_clean_share_ids($newSharesPosted, $newOwner);
+                if ($newOwner !== $oldOwner || $newShares !== $oldShares) {
+                    audit_log('inv.store_owner', 'inv_location', (int)$loc['id'],
+                        'owner ' . $ownerName($oldOwner) . ' → ' . $ownerName($newOwner)
+                        . '; shares ' . ($namesFor($oldShares) ?: 'none') . ' → ' . ($namesFor($newShares) ?: 'none'));
+                }
+            } else {
+                inv_update_location((int)$loc['id'], $v);
             }
             audit_log('inv.location_save', 'inv_location', (int)$loc['id'], (string)$loc['name']);
             $_SESSION['inv_flash'] = ['type' => 'success', 'msg' => $loc['name'] . ' saved.'];
@@ -68,7 +93,8 @@ $today     = frontdesk_today_ymd();
 $STATUS    = ['manual' => ['Manual', 'badge--grey'], 'ok' => ['Up to date', 'badge--green'], 'due' => ['Due today', 'badge--orange'], 'overdue' => ['Overdue', 'badge--red']];
 $usersFor  = [];   // venue id => [user id => label], cached per venue
 $canStores = is_owner() && $supported && inv_shipments_supported();
-$allVenues = $canStores ? db_query('SELECT id, name FROM venues ORDER BY sort_order, name')->fetchAll() : [];
+$allVenues = [];
+if ($canStores) foreach ($venueNames as $vid => $vname) $allVenues[] = ['id' => $vid, 'name' => $vname];
 
 $pageTitle  = 'Inventory locations';
 $activeMenu = 'inventory_locations';
@@ -109,12 +135,14 @@ include __DIR__ . '/_layout.php';
                 <?php if (in_array($l['kind'], ['area', 'store'], true)): ?>
                 <div class="field"><label>Name</label><input name="name" class="inp" maxlength="120" value="<?= e((string)$l['name']) ?>"></div>
                 <?php endif; ?>
-                <?php if ($canStores && $l['kind'] === 'store' && !inv_bool($l['is_main'] ?? false)): $shares = inv_pg_int_array($l['share_venue_ids'] ?? null); ?>
-                <div class="field"><label>Belongs to</label><select name="venue_id" class="eselect eselect--block">
+                <?php if ($canStores && $l['kind'] === 'store' && !inv_bool($l['is_main'] ?? false)):
+                    $shares   = inv_pg_int_array($l['share_venue_ids'] ?? null);
+                    $curOwner = $l['venue_id'] !== null && $l['venue_id'] !== '' ? (int)$l['venue_id'] : null; ?>
+                <div class="field"><label>Belongs to</label><select name="venue_id" class="eselect eselect--block" aria-label="Belongs to">
                   <option value="0">No property — shared by all</option>
                   <?php foreach ($allVenues as $vv): ?><option value="<?= (int)$vv['id'] ?>" <?= (int)$l['venue_id'] === (int)$vv['id'] ? 'selected' : '' ?>><?= e((string)$vv['name']) ?></option><?php endforeach; ?></select></div>
-                <div class="field"><label>Also used by</label><div class="inv-chips">
-                  <?php foreach ($allVenues as $vv): ?><label class="optchip"><input type="checkbox" name="share[]" value="<?= (int)$vv['id'] ?>" <?= in_array((int)$vv['id'], $shares, true) ? 'checked' : '' ?>><?= e((string)$vv['name']) ?></label><?php endforeach; ?></div></div>
+                <div class="field"><label>Also used by</label><div class="inv-chips" role="group" aria-label="Also used by">
+                  <?php foreach ($allVenues as $vv): if ((int)$vv['id'] === $curOwner) continue; ?><label class="optchip"><input type="checkbox" name="share[]" value="<?= (int)$vv['id'] ?>" <?= in_array((int)$vv['id'], $shares, true) ? 'checked' : '' ?>><?= e((string)$vv['name']) ?></label><?php endforeach; ?></div></div>
                 <?php endif; ?>
                 <div class="field"><label>Count</label><select name="count_every_days" class="eselect eselect--block">
                   <?php $cur = $l['count_every_days'] === null ? '' : (string)(int)$l['count_every_days'];
@@ -134,8 +162,11 @@ include __DIR__ . '/_layout.php';
             </details>
             <?php endif; ?>
             <?php $servesIds = $l['kind'] === 'store' ? inv_location_venue_set($l) : [];
-                  $serves = $servesIds ? implode(', ', array_map(fn($vid) => (string)(db_query('SELECT name FROM venues WHERE id = :v', [':v' => $vid])->fetchColumn() ?: '?'), $servesIds)) : ''; ?>
-            <span class="inv-sub"><?= e(inv_bool($l['is_main'] ?? false) ? 'Main stock · shared by all' : (INV_LOCATION_KINDS[$l['kind']] ?? $l['kind'])) ?><?= $serves !== '' ? ' · for ' . e($serves) : '' ?><?= $closed ? ' · closed' : '' ?></span></td>
+                  $serves    = $servesIds ? $namesFor($servesIds) : '';
+                  $kindLabel = INV_LOCATION_KINDS[$l['kind']] ?? $l['kind'];
+                  if (inv_bool($l['is_main'] ?? false)) { $kindLabel = 'Main stock · shared by all'; }
+                  elseif ($l['kind'] === 'store' && ($l['venue_id'] === null || $l['venue_id'] === '')) { $kindLabel .= ' · shared by all'; } ?>
+            <span class="inv-sub"><?= e($kindLabel) ?><?= $serves !== '' ? ' · for ' . e($serves) : '' ?><?= $closed ? ' · closed' : '' ?></span></td>
           <td class="inv-num"><?= (int)$l['item_count'] ?></td>
           <td><span class="badge <?= e($sc) ?>"><?= e($sl) ?></span>
             <span class="inv-sub"><?= $l['count_every_days'] ? e(INV_COUNT_EVERY[(string)$l['count_every_days']] ?? 'Every ' . (int)$l['count_every_days'] . ' days') : '' ?><?= $l['last_counted_at'] ? ' · last ' . e(date('j M', strtotime((string)$l['last_counted_at']))) : '' ?></span></td>
@@ -155,10 +186,10 @@ include __DIR__ . '/_layout.php';
         <form method="POST" action="<?= $self ?>" class="inv-form">
           <?= csrf_field() ?><input type="hidden" name="action" value="add_store">
           <div class="field"><label>Store name</label><input name="name" class="inp" maxlength="120" placeholder="TD Main Stock" required></div>
-          <div class="field"><label>Belongs to</label><select name="venue_id" class="eselect eselect--block">
+          <div class="field"><label>Belongs to</label><select name="venue_id" class="eselect eselect--block" aria-label="Belongs to">
             <option value="0">No property — shared by all</option>
             <?php foreach ($allVenues as $vv): ?><option value="<?= (int)$vv['id'] ?>"><?= e((string)$vv['name']) ?></option><?php endforeach; ?></select></div>
-          <div class="field"><label>Also used by</label><div class="inv-chips">
+          <div class="field"><label>Also used by</label><div class="inv-chips" role="group" aria-label="Also used by">
             <?php foreach ($allVenues as $vv): ?><label class="optchip"><input type="checkbox" name="share[]" value="<?= (int)$vv['id'] ?>"><?= e((string)$vv['name']) ?></label><?php endforeach; ?></div></div>
           <button type="submit" class="btn-primary btn-sm"><?= admin_icon('plus', 15) ?> Add store</button>
         </form>

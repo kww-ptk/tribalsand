@@ -428,7 +428,9 @@ function inv_linked_stock_count(string $link, int $id): int {
  * never turn into ownerless "shared" locations (the FK only NULLs the link).
  * Call AFTER inv_linked_stock_count() said 0, right before the DELETE. For a venue,
  * also drops it from every store's share_venue_ids — a deleted venue must never
- * linger in another store's share list.
+ * linger in another store's share list — AND clears the shares of any store it
+ * itself OWNS: the FK only SETs NULL on venue_id, so without this an ownerless
+ * store would keep its share list, breaking "shares need an owner".
  * $link: 'pos_outlet_id' | 'hr_staff_id' | 'venue_id'.
  */
 function inv_deactivate_linked_locations(string $link, int $id): void {
@@ -438,6 +440,7 @@ function inv_deactivate_linked_locations(string $link, int $id): void {
     if ($link === 'venue_id' && inv_shipments_supported()) {
         db_query('UPDATE inv_locations SET share_venue_ids = array_remove(share_venue_ids, :v) WHERE :w = ANY(share_venue_ids)',
             [':v' => $id, ':w' => $id]);
+        db_query("UPDATE inv_locations SET share_venue_ids = '{}' WHERE kind = 'store' AND venue_id = :o", [':o' => $id]);
     }
 }
 
