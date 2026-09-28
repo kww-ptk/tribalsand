@@ -21,7 +21,8 @@ DROP INDEX IF EXISTS uq_inv_locations_store;                       -- the old "o
 CREATE UNIQUE INDEX IF NOT EXISTS uq_inv_locations_main ON inv_locations (is_main) WHERE is_main;
 ALTER TABLE inv_locations DROP CONSTRAINT IF EXISTS inv_locations_store_fields_check;
 ALTER TABLE inv_locations ADD CONSTRAINT inv_locations_store_fields_check CHECK (
-    (NOT is_main OR kind = 'store') AND (cardinality(share_venue_ids) = 0 OR kind = 'store'));
+    (NOT is_main OR kind = 'store') AND (cardinality(share_venue_ids) = 0 OR kind = 'store')
+    AND array_position(share_venue_ids, NULL) IS NULL);
 
 -- ── Shipments ───────────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS inv_shipments (
@@ -63,5 +64,10 @@ CREATE TABLE IF NOT EXISTS inv_shipment_lines (
 CREATE INDEX IF NOT EXISTS idx_inv_shipment_lines_shipment ON inv_shipment_lines (shipment_id, sort_order);
 CREATE INDEX IF NOT EXISTS idx_inv_shipment_lines_item     ON inv_shipment_lines (item_id);
 
-ALTER TABLE inv_moves ADD COLUMN IF NOT EXISTS shipment_line_id INT REFERENCES inv_shipment_lines(id) ON DELETE SET NULL;
+ALTER TABLE inv_moves ADD COLUMN IF NOT EXISTS shipment_line_id INT REFERENCES inv_shipment_lines(id);
+-- ADD COLUMN IF NOT EXISTS above is a no-op on a column that already exists (e.g. an earlier
+-- run of this migration before this fix), so the FK is dropped and recreated without ON DELETE
+-- SET NULL here too — the append-only ledger must never silently lose shipment provenance.
+ALTER TABLE inv_moves DROP CONSTRAINT IF EXISTS inv_moves_shipment_line_id_fkey;
+ALTER TABLE inv_moves ADD CONSTRAINT inv_moves_shipment_line_id_fkey FOREIGN KEY (shipment_line_id) REFERENCES inv_shipment_lines(id);
 CREATE INDEX IF NOT EXISTS idx_inv_moves_shipment_line ON inv_moves (shipment_line_id) WHERE shipment_line_id IS NOT NULL;

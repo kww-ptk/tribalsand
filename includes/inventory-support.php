@@ -26,12 +26,18 @@ function inv_supported(): bool {
 /**
  * True once add_inventory_shipments.sql has run: shipments, and stores that can
  * belong to a property and be shared (inv_locations.is_main / share_venue_ids).
+ * Probes the LAST object the migration creates (inv_moves.shipment_line_id), not
+ * the shipments table, so a run that dies partway through never reads as done.
  * A catalog lookup — safe inside a transaction.
  */
 function inv_shipments_supported(): bool {
     static $ok = null;
     if ($ok !== null) return $ok;
-    try { $ok = inv_supported() && (bool) db_query("SELECT to_regclass('public.inv_shipment_lines') IS NOT NULL")->fetchColumn(); }
+    try {
+        $ok = inv_supported() && (bool) db_query(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'inv_moves' AND column_name = 'shipment_line_id')"
+        )->fetchColumn();
+    }
     catch (Throwable $e) { $ok = false; }
     return $ok;
 }

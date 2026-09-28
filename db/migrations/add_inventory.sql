@@ -55,7 +55,13 @@ CREATE TABLE IF NOT EXISTS inv_locations (
     created_at        TIMESTAMPTZ  NOT NULL DEFAULT now(),
     CHECK (kind <> 'area' OR parent_id IS NOT NULL)
 );
-CREATE UNIQUE INDEX IF NOT EXISTS uq_inv_locations_store    ON inv_locations (kind)     WHERE kind = 'store';
+-- Only before add_inventory_shipments.sql: that migration replaces "one store" with is_main (see uq_inv_locations_main).
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns
+                 WHERE table_name = 'inv_locations' AND column_name = 'is_main') THEN
+    CREATE UNIQUE INDEX IF NOT EXISTS uq_inv_locations_store ON inv_locations (kind) WHERE kind = 'store';
+  END IF;
+END $$;
 CREATE UNIQUE INDEX IF NOT EXISTS uq_inv_locations_property ON inv_locations (venue_id) WHERE kind = 'property';
 CREATE INDEX IF NOT EXISTS idx_inv_locations_parent ON inv_locations (parent_id);
 
