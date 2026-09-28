@@ -6,6 +6,7 @@ require_once __DIR__ . '/../includes/checkin.php';
 require_once __DIR__ . '/../includes/upsells.php';   // checkin_deposit_supported()
 require_once __DIR__ . '/../includes/rates.php';
 require_once __DIR__ . '/../includes/inventory.php';   // delete guard: a property holding stock
+require_once __DIR__ . '/../includes/companies.php';   // which legal company owns this property
 require_login();
 require_owner();
 
@@ -115,6 +116,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         // Booking-flow add-ons master switch for this property.
         $upsOn = upsells_supported() ? isset($_POST['upsell_enabled']) : null;
 
+        // Owning company (Accounting). 0 = none; an unknown id is refused, not ignored.
+        $coId = null;
+        if (companies_supported() && isset($_POST['company_id'])) {
+            $coId = (int)$_POST['company_id'] ?: null;
+            if ($coId !== null && !company_fetch($coId)) $error = 'Pick a company from the list.';
+        }
+
         if (!$error && $isNew) {
             // Slug is editable ONLY when creating a new property (no live page exists yet).
             $slug = preg_replace('/[^a-z0-9_-]/', '', strtolower(trim($_POST['slug'] ?? '')));
@@ -141,6 +149,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     db_query('UPDATE venues SET upsell_enabled = :u WHERE id = :id',
                              [':u' => $upsOn ? 'TRUE' : 'FALSE', ':id' => $id]);
                 }
+                if (companies_supported() && isset($_POST['company_id'])) company_set_venue($id, $coId);
                 audit_log('venue.create', 'venue', $id, $name);
                 header("Location: /admin/venue-edit.php?id={$id}&saved=1");
                 exit;
@@ -163,6 +172,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 db_query('UPDATE venues SET upsell_enabled = :u WHERE id = :id',
                          [':u' => $upsOn ? 'TRUE' : 'FALSE', ':id' => $id]);
             }
+            if (companies_supported() && isset($_POST['company_id'])) company_set_venue($id, $coId);
             inv_refresh_location_owners();   // a renamed property's inventory location follows immediately
             audit_log('venue.update', 'venue', $id, $name);
             header("Location: /admin/venue-edit.php?id={$id}&saved=1");
@@ -392,6 +402,21 @@ include __DIR__ . '/_layout.php';
             <span class="field-hint">Lower numbers show first in listings.</span>
           </div>
         </div>
+
+        <?php if (companies_supported()): $__coCur = !empty($venue['company_id']) ? (int)$venue['company_id'] : null; ?>
+        <div class="form-row">
+          <div class="field">
+            <label>Company <span class="text-muted">(the legal owner)</span></label>
+            <select name="company_id">
+              <option value="0">No company yet</option>
+              <?php foreach (company_options($__coCur) as $__co): ?>
+              <option value="<?= (int)$__co['id'] ?>"<?= $__coCur === (int)$__co['id'] ? ' selected' : '' ?>><?= e($__co['name']) ?><?= $__co['is_active'] ? '' : ' (switched off)' ?></option>
+              <?php endforeach; ?>
+            </select>
+            <span class="field-hint">Its invoices, KRA PIN and bank accounts come from this company. Manage companies under <a href="/admin/companies.php">Accounting → Companies</a>.</span>
+          </div>
+        </div>
+        <?php endif; ?>
 
         <?php if (checkin_deposit_supported()): $__dcur = strtoupper(trim((string)($venue['deposit_currency'] ?? 'USD'))) ?: 'USD'; ?>
         <div class="form-row">

@@ -12,6 +12,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/pos.php';
 require_once __DIR__ . '/../includes/admin-pagination.php';   // dt_empty()
+require_once __DIR__ . '/../includes/companies.php';          // which legal company owns the outlet
 require_login();
 require_owner();   // outlets, staff assignment and currencies are site-wide config
 
@@ -73,6 +74,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
         $vat = (string)($_POST['vat_pct'] ?? '0');
         if (!is_numeric($vat) || (float)$vat < 0 || (float)$vat > 100) { posx_flash('error', 'VAT must be between 0 and 100%.'); posx_back($oid); }
         $v2 = pos_v2_supported();
+        // Owning company: 0 = follow the outlet's property. An unknown id is refused.
+        $coOn = companies_outlets_supported() && isset($_POST['company_id']);
+        $coId = $coOn ? ((int)$_POST['company_id'] ?: null) : null;
+        if ($coId !== null && !company_fetch($coId)) { posx_flash('error', 'Pick a company from the list.'); posx_back($oid); }
         // Room charge: which properties' guests may charge here. None ticked = all.
         $chargeVenues = array_values(array_intersect(posx_ids('charge_venues'), array_map(fn($v) => (int)$v['id'], db_query('SELECT id FROM venues')->fetchAll())));
         // Changing currency re-prices nothing, so warn when the outlet already has sales.
@@ -106,6 +111,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
                           SELECT :o, id FROM pos_outlets WHERE id = :s ON CONFLICT DO NOTHING', [':o' => $oid, ':s' => $s]);
             }
         });
+        if ($coOn) company_set_outlet($oid, $coId);
         inv_refresh_location_owners();   // the outlet's shelf follows its new name/venue
         if (inv_supported()) foreach (db_query('SELECT id FROM pos_items WHERE outlet_id = :o AND inv_item_id IS NOT NULL', [':o' => $oid])->fetchAll(PDO::FETCH_COLUMN) as $pid) pos_item_sync_inventory((int)$pid);
         audit_log('pos.outlet_save', 'pos_outlet', $oid, $name);
@@ -176,6 +182,12 @@ if ($supported) {
 $v2 = $supported && pos_v2_supported();
 $chargeOf = [];
 if ($v2) foreach (db_query('SELECT outlet_id, venue_id FROM pos_outlet_charge_venues')->fetchAll() as $r) $chargeOf[(int)$r['outlet_id']][] = (int)$r['venue_id'];
+$coOn     = companies_outlets_supported();
+$coNames  = []; foreach ($coOn ? company_fetch_all() : [] as $c) $coNames[(int)$c['id']] = $c['name'];
+$venueCo  = [];
+if ($coOn) foreach (db_query('SELECT id, company_id FROM venues')->fetchAll() as $r) $venueCo[(int)$r['id']] = $r['company_id'] ? (int)$r['company_id'] : null;
+$outletCo = [];
+if ($coOn) foreach (db_query('SELECT id, company_id FROM pos_outlets')->fetchAll() as $r) $outletCo[(int)$r['id']] = $r['company_id'] ? (int)$r['company_id'] : null;
 $roleLabel = fn(array $p) => $p['role'] === 'staff' ? ucfirst((string)($p['job_type'] ?: 'frontdesk')) : ucfirst((string)$p['role']);
 
 include __DIR__ . '/_layout.php';
@@ -203,6 +215,9 @@ include __DIR__ . '/_layout.php';
       <span class="posx__meta">
         <span class="badge badge--grey"><?= e(POS_KINDS[$o['kind']] ?? $o['kind']) ?></span>
         <span class="badge badge--blue"><?= e($o['venue_name'] ?? 'All properties') ?></span>
+        <?php if ($coOn): $__oc = company_outlet_owner($outletCo[$oid] ?? null, $o['venue_id'] ? ($venueCo[(int)$o['venue_id']] ?? null) : null); ?>
+        <?= $__oc ? '<span class="badge badge--grey">' . e($coNames[$__oc] ?? '') . '</span>' : '<span class="badge badge--orange">No company</span>' ?>
+        <?php endif; ?>
         <span class="badge badge--teal"><?= e($o['currency']) ?><?= (float)$o['service_charge_pct'] > 0 ? ' · ' . e(rtrim(rtrim((string)$o['service_charge_pct'], '0'), '.')) . '% service' : '' ?><?= $v2 && (float)$o['vat_pct'] > 0 ? ' · VAT ' . e(rtrim(rtrim((string)$o['vat_pct'], '0'), '.')) . '%' : '' ?></span>
         <span class="text-muted"><?= (int)($itemCount[$oid] ?? 0) ?> items · <?= count($mine) ?> staff</span>
         <?php if (!pos_bool($o['is_active'])): ?><span class="badge badge--orange">Closed</span><?php endif; ?>
@@ -222,6 +237,11 @@ include __DIR__ . '/_layout.php';
           <div class="field"><label>Property</label>
             <select name="venue_id" class="eselect"><option value="0">All properties (shared)</option>
               <?php foreach ($venues as $v): ?><option value="<?= (int)$v['id'] ?>" <?= (int)$o['venue_id'] === (int)$v['id'] ? 'selected' : '' ?>><?= e($v['name']) ?></option><?php endforeach; ?></select></div>
+          <?php if ($coOn): $__own = $outletCo[$oid] ?? null; $__via = $o['venue_id'] ? ($venueCo[(int)$o['venue_id']] ?? null) : null; ?>
+          <div class="field"><label>Company</label>
+            <select name="company_id" class="eselect"><option value="0"><?= e($__via ? 'Same as property (' . ($coNames[$__via] ?? '') . ')' : ($o['venue_id'] ? 'Same as property (none yet)' : 'No company yet')) ?></option>
+              <?php foreach (company_options($__own) as $__co): ?><option value="<?= (int)$__co['id'] ?>" <?= $__own === (int)$__co['id'] ? 'selected' : '' ?>><?= e($__co['name']) ?></option><?php endforeach; ?></select></div>
+          <?php endif; ?>
           <div class="field"><label>Currency</label>
             <select name="currency" class="eselect"><?php foreach (TS_CURRENCIES as $c => $meta): ?><option value="<?= e($c) ?>" <?= strtoupper($o['currency']) === $c ? 'selected' : '' ?>><?= e($c . ' — ' . $meta['name']) ?></option><?php endforeach; ?></select></div>
           <div class="field"><label>Service charge (%)</label><input name="service_charge_pct" type="number" class="inp inp--num no-spin" min="0" max="100" step="0.01" value="<?= e(rtrim(rtrim((string)$o['service_charge_pct'], '0'), '.') ?: '0') ?>"></div>
