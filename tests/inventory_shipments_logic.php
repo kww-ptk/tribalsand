@@ -6,6 +6,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/inventory-views.php';
 require_once __DIR__ . '/../includes/xlsx-reader.php';
+require_once __DIR__ . '/../includes/inventory-shipment-import.php';
 
 $failures = 0;
 function check(string $label, bool $cond): void {
@@ -105,6 +106,59 @@ $xlsxHugeRowXml = '<?xml version="1.0"?>
 check('xlsx: a row past Excel\'s 1,048,576-row cap throws', (function () use ($xlsxHugeRowXml) {
     try { xlsx_sheet_cells($xlsxHugeRowXml, [], [], true); return false; } catch (RuntimeException $e) { return true; }
 })());
+
+// ── Importer (pure) ─────────────────────────────────────────────────────────
+check('norm: HS codes with commas / float noise', inv_ship_hs('9404,90,90') === '9404.90.90' && inv_ship_hs('9403.8900000000003') === '9403.89' && inv_ship_hs('4602.12') === '4602.12');
+check('norm: item codes trimmed', inv_ship_code('OV003/ ') === 'OV003' && inv_ship_code(' OS001 ') === 'OS001');
+check('norm: quantities are whole positive numbers', inv_ship_qty('8') === 8 && inv_ship_qty('8.0') === 8 && inv_ship_qty('2.5') === null && inv_ship_qty('') === null && inv_ship_qty('x') === null);
+check('norm: merge key ignores case, spacing, trailing dots', inv_ship_key('  Woven  Basket Med. ') === inv_ship_key('woven basket med'));
+check('suggest: fridge → appliance, serial', inv_ship_suggest_category('Mini Bar Fridge') === 'Appliances' && inv_ship_suggest_kind('Appliances') === 'serial');
+check('suggest: linen, throws, rugs, curtains', inv_ship_suggest_category('Fitted Sheet King - White') === 'Linen'
+    && inv_ship_suggest_category('Bed Throw 1.83m x 0.3m') === 'Cushions & throws' && inv_ship_suggest_category('Runner Rug 0.8m x 3.0m') === 'Rugs'
+    && inv_ship_suggest_category('Double Curtain Rails (166 pcs with brackets and screws)') === 'Curtains & blinds');
+check('suggest: furniture, lighting, décor', inv_ship_suggest_category('Outdoor Dining Set (9 pce)') === 'Furniture'
+    && inv_ship_suggest_category('Wood Acorn Lights 200mm') === 'Lighting' && inv_ship_suggest_category('Crab Statue') === 'Décor'
+    && inv_ship_suggest_category('Candle Holders') === 'Décor' && inv_ship_suggest_category('Napkin Holder (Set of 6)') === 'Kitchen & dining');
+check('suggest: consumables are spare stock', inv_ship_suggest_category('Plugs') === 'Consumables' && inv_ship_suggest_kind('Consumables') === 'spare'
+    && inv_ship_suggest_kind('Décor') === 'operational');
+check('suggest: sets are counted as sets', inv_ship_suggest_unit('Outdoor Dining Set (9 pce)') === 'sets' && inv_ship_suggest_unit('Lounge Set (3 pce)') === 'sets'
+    && inv_ship_suggest_unit('Couch 2.6m x 1m') === 'pcs');
+
+$wb = inv_ship_parse_workbook($sheets);
+$by = fn(string $code): array => array_values(array_filter($wb['lines'], fn($l) => $l['code'] === $code));
+$idx = fn(string $code): int => (int) array_key_first(array_filter($wb['lines'], fn($l) => $l['code'] === $code));
+check('parse: both master lists, packing lists skipped', $wb['sheets'] === ['Master Shipper Owned Container', 'Master List Vessel Container']);
+check('parse: 199 lines, 4,333 pieces', count($wb['lines']) === 199 && array_sum(array_column($wb['lines'], 'qty')) === 4333);
+check('parse: the four containers', $wb['containers'] === ['NONE 6585458 45 G1', 'NONE 6848636 45 G1', 'MSBU781565 45G1', 'TEMU831683 45G1']);
+check('parse: sections from the bold headings', $by('V001')[0]['section'] === 'Villas' && $by('S001')[0]['section'] === 'Studio Rooms'
+    && $by('OD005')[0]['section'] === 'Off-Duty' && $by('B001')[0]['section'] === 'General');
+check('parse: 11 sections', count(array_unique(array_column($wb['lines'], 'section'))) === 11);
+check('parse: linen spec rows joined to their line', $by('B001')[0]['description'] === 'Mattress Protector Fitted Quilted · Microfibre King 183cm x 190cm x 30cm · T200 100% Cotton Percale');
+check('parse: HS code normalised', $by('V006')[1]['hs_code'] === '9404.90.90' && $by('V004')[0]['hs_code'] === '9403.89');
+check('parse: nothing skipped', $wb['skipped'] === []);
+check('parse: spreadsheet row numbers kept', $by('V001')[0]['row'] === 8 && $by('V001')[0]['sheet'] === 'Master Shipper Owned Container');
+
+$g = inv_ship_group($wb['lines']);
+check('group: 154 items', count($g) === 154);
+$canvas = $g[inv_ship_key('Wall Art - Canvas Print')];
+check('group: same name merges across codes', $canvas['qty'] === 96 && count($canvas['lines']) === 5);
+check('group: different linen sizes stay apart', count(array_filter($g, fn($x) => str_starts_with((string)$x['key'], 'mattress protector'))) === 4);
+check('group: first-seen order', array_key_first($g) === inv_ship_key('Couch 2.6m x 1m'));
+$split = inv_ship_group($wb['lines'], [$idx('S001') => 'Wall Art - Canvas Print (studio)']);
+check('group: a rename splits a line off', $split[inv_ship_key('Wall Art - Canvas Print')]['qty'] === 88
+    && $split[inv_ship_key('Wall Art - Canvas Print (studio)')]['qty'] === 8);
+$merged = inv_ship_group($wb['lines'], [$idx('V023') => 'Woven Basket Medium', $idx('S004') => 'woven basket medium']);
+check('group: a rename can merge into another item', $merged[inv_ship_key('Woven Basket Medium')]['qty'] === 40);
+
+// The preview form: rename a whole group, split one line, choices remembered per line.
+$canvasGid = inv_ship_gid(inv_ship_key('Wall Art - Canvas Print'));
+[$names, $choices] = inv_ship_apply_preview($g, ['g' => [$canvasGid => ['name' => 'Canvas print', 'category' => 'Art', 'kind' => 'operational', 'unit' => 'pcs']],
+                                                 'split' => [$idx('G009') => 'Canvas print (spare)']], [], []);
+$g2 = inv_ship_groups_with_choices($wb['lines'], $names, $choices);
+check('preview: renaming a group renames all its lines', $g2[inv_ship_key('Canvas print')]['qty'] === 70 && !isset($g2[inv_ship_key('Wall Art - Canvas Print')]));
+check('preview: a split wins for its line', $g2[inv_ship_key('Canvas print (spare)')]['qty'] === 26);
+check('preview: choices follow the lines', $g2[inv_ship_key('Canvas print')]['category'] === 'Art' && $g2[inv_ship_key('Canvas print (spare)')]['category'] === 'Art');
+check('preview: an unknown kind falls back to the suggestion', inv_ship_apply_preview($g, ['g' => [$canvasGid => ['kind' => 'gadget']]], [], [])[1][$idx('V008')]['kind'] === 'operational');
 
 // ── Pure checks (each task inserts its section above this line) ──
 
