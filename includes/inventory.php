@@ -31,7 +31,7 @@ const INV_TYPES = [
     'consignment' => 'Consignment product',
     'spare'       => 'Stock / spare',
 ];
-const INV_LOCATION_KINDS = ['store' => 'Main stock', 'property' => 'Property', 'area' => 'Area', 'outlet' => 'Outlet', 'person' => 'Team member'];
+const INV_LOCATION_KINDS = ['store' => 'Store', 'property' => 'Property', 'area' => 'Area', 'outlet' => 'Outlet', 'person' => 'Team member'];
 const INV_REASONS_IN     = ['receive', 'found', 'opening', 'void'];                   // from = NULL
 const INV_REASONS_OUT    = ['sale', 'broken', 'missing', 'stolen', 'written_off'];    // to   = NULL
 const INV_REASONS_MOVE   = ['transfer', 'assign', 'return', 'replaced'];              // both ends
@@ -108,24 +108,65 @@ function inv_shortfall_message(string $name, int $have, string $where): string {
     return $have <= 0 ? "No {$name} left at {$where}." : "Only {$have} × {$name} at {$where}.";
 }
 
+/** A Postgres int[] as PHP ints: '{6,8}' (as PDO returns it) or an array → [6, 8]; null/'' → [] — PURE. */
+function inv_pg_int_array(mixed $v): array {
+    if ($v === null || $v === '') return [];
+    if (is_string($v)) $v = explode(',', trim($v, '{}'));
+    $out = [];
+    foreach ((array)$v as $x) { if (is_numeric($x) && (int)$x > 0) $out[] = (int)$x; }
+    return $out;
+}
+
+/** PHP ints → a Postgres int[] literal for CAST(:x AS int[]) — PURE. */
+function inv_pg_int_array_literal(array $ids): string {
+    return '{' . implode(',', array_map('intval', $ids)) . '}';
+}
+
+/**
+ * The venues a location belongs to: its OWNING venue, then the venues it is
+ * shared with (stores only) — PURE. Empty = shared by everyone (Main stock,
+ * venue-less outlets) or a venue-less team member.
+ */
+function inv_location_venue_set(array $loc): array {
+    $set = [];
+    $v = $loc['venue_id'] ?? null;
+    if ($v !== null && $v !== '') $set[] = (int)$v;
+    foreach (inv_pg_int_array($loc['share_venue_ids'] ?? null) as $s) if (!in_array($s, $set, true)) $set[] = $s;
+    return $set;
+}
+
+/** A store's share list from a form: positive unique ints, sorted, never the owning venue — PURE. */
+function inv_clean_share_ids(array $posted, ?int $ownerVenueId): array {
+    $out = [];
+    foreach ($posted as $v) {
+        $v = is_numeric($v) ? (int)$v : 0;
+        if ($v > 0 && $v !== $ownerVenueId) $out[$v] = $v;
+    }
+    sort($out);
+    return array_values($out);
+}
+
 /**
  * May an account with $venueIds (null = owner, all) make a move between these
  * two location rows (either may be null for in/out moves)? — PURE.
- * Shared locations (venue_id NULL: Main stock, venue-less outlets — never a
- * person) are open to a manager only as the OTHER end of a move into/out of one
- * of their own properties; every non-shared end must be theirs.
+ * A location with a venue set (inv_location_venue_set(): owner ∪ shares) is the
+ * manager's when that set meets their venues — so a store shared with Maya Ilai is
+ * a Maya Ilai manager's for this purpose. Shared locations (empty set: Main stock,
+ * venue-less outlets — never a person) are open to a manager only as the OTHER end
+ * of a move touching one of their own places; every other end must be theirs.
  */
 function inv_move_in_scope(?array $from, ?array $to, ?array $venueIds): bool {
     if ($venueIds === null) return true;
+    $mine  = array_map('intval', $venueIds);
     $owned = false;
     foreach ([$from, $to] as $loc) {
         if ($loc === null) continue;
-        $v = isset($loc['venue_id']) && $loc['venue_id'] !== null ? (int)$loc['venue_id'] : null;
-        if ($v === null) {
+        $set = inv_location_venue_set($loc);
+        if (!$set) {
             if (($loc['kind'] ?? '') === 'person') return false;   // a venue-less team member's items are owner business
             continue;                                              // Main stock / a shared outlet
         }
-        if (!in_array($v, array_map('intval', $venueIds), true)) return false;
+        if (!array_intersect($set, $mine)) return false;
         $owned = true;
     }
     return $owned;
@@ -245,15 +286,62 @@ function inv_location_touch(array $row, string $name, ?int $venueId): void {
 }
 
 /**
- * The one Main stock location. Read first: it exists after the first call, and an
- * INSERT … ON CONFLICT on every page view would burn a sequence value each time.
+ * The Main stock location (the store flagged is_main). Read first: it exists after
+ * the first call, and an INSERT … ON CONFLICT on every page view would burn a
+ * sequence value each time. Before add_inventory_shipments.sql there is only one
+ * store, found by kind.
  */
 function inv_store_location_id(): int {
     if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
-    $id = db_query("SELECT id FROM inv_locations WHERE kind = 'store'")->fetchColumn();
+    if (!inv_shipments_supported()) {
+        $id = db_query("SELECT id FROM inv_locations WHERE kind = 'store' ORDER BY id LIMIT 1")->fetchColumn();
+        if ($id !== false) return (int)$id;
+        db_query("INSERT INTO inv_locations (kind, name) VALUES ('store', 'Main stock') ON CONFLICT (kind) WHERE kind = 'store' DO NOTHING");
+        return (int) db_query("SELECT id FROM inv_locations WHERE kind = 'store' ORDER BY id LIMIT 1")->fetchColumn();
+    }
+    $id = db_query('SELECT id FROM inv_locations WHERE is_main')->fetchColumn();
     if ($id !== false) return (int)$id;
-    db_query("INSERT INTO inv_locations (kind, name) VALUES ('store', 'Main stock') ON CONFLICT (kind) WHERE kind = 'store' DO NOTHING");
-    return (int) db_query("SELECT id FROM inv_locations WHERE kind = 'store'")->fetchColumn();
+    db_query("INSERT INTO inv_locations (kind, name, is_main) VALUES ('store', 'Main stock', TRUE) ON CONFLICT (is_main) WHERE is_main DO NOTHING");
+    return (int) db_query('SELECT id FROM inv_locations WHERE is_main')->fetchColumn();
+}
+
+/** Refuse unless every venue id exists. */
+function inv_assert_venues(array $ids): void {
+    $ids = array_values(array_unique(array_map('intval', $ids)));
+    if (!$ids) return;
+    $found = (int) db_query('SELECT COUNT(*) FROM venues WHERE id = ANY(CAST(:ids AS int[]))', [':ids' => inv_pg_int_array_literal($ids)])->fetchColumn();
+    if ($found !== count($ids)) throw new InvRefusal('Pick properties that exist.');
+}
+
+/**
+ * Add a store (owner only — the caller checks). $venueId = the property it belongs
+ * to (NULL = shared by all, like Main stock); $shareVenueIds = the other properties
+ * whose managers may use it. Returns the new location id.
+ */
+function inv_create_store(string $name, ?int $venueId, array $shareVenueIds): int {
+    if (!inv_shipments_supported()) throw new InvRefusal('Run add_inventory_shipments.sql first.');
+    $name = trim($name);
+    if ($name === '' || mb_strlen($name) > 120) throw new InvRefusal('Give the store a name (up to 120 characters).');
+    $shares = inv_clean_share_ids($shareVenueIds, $venueId);
+    inv_assert_venues(array_merge($venueId !== null ? [$venueId] : [], $shares));
+    if (db_query("SELECT 1 FROM inv_locations WHERE kind = 'store' AND is_active = TRUE AND lower(name) = lower(:n)", [':n' => $name])->fetchColumn()) {
+        throw new InvRefusal("A store is already called {$name}.");
+    }
+    db_query("INSERT INTO inv_locations (kind, name, venue_id, share_venue_ids) VALUES ('store', :n, :v, CAST(:s AS int[]))",
+        [':n' => $name, ':v' => $venueId, ':s' => inv_pg_int_array_literal($shares)]);
+    return (int) db()->lastInsertId();
+}
+
+/** Change which property a store belongs to and who shares it (owner only — the caller checks). Main stock has neither. */
+function inv_update_store_owner(int $id, ?int $venueId, array $shareVenueIds): void {
+    if (!inv_shipments_supported()) throw new InvRefusal('Run add_inventory_shipments.sql first.');
+    $loc = inv_fetch_location($id);
+    if (!$loc || $loc['kind'] !== 'store') throw new InvRefusal('That store no longer exists.');
+    if (inv_bool($loc['is_main'] ?? false)) throw new InvRefusal('Main stock is shared by every property — it has no owner.');
+    $shares = inv_clean_share_ids($shareVenueIds, $venueId);
+    inv_assert_venues(array_merge($venueId !== null ? [$venueId] : [], $shares));
+    db_query('UPDATE inv_locations SET venue_id = :v, share_venue_ids = CAST(:s AS int[]) WHERE id = :id',
+        [':v' => $venueId, ':s' => inv_pg_int_array_literal($shares), ':id' => $id]);
 }
 
 /** A property's location (named after the venue). */

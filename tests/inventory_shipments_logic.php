@@ -14,6 +14,32 @@ function check(string $label, bool $cond): void {
 $fixture = __DIR__ . '/fixtures/shipment-maya-ilai.xlsx';
 check('fixture: the real shipment list is present', is_file($fixture));
 
+// ── Stores: venue sets and scope ────────────────────────────────────────────
+$td    = ['kind' => 'store', 'venue_id' => 7, 'share_venue_ids' => '{6,8}'];      // TD Main Stock: Tribal Dunes, shared with Maya Ilai + Off-Duty
+$mainS = ['kind' => 'store', 'venue_id' => null, 'share_venue_ids' => '{}'];
+$mi    = ['kind' => 'property', 'venue_id' => 6];
+$zuriP = ['kind' => 'property', 'venue_id' => 3];
+check('pg int[]: text and PHP arrays both read', inv_pg_int_array('{6,8}') === [6, 8] && inv_pg_int_array([6, '8']) === [6, 8]
+    && inv_pg_int_array(null) === [] && inv_pg_int_array('{}') === [] && inv_pg_int_array('') === []);
+check('pg int[]: literal for a bind', inv_pg_int_array_literal([6, 8]) === '{6,8}' && inv_pg_int_array_literal([]) === '{}');
+check('venue set: owner then shares', inv_location_venue_set($td) === [7, 6, 8]);
+check('venue set: Main stock has none', inv_location_venue_set($mainS) === [] && inv_location_venue_set(['venue_id' => '3']) === [3]);
+check('shared store: a Maya Ilai manager sees it', inv_location_visible($td, [6]));
+check('shared store: a Zuri manager does not', !inv_location_visible($td, [3]));
+check('shared store: Maya Ilai manager moves it to Maya Ilai', inv_move_in_scope($td, $mi, [6]));
+check('shared store: …but not to Zuri', !inv_move_in_scope($td, $zuriP, [6]));
+check('shared store: a Zuri manager cannot draw from it', !inv_move_in_scope($td, $zuriP, [3]));
+check('shared store: its settings stay with the owning property', inv_location_editable($td, [7]) && !inv_location_editable($td, [6]));
+check('Main stock: still shared with everyone', inv_location_visible($mainS, [3]) && inv_move_in_scope($mainS, $zuriP, [3]));
+check('shares: cleaned, the owner dropped, sorted', inv_clean_share_ids(['8', '6', 'x', '6', '7', '-1'], 7) === [6, 8]);
+check('restock source: the store serving the property wins over Main stock', inv_default_restock_source([
+        ['id' => 1, 'kind' => 'store', 'is_main' => 't', 'venue_id' => null, 'share_venue_ids' => '{}'],
+        ['id' => 9, 'kind' => 'store', 'is_main' => 'f', 'venue_id' => 7, 'share_venue_ids' => '{6,8}']], $mi) === 9);
+check('restock source: otherwise Main stock', inv_default_restock_source([
+        ['id' => 1, 'kind' => 'store', 'is_main' => 't', 'venue_id' => null, 'share_venue_ids' => '{}'],
+        ['id' => 9, 'kind' => 'store', 'is_main' => 'f', 'venue_id' => 7, 'share_venue_ids' => '{6,8}']], $zuriP) === 1);
+check('restock source: none offered', inv_default_restock_source([], $mi) === null);
+
 // ── Pure checks (each task inserts its section above this line) ──
 
 // ── DB-backed ───────────────────────────────────────────────────────────────
@@ -40,6 +66,38 @@ try {
     check('schema: Main stock is flagged, exactly once', $count('SELECT COUNT(*) FROM inv_locations WHERE is_main') === 1);
     check('schema: shipments tables exist', $count("SELECT COUNT(*) FROM information_schema.tables WHERE table_name IN ('inv_shipments','inv_shipment_lines')") === 2);
     check('schema: moves link to a shipment line', $count("SELECT COUNT(*) FROM information_schema.columns WHERE table_name = 'inv_moves' AND column_name = 'shipment_line_id'") === 1);
+
+    // ── Stores ──
+    $vTD  = $ins("INSERT INTO venues (slug, name) VALUES (:s, 'ZZ Dunes')", [':s' => "zz-td-{$sfx}"]);
+    $vMI  = $ins("INSERT INTO venues (slug, name) VALUES (:s, 'ZZ Ilai')",  [':s' => "zz-mi-{$sfx}"]);
+    $vZ   = $ins("INSERT INTO venues (slug, name) VALUES (:s, 'ZZ Zuri')",  [':s' => "zz-zu-{$sfx}"]);
+    $vOff = $ins("INSERT INTO venues (slug, name, is_published) VALUES (:s, 'ZZ Off-Duty', FALSE)", [':s' => "zz-od-{$sfx}"]);
+    $main = inv_store_location_id();
+    $tdStore = inv_create_store("ZZ TD Main Stock {$sfx}", $vTD, [$vMI, $vOff, $vTD]);
+    $tdRow   = inv_fetch_location($tdStore);
+    $sharesExpected = [$vMI, $vOff]; sort($sharesExpected);
+    check('store: created with its owner and shares (the owner is not repeated)',
+        (int)$tdRow['venue_id'] === $vTD && inv_pg_int_array($tdRow['share_venue_ids']) === $sharesExpected);
+    check('store: Main stock is unchanged', inv_store_location_id() === $main && !inv_bool($tdRow['is_main']));
+    check('store: a duplicate name is refused', str_contains($refused(fn() => inv_create_store("zz td main stock {$sfx}", null, [])), 'already called'));
+    check('store: an unknown property is refused', str_contains($refused(fn() => inv_create_store("ZZ Other {$sfx}", 99999999, [])), 'exist'));
+    check('store: Main stock cannot get an owner', str_contains($refused(fn() => inv_update_store_owner($main, $vTD, [])), 'no owner'));
+    $visMI = array_map(fn($l) => (int)$l['id'], inv_locations_visible([$vMI]));
+    $visZ  = array_map(fn($l) => (int)$l['id'], inv_locations_visible([$vZ]));
+    check('store: listed for a Maya Ilai manager, not for a Zuri manager', in_array($tdStore, $visMI, true) && !in_array($tdStore, $visZ, true));
+    check('store: Main stock still listed for everyone', in_array($main, $visZ, true));
+    inv_update_store_owner($tdStore, $vTD, [$vMI]);
+    check('store: shares can be changed', !in_array($tdStore, array_map(fn($l) => (int)$l['id'], inv_locations_visible([$vOff])), true));
+    inv_update_store_owner($tdStore, $vTD, [$vMI, $vOff]);
+    inv_ensure_default_locations();
+    check('hidden property: gets its inventory location', $count("SELECT COUNT(*) FROM inv_locations WHERE kind = 'property' AND venue_id = :v", [':v' => $vOff]) === 1);
+    check('hidden property: offered in the filters', isset(inv_visible_venues(null)[$vOff]));
+    $plate = inv_create_item(['name' => "ZZ Ship plate {$sfx}", 'item_type' => 'operational', 'replacement_value' => 100]);
+    inv_move(['item_id' => $plate, 'qty' => 5, 'to' => $tdStore, 'reason' => 'receive']);
+    $miLoc = inv_property_location_id($vMI);
+    inv_transfer($plate, 2, $tdStore, $miLoc, null);
+    $hist = inv_item_history($plate, [$vMI]);
+    check('history: a shared store is named for a manager who shares it', $hist && !array_filter($hist, fn($m) => $m['from_name'] === 'Another location' || $m['to_name'] === 'Another location'));
 
     // ── DB checks (each task inserts its block above this line) ──
 } catch (Throwable $e) {

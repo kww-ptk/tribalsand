@@ -37,12 +37,12 @@ const INV_COUNT_EVERY      = ['' => 'Manual only', '1' => 'Every day', '7' => 'E
 
 // ── Pure helpers ────────────────────────────────────────────────────────────
 
-/** May an account with $venueIds (null = owner) SEE this location row? — PURE. */
+/** May an account with $venueIds (null = owner) SEE this location row? — PURE. Mirrors inv_move_in_scope(). */
 function inv_location_visible(array $loc, ?array $venueIds): bool {
     if ($venueIds === null) return true;
-    $v = $loc['venue_id'] ?? null;
-    if ($v === null || $v === '') return ($loc['kind'] ?? '') !== 'person';   // shared Main stock / outlets; a venue-less person is owner-only
-    return in_array((int)$v, array_map('intval', $venueIds), true);
+    $set = inv_location_venue_set($loc);
+    if (!$set) return ($loc['kind'] ?? '') !== 'person';   // shared Main stock / outlets; a venue-less person is owner-only
+    return (bool) array_intersect($set, array_map('intval', $venueIds));
 }
 
 /** May it change this location's SETTINGS (name, schedule, areas)? Owner, or a manager for their own property — PURE. */
@@ -60,6 +60,25 @@ function inv_location_label(array $l): string {
         'person' => (string)$l['name'] . ' (team)',
         default  => (string)$l['name'],
     };
+}
+
+/**
+ * The store a location restocks from by default — PURE: a store that belongs to,
+ * or is shared with, the location's property; else Main stock; else the first one.
+ */
+function inv_default_restock_source(array $stores, array $loc): ?int {
+    $v    = isset($loc['venue_id']) && $loc['venue_id'] !== null && $loc['venue_id'] !== '' ? (int)$loc['venue_id'] : null;
+    $main = null;
+    foreach ($stores as $s) {
+        if (inv_bool($s['is_main'] ?? false)) { $main ??= (int)$s['id']; continue; }
+        if ($v !== null && in_array($v, inv_location_venue_set($s), true)) return (int)$s['id'];
+    }
+    return $main ?? (isset($stores[0]) ? (int)$stores[0]['id'] : null);
+}
+
+/** SQL for a location alias's share list, or an empty array before the shipments migration. */
+function inv_share_col(string $a): string {
+    return inv_shipments_supported() ? "{$a}.share_venue_ids" : "'{}'::int[]";
 }
 
 /** Sort key: Main stock, then each property followed by its areas (A→Z), then outlets, then people — PURE. */
@@ -143,30 +162,37 @@ function inv_item_from_post(array $in): array {
 /**
  * SQL condition: is location alias $a visible for $venueIds? Appends its params
  * to $p under the $tag prefix (use a different tag for each alias in one query).
+ * A store is also visible to the venues it is shared with.
  */
 function inv_visible_sql(string $a, ?array $venueIds, array &$p, string $tag = 'vis'): string {
     if ($venueIds === null) return 'TRUE';
-    $ph = [];
-    foreach (array_values($venueIds) as $i => $v) { $ph[] = ":{$tag}{$i}"; $p[":{$tag}{$i}"] = (int)$v; }
+    $shares = inv_shipments_supported();   // share_venue_ids exists only after add_inventory_shipments.sql
+    $ph = []; $sh = [];
+    foreach (array_values($venueIds) as $i => $v) {
+        $ph[] = ":{$tag}{$i}"; $p[":{$tag}{$i}"] = (int)$v;
+        if ($shares) { $sh[] = ":{$tag}s{$i}"; $p[":{$tag}s{$i}"] = (int)$v; }   // a placeholder may not be reused in one statement
+    }
     $own = $ph ? "{$a}.venue_id IN (" . implode(',', $ph) . ')' : 'FALSE';
-    return "({$own} OR ({$a}.venue_id IS NULL AND {$a}.kind <> 'person'))";
+    if (!$shares) return "({$own} OR ({$a}.venue_id IS NULL AND {$a}.kind <> 'person'))";
+    $shared = $sh ? "{$a}.share_venue_ids && ARRAY[" . implode(',', $sh) . ']::int[]' : 'FALSE';
+    return "({$own} OR {$shared} OR ({$a}.venue_id IS NULL AND cardinality({$a}.share_venue_ids) = 0 AND {$a}.kind <> 'person'))";
 }
 
-/** Published venues the account may filter by: [id => name]. */
+/** Venues (published or hidden) the account may filter by: [id => name]. */
 function inv_visible_venues(?array $venueIds): array {
     $out = [];
-    foreach (db_query('SELECT id, name FROM venues WHERE is_published = TRUE ORDER BY sort_order, name')->fetchAll() as $r) {
+    foreach (db_query('SELECT id, name FROM venues ORDER BY sort_order, name')->fetchAll() as $r) {
         if ($venueIds === null || in_array((int)$r['id'], array_map('intval', $venueIds), true)) $out[(int)$r['id']] = (string)$r['name'];
     }
     return $out;
 }
 
-/** Main stock + one location per published property exist (idempotent; new venues get theirs here). */
+/** Main stock + one location per property (hidden ones too — Off-Duty) exist (idempotent; new venues get theirs here). */
 function inv_ensure_default_locations(): void {
     if (!inv_supported()) return;
     inv_store_location_id();
-    $missing = db_query("SELECT v.id FROM venues v WHERE v.is_published = TRUE
-                          AND NOT EXISTS (SELECT 1 FROM inv_locations l WHERE l.kind = 'property' AND l.venue_id = v.id)")->fetchAll(PDO::FETCH_COLUMN);
+    $missing = db_query("SELECT v.id FROM venues v WHERE NOT EXISTS
+                          (SELECT 1 FROM inv_locations l WHERE l.kind = 'property' AND l.venue_id = v.id)")->fetchAll(PDO::FETCH_COLUMN);
     foreach ($missing as $vid) inv_property_location_id((int)$vid);
 }
 
@@ -307,14 +333,14 @@ function inv_item_locations(int $itemId, ?array $venueIds): array {
 /** Serial units of an item: active ones at visible locations; gone ones (sold / written off) for the owner only. */
 function inv_item_units(int $itemId, ?array $venueIds): array {
     if (!inv_supported()) return [];
-    $rows = db_query("SELECT a.*, l.name AS location_name, l.kind, l.venue_id, pl.name AS parent_name
+    $rows = db_query("SELECT a.*, l.name AS location_name, l.kind, l.venue_id, " . inv_share_col('l') . " AS share_venue_ids, pl.name AS parent_name
                         FROM inv_assets a
                         LEFT JOIN inv_locations l  ON l.id = a.location_id
                         LEFT JOIN inv_locations pl ON pl.id = l.parent_id
                        WHERE a.item_id = :i
                        ORDER BY (a.status = 'active') DESC, a.serial NULLS LAST, a.id", [':i' => $itemId])->fetchAll();
     return array_values(array_filter($rows, fn(array $u): bool => $u['status'] === 'active'
-        ? inv_location_visible(['venue_id' => $u['venue_id'], 'kind' => $u['kind']], $venueIds)
+        ? inv_location_visible(['venue_id' => $u['venue_id'], 'kind' => $u['kind'], 'share_venue_ids' => $u['share_venue_ids']], $venueIds)
         : $venueIds === null));
 }
 
@@ -331,7 +357,7 @@ function inv_item_history(int $itemId, ?array $venueIds, int $limit = 100): arra
     $vf = inv_visible_sql('lf', $venueIds, $p, 'vf');
     $vt = inv_visible_sql('lt', $venueIds, $p, 'vt');
     $rows = db_query("SELECT m.*, a.name AS user_name, s.reference AS sale_reference, lf.name AS from_name, lt.name AS to_name,
-                             lf.venue_id AS from_venue, lf.kind AS from_kind, lt.venue_id AS to_venue, lt.kind AS to_kind, u.serial
+                             lf.venue_id AS from_venue, lf.kind AS from_kind, " . inv_share_col('lf') . " AS from_shares, lt.venue_id AS to_venue, lt.kind AS to_kind, " . inv_share_col('lt') . " AS to_shares, u.serial
                        FROM inv_moves m
                        LEFT JOIN inv_locations lf ON lf.id = m.from_location_id
                        LEFT JOIN inv_locations lt ON lt.id = m.to_location_id
@@ -341,10 +367,10 @@ function inv_item_history(int $itemId, ?array $venueIds, int $limit = 100): arra
                       WHERE m.item_id = :i AND ((lf.id IS NOT NULL AND {$vf}) OR (lt.id IS NOT NULL AND {$vt}))
                       ORDER BY m.created_at DESC, m.id DESC LIMIT " . max(1, min(500, $limit)), $p)->fetchAll();
     foreach ($rows as &$r) {
-        if ($r['from_location_id'] !== null && !inv_location_visible(['venue_id' => $r['from_venue'], 'kind' => $r['from_kind']], $venueIds)) {
+        if ($r['from_location_id'] !== null && !inv_location_visible(['venue_id' => $r['from_venue'], 'kind' => $r['from_kind'], 'share_venue_ids' => $r['from_shares']], $venueIds)) {
             $r['from_name'] = 'Another location';
         }
-        if ($r['to_location_id'] !== null && !inv_location_visible(['venue_id' => $r['to_venue'], 'kind' => $r['to_kind']], $venueIds)) {
+        if ($r['to_location_id'] !== null && !inv_location_visible(['venue_id' => $r['to_venue'], 'kind' => $r['to_kind'], 'share_venue_ids' => $r['to_shares']], $venueIds)) {
             $r['to_name'] = 'Another location';
         }
     }
