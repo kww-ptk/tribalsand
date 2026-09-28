@@ -85,7 +85,7 @@ function inv_default_restock_source(array $stores, array $loc): ?int {
 
 /** SQL for a location alias's share list, or an empty array before the shipments migration. */
 function inv_share_col(string $a): string {
-    return inv_shipments_supported() ? "{$a}.share_venue_ids" : "'{}'::int[]";
+    return inv_stores_supported() ? "{$a}.share_venue_ids" : "'{}'::int[]";
 }
 
 /** Sort key: Main stock, then each property followed by its areas (A→Z), then outlets, then people — PURE. */
@@ -174,7 +174,7 @@ function inv_item_from_post(array $in): array {
  */
 function inv_visible_sql(string $a, ?array $venueIds, array &$p, string $tag = 'vis'): string {
     if ($venueIds === null) return 'TRUE';
-    $shares = inv_shipments_supported();   // share_venue_ids exists only after add_inventory_shipments.sql
+    $shares = inv_stores_supported();   // share_venue_ids exists only after add_inventory_stores.sql
     $ph = []; $sh = [];
     foreach (array_values($venueIds) as $i => $v) {
         $ph[] = ":{$tag}{$i}"; $p[":{$tag}{$i}"] = (int)$v;
@@ -297,8 +297,6 @@ function inv_gone_moves(array $f, ?array $venueIds, int $limit, int $offset): ar
     foreach ($reasons as $k => $r) { $rp[] = ":r{$k}"; $p[":r{$k}"] = $r; }
     $w[] = 'm.reason IN (' . implode(',', $rp) . ')';
     if ($status === 'sold') $w[] = "(s.id IS NULL OR s.status <> 'voided')";   // a voided sale never leaves stock "sold"
-    // A shipment receiving correction is bookkeeping, not a loss — the column only exists post-migration.
-    if (inv_shipments_supported()) $w[] = 'm.shipment_line_id IS NULL';
     $w[] = 'm.created_at >= CAST(:dfrom AS date)';        $p[':dfrom'] = $from;
     $w[] = 'm.created_at < CAST(:dto AS date) + 1';       $p[':dto']   = $to;
     if (!empty($f['venue']))    { $w[] = 'l.venue_id = :fv'; $p[':fv'] = (int)$f['venue']; }

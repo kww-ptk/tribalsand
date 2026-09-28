@@ -58,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
             // the owner change FIRST, in the SAME transaction as the rest of the settings, so the
             // Responsible assignee below is checked against the NEW owning venue and a refusal
             // (e.g. "shares need an owner") saves nothing at all.
-            $ownerChange = $loc['kind'] === 'store' && is_owner() && inv_shipments_supported() && !inv_bool($loc['is_main'] ?? false) && isset($_POST['venue_id']);
+            $ownerChange = $loc['kind'] === 'store' && is_owner() && inv_stores_supported() && !inv_bool($loc['is_main'] ?? false) && isset($_POST['venue_id']);
             if ($ownerChange) {
                 $oldOwner  = $loc['venue_id'] !== null && $loc['venue_id'] !== '' ? (int)$loc['venue_id'] : null;
                 $oldShares = inv_pg_int_array($loc['share_venue_ids'] ?? null);
@@ -92,7 +92,7 @@ $props     = array_values(array_filter($rows, fn($l) => $l['kind'] === 'property
 $today     = frontdesk_today_ymd();
 $STATUS    = ['manual' => ['Manual', 'badge--grey'], 'ok' => ['Up to date', 'badge--green'], 'due' => ['Due today', 'badge--orange'], 'overdue' => ['Overdue', 'badge--red']];
 $usersFor  = [];   // venue id => [user id => label], cached per venue
-$canStores = is_owner() && $supported && inv_shipments_supported();
+$canStores = is_owner() && $supported && inv_stores_supported();
 $allVenues = [];
 if ($canStores) foreach ($venueNames as $vid => $vname) $allVenues[] = ['id' => $vid, 'name' => $vname];
 

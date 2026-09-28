@@ -55,7 +55,7 @@ CREATE TABLE IF NOT EXISTS inv_locations (
     created_at        TIMESTAMPTZ  NOT NULL DEFAULT now(),
     CHECK (kind <> 'area' OR parent_id IS NOT NULL)
 );
--- Only before add_inventory_shipments.sql: that migration replaces "one store" with is_main (see uq_inv_locations_main).
+-- Only before add_inventory_stores.sql: that migration replaces "one store" with is_main (see uq_inv_locations_main).
 DO $$ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns
                  WHERE table_name = 'inv_locations' AND column_name = 'is_main') THEN

@@ -20,8 +20,7 @@ declare(strict_types=1);
  *     bold in the sheet: after a blank row = section, otherwise continuation. In a
  *     BOLD sheet, a plain description-only row that follows a blank row / section /
  *     header (nothing to continue) is neither — it lands in `skipped`.
- *   • Lines become ITEMS by their normalised name ("merge by name"). The preview can
- *     rename a group (every line in it) or split one line off under a new name.
+ *   • Lines become ITEMS by their normalised name ("merge by name").
  */
 
 const INV_SHIP_MAX_LINES = 2000;
@@ -248,64 +247,5 @@ function inv_ship_group(array $lines, array $names = []): array {
         $g[$key]['qty'] += (int)$l['qty'];
         $g[$key]['lines'][] = $i;
     }
-    return $g;
-}
-
-/**
- * Fold the preview form into the per-line state — PURE. $groups: the grouping the
- * form was drawn from; $post: ['g' => [gid => name/category/kind/unit], 'split' =>
- * [line index => name]]. A renamed group renames every line in it; a non-empty
- * "split off as" wins for its line; a group's choices are remembered on each of its
- * lines, and stay remembered on a later save even when that save only renames (the
- * caller always passes back its own previous $choices). Every posted value is
- * validated — only a STRING is used for name/category/unit/kind (anything else, e.g.
- * a tampered array, is ignored and the group's current value is kept), and a split
- * key is only honoured when it is a plain digit string. Returns [$names, $choices].
- */
-function inv_ship_apply_preview(array $groups, array $post, array $names, array $choices): array {
-    foreach ($groups as $key => $g) {
-        $gp = (array)($post['g'][inv_ship_gid((string)$key)] ?? []);
-
-        $nameRaw = $gp['name'] ?? null;
-        $newName = is_string($nameRaw) ? inv_ship_text($nameRaw) : '';
-
-        $catRaw   = $gp['category'] ?? null;
-        $category = is_string($catRaw) ? inv_ship_text($catRaw) : $g['category'];
-
-        $unitRaw = $gp['unit'] ?? null;
-        $unit    = is_string($unitRaw) ? inv_ship_text($unitRaw) : $g['unit'];
-        $unit    = mb_substr($unit, 0, 20);
-
-        $kindRaw = $gp['kind'] ?? null;
-        $kind    = (is_string($kindRaw) && isset(INV_SHIP_KINDS[$kindRaw])) ? $kindRaw : (string)$g['kind'];
-
-        $ch = [
-            'category' => mb_substr($category, 0, 60),
-            'kind'     => $kind,
-            'unit'     => $unit !== '' ? $unit : 'pcs',
-        ];
-        foreach ($g['lines'] as $i) {
-            if ($newName !== '' && $newName !== $g['name']) $names[$i] = mb_substr($newName, 0, 160);
-            $choices[$i] = $ch;
-        }
-    }
-    foreach ((array)($post['split'] ?? []) as $i => $n) {
-        if (!ctype_digit((string)$i) || !is_string($n)) continue;
-        $n = inv_ship_text($n);
-        if ($n !== '') $names[(int)$i] = mb_substr($n, 0, 160);
-    }
-    return [$names, $choices];
-}
-
-/** inv_ship_group() with the remembered choices applied — PURE. When lines merge
- *  into one group (by name or by a rename), the FIRST line in file order decides
- *  the group's category/kind/unit; the other lines' own choices are discarded. */
-function inv_ship_groups_with_choices(array $lines, array $names, array $choices): array {
-    $g = inv_ship_group($lines, $names);
-    foreach ($g as &$x) {
-        $c = $choices[$x['lines'][0]] ?? null;
-        if ($c) { $x['category'] = $c['category']; $x['kind'] = $c['kind']; $x['unit'] = $c['unit']; }
-    }
-    unset($x);
     return $g;
 }

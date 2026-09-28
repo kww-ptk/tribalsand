@@ -65,7 +65,6 @@ function inv_normalize_move(array $m): array {
         'asset_id'       => $id($m['asset_id'] ?? null),
         'pos_sale_id'    => $id($m['pos_sale_id'] ?? null),
         'count_line_id'  => $id($m['count_line_id'] ?? null),
-        'shipment_line_id' => $id($m['shipment_line_id'] ?? null),
         'unit_value'     => ($uv !== null && $uv !== '' && is_numeric($uv)) ? round((float)$uv, 2) : null,
         'terms'          => (array)($m['terms'] ?? []),
         'allow_negative' => inv_bool($m['allow_negative'] ?? false),
@@ -289,12 +288,12 @@ function inv_location_touch(array $row, string $name, ?int $venueId): void {
 /**
  * The Main stock location (the store flagged is_main). Read first: it exists after
  * the first call, and an INSERT … ON CONFLICT on every page view would burn a
- * sequence value each time. Before add_inventory_shipments.sql there is only one
+ * sequence value each time. Before add_inventory_stores.sql there is only one
  * store, found by kind.
  */
 function inv_store_location_id(): int {
     if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
-    if (!inv_shipments_supported()) {
+    if (!inv_stores_supported()) {
         $id = db_query("SELECT id FROM inv_locations WHERE kind = 'store' ORDER BY id LIMIT 1")->fetchColumn();
         if ($id !== false) return (int)$id;
         db_query("INSERT INTO inv_locations (kind, name) VALUES ('store', 'Main stock') ON CONFLICT (kind) WHERE kind = 'store' DO NOTHING");
@@ -321,7 +320,7 @@ function inv_assert_venues(array $ids): void {
  * use it. Returns the new location id.
  */
 function inv_create_store(string $name, ?int $venueId, array $shareVenueIds): int {
-    if (!inv_shipments_supported()) throw new InvRefusal('Run add_inventory_shipments.sql first.');
+    if (!inv_stores_supported()) throw new InvRefusal('Run add_inventory_stores.sql first.');
     $name = trim($name);
     if ($name === '' || mb_strlen($name) > 120) throw new InvRefusal('Give the store a name (up to 120 characters).');
     $shares = inv_clean_share_ids($shareVenueIds, $venueId);
@@ -337,7 +336,7 @@ function inv_create_store(string $name, ?int $venueId, array $shareVenueIds): in
 
 /** Change which property a store belongs to and who shares it (owner only — the caller checks). Main stock has neither. */
 function inv_update_store_owner(int $id, ?int $venueId, array $shareVenueIds): void {
-    if (!inv_shipments_supported()) throw new InvRefusal('Run add_inventory_shipments.sql first.');
+    if (!inv_stores_supported()) throw new InvRefusal('Run add_inventory_stores.sql first.');
     $loc = inv_fetch_location($id);
     if (!$loc || $loc['kind'] !== 'store') throw new InvRefusal('That store no longer exists.');
     if (inv_bool($loc['is_main'] ?? false)) throw new InvRefusal('Main stock is shared by every property — it has no owner.');
@@ -437,7 +436,7 @@ function inv_deactivate_linked_locations(string $link, int $id): void {
     if (!inv_supported()) return;
     if (!in_array($link, ['pos_outlet_id', 'hr_staff_id', 'venue_id'], true)) throw new InvalidArgumentException('bad link column');
     db_query("UPDATE inv_locations SET is_active = FALSE WHERE {$link} = :id", [':id' => $id]);
-    if ($link === 'venue_id' && inv_shipments_supported()) {
+    if ($link === 'venue_id' && inv_stores_supported()) {
         db_query('UPDATE inv_locations SET share_venue_ids = array_remove(share_venue_ids, :v) WHERE :w = ANY(share_venue_ids)',
             [':v' => $id, ':w' => $id]);
         db_query("UPDATE inv_locations SET share_venue_ids = '{}' WHERE kind = 'store' AND venue_id = :o", [':o' => $id]);
@@ -494,7 +493,7 @@ function inv_create_item(array $v): int {
  * inv_balances. $m keys:
  *   item_id, qty, reason, from (location id|null), to (location id|null),
  *   user_id?, note?, asset_id? (serial unit), pos_sale_id?, count_line_id?,
- *   shipment_line_id? (a shipment receipt), unit_value? (defaults to the item's replacement_value),
+ *   unit_value? (defaults to the item's replacement_value),
  *   terms? ['consignor_id','consign_pct','consignor_cost'] (a consignment delivery),
  *   allow_negative? (only a POS listing flagged allow_negative passes true).
  * Returns the new move id. Throws InvRefusal to refuse.
@@ -577,9 +576,6 @@ function inv_move_tx(array $n): int {
             throw new InvRefusal('That supplier does not exist.');
         }
     }
-    // shipment_line_id only exists after add_inventory_shipments.sql, and is only set by a shipment.
-    $slCol = $n['shipment_line_id'] !== null ? ', shipment_line_id' : '';
-    $slVal = $n['shipment_line_id'] !== null ? ', :sl' : '';
     $params = [':i' => $n['item_id'], ':q' => $qty, ':f' => $from, ':t' => $to, ':r' => $n['reason'],
          ':uv' => $unit, ':v' => $unit === null ? null : round($unit * $qty, 2), ':cur' => (string)$item['currency'],
          ':a' => $n['asset_id'], ':s' => $n['pos_sale_id'], ':cl' => $n['count_line_id'],
@@ -587,11 +583,10 @@ function inv_move_tx(array $n): int {
          ':cp' => isset($terms['consign_pct']) && $terms['consign_pct'] !== null ? (float)$terms['consign_pct'] : null,
          ':cc' => isset($terms['consignor_cost']) && $terms['consignor_cost'] !== null ? (float)$terms['consignor_cost'] : null,
          ':n' => $n['note'] !== '' ? $n['note'] : null, ':u' => $n['user_id']];
-    if ($n['shipment_line_id'] !== null) $params[':sl'] = $n['shipment_line_id'];
     db_query(
         "INSERT INTO inv_moves (item_id, qty, from_location_id, to_location_id, reason, unit_value, value, currency,
-                                asset_id, pos_sale_id, count_line_id, consignor_id, consign_pct, consignor_cost, note, admin_user_id{$slCol})
-         VALUES (:i, :q, :f, :t, :r, :uv, :v, :cur, :a, :s, :cl, :ci, :cp, :cc, :n, :u{$slVal})",
+                                asset_id, pos_sale_id, count_line_id, consignor_id, consign_pct, consignor_cost, note, admin_user_id)
+         VALUES (:i, :q, :f, :t, :r, :uv, :v, :cur, :a, :s, :cl, :ci, :cp, :cc, :n, :u)",
         $params
     );
     $moveId = (int) db()->lastInsertId();
@@ -636,8 +631,8 @@ function inv_report_loss(int $itemId, int $qty, int $fromId, string $reason, ?in
 
 /**
  * Register a serial-tracked unit and receive it into a location. $f: serial, tag,
- * condition (new|good|fair|poor), purchase_date (Y-m-d), purchase_value, notes,
- * shipment_line_id (a shipment receipt). Returns the unit (inv_assets) id.
+ * condition (new|good|fair|poor), purchase_date (Y-m-d), purchase_value, notes.
+ * Returns the unit (inv_assets) id.
  * Does NO venue scoping — the caller must check inv_move_in_scope() (spec §3.8).
  */
 function inv_asset_create(int $itemId, int $toLocationId, array $f, ?int $userId): int {
@@ -664,7 +659,7 @@ function inv_asset_create(int $itemId, int $toLocationId, array $f, ?int $userId
             ]);
             $assetId = (int) db()->lastInsertId();
             inv_move(['item_id' => $itemId, 'qty' => 1, 'to' => $toLocationId, 'reason' => 'receive', 'asset_id' => $assetId,
-                      'unit_value' => $pv, 'user_id' => $userId, 'shipment_line_id' => $f['shipment_line_id'] ?? null,
+                      'unit_value' => $pv, 'user_id' => $userId,
                       'note' => $serial !== '' ? "Serial {$serial}" : '']);
             return $assetId;
         });
