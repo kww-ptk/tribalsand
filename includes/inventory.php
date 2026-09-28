@@ -65,6 +65,7 @@ function inv_normalize_move(array $m): array {
         'asset_id'       => $id($m['asset_id'] ?? null),
         'pos_sale_id'    => $id($m['pos_sale_id'] ?? null),
         'count_line_id'  => $id($m['count_line_id'] ?? null),
+        'shipment_line_id' => $id($m['shipment_line_id'] ?? null),
         'unit_value'     => ($uv !== null && $uv !== '' && is_numeric($uv)) ? round((float)$uv, 2) : null,
         'terms'          => (array)($m['terms'] ?? []),
         'allow_negative' => inv_bool($m['allow_negative'] ?? false),
@@ -490,7 +491,7 @@ function inv_create_item(array $v): int {
  * inv_balances. $m keys:
  *   item_id, qty, reason, from (location id|null), to (location id|null),
  *   user_id?, note?, asset_id? (serial unit), pos_sale_id?, count_line_id?,
- *   unit_value? (defaults to the item's replacement_value),
+ *   shipment_line_id? (a shipment receipt), unit_value? (defaults to the item's replacement_value),
  *   terms? ['consignor_id','consign_pct','consignor_cost'] (a consignment delivery),
  *   allow_negative? (only a POS listing flagged allow_negative passes true).
  * Returns the new move id. Throws InvRefusal to refuse.
@@ -573,17 +574,22 @@ function inv_move_tx(array $n): int {
             throw new InvRefusal('That supplier does not exist.');
         }
     }
-    db_query(
-        'INSERT INTO inv_moves (item_id, qty, from_location_id, to_location_id, reason, unit_value, value, currency,
-                                asset_id, pos_sale_id, count_line_id, consignor_id, consign_pct, consignor_cost, note, admin_user_id)
-         VALUES (:i, :q, :f, :t, :r, :uv, :v, :cur, :a, :s, :cl, :ci, :cp, :cc, :n, :u)',
-        [':i' => $n['item_id'], ':q' => $qty, ':f' => $from, ':t' => $to, ':r' => $n['reason'],
+    // shipment_line_id only exists after add_inventory_shipments.sql, and is only set by a shipment.
+    $slCol = $n['shipment_line_id'] !== null ? ', shipment_line_id' : '';
+    $slVal = $n['shipment_line_id'] !== null ? ', :sl' : '';
+    $params = [':i' => $n['item_id'], ':q' => $qty, ':f' => $from, ':t' => $to, ':r' => $n['reason'],
          ':uv' => $unit, ':v' => $unit === null ? null : round($unit * $qty, 2), ':cur' => (string)$item['currency'],
          ':a' => $n['asset_id'], ':s' => $n['pos_sale_id'], ':cl' => $n['count_line_id'],
          ':ci' => !empty($terms['consignor_id']) ? (int)$terms['consignor_id'] : null,
          ':cp' => isset($terms['consign_pct']) && $terms['consign_pct'] !== null ? (float)$terms['consign_pct'] : null,
          ':cc' => isset($terms['consignor_cost']) && $terms['consignor_cost'] !== null ? (float)$terms['consignor_cost'] : null,
-         ':n' => $n['note'] !== '' ? $n['note'] : null, ':u' => $n['user_id']]
+         ':n' => $n['note'] !== '' ? $n['note'] : null, ':u' => $n['user_id']];
+    if ($n['shipment_line_id'] !== null) $params[':sl'] = $n['shipment_line_id'];
+    db_query(
+        "INSERT INTO inv_moves (item_id, qty, from_location_id, to_location_id, reason, unit_value, value, currency,
+                                asset_id, pos_sale_id, count_line_id, consignor_id, consign_pct, consignor_cost, note, admin_user_id{$slCol})
+         VALUES (:i, :q, :f, :t, :r, :uv, :v, :cur, :a, :s, :cl, :ci, :cp, :cc, :n, :u{$slVal})",
+        $params
     );
     $moveId = (int) db()->lastInsertId();
 
@@ -627,8 +633,8 @@ function inv_report_loss(int $itemId, int $qty, int $fromId, string $reason, ?in
 
 /**
  * Register a serial-tracked unit and receive it into a location. $f: serial, tag,
- * condition (new|good|fair|poor), purchase_date (Y-m-d), purchase_value, notes.
- * Returns the unit (inv_assets) id.
+ * condition (new|good|fair|poor), purchase_date (Y-m-d), purchase_value, notes,
+ * shipment_line_id (a shipment receipt). Returns the unit (inv_assets) id.
  * Does NO venue scoping — the caller must check inv_move_in_scope() (spec §3.8).
  */
 function inv_asset_create(int $itemId, int $toLocationId, array $f, ?int $userId): int {
@@ -655,7 +661,8 @@ function inv_asset_create(int $itemId, int $toLocationId, array $f, ?int $userId
             ]);
             $assetId = (int) db()->lastInsertId();
             inv_move(['item_id' => $itemId, 'qty' => 1, 'to' => $toLocationId, 'reason' => 'receive', 'asset_id' => $assetId,
-                      'unit_value' => $pv, 'user_id' => $userId, 'note' => $serial !== '' ? "Serial {$serial}" : '']);
+                      'unit_value' => $pv, 'user_id' => $userId, 'shipment_line_id' => $f['shipment_line_id'] ?? null,
+                      'note' => $serial !== '' ? "Serial {$serial}" : '']);
             return $assetId;
         });
     } catch (PDOException $e) {
