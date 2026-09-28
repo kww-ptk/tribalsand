@@ -26,6 +26,8 @@ check('resolve: owner resolves anywhere', inv_can_resolve($store, 'owner', null)
 check('resolve: a manager resolves their own property', inv_can_resolve($amani, 'manager', [1]));
 check('resolve: a manager does not resolve shared Main stock', !inv_can_resolve($store, 'manager', [1]));
 check('resolve: staff never resolve', !inv_can_resolve($amani, 'staff', [1]));
+check('resolve: a manager never resolves another property', inv_can_resolve(['kind' => 'property', 'venue_id' => 2], 'manager', [1]) === false);
+check('count: a stale assignee does not bypass a venue-bound place', !inv_can_count(['kind' => 'property', 'venue_id' => 1, 'count_assignee_id' => 5], 5, 'staff', [3]));
 
 // ── Sorting and gaps ────────────────────────────────────────────────────────
 $sorted = inv_count_sort([
@@ -38,6 +40,8 @@ check('gap: extra line, no value known', inv_count_line_gap(['expected' => 5, 'c
 check('due card: lists due places with a Count button', str_contains($card = inv_counts_due_card([['id' => 4, 'label' => 'My Amani › Pantry', 'count_status' => 'overdue', 'open_count_id' => null]], 0), 'Pantry') && str_contains($card, 'Count now'));
 check('due card: skips places that are not due, and is empty when nothing is', inv_counts_due_card([['id' => 4, 'label' => 'X', 'count_status' => 'ok', 'open_count_id' => null]], 0) === '');
 check('due card: shows the review count for managers', str_contains(inv_counts_due_card([], 3), '3 to review'));
+check('due card: escapes the label', str_contains(inv_counts_due_card([['id' => 1, 'label' => '<script>x</script>', 'count_status' => 'due', 'open_count_id' => null, 'line_count' => 1]], 0), '&lt;script&gt;'));
+check('due card: a due row with nothing expected is skipped', inv_counts_due_card([['id' => 1, 'label' => 'X', 'count_status' => 'due', 'open_count_id' => null, 'line_count' => 0]], 0) === '');
 
 // ── DB-backed ───────────────────────────────────────────────────────────────
 try { db()->query('SELECT 1'); } catch (Throwable $e) {
@@ -75,20 +79,42 @@ try {
     inv_update_location($area, ['count_every_days' => '7', 'count_assignee_id' => 0]);
     $due = inv_counts_due($maid, 'staff', [$vA], $today);
     check('due: a weekly place never counted is due', in_array($area, $ids($due), true) && !in_array($locA, $ids($due), true));
+    $mgrAPlaces = $ids(inv_countable_locations($mgrA, 'manager', [$vA], $today));
+    check('places: a manager gets Main stock + their property, not another', in_array($store, $mgrAPlaces, true) && in_array($locA, $mgrAPlaces, true) && !in_array($locB, $mgrAPlaces, true));
+    inv_update_location($locB, ['count_every_days' => '7', 'count_assignee_id' => 0]);
+    check('due: a scheduled place with nothing expected never nags', !in_array($locB, $ids(inv_counts_due($owner, 'owner', null, $today)), true));
 
     // Count → review queue.
     $cid = inv_count_start($area, $maid);
     $sheet = inv_count_sheet($cid);
     check('sheet: lines carry item details and expected', $sheet && count($sheet['lines']) === 1 && (int)$sheet['lines'][0]['expected'] === 12 && $sheet['lines'][0]['name'] === 'ZZ Count glass');
+    check('sheet: a non-existent count is null', inv_count_sheet(0) === null && inv_count_sheet(999999999) === null);
+    check('line location: a non-existent line is null', inv_count_line_location(999999999) === null);
     inv_count_submit($cid, [$glass => 11], $maid);
     $qA = array_map(fn($c) => (int)$c['id'], inv_count_queue([$vA]));
     check('queue: the manager of the property sees the gap', in_array($cid, $qA, true));
     check('queue: another property’s manager does not', !in_array($cid, array_map(fn($c) => (int)$c['id'], inv_count_queue([$vB])), true));
-    check('queue: size helper agrees', inv_count_queue_size([$vA]) >= 1);
+    check('queue: size helper agrees', inv_count_queue_size([$vA]) === count(inv_count_queue([$vA])));
     $line = (int) db_query('SELECT id FROM inv_count_lines WHERE count_id = :c', [':c' => $cid])->fetchColumn();
     $ll = inv_count_line_location($line);
     check('line location: resolves to the counted place', $ll && (int)$ll['id'] === $area && inv_can_resolve($ll, 'manager', [$vA]));
     check('due: after counting, the place is no longer due', !in_array($area, $ids(inv_counts_due($maid, 'staff', [$vA], $today)), true));
+
+    // Resolvable-only queue: a Main-stock gap is visible to a property manager, but Main stock is owner-resolved.
+    $sizeAllBefore      = inv_count_queue_size([$vA]);
+    $sizeResBefore      = inv_count_queue_size([$vA], true);
+    $sizeOwnerResBefore = inv_count_queue_size(null, true);
+    $cid2   = inv_count_start($store, $owner);
+    $sheet2 = inv_count_sheet($cid2);
+    $counts2 = [];
+    foreach ($sheet2['lines'] as $ln) { $counts2[(int)$ln['item_id']] = (int)$ln['expected']; }
+    $counts2[$glass] = max(0, $counts2[$glass] - 1);   // force a gap on our test item, whatever else is on the sheet
+    inv_count_submit($cid2, $counts2, $owner);
+    check('queue: Main stock’s gap is visible to a property manager', in_array($cid2, array_map(fn($c) => (int)$c['id'], inv_count_queue([$vA])), true));
+    check('queue: …but not resolvable-only, since Main stock is owner-resolved', !in_array($cid2, array_map(fn($c) => (int)$c['id'], inv_count_queue([$vA], true)), true));
+    check('queue size: the visible count rose by one', inv_count_queue_size([$vA]) === $sizeAllBefore + 1);
+    check('queue size: the manager’s resolvable-only count did not', inv_count_queue_size([$vA], true) === $sizeResBefore);
+    check('queue size: the owner’s resolvable-only view is unrestricted and rose by one', inv_count_queue_size(null, true) === $sizeOwnerResBefore + 1);
 
     // People.
     $jane = $ins("INSERT INTO hr_staff (full_name, venue_id) VALUES ('ZZ Count Jane', :v)", [':v' => $vA]);

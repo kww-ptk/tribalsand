@@ -18,7 +18,9 @@ function inv_person_location_find(int $hrStaffId): ?int {
 
 /**
  * What a team member holds: ['location' => row|null, 'rows' => [item_id, name, image_key, icon,
- * tracking, unit_label, currency, replacement_value, qty, value, since, units[]]].
+ * tracking, unit_label, currency, replacement_value, qty, value, since (when it was last handed
+ * over), units[]]].
+ * Does NO scoping — the caller checks inv_can_count / inv_can_resolve / the profile's venue scope.
  */
 function inv_person_assets(int $hrStaffId): array {
     $locId = inv_person_location_find($hrStaffId);
@@ -38,10 +40,14 @@ function inv_person_assets(int $hrStaffId): array {
         $r['units'] = $units[(int)$r['item_id']] ?? [];
     }
     unset($r);
-    return ['location' => inv_fetch_location($locId), 'rows' => $rows];
+    return ['location' => inv_fetch_location($locId) ?: null, 'rows' => $rows];
 }
 
-/** Counted stock the account can hand out: [item_id, item_name, location_id, location_label, qty], at visible non-person places. */
+/**
+ * Counted stock the account can hand out: [item_id, item_name, location_id, location_label, qty],
+ * at visible non-person places.
+ * Does NO scoping — the caller checks inv_can_count / inv_can_resolve / the profile's venue scope.
+ */
 function inv_assignable_stock(?array $venueIds): array {
     if (!inv_supported()) return [];
     $p = [];
@@ -57,7 +63,11 @@ function inv_assignable_stock(?array $venueIds): array {
     return array_map(fn(array $r): array => $r + ['location_label' => inv_location_label($r)], $rows);
 }
 
-/** Serial units the account can hand out: [id, item_id, item_name, serial, location_id, location_label], at visible non-person places. */
+/**
+ * Serial units the account can hand out: [id, item_id, item_name, serial, location_id, location_label],
+ * at visible non-person places.
+ * Does NO scoping — the caller checks inv_can_count / inv_can_resolve / the profile's venue scope.
+ */
 function inv_assignable_units(?array $venueIds): array {
     if (!inv_supported()) return [];
     $p = [];

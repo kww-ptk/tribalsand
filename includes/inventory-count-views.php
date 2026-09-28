@@ -13,23 +13,25 @@ require_once __DIR__ . '/frontdesk.php';     // frontdesk_today_ymd() — Nairob
 
 const INV_COUNT_STATUS_ORDER  = ['overdue' => 0, 'due' => 1, 'ok' => 2, 'manual' => 3];
 const INV_COUNT_STATUS_LABELS = ['manual' => ['Counted by hand', 'badge--grey'], 'ok' => ['Up to date', 'badge--green'],
-                                 'due' => ['Due today', 'badge--orange'], 'overdue' => ['Overdue', 'badge--red']];
+                                 'due' => ['Due', 'badge--orange'], 'overdue' => ['Overdue', 'badge--red']];
 const INV_RESOLUTION_LABELS   = ['missing' => 'Missing', 'broken' => 'Broken', 'stolen' => 'Stolen', 'found' => 'Found',
                                  'recount' => 'Recount', 'accepted' => 'Matched'];
 
 // ── Pure rules ──────────────────────────────────────────────────────────────
 
 /**
- * May this account COUNT a place? — PURE. Owner: anywhere. The place's responsible
- * person: yes. Shared places (Main stock, venue-less outlets): managers too.
- * Otherwise anyone whose venues include the place's venue. Never a person's location.
+ * May this account COUNT a place? — PURE. Owner: anywhere. Otherwise, a venue-bound
+ * place (a property or its area) is counted only by someone who currently works
+ * there — anyone whose venues include it — never by a stale `count_assignee_id`
+ * left over from before they moved property. The responsible-person bypass applies
+ * ONLY to SHARED places (Main stock, venue-less outlets), alongside managers.
+ * Never a person's location.
  */
 function inv_can_count(array $loc, int $adminId, string $role, ?array $venueIds): bool {
     if (($loc['kind'] ?? '') === 'person') return false;
     if ($venueIds === null || $role === 'owner') return true;
-    if ($adminId > 0 && (int)($loc['count_assignee_id'] ?? 0) === $adminId) return true;
     $v = $loc['venue_id'] ?? null;
-    if ($v === null || $v === '') return $role === 'manager';
+    if ($v === null || $v === '') return $role === 'manager' || ($adminId > 0 && (int)($loc['count_assignee_id'] ?? 0) === $adminId);
     return in_array((int)$v, array_map('intval', $venueIds), true);
 }
 
@@ -42,8 +44,8 @@ function inv_can_resolve(array $loc, string $role, ?array $venueIds): bool {
 /** Most urgent first: overdue, due, up to date, manual; then by label — PURE. */
 function inv_count_sort(array $rows): array {
     usort($rows, fn(array $a, array $b): int =>
-        [INV_COUNT_STATUS_ORDER[$a['count_status']] ?? 9, mb_strtolower((string)$a['name'])]
-        <=> [INV_COUNT_STATUS_ORDER[$b['count_status']] ?? 9, mb_strtolower((string)$b['name'])]);
+        [INV_COUNT_STATUS_ORDER[$a['count_status']] ?? 9, mb_strtolower((string)($a['label'] ?? $a['name']))]
+        <=> [INV_COUNT_STATUS_ORDER[$b['count_status']] ?? 9, mb_strtolower((string)($b['label'] ?? $b['name']))]);
     return $rows;
 }
 
@@ -63,7 +65,7 @@ function inv_countable_locations(int $adminId, string $role, ?array $venueIds, s
     $w = '(' . inv_visible_sql('l', $venueIds, $p) . ' OR l.count_assignee_id = :me)';
     $rows = db_query("SELECT l.*, pl.name AS parent_name,
                              (SELECT COUNT(*) FROM inv_balances b WHERE b.location_id = l.id AND (b.qty <> 0 OR b.par_qty IS NOT NULL)) AS line_count,
-                             (SELECT c.id FROM inv_counts c WHERE c.location_id = l.id AND c.status = 'open' ORDER BY c.id DESC LIMIT 1) AS open_count_id
+                             (SELECT c.id FROM inv_counts c WHERE c.location_id = l.id AND c.status = 'open' AND c.started_at::date = CURRENT_DATE ORDER BY c.id DESC LIMIT 1) AS open_count_id
                         FROM inv_locations l
                         LEFT JOIN inv_locations pl ON pl.id = l.parent_id
                        WHERE l.is_active = TRUE AND l.kind <> 'person' AND {$w}", $p)->fetchAll();
@@ -79,13 +81,20 @@ function inv_countable_locations(int $adminId, string $role, ?array $venueIds, s
     return inv_count_sort($out);
 }
 
-/** The places this account should count today (due or overdue). */
+/**
+ * The places this account should count today (due or overdue). A scheduled place
+ * with nothing expected there (line_count 0 — no balance and no par set) is never
+ * "due": there is nothing to count, so it never nags anyone.
+ */
 function inv_counts_due(int $adminId, string $role, ?array $venueIds, string $todayYmd): array {
     return array_values(array_filter(inv_countable_locations($adminId, $role, $venueIds, $todayYmd),
-        fn(array $r): bool => in_array($r['count_status'], ['due', 'overdue'], true)));
+        fn(array $r): bool => in_array($r['count_status'], ['due', 'overdue'], true) && (int)($r['line_count'] ?? 1) !== 0));
 }
 
-/** A count with its place and lines (item details). null when it does not exist. */
+/**
+ * A count with its place and lines (item details). null when it does not exist.
+ * Does NO scoping — the caller checks inv_can_count / inv_can_resolve / the profile's venue scope.
+ */
 function inv_count_sheet(int $countId): ?array {
     if (!inv_supported() || $countId <= 0) return null;
     $c = db_query("SELECT c.*, l.name AS location_name, l.kind, l.venue_id, l.count_assignee_id, l.parent_id,
@@ -102,11 +111,30 @@ function inv_count_sheet(int $countId): ?array {
     return $c;
 }
 
-/** Submitted counts with open gaps at places the account can see, oldest first. */
-function inv_count_queue(?array $venueIds): array {
+/**
+ * SQL: is location alias $a in one of the account's OWN venues? Unlike
+ * inv_visible_sql(), there is no shared branch (Main stock / venue-less outlets
+ * never match) — an empty venue list is FALSE, never TRUE. Owner ($venueIds =
+ * null) is not handled here; callers keep the owner path unrestricted.
+ */
+function inv_own_venues_sql(string $a, array $venueIds, array &$p, string $tag = 'own'): string {
+    $ph = [];
+    foreach (array_values($venueIds) as $i => $v) { $ph[] = ":{$tag}{$i}"; $p[":{$tag}{$i}"] = (int)$v; }
+    return $ph ? "{$a}.venue_id IN (" . implode(',', $ph) . ')' : 'FALSE';
+}
+
+/**
+ * Submitted counts with open gaps at places the account can see, oldest first.
+ * $resolvableOnly=true restricts further to places the account can actually
+ * RESOLVE — its own venues only, no shared branch (Main stock is owner-resolved) —
+ * which is what a badge count should reflect. The review page itself passes the
+ * default (false) so it can list everything visible and mark the rows it can't act
+ * on ("The owner checks this place"); the Front Desk "N to review" badge passes true.
+ */
+function inv_count_queue(?array $venueIds, bool $resolvableOnly = false): array {
     if (!inv_supported()) return [];
     $p = [];
-    $w = inv_visible_sql('l', $venueIds, $p);
+    $w = ($resolvableOnly && $venueIds !== null) ? inv_own_venues_sql('l', $venueIds, $p) : inv_visible_sql('l', $venueIds, $p);
     return db_query("SELECT c.id, c.location_id, c.submitted_at, c.counted_by, l.name AS location_name, l.kind, l.venue_id,
                             pl.name AS parent_name, a.name AS counted_by_name,
                             (SELECT COUNT(*) FROM inv_count_lines cl WHERE cl.count_id = c.id AND cl.resolution IS NULL) AS open_lines
@@ -118,15 +146,19 @@ function inv_count_queue(?array $venueIds): array {
                       ORDER BY c.submitted_at, c.id", $p)->fetchAll();
 }
 
-function inv_count_queue_size(?array $venueIds): int {
+/** Count sibling of inv_count_queue() — see its docblock for $resolvableOnly. */
+function inv_count_queue_size(?array $venueIds, bool $resolvableOnly = false): int {
     if (!inv_supported()) return 0;
     $p = [];
-    $w = inv_visible_sql('l', $venueIds, $p);
+    $w = ($resolvableOnly && $venueIds !== null) ? inv_own_venues_sql('l', $venueIds, $p) : inv_visible_sql('l', $venueIds, $p);
     return (int) db_query("SELECT COUNT(*) FROM inv_counts c JOIN inv_locations l ON l.id = c.location_id
                             WHERE c.status = 'submitted' AND {$w}", $p)->fetchColumn();
 }
 
-/** The place a count line belongs to (for the resolve permission check). */
+/**
+ * The place a count line belongs to (for the resolve permission check).
+ * Does NO scoping — the caller checks inv_can_count / inv_can_resolve / the profile's venue scope.
+ */
 function inv_count_line_location(int $lineId): ?array {
     if (!inv_supported()) return null;
     $r = db_query('SELECT l.* FROM inv_count_lines cl JOIN inv_counts c ON c.id = cl.count_id
@@ -142,7 +174,8 @@ function inv_count_line_location(int $lineId): ?array {
  * review. Returns '' when there is nothing to show.
  */
 function inv_counts_due_card(array $places, int $reviewCount): string {
-    $due = array_values(array_filter($places, fn(array $r): bool => in_array($r['count_status'], ['due', 'overdue'], true)));
+    $due = array_values(array_filter($places, fn(array $r): bool =>
+        in_array($r['count_status'], ['due', 'overdue'], true) && (int)($r['line_count'] ?? 1) !== 0));
     if (!$due && $reviewCount <= 0) return '';
     ob_start(); ?>
 <div class="card" style="margin-bottom:16px">
