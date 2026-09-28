@@ -1089,6 +1089,10 @@ function pos_complete_sale_tx(array $req, string $uuid, int $userId, ?int $termi
             db_query('INSERT INTO bill_items (hold_id, label, amount, pos_sale_id) VALUES (:h, :l, :a, :s)',
                 [':h' => $holdId, ':l' => $label, ':a' => $billAmt, ':s' => $saleId]);
         }
+        // Accounting: stamp the line's currency so a folio never has to guess it.
+        if (pos_bill_currency_supported()) {
+            db_query('UPDATE bill_items SET currency = :c WHERE pos_sale_id = :s', [':c' => strtoupper((string)$billCur), ':s' => $saleId]);
+        }
         if ($signature !== null) {
             db_query('INSERT INTO pos_sale_signatures (sale_id, signature, signer_name, ip, user_agent) VALUES (:s, :sig, :n, :ip, :ua)',
                 [':s' => $saleId, ':sig' => $signature, ':n' => mb_substr($custName, 0, 160),
@@ -1103,6 +1107,20 @@ function pos_complete_sale_tx(array $req, string $uuid, int $userId, ?int $termi
  * Restocks tracked items, removes the linked room-charge bill line, marks the sale
  * voided. Returns ['ok'=>true,'sale'=>array] or ['ok'=>false,'error'=>string].
  */
+/** bill_items has the accounting columns (add_acct_documents.sql) — catalog lookup, safe in a transaction. */
+function pos_bill_currency_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { return $ok = (bool) db_query("SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'bill_items' AND column_name = 'document_id'")->fetchColumn(); }
+    catch (Throwable $e) { return $ok = false; }
+}
+
+/** Is this sale's room-charge line on an issued (uncredited) invoice? */
+function pos_bill_line_invoiced(int $saleId): bool {
+    return pos_bill_link_supported() && pos_bill_currency_supported()
+        && (bool) db_query('SELECT 1 FROM bill_items WHERE pos_sale_id = :s AND document_id IS NOT NULL', [':s' => $saleId])->fetchColumn();
+}
+
 function pos_void_sale(int $saleId, string $reason, int $userId): array {
     if (!pos_supported()) return ['ok' => false, 'error' => 'The POS is not enabled yet.'];
     $reason = trim($reason);
@@ -1115,6 +1133,11 @@ function pos_void_sale(int $saleId, string $reason, int $userId): array {
             if (!$sale) throw new PosRefusal('That sale does not exist.');
             if (!pos_user_manages_outlet($user, (int)$sale['outlet_id'])) throw new PosRefusal('Only a manager of this outlet can void a sale.');
             if ($sale['status'] !== 'completed') throw new PosRefusal('That sale is already voided.');
+            // Accounting: a room charge already on an issued invoice is locked — voiding it
+            // would silently change a tax document. Credit the invoice first (it releases the line).
+            if (pos_bill_line_invoiced($saleId)) {
+                throw new PosRefusal('This room charge is on an issued invoice — credit that invoice on the booking’s Bill tab first, then void.');
+            }
 
             if (inv_supported()) {
                 // Put back exactly what the sale took, to where it took it from.

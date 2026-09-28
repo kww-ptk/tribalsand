@@ -7,6 +7,7 @@ $__cur   = setting('site_currency', 'USD');
 $__adults = array_values(array_filter(fetch_checkin_guests($holdId), fn($g) => empty($g['is_child'])));
 /** number for a value input: 500.00 → "500", 12.50 → "12.5", null → "" */
 $__numval = fn($v) => ($v === null || $v === '') ? '' : rtrim(rtrim(number_format((float)$v, 2, '.', ''), '0'), '.');
+include __DIR__ . '/_ws_folio.php';   // Accounting: balance due, payments, invoices (renders nothing until live)
 ?>
 <div class="card" style="margin-bottom:16px">
   <div class="card__head">
@@ -25,6 +26,10 @@ $__numval = fn($v) => ($v === null || $v === '') ? '' : rtrim(rtrim(number_forma
           <td><?= e(addon_label($l)) ?><?php if (($l['kind'] ?? '') === 'tour' && !empty($l['pax'])): ?> <span class="text-muted" style="font-size:12px">· <?= (int)$l['pax'] ?> pax</span><?php endif; ?><?php if (!$__priced): ?> <span class="badge badge--orange">set a price</span><?php endif; ?><?php if (!empty($l['requested_by_name']) || !empty($l['requested_by_is_lead'])): ?><div class="text-muted" style="font-size:12px"><?= e(attributed_display_name((string)$l['requested_by_name'], !empty($l['requested_by_is_lead']), (string)($hold['guest_name'] ?? ''))) ?><?= !empty($l['requested_by_is_lead']) ? ' (lead)' : '' ?></div><?php endif; ?></td>
           <td class="text-muted" style="font-size:12px"><?= !empty($l['scheduled_for']) ? e(date('j M', strtotime((string)$l['scheduled_for']))) : '—' ?></td>
           <td class="num">
+            <?php if (!empty($l['document_id'])): ?>
+            <span style="white-space:nowrap;font-variant-numeric:tabular-nums"><?= e(format_price((float)$l['price_amount'], $__cur)) ?></span>
+            <span class="badge badge--blue" data-tip="On an issued invoice — credit it to change this charge">Invoiced</span>
+            <?php else: ?>
             <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=bill" style="display:inline-flex;gap:6px;align-items:center;justify-content:flex-end">
               <?= csrf_field() ?>
               <input type="hidden" name="action" value="bill_set_price">
@@ -34,6 +39,7 @@ $__numval = fn($v) => ($v === null || $v === '') ? '' : rtrim(rtrim(number_forma
               <input type="number" name="price_amount" step="0.01" min="0" value="<?= e($__numval($l['price_amount'] ?? '')) ?>" placeholder="0.00" class="inp inp--sm inp--num no-spin" style="width:96px" aria-label="Price">
               <button type="submit" class="btn-sm btn-outline">Save</button>
             </form>
+            <?php endif; ?>
           </td>
         </tr>
         <?php endforeach; ?>
@@ -49,7 +55,9 @@ $__numval = fn($v) => ($v === null || $v === '') ? '' : rtrim(rtrim(number_forma
     <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)">
       <span style="flex:1"><?= e($it['label']) ?><?php if (!empty($it['guest_name']) || !empty($it['guest_is_lead'])): ?> <span class="text-muted" style="font-size:12px">· <?= e(attributed_display_name((string)$it['guest_name'], !empty($it['guest_is_lead']), (string)($hold['guest_name'] ?? ''))) ?></span><?php endif; ?></span>
       <span style="white-space:nowrap;font-variant-numeric:tabular-nums"><?= e(format_price((float)$it['amount'], $__cur)) ?></span>
-      <?php if (!empty($it['pos_sale_id'])): ?>
+      <?php if (!empty($it['document_id'])): ?>
+      <span class="badge badge--blue" data-tip="On an issued invoice — credit it to change this charge">Invoiced</span>
+      <?php elseif (!empty($it['pos_sale_id'])): ?>
       <a href="/admin/pos-sales.php?sale=<?= (int)$it['pos_sale_id'] ?>" class="badge badge--teal" data-tip="Point-of-sale charge — void the sale to remove it">POS</a>
       <?php else: ?>
       <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=bill" style="margin:0">

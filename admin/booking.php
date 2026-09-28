@@ -13,6 +13,7 @@ require_once __DIR__ . '/../includes/copy-link.php';        // copy_link_control
 require_once __DIR__ . '/../includes/services.php';         // format_price() for a trade booking's net figure
 require_once __DIR__ . '/../includes/activity-log.php';     // activity_log_html() — Item 3
 require_once __DIR__ . '/../includes/pos-support.php';      // pos_bill_link_supported() — POS room charges can't be deleted here
+require_once __DIR__ . '/../includes/acct.php';             // folio: payments, invoices, credit notes (Accounting P2a)
 require_login();
 
 $holdId = (int)($_GET['hold'] ?? $_POST['hold_id'] ?? 0);
@@ -131,8 +132,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($act === 'bill_set_price') {
         $aid   = (int)($_POST['addon_id'] ?? 0);
         $price = ($_POST['price_amount'] ?? '') === '' ? null : (float)$_POST['price_amount'];
+        if ($aid && acct_addon_locked($aid)) {
+            $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'That charge is on an issued invoice — credit the invoice first to change it.'];
+            header("Location: /admin/booking.php?hold=$holdId&tab=bill"); exit;
+        }
         if ($aid && ($price === null || ($price >= 0 && $price < 100000000))) { // NUMERIC(10,2) ceiling
             db_query("UPDATE booking_addons SET price_amount=:p WHERE id=:a AND hold_id=:h", [':p'=>$price, ':a'=>$aid, ':h'=>$holdId]);
+            if (acct_bill_currency_supported()) {   // the price is entered in the site currency — record it
+                db_query("UPDATE booking_addons SET price_currency=:c WHERE id=:a AND hold_id=:h AND price_currency IS NULL",
+                         [':c'=>strtoupper(setting('site_currency', 'USD')), ':a'=>$aid, ':h'=>$holdId]);
+            }
             audit_log('bill.set_price', 'booking_addon', $aid, '');
         }
         header("Location: /admin/booking.php?hold=$holdId&tab=bill"); exit;
@@ -150,6 +159,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } else {
                 db_query("INSERT INTO bill_items (hold_id, label, amount) VALUES (:h,:l,:a)", [':h'=>$holdId, ':l'=>mb_substr($label,0,200), ':a'=>$amount]);
             }
+            if (acct_bill_currency_supported()) {   // stamp the currency the bill shows (never guessed later)
+                db_query("UPDATE bill_items SET currency=:c WHERE id=:i", [':c'=>strtoupper(setting('site_currency', 'USD')), ':i'=>(int)db()->lastInsertId()]);
+            }
             audit_log('bill.add', 'hold', $holdId, $label);
         }
         header("Location: /admin/booking.php?hold=$holdId&tab=bill"); exit;
@@ -164,9 +176,50 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'That charge came from the POS — void the sale in Admin → POS sales to remove it.'];
             header("Location: /admin/booking.php?hold=$holdId&tab=bill"); exit;
         }
+        if (acct_bill_item_locked($iid)) {
+            $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'That charge is on an issued invoice — credit the invoice first to remove it.'];
+            header("Location: /admin/booking.php?hold=$holdId&tab=bill"); exit;
+        }
         db_query("DELETE FROM bill_items WHERE id=:i AND hold_id=:h", [':i'=>$iid, ':h'=>$holdId]);
         audit_log('bill.del', 'hold', $holdId, '');
         header("Location: /admin/booking.php?hold=$holdId&tab=bill"); exit;
+    }
+    // ── Folio (Accounting P2a): payments, invoices, credit notes, refunds ──
+    if (in_array($act, ['acct_pay', 'acct_issue', 'acct_credit', 'acct_refund'], true)) {
+        $back = "Location: /admin/booking.php?hold=$holdId&tab=bill#folio";
+        $venueId = $hold['venue_id'] !== null ? (int)$hold['venue_id'] : null;
+        try {
+            if (!acct_supported()) throw new AcctRefusal('Invoicing is not set up yet.');
+            if (in_array($act, ['acct_pay', 'acct_issue'], true) && !acct_can_take_payments()) throw new AcctRefusal('Your account can’t take payments.');
+            if (in_array($act, ['acct_credit', 'acct_refund'], true) && !acct_can_reverse($venueId)) throw new AcctRefusal('Only the owner or this property’s manager can do that.');
+            $uid = (int)($_SESSION['admin_id'] ?? 0) ?: null;
+            if ($act === 'acct_pay') {
+                $pid = acct_record_payment($holdId, $_POST, $uid);
+                audit_log('acct.payment', 'hold', $holdId, "payment #{$pid}");
+                $_SESSION['hold_flash'] = ['type'=>'success','msg'=>!empty($_POST['is_security_deposit']) ? 'Security deposit recorded.' : 'Payment recorded.'];
+            } elseif ($act === 'acct_issue') {
+                $ids = acct_issue_folio($holdId, $uid, (string)($_POST['buyer_pin'] ?? ''));
+                $nums = db_query('SELECT number FROM acct_documents WHERE id IN (' . implode(',', array_map('intval', $ids)) . ') ORDER BY id')->fetchAll(PDO::FETCH_COLUMN);
+                audit_log('acct.invoice', 'hold', $holdId, implode(', ', $nums));
+                $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Invoice ' . implode(' and ', $nums) . ' issued.'];
+            } elseif ($act === 'acct_credit') {
+                $docId = (int)($_POST['document_id'] ?? 0);
+                if (!db_query('SELECT 1 FROM acct_documents WHERE id=:d AND hold_id=:h', [':d'=>$docId, ':h'=>$holdId])->fetchColumn()) throw new AcctRefusal('That invoice is not on this booking.');
+                $cn = acct_credit_invoice($docId, (string)($_POST['reason'] ?? ''), $uid);
+                $num = db_query('SELECT number FROM acct_documents WHERE id=:d', [':d'=>$cn])->fetchColumn();
+                audit_log('acct.credit_note', 'hold', $holdId, (string)$num);
+                $_SESSION['hold_flash'] = ['type'=>'success','msg'=>"Credit note {$num} issued — the charges are back on the bill to correct and re-invoice."];
+            } else {
+                $pid = (int)($_POST['payment_id'] ?? 0);
+                if (!db_query("SELECT 1 FROM acct_payments WHERE id=:p AND hold_id=:h AND kind='receipt'", [':p'=>$pid, ':h'=>$holdId])->fetchColumn()) throw new AcctRefusal('That payment is not on this booking.');
+                acct_refund_payment($pid, (string)($_POST['amount'] ?? ''), (string)($_POST['reason'] ?? ''), $uid);
+                audit_log('acct.refund', 'hold', $holdId, "payment #{$pid}");
+                $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Refund recorded.'];
+            }
+        } catch (AcctRefusal|CompanyRefusal $e) {
+            $_SESSION['hold_flash'] = ['type'=>'error','msg'=>$e->getMessage()];
+        }
+        header($back); exit;
     }
     if ($act === 'checkin_toggle' && is_owner() && checkin_supported()) {
         $on = ($_POST['require_checkin'] ?? '') === '1';

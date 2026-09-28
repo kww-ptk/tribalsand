@@ -49,6 +49,7 @@ $__navPosTill   = $admin && pos_is_seller($admin);                    // "Open t
 $__navInventory = ($__isOwner || $__isManager) && inv_supported();   // Inventory & Assets (managers scoped to their properties)
 $__navCount     = !$__navInventory && inv_supported() && ($__isReception || is_staff());   // the stock-count screen for staff and reception
 $__navAccounting = $__isOwner && companies_supported();              // legal companies, KRA PINs, bank accounts — owner-only
+$__navAcctDocs   = ($__isOwner || $__isManager) && companies_supported() && to_regclass_exists('acct_documents');   // invoices & payments (managers scoped)
 
 // Chip shown under the logo for non-owner accounts.
 $__roleBadge = $__isManager ? 'Manager' : ($__isReception ? 'Reception' : (is_staff() ? ucfirst((string)$__job) : ''));
@@ -397,12 +398,20 @@ if ($__shellFrag) { ob_start(); return; }
       <?php $__navgroup('reports', 'Reports', ob_get_clean()); ?>
       <?php endif; ?>
 
-      <?php if ($__navAccounting): ?>
+      <?php if ($__navAccounting || $__navAcctDocs): ?>
       <?php ob_start(); ?>
+        <?php if ($__navAcctDocs): ?>
+        <a href="/admin/acct-documents.php" class="sidebar__link <?= ($activeMenu ?? '') === 'acct_documents' ? 'is-active' : '' ?>">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>
+          Invoices &amp; payments
+        </a>
+        <?php endif; ?>
+        <?php if ($__navAccounting): ?>
         <a href="/admin/companies.php" class="sidebar__link <?= ($activeMenu ?? '') === 'companies' ? 'is-active' : '' ?>">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-5h6v5"/><path d="M9 10h.01M15 10h.01M9 13h.01M15 13h.01"/></svg>
           Companies
         </a>
+        <?php endif; ?>
       <?php $__navgroup('accounting', 'Accounting', ob_get_clean()); ?>
       <?php endif; ?>
 

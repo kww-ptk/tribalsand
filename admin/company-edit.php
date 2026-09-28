@@ -11,6 +11,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/companies.php';
 require_once __DIR__ . '/../includes/storage.php';
+require_once __DIR__ . '/../includes/acct.php';   // invoicing go-live (Accounting P2a)
 require_login();
 require_owner();
 
@@ -45,6 +46,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             audit_log('company.update', 'company', $id, $d['name']);
             coe_flash('success', "{$d['name']} saved.");
             coe_back('details');
+        }
+
+        if ($act === 'save_invoicing') {
+            if (!acct_supported()) throw new CompanyRefusal('Run the add_acct_documents migration first.');
+            try { acct_set_company_invoicing($id, (string)($_POST['accounting_starts_on'] ?? ''), !empty($_POST['prices_include_vat'])); }
+            catch (AcctRefusal $e) { throw new CompanyRefusal($e->getMessage()); }
+            audit_log('company.invoicing', 'company', $id, (string)($_POST['accounting_starts_on'] ?? ''));
+            coe_flash('success', ($_POST['accounting_starts_on'] ?? '') !== '' ? 'Invoicing is live from ' . date('j M Y', strtotime((string)$_POST['accounting_starts_on'])) . '.' : 'Invoicing is off.');
+            coe_back('details', 'invoicing');
         }
 
         if ($act === 'logo_upload') {
@@ -223,13 +233,38 @@ include __DIR__ . '/_layout.php';
 
         <div class="co-meta">
           <span><strong>Home currency:</strong> <?= e($company['home_currency']) ?></span>
-          <span><strong>Invoicing:</strong> <?= $company['accounting_starts_on'] ? 'live from ' . e(date('j M Y', strtotime((string)$company['accounting_starts_on']))) : 'not live yet — nothing is invoiced' ?></span>
+          <span><strong>Invoicing:</strong> <?= $company['accounting_starts_on'] ? 'live from ' . e(date('j M Y', strtotime((string)$company['accounting_starts_on']))) : 'not live yet — nothing is invoiced' ?> <a href="#invoicing">change</a></span>
         </div>
 
         <button type="submit" class="btn-primary btn-sm"><?= admin_icon('check', 15) ?> Save company</button>
       </form>
     </div>
   </div>
+
+  <?php if (acct_supported()): $invLocked = acct_company_has_documents($id); $starts = (string)($company['accounting_starts_on'] ?? ''); ?>
+  <div class="card co-card" id="invoicing">
+    <div class="card__head"><span class="card__title">Invoicing</span>
+      <?= $starts !== '' ? '<span class="badge badge--green">Live from ' . e(date('j M Y', strtotime($starts))) . '</span>' : '<span class="badge badge--grey">Off</span>' ?></div>
+    <div class="card__body co-body">
+      <p class="text-muted co-small" style="margin:0 0 14px">From this date, reception records payments and issues tax invoices on the booking's <strong>Bill</strong> tab for this company's properties. A stay is included when it <strong>checks out</strong> on or after the date; earlier stays stay with the old process. Needs the KRA PIN and at least one money account.</p>
+      <form method="POST" action="<?= e($self) ?>" class="co-inv">
+        <?= csrf_field() ?><input type="hidden" name="action" value="save_invoicing"><input type="hidden" name="company_id" value="<?= $id ?>">
+        <div class="field co-inv__date"><label>Invoicing starts on</label>
+          <button type="button" class="dp-btn" data-dp-target="coStarts" data-dp-past data-dp-placeholder="Not live" style="width:100%" <?= $invLocked ? 'disabled' : '' ?>><?= $starts !== '' ? e(date('j M Y', strtotime($starts))) : 'Not live' ?></button>
+          <input type="hidden" id="coStarts" name="accounting_starts_on" value="<?= e($starts) ?>"></div>
+        <label class="togglerow"><span class="toggle"><input type="checkbox" name="prices_include_vat" value="1" <?= $chk($company['prices_include_vat'] ?? true) ?> <?= $invLocked ? 'disabled' : '' ?>><span class="toggle-slider"></span></span><span>Room and extras prices already include VAT <span class="text-muted">(for a VAT-registered company)</span></span></label>
+        <?php if ($invLocked): ?>
+          <p class="text-muted co-small" style="margin:10px 0 0">Locked — this company has issued invoices.</p>
+        <?php else: ?>
+          <div class="co-inv__btns">
+            <button type="submit" class="btn-primary btn-sm"><?= admin_icon('check', 15) ?> Save</button>
+            <?php if ($starts !== ''): ?><button type="submit" class="btn-outline btn-sm" onclick="document.getElementById('coStarts').value=''">Switch off</button><?php endif; ?>
+          </div>
+        <?php endif; ?>
+      </form>
+    </div>
+  </div>
+  <?php endif; ?>
 
   <div class="card co-card">
     <div class="card__head"><span class="card__title">Logo</span><span class="text-muted co-small">Printed on invoices · PNG, JPG or WEBP up to 2 MB</span></div>
@@ -427,6 +462,10 @@ include __DIR__ . '/_layout.php';
 .co-logo__none{width:120px;height:64px;border:1.5px dashed var(--border);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:12px;color:var(--muted)}
 .co-logo__form{margin:0}
 .co-danger{margin-top:16px;display:flex;justify-content:flex-end}
+.co-inv{display:flex;flex-wrap:wrap;align-items:flex-end;gap:12px 24px}
+.co-inv__date{margin:0;min-width:200px}
+.co-inv .togglerow{margin-bottom:6px}
+.co-inv__btns{display:flex;gap:8px;flex-basis:100%}
 .co-delbtn{border-color:var(--red);color:var(--red)}
 .co-delbtn:hover{background:var(--red);color:#fff}
 .co-acclist{display:grid;gap:10px;margin-bottom:12px}
