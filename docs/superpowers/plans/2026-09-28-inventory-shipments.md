@@ -1819,8 +1819,7 @@ $token   = preg_replace('/[^a-f0-9]/', '', (string)($_GET['preview'] ?? ''));
 $imp     = ($supported && $token !== '') ? invs_import($token) : null;
 $list    = (!$imp && $supported) ? inv_shipments_list($vids) : [];
 $groups  = $imp ? inv_ship_groups_with_choices($imp['parsed']['lines'], $imp['names'], $imp['choices']) : [];
-$known   = [];
-if ($imp) foreach (db_query('SELECT lower(name) AS n FROM inv_items WHERE is_active = TRUE')->fetchAll() as $r) $known[(string)$r['n']] = true;
+$known   = $imp ? inv_ship_existing_items() : [];   // [merge key => existing active item] — the same match create uses
 $head    = $imp['head'] ?? [];
 $hv      = fn(string $k, string $def = ''): string => (string)($head[$k] ?? $def);
 $dupId   = $imp ? inv_ship_find_duplicate($imp['filename'], count($imp['parsed']['lines'])) : null;
@@ -1879,10 +1878,13 @@ include __DIR__ . '/_layout.php';
       <div class="table-wrap"><table class="data-table invs-table">
         <thead><tr><th>Item</th><th>Category</th><th>Kind</th><th>Unit</th><th class="inv-num">Qty</th></tr></thead>
         <tbody>
-        <?php foreach ($groups as $key => $g): $gid = inv_ship_gid((string)$key); $isKnown = isset($known[mb_strtolower((string)$g['name'])]); ?>
+        <?php foreach ($groups as $key => $g): $gid = inv_ship_gid((string)$key); $ex = $known[(string)$g['key']] ?? null;
+              $clash = $ex && (($ex['tracking'] === 'serial') !== ($g['kind'] === 'serial')); ?>
           <tr class="invs-group">
             <td><input name="g[<?= $gid ?>][name]" class="inp" maxlength="160" value="<?= e((string)$g['name']) ?>" aria-label="Item name">
-              <?php if ($isKnown): ?><span class="badge badge--green" style="margin-top:4px">Existing item — stock is added to it</span><?php endif; ?></td>
+              <?php if ($ex): ?><span class="badge <?= $clash ? 'badge--red' : 'badge--green' ?>" style="margin-top:4px"><?= $clash
+                ? 'Already exists, tracked by ' . ($ex['tracking'] === 'serial' ? 'serial number' : 'quantity') . ' — rename it or choose the same kind'
+                : 'Existing item — stock is added to it' ?></span><?php endif; ?></td>
             <td><input name="g[<?= $gid ?>][category]" class="inp" maxlength="60" value="<?= e((string)$g['category']) ?>" aria-label="Category"></td>
             <td><select name="g[<?= $gid ?>][kind]" class="eselect" aria-label="Kind">
               <?php foreach (INV_SHIP_KINDS as $k => $lbl): ?><option value="<?= e($k) ?>" <?= $g['kind'] === $k ? 'selected' : '' ?>><?= e($lbl) ?></option><?php endforeach; ?></select></td>
@@ -2262,8 +2264,9 @@ if (!$s || !inv_ship_store_allowed(inv_shipment_store_row($s), $vids)) {
     include __DIR__ . '/_layout_end.php';
     exit;
 }
-$section = trim((string)($_GET['section'] ?? $_POST['section'] ?? ''));
+$section = trim((string)($_GET['section'] ?? $_POST['section'] ?? ''));   // '' = all lines, '__none__' = lines with no section
 $self    = '/admin/inventory-receive.php?shipment=' . $id . ($section !== '' ? '&section=' . rawurlencode($section) : '');
+$canCorrectReceived = is_owner() || is_manager();   // spec §5: a received shipment is corrected by a manager
 $flash   = $_SESSION['invr_flash'] ?? null; unset($_SESSION['invr_flash']);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -2272,8 +2275,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // The sentinel is the LAST field: if PHP dropped fields (max_input_vars), refuse
         // rather than save half a page.
         if (($_POST['end'] ?? '') !== '1') throw new InvRefusal('Too much on one page to save — pick a section and save again.');
+        if ($s['status'] === 'received' && !$canCorrectReceived) throw new InvRefusal('This delivery is marked received — ask a manager to correct it.');
         $posted = [];
-        foreach (['good', 'damaged', 'note', 'over'] as $f) {
+        foreach (['good', 'damaged', 'note', 'over', 'base_good', 'base_damaged'] as $f) {
             foreach ((array)($_POST[$f] ?? []) as $lid => $v) $posted[(int)$lid][$f] = (string)$v;
         }
         foreach ((array)($_POST['serial'] ?? []) as $lid => $list) $posted[(int)$lid]['serials'] = array_map('strval', (array)$list);
@@ -2305,7 +2309,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $sections = inv_shipment_sections($id);
-$lines    = inv_shipment_lines($id, $section);
+$lines    = inv_shipment_lines($id, $section === '' ? null : ($section === '__none__' ? '' : $section));
 $closed   = $s['status'] === 'cancelled';
 $draftKey = 'invr-draft-' . $id . '-' . md5($section);
 $pageTitle  = 'Receive · ' . $s['name'];
@@ -2324,8 +2328,8 @@ include __DIR__ . '/_layout.php';
 
 <div class="inv-chips invr-sections">
   <a href="/admin/inventory-receive.php?shipment=<?= $id ?>" class="optchip <?= $section === '' ? 'is-on' : '' ?>">All</a>
-  <?php foreach ($sections as $sec): if ($sec['section'] === '') continue; ?>
-  <a href="/admin/inventory-receive.php?shipment=<?= $id ?>&amp;section=<?= e(rawurlencode((string)$sec['section'])) ?>" class="optchip <?= $section === $sec['section'] ? 'is-on' : '' ?>"><?= e((string)$sec['section']) ?> <span class="text-muted">(<?= (int)$sec['lines'] ?>)</span></a>
+  <?php foreach ($sections as $sec): $key = $sec['section'] === '' ? '__none__' : (string)$sec['section']; ?>
+  <a href="/admin/inventory-receive.php?shipment=<?= $id ?>&amp;section=<?= e(rawurlencode($key)) ?>" class="optchip <?= $section === $key ? 'is-on' : '' ?>"><?= e($sec['section'] === '' ? 'No section' : (string)$sec['section']) ?> <span class="text-muted">(<?= (int)$sec['lines'] ?>)</span></a>
   <?php endforeach; ?>
 </div>
 <div class="inv-chips invr-filter" role="group" aria-label="Show">
@@ -2338,6 +2342,8 @@ include __DIR__ . '/_layout.php';
 
 <?php if ($closed): ?>
   <?php dt_empty('This shipment was cancelled.'); ?>
+<?php elseif ($s['status'] === 'received' && !$canCorrectReceived): ?>
+  <?php dt_empty('This delivery is marked received. Ask a manager if something needs correcting.'); ?>
 <?php elseif (!$lines): ?>
   <?php dt_empty('No lines here.'); ?>
 <?php else: ?>
@@ -2348,6 +2354,8 @@ include __DIR__ . '/_layout.php';
       $left = max(0, $exp - (int)$l['qty_good']); ?>
     <div class="invc-card invr-card" data-line="<?= $lid ?>" data-expected="<?= $exp ?>" data-good="<?= (int)$l['qty_good'] ?>" data-damaged="<?= (int)$l['qty_damaged'] ?>"
          data-search="<?= e(mb_strtolower($l['code'] . ' ' . $l['description'] . ' ' . $l['item_name'])) ?>">
+      <!-- The totals this card was drawn from: the server refuses the save if someone else changed the line since (never a silent write-off). -->
+      <input type="hidden" name="base_good[<?= $lid ?>]" value="<?= (int)$l['qty_good'] ?>"><input type="hidden" name="base_damaged[<?= $lid ?>]" value="<?= (int)$l['qty_damaged'] ?>">
       <div class="invc-card__top"><?= inv_thumb_html($l, 48) ?>
         <div><strong><?= e((string)$l['item_name']) ?></strong>
           <span class="inv-sub"><?= e((string)$l['code']) ?><?= $l['section'] ? ' · for ' . e((string)$l['section']) : '' ?> · expected <b><?= $exp ?></b> <?= e((string)$l['unit_label']) ?></span>
@@ -2366,7 +2374,7 @@ include __DIR__ . '/_layout.php';
           <button type="button" class="invc-btn" data-step="1" data-for="damaged" aria-label="One more damaged">+</button>
         </div></div>
       <?php if ($serial && $left > 0): ?>
-      <details class="invr-more"><summary>Serial numbers (<?= min($left, 50) ?>)</summary>
+      <details class="invr-more"><summary>Serial numbers of the new pieces, in order (<?= min($left, 50) ?>)</summary>
         <?php for ($k = 0; $k < min($left, 50); $k++): ?><input name="serial[<?= $lid ?>][]" class="inp inp--sm" maxlength="80" placeholder="Serial <?= $k + 1 ?> (optional)" data-f="serial"><?php endfor; ?>
       </details>
       <?php endif; ?>
@@ -2453,13 +2461,16 @@ a.optchip{text-decoration:none}
   function save() {
     var d = {};
     cards.forEach(function (c) {
+      // Remember what the card was drawn from: a draft is only restored onto the same saved totals.
+      d['base:' + c.getAttribute('data-line')] = c.getAttribute('data-good') + '|' + c.getAttribute('data-damaged');
       c.querySelectorAll('[data-f="good"],[data-f="damaged"],[data-f="note"]').forEach(function (i) { d[i.name] = i.value; });
     });
     try { localStorage.setItem(key, JSON.stringify(d)); } catch (e) {}
   }
   cards.forEach(function (c) {
+    var fresh = draft['base:' + c.getAttribute('data-line')] === c.getAttribute('data-good') + '|' + c.getAttribute('data-damaged');
     c.querySelectorAll('[data-f="good"],[data-f="damaged"],[data-f="note"]').forEach(function (i) {
-      if (draft[i.name] !== undefined) i.value = draft[i.name];
+      if (fresh && draft[i.name] !== undefined) i.value = draft[i.name];   // a draft drawn from older totals is dropped
       i.addEventListener('input', function () { paint(c); progress(); save(); });
     });
     c.querySelectorAll('[data-step]').forEach(function (b) {
