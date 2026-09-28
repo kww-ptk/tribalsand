@@ -253,6 +253,14 @@ check('short: expected − good − damaged, never below 0', inv_ship_short(['qt
 check('store access: owner, and managers the store serves', inv_ship_store_allowed($td, null) && inv_ship_store_allowed($td, [6]) && !inv_ship_store_allowed($td, [3])
     && !inv_ship_store_allowed($mainS, [3]) && !inv_ship_store_allowed($mi, [6]));
 
+// ── Stale totals + bound work per save (review fixes, pure) ────────────────
+check('plan: a matching base is accepted', is_array(inv_ship_receive_plan($line, ['good' => '5', 'base_good' => '3', 'base_damaged' => '0'])));
+check('plan: a stale base_good is refused', str_contains((string)inv_ship_receive_plan($line, ['good' => '5', 'base_good' => '2']), 'someone else saved'));
+check('plan: a stale base_damaged is refused', str_contains((string)inv_ship_receive_plan($line, ['good' => '5', 'base_damaged' => '1']), 'someone else saved'));
+check('plan: no base keeps the old behaviour', is_array(inv_ship_receive_plan($line, ['good' => '5'])));
+check('plan: an impossible total is refused even with the tick', str_contains(
+    (string)inv_ship_receive_plan($line, ['good' => (string)INV_SHIP_MAX_QTY, 'damaged' => '1', 'over' => '1']), 'too large'));
+
 // ── Pure checks (each task inserts its section above this line) ──
 
 // ── DB-backed ───────────────────────────────────────────────────────────────
@@ -358,6 +366,35 @@ try {
     check('create: expected status, sections kept', inv_shipment_fetch($sid)['status'] === 'expected' && $sl['OD1']['section'] === 'Off-Duty');
     check('create: a re-import of the same file is spotted', inv_ship_find_duplicate("zz-{$sfx}.xlsx", 4) === $sid && inv_ship_find_duplicate("zz-{$sfx}.xlsx", 5) === null);
     check('create: a store is required', str_contains($refused(fn() => inv_shipment_create(['name' => 'x', 'to_location_id' => $miLoc] + $head, $slines, $sgroups, $owner)), 'store'));
+    check('create: an invalid calendar date is refused', str_contains($refused(fn() => inv_shipment_create(
+        ['name' => "ZZ BadDate {$sfx}", 'source_filename' => '', 'expected_on' => '2026-02-30'] + $head, $slines, $sgroups, $owner)), 'valid expected date'));
+
+    // ── Existing-item matches (review fixes) ──
+    $mismatchLines  = [['section' => '', 'code' => 'MM1', 'hs_code' => '', 'description' => "ZZ Couch {$sfx}", 'qty' => 3]];
+    $mismatchGroups = inv_ship_group($mismatchLines);
+    $mismatchGroups[inv_ship_key("ZZ Couch {$sfx}")]['kind'] = 'serial';
+    check('create: a group naming an existing qty item as serial is refused', str_contains($refused(fn() => inv_shipment_create(
+        ['name' => "ZZ Mismatch {$sfx}", 'source_filename' => ''] + $head, $mismatchLines, $mismatchGroups, $owner)), 'tracked by'));
+    $dotLines  = [['section' => '', 'code' => 'DD1', 'hs_code' => '', 'description' => "ZZ Couch {$sfx}.", 'qty' => 2]];
+    $dotGroups = inv_ship_group($dotLines);
+    $sidDot    = inv_shipment_create(['name' => "ZZ Dot {$sfx}", 'source_filename' => ''] + $head, $dotLines, $dotGroups, $owner);
+    check('create: a trailing dot still matches the existing item', (int)inv_shipment_lines($sidDot)[0]['item_id'] === $existing);
+
+    // ── Currency seam (review fixes) ──
+    $curLines  = [['section' => '', 'code' => 'CU1', 'hs_code' => '', 'description' => "ZZ Cost Item {$sfx}", 'qty' => 5]];
+    $curGroups = inv_ship_group($curLines);
+    $sidCur    = inv_shipment_create(['name' => "ZZ Cost {$sfx}", 'source_filename' => ''] + $head, $curLines, $curGroups, $owner);
+    $curLineId = (int) inv_shipment_lines($sidCur)[0]['id'];
+    $curItemId = (int) inv_shipment_lines($sidCur)[0]['item_id'];
+    $curCcy    = (string) db_query('SELECT currency FROM inv_items WHERE id = :i', [':i' => $curItemId])->fetchColumn();
+    db_query('UPDATE inv_shipment_lines SET unit_cost = 12.50, cost_currency = :cc WHERE id = :l', [':cc' => $curCcy, ':l' => $curLineId]);
+    inv_shipment_receive($sidCur, [$curLineId => ['good' => '2']], $owner);
+    check('receive: unit_cost is used when its currency matches the item', abs((float) db_query(
+        'SELECT unit_value FROM inv_moves WHERE shipment_line_id = :l ORDER BY id DESC LIMIT 1', [':l' => $curLineId])->fetchColumn() - 12.50) < 0.001);
+    db_query('UPDATE inv_shipment_lines SET unit_cost = 99.00, cost_currency = :cc WHERE id = :l', [':cc' => $curCcy === 'USD' ? 'KES' : 'USD', ':l' => $curLineId]);
+    inv_shipment_receive($sidCur, [$curLineId => ['good' => '3']], $owner);
+    check('receive: unit_cost is ignored when its currency differs from the item', db_query(
+        'SELECT unit_value FROM inv_moves WHERE shipment_line_id = :l ORDER BY id DESC LIMIT 1', [':l' => $curLineId])->fetchColumn() === null);
 
     $lid = fn(string $c): int => (int)$sl[$c]['id'];
     $bal = fn(string $c): int => inv_balance((int)$sl[$c]['item_id'], $tdStore);
@@ -375,13 +412,23 @@ try {
     inv_shipment_receive($sid, [$lid('V1') => ['good' => '6']], $owner);
     check('receive: a lower count writes a correction', $bal('V1') === 6
         && $count("SELECT COUNT(*) FROM inv_moves WHERE shipment_line_id = :l AND reason = 'written_off'", [':l' => $lid('V1')]) === 1);
+    check('read: a receiving correction is not counted as a loss', inv_gone_moves(['q' => "ZZ Couch {$sfx}", 'status' => 'written_off'], null, 50, 0)['total'] === 0);
     check('receive: more than ordered is refused without the tick', str_contains($refused(fn() => inv_shipment_receive($sid, [$lid('OD1') => ['good' => '5']], $owner)), 'More than ordered'));
     inv_shipment_receive($sid, [$lid('OD1') => ['good' => '5', 'over' => '1']], $owner);
     check('receive: …and accepted with it', $bal('OD1') === 15);
+
+    // ── Stale totals (review fix) ──
+    $od1MovesBefore = $count('SELECT COUNT(*) FROM inv_moves WHERE shipment_line_id = :l', [':l' => $lid('OD1')]);
+    check('receive: a matching base is accepted (not stale)', is_array(inv_ship_receive_plan(inv_shipment_lines($sid, 'Off-Duty')[0], ['good' => '5', 'base_good' => '5', 'base_damaged' => '0', 'over' => '1'])));
+    check('receive: a stale base is refused and writes no move', str_contains($refused(fn() => inv_shipment_receive($sid, [$lid('OD1') => ['good' => '9', 'base_good' => '999']], $owner)), 'someone else saved')
+        && $count('SELECT COUNT(*) FROM inv_moves WHERE shipment_line_id = :l', [':l' => $lid('OD1')]) === $od1MovesBefore
+        && (int) db_query('SELECT qty_good FROM inv_shipment_lines WHERE id = :l', [':l' => $lid('OD1')])->fetchColumn() === 5);
+
     inv_shipment_receive($sid, [$lid('G1') => ['good' => '2', 'serials' => ['ZZSN1-' . $sfx, '']]], $owner);
     check('receive: serial items become units, one per piece', $count("SELECT COUNT(*) FROM inv_assets WHERE item_id = :i AND location_id = :l AND status = 'active'",
         [':i' => (int)$sl['G1']['item_id'], ':l' => $tdStore]) === 2 && $bal('G1') === 2);
     check('receive: a serial count can’t be lowered here', str_contains($refused(fn() => inv_shipment_receive($sid, [$lid('G1') => ['good' => '1']], $owner)), 'item page'));
+    check('receive: a serial line cannot register more than 200 units in one save', str_contains($refused(fn() => inv_shipment_receive($sid, [$lid('G1') => ['good' => '210', 'over' => '1']], $owner)), 'at most 200'));
     inv_transfer((int)$sl['V1']['item_id'], 6, $tdStore, $miLoc, $owner);
     check('receive: a correction is refused once the stock has moved on', $refused(fn() => inv_shipment_receive($sid, [$lid('V1') => ['good' => '5']], $owner)) !== ''
         && (int)db_query('SELECT qty_good FROM inv_shipment_lines WHERE id = :l', [':l' => $lid('V1')])->fetchColumn() === 6);
@@ -396,6 +443,7 @@ try {
     inv_shipment_cancel($sid2);
     check('status: an untouched shipment cancels', inv_shipment_fetch($sid2)['status'] === 'cancelled'
         && str_contains($refused(fn() => inv_shipment_receive($sid2, [], $owner)), 'cancelled'));
+    check('photo: refused once the shipment is cancelled', str_contains($refused(fn() => inv_shipment_set_photo($sid2, (int)inv_shipment_lines($sid2)[0]['id'], 'x')), 'cancelled'));
 
     $f = inv_shipment_fetch($sid);
     check('read: totals', (int)$f['line_count'] === 4 && (int)$f['pieces_expected'] === 30 && (int)$f['pieces_good'] === 6 + 11 + 5 + 2);
@@ -404,6 +452,29 @@ try {
     check('scope: the list follows the store', in_array($sid, array_column(inv_shipments_list([$vMI]), 'id'), false)
         && !in_array($sid, array_map('intval', array_column(inv_shipments_list([$vZ]), 'id')), true));
     check('scope: open deliveries leave out cancelled ones', !in_array($sid2, array_map('intval', array_column(inv_shipments_open(null), 'id')), true));
+
+    // ── SQL-scoped list/open (review fix) ──
+    $sid3 = inv_shipment_create(['name' => "ZZ Third {$sfx}", 'source_filename' => ''] + $head, $slines, $sgroups, $owner);
+    $openMI = array_map('intval', array_column(inv_shipments_open([$vMI]), 'id'));
+    check('scope: open() (SQL-scoped) carries live shipments for a sharing manager, drops the cancelled one',
+        in_array($sid, $openMI, true) && in_array($sid3, $openMI, true) && !in_array($sid2, $openMI, true));
+    check('scope: a Zuri manager gets none of these shipments', array_column(inv_shipments_list([$vZ]), 'id') === []);
+    check('scope: an empty venue list returns nothing without querying', inv_shipments_list([]) === []);
+
+    // ── Lines by section (review fix) ──
+    $noSecLines  = [['section' => '', 'code' => 'NS1', 'hs_code' => '', 'description' => "ZZ No Section {$sfx}", 'qty' => 1]];
+    $noSecGroups = inv_ship_group($noSecLines);
+    $sidNoSec    = inv_shipment_create(['name' => "ZZ No Section Ship {$sfx}", 'source_filename' => ''] + $head, $noSecLines, $noSecGroups, $owner);
+    check('lines: "" matches a line with no section, null returns everything', count(inv_shipment_lines($sidNoSec, '')) === 1
+        && count(inv_shipment_lines($sidNoSec, null)) === 1 && count(inv_shipment_lines($sidNoSec)) === 1
+        && count(inv_shipment_lines($sid, '')) === 0);
+
+    // ── Note-only save does not reopen (review fix) ──
+    inv_shipment_mark_received($sid);
+    check('status: marked received again', inv_shipment_fetch($sid)['status'] === 'received');
+    $noteOnly = inv_shipment_receive($sid, [$lid('G1') => ['note' => 'just a note']], $owner);
+    check('status: a note-only save does not reopen a received shipment, but still counts',
+        $noteOnly['lines'] === 1 && $noteOnly['received'] === 0 && inv_shipment_fetch($sid)['status'] === 'received');
 
     // ── DB checks (each task inserts its block above this line) ──
 } catch (Throwable $e) {

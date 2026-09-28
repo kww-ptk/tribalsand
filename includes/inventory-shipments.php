@@ -35,11 +35,24 @@ function inv_ship_short(array $l): int {
 
 /**
  * Check one posted card against its line — PURE. $p: good, damaged (the NEW TOTALS,
- * '' = keep), note (absent = keep), over ('1' = "more than ordered" confirmed).
+ * '' = keep), note (absent = keep), over ('1' = "more than ordered" confirmed),
+ * base_good / base_damaged (OPTIONAL — the totals the card was drawn from). Pages
+ * MUST post base_good/base_damaged with every save: when either is present and
+ * does not exactly match the line's CURRENT qty_good/qty_damaged, the line was
+ * changed by someone else since the card was opened, and the save is refused
+ * rather than silently overwriting (or writing off) their update.
  * Returns ['good','damaged','delta','note','changed'] or the refusal text.
  */
 function inv_ship_receive_plan(array $line, array $p): array|string {
     $label = trim(((string)($line['code'] ?? '')) . ' ' . mb_strimwidth((string)$line['description'], 0, 60, '…'));
+    foreach (['good' => 'qty_good', 'damaged' => 'qty_damaged'] as $k => $col) {
+        $bk = "base_{$k}";
+        if (!array_key_exists($bk, $p)) continue;
+        $bv = trim((string)$p[$bk]);
+        if ($bv === '' || !ctype_digit($bv) || (int)$bv !== (int)$line[$col]) {
+            return "{$label}: someone else saved this line since you opened it — reload and check.";
+        }
+    }
     $num = function (string $k, int $cur) use ($p): ?int {
         $v = trim((string)($p[$k] ?? ''));
         if ($v === '') return $cur;
@@ -48,6 +61,7 @@ function inv_ship_receive_plan(array $line, array $p): array|string {
     $good = $num('good', (int)$line['qty_good']);
     $dmg  = $num('damaged', (int)$line['qty_damaged']);
     if ($good === null || $dmg === null) return "{$label}: enter whole numbers.";
+    if ($good + $dmg > INV_SHIP_MAX_QTY) return "{$label}: that quantity is too large.";
     if ($good + $dmg > (int)$line['qty_expected'] && ($p['over'] ?? '') !== '1') {
         return "{$label}: that is more than the {$line['qty_expected']} ordered — tick “More than ordered” to confirm.";
     }
@@ -91,24 +105,49 @@ function inv_shipment_fetch(int $id): array|false {
     return db_query(inv_shipment_select_sql() . ' WHERE s.id = :id', [':id' => $id])->fetch();
 }
 
-/** Shipments this account may see, newest first (at most 200). */
-function inv_shipments_list(?array $venueIds): array {
+/**
+ * Shipments this account may see, newest first (at most 200) — scoped and filtered
+ * in SQL BEFORE the LIMIT. $venueIds: null = owner (no scope); an array = a
+ * manager's venues, scoped to stores they own or share (an EMPTY list returns []
+ * without querying). $statuses (optional, validated against INV_SHIP_STATUS keys)
+ * narrows to those statuses. inv_ship_store_allowed() remains the pure rule for
+ * checking a single already-fetched row.
+ */
+function inv_shipments_list(?array $venueIds, array $statuses = []): array {
     if (!inv_shipments_supported()) return [];
-    $rows = db_query(inv_shipment_select_sql() . ' ORDER BY s.created_at DESC, s.id DESC LIMIT 200')->fetchAll();
-    return array_values(array_filter($rows, fn($s) => inv_ship_store_allowed(inv_shipment_store_row($s), $venueIds)));
+    if ($venueIds !== null && !$venueIds) return [];
+    $p = [];
+    $w = [];
+    if ($venueIds !== null) {
+        $lit = inv_pg_int_array_literal($venueIds);
+        $w[] = "l.kind = 'store' AND (l.venue_id = ANY(CAST(:sv AS int[])) OR l.share_venue_ids && CAST(:ss AS int[]))";
+        $p[':sv'] = $lit;
+        $p[':ss'] = $lit;   // a placeholder may not be reused in one statement
+    }
+    $statuses = array_values(array_unique(array_intersect($statuses, array_keys(INV_SHIP_STATUS))));
+    if ($statuses) {
+        $w[] = 's.status = ANY(CAST(:st AS text[]))';
+        $p[':st'] = '{' . implode(',', $statuses) . '}';
+    }
+    $where = $w ? ' WHERE ' . implode(' AND ', $w) : '';
+    return db_query(inv_shipment_select_sql() . $where . ' ORDER BY s.created_at DESC, s.id DESC LIMIT 200', $p)->fetchAll();
 }
 
 /** Shipments still to receive (expected / receiving) for this account. */
 function inv_shipments_open(?array $venueIds): array {
-    return array_values(array_filter(inv_shipments_list($venueIds), fn($s) => in_array($s['status'], ['expected', 'receiving'], true)));
+    return inv_shipments_list($venueIds, ['expected', 'receiving']);
 }
 
-/** A shipment's lines in list order (optionally one section), with their item. */
-function inv_shipment_lines(int $shipmentId, string $section = ''): array {
+/**
+ * A shipment's lines in list order, with their item. $section: null (default) = every
+ * line; '' = lines with no section (section IS NULL); else that exact section.
+ */
+function inv_shipment_lines(int $shipmentId, ?string $section = null): array {
     if (!inv_shipments_supported()) return [];
     $p = [':s' => $shipmentId];
     $w = '';
-    if ($section !== '') { $w = ' AND sl.section = :sec'; $p[':sec'] = $section; }
+    if ($section === '') { $w = ' AND sl.section IS NULL'; }
+    elseif ($section !== null) { $w = ' AND sl.section = :sec'; $p[':sec'] = $section; }
     return db_query("SELECT sl.*, i.name AS item_name, i.tracking, i.unit_label, i.image_key, i.icon, i.category
                        FROM inv_shipment_lines sl JOIN inv_items i ON i.id = sl.item_id
                       WHERE sl.shipment_id = :s{$w} ORDER BY sl.sort_order, sl.id", $p)->fetchAll();
@@ -129,6 +168,26 @@ function inv_ship_target_stores(?array $venueIds): array {
     return array_values(array_filter($rows, fn($s) => inv_ship_store_allowed($s, $venueIds)));
 }
 
+/**
+ * Active items indexed by merge key (inv_ship_key(name) — case/spacing/trailing-dot
+ * insensitive, the same rule inv_ship_group() groups a workbook by), first by id
+ * wins on a collision. ONE query, so inv_shipment_create() matches every group
+ * against a consistent snapshot instead of one lookup per group.
+ */
+function inv_ship_existing_items(): array {
+    if (!inv_supported()) return [];
+    $rows = db_query("SELECT id, name, tracking, item_type, category, unit_label FROM inv_items WHERE is_active = TRUE ORDER BY id")->fetchAll();
+    $out = [];
+    foreach ($rows as $r) {
+        $key = inv_ship_key((string)$r['name']);
+        if (!isset($out[$key])) {
+            $out[$key] = ['id' => (int)$r['id'], 'name' => (string)$r['name'], 'tracking' => (string)$r['tracking'],
+                'item_type' => (string)$r['item_type'], 'category' => (string)$r['category'], 'unit_label' => (string)$r['unit_label']];
+        }
+    }
+    return $out;
+}
+
 /** A live shipment already imported from this file with this many lines, or null. */
 function inv_ship_find_duplicate(string $filename, int $lineCount): ?int {
     if (!inv_shipments_supported() || $filename === '') return null;
@@ -142,12 +201,17 @@ function inv_ship_find_duplicate(string $filename, int $lineCount): ?int {
 // ── Writes ──────────────────────────────────────────────────────────────────
 
 /**
- * Create a shipment from a parsed list — NO stock moves. Items are matched by name
- * (an active item, case-insensitive) or created with the group's category, kind
- * (operational | spare | serial) and unit. $head: name, supplier, reference,
- * containers, expected_on (Y-m-d or ''), to_location_id (a store),
- * source_filename. $lines: parsed lines; $groups: inv_ship_group()-shaped, with the
- * preview's choices applied. Does NO scoping. Returns the shipment id.
+ * Create a shipment from a parsed list — NO stock moves. Items are matched by merge
+ * key (inv_ship_key() — case/spacing/trailing-dot insensitive, via
+ * inv_ship_existing_items()) or created with the group's category, kind (operational |
+ * spare | serial) and unit. A group that matches an existing item whose tracking
+ * disagrees with the group's kind (serial vs quantity) is refused — never silently
+ * retypes an item that already exists. $head: name, supplier, reference, containers,
+ * expected_on (Y-m-d or ''), to_location_id (a store), source_filename. $lines: parsed
+ * lines; $groups: inv_ship_group()-shaped, with the preview's choices applied — every
+ * group's 'lines' must be real indexes into $lines and no index may appear in two
+ * groups (a tampered or stale preview is refused, not guessed at). Does NO scoping.
+ * Returns the shipment id.
  */
 function inv_shipment_create(array $head, array $lines, array $groups, ?int $userId): int {
     if (!inv_shipments_supported()) throw new InvRefusal('Run add_inventory_shipments.sql first.');
@@ -158,22 +222,49 @@ function inv_shipment_create(array $head, array $lines, array $groups, ?int $use
     $store = inv_fetch_location((int)($head['to_location_id'] ?? 0));
     if (!$store || $store['kind'] !== 'store' || !inv_bool($store['is_active'])) throw new InvRefusal('Pick the store it lands in.');
     $exp = trim((string)($head['expected_on'] ?? ''));
-    if ($exp !== '' && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $exp)) throw new InvRefusal('Pick a valid expected date.');
+    if ($exp !== '') {
+        if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $exp, $dm) || !checkdate((int)$dm[2], (int)$dm[3], (int)$dm[1])) {
+            throw new InvRefusal('Pick a valid expected date.');
+        }
+    }
     $opt = fn(string $k, int $max): ?string => ($s = trim((string)($head[$k] ?? ''))) !== '' ? mb_substr($s, 0, $max) : null;
 
     return inv_tx(function () use ($lines, $groups, $userId, $name, $store, $exp, $opt): int {
-        $itemFor = [];
+        // Every group's 'lines' must be real indexes into $lines, and no index may
+        // appear in two groups — a tampered/stale preview is refused, never guessed at.
+        $usedLines = [];
+        foreach ($groups as $g) {
+            foreach ((array)($g['lines'] ?? []) as $i) {
+                if (is_int($i)) { /* ok */ }
+                elseif (is_string($i) && ctype_digit($i)) { $i = (int)$i; }
+                else throw new InvRefusal('The item list is inconsistent — import the file again.');
+                if (!array_key_exists($i, $lines) || isset($usedLines[$i])) {
+                    throw new InvRefusal('The item list is inconsistent — import the file again.');
+                }
+                $usedLines[$i] = true;
+            }
+        }
+
+        $existing = inv_ship_existing_items();
+        $itemFor  = [];
         foreach ($groups as $g) {
             $gname = mb_substr(inv_ship_text((string)($g['name'] ?? '')), 0, 160);
             if ($gname === '') throw new InvRefusal('Every item needs a name.');
-            $kind = isset(INV_SHIP_KINDS[$g['kind'] ?? '']) ? (string)$g['kind'] : 'operational';
-            $id = db_query('SELECT id FROM inv_items WHERE is_active = TRUE AND lower(name) = lower(:n) ORDER BY id LIMIT 1', [':n' => $gname])->fetchColumn();
-            if ($id === false) {
+            $kind  = isset(INV_SHIP_KINDS[$g['kind'] ?? '']) ? (string)$g['kind'] : 'operational';
+            $match = $existing[inv_ship_key($gname)] ?? null;
+            if ($match) {
+                $wantTracking = $kind === 'serial' ? 'serial' : 'qty';
+                if ($match['tracking'] !== $wantTracking) {
+                    $have = $match['tracking'] === 'serial' ? 'serial number' : 'quantity';
+                    throw new InvRefusal("{$gname} already exists and is tracked by {$have} — rename it or choose the same kind.");
+                }
+                $id = $match['id'];
+            } else {
                 $id = inv_create_item(['name' => $gname, 'item_type' => $kind === 'spare' ? 'spare' : 'operational',
                     'tracking' => $kind === 'serial' ? 'serial' : 'qty', 'category' => (string)($g['category'] ?? ''),
                     'unit_label' => (string)($g['unit'] ?? 'pcs')]);
             }
-            foreach ((array)$g['lines'] as $i) $itemFor[$i] = (int)$id;
+            foreach ((array)$g['lines'] as $i) $itemFor[(int)$i] = (int)$id;
         }
         db_query('INSERT INTO inv_shipments (name, supplier, reference, containers, expected_on, to_location_id, source_filename, created_by)
                   VALUES (:n, :s, :r, :c, :e, :l, :f, :u)', [
@@ -191,18 +282,25 @@ function inv_shipment_create(array $head, array $lines, array $groups, ?int $use
                 ':sec' => ($x = trim((string)($l['section'] ?? ''))) !== '' ? mb_substr($x, 0, 120) : null,
                 ':c'   => ($x = trim((string)($l['code'] ?? ''))) !== '' ? mb_substr($x, 0, 40) : null,
                 ':hs'  => ($x = trim((string)($l['hs_code'] ?? ''))) !== '' ? mb_substr($x, 0, 20) : null,
-                ':d'   => (string)$l['description'], ':i' => $itemFor[$i], ':q' => $qty]);
+                ':d'   => mb_substr((string)$l['description'], 0, 2000), ':i' => $itemFor[$i], ':q' => $qty]);
         }
         return $sid;
     });
 }
 
 /**
- * Save a receiving round. $posted: [line id => ['good','damaged','note','over','serials' => […]]]
- * where good/damaged are the line's NEW TOTALS. Writes receive moves for what
- * arrived since the last save (a serial item: one unit per piece, with the serials
- * given), a written-off "Receiving correction" for a lowered good count, nothing
- * for damaged units. Does NO scoping. Returns ['lines','received','corrected'].
+ * Save a receiving round. $posted: [line id => ['good','damaged','note','over',
+ * 'base_good','base_damaged','serials' => […]]] where good/damaged are the line's
+ * NEW TOTALS (see inv_ship_receive_plan() for base_good/base_damaged — pages MUST
+ * post them). 'serials' is the serial numbers of the PIECES ADDED IN THIS SAVE, in
+ * order — one per new piece, blanks allowed, extras beyond the delta are ignored
+ * (the delta decides how many are used, never count(serials)). Writes receive moves
+ * for what arrived since the last save (a serial item: one unit per piece, with the
+ * serials given — refused past 200 units in one save), a written-off "Receiving
+ * correction" for a lowered good count, nothing for damaged units. Only a line whose
+ * good/damaged actually changed reopens a 'received' shipment — a note-only or
+ * photo-only save does not, though it still counts in 'lines'. Does NO scoping.
+ * Returns ['lines','received','corrected'].
  */
 function inv_shipment_receive(int $shipmentId, array $posted, ?int $userId): array {
     if (!inv_shipments_supported()) throw new InvRefusal('Run add_inventory_shipments.sql first.');
@@ -218,7 +316,8 @@ function inv_shipment_receive(int $shipmentId, array $posted, ?int $userId): arr
 
         $lines = [];
         foreach (array_keys($byId) as $lid) {   // id order = the lock order
-            $l = db_query('SELECT sl.*, i.tracking, i.name AS item_name FROM inv_shipment_lines sl JOIN inv_items i ON i.id = sl.item_id
+            $l = db_query('SELECT sl.*, i.tracking, i.name AS item_name, i.currency AS item_currency
+                             FROM inv_shipment_lines sl JOIN inv_items i ON i.id = sl.item_id
                             WHERE sl.id = :l AND sl.shipment_id = :s FOR UPDATE OF sl', [':l' => $lid, ':s' => $shipmentId])->fetch();
             if (!$l) throw new InvRefusal('A line does not belong to this shipment.');
             $lines[$lid] = $l;
@@ -231,17 +330,21 @@ function inv_shipment_receive(int $shipmentId, array $posted, ?int $userId): arr
             if ($l['tracking'] === 'serial' && $p['delta'] < 0) {
                 throw new InvRefusal("{$l['item_name']}: a registered unit is taken back from its item page, not here.");
             }
+            if ($l['tracking'] === 'serial' && $p['delta'] > 200) {
+                throw new InvRefusal("{$l['item_name']}: register at most 200 units per save.");
+            }
             $plans[$lid] = $p;
         }
         $pairs = [];
         foreach ($plans as $lid => $p) if ($p['delta'] !== 0) $pairs[] = [(int)$lines[$lid]['item_id'], $store];
         inv_lock_balances($pairs);
 
-        $received = 0; $corrected = 0;
+        $received = 0; $corrected = 0; $qtyChanged = false;
         foreach ($plans as $lid => $p) {
             $l    = $lines[$lid];
             $item = (int)$l['item_id'];
-            $unit = $l['unit_cost'] !== null ? (float)$l['unit_cost'] : null;
+            $unit = ($l['unit_cost'] !== null && ($l['cost_currency'] === null || (string)$l['cost_currency'] === (string)$l['item_currency']))
+                    ? (float)$l['unit_cost'] : null;
             if ($p['delta'] > 0 && $l['tracking'] === 'serial') {
                 $serials = array_values((array)($byId[$lid]['serials'] ?? []));
                 for ($k = 0; $k < $p['delta']; $k++) {
@@ -255,12 +358,13 @@ function inv_shipment_receive(int $shipmentId, array $posted, ?int $userId): arr
                 inv_move(['item_id' => $item, 'qty' => -$p['delta'], 'from' => $store, 'reason' => 'written_off', 'unit_value' => $unit,
                           'user_id' => $userId, 'shipment_line_id' => $lid, 'note' => 'Receiving correction']);
             }
+            if ($p['delta'] !== 0 || $p['damaged'] !== (int)$l['qty_damaged']) $qtyChanged = true;
             $received  += max(0, $p['delta']);
             $corrected += max(0, -$p['delta']);
             db_query('UPDATE inv_shipment_lines SET qty_good = :g, qty_damaged = :d, note = :n, updated_by = :u, updated_at = now() WHERE id = :id',
                 [':g' => $p['good'], ':d' => $p['damaged'], ':n' => $p['note'] !== '' ? $p['note'] : null, ':u' => $userId, ':id' => $lid]);
         }
-        if ($plans) {
+        if ($qtyChanged) {
             db_query("UPDATE inv_shipments SET status = 'receiving', received_at = NULL WHERE id = :id AND status IN ('expected', 'received')", [':id' => $shipmentId]);
         }
         return ['lines' => count($plans), 'received' => $received, 'corrected' => $corrected];
@@ -294,9 +398,13 @@ function inv_shipment_cancel(int $id): void {
 
 /** Record a line's damage photo; returns the previous key (for the caller to delete) or null. */
 function inv_shipment_set_photo(int $shipmentId, int $lineId, string $key): ?string {
-    $old = db_query('SELECT photo_key FROM inv_shipment_lines WHERE id = :l AND shipment_id = :s', [':l' => $lineId, ':s' => $shipmentId])->fetchColumn();
-    if ($old === false) throw new InvRefusal('A line does not belong to this shipment.');
+    if (!inv_shipments_supported()) throw new InvRefusal('Run add_inventory_shipments.sql first.');
+    $row = db_query('SELECT sl.photo_key, s.status FROM inv_shipment_lines sl JOIN inv_shipments s ON s.id = sl.shipment_id
+                       WHERE sl.id = :l AND sl.shipment_id = :s', [':l' => $lineId, ':s' => $shipmentId])->fetch();
+    if (!$row) throw new InvRefusal('A line does not belong to this shipment.');
+    if ($row['status'] === 'cancelled') throw new InvRefusal('That shipment was cancelled.');
     db_query('UPDATE inv_shipment_lines SET photo_key = :k WHERE id = :l', [':k' => $key, ':l' => $lineId]);
+    $old = $row['photo_key'];
     return $old !== null && $old !== '' ? (string)$old : null;
 }
 

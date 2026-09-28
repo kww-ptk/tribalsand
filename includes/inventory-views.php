@@ -296,6 +296,8 @@ function inv_gone_moves(array $f, ?array $venueIds, int $limit, int $offset): ar
     foreach ($reasons as $k => $r) { $rp[] = ":r{$k}"; $p[":r{$k}"] = $r; }
     $w[] = 'm.reason IN (' . implode(',', $rp) . ')';
     if ($status === 'sold') $w[] = "(s.id IS NULL OR s.status <> 'voided')";   // a voided sale never leaves stock "sold"
+    // A shipment receiving correction is bookkeeping, not a loss — the column only exists post-migration.
+    if (inv_shipments_supported()) $w[] = 'm.shipment_line_id IS NULL';
     $w[] = 'm.created_at >= CAST(:dfrom AS date)';        $p[':dfrom'] = $from;
     $w[] = 'm.created_at < CAST(:dto AS date) + 1';       $p[':dto']   = $to;
     if (!empty($f['venue']))    { $w[] = 'l.venue_id = :fv'; $p[':fv'] = (int)$f['venue']; }
