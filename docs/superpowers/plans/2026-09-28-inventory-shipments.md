@@ -951,12 +951,15 @@ function inv_ship_parse_sheet(string $sheetName, array $rows): ?array {
 
     $cell     = fn(array $cells, ?int $i): string => $i === null ? '' : inv_ship_text((string)($cells[$i]['v'] ?? ''));
     $descOnly = fn(array $cells): bool => $cell($cells, $map['code']) === '' && $cell($cells, $map['qty']) === '' && $cell($cells, $map['desc']) !== '';
-    $body     = array_slice($rows, $headerAt + 1, null, true);
+    // Rows are SPARSE (xlsx_read_sheets() keys them by spreadsheet row − 1; a missing key is an empty row).
+    $body     = array_filter($rows, fn($k) => $k > $headerAt, ARRAY_FILTER_USE_KEY);
     $boldMode = false;
     foreach ($body as $cells) if ($descOnly($cells) && !empty($cells[$map['desc']]['b'])) { $boldMode = true; break; }
 
-    $lines = []; $skipped = []; $section = ''; $prev = null;
+    $lines = []; $skipped = []; $section = ''; $prev = null; $lastN = $headerAt;
     foreach ($body as $n => $cells) {
+        if ($n !== $lastN + 1) $prev = null;   // a gap in row numbers = blank row(s)
+        $lastN = $n;
         $code   = inv_ship_code($cell($cells, $map['code']));
         $qtyRaw = $cell($cells, $map['qty']);
         $desc   = $cell($cells, $map['desc']);
