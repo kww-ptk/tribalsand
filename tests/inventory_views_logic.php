@@ -229,7 +229,7 @@ try {
     $kStock = inv_location_stock($kitchen);
     check('location view: rows carry is_active and tracking', $kStock && array_key_exists('is_active', $kStock[0]) && array_key_exists('tracking', $kStock[0]));
     check('store: Main stock is read back, not re-inserted', inv_store_location_id() === $store
-        && $count("SELECT COUNT(*) FROM inv_locations WHERE kind = 'store'") === 1);
+        && $count('SELECT COUNT(*) FROM inv_locations WHERE ' . (inv_stores_supported() ? 'is_main' : "kind = 'store'")) === 1);
 
     // ── Reopening an area never makes two open areas with one name ──
     $dupOld = inv_create_area($locA, 'ZZ Dup');

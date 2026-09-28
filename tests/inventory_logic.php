@@ -129,7 +129,7 @@ try {
     $vB = $ins("INSERT INTO venues (slug, name) VALUES (:s, 'ZZ Inv B')", [':s' => "zz-inv-b-{$sfx}"]);
     $store = inv_store_location_id();
     check('locations: Main stock exists exactly once',
-        $store > 0 && inv_store_location_id() === $store && $count("SELECT COUNT(*) FROM inv_locations WHERE kind = 'store'") === 1);
+        $store > 0 && inv_store_location_id() === $store && $count('SELECT COUNT(*) FROM inv_locations WHERE ' . (inv_stores_supported() ? 'is_main' : "kind = 'store'")) === 1);
     $locA = inv_property_location_id($vA);
     check('locations: one property location per venue', $locA > 0 && inv_property_location_id($vA) === $locA);
     $la = inv_fetch_location($locA);

@@ -24,6 +24,24 @@ function inv_supported(): bool {
 }
 
 /**
+ * True once add_inventory_stores.sql has run: stores that can belong to a
+ * property and be shared (inv_locations.is_main / share_venue_ids). Probes the
+ * LAST column the migration adds (share_venue_ids), so a run that dies partway
+ * through never reads as done. A catalog lookup — safe inside a transaction.
+ */
+function inv_stores_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try {
+        $ok = inv_supported() && (bool) db_query(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'inv_locations' AND column_name = 'share_venue_ids')"
+        )->fetchColumn();
+    }
+    catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/**
  * Run $fn atomically. Opens a transaction when none is open; inside an existing
  * one (tests wrap everything in a rolled-back transaction, the POS sale wraps its
  * stock moves) it uses a SAVEPOINT, so a refusal discards its own partial writes
