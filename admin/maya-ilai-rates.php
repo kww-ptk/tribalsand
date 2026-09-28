@@ -497,7 +497,7 @@ let state = <?= json_encode($state, JSON_UNESCAPED_SLASHES) ?>;
   var CAP = { DA: '2', DB: '2', B: '6', L: 'Kitchen' };
 
   var mapEl, detailsEl, statusEl, dateInput, dateBtn;
-  var cur = UM_TODAY, cells = {}, loaded = false, selected = null, svgReady = false, reqSeq = 0;
+  var cur = UM_TODAY, cells = {}, heads = {}, loaded = false, selected = null, svgReady = false, reqSeq = 0;
 
   function fmtDisp(ymd) {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return ymd;
@@ -513,27 +513,29 @@ let state = <?= json_encode($state, JSON_UNESCAPED_SLASHES) ?>;
 
   /* ── The SVG. Ported from the aerial prototype's coordinates so the compound
      reads the same, but every room is a data-key'd hit target we recolour live. */
-  function roomSvg(key, x, y, w, label, capacity) {
+  function roomSvg(key, x, y, w, capacity) {
     return '<g class="um-hit um-available" role="button" tabindex="0" data-key="' + key + '">'
       + '<rect class="um-floor" x="' + x + '" y="' + y + '" width="' + w + '" height="92" rx="3"/>'
-      + '<text class="um-rlabel" x="' + (x + w / 2) + '" y="' + (y + 26) + '">' + label + '</text>'
+      + '<text class="um-rlabel" x="' + (x + w / 2) + '" y="' + (y + 26) + '"></text>'
       + '<text class="um-cap" x="' + (x + w / 2) + '" y="' + (y + 47) + '">' + capacity + '</text>'
       + '<text class="um-rstat" x="' + (x + w / 2) + '" y="' + (y + 73) + '"></text></g>';
   }
+  /* Names (V1, 1A, S1…) are NOT drawn here — they arrive with the map data
+     (mi_unitmap_*_code() in PHP, the one naming rule) and paintMap() writes them. */
   function villaSvg(n, x, y) {
     var id = 'V' + pad(n);
     return '<g transform="translate(' + x + ' ' + y + ')">'
       + '<rect class="um-shell" x="-7" y="-35" width="258" height="235" rx="7"/>'
-      + '<text class="um-blabel" x="122" y="-13">VILLA ' + pad(n) + '</text>'
-      + roomSvg(id + '-DA', 0, 0, 120, 'Double A', '2 guests')
-      + roomSvg(id + '-DB', 124, 0, 120, 'Double B', '2 guests')
-      + roomSvg(id + '-B', 0, 96, 120, 'Bunk', '6 guests')
-      + roomSvg(id + '-L', 124, 96, 120, 'Living', 'Kitchen') + '</g>';
+      + '<text class="um-blabel" x="122" y="-13" data-head="' + id + '"></text>'
+      + roomSvg(id + '-DA', 0, 0, 120, '2 guests')
+      + roomSvg(id + '-DB', 124, 0, 120, '2 guests')
+      + roomSvg(id + '-B', 0, 96, 120, '6 guests')
+      + roomSvg(id + '-L', 124, 96, 120, 'Kitchen') + '</g>';
   }
   function studioSvg(n, x, y) {
     return '<g transform="translate(' + x + ' ' + y + ')">'
-      + '<text class="um-blabel" x="70" y="-12">STUDIO ' + pad(n) + 'A</text>'
-      + roomSvg('S' + pad(n) + 'A', 0, 0, 140, 'Studio', '2 guests') + '</g>';
+      + '<text class="um-blabel" x="70" y="-12" data-head="S' + pad(n) + '"></text>'
+      + roomSvg('S' + pad(n) + 'A', 0, 0, 140, '2 guests') + '</g>';
   }
   function buildSvg() {
     var vp = [[35, 230], [425, 185], [835, 185], [1285, 180], [1285, 685], [975, 650], [330, 650], [35, 685]];
@@ -552,26 +554,33 @@ let state = <?= json_encode($state, JSON_UNESCAPED_SLASHES) ?>;
   }
 
   function ingest(map) {
-    cells = {};
+    cells = {}; heads = {};
     (map.villas || []).forEach(function (v) {
       var p = 'V' + pad(v.n), r = v.rooms || {};
+      heads[p] = v.label;
       var mk = function (rk, k) {
-        cells[p + '-' + rk] = { status: (r[k] || {}).status || 'available', booking: (r[k] || {}).booking || null,
-          title: v.label + ' · ' + ((r[k] || {}).label || k), room: (r[k] || {}).label || k };
+        var room = r[k] || {}, name = (room.code ? room.code + ' · ' : '') + (room.label || k);
+        cells[p + '-' + rk] = { status: room.status || 'available', booking: room.booking || null,
+          label: name, title: name + ' — ' + v.label, room: room.label || k };
       };
       mk('DA', 'double_a'); mk('DB', 'double_b'); mk('B', 'bunk'); mk('L', 'living');
     });
     (map.studios || []).forEach(function (s) {
-      cells['S' + pad(s.n) + 'A'] = { status: s.status || 'available', booking: s.booking || null, title: s.label, room: 'Studio' };
+      heads['S' + pad(s.n)] = s.label;
+      cells['S' + pad(s.n) + 'A'] = { status: s.status || 'available', booking: s.booking || null,
+        label: 'Studio', title: s.label + ' · Studio', room: 'Studio' };
     });
   }
   function paintMap() {
     if (!svgReady) return;
+    mapEl.querySelectorAll('[data-head]').forEach(function (t) { t.textContent = heads[t.dataset.head] || ''; });
     mapEl.querySelectorAll('[data-key]').forEach(function (g) {
       var c = cells[g.dataset.key] || { status: 'available' };
       STATUS.forEach(function (s) { g.classList.remove('um-' + s); });
       g.classList.add('um-' + c.status);
+      var l = g.querySelector('.um-rlabel'); if (l) l.textContent = c.label || '';
       var t = g.querySelector('.um-rstat'); if (t) t.textContent = cap(c.status);
+      g.setAttribute('aria-label', (c.title || '') + ': ' + cap(c.status));
     });
   }
   function paintSummary(sum) {

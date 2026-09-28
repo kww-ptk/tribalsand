@@ -66,5 +66,14 @@ $mp = blk('2026-09-16', '2026-09-19', false, $ALL); $mp['guest'] = '';
 $mpay = mi_unitmap_booking_payload($mp);
 check('maintenance payload labels an unnamed block', $mpay['kind'] === 'block' && $mpay['guest'] === 'Maintenance / closed');
 
+// ── unit names: V1–V8, S1–S8, rooms <villa n><A|B|C|L> ──────────────────────
+check('villa code is V<n>',  mi_unitmap_villa_code(1) === 'V1' && mi_unitmap_villa_code(8) === 'V8');
+check('studio code is S<n>', mi_unitmap_studio_code(1) === 'S1' && mi_unitmap_studio_code(8) === 'S8');
+check('V1 rooms are 1A 1B 1C 1L', array_map(fn($k) => mi_unitmap_room_code(1, $k), array_keys(mi_unitmap_room_labels()))
+      === ['1A', '1B', '1C', '1L']);
+check('V2 rooms are 2A 2B 2C 2L', array_map(fn($k) => mi_unitmap_room_code(2, $k), array_keys(mi_unitmap_room_labels()))
+      === ['2A', '2B', '2C', '2L']);
+check('every room key has a letter', array_keys(mi_unitmap_room_suffixes()) === array_keys(mi_unitmap_room_labels()));
+
 echo $failures ? "\n{$failures} FAILED\n" : "\nAll unit-map assertions passed.\n";
 exit($failures ? 1 : 0);

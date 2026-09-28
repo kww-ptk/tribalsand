@@ -39,7 +39,22 @@ require_once __DIR__ . '/bookings.php';
 
 /** Villa bedroom/space keys, in the fixed catalogue order, with display labels. */
 function mi_unitmap_room_labels(): array {
-    return ['double_a' => 'Double A', 'double_b' => 'Double B', 'bunk' => 'Bunk', 'living' => 'Living'];
+    return ['double_a' => 'Double', 'double_b' => 'Double', 'bunk' => 'Bunk', 'living' => 'Living'];
+}
+
+/**
+ * The names staff use on the compound: villas V1–V8, studios S1–S8, and each
+ * villa's spaces as <villa number><letter> — 1A/1B the doubles, 1C the bunk,
+ * 1L the living room. This is the ONE place the naming rule lives; the map's
+ * labels and the details panel both come from these.
+ */
+function mi_unitmap_room_suffixes(): array {
+    return ['double_a' => 'A', 'double_b' => 'B', 'bunk' => 'C', 'living' => 'L'];
+}
+function mi_unitmap_villa_code(int $n): string  { return 'V' . $n; }
+function mi_unitmap_studio_code(int $n): string { return 'S' . $n; }
+function mi_unitmap_room_code(int $villaN, string $key): string {
+    return $villaN . (mi_unitmap_room_suffixes()[$key] ?? '');
 }
 
 /**
@@ -131,9 +146,9 @@ function mi_unitmap_booking_payload(?array $block): ?array {
  *
  * Returns:
  *   ['supported'=>bool, 'date'=>'Y-m-d',
- *    'villas'=>[ ['n'=>1,'label'=>'Villa 01','unit_id'=>int,
- *                 'rooms'=>['double_a'=>['label'=>..,'status'=>..,'booking'=>..|null], …]], … ],
- *    'studios'=>[ ['n'=>1,'label'=>'Studio 01A','unit_id'=>int,'status'=>..,'booking'=>..|null], … ],
+ *    'villas'=>[ ['n'=>1,'label'=>'V1','unit_id'=>int,
+ *                 'rooms'=>['double_a'=>['code'=>'1A','label'=>'Double','status'=>..,'booking'=>..|null], …]], … ],
+ *    'studios'=>[ ['n'=>1,'label'=>'S1','unit_id'=>int,'status'=>..,'booking'=>..|null], … ],
  *    'summary'=>['available'=>N,'occupied'=>N,'arriving'=>N,'departing'=>N,'blocked'=>N] ]
  *
  * supported=false when the composite villa room is absent (a deploy before the
@@ -215,16 +230,18 @@ function mi_unit_map(string $date): array {
         $uid    = (int)$u['id'];
         $blocks = $blocksByUnit[$uid] ?? [];
         $rooms  = [];
+        $n      = $i + 1;
         foreach (mi_unitmap_room_labels() as $key => $label) {
             $res = mi_unitmap_cell_status($blocks, $date, $key);
             $rooms[$key] = [
+                'code'    => mi_unitmap_room_code($n, $key),
                 'label'   => $label,
                 'status'  => $res['status'],
                 'booking' => mi_unitmap_booking_payload($res['block']),
             ];
             if (in_array($key, $sleeping, true)) $bump($res['status']);
         }
-        $villas[] = ['n' => $i + 1, 'label' => sprintf('Villa %02d', $i + 1), 'unit_id' => $uid, 'rooms' => $rooms];
+        $villas[] = ['n' => $n, 'label' => mi_unitmap_villa_code($n), 'unit_id' => $uid, 'rooms' => $rooms];
     }
 
     $studios = [];
@@ -233,7 +250,7 @@ function mi_unit_map(string $date): array {
         $res = mi_unitmap_cell_status($blocksByUnit[$uid] ?? [], $date, null);
         $bump($res['status']);
         $studios[] = [
-            'n' => $i + 1, 'label' => sprintf('Studio %02dA', $i + 1), 'unit_id' => $uid,
+            'n' => $i + 1, 'label' => mi_unitmap_studio_code($i + 1), 'unit_id' => $uid,
             'status' => $res['status'], 'booking' => mi_unitmap_booking_payload($res['block']),
         ];
     }
