@@ -21,10 +21,19 @@ if ($docId) {
     if (!$doc) { http_response_code(404); exit('Document not found.'); }
     $holdId = (int)($doc['hold_id'] ?? 0);
 }
-// Scope: the booking's property (every document in P2a belongs to a booking).
-if (!$holdId || !(is_owner() || (staff_can_hold($holdId) && (acct_can_take_payments() || is_manager())))) {
-    http_response_code(403); exit('Not your property.');
+// Scope: a booking's document by the booking's property; a POS / inter-company one by
+// the companies that own the viewer's properties (owner sees everything).
+if ($holdId) {
+    $allowed = is_owner() || (staff_can_hold($holdId) && (acct_can_take_payments() || is_manager()));
+} elseif ($docId) {
+    $vids = admin_venue_ids();
+    $allowed = is_owner() || (is_manager() && $vids && (bool) db_query(
+        'SELECT 1 FROM venues WHERE id IN (' . implode(',', array_map('intval', $vids)) . ') AND company_id IN (:c, :cp) LIMIT 1',
+        [':c' => (int)$doc['company_id'], ':cp' => (int)($doc['counterparty_company_id'] ?? 0)])->fetchColumn());
+} else {
+    $allowed = false;
 }
+if (!$allowed) { http_response_code(403); exit('Not your property.'); }
 
 $lines = []; $allocs = []; $credits = null;
 if ($docId) {
@@ -34,10 +43,12 @@ if ($docId) {
     unset($l);
     $allocs  = db_query('SELECT COALESCE(SUM(amount),0) FROM acct_allocations WHERE document_id = :d', [':d' => $docId])->fetchColumn();
     $credits = $doc['credits_document_id'] ? db_query('SELECT number, issued_at FROM acct_documents WHERE id = :d', [':d' => $doc['credits_document_id']])->fetch() : null;
-    $creditedBy = db_query('SELECT number FROM acct_documents WHERE credits_document_id = :d', [':d' => $docId])->fetchColumn();
+    $status  = acct_doc_with_balance(db_query('SELECT d.*, ' . acct_doc_status_sql('d') . ' FROM acct_documents d WHERE d.id = :d', [':d' => $docId])->fetch());
+    $creditedBy = $status['credited_cents'] > 0 ? $status['credited_by_number'] : false;
     $groups = [$doc['currency'] => $lines];
-    $title  = $doc['doc_type'] === 'credit_note' ? 'Credit note' : 'Tax invoice';
-    $hold   = acct_hold_context($holdId)['hold'];
+    $title  = ['credit_note' => 'Credit note', 'ic_invoice' => 'Inter-company invoice'][$doc['doc_type']] ?? 'Tax invoice';
+    $hold   = $holdId ? acct_hold_context($holdId)['hold'] : null;
+    $posRef = $doc['pos_sale_id'] ? db_query('SELECT reference FROM pos_sales WHERE id = :s', [':s' => $doc['pos_sale_id']])->fetchColumn() : null;
 } else {
     // Pro-forma: what is open on the folio right now (not stored, not numbered).
     $ctx = acct_hold_context($holdId);
@@ -48,7 +59,7 @@ if ($docId) {
     foreach ($open['sources'] as $s) $groups[$s['currency']][] = acct_build_line($s, $co);
     ksort($groups);
     $title = 'Pro-forma';
-    $doc = null; $creditedBy = false;
+    $doc = null; $creditedBy = false; $status = null; $posRef = null;
 }
 if (!$co) { http_response_code(404); exit('Company not found.'); }
 $logo = company_logo_url($co['logo_key'] ?? null);
@@ -115,7 +126,8 @@ $vatRegistered = companies_bool($co['vat_registered']);
   </div>
 </div>
 <?php if (!$doc): ?><div class="warn">This pro-forma is not a tax invoice. The tax invoice is issued at check-out.</div><?php endif; ?>
-<?php if ($creditedBy): ?><div class="warn">This invoice has been cancelled by credit note <?= e($creditedBy) ?>.</div><?php endif; ?>
+<?php if ($creditedBy): ?><div class="warn"><?= $status['fully_credited'] ? 'This invoice has been cancelled by credit note ' : 'Part of this invoice has been credited by ' ?><?= e($creditedBy) ?>.</div><?php endif; ?>
+<?php if (!empty($posRef)): ?><div class="muted" style="margin-top:10px">Till receipt: <?= e($posRef) ?></div><?php endif; ?>
 <?php if ($doc && $doc['doc_type'] === 'credit_note' && $doc['reason'] !== ''): ?><div class="muted" style="margin-top:10px">Reason: <?= e($doc['reason']) ?></div><?php endif; ?>
 
 <div class="bill">
@@ -155,9 +167,10 @@ $vatRegistered = companies_bool($co['vat_registered']);
   <?php endforeach; ?>
   <?php endif; ?>
   <div class="grand"><span><?= $doc && $doc['doc_type'] === 'credit_note' ? 'Total credited' : 'Total' ?></span><span><?= e(acct_money($t['gross'], $cur)) ?></span></div>
-  <?php if ($doc && $doc['doc_type'] === 'invoice' && !$creditedBy): $paid = acct_cents($allocs); ?>
+  <?php if ($doc && $doc['doc_type'] === 'invoice' && !$status['fully_credited']): $paid = acct_cents($allocs); ?>
+  <?php if ($status['credited_cents'] > 0): ?><div><span>Credited</span><span>− <?= e(acct_money($status['credited_cents'], $cur)) ?></span></div><?php endif; ?>
   <div><span>Paid</span><span><?= e(acct_money($paid, $cur)) ?></span></div>
-  <div class="grand"><span>Balance due</span><span><?= e(acct_money(max(0, $t['gross'] - $paid), $cur)) ?></span></div>
+  <div class="grand"><span>Balance due</span><span><?= e(acct_money($status['balance_cents'], $cur)) ?></span></div>
   <?php endif; ?>
 </div>
 <?php $banks = $bankFor($cur); if ($banks && (!$doc || $doc['doc_type'] === 'invoice')): ?>

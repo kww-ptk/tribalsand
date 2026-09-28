@@ -5,6 +5,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/mail.php';
 require_once __DIR__ . '/../includes/booking.php';
 require_once __DIR__ . '/../includes/bookings.php';   // financial ledger snapshot
+require_once __DIR__ . '/../includes/acct.php';       // invoice-at-confirmation / credit-on-cancel hooks
 require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/pagination.php';
 require_once __DIR__ . '/../includes/admin-pagination.php';
@@ -47,17 +48,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             db_query("UPDATE holds SET status='confirmed', confirmed_at=NOW() WHERE id=:id", [':id' => $hold_id]);
             db_query("UPDATE availability_blocks SET block_type='booked' WHERE hold_id=:hid", [':hid' => $hold_id]);
             bookings_sync_hold($hold_id);   // snapshot revenue at confirm
+            $__acct = acct_hook_hold_confirmed($hold_id, (int)($_SESSION['admin_id'] ?? 0) ?: null);
             if ($hold['guest_email']) send_hold_confirmed($hold);
             audit_log('hold.confirm', 'hold', $hold_id, "{$hold['guest_name']} {$hold['check_in']}→{$hold['check_out']}");
-            $success = "Hold #{$hold_id} confirmed — confirmation email sent to {$hold['guest_email']}.";
+            $success = "Hold #{$hold_id} confirmed — confirmation email sent to {$hold['guest_email']}." . $__acct;
         } elseif ($hold && $action === 'cancel' && in_array($hold['status'], ['pending', 'confirmed'])) {
             $was_status = $hold['status'];
             db_query("UPDATE holds SET status='cancelled', cancelled_at=NOW() WHERE id=:id", [':id' => $hold_id]);
             db_query("DELETE FROM availability_blocks WHERE hold_id=:hid", [':hid' => $hold_id]);
             bookings_mark_hold_cancelled($hold_id);
+            $__acct = acct_hook_hold_cancelled($hold_id, (int)($_SESSION['admin_id'] ?? 0) ?: null);
             if ($hold['guest_email']) send_hold_cancelled($hold, 'cancelled');
             audit_log('hold.cancel', 'hold', $hold_id, "{$hold['guest_name']} {$hold['check_in']}→{$hold['check_out']} (was {$was_status})");
-            $success = "Hold #{$hold_id} cancelled — dates freed, guest notified.";
+            $success = "Hold #{$hold_id} cancelled — dates freed, guest notified." . $__acct;
         } else {
             $error = 'Action not allowed for this hold status.';
         }

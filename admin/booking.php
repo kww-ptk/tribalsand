@@ -53,18 +53,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         db_query("UPDATE holds SET status='confirmed', confirmed_at=NOW() WHERE id=:id", [':id'=>$holdId]);
         db_query("UPDATE availability_blocks SET block_type='booked' WHERE hold_id=:hid", [':hid'=>$holdId]);
         bookings_sync_hold($holdId);   // snapshot revenue at confirm
+        $__acct = acct_hook_hold_confirmed($holdId, (int)($_SESSION['admin_id'] ?? 0) ?: null);   // companies that invoice at confirmation
         if ($hold['guest_email']) send_hold_confirmed($hold);
         audit_log('hold.confirm', 'hold', $holdId, "{$hold['guest_name']}");
-        $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Confirmed — guest notified.'];
+        $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Confirmed — guest notified.' . $__acct];
         header("Location: /admin/booking.php?hold=$holdId&tab=details"); exit;
     }
     if ($act === 'cancel' && in_array($hold['status'], ['pending','confirmed'], true)) {
         db_query("UPDATE holds SET status='cancelled', cancelled_at=NOW() WHERE id=:id", [':id'=>$holdId]);
         db_query("DELETE FROM availability_blocks WHERE hold_id=:hid", [':hid'=>$holdId]);
         bookings_mark_hold_cancelled($holdId);
+        $__acct = acct_hook_hold_cancelled($holdId, (int)($_SESSION['admin_id'] ?? 0) ?: null);   // an invoiced stay is credited
         if ($hold['guest_email']) send_hold_cancelled($hold, 'cancelled');
         audit_log('hold.cancel', 'hold', $holdId, "{$hold['guest_name']}");
-        $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Cancelled — dates freed, guest notified.'];
+        $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Cancelled — dates freed, guest notified.' . $__acct];
         header("Location: /admin/booking.php?hold=$holdId&tab=details"); exit;
     }
     // Assign / reassign this booking to a team member (Item 2). Front-desk audience only.
@@ -185,13 +187,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header("Location: /admin/booking.php?hold=$holdId&tab=bill"); exit;
     }
     // ── Folio (Accounting P2a): payments, invoices, credit notes, refunds ──
-    if (in_array($act, ['acct_pay', 'acct_issue', 'acct_credit', 'acct_refund'], true)) {
+    if (in_array($act, ['acct_pay', 'acct_issue', 'acct_credit', 'acct_refund', 'acct_apply_deposit'], true)) {
         $back = "Location: /admin/booking.php?hold=$holdId&tab=bill#folio";
         $venueId = $hold['venue_id'] !== null ? (int)$hold['venue_id'] : null;
         try {
             if (!acct_supported()) throw new AcctRefusal('Invoicing is not set up yet.');
             if (in_array($act, ['acct_pay', 'acct_issue'], true) && !acct_can_take_payments()) throw new AcctRefusal('Your account can’t take payments.');
-            if (in_array($act, ['acct_credit', 'acct_refund'], true) && !acct_can_reverse($venueId)) throw new AcctRefusal('Only the owner or this property’s manager can do that.');
+            if (in_array($act, ['acct_credit', 'acct_refund', 'acct_apply_deposit'], true) && !acct_can_reverse($venueId)) throw new AcctRefusal('Only the owner or this property’s manager can do that.');
             $uid = (int)($_SESSION['admin_id'] ?? 0) ?: null;
             if ($act === 'acct_pay') {
                 $pid = acct_record_payment($holdId, $_POST, $uid);
@@ -205,10 +207,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } elseif ($act === 'acct_credit') {
                 $docId = (int)($_POST['document_id'] ?? 0);
                 if (!db_query('SELECT 1 FROM acct_documents WHERE id=:d AND hold_id=:h', [':d'=>$docId, ':h'=>$holdId])->fetchColumn()) throw new AcctRefusal('That invoice is not on this booking.');
-                $cn = acct_credit_invoice($docId, (string)($_POST['reason'] ?? ''), $uid);
+                $cn = acct_credit_document($docId, (string)($_POST['reason'] ?? ''), $uid, (array)($_POST['line_ids'] ?? []));
                 $num = db_query('SELECT number FROM acct_documents WHERE id=:d', [':d'=>$cn])->fetchColumn();
                 audit_log('acct.credit_note', 'hold', $holdId, (string)$num);
                 $_SESSION['hold_flash'] = ['type'=>'success','msg'=>"Credit note {$num} issued — the charges are back on the bill to correct and re-invoice."];
+            } elseif ($act === 'acct_apply_deposit') {
+                $pid = (int)($_POST['payment_id'] ?? 0);
+                if (!db_query("SELECT 1 FROM acct_payments WHERE id=:p AND hold_id=:h AND is_security_deposit", [':p'=>$pid, ':h'=>$holdId])->fetchColumn()) throw new AcctRefusal('That deposit is not on this booking.');
+                $used = acct_apply_deposit($pid, $uid);
+                $cur = (string) db_query('SELECT currency FROM acct_payments WHERE id=:p', [':p'=>$pid])->fetchColumn();
+                audit_log('acct.deposit_applied', 'hold', $holdId, "payment #{$pid}");
+                $_SESSION['hold_flash'] = ['type'=>'success','msg'=>acct_money($used, $cur) . ' of the security deposit applied to the invoice.'];
             } else {
                 $pid = (int)($_POST['payment_id'] ?? 0);
                 if (!db_query("SELECT 1 FROM acct_payments WHERE id=:p AND hold_id=:h AND kind='receipt'", [':p'=>$pid, ':h'=>$holdId])->fetchColumn()) throw new AcctRefusal('That payment is not on this booking.');

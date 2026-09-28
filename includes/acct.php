@@ -24,7 +24,6 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/companies.php';
-require_once __DIR__ . '/booking.php';   // addon_label()
 
 const ACCT_VAT_STANDARD = 16.0;   // KRA band B
 const ACCT_MAX_AMOUNT   = 99999999.99;
@@ -40,11 +39,15 @@ class AcctRefusal extends RuntimeException {}
 
 // ── Guards ──────────────────────────────────────────────────────────────────
 
-/** True once add_acct_documents.sql has run. */
+/**
+ * True once BOTH invoicing migrations have run (add_acct_documents.sql, then
+ * add_acct_p2b.sql). The document writer uses columns from each, so with only the
+ * first applied everything stays inert rather than failing half-way through an issue.
+ */
 function acct_supported(): bool {
     static $ok = null;
     if ($ok !== null) return $ok;
-    return $ok = companies_supported() && to_regclass_exists('acct_documents');
+    return $ok = companies_supported() && to_regclass_exists('acct_documents') && to_regclass_exists('acct_ic_entries');
 }
 
 /** Who may record payments and issue invoices: the guest-facing tier (require_frontdesk()'s audience). */
@@ -220,7 +223,7 @@ function acct_fx_rate(string $from, string $to): ?float {
  */
 function acct_hold_context(int $holdId): array {
     $ctx = ['hold' => null, 'venue_id' => null, 'company' => null, 'live' => false, 'reason' => ''];
-    if (!acct_supported()) { $ctx['reason'] = 'Invoicing is not set up yet (run add_acct_documents.sql).'; return $ctx; }
+    if (!acct_supported()) { $ctx['reason'] = 'Invoicing is not set up yet (run add_acct_documents.sql, then add_acct_p2b.sql).'; return $ctx; }
     $agent = holds_agent_supported() && to_regclass_exists('travel_agents');
     $h = db_query(
         "SELECT h.*, r.name AS room_name, r.venue_id, v.name AS venue_name"
@@ -251,7 +254,7 @@ function acct_stay_invoiced(int $holdId): bool {
     return (bool) db_query(
         "SELECT 1 FROM acct_document_lines l JOIN acct_documents d ON d.id = l.document_id
           WHERE l.source_kind = 'stay' AND l.source_id = :h AND d.doc_type = 'invoice'
-            AND NOT EXISTS (SELECT 1 FROM acct_documents c WHERE c.credits_document_id = d.id) LIMIT 1",
+            AND NOT EXISTS (SELECT 1 FROM acct_document_lines c WHERE c.credits_line_id = l.id) LIMIT 1",
         [':h' => $holdId])->fetchColumn();
 }
 
@@ -263,7 +266,7 @@ function acct_stay_invoiced(int $holdId): bool {
 function acct_open_sources(array $ctx): array {
     $h = $ctx['hold']; $co = $ctx['company']; $holdId = (int)$h['id'];
     $site = strtoupper(setting('site_currency', 'USD'));
-    $out = ['sources' => [], 'blockers' => [], 'notes' => []];
+    $out = ['sources' => [], 'blockers' => [], 'notes' => [], 'stay_blocker' => null];
 
     // The stay — the frozen confirm-time figure, never re-quoted.
     if (!acct_stay_invoiced($holdId)) {
@@ -271,7 +274,7 @@ function acct_open_sources(array $ctx): array {
         if ($h['status'] !== 'confirmed' || !$b || $b['status'] !== 'confirmed') {
             $out['notes'][] = 'The stay is added once the booking is confirmed.';
         } elseif ((float)$b['gross_amount'] <= 0) {
-            $out['blockers'][] = 'The stay has no price on record — check the room rate, then re-confirm the booking.';
+            $out['blockers'][] = $out['stay_blocker'] = 'The stay has no price on record — check the room rate, then re-confirm the booking.';
         } else {
             $n = max(1, (int)$b['nights']);
             $out['sources'][] = [
@@ -284,6 +287,7 @@ function acct_open_sources(array $ctx): array {
     }
 
     // Confirmed / completed requests. NULL price = unpriced → blocks (correction #3); 0 = complimentary → no line.
+    require_once __DIR__ . '/booking.php';   // addon_label() — loaded lazily so the POS / inventory hooks stay light
     $addonCur = company_column_exists('booking_addons', 'price_currency');
     foreach (db_query("SELECT ba.*, t.name AS tour_name FROM booking_addons ba LEFT JOIN tours t ON t.id = ba.tour_id
                         WHERE ba.hold_id = :h AND ba.status IN ('confirmed','completed') AND ba.document_id IS NULL ORDER BY ba.created_at, ba.id",
@@ -363,18 +367,44 @@ function bookings_row_for_hold(int $holdId): ?array {
     return $r ?: null;
 }
 
+/**
+ * SQL columns for a document's money status: allocated (payments applied),
+ * credited (sum of its credit notes) and the credit note numbers. $a = alias.
+ */
+function acct_doc_status_sql(string $a): string {
+    return "COALESCE((SELECT SUM(al.amount) FROM acct_allocations al WHERE al.document_id = {$a}.id), 0) AS allocated,
+            COALESCE((SELECT SUM(cn.total) FROM acct_documents cn WHERE cn.credits_document_id = {$a}.id), 0) AS credited,
+            (SELECT string_agg(cn.number, ', ' ORDER BY cn.id) FROM acct_documents cn WHERE cn.credits_document_id = {$a}.id) AS credited_by_number,
+            (SELECT o.number FROM acct_documents o WHERE o.id = {$a}.credits_document_id) AS credits_number";
+}
+
+/**
+ * Add balance_cents / credited_cents / fully_credited to a document row (see
+ * acct_doc_status_sql()). An invoice's balance = total − credited − paid; a credit
+ * note has none. Pure.
+ */
+function acct_doc_with_balance(array $d): array {
+    $isInv = in_array($d['doc_type'], ['invoice', 'ic_invoice'], true);
+    $d['credited_cents'] = acct_cents($d['credited'] ?? 0);
+    $d['fully_credited'] = $isInv && $d['credited_cents'] >= acct_cents($d['total']);
+    $d['credited_by']    = $d['fully_credited'];   // kept for the P2a views
+    $d['balance_cents']  = $isInv ? max(0, acct_cents($d['total']) - $d['credited_cents'] - acct_cents($d['allocated'] ?? 0)) : 0;
+    return $d;
+}
+
+/** A document's lines, each with 'credited' (bool) — for choosing what to credit. */
+function acct_document_lines_status(int $docId): array {
+    return array_map(fn($l) => $l + ['credited' => companies_bool($l['is_credited'])], db_query(
+        'SELECT l.*, EXISTS (SELECT 1 FROM acct_document_lines c WHERE c.credits_line_id = l.id) AS is_credited
+           FROM acct_document_lines l WHERE l.document_id = :d ORDER BY l.id', [':d' => $docId])->fetchAll());
+}
+
 /** Documents of a hold with their balances (cents), oldest first. */
 function acct_hold_documents(int $holdId): array {
     $rows = db_query(
-        "SELECT d.*, COALESCE((SELECT SUM(a.amount) FROM acct_allocations a WHERE a.document_id = d.id), 0) AS allocated,
-                (SELECT c.id FROM acct_documents c WHERE c.credits_document_id = d.id) AS credited_by,
-                (SELECT c.number FROM acct_documents c WHERE c.credits_document_id = d.id) AS credited_by_number
+        "SELECT d.*, " . acct_doc_status_sql('d') . "
            FROM acct_documents d WHERE d.hold_id = :h ORDER BY d.issued_at, d.id", [':h' => $holdId])->fetchAll();
-    foreach ($rows as &$d) {
-        $d['balance_cents'] = ($d['doc_type'] === 'invoice' && !$d['credited_by'])
-            ? acct_cents($d['total']) - acct_cents($d['allocated']) : 0;
-    }
-    return $rows;
+    return array_map('acct_doc_with_balance', $rows);
 }
 
 /** Payments of a hold with what is still unapplied (cents), oldest first. */
@@ -383,7 +413,7 @@ function acct_hold_payments(int $holdId): array {
         "SELECT p.*, ca.label AS account_label, au.name AS recorded_by_name,
                 COALESCE((SELECT SUM(a.pay_amount) FROM acct_allocations a WHERE a.payment_id = p.id), 0) AS allocated,
                 COALESCE((SELECT SUM(r.amount) FROM acct_payments r WHERE r.refunds_payment_id = p.id), 0) AS refunded
-           FROM acct_payments p JOIN company_accounts ca ON ca.id = p.account_id
+           FROM acct_payments p LEFT JOIN company_accounts ca ON ca.id = p.account_id
            LEFT JOIN admin_users au ON au.id = p.recorded_by
           WHERE p.hold_id = :h ORDER BY p.received_at, p.id", [':h' => $holdId])->fetchAll();
     foreach ($rows as &$p) {
@@ -424,45 +454,41 @@ function acct_folio(int $holdId): array {
 
 /**
  * Issue the tax invoice(s) for everything open on a folio — one per currency — and
- * apply the hold's unapplied payments to them. Returns the new document ids.
+ * apply the hold's unapplied payments to them. $only limits it to some source kinds
+ * (['stay'] = the stay alone, used when a company invoices at confirmation).
+ * Charges collected on behalf of another company add an inter-company entry and
+ * settle that company's own sale document. Returns the new document ids.
  */
-function acct_issue_folio(int $holdId, ?int $userId, string $buyerPin = ''): array {
+function acct_issue_folio(int $holdId, ?int $userId, string $buyerPin = '', ?array $only = null): array {
     $buyerPin = company_normalize_pin($buyerPin);
     if (($p = company_pin_problem($buyerPin)) !== null) throw new AcctRefusal("Buyer's KRA PIN: " . $p);
-    return company_tx(function () use ($holdId, $userId, $buyerPin): array {
+    return company_tx(function () use ($holdId, $userId, $buyerPin, $only): array {
         db_query('SELECT id FROM holds WHERE id = :h FOR UPDATE', [':h' => $holdId]);   // one issuer per folio at a time
         $ctx = acct_hold_context($holdId);
         if (!$ctx['live']) throw new AcctRefusal($ctx['reason'] ?: 'Invoicing is not live for this booking.');
         $co = $ctx['company']; $h = $ctx['hold'];
         $open = acct_open_sources($ctx);
-        if ($open['blockers']) throw new AcctRefusal(implode(' ', $open['blockers']));
-        if (!$open['sources']) throw new AcctRefusal('There is nothing new to invoice.');
+        $sources = $only === null ? $open['sources'] : array_values(array_filter($open['sources'], fn($s) => in_array($s['source_kind'], $only, true)));
+        $blockers = $only === null ? $open['blockers'] : ($open['stay_blocker'] !== null && in_array('stay', $only, true) ? [$open['stay_blocker']] : []);
+        if ($blockers) throw new AcctRefusal(implode(' ', $blockers));
+        if (!$sources) throw new AcctRefusal('There is nothing new to invoice.');
 
         $byCur = [];
-        foreach ($open['sources'] as $s) $byCur[$s['currency']][] = $s;
+        foreach ($sources as $s) $byCur[$s['currency']][] = $s;
         ksort($byCur);
         $isAgent = !empty($h['agent_id']) && ($h['agent_agency'] || $h['agent_name']);
         $customer = $isAgent ? trim((string)($h['agent_agency'] ?: $h['agent_name'])) . ' (for ' . $h['guest_name'] . ')' : (string)$h['guest_name'];
         $ids = [];
-        foreach ($byCur as $cur => $sources) {
-            $fx = acct_fx_rate((string)$co['home_currency'], $cur);
-            if ($fx === null) throw new AcctRefusal("No exchange rate from {$cur} to {$co['home_currency']} — set it under currency settings first.");
-            $lines = array_map(fn($s) => acct_build_line($s, $co), $sources);
-            $t = acct_totals($lines);
-            $number = acct_next_number((int)$co['id'], 'invoice');
-            db_query('INSERT INTO acct_documents (company_id, doc_type, number, customer_kind, customer_name, customer_pin, agent_id, currency,
-                                                  fx_to_home, subtotal, vat_amount, total, hold_id, issued_by)
-                      VALUES (:c, \'invoice\', :n, :ck, :cn, :cp, :ag, :cur, :fx, :sub, :vat, :tot, :h, :u)',
-                [':c' => $co['id'], ':n' => $number, ':ck' => $isAgent ? 'agent' : 'guest', ':cn' => mb_substr($customer, 0, 200),
-                 ':cp' => $buyerPin, ':ag' => $isAgent ? (int)$h['agent_id'] : null, ':cur' => $cur, ':fx' => $fx,
-                 ':sub' => acct_from_cents($t['net']), ':vat' => acct_from_cents($t['vat']), ':tot' => acct_from_cents($t['gross']),
-                 ':h' => $holdId, ':u' => $userId]);
-            $docId = (int) db()->lastInsertId();
-            acct_insert_lines($docId, $lines);
+        foreach ($byCur as $cur => $srcs) {
+            $lines = array_map(fn($s) => acct_build_line($s, $co), $srcs);
+            $docId = acct_insert_document($co, 'invoice', $cur, $lines, [
+                'customer_kind' => $isAgent ? 'agent' : 'guest', 'customer_name' => $customer, 'customer_pin' => $buyerPin,
+                'agent_id' => $isAgent ? (int)$h['agent_id'] : null, 'hold_id' => $holdId, 'issued_by' => $userId]);
             foreach ($lines as $l) {
                 if ($l['source_kind'] === 'addon')     db_query('UPDATE booking_addons SET document_id = :d WHERE id = :i AND document_id IS NULL', [':d' => $docId, ':i' => $l['source_id']]);
                 if ($l['source_kind'] === 'bill_item') db_query('UPDATE bill_items SET document_id = :d WHERE id = :i AND document_id IS NULL', [':d' => $docId, ':i' => $l['source_id']]);
             }
+            acct_ic_after_folio_invoice($docId, $co, $userId);
             $ids[] = $docId;
         }
         acct_auto_allocate($holdId);
@@ -470,16 +496,42 @@ function acct_issue_folio(int $holdId, ?int $userId, string $buyerPin = ''): arr
     });
 }
 
+/**
+ * Write one document + its lines under the next number of its series. $meta:
+ * customer_kind, customer_name, customer_pin, agent_id, counterparty_company_id,
+ * hold_id, pos_sale_id, transfer_ref, credits_document_id, reason, issued_by.
+ * Call inside a transaction (acct_next_number() refuses otherwise). Returns the id.
+ */
+function acct_insert_document(array $co, string $type, string $cur, array $lines, array $meta): int {
+    $fx = acct_fx_rate((string)$co['home_currency'], $cur);
+    if ($fx === null) throw new AcctRefusal("No exchange rate from {$cur} to {$co['home_currency']} — set it under currency settings first.");
+    $t = acct_totals($lines);
+    $number = acct_next_number((int)$co['id'], $type);
+    db_query('INSERT INTO acct_documents (company_id, doc_type, number, customer_kind, customer_name, customer_pin, agent_id, counterparty_company_id,
+                                          currency, fx_to_home, subtotal, vat_amount, total, hold_id, pos_sale_id, transfer_ref,
+                                          credits_document_id, reason, issued_by)
+              VALUES (:c, :t, :n, :ck, :cn, :cp, :ag, :cc, :cur, :fx, :sub, :vat, :tot, :h, :ps, :tr, :cr, :why, :u)',
+        [':c' => $co['id'], ':t' => $type, ':n' => $number, ':ck' => $meta['customer_kind'] ?? 'walkin',
+         ':cn' => mb_substr((string)($meta['customer_name'] ?? ''), 0, 200), ':cp' => (string)($meta['customer_pin'] ?? ''),
+         ':ag' => $meta['agent_id'] ?? null, ':cc' => $meta['counterparty_company_id'] ?? null, ':cur' => $cur, ':fx' => $fx,
+         ':sub' => acct_from_cents($t['net']), ':vat' => acct_from_cents($t['vat']), ':tot' => acct_from_cents($t['gross']),
+         ':h' => $meta['hold_id'] ?? null, ':ps' => $meta['pos_sale_id'] ?? null, ':tr' => $meta['transfer_ref'] ?? null,
+         ':cr' => $meta['credits_document_id'] ?? null, ':why' => (string)($meta['reason'] ?? ''), ':u' => $meta['issued_by'] ?? null]);
+    $docId = (int) db()->lastInsertId();
+    acct_insert_lines($docId, $lines);
+    return $docId;
+}
+
 /** Insert built lines under a document. */
 function acct_insert_lines(int $docId, array $lines): void {
     foreach ($lines as $l) {
         db_query('INSERT INTO acct_document_lines (document_id, description, qty, unit_price, line_total, net_amount, vat_amount, vat_rate,
-                                                    tax_band, category, is_disbursement, supplier_company_id, source_kind, source_id)
-                  VALUES (:d, :ds, 1, :up, :lt, :net, :vat, :vr, :b, :cat, :disb, :sup, :sk, :si)',
+                                                    tax_band, category, is_disbursement, supplier_company_id, source_kind, source_id, credits_line_id)
+                  VALUES (:d, :ds, 1, :up, :lt, :net, :vat, :vr, :b, :cat, :disb, :sup, :sk, :si, :cl)',
             [':d' => $docId, ':ds' => $l['description'], ':up' => acct_from_cents($l['gross_cents']), ':lt' => acct_from_cents($l['gross_cents']),
              ':net' => acct_from_cents($l['net_cents']), ':vat' => acct_from_cents($l['vat_cents']), ':vr' => $l['vat_rate'], ':b' => $l['tax_band'],
              ':cat' => $l['category'], ':disb' => $l['is_disbursement'] ? 'TRUE' : 'FALSE', ':sup' => $l['supplier_company_id'],
-             ':sk' => $l['source_kind'], ':si' => $l['source_id']]);
+             ':sk' => $l['source_kind'], ':si' => $l['source_id'], ':cl' => $l['credits_line_id'] ?? null]);
     }
 }
 
@@ -542,6 +594,16 @@ function acct_record_payment(int $holdId, array $in, ?int $userId): int {
     });
 }
 
+/** Cents of a receipt not applied to an invoice and not refunded (0 for a refund row). */
+function acct_payment_available(int $paymentId): int {
+    $r = db_query("SELECT p.kind, p.amount,
+                          COALESCE((SELECT SUM(a.pay_amount) FROM acct_allocations a WHERE a.payment_id = p.id), 0) AS allocated,
+                          COALESCE((SELECT SUM(x.amount) FROM acct_payments x WHERE x.refunds_payment_id = p.id), 0) AS refunded
+                     FROM acct_payments p WHERE p.id = :p", [':p' => $paymentId])->fetch();
+    if (!$r || $r['kind'] !== 'receipt') return 0;
+    return acct_cents($r['amount']) - acct_cents($r['allocated']) - acct_cents($r['refunded']);
+}
+
 /**
  * Give money back from a receipt (a mistake, or a security deposit returned). Only
  * the part not applied to an invoice can be refunded — credit the invoice first.
@@ -554,8 +616,7 @@ function acct_refund_payment(int $paymentId, string $amountRaw, string $reason, 
     return company_tx(function () use ($paymentId, $cents, $reason, $userId): int {
         $p = db_query("SELECT * FROM acct_payments WHERE id = :p AND kind = 'receipt' FOR UPDATE", [':p' => $paymentId])->fetch();
         if (!$p) throw new AcctRefusal('That payment no longer exists.');
-        $avail = 0;
-        foreach (acct_hold_payments((int)$p['hold_id']) as $row) if ((int)$row['id'] === $paymentId) $avail = $row['available_cents'];
+        $avail = acct_payment_available($paymentId);
         if ($cents > $avail) {
             throw new AcctRefusal($avail > 0
                 ? 'Only ' . acct_money($avail, $p['currency']) . ' of this payment is not on an invoice — refund at most that, or credit the invoice first.'
@@ -572,41 +633,69 @@ function acct_refund_payment(int $paymentId, string $amountRaw, string $reason, 
 }
 
 /**
- * Credit an invoice in full. The credit note mirrors its lines; the invoice's
- * charges go back onto the open folio (to fix and re-issue) and its payments back to
- * "unapplied" — all by appending rows. Returns the credit note id.
+ * Credit an invoice (or an inter-company invoice) — in full, or only $lineIds.
+ * The credit note mirrors the chosen lines (each line is credited at most once);
+ * their charges go back onto the open folio to fix and re-issue; any payment now
+ * exceeding what is left owed is released back to "unapplied"; inter-company
+ * amounts behind the lines are reversed. Everything by appending rows. Returns the
+ * credit note id.
  */
-function acct_credit_invoice(int $docId, string $reason, ?int $userId): int {
+function acct_credit_document(int $docId, string $reason, ?int $userId, ?array $lineIds = null): int {
     $reason = trim($reason);
     if (mb_strlen($reason) < 3) throw new AcctRefusal('Give a reason for the credit note.');
-    return company_tx(function () use ($docId, $reason, $userId): int {
+    return company_tx(function () use ($docId, $reason, $userId, $lineIds): int {
         $d = db_query('SELECT * FROM acct_documents WHERE id = :d FOR UPDATE', [':d' => $docId])->fetch();
-        if (!$d || $d['doc_type'] !== 'invoice') throw new AcctRefusal('Only a tax invoice can be credited.');
-        if (db_query('SELECT 1 FROM acct_documents WHERE credits_document_id = :d', [':d' => $docId])->fetchColumn()) {
-            throw new AcctRefusal("{$d['number']} has already been credited.");
-        }
+        if (!$d || !in_array($d['doc_type'], ['invoice', 'ic_invoice'], true)) throw new AcctRefusal('Only an invoice can be credited.');
         if ($d['hold_id']) db_query('SELECT id FROM holds WHERE id = :h FOR UPDATE', [':h' => $d['hold_id']]);
-        $number = acct_next_number((int)$d['company_id'], 'credit_note');
-        db_query('INSERT INTO acct_documents (company_id, doc_type, number, customer_kind, customer_name, customer_pin, agent_id, currency, fx_to_home,
-                                              subtotal, vat_amount, total, hold_id, credits_document_id, reason, issued_by)
-                  SELECT company_id, \'credit_note\', :n, customer_kind, customer_name, customer_pin, agent_id, currency, fx_to_home,
-                         subtotal, vat_amount, total, hold_id, id, :why, :u FROM acct_documents WHERE id = :d',
-            [':n' => $number, ':why' => $reason, ':u' => $userId, ':d' => $docId]);
-        $cn = (int) db()->lastInsertId();
-        db_query('INSERT INTO acct_document_lines (document_id, description, qty, unit_price, line_total, net_amount, vat_amount, vat_rate, tax_band,
-                                                   category, is_disbursement, supplier_company_id, source_kind, source_id)
-                  SELECT :cn, description, qty, unit_price, line_total, net_amount, vat_amount, vat_rate, tax_band,
-                         category, is_disbursement, supplier_company_id, source_kind, source_id
-                    FROM acct_document_lines WHERE document_id = :d ORDER BY id', [':cn' => $cn, ':d' => $docId]);
-        // Release: the charges become open again, the money unapplied again.
-        db_query('UPDATE bill_items SET document_id = NULL WHERE document_id = :d', [':d' => $docId]);
-        db_query('UPDATE booking_addons SET document_id = NULL WHERE document_id = :d', [':d' => $docId]);
-        db_query('INSERT INTO acct_allocations (payment_id, document_id, amount, pay_amount, rate)
-                  SELECT payment_id, document_id, -SUM(amount), -SUM(pay_amount), MAX(rate)
-                    FROM acct_allocations WHERE document_id = :d GROUP BY payment_id, document_id HAVING SUM(amount) <> 0', [':d' => $docId]);
+        $open = db_query('SELECT l.* FROM acct_document_lines l WHERE l.document_id = :d
+                           AND NOT EXISTS (SELECT 1 FROM acct_document_lines c WHERE c.credits_line_id = l.id) ORDER BY l.id', [':d' => $docId])->fetchAll();
+        if ($lineIds !== null) {
+            $want = array_values(array_unique(array_map('intval', $lineIds)));
+            if (!$want) throw new AcctRefusal('Tick the lines to credit.');
+            $open = array_values(array_filter($open, fn($l) => in_array((int)$l['id'], $want, true)));
+            if (count($open) !== count($want)) throw new AcctRefusal('Some of those lines are not on this invoice or are already credited.');
+        }
+        if (!$open) throw new AcctRefusal("{$d['number']} has already been credited in full.");
+        $co = company_fetch((int)$d['company_id']);
+        $lines = array_map(fn($l) => [
+            'description' => $l['description'], 'category' => $l['category'], 'is_disbursement' => companies_bool($l['is_disbursement']),
+            'supplier_company_id' => $l['supplier_company_id'], 'source_kind' => $l['source_kind'], 'source_id' => $l['source_id'],
+            'net_cents' => acct_cents($l['net_amount']), 'vat_cents' => acct_cents($l['vat_amount']), 'gross_cents' => acct_cents($l['line_total']),
+            'vat_rate' => (float)$l['vat_rate'], 'tax_band' => $l['tax_band'], 'credits_line_id' => (int)$l['id'],
+        ], $open);
+        $cn = acct_insert_document($co, 'credit_note', (string)$d['currency'], $lines, [
+            'customer_kind' => $d['customer_kind'], 'customer_name' => $d['customer_name'], 'customer_pin' => $d['customer_pin'],
+            'agent_id' => $d['agent_id'], 'counterparty_company_id' => $d['counterparty_company_id'], 'hold_id' => $d['hold_id'],
+            'credits_document_id' => $docId, 'reason' => $reason, 'issued_by' => $userId]);
+
+        // Release: the credited charges become open again (only those lines).
+        foreach ($open as $l) {
+            if ($l['source_kind'] === 'bill_item') db_query('UPDATE bill_items SET document_id = NULL WHERE id = :i AND document_id = :d', [':i' => $l['source_id'], ':d' => $docId]);
+            if ($l['source_kind'] === 'addon')     db_query('UPDATE booking_addons SET document_id = NULL WHERE id = :i AND document_id = :d', [':i' => $l['source_id'], ':d' => $docId]);
+        }
+        // Money: whatever is applied beyond what is still owed goes back to "unapplied", newest payment first.
+        $row = acct_doc_with_balance(db_query('SELECT d.*, ' . acct_doc_status_sql('d') . ' FROM acct_documents d WHERE d.id = :d', [':d' => $docId])->fetch());
+        $excess = acct_cents($row['allocated']) - max(0, acct_cents($row['total']) - $row['credited_cents']);
+        if ($excess > 0) {
+            foreach (db_query('SELECT payment_id, SUM(amount) AS amt, SUM(pay_amount) AS pay, MAX(rate) AS rate FROM acct_allocations
+                                WHERE document_id = :d GROUP BY payment_id HAVING SUM(amount) > 0 ORDER BY payment_id DESC', [':d' => $docId])->fetchAll() as $a) {
+                if ($excess <= 0) break;
+                $take = min($excess, acct_cents($a['amt']));
+                $pay  = $take === acct_cents($a['amt']) ? acct_cents($a['pay']) : (int) round($take * (float)$a['rate'], 0, PHP_ROUND_HALF_UP);
+                db_query('INSERT INTO acct_allocations (payment_id, document_id, amount, pay_amount, rate) VALUES (:p, :d, :a, :pa, :r)',
+                    [':p' => $a['payment_id'], ':d' => $docId, ':a' => -acct_from_cents($take), ':pa' => -acct_from_cents($pay), ':r' => $a['rate']]);
+                $excess -= $take;
+            }
+        }
+        acct_ic_after_credit($d, $open, $cn, $userId);
         if ($d['hold_id']) acct_auto_allocate((int)$d['hold_id']);
         return $cn;
     });
+}
+
+/** Credit an invoice in full (P2a name). */
+function acct_credit_invoice(int $docId, string $reason, ?int $userId): int {
+    return acct_credit_document($docId, $reason, $userId);
 }
 
 /**
@@ -629,6 +718,10 @@ function acct_set_company_invoicing(int $companyId, string $startsOn, bool $pric
             if (!db_query('SELECT 1 FROM company_accounts WHERE company_id = :c AND is_active LIMIT 1', [':c' => $companyId])->fetchColumn()) {
                 throw new AcctRefusal('Add at least one money account before switching invoicing on.');
             }
+            // Once any company invoices, a till with no company refuses to sell (fail closed) — so
+            // every open outlet must belong to someone first.
+            $gaps = company_ownership_gaps()['outlets'];
+            if ($gaps) throw new AcctRefusal('Assign a company to every open POS outlet first (' . implode(', ', array_column($gaps, 'name')) . ') — otherwise those tills would stop selling.');
         }
         db_query('UPDATE companies SET accounting_starts_on = :d, prices_include_vat = :v, updated_at = now() WHERE id = :c',
             [':d' => $startsOn === '' ? null : $startsOn, ':v' => $pricesIncludeVat ? 'TRUE' : 'FALSE', ':c' => $companyId]);
@@ -672,19 +765,28 @@ function acct_documents_list(array $f, ?array $venueIds): array {
     $a = [':from' => $f['from'], ':to' => $f['to']];
     if (!empty($f['company_id'])) { $w[] = 'd.company_id = :c'; $a[':c'] = (int)$f['company_id']; }
     if (!empty($f['doc_type']))   { $w[] = 'd.doc_type = :t';   $a[':t'] = $f['doc_type']; }
-    if ($venueIds !== null) {
-        $w[] = $venueIds ? 'r.venue_id IN (' . implode(',', array_map('intval', $venueIds)) . ')' : 'FALSE';
-    }
-    return db_query(
-        "SELECT d.*, co.name AS company_name, co.code AS company_code, h.guest_name, v.name AS venue_name,
-                COALESCE((SELECT SUM(al.amount) FROM acct_allocations al WHERE al.document_id = d.id), 0) AS allocated,
-                (SELECT c.number FROM acct_documents c WHERE c.credits_document_id = d.id) AS credited_by_number,
-                (SELECT o.number FROM acct_documents o WHERE o.id = d.credits_document_id) AS credits_number
-           FROM acct_documents d JOIN companies co ON co.id = d.company_id
+    if ($venueIds !== null) $w[] = acct_scope_sql('d', $venueIds);
+    return array_map('acct_doc_with_balance', db_query(
+        "SELECT d.*, co.name AS company_name, co.code AS company_code, h.guest_name, v.name AS venue_name, cp.name AS counterparty_name,
+                " . acct_doc_status_sql('d') . "
+           FROM acct_documents d JOIN companies co ON co.id = d.company_id LEFT JOIN companies cp ON cp.id = d.counterparty_company_id
            LEFT JOIN holds h ON h.id = d.hold_id LEFT JOIN units u ON u.id = h.unit_id
            LEFT JOIN rooms r ON r.id = " . hold_room_id_sql('h', 'u') . " LEFT JOIN venues v ON v.id = r.venue_id
           WHERE " . implode(' AND ', $w) . "
-          ORDER BY d.issued_at DESC, d.id DESC LIMIT 2000", $a)->fetchAll();
+          ORDER BY d.issued_at DESC, d.id DESC LIMIT 2000", $a)->fetchAll());
+}
+
+/**
+ * Manager scope for a document / payment row alias $a (joined to holds h → rooms r):
+ * a booking's row by the booking's property; anything else (POS, inter-company) by
+ * the companies that own the manager's properties.
+ */
+function acct_scope_sql(string $a, array $venueIds): string {
+    if (!$venueIds) return 'FALSE';
+    $v = implode(',', array_map('intval', $venueIds));
+    $cos = "(SELECT company_id FROM venues WHERE id IN ({$v}) AND company_id IS NOT NULL)";
+    $cp  = $a === 'd' ? " OR {$a}.counterparty_company_id IN {$cos}" : '';
+    return "(({$a}.hold_id IS NOT NULL AND r.venue_id IN ({$v})) OR ({$a}.hold_id IS NULL AND ({$a}.company_id IN {$cos}{$cp})))";
 }
 
 /** Payments in a window, scoped like acct_documents_list(). */
@@ -692,12 +794,10 @@ function acct_payments_list(array $f, ?array $venueIds): array {
     $w = ['p.received_at >= :from', 'p.received_at < (CAST(:to AS date) + 1)'];
     $a = [':from' => $f['from'], ':to' => $f['to']];
     if (!empty($f['company_id'])) { $w[] = 'p.company_id = :c'; $a[':c'] = (int)$f['company_id']; }
-    if ($venueIds !== null) {
-        $w[] = $venueIds ? 'r.venue_id IN (' . implode(',', array_map('intval', $venueIds)) . ')' : 'FALSE';
-    }
+    if ($venueIds !== null) $w[] = acct_scope_sql('p', $venueIds);
     return db_query(
-        "SELECT p.*, co.name AS company_name, ca.label AS account_label, h.guest_name, v.name AS venue_name
-           FROM acct_payments p JOIN companies co ON co.id = p.company_id JOIN company_accounts ca ON ca.id = p.account_id
+        "SELECT p.*, co.name AS company_name, COALESCE(ca.label, 'Inter-company') AS account_label, h.guest_name, v.name AS venue_name
+           FROM acct_payments p JOIN companies co ON co.id = p.company_id LEFT JOIN company_accounts ca ON ca.id = p.account_id
            LEFT JOIN holds h ON h.id = p.hold_id LEFT JOIN units u ON u.id = h.unit_id
            LEFT JOIN rooms r ON r.id = " . hold_room_id_sql('h', 'u') . " LEFT JOIN venues v ON v.id = r.venue_id
           WHERE " . implode(' AND ', $w) . "
@@ -719,3 +819,5 @@ function acct_documents_summary(array $docs): array {
     ksort($s);
     return array_values($s);
 }
+
+require_once __DIR__ . '/acct-ops.php';   // P2b: POS documents, inter-company, deposits, confirm hooks

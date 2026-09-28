@@ -192,6 +192,9 @@ if (!pos_supported()) {
 }
 
 db()->beginTransaction();
+// These tests exercise the till, not accounting: switch company invoicing off for the
+// rolled-back run, so a live company elsewhere doesn't fail-close the test outlets.
+if (function_exists('acct_supported') && acct_supported()) db_query('UPDATE companies SET accounting_starts_on = NULL');
 try {
     $sfx   = substr(bin2hex(random_bytes(4)), 0, 8);
     $cur   = strtoupper(setting('site_currency', 'USD'));

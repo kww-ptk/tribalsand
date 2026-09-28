@@ -26,6 +26,7 @@ require_once __DIR__ . '/inventory-support.php';   // inv_supported(), InvRefusa
 require_once __DIR__ . '/inventory.php';           // inv_move() — the ONE stock write path
 require_once __DIR__ . '/booking.php';     // bill_item_guest_supported(), fetch_bill_items()
 require_once __DIR__ . '/frontdesk.php';   // frontdesk_rows(), frontdesk_today_ymd()
+require_once __DIR__ . '/acct.php';        // Accounting: the sale's tax document, issued inside the sale (pre-migration-safe)
 
 const POS_KINDS            = ['experiences' => 'Experiences', 'shop' => 'Shop', 'salon_spa' => 'Salon & Spa', 'kite' => 'Kite school', 'other' => 'Other'];
 const POS_ITEM_KINDS       = ['product' => 'Product', 'service' => 'Service'];
@@ -1099,6 +1100,10 @@ function pos_complete_sale_tx(array $req, string $uuid, int $userId, ?int $termi
                  ':ip' => mb_substr(client_ip(), 0, 45), ':ua' => mb_substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 300)]);
         }
     }
+    // 11. Accounting: the company's tax document for this sale, in the same transaction —
+    //     a refusal (an outlet with no company once invoicing is live) refuses the sale.
+    try { acct_pos_sale_issue($saleId, $userId); }
+    catch (AcctRefusal|CompanyRefusal $e) { throw new PosRefusal($e->getMessage()); }
     return $saleId;
 }
 
@@ -1173,6 +1178,9 @@ function pos_void_sale(int $saleId, string $reason, int $userId): array {
                     pos_stock_restore((int)$m['item_id'], -(int)$m['d'], $saleId, (string)$sale['reference'], $userId);
                 }
             }
+            // Accounting: credit the sale's document and refund what was paid at the till.
+            try { acct_pos_sale_void($saleId, $reason, $userId); }
+            catch (AcctRefusal|CompanyRefusal $e) { throw new PosRefusal($e->getMessage()); }
             if (pos_bill_link_supported()) db_query('DELETE FROM bill_items WHERE pos_sale_id = :s', [':s' => $saleId]);
             db_query("UPDATE pos_sales SET status = 'voided', void_reason = :r, voided_by = :u, voided_at = now() WHERE id = :id",
                 [':r' => mb_substr($reason, 0, 500), ':u' => $userId, ':id' => $saleId]);

@@ -74,6 +74,9 @@ if (!inv_supported()) {
 }
 
 db()->beginTransaction();
+// Stock tests, not accounting: switch company invoicing off for this rolled-back run so a
+// live company elsewhere doesn't fail-close the test's unowned places.
+if (is_file(__DIR__ . '/../includes/acct.php')) { require_once __DIR__ . '/../includes/acct.php'; if (acct_supported()) db_query('UPDATE companies SET accounting_starts_on = NULL'); }
 try {
     $sfx   = substr(bin2hex(random_bytes(4)), 0, 8);
     $ins   = function (string $sql, array $p = []): int { db_query($sql, $p); return (int) db()->lastInsertId(); };

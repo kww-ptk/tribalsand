@@ -89,7 +89,7 @@ include __DIR__ . '/_layout.php';
 </div>
 
 <?php if (!$supported): ?>
-  <div class="alert alert--info">Run the <code>add_companies.sql</code> and <code>add_acct_documents.sql</code> migrations (Admin → Migrations) first.</div>
+  <div class="alert alert--info">Run the <code>add_companies.sql</code>, <code>add_acct_documents.sql</code> and <code>add_acct_p2b.sql</code> migrations (Admin → Migrations) first.</div>
 <?php else: ?>
 
 <form method="GET" class="ad-filters card">
@@ -98,7 +98,7 @@ include __DIR__ . '/_layout.php';
     <select name="company" class="inp inp--sm"><option value="">All companies</option><?php foreach ($companies as $c): ?><option value="<?= (int)$c['id'] ?>" <?= $coId === (int)$c['id'] ? 'selected' : '' ?>><?= e($c['name']) ?></option><?php endforeach; ?></select></label>
   <?php if ($view === 'documents'): ?>
   <label class="wsf"><span>Type</span>
-    <select name="type" class="inp inp--sm"><option value="">Invoices &amp; credit notes</option><option value="invoice" <?= $type === 'invoice' ? 'selected' : '' ?>>Tax invoices</option><option value="credit_note" <?= $type === 'credit_note' ? 'selected' : '' ?>>Credit notes</option></select></label>
+    <select name="type" class="inp inp--sm"><option value="">All documents</option><option value="invoice" <?= $type === 'invoice' ? 'selected' : '' ?>>Tax invoices</option><option value="credit_note" <?= $type === 'credit_note' ? 'selected' : '' ?>>Credit notes</option><option value="ic_invoice" <?= $type === 'ic_invoice' ? 'selected' : '' ?>>Inter-company invoices</option></select></label>
   <?php endif; ?>
   <label class="wsf"><span>From</span>
     <button type="button" class="dp-btn ad-date" data-dp-target="adFrom" data-dp-past data-dp-placeholder="From"><?= e(date('j M Y', strtotime($from))) ?></button>
@@ -135,19 +135,22 @@ include __DIR__ . '/_layout.php';
     <table class="data-table">
       <thead><tr><th>Number</th><th>Date</th><th>Customer</th><th>Property</th><th class="num">Net</th><th class="num">VAT</th><th class="num">Total</th><th>Status</th></tr></thead>
       <tbody>
-      <?php foreach ($docs as $d): $cn = $d['doc_type'] === 'credit_note'; $bal = $cn ? 0 : acct_cents($d['total']) - acct_cents($d['allocated']); ?>
+      <?php foreach ($docs as $d): $cn = $d['doc_type'] === 'credit_note'; $ic = $d['doc_type'] === 'ic_invoice'; $bal = $d['balance_cents']; ?>
         <tr>
           <td><a href="/admin/acct-document-print.php?id=<?= (int)$d['id'] ?>" target="_blank" class="ad-num"><?= e($d['number']) ?></a><div class="text-muted ad-small"><?= e($d['company_name']) ?></div></td>
           <td><?= e(date('j M Y', strtotime((string)$d['issued_at']))) ?></td>
-          <td><?= e($d['customer_name']) ?><?php if ($d['hold_id']): ?> <a href="/admin/booking.php?hold=<?= (int)$d['hold_id'] ?>&amp;tab=bill#folio" class="ad-small" data-shell-link>booking</a><?php endif; ?></td>
+          <td><?= e($d['customer_name']) ?><?php if ($d['hold_id']): ?> <a href="/admin/booking.php?hold=<?= (int)$d['hold_id'] ?>&amp;tab=bill#folio" class="ad-small" data-shell-link>booking</a><?php endif; ?>
+            <?php if (!empty($d['pos_sale_id'])): ?> <a href="/admin/pos-sales.php?sale=<?= (int)$d['pos_sale_id'] ?>" class="ad-small" data-shell-link>POS sale</a><?php endif; ?>
+            <?php if ($ic): ?><div class="text-muted ad-small">Inter-company<?= $d['transfer_ref'] ? ' · stock ' . e($d['transfer_ref']) : '' ?></div><?php endif; ?></td>
           <td><?= e($d['venue_name'] ?? '—') ?></td>
           <td class="num"><?= $cn ? '− ' : '' ?><?= e(number_format((float)$d['subtotal'], 2)) ?></td>
           <td class="num"><?= $cn ? '− ' : '' ?><?= e(number_format((float)$d['vat_amount'], 2)) ?></td>
           <td class="num"><strong><?= $cn ? '− ' : '' ?><?= e(acct_money(acct_cents($d['total']), $d['currency'])) ?></strong></td>
           <td>
             <?php if ($cn): ?><span class="badge badge--grey">Credit note</span> <span class="text-muted ad-small">for <?= e($d['credits_number']) ?></span>
-            <?php elseif ($d['credited_by_number']): ?><span class="badge badge--orange">Credited</span> <span class="text-muted ad-small"><?= e($d['credited_by_number']) ?></span>
-            <?php elseif ($bal > 0): ?><span class="badge badge--orange">Due <?= e(acct_money($bal, $d['currency'])) ?></span>
+            <?php elseif ($d['fully_credited']): ?><span class="badge badge--orange">Credited</span> <span class="text-muted ad-small"><?= e($d['credited_by_number']) ?></span>
+            <?php elseif ($ic): ?><span class="badge badge--blue">Between companies</span><?php if ($d['credited_cents'] > 0): ?> <span class="text-muted ad-small">part-credited</span><?php endif; ?>
+            <?php elseif ($bal > 0): ?><span class="badge badge--orange">Due <?= e(acct_money($bal, $d['currency'])) ?></span><?php if ($d['credited_cents'] > 0): ?> <span class="text-muted ad-small">part-credited</span><?php endif; ?>
             <?php else: ?><span class="badge badge--green">Paid</span><?php endif; ?>
           </td>
         </tr>

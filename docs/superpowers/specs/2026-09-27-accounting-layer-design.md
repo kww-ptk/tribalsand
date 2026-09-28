@@ -1,6 +1,6 @@
 # Accounting layer — companies, documents & payments, QuickBooks, eTIMS
 
-**Date:** 2026-09-27 · **Status:** design approved; spec reviewed 2026-09-28 (corrections in §12) · P1 + P2a (room folio) built
+**Date:** 2026-09-27 · **Status:** design approved; spec reviewed 2026-09-28 (corrections in §12) · P1 + P2a + P2b built (P3 QuickBooks, P4 eTIMS need external accounts)
 **Depends on:** bookings ledger (`add_bookings_finance.sql`), POS (`add_pos.sql` →
 `add_pos_job_types.sql` → `add_pos_v2.sql`), room bill (`add_bill_items.sql`).
 Inventory (`db/migrations/add_inventory.sql`, `includes/inventory.php` — merged to
@@ -355,12 +355,20 @@ need Patrik or the accountant; the rest are the default the plan follows.
 | 10 | "Closing a POS day" has no trigger — the Z-report is a view, nothing closes a day. | The scheduler posts the previous Nairobi day's Sales Receipts after 01:00 EAT. | P3 |
 | 11 | Gapless numbering takes a row lock per sale, so a company's POS sales serialise on its counter. | Accepted: the lock is held only for the rest of the sale's transaction (milliseconds). Revisit only if tills queue. | P2 |
 
+### P2b build notes (what shipped)
+- POS sale documents inside the sale's transaction (paid at once into a matching account; voids credit + refund); same-company room charges invoiced on the folio only.
+- `acct_ic_entries` ledger; on_behalf settles the seller's invoice with an inter-company receipt at folio issue; reinvoice issues an `ic_invoice` at sale time; settlements page.
+- `inv_moves.transfer_ref`; one `ic_invoice` per cross-company transfer at the value snapshot + sender's VAT; no-value lines refused (correction #7c); `assign`/`return` never invoiced (correction #8 default).
+- Partial credit notes via `credits_line_id`; deposit → damages; `invoice_timing = confirm` + credit on cancel.
+- Fail closed: going live is refused while an open POS outlet has no company.
+- Limit: a line cross-sold from another company's outlet is invoiced by the selling outlet's company.
+
 ### P2a build notes (room folio — what shipped)
 - Built: payments, allocation (cross-currency at the site FX rate), tax invoices per currency, full credit notes, refunds, security deposits, pro-forma, invoice print, documents list + CSV. Corrections **#1, #2, #3, #6 (for the disbursement line), #9** are implemented.
 - #5 is implemented as "copy the sale's VAT snapshot"; forcing an outlet's VAT to 0 for a non-VAT company is still open (decide).
 - `companies.prices_include_vat` (default on) says whether room/extras prices include VAT for a VAT-registered company.
 - Payment method must fit the account kind (M-Pesa → till/paybill, card → merchant/bank, cash → cash/bank).
-- Deferred to P2b: POS walk-in documents, `acct_ic_entries` + stock-transfer ic invoices, `invoice_timing = confirm`, partial credit notes, applying a deposit to damages, OTA folios.
+- (P2b then built the deferred items — see above — except OTA folios.)
 
 ### P1 build notes (what shipped beyond §3)
 - `companies.code` — a short code (e.g. `ZUR`) used for the default numbering prefixes (`ZUR-INV-`, `ZUR-CN-`, `ZUR-PF-`, `ZUR-IC-`).

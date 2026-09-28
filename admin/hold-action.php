@@ -5,6 +5,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/mail.php';
 require_once __DIR__ . '/../includes/booking.php';
 require_once __DIR__ . '/../includes/bookings.php';   // financial ledger snapshot
+require_once __DIR__ . '/../includes/acct.php';       // invoice-at-confirmation / credit-on-cancel hooks
 
 // Store intended URL so admin lands here after login if session expired
 session_init();
@@ -72,9 +73,10 @@ if ($action === 'confirm') {
     db_query("UPDATE holds SET status='confirmed', confirmed_at=NOW() WHERE id=:id", [':id' => $id]);
     db_query("UPDATE availability_blocks SET block_type='booked' WHERE hold_id=:hid", [':hid' => $id]);
     bookings_sync_hold($id);   // snapshot revenue at confirm
+    $__acct = acct_hook_hold_confirmed($id, (int)($_SESSION['admin_id'] ?? 0) ?: null);
     if ($hold['guest_email']) send_hold_confirmed($hold);
     audit_log('hold.confirm', 'hold', $id, "via email link — {$hold['guest_name']} {$hold['check_in']}→{$hold['check_out']}");
-    $_SESSION['hold_flash'] = ['type' => 'success', 'msg' => "Hold #{$id} confirmed — confirmation email sent to {$hold['guest_email']}."];
+    $_SESSION['hold_flash'] = ['type' => 'success', 'msg' => "Hold #{$id} confirmed — confirmation email sent to {$hold['guest_email']}." . $__acct];
 
 } elseif ($action === 'decline') {
     if (!in_array($status, ['pending', 'confirmed'], true)) {
@@ -85,9 +87,10 @@ if ($action === 'confirm') {
     db_query("UPDATE holds SET status='cancelled', cancelled_at=NOW() WHERE id=:id", [':id' => $id]);
     db_query("DELETE FROM availability_blocks WHERE hold_id=:hid", [':hid' => $id]);
     bookings_mark_hold_cancelled($id);
+    $__acct = acct_hook_hold_cancelled($id, (int)($_SESSION['admin_id'] ?? 0) ?: null);
     if ($hold['guest_email']) send_hold_cancelled($hold, 'cancelled');
     audit_log('hold.decline', 'hold', $id, "via email link — {$hold['guest_name']} {$hold['check_in']}→{$hold['check_out']}");
-    $_SESSION['hold_flash'] = ['type' => 'success', 'msg' => "Hold #{$id} declined — dates freed and guest notified."];
+    $_SESSION['hold_flash'] = ['type' => 'success', 'msg' => "Hold #{$id} declined — dates freed and guest notified." . $__acct];
 }
 
 header('Location: /admin/holds.php');

@@ -68,6 +68,7 @@ function inv_normalize_move(array $m): array {
         'unit_value'     => ($uv !== null && $uv !== '' && is_numeric($uv)) ? round((float)$uv, 2) : null,
         'terms'          => (array)($m['terms'] ?? []),
         'allow_negative' => inv_bool($m['allow_negative'] ?? false),
+        'transfer_ref'   => preg_match('/^[A-Za-z0-9\-]{1,40}$/', (string)($m['transfer_ref'] ?? '')) ? (string)$m['transfer_ref'] : null,
     ];
 }
 
@@ -489,6 +490,9 @@ function inv_move_tx(array $n): int {
          ':n' => $n['note'] !== '' ? $n['note'] : null, ':u' => $n['user_id']]
     );
     $moveId = (int) db()->lastInsertId();
+    if ($n['transfer_ref'] !== null && inv_transfer_ref_supported()) {
+        db_query('UPDATE inv_moves SET transfer_ref = :r WHERE id = :id', [':r' => $n['transfer_ref'], ':id' => $moveId]);
+    }
 
     if ($from !== null) db_query('UPDATE inv_balances SET qty = qty - :q WHERE item_id = :i AND location_id = :l', [':q' => $qty, ':i' => $n['item_id'], ':l' => $from]);
     if ($to !== null)   db_query('UPDATE inv_balances SET qty = qty + :q WHERE item_id = :i AND location_id = :l', [':q' => $qty, ':i' => $n['item_id'], ':l' => $to]);
@@ -513,9 +517,38 @@ function inv_transfer(int $itemId, int $qty, int $fromId, int $toId, ?int $userI
     $from = inv_fetch_location($fromId);
     $to   = inv_fetch_location($toId);
     if (!$from || !$to) throw new InvRefusal('Pick where it comes from and where it goes.');
-    return inv_move(['item_id' => $itemId, 'qty' => $qty, 'from' => $fromId, 'to' => $toId,
-                     'reason' => inv_transfer_reason((string)$from['kind'], (string)$to['kind']),
-                     'user_id' => $userId, 'note' => $note, 'asset_id' => $assetId]);
+    return inv_tx(function () use ($itemId, $qty, $fromId, $toId, $from, $to, $userId, $note, $assetId): int {
+        $ref = inv_new_transfer_ref();
+        $id = inv_move(['item_id' => $itemId, 'qty' => $qty, 'from' => $fromId, 'to' => $toId,
+                        'reason' => inv_transfer_reason((string)$from['kind'], (string)$to['kind']),
+                        'user_id' => $userId, 'note' => $note, 'asset_id' => $assetId, 'transfer_ref' => $ref]);
+        inv_after_transfer($ref, $userId);
+        return $id;
+    });
+}
+
+/** A new reference shared by every move of one transfer action ("TR-…"). */
+function inv_new_transfer_ref(): string {
+    return 'TR-' . date('ymd') . '-' . strtoupper(bin2hex(random_bytes(5)));
+}
+
+/** inv_moves.transfer_ref exists (add_acct_p2b.sql) — catalog lookup, safe inside a transaction. */
+function inv_transfer_ref_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { return $ok = (bool) db_query("SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'inv_moves' AND column_name = 'transfer_ref'")->fetchColumn(); }
+    catch (Throwable $e) { return $ok = false; }
+}
+
+/**
+ * Accounting: stock that moved from one company to another in this action is
+ * invoiced between them (inside the same transaction — a refusal undoes the moves).
+ */
+function inv_after_transfer(string $ref, ?int $userId): void {
+    if (!inv_transfer_ref_supported()) return;
+    require_once __DIR__ . '/acct.php';
+    try { acct_stock_transfer_issue($ref, $userId); }
+    catch (AcctRefusal|CompanyRefusal $e) { throw new InvRefusal($e->getMessage()); }
 }
 
 /**
@@ -582,8 +615,10 @@ function inv_replace(int $itemId, int $qty, int $atId, string $lossReason, ?int 
     return inv_tx(function () use ($itemId, $qty, $atId, $lossReason, $userId, $note, $sourceId): array {
         inv_lock_balances([[$itemId, $atId], [$itemId, $sourceId]]);   // both rows, global order, before the two moves
         $loss = inv_report_loss($itemId, $qty, $atId, $lossReason, $userId, $note);
+        $ref  = inv_new_transfer_ref();
         $rep  = inv_move(['item_id' => $itemId, 'qty' => $qty, 'from' => $sourceId, 'to' => $atId,
-                          'reason' => 'replaced', 'user_id' => $userId, 'note' => $note]);
+                          'reason' => 'replaced', 'user_id' => $userId, 'note' => $note, 'transfer_ref' => $ref]);
+        inv_after_transfer($ref, $userId);
         return ['loss_move_id' => $loss, 'replace_move_id' => $rep];
     });
 }
@@ -636,16 +671,18 @@ function inv_restock_to_par(int $locationId, ?int $userId, ?int $sourceId = null
                                            fn(array $r): bool => in_array((int)$r['item_id'], $lockedIds, true)));
         $moved  = [];
         $short  = [];
+        $ref    = inv_new_transfer_ref();   // one restock = one transfer (= at most one inter-company invoice)
         $reason = inv_transfer_reason((string)$source['kind'], (string)$dest['kind']);
         foreach (inv_restock_plan($rows) as $itemId => $need) {
             $take = min($need, max(0, inv_balance($itemId, $sourceId)));   // locked above
             if ($take > 0) {
                 inv_move(['item_id' => $itemId, 'qty' => $take, 'from' => $sourceId, 'to' => $locationId,
-                          'reason' => $reason, 'user_id' => $userId, 'note' => 'Restock to par']);
+                          'reason' => $reason, 'user_id' => $userId, 'note' => 'Restock to par', 'transfer_ref' => $ref]);
                 $moved[$itemId] = $take;
             }
             if ($take < $need) $short[$itemId] = $need - $take;
         }
+        if ($moved) inv_after_transfer($ref, $userId);
         return ['moved' => $moved, 'short' => $short, 'skipped' => $skipped];
     });
 }

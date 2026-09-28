@@ -114,19 +114,26 @@ $__vatOn   = companies_bool($__co['vat_registered']);
           <a href="/admin/acct-document-print.php?id=<?= (int)$__d['id'] ?>" target="_blank" class="fo__num"><?= e($__d['number']) ?></a>
           <span class="badge <?= $__isInv ? 'badge--blue' : 'badge--grey' ?>"><?= $__isInv ? 'Invoice' : 'Credit note' ?></span>
           <span class="text-muted fo__date2"><?= e(date('j M Y', strtotime((string)$__d['issued_at']))) ?></span>
-          <?php if ($__isInv && $__d['credited_by']): ?><span class="badge badge--orange">Credited by <?= e($__d['credited_by_number']) ?></span>
+          <?php if ($__isInv && $__d['fully_credited']): ?><span class="badge badge--orange">Credited by <?= e($__d['credited_by_number']) ?></span>
           <?php elseif ($__isInv && $__d['balance_cents'] > 0): ?><span class="badge badge--orange">Due <?= e(acct_money($__d['balance_cents'], $__d['currency'])) ?></span>
           <?php elseif ($__isInv): ?><span class="badge badge--green">Paid</span><?php endif; ?>
+          <?php if ($__isInv && !$__d['fully_credited'] && $__d['credited_cents'] > 0): ?><span class="badge badge--grey">Part-credited <?= e($__d['credited_by_number']) ?></span><?php endif; ?>
           <?php if (!$__isInv && $__d['reason'] !== ''): ?><span class="text-muted fo__why"><?= e($__d['reason']) ?></span><?php endif; ?>
         </div>
         <strong class="fo__amtcell"><?= $__isInv ? '' : '− ' ?><?= e(acct_money(acct_cents($__d['total']), $__d['currency'])) ?></strong>
-        <?php if ($__isInv && !$__d['credited_by'] && $__canRev): ?>
+        <?php if ($__isInv && !$__d['fully_credited'] && $__canRev): $__dl = array_values(array_filter(acct_document_lines_status((int)$__d['id']), fn($x) => !$x['credited'])); ?>
         <details class="fo__rev">
-          <summary class="btn-icon" data-tip="Credit this invoice" aria-label="Credit this invoice"><?= admin_icon('rotate', 15) ?></summary>
-          <form method="POST" action="<?= e($__self) ?>" class="fo__revform">
+          <summary class="btn-icon" data-tip="Credit this invoice (all or some lines)" aria-label="Credit this invoice"><?= admin_icon('rotate', 15) ?></summary>
+          <form method="POST" action="<?= e($__self) ?>" class="fo__revform fo__credit">
             <?= csrf_field() ?><input type="hidden" name="action" value="acct_credit"><input type="hidden" name="hold_id" value="<?= $holdId ?>"><input type="hidden" name="document_id" value="<?= (int)$__d['id'] ?>">
+            <div class="fo__clines">
+              <?php foreach ($__dl as $__x): ?>
+              <label class="ckwrap"><input type="checkbox" name="line_ids[]" value="<?= (int)$__x['id'] ?>" checked><span class="ck"></span>
+                <span><?= e($__x['description']) ?> <span class="text-muted">· <?= e(acct_money(acct_cents($__x['line_total']), $__d['currency'])) ?></span></span></label>
+              <?php endforeach; ?>
+            </div>
             <input name="reason" class="inp inp--sm" maxlength="300" required placeholder="Why? e.g. wrong minibar amount">
-            <button type="submit" class="btn-sm btn-outline" data-confirm="Credit <?= e($__d['number']) ?> in full? Its charges go back on the bill to correct and re-invoice.">Issue credit note</button>
+            <button type="submit" class="btn-sm btn-outline" data-confirm="Issue a credit note for the ticked lines of <?= e($__d['number']) ?>? Those charges go back on the bill to correct and re-invoice.">Issue credit note</button>
           </form>
         </details>
         <?php endif; ?>
@@ -149,6 +156,12 @@ $__vatOn   = companies_bool($__co['vat_registered']);
           <?php if (!$__isRef && $__p['available_cents'] > 0 && !companies_bool($__p['is_security_deposit'])): ?><span class="badge badge--grey">Not yet applied <?= e(acct_money($__p['available_cents'], $__p['currency'])) ?></span><?php endif; ?>
         </div>
         <strong class="fo__amtcell"><?= $__isRef ? '− ' : '' ?><?= e(acct_money(acct_cents($__p['amount']), $__p['currency'])) ?></strong>
+        <?php if (!$__isRef && $__p['available_cents'] > 0 && $__canRev && companies_bool($__p['is_security_deposit']) && array_filter($__f['docs'], fn($x) => $x['balance_cents'] > 0)): ?>
+        <form method="POST" action="<?= e($__self) ?>" style="margin:0">
+          <?= csrf_field() ?><input type="hidden" name="action" value="acct_apply_deposit"><input type="hidden" name="hold_id" value="<?= $holdId ?>"><input type="hidden" name="payment_id" value="<?= (int)$__p['id'] ?>">
+          <button type="submit" class="btn-sm btn-outline" data-confirm="Use this security deposit to pay the open invoice (e.g. damages)? What is left can still be refunded.">Apply to invoice</button>
+        </form>
+        <?php endif; ?>
         <?php if (!$__isRef && $__p['available_cents'] > 0 && $__canRev): ?>
         <details class="fo__rev">
           <summary class="btn-icon" data-tip="Refund" aria-label="Refund"><?= admin_icon('rotate', 15) ?></summary>
@@ -223,6 +236,8 @@ $__vatOn   = companies_bool($__co['vat_registered']);
 .fo__revform{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
 .fo__revform .inp{flex:1 1 160px;min-width:0}
 .fo__revform .inp--num{flex:0 0 110px}
+.fo__clines{display:grid;gap:6px;flex-basis:100%;padding:4px 0 6px}
+.fo__clines .ckwrap{align-items:flex-start}
 @media (max-width:640px){
   .fo__body{padding:14px}
   .fo__issue,.fo__pay{flex-direction:column;align-items:stretch}
