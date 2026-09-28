@@ -25,11 +25,15 @@ require_once __DIR__ . '/inventory.php';
  * the CURRENT balance at the move's "to" location (already locked by the
  * caller), or null when there is nothing to check yet (the page's render
  * check passes null and relies on the server to re-check under lock).
+ * $allowCountResolution lifts the count-review refusal ONLY — used by
+ * inv_delete_location() for a move tied to a count of the place being
+ * deleted (that count is being deleted anyway); every other caller (the
+ * item page's Undo button) leaves it false.
  */
-function inv_undo_refusal(array $move, ?int $toQty): ?string {
-    if (!empty($move['pos_sale_id']))   return 'POS sales and voids are corrected with a void on the till.';
-    if (!empty($move['count_line_id'])) return "This came from a count review — it can't be undone here.";
-    if (!empty($move['asset_id']))      return "A serial unit's history can't be undone — delete the item instead, or move the unit.";
+function inv_undo_refusal(array $move, ?int $toQty, bool $allowCountResolution = false): ?string {
+    if (!empty($move['pos_sale_id'])) return 'POS sales and voids are corrected with a void on the till.';
+    if (!$allowCountResolution && !empty($move['count_line_id'])) return "This came from a count review — it can't be undone here.";
+    if (!empty($move['asset_id']))    return "A serial unit's history can't be undone — delete the item instead, or move the unit.";
     $to = $move['to_location_id'] ?? $move['to'] ?? null;
     if ($to !== null && $toQty !== null && $toQty < (int)($move['qty'] ?? 0)) {
         $item  = (string)($move['item_name'] ?? 'It');
@@ -41,14 +45,14 @@ function inv_undo_refusal(array $move, ?int $toQty): ?string {
 
 /**
  * Delete one inv_moves row and reverse its effect on inv_balances, as if it
- * never happened. Refused for a POS sale/void, a count-resolution move, a
- * serial-unit move, or when the "to" end would go below zero. $userId is
- * accepted for parity but not written anywhere — the row is deleted, not
- * attributed.
+ * never happened. Refused for a POS sale/void, a count-resolution move
+ * (unless $allowCountResolution — see inv_undo_refusal()), a serial-unit
+ * move, or when the "to" end would go below zero. $userId is accepted for
+ * parity but not written anywhere — the row is deleted, not attributed.
  */
-function inv_undo_move(int $moveId, ?int $userId): void {
+function inv_undo_move(int $moveId, ?int $userId, bool $allowCountResolution = false): void {
     if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
-    inv_tx(function () use ($moveId): void {
+    inv_tx(function () use ($moveId, $allowCountResolution): void {
         $m = db_query(
             'SELECT m.*, i.name AS item_name, lt.name AS to_name
                FROM inv_moves m
@@ -68,7 +72,7 @@ function inv_undo_move(int $moveId, ?int $userId): void {
         inv_lock_balances($pairs);
         $toQty = $to !== null ? inv_balance($itemId, $to) : null;
 
-        $err = inv_undo_refusal($m, $toQty);
+        $err = inv_undo_refusal($m, $toQty, $allowCountResolution);
         if ($err !== null) throw new InvRefusal($err);
 
         if ($from !== null) db_query('UPDATE inv_balances SET qty = qty + :q WHERE item_id = :i AND location_id = :l', [':q' => $qty, ':i' => $itemId, ':l' => $from]);
@@ -146,9 +150,18 @@ function inv_delete_item(int $itemId, ?int $userId): void {
  * Delete an area, or an extra store (never Main stock, never a property /
  * outlet / person — those follow their own record). Refused when it has
  * child locations. Every move touching it is undone first (newest first,
- * same rules as inv_undo_move() — a POS sale, a count review, a serial move
- * or a resulting negative balance aborts the WHOLE delete), then its counts
+ * same rules as inv_undo_move() — a POS sale, a serial move, a count
+ * review tied to ANOTHER place, or a resulting negative balance aborts the
+ * WHOLE delete, its message prefixed with the item's name), then its counts
  * and balance rows are removed, then the location itself.
+ *
+ * A count-resolution move IS undone (not refused) when the count line it
+ * came from belongs to a count of THIS location — that count is deleted a
+ * few lines down regardless, so refusing the undo would only block the
+ * delete over history that is about to disappear anyway. The move is
+ * deleted (inv_undo_move()) before the count lines are, so the FK
+ * (inv_moves.count_line_id → inv_count_lines, ON DELETE SET NULL) is never
+ * in play either way.
  */
 function inv_delete_location(int $locationId, ?int $userId): void {
     if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
@@ -164,9 +177,15 @@ function inv_delete_location(int $locationId, ?int $userId): void {
         throw new InvRefusal('Move or delete its areas first.');
     }
     inv_tx(function () use ($locationId, $userId): void {
+        $ownCountLineIds = array_map('intval', db_query(
+            'SELECT cl.id FROM inv_count_lines cl JOIN inv_counts c ON c.id = cl.count_id WHERE c.location_id = :l',
+            [':l' => $locationId]
+        )->fetchAll(PDO::FETCH_COLUMN));
+
         $moves = db_query(
-            'SELECT id, item_id, from_location_id, to_location_id FROM inv_moves
-              WHERE from_location_id = :l1 OR to_location_id = :l2 ORDER BY id DESC',
+            'SELECT m.id, m.item_id, m.from_location_id, m.to_location_id, m.count_line_id, i.name AS item_name
+               FROM inv_moves m JOIN inv_items i ON i.id = m.item_id
+              WHERE m.from_location_id = :l1 OR m.to_location_id = :l2 ORDER BY m.id DESC',
             [':l1' => $locationId, ':l2' => $locationId]
         )->fetchAll();
         $pairs = [];
@@ -175,7 +194,14 @@ function inv_delete_location(int $locationId, ?int $userId): void {
             if ($mv['to_location_id']   !== null) $pairs[] = [(int)$mv['item_id'], (int)$mv['to_location_id']];
         }
         inv_lock_balances($pairs);   // the whole set, global order, before undoing any of them
-        foreach ($moves as $mv) inv_undo_move((int)$mv['id'], $userId);
+        foreach ($moves as $mv) {
+            $allow = $mv['count_line_id'] !== null && in_array((int)$mv['count_line_id'], $ownCountLineIds, true);
+            try {
+                inv_undo_move((int)$mv['id'], $userId, $allow);
+            } catch (InvRefusal $e) {
+                throw new InvRefusal("{$mv['item_name']}: " . $e->getMessage());
+            }
+        }
 
         $countIds = db_query('SELECT id FROM inv_counts WHERE location_id = :l', [':l' => $locationId])->fetchAll(PDO::FETCH_COLUMN);
         if ($countIds) {

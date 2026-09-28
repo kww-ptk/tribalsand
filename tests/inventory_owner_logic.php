@@ -19,6 +19,9 @@ function check(string $label, bool $cond): void {
 // ── Pure: inv_undo_refusal ───────────────────────────────────────────────────
 check('undo refusal: a POS sale/void move', str_contains((string) inv_undo_refusal(['pos_sale_id' => 5, 'qty' => 1, 'to_location_id' => 9], null), 'POS sales'));
 check('undo refusal: a count-review move', str_contains((string) inv_undo_refusal(['count_line_id' => 5, 'qty' => 1, 'to_location_id' => 9], null), 'count review'));
+check('undo refusal: allowCountResolution lifts the count-review refusal only', inv_undo_refusal(['count_line_id' => 5, 'qty' => 1, 'to_location_id' => null], null, true) === null
+    && str_contains((string) inv_undo_refusal(['count_line_id' => 5, 'pos_sale_id' => 9, 'qty' => 1, 'to_location_id' => null], null, true), 'POS sales')
+    && str_contains((string) inv_undo_refusal(['count_line_id' => 5, 'asset_id' => 9, 'qty' => 1, 'to_location_id' => null], null, true), 'serial'));
 check('undo refusal: a serial-unit move', str_contains((string) inv_undo_refusal(['asset_id' => 5, 'qty' => 1, 'to_location_id' => 9], null), 'serial'));
 check('undo refusal: destination would go below zero, names the item and place', ($__m = inv_undo_refusal(['qty' => 4, 'to_location_id' => 9, 'item_name' => 'Widget', 'to_name' => 'Kitchen'], 1)) !== null
     && str_contains($__m, 'below zero') && str_contains($__m, 'Widget') && str_contains($__m, 'Kitchen'));
@@ -158,6 +161,27 @@ try {
 
     check('delete location: refused for Main stock', str_contains($refused(fn() => inv_delete_location($store, null)), "can't be deleted"));
     check('delete location: refused for a property', str_contains($refused(fn() => inv_delete_location($locA, null)), 'property / outlet / staff'));
+
+    // A place that was counted must still be deletable — its own count-resolution
+    // moves are undone (not refused), since the count they came from is deleted
+    // right along with the place.
+    $area5       = inv_create_area($locA, "ZZ CountedArea {$sfx}");
+    $countedItem = inv_create_item(['name' => "ZZ Owner CountedItem {$sfx}", 'item_type' => 'operational', 'replacement_value' => 25]);
+    inv_move(['item_id' => $countedItem, 'qty' => 10, 'to' => $area5, 'reason' => 'receive']);
+    $cUser2 = $mkUser('owner', 'countedowner');
+    $cid5   = inv_count_start($area5, $cUser2);
+    inv_count_submit($cid5, [$countedItem => 6], $cUser2);
+    $line5  = (int) db_query('SELECT id FROM inv_count_lines WHERE count_id = :c AND item_id = :i', [':c' => $cid5, ':i' => $countedItem])->fetchColumn();
+    $resolveMoveId5 = inv_count_resolve_line($line5, 'missing', $cUser2);
+    check('delete location setup: resolving the gap lands the balance at 6', $resolveMoveId5 !== null && inv_balance($countedItem, $area5) === 6);
+    check('undo: WITHOUT the flag, that same count-resolution move is still refused',
+        str_contains($refused(fn() => inv_undo_move((int)$resolveMoveId5, null)), 'count review'));
+
+    inv_delete_location($area5, null);
+    check('delete location: a counted place deletes cleanly', inv_fetch_location($area5) === false);
+    check('delete location: the item nets back to 0 — both the receive and the resolution were undone',
+        inv_balance($countedItem, $area5) === 0);
+    check('delete location: the count and its line are gone too', db_query('SELECT 1 FROM inv_counts WHERE id = :c', [':c' => $cid5])->fetchColumn() === false);
 
     // ── 5. Reset all inventory ──
     $beforeItems = $count('SELECT COUNT(*) FROM inv_items');
