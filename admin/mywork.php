@@ -13,6 +13,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/booking.php';
 require_once __DIR__ . '/../includes/frontdesk.php';   // frontdesk_today_ymd(), the live worklist source
 require_once __DIR__ . '/../includes/task-calendar.php';   // today's tasks + procedures
+require_once __DIR__ . '/../includes/inventory-count-views.php';   // "Stock counts due" card
 require_login();
 
 $pageTitle  = 'My work';
@@ -33,6 +34,9 @@ $myJob    = admin_job();
 $jobLabel = team_job_types()[$myJob] ?? 'My work';
 $today    = frontdesk_today_ymd();
 $worklist = staff_day_worklist(admin_venue_ids(), (string)$myJob, $today);
+
+// Places this person should count today (responsible for it, or works at its property).
+$countsCard = inv_supported() ? inv_counts_due_card(inv_countable_locations($meId, admin_role(), admin_venue_ids(), $today), 0) : '';
 
 /** One turnover row: guest, property · room, and the stay dates. */
 function worklist_row(array $r): void {
@@ -162,6 +166,8 @@ include __DIR__ . '/_layout.php';
 </div>
 
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type'] ?? 'success') ?> is-flash"><?= e($flash['msg'] ?? (is_string($flash) ? $flash : '')) ?></div><?php endif; ?>
+
+<?= $countsCard ?>
 
 <?php if ($tasksOn): ?>
 <div class="card" style="margin-bottom:1rem" id="mwTaskCard" data-csrf="<?= e(csrf_token()) ?>">

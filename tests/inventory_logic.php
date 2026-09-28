@@ -374,6 +374,14 @@ try {
     $threw = false; try { inv_set_par($plates, 999999999, 5); } catch (InvRefusal $e) { $threw = true; }
     check('par: an unknown location is a refusal, not a DB error', $threw);
 
+    // A count left open overnight is never submitted with a day-old snapshot.
+    $cOld = inv_count_start($locA, $counter);
+    db_query("UPDATE inv_counts SET started_at = now() - INTERVAL '1 day' WHERE id = :c", [':c' => $cOld]);
+    $oldCounts = db_query('SELECT item_id, expected FROM inv_count_lines WHERE count_id = :c', [':c' => $cOld])->fetchAll(PDO::FETCH_KEY_PAIR);
+    $msg = ''; try { inv_count_submit($cOld, array_map('strval', $oldCounts), $counter); } catch (InvRefusal $e) { $msg = $e->getMessage(); }
+    check('count: a count started on an earlier day is refused on submit', str_contains($msg, 'earlier day') && $cstatus($cOld) === 'open');
+    db_query("UPDATE inv_counts SET status = 'cancelled' WHERE id = :c", [':c' => $cOld]);
+
     // ── DB checks (tasks 4–8 insert their blocks above this line) ──
 } catch (Throwable $e) {
     echo "FAIL  DB block threw: " . $e->getMessage() . "\n" . $e->getTraceAsString() . "\n";
