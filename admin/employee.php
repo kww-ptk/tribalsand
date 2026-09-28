@@ -485,7 +485,7 @@ include __DIR__ . '/_layout.php';
   <!-- Activity log -->
   <div class="card">
     <div class="card__head"><span class="card__title">Activity log</span></div>
-    <div class="card__body" style="padding:14px 20px"><?php activity_log_html('hr_staff', $id); ?></div>
+    <div class="card__body" style="padding:14px 20px"><?php person_activity_html($id, $acctId); ?></div>
   </div>
 </div>
 

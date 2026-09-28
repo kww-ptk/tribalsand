@@ -312,6 +312,9 @@ function login(string $email, string $password): bool {
 
 function logout(): void {
     session_init();
+    if (!empty($_SESSION['admin_id'])) {
+        try { audit_log('auth.logout', 'admin_user', (int)$_SESSION['admin_id'], ''); } catch (Throwable $e) {}
+    }
     session_unset();
     session_destroy();
 }

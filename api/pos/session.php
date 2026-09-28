@@ -29,6 +29,7 @@ if ($sess === '' || !hash_equals($sess, (string)($body['csrf_token'] ?? ''))) {
 
 $action = (string)($body['action'] ?? '');
 if ($action === 'lock') {
+    try { if (!empty($_SESSION['pos_user_id'])) audit_log('pos.lock', 'admin_user', (int)$_SESSION['pos_user_id'], ''); } catch (Throwable $e) {}
     pos_lock();
     exit(json_encode(['ok' => true]));
 }

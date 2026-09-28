@@ -1507,7 +1507,9 @@ function storage_url(string $filename): string {
 }
 
 function audit_log(string $action, string $target_type = '', int $target_id = 0, string $notes = ''): void {
-    $admin_id = $_SESSION['admin_id'] ?? null;
+    // Who did it: the admin session, else the person signed in at a POS till by PIN
+    // (a PIN session never sets admin_id), so till actions are credited to them.
+    $admin_id = $_SESSION['admin_id'] ?? ($_SESSION['pos_user_id'] ?? null);
     db_query(
         'INSERT INTO admin_audit_log (admin_id, action, target_type, target_id, notes)
          VALUES (:aid, :action, :type, :tid, :notes)',
