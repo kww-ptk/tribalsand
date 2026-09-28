@@ -12,12 +12,14 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/admin-pagination.php';   // dt_empty()
 require_once __DIR__ . '/../includes/inventory-views.php';
+require_once __DIR__ . '/../includes/inventory-owner.php';    // owner-only corrections (delete a place)
 require_once __DIR__ . '/../includes/frontdesk.php';          // frontdesk_today_ymd() — Nairobi "today"
 require_login();
 require_manager();
 
 $self      = '/admin/inventory-locations.php';
 $vids      = admin_venue_ids();
+$me        = current_admin();
 $supported = inv_supported();
 if ($supported) inv_ensure_default_locations();
 // ONE venue-name lookup, reused for the "belongs to" pickers, the "for <venues>" row
@@ -80,6 +82,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
             }
             audit_log('inv.location_save', 'inv_location', (int)$loc['id'], (string)$loc['name']);
             $_SESSION['inv_flash'] = ['type' => 'success', 'msg' => $loc['name'] . ' saved.'];
+        } elseif ($act === 'delete_location') {
+            // Owner-only correction (includes/inventory-owner.php) — this page is its is_owner() gate.
+            if (!is_owner()) throw new InvRefusal('Only the owner deletes a place.');
+            $loc = inv_fetch_location((int)($_POST['location_id'] ?? 0));
+            if (!$loc) throw new InvRefusal('That location no longer exists.');
+            $typed = trim((string)($_POST['confirm_name'] ?? ''));
+            if (mb_strtolower($typed) !== mb_strtolower((string)$loc['name'])) throw new InvRefusal('Type the name exactly to confirm.');
+            $name = (string)$loc['name'];
+            inv_delete_location((int)$loc['id'], (int)$me['id']);
+            audit_log('inv.location_delete', 'inv_location', (int)$loc['id'], $name);
+            $_SESSION['inv_flash'] = ['type' => 'success', 'msg' => "Deleted {$name}."];
         }
     } catch (InvRefusal $e) {
         $_SESSION['inv_flash'] = ['type' => 'error', 'msg' => $e->getMessage()];
@@ -159,6 +172,13 @@ include __DIR__ . '/_layout.php';
                   <button type="button" class="btn-outline btn-sm" data-inv-set-cancel>Cancel</button>
                 </div>
               </form>
+              <?php if (is_owner() && ($l['kind'] === 'area' || ($l['kind'] === 'store' && !inv_bool($l['is_main'] ?? false)))): ?>
+              <form method="POST" action="<?= $self ?>" class="inv-form" style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+                <?= csrf_field() ?><input type="hidden" name="action" value="delete_location"><input type="hidden" name="location_id" value="<?= (int)$l['id'] ?>">
+                <div class="field"><label>Type the name to confirm</label><input name="confirm_name" class="inp" placeholder="<?= e((string)$l['name']) ?>" autocomplete="off"></div>
+                <button type="submit" class="btn-danger btn-sm" data-confirm="Delete <?= e((string)$l['name']) ?>? This can't be undone."><?= admin_icon('trash', 15) ?> Delete this place</button>
+              </form>
+              <?php endif; ?>
             </details>
             <?php endif; ?>
             <?php $servesIds = $l['kind'] === 'store' ? inv_location_venue_set($l) : [];

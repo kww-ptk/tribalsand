@@ -13,11 +13,36 @@ require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/pagination.php';
 require_once __DIR__ . '/../includes/admin-pagination.php';
 require_once __DIR__ . '/../includes/inventory-views.php';
+require_once __DIR__ . '/../includes/inventory-owner.php';   // owner-only corrections (reset all inventory)
 require_login();
 require_manager();
 
 $vids      = admin_venue_ids();
 $supported = inv_supported();
+
+$flash = $_SESSION['inv_flash'] ?? null; unset($_SESSION['inv_flash']);
+
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
+    verify_csrf();
+    // Owner-only correction (includes/inventory-owner.php) — this page is its is_owner() gate.
+    if ((string)($_POST['action'] ?? '') === 'reset_all') {
+        if (!is_owner()) {
+            $_SESSION['inv_flash'] = ['type' => 'error', 'msg' => 'Only the owner can reset inventory.'];
+        } elseif (trim((string)($_POST['confirm_text'] ?? '')) !== 'RESET') {
+            $_SESSION['inv_flash'] = ['type' => 'error', 'msg' => 'Type RESET exactly to confirm.'];
+        } else {
+            try {
+                $res = inv_reset_all((int)current_admin()['id']);
+                audit_log('inv.reset', 'inventory', 0, "{$res['items']} items, {$res['moves']} moves");
+                $_SESSION['inv_flash'] = ['type' => 'success', 'msg' => "Inventory reset — {$res['items']} items and {$res['moves']} movements deleted."];
+            } catch (InvRefusal $ex) {
+                $_SESSION['inv_flash'] = ['type' => 'error', 'msg' => $ex->getMessage()];
+            }
+        }
+    }
+    header('Location: /admin/inventory.php'); exit;
+}
+
 $pg        = paginate_params();
 $f = [
     'q'        => $pg['q'],
@@ -117,6 +142,7 @@ include __DIR__ . '/_layout.php';
     <?php if ($supported): ?><a href="/admin/inventory-item.php?new=1" class="btn-primary btn-sm"><?= admin_icon('plus', 15) ?> Add item</a><?php endif; ?>
   </div>
 </div>
+<?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?> is-flash"><?= e($flash['msg']) ?></div><?php endif; ?>
 
 <?php if (!$supported): ?>
   <div class="alert alert--info">Run the <code>add_inventory.sql</code> migration (Admin → Migrations) to set up inventory.</div>
@@ -173,6 +199,20 @@ include __DIR__ . '/_layout.php';
   </div>
   <div class="dt-body" data-dt-body><?= $dtBody ?></div>
 </div>
+
+<?php if (is_owner()): ?>
+<div class="card" style="margin-top:18px">
+  <div class="card__head"><span class="card__title">Start over</span></div>
+  <div class="card__body" style="padding:16px 18px">
+    <p class="text-muted" style="font-size:13px;margin:0 0 12px">Deletes ALL items, stock, counts and history. Places and stores stay. Use this before going live to clear test data.</p>
+    <form method="POST" action="/admin/inventory.php" class="inv-form">
+      <?= csrf_field() ?><input type="hidden" name="action" value="reset_all">
+      <div class="field"><label>Type RESET to confirm</label><input name="confirm_text" class="inp" placeholder="RESET" autocomplete="off"></div>
+      <button type="submit" class="btn-danger btn-sm" data-confirm="Reset ALL inventory data? Items, stock, counts and history are deleted. This can't be undone."><?= admin_icon('trash', 15) ?> Reset inventory</button>
+    </form>
+  </div>
+</div>
+<?php endif; ?>
 <?php endif; ?>
 <?= inv_shared_css() ?>
 <?php include __DIR__ . '/_layout_end.php'; ?>
