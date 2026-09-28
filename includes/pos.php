@@ -589,6 +589,51 @@ function pos_item_sync_inventory(int $posItemId): int {
     return $invId;
 }
 
+/**
+ * An amount in another currency, in whole Kenyan shillings at $rate (KES per 1 unit)
+ * — half-up, like every other POS amount. PURE.
+ */
+function pos_to_whole_kes(float $amount, float $rate): float {
+    return (float) round($amount * $rate, 0, PHP_ROUND_HALF_UP);
+}
+
+/**
+ * Switch an outlet that still sells in another currency (USD from before the KES
+ * decision) to KES, converting every price the outlet sets itself at today's site
+ * rate, rounded to whole shillings: item prices, fixed supplier costs, and the
+ * replacement values of their stock items. Linked activities keep no price of
+ * their own (they convert from the site currency at sale time); past sales keep
+ * their currency — they are history. One transaction; refused without a rate.
+ * Returns ['from', 'rate', 'items', 'stock_items'].
+ */
+function pos_outlet_convert_to_kes(int $outletId): array {
+    if (!pos_supported()) throw new PosRefusal('The POS is not enabled yet.');
+    return pos_tx(function () use ($outletId): array {
+        $o = db_query('SELECT id, name, currency FROM pos_outlets WHERE id = :o FOR UPDATE', [':o' => $outletId])->fetch();
+        if (!$o) throw new PosRefusal('That outlet no longer exists.');
+        $from = strtoupper((string)$o['currency']);
+        if ($from === 'KES') return ['from' => 'KES', 'rate' => 1.0, 'items' => 0, 'stock_items' => 0];
+        $rate = pos_fx_rate('KES', $from);   // KES per 1 unit of $from
+        if (!$rate) throw new PosRefusal("There is no {$from}→KES exchange rate yet — set it under currency settings first.");
+        $items = db_query('SELECT id, price, consignor_cost, inv_item_id FROM pos_items WHERE outlet_id = :o ORDER BY id FOR UPDATE', [':o' => $outletId])->fetchAll();
+        $n = 0; $stock = 0;
+        foreach ($items as $it) {
+            db_query('UPDATE pos_items SET price = :p, consignor_cost = :c WHERE id = :id', [
+                ':p' => $it['price'] === null ? null : pos_to_whole_kes((float)$it['price'], $rate),
+                ':c' => $it['consignor_cost'] === null ? null : pos_to_whole_kes((float)$it['consignor_cost'], $rate),
+                ':id' => $it['id']]);
+            $n++;
+            if (!empty($it['inv_item_id']) && inv_supported()) {
+                $stock += db_query('UPDATE inv_items SET replacement_value = CASE WHEN replacement_value IS NULL THEN NULL ELSE ROUND(replacement_value * :r) END,
+                                           currency = \'KES\', updated_at = now() WHERE id = :i AND currency = :f',
+                    [':r' => $rate, ':i' => (int)$it['inv_item_id'], ':f' => $from])->rowCount();
+            }
+        }
+        db_query("UPDATE pos_outlets SET currency = 'KES' WHERE id = :o", [':o' => $outletId]);
+        return ['from' => $from, 'rate' => $rate, 'items' => $n, 'stock_items' => $stock];
+    });
+}
+
 /** On-hand stock of a POS listing at its outlet. With $lock, the balance row is locked (call inside pos_tx()). */
 function pos_item_stock_on_hand(int $posItemId, bool $lock = false): int {
     if (!inv_supported()) {

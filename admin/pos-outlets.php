@@ -49,6 +49,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
         posx_back($new);
     }
 
+    if ($act === 'convert_kes' || $act === 'convert_all_kes') {
+        // Owner decision (Sept 2026): every outlet sells in KES. Converting re-prices
+        // the outlet's own items at today's rate — a plain currency switch would not.
+        $ids = $act === 'convert_all_kes'
+            ? array_map('intval', db_query("SELECT id FROM pos_outlets WHERE currency <> 'KES' ORDER BY id")->fetchAll(PDO::FETCH_COLUMN))
+            : [(int)($_POST['outlet_id'] ?? 0)];
+        $done = []; $err = null;
+        foreach ($ids as $cid) {
+            try {
+                $r = pos_outlet_convert_to_kes($cid);
+                if ($r['from'] !== 'KES') {
+                    $nm = (string) db_query('SELECT name FROM pos_outlets WHERE id = :o', [':o' => $cid])->fetchColumn();
+                    audit_log('pos.outlet_kes', 'pos_outlet', $cid, "{$r['from']}→KES @ {$r['rate']} ({$r['items']} items)");
+                    $done[] = "{$nm} ({$r['items']} prices converted at 1 {$r['from']} = " . rtrim(rtrim(number_format($r['rate'], 2, '.', ''), '0'), '.') . ' KES)';
+                }
+            } catch (PosRefusal $e) { $err = $e->getMessage(); break; }
+        }
+        if ($err) posx_flash('error', $err);
+        else posx_flash('success', $done ? 'Now selling in KES: ' . implode('; ', $done) . '. Check a few prices — they are rounded to whole shillings.' : 'Every outlet already sells in KES.');
+        posx_back($act === 'convert_kes' ? (int)($_POST['outlet_id'] ?? 0) : 0);
+    }
+
     if ($act === 'outlet_reorder') {
         foreach (array_values(array_map('intval', (array)(json_decode($_POST['order'] ?? '[]', true) ?: []))) as $i => $id) {
             db_query('UPDATE pos_outlets SET sort_order = :o WHERE id = :id', [':o' => $i, ':id' => $id]);
@@ -66,7 +88,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
         $kind = isset(POS_KINDS[$_POST['kind'] ?? '']) ? $_POST['kind'] : 'other';
         $vid  = (int)($_POST['venue_id'] ?? 0);
         $vid  = $vid && db_query('SELECT 1 FROM venues WHERE id = :v', [':v' => $vid])->fetchColumn() ? $vid : null;
-        $cur  = strtoupper((string)($_POST['currency'] ?? ''));
+        // Currency is not edited here: outlets sell in KES, and a non-KES outlet is
+        // switched with "Switch to KES" (which converts its prices). Keep what it has.
+        $cur  = strtoupper((string)$outlet['currency']);
         $pct  = (string)($_POST['service_charge_pct'] ?? '0');
         if ($name === '' || mb_strlen($name) > 120)            { posx_flash('error', 'Give the outlet a name (up to 120 characters).'); posx_back($oid); }
         if (!isset(TS_CURRENCIES[$cur]))                        { posx_flash('error', 'Pick a currency from the list.'); posx_back($oid); }
@@ -188,6 +212,10 @@ $venueCo  = [];
 if ($coOn) foreach (db_query('SELECT id, company_id FROM venues')->fetchAll() as $r) $venueCo[(int)$r['id']] = $r['company_id'] ? (int)$r['company_id'] : null;
 $outletCo = [];
 if ($coOn) foreach (db_query('SELECT id, company_id FROM pos_outlets')->fetchAll() as $r) $outletCo[(int)$r['id']] = $r['company_id'] ? (int)$r['company_id'] : null;
+$__kesRate = [];   // KES per 1 unit, for the "Switch to KES" confirmations
+foreach (array_unique(array_map(fn($x) => strtoupper((string)$x['currency']), $outlets)) as $__c) {
+    if ($__c !== 'KES' && ($__r = pos_fx_rate('KES', $__c))) $__kesRate[$__c] = rtrim(rtrim(number_format($__r, 2, '.', ''), '0'), '.');
+}
 $roleLabel = fn(array $p) => $p['role'] === 'staff' ? ucfirst((string)($p['job_type'] ?: 'frontdesk')) : ucfirst((string)$p['role']);
 
 include __DIR__ . '/_layout.php';
@@ -202,6 +230,14 @@ include __DIR__ . '/_layout.php';
   <div class="alert alert--info">Run the <code>add_pos.sql</code> migration (Admin → Migrations), then <code>db/seeds/seed_pos.php</code> for the starter outlets.</div>
 <?php else: ?>
 
+<?php $__nonKes = array_values(array_filter($outlets, fn($x) => strtoupper((string)$x['currency']) !== 'KES')); if ($__nonKes): ?>
+<div class="alert alert--info posx-kes">
+  <strong><?= count($__nonKes) ?> outlet<?= count($__nonKes) === 1 ? '' : 's' ?> still sell<?= count($__nonKes) === 1 ? 's' : '' ?> in <?= e(implode(', ', array_unique(array_map(fn($x) => strtoupper((string)$x['currency']), $__nonKes)))) ?></strong>
+  (<?= e(implode(', ', array_column($__nonKes, 'name'))) ?>). Every outlet should sell in KES — switching converts their prices at today's rate, rounded to whole shillings.
+  <form method="POST" action="<?= $self ?>" style="display:inline;margin:0 0 0 8px"><?= csrf_field() ?><input type="hidden" name="action" value="convert_all_kes">
+    <button type="submit" class="btn-primary btn-sm" data-confirm="Switch <?= count($__nonKes) ?> outlet(s) to KES and convert their prices at today's rate? Past sales stay as they were.">Switch all to KES</button></form>
+</div>
+<?php endif; ?>
 <p class="text-muted posx-intro">Each outlet is a till: the Experiences desk, the shop, the spa, the kite school. Staff only see the outlets they are assigned to (managers also see every outlet at their property). <strong>Also sells from</strong> lets one desk ring up another outlet's items — the sale still counts for the outlet that owns the item. Drag the handle to reorder.</p>
 
 <div class="posx-list" id="posxList">
@@ -243,7 +279,12 @@ include __DIR__ . '/_layout.php';
               <?php foreach (company_options($__own) as $__co): ?><option value="<?= (int)$__co['id'] ?>" <?= $__own === (int)$__co['id'] ? 'selected' : '' ?>><?= e($__co['name']) ?></option><?php endforeach; ?></select></div>
           <?php endif; ?>
           <div class="field"><label>Currency</label>
-            <select name="currency" class="eselect"><?php foreach (TS_CURRENCIES as $c => $meta): ?><option value="<?= e($c) ?>" <?= strtoupper($o['currency']) === $c ? 'selected' : '' ?>><?= e($c . ' — ' . $meta['name']) ?></option><?php endforeach; ?></select></div>
+            <?php if (strtoupper((string)$o['currency']) === 'KES'): ?>
+            <input class="inp" value="KES — Kenyan Shilling" disabled>
+            <?php else: ?>
+            <div class="posx-cur"><span class="badge badge--orange"><?= e(strtoupper((string)$o['currency'])) ?></span>
+              <button type="submit" form="kes-<?= $oid ?>" class="btn-outline btn-sm" data-confirm="Switch <?= e($o['name']) ?> to KES? Its item prices and supplier costs are converted at today's rate (1 <?= e(strtoupper((string)$o['currency'])) ?> = <?= e($__kesRate[strtoupper((string)$o['currency'])] ?? '?') ?> KES), rounded to whole shillings. Past sales stay as they were.">Switch to KES</button></div>
+            <?php endif; ?></div>
           <div class="field"><label>Service charge (%)</label><input name="service_charge_pct" type="number" class="inp inp--num no-spin" min="0" max="100" step="0.01" value="<?= e(rtrim(rtrim((string)$o['service_charge_pct'], '0'), '.') ?: '0') ?>"></div>
           <?php if ($v2): ?>
           <div class="field"><label>VAT / tax (%)</label><input name="vat_pct" type="number" class="inp inp--num no-spin" min="0" max="100" step="0.01" value="<?= e(rtrim(rtrim((string)$o['vat_pct'], '0'), '.') ?: '0') ?>" placeholder="e.g. 16"></div>
@@ -313,6 +354,9 @@ include __DIR__ . '/_layout.php';
         <button type="submit" class="btn-outline btn-sm"><?= admin_icon('plus', 14) ?> Add category</button>
       </form>
 
+      <?php if (strtoupper((string)$o['currency']) !== 'KES'): ?>
+      <form method="POST" action="<?= $self ?>" id="kes-<?= $oid ?>" style="display:none"><?= csrf_field() ?><input type="hidden" name="action" value="convert_kes"><input type="hidden" name="outlet_id" value="<?= $oid ?>"></form>
+      <?php endif; ?>
       <div class="posx-foot">
         <a href="/admin/pos-items.php?outlet=<?= $oid ?>" class="btn-outline btn-sm"><?= admin_icon('edit', 14) ?> Items</a>
         <form method="POST" action="<?= $self ?>" style="margin:0">
@@ -341,6 +385,8 @@ include __DIR__ . '/_layout.php';
 <style>
 .card__head{flex-wrap:wrap;gap:8px 12px}
 .posx-intro{margin:-6px 0 18px;font-size:13px;max-width:820px}
+.posx-kes{margin:0 0 16px;font-size:13px}
+.posx-cur{display:flex;align-items:center;gap:8px;min-height:38px}
 .posx-list{display:grid;gap:12px}
 .posx{overflow:hidden}
 .posx__head{display:flex;align-items:center;gap:12px;padding:14px 18px;cursor:pointer;list-style:none}
