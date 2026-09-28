@@ -8,6 +8,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/frontdesk.php';
 require_once __DIR__ . '/../includes/checkin.php';
+require_once __DIR__ . '/../includes/inventory-count-views.php';   // "Stock counts" card
 require_login();
 
 $pageTitle  = 'Front desk';
@@ -15,6 +16,10 @@ $activeMenu = 'frontdesk';
 
 // ── Scope: owner => null (all); manager/staff => their venue ids (empty => none) ──
 $isOwner = is_owner();
+$__me        = current_admin();
+$countsCard  = inv_supported() ? inv_counts_due_card(
+    inv_countable_locations((int)$__me['id'], admin_role(), admin_venue_ids(), frontdesk_today_ymd()),
+    ($isOwner || is_manager()) ? inv_count_queue_size(admin_venue_ids(), true) : 0) : '';   // only what this account can resolve
 $allowed = $isOwner ? null : (admin_venue_ids() ?: []);   // null = all venues
 
 // Venue list for the filter (owner: all; staff: their venues).
@@ -158,6 +163,8 @@ include __DIR__ . '/_layout.php';
     <?php endif; ?>
   </div>
 </div>
+
+<?= $countsCard ?>
 
 <?php if ($when === 'week'): ?>
 
