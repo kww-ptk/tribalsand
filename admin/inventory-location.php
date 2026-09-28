@@ -14,6 +14,7 @@ require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/admin-pagination.php';   // dt_empty()
 require_once __DIR__ . '/../includes/inventory-views.php';
 require_once __DIR__ . '/../includes/frontdesk.php';          // frontdesk_today_ymd()
+require_once __DIR__ . '/../includes/inventory-count-views.php';   // inv_can_count() — the Count now button
 require_login();
 require_manager();
 
@@ -89,6 +90,10 @@ $addable    = $editable ? array_values(array_filter(
     fn($i) => !in_array((int)$i['id'], $listed, true))) : [];
 $everyDays  = $loc['count_every_days'] !== null ? (int)$loc['count_every_days'] : null;
 $nextDue    = $everyDays ? inv_count_due_ymd($loc['last_counted_at'], $everyDays) : null;
+// Count now / Continue: only for someone allowed to count this open place, and only when something is expected here.
+$countState = inv_count_location_state((int)$loc['id']);
+$canCount   = $open && $countState['line_count'] > 0 && inv_can_count($loc, (int)$me['id'], (string)($me['role'] ?? ''), $vids);
+$countUrl   = '/admin/inventory-count.php?' . ($countState['open_count_id'] ? 'count=' . $countState['open_count_id'] : 'location=' . (int)$loc['id']);
 $STATUS     = ['manual' => ['Counted by hand', 'badge--grey'], 'ok' => ['Up to date', 'badge--green'], 'due' => ['Count due today', 'badge--orange'], 'overdue' => ['Count overdue', 'badge--red']];
 
 $pageTitle  = (string)$loc['name'];
@@ -107,7 +112,8 @@ include __DIR__ . '/_layout.php';
     <div class="inv-kpi"><span>Value here</span><strong><?php if (!$values): ?>—<?php else: foreach ($values as $c => $amt): ?><?= e(inv_money((float)$amt, (string)$c)) ?> <?php endforeach; endif; ?></strong></div>
     <div class="inv-kpi"><span>Short of par</span><strong><?= (int)$needs ?></strong></div>
     <div class="inv-kpi"><span><?= $loc['last_counted_at'] ? 'Last counted ' . e(date('j M', strtotime((string)$loc['last_counted_at']))) : 'Never counted' ?></span><span class="badge <?= e($STATUS[$status][1]) ?>"><?= e($STATUS[$status][0]) ?></span>
-      <?php if ($nextDue): ?><span class="inv-sub">Next count due <?= e(date('j M', strtotime($nextDue))) ?></span><?php endif; ?></div>
+      <?php if ($nextDue): ?><span class="inv-sub">Next count due <?= e(date('j M', strtotime($nextDue))) ?></span><?php endif; ?>
+      <?php if ($canCount): ?><a href="<?= e($countUrl) ?>" class="btn-outline btn-sm" style="margin-top:6px"><?= admin_icon('check', 14) ?> <?= $countState['open_count_id'] ? 'Continue count' : 'Count now' ?></a><?php endif; ?></div>
     <?php if ($editable && $open && $needs > 0 && $loc['kind'] !== 'store'): ?>
     <form method="POST" action="<?= e($self) ?>" style="margin-left:auto;align-self:center">
       <?= csrf_field() ?><input type="hidden" name="action" value="restock"><input type="hidden" name="location_id" value="<?= (int)$loc['id'] ?>">
