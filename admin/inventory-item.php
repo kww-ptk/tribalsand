@@ -325,7 +325,7 @@ include __DIR__ . '/_layout.php';
           <div class="field"><label>What happened</label>
             <div class="inv-chips"><?php foreach (INV_LOSS_LABELS as $k => $lbl): ?><label class="optchip"><input type="radio" name="reason" value="<?= e($k) ?>" <?= $k === 'broken' ? 'checked' : '' ?>><?= e($lbl) ?></label><?php endforeach; ?></div></div>
           <div class="field"><label>Note</label><input name="note" class="inp" maxlength="500" placeholder="What happened, who reported it"></div>
-          <?php if ($lossOk): ?><button type="submit" class="btn-primary btn-sm" onclick="return confirm(<?= e(json_encode($lossConfirm)) ?>)"><?= admin_icon('check', 15) ?> Record loss</button><?php endif; ?>
+          <?php if ($lossOk): ?><button type="submit" class="btn-primary btn-sm" data-confirm="<?= e($lossConfirm) ?>"><?= admin_icon('check', 15) ?> Record loss</button><?php endif; ?>
         </form>
 
         <?php if (!$serial): ?>

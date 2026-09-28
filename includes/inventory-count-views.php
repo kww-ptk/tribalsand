@@ -58,14 +58,33 @@ function inv_count_line_gap(array $line): array {
 
 // ── Reads ───────────────────────────────────────────────────────────────────
 
-/** Places this account can count, each with count_status + due_ymd + open_count_id, most urgent first. */
+/**
+ * SQL subqueries for a location id column $loc (e.g. 'l.id'; never a placeholder —
+ * it appears twice). line_count = how many lines a count started now would have
+ * (the rows inv_count_start() snapshots: switched-on items with stock or a par);
+ * open_count_id = today's open count, if any (Nairobi "today" — the DB session
+ * runs in Africa/Nairobi).
+ */
+function inv_count_state_sql(string $loc): string {
+    return "(SELECT COUNT(*) FROM inv_balances b JOIN inv_items i ON i.id = b.item_id
+              WHERE b.location_id = {$loc} AND i.is_active = TRUE AND (b.qty <> 0 OR b.par_qty IS NOT NULL)) AS line_count,
+            (SELECT c.id FROM inv_counts c WHERE c.location_id = {$loc} AND c.status = 'open' AND c.started_at::date = CURRENT_DATE
+              ORDER BY c.id DESC LIMIT 1) AS open_count_id";
+}
+
+/** One place's count state: ['line_count' => int, 'open_count_id' => ?int]. Does NO scoping. */
+function inv_count_location_state(int $locationId): array {
+    if (!inv_supported()) return ['line_count' => 0, 'open_count_id' => null];
+    $r = db_query('SELECT ' . inv_count_state_sql('l.id') . ' FROM inv_locations l WHERE l.id = :l', [':l' => $locationId])->fetch();
+    return ['line_count' => (int)($r['line_count'] ?? 0), 'open_count_id' => ($r['open_count_id'] ?? null) !== null ? (int)$r['open_count_id'] : null];
+}
+
+/** Places this account can count, each with count_status + due_ymd + line_count + open_count_id, most urgent first. */
 function inv_countable_locations(int $adminId, string $role, ?array $venueIds, string $todayYmd): array {
     if (!inv_supported()) return [];
     $p = [':me' => $adminId];
     $w = '(' . inv_visible_sql('l', $venueIds, $p) . ' OR l.count_assignee_id = :me)';
-    $rows = db_query("SELECT l.*, pl.name AS parent_name,
-                             (SELECT COUNT(*) FROM inv_balances b WHERE b.location_id = l.id AND (b.qty <> 0 OR b.par_qty IS NOT NULL)) AS line_count,
-                             (SELECT c.id FROM inv_counts c WHERE c.location_id = l.id AND c.status = 'open' AND c.started_at::date = CURRENT_DATE ORDER BY c.id DESC LIMIT 1) AS open_count_id
+    $rows = db_query("SELECT l.*, pl.name AS parent_name, " . inv_count_state_sql('l.id') . "
                         FROM inv_locations l
                         LEFT JOIN inv_locations pl ON pl.id = l.parent_id
                        WHERE l.is_active = TRUE AND l.kind <> 'person' AND {$w}", $p)->fetchAll();
@@ -156,13 +175,17 @@ function inv_count_queue_size(?array $venueIds, bool $resolvableOnly = false): i
 }
 
 /**
- * The place a count line belongs to (for the resolve permission check).
+ * The place a count line belongs to (for the resolve permission check), plus
+ * parent_name (for its label) and count_id (the count the line is on).
  * Does NO scoping — the caller checks inv_can_count / inv_can_resolve / the profile's venue scope.
  */
 function inv_count_line_location(int $lineId): ?array {
     if (!inv_supported()) return null;
-    $r = db_query('SELECT l.* FROM inv_count_lines cl JOIN inv_counts c ON c.id = cl.count_id
-                     JOIN inv_locations l ON l.id = c.location_id WHERE cl.id = :id', [':id' => $lineId])->fetch();
+    $r = db_query('SELECT l.*, pl.name AS parent_name, c.id AS count_id
+                     FROM inv_count_lines cl JOIN inv_counts c ON c.id = cl.count_id
+                     JOIN inv_locations l ON l.id = c.location_id
+                     LEFT JOIN inv_locations pl ON pl.id = l.parent_id
+                    WHERE cl.id = :id', [':id' => $lineId])->fetch();
     return $r ?: null;
 }
 
@@ -186,7 +209,7 @@ function inv_counts_due_card(array $places, int $reviewCount): string {
     <?php foreach ($due as $r): [$sl, $sc] = INV_COUNT_STATUS_LABELS[$r['count_status']]; ?>
     <div style="display:flex;align-items:center;gap:10px;justify-content:space-between;padding:12px 16px;border-top:1px solid var(--border)">
       <span><strong><?= e($r['label']) ?></strong> <span class="badge <?= e($sc) ?>"><?= e($sl) ?></span></span>
-      <a href="/admin/inventory-count.php?location=<?= (int)$r['id'] ?>" class="btn-primary btn-sm"><?= $r['open_count_id'] ? 'Continue' : 'Count now' ?></a>
+      <a href="/admin/inventory-count.php?<?= $r['open_count_id'] ? 'count=' . (int)$r['open_count_id'] : 'location=' . (int)$r['id'] ?>" class="btn-primary btn-sm"><?= $r['open_count_id'] ? 'Continue' : 'Count now' ?></a>
     </div>
     <?php endforeach; ?>
   </div>

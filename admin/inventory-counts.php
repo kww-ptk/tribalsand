@@ -26,6 +26,7 @@ $flash     = $_SESSION['inv_flash'] ?? null; unset($_SESSION['inv_flash']);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
     verify_csrf();
+    $back = $self;
     try {
         $lineId = (int)($_POST['line_id'] ?? 0);
         $res    = (string)($_POST['resolution'] ?? '');
@@ -33,11 +34,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
         if (!$loc || !inv_location_visible($loc, $vids) || !inv_can_resolve($loc, $role, $vids)) {
             throw new InvRefusal('Only the owner or a manager of this property can resolve it.');
         }
-        $moveId = inv_count_resolve_line($lineId, $res, $meId, trim((string)($_POST['note'] ?? '')));
+        $back   = $self . '#c' . (int)$loc['count_id'];   // back to the same count card
+        $note   = mb_substr(trim((string)($_POST['note'] ?? '')), 0, 500);
+        $moveId = inv_count_resolve_line($lineId, $res, $meId, $note);
         $msg = 'Marked for recount — nothing changed.';
         if ($moveId !== null) {
             $m = db_query('SELECT m.qty, m.reason, m.value, m.currency, i.name FROM inv_moves m JOIN inv_items i ON i.id = m.item_id WHERE m.id = :m', [':m' => $moveId])->fetch();
-            $msg = "Recorded {$m['qty']} × {$m['name']} " . mb_strtolower(INV_RESOLUTION_LABELS[$m['reason']] ?? $m['reason']) . " at {$loc['name']}"
+            $msg = "Recorded {$m['qty']} × {$m['name']} " . mb_strtolower(INV_RESOLUTION_LABELS[$m['reason']] ?? $m['reason']) . ' at ' . inv_location_label($loc)
                  . ($m['value'] !== null ? ' (' . inv_money((float)$m['value'], (string)$m['currency']) . ')' : '') . '.';
         }
         audit_log('inv.count_resolve', 'inv_location', (int)$loc['id'], "line {$lineId}: {$res}");
@@ -45,11 +48,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
     } catch (InvRefusal $e) {
         $_SESSION['inv_flash'] = ['type' => 'error', 'msg' => $e->getMessage()];
     }
-    header('Location: ' . $self); exit;
+    header('Location: ' . $back); exit;
 }
 
+const INVQ_SHOW_MAX = 50;   // counts rendered at once, oldest first
 $queue  = $supported ? inv_count_queue($vids) : [];
-$sheets = array_map(fn(array $q): ?array => inv_count_sheet((int)$q['id']), $queue);
+$more   = max(0, count($queue) - INVQ_SHOW_MAX);
+$sheets = array_map(fn(array $q): ?array => inv_count_sheet((int)$q['id']), array_slice($queue, 0, INVQ_SHOW_MAX));
 $places = $supported ? inv_counts_due($meId, $role, $vids, frontdesk_today_ymd()) : [];
 
 $pageTitle  = 'Stock counts';
@@ -73,10 +78,13 @@ include __DIR__ . '/_layout.php';
     <?php if (!$sheets): ?>
       <div class="card"><?php dt_empty('No differences waiting — every submitted count matched or has been checked.', 'check'); ?></div>
     <?php endif; ?>
+    <?php if ($more): ?>
+      <div class="alert alert--info">Showing the <?= INVQ_SHOW_MAX ?> oldest counts — <?= $more ?> more wait<?= $more === 1 ? 's' : '' ?> behind them. Check these first.</div>
+    <?php endif; ?>
     <?php foreach ($sheets as $s): if (!$s) continue;
       $canResolve = inv_can_resolve(['kind' => $s['kind'], 'venue_id' => $s['venue_id']], $role, $vids);
       $label = inv_location_label(['kind' => $s['kind'], 'name' => $s['location_name'], 'parent_name' => $s['parent_name']]); ?>
-    <div class="card">
+    <div class="card" id="c<?= (int)$s['id'] ?>">
       <div class="card__head"><span class="card__title"><?= e($label) ?></span>
         <span class="text-muted" style="font-size:12.5px">Counted by <?= e($s['counted_by_name'] ?? '—') ?> · <?= e(date('j M, H:i', strtotime((string)$s['submitted_at']))) ?></span></div>
       <div class="table-wrap"><table class="data-table">
@@ -91,19 +99,21 @@ include __DIR__ . '/_layout.php';
               <div class="inv-sub"><?= e(inv_money($g['value'], (string)$l['currency'])) ?></div></td>
             <td>
               <?php if (!$canResolve): ?><span class="text-muted" style="font-size:12.5px">The owner checks this place</span>
-              <?php else: ?>
+              <?php else: $serialLine = $l['tracking'] === 'serial'; ?>
               <form method="POST" action="<?= $self ?>" class="invq-form">
                 <?= csrf_field() ?><input type="hidden" name="line_id" value="<?= (int)$l['id'] ?>">
-                <input name="note" class="inp" maxlength="500" placeholder="Note (optional)">
+                <input name="note" class="inp" maxlength="500" placeholder="Note (optional)" aria-label="Note for <?= e($l['name']) ?> (optional)">
                 <div class="invq-btns">
-                  <?php if ($g['gap'] < 0): foreach (['missing', 'broken', 'stolen'] as $r): ?>
+                  <?php if ($serialLine): /* a serial unit is reported from its item page; inv_count_resolve_line() refuses a move here */ ?>
+                  <?php elseif ($g['gap'] < 0): foreach (['missing', 'broken', 'stolen'] as $r): ?>
                   <button type="submit" name="resolution" value="<?= $r ?>" class="btn-outline btn-sm"
-                    onclick="return confirm(<?= e(json_encode('Record ' . abs($g['gap']) . ' × ' . $l['name'] . ' as ' . mb_strtolower(INV_RESOLUTION_LABELS[$r]) . ($g['value'] !== null ? ' (' . inv_money($g['value'], (string)$l['currency']) . ')' : '') . '?')) ?>)"><?= e(INV_RESOLUTION_LABELS[$r]) ?></button>
+                    data-confirm="<?= e('Record ' . abs($g['gap']) . ' × ' . $l['name'] . ' as ' . mb_strtolower(INV_RESOLUTION_LABELS[$r]) . ($g['value'] !== null ? ' (' . inv_money($g['value'], (string)$l['currency']) . ')' : '') . '?') ?>"><?= e(INV_RESOLUTION_LABELS[$r]) ?></button>
                   <?php endforeach; else: ?>
                   <button type="submit" name="resolution" value="found" class="btn-outline btn-sm">Found</button>
                   <?php endif; ?>
                   <button type="submit" name="resolution" value="recount" class="btn-outline btn-sm">Recount</button>
                 </div>
+                <?php if ($serialLine): ?><span class="text-muted" style="font-size:12.5px">Report the unit from its item page</span><?php endif; ?>
               </form>
               <?php endif; ?>
             </td>
@@ -125,7 +135,7 @@ include __DIR__ . '/_layout.php';
         <?php foreach ($places as $r): [$sl, $sc] = INV_COUNT_STATUS_LABELS[$r['count_status']]; ?>
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;padding:12px 16px;border-top:1px solid var(--border)">
           <span><strong><?= e($r['label']) ?></strong> <span class="badge <?= e($sc) ?>"><?= e($sl) ?></span></span>
-          <a href="/admin/inventory-count.php?location=<?= (int)$r['id'] ?>" class="btn-outline btn-sm">Count</a>
+          <a href="/admin/inventory-count.php?<?= $r['open_count_id'] ? 'count=' . (int)$r['open_count_id'] : 'location=' . (int)$r['id'] ?>" class="btn-outline btn-sm"><?= $r['open_count_id'] ? 'Continue' : 'Count' ?></a>
         </div>
         <?php endforeach; ?>
       </div>

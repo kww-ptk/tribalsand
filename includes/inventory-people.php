@@ -46,7 +46,7 @@ function inv_person_assets(int $hrStaffId): array {
 /**
  * Counted stock the account can hand out: [item_id, item_name, location_id, location_label, qty],
  * at visible non-person places.
- * Does NO scoping — the caller checks inv_can_count / inv_can_resolve / the profile's venue scope.
+ * Scoped to places the account can see; the move itself is scope-checked by inv_apply_item_action().
  */
 function inv_assignable_stock(?array $venueIds): array {
     if (!inv_supported()) return [];
@@ -66,7 +66,7 @@ function inv_assignable_stock(?array $venueIds): array {
 /**
  * Serial units the account can hand out: [id, item_id, item_name, serial, location_id, location_label],
  * at visible non-person places.
- * Does NO scoping — the caller checks inv_can_count / inv_can_resolve / the profile's venue scope.
+ * Scoped to places the account can see; the move itself is scope-checked by inv_apply_item_action().
  */
 function inv_assignable_units(?array $venueIds): array {
     if (!inv_supported()) return [];

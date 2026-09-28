@@ -63,6 +63,11 @@ $loc = (!$sheet && $supported && isset($_GET['location'])) ? inv_fetch_location(
 if ($loc && (!$countable($loc) || !inv_bool($loc['is_active']))) $loc = false;
 $places = (!$sheet && !$loc && $supported) ? inv_countable_locations($meId, $role, $vids, $today) : [];
 $notFound = (isset($_GET['count']) && !$sheet) || (isset($_GET['location']) && !$loc);
+$locState = $loc ? inv_count_location_state((int)$loc['id']) : null;
+// An open count started on an earlier day holds a stale snapshot: inv_count_submit()
+// refuses it, so it is never shown as cards — only the way to start again.
+$stale = $sheet && $sheet['status'] === 'open' && date('Y-m-d', strtotime((string)$sheet['started_at'])) !== $today;
+$draftKey = $sheet ? 'invc-draft-' . (int)$sheet['id'] : '';
 
 $pageTitle  = 'Stock count';
 $activeMenu = 'inventory_count';
@@ -79,6 +84,14 @@ include __DIR__ . '/_layout.php';
 <?php elseif ($notFound): ?>
   <?php dt_empty('That count isn’t available to you.'); ?>
 
+<?php elseif ($stale): ?>
+  <div class="card"><div class="card__body" style="padding:18px">
+    <p style="margin:0 0 14px">This count was started on an earlier day — start again.</p>
+    <form method="POST" action="<?= $self ?>"><?= csrf_field() ?><input type="hidden" name="action" value="start"><input type="hidden" name="location_id" value="<?= (int)$sheet['location_id'] ?>">
+      <button type="submit" class="btn-primary"><?= admin_icon('check', 16) ?> Start counting</button></form>
+  </div></div>
+  <script>try{localStorage.removeItem(<?= json_encode($draftKey) ?>)}catch(e){}</script>
+
 <?php elseif ($sheet && $sheet['status'] === 'open'): $lines = $sheet['lines']; ?>
   <?php if (!$lines): ?>
     <?php dt_empty('Nothing is expected here yet — ask a manager to set what this place should have.'); ?>
@@ -93,23 +106,24 @@ include __DIR__ . '/_layout.php';
           <div><strong><?= e($l['name']) ?></strong>
             <span class="inv-sub">Expected <b><?= $exp ?></b> <?= e((string)$l['unit_label']) ?></span></div></div>
         <div class="invc-step">
-          <button type="button" class="invc-btn" data-step="-1" aria-label="One less">−</button>
+          <button type="button" class="invc-btn" data-step="-1" aria-label="One less <?= e($l['name']) ?>">−</button>
           <input name="counted[<?= (int)$l['item_id'] ?>]" type="number" inputmode="numeric" min="0" step="1" class="inp inp--num no-spin invc-inp" aria-label="Counted <?= e($l['name']) ?>">
-          <button type="button" class="invc-btn" data-step="1" aria-label="One more">+</button>
-          <button type="button" class="invc-same" data-same>= <?= $exp ?></button>
+          <button type="button" class="invc-btn" data-step="1" aria-label="One more <?= e($l['name']) ?>">+</button>
+          <?php if ($exp >= 0): ?><button type="button" class="invc-same" data-same aria-label="Same as expected (<?= $exp ?>)">= <?= $exp ?></button><?php endif; ?>
         </div>
         <div class="invc-diff" aria-live="polite"></div>
       </div>
       <?php endforeach; ?>
     </div>
     <div class="invc-bar">
-      <span id="invcProgress" class="text-muted">0 of <?= count($lines) ?> counted</span>
+      <span id="invcProgress" class="text-muted" aria-live="polite">0 of <?= count($lines) ?> counted</span>
       <button type="submit" class="btn-primary"><?= admin_icon('check', 16) ?> Submit count</button>
     </div>
   </form>
   <?php endif; ?>
 
 <?php elseif ($sheet): ?>
+  <script>try{localStorage.removeItem(<?= json_encode($draftKey) ?>)}catch(e){}</script>
   <div class="card">
     <div class="card__head"><span class="card__title"><?= $sheet['status'] === 'resolved' ? 'Count checked' : ($sheet['status'] === 'cancelled' ? 'Count closed' : 'Waiting for a manager') ?></span>
       <span class="text-muted" style="font-size:12.5px"><?= $sheet['submitted_at'] ? 'Submitted ' . e(date('j M, H:i', strtotime((string)$sheet['submitted_at']))) : '' ?><?= $sheet['counted_by_name'] ? ' by ' . e($sheet['counted_by_name']) : '' ?></span></div>
@@ -129,13 +143,21 @@ include __DIR__ . '/_layout.php';
     </table></div>
   </div>
 
-<?php elseif ($loc): $stat = inv_count_status($loc['last_counted_at'], $loc['count_every_days'] !== null ? (int)$loc['count_every_days'] : null, $today); [$sl, $sc] = INV_COUNT_STATUS_LABELS[$stat]; ?>
+<?php elseif ($loc): $stat = inv_count_status($loc['last_counted_at'], $loc['count_every_days'] !== null ? (int)$loc['count_every_days'] : null, $today);
+    [$sl, $sc] = $locState['line_count'] === 0 ? ['Nothing to count', 'badge--grey'] : INV_COUNT_STATUS_LABELS[$stat]; ?>
   <div class="card"><div class="card__body" style="padding:18px">
     <p style="margin:0 0 6px"><span class="badge <?= e($sc) ?>"><?= e($sl) ?></span>
       <span class="text-muted" style="font-size:13px"><?= $loc['last_counted_at'] ? 'Last counted ' . e(date('j M', strtotime((string)$loc['last_counted_at']))) : 'Never counted' ?></span></p>
+    <?php if ($locState['open_count_id']): ?>
+    <p class="text-muted" style="font-size:13px;margin:0 0 14px">A count of this place was started today and isn’t submitted yet.</p>
+    <a href="<?= $self ?>?count=<?= (int)$locState['open_count_id'] ?>" class="btn-primary"><?= admin_icon('check', 16) ?> Continue counting</a>
+    <?php elseif ($locState['line_count'] === 0): ?>
+    <p class="text-muted" style="font-size:13px;margin:0">Nothing is expected here yet, so there is nothing to count — ask a manager to set what this place should have.</p>
+    <?php else: ?>
     <p class="text-muted" style="font-size:13px;margin:0 0 14px">You’ll see every item this place should have, with the number the system expects. Count each one and submit.</p>
     <form method="POST" action="<?= $self ?>"><?= csrf_field() ?><input type="hidden" name="action" value="start"><input type="hidden" name="location_id" value="<?= (int)$loc['id'] ?>">
       <button type="submit" class="btn-primary"><?= admin_icon('check', 16) ?> Start counting</button></form>
+    <?php endif; ?>
   </div></div>
 
 <?php else: ?>
@@ -143,11 +165,13 @@ include __DIR__ . '/_layout.php';
     <?php dt_empty('There’s nothing for you to count.'); ?>
   <?php else: ?>
   <div class="card"><div class="card__body" style="padding:0">
-    <?php foreach ($places as $r): [$sl, $sc] = INV_COUNT_STATUS_LABELS[$r['count_status']]; ?>
-    <a href="<?= $self ?>?location=<?= (int)$r['id'] ?>" class="invc-place">
+    <?php foreach ($places as $r): $n = (int)$r['line_count'];
+      [$sl, $sc] = $r['open_count_id'] ? ['In progress', INV_COUNT_STATUS_LABELS[$r['count_status']][1]]
+                 : ($n === 0 ? ['Nothing to count', 'badge--grey'] : INV_COUNT_STATUS_LABELS[$r['count_status']]); ?>
+    <a href="<?= $self ?>?<?= $r['open_count_id'] ? 'count=' . (int)$r['open_count_id'] : 'location=' . (int)$r['id'] ?>" class="invc-place">
       <span><strong><?= e($r['label']) ?></strong>
-        <span class="inv-sub"><?= (int)$r['line_count'] ?> item<?= (int)$r['line_count'] === 1 ? '' : 's' ?><?= $r['last_counted_at'] ? ' · last ' . e(date('j M', strtotime((string)$r['last_counted_at']))) : '' ?></span></span>
-      <span class="badge <?= e($sc) ?>"><?= $r['open_count_id'] ? 'In progress' : e($sl) ?></span>
+        <span class="inv-sub"><?= $n ?> item<?= $n === 1 ? '' : 's' ?><?= $r['last_counted_at'] ? ' · last ' . e(date('j M', strtotime((string)$r['last_counted_at']))) : '' ?></span></span>
+      <span class="badge <?= e($sc) ?>"><?= e($sl) ?></span>
     </a>
     <?php endforeach; ?>
   </div></div>
@@ -156,19 +180,20 @@ include __DIR__ . '/_layout.php';
 
 <?= inv_shared_css() ?>
 <style>
-.invc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;padding-bottom:84px}
+.invc-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px;padding-bottom:96px}
 .invc-card{background:var(--white);border:2px solid var(--border);border-radius:var(--radius);padding:14px;display:grid;gap:12px;min-width:0}
 .invc-card.is-off{border-color:var(--red)}
 .invc-card.is-ok{border-color:var(--green)}
 .invc-card__top{display:flex;gap:12px;align-items:center;min-width:0}
+.invc-card__top > div{min-width:0;overflow-wrap:anywhere}
 .invc-step{display:grid;grid-template-columns:48px minmax(0,1fr) 48px auto;gap:8px;align-items:center}
 .invc-btn{height:48px;border-radius:10px;border:1px solid var(--border);background:var(--bg);font-size:24px;line-height:1;cursor:pointer}
 .invc-inp{height:48px;font-size:22px;text-align:center;width:100%}
 .invc-same{height:48px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:var(--white);cursor:pointer;font-weight:600;white-space:nowrap}
 .invc-diff{font-size:13px;font-weight:600;color:var(--red);min-height:1em}
 .invc-card.is-ok .invc-diff{color:var(--green)}
-.invc-bar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 16px;background:var(--white);border-top:1px solid var(--border);box-shadow:var(--shadow)}
-@media (min-width:900px){.invc-bar{left:var(--sidebar-w,0)}}
+.invc-bar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;justify-content:space-between;align-items:center;gap:12px;padding:12px 16px;padding-bottom:calc(12px + env(safe-area-inset-bottom));background:var(--white);border-top:1px solid var(--border);box-shadow:var(--shadow)}
+@media (min-width:769px){.invc-bar{left:var(--sidebar-w)}}
 .invc-place{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:14px 16px;border-top:1px solid var(--border);color:inherit;text-decoration:none}
 .invc-place:first-child{border-top:0}
 .invc-warn{color:var(--red);font-weight:600}
@@ -177,27 +202,33 @@ include __DIR__ . '/_layout.php';
 <script>
 (function () {
   var form = document.getElementById('invcForm'); if (!form) return;
+  // The draft survives a refused submit; it is cleared only once the server has
+  // accepted the count (the submitted page removes it).
   var key = 'invc-draft-' + form.getAttribute('data-count');
   var cards = Array.prototype.slice.call(form.querySelectorAll('.invc-card'));
+  var pr = document.getElementById('invcProgress');
   var draft = {};
   try { draft = JSON.parse(localStorage.getItem(key) || '{}') || {}; } catch (e) { draft = {}; }
+  function whole(v) { return /^\d+$/.test(v); }
+  function expected(c) { return parseInt(c.getAttribute('data-expected'), 10) || 0; }
   function save() {
     var d = {};
     cards.forEach(function (c) { var i = c.querySelector('.invc-inp'); if (i.value !== '') d[i.name] = i.value; });
     try { localStorage.setItem(key, JSON.stringify(d)); } catch (e) {}
   }
   function paint(c) {
-    var i = c.querySelector('.invc-inp'), exp = parseInt(c.getAttribute('data-expected'), 10), out = c.querySelector('.invc-diff');
+    var i = c.querySelector('.invc-inp'), exp = expected(c), out = c.querySelector('.invc-diff');
     c.classList.remove('is-off', 'is-ok'); out.textContent = '';
     if (i.value === '') return;
+    if (!whole(i.value)) { c.classList.add('is-off'); out.textContent = 'Whole numbers only'; return; }
     var n = parseInt(i.value, 10);
-    if (isNaN(n)) return;
     if (n === exp) { c.classList.add('is-ok'); out.textContent = '✓ Matches'; }
     else { c.classList.add('is-off'); out.textContent = n < exp ? (exp - n) + ' short' : (n - exp) + ' extra'; }
   }
   function progress() {
     var done = cards.filter(function (c) { return c.querySelector('.invc-inp').value !== ''; }).length;
-    document.getElementById('invcProgress').textContent = done + ' of ' + cards.length + ' counted';
+    pr.textContent = done + ' of ' + cards.length + ' counted';
+    pr.classList.remove('invc-warn');
   }
   cards.forEach(function (c) {
     var i = c.querySelector('.invc-inp');
@@ -205,27 +236,29 @@ include __DIR__ . '/_layout.php';
     i.addEventListener('input', function () { paint(c); progress(); save(); });
     c.querySelectorAll('[data-step]').forEach(function (b) {
       b.addEventListener('click', function () {
-        var n = parseInt(i.value === '' ? c.getAttribute('data-expected') : i.value, 10) || 0;
+        var n = parseInt(i.value === '' ? String(Math.max(0, expected(c))) : i.value, 10) || 0;
         i.value = Math.max(0, n + parseInt(b.getAttribute('data-step'), 10));
         paint(c); progress(); save();
       });
     });
-    c.querySelector('[data-same]').addEventListener('click', function () { i.value = c.getAttribute('data-expected'); paint(c); progress(); save(); });
+    var same = c.querySelector('[data-same]');
+    if (same) same.addEventListener('click', function () { i.value = Math.max(0, expected(c)); paint(c); progress(); save(); });
     paint(c);
   });
   progress();
   form.addEventListener('submit', function (ev) {
     var missing = cards.filter(function (c) { return c.querySelector('.invc-inp').value === ''; });
-    if (missing.length) {
-      ev.preventDefault();
-      missing[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
-      missing[0].querySelector('.invc-inp').focus();
-      var pr = document.getElementById('invcProgress');
-      pr.textContent = missing.length + ' still to count — enter 0 if there are none';
-      pr.classList.add('invc-warn');
-      return;
-    }
-    try { localStorage.removeItem(key); } catch (e) {}
+    var bad = cards.filter(function (c) { var v = c.querySelector('.invc-inp').value; return v !== '' && !whole(v); });
+    if (!missing.length && !bad.length) return;
+    ev.preventDefault();
+    var first = cards.filter(function (c) { return missing.indexOf(c) !== -1 || bad.indexOf(c) !== -1; })[0];
+    first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    first.querySelector('.invc-inp').focus();
+    bad.forEach(paint);
+    pr.textContent = missing.length
+      ? missing.length + ' still to count — enter 0 if there are none'
+      : bad.length + (bad.length === 1 ? ' count is' : ' counts are') + ' not a whole number';
+    pr.classList.add('invc-warn');
   });
 })();
 </script>

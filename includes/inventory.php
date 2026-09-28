@@ -687,14 +687,18 @@ function inv_count_start(int $locationId, int $userId): int {
 /**
  * Save the counted numbers and submit. $counted = [item_id => whole number];
  * every line needs one. Matching lines close as 'accepted'; gaps wait for a
- * manager. Stock never changes here. Returns ['gaps' => int].
+ * manager. Stock never changes here. Refused for a count started on an earlier
+ * (Nairobi) day — its snapshot is stale. Returns ['gaps' => int].
  */
 function inv_count_submit(int $countId, array $counted, int $userId): array {
     if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
     return inv_tx(function () use ($countId, $counted, $userId): array {
-        $c = db_query('SELECT id, location_id, status FROM inv_counts WHERE id = :c FOR UPDATE', [':c' => $countId])->fetch();
+        $c = db_query('SELECT id, location_id, status, (started_at::date = CURRENT_DATE) AS today FROM inv_counts WHERE id = :c FOR UPDATE', [':c' => $countId])->fetch();
         if (!$c) throw new InvRefusal('That count does not exist.');
         if ($c['status'] !== 'open') throw new InvRefusal($c['status'] === 'cancelled' ? 'This count is closed — start a new one.' : 'This count was already submitted.');
+        // Its Expected numbers are a snapshot from the day it was started; stock may have
+        // moved since. inv_count_start() would cancel it — never submit it.
+        if (!inv_bool($c['today'])) throw new InvRefusal('This count was started on an earlier day — start again.');
         $lines = db_query('SELECT id, item_id, expected FROM inv_count_lines WHERE count_id = :c ORDER BY id', [':c' => $countId])->fetchAll();
         $gaps = 0;
         foreach ($lines as $l) {

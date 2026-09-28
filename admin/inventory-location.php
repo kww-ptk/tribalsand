@@ -111,7 +111,7 @@ include __DIR__ . '/_layout.php';
     <?php if ($editable && $open && $needs > 0 && $loc['kind'] !== 'store'): ?>
     <form method="POST" action="<?= e($self) ?>" style="margin-left:auto;align-self:center">
       <?= csrf_field() ?><input type="hidden" name="action" value="restock"><input type="hidden" name="location_id" value="<?= (int)$loc['id'] ?>">
-      <button type="submit" class="btn-primary btn-sm" onclick="return confirm(<?= e(json_encode("Move what is short from {$storeName} to here?")) ?>)"><?= admin_icon('arrow-right', 15) ?> Restock to par from <?= e($storeName) ?></button>
+      <button type="submit" class="btn-primary btn-sm" data-confirm="<?= e("Move what is short from {$storeName} to here?") ?>"><?= admin_icon('arrow-right', 15) ?> Restock to par from <?= e($storeName) ?></button>
     </form>
     <?php endif; ?>
   </div>

@@ -41,6 +41,7 @@ check('due card: lists due places with a Count button', str_contains($card = inv
 check('due card: skips places that are not due, and is empty when nothing is', inv_counts_due_card([['id' => 4, 'label' => 'X', 'count_status' => 'ok', 'open_count_id' => null]], 0) === '');
 check('due card: shows the review count for managers', str_contains(inv_counts_due_card([], 3), '3 to review'));
 check('due card: escapes the label', str_contains(inv_counts_due_card([['id' => 1, 'label' => '<script>x</script>', 'count_status' => 'due', 'open_count_id' => null, 'line_count' => 1]], 0), '&lt;script&gt;'));
+check('due card: an open count links straight to it', str_contains(inv_counts_due_card([['id' => 4, 'label' => 'P', 'count_status' => 'due', 'open_count_id' => 77, 'line_count' => 2]], 0), 'inventory-count.php?count=77'));
 check('due card: a due row with nothing expected is skipped', inv_counts_due_card([['id' => 1, 'label' => 'X', 'count_status' => 'due', 'open_count_id' => null, 'line_count' => 0]], 0) === '');
 
 // ── DB-backed ───────────────────────────────────────────────────────────────
@@ -85,7 +86,10 @@ try {
     check('due: a scheduled place with nothing expected never nags', !in_array($locB, $ids(inv_counts_due($owner, 'owner', null, $today)), true));
 
     // Count → review queue.
+    check('state: an empty place has nothing to count', inv_count_location_state($locB) === ['line_count' => 0, 'open_count_id' => null]);
+    check('state: no open count before starting', inv_count_location_state($area) === ['line_count' => 1, 'open_count_id' => null]);
     $cid = inv_count_start($area, $maid);
+    check('state: today’s open count is found', inv_count_location_state($area)['open_count_id'] === $cid);
     $sheet = inv_count_sheet($cid);
     check('sheet: lines carry item details and expected', $sheet && count($sheet['lines']) === 1 && (int)$sheet['lines'][0]['expected'] === 12 && $sheet['lines'][0]['name'] === 'ZZ Count glass');
     check('sheet: a non-existent count is null', inv_count_sheet(0) === null && inv_count_sheet(999999999) === null);
@@ -98,12 +102,15 @@ try {
     $line = (int) db_query('SELECT id FROM inv_count_lines WHERE count_id = :c', [':c' => $cid])->fetchColumn();
     $ll = inv_count_line_location($line);
     check('line location: resolves to the counted place', $ll && (int)$ll['id'] === $area && inv_can_resolve($ll, 'manager', [$vA]));
+    check('line location: carries its count and a full label', (int)$ll['count_id'] === $cid && inv_location_label($ll) === 'ZZ Count A › ZZ Pantry');
     check('due: after counting, the place is no longer due', !in_array($area, $ids(inv_counts_due($maid, 'staff', [$vA], $today)), true));
 
     // Resolvable-only queue: a Main-stock gap is visible to a property manager, but Main stock is owner-resolved.
     $sizeAllBefore      = inv_count_queue_size([$vA]);
     $sizeResBefore      = inv_count_queue_size([$vA], true);
     $sizeOwnerResBefore = inv_count_queue_size(null, true);
+    // Never reuse a same-day Main-stock count left open outside this test.
+    db_query("UPDATE inv_counts SET status = 'cancelled' WHERE location_id = :l AND status = 'open'", [':l' => $store]);
     $cid2   = inv_count_start($store, $owner);
     $sheet2 = inv_count_sheet($cid2);
     $counts2 = [];
