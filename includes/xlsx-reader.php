@@ -9,12 +9,14 @@ declare(strict_types=1);
  * hand and inflates the parts we need with gzinflate() (zlib, which IS present),
  * then parses the first worksheet with DOMDocument.
  *
- * Only what the booking importer needs: the first worksheet as a 2-D array of
- * plain-string cell values, columns 0-indexed by spreadsheet column (so an empty
- * cell that the XML omits still leaves the right gap). Formats/formulas ignored;
- * numeric cells come back as their stored string; shared strings are resolved.
+ * Columns are 0-indexed by spreadsheet column (so an empty cell the XML omits
+ * still leaves the right gap). Formats/formulas ignored beyond bold; numeric
+ * cells come back as their stored string; shared strings are resolved.
  *
- * xlsx_read_rows(path): array of rows (each an array of string cells) or throws.
+ * xlsx_read_rows(path):   the FIRST worksheet as rows of plain-string cells (booking importer).
+ * xlsx_read_sheets(path): EVERY worksheet by name — [name => rows], each cell
+ *                         ['v' => string, 'b' => bool bold]; empty rows kept, so
+ *                         row index = spreadsheet row − 1 (shipment importer).
  */
 
 /** Locate one entry in the ZIP central directory and return its inflated bytes, or null. */
@@ -91,14 +93,113 @@ function xlsx_shared_strings(string $xml): array {
     return $out;
 }
 
+/** Parse xl/styles.xml → [cellXfs index => bold?]. */
+function xlsx_bold_styles(string $xml): array {
+    $out = [];
+    $doc = new DOMDocument();
+    if (!@$doc->loadXML($xml)) return $out;
+    $fonts = [];
+    $fontsEl = $doc->getElementsByTagName('fonts')->item(0);
+    if ($fontsEl) foreach ($fontsEl->childNodes as $f) {
+        if (!($f instanceof DOMElement) || $f->localName !== 'font') continue;
+        $b = $f->getElementsByTagName('b')->item(0);
+        $fonts[] = $b !== null && !in_array($b->getAttribute('val'), ['0', 'false'], true);
+    }
+    $xfs = $doc->getElementsByTagName('cellXfs')->item(0);
+    if ($xfs) foreach ($xfs->childNodes as $xf) {
+        if (!($xf instanceof DOMElement) || $xf->localName !== 'xf') continue;
+        $out[] = $fonts[(int)$xf->getAttribute('fontId')] ?? false;
+    }
+    return $out;
+}
+
+/** [sheet name => ZIP part path] in workbook order, from xl/workbook.xml and its rels. */
+function xlsx_sheet_parts(string $zip): array {
+    $wb   = xlsx_zip_read($zip, 'xl/workbook.xml');
+    $rels = xlsx_zip_read($zip, 'xl/_rels/workbook.xml.rels');
+    if ($wb === null || $rels === null) return [];
+    $targets = [];
+    $rd = new DOMDocument();
+    if (@$rd->loadXML($rels)) foreach ($rd->getElementsByTagName('Relationship') as $r) {
+        $t = $r->getAttribute('Target');
+        $targets[$r->getAttribute('Id')] = str_starts_with($t, '/') ? ltrim($t, '/') : 'xl/' . $t;
+    }
+    $out = [];
+    $wd = new DOMDocument();
+    if (@$wd->loadXML($wb)) foreach ($wd->getElementsByTagName('sheet') as $s) {
+        $rid = $s->getAttributeNS('http://schemas.openxmlformats.org/officeDocument/2006/relationships', 'id');
+        if (isset($targets[$rid])) $out[$s->getAttribute('name')] = $targets[$rid];
+    }
+    return $out;
+}
+
+/** Read and sanity-check an .xlsx file's bytes. */
+function xlsx_file_bytes(string $path): string {
+    $bytes = @file_get_contents($path);
+    if ($bytes === false || $bytes === '') throw new RuntimeException('Could not read the uploaded file.');
+    if (substr($bytes, 0, 2) !== 'PK')     throw new RuntimeException('That does not look like an .xlsx file.');
+    return $bytes;
+}
+
+/**
+ * One worksheet's XML → rows of ['v' => string, 'b' => bool]. $fillGaps keeps
+ * rows the XML omits (so index = spreadsheet row − 1).
+ */
+function xlsx_sheet_cells(string $sheetXml, array $shared, array $bold, bool $fillGaps): array {
+    $doc = new DOMDocument();
+    if (!@$doc->loadXML($sheetXml)) throw new RuntimeException('The worksheet XML could not be parsed.');
+    $rows = [];
+    foreach ($doc->getElementsByTagName('row') as $rowEl) {
+        if ($fillGaps && ($rn = (int)$rowEl->getAttribute('r')) > 0) {
+            while (count($rows) < $rn - 1) $rows[] = [];
+        }
+        $cells = [];
+        $max   = -1;
+        foreach ($rowEl->getElementsByTagName('c') as $c) {
+            $ref  = $c->getAttribute('r');
+            $idx  = $ref !== '' ? xlsx_col_index($ref) : count($cells);
+            $type = $c->getAttribute('t');
+            $val  = '';
+            if ($type === 'inlineStr') {
+                foreach ($c->getElementsByTagName('t') as $t) $val .= $t->textContent;
+            } else {
+                $vEl = $c->getElementsByTagName('v')->item(0);
+                $raw = $vEl ? $vEl->textContent : '';
+                $val = ($type === 's' && $raw !== '') ? ($shared[(int)$raw] ?? '') : $raw;
+            }
+            $s = $c->getAttribute('s');
+            $cells[$idx] = ['v' => $val, 'b' => $s !== '' && ($bold[(int)$s] ?? false)];
+            if ($idx > $max) $max = $idx;
+        }
+        $dense = [];
+        for ($i = 0; $i <= $max; $i++) $dense[$i] = $cells[$i] ?? ['v' => '', 'b' => false];
+        $rows[] = $dense;
+    }
+    return $rows;
+}
+
+/** Every worksheet of an .xlsx file: [sheet name => rows of ['v','b'] cells]. Throws RuntimeException. */
+function xlsx_read_sheets(string $path): array {
+    $bytes  = xlsx_file_bytes($path);
+    $ss     = xlsx_zip_read($bytes, 'xl/sharedStrings.xml');
+    $shared = $ss !== null ? xlsx_shared_strings($ss) : [];
+    $st     = xlsx_zip_read($bytes, 'xl/styles.xml');
+    $bold   = $st !== null ? xlsx_bold_styles($st) : [];
+    $out = [];
+    foreach (xlsx_sheet_parts($bytes) as $name => $part) {
+        $xml = xlsx_zip_read($bytes, $part);
+        if ($xml !== null) $out[(string)$name] = xlsx_sheet_cells($xml, $shared, $bold, true);
+    }
+    if (!$out) throw new RuntimeException('No worksheet found in the file.');
+    return $out;
+}
+
 /**
  * Read the first worksheet of an .xlsx file as rows of string cells.
  * Throws RuntimeException on an unreadable file.
  */
 function xlsx_read_rows(string $path): array {
-    $bytes = @file_get_contents($path);
-    if ($bytes === false || $bytes === '') throw new RuntimeException('Could not read the uploaded file.');
-    if (substr($bytes, 0, 2) !== 'PK')     throw new RuntimeException('That does not look like an .xlsx file.');
+    $bytes = xlsx_file_bytes($path);
 
     $shared = [];
     $ss = xlsx_zip_read($bytes, 'xl/sharedStrings.xml');
@@ -114,32 +215,6 @@ function xlsx_read_rows(string $path): array {
     }
     if ($sheetXml === null) throw new RuntimeException('No worksheet found in the file.');
 
-    $doc = new DOMDocument();
-    if (!@$doc->loadXML($sheetXml)) throw new RuntimeException('The worksheet XML could not be parsed.');
-
-    $rows = [];
-    foreach ($doc->getElementsByTagName('row') as $rowEl) {
-        $cells = [];
-        $max   = -1;
-        foreach ($rowEl->getElementsByTagName('c') as $c) {
-            $ref  = $c->getAttribute('r');
-            $idx  = $ref !== '' ? xlsx_col_index($ref) : count($cells);
-            $type = $c->getAttribute('t');
-            $val  = '';
-            if ($type === 'inlineStr') {
-                foreach ($c->getElementsByTagName('t') as $t) $val .= $t->textContent;
-            } else {
-                $vEl = $c->getElementsByTagName('v')->item(0);
-                $raw = $vEl ? $vEl->textContent : '';
-                $val = ($type === 's' && $raw !== '') ? ($shared[(int)$raw] ?? '') : $raw;
-            }
-            $cells[$idx] = $val;
-            if ($idx > $max) $max = $idx;
-        }
-        // Normalise to a dense 0..max array so column positions line up.
-        $dense = [];
-        for ($i = 0; $i <= $max; $i++) $dense[$i] = $cells[$i] ?? '';
-        $rows[] = $dense;
-    }
-    return $rows;
+    return array_map(fn(array $r): array => array_map(fn(array $c): string => $c['v'], $r),
+                     xlsx_sheet_cells($sheetXml, $shared, [], false));
 }

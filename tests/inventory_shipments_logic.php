@@ -5,6 +5,7 @@ declare(strict_types=1);
 // SKIPs when no DB is reachable or add_inventory_shipments.sql is missing.
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/inventory-views.php';
+require_once __DIR__ . '/../includes/xlsx-reader.php';
 
 $failures = 0;
 function check(string $label, bool $cond): void {
@@ -48,6 +49,15 @@ check('restock source: an owned store beats one merely shared', inv_default_rest
         ['id' => 1, 'kind' => 'store', 'is_main' => 't', 'venue_id' => null, 'share_venue_ids' => '{}'],
         ['id' => 9, 'kind' => 'store', 'is_main' => 'f', 'venue_id' => 7, 'share_venue_ids' => '{6,8}'],
         ['id' => 12, 'kind' => 'store', 'is_main' => 'f', 'venue_id' => 6, 'share_venue_ids' => '{}']], $mi) === 12);
+
+// ── xlsx reader ─────────────────────────────────────────────────────────────
+$sheets = xlsx_read_sheets($fixture);
+check('xlsx: every sheet, by name, in workbook order', array_keys($sheets) === ['Master Shipper Owned Container', 'PL NONE 6585458',
+    'PL NONE6848636', 'Master List Vessel Container', 'PL MSBU781565', 'PL TEMU8316834']);
+$soc = $sheets['Master Shipper Owned Container'];
+check('xlsx: row numbers kept (row 7 is index 6)', ($soc[6][3]['v'] ?? '') === 'Villas' && ($soc[7][1]['v'] ?? '') === 'V001');
+check('xlsx: bold section heading, plain line', ($soc[6][3]['b'] ?? false) === true && ($soc[7][3]['b'] ?? true) === false);
+check('xlsx: first-sheet reader unchanged (plain strings)', is_string(xlsx_read_rows($fixture)[0][3] ?? null));
 
 // ── Pure checks (each task inserts its section above this line) ──
 
