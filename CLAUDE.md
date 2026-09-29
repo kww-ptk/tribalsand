@@ -256,6 +256,17 @@ migration**, the table predates the editors. Helpers in **`includes/rates.php`**
   `data-dp-bound` and skips them, so a clone of a live row would look right and never open.
 - Test: `php tests/rates_logic.php` (71 assertions, DB work in a rolled-back transaction).
 
+### Rates comparison + Quote builder — every property, KES | USD
+`admin/rates.php` is now three views (real URLs): **Rate card** (`?view=card`, every room × its season labels for a year, plus Base), **Timeline** (`?view=timeline`, rooms × days coloured by season) and **Calendar** (`?view=calendar&venue=`, the original per-property calendars). A legacy `?venue=N` with **no** `?view` opens the Calendar view (old bookmarks); anything else defaults to the card. **Bookings → Quote builder** (`admin/quote-builder.php`, `require_bookings()`) and the **Build quote** pop-up on `admin/submission-view.php` share ONE component: `includes/quote-builder-view.php` + `admin/assets/admin-quote-builder.js`, priced by `api/quote-builder.php` (session + Bookings audience + CSRF-in-body + `admin_venue_ids()` scope). The pop-up (and its "Insert as Option 1, 2…") renders **only where the enquiry thread exists** (`submission_notes_supported()`, migration `add_submission_notes`). Spec: `docs/superpowers/specs/2026-09-28-rates-compare-design.md`. Tests: `php tests/rates_compare_logic.php`, `php tests/quote_builder_logic.php`.
+- **One pricing path.** `room_stay_quotes()` (batch, `includes/db.php`) is THE summation; `room_stay_quote()` is a one-room call into it. The Rate card / Timeline read `rates_nightly_maps()` — never raw `rates` rows. Don't add a second nightly loop.
+- **Unpriced is never zero.** A room whose price is ≤ 0 for the dates shows "—" (Timeline tooltip: "no price") and the builder lists it with a "no price set for these dates" notice; `qb_price_selection()` returns `line`/`avg` = `null` for it, so it never adds 0 to a total. Likewise an extra with no price gets an "add a price" notice.
+- **Season colours** come from the label via `rc_season_class()`: Standard, Mid, **Peak — and "High" (a property's top season, e.g. Maya Ilai's "High season") counts as peak**, same rank and colour; any other label is "other", no label is Base. Sort order Standard, Mid, Peak/High, then A–Z.
+- **Quotes are read-only**: nothing saved, no hold, no email. Activities price from `tours.price_amount` (USD), transfers from `service_options` (site currency); a client price is honoured only for custom lines and edited catalogue prices. Discount % hits accommodation only. Extra labels carry their basis via `qb_extra_label()` (per night → "× 1 · 4 nights", per person → "× 2 people") in both the breakdown and the copy text — build labels there, never inline.
+- **Currency switch** (`includes/money-switch.php` + `admin/assets/admin-money.js`): amounts render in their own currency with `data-amt`/`data-cur` via `rc_money_html()`; the script converts with `fx_rates()`. `rc_money_text()` and the JS `text()` must stay identical. Converted figures are marked ≈; totals are converted per line with `rc_convert()` and the quote states the rate.
+- **Print** styles are scoped to `body.qb-printing`, which only the builder's Print button sets (removed on `afterprint`) — a plain browser print of any admin page is unaffected. Don't move those rules out of that scope.
+- **Shell-safe scripts:** both scripts are emitted INLINE with `readfile()` (admin shell navigation re-runs inline scripts only) behind `$GLOBALS` once-guards, and guard themselves (`window.tsMoney`, `data-qb-ready`, `window.__qbGlobal`, `window.__qbInsertBound`).
+- The shared range datepicker fires no `change` for ranges — the builder watches its hidden inputs after each click. Maya Ilai is quoted at its live rates; group/availability deals stay in `admin/maya-ilai-rates.php`.
+
 ### Maya Ilai — composite inventory (components on the block)
 Maya Ilai sells **eight products over eight shared villas**. Physical inventory is
 8 villas × (2 double + 1 bunk + 1 living) + 8 studios. A product consumes a subset of
@@ -620,7 +631,10 @@ The **Activity log** on Team → employee profile (`admin/employee.php` → `per
 | `includes/gantt-block-guard.php` | Guards the Gantt's drag-to-move against overselling a villa; excludes the moving block from accusing itself |
 | `includes/rates.php` | Nightly rate helpers — merge, resolve, trim/split writes, scoped delete |
 | `includes/rate-form.php` · `includes/rate-calendar.php` | Multi-range rate entry + read-only month grid partials |
-| `admin/rates.php` | Site-wide read-only rates calendar (scoped, reception-visible) |
+| `admin/rates.php` | Site-wide read-only rates: Rate card / Timeline / Calendar views (scoped, reception-visible) |
+| `includes/rates-compare.php` · `includes/money-switch.php` · `admin/assets/admin-money.js` | Rates comparison helpers (pure) + the KES/USD switch |
+| `includes/quote-builder.php` · `api/quote-builder.php` | Quote builder pricing (pure maths + catalogue + `qb_price_selection()`) and its JSON endpoint |
+| `admin/quote-builder.php` · `includes/quote-builder-view.php` · `admin/assets/admin-quote-builder.js` | Quote builder page, shared UI partial (also the enquiry pop-up) and script |
 | `includes/bookings.php` | Unified bookings ledger — confirm/import writers, pure report aggregators, occupancy (pre-migration-safe) |
 | `includes/agent.php` | Trade-portal helpers — isolated agent auth, discount/net pricing, `agent_submit_request()` (request writer — never a hold), `agent_tag_converted_hold()` (admin conversion tagging), request list |
 | `agent/availability.php` · `agent/request.php` · `agent/requests.php` | Trade portal pages — live availability at net rate, request-to-book (PRG, no hold), request status list |
