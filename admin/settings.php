@@ -72,6 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $quote_terms = trim(str_replace("\r\n", "\n", (string)($_POST['quote_terms'] ?? '')));
         if (mb_strlen($quote_terms) > 2000) {
             $error = 'Quote terms are limited to 2,000 characters.';
+            $quote_terms_typed = $quote_terms;   // re-shown below so a long edit is not lost
         } else {
             set_setting('quote_terms', $quote_terms);
             audit_log('settings.save_quote_terms');
@@ -141,7 +142,7 @@ $site_currency        = setting('site_currency',        'USD');
 $checkin_instructions = setting('checkin_instructions', '');
 $unit_assignment      = setting('unit_assignment',      'auto');
 require_once __DIR__ . '/../includes/quote-docs.php';   // QB_QUOTE_TERMS_DEFAULT
-$quote_terms          = setting('quote_terms',          '');
+$quote_terms          = $quote_terms_typed ?? setting('quote_terms', '');   // typed text wins after a refused save
 
 $fx           = fx_rates(true); // fresh read so a just-saved/synced value shows immediately
 $fx_rates_map = $fx['rates']  ?? [];

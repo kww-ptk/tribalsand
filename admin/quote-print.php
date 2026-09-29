@@ -27,13 +27,19 @@ function qp_fail(int $code, string $msg): never {
 }
 
 $doc = null;
+$autoPrint = false;
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $sel = json_decode((string)($_POST['sel'] ?? ''), true);
     if (!is_array($sel)) qp_fail(400, 'Nothing to print — build a quote first.');
-    $priced = qb_price_selection($sel, admin_venue_ids());
-    $priced_lines = array_filter((array)$priced['lines'], fn($l) => ($l['kind'] ?? '') !== 'total');
-    if (!$priced_lines || (float)$priced['summary']['total'] <= 0) qp_fail(422, 'Nothing is priced yet — add rooms or extras with a price.');
+    try {
+        $priced = qb_price_selection($sel, admin_venue_ids());
+    } catch (Throwable $e) {
+        error_log('quote-print pricing failed: ' . $e->getMessage());
+        qp_fail(500, 'Could not price this quote. Try again.');
+    }
+    if (!qb_quote_has_priced_lines($priced)) qp_fail(422, 'Nothing is priced yet.');
+    $autoPrint = true;   // a live print from the builder opens straight to the print dialog
     $doc = qb_quote_document($priced, ['ref' => qb_quote_ref(null, null, date('Y-m-d H:i:s')), 'issued' => date('Y-m-d')], qb_quote_terms());
 } else {
     $row = qb_quote_fetch((int)($_GET['quote'] ?? 0));
@@ -43,6 +49,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // A saved quote prints the terms it was issued under (stored at save time).
     $terms = trim((string)($meta['terms'] ?? '')) !== '' ? (string)$meta['terms'] : qb_quote_terms();
     $doc = qb_quote_document((array)($snap['quote'] ?? []), $meta, $terms);
+    $autoPrint = ($_GET['print'] ?? '') === '1';   // "View PDF" from the Quotes list just shows the page
 }
 
 $pf = $doc['prepared_for'];
@@ -207,12 +214,14 @@ th+th,td+td{padding-left:10px}
   </footer>
 </main>
 
+<?php if ($autoPrint): ?>
 <script>
-  // Open the print dialog once the page (fonts + logo) has loaded.
+  // Open the print dialog once the page (fonts + logo) has loaded (only when asked: ?print=1 or a live print).
   window.addEventListener('load', function () {
     var go = function () { setTimeout(function () { window.print(); }, 150); };
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(go, go); else go();
   });
 </script>
+<?php endif; ?>
 </body>
 </html>

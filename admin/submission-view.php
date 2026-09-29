@@ -719,7 +719,8 @@ include __DIR__ . '/_layout.php';
             var text = e.detail.text, n = +(box.getAttribute('data-qb-count') || 0);
             if (e.detail.option_no) {
               // A saved option: its first line is already "TSR-… · Option N" (the server's number).
-              box.value = box.value.trim() ? box.value.replace(/\s+$/, '') + '\n\n' + text : text;
+              // Already in the reply (inserted before): don't append it twice — just close and focus.
+              if (box.value.indexOf(text) < 0) box.value = box.value.trim() ? box.value.replace(/\s+$/, '') + '\n\n' + text : text;
             } else if (n === 0) {
               box.value = box.value.trim() ? box.value.replace(/\s+$/, '') + '\n\n' + text : text;
               box.setAttribute('data-qb-first', text);

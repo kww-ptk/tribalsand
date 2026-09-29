@@ -151,6 +151,37 @@ function qb_fx_note(array $rates, string $cur, string $today): string {
          . date('j M Y', strtotime($today)) . '.';
 }
 
+/**
+ * Guest-facing season wording from the short mix string rc_season_mix() makes
+ * ("2 Mid + 1 Base"). PURE. The guest never sees "Base": a stay wholly at base
+ * rate is just its nights ("2 nights"); a mixed stay names the seasons and calls
+ * base nights "regular" ("2 Mid season nights + 1 regular night"). "season" is
+ * added to Standard/Mid/Peak/High only (a custom label like "Christmas" stays
+ * "2 Christmas nights"); an unlabelled override reads "special rate".
+ * The short mix stays the builder table's internal shorthand.
+ */
+function qb_guest_mix(string $mix): string {
+    $mix = trim($mix);
+    if ($mix === '') return '';
+    $items = [];
+    foreach (preg_split('/\s+\+\s+/', $mix) as $part) {
+        if (!preg_match('/^(\d+)\s+(.+)$/u', trim($part), $m)) return $mix;   // not ours: leave as given
+        $items[] = [(int)$m[1], trim($m[2])];
+    }
+    $nights = fn(int $n) => $n . ' night' . ($n === 1 ? '' : 's');
+    if (count($items) === 1 && strcasecmp($items[0][1], 'Base') === 0) return $nights($items[0][0]);
+    $out = [];
+    foreach ($items as [$n, $name]) {
+        if (strcasecmp($name, 'Base') === 0)            $label = 'regular';
+        elseif (strcasecmp($name, 'Other rate') === 0)  $label = 'special rate';
+        elseif (preg_match('/season$/i', $name))        $label = $name;
+        elseif (in_array(rc_season_class($name), ['std', 'mid', 'peak'], true)) $label = $name . ' season';
+        else                                            $label = $name;
+        $out[] = $n . ' ' . $label . ' night' . ($n === 1 ? '' : 's');
+    }
+    return implode(' + ', $out);
+}
+
 /** Money for the quote text, in the quote currency ("KES 48,360", "$375"). */
 function qb_fmt(float $amt, string $cur): string {
     return rc_money_text($amt, $cur);
@@ -176,7 +207,7 @@ function qb_quote_text(array $q): string {
         $lines[] = '';
         $lines[] = 'Accommodation';
         foreach ($q['rooms'] as $r) {
-            $lines[] = '• ' . $r['name'] . ' × ' . (int)$r['qty'] . ($r['mix'] !== '' ? ' (' . $r['mix'] . ')' : '')
+            $lines[] = '• ' . $r['name'] . ' × ' . (int)$r['qty'] . (qb_guest_mix((string)$r['mix']) !== '' ? ' (' . qb_guest_mix((string)$r['mix']) . ')' : '')
                      . ': ' . qb_fmt((float)$r['amt'], $c);
         }
         if ((float)$q['discount'] > 0) {

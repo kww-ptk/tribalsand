@@ -59,6 +59,20 @@ check('name: a longer venue word is not a prefix', qb_room_display_name('Zuri', 
 check('conv: converts a line', qb_conv_line(['amt' => 10.0, 'cur' => 'USD'], 'KES', $fx) === 1290.0);
 check('conv: unknown currency is null, never 0', qb_conv_line(['amt' => 10.0, 'cur' => 'EUR'], 'KES', $fx) === null);
 
+// ── Guest-friendly season wording (pure: short mix string → guest wording) ───
+check('guest mix: all base = just nights', qb_guest_mix('2 Base') === '2 nights' && qb_guest_mix('1 Base') === '1 night');
+check('guest mix: mixed stay names regular nights', qb_guest_mix('2 Mid + 1 Base') === '2 Mid season nights + 1 regular night');
+check('guest mix: two seasons', qb_guest_mix('2 Mid + 2 Peak') === '2 Mid season nights + 2 Peak season nights');
+check('guest mix: single season', qb_guest_mix('4 Peak') === '4 Peak season nights' && qb_guest_mix('1 Peak') === '1 Peak season night');
+check('guest mix: High counts as a season', qb_guest_mix('3 High') === '3 High season nights');
+check('guest mix: a label already ending in season is not doubled', qb_guest_mix('2 Mid season') === '2 Mid season nights');
+check('guest mix: a custom label is not called a season', qb_guest_mix('2 Christmas + 1 Base') === '2 Christmas nights + 1 regular night');
+check('guest mix: unlabelled override reads as a special rate', qb_guest_mix('2 Other rate') === '2 special rate nights');
+check('guest mix: empty stays empty', qb_guest_mix('') === '');
+check('guest mix: never says Base', !str_contains(qb_guest_mix('1 Standard + 3 Base'), 'Base'));
+check('guest mix: matches rc_season_mix output', qb_guest_mix(rc_season_mix([
+    'a' => ['is_override' => true, 'label' => 'Mid season', 'price' => 1], 'b' => ['is_override' => false, 'price' => 1]])) === '1 Mid season night + 1 regular night');
+
 // ── Quote text ───────────────────────────────────────────────────────────────
 $txt = qb_quote_text([
     'name' => 'Sofia Martin', 'check_in' => '2027-03-24', 'check_out' => '2027-03-28', 'nights' => 4,
@@ -72,7 +86,7 @@ $txt = qb_quote_text([
     'total' => 213162.0, 'fx_note' => 'Converted at 1 USD = 129 KES on 29 Sep 2026.',
 ]);
 check('text: header', str_starts_with($txt, "Tribal Sand — quote for Sofia Martin\n24 Mar 2027 → 28 Mar 2027 · 4 nights · 2 adults, 1 child"));
-check('text: room line', str_contains($txt, '• Zuri — Maji Suite × 1 (2 Mid + 2 Peak): KES 229,680'));
+check('text: room line (guest wording, never "Base")', str_contains($txt, '• Zuri — Maji Suite × 1 (2 Mid season nights + 2 Peak season nights): KES 229,680'));
 check('text: discount line', str_contains($txt, 'Discount 10% (Returning guest): −KES 22,968'));
 check('text: extra line', str_contains($txt, '• Airport → Property × 1: KES 6,450'));
 check('text: per-night extra shows nights', str_contains($txt, '• Private chef dinner × 1 · 4 nights: KES 400'));

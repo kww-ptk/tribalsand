@@ -69,7 +69,7 @@ check('doc: prepared for', $doc['prepared_for']['name'] === 'Sofia Martin'
 check('doc: request rows carried', $doc['request'] === $meta['request']);
 check('doc: accommodation rows', count($doc['rooms']) === 2 && $doc['rooms'][0]['property'] === 'Zuri'
     && $doc['rooms'][0]['room'] === 'Maji Suite' && $doc['rooms'][1]['qty'] === 2
-    && $doc['rooms'][0]['mix'] === '2 Mid + 2 Peak' && $doc['rooms'][0]['amount'] === 'KES 229,680');
+    && $doc['rooms'][0]['mix'] === '2 Mid season nights + 2 Peak season nights' && $doc['rooms'][1]['mix'] === '4 Standard season nights' && $doc['rooms'][0]['amount'] === 'KES 229,680');
 check('doc: accommodation subtotal', $doc['accommodation'] === 'KES 329,680');
 check('doc: discount', $doc['discount'] === ['label' => 'Discount 10% (Returning guest)', 'amount' => '−KES 32,968']);
 check('doc: extras', $doc['extras'] === [['label' => 'Airport → Property × 1', 'amount' => 'KES 6,450']]);
@@ -149,6 +149,17 @@ if ($pdo) {
                 && !str_contains(json_encode($snap), 'private message'));
             check('snapshot: selection kept, want_free dropped', $snap['sel']['rooms'][0]['id'] === $rid && !array_key_exists('want_free', $snap['sel']));
 
+            check('snapshot: no catalogue rooms / free counts stored', !array_key_exists('rooms', $snap['quote']) && !array_key_exists('extras', $snap['quote'])
+                && !array_key_exists('notices', $snap['quote']));
+            check('snapshot: keeps what the document needs', isset($snap['quote']['quote_rooms'], $snap['quote']['quote_extras'], $snap['quote']['lines'],
+                $snap['quote']['summary'], $snap['quote']['currency'], $snap['quote']['nights'], $snap['quote']['check_in']) && array_key_exists('fx_note', $snap['quote']));
+            $re = qb_quote_document((array)$snap['quote'], (array)$snap['meta'], (string)$snap['meta']['terms']);
+            $liveDoc = qb_quote_document($live, ['ref' => $s1['ref'], 'issued' => date('Y-m-d')], (string)$snap['meta']['terms']);
+            check('reprint: renders from the snapshot alone', $re['total'] === $liveDoc['total'] && $re['rooms'] === $liveDoc['rooms']
+                && $re['extras'] === $liveDoc['extras'] && $re['prepared_for'] === $liveDoc['prepared_for'] && $re['rooms'] && $re['ref'] === $s1['ref']);
+            check('reprint: no room line says "Base"', !str_contains(json_encode($re['rooms']), 'Base'));
+            check('snapshot: copy text kept for a re-copy', str_contains((string)$snap['quote']['text'], 'Tribal Sand — quote for Test Guest'));
+
             $list = qb_quotes_for_submission($sid);
             check('list: both options, in order', array_column($list, 'option_no') === [1, 2]);
             check('list: currency + total per option', $list[1]['currency'] === 'USD' && (float)$list[1]['total'] > 0);
@@ -163,8 +174,15 @@ if ($pdo) {
             check('refuse: out of scope (empty scope)', $refused(fn() => qb_quote_save($sid, $admin, $sel, [])));
             check('refuse: out of scope (another venue)', $refused(fn() => qb_quote_save($sid, $admin, $sel, [$vid + 100000])));
             check('refuse: nothing priced', $refused(fn() => qb_quote_save($sid, $admin, ['rooms' => [], 'extras' => []] + $sel, null)));
+            $refused_msg = ''; try { qb_quote_save($sid, $admin, ['rooms' => [], 'extras' => []] + $sel, null); } catch (QbQuoteRefusal $e) { $refused_msg = $e->getMessage(); }
+            check('refuse: wording', $refused_msg === 'Nothing is priced yet.');
             check('refuse: unknown enquiry', $refused(fn() => qb_quote_save(2147483000, $admin, $sel, null)));
             check('refuse: nothing written by refusals', count(qb_quotes_for_submission($sid)) === 2);
+
+            // A priced quote whose total is 0 (100% discount, no extras) is still a quote.
+            $free = qb_quote_save($sid, $admin, ['discount_pct' => 100, 'extras' => []] + $sel, null);
+            check('save: a 100% discount (total 0) still saves', $free['option_no'] === 3 && $free['total'] == 0.0);
+            check('save: the free quote reprints from its snapshot', qb_quote_fetch($free['id'])['snapshot']['quote']['summary']['total'] == 0.0);
 
             // An enquiry with no property attached is in scope for every account (submission_in_scope()).
             $sid2 = (int)db_query("INSERT INTO submissions (type, guest_name, payload_json) VALUES ('contact', 'No Room', '{}') RETURNING id")->fetchColumn();

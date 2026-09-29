@@ -118,7 +118,7 @@ function qb_quote_document(array $priced, array $meta, string $terms): array {
     $rooms = [];
     foreach ((array)($priced['quote_rooms'] ?? []) as $r) {
         $rooms[] = ['property' => (string)$r['venue'], 'room' => (string)$r['room'], 'qty' => (int)$r['qty'],
-                    'mix' => (string)$r['mix'], 'amount' => $fmt($r['amt'])];
+                    'mix' => qb_guest_mix((string)$r['mix']), 'amount' => $fmt($r['amt'])];
     }
     $extras = [];
     foreach ((array)($priced['quote_extras'] ?? []) as $x) $extras[] = ['label' => (string)$x['label'], 'amount' => $fmt($x['amt'])];
@@ -151,6 +151,23 @@ function qb_quote_document(array $priced, array $meta, string $terms): array {
         'terms'         => $terms,
         'contact'       => QB_QUOTE_CONTACT,
     ];
+}
+
+/** Does a priced quote have at least one line besides the total? (Total 0 is fine — e.g. 100% off.) */
+function qb_quote_has_priced_lines(array $priced): bool {
+    foreach ((array)($priced['lines'] ?? []) as $l) if (($l['kind'] ?? '') !== 'total') return true;
+    return false;
+}
+
+/**
+ * The priced quote as stored in a snapshot: what the printed page and a reprint
+ * need (lines, summary, document rows, fx, party/dates, copy text) — NOT the
+ * catalogue rows (`rooms`: every room with free counts), extras echo or notices.
+ */
+function qb_quote_snapshot_quote(array $priced): array {
+    $keep = ['currency', 'check_in', 'check_out', 'nights', 'name', 'adults', 'children', 'issued',
+             'summary', 'lines', 'fx_note', 'text', 'quote_rooms', 'quote_extras'];
+    return array_intersect_key($priced, array_flip($keep));
 }
 
 /** The selection as stored in a snapshot: only the fields the builder reads, bounded. */
@@ -224,8 +241,8 @@ function qb_quote_save(int $submissionId, ?int $adminId, array $sel, ?array $sco
 
     $priced = qb_price_selection($sel, $scope);
     $total  = (float)$priced['summary']['total'];
-    $priced_lines = array_filter((array)$priced['lines'], fn($l) => ($l['kind'] ?? '') !== 'total');
-    if ($total <= 0 || !$priced_lines) throw new QbQuoteRefusal('Nothing is priced yet — add rooms or extras with a price.');
+    // Refuse only when nothing is priced. A priced quote can total 0 (a 100% discount) and is still a quote.
+    if (!qb_quote_has_priced_lines($priced)) throw new QbQuoteRefusal('Nothing is priced yet.');
 
     $cur = (string)$priced['currency'];
     $pdo = db();
@@ -240,7 +257,7 @@ function qb_quote_save(int $submissionId, ?int $adminId, array $sel, ?array $sco
         $rates = fx_rates()['rates'];
         $snapshot = [
             'v' => 1,
-            'quote' => $priced,
+            'quote' => qb_quote_snapshot_quote($priced),
             'sel'   => qb_selection_snapshot($sel),
             'meta'  => [
                 'ref' => $ref, 'issued' => date('Y-m-d', strtotime($now)), 'currency' => $cur,

@@ -41,7 +41,9 @@
     var seq = 0, timer = null, last = null, lastDates = null, freeSeen = {}, xseq = 0;
     var canSave = root.getAttribute('data-can-save') === '1';
     var sid = +(root.getAttribute('data-submission-id') || 0);
-    var saved = null, savedKey = null, saving = null;
+    // selection key → saved option / in-flight save. Keyed, so A→B→A reuses A's option and a slow
+    // earlier save can only ever fill in its OWN key.
+    var savedMap = {}, savingMap = {};
     root.__qbDates = function () { return q(root, '[data-qb-ci]').value + '|' + q(root, '[data-qb-co]').value; };
     root.__qbSeenDates = root.__qbDates();
 
@@ -82,7 +84,8 @@
         .then(function (d) {
           if (my !== seq) return;
           if (!d || !d.ok) { status.textContent = (d && d.error) || 'Could not price this quote.'; return; }
-          status.textContent = isSaved(s) ? 'Saved as Option ' + saved.option_no + '.' : '';
+          var sv = savedFor(s);
+          status.textContent = sv ? 'Saved as Option ' + sv.option_no + '.' : '';
           if (s.want_free) { lastDates = s.check_in + '|' + s.check_out; freeSeen = {}; }
           last = d.quote;
           paint(d.quote);
@@ -202,14 +205,14 @@
       Object.keys(s).forEach(function (k) { if (k !== 'want_free') c[k] = s[k]; });
       return JSON.stringify(c);
     }
-    function isSaved(s) { return !!saved && savedKey === selKey(s); }
+    function savedFor(s) { return savedMap[selKey(s)] || null; }
     function priced() { return !!last && (last.lines || []).length > 1; }
     // Resolves with the saved option ({id, option_no, ref, text, pdf_url, …}); rejects on failure
     // (the status line says why). An unchanged selection reuses the option already saved.
     function save() {
       var s = selection(), key = selKey(s), status = q(root, '[data-qb-status]');
-      if (saved && savedKey === key) return Promise.resolve(saved);
-      if (saving && saving.key === key) return saving.p;
+      if (savedMap[key]) return Promise.resolve(savedMap[key]);
+      if (savingMap[key]) return savingMap[key];
       status.textContent = 'Saving…';
       var p = fetch(root.getAttribute('data-endpoint'), {
         method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
@@ -218,18 +221,19 @@
         .then(function (r) { return r.json().catch(function () { return { ok: false }; }); },
               function () { return { ok: false, error: 'Could not reach the server. Nothing was saved.' }; })
         .then(function (d) {
-          saving = null;
+          delete savingMap[key];
+          var current = key === selKey(selection());          // only the selection now on screen owns the status line
           if (!d || !d.ok) {
             var msg = (d && d.error) || 'Could not save this quote.';
-            status.textContent = msg;
+            if (current) status.textContent = msg;
             throw new Error(msg);
           }
-          saved = d.saved; savedKey = key;
-          status.textContent = 'Saved as Option ' + saved.option_no + '.';
-          document.dispatchEvent(new CustomEvent('qb:saved', { detail: saved }));
-          return saved;
+          savedMap[key] = d.saved;
+          if (current) status.textContent = 'Saved as Option ' + d.saved.option_no + '.';
+          document.dispatchEvent(new CustomEvent('qb:saved', { detail: d.saved }));
+          return d.saved;
         });
-      saving = { key: key, p: p };
+      savingMap[key] = p;
       return p;
     }
     var saveBtn = q(root, '[data-qb-save]');
@@ -239,7 +243,8 @@
     q(root, '[data-qb-copy]').addEventListener('click', function () {
       var b = this;
       if (!last) return;
-      var text = isSaved(selection()) ? saved.text : last.text;
+      var sv = savedFor(selection());
+      var text = sv ? sv.text : last.text;
       var done = function () { var o = b.textContent; b.textContent = 'Copied'; setTimeout(function () { b.textContent = o; }, 1400); };
       if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, function () {});
     });
@@ -250,7 +255,13 @@
         var w = window.open('', '_blank');
         if (w) { try { w.document.title = 'Quotation'; w.document.body.textContent = 'Preparing the quotation…'; } catch (e) {} }
         save().then(function (sv) {
-          if (w && !w.closed) w.location.href = sv.pdf_url; else window.open(sv.pdf_url, '_blank');
+          if (!w) {
+            // Blocked: a second window.open after the await would be blocked too. The quote IS saved.
+            q(root, '[data-qb-status]').textContent = 'Saved as Option ' + sv.option_no
+              + ' — your browser blocked the new tab; open it from Quotes → View PDF.';
+            return;
+          }
+          if (!w.closed) w.location.href = sv.pdf_url + '&print=1';   // print=1: open the print dialog
         }, function () { if (w) w.close(); });
         return;
       }

@@ -4,6 +4,7 @@
 -- figures), the selection that produced it, the guest's request block, the FX
 -- rate and the terms in force — so a saved quote always reopens at the prices
 -- it was quoted at. option_no is allocated server-side, next number per enquiry.
+-- UNIQUE (submission_id, option_no) also serves lookups by submission_id, so no separate index.
 -- Run via /admin/migrate.php. Idempotent (IF NOT EXISTS).
 CREATE TABLE IF NOT EXISTS submission_quotes (
     id            SERIAL PRIMARY KEY,
@@ -16,4 +17,3 @@ CREATE TABLE IF NOT EXISTS submission_quotes (
     created_at    TIMESTAMP     NOT NULL DEFAULT NOW(),
     UNIQUE (submission_id, option_no)
 );
-CREATE INDEX IF NOT EXISTS idx_submission_quotes_sub ON submission_quotes (submission_id);
