@@ -206,16 +206,17 @@ window.InvGrid = function (o) {
     rows.forEach(function (r) { r.hidden = !!o.hidden(r); });
     refresh();
   }
-  rows.forEach(function (r, i) {
-    var b = box(r); if (!b) return;
-    b.addEventListener('click', function (ev) {
-      // Shift-click ticks the whole range (only the rows currently shown).
-      if (ev.shiftKey && last !== null) {
-        var vis = pickable(), a = vis.indexOf(rows[last]), z = vis.indexOf(r);
-        if (a > -1 && z > -1) vis.slice(Math.min(a, z), Math.max(a, z) + 1).forEach(function (x) { box(x).checked = b.checked; });
-      }
-      last = i; refresh();
-    });
+  // One delegated listener (rows can be swapped in place — see replaceRow()).
+  body.addEventListener('click', function (ev) {
+    var b = ev.target.closest ? ev.target.closest('input[type=checkbox]') : null;
+    if (!b || !body.contains(b)) return;
+    var r = b.closest('tr'), i = rows.indexOf(r); if (i < 0) return;
+    // Shift-click ticks the whole range (only the rows currently shown).
+    if (ev.shiftKey && last !== null && rows[last]) {
+      var vis = pickable(), a = vis.indexOf(rows[last]), z = vis.indexOf(r);
+      if (a > -1 && z > -1) vis.slice(Math.min(a, z), Math.max(a, z) + 1).forEach(function (x) { box(x).checked = b.checked; });
+    }
+    last = i; refresh();
   });
   o.all.addEventListener('change', function () { pickable().forEach(function (r) { box(r).checked = o.all.checked; }); refresh(); });
   o.clear.addEventListener('click', function () { rows.forEach(function (r) { if (box(r)) box(r).checked = false; }); refresh(); });
@@ -236,8 +237,15 @@ window.InvGrid = function (o) {
       rows.forEach(function (r) { body.appendChild(r); });
     });
   });
+  // Swap one row for a fresh copy from the server (keeps its place in the list and the sort).
+  function replaceRow(oldRow, newRow) {
+    var i = rows.indexOf(oldRow); if (i < 0) return;
+    oldRow.parentNode.replaceChild(newRow, oldRow);
+    rows[i] = newRow;
+    filter();
+  }
   filter();
-  return { filter: filter, refresh: refresh };
+  return { filter: filter, refresh: refresh, replaceRow: replaceRow };
 };
 </script>
 JS;

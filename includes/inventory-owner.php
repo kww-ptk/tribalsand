@@ -15,6 +15,7 @@ declare(strict_types=1);
  */
 
 require_once __DIR__ . '/inventory.php';
+require_once __DIR__ . '/inventory-orders.php';   // inv_order_find_receipt_for_move() / inv_order_forget_receipt()
 
 // ── 1. Undo a movement ───────────────────────────────────────────────────────
 
@@ -63,11 +64,27 @@ function inv_undo_refusal(array $move, ?int $toQty, bool $allowCountResolution =
 function inv_undo_move(int $moveId, ?int $userId, bool $allowCountResolution = false): void {
     if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
     inv_tx(function () use ($moveId, $allowCountResolution): void {
-        $shape = db_query('SELECT item_id, from_location_id, to_location_id FROM inv_moves WHERE id = :id', [':id' => $moveId])->fetch();
+        $shape = db_query('SELECT id, item_id, qty, from_location_id, to_location_id, reason, note, created_at FROM inv_moves WHERE id = :id', [':id' => $moveId])->fetch();
         if (!$shape) throw new InvRefusal('That movement no longer exists.');
         $lockItem = (int)$shape['item_id'];
         $lockFrom = $shape['from_location_id'] !== null ? (int)$shape['from_location_id'] : null;
         $lockTo   = $shape['to_location_id']   !== null ? (int)$shape['to_location_id']   : null;
+
+        // A 'receive' move written by inv_order_receive() belongs to an order receipt: undoing the
+        // move must take the receipt back off the order too, or the order keeps saying "received".
+        // The receipt is found BEFORE the delete (move_id is ON DELETE SET NULL, so it would be
+        // unfindable afterwards) and the order + line are locked BEFORE the balances: that is the
+        // order inv_order_receive() takes (order → lines → balances), so an undo racing a receive
+        // cannot deadlock against it. The lookup is unlocked and only decides what to lock;
+        // inv_order_forget_receipt() re-reads the receipt under the lock.
+        $receipt = inv_orders_supported() ? inv_order_find_receipt_for_move($shape) : null;
+        if ($receipt) {
+            $ol = db_query('SELECT l.order_id FROM inv_order_lines l WHERE l.id = :l', [':l' => (int)$receipt['line_id']])->fetch();
+            if ($ol) {
+                db_query('SELECT id FROM inv_orders WHERE id = :id FOR UPDATE', [':id' => (int)$ol['order_id']])->fetch();
+                db_query('SELECT id FROM inv_order_lines WHERE id = :id FOR UPDATE', [':id' => (int)$receipt['line_id']])->fetch();
+            }
+        }
 
         $pairs = [];
         if ($lockFrom !== null) $pairs[] = [$lockItem, $lockFrom];
@@ -76,7 +93,7 @@ function inv_undo_move(int $moveId, ?int $userId, bool $allowCountResolution = f
 
         $m = db_query(
             'DELETE FROM inv_moves WHERE id = :id
-             RETURNING item_id, qty, from_location_id, to_location_id, asset_id, pos_sale_id, count_line_id',
+             RETURNING item_id, qty, from_location_id, to_location_id, asset_id, pos_sale_id, count_line_id, reason, note',
             [':id' => $moveId]
         )->fetch();
         if (!$m) throw new InvRefusal('That movement no longer exists.');   // a racing undo won it first
@@ -96,6 +113,9 @@ function inv_undo_move(int $moveId, ?int $userId, bool $allowCountResolution = f
 
         if ($from !== null) db_query('UPDATE inv_balances SET qty = qty + :q WHERE item_id = :i AND location_id = :l', [':q' => $qty, ':i' => $itemId, ':l' => $from]);
         if ($to   !== null) db_query('UPDATE inv_balances SET qty = qty - :q WHERE item_id = :i AND location_id = :l', [':q' => $qty, ':i' => $itemId, ':l' => $to]);
+
+        // Stock is back; now the order agrees (any refusal above rolled the DELETE back, so this never runs half-way).
+        if ($receipt) inv_order_forget_receipt((int)$receipt['id']);
     });
 }
 

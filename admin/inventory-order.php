@@ -58,6 +58,73 @@ $okPlace = function (int $id) use ($vids): int {
     return ($loc && inv_bool($loc['is_active']) && $loc['kind'] !== 'person' && inv_location_visible($loc, $vids) && inv_move_in_scope(null, $loc, $vids)) ? $id : 0;
 };
 
+$diffLabels  = ['not_packed' => 'Not in any packing list', 'less_packed' => 'Packing lists: %d', 'more_packed' => 'Packing lists: %d (pieces of a set?)'];
+$open = $order && $order['status'] !== 'cancelled';
+
+/** One table row — used by the page and by the per-row Save (which swaps the row in place). */
+$renderRow = function (array $l) use ($open, $places, $canManage, $order, $diffLabels): string {
+    $left = (int)$l['still_to_come']; $planned = (int)($l['planned_location_id'] ?? 0);
+    $pre  = isset($places[$planned]) ? $planned : 0;
+    $lid  = (int)$l['id'];
+    ob_start(); ?>
+      <tr data-line="<?= $lid ?>" data-name="<?= e(mb_strtolower((string)$l['item_name'] . ' ' . (string)$l['sku'] . ' ' . (string)$l['code'])) ?>" data-place="<?= e(mb_strtolower((string)$l['place_label'])) ?>"
+          data-ordered="<?= (int)$l['qty_ordered'] ?>" data-received="<?= (int)$l['qty_received'] ?>" data-left="<?= $left ?>" data-state="<?= $left > 0 ? 'left' : 'done' ?>"<?= $l['pack_diff'] !== null ? ' data-diff="' . e((string)$l['pack_diff']) . '"' : '' ?><?= $l['containers'] ? ' data-containers="' . e((string)json_encode($l['containers'], JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT)) . '"' : '' ?>>
+        <td class="ig-check"><?php if ($open && $left > 0): ?><input type="checkbox" name="ids[]" value="<?= $lid ?>" aria-label="Select <?= e((string)$l['item_name']) ?>"><?php endif; ?></td>
+        <td><a href="/admin/inventory-item.php?id=<?= (int)$l['item_id'] ?>" class="inv-name"><?= inv_thumb_html($l + ['name' => $l['item_name']], 28) ?><span><?= e((string)$l['item_name']) ?><?= $l['tracking'] === 'serial' ? ' <span class="ig-tag">serial</span>' : '' ?>
+          <?php if (!empty($l['sku'])): ?><span class="inv-sub ig-mono"><?= e((string)$l['sku']) ?></span><?php endif; ?>
+          <?php if (!empty($l['hs_code'])): ?><span class="inv-sub ig-mono io-hs" title="Customs (HS) code">HS <?= e((string)$l['hs_code']) ?></span><?php endif; ?></span></a></td>
+        <td class="ig-where"><?= $l['place_label'] !== '' ? e((string)$l['place_label']) : '<span class="text-muted">—</span>' ?></td>
+        <td class="ig-num io-cq"></td>
+        <td class="ig-num"><?= (int)$l['qty_ordered'] ?>
+          <?php if ($l['pack_diff'] !== null): ?><span class="io-diff io-diff--<?= $l['pack_diff'] === 'more_packed' ? 'grey' : 'orange' ?>"><?= e(sprintf($diffLabels[$l['pack_diff']], (int)$l['packed_total'])) ?></span><?php endif; ?></td>
+        <td class="ig-num"><strong><?= (int)$l['qty_received'] ?></strong>
+          <?php foreach ($l['receipts'] as $rc): ?><span class="io-rc"><?= (int)$rc['qty'] ?> → <?= e($rc['location_name']) ?> · <?= e(date('j M', strtotime($rc['created_at']))) ?>
+            <?php if ($canManage && $order['status'] !== 'cancelled'): ?><button type="submit" form="io-undo-form" name="receipt_id" value="<?= (int)$rc['id'] ?>" class="btn-icon io-rc-x" data-tip="Undo this receipt" aria-label="Undo this receipt" data-confirm="<?= e('Undo this receipt? The stock goes back out of ' . $rc['location_name'] . ' and the line is still to come again.') ?>">×</button><?php endif; ?></span><?php endforeach; ?></td>
+        <td class="ig-num"><?= $left > 0 ? $left : '<span class="text-muted">0</span>' ?></td>
+        <?php if ($open): ?>
+          <?php if ($left > 0): ?>
+          <td class="ig-num"><input type="number" name="qty[<?= $lid ?>]" class="inp inp--sm inp--num no-spin io-qty" min="1" max="<?= $left ?>" step="1" inputmode="numeric" aria-label="Received now: <?= e((string)$l['item_name']) ?>"></td>
+          <td><select name="loc[<?= $lid ?>]" class="cell-select" aria-label="Into: <?= e((string)$l['item_name']) ?>">
+              <option value="0">Pick a place…</option>
+              <?php foreach ($places as $p): ?><option value="<?= (int)$p['id'] ?>" <?= $pre === (int)$p['id'] ? 'selected' : '' ?>><?= e(inv_location_label($p)) ?></option><?php endforeach; ?>
+            </select></td>
+          <td><button type="button" class="btn-primary btn-sm io-row-save" data-save-line="<?= $lid ?>"><?= admin_icon('check', 13) ?> Save</button></td>
+          <?php else: ?>
+          <td colspan="3"><span class="badge badge--green">✓ Received</span></td>
+          <?php endif; ?>
+        <?php endif; ?>
+      </tr>
+    <?php return (string)ob_get_clean();
+};
+
+// Per-row Save: receives ONE line without reloading the page (JSON), and hands back the fresh row.
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported && $order && ($_POST['action'] ?? '') === 'save_line') {
+    header('Content-Type: application/json; charset=utf-8');
+    try {
+        verify_csrf();
+        $lineId = (int)($_POST['line_id'] ?? 0);
+        $l = $byLine[$lineId] ?? null;
+        if (!$l) throw new InvRefusal('That line is not part of this order.');
+        $raw = trim((string)($_POST['qty'] ?? ''));
+        if ($raw === '' || !ctype_digit($raw) || (int)$raw < 1) throw new InvRefusal("{$l['item_name']}: enter how many arrived.");
+        $to = $okPlace((int)($_POST['loc'] ?? 0));
+        if (!$to) throw new InvRefusal("{$l['item_name']}: pick where it goes.");
+        $r = inv_order_receive($orderId, [$lineId => ['qty' => (int)$raw, 'location_id' => $to]], $meId);
+        audit_log('inv.order_receive', 'inv_order', $orderId, "{$r['pieces']} pcs on 1 line");
+        $fresh = null;
+        foreach (inv_order_lines($orderId, $vids) as $x) if ((int)$x['id'] === $lineId) $fresh = $x;
+        $o = inv_order_fetch($orderId);
+        $tot = db_query('SELECT COALESCE(SUM(qty_ordered),0) AS o, COALESCE(SUM(qty_received),0) AS r FROM inv_order_lines WHERE order_id = :o', [':o' => $orderId])->fetch();
+        echo json_encode(['ok' => true, 'msg' => "Received {$r['pieces']} × {$l['item_name']}.",
+            'row' => $fresh ? $renderRow($fresh) : '',
+            'status' => (string)$o['status'], 'status_label' => INV_ORDER_STATUSES[$o['status']] ?? (string)$o['status'],
+            'received' => (int)$tot['r'], 'ordered' => (int)$tot['o']]);
+    } catch (InvRefusal $ex) {
+        echo json_encode(['ok' => false, 'msg' => $ex->getMessage()]);
+    }
+    exit;
+}
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported && $order) {
     verify_csrf();
     $act = (string)($_POST['action'] ?? '');
@@ -67,6 +134,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported && $order) {
             inv_order_cancel($orderId);
             audit_log('inv.order_cancel', 'inv_order', $orderId, (string)$order['name']);
             $_SESSION['inv_flash'] = ['type' => 'success', 'msg' => 'Order cancelled.'];
+        } elseif ($act === 'undo_receipt') {
+            if (!$canManage) throw new InvRefusal('Only the owner or a manager can undo a receipt.');
+            $rid = (int)($_POST['receipt_id'] ?? 0);
+            // The receipt must belong to a line of THIS order that this account can see — the id is the client's.
+            $rl = $rid > 0 ? (int) db_query('SELECT line_id FROM inv_order_receipts WHERE id = :id', [':id' => $rid])->fetchColumn() : 0;
+            if ($rl <= 0 || !isset($byLine[$rl])) throw new InvRefusal('That receipt is not part of this order.');
+            inv_order_undo_receipt($rid, $meId);
+            audit_log('inv.order_undo_receipt', 'inv_order', $orderId, "receipt #{$rid}");
+            $_SESSION['inv_flash'] = ['type' => 'success', 'msg' => 'Receipt undone.'];
         } elseif ($act === 'receive_container') {
             if (!in_array($pickedContainer, $containerNames, true)) throw new InvRefusal('That container is not part of this order.');
             $r = inv_order_receive_container($orderId, $pickedContainer, $vids, $meId);
@@ -116,9 +192,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported && $order) {
 $piecesOrdered = $piecesReceived = 0;
 foreach ($lines as $l) { $piecesOrdered += (int)$l['qty_ordered']; $piecesReceived += (int)$l['qty_received']; }
 $anyReceived = $piecesReceived > 0;
-$diffLabels  = ['not_packed' => 'Not in any packing list', 'less_packed' => 'Packing lists: %d', 'more_packed' => 'Packing lists: %d (pieces of a set?)'];
 $diffCount   = count(array_filter($lines, fn($l) => $l['pack_diff'] !== null));
-$open        = $order && $order['status'] !== 'cancelled';
 $badge       = ['open' => 'badge--grey', 'partial' => 'badge--orange', 'received' => 'badge--green', 'cancelled' => 'badge--grey'];
 
 $pageTitle  = $order ? (string)$order['name'] : 'Order';
@@ -143,8 +217,8 @@ include __DIR__ . '/_layout.php';
   <?php dt_empty('That order isn’t available to you.'); ?>
 <?php else: ?>
 <p class="text-muted" style="margin:-4px 0 14px;font-size:13px">
-  <span class="badge <?= e($badge[$order['status']] ?? 'badge--grey') ?>"><?= e(INV_ORDER_STATUSES[$order['status']] ?? (string)$order['status']) ?></span>
-  Received <strong><?= $piecesReceived ?></strong> of <strong><?= $piecesOrdered ?></strong> pieces · created <?= e(date('j M Y', strtotime((string)$order['created_at']))) ?><?= $order['created_by_name'] ? ' by ' . e((string)$order['created_by_name']) : '' ?>
+  <span id="ioStatus" class="badge <?= e($badge[$order['status']] ?? 'badge--grey') ?>"><?= e(INV_ORDER_STATUSES[$order['status']] ?? (string)$order['status']) ?></span>
+  Received <strong id="ioReceived"><?= $piecesReceived ?></strong> of <strong><?= $piecesOrdered ?></strong> pieces · created <?= e(date('j M Y', strtotime((string)$order['created_at']))) ?><?= $order['created_by_name'] ? ' by ' . e((string)$order['created_by_name']) : '' ?>
   <?php if ($containers): ?> · Packing lists match <strong><?= count($lines) - $diffCount ?></strong> of <strong><?= count($lines) ?></strong> lines<?php endif; ?>
   <?php if ($open): ?> — type how many arrived on each row and where they were put, then save. Partial deliveries are fine; come back for the rest.<?php endif; ?>
 </p>
@@ -194,43 +268,14 @@ include __DIR__ . '/_layout.php';
       <th class="ig-check"><input type="checkbox" id="igAll" aria-label="Select all shown"></th>
       <th data-sort="name">Item</th>
       <th data-sort="place">For</th>
-      <?php if ($containers): ?><th class="ig-num io-cq">In container</th><?php endif; ?>
+      <th class="ig-num io-cq">In container</th>
       <th data-sort="ordered" class="ig-num">Ordered</th>
       <th data-sort="received" class="ig-num">Received</th>
       <th data-sort="left" class="ig-num">Still to come</th>
-      <?php if ($open): ?><th class="ig-num">Receive now</th><th>Into</th><?php endif; ?>
+      <?php if ($open): ?><th class="ig-num">Receive now</th><th>Into</th><th></th><?php endif; ?>
     </tr></thead>
     <tbody>
-    <?php foreach ($lines as $l):
-      $left = (int)$l['still_to_come']; $planned = (int)($l['planned_location_id'] ?? 0);
-      $pre  = isset($places[$planned]) ? $planned : 0;
-      $lid  = (int)$l['id']; ?>
-      <tr data-name="<?= e(mb_strtolower((string)$l['item_name'] . ' ' . (string)$l['sku'] . ' ' . (string)$l['code'])) ?>" data-place="<?= e(mb_strtolower((string)$l['place_label'])) ?>"
-          data-ordered="<?= (int)$l['qty_ordered'] ?>" data-received="<?= (int)$l['qty_received'] ?>" data-left="<?= $left ?>" data-state="<?= $left > 0 ? 'left' : 'done' ?>"<?= $l['pack_diff'] !== null ? ' data-diff="' . e((string)$l['pack_diff']) . '"' : '' ?><?= $l['containers'] ? ' data-containers="' . e((string)json_encode($l['containers'], JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT)) . '"' : '' ?>>
-        <td class="ig-check"><?php if ($open && $left > 0): ?><input type="checkbox" name="ids[]" value="<?= $lid ?>" aria-label="Select <?= e((string)$l['item_name']) ?>"><?php endif; ?></td>
-        <td><a href="/admin/inventory-item.php?id=<?= (int)$l['item_id'] ?>" class="inv-name"><?= inv_thumb_html($l + ['name' => $l['item_name']], 28) ?><span><?= e((string)$l['item_name']) ?><?= $l['tracking'] === 'serial' ? ' <span class="ig-tag">serial</span>' : '' ?>
-          <?php if (!empty($l['sku'])): ?><span class="inv-sub ig-mono"><?= e((string)$l['sku']) ?></span><?php endif; ?>
-          <?php if (!empty($l['hs_code'])): ?><span class="inv-sub ig-mono io-hs" title="Customs (HS) code">HS <?= e((string)$l['hs_code']) ?></span><?php endif; ?></span></a></td>
-        <td class="ig-where"><?= $l['place_label'] !== '' ? e((string)$l['place_label']) : '<span class="text-muted">—</span>' ?></td>
-        <?php if ($containers): ?><td class="ig-num io-cq"></td><?php endif; ?>
-        <td class="ig-num"><?= (int)$l['qty_ordered'] ?>
-          <?php if ($l['pack_diff'] !== null): ?><span class="io-diff io-diff--<?= $l['pack_diff'] === 'more_packed' ? 'grey' : 'orange' ?>"><?= e(sprintf($diffLabels[$l['pack_diff']], (int)$l['packed_total'])) ?></span><?php endif; ?></td>
-        <td class="ig-num"><strong><?= (int)$l['qty_received'] ?></strong>
-          <?php foreach ($l['receipts'] as $rc): ?><span class="io-rc"><?= (int)$rc['qty'] ?> → <?= e($rc['location_name']) ?> · <?= e(date('j M', strtotime($rc['created_at']))) ?></span><?php endforeach; ?></td>
-        <td class="ig-num"><?= $left > 0 ? $left : '<span class="text-muted">0</span>' ?></td>
-        <?php if ($open): ?>
-          <?php if ($left > 0): ?>
-          <td class="ig-num"><input type="number" name="qty[<?= $lid ?>]" class="inp inp--sm inp--num no-spin io-qty" min="1" max="<?= $left ?>" step="1" inputmode="numeric" aria-label="Received now: <?= e((string)$l['item_name']) ?>"></td>
-          <td><select name="loc[<?= $lid ?>]" class="cell-select" aria-label="Into: <?= e((string)$l['item_name']) ?>">
-              <option value="0">Pick a place…</option>
-              <?php foreach ($places as $p): ?><option value="<?= (int)$p['id'] ?>" <?= $pre === (int)$p['id'] ? 'selected' : '' ?>><?= e(inv_location_label($p)) ?></option><?php endforeach; ?>
-            </select></td>
-          <?php else: ?>
-          <td colspan="2"><span class="badge badge--green">✓ Received</span></td>
-          <?php endif; ?>
-        <?php endif; ?>
-      </tr>
-    <?php endforeach; ?>
+    <?php foreach ($lines as $l) echo $renderRow($l); ?>
     </tbody>
   </table></div>
   <p class="text-muted ig-count" id="igCount"></p>
@@ -243,12 +288,18 @@ include __DIR__ . '/_layout.php';
     <button type="button" class="btn-outline btn-sm" id="igClear"><?= admin_icon('x', 14) ?> Clear</button>
   </div>
 </form>
+<?php if ($canManage): ?>
+<form method="POST" action="<?= $self ?>" id="io-undo-form" hidden>
+  <?= csrf_field() ?><input type="hidden" name="id" value="<?= $orderId ?>"><input type="hidden" name="action" value="undo_receipt">
+</form>
+<?php endif; ?>
 <?php endif; ?>
 
 <?= inv_shared_css() ?>
 <?= inv_grid_css() ?>
 <style>
 .io-rc{display:block;font-size:11.5px;color:var(--muted);font-weight:400;white-space:nowrap}
+.io-rc-x{width:20px;height:20px;padding:0;margin-left:4px;vertical-align:middle;font-size:15px;line-height:1}
 .io-qty{width:84px}
 .io-diff{display:block;margin-top:2px;font-size:11.5px;font-weight:500;white-space:nowrap}
 .io-diff--orange{color:#e65100}
@@ -258,6 +309,11 @@ include __DIR__ . '/_layout.php';
 .ig:not(.io-show-cq) .io-cq{display:none}
 .ig .cell-select,.ig .eselect:has(> .cell-select){width:220px;max-width:220px}
 .ig td.ig-where{min-width:140px}
+.io-row-save{white-space:nowrap}
+.io-toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,20px);z-index:60;background:#1f3b3a;color:#fff;padding:10px 16px;border-radius:10px;box-shadow:var(--shadow);font-size:13.5px;opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;max-width:calc(100vw - 32px)}
+.io-toast.is-on{opacity:1;transform:translate(-50%,0)}
+.io-toast.is-bad{background:#b3261e}
+@media (min-width:769px){.io-toast{left:calc(50% + var(--sidebar-w) / 2)}}
 </style>
 <?php if ($order): ?>
 <?= inv_grid_js() ?>
@@ -303,6 +359,74 @@ include __DIR__ . '/_layout.php';
   }
   search.addEventListener('input', g.filter); state.addEventListener('change', g.filter);
   if (cont) { cont.addEventListener('change', containerChanged); containerChanged(); }
+
+  // ── Keep your place: full-page saves (top Save, bulk, container, undo) come back to the same spot.
+  var wrap = document.querySelector('.ig-wrap'), key = 'io-scroll-<?= $orderId ?>';
+  function remember() {
+    try { sessionStorage.setItem(key, JSON.stringify({ y: window.scrollY, t: wrap ? wrap.scrollTop : 0, l: wrap ? wrap.scrollLeft : 0 })); } catch (e) {}
+  }
+  document.addEventListener('click', function (ev) {
+    var b = ev.target.closest && ev.target.closest('button[type=submit]');
+    // getAttribute: both forms carry an input named "id", which shadows form.id in the DOM.
+    var fid = b && b.form ? b.form.getAttribute('id') : '';
+    if (fid === 'igForm' || fid === 'io-undo-form') remember();
+  }, true);
+  document.getElementById('igForm').addEventListener('submit', remember);
+  try {
+    var saved = JSON.parse(sessionStorage.getItem(key) || 'null');
+    if (saved) {
+      sessionStorage.removeItem(key);
+      if (wrap) { wrap.scrollTop = saved.t || 0; wrap.scrollLeft = saved.l || 0; }
+      window.scrollTo(0, saved.y || 0);
+    }
+  } catch (e) {}
+
+  // ── Per-row Save: receives just that line, no page reload.
+  var toast = document.createElement('div'); toast.className = 'io-toast'; toast.setAttribute('role', 'status'); document.body.appendChild(toast);
+  var toastTimer = null;
+  function say(msg, bad) {
+    toast.textContent = msg; toast.classList.toggle('is-bad', !!bad); toast.classList.add('is-on');
+    clearTimeout(toastTimer); toastTimer = setTimeout(function () { toast.classList.remove('is-on'); }, bad ? 6000 : 3000);
+  }
+  var csrf = (document.querySelector('#igForm input[name=csrf_token]') || {}).value || '';
+  var badge = { open: 'badge--grey', partial: 'badge--orange', received: 'badge--green', cancelled: 'badge--grey' };
+  function saveRow(btn) {
+    var tr = btn.closest('tr'), id = btn.getAttribute('data-save-line');
+    var qty = tr.querySelector('input[name="qty[' + id + ']"]'), loc = tr.querySelector('select[name="loc[' + id + ']"]');
+    if (!qty || qty.value.trim() === '') { say('Type how many arrived first.', true); if (qty) qty.focus(); return; }
+    var fd = new FormData();
+    fd.append('csrf_token', csrf); fd.append('id', '<?= $orderId ?>'); fd.append('action', 'save_line');
+    fd.append('line_id', id); fd.append('qty', qty.value.trim()); fd.append('loc', loc ? loc.value : '0');
+    btn.disabled = true;
+    fetch('<?= $self ?>', { method: 'POST', body: fd, credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+      .then(function (r) { if (!r.ok) throw new Error('http'); return r.json(); })
+      .then(function (res) {
+        if (!res.ok) { btn.disabled = false; say(res.msg || 'Could not save.', true); return; }
+        if (res.row) {
+          var tmp = document.createElement('tbody'); tmp.innerHTML = res.row.trim();
+          var fresh = tmp.firstElementChild;
+          g.replaceRow(tr, fresh);
+          if (window.enhanceSelects) window.enhanceSelects(fresh);
+          if (window.tsAdminWire) window.tsAdminWire(fresh);
+          if (cont && cont.value) g.filter();
+        }
+        var st = document.getElementById('ioStatus'), rc = document.getElementById('ioReceived');
+        if (rc) rc.textContent = res.received;
+        if (st) { st.textContent = res.status_label; st.className = 'badge ' + (badge[res.status] || 'badge--grey'); }
+        say(res.msg);
+      })
+      .catch(function () { btn.disabled = false; say('Could not save — check your connection, reload the page and try again.', true); });
+  }
+  table.addEventListener('click', function (ev) {
+    var b = ev.target.closest && ev.target.closest('[data-save-line]');
+    if (b) { ev.preventDefault(); saveRow(b); }
+  });
+  // Enter in a "Receive now" box saves that row (instead of submitting the whole page).
+  table.addEventListener('keydown', function (ev) {
+    if (ev.key !== 'Enter' || !ev.target.classList || !ev.target.classList.contains('io-qty')) return;
+    ev.preventDefault();
+    var b = ev.target.closest('tr').querySelector('[data-save-line]'); if (b) saveRow(b);
+  });
 })();
 </script>
 <?php endif; ?>

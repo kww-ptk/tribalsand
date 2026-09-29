@@ -131,6 +131,88 @@ try {
     $o3 = inv_order_create('again', $parsed, [0 => $cnt], [0 => $locA], 'a.xlsx', $fp2, null);
     inv_order_cancel($o3);
     check('open_for: a cancelled order is not "already imported"', inv_order_open_for($fp2) === null);
+
+    // ── Undo keeps the order in step ────────────────────────────────────────
+    // (the receipt→move link needs add_inventory_order_receipt_moves.sql; without it the legacy
+    //  note match does the same job, so these checks hold either side of the migration.)
+    $linked = inv_order_receipt_moves_supported();
+    $undoOrder = function (string $tag, int $qty = 8) use ($cnt2, $locA, $sfx): array {
+        $oid = inv_order_create("ZZ Undo {$tag} {$sfx}", [['sheet' => 'S', 'row' => 2, 'section' => 'X', 'code' => 'U1', 'description' => 'Lamp', 'qty' => $qty]],
+            [0 => $cnt2], [0 => $locA], 'u.xlsx', sha1("undo-{$tag}-{$sfx}"), null);
+        return [$oid, (int) db_query('SELECT id FROM inv_order_lines WHERE order_id = :o', [':o' => $oid])->fetchColumn()];
+    };
+    $lineQty = fn(int $lid): int => (int) db_query('SELECT qty_received FROM inv_order_lines WHERE id = :l', [':l' => $lid])->fetchColumn();
+    $receiptsOf = fn(int $lid): int => (int) db_query('SELECT COUNT(*) FROM inv_order_receipts WHERE line_id = :l', [':l' => $lid])->fetchColumn();
+    $moveOf = fn(int $oid): int => (int) db_query("SELECT id FROM inv_moves WHERE item_id = :i AND reason = 'receive' AND note LIKE :n ORDER BY id DESC LIMIT 1",
+        [':i' => $cnt2, ':n' => "Order #{$oid} %"])->fetchColumn();
+    $base = inv_balance($cnt2, $locA);
+
+    // 1. Undo the receive MOVEMENT (the item page's owner Undo) → the order forgets the receipt.
+    [$u1, $u1l] = $undoOrder('move');
+    inv_order_receive($u1, [$u1l => ['qty' => 5, 'location_id' => $locA]], null);
+    $mv1 = $moveOf($u1);
+    if ($linked) check('link: the receipt stores its receive move id', (int) db_query('SELECT move_id FROM inv_order_receipts WHERE line_id = :l', [':l' => $u1l])->fetchColumn() === $mv1);
+    check('link: a fresh receive leaves the order partial', inv_order_fetch($u1)['status'] === 'partial' && $lineQty($u1l) === 5);
+    inv_undo_move($mv1, null);
+    check('undo move: stock is back to where it was', inv_balance($cnt2, $locA) === $base);
+    check('undo move: the line shows 0 received and the receipt is gone', $lineQty($u1l) === 0 && $receiptsOf($u1l) === 0);
+    check('undo move: the order is back to open and 8 are on order again', inv_order_fetch($u1)['status'] === 'open');
+
+    // 2. Receive again, then undo the RECEIPT from the order page.
+    inv_order_receive($u1, [$u1l => ['qty' => 5, 'location_id' => $locA]], null);
+    $rid1 = (int) db_query('SELECT id FROM inv_order_receipts WHERE line_id = :l', [':l' => $u1l])->fetchColumn();
+    inv_order_undo_receipt($rid1, null);
+    check('undo receipt: stock out again, receipt gone, line 0, order open',
+        inv_balance($cnt2, $locA) === $base && $receiptsOf($u1l) === 0 && $lineQty($u1l) === 0 && inv_order_fetch($u1)['status'] === 'open'
+        && $moveOf($u1) === 0);
+    check('undo receipt: the same receipt cannot be undone twice', $refused(fn() => inv_order_undo_receipt($rid1, null)) !== '');
+
+    // 3. Legacy receipt (written before the link): no move_id, matched by note + item + place + qty.
+    inv_order_receive($u1, [$u1l => ['qty' => 5, 'location_id' => $locA]], null);
+    if ($linked) db_query('UPDATE inv_order_receipts SET move_id = NULL WHERE line_id = :l', [':l' => $u1l]);
+    inv_undo_move($moveOf($u1), null);
+    check('legacy: undoing the move still finds the receipt by its note', $lineQty($u1l) === 0 && $receiptsOf($u1l) === 0
+        && inv_balance($cnt2, $locA) === $base && inv_order_fetch($u1)['status'] === 'open');
+    inv_order_receive($u1, [$u1l => ['qty' => 5, 'location_id' => $locA]], null);
+    if ($linked) db_query('UPDATE inv_order_receipts SET move_id = NULL WHERE line_id = :l', [':l' => $u1l]);
+    $ridL = (int) db_query('SELECT id FROM inv_order_receipts WHERE line_id = :l', [':l' => $u1l])->fetchColumn();
+    inv_order_undo_receipt($ridL, null);
+    check('legacy: undoing the receipt finds its move by the note', $lineQty($u1l) === 0 && $receiptsOf($u1l) === 0 && $moveOf($u1) === 0 && inv_balance($cnt2, $locA) === $base);
+
+    // 4. The move was already undone before the fix existed: the receipt has no move any more.
+    $ghost = $ins('INSERT INTO inv_order_receipts (line_id, qty, location_id) VALUES (:l, 5, :p)', [':l' => $u1l, ':p' => $locA]);
+    db_query('UPDATE inv_order_lines SET qty_received = 5 WHERE id = :l', [':l' => $u1l]);
+    db_query("UPDATE inv_orders SET status = 'partial' WHERE id = :o", [':o' => $u1]);
+    inv_order_undo_receipt($ghost, null);
+    check('already undone: the receipt is just forgotten, stock untouched, order open',
+        $receiptsOf($u1l) === 0 && $lineQty($u1l) === 0 && inv_balance($cnt2, $locA) === $base && inv_order_fetch($u1)['status'] === 'open');
+
+    // 5. Two receipts (5 then 3); undo the first → 3 received, status partial.
+    [$u2, $u2l] = $undoOrder('partial');
+    inv_order_receive($u2, [$u2l => ['qty' => 5, 'location_id' => $locA]], null);
+    inv_order_receive($u2, [$u2l => ['qty' => 3, 'location_id' => $locA]], null);
+    check('partial: fully received before the undo', inv_order_fetch($u2)['status'] === 'received' && $lineQty($u2l) === 8);
+    $first = (int) db_query('SELECT id FROM inv_order_receipts WHERE line_id = :l AND qty = 5', [':l' => $u2l])->fetchColumn();
+    inv_order_undo_receipt($first, null);
+    check('partial: undoing the 5 leaves 3 received, one receipt, status partial',
+        $lineQty($u2l) === 3 && $receiptsOf($u2l) === 1 && inv_order_fetch($u2)['status'] === 'partial' && inv_balance($cnt2, $locA) === $base + 3);
+
+    // 6. Stock that has moved on blocks the undo, and leaves the order as it was.
+    [$u3, $u3l] = $undoOrder('blocked');
+    inv_order_receive($u3, [$u3l => ['qty' => 4, 'location_id' => $locA]], null);
+    $ridB = (int) db_query('SELECT id FROM inv_order_receipts WHERE line_id = :l', [':l' => $u3l])->fetchColumn();
+    $before = inv_balance($cnt2, $locA);
+    inv_move(['item_id' => $cnt2, 'qty' => $before, 'from' => $locA, 'to' => $locB, 'reason' => 'transfer', 'user_id' => null, 'note' => 'moved on']);
+    $msg = $refused(fn() => inv_order_undo_receipt($ridB, null));
+    check('blocked: refused (would go below zero) and the order keeps its receipt',
+        str_contains($msg, 'below zero') && $receiptsOf($u3l) === 1 && $lineQty($u3l) === 4 && inv_order_fetch($u3)['status'] === 'partial');
+
+    // 7. A receipt that is already gone is a no-op; a serial receipt is refused.
+    check('forget: a receipt that is already gone is a no-op', inv_order_forget_receipt(999999999) === null);
+    [$u4, $u4l] = $undoOrder('serialline');
+    $serLine = (int) $ins('INSERT INTO inv_order_lines (order_id, item_id, description, qty_ordered, qty_received) VALUES (:o, :i, :d, 2, 2)', [':o' => $u4, ':i' => $ser, ':d' => 'Fridge']);
+    $serRc = $ins('INSERT INTO inv_order_receipts (line_id, qty, location_id) VALUES (:l, 2, :p)', [':l' => $serLine, ':p' => $locA]);
+    check('serial: a serial receipt is refused with a pointer to the item page', str_contains($refused(fn() => inv_order_undo_receipt($serRc, null)), 'item page') && $receiptsOf($serLine) === 1);
 } catch (Throwable $e) {
     echo "FAIL  DB block threw: " . $e->getMessage() . "\n" . $e->getTraceAsString() . "\n";
     $failures++;

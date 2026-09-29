@@ -19,6 +19,7 @@ declare(strict_types=1);
  */
 
 require_once __DIR__ . '/inventory.php';
+require_once __DIR__ . '/inventory-owner.php';   // inv_undo_move() — undoing a receipt undoes its movement
 require_once __DIR__ . '/inventory-item-import.php';
 require_once __DIR__ . '/inventory-shipment-import.php';   // inv_ship_key() / inv_ship_packing_code()
 
@@ -186,16 +187,25 @@ function inv_order_receive(int $orderId, array $receipts, ?int $userId): array {
 
         $note = mb_substr("Order #{$orderId} {$order['name']}", 0, 200);
         $pieces = 0;
+        $linkMoves = inv_order_receipt_moves_supported();
         foreach ($todo as $lineId => $t) {
             $itemId = (int)$t['line']['item_id'];
+            $moveId = null;
             if ($t['line']['tracking'] === 'serial') {
                 for ($n = 0; $n < $t['qty']; $n++) inv_asset_create($itemId, $t['to'], ['serial' => '', 'condition' => 'new', 'notes' => $note], $userId);
             } else {
-                inv_move(['item_id' => $itemId, 'qty' => $t['qty'], 'to' => $t['to'], 'reason' => 'receive',
-                          'unit_value' => null, 'user_id' => $userId, 'note' => $note]);
+                $moveId = inv_move(['item_id' => $itemId, 'qty' => $t['qty'], 'to' => $t['to'], 'reason' => 'receive',
+                                    'unit_value' => null, 'user_id' => $userId, 'note' => $note]);
             }
-            db_query('INSERT INTO inv_order_receipts (line_id, qty, location_id, admin_user_id) VALUES (:l, :q, :loc, :u)',
-                [':l' => $lineId, ':q' => $t['qty'], ':loc' => $t['to'], ':u' => $userId]);
+            // The receipt remembers its move (counted items) so an undo of either keeps the order
+            // in step. Serial receipts create one move per unit — move_id stays NULL.
+            if ($moveId !== null && $linkMoves) {
+                db_query('INSERT INTO inv_order_receipts (line_id, qty, location_id, admin_user_id, move_id) VALUES (:l, :q, :loc, :u, :mv)',
+                    [':l' => $lineId, ':q' => $t['qty'], ':loc' => $t['to'], ':u' => $userId, ':mv' => $moveId]);
+            } else {
+                db_query('INSERT INTO inv_order_receipts (line_id, qty, location_id, admin_user_id) VALUES (:l, :q, :loc, :u)',
+                    [':l' => $lineId, ':q' => $t['qty'], ':loc' => $t['to'], ':u' => $userId]);
+            }
             db_query('UPDATE inv_order_lines SET qty_received = qty_received + :q WHERE id = :l', [':q' => $t['qty'], ':l' => $lineId]);
             $pieces += $t['qty'];
         }
@@ -331,6 +341,124 @@ function inv_order_receive_container(int $orderId, string $container, ?array $ve
     return ['lines' => $r['lines'], 'pieces' => $r['pieces'], 'skipped' => $skipped];
 }
 
+/** The note inv_order_receive() puts on its receive moves is "Order #<id> <name>"; this is the id in it, or 0. PURE. */
+function inv_order_id_from_note(?string $note): int {
+    return ($note !== null && preg_match('/^Order #(\d+) /', $note, $m)) ? (int)$m[1] : 0;
+}
+
+/**
+ * The receipt a 'receive' move belongs to, or null. $move carries the raw inv_moves columns
+ * (id, item_id, qty, to_location_id, reason, note, created_at). Once the receipt→move link
+ * exists (inv_order_receipt_moves_supported()) it is looked up by move_id; a receipt written
+ * before the link (move_id NULL, or the column not there yet) is matched instead by the
+ * same item, the same place, the same quantity and the order id in the move's note, nearest
+ * in time, and — where the link exists — not already tied to another move. Never a guess
+ * beyond that: anything that is not an order receive returns null.
+ */
+function inv_order_find_receipt_for_move(array $move): ?array {
+    if (!inv_orders_supported()) return null;
+    if (($move['reason'] ?? '') !== 'receive') return null;
+    $orderId = inv_order_id_from_note(isset($move['note']) ? (string)$move['note'] : null);
+    if ($orderId <= 0) return null;
+    $linked = inv_order_receipt_moves_supported();
+    if ($linked && !empty($move['id'])) {
+        $r = db_query('SELECT * FROM inv_order_receipts WHERE move_id = :m', [':m' => (int)$move['id']])->fetch();
+        if ($r) return $r;
+    }
+    $to = $move['to_location_id'] ?? null;
+    if ($to === null) return null;
+    $r = db_query('SELECT r.* FROM inv_order_receipts r
+                     JOIN inv_order_lines l ON l.id = r.line_id
+                    WHERE l.order_id = :o AND l.item_id = :i AND r.location_id = :loc AND r.qty = :q'
+                  . ($linked ? ' AND r.move_id IS NULL' : '') . '
+                    ORDER BY ABS(EXTRACT(EPOCH FROM (r.created_at - CAST(:at AS timestamptz)))), r.id LIMIT 1',
+        [':o' => $orderId, ':i' => (int)$move['item_id'], ':loc' => (int)$to, ':q' => (int)$move['qty'],
+         ':at' => (string)($move['created_at'] ?? date('c'))])->fetch();
+    return $r ?: null;
+}
+
+/**
+ * The 'receive' move a receipt created, or null when it no longer exists (already undone on
+ * the item page) — the mirror of inv_order_find_receipt_for_move(). By move_id when set;
+ * otherwise the legacy match on item + place + qty + the "Order #<id> " note, nearest in time,
+ * skipping moves another receipt already points to.
+ */
+function inv_order_find_move_for_receipt(array $receipt): ?array {
+    if (!inv_supported()) return null;
+    if (!empty($receipt['move_id'])) {
+        $m = db_query('SELECT * FROM inv_moves WHERE id = :id', [':id' => (int)$receipt['move_id']])->fetch();
+        if ($m) return $m;
+    }
+    $line = db_query('SELECT order_id, item_id FROM inv_order_lines WHERE id = :l', [':l' => (int)$receipt['line_id']])->fetch();
+    if (!$line) return null;
+    $prefix = 'Order #' . (int)$line['order_id'] . ' ';
+    $linked = inv_order_receipt_moves_supported();
+    $m = db_query("SELECT m.* FROM inv_moves m
+                    WHERE m.reason = 'receive' AND m.asset_id IS NULL AND m.item_id = :i AND m.to_location_id = :loc AND m.qty = :q
+                      AND strpos(COALESCE(m.note, ''), :p) = 1"
+                  . ($linked ? ' AND NOT EXISTS (SELECT 1 FROM inv_order_receipts x WHERE x.move_id = m.id)' : '') . '
+                    ORDER BY ABS(EXTRACT(EPOCH FROM (m.created_at - CAST(:at AS timestamptz)))), m.id LIMIT 1',
+        [':i' => (int)$line['item_id'], ':loc' => (int)$receipt['location_id'], ':q' => (int)$receipt['qty'],
+         ':p' => $prefix, ':at' => (string)$receipt['created_at']])->fetch();
+    return $m ?: null;
+}
+
+/**
+ * Take a receipt back off its order — the receipt row goes, the line's qty_received drops by
+ * it (never below 0) and the order status is recomputed from its lines (a cancelled order
+ * stays cancelled). Touches NO stock: the caller has already reversed (or never made) the
+ * move. Locks the order then the line — the same order inv_order_receive() uses. A receipt
+ * that is already gone is a no-op, so two racing undos cannot subtract twice.
+ */
+function inv_order_forget_receipt(int $receiptId): void {
+    if (!inv_orders_supported()) return;
+    inv_tx(function () use ($receiptId): void {
+        $r = db_query('SELECT r.id, r.line_id, r.qty, l.order_id FROM inv_order_receipts r
+                         JOIN inv_order_lines l ON l.id = r.line_id WHERE r.id = :id', [':id' => $receiptId])->fetch();
+        if (!$r) return;
+        $order = db_query('SELECT id, status FROM inv_orders WHERE id = :id FOR UPDATE', [':id' => (int)$r['order_id']])->fetch();
+        db_query('SELECT id FROM inv_order_lines WHERE id = :id FOR UPDATE', [':id' => (int)$r['line_id']])->fetch();
+        $gone = db_query('DELETE FROM inv_order_receipts WHERE id = :id RETURNING qty', [':id' => $receiptId])->fetch();
+        if (!$gone) return;   // a racing undo removed it first
+        db_query('UPDATE inv_order_lines SET qty_received = GREATEST(0, qty_received - :q) WHERE id = :l',
+            [':q' => (int)$gone['qty'], ':l' => (int)$r['line_id']]);
+        if ($order && $order['status'] !== 'cancelled') {
+            $fresh = db_query('SELECT qty_ordered, qty_received FROM inv_order_lines WHERE order_id = :o', [':o' => (int)$r['order_id']])->fetchAll();
+            db_query('UPDATE inv_orders SET status = :s WHERE id = :id', [':s' => inv_order_status($fresh), ':id' => (int)$r['order_id']]);
+        }
+    });
+}
+
+/**
+ * Undo one receipt from the order page. When its stock movement still exists the movement is
+ * undone with inv_undo_move() (which forgets the receipt in the same transaction, and refuses
+ * — e.g. the stock has since moved on and would go below zero — with a message for the page).
+ * When the movement is already gone (undone on the item page before receipts were linked) only
+ * the receipt is forgotten. A serial receipt (units, no single movement) is refused. Does NO
+ * scoping — the page checks the receipt belongs to a line the account may see.
+ */
+function inv_order_undo_receipt(int $receiptId, ?int $userId): void {
+    if (!inv_orders_supported()) throw new InvRefusal('Orders are not set up yet — run the add_inventory_orders.sql migration.');
+    inv_tx(function () use ($receiptId, $userId): void {
+        $r = db_query('SELECT r.*, l.order_id, i.tracking FROM inv_order_receipts r
+                         JOIN inv_order_lines l ON l.id = r.line_id JOIN inv_items i ON i.id = l.item_id
+                        WHERE r.id = :id', [':id' => $receiptId])->fetch();
+        if (!$r) throw new InvRefusal('That receipt no longer exists.');
+        $move = inv_order_find_move_for_receipt($r);
+        if ($move) {
+            // Tie the receipt to the move first, so inv_undo_move() forgets THIS receipt (and not an
+            // identical one) even for a receipt written before the link existed.
+            if (inv_order_receipt_moves_supported() && empty($r['move_id'])) {
+                db_query('UPDATE inv_order_receipts SET move_id = :m WHERE id = :id', [':m' => (int)$move['id'], ':id' => $receiptId]);
+            }
+            inv_undo_move((int)$move['id'], $userId);   // forgets the receipt (inv_undo_move → inv_order_forget_receipt)
+            return;
+        }
+        if ($r['tracking'] === 'serial') throw new InvRefusal('Serial units: remove them on the item page.');
+        inv_order_forget_receipt($receiptId);
+    });
+}
+
 /** Cancel an order — only while nothing has been received. */
 function inv_order_cancel(int $orderId): void {
     if (!inv_orders_supported()) throw new InvRefusal('Orders are not set up yet — run the add_inventory_orders.sql migration.');
@@ -398,13 +526,13 @@ function inv_order_lines(int $orderId, ?array $venueIds): array {
                        ORDER BY l.sort_order, l.id", $p)->fetchAll();
     if (!$rows) return [];
     $byLine = [];
-    foreach (db_query("SELECT r.line_id, r.qty, r.created_at, loc.name AS location_name, a.name AS user_name
+    foreach (db_query("SELECT r.id, r.line_id, r.qty, r.created_at, loc.name AS location_name, a.name AS user_name
                          FROM inv_order_receipts r
                          JOIN inv_order_lines l ON l.id = r.line_id
                          JOIN inv_locations loc ON loc.id = r.location_id
                          LEFT JOIN admin_users a ON a.id = r.admin_user_id
                         WHERE l.order_id = :o ORDER BY r.created_at, r.id", [':o' => $orderId])->fetchAll() as $r) {
-        $byLine[(int)$r['line_id']][] = ['qty' => (int)$r['qty'], 'location_name' => (string)$r['location_name'],
+        $byLine[(int)$r['line_id']][] = ['id' => (int)$r['id'], 'qty' => (int)$r['qty'], 'location_name' => (string)$r['location_name'],
                                           'created_at' => (string)$r['created_at'], 'user_name' => $r['user_name']];
     }
     $conts = [];
