@@ -623,14 +623,35 @@ include __DIR__ . '/_layout.php';
           var modal = document.getElementById('qbModal'), open = document.getElementById('qbOpenBtn');
           if (!modal || !open) return;
           function close() { modal.hidden = true; document.body.style.overflow = ''; }
+          // The datepicker's own Escape handler (js/datepicker.js) closes its popup; Escape while
+          // that popup is open must close only the popup, not this dialog.
+          function datepickerOpen() { var p = document.querySelector('.dp-pop'); return !!(p && !p.hidden); }
           open.addEventListener('click', function () {
             modal.hidden = false; document.body.style.overflow = 'hidden';
             var root = modal.querySelector('.qb[data-qb-ready]');
             if (root && root.__qbSchedule) root.__qbSchedule();
           });
           modal.addEventListener('click', function (e) { if (e.target.closest('[data-qb-close]')) close(); });
-          document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !modal.hidden) close(); });
           window.__qbCloseModal = close;
+          window.__qbDatepickerOpen = datepickerOpen;
+          // Once per window (shell navigation re-runs this script): the modal is looked up at
+          // event time, and the listener is capture-phase so it sees the datepicker popup
+          // still open (its own bubble-phase Escape handler closes it right after).
+          if (!window.__qbModalGlobals) {
+            window.__qbModalGlobals = true;
+            document.addEventListener('keydown', function (e) {
+              if (e.key !== 'Escape') return;
+              var m = document.getElementById('qbModal');
+              if (!m || m.hidden || (window.__qbDatepickerOpen && window.__qbDatepickerOpen())) return;
+              if (window.__qbCloseModal) window.__qbCloseModal();
+            }, true);
+            // Back/Forward swaps the page through admin-nav.js without a reload; the open dialog
+            // must not leave the body scroll-locked.
+            window.addEventListener('popstate', function () {
+              if (window.__qbCloseModal) window.__qbCloseModal();
+              document.body.style.overflow = '';
+            });
+          }
           // Insert into reply — bound ONCE per window (shell navigation re-runs
           // this inline script). Looks elements up at event time.
           if (window.__qbInsertBound) return;
@@ -638,6 +659,8 @@ include __DIR__ . '/_layout.php';
           document.addEventListener('qb:insert', function (e) {
             var box = document.getElementById('replyBody');
             if (!box) return;
+            // An emptied box (sent, or cleared by hand) starts over: no stale "Option 2".
+            if (!box.value.trim()) { box.removeAttribute('data-qb-first'); box.setAttribute('data-qb-count', '0'); }
             var text = e.detail.text, n = +(box.getAttribute('data-qb-count') || 0);
             if (n === 0) {
               box.value = box.value.trim() ? box.value.replace(/\s+$/, '') + '\n\n' + text : text;

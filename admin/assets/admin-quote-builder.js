@@ -221,7 +221,10 @@
       document.dispatchEvent(new CustomEvent('qb:insert', { detail: { text: last.text } }));
     });
 
-    schedule();
+    // The enquiry pop-up sits hidden on every page load — pricing it then would fire a
+    // full availability sweep for nothing. Its Build quote button calls __qbSchedule()
+    // on open (set above, with data-qb-ready), which prices on first open.
+    if (root.getAttribute('data-context') !== 'modal') schedule();
   }
 
   // ── Once per window: dates (the datepicker fires no change for ranges) and
