@@ -367,7 +367,7 @@ function inv_ship_prefix(string $code): string {
  * and R are areas under Tribal Dunes (Hair Salon, Tribal Table); MK is Maya Kobe.
  */
 const INV_IMPORT_DEFAULT_PREFIX_PLACES = [
-    'V' => 'Maya Ilai', 'S' => 'Maya Ilai', 'OV' => 'Maya Ilai', 'WT' => 'Maya Ilai', 'SP' => 'Maya Ilai', 'G' => 'Maya Ilai',
+    'V' => 'Maya Ilai', 'S' => 'Maya Ilai', 'OV' => 'Maya Ilai', 'OS' => 'Maya Ilai', 'WT' => 'Maya Ilai', 'SP' => 'Maya Ilai', 'G' => 'Maya Ilai',
     'APP' => 'Maya Ilai', 'B' => 'Maya Ilai', 'CVL' => 'Maya Ilai', 'DR' => 'Maya Ilai', 'BL' => 'Maya Ilai',
     'OD' => 'Off-Duty', 'HS' => 'Hair Salon', 'MK' => 'Maya Kobe', 'R' => 'Tribal Table',
 ];
