@@ -67,6 +67,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    if ($action === 'save_quote_terms') {
+        // Printed on every quotation (admin/quote-print.php). Blank = the built-in default.
+        $quote_terms = trim(str_replace("\r\n", "\n", (string)($_POST['quote_terms'] ?? '')));
+        if (mb_strlen($quote_terms) > 2000) {
+            $error = 'Quote terms are limited to 2,000 characters.';
+        } else {
+            set_setting('quote_terms', $quote_terms);
+            audit_log('settings.save_quote_terms');
+            $success = 'Quote terms saved.';
+        }
+    }
+
     if ($action === 'fx_sync') {
         $r = fx_sync_rates();
         if (!empty($r['ok'])) {
@@ -128,6 +140,8 @@ $notify_email         = setting('notify_email',         '');
 $site_currency        = setting('site_currency',        'USD');
 $checkin_instructions = setting('checkin_instructions', '');
 $unit_assignment      = setting('unit_assignment',      'auto');
+require_once __DIR__ . '/../includes/quote-docs.php';   // QB_QUOTE_TERMS_DEFAULT
+$quote_terms          = setting('quote_terms',          '');
 
 $fx           = fx_rates(true); // fresh read so a just-saved/synced value shows immediately
 $fx_rates_map = $fx['rates']  ?? [];
@@ -246,6 +260,25 @@ include __DIR__ . '/_layout.php';
       </div>
 
       <button type="submit" class="btn-primary">Save Settings</button>
+    </form>
+  </div>
+</div>
+
+<!-- Quote terms (printed on every quotation) -->
+<div class="card">
+  <div class="card__head"><span class="card__title">Quote Terms</span></div>
+  <div class="card__body" style="padding:20px">
+    <form method="POST" action="/admin/settings" data-shell-form>
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="save_quote_terms">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:14px">
+        Printed at the foot of every quotation from the Quote builder. Line breaks are kept.
+        A saved quote keeps the terms it was issued with. Leave blank to use the default.
+      </p>
+      <div class="field">
+        <textarea name="quote_terms" rows="4" maxlength="2000" class="inp inp--area" style="width:100%;min-height:96px" placeholder="<?= e(QB_QUOTE_TERMS_DEFAULT) ?>"><?= e($quote_terms) ?></textarea>
+      </div>
+      <button type="submit" class="btn-primary">Save Quote Terms</button>
     </form>
   </div>
 </div>
