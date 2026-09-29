@@ -257,7 +257,7 @@ function qb_price_selection(array $sel, ?array $scope): array {
     foreach ($cat['rooms'] as $room) $defaults[(int)$room['id']] = (float)$room['price_amount'];
     $quotes = ($okDates && $defaults) ? room_stay_quotes($defaults, $ci, $co, true) : [];
 
-    $roomsOut = []; $picked = []; $roomLines = []; $textRooms = [];
+    $roomsOut = []; $picked = []; $roomLines = []; $textRooms = []; $unpricedRooms = [];
     foreach ($cat['rooms'] as $room) {
         $id   = (int)$room['id'];
         $c    = $room['price_currency'];
@@ -265,6 +265,9 @@ function qb_price_selection(array $sel, ?array $scope): array {
         $qty  = min($w['qty'], (int)$room['max_qty']);
         $q    = $quotes[$id] ?? null;
         $unit = ($q && $q['nights'] > 0) ? (float)$q['total'] : null;
+        // No base price and no override covering the stay = unpriced, never quoted at 0.
+        $unpricedRoom = $unit !== null && $unit <= 0;
+        if ($unpricedRoom) $unit = null;
         $row  = [
             'id' => $id, 'qty' => $qty, 'guests' => $w['guests'],
             'capacity' => (int)$room['capacity'] * max(1, $qty),
@@ -283,6 +286,7 @@ function qb_price_selection(array $sel, ?array $scope): array {
                          'capacity' => (int)$room['capacity'] * $qty,
                          'free' => $row['free'] ?? null, 'free_exact' => $row['free_exact'] ?? true];
             $roomLines[] = $row['line'];
+            if ($unpricedRoom) $unpricedRooms[] = $name;
             if ($row['line']) $textRooms[] = ['name' => $name, 'qty' => $qty, 'mix' => $row['mix'], 'line' => $row['line']];
         }
     }
@@ -333,6 +337,7 @@ function qb_price_selection(array $sel, ?array $scope): array {
     $t   = qb_totals($roomLines, $extraLines, $pct, $cur, $rates);
     $capTotal = array_sum(array_column($picked, 'capacity'));
     $notices  = qb_notices($picked, $party, $okDates, $unpriced);
+    foreach ($unpricedRooms as $n) $notices[] = ['type' => 'warn', 'text' => "{$n}: no price set for these dates."];
     foreach ($t['missing'] as $m) $notices[] = ['type' => 'warn', 'text' => "No exchange rate for {$m}; those lines are left out of the total."];
     $today  = date('Y-m-d');
     $fxNote = $t['converted'] ? qb_fx_note($rates, $cur, $today) : null;

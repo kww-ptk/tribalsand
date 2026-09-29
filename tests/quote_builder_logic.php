@@ -73,7 +73,9 @@ if ($pdo) {
         check('catalogue: every room has max_qty ≥ 1', !array_filter($cat['rooms'], fn($r) => (int)$r['max_qty'] < 1));
         check('catalogue: empty scope sees nothing', qb_catalog([])['rooms'] === []);
 
-        $room = $cat['rooms'][0] ?? null;
+        // First room with a base price (some rooms are legitimately unpriced — see the unpriced block below).
+        $room = null;
+        foreach ($cat['rooms'] as $cr) if ((float)$cr['price_amount'] > 0) { $room = $cr; break; }
         if (!$room) { echo "SKIP  pricing (no published rooms)\n"; }
         else {
             $rid = (int)$room['id'];
@@ -84,7 +86,7 @@ if ($pdo) {
             $single = room_stay_quote($rid, (float)$room['price_amount'], '2099-05-10', '2099-05-13');
             $line = null;
             foreach ($q['rooms'] as $r) if ($r['id'] === $rid) $line = $r;
-            check('pricing: room line == the booking widget quote', $line && abs($line['line']['amt'] - $single['total']) < 0.001);
+            check('pricing: room line == the booking widget quote', $line && $line['line'] && abs($line['line']['amt'] - $single['total']) < 0.001);
             check('pricing: nights', $q['nights'] === 3);
             check('pricing: every catalogue room is priced (avg)', count($q['rooms']) === count($cat['rooms']));
             check('pricing: free computed when asked', array_key_exists('free', $line));
@@ -101,6 +103,34 @@ if ($pdo) {
             $x = $cust['extras'][0];
             check('pricing: custom per-night extra', $x['line']['amt'] === 600.0 && $x['line']['cur'] === 'USD');
             check('pricing: copy text present', str_contains($cust['text'], 'Private chef × 2'));
+
+            // An unpriced room (no base price, no override in the stay) must never be quoted at 0.
+            $zr = null;
+            foreach ($cat['rooms'] as $cr) if ((int)$cr['id'] !== $rid && (float)$cr['price_amount'] > 0) { $zr = $cr; break; }
+            if (!$zr) { echo "SKIP  unpriced room (need a second priced room)\n"; }
+            else {
+                $zid = (int)$zr['id'];
+                db_query('UPDATE rooms SET price_amount = 0 WHERE id = :i', [':i' => $zid]);
+                db_query("DELETE FROM rates WHERE room_id = :i AND date_from < '2100-01-01' AND date_to > '2099-01-01'", [':i' => $zid]);
+                // qb_catalog() memoises per scope key, so use a scope (both rooms' venues) not yet cached
+                // — a fresh read sees the UPDATE above.
+                $zscope = array_values(array_unique([(int)$room['venue_id'], (int)$zr['venue_id']]));
+                sort($zscope);
+                $zsel = ['rooms' => [['id' => $rid, 'qty' => 1, 'guests' => 2], ['id' => $zid, 'qty' => 1, 'guests' => 2]]] + $sel;
+                $zq = qb_price_selection($zsel, $zscope);
+                $zrow = null; $orow = null;
+                foreach ($zq['rooms'] as $r) { if ($r['id'] === $zid) $zrow = $r; if ($r['id'] === $rid) $orow = $r; }
+                $zmsg = $zr['venue_name'] . ' — ' . $zr['name'] . ': no price set for these dates.';
+                check('unpriced: line and avg are null (never 0)', $zrow && $zrow['line'] === null && $zrow['avg'] === null);
+                check('unpriced: a warn notice names the room', in_array(['type' => 'warn', 'text' => $zmsg], $zq['notices'], true));
+                $only = qb_price_selection(['rooms' => [['id' => $rid, 'qty' => 1, 'guests' => 2]]] + $sel, $zscope);
+                check('unpriced: total excludes it (== the priced room alone)',
+                    abs($zq['summary']['accommodation'] - $only['summary']['accommodation']) < 0.005
+                    && $zq['summary']['total'] === $only['summary']['total']);
+                check('unpriced: kept out of the quote text', !str_contains($zq['text'], $zr['venue_name'] . ' — ' . $zr['name']));
+                $zq0 = qb_price_selection(['rooms' => [['id' => $zid, 'qty' => 0, 'guests' => 0]]] + $sel, $zscope);
+                check('unpriced: no notice when the room is not picked', !in_array(['type' => 'warn', 'text' => $zmsg], $zq0['notices'], true));
+            }
         }
     } finally { $pdo->rollBack(); }
 }
