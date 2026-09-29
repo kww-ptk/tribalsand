@@ -36,3 +36,6 @@
     <?php activity_log_html('hold', $holdId); ?>
   </div>
 </div>
+
+<?php // Every email linked to this booking (Email Notifications Center) — who got what, and why. ?>
+<?= email_log_panel_html(email_log_for_hold((int)$holdId), is_owner() || is_manager()) ?>

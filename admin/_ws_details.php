@@ -30,20 +30,22 @@
     </div>
 
     <?php if (in_array($hold['status'], ['pending','confirmed'], true)): ?>
-    <div class="row-actions" style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border)">
+    <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:14px">
       <?php if ($hold['status'] === 'pending'): ?>
-      <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=details" style="display:inline">
+      <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=details" style="display:flex;flex-wrap:wrap;align-items:center;gap:12px">
         <?= csrf_field() ?>
         <input type="hidden" name="hold_id" value="<?= $holdId ?>">
         <input type="hidden" name="action" value="confirm">
-        <button class="btn-primary btn-sm" data-confirm="Confirm this booking and notify the guest?"><?= admin_icon('check', 15) ?> Confirm booking</button>
+        <button class="btn-primary btn-sm" data-confirm="Confirm this booking? The guest is emailed only if the switch beside the button is on."><?= admin_icon('check', 15) ?> Confirm booking</button>
+        <?= email_guest_toggle($hold, 'confirm') ?>
       </form>
       <?php endif; ?>
-      <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=details" style="display:inline">
+      <form method="POST" action="/admin/booking.php?hold=<?= $holdId ?>&tab=details" style="display:flex;flex-wrap:wrap;align-items:center;gap:12px">
         <?= csrf_field() ?>
         <input type="hidden" name="hold_id" value="<?= $holdId ?>">
         <input type="hidden" name="action" value="cancel">
-        <button class="btn-danger btn-sm" data-confirm="Cancel this booking? Dates will be freed and the guest notified."><?= admin_icon('x', 15) ?> Cancel booking</button>
+        <button class="btn-danger btn-sm" data-confirm="Cancel this booking? Dates will be freed; the guest is emailed only if the switch beside the button is on."><?= admin_icon('x', 15) ?> Cancel booking</button>
+        <?= email_guest_toggle($hold, 'cancel') ?>
       </form>
     </div>
     <?php endif; ?>

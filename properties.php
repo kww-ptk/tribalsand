@@ -60,6 +60,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             ] + $tracking);
 
             send_guest_acknowledgement([
+                'submission_id' => $id,
                 'kind' => 'contact', 'guest_name' => $name, 'guest_email' => $email, 'message' => $message,
             ]);
 

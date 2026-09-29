@@ -209,6 +209,7 @@ try {
         )->fetch();
         if ($hold_row) send_hold_notification($hold_row);
         send_guest_acknowledgement([
+            'submission_id' => $id,
             'kind'        => 'hold',
             'guest_name'  => $name,
             'guest_email' => $email,
@@ -240,6 +241,7 @@ try {
             'created_at' => date('Y-m-d H:i:s'),
         ] + $tracking);
         send_guest_acknowledgement([
+            'submission_id' => $id,
             'kind'        => 'enquiry',
             'guest_name'  => $name,
             'guest_email' => $email,

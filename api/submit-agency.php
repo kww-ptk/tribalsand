@@ -149,6 +149,7 @@ send_notification([
 ] + $tracking);
 
 send_guest_acknowledgement([
+    'submission_id' => $id,
     'kind'        => 'agency',
     'guest_name'  => $name,
     'guest_email' => $email,

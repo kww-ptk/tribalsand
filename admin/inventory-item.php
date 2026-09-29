@@ -13,6 +13,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/admin-pagination.php';   // dt_empty()
 require_once __DIR__ . '/../includes/inventory-views.php';
+require_once __DIR__ . '/../includes/inventory-owner.php';   // owner-only corrections (undo / clear / delete)
 require_once __DIR__ . '/../includes/pos.php';               // pos_upload_item_image() (shared photo pipeline)
 require_login();
 require_manager();
@@ -70,6 +71,44 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
         }
     }
     if (!$item) { $_SESSION['inv_flash'] = ['type' => 'error', 'msg' => 'That item no longer exists.']; inv_item_go('/admin/inventory.php'); }
+
+    // Owner-only corrections — undo a move, clear stock to 0, or delete the item outright.
+    // includes/inventory-owner.php documents these as the deliberate exceptions to
+    // "inv_move() is the only writer"; this page is the is_owner() gate they rely on.
+    if (in_array($act, ['undo_move', 'clear_zero', 'delete_item'], true)) {
+        if (!is_owner()) { $_SESSION['inv_flash'] = ['type' => 'error', 'msg' => 'Owner only.']; inv_item_go("{$self}?id={$id}#actions"); }
+        try {
+            if ($act === 'undo_move') {
+                $moveId     = (int)($_POST['move_id'] ?? 0);
+                $moveItemId = (int) db_query('SELECT item_id FROM inv_moves WHERE id = :id', [':id' => $moveId])->fetchColumn();
+                if ($moveItemId !== $id) throw new InvRefusal("That movement isn't on this item.");
+                inv_undo_move($moveId, (int)$me['id']);
+                audit_log('inv.undo_move', 'inv_item', $id, "{$item['name']} — move #{$moveId}");
+                $_SESSION['inv_flash'] = ['type' => 'success', 'msg' => 'Movement undone.'];
+            } elseif ($act === 'clear_zero') {
+                $locId = (int)($_POST['location_id'] ?? 0);
+                $loc   = inv_fetch_location($locId);
+                if (!$loc) throw new InvRefusal('That location no longer exists.');
+                $moved = inv_clear_to_zero($id, $locId, (int)$me['id']);
+                audit_log('inv.clear_zero', 'inv_item', $id, $item['name'] . ' at ' . ($loc['name'] ?? "#{$locId}") . " (was {$moved})");
+                $_SESSION['inv_flash'] = ['type' => 'success', 'msg' => $item['name'] . ' at ' . ($loc['name'] ?? 'that location') . ' set to 0.'];
+            } elseif ($act === 'delete_item') {
+                $typed = trim((string)($_POST['confirm_name'] ?? ''));
+                if (mb_strtolower($typed) !== mb_strtolower((string)$item['name'])) {
+                    throw new InvRefusal('Type the item name exactly to confirm.');
+                }
+                $name = (string)$item['name'];
+                inv_delete_item($id, (int)$me['id']);
+                audit_log('inv.item_delete', 'inv_item', $id, $name);
+                $_SESSION['inv_flash'] = ['type' => 'success', 'msg' => "Deleted {$name}."];
+                inv_item_go('/admin/inventory.php');
+            }
+        } catch (InvRefusal $ex) {
+            $_SESSION['inv_flash'] = ['type' => 'error', 'msg' => $ex->getMessage()];
+        }
+        inv_item_go("{$self}?id={$id}#actions");
+    }
+
     try {
         $msg = inv_apply_item_action($_POST, $item, $vids, (int)$me['id']);
         audit_log('inv.' . preg_replace('/[^a-z_]/', '', $act), 'inv_item', $id, $msg);
@@ -112,10 +151,11 @@ $err       = fn(string $k): string => isset($errors[$k]) ? '<div class="inv-err"
 $cur       = $item ? (string)$item['currency'] : INV_DEFAULT_CURRENCY;
 $oldAct    = (string)($old['action'] ?? '');
 $panel     = in_array($oldAct, ['receive', 'add_unit', 'transfer', 'loss', 'replace'], true) ? $oldAct : ($serial ? 'add_unit' : 'receive');
-// Single-ended actions (receive / add a unit / loss / replace) need a place the account
-// OWNS: inv_move_in_scope() only lets a manager use a shared place (Main stock, a
-// venue-less outlet) as the other end of a move touching their own property. Transfer
-// keeps the full visible lists.
+// Single-ended actions (receive / add a unit / loss / replace) are OFFERED here only
+// for places the account's OWN property owns (inv_location_editable) — a simpler list
+// than what the server allows. inv_move_in_scope() would also accept a store SHARED
+// with them (that's how shipments receive into a shared store), but this UI doesn't
+// offer that shortcut. Transfer keeps the full visible lists.
 $ownLocs     = array_values(array_filter($locs, fn($l) => inv_location_editable($l, $vids)));
 $ownHolding  = array_values(array_filter($holding, fn($w) => inv_location_editable($w, $vids)));
 $ownActive   = array_values(array_filter($active, fn($u) => inv_location_editable(['venue_id' => $u['venue_id'], 'kind' => $u['kind']], $vids)));
@@ -153,7 +193,8 @@ include __DIR__ . '/_layout.php';
   <div class="alert alert--info">Run the <code>add_inventory.sql</code> migration (Admin → Migrations) to set up inventory.</div>
 <?php else: ?>
 
-<div class="inv-grid">
+<div class="page-wide" hidden></div>
+<div class="inv-grid<?= $item ? '' : ' inv-grid--new' ?>">
   <div class="inv-stack">
     <?php if ($item): ?>
     <div class="card">
@@ -176,14 +217,25 @@ include __DIR__ . '/_layout.php';
       <?php if (!$where): ?>
         <?php dt_empty('None anywhere you can see yet. Receive stock to get started.'); ?>
       <?php else: ?>
+      <?php $clearable = is_owner() && !$serial; ?>
       <div class="table-wrap"><table class="data-table">
-        <thead><tr><th>Location</th><th class="inv-num">Qty</th><th class="inv-num">Should have</th></tr></thead>
+        <thead><tr><th>Location</th><th class="inv-num">Qty</th><th class="inv-num">Should have</th><?php if ($clearable): ?><th></th><?php endif; ?></tr></thead>
         <tbody>
         <?php foreach ($where as $w): $q = (int)$w['qty']; ?>
           <tr>
             <td><?php if ($w['kind'] !== 'person'): ?><a href="/admin/inventory-location.php?id=<?= (int)$w['id'] ?>"><?= e(inv_location_label($w)) ?></a><?php else: ?><?= e(inv_location_label($w)) ?><?php endif; ?></td>
             <td class="inv-num"><strong class="<?= $q < 0 ? 'text-danger' : '' ?>"><?= $q ?></strong></td>
             <td class="inv-num text-muted"><?= $w['par_qty'] === null ? '—' : (int)$w['par_qty'] ?></td>
+            <?php if ($clearable): ?>
+            <td class="inv-num">
+              <?php if ($q !== 0): ?>
+              <form method="POST" action="<?= $self ?>" style="display:inline">
+                <?= csrf_field() ?><input type="hidden" name="item_id" value="<?= $id ?>"><input type="hidden" name="action" value="clear_zero"><input type="hidden" name="location_id" value="<?= (int)$w['id'] ?>">
+                <button type="submit" class="btn-outline btn-sm" data-confirm="Set <?= e($item['name']) ?> at <?= e(inv_location_label($w)) ?> to 0? It shows in the history as cleared by the owner, with no value.">Clear to 0</button>
+              </form>
+              <?php endif; ?>
+            </td>
+            <?php endif; ?>
           </tr>
         <?php endforeach; ?>
         </tbody>
@@ -220,8 +272,9 @@ include __DIR__ . '/_layout.php';
       <?php if (!$history): ?>
         <?php dt_empty('No movements yet.'); ?>
       <?php else: ?>
+      <?php $canUndo = is_owner(); ?>
       <div class="table-wrap"><table class="data-table">
-        <thead><tr><th>When</th><th>What</th><th class="inv-num">Qty</th><th>From → to</th><th class="inv-num">Value</th><th>By</th></tr></thead>
+        <thead><tr><th>When</th><th>What</th><th class="inv-num">Qty</th><th>From → to</th><th class="inv-num">Value</th><th>By</th><?php if ($canUndo): ?><th></th><?php endif; ?></tr></thead>
         <tbody>
         <?php foreach ($history as $m): [$lbl, $cls] = INV_REASON_LABELS[$m['reason']] ?? [$m['reason'], 'badge--grey']; ?>
           <tr>
@@ -232,6 +285,16 @@ include __DIR__ . '/_layout.php';
             <td><?= e($m['from_name'] ?? '—') ?> → <?= e($m['to_name'] ?? ($m['reason'] === 'sale' ? 'sold' : '—')) ?></td>
             <td class="inv-num text-muted"><?= e(inv_money($m['value'] !== null ? (float)$m['value'] : null, (string)$m['currency'])) ?></td>
             <td class="text-muted"><?= e($m['user_name'] ?? '—') ?></td>
+            <?php if ($canUndo): ?>
+            <td class="inv-num">
+              <?php if (inv_undo_refusal($m, null) === null): ?>
+              <form method="POST" action="<?= $self ?>" style="display:inline">
+                <?= csrf_field() ?><input type="hidden" name="item_id" value="<?= $id ?>"><input type="hidden" name="action" value="undo_move"><input type="hidden" name="move_id" value="<?= (int)$m['id'] ?>">
+                <button type="submit" class="btn-icon" data-tip="Undo" aria-label="Undo this movement" data-confirm="Undo this movement? The quantities go back as if it never happened."><?= admin_icon('rotate', 15) ?></button>
+              </form>
+              <?php endif; ?>
+            </td>
+            <?php endif; ?>
           </tr>
         <?php endforeach; ?>
         </tbody>
@@ -410,6 +473,20 @@ include __DIR__ . '/_layout.php';
         </form>
       </div>
     </div>
+
+    <?php if ($item && is_owner()): ?>
+    <div class="card">
+      <div class="card__head"><span class="card__title">Delete item</span></div>
+      <div class="card__body" style="padding:16px 18px">
+        <p class="text-muted" style="font-size:13px;margin:0 0 12px">Deletes the item, its stock at every place, its par levels, units, counts and its whole history. This can't be undone.</p>
+        <form method="POST" action="<?= $self ?>" class="inv-form">
+          <?= csrf_field() ?><input type="hidden" name="item_id" value="<?= $id ?>"><input type="hidden" name="action" value="delete_item">
+          <div class="field"><label>Type the item name to confirm</label><input name="confirm_name" class="inp" placeholder="<?= e($item['name']) ?>" autocomplete="off"></div>
+          <button type="submit" class="btn-danger btn-sm" data-confirm="Delete <?= e($item['name']) ?>? This can't be undone."><?= admin_icon('trash', 15) ?> Delete item</button>
+        </form>
+      </div>
+    </div>
+    <?php endif; ?>
   </div>
 </div>
 <?php endif; ?>

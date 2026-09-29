@@ -45,19 +45,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             [':id' => $hold_id]
         )->fetch();
 
-        if ($hold && $action === 'confirm' && $hold['status'] === 'pending') {
+        if ($hold && !staff_can_hold($hold_id)) {
+            // Same property scope as hold-action.php and the booking workspace — a
+            // scoped account must not act on another property's hold by posting its id.
+            $error = "Hold #{$hold_id} isn’t one of your properties.";
+        } elseif ($hold && $action === 'confirm' && $hold['status'] === 'pending') {
+            $__email = email_guest_choice_posted($hold);   // the row's "Email" tick
             $__g = hold_group_confirm($hold_id, (int)($_SESSION['admin_id'] ?? 0) ?: null);
-            if ($hold['guest_email'] && $__g['mail_row']) send_hold_confirmed($__g['mail_row']);
-            foreach ($__g['ids'] as $__id) audit_log('hold.confirm', 'hold', $__id, "{$hold['guest_name']} {$hold['check_in']}→{$hold['check_out']}");
+            $__mail = $__g['mail_row'] ? hold_email_after_action('confirm', $__g['mail_row'], $__email, 'confirm') : '';
+            foreach ($__g['ids'] as $__id) audit_log('hold.confirm', 'hold', $__id, "{$hold['guest_name']} {$hold['check_in']}→{$hold['check_out']}" . ($__email ? '' : ' (guest not emailed)'));
             $success = (count($__g['ids']) > 1 ? "All " . count($__g['ids']) . " rooms of hold #{$hold_id}'s request confirmed" : "Hold #{$hold_id} confirmed")
-                     . " — confirmation email sent to {$hold['guest_email']}." . $__g['acct'];
+                     . ' — ' . $__mail . $__g['acct'];
         } elseif ($hold && $action === 'cancel' && in_array($hold['status'], ['pending', 'confirmed'])) {
             $was_status = $hold['status'];
             $__g = hold_group_cancel($hold_id, (int)($_SESSION['admin_id'] ?? 0) ?: null);
             $__acct = $__g['acct'];
-            if ($hold['guest_email'] && $__g['mail_row']) send_hold_cancelled($__g['mail_row'], 'cancelled');
-            audit_log('hold.cancel', 'hold', $hold_id, "{$hold['guest_name']} {$hold['check_in']}→{$hold['check_out']} (was {$was_status})");
-            $success = "Hold #{$hold_id} cancelled — dates freed, guest notified." . $__acct;
+            $__email = email_guest_choice_posted($hold);
+            $__mail = $__g['mail_row'] ? hold_email_after_action('cancel', $__g['mail_row'], $__email, 'cancel') : '';
+            audit_log('hold.cancel', 'hold', $hold_id, "{$hold['guest_name']} {$hold['check_in']}→{$hold['check_out']} (was {$was_status})" . ($__email ? '' : ' (guest not emailed)'));
+            $success = "Hold #{$hold_id} cancelled — dates freed, " . $__mail . $__acct;
         } else {
             $error = 'Action not allowed for this hold status.';
         }
@@ -241,14 +247,16 @@ ob_start(); ?>
               <input type="hidden" name="hold_id" value="<?= e($hold['id']) ?>">
               <input type="hidden" name="action"  value="confirm">
               <button type="submit" class="btn-icon btn-icon--primary" title="Confirm hold" aria-label="Confirm hold"
-                      data-confirm="Confirm this hold and notify the guest?"><?= admin_icon('check') ?></button>
+                      data-confirm="Confirm this hold? The guest is emailed only if “Email” is ticked."><?= admin_icon('check') ?></button>
+              <?= email_guest_toggle($hold, 'confirm', true) ?>
             </form>
             <form method="POST" style="display:inline">
               <?= csrf_field() ?>
               <input type="hidden" name="hold_id" value="<?= e($hold['id']) ?>">
               <input type="hidden" name="action"  value="cancel">
               <button type="submit" class="btn-icon btn-icon--danger" title="Cancel hold" aria-label="Cancel hold"
-                      data-confirm="Cancel this hold? Dates will be freed and the guest notified."><?= admin_icon('x') ?></button>
+                      data-confirm="Cancel this hold? Dates will be freed; the guest is emailed only if “Email” is ticked."><?= admin_icon('x') ?></button>
+              <?= email_guest_toggle($hold, 'cancel', true) ?>
             </form>
             <?php elseif ($status === 'confirmed'): ?>
             <form method="POST" style="display:inline">
@@ -256,7 +264,8 @@ ob_start(); ?>
               <input type="hidden" name="hold_id" value="<?= e($hold['id']) ?>">
               <input type="hidden" name="action"  value="cancel">
               <button type="submit" class="btn-icon btn-icon--danger" title="Cancel booking" aria-label="Cancel booking"
-                      data-confirm="Cancel this confirmed booking? Dates will be freed and the guest notified."><?= admin_icon('x') ?></button>
+                      data-confirm="Cancel this confirmed booking? Dates will be freed; the guest is emailed only if “Email” is ticked."><?= admin_icon('x') ?></button>
+              <?= email_guest_toggle($hold, 'cancel', true) ?>
             </form>
             <?php endif; ?>
             <a href="/admin/booking.php?hold=<?= (int)$hold['id'] ?>" class="btn-icon btn-icon--outline" title="Manage booking" aria-label="Manage booking"><?= admin_icon('edit') ?></a>

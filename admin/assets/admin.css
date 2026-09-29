@@ -90,6 +90,9 @@ input, select, textarea, button, code, kbd, samp { font-family: inherit; }
 
 .admin-main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
 .admin-content { padding: 28px 32px; max-width: 1270px; }
+/* A page opts into the full width by putting <div class="page-wide"> in its content
+   (a marker inside, not a class on .admin-content, so the no-flicker shell swap keeps it). */
+.admin-content:has(.page-wide) { max-width: none; }
 
 /* ── Page header ── */
 .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }
@@ -267,6 +270,10 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 /* ── Forms ── */
 .field { margin-bottom: 16px; }
 .field label, .field > span { display: block; font-size: 12.5px; font-weight: 500; color: var(--muted); margin-bottom: 5px; }
+/* A chip / toggle / checkbox used AS the label keeps its own look — without this the
+   rule above stretches it into a full-width bar (e.g. "In use" on an inventory item). */
+.field label.optchip { display: inline-flex; font-size: 13px; color: var(--text); margin-bottom: 0; }
+.field label.togglerow, .field label.ckwrap { display: inline-flex; color: var(--text); margin-bottom: 0; }
 .field input, .field select, .field textarea {
   width: 100%; padding: 8px 12px; border: 1.5px solid var(--border);
   border-radius: 6px; font-size: 13.5px; color: var(--text);
@@ -630,6 +637,14 @@ tr.dt-rowlink a:hover { text-decoration: none; }
 .adm-confirm__title { font-size: 16px; font-weight: 700; color: var(--text); margin: 0 0 6px; }
 .adm-confirm__body { font-size: 13.5px; color: var(--muted); margin: 0 0 18px; line-height: 1.45; }
 .adm-confirm__actions { display: flex; gap: 8px; justify-content: flex-end; }
+/* Serious actions (data-confirm-type): red accent + a "type the word" box. */
+.adm-confirm--danger { max-width: 420px; border-top: 4px solid var(--red, #b42318); }
+.adm-confirm--danger .adm-confirm__title { color: var(--red, #b42318); }
+.adm-confirm__body { white-space: pre-line; }
+.adm-confirm__type { display: block; margin: -6px 0 16px; }
+.adm-confirm__type span { display: block; font-size: 12.5px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+.adm-confirm__type .inp { width: 100%; font-family: ui-monospace, monospace; letter-spacing: .08em; }
+.adm-confirm [data-c-yes]:disabled { opacity: .45; cursor: not-allowed; }
 
 /* ── Toast notifications ──
    N1: pinned top-right, sliding/fading in from the top edge.

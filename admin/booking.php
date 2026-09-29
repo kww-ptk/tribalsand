@@ -52,17 +52,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     if ($act === 'confirm' && $hold['status'] === 'pending') {
         // A multi-room request is ONE request: every room is confirmed, one email goes out.
+        $__email = email_guest_choice_posted($hold);   // "Email the guest" toggle — staff decide, every time
         $__g = hold_group_confirm($holdId, (int)($_SESSION['admin_id'] ?? 0) ?: null);   // status, blocks, ledger snapshot, invoice-at-confirmation
-        if ($hold['guest_email'] && $__g['mail_row']) send_hold_confirmed($__g['mail_row']);
-        foreach ($__g['ids'] as $__id) audit_log('hold.confirm', 'hold', $__id, "{$hold['guest_name']}");
-        $_SESSION['hold_flash'] = ['type'=>'success','msg'=>(count($__g['ids']) > 1 ? 'All ' . count($__g['ids']) . ' rooms confirmed' : 'Confirmed') . ' — guest notified.' . $__g['acct']];
+        $__mail = $__g['mail_row'] ? hold_email_after_action('confirm', $__g['mail_row'], $__email, 'confirm') : '';
+        foreach ($__g['ids'] as $__id) audit_log('hold.confirm', 'hold', $__id, "{$hold['guest_name']}" . ($__email ? '' : ' (guest not emailed)'));
+        $_SESSION['hold_flash'] = ['type'=>'success','msg'=>(count($__g['ids']) > 1 ? 'All ' . count($__g['ids']) . ' rooms confirmed' : 'Confirmed') . ' — ' . $__mail . $__g['acct']];
         header("Location: /admin/booking.php?hold=$holdId&tab=details"); exit;
     }
     if ($act === 'cancel' && in_array($hold['status'], ['pending','confirmed'], true)) {
+        $__email = email_guest_choice_posted($hold);
         $__g = hold_group_cancel($holdId, (int)($_SESSION['admin_id'] ?? 0) ?: null);   // every room of a multi-room request; an invoiced stay is credited
-        if ($hold['guest_email'] && $__g['mail_row']) send_hold_cancelled($__g['mail_row'], 'cancelled');
-        foreach ($__g['ids'] as $__id) audit_log('hold.cancel', 'hold', $__id, "{$hold['guest_name']}");
-        $_SESSION['hold_flash'] = ['type'=>'success','msg'=>(count($__g['ids']) > 1 ? 'All ' . count($__g['ids']) . ' rooms cancelled' : 'Cancelled') . ' — dates freed, guest notified.' . $__g['acct']];
+        $__mail = $__g['mail_row'] ? hold_email_after_action('cancel', $__g['mail_row'], $__email, 'cancel') : '';
+        foreach ($__g['ids'] as $__id) audit_log('hold.cancel', 'hold', $__id, "{$hold['guest_name']}" . ($__email ? '' : ' (guest not emailed)'));
+        $_SESSION['hold_flash'] = ['type'=>'success','msg'=>(count($__g['ids']) > 1 ? 'All ' . count($__g['ids']) . ' rooms cancelled' : 'Cancelled') . ' — dates freed, ' . $__mail . $__g['acct']];
         header("Location: /admin/booking.php?hold=$holdId&tab=details"); exit;
     }
     // Assign / reassign this booking to a team member (Item 2). Front-desk audience only.

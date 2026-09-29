@@ -120,8 +120,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $hold && $can_cancel) {
 
         $hold = fetch_hold_for_guest($holdId);
 
-        send_hold_cancelled($hold, 'cancelled');
-        send_admin_guest_cancelled($hold);
+        send_hold_cancelled($hold, 'cancelled', ['trigger' => 'guest_cancel']);
+        send_admin_guest_cancelled($hold, ['trigger' => 'guest_cancel']);
 
         $can_cancel = false;
         $success    = 'Your booking has been cancelled. A confirmation email is on its way.';
