@@ -34,6 +34,17 @@ function qb_bool($v): bool {
     return $v === true || $v === 't' || $v === 1 || $v === '1' || $v === 'true';
 }
 
+/**
+ * An extra's label with its basis where it matters: per night → "X × 1 · 4 nights",
+ * per person → "X × 2 people"; per stay / trip / transfer → "X × 1".
+ */
+function qb_extra_label(string $label, int $qty, string $basis, int $nights): string {
+    $out = $label . ' × ' . $qty;
+    if ($basis === 'night' && $nights > 0) $out .= ' · ' . $nights . ' night' . ($nights === 1 ? '' : 's');
+    elseif ($basis === 'person')           $out .= ' ' . ($qty === 1 ? 'person' : 'people');
+    return $out;
+}
+
 /** An extra's line amount for its basis (unknown basis = per stay). */
 function qb_extra_amount(float $unit, int $qty, string $basis, int $nights): float {
     $qty = max(0, $qty);
@@ -153,7 +164,8 @@ function qb_quote_text(array $q): string {
         $lines[] = '';
         $lines[] = 'Extras';
         foreach ($q['extras'] as $x) {
-            $lines[] = '• ' . $x['label'] . ' × ' . (int)$x['qty'] . ': ' . qb_fmt((float)$x['amt'], $c);
+            $lines[] = '• ' . qb_extra_label((string)$x['label'], (int)$x['qty'], (string)($x['basis'] ?? 'stay'), (int)$q['nights'])
+                     . ': ' . qb_fmt((float)$x['amt'], $c);
         }
     }
     $lines[] = '';
@@ -330,7 +342,7 @@ function qb_price_selection(array $sel, ?array $scope): array {
         $extrasOut[] = ['key' => $key, 'label' => $label, 'qty' => $qtyX, 'basis' => $basis,
                         'unit' => $unitX !== null ? ['amt' => $unitX, 'cur' => $curX] : null, 'line' => $line];
         $extraLines[] = $line;
-        if ($line) $textExtras[] = ['label' => $label, 'qty' => $qtyX, 'line' => $line];
+        if ($line) $textExtras[] = ['label' => $label, 'qty' => $qtyX, 'basis' => $basis, 'line' => $line];
     }
 
     $pct = (float)($sel['discount_pct'] ?? 0);
@@ -349,14 +361,14 @@ function qb_price_selection(array $sel, ?array $scope): array {
         $note = trim(mb_substr((string)($sel['discount_note'] ?? ''), 0, 80));
         $breakdown[] = ['kind' => 'discount', 'label' => 'Discount ' . rc_trimz(number_format($t['discount_pct'], 2, '.', '')) . '%' . ($note !== '' ? " ({$note})" : ''), 'amt' => $t['discount']];
     }
-    foreach ($textExtras as $x) $breakdown[] = ['kind' => 'extra', 'label' => $x['label'] . ' × ' . $x['qty'], 'amt' => $conv($x['line'])];
+    foreach ($textExtras as $x) $breakdown[] = ['kind' => 'extra', 'label' => qb_extra_label($x['label'], $x['qty'], $x['basis'], $nights), 'amt' => $conv($x['line'])];
     $breakdown[] = ['kind' => 'total', 'label' => 'Total', 'amt' => $t['total']];
 
     $text = qb_quote_text([
         'name' => (string)($sel['name'] ?? ''), 'check_in' => $ci ?? '', 'check_out' => $co ?? '', 'nights' => $nights,
         'adults' => $adults, 'children' => $children, 'currency' => $cur, 'today' => $today,
         'rooms'  => array_map(fn($r) => ['name' => $r['name'], 'qty' => $r['qty'], 'mix' => $r['mix'], 'amt' => $conv($r['line'])], $textRooms),
-        'extras' => array_map(fn($x) => ['label' => $x['label'], 'qty' => $x['qty'], 'amt' => $conv($x['line'])], $textExtras),
+        'extras' => array_map(fn($x) => ['label' => $x['label'], 'qty' => $x['qty'], 'basis' => $x['basis'], 'amt' => $conv($x['line'])], $textExtras),
         'discount_pct' => $t['discount_pct'], 'discount_note' => (string)($sel['discount_note'] ?? ''),
         'discount' => $t['discount'], 'total' => $t['total'], 'fx_note' => $fxNote,
     ]);

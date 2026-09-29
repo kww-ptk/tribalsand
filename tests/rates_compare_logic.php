@@ -24,6 +24,10 @@ check('class: standard/mid/peak/other/base',
 check('labels sort Standard, Mid, Peak, then others A-Z',
     rc_sort_labels(['Peak season', 'Zeta', 'Mid season', 'Alpha', 'Standard season'])
         === ['Standard season', 'Mid season', 'Peak season', 'Alpha', 'Zeta']);
+check('season class: "High season" is peak', rc_season_class('High season') === 'peak' && rc_season_class('HIGH') === 'peak');
+check('season rank: High ties with Peak', rc_season_rank('High season') === rc_season_rank('Peak season'));
+check('season order: Standard, Mid, High',
+    rc_sort_labels(['High season', 'Standard season', 'Mid season']) === ['Standard season', 'Mid season', 'High season']);
 
 $map = ['2027-12-18' => n(97812, 'Mid season'), '2027-12-19' => n(97812, 'Mid season'),
         '2027-12-20' => n(119500, 'Peak season'), '2027-12-21' => n(143400, 'Peak season'),

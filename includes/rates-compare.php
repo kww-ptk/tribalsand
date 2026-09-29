@@ -19,17 +19,17 @@ declare(strict_types=1);
  * formatter must stay byte-identical (tests/rates_compare_logic.php pins PHP).
  */
 
-/** Colour key for a season label: std | mid | peak | other | base. */
+/** Colour key for a season label: std | mid | peak (also "High") | other | base. */
 function rc_season_class(?string $label): string {
     if ($label === null || $label === '') return 'base';
     $l = strtolower($label);
-    if (str_contains($l, 'peak'))     return 'peak';
+    if (str_contains($l, 'peak') || str_contains($l, 'high')) return 'peak';   // "High season" = a property's top season
     if (str_contains($l, 'mid'))      return 'mid';
     if (str_contains($l, 'standard')) return 'std';
     return 'other';
 }
 
-/** Sort rank for a label: Standard 0, Mid 1, Peak 2, anything else 3. */
+/** Sort rank for a label: Standard 0, Mid 1, Peak/High 2, anything else 3. */
 function rc_season_rank(string $label): int {
     return ['std' => 0, 'mid' => 1, 'peak' => 2][rc_season_class($label)] ?? 3;
 }

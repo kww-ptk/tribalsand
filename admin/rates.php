@@ -249,7 +249,7 @@ include __DIR__ . '/_layout.php';
                 $key   = $night ? rc_night_key($night) : null;
                 $cls   = rc_season_class($key);
                 $we    = in_array((int)date('N', strtotime($d)), [6, 7], true);
-                $tip   = $night ? date('D j M', strtotime($d)) . ' · ' . ($key ?? 'Base') . ' · ' . rc_money_text((float)$night['price'], $c) : ''; ?>
+                $tip   = $night ? date('D j M', strtotime($d)) . ' · ' . ($key ?? 'Base') . ' · ' . ((float)$night['price'] > 0 ? rc_money_text((float)$night['price'], $c) : 'no price') : ''; ?>
           <td class="rc-<?= e($cls) ?><?= $we ? ' is-we' : '' ?>" title="<?= e($tip) ?>"><?= $night && (float)$night['price'] > 0 ? rc_money_html((float)$night['price'], $c, $cur, $fx, true) : '—' ?></td>
           <?php endforeach; ?>
         </tr>

@@ -51,7 +51,10 @@ $txt = qb_quote_text([
     'name' => 'Sofia Martin', 'check_in' => '2027-03-24', 'check_out' => '2027-03-28', 'nights' => 4,
     'adults' => 2, 'children' => 1, 'currency' => 'KES', 'today' => '2026-09-29',
     'rooms' => [['name' => 'Zuri — Maji Suite', 'qty' => 1, 'mix' => '2 Mid + 2 Peak', 'amt' => 229680.0]],
-    'extras' => [['label' => 'Airport → Property', 'qty' => 1, 'amt' => 6450.0]],
+    'extras' => [['label' => 'Airport → Property', 'qty' => 1, 'amt' => 6450.0],
+                 ['label' => 'Private chef dinner', 'qty' => 1, 'basis' => 'night', 'amt' => 400.0],
+                 ['label' => 'Tsavo East', 'qty' => 2, 'basis' => 'person', 'amt' => 300.0],
+                 ['label' => 'Guide', 'qty' => 1, 'basis' => 'person', 'amt' => 50.0]],
     'discount_pct' => 10.0, 'discount_note' => 'Returning guest', 'discount' => 22968.0,
     'total' => 213162.0, 'fx_note' => 'Converted at 1 USD = 129 KES on 29 Sep 2026.',
 ]);
@@ -59,6 +62,10 @@ check('text: header', str_starts_with($txt, "Tribal Sand — quote for Sofia Mar
 check('text: room line', str_contains($txt, '• Zuri — Maji Suite × 1 (2 Mid + 2 Peak): KES 229,680'));
 check('text: discount line', str_contains($txt, 'Discount 10% (Returning guest): −KES 22,968'));
 check('text: extra line', str_contains($txt, '• Airport → Property × 1: KES 6,450'));
+check('text: per-night extra shows nights', str_contains($txt, '• Private chef dinner × 1 · 4 nights: KES 400'));
+check('text: per-person extra shows people', str_contains($txt, '• Tsavo East × 2 people: KES 300') && str_contains($txt, '• Guide × 1 person: KES 50'));
+check('label: basis helper', qb_extra_label('X', 1, 'night', 1) === 'X × 1 · 1 night'
+    && qb_extra_label('X', 3, 'trip', 4) === 'X × 3' && qb_extra_label('X', 2, 'stay', 4) === 'X × 2');
 check('text: total + fx + validity', str_contains($txt, "Total: KES 213,162\nConverted at 1 USD = 129 KES on 29 Sep 2026.\nPrices valid on 29 Sep 2026; subject to availability until booked."));
 check('fx note', qb_fx_note($fx, 'KES', '2026-09-29') === 'Converted at 1 USD = 129 KES on 29 Sep 2026.');
 
@@ -102,7 +109,9 @@ if ($pdo) {
                 'qty' => 2, 'price' => 100, 'price_cur' => 'USD', 'basis' => 'night']]] + $sel, null);
             $x = $cust['extras'][0];
             check('pricing: custom per-night extra', $x['line']['amt'] === 600.0 && $x['line']['cur'] === 'USD');
-            check('pricing: copy text present', str_contains($cust['text'], 'Private chef × 2'));
+            check('pricing: copy text present', str_contains($cust['text'], 'Private chef × 2 · 3 nights'));
+            check('pricing: breakdown label carries the basis',
+                in_array('Private chef × 2 · 3 nights', array_column($cust['lines'], 'label'), true));
 
             // An unpriced room (no base price, no override in the stay) must never be quoted at 0.
             $zr = null;
