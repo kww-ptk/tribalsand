@@ -11,7 +11,7 @@ declare(strict_types=1);
  * ONE pricing path: room figures come from room_stay_quotes() (the same
  * summation room_stay_quote() — the booking widget's quote — runs), availability
  * from count_available_units() / find_available_unit(). Activities are priced
- * from tours.price_amount (USD), transfers from service_options (site currency).
+ * from tours.price_amount (site currency), transfers from service_options (site currency).
  * A client-sent price is used only for custom lines and explicitly edited
  * catalogue prices — staff input by definition.
  *
@@ -50,6 +50,28 @@ function qb_extra_amount(float $unit, int $qty, string $basis, int $nights): flo
     $qty = max(0, $qty);
     $amt = $basis === 'night' ? $unit * max(0, $nights) * $qty : $unit * $qty;
     return round($amt, 2);
+}
+
+/**
+ * "Venue — Room", without repeating the venue when the room name already starts
+ * with it ("Zuri" + "Zuri — Whole Villa" → "Zuri — Whole Villa"). Case-insensitive,
+ * trimmed, and only at a word boundary ("Zurich Suite" is not a "Zuri" room).
+ */
+function qb_room_display_name(string $venue, string $room): string {
+    $v = trim($venue); $r = trim($room);
+    if ($v === '') return $r;
+    $n = mb_strlen($v);
+    if (mb_strtolower(mb_substr($r, 0, $n)) === mb_strtolower($v)) {
+        $next = mb_substr($r, $n, 1);
+        if ($next === '' || !preg_match('/[\p{L}\p{N}]/u', $next)) return $r;
+    }
+    return $v . ' — ' . $r;
+}
+
+/** One line ['amt','cur'] in the quote currency, or null when its currency has no rate. */
+function qb_conv_line(array $line, string $cur, array $rates): ?float {
+    $v = rc_convert((float)$line['amt'], strtoupper((string)$line['cur']), $cur, $rates);
+    return $v === null ? null : round($v, 2);
 }
 
 /**
@@ -102,6 +124,8 @@ function qb_notices(array $picked, int $party, bool $okDates, array $unpricedExt
         if ($okDates && $p['free'] !== null) {
             if (empty($p['free_exact'])) {
                 if ((int)$p['free'] === 0) $out[] = ['type' => 'warn', 'text' => "{$p['name']}: not free for these dates."];
+                // A composite product reports free as yes/no (one villa's worth) — more than one is unverified.
+                if ((int)$p['qty'] > 1) $out[] = ['type' => 'warn', 'text' => "{$p['name']}: availability is checked for one at a time — confirm more on the calendar."];
             } elseif ((int)$p['qty'] > (int)$p['free']) {
                 $out[] = ['type' => 'warn', 'text' => (int)$p['free'] === 0
                     ? "{$p['name']}: not free for these dates."
@@ -193,6 +217,7 @@ function qb_catalog(?array $scope): array {
 
     $where = 'r.is_published = TRUE AND v.is_published = TRUE';
     if ($scope !== null) $where .= ' AND v.id IN (' . implode(',', array_map('intval', $scope)) . ')';
+    $invUnits = [];          // inventory room id => active unit count (composite products share a pool)
     $rooms = db_query(
         "SELECT r.id, r.slug, r.name, r.venue_id, r.capacity, r.price_amount, r.price_currency,
                 r.is_entire_place, r.is_published, v.name AS venue_name,
@@ -206,7 +231,7 @@ function qb_catalog(?array $scope): array {
         $inv   = room_inventory_room_id($r);
         $units = $inv === (int)$r['id']
             ? (int)$r['unit_count']
-            : (int)db_query('SELECT COUNT(*) FROM units WHERE room_id = :r AND is_active = TRUE', [':r' => $inv])->fetchColumn();
+            : ($invUnits[$inv] ??= (int)db_query('SELECT COUNT(*) FROM units WHERE room_id = :r AND is_active = TRUE', [':r' => $inv])->fetchColumn());
         $r['units']   = $units;
         $r['max_qty'] = qb_bool($r['is_entire_place']) ? 1 : max(1, $units);
         $r['price_currency'] = strtoupper((string)($r['price_currency'] ?: 'USD'));
@@ -258,6 +283,9 @@ function qb_price_selection(array $sel, ?array $scope): array {
     $children = max(0, min(500, (int)($sel['children'] ?? 0)));
     $party    = $adults + $children;
     $wantFree = !empty($sel['want_free']);
+    // Free-text limits, applied once so the breakdown and the copy text agree.
+    $qName = trim(mb_substr((string)($sel['name'] ?? ''), 0, 120));
+    $qNote = trim(mb_substr((string)($sel['discount_note'] ?? ''), 0, 80));
 
     $want = [];
     foreach ((array)($sel['rooms'] ?? []) as $r) {
@@ -293,7 +321,7 @@ function qb_price_selection(array $sel, ?array $scope): array {
         }
         $roomsOut[] = $row;
         if ($qty > 0) {
-            $name = $room['venue_name'] . ' — ' . $room['name'];
+            $name = qb_room_display_name((string)$room['venue_name'], (string)$room['name']);
             $picked[] = ['name' => $name, 'qty' => $qty, 'guests' => $w['guests'],
                          'capacity' => (int)$room['capacity'] * $qty,
                          'free' => $row['free'] ?? null, 'free_exact' => $row['free_exact'] ?? true];
@@ -308,7 +336,7 @@ function qb_price_selection(array $sel, ?array $scope): array {
     $transferById = [];
     foreach ($cat['transfers'] as $t) $transferById[(int)$t['id']] = $t;
 
-    $extrasOut = []; $extraLines = []; $unpriced = []; $textExtras = [];
+    $extrasOut = []; $extraLines = []; $unpriced = []; $needDates = []; $textExtras = [];
     foreach (array_slice((array)($sel['extras'] ?? []), 0, 50) as $x) {
         $key  = substr(preg_replace('/[^a-z0-9_-]/i', '', (string)($x['key'] ?? '')), 0, 20);
         $kind = (string)($x['kind'] ?? '');
@@ -319,7 +347,7 @@ function qb_price_selection(array $sel, ?array $scope): array {
             $t = $tourById[(int)$x['id']];
             $label = (string)$t['name'];
             $basis = qb_bool($t['price_per_person']) ? 'person' : 'stay';
-            $curX  = 'USD';
+            $curX  = $cat['site_currency'];
             $unitX = !empty($x['edited']) && $sent !== null ? $sent
                    : (is_numeric($t['price_amount']) && (float)$t['price_amount'] > 0 ? (float)$t['price_amount'] : $sent);
         } elseif ($kind === 'transfer' && isset($transferById[(int)($x['id'] ?? 0)])) {
@@ -337,8 +365,11 @@ function qb_price_selection(array $sel, ?array $scope): array {
         } else {
             continue;                                  // unknown or out-of-catalogue extra: ignored
         }
-        $line = $unitX !== null ? ['amt' => qb_extra_amount($unitX, $qtyX, $basis, $nights), 'cur' => $curX] : null;
+        // A per-night price needs a stay to multiply by; without dates it is "not yet priced", never × 0.
+        $noNights = $basis === 'night' && $nights === 0;
+        $line = ($unitX !== null && !$noNights && $qtyX > 0) ? ['amt' => qb_extra_amount($unitX, $qtyX, $basis, $nights), 'cur' => $curX] : null;
         if ($unitX === null) $unpriced[] = $label;
+        elseif ($noNights && $qtyX > 0) $needDates[] = $label;
         $extrasOut[] = ['key' => $key, 'label' => $label, 'qty' => $qtyX, 'basis' => $basis,
                         'unit' => $unitX !== null ? ['amt' => $unitX, 'cur' => $curX] : null, 'line' => $line];
         $extraLines[] = $line;
@@ -350,26 +381,31 @@ function qb_price_selection(array $sel, ?array $scope): array {
     $capTotal = array_sum(array_column($picked, 'capacity'));
     $notices  = qb_notices($picked, $party, $okDates, $unpriced);
     foreach ($unpricedRooms as $n) $notices[] = ['type' => 'warn', 'text' => "{$n}: no price set for these dates."];
+    foreach ($needDates as $n) $notices[] = ['type' => 'warn', 'text' => "{$n}: choose dates for a per-night price."];
     foreach ($t['missing'] as $m) $notices[] = ['type' => 'warn', 'text' => "No exchange rate for {$m}; those lines are left out of the total."];
     $today  = date('Y-m-d');
     $fxNote = $t['converted'] ? qb_fx_note($rates, $cur, $today) : null;
-    $conv   = fn(array $l): float => round(rc_convert((float)$l['amt'], $l['cur'], $cur, $rates) ?? 0.0, 2);
+
+    // A line whose currency has no rate stays out of the breakdown and text (the
+    // "No exchange rate" notice already says so) — never printed as 0.
+    $convRooms = []; $convExtras = [];
+    foreach ($textRooms as $r)  { $v = qb_conv_line($r['line'], $cur, $rates); if ($v !== null) $convRooms[]  = $r + ['conv' => $v]; }
+    foreach ($textExtras as $x) { $v = qb_conv_line($x['line'], $cur, $rates); if ($v !== null) $convExtras[] = $x + ['conv' => $v]; }
 
     $breakdown = [];
-    foreach ($textRooms as $r) $breakdown[] = ['kind' => 'room', 'label' => $r['name'] . ' × ' . $r['qty'], 'amt' => $conv($r['line'])];
+    foreach ($convRooms as $r) $breakdown[] = ['kind' => 'room', 'label' => $r['name'] . ' × ' . $r['qty'], 'amt' => $r['conv']];
     if ($t['discount'] > 0) {
-        $note = trim(mb_substr((string)($sel['discount_note'] ?? ''), 0, 80));
-        $breakdown[] = ['kind' => 'discount', 'label' => 'Discount ' . rc_trimz(number_format($t['discount_pct'], 2, '.', '')) . '%' . ($note !== '' ? " ({$note})" : ''), 'amt' => $t['discount']];
+        $breakdown[] = ['kind' => 'discount', 'label' => 'Discount ' . rc_trimz(number_format($t['discount_pct'], 2, '.', '')) . '%' . ($qNote !== '' ? " ({$qNote})" : ''), 'amt' => $t['discount']];
     }
-    foreach ($textExtras as $x) $breakdown[] = ['kind' => 'extra', 'label' => qb_extra_label($x['label'], $x['qty'], $x['basis'], $nights), 'amt' => $conv($x['line'])];
+    foreach ($convExtras as $x) $breakdown[] = ['kind' => 'extra', 'label' => qb_extra_label($x['label'], $x['qty'], $x['basis'], $nights), 'amt' => $x['conv']];
     $breakdown[] = ['kind' => 'total', 'label' => 'Total', 'amt' => $t['total']];
 
     $text = qb_quote_text([
-        'name' => (string)($sel['name'] ?? ''), 'check_in' => $ci ?? '', 'check_out' => $co ?? '', 'nights' => $nights,
+        'name' => $qName, 'check_in' => $ci ?? '', 'check_out' => $co ?? '', 'nights' => $nights,
         'adults' => $adults, 'children' => $children, 'currency' => $cur, 'today' => $today,
-        'rooms'  => array_map(fn($r) => ['name' => $r['name'], 'qty' => $r['qty'], 'mix' => $r['mix'], 'amt' => $conv($r['line'])], $textRooms),
-        'extras' => array_map(fn($x) => ['label' => $x['label'], 'qty' => $x['qty'], 'basis' => $x['basis'], 'amt' => $conv($x['line'])], $textExtras),
-        'discount_pct' => $t['discount_pct'], 'discount_note' => (string)($sel['discount_note'] ?? ''),
+        'rooms'  => array_map(fn($r) => ['name' => $r['name'], 'qty' => $r['qty'], 'mix' => $r['mix'], 'amt' => $r['conv']], $convRooms),
+        'extras' => array_map(fn($x) => ['label' => $x['label'], 'qty' => $x['qty'], 'basis' => $x['basis'], 'amt' => $x['conv']], $convExtras),
+        'discount_pct' => $t['discount_pct'], 'discount_note' => $qNote,
         'discount' => $t['discount'], 'total' => $t['total'], 'fx_note' => $fxNote,
     ]);
 

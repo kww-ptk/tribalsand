@@ -31,7 +31,7 @@ $__clientCat = [
         'per_person' => qb_bool($t['price_per_person'])], $__qbCat['tours']),
     'transfers' => array_map(fn($t) => ['id' => $t['id'], 'name' => $t['label'],
         'price' => is_numeric($t['price_amount']) && (float)$t['price_amount'] > 0 ? (float)$t['price_amount'] : null], $__qbCat['transfers']),
-    'tour_cur' => 'USD', 'transfer_cur' => $__qbCat['site_currency'],
+    'tour_cur' => $__qbCat['site_currency'], 'transfer_cur' => $__qbCat['site_currency'],
 ];
 $__uid = 'qb' . substr(md5((string)mt_rand()), 0, 6);
 ?>

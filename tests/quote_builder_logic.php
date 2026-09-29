@@ -46,6 +46,19 @@ $ns3 = array_column(qb_notices([['name' => 'X', 'qty' => 1, 'guests' => 2, 'capa
 check('notice: composite product not free', in_array('X: not free for these dates.', $ns3, true));
 check('notice: unpriced extra', in_array('Sunset dhow: add a price.', $ns3, true));
 
+$ns4 = array_column(qb_notices([['name' => 'Ilai Bunk', 'qty' => 5, 'guests' => 2, 'capacity' => 10, 'free' => 1, 'free_exact' => false]], 2, true, []), 'text');
+check('notice: composite ×N warns availability is per one', in_array('Ilai Bunk: availability is checked for one at a time — confirm more on the calendar.', $ns4, true));
+$ns5 = array_column(qb_notices([['name' => 'Ilai Bunk', 'qty' => 1, 'guests' => 2, 'capacity' => 2, 'free' => 1, 'free_exact' => false]], 2, true, []), 'text');
+check('notice: composite ×1 has no per-one warning', !array_filter($ns5, fn($t) => str_contains($t, 'one at a time')));
+
+// ── Room display name, line conversion ───────────────────────────────────────
+check('name: venue prefix added', qb_room_display_name('Maya Kobe', 'Haze Suite') === 'Maya Kobe — Haze Suite');
+check('name: no double prefix', qb_room_display_name('Zuri', 'Zuri — Whole Villa') === 'Zuri — Whole Villa');
+check('name: prefix check ignores case and spaces', qb_room_display_name(' Zuri ', 'zuri Whole Villa') === 'zuri Whole Villa');
+check('name: a longer venue word is not a prefix', qb_room_display_name('Zuri', 'Zurich Suite') === 'Zuri — Zurich Suite');
+check('conv: converts a line', qb_conv_line(['amt' => 10.0, 'cur' => 'USD'], 'KES', $fx) === 1290.0);
+check('conv: unknown currency is null, never 0', qb_conv_line(['amt' => 10.0, 'cur' => 'EUR'], 'KES', $fx) === null);
+
 // ── Quote text ───────────────────────────────────────────────────────────────
 $txt = qb_quote_text([
     'name' => 'Sofia Martin', 'check_in' => '2027-03-24', 'check_out' => '2027-03-28', 'nights' => 4,
@@ -76,6 +89,29 @@ if ($pdo) {
     $pdo->beginTransaction();
     try {
         $cat = qb_catalog(null);
+
+        // Extras: per-night with no dates is unpriced (never "× 1: KES 0"); qty 0 is dropped.
+        $ex = qb_price_selection(['cur' => 'KES', 'adults' => 2, 'rooms' => [], 'extras' => [
+            ['key' => 'n1', 'kind' => 'custom', 'label' => 'Chef', 'qty' => 1, 'price' => 100, 'price_cur' => 'USD', 'basis' => 'night'],
+            ['key' => 'z1', 'kind' => 'custom', 'label' => 'Zero qty', 'qty' => 0, 'price' => 50, 'price_cur' => 'USD', 'basis' => 'stay'],
+            ['key' => 'ok', 'kind' => 'custom', 'label' => 'Guide', 'qty' => 1, 'price' => 50, 'price_cur' => 'USD', 'basis' => 'stay'],
+        ]], null);
+        $exLabels = array_column($ex['lines'], 'label');
+        check('extras: per-night without dates is left out of breakdown and text',
+            !array_filter($exLabels, fn($l) => str_contains($l, 'Chef')) && !str_contains($ex['text'], 'Chef'));
+        check('extras: per-night without dates says to choose dates',
+            in_array(['type' => 'warn', 'text' => 'Chef: choose dates for a per-night price.'], $ex['notices'], true));
+        check('extras: qty 0 is left out of breakdown and text',
+            !array_filter($exLabels, fn($l) => str_contains($l, 'Zero qty')) && !str_contains($ex['text'], 'Zero qty'));
+        check('extras: a normal extra is still listed', in_array('Guide × 1', $exLabels, true) && str_contains($ex['text'], '• Guide × 1'));
+
+        // Limits apply once: name 120, discount note 80, in the breakdown AND the text.
+        $longNote = str_repeat('n', 120);
+        $lim = qb_price_selection(['cur' => 'KES', 'name' => str_repeat('N', 200), 'discount_pct' => 10, 'discount_note' => $longNote,
+            'check_in' => '2099-05-10', 'check_out' => '2099-05-13', 'rooms' => [], 'extras' => [
+            ['key' => 'a', 'kind' => 'custom', 'label' => 'Guide', 'qty' => 1, 'price' => 1000, 'price_cur' => 'KES', 'basis' => 'stay']]], null);
+        check('limit: name is cut to 120', str_contains($lim['text'], ' for ' . str_repeat('N', 120) . "\n") && !str_contains($lim['text'], str_repeat('N', 121)));
+        check('limit: no discount line without accommodation (sanity)', $lim['summary']['discount'] === 0.0);
         check('catalogue: rooms are published only', !array_filter($cat['rooms'], fn($r) => !qb_bool($r['is_published'] ?? true)));
         check('catalogue: every room has max_qty ≥ 1', !array_filter($cat['rooms'], fn($r) => (int)$r['max_qty'] < 1));
         check('catalogue: empty scope sees nothing', qb_catalog([])['rooms'] === []);
@@ -112,6 +148,13 @@ if ($pdo) {
             check('pricing: copy text present', str_contains($cust['text'], 'Private chef × 2 · 3 nights'));
             check('pricing: breakdown label carries the basis',
                 in_array('Private chef × 2 · 3 nights', array_column($cust['lines'], 'label'), true));
+
+            $dn = qb_price_selection(['discount_pct' => 10, 'discount_note' => str_repeat('n', 120), 'name' => str_repeat('N', 200)] + $sel, null);
+            check('limit: discount note cut to 80 in the text', str_contains($dn['text'], '(' . str_repeat('n', 80) . ')') && !str_contains($dn['text'], str_repeat('n', 81)));
+            $dl = array_values(array_filter($dn['lines'], fn($l) => $l['kind'] === 'discount'));
+            check('limit: discount note cut to 80 in the breakdown', $dl && str_contains($dl[0]['label'], '(' . str_repeat('n', 80) . ')') && !str_contains($dl[0]['label'], str_repeat('n', 81)));
+            $expName = qb_room_display_name((string)$room['venue_name'], (string)$room['name']);
+            check('name: picked room label uses the display helper', str_contains($q['text'], $expName));
 
             // An unpriced room (no base price, no override in the stay) must never be quoted at 0.
             $zr = null;
