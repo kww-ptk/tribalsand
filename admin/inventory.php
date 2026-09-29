@@ -14,6 +14,7 @@ require_once __DIR__ . '/../includes/pagination.php';
 require_once __DIR__ . '/../includes/admin-pagination.php';
 require_once __DIR__ . '/../includes/inventory-views.php';
 require_once __DIR__ . '/../includes/inventory-owner.php';   // owner-only corrections (reset all inventory)
+require_once __DIR__ . '/../includes/inventory-grid.php';    // the spreadsheet list + bulk actions
 require_login();
 require_manager();
 
@@ -24,8 +25,41 @@ $flash = $_SESSION['inv_flash'] ?? null; unset($_SESSION['inv_flash']);
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
     verify_csrf();
+    $act  = (string)($_POST['action'] ?? '');
+    $back = '/admin/inventory.php' . (((int)($_POST['place'] ?? 0)) ? '?place=' . (int)$_POST['place'] : '');
+    $me   = (int)current_admin()['id'];
+    $ids  = inv_grid_ids($_POST['ids'] ?? []);
+    // Bulk actions on ticked rows. Every posted place is re-checked against the account's scope.
+    if (in_array($act, ['bulk_move', 'bulk_category', 'bulk_delete'], true)) {
+        try {
+            if ($act === 'bulk_move') {
+                $from = inv_fetch_location((int)($_POST['place'] ?? 0));
+                $to   = inv_fetch_location((int)($_POST['to_id'] ?? 0));
+                if (!$from || !inv_location_visible($from, $vids)) throw new InvRefusal('Pick the place to move from first (the Place menu at the top).');
+                if (!$to || !inv_location_visible($to, $vids) || !inv_bool($to['is_active'])) throw new InvRefusal('Pick an open place to move to.');
+                if (!inv_move_in_scope($from, $to, $vids)) throw new InvRefusal('That move is outside your properties.');
+                $r = inv_grid_bulk_move($ids, (int)$from['id'], (int)$to['id'], $me);
+                audit_log('inv.bulk_move', 'inv_location', (int)$from['id'], "{$r['items']} items, {$r['pieces']} pcs → {$to['name']}");
+                $_SESSION['inv_flash'] = ['type' => $r['skipped'] ? 'info' : 'success', 'msg' =>
+                    "Moved {$r['pieces']} piece" . ($r['pieces'] === 1 ? '' : 's') . " of {$r['items']} item" . ($r['items'] === 1 ? '' : 's') . " to {$to['name']}."
+                    . ($r['skipped'] ? " {$r['skipped']} skipped (none here, or tracked by serial number — move those on the item page)." : '')];
+            } elseif ($act === 'bulk_category') {
+                $n = inv_grid_bulk_category($ids, (string)($_POST['category'] ?? ''));
+                audit_log('inv.bulk_category', 'inventory', 0, "{$n} items → " . (string)($_POST['category'] ?? ''));
+                $_SESSION['inv_flash'] = ['type' => 'success', 'msg' => "Category set on {$n} item" . ($n === 1 ? '' : 's') . '.'];
+            } else {
+                if (!is_owner()) throw new InvRefusal('Only the owner can delete items.');
+                $n = inv_grid_bulk_delete($ids, $me);
+                audit_log('inv.bulk_delete', 'inventory', 0, "{$n} items");
+                $_SESSION['inv_flash'] = ['type' => 'success', 'msg' => "Deleted {$n} item" . ($n === 1 ? '' : 's') . '.'];
+            }
+        } catch (InvRefusal $ex) {
+            $_SESSION['inv_flash'] = ['type' => 'error', 'msg' => $ex->getMessage()];
+        }
+        header('Location: ' . $back); exit;
+    }
     // Owner-only correction (includes/inventory-owner.php) — this page is its is_owner() gate.
-    if ((string)($_POST['action'] ?? '') === 'reset_all') {
+    if ($act === 'reset_all') {
         if (!is_owner()) {
             $_SESSION['inv_flash'] = ['type' => 'error', 'msg' => 'Only the owner can reset inventory.'];
         } elseif (trim((string)($_POST['confirm_text'] ?? '')) !== 'RESET') {
@@ -70,10 +104,18 @@ $venues = $supported ? inv_visible_venues($vids) : [];
 if ($f['venue'] && !isset($venues[$f['venue']])) $f['venue'] = 0;
 
 $gone = in_array($f['status'], ['sold', 'written_off'], true);
+// The spreadsheet view (everything except the Sold / Lost ledger): one "place" at a time, or all places.
+$place = (int)($_GET['place'] ?? 0);
+if ($place && !isset($byId[$place])) $place = 0;
+$placeRow = $place ? $byId[$place] : null;
+$grid = (!$gone && $supported) ? inv_grid_rows($vids, $place, $f['type']) : [];
+$gridCats = [];
+foreach ($grid as $gr) if ($gr['category'] !== null && $gr['category'] !== '') $gridCats[(string)$gr['category']] = true;
+ksort($gridCats, SORT_NATURAL | SORT_FLAG_CASE);
 $run  = fn(int $offset): array => $gone ? inv_gone_moves($f, $vids, $pg['per'], $offset) : inv_central_list($f, $vids, $pg['per'], $offset);
-$res  = $supported ? $run((int)$pg['offset']) : ['total' => 0, 'rows' => []];
+$res  = ($supported && $gone) ? $run((int)$pg['offset']) : ['total' => 0, 'rows' => []];
 $meta = paginate_meta((int)$res['total'], $pg['page'], $pg['per']);
-if ($supported && $meta['offset'] !== (int)$pg['offset']) $res = $run($meta['offset']);   // page past the end → last page
+if ($supported && $gone && $meta['offset'] !== (int)$pg['offset']) $res = $run($meta['offset']);   // page past the end → last page
 $filtered = $f['q'] !== '' || $f['type'] || $f['venue'] || $f['location'] || $f['person'] || $f['status'];
 
 ob_start(); ?>
@@ -147,6 +189,8 @@ include __DIR__ . '/_layout.php';
 <?php if (!$supported): ?>
   <div class="alert alert--info">Run the <code>add_inventory.sql</code> migration (Admin → Migrations) to set up inventory.</div>
 <?php else: ?>
+<?php if ($gone): ?>
+<a href="/admin/inventory.php" class="btn-outline btn-sm" style="margin-bottom:12px"><?= admin_icon('arrow-left', 14) ?> Back to the list</a>
 <div class="dt" data-dt>
   <div class="dt-controls">
     <form method="GET" action="/admin/inventory.php" class="filters">
@@ -199,6 +243,103 @@ include __DIR__ . '/_layout.php';
   </div>
   <div class="dt-body" data-dt-body><?= $dtBody ?></div>
 </div>
+<?php else: $isOwner = is_owner(); $showPlace = $placeRow !== null; ?>
+<form method="GET" action="/admin/inventory.php" class="ig-bar">
+  <label class="ig-field"><span>Place</span>
+    <select name="place" class="filter-select" aria-label="Place" onchange="this.form.submit()">
+      <option value="0">All places</option>
+      <?php foreach ($locations as $l): if (!inv_bool($l['is_active'])) continue; ?>
+      <option value="<?= (int)$l['id'] ?>" <?= $place === (int)$l['id'] ? 'selected' : '' ?>><?= e(inv_location_label($l)) ?></option>
+      <?php endforeach; ?>
+    </select></label>
+  <label class="ig-field"><span>Type</span>
+    <select name="type" class="filter-select" aria-label="Type" onchange="this.form.submit()">
+      <option value="">All types</option>
+      <?php foreach (INV_TYPES as $k => $lbl): ?><option value="<?= e($k) ?>" <?= $f['type'] === $k ? 'selected' : '' ?>><?= e($lbl) ?></option><?php endforeach; ?>
+    </select></label>
+  <label class="ig-field"><span>Category</span>
+    <select id="igCat" class="filter-select" aria-label="Category">
+      <option value="">All categories</option>
+      <?php foreach (array_keys($gridCats) as $c): ?><option value="<?= e(mb_strtolower((string)$c)) ?>"><?= e((string)$c) ?></option><?php endforeach; ?>
+    </select></label>
+  <label class="ig-field ig-search"><span>Search</span><input type="search" id="igSearch" class="inp" placeholder="Name, SKU / item no., category…" autocomplete="off"></label>
+  <label class="ig-field"><span>History</span>
+    <select name="status" class="filter-select" aria-label="History" onchange="this.form.submit()">
+      <option value="">—</option>
+      <option value="sold">Sold</option>
+      <option value="written_off">Lost / written off</option>
+    </select></label>
+</form>
+
+<?php if (!$grid): ?>
+  <?php dt_empty($showPlace ? 'Nothing is listed at ' . inv_location_label($placeRow) . ' yet.' : 'No items yet — add the first one or import a list.'); ?>
+<?php else: ?>
+<form method="POST" action="/admin/inventory.php" id="igForm">
+  <?= csrf_field() ?><input type="hidden" name="place" value="<?= (int)$place ?>">
+  <div class="ig-wrap"><table class="ig" id="igTable">
+    <thead><tr>
+      <th class="ig-check"><input type="checkbox" id="igAll" aria-label="Select all shown"></th>
+      <th data-sort="name">Item</th>
+      <th data-sort="sku">SKU / item no.</th>
+      <th data-sort="cat">Category</th>
+      <th data-sort="type">Type</th>
+      <th data-sort="qty" class="ig-num"><?= $showPlace ? 'Here' : 'In stock' ?></th>
+      <?php if ($showPlace): ?><th data-sort="par" class="ig-num">Should have</th><th data-sort="short" class="ig-num">Short</th>
+      <?php else: ?><th>Where</th><?php endif; ?>
+      <th data-sort="value" class="ig-num">Value</th>
+    </tr></thead>
+    <tbody>
+    <?php foreach ($grid as $r):
+      $qty = (int)($showPlace ? $r['qty_here'] : $r['qty_all']);
+      $par = $r['par_here'] !== null ? (int)$r['par_here'] : null;
+      $val = $r['replacement_value'] !== null ? (float)$r['replacement_value'] * $qty : null;
+      $typeLbl = INV_TYPES[$r['item_type']] ?? (string)$r['item_type']; ?>
+      <tr data-name="<?= e(mb_strtolower((string)$r['name'])) ?>" data-sku="<?= e(mb_strtolower((string)$r['sku'])) ?>" data-cat="<?= e(mb_strtolower((string)$r['category'])) ?>"
+          data-type="<?= e($typeLbl) ?>" data-qty="<?= $qty ?>" data-par="<?= $par ?? -1 ?>" data-short="<?= (int)$r['short'] ?>" data-value="<?= $val ?? -1 ?>">
+        <td class="ig-check"><input type="checkbox" name="ids[]" value="<?= (int)$r['id'] ?>" aria-label="Select <?= e((string)$r['name']) ?>"></td>
+        <td><a href="/admin/inventory-item.php?id=<?= (int)$r['id'] ?>" class="inv-name"><?= inv_thumb_html($r, 28) ?><span><?= e((string)$r['name']) ?><?= $r['tracking'] === 'serial' ? ' <span class="ig-tag">serial</span>' : '' ?></span></a></td>
+        <td class="ig-mono"><?= e((string)($r['sku'] ?? '')) ?></td>
+        <td><?= $r['category'] ? '<span class="ig-pill">' . e((string)$r['category']) . '</span>' : '' ?></td>
+        <td class="text-muted"><?= e($typeLbl) ?></td>
+        <td class="ig-num"><strong><?= $qty ?></strong></td>
+        <?php if ($showPlace): ?>
+        <td class="ig-num"><?= $par === null ? '<span class="text-muted">—</span>' : $par ?></td>
+        <td class="ig-num"><?= $r['short'] ? '<span class="badge badge--orange">' . (int)$r['short'] . '</span>' : '<span class="text-muted">0</span>' ?></td>
+        <?php else: ?>
+        <td class="ig-where"><?= $r['breakdown'] ? e(inv_breakdown_label($r['breakdown'], 3)) : '<span class="text-muted">—</span>' ?></td>
+        <?php endif; ?>
+        <td class="ig-num text-muted"><?= $val !== null ? e(inv_money($val, (string)$r['currency'])) : '—' ?></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table></div>
+  <p class="text-muted ig-count" id="igCount"></p>
+
+  <div class="ig-bulk" id="igBulk" hidden>
+    <strong id="igSel">0 selected</strong>
+    <div class="ig-bulk__group">
+      <select name="to_id" class="filter-select" aria-label="Move to">
+        <option value="0">Move to…</option>
+        <?php foreach ($locations as $l): if (!inv_bool($l['is_active']) || (int)$l['id'] === $place) continue; ?>
+        <option value="<?= (int)$l['id'] ?>"><?= e(inv_location_label($l)) ?></option>
+        <?php endforeach; ?>
+      </select>
+      <button type="submit" name="action" value="bulk_move" class="btn-primary btn-sm" <?= $showPlace ? '' : 'disabled title="Pick a place at the top first — the stock moves from there"' ?>
+        data-confirm="Move ALL the stock of the ticked items<?= $showPlace ? ' at ' . e(inv_location_label($placeRow)) : '' ?> to the chosen place?"><?= admin_icon('arrow-right', 14) ?> Move</button>
+    </div>
+    <div class="ig-bulk__group">
+      <input name="category" class="inp inp--sm" maxlength="60" placeholder="Category" list="igCats" aria-label="Category">
+      <datalist id="igCats"><?php foreach (array_keys($gridCats) as $c): ?><option value="<?= e((string)$c) ?>"><?php endforeach; ?></datalist>
+      <button type="submit" name="action" value="bulk_category" class="btn-outline btn-sm"><?= admin_icon('check', 14) ?> Set category</button>
+    </div>
+    <?php if ($isOwner): ?>
+    <button type="submit" name="action" value="bulk_delete" class="btn-danger btn-sm" data-confirm="Delete the ticked items with their stock and history? This can't be undone."><?= admin_icon('trash', 14) ?> Delete</button>
+    <?php endif; ?>
+    <button type="button" class="btn-outline btn-sm" id="igClear"><?= admin_icon('x', 14) ?> Clear</button>
+  </div>
+</form>
+<?php endif; ?>
+<?php endif; ?>
 
 <?php if (is_owner()): ?>
 <div class="card" style="margin-top:18px">
@@ -215,4 +356,95 @@ include __DIR__ . '/_layout.php';
 <?php endif; ?>
 <?php endif; ?>
 <?= inv_shared_css() ?>
+<style>
+.ig-bar{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:14px}
+.ig-field{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+.ig-search{flex:1 1 220px;min-width:0}
+.ig-search .inp{width:100%}
+.ig-wrap{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);overflow:auto;max-height:calc(100vh - 230px)}
+.ig{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+.ig th,.ig td{padding:7px 10px;border-bottom:1px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;text-align:left;vertical-align:middle}
+.ig th:last-child,.ig td:last-child{border-right:0}
+.ig thead th{position:sticky;top:0;z-index:2;background:var(--bg);font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);cursor:pointer;user-select:none}
+.ig thead th.is-asc::after{content:" ▲";font-size:9px}
+.ig thead th.is-desc::after{content:" ▼";font-size:9px}
+.ig tbody tr:hover td{background:#f7f5f0}
+.ig tbody tr.is-sel td{background:#eef4f3}
+.ig .ig-check{width:34px;text-align:center;position:sticky;left:0;z-index:1;background:inherit}
+.ig thead .ig-check{z-index:3}
+.ig td.ig-check{background:var(--white)}
+.ig tbody tr.is-sel td.ig-check{background:#eef4f3}
+.ig input[type=checkbox]{width:16px;height:16px;cursor:pointer;accent-color:var(--brand)}
+.ig-num{text-align:right!important;font-variant-numeric:tabular-nums}
+.ig-mono{font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.ig-pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#eef1f6;font-size:12px}
+.ig-tag{display:inline-block;padding:0 6px;border-radius:4px;background:var(--bg);font-size:11px;color:var(--muted)}
+.ig-where{white-space:normal;min-width:200px;color:var(--muted)}
+.ig .inv-name > span:last-child{white-space:normal;min-width:180px}
+.ig .ig-tag{margin-left:4px}
+.ig-count{font-size:12.5px;margin:8px 2px 90px}
+.ig-bulk{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;z-index:40;display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--white);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:10px 14px;max-width:calc(100vw - 32px)}
+.ig-bulk[hidden]{display:none}
+.ig-bulk__group{display:flex;gap:6px;align-items:center}
+.ig-bulk .inp--sm{width:150px}
+@media (min-width:769px){.ig-bulk{left:calc(50% + var(--sidebar-w) / 2)}}
+</style>
+<script>
+(function () {
+  var table = document.getElementById('igTable'); if (!table) return;
+  var body = table.tBodies[0], rows = Array.prototype.slice.call(body.rows);
+  var all = document.getElementById('igAll'), bulk = document.getElementById('igBulk'), sel = document.getElementById('igSel');
+  var search = document.getElementById('igSearch'), cat = document.getElementById('igCat'), count = document.getElementById('igCount');
+  var last = null;
+  function box(r) { return r.querySelector('input[type=checkbox]'); }
+  function shown() { return rows.filter(function (r) { return !r.hidden; }); }
+  function refresh() {
+    var n = rows.filter(function (r) { return box(r).checked; }).length;
+    rows.forEach(function (r) { r.classList.toggle('is-sel', box(r).checked); });
+    bulk.hidden = n === 0; sel.textContent = n + ' selected';
+    var vis = shown(), vn = vis.filter(function (r) { return box(r).checked; }).length;
+    all.checked = vis.length > 0 && vn === vis.length; all.indeterminate = vn > 0 && vn < vis.length;
+    count.textContent = vis.length + ' of ' + rows.length + ' items';
+  }
+  function filter() {
+    var q = (search.value || '').trim().toLowerCase(), c = cat.value;
+    rows.forEach(function (r) {
+      var hay = r.getAttribute('data-name') + ' ' + r.getAttribute('data-sku') + ' ' + r.getAttribute('data-cat');
+      r.hidden = (q && hay.indexOf(q) === -1) || (c && r.getAttribute('data-cat') !== c);
+    });
+    refresh();
+  }
+  rows.forEach(function (r, i) {
+    box(r).addEventListener('click', function (ev) {
+      // Shift-click ticks the whole range (only the rows currently shown).
+      if (ev.shiftKey && last !== null) {
+        var vis = shown(), a = vis.indexOf(rows[last]), b = vis.indexOf(r);
+        if (a > -1 && b > -1) vis.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(function (x) { box(x).checked = box(r).checked; });
+      }
+      last = i; refresh();
+    });
+  });
+  all.addEventListener('change', function () { shown().forEach(function (r) { box(r).checked = all.checked; }); refresh(); });
+  document.getElementById('igClear').addEventListener('click', function () { rows.forEach(function (r) { box(r).checked = false; }); refresh(); });
+  search.addEventListener('input', filter); cat.addEventListener('change', filter);
+  // Only ticked rows that are still shown are submitted.
+  document.getElementById('igForm').addEventListener('submit', function () { rows.forEach(function (r) { if (r.hidden) box(r).checked = false; }); });
+  // Click a column title to sort.
+  table.querySelectorAll('th[data-sort]').forEach(function (th) {
+    th.addEventListener('click', function () {
+      var k = th.getAttribute('data-sort'), asc = !th.classList.contains('is-asc');
+      table.querySelectorAll('th[data-sort]').forEach(function (o) { o.classList.remove('is-asc', 'is-desc'); });
+      th.classList.add(asc ? 'is-asc' : 'is-desc');
+      var num = ['qty', 'par', 'short', 'value'].indexOf(k) > -1;
+      rows.sort(function (a, b) {
+        var x = a.getAttribute('data-' + k) || '', y = b.getAttribute('data-' + k) || '';
+        var d = num ? (parseFloat(x) - parseFloat(y)) : x.localeCompare(y, undefined, { numeric: true });
+        return asc ? d : -d;
+      });
+      rows.forEach(function (r) { body.appendChild(r); });
+    });
+  });
+  filter();
+})();
+</script>
 <?php include __DIR__ . '/_layout_end.php'; ?>
