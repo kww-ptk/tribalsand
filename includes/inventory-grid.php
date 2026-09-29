@@ -134,3 +134,111 @@ function inv_grid_bulk_delete(array $itemIds, ?int $userId): int {
         return count($ids);
     });
 }
+
+
+// ── Shared look + behaviour of the spreadsheet tables (Inventory list, order receiving) ──
+
+/** CSS of the spreadsheet-style tables (.ig …) — echo once per page, after inv_shared_css(). */
+function inv_grid_css(): string {
+    return '<style>
+.ig-bar{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:14px}
+.ig-field{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
+.ig-search{flex:1 1 220px;min-width:0}
+.ig-search .inp{width:100%}
+.ig-wrap{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);overflow:auto;max-height:calc(100vh - 230px)}
+.ig{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
+.ig th,.ig td{padding:7px 10px;border-bottom:1px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;text-align:left;vertical-align:middle}
+.ig th:last-child,.ig td:last-child{border-right:0}
+.ig thead th{position:sticky;top:0;z-index:2;background:var(--bg);font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);cursor:pointer;user-select:none}
+.ig thead th.is-asc::after{content:" ▲";font-size:9px}
+.ig thead th.is-desc::after{content:" ▼";font-size:9px}
+.ig tbody tr:hover td{background:#f7f5f0}
+.ig tbody tr.is-sel td{background:#eef4f3}
+.ig .ig-check{width:34px;text-align:center;position:sticky;left:0;z-index:1;background:inherit}
+.ig thead .ig-check{z-index:3}
+.ig td.ig-check{background:var(--white)}
+.ig tbody tr.is-sel td.ig-check{background:#eef4f3}
+.ig input[type=checkbox]{width:16px;height:16px;cursor:pointer;accent-color:var(--brand)}
+.ig-num{text-align:right!important;font-variant-numeric:tabular-nums}
+.ig-mono{font-family:ui-monospace,Menlo,monospace;font-size:12px}
+.ig-pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#eef1f6;font-size:12px}
+.ig-tag{display:inline-block;padding:0 6px;border-radius:4px;background:var(--bg);font-size:11px;color:var(--muted)}
+.ig-where{white-space:normal;min-width:200px;color:var(--muted)}
+.ig .inv-name > span:last-child{white-space:normal;min-width:180px}
+.ig .ig-tag{margin-left:4px}
+.ig-count{font-size:12.5px;margin:8px 2px 90px}
+.ig-bulk{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;z-index:40;display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--white);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:10px 14px;max-width:calc(100vw - 32px)}
+.ig-bulk[hidden]{display:none}
+.ig-bulk__group{display:flex;gap:6px;align-items:center}
+.ig-bulk .inp--sm{width:150px}
+@media (min-width:769px){.ig-bulk{left:calc(50% + var(--sidebar-w) / 2)}}
+</style>';
+}
+
+/**
+ * JS of the spreadsheet-style tables — echo once per page. Defines
+ * InvGrid({table, form, all, bulk, sel, count, clear, hidden(row), numeric[], noun}):
+ * row ticking with shift-click ranges (only the rows shown), select-all, the bulk
+ * bar (shown while something is ticked), "N of M" count, click-a-header sorting
+ * on data-<key> attributes, and only-shown-rows-submit. A row without a checkbox
+ * (e.g. fully received) is never selectable. Returns {filter, refresh}; call
+ * filter() after the search / filter inputs change. Client-side only — the
+ * server re-checks everything posted.
+ */
+function inv_grid_js(): string {
+    return <<<'JS'
+<script>
+window.InvGrid = function (o) {
+  var table = o.table, body = table.tBodies[0], rows = Array.prototype.slice.call(body.rows), last = null;
+  function box(r) { return r.querySelector('input[type=checkbox]'); }
+  function ticked(r) { var b = box(r); return !!(b && b.checked); }
+  function shown() { return rows.filter(function (r) { return !r.hidden; }); }
+  function pickable() { return shown().filter(function (r) { return box(r); }); }
+  function refresh() {
+    var n = rows.filter(ticked).length;
+    rows.forEach(function (r) { r.classList.toggle('is-sel', ticked(r)); });
+    o.bulk.hidden = n === 0; o.sel.textContent = n + ' selected';
+    var vis = pickable(), vn = vis.filter(ticked).length;
+    o.all.checked = vis.length > 0 && vn === vis.length; o.all.indeterminate = vn > 0 && vn < vis.length;
+    o.count.textContent = shown().length + ' of ' + rows.length + ' ' + (o.noun || 'items');
+  }
+  function filter() {
+    rows.forEach(function (r) { r.hidden = !!o.hidden(r); });
+    refresh();
+  }
+  rows.forEach(function (r, i) {
+    var b = box(r); if (!b) return;
+    b.addEventListener('click', function (ev) {
+      // Shift-click ticks the whole range (only the rows currently shown).
+      if (ev.shiftKey && last !== null) {
+        var vis = pickable(), a = vis.indexOf(rows[last]), z = vis.indexOf(r);
+        if (a > -1 && z > -1) vis.slice(Math.min(a, z), Math.max(a, z) + 1).forEach(function (x) { box(x).checked = b.checked; });
+      }
+      last = i; refresh();
+    });
+  });
+  o.all.addEventListener('change', function () { pickable().forEach(function (r) { box(r).checked = o.all.checked; }); refresh(); });
+  o.clear.addEventListener('click', function () { rows.forEach(function (r) { if (box(r)) box(r).checked = false; }); refresh(); });
+  // Only ticked rows that are still shown are submitted.
+  o.form.addEventListener('submit', function () { rows.forEach(function (r) { if (r.hidden && box(r)) box(r).checked = false; }); });
+  // Click a column title to sort.
+  table.querySelectorAll('th[data-sort]').forEach(function (th) {
+    th.addEventListener('click', function () {
+      var k = th.getAttribute('data-sort'), asc = !th.classList.contains('is-asc');
+      table.querySelectorAll('th[data-sort]').forEach(function (x) { x.classList.remove('is-asc', 'is-desc'); });
+      th.classList.add(asc ? 'is-asc' : 'is-desc');
+      var num = (o.numeric || []).indexOf(k) > -1;
+      rows.sort(function (a, b) {
+        var x = a.getAttribute('data-' + k) || '', y = b.getAttribute('data-' + k) || '';
+        var d = num ? (parseFloat(x) - parseFloat(y)) : x.localeCompare(y, undefined, { numeric: true });
+        return asc ? d : -d;
+      });
+      rows.forEach(function (r) { body.appendChild(r); });
+    });
+  });
+  filter();
+  return { filter: filter, refresh: refresh };
+};
+</script>
+JS;
+}

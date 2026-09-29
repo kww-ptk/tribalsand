@@ -2,8 +2,9 @@
 declare(strict_types=1);
 /**
  * Admin: Import items from a supplier Excel into the inventory catalogue.
- * Creates items; optionally (ticked, once per list) also puts the list
- * quantities in stock at each mapped place. Upload the sheet, review a preview (grouped
+ * Creates items and an ORDER from the list (once per list) — the quantities go
+ * ON ORDER and enter stock only when received on the order page
+ * (admin/inventory-order.php). Upload the sheet, review a preview (grouped
  * one item per supplier code, matched against the existing catalogue by merge key; each item-code
  * PREFIX mapped to a place whose PAR LEVEL the list quantity becomes), then
  * confirm. Owner + manager (managers may create items and set par levels).
@@ -13,6 +14,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/xlsx-reader.php';
 require_once __DIR__ . '/../includes/inventory-item-import.php';
+require_once __DIR__ . '/../includes/inventory-orders.php';
 require_once __DIR__ . '/../includes/inventory-views.php';   // inv_shared_css()
 require_login();
 require_manager();
@@ -97,10 +99,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
                 $prefixPlace[$prefix] = $id;
             }
 
-            $withStock = !empty($_POST['with_stock']);
             $me = current_admin();
             $userId = $me ? (int)$me['id'] : null;
-            $result = inv_tx(function () use ($data, $prefixPlace, $withStock, $userId): array {
+            $result = inv_tx(function () use ($data, $prefixPlace, $userId): array {
                 $groups = inv_ship_group($data['lines']);
                 $res    = inv_import_items($data['lines'], $groups);
                 $lineItem = [];
@@ -111,22 +112,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
                 }
                 $plan = inv_import_par_plan($data['lines'], $lineItem, $prefixPlace);
                 $pars = inv_import_apply_pars($plan);
-                // The server re-checks "already stocked" — the disabled checkbox is only a hint.
-                $stock = inv_import_stock_if_new($data['lines'], $plan, $withStock, (string)$data['filename'], $userId);
-                return ['created' => $res['created'], 'existing' => $res['existing'], 'pars' => $pars, 'stock' => $stock];
+                // The order: quantities go ON ORDER, no stock moves. One per list — the server
+                // re-checks (the note on the preview is only a hint). Each line's planned place
+                // is its "Where it goes" choice.
+                $orderId = 0; $orderName = '';
+                $fp = inv_import_list_fingerprint($data['lines']);
+                if (inv_orders_supported() && inv_order_open_for($fp) === null) {
+                    $linePlace = [];
+                    foreach ($data['lines'] as $i => $l) $linePlace[$i] = (int)($prefixPlace[inv_ship_prefix((string)($l['code'] ?? ''))] ?? 0);
+                    $orderName = (string)pathinfo((string)$data['filename'], PATHINFO_FILENAME);
+                    $orderId   = inv_order_create($orderName, $data['lines'], $lineItem, $linePlace, (string)$data['filename'], $fp, $userId);
+                }
+                return ['created' => $res['created'], 'existing' => $res['existing'], 'pars' => $pars, 'order_id' => $orderId, 'order_name' => $orderName];
             });
 
             // Remembered only once the import actually succeeded.
             set_setting(INV_IMPORT_PREFIX_PLACES_SETTING, json_encode($prefixPlace, JSON_UNESCAPED_UNICODE));
-            $st = $result['stock'];
-            $stockNote = $st ? ", {$st['moved']} piece(s) put in stock in {$st['lines']} receipt(s), {$st['skipped_serial']} serial item(s) not stocked" : ', no stock added';
+            $orderNote = $result['order_id'] ? ", order #{$result['order_id']} created" : ', no order created';
             audit_log('inv.import_items', 'inv_item', 0,
-                "{$data['filename']}: {$result['created']} created, {$result['existing']} existing, {$result['pars']} par level(s) set{$stockNote}");
+                "{$data['filename']}: {$result['created']} created, {$result['existing']} existing, {$result['pars']} par level(s) set{$orderNote}");
             unset($_SESSION['inv_import'][$token]);
-            $msg = "Imported {$result['created']} new items and set {$result['pars']} par levels";
-            $msg .= $st ? " and put {$st['moved']} pieces in stock." : '.';
-            if ($st && $st['skipped_serial'] > 0) $msg .= " {$st['skipped_serial']} serial-numbered item" . ($st['skipped_serial'] === 1 ? ' was' : 's were') . ' not stocked — add their units on the item page.';
-            $_SESSION['inv_flash'] = ['type' => 'success', 'msg' => $msg];
+            $msg = "Imported {$result['created']} new items, set {$result['pars']} par levels";
+            if ($result['order_id']) {
+                $_SESSION['inv_flash'] = ['type' => 'success', 'msg' => $msg . " and created order “{$result['order_name']}” — receive it when it arrives."];
+                header('Location: /admin/inventory-order.php?id=' . (int)$result['order_id']); exit;
+            }
+            $_SESSION['inv_flash'] = ['type' => 'success', 'msg' => $msg . '.'];
             header('Location: /admin/inventory.php'); exit;
         } catch (InvRefusal $e) {
             $_SESSION['inv_flash'] = ['type' => 'error', 'msg' => $e->getMessage()];
@@ -143,9 +154,10 @@ $byCategory = [];
 $newCount = $existingCount = $totalPieces = 0;
 $prefixesInfo = $placeOptions = $defaultPlaces = $missingHint = [];
 $parCount = 0;
-$stockDone = null;
+$ordersOk = inv_orders_supported();
+$orderDone = null;
 if ($preview) {
-    $stockDone = inv_import_stock_done(inv_import_list_fingerprint($preview['lines']));
+    $orderDone = $ordersOk ? inv_order_open_for(inv_import_list_fingerprint($preview['lines'])) : null;
     $groups   = inv_ship_group($preview['lines']);
     $existing = inv_import_existing_items();
     foreach ($groups as $key => $g) {
@@ -225,7 +237,7 @@ include __DIR__ . '/_layout.php';
         </div>
         <?php endforeach; ?>
       </div>
-      <p class="text-muted" style="margin:12px 0 0;font-size:12.5px">The list quantity becomes what each place should have; with the box ticked it is also put in stock there. Serial-numbered items (fridges, appliances) are never stocked here — add each unit with its serial number on the item page.</p>
+      <p class="text-muted" style="margin:12px 0 0;font-size:12.5px">The list quantity becomes what each place should have, and the quantities go ON ORDER for that place; receive them on the order page when they arrive. Serial-numbered items (fridges, appliances) are ordered too — their units are added when received.</p>
     </div>
   </div>
   <?php endif; ?>
@@ -274,16 +286,15 @@ include __DIR__ . '/_layout.php';
   <div class="imp-bar">
     <form method="POST" action="<?= $self ?>"><?= csrf_field() ?><input type="hidden" name="action" value="discard"><input type="hidden" name="token" value="<?= e($previewToken) ?>">
       <button type="submit" class="btn-outline"><?= admin_icon('x', 15) ?> Discard</button></form>
-    <?php if ($newCount > 0 || $parCount > 0): ?>
+    <?php if ($newCount > 0 || $parCount > 0 || ($ordersOk && $orderDone === null)): ?>
     <form id="imp-confirm-form" method="POST" action="<?= $self ?>"><?= csrf_field() ?><input type="hidden" name="action" value="confirm"><input type="hidden" name="token" value="<?= e($previewToken) ?>">
-      <?php if ($stockDone !== null): ?>
-      <label class="optchip" title="Already stocked"><input type="checkbox" disabled>Also put these quantities in stock</label>
-      <span class="text-muted imp-stock-note">This list was already put in stock on <?= e($stockDone) ?> — importing again only updates items and what each place should have.</span>
-      <?php else: ?>
-      <label class="optchip"><input type="checkbox" name="with_stock" value="1" checked>Also put these quantities in stock</label>
+      <?php if ($orderDone !== null): ?>
+      <span class="text-muted imp-stock-note">An order from this list already exists (<?= e((string)$orderDone['name']) ?>, <?= e(date('j M Y', strtotime((string)$orderDone['created_at']))) ?>) — importing again only updates items and what each place should have.</span>
+      <?php elseif (!$ordersOk): ?>
+      <span class="text-muted imp-stock-note">Orders aren’t set up yet (run <code>add_inventory_orders.sql</code>) — only items and what each place should have are imported.</span>
       <?php endif; ?>
       <button type="submit" class="btn-primary"
-        data-confirm="Create <?= $newCount ?> new item<?= $newCount === 1 ? '' : 's' ?>, set what each place should have<?= $stockDone === null ? ', and put the quantities in stock if ticked' : '' ?>?">
+        data-confirm="Create <?= $newCount ?> new item<?= $newCount === 1 ? '' : 's' ?>, set what each place should have<?= ($ordersOk && $orderDone === null) ? ', and put the quantities on order' : '' ?>?">
         <?= admin_icon('check', 15) ?> Import</button></form>
     <?php else: ?>
     <span class="text-muted">Everything is already in the inventory.</span>
@@ -306,7 +317,7 @@ include __DIR__ . '/_layout.php';
         </div>
         <button type="submit" class="btn-primary" style="margin-top:14px"><?= admin_icon('eye', 15) ?> Read the list</button>
       </form>
-      <p class="text-muted" style="margin:14px 0 0;font-size:12.5px">The sheet needs “Item No”, “Qty” and “Description” columns. You choose on the next screen whether the quantities are also put in stock.</p>
+      <p class="text-muted" style="margin:14px 0 0;font-size:12.5px">The sheet needs “Item No”, “Qty” and “Description” columns. The quantities go on order; you receive them on the order page when they arrive.</p>
     </div>
   </div>
 <?php endif; ?>

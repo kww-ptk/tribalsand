@@ -8,6 +8,7 @@ require_once __DIR__ . '/../includes/inventory-views.php';
 require_once __DIR__ . '/../includes/xlsx-reader.php';
 require_once __DIR__ . '/../includes/inventory-shipment-import.php';
 require_once __DIR__ . '/../includes/inventory-item-import.php';
+require_once __DIR__ . '/../includes/inventory-orders.php';
 
 $failures = 0;
 function check(string $label, bool $cond): void {
@@ -464,26 +465,36 @@ try {
     $parsSet2 = inv_import_apply_pars($plan2);
     check('par: re-importing gives the same par, never doubled', $parsSet2 === $parsSet && (int)$parOf($couchId, $miLocReal) === 8);
 
-    // ── Putting the list quantities in stock (DB) ──
-    db_query("DELETE FROM settings WHERE setting_key = :k", [':k' => INV_IMPORT_STOCKED_SETTING]);
-    $fp = inv_import_list_fingerprint($wb['lines']);
-    check('stock: a fresh list is not marked done', inv_import_stock_done($fp) === null);
+    // ── The import creates an ORDER (DB): quantities go on order, no stock moves ──
     $uid = (int) db_query('SELECT id FROM admin_users ORDER BY id LIMIT 1')->fetchColumn() ?: null;
     $balOf = fn(int $item, int $loc) => (int) db_query('SELECT qty FROM inv_balances WHERE item_id = :i AND location_id = :l', [':i' => $item, ':l' => $loc])->fetchColumn();
-    $before = [$balOf($couchId, $miLocReal), $balOf($barstoolId, $odLocReal)];
-    check('stock: not ticked stocks nothing', inv_import_stock_if_new($wb['lines'], $plan, false, 'list.xlsx', $uid) === null && inv_import_stock_done($fp) === null
-        && [$balOf($couchId, $miLocReal), $balOf($barstoolId, $odLocReal)] === $before);
-    $stk = inv_import_stock_if_new($wb['lines'], $plan, true, 'list.xlsx', $uid);
-    check('stock: the import returned pieces, receipts and skipped serial', $stk !== null && $stk['moved'] > 0 && $stk['lines'] > 0 && $stk['skipped_serial'] >= 1);
-    check('stock: Couch 2.6m x 1m at Maya Ilai gains 8 (qty) and par is 8', $balOf($couchId, $miLocReal) === $before[0] + 8 && (int)$parOf($couchId, $miLocReal) === 8);
-    check('stock: Barstool at Off-Duty gains 15', $balOf($barstoolId, $odLocReal) === $before[1] + 15);
-    check('stock: Mini Bar Fridge (serial) has no stock anywhere', (int) db_query('SELECT COALESCE(SUM(qty),0) FROM inv_balances WHERE item_id = :i', [':i' => $fridgeId])->fetchColumn() === 0);
-    check('stock: receive moves carry the note "Imported from …"',
-        $count("SELECT COUNT(*) FROM inv_moves WHERE item_id = :i AND to_location_id = :l AND reason = 'receive' AND note = 'Imported from list.xlsx' AND qty = 8", [':i' => $couchId, ':l' => $miLocReal]) === 1);
-    check('stock: the list is marked done, with a date', preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/', (string) inv_import_stock_done($fp)) === 1);
-    $after = [$balOf($couchId, $miLocReal), $balOf($barstoolId, $odLocReal)];
-    check('stock: a second import of the same list adds nothing', inv_import_stock_if_new($wb['lines'], $plan, true, 'list.xlsx', $uid) === null
-        && [$balOf($couchId, $miLocReal), $balOf($barstoolId, $odLocReal)] === $after);
+    if (!inv_orders_supported()) {
+        echo "SKIP  orders (add_inventory_orders.sql not applied)\n";
+    } else {
+        $fp = inv_import_list_fingerprint($wb['lines']);
+        $before = [$balOf($couchId, $miLocReal), $balOf($barstoolId, $odLocReal)];
+        // Exactly what the confirm step does: line → place by prefix, one order per list.
+        $linePlace = [];
+        foreach ($wb['lines'] as $i => $l) $linePlace[$i] = (int)($prefixPlace[inv_ship_prefix((string)($l['code'] ?? ''))] ?? 0);
+        $ordersBefore = $count('SELECT COUNT(*) FROM inv_orders WHERE fingerprint = :f', [':f' => $fp]);
+        check('order: this list has no order yet', inv_order_open_for($fp) === null && $ordersBefore === 0);
+        $oid = inv_order_create('shipment-maya-ilai', $wb['lines'], $lineItem, $linePlace, 'shipment-maya-ilai.xlsx', $fp, $uid);
+        $nLines = $count('SELECT COUNT(*) FROM inv_order_lines WHERE order_id = :o', [':o' => $oid]);
+        $groupsKeys = []; foreach ($wb['lines'] as $i => $l) $groupsKeys[($lineItem[$i] ?? 0) . ':' . ($linePlace[$i] ?? 0)] = true;
+        check('order: one line per item + planned place', $nLines === count($groupsKeys) && $nLines >= 196);
+        check('order: every list piece is on order', (int) db_query('SELECT SUM(qty_ordered) FROM inv_order_lines WHERE order_id = :o', [':o' => $oid])->fetchColumn() === (int) array_sum(array_column($wb['lines'], 'qty')));
+        $coL = db_query('SELECT * FROM inv_order_lines WHERE order_id = :o AND item_id = :i', [':o' => $oid, ':i' => $couchId])->fetch();
+        check('order: Couch 2.6m x 1m is 8 on order for Maya Ilai', $coL && (int)$coL['qty_ordered'] === 8 && (int)$coL['planned_location_id'] === $miLocReal);
+        check('order: the serial Mini Bar Fridge is on order too (units come on receipt)', (int) db_query('SELECT COUNT(*) FROM inv_order_lines WHERE order_id = :o AND item_id = :i', [':o' => $oid, ':i' => $fridgeId])->fetchColumn() === 1);
+        check('order: importing put NOTHING in stock',
+            [$balOf($couchId, $miLocReal), $balOf($barstoolId, $odLocReal)] === $before && (int) db_query('SELECT COALESCE(SUM(qty),0) FROM inv_balances WHERE item_id = :i', [':i' => $fridgeId])->fetchColumn() === 0
+            && $count("SELECT COUNT(*) FROM inv_moves WHERE item_id = ANY(CAST(:ids AS int[])) AND note LIKE 'Order #%'", [':ids' => inv_pg_int_array_literal(array_values($lineItem))]) === 0);
+        check('order: par levels are still set from the same list', (int)$parOf($couchId, $miLocReal) === 8);
+        // A re-import must not make a second order (the confirm step checks this).
+        check('order: a re-import finds the order and creates no second one', ($ex = inv_order_open_for($fp)) !== null && (int)$ex['id'] === $oid
+            && $count('SELECT COUNT(*) FROM inv_orders WHERE fingerprint = :f', [':f' => $fp]) === 1);
+        check('order: the list fingerprint on the order matches', inv_order_fetch($oid)['fingerprint'] === $fp);
+    }
 
     // ── DB checks (each task inserts its block above this line) ──
 } catch (Throwable $e) {

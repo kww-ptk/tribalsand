@@ -295,6 +295,12 @@ if ($__shellFrag) { ob_start(); return; }
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
           Inventory
         </a>
+        <?php if (inv_orders_supported()): ?>
+        <a href="/admin/inventory-orders.php" class="sidebar__link <?= ($activeMenu ?? '') === 'inventory_orders' ? 'is-active' : '' ?>">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17h4V5H2v12h3"/><path d="M14 8h4l3 3v6h-2"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="17.5" r="2.5"/></svg>
+          Orders
+        </a>
+        <?php endif; ?>
         <a href="/admin/inventory-locations.php" class="sidebar__link <?= in_array($activeMenu ?? '', ['inventory_locations', 'inventory_location'], true) ? 'is-active' : '' ?>">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
           Locations

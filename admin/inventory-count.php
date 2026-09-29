@@ -13,6 +13,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/admin-pagination.php';   // dt_empty()
 require_once __DIR__ . '/../includes/inventory-count-views.php';
+require_once __DIR__ . '/../includes/inventory-orders.php';   // the "Orders to receive" card
 require_login();
 
 $self      = '/admin/inventory-count.php';
@@ -62,6 +63,9 @@ if ($sheet && !$countable($sheet)) $sheet = null;
 $loc = (!$sheet && $supported && isset($_GET['location'])) ? inv_fetch_location((int)$_GET['location']) : false;
 if ($loc && (!$countable($loc) || !inv_bool($loc['is_active']))) $loc = false;
 $places = (!$sheet && !$loc && $supported) ? inv_countable_locations($meId, $role, $vids, $today) : [];
+// Orders this account can receive (open / part-received, with a line for its places).
+$toReceive = (!$sheet && !$loc && $supported && inv_orders_supported())
+    ? array_values(array_filter(inv_orders_list($vids), fn(array $o): bool => in_array($o['status'], ['open', 'partial'], true))) : [];
 $notFound = (isset($_GET['count']) && !$sheet) || (isset($_GET['location']) && !$loc);
 $locState = $loc ? inv_count_location_state((int)$loc['id']) : null;
 // An open count started on an earlier day holds a stale snapshot: inv_count_submit()
@@ -162,6 +166,20 @@ include __DIR__ . '/_layout.php';
   </div></div>
 
 <?php else: ?>
+  <?php if ($toReceive): ?>
+  <div class="card" style="margin-bottom:14px">
+    <div class="card__head"><span class="card__title">Orders to receive</span></div>
+    <div class="card__body" style="padding:0">
+      <?php foreach ($toReceive as $o): ?>
+      <a href="/admin/inventory-order.php?id=<?= (int)$o['id'] ?>" class="invc-place">
+        <span><strong><?= e((string)$o['name']) ?></strong>
+          <span class="inv-sub"><?= (int)$o['pieces_received'] ?> of <?= (int)$o['pieces_ordered'] ?> pieces received</span></span>
+        <span class="badge <?= $o['status'] === 'partial' ? 'badge--orange' : 'badge--grey' ?>"><?= e(INV_ORDER_STATUSES[$o['status']]) ?></span>
+      </a>
+      <?php endforeach; ?>
+    </div>
+  </div>
+  <?php endif; ?>
   <?php if (!$places): ?>
     <?php dt_empty('There’s nothing for you to count.'); ?>
   <?php else: ?>

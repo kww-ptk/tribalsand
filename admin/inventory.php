@@ -15,11 +15,13 @@ require_once __DIR__ . '/../includes/admin-pagination.php';
 require_once __DIR__ . '/../includes/inventory-views.php';
 require_once __DIR__ . '/../includes/inventory-owner.php';   // owner-only corrections (reset all inventory)
 require_once __DIR__ . '/../includes/inventory-grid.php';    // the spreadsheet list + bulk actions
+require_once __DIR__ . '/../includes/inventory-orders.php';  // the "On order" column
 require_login();
 require_manager();
 
 $vids      = admin_venue_ids();
 $supported = inv_supported();
+$ordersOk  = inv_orders_supported();
 
 $flash = $_SESSION['inv_flash'] ?? null; unset($_SESSION['inv_flash']);
 
@@ -109,6 +111,7 @@ $place = (int)($_GET['place'] ?? 0);
 if ($place && !isset($byId[$place])) $place = 0;
 $placeRow = $place ? $byId[$place] : null;
 $grid = (!$gone && $supported) ? inv_grid_rows($vids, $place, $f['type']) : [];
+$onOrder = ($ordersOk && !$gone) ? inv_on_order_by_item() : [];
 $gridCats = [];
 foreach ($grid as $gr) if ($gr['category'] !== null && $gr['category'] !== '') $gridCats[(string)$gr['category']] = true;
 ksort($gridCats, SORT_NATURAL | SORT_FLAG_CASE);
@@ -180,6 +183,7 @@ include __DIR__ . '/_layout.php';
   <h1>Inventory</h1>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
     <a href="/admin/inventory-locations.php" class="btn-outline btn-sm">Locations</a>
+    <?php if ($ordersOk): ?><a href="/admin/inventory-orders.php" class="btn-outline btn-sm">Orders</a><?php endif; ?>
     <?php if ($supported): ?><a href="/admin/inventory-import.php" class="btn-outline btn-sm"><?= admin_icon('download', 15) ?> Import from Excel</a><?php endif; ?>
     <?php if ($supported): ?><a href="/admin/inventory-item.php?new=1" class="btn-primary btn-sm"><?= admin_icon('plus', 15) ?> Add item</a><?php endif; ?>
   </div>
@@ -284,6 +288,7 @@ include __DIR__ . '/_layout.php';
       <th data-sort="cat">Category</th>
       <th data-sort="type">Type</th>
       <th data-sort="qty" class="ig-num"><?= $showPlace ? 'Here' : 'In stock' ?></th>
+      <?php if ($ordersOk): ?><th data-sort="onorder" class="ig-num" title="Ordered and not yet received">On order</th><?php endif; ?>
       <?php if ($showPlace): ?><th data-sort="par" class="ig-num">Should have</th><th data-sort="short" class="ig-num">Short</th>
       <?php else: ?><th>Where</th><?php endif; ?>
       <th data-sort="value" class="ig-num">Value</th>
@@ -293,15 +298,17 @@ include __DIR__ . '/_layout.php';
       $qty = (int)($showPlace ? $r['qty_here'] : $r['qty_all']);
       $par = $r['par_here'] !== null ? (int)$r['par_here'] : null;
       $val = $r['replacement_value'] !== null ? (float)$r['replacement_value'] * $qty : null;
+      $ord = (int)($onOrder[(int)$r['id']] ?? 0);
       $typeLbl = INV_TYPES[$r['item_type']] ?? (string)$r['item_type']; ?>
       <tr data-name="<?= e(mb_strtolower((string)$r['name'])) ?>" data-sku="<?= e(mb_strtolower((string)$r['sku'])) ?>" data-cat="<?= e(mb_strtolower((string)$r['category'])) ?>"
-          data-type="<?= e($typeLbl) ?>" data-qty="<?= $qty ?>" data-par="<?= $par ?? -1 ?>" data-short="<?= (int)$r['short'] ?>" data-value="<?= $val ?? -1 ?>">
+          data-type="<?= e($typeLbl) ?>" data-qty="<?= $qty ?>" data-onorder="<?= $ord ?>" data-par="<?= $par ?? -1 ?>" data-short="<?= (int)$r['short'] ?>" data-value="<?= $val ?? -1 ?>">
         <td class="ig-check"><input type="checkbox" name="ids[]" value="<?= (int)$r['id'] ?>" aria-label="Select <?= e((string)$r['name']) ?>"></td>
         <td><a href="/admin/inventory-item.php?id=<?= (int)$r['id'] ?>" class="inv-name"><?= inv_thumb_html($r, 28) ?><span><?= e((string)$r['name']) ?><?= $r['tracking'] === 'serial' ? ' <span class="ig-tag">serial</span>' : '' ?></span></a></td>
         <td class="ig-mono"><?= e((string)($r['sku'] ?? '')) ?></td>
         <td><?= $r['category'] ? '<span class="ig-pill">' . e((string)$r['category']) . '</span>' : '' ?></td>
         <td class="text-muted"><?= e($typeLbl) ?></td>
         <td class="ig-num"><strong><?= $qty ?></strong></td>
+        <?php if ($ordersOk): ?><td class="ig-num"><?= $ord > 0 ? $ord : '' ?></td><?php endif; ?>
         <?php if ($showPlace): ?>
         <td class="ig-num"><?= $par === null ? '<span class="text-muted">—</span>' : $par ?></td>
         <td class="ig-num"><?= $r['short'] ? '<span class="badge badge--orange">' . (int)$r['short'] . '</span>' : '<span class="text-muted">0</span>' ?></td>
@@ -356,95 +363,23 @@ include __DIR__ . '/_layout.php';
 <?php endif; ?>
 <?php endif; ?>
 <?= inv_shared_css() ?>
-<style>
-.ig-bar{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:14px}
-.ig-field{display:grid;gap:4px;font-size:12px;color:var(--muted);font-weight:600}
-.ig-search{flex:1 1 220px;min-width:0}
-.ig-search .inp{width:100%}
-.ig-wrap{background:var(--white);border:1px solid var(--border);border-radius:var(--radius);overflow:auto;max-height:calc(100vh - 230px)}
-.ig{width:100%;border-collapse:separate;border-spacing:0;font-size:13px}
-.ig th,.ig td{padding:7px 10px;border-bottom:1px solid var(--border);border-right:1px solid var(--border);white-space:nowrap;text-align:left;vertical-align:middle}
-.ig th:last-child,.ig td:last-child{border-right:0}
-.ig thead th{position:sticky;top:0;z-index:2;background:var(--bg);font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;color:var(--muted);cursor:pointer;user-select:none}
-.ig thead th.is-asc::after{content:" ▲";font-size:9px}
-.ig thead th.is-desc::after{content:" ▼";font-size:9px}
-.ig tbody tr:hover td{background:#f7f5f0}
-.ig tbody tr.is-sel td{background:#eef4f3}
-.ig .ig-check{width:34px;text-align:center;position:sticky;left:0;z-index:1;background:inherit}
-.ig thead .ig-check{z-index:3}
-.ig td.ig-check{background:var(--white)}
-.ig tbody tr.is-sel td.ig-check{background:#eef4f3}
-.ig input[type=checkbox]{width:16px;height:16px;cursor:pointer;accent-color:var(--brand)}
-.ig-num{text-align:right!important;font-variant-numeric:tabular-nums}
-.ig-mono{font-family:ui-monospace,Menlo,monospace;font-size:12px}
-.ig-pill{display:inline-block;padding:2px 8px;border-radius:999px;background:#eef1f6;font-size:12px}
-.ig-tag{display:inline-block;padding:0 6px;border-radius:4px;background:var(--bg);font-size:11px;color:var(--muted)}
-.ig-where{white-space:normal;min-width:200px;color:var(--muted)}
-.ig .inv-name > span:last-child{white-space:normal;min-width:180px}
-.ig .ig-tag{margin-left:4px}
-.ig-count{font-size:12.5px;margin:8px 2px 90px}
-.ig-bulk{position:fixed;left:50%;transform:translateX(-50%);bottom:18px;z-index:40;display:flex;flex-wrap:wrap;gap:10px;align-items:center;background:var(--white);border:1px solid var(--border);border-radius:12px;box-shadow:var(--shadow);padding:10px 14px;max-width:calc(100vw - 32px)}
-.ig-bulk[hidden]{display:none}
-.ig-bulk__group{display:flex;gap:6px;align-items:center}
-.ig-bulk .inp--sm{width:150px}
-@media (min-width:769px){.ig-bulk{left:calc(50% + var(--sidebar-w) / 2)}}
-</style>
+<?= inv_grid_css() ?>
+<?= inv_grid_js() ?>
 <script>
 (function () {
   var table = document.getElementById('igTable'); if (!table) return;
-  var body = table.tBodies[0], rows = Array.prototype.slice.call(body.rows);
-  var all = document.getElementById('igAll'), bulk = document.getElementById('igBulk'), sel = document.getElementById('igSel');
-  var search = document.getElementById('igSearch'), cat = document.getElementById('igCat'), count = document.getElementById('igCount');
-  var last = null;
-  function box(r) { return r.querySelector('input[type=checkbox]'); }
-  function shown() { return rows.filter(function (r) { return !r.hidden; }); }
-  function refresh() {
-    var n = rows.filter(function (r) { return box(r).checked; }).length;
-    rows.forEach(function (r) { r.classList.toggle('is-sel', box(r).checked); });
-    bulk.hidden = n === 0; sel.textContent = n + ' selected';
-    var vis = shown(), vn = vis.filter(function (r) { return box(r).checked; }).length;
-    all.checked = vis.length > 0 && vn === vis.length; all.indeterminate = vn > 0 && vn < vis.length;
-    count.textContent = vis.length + ' of ' + rows.length + ' items';
-  }
-  function filter() {
-    var q = (search.value || '').trim().toLowerCase(), c = cat.value;
-    rows.forEach(function (r) {
+  var search = document.getElementById('igSearch'), cat = document.getElementById('igCat');
+  var g = InvGrid({
+    table: table, form: document.getElementById('igForm'), all: document.getElementById('igAll'), bulk: document.getElementById('igBulk'),
+    sel: document.getElementById('igSel'), count: document.getElementById('igCount'), clear: document.getElementById('igClear'),
+    numeric: ['qty', 'onorder', 'par', 'short', 'value'], noun: 'items',
+    hidden: function (r) {
+      var q = (search.value || '').trim().toLowerCase(), c = cat.value;
       var hay = r.getAttribute('data-name') + ' ' + r.getAttribute('data-sku') + ' ' + r.getAttribute('data-cat');
-      r.hidden = (q && hay.indexOf(q) === -1) || (c && r.getAttribute('data-cat') !== c);
-    });
-    refresh();
-  }
-  rows.forEach(function (r, i) {
-    box(r).addEventListener('click', function (ev) {
-      // Shift-click ticks the whole range (only the rows currently shown).
-      if (ev.shiftKey && last !== null) {
-        var vis = shown(), a = vis.indexOf(rows[last]), b = vis.indexOf(r);
-        if (a > -1 && b > -1) vis.slice(Math.min(a, b), Math.max(a, b) + 1).forEach(function (x) { box(x).checked = box(r).checked; });
-      }
-      last = i; refresh();
-    });
+      return (q && hay.indexOf(q) === -1) || (c && r.getAttribute('data-cat') !== c);
+    }
   });
-  all.addEventListener('change', function () { shown().forEach(function (r) { box(r).checked = all.checked; }); refresh(); });
-  document.getElementById('igClear').addEventListener('click', function () { rows.forEach(function (r) { box(r).checked = false; }); refresh(); });
-  search.addEventListener('input', filter); cat.addEventListener('change', filter);
-  // Only ticked rows that are still shown are submitted.
-  document.getElementById('igForm').addEventListener('submit', function () { rows.forEach(function (r) { if (r.hidden) box(r).checked = false; }); });
-  // Click a column title to sort.
-  table.querySelectorAll('th[data-sort]').forEach(function (th) {
-    th.addEventListener('click', function () {
-      var k = th.getAttribute('data-sort'), asc = !th.classList.contains('is-asc');
-      table.querySelectorAll('th[data-sort]').forEach(function (o) { o.classList.remove('is-asc', 'is-desc'); });
-      th.classList.add(asc ? 'is-asc' : 'is-desc');
-      var num = ['qty', 'par', 'short', 'value'].indexOf(k) > -1;
-      rows.sort(function (a, b) {
-        var x = a.getAttribute('data-' + k) || '', y = b.getAttribute('data-' + k) || '';
-        var d = num ? (parseFloat(x) - parseFloat(y)) : x.localeCompare(y, undefined, { numeric: true });
-        return asc ? d : -d;
-      });
-      rows.forEach(function (r) { body.appendChild(r); });
-    });
-  });
-  filter();
+  search.addEventListener('input', g.filter); cat.addEventListener('change', g.filter);
 })();
 </script>
 <?php include __DIR__ . '/_layout_end.php'; ?>
