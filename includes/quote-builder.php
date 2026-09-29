@@ -5,8 +5,9 @@ declare(strict_types=1);
  * transfers and custom lines. Used by admin/quote-builder.php and the enquiry
  * pop-up (admin/submission-view.php) through api/quote-builder.php.
  *
- * READ-ONLY: nothing is saved, no hold is placed, nothing is sent. The output is
- * text / a printable page that staff send through the normal reply flow.
+ * Pricing is READ-ONLY: no hold is placed, nothing is sent. The output is text /
+ * a printable page that staff send through the normal reply flow. Saving a quote
+ * on an enquiry (a snapshot, re-priced here) lives in includes/quote-docs.php.
  *
  * ONE pricing path: room figures come from room_stay_quotes() (the same
  * summation room_stay_quote() — the booking widget's quote — runs), availability
@@ -327,7 +328,8 @@ function qb_price_selection(array $sel, ?array $scope): array {
                          'free' => $row['free'] ?? null, 'free_exact' => $row['free_exact'] ?? true];
             $roomLines[] = $row['line'];
             if ($unpricedRoom) $unpricedRooms[] = $name;
-            if ($row['line']) $textRooms[] = ['name' => $name, 'qty' => $qty, 'mix' => $row['mix'], 'line' => $row['line']];
+            if ($row['line']) $textRooms[] = ['name' => $name, 'venue' => (string)$room['venue_name'], 'room' => (string)$room['name'],
+                                              'qty' => $qty, 'mix' => $row['mix'], 'line' => $row['line']];
         }
     }
 
@@ -420,5 +422,12 @@ function qb_price_selection(array $sel, ?array $scope): array {
             'nightly'   => $nights > 0 && $t['accommodation'] > 0 ? round($t['accommodation'] / $nights, 2) : null,
         ],
         'lines' => $breakdown, 'notices' => $notices, 'fx_note' => $fxNote, 'text' => $text,
+        // For the printable document (includes/quote-docs.php): the same converted
+        // lines the text uses, with the property and room kept apart.
+        'name' => $qName, 'adults' => $adults, 'children' => $children, 'issued' => $today,
+        'quote_rooms'  => array_map(fn($r) => ['venue' => $r['venue'], 'room' => $r['room'], 'name' => $r['name'],
+                                               'qty' => $r['qty'], 'mix' => $r['mix'], 'amt' => $r['conv']], $convRooms),
+        'quote_extras' => array_map(fn($x) => ['label' => qb_extra_label($x['label'], $x['qty'], $x['basis'], $nights),
+                                               'amt' => $x['conv']], $convExtras),
     ];
 }
