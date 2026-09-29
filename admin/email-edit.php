@@ -22,6 +22,10 @@ $src = $_SERVER['REQUEST_METHOD'] === 'POST' ? $_POST : $_GET;
 $key = (string)($src['key'] ?? '');
 $t   = email_template($key);
 if (!$t) { header('Location: /admin/emails.php'); exit; }
+if (email_template_deleted($key)) {
+    $_SESSION['emails_flash'] = ['type' => 'error', 'msg' => '“' . $t['name'] . '” is deleted — restore it under “Deleted emails” before changing its wording.'];
+    header('Location: /admin/emails.php'); exit;
+}
 
 $venueAware = in_array($key, EMAIL_VENUE_AWARE, true);
 $venues = [];

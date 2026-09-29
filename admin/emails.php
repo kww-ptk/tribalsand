@@ -14,6 +14,8 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/mail.php';
 require_once __DIR__ . '/../includes/icons.php';
+require_once __DIR__ . '/../includes/confirm.php';   // danger_confirm_attrs() / typed_confirmation_ok()
+require_once __DIR__ . '/../includes/team.php';      // team_member_name() — who deleted an email
 require_owner();
 
 $flash = $_SESSION['emails_flash'] ?? null; unset($_SESSION['emails_flash']);
@@ -30,6 +32,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             email_template_set_enabled($key, $on);
             audit_log('email.' . ($on ? 'enable' : 'disable'), 'email_template', 0, $key);
             $_SESSION['emails_flash'] = ['type' => 'success', 'msg' => '“' . $t['name'] . '” is now ' . ($on ? 'on.' : 'off — it will be logged as “Switched off” instead of sent.')];
+        } elseif ($act === 'delete') {
+            // Serious and hard to notice later: the typed word is re-checked here, not only in the dialog.
+            if (!typed_confirmation_ok('DELETE')) throw new InvalidArgumentException('Not deleted — type DELETE in the confirmation box to delete an email.');
+            email_template_delete($key, (int)($_SESSION['admin_id'] ?? 0) ?: null);
+            audit_log('email.delete', 'email_template', 0, $key);
+            $_SESSION['emails_flash'] = ['type' => 'success', 'msg' => '“' . $t['name'] . '” is deleted — it will not be sent. You can restore it under “Deleted emails” at the bottom.'];
+            header('Location: /admin/emails.php'); exit;
+        } elseif ($act === 'restore') {
+            email_template_restore($key);
+            audit_log('email.restore', 'email_template', 0, $key);
+            $_SESSION['emails_flash'] = ['type' => 'success', 'msg' => '“' . $t['name'] . '” is restored and switched on, with its built-in wording.'];
         } elseif ($act === 'recipients') {
             $list = email_set_recipient_override($key, (string)($_POST['to'] ?? ''));
             audit_log('email.recipients', 'email_template', 0, $key . ': ' . ($list ? implode(', ', $list) : 'default'));
@@ -51,7 +64,11 @@ $logOn   = email_log_supported();
 // Group by topic, in a fixed, readable order (bookings first — the ones that matter most).
 $topicOrder = ['Bookings', 'Enquiries & requests', 'Restaurant', 'Point of sale', 'Staff alerts'];
 $sections = [];
-foreach (email_registry() as $key => $t) $sections[$t['topic']][] = $key;
+$deleted  = [];
+foreach (email_registry() as $key => $t) {
+    if (email_template_deleted($key)) { $deleted[] = $key; continue; }
+    $sections[$t['topic']][] = $key;
+}
 uksort($sections, function ($a, $b) use ($topicOrder) {
     $ia = array_search($a, $topicOrder, true); $ib = array_search($b, $topicOrder, true);
     return ($ia === false ? 99 : $ia) <=> ($ib === false ? 99 : $ib);
@@ -59,6 +76,7 @@ uksort($sections, function ($a, $b) use ($topicOrder) {
 $counts = ['all' => 0, 'guest' => 0, 'staff' => 0, 'off' => 0, 'problems' => 0];
 $enabled = [];
 foreach (email_registry() as $key => $t) {
+    if (in_array($key, $deleted, true)) continue;
     $enabled[$key] = email_template_enabled($key);
     $counts['all']++; $counts[$t['audience']]++;
     if (!$enabled[$key]) $counts['off']++;
@@ -145,6 +163,15 @@ include __DIR__ . '/_layout.php';
           <a href="/admin/email-preview.php?key=<?= e($key) ?>" class="btn-icon btn-icon--outline" data-tip="Preview" aria-label="Preview"><?= admin_icon('eye') ?></a>
           <a href="/admin/email-edit.php?key=<?= e($key) ?>" class="btn-icon btn-icon--outline" data-tip="Edit wording" aria-label="Edit wording"><?= admin_icon('edit') ?></a>
           <?php if ($logOn): ?><a href="/admin/email-log.php?template=<?= e($key) ?>" class="btn-icon btn-icon--outline" data-tip="Log" aria-label="Log"><?= admin_icon('inbox') ?></a><?php endif; ?>
+          <?php if (!$locked): ?>
+          <form method="POST" action="/admin/emails.php" style="display:inline;margin:0">
+            <?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="key" value="<?= e($key) ?>">
+            <button type="submit" class="btn-icon btn-icon--danger" data-tip="Delete" aria-label="Delete <?= e($t['name']) ?>"
+              <?= danger_confirm_attrs(
+                    "“{$t['name']}” will stop being sent completely — " . ($aud === 'guest' ? 'guests' : 'the team') . " will no longer get it when: " . rtrim($t['trigger'], '.') . ".\n\nIts custom wording and recipients are removed. You can restore it later from “Deleted emails”.",
+                    'Delete this email?', 'Delete email', 'DELETE') ?>><?= admin_icon('trash') ?></button>
+          </form>
+          <?php endif; ?>
         </div>
       </div>
     </div>
@@ -152,6 +179,28 @@ include __DIR__ . '/_layout.php';
   </div>
 </section>
 <?php endforeach; ?>
+<?php if ($deleted): ?>
+<details class="card em-deleted">
+  <summary class="card__head"><span class="card__title">Deleted emails</span><span class="text-muted" style="font-size:12px"><?= count($deleted) ?> — never sent until restored</span></summary>
+  <div class="em-list">
+  <?php foreach ($deleted as $key): $t = email_template($key); $di = email_template_deleted_info($key); ?>
+    <div class="em-row">
+      <div class="em-main">
+        <div class="em-name"><strong><?= e($t['name']) ?></strong><span class="badge badge--grey">Deleted</span></div>
+        <div class="em-trigger text-muted"><?= e($t['trigger']) ?></div>
+        <?php if (!empty($di['at'])): ?><div class="em-meta text-muted">Deleted <?= e(date('j M Y, H:i', strtotime((string)$di['at']))) ?><?= !empty($di['by']) && function_exists('team_member_name') && ($n = team_member_name((int)$di['by'])) ? ' by ' . e($n) : '' ?></div><?php endif; ?>
+      </div>
+      <div class="em-side">
+        <form method="POST" action="/admin/emails.php" style="margin:0">
+          <?= csrf_field() ?><input type="hidden" name="action" value="restore"><input type="hidden" name="key" value="<?= e($key) ?>">
+          <button type="submit" class="btn-outline btn-sm" <?= danger_confirm_attrs('“' . $t['name'] . '” will start sending again, switched on, with its built-in wording.', 'Restore this email?', 'Restore') ?>><?= admin_icon('rotate', 14) ?> Restore</button>
+        </form>
+      </div>
+    </div>
+  <?php endforeach; ?>
+  </div>
+</details>
+<?php endif; ?>
 <div class="card" id="emEmpty" hidden><div class="card__body text-muted" style="padding:18px">No email matches.</div></div>
 
 <style>
@@ -178,6 +227,7 @@ include __DIR__ . '/_layout.php';
 .em-side{display:flex;flex-direction:column;align-items:flex-end;gap:10px;flex:0 0 auto}
 .em-toggle{margin:0}
 .em-actions{display:flex;gap:6px}
+.em-deleted{margin-top:6px}.em-deleted > summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center}.em-deleted > summary::-webkit-details-marker{display:none}
 .em-rcpt summary{cursor:pointer;font-size:12.5px;color:var(--brand)}
 .em-rcpt-form{display:flex;gap:8px;margin-top:8px;max-width:560px}.em-rcpt-form .inp{flex:1;min-width:0}
 @media (max-width:640px){.em-row{flex-direction:column;gap:10px}.em-side{flex-direction:row;align-items:center;justify-content:space-between}}

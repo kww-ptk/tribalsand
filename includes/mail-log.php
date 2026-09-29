@@ -114,7 +114,7 @@ function mail_send(string $key, array $msg, array $ctx = []): array {
             $row['note']   = $rcpt === '' ? 'No email address.' : 'Not a valid email address.';
         } elseif (empty($ctx['force']) && !email_template_enabled($key)) {
             $row['status'] = 'suppressed';
-            $row['note']   = 'Switched off in Admin → Emails.';
+            $row['note']   = email_template_deleted($key) ? 'Deleted in Admin → Emails.' : 'Switched off in Admin → Emails.';
         } else {
             $meta = [];
             $GLOBALS['__mail_last_error'] = '';

@@ -21,6 +21,7 @@ unset($_SERVER['RESEND_API_KEY'], $_ENV['RESEND_API_KEY']);
 
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/mail.php';
+require_once __DIR__ . '/../includes/confirm.php';
 
 $failures = 0;
 function check(string $label, bool $cond): void {
@@ -150,6 +151,16 @@ $dbOk = false;
 try { db()->query('SELECT 1'); $dbOk = true; } catch (Throwable $e) {}
 if ($dbOk) db()->beginTransaction();
 
+// ── Reusable danger confirmation ─────────────────────────────────────────────
+check('confirm: typed word accepted', typed_confirmation_ok('DELETE', ['confirm_text' => ' DELETE ']));
+check('confirm: wrong / missing / lowercase word refused', !typed_confirmation_ok('DELETE', ['confirm_text' => 'delete'])
+      && !typed_confirmation_ok('DELETE', []) && !typed_confirmation_ok('', ['confirm_text' => '']));
+$attrs = danger_confirm_attrs('Stops "it" <b>', 'Delete?', 'Delete', 'DELETE');
+check('confirm: attributes escaped and complete', str_contains($attrs, 'data-confirm-type="DELETE"') && str_contains($attrs, '&quot;it&quot; &lt;b&gt;')
+      && str_contains($attrs, 'data-confirm-title="Delete?"') && str_contains($attrs, 'data-confirm-label="Delete"'));
+check('confirm: plain confirm has no type word', !str_contains(danger_confirm_attrs('Sure?'), 'data-confirm-type'));
+$layoutJs = (string)file_get_contents(__DIR__ . '/../admin/_layout_end.php');
+check('confirm: the shared dialog posts the typed word as confirm_text', str_contains($layoutJs, "h.name = 'confirm_text'") && str_contains($layoutJs, 'data-confirm-type'));
 // ── mail_send() with the dev log driver ──────────────────────────────────────
 $r = mail_send('hold_confirmed', ['to' => 'guest@example.com', 'subject' => 'S', 'text' => 'T'], ['skip_reason' => 'Staff unticked']);
 check('skip_reason → skipped, nothing sent', $r['ok'] === false && $r['status'] === 'skipped');
@@ -180,6 +191,22 @@ if (!$dbOk || !email_log_supported()) {
         $r = send_admin_guest_cancelled(['id' => 0, 'guest_name' => 'Zed', 'guest_email' => 'zed@example.com', 'room_name' => 'R', 'check_in' => '2026-12-01', 'check_out' => '2026-12-02']);
         $row = db_query("SELECT status FROM email_log WHERE template_key = 'staff_guest_cancelled' ORDER BY id DESC LIMIT 1")->fetchColumn();
         check('db: switched off → logged as suppressed', $row === 'suppressed');
+
+        // Delete / restore
+        $threw = false;
+        try { email_template_delete('password_reset', null); } catch (InvalidArgumentException $e) { $threw = true; }
+        check('db: a locked email can’t be deleted', $threw && !email_template_deleted('password_reset'));
+        set_setting('email_to_staff_addon_request', 'x@example.com');
+        email_template_delete('staff_addon_request', null);
+        check('db: deleted → flagged, off, recipients cleared', email_template_deleted('staff_addon_request')
+              && !email_template_enabled('staff_addon_request') && email_recipient_override('staff_addon_request') === []);
+        send_addon_request_notification(['id' => 0, 'guest_name' => 'Y', 'guest_email' => 'y@example.com', 'room_name' => 'R'], ['kind' => 'transfer']);
+        $row = db_query("SELECT status, note FROM email_log WHERE template_key = 'staff_addon_request' ORDER BY id DESC LIMIT 1")->fetch();
+        check('db: a deleted email is never sent — logged as Deleted', $row && $row['status'] === 'suppressed' && str_contains((string)$row['note'], 'Deleted'));
+        $r = mail_send('staff_addon_request', ['to' => 'z@example.com', 'subject' => 'S', 'text' => 'T'], ['force' => true]);
+        check('db: a test send (force) still works for a deleted email', $r['status'] === 'sent');
+        email_template_restore('staff_addon_request');
+        check('db: restore → back on', !email_template_deleted('staff_addon_request') && email_template_enabled('staff_addon_request'));
 
         set_setting('email_to_staff_change_request', 'a@example.com, b@example.com, not-an-email');
         $before = $count('staff_change_request');

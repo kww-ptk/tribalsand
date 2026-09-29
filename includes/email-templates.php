@@ -379,11 +379,65 @@ function email_registry_grouped(): array {
 
 // ── On / off ─────────────────────────────────────────────────────────────
 
-/** Is this email switched on? Locked templates always are. Fails to the default. */
+/**
+ * Deleted emails. Every email is defined in code (its trigger is code), so
+ * "delete" can't remove the trigger — it removes the email from the catalogue
+ * and stops it for good: never sent (logged as suppressed "Deleted"), custom
+ * wording and recipients cleared. Restorable from the "Deleted emails" list,
+ * because deleting e.g. "Booking confirmed" by mistake must be undoable.
+ * Locked emails (the staff action IS the send) can't be deleted.
+ */
+function email_template_deleted(string $key): bool {
+    try { return setting('email_deleted_' . $key, '') !== ''; }
+    catch (Throwable $e) { return false; }
+}
+
+/** ['at' => 'Y-m-d H:i:s', 'by' => ?int] for a deleted email, else null. */
+function email_template_deleted_info(string $key): ?array {
+    try { $raw = setting('email_deleted_' . $key, ''); } catch (Throwable $e) { return null; }
+    if ($raw === '') return null;
+    $j = json_decode($raw, true);
+    return is_array($j) ? $j : ['at' => null, 'by' => null];
+}
+
+function email_template_delete(string $key, ?int $userId): void {
+    $t = email_template($key);
+    if (!$t) throw new InvalidArgumentException('Unknown email.');
+    if (!empty($t['locked'])) throw new InvalidArgumentException('“' . $t['name'] . '” can’t be deleted — sending it is what the staff action does.');
+    $pdo = db();
+    $own = !$pdo->inTransaction();
+    if ($own) $pdo->beginTransaction();
+    try {
+        set_setting('email_deleted_' . $key, json_encode(['at' => date('Y-m-d H:i:s'), 'by' => $userId]));
+        set_setting('email_to_' . $key, '');
+        if (email_templates_supported()) {
+            $had = (int) db_query('SELECT COUNT(*) FROM email_template_overrides WHERE template_key = :k', [':k' => $key])->fetchColumn();
+            db_query('DELETE FROM email_template_overrides WHERE template_key = :k', [':k' => $key]);
+            // Keep the wording history restorable: note the reset in every scope that had wording.
+            if ($had) db_query("INSERT INTO email_template_versions (template_key, venue_id, action, saved_by) VALUES (:k, NULL, 'reset', :u)",
+                               [':k' => $key, ':u' => $userId]);
+        }
+        if ($own) $pdo->commit();
+    } catch (Throwable $e) {
+        if ($own && $pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
+}
+
+/** Bring a deleted email back — switched on, built-in wording, normal recipients. */
+function email_template_restore(string $key): void {
+    $t = email_template($key);
+    if (!$t) throw new InvalidArgumentException('Unknown email.');
+    set_setting('email_deleted_' . $key, '');
+    set_setting('email_enabled_' . $key, '1');
+}
+
+/** Is this email switched on? Locked templates always are; deleted ones never. Fails to the default. */
 function email_template_enabled(string $key): bool {
     $t = email_template($key);
     if (!$t) return true;                                // unknown key (e.g. a test send) — never silently drop
     if (!empty($t['locked'])) return true;
+    if (email_template_deleted($key)) return false;
     $default = ($t['default_on'] ?? true) ? '1' : '0';
     try { return setting('email_enabled_' . $key, $default) === '1'; }
     catch (Throwable $e) { return $default === '1'; }

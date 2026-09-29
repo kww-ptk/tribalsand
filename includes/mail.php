@@ -945,7 +945,7 @@ function hold_email_after_action(string $kind, array $row, bool $email, string $
     if (!$email) return 'guest not emailed.';
     return match ($r['status']) {
         'sent'       => 'guest emailed (' . $row['guest_email'] . ').',
-        'suppressed' => 'guest not emailed — this email is switched off in Admin → Emails.',
+        'suppressed' => 'guest not emailed — this email is switched off or deleted in Admin → Emails.',
         'skipped'    => 'guest not emailed — ' . lcfirst(rtrim($r['error'] ?: 'no valid address.', '.')) . '.',
         default      => 'the email to the guest FAILED (' . ($r['error'] ?: 'mail server error') . ') — see Admin → Email log.',
     };

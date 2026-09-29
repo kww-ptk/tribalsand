@@ -637,6 +637,14 @@ tr.dt-rowlink a:hover { text-decoration: none; }
 .adm-confirm__title { font-size: 16px; font-weight: 700; color: var(--text); margin: 0 0 6px; }
 .adm-confirm__body { font-size: 13.5px; color: var(--muted); margin: 0 0 18px; line-height: 1.45; }
 .adm-confirm__actions { display: flex; gap: 8px; justify-content: flex-end; }
+/* Serious actions (data-confirm-type): red accent + a "type the word" box. */
+.adm-confirm--danger { max-width: 420px; border-top: 4px solid var(--red, #b42318); }
+.adm-confirm--danger .adm-confirm__title { color: var(--red, #b42318); }
+.adm-confirm__body { white-space: pre-line; }
+.adm-confirm__type { display: block; margin: -6px 0 16px; }
+.adm-confirm__type span { display: block; font-size: 12.5px; font-weight: 600; color: var(--text); margin-bottom: 6px; }
+.adm-confirm__type .inp { width: 100%; font-family: ui-monospace, monospace; letter-spacing: .08em; }
+.adm-confirm [data-c-yes]:disabled { opacity: .45; cursor: not-allowed; }
 
 /* ── Toast notifications ──
    N1: pinned top-right, sliding/fading in from the top edge.

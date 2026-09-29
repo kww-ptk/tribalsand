@@ -47,29 +47,62 @@ if (!empty($__shellFrag)) {
 /* Admin UX layer: styled confirm dialog, "Working…" feedback, self-clearing banners. */
 (function () {
   // --- Styled confirm (reusable replacement for the browser's confirm popup) ---
-  function styledConfirm(message, onYes) {
+  // The ONE confirmation dialog (reusable, no native confirm()). Plain use:
+  //   <button data-confirm="Cancel this booking?">
+  // Serious / irreversible actions add any of:
+  //   data-confirm-title="Delete this email?"   heading (default "Please confirm")
+  //   data-confirm-label="Delete"               the red button's text (default "Confirm")
+  //   data-confirm-type="DELETE"                person must TYPE this word before the
+  //                                             button unlocks; it is posted as
+  //                                             confirm_text and re-checked on the
+  //                                             server (typed_confirmation_ok() in PHP)
+  // Render the attributes from PHP with danger_confirm_attrs() (includes/confirm.php).
+  function styledConfirm(message, onYes, opts) {
+    opts = opts || {};
     var back = document.createElement('div');
     back.className = 'adm-confirm-back';
     back.innerHTML =
-      '<div class="adm-confirm" role="dialog" aria-modal="true" aria-label="Please confirm">' +
-        '<h3 class="adm-confirm__title">Please confirm</h3>' +
+      '<div class="adm-confirm' + (opts.type ? ' adm-confirm--danger' : '') + '" role="dialog" aria-modal="true">' +
+        '<h3 class="adm-confirm__title"></h3>' +
         '<p class="adm-confirm__body"></p>' +
+        (opts.type ? '<label class="adm-confirm__type"><span></span><input type="text" class="inp" autocomplete="off" spellcheck="false"></label>' : '') +
         '<div class="adm-confirm__actions">' +
           '<button type="button" class="btn-outline btn-sm" data-c-no>Cancel</button>' +
-          '<button type="button" class="btn-danger btn-sm" data-c-yes>Confirm</button>' +
+          '<button type="button" class="btn-danger btn-sm" data-c-yes></button>' +
         '</div>' +
       '</div>';
+    var title = opts.title || 'Please confirm';
+    back.querySelector('.adm-confirm__title').textContent = title;
+    back.querySelector('.adm-confirm').setAttribute('aria-label', title);
     back.querySelector('.adm-confirm__body').textContent = message;
+    var yes = back.querySelector('[data-c-yes]');
+    yes.textContent = opts.label || 'Confirm';
+    var typed = back.querySelector('.adm-confirm__type input');
+    if (typed) {
+      back.querySelector('.adm-confirm__type span').textContent = 'Type ' + opts.type + ' to confirm';
+      typed.placeholder = opts.type;
+      yes.disabled = true;
+      typed.addEventListener('input', function () { yes.disabled = typed.value.trim() !== opts.type; });
+      typed.addEventListener('keydown', function (e) { if (e.key === 'Enter' && !yes.disabled) { e.preventDefault(); yes.click(); } });
+    }
     document.body.appendChild(back);
     document.body.style.overflow = 'hidden';
-    var yes = back.querySelector('[data-c-yes]');
-    yes.focus();
+    (typed || back.querySelector(opts.type ? '[data-c-no]' : '[data-c-yes]')).focus();
     function close() { back.remove(); document.body.style.overflow = ''; document.removeEventListener('keydown', onKey); }
     function onKey(e) { if (e.key === 'Escape') close(); }
     back.querySelector('[data-c-no]').addEventListener('click', close);
     back.addEventListener('click', function (e) { if (e.target === back) close(); });
     document.addEventListener('keydown', onKey);
-    yes.addEventListener('click', function () { close(); onYes(); });
+    yes.addEventListener('click', function () {
+      if (yes.disabled) return;
+      var val = typed ? typed.value.trim() : '';
+      close(); onYes(val);
+    });
+  }
+  // Read the dialog options off a button's data-confirm-* attributes.
+  function confirmOpts(el) {
+    return { title: el.getAttribute('data-confirm-title') || '', label: el.getAttribute('data-confirm-label') || '',
+             type: el.getAttribute('data-confirm-type') || '' };
   }
   // Exposed so other admin scripts (e.g. gallery bulk-delete) can raise the same
   // no-native confirm dialog programmatically instead of the browser's confirm().
@@ -137,10 +170,15 @@ if (!empty($__shellFrag)) {
       btn.addEventListener('click', function (e) {
         e.preventDefault();
         var form = btn.form;
-        styledConfirm(btn.getAttribute('data-confirm'), function () {
+        var opts = confirmOpts(btn);
+        styledConfirm(btn.getAttribute('data-confirm'), function (typedWord) {
+          if (opts.type) {   // the server re-checks what was typed
+            var h = form.querySelector('input[name="confirm_text"]') || document.createElement('input');
+            h.type = 'hidden'; h.name = 'confirm_text'; h.value = typedWord; form.appendChild(h);
+          }
           armSubmit(form, btn);
           form.submit(); // native submit() skips the submit event below — no double-arm
-        });
+        }, opts);
       });
     });
 
