@@ -28,7 +28,10 @@ $venues = $scope === null
 $venueIds  = array_map(fn($v) => (int)$v['id'], $venues);
 $venueName = array_column($venues, 'name', 'id');
 
-$view = in_array($_GET['view'] ?? '', ['card', 'timeline', 'calendar'], true) ? (string)$_GET['view'] : 'card';
+// Old bookmarks (?venue=N with no ?view) were the calendar page before the views existed.
+$view = in_array($_GET['view'] ?? '', ['card', 'timeline', 'calendar'], true)
+    ? (string)$_GET['view']
+    : (!isset($_GET['view']) && isset($_GET['venue']) ? 'calendar' : 'card');
 $cur  = in_array($_GET['cur'] ?? '', ['KES', 'USD'], true) ? (string)$_GET['cur'] : 'KES';
 $fx   = fx_rates()['rates'];
 
@@ -117,6 +120,7 @@ include __DIR__ . '/_layout.php';
 .rc-table th:first-child,.rc-table td:first-child{text-align:left}
 .rc-table thead th{font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--muted);background:#faf8f5}
 .rc-group td{background:#f5f1ea;font-weight:700;text-align:left!important}
+.rc-table:not(.rc-tl) .rc-group td{white-space:normal}
 .rc-dates{font-weight:400;color:var(--muted);font-size:12px;margin-left:10px}
 .rc-room a{color:inherit;text-decoration:none}.rc-room a:hover{text-decoration:underline}
 .rc-hidden{font-size:11px;color:var(--muted);margin-left:6px}
@@ -163,7 +167,9 @@ include __DIR__ . '/_layout.php';
   <?php endif; ?>
 
   <span class="rc-spacer"></span>
+  <?php if ($view !== 'calendar'): /* the calendar partial prints own-currency figures, not .mny spans */ ?>
   <?php $ms_cur = $cur; include __DIR__ . '/../includes/money-switch.php'; ?>
+  <?php endif; ?>
 </div>
 
 <?php if ($view !== 'calendar' && count($venues) > 1): ?>
@@ -263,7 +269,6 @@ include __DIR__ . '/_layout.php';
   <div style="display:flex;gap:8px;align-items:center;margin:0 0 14px">
     <form method="GET" style="margin:0">
       <input type="hidden" name="view" value="calendar">
-      <input type="hidden" name="cur" value="<?= e($cur) ?>">
       <select name="venue" class="eselect" onchange="this.form.submit()">
         <?php foreach ($venues as $v): ?>
         <option value="<?= (int)$v['id'] ?>"<?= (int)$v['id'] === $venueId ? ' selected' : '' ?>><?= e($v['name']) ?></option>

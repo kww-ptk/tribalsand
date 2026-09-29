@@ -7,8 +7,10 @@
  *
  * The script is emitted INLINE via readfile(): admin shell navigation re-runs
  * inline scripts but never an external <script src> inside page content.
- * Depends on includes/db.php (fx_rates(), e(), TS_CURRENCIES).
+ * Depends on includes/db.php (fx_rates(), e(), TS_CURRENCIES) and
+ * includes/rates-compare.php (rc_trimz()) — required below.
  */
+require_once __DIR__ . '/rates-compare.php';
 $__fx   = fx_rates();
 $__kes  = (float)($__fx['rates']['KES'] ?? 0);
 $__when = !empty($__fx['fetched_at']) ? date('j M', strtotime((string)$__fx['fetched_at'])) : null;
