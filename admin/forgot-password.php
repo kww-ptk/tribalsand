@@ -32,19 +32,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             try {
                 set_setting($key, $payload);
 
-                $env      = parse_env();
-                $from     = $env['MAIL_FROM'] ?? ('noreply@' . ($_SERVER['HTTP_HOST'] ?? 'tribalsand.com'));
-                $site_url = site_url();
-                $reset_url = $site_url . '/admin/reset-password.php?token=' . urlencode($token) . '&email=' . urlencode($email);
-
-                $subject = 'Tribal Sand Admin — Password Reset';
-                $body    = "You requested a password reset for the Tribal Sand admin panel.\n\n"
-                         . "Click the link below to set a new password. This link expires in 1 hour.\n\n"
-                         . $reset_url . "\n\n"
-                         . "If you did not request this, you can safely ignore this email.\n\n"
-                         . "— Tribal Sand";
-
-                _dispatch_mail($email, $subject, $body, $from, $from, $env);
+                $reset_url = site_url() . "/admin/reset-password.php?token=" . urlencode($token) . "&email=" . urlencode($email);
+                send_password_reset($email, $reset_url);   // logged + always on (Admin → Emails)
             } catch (Throwable $e) {
                 // Log but don't expose error to user
                 error_log('Password reset mail error: ' . $e->getMessage());

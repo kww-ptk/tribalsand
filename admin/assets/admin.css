@@ -90,6 +90,9 @@ input, select, textarea, button, code, kbd, samp { font-family: inherit; }
 
 .admin-main { margin-left: var(--sidebar-w); flex: 1; min-width: 0; }
 .admin-content { padding: 28px 32px; max-width: 1270px; }
+/* A page opts into the full width by putting <div class="page-wide"> in its content
+   (a marker inside, not a class on .admin-content, so the no-flicker shell swap keeps it). */
+.admin-content:has(.page-wide) { max-width: none; }
 
 /* ── Page header ── */
 .page-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 24px; }

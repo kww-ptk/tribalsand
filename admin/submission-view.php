@@ -670,6 +670,9 @@ include __DIR__ . '/_layout.php';
   </div>
 </div>
 
+<?php // Every email linked to this enquiry (and any booking made from it) — Email Notifications Center. ?>
+<?= email_log_panel_html(email_log_for_submission((int)$id), is_owner() || is_manager()) ?>
+
 <!-- Tracking -->
 <div class="card">
   <div class="card__head"><span class="card__title">Tracking &amp; Source</span></div>

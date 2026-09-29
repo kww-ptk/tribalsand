@@ -134,4 +134,15 @@ log "scheduler started"
   done
 ) &
 
+# ── Job 8: email log retention daily ────────────────────────────────────────
+# Clears the rendered body of logged emails older than 180 days; the log rows
+# (who got which email, when, status) are kept. Idempotent, safe on several
+# ECS tasks. Quiet no-op until add_email_log.sql has run.
+(
+  while true; do
+    php "$APP_DIR/bin/email-log-prune.php" >> "$LOG" 2>&1 || log "email-log-prune failed"
+    sleep 86400
+  done
+) &
+
 wait

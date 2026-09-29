@@ -86,6 +86,7 @@ try {
         $row = hold_group_mail_row(hold_group_rows($ids[0]));
         send_hold_notification($row);                         // ONE email to reservations for the whole request
         send_guest_acknowledgement([
+            'submission_id' => $subId,
             'kind' => 'hold', 'guest_name' => $name, 'guest_email' => $email, 'room_name' => $row['room_name'],
             'check_in' => $ci, 'check_out' => $co, 'guests_adults' => $adults, 'guests_children' => $children,
             'message' => $note, 'hold_id' => $ids[0], 'access_code' => $row['access_code'] ?? '',
@@ -98,7 +99,7 @@ try {
     send_notification(['id' => $subId, 'type' => 'enquiry', 'room_name' => $roomsLabel, 'guest_name' => $name, 'guest_email' => $email,
                        'guest_phone' => $phone, 'message' => $message, 'check_in' => $ci, 'check_out' => $co,
                        'guests_adults' => $adults, 'guests_children' => $children, 'created_at' => date('Y-m-d H:i:s')] + $tracking);
-    send_guest_acknowledgement(['kind' => 'enquiry', 'guest_name' => $name, 'guest_email' => $email, 'room_name' => $roomsLabel,
+    send_guest_acknowledgement(['submission_id' => $subId, 'kind' => 'enquiry', 'guest_name' => $name, 'guest_email' => $email, 'room_name' => $roomsLabel,
                                 'check_in' => $ci, 'check_out' => $co, 'guests_adults' => $adults, 'guests_children' => $children, 'message' => $note]);
     ghl_respond_json(['ok' => true, 'id' => $subId, 'mode' => 'enquiry']);
     ghl_push_submission($subId, ['tags' => ['website-enquiry', 'room-combination']]);

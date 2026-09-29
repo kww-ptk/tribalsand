@@ -185,6 +185,7 @@ $pageTitle  = 'Import items';
 $activeMenu = 'inventory';
 include __DIR__ . '/_layout.php';
 ?>
+<div class="page-wide" hidden></div>
 <div class="page-header">
   <h1>Import items</h1>
   <a href="/admin/inventory.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Inventory</a>
@@ -195,6 +196,29 @@ include __DIR__ . '/_layout.php';
   <div class="alert alert--info">Run the <code>add_inventory.sql</code> migration (Admin → Migrations) to set up inventory.</div>
 
 <?php elseif ($preview): ?>
+  <div class="imp-bar">
+    <div class="imp-bar__text">
+      <strong>Ready to import <?= e($preview['filename']) ?></strong>
+      <span class="text-muted"><?= count($groups) ?> item<?= count($groups) === 1 ? '' : 's' ?> (<?= $newCount ?> new) · check where each group goes below, then import.</span>
+    </div>
+    <div class="imp-bar__actions">
+    <form method="POST" action="<?= $self ?>"><?= csrf_field() ?><input type="hidden" name="action" value="discard"><input type="hidden" name="token" value="<?= e($previewToken) ?>">
+      <button type="submit" class="btn-outline imp-btn"><?= admin_icon('x', 16) ?> Discard</button></form>
+    <?php if ($newCount > 0 || $parCount > 0 || ($ordersOk && $orderDone === null)): ?>
+    <form id="imp-confirm-form" method="POST" action="<?= $self ?>"><?= csrf_field() ?><input type="hidden" name="action" value="confirm"><input type="hidden" name="token" value="<?= e($previewToken) ?>">
+      <?php if ($orderDone !== null): ?>
+      <span class="text-muted imp-stock-note">An order from this list already exists (<?= e((string)$orderDone['name']) ?>, <?= e(date('j M Y', strtotime((string)$orderDone['created_at']))) ?>) — importing again only updates items and what each place should have.</span>
+      <?php elseif (!$ordersOk): ?>
+      <span class="text-muted imp-stock-note">Orders aren’t set up yet (run <code>add_inventory_orders.sql</code>) — only items and what each place should have are imported.</span>
+      <?php endif; ?>
+      <button type="submit" class="btn-primary imp-btn"
+        data-confirm="Create <?= $newCount ?> new item<?= $newCount === 1 ? '' : 's' ?>, set what each place should have<?= ($ordersOk && $orderDone === null) ? ', and put the quantities on order' : '' ?>?">
+        <?= admin_icon('check', 15) ?> Import</button></form>
+    <?php else: ?>
+    <span class="text-muted">Everything is already in the inventory.</span>
+    <?php endif; ?>
+    </div>
+  </div>
   <?php if ($prefixesInfo): ?>
   <div class="card" style="margin-bottom:16px">
     <div class="card__head"><span class="card__title">Where it goes</span></div>
@@ -220,7 +244,7 @@ include __DIR__ . '/_layout.php';
     </div>
   </div>
   <?php endif; ?>
-  <div class="card" style="margin-bottom:72px">
+  <div class="card">
     <div class="card__head">
       <span class="card__title"><?= e($preview['filename']) ?></span>
       <span class="text-muted" style="font-size:12.5px">
@@ -263,24 +287,6 @@ include __DIR__ . '/_layout.php';
       </table>
     </div>
   </div>
-  <div class="imp-bar">
-    <form method="POST" action="<?= $self ?>"><?= csrf_field() ?><input type="hidden" name="action" value="discard"><input type="hidden" name="token" value="<?= e($previewToken) ?>">
-      <button type="submit" class="btn-outline"><?= admin_icon('x', 15) ?> Discard</button></form>
-    <?php if ($newCount > 0 || $parCount > 0 || ($ordersOk && $orderDone === null)): ?>
-    <form id="imp-confirm-form" method="POST" action="<?= $self ?>"><?= csrf_field() ?><input type="hidden" name="action" value="confirm"><input type="hidden" name="token" value="<?= e($previewToken) ?>">
-      <?php if ($orderDone !== null): ?>
-      <span class="text-muted imp-stock-note">An order from this list already exists (<?= e((string)$orderDone['name']) ?>, <?= e(date('j M Y', strtotime((string)$orderDone['created_at']))) ?>) — importing again only updates items and what each place should have.</span>
-      <?php elseif (!$ordersOk): ?>
-      <span class="text-muted imp-stock-note">Orders aren’t set up yet (run <code>add_inventory_orders.sql</code>) — only items and what each place should have are imported.</span>
-      <?php endif; ?>
-      <button type="submit" class="btn-primary"
-        data-confirm="Create <?= $newCount ?> new item<?= $newCount === 1 ? '' : 's' ?>, set what each place should have<?= ($ordersOk && $orderDone === null) ? ', and put the quantities on order' : '' ?>?">
-        <?= admin_icon('check', 15) ?> Import</button></form>
-    <?php else: ?>
-    <span class="text-muted">Everything is already in the inventory.</span>
-    <?php endif; ?>
-  </div>
-
 <?php else: ?>
   <?php if ($previewToken !== ''): ?><div class="alert alert--error is-flash">That import can’t be found — upload the file again.</div><?php endif; ?>
   <div class="card">
@@ -304,12 +310,17 @@ include __DIR__ . '/_layout.php';
 
 <?= inv_shared_css() ?>
 <style>
-.imp-bar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;justify-content:flex-end;align-items:center;gap:10px;padding:12px 16px;padding-bottom:calc(12px + env(safe-area-inset-bottom));background:var(--white);border-top:1px solid var(--border);box-shadow:var(--shadow)}
-@media (min-width:769px){.imp-bar{left:var(--sidebar-w)}}
-.imp-bar form{margin:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
-.imp-stock-note{font-size:12px;max-width:340px;text-align:right}
-.imp-prefixes{display:grid;gap:12px}
-.imp-prefix-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,220px);gap:10px 14px;align-items:center}
+.imp-bar{position:sticky;top:12px;z-index:30;display:flex;justify-content:space-between;align-items:center;gap:14px 20px;flex-wrap:wrap;margin-bottom:16px;padding:16px 20px;background:#eef6f7;border:1px solid var(--brand);border-left:5px solid var(--brand);border-radius:12px;box-shadow:var(--shadow)}
+.imp-bar__text{display:flex;flex-direction:column;gap:3px;min-width:0;flex:1 1 320px}
+.imp-bar__text strong{font-size:15px;overflow-wrap:anywhere}
+.imp-bar__text .text-muted{font-size:13px}
+.imp-bar__actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.imp-bar form{margin:0;display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:flex-end}
+.imp-btn{padding:11px 22px;font-size:14.5px;font-weight:600}
+.imp-stock-note{font-size:12px;max-width:420px;text-align:right}
+@media (max-width:640px){.imp-bar{position:static}.imp-bar__actions,.imp-bar form{justify-content:stretch;width:100%}.imp-stock-note{text-align:left;max-width:none}}
+.imp-prefixes{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(100%,420px),1fr));gap:10px 18px}
+.imp-prefix-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,240px);gap:8px 14px;align-items:center;padding:10px 12px;border:1px solid var(--border);border-radius:10px;background:var(--white)}
 @media (max-width:560px){.imp-prefix-row{grid-template-columns:minmax(0,1fr)}}
 .imp-prefix-label{display:flex;flex-direction:column;gap:2px;min-width:0}
 .imp-prefix-label strong{font-size:14px}

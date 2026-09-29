@@ -193,7 +193,8 @@ include __DIR__ . '/_layout.php';
   <div class="alert alert--info">Run the <code>add_inventory.sql</code> migration (Admin → Migrations) to set up inventory.</div>
 <?php else: ?>
 
-<div class="inv-grid">
+<div class="page-wide" hidden></div>
+<div class="inv-grid<?= $item ? '' : ' inv-grid--new' ?>">
   <div class="inv-stack">
     <?php if ($item): ?>
     <div class="card">

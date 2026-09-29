@@ -539,7 +539,7 @@ function expire_stale_holds(): void {
             [':id' => $hid]
         )->fetch();
         if ($hold && !empty($hold['guest_email'])) {
-            send_hold_cancelled($hold, 'expired');
+            send_hold_cancelled($hold, 'expired', ['triggered_by' => 'system', 'trigger' => 'hold_expiry']);
         }
     }
 }

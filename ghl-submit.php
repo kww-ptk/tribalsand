@@ -213,6 +213,7 @@ send_notification([
 
 if (filter_var($guestEmail, FILTER_VALIDATE_EMAIL)) {
     send_guest_acknowledgement([
+        'submission_id' => ($submissionId ?? 0),
         'kind'            => 'enquiry',
         'guest_name'      => $guestName ?: 'Guest',
         'guest_email'     => $guestEmail,

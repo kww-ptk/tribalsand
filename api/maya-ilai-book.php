@@ -89,6 +89,7 @@ try {
     ] + $tracking);
 
     send_guest_acknowledgement([
+        'submission_id' => (int)$res['submission_id'],
         'kind'        => 'hold',
         'guest_name'  => $name,
         'guest_email' => $email,

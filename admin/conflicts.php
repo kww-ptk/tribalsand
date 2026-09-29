@@ -198,7 +198,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // The guest is told only once the resolution has actually been
                 // written. An e-mail cannot be unsent, so it is the last step.
                 if ($applied['cancelled_hold'] && $applied['cancelled_hold']['guest_email']) {
-                    send_hold_cancelled($applied['cancelled_hold'], 'cancelled');
+                    send_hold_cancelled($applied['cancelled_hold'], 'cancelled', ['trigger' => 'keep_ota']);
                 }
                 audit_log('conflict.keep_ota', 'channel_conflict', $conflict_id,
                     "hold #{$conflict['hold_id']} cancelled, OTA block inserted {$conflict['date_from']}→{$conflict['date_to']}");

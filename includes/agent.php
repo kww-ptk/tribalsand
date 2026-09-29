@@ -796,6 +796,7 @@ function agent_send_request_emails(array $agent, array $res): void {
             'utm_source'      => 'trade-portal',
         ]);
         send_guest_acknowledgement([
+            'submission_id' => $res['submission_id'],
             'kind'            => 'enquiry',
             'guest_name'      => (string)$agent['name'],
             'guest_email'     => (string)$agent['email'],
