@@ -558,15 +558,16 @@ include __DIR__ . '/_layout.php';
       <form method="POST" action="/admin/submission-view?id=<?= $id ?>" id="stForm">
         <?= csrf_field() ?>
         <input type="hidden" name="action" value="add_note">
-        <?php if (ai_assistant_supported()): ?>
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+          <button type="button" class="btn-outline btn-sm" id="qbOpenBtn">Build quote</button>
+          <?php if (ai_assistant_supported()): ?>
           <button type="button" class="btn-outline btn-sm" id="aiDraftBtn"
                   data-endpoint="/api/assistant-draft.php" data-sid="<?= $id ?>" data-csrf="<?= e(csrf_token()) ?>">
             <?= admin_icon('sparkles', 15) ?: '✨' ?> Draft options with AI
           </button>
           <span id="aiDraftMsg" class="text-muted" style="font-size:12.5px"></span>
+          <?php endif; ?>
         </div>
-        <?php endif; ?>
         <textarea name="body" id="replyBody" rows="4" class="inp inp--area" required
                   style="width:100%;box-sizing:border-box;min-height:104px;resize:vertical"
                   placeholder="Add a note for the team, or paste / write the reply to send the guest…"></textarea>
@@ -585,6 +586,75 @@ include __DIR__ . '/_layout.php';
           <button type="submit" class="btn-primary btn-sm" style="margin-left:auto"><?= admin_icon('plus', 15) ?> Add to thread</button>
         </div>
       </form>
+      <?php
+        require_once __DIR__ . '/../includes/quote-builder.php';
+        $qb_context = 'modal';
+        $qb_prefill = [
+            'name'      => (string)($sub['guest_name'] ?? ''),
+            'check_in'  => (string)($sub['check_in'] ?? ''),
+            'check_out' => (string)($sub['check_out'] ?? ''),
+            'adults'    => (int)($sub['guests_adults'] ?? 0) ?: 2,
+            'children'  => (int)($sub['guests_children'] ?? 0),
+            'room_id'   => (int)($sub['room_id'] ?? 0),
+        ];
+        $qb_cur = 'KES';
+      ?>
+      <div class="qb-modal" id="qbModal" hidden>
+        <div class="qb-modal__back" data-qb-close></div>
+        <div class="qb-modal__dialog" role="dialog" aria-modal="true" aria-labelledby="qbModalTitle">
+          <div class="qb-modal__head">
+            <h2 id="qbModalTitle">Build a quote</h2>
+            <button type="button" class="btn-icon" data-qb-close aria-label="Close">×</button>
+          </div>
+          <?php include __DIR__ . '/../includes/quote-builder-view.php'; ?>
+        </div>
+      </div>
+      <style>
+        .qb-modal{position:fixed;inset:0;z-index:1000;display:flex;align-items:flex-start;justify-content:center;padding:24px 16px;overflow-y:auto}
+        .qb-modal[hidden]{display:none}
+        .qb-modal__back{position:fixed;inset:0;background:rgba(16,47,58,.45)}
+        .qb-modal__dialog{position:relative;background:#faf8f5;border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.25);width:100%;max-width:1180px;padding:18px 20px 22px}
+        .qb-modal__head{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+        .qb-modal__head h2{margin:0;font-size:18px}
+        @media print{.qb-modal__back{display:none}}
+      </style>
+      <script>
+        (function () {
+          var modal = document.getElementById('qbModal'), open = document.getElementById('qbOpenBtn');
+          if (!modal || !open) return;
+          function close() { modal.hidden = true; document.body.style.overflow = ''; }
+          open.addEventListener('click', function () {
+            modal.hidden = false; document.body.style.overflow = 'hidden';
+            var root = modal.querySelector('.qb[data-qb-ready]');
+            if (root && root.__qbSchedule) root.__qbSchedule();
+          });
+          modal.addEventListener('click', function (e) { if (e.target.closest('[data-qb-close]')) close(); });
+          document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !modal.hidden) close(); });
+          window.__qbCloseModal = close;
+          // Insert into reply — bound ONCE per window (shell navigation re-runs
+          // this inline script). Looks elements up at event time.
+          if (window.__qbInsertBound) return;
+          window.__qbInsertBound = true;
+          document.addEventListener('qb:insert', function (e) {
+            var box = document.getElementById('replyBody');
+            if (!box) return;
+            var text = e.detail.text, n = +(box.getAttribute('data-qb-count') || 0);
+            if (n === 0) {
+              box.value = box.value.trim() ? box.value.replace(/\s+$/, '') + '\n\n' + text : text;
+              box.setAttribute('data-qb-first', text);
+            } else {
+              var first = box.getAttribute('data-qb-first');
+              if (n === 1 && first && box.value.indexOf(first) >= 0) box.value = box.value.replace(first, function () { return 'Option 1\n' + first; });   // fn: a USD quote holds "$", which a string replacement would read as $-patterns
+              box.value = box.value.replace(/\s+$/, '') + '\n\nOption ' + (n + 1) + '\n' + text;
+            }
+            box.setAttribute('data-qb-count', String(n + 1));
+            var reply = document.getElementById('kindReply');
+            if (reply) { reply.checked = true; reply.dispatchEvent(new Event('change')); }
+            if (window.__qbCloseModal) window.__qbCloseModal();
+            box.focus();
+          });
+        })();
+      </script>
       <script defer src="/js/submission-thread.js?v=<?= @filemtime(__DIR__ . '/../js/submission-thread.js') ?: '1' ?>"></script>
 
       <p class="text-muted" style="font-size:12px;margin:12px 0 0;line-height:1.55">
