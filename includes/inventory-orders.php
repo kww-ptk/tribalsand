@@ -61,9 +61,11 @@ function inv_order_create(string $name, array $lines, array $lineItem, array $li
             $groups[$key] = ['item_id' => $itemId, 'place_id' => $placeId, 'qty' => 0,
                              'code' => mb_substr(trim((string)($l['code'] ?? '')), 0, 40),
                              'description' => trim((string)($l['description'] ?? '')),
-                             'section' => mb_substr(trim((string)($l['section'] ?? '')), 0, 120)];
+                             'section' => mb_substr(trim((string)($l['section'] ?? '')), 0, 120), 'hs' => ''];
         }
         $groups[$key]['qty'] += $qty;
+        // The customs code: the first non-empty one among the merged master lines.
+        if ($groups[$key]['hs'] === '') $groups[$key]['hs'] = mb_substr(trim((string)($l['hs_code'] ?? '')), 0, 20);
     }
     if (!$groups) throw new InvRefusal('There is nothing to order — none of the list lines has an item and a quantity.');
     return inv_tx(function () use ($name, $groups, $filename, $fingerprint, $userId): int {
@@ -71,13 +73,20 @@ function inv_order_create(string $name, array $lines, array $lineItem, array $li
             ':n' => $name, ':f' => $filename !== '' ? mb_substr($filename, 0, 200) : null,
             ':fp' => $fingerprint !== '' ? mb_substr($fingerprint, 0, 40) : null, ':u' => $userId]);
         $orderId = (int) db()->lastInsertId();
-        $sort = 0;
+        $sort = 0; $withHs = inv_order_packing_supported();   // hs_code arrives with the packing-list part of the migration
         foreach ($groups as $g) {
-            db_query('INSERT INTO inv_order_lines (order_id, sort_order, item_id, code, description, section, qty_ordered, planned_location_id)
-                      VALUES (:o, :s, :i, :c, :d, :sec, :q, :pl)', [
+            $params = [
                 ':o' => $orderId, ':s' => $sort++, ':i' => $g['item_id'], ':c' => $g['code'] !== '' ? $g['code'] : null,
                 ':d' => $g['description'] !== '' ? $g['description'] : '—', ':sec' => $g['section'] !== '' ? $g['section'] : null,
-                ':q' => $g['qty'], ':pl' => $g['place_id'] > 0 ? $g['place_id'] : null]);
+                ':q' => $g['qty'], ':pl' => $g['place_id'] > 0 ? $g['place_id'] : null];
+            if ($withHs) {
+                $params[':hs'] = $g['hs'] !== '' ? $g['hs'] : null;
+                db_query('INSERT INTO inv_order_lines (order_id, sort_order, item_id, code, description, section, qty_ordered, planned_location_id, hs_code)
+                          VALUES (:o, :s, :i, :c, :d, :sec, :q, :pl, :hs)', $params);
+            } else {
+                db_query('INSERT INTO inv_order_lines (order_id, sort_order, item_id, code, description, section, qty_ordered, planned_location_id)
+                          VALUES (:o, :s, :i, :c, :d, :sec, :q, :pl)', $params);
+            }
         }
         return $orderId;
     });
@@ -88,7 +97,8 @@ function inv_order_create(string $name, array $lines, array $lineItem, array $li
  * implementation (the page and db/seeds/seed_maya_ilai_shipment.php both call it).
  * One inv_tx(): items (inv_import_items), par levels per item-code prefix, then —
  * once per list, when orders are set up and inv_order_open_for() finds none — the
- * ORDER with each line's planned place and the packing lists' container hints.
+ * ORDER with each line's planned place, its HS code, the packing lists' container hints
+ * and every packing-list row (inv_order_packing).
  * $parsed: inv_ship_parse_workbook() output (needs 'lines'); $packing:
  * inv_ship_parse_packing(); $prefixPlace: [prefix => place id]. No stock moves.
  * Returns ['created','existing','pars','order_id' (0 = none made),'order_name',
@@ -196,19 +206,26 @@ function inv_order_receive(int $orderId, array $receipts, ?int $userId): array {
 }
 
 /**
- * Attach the packing lists' container hints to an order's lines. $packing is
- * inv_ship_parse_packing()'s output. Each packing line's code is mapped onto the
- * order's line codes (inv_ship_packing_code(): exact, or a bundle suffix removed);
- * when several order lines share the code the one whose description is most alike
- * wins (inv_ship_desc_score() ≥ 0.6; a tie needs an exact description) — never a
- * guess: no clear match counts as unmatched. Quantities are summed
- * per (line, container) and upserted. HINTS ONLY — nothing here touches
- * qty_ordered. Returns ['matched' => packing lines placed, 'unmatched' => packing
- * lines with no order line (rails, brackets, …)]. No-op before the migration.
+ * Attach the packing lists to an order's lines. $packing is inv_ship_parse_packing()'s
+ * output. Two things come out of it:
+ *   1. Container HINTS (inv_order_line_containers): each 'row' line's code is mapped
+ *      onto the order's line codes (inv_ship_packing_code(): exact, or a bundle suffix
+ *      removed); when several order lines share the code the one whose description is
+ *      most alike wins (inv_ship_desc_score() ≥ 0.6; a tie needs an exact description) —
+ *      never a guess: no clear match counts as unmatched. Quantities are summed per
+ *      (line, container) and upserted. HINTS ONLY — nothing here touches qty_ordered.
+ *   2. The FULL packing lists (inv_order_packing): every parsed row, in sheet order,
+ *      with its boxes / dimensions / weight / cubes, linked to the order line it was
+ *      matched to (continuation rows inherit their parent row's line; unmatched rows,
+ *      notes and totals keep line_id NULL). Re-attaching replaces the order's rows.
+ * Returns ['matched' => packing lines placed, 'unmatched' => packing lines with a code
+ * and quantity but no order line (rails, brackets, …)]. Each half is a no-op before
+ * its part of the migration.
  */
 function inv_order_attach_containers(int $orderId, array $packing): array {
     $res = ['matched' => 0, 'unmatched' => 0];
-    if (!$packing || !inv_order_containers_supported()) return $res;
+    $hints = inv_order_containers_supported(); $store = inv_order_packing_supported();
+    if (!$packing || (!$hints && !$store)) return $res;
     $byCode = []; $codes = [];   // UPPER code => [[line id, description]]
     foreach (db_query('SELECT id, code, description FROM inv_order_lines WHERE order_id = :o ORDER BY sort_order, id', [':o' => $orderId])->fetchAll() as $l) {
         $c = trim((string)($l['code'] ?? ''));
@@ -216,44 +233,73 @@ function inv_order_attach_containers(int $orderId, array $packing): array {
         $codes[mb_strtoupper($c)] = $c;
         $byCode[mb_strtoupper($c)][] = [(int)$l['id'], (string)$l['description']];
     }
-    $sum = []; $seq = [];   // "line|container" => qty; container => sheet position
+    /** The order line one packing row stands for, or null. */
+    $match = function (array $pl) use ($byCode, $codes): ?int {
+        $code = inv_ship_packing_code((string)($pl['code'] ?? ''), array_values($codes));
+        if ($code === null) return null;
+        $cands = $byCode[mb_strtoupper($code)];
+        if (count($cands) === 1) return $cands[0][0];   // one line under the code: all its pieces land here
+        // Several lines share the code: the best-described one, and only when it is clearly the same thing.
+        // A tie for best (e.g. "Pot Stand" sits inside two "… pot with stand" lines) is settled by an exact
+        // description, else left unmatched — a packing line is never dropped on a guess.
+        $pd = (string)($pl['description'] ?? ''); $pk = inv_ship_key($pd);
+        $best = 0.0; $tied = [];
+        foreach ($cands as [$id, $desc]) {
+            $sc = inv_ship_desc_score($pd, $desc);
+            if ($sc > $best + 1e-9) { $best = $sc; $tied = [[$id, $desc]]; }
+            elseif ($sc > 0 && abs($sc - $best) <= 1e-9) $tied[] = [$id, $desc];
+        }
+        if ($best < 0.6) return null;
+        if (count($tied) === 1) return $tied[0][0];
+        foreach ($tied as [$id, $desc]) if ($pk !== '' && inv_ship_key($desc) === $pk) return $id;
+        return null;
+    };
+    $sum = []; $seq = []; $rows = []; $rowNo = [];   // "line|container" => qty; container => sheet position; rows to store; container => running seq
     foreach (array_values($packing) as $idx => $sheet) {
         $container = mb_substr(trim((string)($sheet['container'] ?? '')), 0, 80);
         if ($container === '') continue;
         $seq[$container] ??= $idx;
+        $parentLine = null;
         foreach ((array)($sheet['lines'] ?? []) as $pl) {
-            $qty  = (int)($pl['qty'] ?? 0);
-            $code = $qty > 0 ? inv_ship_packing_code((string)($pl['code'] ?? ''), array_values($codes)) : null;
-            if ($code === null) { $res['unmatched']++; continue; }
-            $cands = $byCode[mb_strtoupper($code)];
+            $kind = (string)($pl['kind'] ?? 'row');
             $pick = null;
-            if (count($cands) === 1) $pick = $cands[0][0];   // one line under the code: all its pieces land here
-            else {
-                // Several lines share the code: the best-described one, and only when it is clearly the same thing.
-                // A tie for best (e.g. "Pot Stand" sits inside two "… pot with stand" lines) is settled by an exact
-                // description, else left unmatched — a packing line is never dropped on a guess.
-                $pd = (string)($pl['description'] ?? ''); $pk = inv_ship_key($pd);
-                $best = 0.0; $tied = [];
-                foreach ($cands as [$id, $desc]) {
-                    $sc = inv_ship_desc_score($pd, $desc);
-                    if ($sc > $best + 1e-9) { $best = $sc; $tied = [[$id, $desc]]; }
-                    elseif ($sc > 0 && abs($sc - $best) <= 1e-9) $tied[] = [$id, $desc];
+            if ($kind === 'row') {
+                $qty = (int)($pl['qty'] ?? 0);
+                if ($qty > 0) {
+                    $pick = $match($pl);
+                    if ($pick === null) $res['unmatched']++;
+                    else { $sum[$pick . '|' . $container] = ($sum[$pick . '|' . $container] ?? 0) + $qty; $res['matched']++; }
                 }
-                if ($best >= 0.6) {
-                    if (count($tied) === 1) $pick = $tied[0][0];
-                    else foreach ($tied as [$id, $desc]) if ($pk !== '' && inv_ship_key($desc) === $pk) { $pick = $id; break; }
-                }
+                $parentLine = $pick;
             }
-            if ($pick === null) { $res['unmatched']++; continue; }
-            $sum[$pick . '|' . $container] = ($sum[$pick . '|' . $container] ?? 0) + $qty;
-            $res['matched']++;
+            $lineId = $kind === 'continuation' ? $parentLine : $pick;
+            $rows[] = ['container' => $container, 'seq' => $rowNo[$container] = ($rowNo[$container] ?? 0) + 1, 'pl' => $pl, 'kind' => $kind, 'line_id' => $lineId];
         }
     }
-    foreach ($sum as $key => $qty) {
-        [$lineId, $container] = explode('|', $key, 2);
-        db_query('INSERT INTO inv_order_line_containers (line_id, container, qty, seq) VALUES (:l, :c, :q, :s)
-                  ON CONFLICT (line_id, container) DO UPDATE SET qty = EXCLUDED.qty, seq = EXCLUDED.seq',
-            [':l' => (int)$lineId, ':c' => $container, ':q' => $qty, ':s' => $seq[$container] ?? 0]);
+    if ($hints) {
+        foreach ($sum as $key => $qty) {
+            [$lineId, $container] = explode('|', $key, 2);
+            db_query('INSERT INTO inv_order_line_containers (line_id, container, qty, seq) VALUES (:l, :c, :q, :s)
+                      ON CONFLICT (line_id, container) DO UPDATE SET qty = EXCLUDED.qty, seq = EXCLUDED.seq',
+                [':l' => (int)$lineId, ':c' => $container, ':q' => $qty, ':s' => $seq[$container] ?? 0]);
+        }
+    }
+    if ($store) {
+        db_query('DELETE FROM inv_order_packing WHERE order_id = :o', [':o' => $orderId]);
+        $num = fn($v, int $d) => $v === null || $v === '' ? null : number_format((float)$v, $d, '.', '');
+        foreach ($rows as $r) {
+            $pl = $r['pl'];
+            db_query('INSERT INTO inv_order_packing (order_id, container, seq, sheet, row_no, code, description, qty, boxes, length_m, width_m, height_m, weight_kg, cubes_m3, kind, line_id)
+                      VALUES (:o, :c, :s, :sh, :rn, :code, :d, :q, :b, :l, :w, :h, :kg, :cu, :k, :li)', [
+                ':o' => $orderId, ':c' => $r['container'], ':s' => $r['seq'], ':sh' => isset($pl['sheet']) ? mb_substr((string)$pl['sheet'], 0, 80) : null,
+                ':rn' => isset($pl['row']) ? (int)$pl['row'] : null,
+                ':code' => ($pl['code'] ?? '') !== '' ? mb_substr((string)$pl['code'], 0, 40) : null,
+                ':d' => ($pl['description'] ?? '') !== '' ? (string)$pl['description'] : null,
+                ':q' => isset($pl['qty']) ? (int)$pl['qty'] : null, ':b' => isset($pl['boxes']) ? (int)$pl['boxes'] : null,
+                ':l' => $num($pl['length'] ?? null, 3), ':w' => $num($pl['width'] ?? null, 3), ':h' => $num($pl['height'] ?? null, 3),
+                ':kg' => $num($pl['weight'] ?? null, 2), ':cu' => $num($pl['cubes'] ?? null, 4),
+                ':k' => $r['kind'], ':li' => $r['line_id']]);
+        }
     }
     return $res;
 }
@@ -412,6 +458,57 @@ function inv_on_order_by_item(): array {
                         WHERE o.status IN ('open','partial')
                         GROUP BY l.item_id HAVING SUM(l.qty_ordered - l.qty_received) > 0")->fetchAll() as $r) {
         $out[(int)$r['item_id']] = (int)$r['n'];
+    }
+    return $out;
+}
+
+/**
+ * Every stored packing-list row of ONE container, in sheet order. Each row carries
+ * the matched order line's item (item_id, item_name; null = not on the master list) —
+ * only for lines this account may see ($venueIds); a row matched to a line it may not
+ * see comes back with hidden_line = true and no item. Empty before the migration.
+ */
+function inv_order_packing_rows(int $orderId, string $container, ?array $venueIds = null): array {
+    if (!inv_order_packing_supported() || $orderId <= 0 || $container === '') return [];
+    $visible = [];
+    foreach (inv_order_lines($orderId, $venueIds) as $l) $visible[(int)$l['id']] = $l;
+    $rows = db_query('SELECT p.* FROM inv_order_packing p WHERE p.order_id = :o AND p.container = :c ORDER BY p.seq, p.id', [':o' => $orderId, ':c' => $container])->fetchAll();
+    foreach ($rows as &$r) {
+        $lid = $r['line_id'] !== null ? (int)$r['line_id'] : 0;
+        $l = $visible[$lid] ?? null;
+        $r['item_id']     = $l ? (int)$l['item_id'] : null;
+        $r['item_name']   = $l ? (string)$l['item_name'] : null;
+        $r['hidden_line'] = $lid > 0 && !$l;
+    }
+    unset($r);
+    return $rows;
+}
+
+/**
+ * Each container's packing-list totals, in packing-list order: [['container','rows',
+ * 'boxes','weight','cubes','sheet_boxes','sheet_weight','sheet_cubes','unmatched']].
+ * boxes / weight / cubes add up the rows (footer 'total' rows excluded); sheet_* are the
+ * spreadsheet's own footer figures (null when it has none). Empty before the migration.
+ */
+function inv_order_packing_summary(int $orderId): array {
+    if (!inv_order_packing_supported() || $orderId <= 0) return [];
+    $out = [];
+    foreach (db_query("SELECT container, MIN(id) AS first_id,
+                              COUNT(*) FILTER (WHERE kind <> 'total') AS n,
+                              COALESCE(SUM(boxes)     FILTER (WHERE kind <> 'total'), 0) AS boxes,
+                              COALESCE(SUM(weight_kg) FILTER (WHERE kind <> 'total'), 0) AS weight,
+                              COALESCE(SUM(cubes_m3)  FILTER (WHERE kind <> 'total'), 0) AS cubes,
+                              SUM(boxes)     FILTER (WHERE kind = 'total') AS sheet_boxes,
+                              SUM(weight_kg) FILTER (WHERE kind = 'total') AS sheet_weight,
+                              SUM(cubes_m3)  FILTER (WHERE kind = 'total') AS sheet_cubes,
+                              COUNT(*) FILTER (WHERE kind = 'row' AND line_id IS NULL) AS unmatched
+                         FROM inv_order_packing WHERE order_id = :o GROUP BY container ORDER BY MIN(id)", [':o' => $orderId])->fetchAll() as $r) {
+        $out[] = ['container' => (string)$r['container'], 'rows' => (int)$r['n'], 'boxes' => (int)$r['boxes'],
+                  'weight' => (float)$r['weight'], 'cubes' => (float)$r['cubes'],
+                  'sheet_boxes' => $r['sheet_boxes'] !== null ? (int)$r['sheet_boxes'] : null,
+                  'sheet_weight' => $r['sheet_weight'] !== null ? (float)$r['sheet_weight'] : null,
+                  'sheet_cubes' => $r['sheet_cubes'] !== null ? (float)$r['sheet_cubes'] : null,
+                  'unmatched' => (int)$r['unmatched']];
     }
     return $out;
 }

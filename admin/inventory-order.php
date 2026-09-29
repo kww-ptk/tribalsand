@@ -38,6 +38,8 @@ foreach ($lines as $l) $byLine[(int)$l['id']] = $l;
 // Containers from the packing lists (hints only) — [] when the order has none.
 $containers     = $order ? inv_order_containers($orderId, $vids) : [];
 $containerNames = array_column($containers, 'container');
+// The full packing lists (every row of the spreadsheet) — a link per container when they are stored.
+$packSummary = $order ? inv_order_packing_summary($orderId) : [];
 $pickedContainer = (string)($_POST['container'] ?? $_GET['container'] ?? '');
 if (!in_array($pickedContainer, $containerNames, true)) $pickedContainer = '';
 
@@ -147,6 +149,11 @@ include __DIR__ . '/_layout.php';
   <?php if ($open): ?> — type how many arrived on each row and where they were put, then save. Partial deliveries are fine; come back for the rest.<?php endif; ?>
 </p>
 
+<?php if ($packSummary): ?>
+<p class="io-packlinks"><span class="text-muted">Packing lists:</span>
+  <?php foreach ($packSummary as $ps): ?><a class="optchip" href="/admin/inventory-order-packing.php?id=<?= $orderId ?>&amp;container=<?= e(rawurlencode($ps['container'])) ?>"><?= admin_icon('eye', 13) ?> <?= e($ps['container']) ?></a><?php endforeach; ?>
+</p>
+<?php endif; ?>
 <form method="POST" action="<?= $self ?>" id="igForm">
   <?= csrf_field() ?><input type="hidden" name="id" value="<?= $orderId ?>">
   <div class="ig-bar">
@@ -163,6 +170,9 @@ include __DIR__ . '/_layout.php';
         <option value="">All containers</option>
         <?php foreach ($containers as $c): ?><option value="<?= e($c['container']) ?>" <?= $pickedContainer === $c['container'] ? 'selected' : '' ?>><?= e($c['container']) ?> · <?= (int)$c['lines'] ?> line<?= $c['lines'] === 1 ? '' : 's' ?></option><?php endforeach; ?>
       </select></label>
+    <?php if ($packSummary): ?>
+    <a href="#" id="ioPackLink" class="btn-outline btn-sm" style="align-self:flex-end" hidden><?= admin_icon('eye', 14) ?> Packing list</a>
+    <?php endif; ?>
     <?php if ($open): ?>
     <button type="submit" name="action" value="receive_container" id="ioRecvContainer" class="btn-outline btn-sm" style="align-self:flex-end" hidden
       data-confirm="Receive what the packing list says is in this container into each line’s planned place? You can correct any line afterwards."><?= admin_icon('check', 14) ?> Receive this container</button>
@@ -199,7 +209,8 @@ include __DIR__ . '/_layout.php';
           data-ordered="<?= (int)$l['qty_ordered'] ?>" data-received="<?= (int)$l['qty_received'] ?>" data-left="<?= $left ?>" data-state="<?= $left > 0 ? 'left' : 'done' ?>"<?= $l['pack_diff'] !== null ? ' data-diff="' . e((string)$l['pack_diff']) . '"' : '' ?><?= $l['containers'] ? ' data-containers="' . e((string)json_encode($l['containers'], JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT)) . '"' : '' ?>>
         <td class="ig-check"><?php if ($open && $left > 0): ?><input type="checkbox" name="ids[]" value="<?= $lid ?>" aria-label="Select <?= e((string)$l['item_name']) ?>"><?php endif; ?></td>
         <td><a href="/admin/inventory-item.php?id=<?= (int)$l['item_id'] ?>" class="inv-name"><?= inv_thumb_html($l + ['name' => $l['item_name']], 28) ?><span><?= e((string)$l['item_name']) ?><?= $l['tracking'] === 'serial' ? ' <span class="ig-tag">serial</span>' : '' ?>
-          <?php if (!empty($l['sku'])): ?><span class="inv-sub ig-mono"><?= e((string)$l['sku']) ?></span><?php endif; ?></span></a></td>
+          <?php if (!empty($l['sku'])): ?><span class="inv-sub ig-mono"><?= e((string)$l['sku']) ?></span><?php endif; ?>
+          <?php if (!empty($l['hs_code'])): ?><span class="inv-sub ig-mono io-hs" title="Customs (HS) code">HS <?= e((string)$l['hs_code']) ?></span><?php endif; ?></span></a></td>
         <td class="ig-where"><?= $l['place_label'] !== '' ? e((string)$l['place_label']) : '<span class="text-muted">—</span>' ?></td>
         <?php if ($containers): ?><td class="ig-num io-cq"></td><?php endif; ?>
         <td class="ig-num"><?= (int)$l['qty_ordered'] ?>
@@ -242,6 +253,8 @@ include __DIR__ . '/_layout.php';
 .io-diff{display:block;margin-top:2px;font-size:11.5px;font-weight:500;white-space:nowrap}
 .io-diff--orange{color:#e65100}
 .io-diff--grey{color:var(--muted)}
+.io-packlinks{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 14px;font-size:13px}
+.io-packlinks .optchip{text-decoration:none}
 .ig:not(.io-show-cq) .io-cq{display:none}
 .ig .cell-select,.ig .eselect:has(> .cell-select){width:220px;max-width:220px}
 .ig td.ig-where{min-width:140px}
@@ -252,7 +265,7 @@ include __DIR__ . '/_layout.php';
 (function () {
   var table = document.getElementById('igTable'); if (!table) return;
   var search = document.getElementById('igSearch'), state = document.getElementById('ioFilter');
-  var cont = document.getElementById('ioContainer'), recv = document.getElementById('ioRecvContainer');
+  var cont = document.getElementById('ioContainer'), recv = document.getElementById('ioRecvContainer'), packLink = document.getElementById('ioPackLink');
   function rowContainers(r) {
     var raw = r.getAttribute('data-containers');
     if (!raw) return null;
@@ -278,6 +291,10 @@ include __DIR__ . '/_layout.php';
   });
   function containerChanged() {
     table.classList.toggle('io-show-cq', !!(cont && cont.value));
+    if (packLink) {
+      packLink.hidden = !(cont && cont.value);
+      if (cont && cont.value) packLink.href = '/admin/inventory-order-packing.php?id=<?= $orderId ?>&container=' + encodeURIComponent(cont.value);
+    }
     if (recv) {
       recv.hidden = !(cont && cont.value);
       recv.setAttribute('data-confirm', 'Receive what the packing list says is in ' + (cont ? cont.value : '') + ' into each line’s planned place? You can correct any line afterwards.');

@@ -10,6 +10,11 @@
 --   • inv_order_line_containers are HINTS from the packing-list sheets (which container a
 --     line is in, how many pieces) — they never change qty_ordered, only drive the
 --     container filter and "Receive this container". `seq` keeps the sheets' order.
+--   • inv_order_lines.hs_code is the customs code from the master list; inv_order_packing
+--     keeps EVERY row of the packing-list sheets (boxes, L x W x H in metres, weight in kg,
+--     cubes in m3 — matched or not, continuation boxes and footer totals included) so the
+--     whole spreadsheet is in the system. line_id links a row to the order line it was
+--     matched to (NULL = not on the master list). Like the hints, it never changes qty_ordered.
 
 CREATE TABLE IF NOT EXISTS inv_orders (
     id              SERIAL PRIMARY KEY,
@@ -60,3 +65,32 @@ CREATE TABLE IF NOT EXISTS inv_order_line_containers (
     seq       INT          NOT NULL DEFAULT 0,
     PRIMARY KEY (line_id, container)
 );
+
+-- The customs (HS) code from the master list, one per order line.
+ALTER TABLE inv_order_lines ADD COLUMN IF NOT EXISTS hs_code VARCHAR(20);
+
+-- The packing lists in full, one row per spreadsheet row, in sheet order (seq counts per
+-- container). kind: row (has an item code) | continuation (no code — an extra box of the
+-- row above) | note (a heading line) | total (the sheet's own footer total; the page
+-- shows it as "sheet total" and never adds it to the computed totals).
+-- Created last: inv_order_packing_supported() probes this table AND hs_code.
+CREATE TABLE IF NOT EXISTS inv_order_packing (
+    id          SERIAL PRIMARY KEY,
+    order_id    INT          NOT NULL REFERENCES inv_orders(id) ON DELETE CASCADE,
+    container   VARCHAR(80)  NOT NULL,
+    seq         INT          NOT NULL,
+    sheet       VARCHAR(80),
+    row_no      INT,
+    code        VARCHAR(40),
+    description TEXT,
+    qty         INT,
+    boxes       INT,
+    length_m    NUMERIC(8,3),
+    width_m     NUMERIC(8,3),
+    height_m    NUMERIC(8,3),
+    weight_kg   NUMERIC(10,2),
+    cubes_m3    NUMERIC(10,4),
+    kind        VARCHAR(12)  NOT NULL DEFAULT 'row' CHECK (kind IN ('row','continuation','note','total')),
+    line_id     INT REFERENCES inv_order_lines(id) ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_inv_order_packing_order ON inv_order_packing (order_id, container, seq);

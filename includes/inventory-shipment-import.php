@@ -212,15 +212,47 @@ function inv_ship_parse_workbook(array $sheets): array {
     return $out;
 }
 
-// ── Packing lists (container hints) ─────────────────────────────────────────
+// ── Packing lists (container hints + the full list) ─────────────────────────
+
+/** A decimal from a spreadsheet cell, or null — PURE. Tolerant: "1,25" (comma decimal),
+ *  "1,250.5" (comma thousands), "0.86112000000000011" (float noise), stray spaces. */
+function inv_ship_num(string $s): ?float {
+    $s = str_replace(["\xc2\xa0", ' '], '', trim($s));
+    if ($s === '') return null;
+    if (str_contains($s, ',') && str_contains($s, '.')) $s = str_replace(',', '', $s);        // 1,250.5
+    elseif (substr_count($s, ',') === 1) $s = str_replace(',', '.', $s);                       // 1,25
+    else $s = str_replace(',', '', $s);
+    return is_numeric($s) ? (float)$s : null;
+}
+
+/** A whole box / package count, or null (0 and fractions are not counts) — PURE. */
+function inv_ship_boxes(string $s): ?int {
+    $f = inv_ship_num($s);
+    if ($f === null || $f < 1 || $f > INV_SHIP_MAX_QTY || abs($f - round($f)) > 1e-9) return null;
+    return (int)round($f);
+}
 
 /**
- * One packing-list sheet → ['container','lines' => [['code','description','qty','row']]],
- * or null when the sheet is not a packing list — PURE. A packing list has an
- * Item No + Qty + Description header AND a Length / Weight / Cubes column. The
- * container is named by a "Container <name>" cell above the header (else the sheet
- * name without a leading "PL "). Rows with no code or no whole quantity (dimension
- * continuation rows) are ignored.
+ * One packing-list sheet → ['container','lines' => [...]], or null when the sheet is
+ * not a packing list — PURE. A packing list has an Item No + Qty + Description header
+ * AND a Length / Weight / Cubes column; its SECOND "Qty" column is the box / package
+ * count of that row. The container is named by a "Container <name>" cell above the
+ * header (else the sheet name without a leading "PL ").
+ *
+ * EVERY row below the header with a value in any column is kept, in sheet order —
+ * only fully blank rows are dropped. Each line:
+ *   sheet, row (spreadsheet row number), code, description, qty (int|null),
+ *   boxes (int|null), length, width, height (m), weight (kg), cubes (m³) (float|null),
+ *   kind: 'row'          — has an item code
+ *         'continuation' — no code, but a quantity / box count / dimension: an extra box
+ *                          of the row above (its 'parent_code' = the last coded row's code)
+ *         'note'         — no code and nothing measurable (a heading such as "Double
+ *                          Curtain Rails (166 pcs …)")
+ *         'total'        — no code / description / quantity / dimensions but boxes,
+ *                          weight or cubes: the sheet's own footer total
+ *   continuation, parent_code (string|null).
+ * Container matching (inv_order_attach_containers()) only uses 'row' lines with a
+ * whole quantity — exactly the rows the earlier parser returned.
  */
 function inv_ship_parse_packing_sheet(string $sheetName, array $rows): ?array {
     $container = null; $map = null; $headerAt = null;
@@ -232,8 +264,13 @@ function inv_ship_parse_packing_sheet(string $sheetName, array $rows): ?array {
             foreach ($cells as $i => $c) {
                 $t = mb_strtolower(inv_ship_text((string)($c['v'] ?? '')));
                 if (in_array($t, ['item no', 'item no.', 'code'], true)) $map['code'] ??= $i;
-                elseif (in_array($t, ['qty', 'quantity'], true))       $map['qty']  ??= $i;
+                elseif (in_array($t, ['qty', 'quantity'], true))       { if (!isset($map['qty'])) $map['qty'] = $i; else $map['boxes'] ??= $i; }
                 elseif ($t === 'description')                           $map['desc'] ??= $i;
+                elseif ($t === 'length')                                $map['length'] ??= $i;
+                elseif ($t === 'width')                                 $map['width'] ??= $i;
+                elseif ($t === 'height')                                $map['height'] ??= $i;
+                elseif ($t === 'weight')                                $map['weight'] ??= $i;
+                elseif (in_array($t, ['cubes', 'cube'], true))          $map['cubes'] ??= $i;
             }
             $headerAt = $n; break;
         }
@@ -248,13 +285,30 @@ function inv_ship_parse_packing_sheet(string $sheetName, array $rows): ?array {
     if ($map === null) return null;
     if ($container === null || $container === '') $container = trim((string)preg_replace('/^PL\s+/i', '', inv_ship_text($sheetName)));
     if ($container === '') return null;
-    $lines = [];
+    $raw = fn(array $cells, string $k): string => isset($map[$k]) ? inv_ship_text((string)($cells[$map[$k]]['v'] ?? '')) : '';
+    $lines = []; $parent = null;
     foreach ($rows as $n => $cells) {
         if ($n <= $headerAt) continue;
-        $code = inv_ship_code((string)($cells[$map['code']]['v'] ?? ''));
-        $qty  = inv_ship_qty((string)($cells[$map['qty']]['v'] ?? ''));
-        if ($code === '' || $qty === null) continue;
-        $lines[] = ['code' => $code, 'description' => inv_ship_text((string)($cells[$map['desc']]['v'] ?? '')), 'qty' => $qty, 'row' => $n + 1];
+        $code  = inv_ship_code((string)($cells[$map['code']]['v'] ?? ''));
+        $desc  = inv_ship_text((string)($cells[$map['desc']]['v'] ?? ''));
+        $qtyRaw = $raw($cells, 'qty');
+        $qty   = inv_ship_qty($qtyRaw);
+        $boxes = inv_ship_boxes($raw($cells, 'boxes'));
+        $len = inv_ship_num($raw($cells, 'length')); $wid = inv_ship_num($raw($cells, 'width')); $hei = inv_ship_num($raw($cells, 'height'));
+        $wgt = inv_ship_num($raw($cells, 'weight')); $cub = inv_ship_num($raw($cells, 'cubes'));
+        $boxRaw = $raw($cells, 'boxes');
+        $dims  = $len !== null || $wid !== null || $hei !== null;
+        // A row with a value in no column we know is blank; anything else is kept.
+        if ($code === '' && $desc === '' && $qtyRaw === '' && $boxRaw === '' && !$dims && $wgt === null && $cub === null) continue;
+        if ($code !== '')                                                  $kind = 'row';
+        elseif ($desc === '' && $qtyRaw === '' && !$dims)                  $kind = 'total';
+        elseif ($qty !== null || $qtyRaw !== '' || $boxes !== null || $dims) $kind = 'continuation';
+        else                                                               $kind = 'note';
+        if ($kind === 'row') $parent = $code;
+        $lines[] = ['sheet' => $sheetName, 'row' => $n + 1, 'code' => $code, 'description' => $desc, 'qty' => $qty,
+                    'boxes' => $boxes, 'length' => $len, 'width' => $wid, 'height' => $hei, 'weight' => $wgt, 'cubes' => $cub,
+                    'kind' => $kind, 'continuation' => $kind === 'continuation',
+                    'parent_code' => $kind === 'continuation' ? $parent : null];
     }
     return ['container' => mb_substr($container, 0, 80), 'lines' => $lines];
 }
