@@ -1,0 +1,66 @@
+<?php
+declare(strict_types=1);
+// Quote Builder — maths, notices, quote text; DB-backed pricing in a rolled-back
+// transaction. Run: php tests/quote_builder_logic.php
+require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/quote-builder.php';
+
+$failures = 0;
+function check(string $label, bool $cond): void {
+    if ($cond) { echo "PASS  {$label}\n"; }
+    else       { echo "FAIL  {$label}\n"; $GLOBALS['failures']++; }
+}
+$fx = ['USD' => 1.0, 'KES' => 129.0];
+
+// ── Extras by basis ──────────────────────────────────────────────────────────
+check('extra: per stay = unit × qty',    qb_extra_amount(50.0, 2, 'stay', 4) === 100.0);
+check('extra: per night = unit × nights × qty', qb_extra_amount(10.0, 2, 'night', 4) === 80.0);
+check('extra: per person = unit × qty',  qb_extra_amount(40.0, 3, 'person', 4) === 120.0);
+check('extra: unknown basis = per stay', qb_extra_amount(5.0, 1, 'bogus', 4) === 5.0);
+
+// ── Totals ───────────────────────────────────────────────────────────────────
+$t = qb_totals([['amt' => 100000.0, 'cur' => 'KES']], [['amt' => 50.0, 'cur' => 'USD']], 10.0, 'KES', $fx);
+check('totals: discount on accommodation only', $t['discount'] === 10000.0);
+check('totals: extras converted to the quote currency', $t['extras'] === 6450.0);
+check('totals: total = acc − discount + extras', $t['total'] === 96450.0);
+check('totals: flags a conversion', $t['converted'] === true);
+$t2 = qb_totals([['amt' => 1000.0, 'cur' => 'KES']], [], 0.0, 'KES', $fx);
+check('totals: single currency is exact', $t2['converted'] === false && $t2['total'] === 1000.0);
+check('totals: discount clamps to 100%', qb_totals([['amt' => 10.0, 'cur' => 'KES']], [], 250.0, 'KES', $fx)['discount'] === 10.0);
+$t3 = qb_totals([['amt' => 10.0, 'cur' => 'EUR']], [], 0.0, 'KES', $fx);
+check('totals: a missing rate is reported, never summed as 0', $t3['missing'] === ['EUR'] && $t3['total'] === 0.0);
+
+// ── Notices ──────────────────────────────────────────────────────────────────
+$picked = [
+    ['name' => 'Zuri — Maji Suite', 'qty' => 1, 'guests' => 3, 'capacity' => 2, 'free' => 1, 'free_exact' => true],
+    ['name' => 'Maya Kobe — Haze Suite', 'qty' => 2, 'guests' => 2, 'capacity' => 4, 'free' => 1, 'free_exact' => true],
+];
+$ns = array_column(qb_notices($picked, 6, true, []), 'text');
+check('notice: over a room\'s capacity', in_array('Zuri — Maji Suite: 3 guests, sleeps 2.', $ns, true));
+check('notice: fewer free than asked', in_array('Maya Kobe — Haze Suite: only 1 free for these dates.', $ns, true));
+check('notice: rooms sleep less than the party', in_array('The rooms chosen sleep 6; the party is 6.', $ns, true) === false);
+check('notice: allocation differs from party', in_array('Guests allocated (5) differ from the party (6).', $ns, true));
+$ns2 = array_column(qb_notices([], 2, false, []), 'text');
+check('notice: bad dates', in_array('Choose check-in and check-out dates.', $ns2, true));
+$ns3 = array_column(qb_notices([['name' => 'X', 'qty' => 1, 'guests' => 2, 'capacity' => 2, 'free' => 0, 'free_exact' => false]], 2, true, ['Sunset dhow']), 'text');
+check('notice: composite product not free', in_array('X: not free for these dates.', $ns3, true));
+check('notice: unpriced extra', in_array('Sunset dhow: add a price.', $ns3, true));
+
+// ── Quote text ───────────────────────────────────────────────────────────────
+$txt = qb_quote_text([
+    'name' => 'Sofia Martin', 'check_in' => '2027-03-24', 'check_out' => '2027-03-28', 'nights' => 4,
+    'adults' => 2, 'children' => 1, 'currency' => 'KES', 'today' => '2026-09-29',
+    'rooms' => [['name' => 'Zuri — Maji Suite', 'qty' => 1, 'mix' => '2 Mid + 2 Peak', 'amt' => 229680.0]],
+    'extras' => [['label' => 'Airport → Property', 'qty' => 1, 'amt' => 6450.0]],
+    'discount_pct' => 10.0, 'discount_note' => 'Returning guest', 'discount' => 22968.0,
+    'total' => 213162.0, 'fx_note' => 'Converted at 1 USD = 129 KES on 29 Sep 2026.',
+]);
+check('text: header', str_starts_with($txt, "Tribal Sand — quote for Sofia Martin\n24 Mar 2027 → 28 Mar 2027 · 4 nights · 2 adults, 1 child"));
+check('text: room line', str_contains($txt, '• Zuri — Maji Suite × 1 (2 Mid + 2 Peak): KES 229,680'));
+check('text: discount line', str_contains($txt, 'Discount 10% (Returning guest): −KES 22,968'));
+check('text: extra line', str_contains($txt, '• Airport → Property × 1: KES 6,450'));
+check('text: total + fx + validity', str_contains($txt, "Total: KES 213,162\nConverted at 1 USD = 129 KES on 29 Sep 2026.\nPrices valid on 29 Sep 2026; subject to availability until booked."));
+check('fx note', qb_fx_note($fx, 'KES', '2026-09-29') === 'Converted at 1 USD = 129 KES on 29 Sep 2026.');
+
+echo $failures ? "\n{$failures} FAILED\n" : "\nALL PASS\n";
+exit($failures ? 1 : 0);
