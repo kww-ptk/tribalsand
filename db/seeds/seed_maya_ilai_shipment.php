@@ -40,6 +40,8 @@ $parsed  = inv_ship_parse_workbook($sheets);
 $packing = inv_ship_parse_packing($sheets);
 if (!$parsed['lines']) { fwrite(STDERR, "No item list found in {$file}.\n"); exit(1); }
 $filename = basename($file);
+// The committed fixture has a technical name — store the order under the supplier file's real name.
+if ($filename === 'shipment-maya-ilai.xlsx') $filename = 'Inventory List Maya Ilai 4 Containers Shipment 1.xlsx';
 $fp       = inv_import_list_fingerprint($parsed['lines']);
 $pieces   = array_sum(array_column($parsed['lines'], 'qty'));
 echo "{$tag}Read {$filename}: " . count($parsed['lines']) . " lines, {$pieces} pieces, " . count($packing) . " packing list(s).\n";

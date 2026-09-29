@@ -107,7 +107,7 @@ include __DIR__ . '/_layout.php';
     if ($r['kind'] === 'total') continue;
     $cont = $r['kind'] === 'continuation'; $note = $r['kind'] === 'note'; ?>
     <tr class="<?= $cont ? 'pk-cont' : ($note ? 'pk-note' : '') ?>">
-      <td class="ig-mono"><?= $cont ? '<span class="pk-arrow">↳ extra box</span>' : e((string)($r['code'] ?? '')) ?></td>
+      <td class="ig-mono"><?= $cont ? '<span class="pk-arrow">' . (trim((string)($r['description'] ?? '')) !== '' ? '↳ no item no.' : '↳ extra box') . '</span>' : e((string)($r['code'] ?? '')) ?></td>
       <td class="pk-desc"><?= e((string)($r['description'] ?? '')) ?></td>
       <td class="ig-num"><?= $r['qty'] !== null ? (int)$r['qty'] : '' ?></td>
       <td class="ig-num"><?= $r['boxes'] !== null ? (int)$r['boxes'] : '' ?></td>
