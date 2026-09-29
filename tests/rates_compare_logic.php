@@ -63,6 +63,13 @@ check('short: KES round thousands', rc_money_text(100000, 'KES', true) === '100k
 check('short: KES millions', rc_money_text(1250000, 'KES', true) === '1.25m');
 check('short: KES small', rc_money_text(950, 'KES', true) === '950');
 check('short: USD', rc_money_text(375.2, 'USD', true) === '$375');
+// Half-way values round half UP on the scaled value (floor(x + 0.5)) — the same rule admin-money.js uses.
+check('short: KES 1450 → 1.5k', rc_money_text(1450, 'KES', true) === '1.5k');
+check('short: KES 1150 → 1.2k', rc_money_text(1150, 'KES', true) === '1.2k');
+check('short: KES 1005000 → 1.01m', rc_money_text(1005000, 'KES', true) === '1.01m');
+check('short: USD 100050 → $100.1k', rc_money_text(100050, 'USD', true) === '$100.1k');
+check('full: half rounds up (KES 1000.5)', rc_money_text(1000.5, 'KES') === 'KES 1,001');
+check('full: half rounds up ($2.5)', rc_money_text(2.5, 'USD') === '$3');
 check('html: own currency, exact',
     rc_money_html(48360.0, 'KES', 'KES', $fx) === '<span class="mny" data-amt="48360" data-cur="KES">KES 48,360</span>');
 check('html: converted is marked ≈',
@@ -85,10 +92,13 @@ if ($pdo) {
                       VALUES (:r, '2099-03-02', '2099-03-04', 777, 'Peak season')", [':r' => (int)$a['id']]);
             $defaults = [(int)$a['id'] => 100.0, (int)$b['id'] => 50.0];
             $batch = room_stay_quotes($defaults, '2099-03-01', '2099-03-05');
-            check('batch: room A == single quote',
-                $batch[(int)$a['id']] === room_stay_quote((int)$a['id'], 100.0, '2099-03-01', '2099-03-05'));
-            check('batch: room B == single quote',
-                $batch[(int)$b['id']] === room_stay_quote((int)$b['id'], 50.0, '2099-03-01', '2099-03-05'));
+            // Independent oracle: sum the nightly map directly (no quote helper in between).
+            $sumOf = fn(int $id, float $def): float => round(array_sum(array_column(
+                rates_nightly_map($id, $def, '2099-03-01', '2099-03-05'), 'price')), 2);
+            check('batch: room A total == independent nightly sum',
+                abs($batch[(int)$a['id']]['total'] - $sumOf((int)$a['id'], 100.0)) < 0.005);
+            check('batch: room B total == independent nightly sum',
+                abs($batch[(int)$b['id']]['total'] - $sumOf((int)$b['id'], 50.0)) < 0.005);
             check('batch: A = 2 base + 2 override nights', $batch[(int)$a['id']] === ['nights' => 4, 'total' => 1754.0]);
             check('batch: bad window is not a quote',
                 room_stay_quotes($defaults, '2099-03-05', '2099-03-01')[(int)$a['id']] === ['nights' => 0, 'total' => 0.0]);

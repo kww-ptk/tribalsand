@@ -17,16 +17,20 @@
   function cfg() { return window.TS_FX || { rates: { USD: 1 }, symbols: { USD: '$' } }; }
   function sym(c) { var s = cfg().symbols || {}; return s[c] || (c + ' '); }
   function trimz(s) { return s.indexOf('.') >= 0 ? s.replace(/0+$/, '').replace(/\.$/, '') : s; }
-  function group(v) { return Math.round(v).toLocaleString('en-US'); }
+  // Rounding: scale, round half UP with Math.floor(x + 0.5), then place the decimal.
+  // Must stay identical to rc_money_text() (PHP floor($x + 0.5)) — toFixed() rounds
+  // the binary value and would disagree on half-way amounts.
+  function r(x) { return Math.floor(x + 0.5); }
+  function group(v) { return r(v).toLocaleString('en-US'); }
   function text(v, c, short) {
     if (short) {
       var a = Math.abs(v);
       if (c === 'KES') {
-        if (a >= 1000000) return trimz((v / 1000000).toFixed(2)) + 'm';
-        if (a >= 1000) return trimz((v / 1000).toFixed(1)) + 'k';
-        return String(Math.round(v));
+        if (a >= 1000000) return trimz((r(v / 10000) / 100).toFixed(2)) + 'm';
+        if (a >= 1000) return trimz((r(v / 100) / 10).toFixed(1)) + 'k';
+        return String(r(v));
       }
-      if (a >= 100000) return sym(c) + trimz((v / 1000).toFixed(1)) + 'k';
+      if (a >= 100000) return sym(c) + trimz((r(v / 100) / 10).toFixed(1)) + 'k';
     }
     return sym(c) + group(v);
   }

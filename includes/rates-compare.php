@@ -139,10 +139,20 @@ function rc_trimz(string $s): string {
     return str_contains($s, '.') ? rtrim(rtrim($s, '0'), '.') : $s;
 }
 
+/** Round half UP to an integer: floor(x + 0.5). Mirrored by Math.floor(v + 0.5) in admin-money.js. */
+function rc_round_half_up(float $x): float {
+    return floor($x + 0.5);
+}
+
 /**
  * Display text for an amount already in $cur. Full: "KES 48,360" / "$375"
  * (whole units). Short (timeline cells): "48.4k" / "1.25m" for KES, "$375" /
- * "$120.5k" for other currencies. Mirrored exactly by admin-money.js.
+ * "$120.5k" for other currencies.
+ *
+ * Rounding is explicit and identical to admin-money.js: scale the amount, round
+ * the scaled value half UP with floor(x + 0.5), then place the decimal point
+ * (number_format's own rounding pre-rounds, JS toFixed rounds the binary value —
+ * they disagree on half-way values, so neither is used to round).
  */
 function rc_money_text(float $amt, string $cur, bool $short = false): string {
     $cur = strtoupper($cur);
@@ -150,13 +160,13 @@ function rc_money_text(float $amt, string $cur, bool $short = false): string {
     if ($short) {
         $a = abs($amt);
         if ($cur === 'KES') {
-            if ($a >= 1000000) return rc_trimz(number_format($amt / 1000000, 2, '.', '')) . 'm';
-            if ($a >= 1000)    return rc_trimz(number_format($amt / 1000, 1, '.', '')) . 'k';
-            return number_format($amt, 0, '.', '');
+            if ($a >= 1000000) return rc_trimz(number_format(rc_round_half_up($amt / 10000) / 100, 2, '.', '')) . 'm';
+            if ($a >= 1000)    return rc_trimz(number_format(rc_round_half_up($amt / 100) / 10, 1, '.', '')) . 'k';
+            return number_format(rc_round_half_up($amt), 0, '.', '');
         }
-        if ($a >= 100000) return $sym . rc_trimz(number_format($amt / 1000, 1, '.', '')) . 'k';
+        if ($a >= 100000) return $sym . rc_trimz(number_format(rc_round_half_up($amt / 100) / 10, 1, '.', '')) . 'k';
     }
-    return $sym . number_format($amt, 0);
+    return $sym . number_format(rc_round_half_up($amt), 0);
 }
 
 /**
@@ -170,7 +180,7 @@ function rc_money_html(float $amt, string $from, string $to, array $rates, bool 
     $shown = $v === null ? $from : strtoupper($to);
     $approx = $shown !== $from;
     $txt = rc_money_text($v ?? $amt, $shown, $short);
-    return '<span class="mny' . ($approx ? ' is-approx' : '') . '" data-amt="' . e(rc_trimz((string)$amt))
+    return '<span class="mny' . ($approx ? ' is-approx' : '') . '" data-amt="' . e(rc_trimz(sprintf('%.2F', $amt)))
          . '" data-cur="' . e($from) . '"' . ($short ? ' data-fmt="short"' : '') . '>'
          . e(($approx && !$short ? '≈ ' : '') . $txt) . '</span>';
 }
