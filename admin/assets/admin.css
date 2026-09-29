@@ -270,6 +270,10 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 /* ── Forms ── */
 .field { margin-bottom: 16px; }
 .field label, .field > span { display: block; font-size: 12.5px; font-weight: 500; color: var(--muted); margin-bottom: 5px; }
+/* A chip / toggle / checkbox used AS the label keeps its own look — without this the
+   rule above stretches it into a full-width bar (e.g. "In use" on an inventory item). */
+.field label.optchip { display: inline-flex; font-size: 13px; color: var(--text); margin-bottom: 0; }
+.field label.togglerow, .field label.ckwrap { display: inline-flex; color: var(--text); margin-bottom: 0; }
 .field input, .field select, .field textarea {
   width: 100%; padding: 8px 12px; border: 1.5px solid var(--border);
   border-radius: 6px; font-size: 13.5px; color: var(--text);

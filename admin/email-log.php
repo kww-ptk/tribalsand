@@ -156,7 +156,13 @@ ob_start(); ?>
     <?php if (!$supported): ?>
       <?php dt_empty('The email log isn’t switched on yet. Run the add_email_log migration (Admin → Migrations).', 'inbox'); ?>
     <?php elseif (!$rows): ?>
-      <?php dt_empty($filtered ? 'No emails match your filters.' : 'No emails logged yet. Every email sent from now on appears here.', 'inbox'); ?>
+      <?php
+        // Say when logging began — an empty log right after go-live is expected, not a fault.
+        $firstAt = db_query('SELECT MIN(created_at) FROM email_log')->fetchColumn();
+        $since   = $firstAt ? ' The log started on ' . date('j M Y, H:i', strtotime((string)$firstAt)) . ' — earlier emails can’t be shown.'
+                            : ' Nothing has been sent since the log was switched on — every email from now on appears here.';
+        dt_empty(($filtered ? 'No emails match your filters.' : 'No emails logged yet.') . $since, 'inbox');
+      ?>
     <?php else: ?>
     <div class="table-wrap">
       <table class="data-table">
