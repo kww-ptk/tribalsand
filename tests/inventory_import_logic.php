@@ -8,6 +8,7 @@ require_once __DIR__ . '/../includes/inventory-views.php';
 require_once __DIR__ . '/../includes/xlsx-reader.php';
 require_once __DIR__ . '/../includes/inventory-shipment-import.php';
 require_once __DIR__ . '/../includes/inventory-item-import.php';
+require_once __DIR__ . '/../includes/inventory-orders.php';
 
 $failures = 0;
 function check(string $label, bool $cond): void {
@@ -285,6 +286,62 @@ check('par plan: skips a line with no item, and a line whose prefix has no place
 check('par plan: an unmapped prefix (0 or absent) contributes nothing', inv_import_par_plan($parLines,
     [0 => 100, 2 => 200], ['V' => 5, 'HS' => 0]) === ['100:5' => 5]);
 
+// ── List fingerprint (pure) ─────────────────────────────────────────────────
+$fpA = [['sheet' => 'S', 'row' => 2, 'section' => 'x', 'code' => 'V1', 'description' => 'Chair', 'qty' => 4], ['sheet' => 'S', 'row' => 3, 'section' => 'x', 'code' => 'V2', 'description' => 'Table', 'qty' => 2]];
+$fpB = $fpA; $fpB[1]['qty'] = 3;
+check('fingerprint: stable for identical lines', inv_import_list_fingerprint($fpA) === inv_import_list_fingerprint($fpA) && strlen(inv_import_list_fingerprint($fpA)) === 40);
+check('fingerprint: changes when a quantity changes', inv_import_list_fingerprint($fpA) !== inv_import_list_fingerprint($fpB));
+
+// ── Packing lists → container hints (pure) ──────────────────────────────────
+$pack = inv_ship_parse_packing($sheets);
+check('packing: the fixture has 4 containers, named from the "Container …" cell',
+    array_column($pack, 'container') === ['NONE 6585458', 'NONE 6848636', 'MSBU781565', 'TEMU8316834']);
+check('packing: the master lists are not packing lists', inv_ship_parse_packing_sheet('Master Shipper Owned Container', $sheets['Master Shipper Owned Container']) === null);
+check('packing: a sheet with no "Container" cell falls back to its name minus "PL "', (inv_ship_parse_packing_sheet('PL ABC1',
+    [0 => [['v' => 'Item No'], ['v' => 'Qty'], ['v' => 'Description'], ['v' => 'Weight']], 1 => [['v' => 'V001'], ['v' => '2'], ['v' => 'Couch']]])['container'] ?? '') === 'ABC1');
+check('packing: code and quantity of a line are read, dimension-only rows ignored', (function () use ($pack) {
+    foreach ($pack[1]['lines'] as $l) if ($l['code'] === 'V001') return $l['qty'] === 8 && $l['description'] === 'Couch 2.6m x 1m';
+    return false; })());
+// ── Full packing lists (pure): every row kept, dimensions read ──────────────
+check('num: comma decimal, comma thousands, float noise, junk', inv_ship_num('1,25') === 1.25 && inv_ship_num('1,250.5') === 1250.5
+    && inv_ship_num(' 0.86 ') === 0.86 && inv_ship_num('') === null && inv_ship_num('abc') === null && inv_ship_boxes('6') === 6 && inv_ship_boxes('0') === null && inv_ship_boxes('1.5') === null);
+$cvp = fn(string $v) => ['v' => $v];
+$plRows = [
+    0 => [2 => $cvp('Container TEST1')],
+    2 => [$cvp('Item No'), $cvp('Qty'), $cvp('Description'), $cvp('Qty'), $cvp('Length'), $cvp('Width'), $cvp('Height'), $cvp('Weight'), $cvp('Cubes')],
+    4 => [$cvp('V001'), $cvp('2'), $cvp('Couch'), $cvp('2'), $cvp('2,64'), $cvp('1.03'), $cvp('0.75'), $cvp('600'), $cvp('16.3')],
+    5 => [3 => $cvp('1'), 4 => $cvp('1.1'), 5 => $cvp('1.2'), 6 => $cvp('0.3'), 7 => $cvp('12')],                  // extra box: dimensions only
+    6 => [],                                                                                                         // blank
+    7 => [2 => $cvp('Double Curtain Rails (166 pcs)')],                                                                // heading
+    8 => [$cvp('Tube 1'), $cvp('2'), $cvp('3860mm x 2830mm'), $cvp('1'), $cvp('4'), $cvp('0.11'), $cvp('0.11'), $cvp('6'), $cvp('0.048')],
+    9 => [1 => $cvp('2'), 2 => $cvp('3840mm x 2830mm')],                                                             // continuation with a qty + description
+    10 => [3 => $cvp('215'), 7 => $cvp('5380'), 8 => $cvp('70.1')],                                                  // footer total
+];
+$plp = inv_ship_parse_packing_sheet('PL TEST1', $plRows);
+$plk = array_column($plp['lines'], 'kind');
+check('packing parse: every non-blank row is kept, in sheet order (5 rows; the blank one is not)', count($plp['lines']) === 6 && array_column($plp['lines'], 'row') === [5, 6, 8, 9, 10, 11]);
+check('packing parse: kinds — row / continuation / note / row / continuation / total', $plk === ['row', 'continuation', 'note', 'row', 'continuation', 'total']);
+check('packing parse: boxes are the SECOND Qty column, dimensions/weight/cubes read (comma decimal too)',
+    $plp['lines'][0]['qty'] === 2 && $plp['lines'][0]['boxes'] === 2 && $plp['lines'][0]['length'] === 2.64 && $plp['lines'][0]['width'] === 1.03
+    && $plp['lines'][0]['height'] === 0.75 && $plp['lines'][0]['weight'] === 600.0 && $plp['lines'][0]['cubes'] === 16.3);
+check('packing parse: a dimensions-only row is a continuation of the last coded row and keeps its own values',
+    $plp['lines'][1]['code'] === '' && $plp['lines'][1]['continuation'] === true && $plp['lines'][1]['parent_code'] === 'V001'
+    && $plp['lines'][1]['boxes'] === 1 && $plp['lines'][1]['weight'] === 12.0 && $plp['lines'][1]['qty'] === null);
+check('packing parse: a qty + description row with no code is a continuation of Tube 1', $plp['lines'][4]['parent_code'] === 'Tube 1'
+    && $plp['lines'][4]['qty'] === 2 && $plp['lines'][4]['description'] === '3840mm x 2830mm');
+check('packing parse: the footer row is a total, not a continuation', $plp['lines'][5]['kind'] === 'total' && $plp['lines'][5]['boxes'] === 215 && $plp['lines'][5]['weight'] === 5380.0);
+check('packing code: a bundle suffix maps to the master code', inv_ship_packing_code('CVL102B7', ['CVL102']) === 'CVL102');
+check('packing code: exact (case-insensitive) match wins', inv_ship_packing_code('OV003', ['OV003']) === 'OV003' && inv_ship_packing_code('ov003/', ['OV003']) === 'OV003');
+check('packing code: rails / unknown codes map to nothing', inv_ship_packing_code('Tube 3', ['CVL102', 'V001']) === null && inv_ship_packing_code('BRA104B1', ['V001']) === null);
+
+// ── Description matching (pure) ─────────────────────────────────────────────
+check('desc tokens: noise dropped, trailing s stripped, unique', inv_ship_desc_tokens('Fake Hanging Plants (4 pcs each)') === ['fake', 'hanging', 'plant', '4']);
+check('desc score: same words, different punctuation = 1', inv_ship_desc_score('Bowls - Paper Mache', 'Bowls Paper Mache') === 1.0);
+check('desc score: plural + "(4 pcs each)" vs "(4 Pce)" is a match', inv_ship_desc_score('Fake Hanging Plants (4 pcs each)', 'Fake Hanging Plant (4 Pce)') >= 0.6);
+check('desc score: unrelated descriptions score 0', inv_ship_desc_score('Pot Stand', 'Crab Statue') === 0.0);
+check('desc score: an extra word in one is still a match', inv_ship_desc_score('Bitan Footed Dish', 'Bitan Style Footed Dish') >= 0.6);
+check('desc score: an empty side scores 0', inv_ship_desc_score('', 'Pot Stand') === 0.0 && inv_ship_desc_score('(4 pcs)', 'Pot Stand') === 0.0);
+
 // ── Pure checks (each task inserts its section above this line) ──
 
 // ── DB-backed ───────────────────────────────────────────────────────────────
@@ -457,6 +514,180 @@ try {
     $plan2    = inv_import_par_plan($wb['lines'], $lineItem, $prefixPlace);
     $parsSet2 = inv_import_apply_pars($plan2);
     check('par: re-importing gives the same par, never doubled', $parsSet2 === $parsSet && (int)$parOf($couchId, $miLocReal) === 8);
+
+    // ── The import creates an ORDER (DB): quantities go on order, no stock moves ──
+    $uid = (int) db_query('SELECT id FROM admin_users ORDER BY id LIMIT 1')->fetchColumn() ?: null;
+    $balOf = fn(int $item, int $loc) => (int) db_query('SELECT qty FROM inv_balances WHERE item_id = :i AND location_id = :l', [':i' => $item, ':l' => $loc])->fetchColumn();
+    if (!inv_orders_supported()) {
+        echo "SKIP  orders (add_inventory_orders.sql not applied)\n";
+    } else {
+        $fp = inv_import_list_fingerprint($wb['lines']);
+        $before = [$balOf($couchId, $miLocReal), $balOf($barstoolId, $odLocReal)];
+        // Exactly what the confirm step does: line → place by prefix, one order per list.
+        $linePlace = [];
+        foreach ($wb['lines'] as $i => $l) $linePlace[$i] = (int)($prefixPlace[inv_ship_prefix((string)($l['code'] ?? ''))] ?? 0);
+        // Independent of the dev DB: an order already made from this list (e.g. while clicking through the page) is removed inside this rolled-back transaction.
+        db_query('DELETE FROM inv_orders WHERE fingerprint = :f', [':f' => $fp]);
+        $ordersBefore = $count('SELECT COUNT(*) FROM inv_orders WHERE fingerprint = :f', [':f' => $fp]);
+        check('order: this list has no order yet', inv_order_open_for($fp) === null && $ordersBefore === 0);
+        $oid = inv_order_create('shipment-maya-ilai', $wb['lines'], $lineItem, $linePlace, 'shipment-maya-ilai.xlsx', $fp, $uid);
+        $nLines = $count('SELECT COUNT(*) FROM inv_order_lines WHERE order_id = :o', [':o' => $oid]);
+        $groupsKeys = []; foreach ($wb['lines'] as $i => $l) $groupsKeys[($lineItem[$i] ?? 0) . ':' . ($linePlace[$i] ?? 0)] = true;
+        check('order: one line per item + planned place', $nLines === count($groupsKeys) && $nLines >= 196);
+        check('order: every list piece is on order', (int) db_query('SELECT SUM(qty_ordered) FROM inv_order_lines WHERE order_id = :o', [':o' => $oid])->fetchColumn() === (int) array_sum(array_column($wb['lines'], 'qty')));
+        $coL = db_query('SELECT * FROM inv_order_lines WHERE order_id = :o AND item_id = :i', [':o' => $oid, ':i' => $couchId])->fetch();
+        check('order: Couch 2.6m x 1m is 8 on order for Maya Ilai', $coL && (int)$coL['qty_ordered'] === 8 && (int)$coL['planned_location_id'] === $miLocReal);
+        check('order: the serial Mini Bar Fridge is on order too (units come on receipt)', (int) db_query('SELECT COUNT(*) FROM inv_order_lines WHERE order_id = :o AND item_id = :i', [':o' => $oid, ':i' => $fridgeId])->fetchColumn() === 1);
+        check('order: importing put NOTHING in stock',
+            [$balOf($couchId, $miLocReal), $balOf($barstoolId, $odLocReal)] === $before && (int) db_query('SELECT COALESCE(SUM(qty),0) FROM inv_balances WHERE item_id = :i', [':i' => $fridgeId])->fetchColumn() === 0
+            && $count('SELECT COUNT(*) FROM inv_moves WHERE item_id = ANY(CAST(:ids AS int[])) AND note LIKE :n', [':ids' => inv_pg_int_array_literal(array_values($lineItem)), ':n' => 'Order #' . $oid . ' %']) === 0);
+        check('order: par levels are still set from the same list', (int)$parOf($couchId, $miLocReal) === 8);
+        // A re-import must not make a second order (the confirm step checks this).
+        check('order: a re-import finds the order and creates no second one', ($ex = inv_order_open_for($fp)) !== null && (int)$ex['id'] === $oid
+            && $count('SELECT COUNT(*) FROM inv_orders WHERE fingerprint = :f', [':f' => $fp]) === 1);
+        check('order: the list fingerprint on the order matches', inv_order_fetch($oid)['fingerprint'] === $fp);
+
+        // ── Containers (packing-list hints) ──
+        $att = inv_order_attach_containers($oid, $pack);
+        check('containers: packing lines are matched onto order lines, the unmatched (rails, brackets) counted', $att['matched'] > 0 && $att['unmatched'] > 0);
+        $couchLine = db_query('SELECT id FROM inv_order_lines WHERE order_id = :o AND item_id = :i', [':o' => $oid, ':i' => $couchId])->fetchColumn();
+        $oLines = []; foreach (inv_order_lines($oid, null) as $l) $oLines[(int)$l['id']] = $l;
+        check('containers: the V001 couch is in NONE 6848636 only, 8 pieces', ($oLines[(int)$couchLine]['containers'] ?? null) === ['NONE 6848636' => 8]);
+        $cvl = array_values(array_filter($oLines, fn($l) => $l['code'] === 'CVL102'));
+        check('containers: the CVL102 curtain bundles sum to 332 across its containers', $cvl && array_sum($cvl[0]['containers']) === 332);
+        check('containers: the order still orders what the master list said (hints never change qty_ordered)',
+            (int) db_query('SELECT SUM(qty_ordered) FROM inv_order_lines WHERE order_id = :o', [':o' => $oid])->fetchColumn() === (int) array_sum(array_column($wb['lines'], 'qty')));
+        $conts = inv_order_containers($oid, null);
+        check('containers: the four containers are listed in packing-list order with lines and pieces',
+            array_column($conts, 'container') === ['NONE 6585458', 'NONE 6848636', 'MSBU781565', 'TEMU8316834'] && $conts[0]['lines'] > 0 && $conts[0]['pieces'] > 0);
+        $again = inv_order_attach_containers($oid, $pack);
+        check('containers: attaching twice is idempotent', $again === $att && array_sum($oLines[(int)$couchLine]['containers']) === 8
+            && $count('SELECT COUNT(*) FROM inv_order_line_containers WHERE line_id = :l', [':l' => $couchLine]) === 1);
+
+        $balBefore = $balOf($couchId, $miLocReal);
+        $otherLine = null;   // a line that is in NONE 6585458 but not in NONE 6848636
+        foreach (inv_order_lines($oid, null) as $l) if (isset($l['containers']['NONE 6585458']) && !isset($l['containers']['NONE 6848636']) && $l['tracking'] !== 'serial') { $otherLine = $l; break; }
+        $rc = inv_order_receive_container($oid, 'NONE 6848636', null, $uid);
+        check('receive container: the couch 8 land in Maya Ilai', $balOf($couchId, $miLocReal) === $balBefore + 8 && $rc['lines'] > 0 && $rc['pieces'] >= 8);
+        check('receive container: a line only in another container is untouched', $otherLine !== null
+            && (int) db_query('SELECT qty_received FROM inv_order_lines WHERE id = :l', [':l' => $otherLine['id']])->fetchColumn() === 0);
+        $rc2 = inv_order_receive_container($oid, 'NONE 6848636', null, $uid);
+        check('receive container: a second go receives nothing more for fully received lines', $balOf($couchId, $miLocReal) === $balBefore + 8
+            && (int) db_query('SELECT qty_received FROM inv_order_lines WHERE id = :l', [':l' => $couchLine])->fetchColumn() === 8);
+        $refusedC = ''; try { inv_order_receive_container($oid, 'NONE 6848636', [-1], $uid); } catch (InvRefusal $e) { $refusedC = 'x'; }
+        check('receive container: an account that sees none of the lines receives nothing', $refusedC === '' && inv_order_receive_container($oid, 'NONE 6848636', [-1], $uid)['pieces'] === 0);
+    }
+
+    // ── Container matching + packing differences on the real fixture (DB) ──
+    if (inv_orders_supported()) {
+        $packedOf = function (string $code, string $desc) use ($oid): ?array {
+            foreach (inv_order_lines($oid, null) as $l) if ($l['code'] === $code && inv_ship_key($l['description']) === inv_ship_key($desc)) return $l['containers'];
+            return null;
+        };
+        $tot = fn(?array $c) => $c === null ? null : array_sum($c);
+        check('match: Pot Stand’s 8 (V010) land on Crab Statue', $tot($packedOf('V010', 'Crab Statue')) === 8);
+        check('match: Tealight Holders (V011) = 16', $tot($packedOf('V011', 'Tealight Holders')) === 16);
+        check('match: Bowls Paper Mache (V011) = 8, all in MSBU781565', $packedOf('V011', 'Bowls Paper Mache') === ['MSBU781565' => 8]);
+        check('match: Scatter Cushion (G011) = 6', $tot($packedOf('G011', 'Scatter Cushion')) === 6);
+        check('match: Fake Hanging Plant (G011) = 8', $tot($packedOf('G011', 'Fake Hanging Plant (4 Pce)')) === 8);
+        check('match: Bitan Style Footed Dish (G011) = 8', $tot($packedOf('G011', 'Bitan Style Footed Dish')) === 8);
+        check('match: the V001 couch is still NONE 6848636 × 8', $packedOf('V001', 'Couch 2.6m x 1m') === ['NONE 6848636' => 8]);
+        $diffs = ['less_packed' => [], 'not_packed' => [], 'more_packed' => []];
+        foreach (inv_order_lines($oid, null) as $l) if ($l['pack_diff'] !== null) $diffs[$l['pack_diff']][] = $l['code'] . ' ' . $l['description'];
+        check('differences: less packed = OD038 Lantern + G001 Makoro', $diffs['less_packed'] === ['OD038 Lantern Natural with glass 40x40x60cm', 'G001 Makoro']);
+        check('differences: not on any packing list = the 7 expected lines', $diffs['not_packed'] === [
+            'OD015 Coral Barnacle Statue Pink', 'OD015 Crown Orchid', 'OD033 Coral Barnacle Statue Pink', 'OD033 Crown Orchid',
+            'G011 Rattan Style Storage Basket (2pce)', 'G011 Wooden Crab Figurine', 'DR100 Double Curtain Rails (166 pcs with brackets and screws)']);
+        check('differences: more packed = OV001, WT001, WT002, MK005, MK008 (sets packed as pieces)',
+            array_map(fn($x) => explode(' ', $x)[0], $diffs['more_packed']) === ['OV001', 'WT001', 'WT002', 'MK005', 'MK008']);
+        $hasDiff = 0; foreach (inv_order_lines($oid, null) as $l) if ($l['pack_diff'] !== null) $hasDiff++;
+        check('differences: 14 flagged lines, everything else is null', $hasDiff === 14);
+    }
+
+    // ── The whole spreadsheet is stored: HS codes + every packing-list row (DB) ──
+    if (inv_order_packing_supported()) {
+        // Expected counts come straight from the workbook, not from our parser.
+        $expRows = []; $expWeight = []; $expTotalWeight = []; $expTotals = [];
+        foreach ($sheets as $sn => $srows) {
+            if (!preg_match('/^PL /', (string)$sn)) continue;
+            $cont = null; $hdr = null;
+            foreach ($srows as $n => $cells) {
+                $t0 = trim((string)($cells[2]['v'] ?? ''));
+                if ($cont === null && preg_match('/^Container (.+)$/', $t0, $m)) $cont = trim($m[1]);
+                if (trim((string)($cells[0]['v'] ?? '')) === 'Item No') { $hdr = $n; break; }
+            }
+            $expRows[$cont] = 0; $expWeight[$cont] = 0.0; $expTotals[$cont] = 0; $expTotalWeight[$cont] = 0.0;
+            foreach ($srows as $n => $cells) {
+                if ($n <= $hdr) continue;
+                $c = []; for ($k = 0; $k <= 8; $k++) $c[$k] = trim((string)($cells[$k]['v'] ?? ''));
+                if (implode('', $c) === '') continue;                       // blank rows only
+                $expRows[$cont]++;
+                $w = is_numeric($c[7]) ? (float)$c[7] : 0.0;
+                $expWeight[$cont] += $w;
+                if ($c[0] === '' && $c[1] === '' && $c[2] === '' && $c[4] === '' && $c[5] === '' && $c[6] === '') { $expTotals[$cont]++; $expTotalWeight[$cont] += $w; }
+            }
+        }
+        $storedRows = []; $storedWeight = [];
+        foreach (db_query('SELECT container, COUNT(*) n, COALESCE(SUM(weight_kg),0) w FROM inv_order_packing WHERE order_id = :o GROUP BY container', [':o' => $oid])->fetchAll() as $r) {
+            $storedRows[$r['container']] = (int)$r['n']; $storedWeight[$r['container']] = (float)$r['w'];
+        }
+        ksort($expRows); ksort($storedRows);
+        check('packing stored: every non-blank data row of each packing sheet is stored (' . implode('+', $expRows) . ')', $expRows === $storedRows && count($expRows) === 4);
+        $wOk = true; foreach ($expWeight as $c => $w) if (abs(($storedWeight[$c] ?? -1) - $w) > 0.05) $wOk = false;
+        check('packing stored: the weight of each container adds up to the sheet\'s Weight column', $wOk);
+        $sum = []; foreach (inv_order_packing_summary($oid) as $r) $sum[$r['container']] = $r;
+        $sOk = true; foreach ($expWeight as $c => $w) if (abs($sum[$c]['weight'] + $expTotalWeight[$c] - $w) > 0.05 || abs(($sum[$c]['sheet_weight'] ?? -1) - $expTotalWeight[$c]) > 0.05) $sOk = false;
+        check('packing stored: the summary leaves the sheet\'s footer total out of the computed one', $sOk && $sum['NONE 6585458']['boxes'] === 215 && $sum['NONE 6585458']['sheet_boxes'] === 215);
+        check('packing stored: footer rows are kind "total" (one or two per sheet)', (int) db_query("SELECT COUNT(*) FROM inv_order_packing WHERE order_id = :o AND kind = 'total'", [':o' => $oid])->fetchColumn() === array_sum($expTotals));
+        $tubes = db_query("SELECT line_id FROM inv_order_packing WHERE order_id = :o AND code ~ '^Tube [0-9]+\$'", [':o' => $oid])->fetchAll(PDO::FETCH_COLUMN);
+        check('packing stored: the 29 "Tube" curtain-rail rows are stored, on no order line', count($tubes) === 29 && count(array_filter($tubes, fn($x) => $x !== null)) === 0);
+        $tube1 = db_query("SELECT * FROM inv_order_packing WHERE order_id = :o AND code = 'Tube 1'", [':o' => $oid])->fetch();
+        check('packing stored: Tube 1 keeps its size, box count and measures', $tube1 && str_contains((string)$tube1['description'], '3860mm x 2830mm') && (int)$tube1['boxes'] === 1
+            && (float)$tube1['length_m'] === 4.0 && (float)$tube1['width_m'] === 0.11 && (float)$tube1['weight_kg'] === 6.0 && (float)$tube1['cubes_m3'] === 0.0484);
+        $bra = (int) db_query("SELECT COUNT(*) FROM inv_order_packing WHERE order_id = :o AND code LIKE 'BRA104B%' AND line_id IS NULL", [':o' => $oid])->fetchColumn();
+        check('packing stored: unmatched bracket rows (BRA104B…) are kept too', $bra > 0);
+        $v001 = db_query("SELECT p.line_id, p.boxes, p.weight_kg FROM inv_order_packing p WHERE p.order_id = :o AND p.container = 'NONE 6848636' AND p.code = 'V001'", [':o' => $oid])->fetch();
+        check('packing stored: the V001 couch row is linked to its order line, 8 boxes, 600 kg', $v001 && (int)$v001['line_id'] === (int)$couchLine && (int)$v001['boxes'] === 8 && (float)$v001['weight_kg'] === 600.0);
+        // Continuation rows inherit the line of the nearest coded row above them.
+        $cOk = true; $nCont = 0;
+        foreach (db_query("SELECT container, seq, kind, line_id FROM inv_order_packing WHERE order_id = :o ORDER BY container, seq", [':o' => $oid])->fetchAll() as $r) {
+            if ($r['kind'] === 'row') { $par = [$r['container'], $r['line_id']]; }
+            elseif ($r['kind'] === 'continuation') { $nCont++; if (!isset($par) || $par[0] !== $r['container'] || $par[1] !== $r['line_id']) $cOk = false; }
+        }
+        check('packing stored: every continuation row takes its parent row\'s order line (' . $nCont . ' rows)', $cOk && $nCont > 0);
+        $matchedIds = db_query('SELECT DISTINCT line_id FROM inv_order_packing WHERE order_id = :o AND line_id IS NOT NULL', [':o' => $oid])->fetchAll(PDO::FETCH_COLUMN);
+        check('packing stored: matched rows point at this order\'s lines only', $matchedIds && (int) db_query('SELECT COUNT(*) FROM inv_order_lines WHERE order_id = :o AND id = ANY(CAST(:ids AS int[]))', [':o' => $oid, ':ids' => inv_pg_int_array_literal(array_map('intval', $matchedIds))])->fetchColumn() === count($matchedIds));
+        $pr = inv_order_packing_rows($oid, 'NONE 6848636', null);
+        check('packing rows: read back in sheet order with the matched item name', count($pr) === $storedRows['NONE 6848636'] && $pr[0]['code'] === 'V001' && $pr[0]['item_name'] === 'Couch 2.6m x 1m'
+            && array_column($pr, 'seq') === range(1, count($pr)));
+        check('packing rows: an account that sees none of the lines sees no item names', array_filter(array_column(inv_order_packing_rows($oid, 'NONE 6848636', [-1]), 'item_name')) === []);
+
+        // HS codes: every order line carries the first non-empty HS of its merged master lines.
+        $expHs = [];
+        foreach ($wb['lines'] as $i => $l) {
+            $key = ($lineItem[$i] ?? 0) . ':' . ($linePlace[$i] ?? 0);
+            if (($lineItem[$i] ?? 0) <= 0) continue;
+            $expHs[$key] ??= '';
+            if ($expHs[$key] === '' && ($l['hs_code'] ?? '') !== '') $expHs[$key] = $l['hs_code'];
+        }
+        $withHs = count(array_filter($expHs, fn($h) => $h !== ''));
+        $storedHs = (int) db_query("SELECT COUNT(*) FROM inv_order_lines WHERE order_id = :o AND hs_code IS NOT NULL AND hs_code <> ''", [':o' => $oid])->fetchColumn();
+        check('hs: every order line whose master lines had an HS code stores one (' . $withHs . ')', $withHs > 100 && $storedHs === $withHs);
+        $hsOk = true;
+        foreach (db_query('SELECT item_id, planned_location_id, hs_code FROM inv_order_lines WHERE order_id = :o', [':o' => $oid])->fetchAll() as $r) {
+            if (($expHs[$r['item_id'] . ':' . (int)$r['planned_location_id']] ?? '') !== (string)($r['hs_code'] ?? '')) $hsOk = false;
+        }
+        check('hs: each stored code is the first HS of the line\'s merged master lines', $hsOk);
+        $v001hs = db_query("SELECT DISTINCT hs_code FROM inv_order_lines WHERE order_id = :o AND code = 'V001'", [':o' => $oid])->fetchAll(PDO::FETCH_COLUMN);
+        check('hs: V001 = 9401.80.90', $v001hs === ['9401.80.90']);
+        $lnH = null; foreach (inv_order_lines($oid, null) as $l) if ($l['code'] === 'V001') { $lnH = $l; break; }
+        check('hs: inv_order_lines() returns it for the order page', $lnH && $lnH['hs_code'] === '9401.80.90');
+        // Re-attaching replaces the stored rows — never doubles them.
+        inv_order_attach_containers($oid, $pack);
+        check('packing stored: attaching again replaces the rows, never doubles them', (int) db_query('SELECT COUNT(*) FROM inv_order_packing WHERE order_id = :o', [':o' => $oid])->fetchColumn() === array_sum($expRows));
+    } else {
+        echo "SKIP  full packing lists (add_inventory_orders.sql packing part not applied)\n";
+    }
 
     // ── DB checks (each task inserts its block above this line) ──
 } catch (Throwable $e) {

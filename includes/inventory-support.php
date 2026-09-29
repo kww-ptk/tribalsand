@@ -42,6 +42,41 @@ function inv_stores_supported(): bool {
 }
 
 /**
+ * True once add_inventory_orders.sql has run (orders an import creates, and the
+ * receipts against them). Probes the LAST table the migration creates
+ * (inv_order_receipts), so a run that dies partway through never reads as done.
+ * A catalog lookup — safe inside a transaction.
+ */
+function inv_orders_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { $ok = inv_supported() && (bool) db_query("SELECT to_regclass('public.inv_order_receipts') IS NOT NULL")->fetchColumn(); }
+    catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/** True once the container hints table exists (packing lists on orders). Catalog lookup. */
+function inv_order_containers_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { $ok = inv_orders_supported() && (bool) db_query("SELECT to_regclass('public.inv_order_line_containers') IS NOT NULL")->fetchColumn(); }
+    catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/** True once the full packing lists + the HS code column exist (add_inventory_orders.sql, last part). Catalog lookup. */
+function inv_order_packing_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try {
+        $ok = inv_orders_supported()
+            && (bool) db_query("SELECT to_regclass('public.inv_order_packing') IS NOT NULL")->fetchColumn()
+            && (bool) db_query("SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'inv_order_lines' AND column_name = 'hs_code'")->fetchColumn();
+    } catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/**
  * Run $fn atomically. Opens a transaction when none is open; inside an existing
  * one (tests wrap everything in a rolled-back transaction, the POS sale wraps its
  * stock moves) it uses a SAVEPOINT, so a refusal discards its own partial writes

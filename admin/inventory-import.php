@@ -2,7 +2,9 @@
 declare(strict_types=1);
 /**
  * Admin: Import items from a supplier Excel into the inventory catalogue.
- * ITEMS ONLY — no stock is moved. Upload the sheet, review a preview (grouped
+ * Creates items and an ORDER from the list (once per list) — the quantities go
+ * ON ORDER and enter stock only when received on the order page
+ * (admin/inventory-order.php). Upload the sheet, review a preview (grouped
  * one item per supplier code, matched against the existing catalogue by merge key; each item-code
  * PREFIX mapped to a place whose PAR LEVEL the list quantity becomes), then
  * confirm. Owner + manager (managers may create items and set par levels).
@@ -12,6 +14,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/xlsx-reader.php';
 require_once __DIR__ . '/../includes/inventory-item-import.php';
+require_once __DIR__ . '/../includes/inventory-orders.php';
 require_once __DIR__ . '/../includes/inventory-views.php';   // inv_shared_css()
 require_login();
 require_manager();
@@ -50,7 +53,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
             $_SESSION['inv_flash'] = ['type' => 'error', 'msg' => 'Upload an .xlsx file.'];
         } else {
             try {
-                $wb = inv_ship_parse_workbook(xlsx_read_sheets($f['tmp_name']));
+                $sheets = xlsx_read_sheets($f['tmp_name']);
+                $wb = inv_ship_parse_workbook($sheets);
                 if (!$wb['lines']) {
                     $_SESSION['inv_flash'] = ['type' => 'error', 'msg' => 'No item list found — the file needs a sheet with “Item No”, “Qty” and “Description” columns.'];
                 } elseif (count($wb['lines']) > INV_SHIP_MAX_LINES) {
@@ -59,7 +63,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
                     invimp_prune();
                     $token = bin2hex(random_bytes(8));
                     $_SESSION['inv_import'][$token] = ['at' => time(), 'filename' => basename((string)$f['name']),
-                        'lines' => $wb['lines'], 'skipped' => $wb['skipped'], 'sheets' => $wb['sheets']];
+                        'lines' => $wb['lines'], 'skipped' => $wb['skipped'], 'sheets' => $wb['sheets'],
+                        'packing' => inv_ship_parse_packing($sheets)];   // container hints, parsed once here
                     header('Location: ' . $self . '?preview=' . $token); exit;
                 }
             } catch (RuntimeException $e) {
@@ -96,27 +101,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
                 $prefixPlace[$prefix] = $id;
             }
 
-            $result = inv_tx(function () use ($data, $prefixPlace): array {
-                $groups = inv_ship_group($data['lines']);
-                $res    = inv_import_items($data['lines'], $groups);
-                $lineItem = [];
-                foreach ($groups as $gkey => $g) {
-                    $itemId = $res['group_items'][$gkey] ?? null;
-                    if (!$itemId) continue;
-                    foreach ($g['lines'] as $i) $lineItem[$i] = $itemId;
-                }
-                $plan = inv_import_par_plan($data['lines'], $lineItem, $prefixPlace);
-                $pars = inv_import_apply_pars($plan);
-                return ['created' => $res['created'], 'existing' => $res['existing'], 'pars' => $pars];
-            });
+            $me = current_admin();
+            $userId = $me ? (int)$me['id'] : null;
+            $result = inv_import_list(['lines' => $data['lines']], (array)($data['packing'] ?? []), $prefixPlace, (string)$data['filename'], $userId);
 
             // Remembered only once the import actually succeeded.
             set_setting(INV_IMPORT_PREFIX_PLACES_SETTING, json_encode($prefixPlace, JSON_UNESCAPED_UNICODE));
+            $orderNote = $result['order_id'] ? ", order #{$result['order_id']} created" : ', no order created';
             audit_log('inv.import_items', 'inv_item', 0,
-                "{$data['filename']}: {$result['created']} created, {$result['existing']} existing, {$result['pars']} par level(s) set");
+                "{$data['filename']}: {$result['created']} created, {$result['existing']} existing, {$result['pars']} par level(s) set{$orderNote}");
             unset($_SESSION['inv_import'][$token]);
-            $_SESSION['inv_flash'] = ['type' => 'success',
-                'msg' => "Imported {$result['created']} new items and set {$result['pars']} par levels. No stock was added."];
+            $msg = "Imported {$result['created']} new items, set {$result['pars']} par levels";
+            if ($result['order_id']) {
+                $_SESSION['inv_flash'] = ['type' => 'success', 'msg' => $msg . " and created order “{$result['order_name']}” — receive it when it arrives."];
+                header('Location: /admin/inventory-order.php?id=' . (int)$result['order_id']); exit;
+            }
+            $_SESSION['inv_flash'] = ['type' => 'success', 'msg' => $msg . '.'];
             header('Location: /admin/inventory.php'); exit;
         } catch (InvRefusal $e) {
             $_SESSION['inv_flash'] = ['type' => 'error', 'msg' => $e->getMessage()];
@@ -133,7 +133,10 @@ $byCategory = [];
 $newCount = $existingCount = $totalPieces = 0;
 $prefixesInfo = $placeOptions = $defaultPlaces = $missingHint = [];
 $parCount = 0;
+$ordersOk = inv_orders_supported();
+$orderDone = null;
 if ($preview) {
+    $orderDone = $ordersOk ? inv_order_open_for(inv_import_list_fingerprint($preview['lines'])) : null;
     $groups   = inv_ship_group($preview['lines']);
     $existing = inv_import_existing_items();
     foreach ($groups as $key => $g) {
@@ -213,7 +216,7 @@ include __DIR__ . '/_layout.php';
         </div>
         <?php endforeach; ?>
       </div>
-      <p class="text-muted" style="margin:12px 0 0;font-size:12.5px">The list quantity becomes what each place should have (its par level). No stock is added — receive or count it when it arrives. Serial-tracked items (fridges, appliances) are skipped: assign their units one by one.</p>
+      <p class="text-muted" style="margin:12px 0 0;font-size:12.5px">The list quantity becomes what each place should have, and the quantities go ON ORDER for that place; receive them on the order page when they arrive. Serial-numbered items (fridges, appliances) are ordered too — their units are added when received.</p>
     </div>
   </div>
   <?php endif; ?>
@@ -226,6 +229,7 @@ include __DIR__ . '/_layout.php';
         from <?= count($preview['lines']) ?> line<?= count($preview['lines']) === 1 ? '' : 's' ?>
         · <?= $totalPieces ?> piece<?= $totalPieces === 1 ? '' : 's' ?> on the list</span>
     </div>
+    <?php if (!empty($preview['packing'])): ?><p class="text-muted" style="margin:12px 18px 0;font-size:12.5px">Packing lists found for <?= count($preview['packing']) ?> container<?= count($preview['packing']) === 1 ? '' : 's' ?> (<?= e(implode(', ', array_column($preview['packing'], 'container'))) ?>) — the order will show which lines are in which container, so you can receive it container by container. The quantities on the list stay the truth.</p><?php endif; ?>
     <p class="text-muted" style="margin:12px 18px 0;font-size:12.5px">One item per supplier code — the same name under two codes gets the code added, e.g. “Side Table (V007)”.</p>
     <?php if (!empty($preview['skipped'])): ?>
     <div class="alert alert--info" style="margin:14px 18px 0">
@@ -262,10 +266,15 @@ include __DIR__ . '/_layout.php';
   <div class="imp-bar">
     <form method="POST" action="<?= $self ?>"><?= csrf_field() ?><input type="hidden" name="action" value="discard"><input type="hidden" name="token" value="<?= e($previewToken) ?>">
       <button type="submit" class="btn-outline"><?= admin_icon('x', 15) ?> Discard</button></form>
-    <?php if ($newCount > 0 || $parCount > 0): ?>
+    <?php if ($newCount > 0 || $parCount > 0 || ($ordersOk && $orderDone === null)): ?>
     <form id="imp-confirm-form" method="POST" action="<?= $self ?>"><?= csrf_field() ?><input type="hidden" name="action" value="confirm"><input type="hidden" name="token" value="<?= e($previewToken) ?>">
+      <?php if ($orderDone !== null): ?>
+      <span class="text-muted imp-stock-note">An order from this list already exists (<?= e((string)$orderDone['name']) ?>, <?= e(date('j M Y', strtotime((string)$orderDone['created_at']))) ?>) — importing again only updates items and what each place should have.</span>
+      <?php elseif (!$ordersOk): ?>
+      <span class="text-muted imp-stock-note">Orders aren’t set up yet (run <code>add_inventory_orders.sql</code>) — only items and what each place should have are imported.</span>
+      <?php endif; ?>
       <button type="submit" class="btn-primary"
-        data-confirm="Create <?= $newCount ?> new item<?= $newCount === 1 ? '' : 's' ?> and set what each place should have? No stock is added.">
+        data-confirm="Create <?= $newCount ?> new item<?= $newCount === 1 ? '' : 's' ?>, set what each place should have<?= ($ordersOk && $orderDone === null) ? ', and put the quantities on order' : '' ?>?">
         <?= admin_icon('check', 15) ?> Import</button></form>
     <?php else: ?>
     <span class="text-muted">Everything is already in the inventory.</span>
@@ -288,7 +297,7 @@ include __DIR__ . '/_layout.php';
         </div>
         <button type="submit" class="btn-primary" style="margin-top:14px"><?= admin_icon('eye', 15) ?> Read the list</button>
       </form>
-      <p class="text-muted" style="margin:14px 0 0;font-size:12.5px">The sheet needs “Item No”, “Qty” and “Description” columns. Only items are created — no stock is added.</p>
+      <p class="text-muted" style="margin:14px 0 0;font-size:12.5px">The sheet needs “Item No”, “Qty” and “Description” columns. The quantities go on order; you receive them on the order page when they arrive.</p>
     </div>
   </div>
 <?php endif; ?>
@@ -297,7 +306,8 @@ include __DIR__ . '/_layout.php';
 <style>
 .imp-bar{position:fixed;left:0;right:0;bottom:0;z-index:30;display:flex;justify-content:flex-end;align-items:center;gap:10px;padding:12px 16px;padding-bottom:calc(12px + env(safe-area-inset-bottom));background:var(--white);border-top:1px solid var(--border);box-shadow:var(--shadow)}
 @media (min-width:769px){.imp-bar{left:var(--sidebar-w)}}
-.imp-bar form{margin:0}
+.imp-bar form{margin:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end}
+.imp-stock-note{font-size:12px;max-width:340px;text-align:right}
 .imp-prefixes{display:grid;gap:12px}
 .imp-prefix-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,220px);gap:10px 14px;align-items:center}
 @media (max-width:560px){.imp-prefix-row{grid-template-columns:minmax(0,1fr)}}

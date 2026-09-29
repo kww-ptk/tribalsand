@@ -1,9 +1,11 @@
 <?php
 declare(strict_types=1);
 /**
- * Inventory — import items from a supplier Excel into the catalogue. ITEMS ONLY:
- * no stock is EVER moved by an import (quantities are added later by receiving
- * or counting). ONE ITEM PER SUPPLIER CODE (inv_ship_group(): a name shared by two
+ * Inventory — import items from a supplier Excel into the catalogue. Creating
+ * items never moves stock: the confirm step also creates an ORDER from the list
+ * (includes/inventory-orders.php, once per list — see inv_import_list_fingerprint()),
+ * and the quantities enter stock only when they are received on that order.
+ * ONE ITEM PER SUPPLIER CODE (inv_ship_group(): a name shared by two
  * codes gets " (CODE)" added); an item whose final name already exists as an
  * active item (same merge key) is left as it is.
  *
@@ -176,4 +178,22 @@ function inv_import_apply_pars(array $plan, ?int $userId = null): int {
         }
         return $n;
     });
+}
+
+// ── Which list is this? ─────────────────────────────────────────────────────
+
+/**
+ * Identifies ONE list — PURE. sha1 of a canonical JSON of the lines (sheet, row,
+ * code, description, qty, in order), so the same file always gives the same
+ * fingerprint and a changed quantity (or a different file) gives another. The
+ * order created from a list carries it (inv_order_open_for()), so importing the
+ * same list twice never creates a second order.
+ */
+function inv_import_list_fingerprint(array $lines): string {
+    $canon = [];
+    foreach ($lines as $l) {
+        $canon[] = [(string)($l['sheet'] ?? ''), (int)($l['row'] ?? 0), (string)($l['code'] ?? ''),
+                    (string)($l['description'] ?? ''), (int)($l['qty'] ?? 0)];
+    }
+    return sha1(json_encode($canon, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
 }
