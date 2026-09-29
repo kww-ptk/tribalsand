@@ -16,7 +16,11 @@ require_once __DIR__ . '/../includes/quote-builder.php';
 
 header('Content-Type: application/json');
 
-if (!current_admin()) { http_response_code(401); exit(json_encode(['ok' => false, 'error' => 'Your session expired. Sign in again.'])); }
+// Same rule as require_login(): the account must still exist and be active.
+$__admin = current_admin();
+if (!$__admin || (array_key_exists('is_active', $__admin) && !$__admin['is_active'])) {
+    http_response_code(401); exit(json_encode(['ok' => false, 'error' => 'Your session expired. Sign in again.']));
+}
 if (!is_owner() && !is_reception()) { http_response_code(403); exit(json_encode(['ok' => false, 'error' => 'Only the owner and reception can build quotes.'])); }
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(405); exit(json_encode(['ok' => false, 'error' => 'Method not allowed'])); }
 
