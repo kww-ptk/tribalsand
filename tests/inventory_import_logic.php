@@ -490,6 +490,8 @@ try {
         // Exactly what the confirm step does: line → place by prefix, one order per list.
         $linePlace = [];
         foreach ($wb['lines'] as $i => $l) $linePlace[$i] = (int)($prefixPlace[inv_ship_prefix((string)($l['code'] ?? ''))] ?? 0);
+        // Independent of the dev DB: an order already made from this list (e.g. while clicking through the page) is removed inside this rolled-back transaction.
+        db_query('DELETE FROM inv_orders WHERE fingerprint = :f', [':f' => $fp]);
         $ordersBefore = $count('SELECT COUNT(*) FROM inv_orders WHERE fingerprint = :f', [':f' => $fp]);
         check('order: this list has no order yet', inv_order_open_for($fp) === null && $ordersBefore === 0);
         $oid = inv_order_create('shipment-maya-ilai', $wb['lines'], $lineItem, $linePlace, 'shipment-maya-ilai.xlsx', $fp, $uid);
@@ -502,7 +504,7 @@ try {
         check('order: the serial Mini Bar Fridge is on order too (units come on receipt)', (int) db_query('SELECT COUNT(*) FROM inv_order_lines WHERE order_id = :o AND item_id = :i', [':o' => $oid, ':i' => $fridgeId])->fetchColumn() === 1);
         check('order: importing put NOTHING in stock',
             [$balOf($couchId, $miLocReal), $balOf($barstoolId, $odLocReal)] === $before && (int) db_query('SELECT COALESCE(SUM(qty),0) FROM inv_balances WHERE item_id = :i', [':i' => $fridgeId])->fetchColumn() === 0
-            && $count("SELECT COUNT(*) FROM inv_moves WHERE item_id = ANY(CAST(:ids AS int[])) AND note LIKE 'Order #%'", [':ids' => inv_pg_int_array_literal(array_values($lineItem))]) === 0);
+            && $count('SELECT COUNT(*) FROM inv_moves WHERE item_id = ANY(CAST(:ids AS int[])) AND note LIKE :n', [':ids' => inv_pg_int_array_literal(array_values($lineItem)), ':n' => 'Order #' . $oid . ' %']) === 0);
         check('order: par levels are still set from the same list', (int)$parOf($couchId, $miLocReal) === 8);
         // A re-import must not make a second order (the confirm step checks this).
         check('order: a re-import finds the order and creates no second one', ($ex = inv_order_open_for($fp)) !== null && (int)$ex['id'] === $oid
