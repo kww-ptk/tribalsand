@@ -20,6 +20,12 @@ check('status: one line full, another untouched → partial', inv_order_status([
 check('status: every line full → received', inv_order_status([['qty_ordered' => 8, 'qty_received' => 8], ['qty_ordered' => 2, 'qty_received' => 2]]) === 'received');
 check('status: no lines → open', inv_order_status([]) === 'open');
 
+check('pack diff: no packing data at all → null', inv_order_pack_diff(8, 0, false) === null);
+check('pack diff: nothing packed → not_packed', inv_order_pack_diff(8, 0, true) === 'not_packed');
+check('pack diff: fewer packed → less_packed', inv_order_pack_diff(8, 2, true) === 'less_packed');
+check('pack diff: more packed → more_packed', inv_order_pack_diff(4, 12, true) === 'more_packed');
+check('pack diff: equal → null', inv_order_pack_diff(8, 8, true) === null);
+
 // ── DB ──────────────────────────────────────────────────────────────────────
 try { db()->query('SELECT 1'); } catch (Throwable $e) {
     echo "\nSKIP  DB block (database unavailable)\n"; echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n"; exit($failures ? 1 : 0);

@@ -103,32 +103,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
 
             $me = current_admin();
             $userId = $me ? (int)$me['id'] : null;
-            $result = inv_tx(function () use ($data, $prefixPlace, $userId): array {
-                $groups = inv_ship_group($data['lines']);
-                $res    = inv_import_items($data['lines'], $groups);
-                $lineItem = [];
-                foreach ($groups as $gkey => $g) {
-                    $itemId = $res['group_items'][$gkey] ?? null;
-                    if (!$itemId) continue;
-                    foreach ($g['lines'] as $i) $lineItem[$i] = $itemId;
-                }
-                $plan = inv_import_par_plan($data['lines'], $lineItem, $prefixPlace);
-                $pars = inv_import_apply_pars($plan);
-                // The order: quantities go ON ORDER, no stock moves. One per list — the server
-                // re-checks (the note on the preview is only a hint). Each line's planned place
-                // is its "Where it goes" choice.
-                $orderId = 0; $orderName = '';
-                $fp = inv_import_list_fingerprint($data['lines']);
-                if (inv_orders_supported() && inv_order_open_for($fp) === null) {
-                    $linePlace = [];
-                    foreach ($data['lines'] as $i => $l) $linePlace[$i] = (int)($prefixPlace[inv_ship_prefix((string)($l['code'] ?? ''))] ?? 0);
-                    $orderName = (string)pathinfo((string)$data['filename'], PATHINFO_FILENAME);
-                    $orderId   = inv_order_create($orderName, $data['lines'], $lineItem, $linePlace, (string)$data['filename'], $fp, $userId);
-                    // Packing-list hints (which container each line is in) — never change the quantities.
-                    if (!empty($data['packing'])) inv_order_attach_containers($orderId, (array)$data['packing']);
-                }
-                return ['created' => $res['created'], 'existing' => $res['existing'], 'pars' => $pars, 'order_id' => $orderId, 'order_name' => $orderName];
-            });
+            $result = inv_import_list(['lines' => $data['lines']], (array)($data['packing'] ?? []), $prefixPlace, (string)$data['filename'], $userId);
 
             // Remembered only once the import actually succeeded.
             set_setting(INV_IMPORT_PREFIX_PLACES_SETTING, json_encode($prefixPlace, JSON_UNESCAPED_UNICODE));

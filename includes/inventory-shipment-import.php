@@ -283,6 +283,27 @@ function inv_ship_packing_code(string $plCode, array $masterCodes): ?string {
     return null;
 }
 
+/** A description's comparable words — PURE: lower-case, split on non-alphanumerics,
+ *  noise words dropped ("pcs", "each", "set", …), a trailing "s" stripped from words
+ *  longer than 3 letters (plants → plant), unique. */
+function inv_ship_desc_tokens(string $s): array {
+    static $noise = ['pcs' => 1, 'pc' => 1, 'pce' => 1, 'each' => 1, 'set' => 1, 'of' => 1, 'x' => 1, 'the' => 1, 'and' => 1, 'with' => 1, 'incl' => 1];
+    $out = [];
+    foreach (preg_split('/[^\p{L}\p{N}]+/u', mb_strtolower($s), -1, PREG_SPLIT_NO_EMPTY) ?: [] as $t) {
+        if (isset($noise[$t])) continue;
+        if (mb_strlen($t) > 3 && str_ends_with($t, 's')) $t = mb_substr($t, 0, -1);
+        $out[$t] = true;
+    }
+    return array_map('strval', array_keys($out));   // "4" would come back as an int key otherwise
+}
+
+/** How alike two descriptions are, 0..1 — PURE: shared words ÷ the shorter one's word count. */
+function inv_ship_desc_score(string $a, string $b): float {
+    $ta = inv_ship_desc_tokens($a); $tb = inv_ship_desc_tokens($b);
+    if (!$ta || !$tb) return 0.0;
+    return count(array_intersect($ta, $tb)) / min(count($ta), count($tb));
+}
+
 /**
  * Group lines into proposed items — PURE. ONE ITEM PER SUPPLIER CODE: a group is
  * one (code, name) pair, because the supplier's codes are distinct products (a

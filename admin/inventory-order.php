@@ -114,6 +114,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported && $order) {
 $piecesOrdered = $piecesReceived = 0;
 foreach ($lines as $l) { $piecesOrdered += (int)$l['qty_ordered']; $piecesReceived += (int)$l['qty_received']; }
 $anyReceived = $piecesReceived > 0;
+$diffLabels  = ['not_packed' => 'Not in any packing list', 'less_packed' => 'Packing lists: %d', 'more_packed' => 'Packing lists: %d (pieces of a set?)'];
+$diffCount   = count(array_filter($lines, fn($l) => $l['pack_diff'] !== null));
 $open        = $order && $order['status'] !== 'cancelled';
 $badge       = ['open' => 'badge--grey', 'partial' => 'badge--orange', 'received' => 'badge--green', 'cancelled' => 'badge--grey'];
 
@@ -141,6 +143,7 @@ include __DIR__ . '/_layout.php';
 <p class="text-muted" style="margin:-4px 0 14px;font-size:13px">
   <span class="badge <?= e($badge[$order['status']] ?? 'badge--grey') ?>"><?= e(INV_ORDER_STATUSES[$order['status']] ?? (string)$order['status']) ?></span>
   Received <strong><?= $piecesReceived ?></strong> of <strong><?= $piecesOrdered ?></strong> pieces · created <?= e(date('j M Y', strtotime((string)$order['created_at']))) ?><?= $order['created_by_name'] ? ' by ' . e((string)$order['created_by_name']) : '' ?>
+  <?php if ($containers): ?> · Packing lists match <strong><?= count($lines) - $diffCount ?></strong> of <strong><?= count($lines) ?></strong> lines<?php endif; ?>
   <?php if ($open): ?> — type how many arrived on each row and where they were put, then save. Partial deliveries are fine; come back for the rest.<?php endif; ?>
 </p>
 
@@ -152,6 +155,7 @@ include __DIR__ . '/_layout.php';
         <option value="">All lines</option>
         <option value="left">Still to come</option>
         <option value="done">Received</option>
+        <?php if ($containers): ?><option value="diff">Differences</option><?php endif; ?>
       </select></label>
     <?php if ($containers): ?>
     <label class="ig-field"><span>Container</span>
@@ -192,13 +196,14 @@ include __DIR__ . '/_layout.php';
       $pre  = isset($places[$planned]) ? $planned : 0;
       $lid  = (int)$l['id']; ?>
       <tr data-name="<?= e(mb_strtolower((string)$l['item_name'] . ' ' . (string)$l['sku'] . ' ' . (string)$l['code'])) ?>" data-place="<?= e(mb_strtolower((string)$l['place_label'])) ?>"
-          data-ordered="<?= (int)$l['qty_ordered'] ?>" data-received="<?= (int)$l['qty_received'] ?>" data-left="<?= $left ?>" data-state="<?= $left > 0 ? 'left' : 'done' ?>"<?= $l['containers'] ? ' data-containers="' . e((string)json_encode($l['containers'], JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT)) . '"' : '' ?>>
+          data-ordered="<?= (int)$l['qty_ordered'] ?>" data-received="<?= (int)$l['qty_received'] ?>" data-left="<?= $left ?>" data-state="<?= $left > 0 ? 'left' : 'done' ?>"<?= $l['pack_diff'] !== null ? ' data-diff="' . e((string)$l['pack_diff']) . '"' : '' ?><?= $l['containers'] ? ' data-containers="' . e((string)json_encode($l['containers'], JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT)) . '"' : '' ?>>
         <td class="ig-check"><?php if ($open && $left > 0): ?><input type="checkbox" name="ids[]" value="<?= $lid ?>" aria-label="Select <?= e((string)$l['item_name']) ?>"><?php endif; ?></td>
         <td><a href="/admin/inventory-item.php?id=<?= (int)$l['item_id'] ?>" class="inv-name"><?= inv_thumb_html($l + ['name' => $l['item_name']], 28) ?><span><?= e((string)$l['item_name']) ?><?= $l['tracking'] === 'serial' ? ' <span class="ig-tag">serial</span>' : '' ?>
           <?php if (!empty($l['sku'])): ?><span class="inv-sub ig-mono"><?= e((string)$l['sku']) ?></span><?php endif; ?></span></a></td>
         <td class="ig-where"><?= $l['place_label'] !== '' ? e((string)$l['place_label']) : '<span class="text-muted">—</span>' ?></td>
         <?php if ($containers): ?><td class="ig-num io-cq"></td><?php endif; ?>
-        <td class="ig-num"><?= (int)$l['qty_ordered'] ?></td>
+        <td class="ig-num"><?= (int)$l['qty_ordered'] ?>
+          <?php if ($l['pack_diff'] !== null): ?><span class="io-diff io-diff--<?= $l['pack_diff'] === 'more_packed' ? 'grey' : 'orange' ?>"><?= e(sprintf($diffLabels[$l['pack_diff']], (int)$l['packed_total'])) ?></span><?php endif; ?></td>
         <td class="ig-num"><strong><?= (int)$l['qty_received'] ?></strong>
           <?php foreach ($l['receipts'] as $rc): ?><span class="io-rc"><?= (int)$rc['qty'] ?> → <?= e($rc['location_name']) ?> · <?= e(date('j M', strtotime($rc['created_at']))) ?></span><?php endforeach; ?></td>
         <td class="ig-num"><?= $left > 0 ? $left : '<span class="text-muted">0</span>' ?></td>
@@ -234,6 +239,9 @@ include __DIR__ . '/_layout.php';
 <style>
 .io-rc{display:block;font-size:11.5px;color:var(--muted);font-weight:400;white-space:nowrap}
 .io-qty{width:84px}
+.io-diff{display:block;margin-top:2px;font-size:11.5px;font-weight:500;white-space:nowrap}
+.io-diff--orange{color:#e65100}
+.io-diff--grey{color:var(--muted)}
 .ig:not(.io-show-cq) .io-cq{display:none}
 .ig .cell-select,.ig .eselect:has(> .cell-select){width:220px;max-width:220px}
 .ig td.ig-where{min-width:140px}
@@ -265,7 +273,7 @@ include __DIR__ . '/_layout.php';
       } else {
         var cell2 = r.querySelector('.io-cq'); if (cell2) cell2.textContent = '';
       }
-      return (q && hay.indexOf(q) === -1) || (s && r.getAttribute('data-state') !== s);
+      return (q && hay.indexOf(q) === -1) || (s === 'diff' ? !r.hasAttribute('data-diff') : (s && r.getAttribute('data-state') !== s));
     }
   });
   function containerChanged() {

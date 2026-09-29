@@ -306,6 +306,14 @@ check('packing code: a bundle suffix maps to the master code', inv_ship_packing_
 check('packing code: exact (case-insensitive) match wins', inv_ship_packing_code('OV003', ['OV003']) === 'OV003' && inv_ship_packing_code('ov003/', ['OV003']) === 'OV003');
 check('packing code: rails / unknown codes map to nothing', inv_ship_packing_code('Tube 3', ['CVL102', 'V001']) === null && inv_ship_packing_code('BRA104B1', ['V001']) === null);
 
+// ── Description matching (pure) ─────────────────────────────────────────────
+check('desc tokens: noise dropped, trailing s stripped, unique', inv_ship_desc_tokens('Fake Hanging Plants (4 pcs each)') === ['fake', 'hanging', 'plant', '4']);
+check('desc score: same words, different punctuation = 1', inv_ship_desc_score('Bowls - Paper Mache', 'Bowls Paper Mache') === 1.0);
+check('desc score: plural + "(4 pcs each)" vs "(4 Pce)" is a match', inv_ship_desc_score('Fake Hanging Plants (4 pcs each)', 'Fake Hanging Plant (4 Pce)') >= 0.6);
+check('desc score: unrelated descriptions score 0', inv_ship_desc_score('Pot Stand', 'Crab Statue') === 0.0);
+check('desc score: an extra word in one is still a match', inv_ship_desc_score('Bitan Footed Dish', 'Bitan Style Footed Dish') >= 0.6);
+check('desc score: an empty side scores 0', inv_ship_desc_score('', 'Pot Stand') === 0.0 && inv_ship_desc_score('(4 pcs)', 'Pot Stand') === 0.0);
+
 // ── Pure checks (each task inserts its section above this line) ──
 
 // ── DB-backed ───────────────────────────────────────────────────────────────
@@ -540,6 +548,32 @@ try {
             && (int) db_query('SELECT qty_received FROM inv_order_lines WHERE id = :l', [':l' => $couchLine])->fetchColumn() === 8);
         $refusedC = ''; try { inv_order_receive_container($oid, 'NONE 6848636', [-1], $uid); } catch (InvRefusal $e) { $refusedC = 'x'; }
         check('receive container: an account that sees none of the lines receives nothing', $refusedC === '' && inv_order_receive_container($oid, 'NONE 6848636', [-1], $uid)['pieces'] === 0);
+    }
+
+    // ── Container matching + packing differences on the real fixture (DB) ──
+    if (inv_orders_supported()) {
+        $packedOf = function (string $code, string $desc) use ($oid): ?array {
+            foreach (inv_order_lines($oid, null) as $l) if ($l['code'] === $code && inv_ship_key($l['description']) === inv_ship_key($desc)) return $l['containers'];
+            return null;
+        };
+        $tot = fn(?array $c) => $c === null ? null : array_sum($c);
+        check('match: Pot Stand’s 8 (V010) land on Crab Statue', $tot($packedOf('V010', 'Crab Statue')) === 8);
+        check('match: Tealight Holders (V011) = 16', $tot($packedOf('V011', 'Tealight Holders')) === 16);
+        check('match: Bowls Paper Mache (V011) = 8, all in MSBU781565', $packedOf('V011', 'Bowls Paper Mache') === ['MSBU781565' => 8]);
+        check('match: Scatter Cushion (G011) = 6', $tot($packedOf('G011', 'Scatter Cushion')) === 6);
+        check('match: Fake Hanging Plant (G011) = 8', $tot($packedOf('G011', 'Fake Hanging Plant (4 Pce)')) === 8);
+        check('match: Bitan Style Footed Dish (G011) = 8', $tot($packedOf('G011', 'Bitan Style Footed Dish')) === 8);
+        check('match: the V001 couch is still NONE 6848636 × 8', $packedOf('V001', 'Couch 2.6m x 1m') === ['NONE 6848636' => 8]);
+        $diffs = ['less_packed' => [], 'not_packed' => [], 'more_packed' => []];
+        foreach (inv_order_lines($oid, null) as $l) if ($l['pack_diff'] !== null) $diffs[$l['pack_diff']][] = $l['code'] . ' ' . $l['description'];
+        check('differences: less packed = OD038 Lantern + G001 Makoro', $diffs['less_packed'] === ['OD038 Lantern Natural with glass 40x40x60cm', 'G001 Makoro']);
+        check('differences: not on any packing list = the 7 expected lines', $diffs['not_packed'] === [
+            'OD015 Coral Barnacle Statue Pink', 'OD015 Crown Orchid', 'OD033 Coral Barnacle Statue Pink', 'OD033 Crown Orchid',
+            'G011 Rattan Style Storage Basket (2pce)', 'G011 Wooden Crab Figurine', 'DR100 Double Curtain Rails (166 pcs with brackets and screws)']);
+        check('differences: more packed = OV001, WT001, WT002, MK005, MK008 (sets packed as pieces)',
+            array_map(fn($x) => explode(' ', $x)[0], $diffs['more_packed']) === ['OV001', 'WT001', 'WT002', 'MK005', 'MK008']);
+        $hasDiff = 0; foreach (inv_order_lines($oid, null) as $l) if ($l['pack_diff'] !== null) $hasDiff++;
+        check('differences: 14 flagged lines, everything else is null', $hasDiff === 14);
     }
 
     // ── DB checks (each task inserts its block above this line) ──

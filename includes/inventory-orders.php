@@ -84,6 +84,56 @@ function inv_order_create(string $name, array $lines, array $lineItem, array $li
 }
 
 /**
+ * Import a parsed supplier list the way the Import page's confirm does — the ONE
+ * implementation (the page and db/seeds/seed_maya_ilai_shipment.php both call it).
+ * One inv_tx(): items (inv_import_items), par levels per item-code prefix, then —
+ * once per list, when orders are set up and inv_order_open_for() finds none — the
+ * ORDER with each line's planned place and the packing lists' container hints.
+ * $parsed: inv_ship_parse_workbook() output (needs 'lines'); $packing:
+ * inv_ship_parse_packing(); $prefixPlace: [prefix => place id]. No stock moves.
+ * Returns ['created','existing','pars','order_id' (0 = none made),'order_name',
+ * 'pieces' (on the order),'containers' (['matched','unmatched'] or null)].
+ */
+function inv_import_list(array $parsed, array $packing, array $prefixPlace, string $filename, ?int $userId): array {
+    $lines = (array)($parsed['lines'] ?? []);
+    return inv_tx(function () use ($lines, $packing, $prefixPlace, $filename, $userId): array {
+        $groups = inv_ship_group($lines);
+        $res    = inv_import_items($lines, $groups);
+        $lineItem = [];
+        foreach ($groups as $gkey => $g) {
+            $itemId = $res['group_items'][$gkey] ?? null;
+            if (!$itemId) continue;
+            foreach ($g['lines'] as $i) $lineItem[$i] = $itemId;
+        }
+        $pars = inv_import_apply_pars(inv_import_par_plan($lines, $lineItem, $prefixPlace));
+        // The order: quantities go ON ORDER, no stock moves. One per list — checked here, not trusted from the page.
+        $orderId = 0; $orderName = ''; $pieces = 0; $containers = null;
+        $fp = inv_import_list_fingerprint($lines);
+        if (inv_orders_supported() && inv_order_open_for($fp) === null) {
+            $linePlace = [];
+            foreach ($lines as $i => $l) $linePlace[$i] = (int)($prefixPlace[inv_ship_prefix((string)($l['code'] ?? ''))] ?? 0);
+            $orderName = (string)pathinfo($filename, PATHINFO_FILENAME);
+            $orderId   = inv_order_create($orderName, $lines, $lineItem, $linePlace, $filename, $fp, $userId);
+            $pieces    = (int) db_query('SELECT COALESCE(SUM(qty_ordered), 0) FROM inv_order_lines WHERE order_id = :o', [':o' => $orderId])->fetchColumn();
+            // Packing-list hints (which container each line is in) — never change the quantities.
+            if ($packing) $containers = inv_order_attach_containers($orderId, $packing);
+        }
+        return ['created' => $res['created'], 'existing' => $res['existing'], 'pars' => $pars, 'order_id' => $orderId,
+                'order_name' => $orderName, 'pieces' => $pieces, 'containers' => $containers];
+    });
+}
+
+/** How a line's packing-list total compares with what was ordered — PURE.
+ *  null = nothing to flag (or the order has no packing lists); 'not_packed' = on no
+ *  packing list; 'less_packed' / 'more_packed' = the lists total fewer / more. */
+function inv_order_pack_diff(int $ordered, int $packed, bool $hasContainerData): ?string {
+    if (!$hasContainerData) return null;
+    if ($packed <= 0) return 'not_packed';
+    if ($packed < $ordered) return 'less_packed';
+    return $packed > $ordered ? 'more_packed' : null;
+}
+
+/**
  * Record what arrived — $receipts = [order line id => ['qty' => int, 'location_id' => int]].
  * One inv_tx(): locks the order, then its lines in id order; refuses a cancelled
  * order, a line of another order, a quantity outside 1..(ordered − received) and a
@@ -149,8 +199,9 @@ function inv_order_receive(int $orderId, array $receipts, ?int $userId): array {
  * Attach the packing lists' container hints to an order's lines. $packing is
  * inv_ship_parse_packing()'s output. Each packing line's code is mapped onto the
  * order's line codes (inv_ship_packing_code(): exact, or a bundle suffix removed);
- * when several order lines share the code the one whose description matches wins
- * (same key, else one contains the other, else the first). Quantities are summed
+ * when several order lines share the code the one whose description is most alike
+ * wins (inv_ship_desc_score() ≥ 0.6; a tie needs an exact description) — never a
+ * guess: no clear match counts as unmatched. Quantities are summed
  * per (line, container) and upserted. HINTS ONLY — nothing here touches
  * qty_ordered. Returns ['matched' => packing lines placed, 'unmatched' => packing
  * lines with no order line (rails, brackets, …)]. No-op before the migration.
@@ -158,12 +209,12 @@ function inv_order_receive(int $orderId, array $receipts, ?int $userId): array {
 function inv_order_attach_containers(int $orderId, array $packing): array {
     $res = ['matched' => 0, 'unmatched' => 0];
     if (!$packing || !inv_order_containers_supported()) return $res;
-    $byCode = []; $codes = [];   // UPPER code => [[line id, description key]]
+    $byCode = []; $codes = [];   // UPPER code => [[line id, description]]
     foreach (db_query('SELECT id, code, description FROM inv_order_lines WHERE order_id = :o ORDER BY sort_order, id', [':o' => $orderId])->fetchAll() as $l) {
         $c = trim((string)($l['code'] ?? ''));
         if ($c === '') continue;
         $codes[mb_strtoupper($c)] = $c;
-        $byCode[mb_strtoupper($c)][] = [(int)$l['id'], inv_ship_key((string)$l['description'])];
+        $byCode[mb_strtoupper($c)][] = [(int)$l['id'], (string)$l['description']];
     }
     $sum = []; $seq = [];   // "line|container" => qty; container => sheet position
     foreach (array_values($packing) as $idx => $sheet) {
@@ -176,13 +227,24 @@ function inv_order_attach_containers(int $orderId, array $packing): array {
             if ($code === null) { $res['unmatched']++; continue; }
             $cands = $byCode[mb_strtoupper($code)];
             $pick = null;
-            if (count($cands) === 1) $pick = $cands[0][0];
+            if (count($cands) === 1) $pick = $cands[0][0];   // one line under the code: all its pieces land here
             else {
-                $pk = inv_ship_key((string)($pl['description'] ?? ''));
-                foreach ($cands as [$id, $k]) if ($pk !== '' && $k === $pk) { $pick = $id; break; }
-                if ($pick === null && $pk !== '') foreach ($cands as [$id, $k]) if ($k !== '' && (str_contains($k, $pk) || str_contains($pk, $k))) { $pick = $id; break; }
-                $pick ??= $cands[0][0];
+                // Several lines share the code: the best-described one, and only when it is clearly the same thing.
+                // A tie for best (e.g. "Pot Stand" sits inside two "… pot with stand" lines) is settled by an exact
+                // description, else left unmatched — a packing line is never dropped on a guess.
+                $pd = (string)($pl['description'] ?? ''); $pk = inv_ship_key($pd);
+                $best = 0.0; $tied = [];
+                foreach ($cands as [$id, $desc]) {
+                    $sc = inv_ship_desc_score($pd, $desc);
+                    if ($sc > $best + 1e-9) { $best = $sc; $tied = [[$id, $desc]]; }
+                    elseif ($sc > 0 && abs($sc - $best) <= 1e-9) $tied[] = [$id, $desc];
+                }
+                if ($best >= 0.6) {
+                    if (count($tied) === 1) $pick = $tied[0][0];
+                    else foreach ($tied as [$id, $desc]) if ($pk !== '' && inv_ship_key($desc) === $pk) { $pick = $id; break; }
+                }
             }
+            if ($pick === null) { $res['unmatched']++; continue; }
             $sum[$pick . '|' . $container] = ($sum[$pick . '|' . $container] ?? 0) + $qty;
             $res['matched']++;
         }
@@ -273,7 +335,8 @@ function inv_order_fetch(int $id): array|false {
 
 /**
  * The lines of an order the account may see, in sheet order, with the item, the
- * planned place label, still_to_come and the receipts so far. Scoped like the list.
+ * planned place label, still_to_come, the receipts so far, and the packing-list
+ * comparison (packed_total, pack_diff — see inv_order_pack_diff()). Scoped like the list.
  */
 function inv_order_lines(int $orderId, ?array $venueIds): array {
     if (!inv_orders_supported() || $orderId <= 0) return [];
@@ -306,8 +369,11 @@ function inv_order_lines(int $orderId, ?array $venueIds): array {
             $conts[(int)$c['line_id']][(string)$c['container']] = (int)$c['qty'];
         }
     }
+    $hasContainers = (bool)$conts;   // any packing data on this order at all
     foreach ($rows as &$r) {
         $r['containers']    = $conts[(int)$r['id']] ?? [];
+        $r['packed_total']  = array_sum($r['containers']);
+        $r['pack_diff']     = inv_order_pack_diff((int)$r['qty_ordered'], (int)$r['packed_total'], $hasContainers);
         $r['place_label']   = $r['planned_location_id'] !== null
             ? inv_location_label(['kind' => $r['place_kind'], 'name' => $r['place_name'], 'parent_name' => $r['place_parent_name']]) : '';
         $r['still_to_come'] = max(0, (int)$r['qty_ordered'] - (int)$r['qty_received']);
