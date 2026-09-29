@@ -143,16 +143,58 @@ check('parse: nothing skipped', $wb['skipped'] === []);
 check('parse: spreadsheet row numbers kept', $by('V001')[0]['row'] === 8 && $by('V001')[0]['sheet'] === 'Master Shipper Owned Container');
 
 $g = inv_ship_group($wb['lines']);
-check('group: 154 items', count($g) === 154);
-$canvas = $g[inv_ship_key('Wall Art - Canvas Print')];
-check('group: same name merges across codes', $canvas['qty'] === 96 && count($canvas['lines']) === 5);
+// Independent count: distinct (code, description key) pairs, and names shared by >1 code.
+$pairSet = []; $nameCodes = [];
+foreach ($wb['lines'] as $l) {
+    $nk = inv_ship_key($l['description']);
+    $pairSet[mb_strtoupper($l['code']) . '|' . $nk] = true;
+    $nameCodes[$nk][mb_strtoupper($l['code'])] = true;
+}
+$sharedNames = array_filter($nameCodes, fn($c) => count($c) > 1);
+check('group: one item per (code, name) — 196 items from 199 lines', count($g) === 196 && count($pairSet) === 196);
+check('group: 27 names are shared by more than one code', count($sharedNames) === 27);
+check('group: every group has a unique key, a single code and its lines all carry that code',
+    count(array_unique(array_keys($g))) === 196 && !array_filter($g, function ($x) use ($wb) {
+        foreach ($x['lines'] as $i) if (mb_strtoupper($wb['lines'][$i]['code']) !== mb_strtoupper($x['code'])) return true;
+        return false;
+    }));
+check('group: every line is in exactly one group, pieces preserved',
+    array_sum(array_map(fn($x) => count($x['lines']), $g)) === 199 && array_sum(array_column($g, 'qty')) === 4333);
+$canvasCodes = ['G009', 'G010', 'S001', 'V008', 'V028'];
+$canvasItems = array_filter($g, fn($x) => str_starts_with((string)$x['key'], 'wall art - canvas print'));
+check('group: the five canvas-print codes become five items named with their code',
+    count($canvasItems) === 5 && array_map(fn($x) => $x['name'], array_values(array_filter($g, fn($x) => in_array($x['code'], $canvasCodes, true) && str_starts_with($x['key'], 'wall art - canvas print'))))
+        === array_map(fn($x) => $x['name'], array_values($canvasItems))
+    && isset($g[inv_ship_key('Wall Art - Canvas Print (V008)')]) && $g[inv_ship_key('Wall Art - Canvas Print (V008)')]['qty'] === 16
+    && !isset($g[inv_ship_key('Wall Art - Canvas Print')]));
+$sideTables = array_filter($g, fn($x) => preg_match('/^side tables? \(/', (string)$x['key']) === 1);
+$stCodes = array_map(fn($x) => $x['code'], $sideTables); sort($stCodes);
+check('group: the six side-table codes are six items', $stCodes === ['OD011', 'OD029', 'OV005', 'SP003', 'SP005', 'V007']);
+check('group: a name under a single code stays plain (Glass Box V011 — two lines merge, qty 8)',
+    isset($g[inv_ship_key('Glass Box')]) && $g[inv_ship_key('Glass Box')]['qty'] === 8 && count($g[inv_ship_key('Glass Box')]['lines']) === 2
+    && $g[inv_ship_key('Glass Box')]['code'] === 'V011');
+check('group: Couch and Barstool stay plain', isset($g[inv_ship_key('Couch 2.6m x 1m')], $g[inv_ship_key('Barstool')]));
 check('group: different linen sizes stay apart', count(array_filter($g, fn($x) => str_starts_with((string)$x['key'], 'mattress protector'))) === 4);
 check('group: first-seen order', array_key_first($g) === inv_ship_key('Couch 2.6m x 1m'));
-$split = inv_ship_group($wb['lines'], [$idx('S001') => 'Wall Art - Canvas Print (studio)']);
-check('group: a rename splits a line off', $split[inv_ship_key('Wall Art - Canvas Print')]['qty'] === 88
-    && $split[inv_ship_key('Wall Art - Canvas Print (studio)')]['qty'] === 8);
+$split = inv_ship_group($wb['lines'], [$idx('S001') => 'Studio Canvas']);
+check('group: a rename takes a line out of the shared name (the rest lose their code only if now single)',
+    isset($split[inv_ship_key('Studio Canvas')]) && $split[inv_ship_key('Studio Canvas')]['qty'] === 8
+    && isset($split[inv_ship_key('Wall Art - Canvas Print (V008)')]));
 $merged = inv_ship_group($wb['lines'], [$idx('V023') => 'Woven Basket Medium', $idx('S004') => 'woven basket medium']);
-check('group: a rename can merge into another item', $merged[inv_ship_key('Woven Basket Medium')]['qty'] === 40);
+check('group: a rename to the same name under two codes gets the code on both',
+    isset($merged[inv_ship_key('Woven Basket Medium (V023)')], $merged[inv_ship_key('woven basket medium (S004)')]));
+
+// Synthetic: same code + same description merges; same description, two codes → two items with the code; one code, two descriptions → two items.
+$mk = fn(string $code, string $desc, int $qty) => ['sheet' => 'T', 'row' => 2, 'section' => '', 'code' => $code, 'hs_code' => '', 'description' => $desc, 'qty' => $qty];
+$syn = inv_ship_group([$mk('A1', 'Lamp', 2), $mk('a1', 'lamp.', 3), $mk('B1', 'Lamp', 4), $mk('A1', 'Vase', 1), $mk('A1', 'Bowl', 1)]);
+check('group: same code + same description merges (case/punctuation-insensitive)',
+    isset($syn[inv_ship_key('Lamp (A1)')]) && $syn[inv_ship_key('Lamp (A1)')]['qty'] === 5);
+check('group: same description under another code is a separate item', isset($syn[inv_ship_key('Lamp (B1)')]) && $syn[inv_ship_key('Lamp (B1)')]['qty'] === 4
+    && !isset($syn[inv_ship_key('Lamp')]));
+check('group: different descriptions under one code are separate items', isset($syn[inv_ship_key('Vase')], $syn[inv_ship_key('Bowl')]) && count($syn) === 4);
+$long = inv_ship_group([$mk('A1', str_repeat('x', 200), 1), $mk('B1', str_repeat('x', 200), 1)]);
+check('group: a 160-char name with a code suffix stays within 160 and keeps the code',
+    count($long) === 2 && !array_filter($long, fn($x) => mb_strlen($x['name']) > 160 || !str_ends_with($x['name'], ')')));
 
 // ── Importer — review fixes ─────────────────────────────────────────────────
 // Synthetic sheets: sparse rows of ['v' => .., 'b' => ..] cells.
@@ -228,12 +270,9 @@ check('suggest: "bed" only matches the whole word', inv_ship_suggest_category('B
 check('suggest: extra whitespace is collapsed before matching', inv_ship_suggest_category('Napkin  Holder') === 'Kitchen & dining');
 
 // ── Import (pure) ────────────────────────────────────────────────────────────
-check('sku: a group with 30 long codes is capped at 60 chars', mb_strlen(inv_import_sku(
-    ['lines' => range(0, 29)],
-    array_map(fn($i) => ['code' => 'VERYLONGITEMCODE' . str_pad((string)$i, 4, '0', STR_PAD_LEFT)], range(0, 29))
-)) <= 60);
-check('sku: codes are unique, in list order', inv_import_sku(['lines' => [0, 1, 2]],
-    [['code' => 'A1'], ['code' => 'A2'], ['code' => 'A1']]) === 'A1, A2');
+check('sku: a very long code is capped at 60 chars', mb_strlen(inv_import_sku(['lines' => [0]], [['code' => str_repeat('C', 90)]])) === 60);
+check('sku: the group’s own code', inv_import_sku(['code' => 'V008', 'lines' => [0, 1]], [['code' => 'V008'], ['code' => 'V008']]) === 'V008');
+check('sku: falls back to the first code among the lines', inv_import_sku(['lines' => [0, 1]], [['code' => ''], ['code' => 'A2']]) === 'A2');
 
 // ── Par levels: item-code prefix → place ────────────────────────────────────
 check('prefix: leading letters, upper-cased', inv_ship_prefix('R006MB') === 'R' && inv_ship_prefix('OV003') === 'OV'
@@ -341,9 +380,9 @@ try {
 
     $res1 = inv_import_items($wb['lines'], $g);
     if ($expectFresh) {
-        check('import: the real fixture’s 154 groups become 154 new items', $res1['created'] === 154 && $res1['existing'] === 0);
+        check('import: the real fixture’s 196 groups become 196 new items', $res1['created'] === 196 && $res1['existing'] === 0);
     } else {
-        check('import: created + existing accounts for every one of the 154 groups', $res1['created'] + $res1['existing'] === 154);
+        check('import: created + existing accounts for every one of the 196 groups', $res1['created'] + $res1['existing'] === 196);
     }
     check('import: no stock moves were written for the created items', $res1['created_ids'] === []
         || $count('SELECT COUNT(*) FROM inv_moves WHERE item_id = ANY(CAST(:ids AS int[]))', [':ids' => inv_pg_int_array_literal($res1['created_ids'])]) === 0);
@@ -351,14 +390,15 @@ try {
     $fridge = db_query("SELECT tracking, category FROM inv_items WHERE name = 'Mini Bar Fridge' AND is_active = TRUE ORDER BY id DESC LIMIT 1")->fetch();
     check('import: Mini Bar Fridge is created serial-tracked, category Appliances', $fridge && $fridge['tracking'] === 'serial' && $fridge['category'] === 'Appliances');
 
-    $canvasItem = db_query("SELECT sku FROM inv_items WHERE name = 'Wall Art - Canvas Print' AND is_active = TRUE ORDER BY id DESC LIMIT 1")->fetch();
-    check('import: sku is the group’s item codes, unique, in order', $canvasItem && $canvasItem['sku'] === 'V008, V028, S001, G009, G010');
+    $canvasItem = db_query("SELECT sku FROM inv_items WHERE name = 'Wall Art - Canvas Print (V008)' AND is_active = TRUE ORDER BY id DESC LIMIT 1")->fetch();
+    check('import: sku is the item’s own code', $canvasItem && $canvasItem['sku'] === 'V008');
+    check('import: the old merged canvas item is not created', $count("SELECT COUNT(*) FROM inv_items WHERE name = 'Wall Art - Canvas Print' AND is_active = TRUE") === 0 || !$expectFresh);
 
     $dining = db_query("SELECT unit_label FROM inv_items WHERE name = 'Outdoor Dining Set (9 pce)' AND is_active = TRUE ORDER BY id DESC LIMIT 1")->fetch();
     check('import: unit_label follows the suggestion (sets)', $dining && $dining['unit_label'] === 'sets');
 
     $res2 = inv_import_items($wb['lines'], $g);
-    check('import: importing the same list again creates nothing — every group already exists', $res2['created'] === 0 && $res2['existing'] === 154);
+    check('import: importing the same list again creates nothing — every group already exists', $res2['created'] === 0 && $res2['existing'] === 196);
 
     // ── Par levels: item-code prefix → place (DB) ──
     // Force a clean slate for the remembered mapping, so the defaults asserted
@@ -402,13 +442,13 @@ try {
     $parsSet = inv_import_apply_pars($plan);
 
     $couchId    = $res2['group_items'][inv_ship_key('Couch 2.6m x 1m')] ?? 0;
-    $canvasId   = $res2['group_items'][inv_ship_key('Wall Art - Canvas Print')] ?? 0;
+    $canvasId   = $res2['group_items'][inv_ship_key('Wall Art - Canvas Print (V008)')] ?? 0;
     $barstoolId = $res2['group_items'][inv_ship_key('Barstool')] ?? 0;
     $fridgeId   = $res2['group_items'][inv_ship_key('Mini Bar Fridge')] ?? 0;
     $parOf = fn(int $item, int $loc) => db_query('SELECT par_qty FROM inv_balances WHERE item_id = :i AND location_id = :l', [':i' => $item, ':l' => $loc])->fetchColumn();
 
     check('par: Couch 2.6m x 1m at Maya Ilai = 8', (int)$parOf($couchId, $miLocReal) === 8);
-    check('par: Wall Art - Canvas Print at Maya Ilai = 96', (int)$parOf($canvasId, $miLocReal) === 96);
+    check('par: Wall Art - Canvas Print (V008) at Maya Ilai = 16', (int)$parOf($canvasId, $miLocReal) === 16);
     check('par: Barstool at Off-Duty = 15', (int)$parOf($barstoolId, $odLocReal) === 15);
     check('par: Mini Bar Fridge (serial) got no par', $parOf($fridgeId, $miLocReal) === false);
     check('par: no stock was moved for the imported items',

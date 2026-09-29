@@ -3,7 +3,7 @@ declare(strict_types=1);
 /**
  * Admin: Import items from a supplier Excel into the inventory catalogue.
  * ITEMS ONLY — no stock is moved. Upload the sheet, review a preview (grouped
- * by name, matched against the existing catalogue by merge key; each item-code
+ * one item per supplier code, matched against the existing catalogue by merge key; each item-code
  * PREFIX mapped to a place whose PAR LEVEL the list quantity becomes), then
  * confirm. Owner + manager (managers may create items and set par levels).
  */
@@ -226,6 +226,7 @@ include __DIR__ . '/_layout.php';
         from <?= count($preview['lines']) ?> line<?= count($preview['lines']) === 1 ? '' : 's' ?>
         · <?= $totalPieces ?> piece<?= $totalPieces === 1 ? '' : 's' ?> on the list</span>
     </div>
+    <p class="text-muted" style="margin:12px 18px 0;font-size:12.5px">One item per supplier code — the same name under two codes gets the code added, e.g. “Side Table (V007)”.</p>
     <?php if (!empty($preview['skipped'])): ?>
     <div class="alert alert--info" style="margin:14px 18px 0">
       <?= count($preview['skipped']) ?> row<?= count($preview['skipped']) === 1 ? '' : 's' ?> could not be read:

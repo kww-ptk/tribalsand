@@ -3,8 +3,9 @@ declare(strict_types=1);
 /**
  * Inventory — import items from a supplier Excel into the catalogue. ITEMS ONLY:
  * no stock is EVER moved by an import (quantities are added later by receiving
- * or counting). Lines are merged by name (inv_ship_group()); a name that already
- * exists as an active item (same merge key) is left as it is.
+ * or counting). ONE ITEM PER SUPPLIER CODE (inv_ship_group(): a name shared by two
+ * codes gets " (CODE)" added); an item whose final name already exists as an
+ * active item (same merge key) is left as it is.
  *
  * The preview also maps each item-code PREFIX (inv_ship_prefix()) to an
  * inventory location; the list quantity for that prefix's lines becomes that
@@ -33,22 +34,25 @@ function inv_import_existing_items(): array {
     return $out;
 }
 
-/** The item codes of a group's lines, unique, in list order, joined ", " and cut to 60 chars (the sku column) — PURE. */
+/** The sku of a group: its supplier code (one per item now), cut to 60 chars (the sku column) — PURE.
+ *  Uses the group's own 'code' when set, else the first code among its lines. */
 function inv_import_sku(array $group, array $lines): string {
-    $codes = [];
-    foreach ((array)($group['lines'] ?? []) as $i) {
-        $code = trim((string)($lines[$i]['code'] ?? ''));
-        if ($code !== '' && !in_array($code, $codes, true)) $codes[] = $code;
+    $code = trim((string)($group['code'] ?? ''));
+    if ($code === '') {
+        foreach ((array)($group['lines'] ?? []) as $i) {
+            $c = trim((string)($lines[$i]['code'] ?? ''));
+            if ($c !== '') { $code = $c; break; }
+        }
     }
-    return mb_substr(implode(', ', $codes), 0, 60);
+    return mb_substr($code, 0, 60);
 }
 
 /**
  * Create the items of a parsed list — one inv_tx(). $lines: inv_ship_parse_workbook()['lines'];
  * $groups: inv_ship_group($lines) — keyed by merge key. New items get: name =
- * group name, category + kind (operational | spare | serial → item_type spare
+ * group name (with its code when the name is shared), category + kind (operational | spare | serial → item_type spare
  * for 'spare', tracking serial for 'serial') + unit from the group's
- * suggestions, sku = inv_import_sku(). Existing ones (by merge key) are
+ * suggestions, sku = the item's code (inv_import_sku()). Existing ones (by merge key) are
  * skipped. Returns ['created' => int, 'existing' => int, 'created_ids' => int[],
  * 'group_items' => [group key => item id]] — group_items covers EVERY group,
  * created or existing, so a caller can map lines (via a group's 'lines') to

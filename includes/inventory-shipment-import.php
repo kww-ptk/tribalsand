@@ -20,7 +20,8 @@ declare(strict_types=1);
  *     bold in the sheet: after a blank row = section, otherwise continuation. In a
  *     BOLD sheet, a plain description-only row that follows a blank row / section /
  *     header (nothing to continue) is neither — it lands in `skipped`.
- *   • Lines become ITEMS by their normalised name ("merge by name").
+ *   • Lines become ITEMS one per supplier CODE (inv_ship_group()): same code + same
+ *     description merge; the same description under two codes are two items.
  */
 
 const INV_SHIP_MAX_LINES = 2000;
@@ -212,36 +213,64 @@ function inv_ship_parse_workbook(array $sheets): array {
 }
 
 /**
- * Group lines into proposed items — PURE. $names: [line index => item name] (from
- * the preview); a line keeps its description as its name otherwise. Lines whose
- * names share a key are ONE item. A name whose merge key is empty (e.g. a
- * description of only dots/punctuation) falls back to the line's own description,
- * and if THAT key is also empty, to "Item <code>" (or plain "Item" with no code) —
- * so a line never silently vanishes into a same-named-nothing group. Returns
- * [key => ['key','name','qty','lines' => [line index…],'category','kind','unit']]
+ * Group lines into proposed items — PURE. ONE ITEM PER SUPPLIER CODE: a group is
+ * one (code, name) pair, because the supplier's codes are distinct products (a
+ * "Side Table" under V007 and under OV005 are different tables). Two lines with
+ * the same code AND the same name merge (a repeated line); the same name under
+ * DIFFERENT codes stays apart; different names under one code stay apart.
+ *
+ * $names: [line index => item name] (from the preview); a line keeps its
+ * description as its name otherwise. When a name (by merge key) occurs under more
+ * than one code in this list, each of those items is named "{name} ({CODE})" so
+ * the catalogue can tell them apart — a name under a single code stays plain. A
+ * line with no code keeps the old behaviour: it merges by plain name. A name whose
+ * merge key is empty (e.g. a description of only dots) falls back to the line's own
+ * description, and if THAT key is also empty, to "Item <code>" (or plain "Item"
+ * with no code) — so a line never silently vanishes into a same-named-nothing group.
+ *
+ * The group key is inv_ship_key() of the FINAL name, so it is unique per item and
+ * stable across re-imports (the name carries the code whenever the key would
+ * otherwise clash). Returns
+ * [key => ['key','name','code','qty','lines' => [line index…],'category','kind','unit']]
  * in first-seen order.
  */
 function inv_ship_group(array $lines, array $names = []): array {
-    $g = [];
+    // Pass 1: each line's base name (override → description → "Item <code>") and code.
+    $base = [];
+    $codesByName = [];   // merge key of the base name => [UPPER code => [first name, first code spelling]]
     foreach ($lines as $i => $l) {
         $name = inv_ship_text((string)($names[$i] ?? ''));
         if ($name === '') $name = inv_ship_text((string)$l['description']);
         $name = mb_substr($name, 0, 160);
-        $key  = inv_ship_key($name);
-        if ($key === '') {
+        $code = inv_ship_code((string)($l['code'] ?? ''));
+        if (inv_ship_key($name) === '') {
             $desc = inv_ship_text((string)$l['description']);
-            $key  = inv_ship_key($desc);
-            if ($key !== '') {
+            if (inv_ship_key($desc) !== '') {
                 $name = mb_substr($desc, 0, 160);
             } else {
-                $code = (string)($l['code'] ?? '');
                 $name = $code !== '' ? 'Item ' . $code : 'Item';
-                $key  = inv_ship_key($name);
             }
         }
+        $base[$i] = ['name' => $name, 'code' => $code];
+        $nk = inv_ship_key($name);
+        if ($code !== '') $codesByName[$nk][mb_strtoupper($code)] ??= [$name, $code];   // first-seen spelling of this (name, code)
+    }
+    // Pass 2: name each line's item — the code is added only where the name is shared across codes.
+    $g = [];
+    foreach ($lines as $i => $l) {
+        $name = $base[$i]['name'];
+        $code = $base[$i]['code'];
+        $seen = $codesByName[inv_ship_key($name)] ?? [];
+        if ($code !== '' && count($seen) > 1) {
+            // Spelling of the first line for this (name, code), so "Lamp"/"lamp." under one code merge.
+            [$name, $code] = $seen[mb_strtoupper($code)];
+            $suffix = ' (' . $code . ')';
+            $name = mb_substr($name, 0, 160 - mb_strlen($suffix)) . $suffix;
+        }
+        $key = inv_ship_key($name);
         if (!isset($g[$key])) {
             $cat = inv_ship_suggest_category($name);
-            $g[$key] = ['key' => $key, 'name' => $name, 'qty' => 0, 'lines' => [], 'category' => $cat,
+            $g[$key] = ['key' => $key, 'name' => $name, 'code' => $code, 'qty' => 0, 'lines' => [], 'category' => $cat,
                         'kind' => inv_ship_suggest_kind($cat, $name), 'unit' => inv_ship_suggest_unit($name)];
         }
         $g[$key]['qty'] += (int)$l['qty'];
