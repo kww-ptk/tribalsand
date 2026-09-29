@@ -215,3 +215,44 @@ Access unchanged: `require_login()`, scoped by `admin_venue_ids()`, read-only.
 Branch `feat/rates-compare` from master. No migration — live on push. The Help
 guide lives on the unmerged `feat/team-help-guide` branch; its Rates / Quote
 builder articles are written when that branch lands.
+
+## Part C — Branded quote document, saved on the enquiry, editable terms (added 2026-09-29)
+
+Owner-approved additions after the first build.
+
+### Branded quote document
+- `admin/quote-print.php` renders an A4 **Quotation** as a standalone branded page
+  (no admin chrome) with a "Print / Save as PDF" button (hidden in print) that
+  also runs once on load. Browser print → Save as PDF (no server PDF library).
+- Content: logo in brand colours · "Quotation" · quote number · date issued ·
+  **Prepared for** (name, dates, nights, adults / children) · **Your request**
+  (enquiry only: the guest's dates, party, and the room / property / activity they
+  enquired about) · Accommodation table (property, room × qty, season mix, amount)
+  · Extras · Discount · Total (quote currency) · FX note when converted · terms ·
+  contact (reservations@tribalsand.com · +254 115 115 247 phone / WhatsApp ·
+  tribalsand.com). One A4 page for a normal quote; no trailing blank pages.
+- Figures are never taken from the client: a live print re-prices the posted
+  selection with `qb_price_selection()`; a saved quote prints its stored snapshot.
+
+### Linked + saved on the enquiry (migration `add_submission_quotes.sql`)
+- Table `submission_quotes` (id, submission_id → submissions ON DELETE CASCADE,
+  option_no, admin_id, currency, total, snapshot_json JSONB, created_at;
+  UNIQUE(submission_id, option_no)). Pre-migration-safe (`qb_quotes_supported()`):
+  without it, Save is hidden and everything else works.
+- Quote number = the enquiry reference + option: `TSR-1234-a1b2c3 · Option 2`
+  (`make_submission_ref()`); outside an enquiry `Q-YYYYMMDD-HHMM`.
+- In the enquiry pop-up: **Save to enquiry** stores the quote exactly as priced
+  (server re-prices; the snapshot holds the priced quote + the selection + the
+  request block + the FX rate used). **Insert into reply** and **Print / PDF** save
+  first, so every option offered or printed is on record. Option numbers are
+  allocated server-side (next number per enquiry, race-safe).
+- Each save adds an internal note to the thread: "Quote Option 2 saved — KES 450,000"
+  and the enquiry page lists saved quotes (option, total, date, by, **View PDF**).
+  A saved quote always reopens at the prices it was quoted at.
+- Scope: saving / viewing requires the enquiry to be in the account's scope
+  (`submission_in_scope()`); the print page is `require_bookings()`.
+
+### Editable terms
+- Setting `quote_terms` (settings KV), edited by the owner in Admin → Settings;
+  default "This quote is not a reservation. Prices are valid on the date issued
+  and subject to availability until booked." Rendered escaped, line breaks kept.
