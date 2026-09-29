@@ -20,6 +20,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/inventory.php';
 require_once __DIR__ . '/inventory-item-import.php';
+require_once __DIR__ . '/inventory-shipment-import.php';   // inv_ship_key() / inv_ship_packing_code()
 
 const INV_ORDER_STATUSES = ['open' => 'On order', 'partial' => 'Part received', 'received' => 'Received', 'cancelled' => 'Cancelled'];
 
@@ -144,6 +145,84 @@ function inv_order_receive(int $orderId, array $receipts, ?int $userId): array {
     });
 }
 
+/**
+ * Attach the packing lists' container hints to an order's lines. $packing is
+ * inv_ship_parse_packing()'s output. Each packing line's code is mapped onto the
+ * order's line codes (inv_ship_packing_code(): exact, or a bundle suffix removed);
+ * when several order lines share the code the one whose description matches wins
+ * (same key, else one contains the other, else the first). Quantities are summed
+ * per (line, container) and upserted. HINTS ONLY — nothing here touches
+ * qty_ordered. Returns ['matched' => packing lines placed, 'unmatched' => packing
+ * lines with no order line (rails, brackets, …)]. No-op before the migration.
+ */
+function inv_order_attach_containers(int $orderId, array $packing): array {
+    $res = ['matched' => 0, 'unmatched' => 0];
+    if (!$packing || !inv_order_containers_supported()) return $res;
+    $byCode = []; $codes = [];   // UPPER code => [[line id, description key]]
+    foreach (db_query('SELECT id, code, description FROM inv_order_lines WHERE order_id = :o ORDER BY sort_order, id', [':o' => $orderId])->fetchAll() as $l) {
+        $c = trim((string)($l['code'] ?? ''));
+        if ($c === '') continue;
+        $codes[mb_strtoupper($c)] = $c;
+        $byCode[mb_strtoupper($c)][] = [(int)$l['id'], inv_ship_key((string)$l['description'])];
+    }
+    $sum = []; $seq = [];   // "line|container" => qty; container => sheet position
+    foreach (array_values($packing) as $idx => $sheet) {
+        $container = mb_substr(trim((string)($sheet['container'] ?? '')), 0, 80);
+        if ($container === '') continue;
+        $seq[$container] ??= $idx;
+        foreach ((array)($sheet['lines'] ?? []) as $pl) {
+            $qty  = (int)($pl['qty'] ?? 0);
+            $code = $qty > 0 ? inv_ship_packing_code((string)($pl['code'] ?? ''), array_values($codes)) : null;
+            if ($code === null) { $res['unmatched']++; continue; }
+            $cands = $byCode[mb_strtoupper($code)];
+            $pick = null;
+            if (count($cands) === 1) $pick = $cands[0][0];
+            else {
+                $pk = inv_ship_key((string)($pl['description'] ?? ''));
+                foreach ($cands as [$id, $k]) if ($pk !== '' && $k === $pk) { $pick = $id; break; }
+                if ($pick === null && $pk !== '') foreach ($cands as [$id, $k]) if ($k !== '' && (str_contains($k, $pk) || str_contains($pk, $k))) { $pick = $id; break; }
+                $pick ??= $cands[0][0];
+            }
+            $sum[$pick . '|' . $container] = ($sum[$pick . '|' . $container] ?? 0) + $qty;
+            $res['matched']++;
+        }
+    }
+    foreach ($sum as $key => $qty) {
+        [$lineId, $container] = explode('|', $key, 2);
+        db_query('INSERT INTO inv_order_line_containers (line_id, container, qty, seq) VALUES (:l, :c, :q, :s)
+                  ON CONFLICT (line_id, container) DO UPDATE SET qty = EXCLUDED.qty, seq = EXCLUDED.seq',
+            [':l' => (int)$lineId, ':c' => $container, ':q' => $qty, ':s' => $seq[$container] ?? 0]);
+    }
+    return $res;
+}
+
+/**
+ * Receive what the packing list says is in one container — a SUGGESTION, not the
+ * truth: for every line the account can see that has a quantity in this container
+ * and still something to come, receive min(container qty, still to come) into the
+ * line's planned place, in one inv_order_receive() call. A line with no planned
+ * place, or one the account may not move into, is skipped (counted in 'skipped').
+ * Returns ['lines' => n, 'pieces' => n, 'skipped' => n].
+ */
+function inv_order_receive_container(int $orderId, string $container, ?array $venueIds, ?int $userId): array {
+    if (!inv_order_containers_supported()) throw new InvRefusal('Containers are not set up yet — run the add_inventory_orders.sql migration.');
+    $order = inv_order_fetch($orderId);
+    if (!$order) throw new InvRefusal('That order no longer exists.');
+    if ($order['status'] === 'cancelled') throw new InvRefusal('This order was cancelled.');
+    $receipts = []; $skipped = 0;
+    foreach (inv_order_lines($orderId, $venueIds) as $l) {
+        $cq = (int)($l['containers'][$container] ?? 0);
+        $left = (int)$l['still_to_come'];
+        if ($cq < 1 || $left < 1) continue;
+        $loc = (int)($l['planned_location_id'] ?? 0) > 0 ? inv_fetch_location((int)$l['planned_location_id']) : false;
+        if (!$loc || !inv_bool($loc['is_active']) || $loc['kind'] === 'person' || !inv_move_in_scope(null, $loc, $venueIds)) { $skipped++; continue; }
+        $receipts[(int)$l['id']] = ['qty' => min($cq, $left), 'location_id' => (int)$loc['id']];
+    }
+    if (!$receipts) return ['lines' => 0, 'pieces' => 0, 'skipped' => $skipped];
+    $r = inv_order_receive($orderId, $receipts, $userId);
+    return ['lines' => $r['lines'], 'pieces' => $r['pieces'], 'skipped' => $skipped];
+}
+
 /** Cancel an order — only while nothing has been received. */
 function inv_order_cancel(int $orderId): void {
     if (!inv_orders_supported()) throw new InvRefusal('Orders are not set up yet — run the add_inventory_orders.sql migration.');
@@ -219,7 +298,16 @@ function inv_order_lines(int $orderId, ?array $venueIds): array {
         $byLine[(int)$r['line_id']][] = ['qty' => (int)$r['qty'], 'location_name' => (string)$r['location_name'],
                                           'created_at' => (string)$r['created_at'], 'user_name' => $r['user_name']];
     }
+    $conts = [];
+    if (inv_order_containers_supported()) {
+        foreach (db_query('SELECT c.line_id, c.container, c.qty FROM inv_order_line_containers c
+                             JOIN inv_order_lines l ON l.id = c.line_id
+                            WHERE l.order_id = :o ORDER BY c.seq, c.container', [':o' => $orderId])->fetchAll() as $c) {
+            $conts[(int)$c['line_id']][(string)$c['container']] = (int)$c['qty'];
+        }
+    }
     foreach ($rows as &$r) {
+        $r['containers']    = $conts[(int)$r['id']] ?? [];
         $r['place_label']   = $r['planned_location_id'] !== null
             ? inv_location_label(['kind' => $r['place_kind'], 'name' => $r['place_name'], 'parent_name' => $r['place_parent_name']]) : '';
         $r['still_to_come'] = max(0, (int)$r['qty_ordered'] - (int)$r['qty_received']);
@@ -227,6 +315,26 @@ function inv_order_lines(int $orderId, ?array $venueIds): array {
     }
     unset($r);
     return $rows;
+}
+
+/**
+ * The containers of an order in packing-list order: [['container','lines','pieces']],
+ * counting only the lines this account may see. Empty without packing lists.
+ */
+function inv_order_containers(int $orderId, ?array $venueIds = null): array {
+    if (!inv_order_containers_supported() || $orderId <= 0) return [];
+    $seq = [];
+    foreach (db_query('SELECT c.container, MIN(c.seq) AS s FROM inv_order_line_containers c JOIN inv_order_lines l ON l.id = c.line_id
+                        WHERE l.order_id = :o GROUP BY c.container', [':o' => $orderId])->fetchAll() as $r) $seq[(string)$r['container']] = (int)$r['s'];
+    $out = [];
+    foreach (inv_order_lines($orderId, $venueIds) as $l) {
+        foreach ($l['containers'] as $c => $q) {
+            $out[$c] ??= ['container' => (string)$c, 'lines' => 0, 'pieces' => 0];
+            $out[$c]['lines']++; $out[$c]['pieces'] += (int)$q;
+        }
+    }
+    uksort($out, fn($a, $b) => [$seq[$a] ?? 0, (string)$a] <=> [$seq[$b] ?? 0, (string)$b]);
+    return array_values($out);
 }
 
 /** [item id => pieces still to come] across open / part-received orders. */

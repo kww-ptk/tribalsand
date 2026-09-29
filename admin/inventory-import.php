@@ -53,7 +53,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
             $_SESSION['inv_flash'] = ['type' => 'error', 'msg' => 'Upload an .xlsx file.'];
         } else {
             try {
-                $wb = inv_ship_parse_workbook(xlsx_read_sheets($f['tmp_name']));
+                $sheets = xlsx_read_sheets($f['tmp_name']);
+                $wb = inv_ship_parse_workbook($sheets);
                 if (!$wb['lines']) {
                     $_SESSION['inv_flash'] = ['type' => 'error', 'msg' => 'No item list found — the file needs a sheet with “Item No”, “Qty” and “Description” columns.'];
                 } elseif (count($wb['lines']) > INV_SHIP_MAX_LINES) {
@@ -62,7 +63,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
                     invimp_prune();
                     $token = bin2hex(random_bytes(8));
                     $_SESSION['inv_import'][$token] = ['at' => time(), 'filename' => basename((string)$f['name']),
-                        'lines' => $wb['lines'], 'skipped' => $wb['skipped'], 'sheets' => $wb['sheets']];
+                        'lines' => $wb['lines'], 'skipped' => $wb['skipped'], 'sheets' => $wb['sheets'],
+                        'packing' => inv_ship_parse_packing($sheets)];   // container hints, parsed once here
                     header('Location: ' . $self . '?preview=' . $token); exit;
                 }
             } catch (RuntimeException $e) {
@@ -122,6 +124,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
                     foreach ($data['lines'] as $i => $l) $linePlace[$i] = (int)($prefixPlace[inv_ship_prefix((string)($l['code'] ?? ''))] ?? 0);
                     $orderName = (string)pathinfo((string)$data['filename'], PATHINFO_FILENAME);
                     $orderId   = inv_order_create($orderName, $data['lines'], $lineItem, $linePlace, (string)$data['filename'], $fp, $userId);
+                    // Packing-list hints (which container each line is in) — never change the quantities.
+                    if (!empty($data['packing'])) inv_order_attach_containers($orderId, (array)$data['packing']);
                 }
                 return ['created' => $res['created'], 'existing' => $res['existing'], 'pars' => $pars, 'order_id' => $orderId, 'order_name' => $orderName];
             });
@@ -250,6 +254,7 @@ include __DIR__ . '/_layout.php';
         from <?= count($preview['lines']) ?> line<?= count($preview['lines']) === 1 ? '' : 's' ?>
         · <?= $totalPieces ?> piece<?= $totalPieces === 1 ? '' : 's' ?> on the list</span>
     </div>
+    <?php if (!empty($preview['packing'])): ?><p class="text-muted" style="margin:12px 18px 0;font-size:12.5px">Packing lists found for <?= count($preview['packing']) ?> container<?= count($preview['packing']) === 1 ? '' : 's' ?> (<?= e(implode(', ', array_column($preview['packing'], 'container'))) ?>) — the order will show which lines are in which container, so you can receive it container by container. The quantities on the list stay the truth.</p><?php endif; ?>
     <p class="text-muted" style="margin:12px 18px 0;font-size:12.5px">One item per supplier code — the same name under two codes gets the code added, e.g. “Side Table (V007)”.</p>
     <?php if (!empty($preview['skipped'])): ?>
     <div class="alert alert--info" style="margin:14px 18px 0">

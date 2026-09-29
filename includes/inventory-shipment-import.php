@@ -212,6 +212,77 @@ function inv_ship_parse_workbook(array $sheets): array {
     return $out;
 }
 
+// ── Packing lists (container hints) ─────────────────────────────────────────
+
+/**
+ * One packing-list sheet → ['container','lines' => [['code','description','qty','row']]],
+ * or null when the sheet is not a packing list — PURE. A packing list has an
+ * Item No + Qty + Description header AND a Length / Weight / Cubes column. The
+ * container is named by a "Container <name>" cell above the header (else the sheet
+ * name without a leading "PL "). Rows with no code or no whole quantity (dimension
+ * continuation rows) are ignored.
+ */
+function inv_ship_parse_packing_sheet(string $sheetName, array $rows): ?array {
+    $container = null; $map = null; $headerAt = null;
+    foreach ($rows as $n => $cells) {
+        $h = inv_ship_header($cells);
+        if ($h === 'packing') {
+            // Re-derive the column map (inv_ship_header() returns only the marker for a packing header).
+            $map = [];
+            foreach ($cells as $i => $c) {
+                $t = mb_strtolower(inv_ship_text((string)($c['v'] ?? '')));
+                if (in_array($t, ['item no', 'item no.', 'code'], true)) $map['code'] ??= $i;
+                elseif (in_array($t, ['qty', 'quantity'], true))       $map['qty']  ??= $i;
+                elseif ($t === 'description')                           $map['desc'] ??= $i;
+            }
+            $headerAt = $n; break;
+        }
+        if (is_array($h)) return null;   // a master list header
+        foreach ($cells as $c) {
+            $t = inv_ship_text((string)($c['v'] ?? ''));
+            if ($t === '') continue;
+            if ($container === null && preg_match('/^container\s+(.+)$/i', $t, $m)) $container = trim($m[1]);
+            break;   // only the row's first non-empty cell
+        }
+    }
+    if ($map === null) return null;
+    if ($container === null || $container === '') $container = trim((string)preg_replace('/^PL\s+/i', '', inv_ship_text($sheetName)));
+    if ($container === '') return null;
+    $lines = [];
+    foreach ($rows as $n => $cells) {
+        if ($n <= $headerAt) continue;
+        $code = inv_ship_code((string)($cells[$map['code']]['v'] ?? ''));
+        $qty  = inv_ship_qty((string)($cells[$map['qty']]['v'] ?? ''));
+        if ($code === '' || $qty === null) continue;
+        $lines[] = ['code' => $code, 'description' => inv_ship_text((string)($cells[$map['desc']]['v'] ?? '')), 'qty' => $qty, 'row' => $n + 1];
+    }
+    return ['container' => mb_substr($container, 0, 80), 'lines' => $lines];
+}
+
+/** Every packing-list sheet of a workbook, in sheet order — PURE. */
+function inv_ship_parse_packing(array $sheets): array {
+    $out = [];
+    foreach ($sheets as $name => $rows) {
+        $p = inv_ship_parse_packing_sheet((string)$name, $rows);
+        if ($p !== null) $out[] = $p;
+    }
+    return $out;
+}
+
+/** The master-list code a packing-list code stands for, or null — PURE. Exact
+ *  (case-insensitive) match, else with a trailing bundle suffix (CVL102B7 → CVL102) removed. */
+function inv_ship_packing_code(string $plCode, array $masterCodes): ?string {
+    $plCode = inv_ship_code($plCode);
+    if ($plCode === '') return null;
+    $by = [];
+    foreach ($masterCodes as $c) $by[mb_strtoupper((string)$c)] ??= (string)$c;
+    $u = mb_strtoupper($plCode);
+    if (isset($by[$u])) return $by[$u];
+    $stripped = (string)preg_replace('/B\d+$/i', '', $plCode);
+    if ($stripped !== '' && $stripped !== $plCode && isset($by[mb_strtoupper($stripped)])) return $by[mb_strtoupper($stripped)];
+    return null;
+}
+
 /**
  * Group lines into proposed items — PURE. ONE ITEM PER SUPPLIER CODE: a group is
  * one (code, name) pair, because the supplier's codes are distinct products (a

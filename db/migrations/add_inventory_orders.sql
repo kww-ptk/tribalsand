@@ -7,6 +7,9 @@
 --   • ONE order line per item + planned place (quantities of the same item and place
 --     are summed at import); qty_received grows with each receipt row.
 --   • inv_order_receipts is the append-only trail: how many, into which place, who, when.
+--   • inv_order_line_containers are HINTS from the packing-list sheets (which container a
+--     line is in, how many pieces) — they never change qty_ordered, only drive the
+--     container filter and "Receive this container". `seq` keeps the sheets' order.
 
 CREATE TABLE IF NOT EXISTS inv_orders (
     id              SERIAL PRIMARY KEY,
@@ -46,3 +49,14 @@ CREATE TABLE IF NOT EXISTS inv_order_receipts (
     created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS idx_inv_order_receipts_line ON inv_order_receipts (line_id);
+
+-- Packing-list hints: which container each order line travels in. Created after the
+-- receipts table; inv_order_containers_supported() probes it separately, so orders
+-- keep working on a database that has not run this part yet.
+CREATE TABLE IF NOT EXISTS inv_order_line_containers (
+    line_id   INT          NOT NULL REFERENCES inv_order_lines(id) ON DELETE CASCADE,
+    container VARCHAR(80)  NOT NULL,
+    qty       INT          NOT NULL CHECK (qty > 0),
+    seq       INT          NOT NULL DEFAULT 0,
+    PRIMARY KEY (line_id, container)
+);

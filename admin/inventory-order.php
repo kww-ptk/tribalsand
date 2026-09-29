@@ -35,6 +35,11 @@ if ($supported && (!$order || !$lines)) {   // unknown, or nothing of it is visi
 }
 $byLine = [];
 foreach ($lines as $l) $byLine[(int)$l['id']] = $l;
+// Containers from the packing lists (hints only) — [] when the order has none.
+$containers     = $order ? inv_order_containers($orderId, $vids) : [];
+$containerNames = array_column($containers, 'container');
+$pickedContainer = (string)($_POST['container'] ?? $_GET['container'] ?? '');
+if (!in_array($pickedContainer, $containerNames, true)) $pickedContainer = '';
 
 // Places this account may put stock into: active, in its scope, never a team member.
 $places = [];
@@ -60,6 +65,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported && $order) {
             inv_order_cancel($orderId);
             audit_log('inv.order_cancel', 'inv_order', $orderId, (string)$order['name']);
             $_SESSION['inv_flash'] = ['type' => 'success', 'msg' => 'Order cancelled.'];
+        } elseif ($act === 'receive_container') {
+            if (!in_array($pickedContainer, $containerNames, true)) throw new InvRefusal('That container is not part of this order.');
+            $r = inv_order_receive_container($orderId, $pickedContainer, $vids, $meId);
+            audit_log('inv.order_receive', 'inv_order', $orderId, "container {$pickedContainer}: {$r['pieces']} pcs on {$r['lines']} line(s)");
+            $msg = "Received {$r['pieces']} piece" . ($r['pieces'] === 1 ? '' : 's') . " on {$r['lines']} line" . ($r['lines'] === 1 ? '' : 's') . " from {$pickedContainer}.";
+            if ($r['skipped'] > 0) $msg .= " {$r['skipped']} line" . ($r['skipped'] === 1 ? '' : 's') . ' skipped — no planned place you can use; receive those by hand.';
+            $_SESSION['inv_flash'] = ['type' => 'success', 'msg' => $msg];
         } elseif ($act === 'save' || $act === 'receive_rest') {
             $receipts = [];
             if ($act === 'save') {
@@ -96,7 +108,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported && $order) {
     } catch (InvRefusal $ex) {
         $_SESSION['inv_flash'] = ['type' => 'error', 'msg' => $ex->getMessage()];
     }
-    header('Location: ' . $self . '?id=' . $orderId); exit;
+    header('Location: ' . $self . '?id=' . $orderId . ($pickedContainer !== '' ? '&container=' . rawurlencode($pickedContainer) : '')); exit;
 }
 
 $piecesOrdered = $piecesReceived = 0;
@@ -141,6 +153,17 @@ include __DIR__ . '/_layout.php';
         <option value="left">Still to come</option>
         <option value="done">Received</option>
       </select></label>
+    <?php if ($containers): ?>
+    <label class="ig-field"><span>Container</span>
+      <select name="container" id="ioContainer" class="filter-select" aria-label="Container">
+        <option value="">All containers</option>
+        <?php foreach ($containers as $c): ?><option value="<?= e($c['container']) ?>" <?= $pickedContainer === $c['container'] ? 'selected' : '' ?>><?= e($c['container']) ?> · <?= (int)$c['lines'] ?> line<?= $c['lines'] === 1 ? '' : 's' ?></option><?php endforeach; ?>
+      </select></label>
+    <?php if ($open): ?>
+    <button type="submit" name="action" value="receive_container" id="ioRecvContainer" class="btn-outline btn-sm" style="align-self:flex-end" hidden
+      data-confirm="Receive what the packing list says is in this container into each line’s planned place? You can correct any line afterwards."><?= admin_icon('check', 14) ?> Receive this container</button>
+    <?php endif; ?>
+    <?php endif; ?>
     <label class="ig-field ig-search"><span>Search</span><input type="search" id="igSearch" class="inp" placeholder="Name, item no., place…" autocomplete="off"></label>
     <?php if ($open): ?>
     <label class="ig-field"><span>Put into</span>
@@ -157,6 +180,7 @@ include __DIR__ . '/_layout.php';
       <th class="ig-check"><input type="checkbox" id="igAll" aria-label="Select all shown"></th>
       <th data-sort="name">Item</th>
       <th data-sort="place">For</th>
+      <?php if ($containers): ?><th class="ig-num io-cq">In container</th><?php endif; ?>
       <th data-sort="ordered" class="ig-num">Ordered</th>
       <th data-sort="received" class="ig-num">Received</th>
       <th data-sort="left" class="ig-num">Still to come</th>
@@ -168,11 +192,12 @@ include __DIR__ . '/_layout.php';
       $pre  = isset($places[$planned]) ? $planned : 0;
       $lid  = (int)$l['id']; ?>
       <tr data-name="<?= e(mb_strtolower((string)$l['item_name'] . ' ' . (string)$l['sku'] . ' ' . (string)$l['code'])) ?>" data-place="<?= e(mb_strtolower((string)$l['place_label'])) ?>"
-          data-ordered="<?= (int)$l['qty_ordered'] ?>" data-received="<?= (int)$l['qty_received'] ?>" data-left="<?= $left ?>" data-state="<?= $left > 0 ? 'left' : 'done' ?>">
+          data-ordered="<?= (int)$l['qty_ordered'] ?>" data-received="<?= (int)$l['qty_received'] ?>" data-left="<?= $left ?>" data-state="<?= $left > 0 ? 'left' : 'done' ?>"<?= $l['containers'] ? ' data-containers="' . e((string)json_encode($l['containers'], JSON_UNESCAPED_UNICODE | JSON_FORCE_OBJECT)) . '"' : '' ?>>
         <td class="ig-check"><?php if ($open && $left > 0): ?><input type="checkbox" name="ids[]" value="<?= $lid ?>" aria-label="Select <?= e((string)$l['item_name']) ?>"><?php endif; ?></td>
         <td><a href="/admin/inventory-item.php?id=<?= (int)$l['item_id'] ?>" class="inv-name"><?= inv_thumb_html($l + ['name' => $l['item_name']], 28) ?><span><?= e((string)$l['item_name']) ?><?= $l['tracking'] === 'serial' ? ' <span class="ig-tag">serial</span>' : '' ?>
           <?php if (!empty($l['sku'])): ?><span class="inv-sub ig-mono"><?= e((string)$l['sku']) ?></span><?php endif; ?></span></a></td>
         <td class="ig-where"><?= $l['place_label'] !== '' ? e((string)$l['place_label']) : '<span class="text-muted">—</span>' ?></td>
+        <?php if ($containers): ?><td class="ig-num io-cq"></td><?php endif; ?>
         <td class="ig-num"><?= (int)$l['qty_ordered'] ?></td>
         <td class="ig-num"><strong><?= (int)$l['qty_received'] ?></strong>
           <?php foreach ($l['receipts'] as $rc): ?><span class="io-rc"><?= (int)$rc['qty'] ?> → <?= e($rc['location_name']) ?> · <?= e(date('j M', strtotime($rc['created_at']))) ?></span><?php endforeach; ?></td>
@@ -209,6 +234,7 @@ include __DIR__ . '/_layout.php';
 <style>
 .io-rc{display:block;font-size:11.5px;color:var(--muted);font-weight:400;white-space:nowrap}
 .io-qty{width:84px}
+.ig:not(.io-show-cq) .io-cq{display:none}
 .ig .cell-select,.ig .eselect:has(> .cell-select){width:220px;max-width:220px}
 .ig td.ig-where{min-width:140px}
 </style>
@@ -218,6 +244,12 @@ include __DIR__ . '/_layout.php';
 (function () {
   var table = document.getElementById('igTable'); if (!table) return;
   var search = document.getElementById('igSearch'), state = document.getElementById('ioFilter');
+  var cont = document.getElementById('ioContainer'), recv = document.getElementById('ioRecvContainer');
+  function rowContainers(r) {
+    var raw = r.getAttribute('data-containers');
+    if (!raw) return null;
+    try { return JSON.parse(raw); } catch (e) { return null; }
+  }
   var g = InvGrid({
     table: table, form: document.getElementById('igForm'), all: document.getElementById('igAll'), bulk: document.getElementById('igBulk'),
     sel: document.getElementById('igSel'), count: document.getElementById('igCount'), clear: document.getElementById('igClear'),
@@ -225,10 +257,27 @@ include __DIR__ . '/_layout.php';
     hidden: function (r) {
       var q = (search.value || '').trim().toLowerCase(), s = state.value;
       var hay = r.getAttribute('data-name') + ' ' + r.getAttribute('data-place');
+      var c = cont ? cont.value : '';
+      if (c) {
+        var m = rowContainers(r), cell = r.querySelector('.io-cq');
+        if (cell) cell.textContent = (m && m[c] !== undefined) ? m[c] : '';
+        if (!m || m[c] === undefined) return true;
+      } else {
+        var cell2 = r.querySelector('.io-cq'); if (cell2) cell2.textContent = '';
+      }
       return (q && hay.indexOf(q) === -1) || (s && r.getAttribute('data-state') !== s);
     }
   });
+  function containerChanged() {
+    table.classList.toggle('io-show-cq', !!(cont && cont.value));
+    if (recv) {
+      recv.hidden = !(cont && cont.value);
+      recv.setAttribute('data-confirm', 'Receive what the packing list says is in ' + (cont ? cont.value : '') + ' into each line’s planned place? You can correct any line afterwards.');
+    }
+    g.filter();
+  }
   search.addEventListener('input', g.filter); state.addEventListener('change', g.filter);
+  if (cont) { cont.addEventListener('change', containerChanged); containerChanged(); }
 })();
 </script>
 <?php endif; ?>
