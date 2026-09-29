@@ -5,9 +5,11 @@
  * rate tool's Quote Builder tab: Stay details · Rooms · Extras | Summary.
  *
  * Config before include:
- *   $qb_context  'page' | 'modal'   (modal adds "Insert into reply")
- *   $qb_prefill  ['name','check_in','check_out','adults','children','room_id']  (all optional)
- *   $qb_cur      'KES' | 'USD'       initial currency (default KES)
+ *   $qb_context        'page' | 'modal'   (modal adds "Insert into reply")
+ *   $qb_prefill        ['name','check_in','check_out','adults','children','room_id']  (all optional)
+ *   $qb_cur            'KES' | 'USD'       initial currency (default KES)
+ *   $qb_submission_id  int (modal only)    the enquiry: enables "Save to enquiry", and
+ *                                          Insert / Print save first (needs qb_quotes_supported())
  *
  * Needs includes/quote-builder.php + includes/rates-compare.php loaded. The CSS
  * and the script are emitted once per page, INLINE (shell navigation re-runs
@@ -16,6 +18,9 @@
 $qb_context = ($qb_context ?? 'page') === 'modal' ? 'modal' : 'page';
 $qb_prefill = is_array($qb_prefill ?? null) ? $qb_prefill : [];
 $qb_cur     = in_array($qb_cur ?? '', ['KES', 'USD'], true) ? $qb_cur : 'KES';
+require_once __DIR__ . '/quote-docs.php';
+$__qbSid     = $qb_context === 'modal' ? max(0, (int)($qb_submission_id ?? 0)) : 0;
+$__qbCanSave = $__qbSid > 0 && qb_quotes_supported();
 $__qbCat    = qb_catalog(admin_venue_ids());
 $__pre      = fn(string $k) => (string)($qb_prefill[$k] ?? '');
 $__preRoom  = (int)($qb_prefill['room_id'] ?? 0);
@@ -36,7 +41,8 @@ $__clientCat = [
 $__uid = 'qb' . substr(md5((string)mt_rand()), 0, 6);
 ?>
 <div class="qb" data-qb data-context="<?= e($qb_context) ?>"
-     data-endpoint="/api/quote-builder.php" data-csrf="<?= e(csrf_token()) ?>">
+     data-endpoint="/api/quote-builder.php" data-print-url="/admin/quote-print.php" data-csrf="<?= e(csrf_token()) ?>"
+     data-submission-id="<?= $__qbSid ?>" data-can-save="<?= $__qbCanSave ? '1' : '0' ?>">
   <script type="application/json" data-qb-catalog><?= json_encode($__clientCat, JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
 
   <div class="qb-head">
@@ -148,6 +154,9 @@ $__uid = 'qb' . substr(md5((string)mt_rand()), 0, 6);
       <div class="qb-actions">
         <button type="button" class="btn-outline btn-sm" data-qb-copy>Copy quote</button>
         <button type="button" class="btn-outline btn-sm" data-qb-print>Print / PDF</button>
+        <?php if ($__qbCanSave): ?>
+        <button type="button" class="btn-outline btn-sm" data-qb-save>Save to enquiry</button>
+        <?php endif; ?>
         <?php if ($qb_context === 'modal'): ?>
         <button type="button" class="btn-primary btn-sm qb-insert" data-qb-insert>Insert into reply</button>
         <?php endif; ?>
@@ -156,7 +165,6 @@ $__uid = 'qb' . substr(md5((string)mt_rand()), 0, 6);
     </aside>
   </div>
 
-  <div class="qb-print" data-qb-printout aria-hidden="true"></div>
 </div>
 
 <?php if (empty($GLOBALS['__qb_assets_done'])): $GLOBALS['__qb_assets_done'] = true; ?>
@@ -209,23 +217,8 @@ $__uid = 'qb' . substr(md5((string)mt_rand()), 0, 6);
 .qb-actions{display:flex;flex-wrap:wrap;gap:8px;padding:10px 16px 14px}
 .qb-foot{padding:0 16px 14px;margin:0;font-size:11.5px;color:var(--muted)}
 .qb-empty{color:var(--muted);font-size:13px;margin:0}
-.qb-print{display:none}
 @media (max-width:1100px){.qb-grid{grid-template-columns:minmax(0,1fr)}.qb-summary{position:static}}
 @media (max-width:640px){.qb-form{grid-template-columns:repeat(2,minmax(0,1fr))}.qb-field--wide{grid-column:span 2}}
-/* Print is scoped to body.qb-printing (set by the Print button only), so a plain
-   browser print of the host page (e.g. an enquiry) still prints that page. */
-@media print{
-  body.qb-printing *{visibility:hidden!important}
-  body.qb-printing .qb-print,body.qb-printing .qb-print *{visibility:visible!important}
-  body.qb-printing .qb-print{display:block!important;position:absolute;left:0;top:0;width:100%;padding:24px;font-size:13px;color:#000}
-  .qb-print img{height:42px;filter:invert(1)}
-  .qb-print h1{font-size:20px;margin:14px 0 4px}
-  .qb-print table{width:100%;border-collapse:collapse;margin:12px 0}
-  .qb-print td{padding:6px 0;border-bottom:1px solid #ddd}
-  .qb-print td:last-child{text-align:right}
-  .qb-print .qb-p-total td{font-weight:800;border-bottom:0;font-size:15px}
-  .qb-print p{margin:4px 0;color:#444}
-}
 </style>
 <script><?php readfile(__DIR__ . '/../admin/assets/admin-quote-builder.js'); ?></script>
 <?php endif; ?>

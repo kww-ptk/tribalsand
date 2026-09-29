@@ -40,6 +40,7 @@ require_once __DIR__ . '/../includes/bookings.php'; // hold_product_room_id()
 require_once __DIR__ . '/../includes/agent.php';    // agent_tag_converted_hold() — trade requests
 require_once __DIR__ . '/../includes/services.php'; // format_price() for the trade net figure
 require_once __DIR__ . '/../includes/activity-log.php'; // activity_log_html() — Item 3
+require_once __DIR__ . '/../includes/quote-docs.php';   // saved quote options (Quotes list + builder Save)
 
 // Flash (set by the convert handler on redirect)
 $flash = $_SESSION['sub_flash'] ?? null;
@@ -533,6 +534,59 @@ include __DIR__ . '/_layout.php';
     </form>
     <?php endif; ?>
 
+    <?php if (qb_quotes_supported()): $__quotes = qb_quotes_for_submission($id); ?>
+      <?php // Saved quote options. Hidden while empty; a save from the builder adds its row live (qb:saved). ?>
+      <div id="qbQuotes" class="qbq"<?= $__quotes ? '' : ' hidden' ?>>
+        <div class="detail-item__label" style="margin-bottom:8px">Quotes</div>
+        <ul class="qbq__list">
+          <?php foreach ($__quotes as $qq): ?>
+          <li class="qbq__row" data-qid="<?= (int)$qq['id'] ?>">
+            <strong>Option <?= (int)$qq['option_no'] ?></strong>
+            <span><?= e(qb_fmt((float)$qq['total'], (string)$qq['currency'])) ?></span>
+            <span class="text-muted"><?= e(date('j M Y, H:i', strtotime((string)$qq['created_at']))) ?></span>
+            <span class="text-muted"><?= e((string)($qq['admin_name'] ?? '') ?: '—') ?></span>
+            <a href="/admin/quote-print.php?quote=<?= (int)$qq['id'] ?>" target="_blank" rel="noopener">View PDF</a>
+          </li>
+          <?php endforeach; ?>
+        </ul>
+      </div>
+      <style>
+        .qbq{margin:0 0 20px}
+        .qbq__list{list-style:none;margin:0;padding:0;border:1px solid var(--border);border-radius:10px;background:var(--white)}
+        .qbq__row{display:grid;grid-template-columns:90px minmax(0,1fr) minmax(0,1.2fr) minmax(0,1fr) auto;gap:10px;align-items:center;padding:9px 14px;font-size:13px}
+        .qbq__row + .qbq__row{border-top:1px solid var(--border)}
+        .qbq__row a{font-weight:600;white-space:nowrap}
+        @media (max-width:640px){.qbq__row{grid-template-columns:1fr 1fr}}
+      </style>
+      <script>
+        // Bound ONCE per window (shell navigation re-runs inline scripts); looks the list up at event time.
+        if (!window.__qbSavedBound) {
+          window.__qbSavedBound = true;
+          document.addEventListener('qb:saved', function (e) {
+            var wrap = document.getElementById('qbQuotes'), d = e.detail || {};
+            if (!wrap || !d.id) return;
+            var list = wrap.querySelector('.qbq__list');
+            if (list.querySelector('[data-qid="' + d.id + '"]')) return;
+            var li = document.createElement('li');
+            li.className = 'qbq__row'; li.setAttribute('data-qid', String(d.id));
+            var cells = [['strong', 'Option ' + d.option_no, ''], ['span', d.total_text, ''],
+                         ['span', d.created, 'text-muted'], ['span', d.by || '—', 'text-muted']];
+            cells.forEach(function (c) {
+              var el = document.createElement(c[0]);
+              el.textContent = c[1];
+              if (c[2]) el.className = c[2];
+              li.appendChild(el);
+            });
+            var a = document.createElement('a');
+            a.href = d.pdf_url; a.target = '_blank'; a.rel = 'noopener'; a.textContent = 'View PDF';
+            li.appendChild(a);
+            list.appendChild(li);
+            wrap.hidden = false;
+          });
+        }
+      </script>
+    <?php endif; ?>
+
     <?php if (!submission_notes_supported()): ?>
       <p class="text-muted" style="margin:0;font-size:13px">The conversation thread is unavailable. Run the <code>add_submission_notes.sql</code> migration to enable it.</p>
     <?php else: ?>
@@ -598,6 +652,7 @@ include __DIR__ . '/_layout.php';
             'room_id'   => (int)($sub['room_id'] ?? 0),
         ];
         $qb_cur = 'KES';
+        $qb_submission_id = $id;   // enables Save to enquiry (when add_submission_quotes has run)
       ?>
       <div class="qb-modal" id="qbModal" hidden>
         <div class="qb-modal__back" data-qb-close></div>
@@ -662,7 +717,10 @@ include __DIR__ . '/_layout.php';
             // An emptied box (sent, or cleared by hand) starts over: no stale "Option 2".
             if (!box.value.trim()) { box.removeAttribute('data-qb-first'); box.setAttribute('data-qb-count', '0'); }
             var text = e.detail.text, n = +(box.getAttribute('data-qb-count') || 0);
-            if (n === 0) {
+            if (e.detail.option_no) {
+              // A saved option: its first line is already "TSR-… · Option N" (the server's number).
+              box.value = box.value.trim() ? box.value.replace(/\s+$/, '') + '\n\n' + text : text;
+            } else if (n === 0) {
               box.value = box.value.trim() ? box.value.replace(/\s+$/, '') + '\n\n' + text : text;
               box.setAttribute('data-qb-first', text);
             } else {

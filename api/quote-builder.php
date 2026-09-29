@@ -1,10 +1,15 @@
 <?php
 declare(strict_types=1);
 /**
- * Quote Builder pricing (JSON). POST {csrf_token, sel} → {ok, quote}.
+ * Quote Builder (JSON).
+ *   POST {csrf_token, sel}                              → {ok, quote}   (action 'price', the default)
+ *   POST {csrf_token, action:'save', submission_id, sel} → {ok, saved}
  *
- * READ-ONLY — prices a selection with the booking engine's own resolvers and
- * returns lines, totals, notices and the quote text. Nothing is saved.
+ * 'price' is READ-ONLY — prices a selection with the booking engine's own
+ * resolvers and returns lines, totals, notices and the quote text.
+ * 'save' stores the quote as the enquiry's next option (qb_quote_save(): the
+ * server re-prices, never trusts client figures) — needs the enquiry in scope
+ * (submission_in_scope()) and the add_submission_quotes migration.
  * Guards: signed-in admin session; Bookings audience (owner or reception, the
  * same rule as require_bookings()); CSRF token in the JSON body (verify_csrf()
  * reads $_POST, which a JSON fetch does not fill) and the session token must be
@@ -13,6 +18,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/quote-builder.php';
+require_once __DIR__ . '/../includes/quote-docs.php';
 
 header('Content-Type: application/json');
 
@@ -31,8 +37,36 @@ if ($sess === '' || !hash_equals($sess, $token)) {
     http_response_code(403); exit(json_encode(['ok' => false, 'error' => 'Your session token expired. Reload the page.']));
 }
 
+$action = (string)($data['action'] ?? 'price');
+$sel    = is_array($data['sel'] ?? null) ? $data['sel'] : [];
+
+if ($action === 'save') {
+    $sid = (int)($data['submission_id'] ?? 0);
+    if (!qb_quotes_supported()) {
+        http_response_code(409); exit(json_encode(['ok' => false, 'error' => 'Saving quotes needs the add_submission_quotes migration.']));
+    }
+    if ($sid <= 0 || !submission_in_scope($sid)) {
+        http_response_code(404); exit(json_encode(['ok' => false, 'error' => 'Enquiry not found.']));
+    }
+    try {
+        $s = qb_quote_save($sid, (int)($_SESSION['admin_id'] ?? 0) ?: null, $sel, admin_venue_ids());
+        $by = trim((string)($__admin['name'] ?? '')) ?: (string)($__admin['email'] ?? '');
+        echo json_encode(['ok' => true, 'saved' => [
+            'id' => $s['id'], 'option_no' => $s['option_no'], 'ref' => $s['ref'], 'text' => $s['text'],
+            'total' => $s['total'], 'currency' => $s['currency'], 'total_text' => qb_fmt($s['total'], $s['currency']),
+            'created' => date('j M Y, H:i', strtotime($s['created'])), 'by' => $by,
+            'pdf_url' => '/admin/quote-print.php?quote=' . $s['id'],
+        ]]);
+    } catch (QbQuoteRefusal $e) {
+        http_response_code(422); echo json_encode(['ok' => false, 'error' => $e->getMessage()]);
+    } catch (Throwable $e) {
+        error_log('[quote-builder] save: ' . $e->getMessage());
+        http_response_code(500); echo json_encode(['ok' => false, 'error' => 'Could not save this quote. Try again.']);
+    }
+    exit;
+}
+
 try {
-    $sel = is_array($data['sel'] ?? null) ? $data['sel'] : [];
     echo json_encode(['ok' => true, 'quote' => qb_price_selection($sel, admin_venue_ids())]);
 } catch (Throwable $e) {
     error_log('[quote-builder] ' . $e->getMessage());

@@ -6,6 +6,13 @@
  * totals, notices and the quote text. This script only collects input and
  * paints the answer. Amounts are <span class="mny"> painted by admin-money.js.
  *
+ * On an enquiry (data-can-save="1"): "Save to enquiry" stores the quote as the
+ * enquiry's next option (the server re-prices); "Insert into reply" and
+ * "Print / PDF" save first, so every option offered or printed is on record.
+ * One save per distinct selection — re-inserting or re-printing an unchanged
+ * quote reuses the saved option. Print opens /admin/quote-print.php: a saved
+ * quote by id, or (builder page) the selection POSTed for a live re-price.
+ *
  * Emitted INLINE by includes/quote-builder-view.php (admin shell navigation
  * re-runs inline scripts only), so it guards against double-binding.
  */
@@ -32,6 +39,9 @@
     var cat = {};
     try { cat = JSON.parse(q(root, 'script[data-qb-catalog]').textContent || '{}'); } catch (e) { cat = {}; }
     var seq = 0, timer = null, last = null, lastDates = null, freeSeen = {}, xseq = 0;
+    var canSave = root.getAttribute('data-can-save') === '1';
+    var sid = +(root.getAttribute('data-submission-id') || 0);
+    var saved = null, savedKey = null, saving = null;
     root.__qbDates = function () { return q(root, '[data-qb-ci]').value + '|' + q(root, '[data-qb-co]').value; };
     root.__qbSeenDates = root.__qbDates();
 
@@ -72,7 +82,7 @@
         .then(function (d) {
           if (my !== seq) return;
           if (!d || !d.ok) { status.textContent = (d && d.error) || 'Could not price this quote.'; return; }
-          status.textContent = '';
+          status.textContent = isSaved(s) ? 'Saved as Option ' + saved.option_no + '.' : '';
           if (s.want_free) { lastDates = s.check_in + '|' + s.check_out; freeSeen = {}; }
           last = d.quote;
           paint(d.quote);
@@ -186,39 +196,84 @@
     root.addEventListener('input', function (e) { if (!e.target.closest('[data-qb-pick]') && !e.target.closest('[data-qb-venue]')) schedule(); });
     root.addEventListener('change', function (e) { if (!e.target.closest('[data-qb-pick]') && !e.target.closest('[data-qb-venue]')) schedule(); });
 
+    // ── Save (enquiry pop-up only) ──────────────────────────────────────────
+    function selKey(s) {
+      var c = {};
+      Object.keys(s).forEach(function (k) { if (k !== 'want_free') c[k] = s[k]; });
+      return JSON.stringify(c);
+    }
+    function isSaved(s) { return !!saved && savedKey === selKey(s); }
+    function priced() { return !!last && (last.lines || []).length > 1; }
+    // Resolves with the saved option ({id, option_no, ref, text, pdf_url, …}); rejects on failure
+    // (the status line says why). An unchanged selection reuses the option already saved.
+    function save() {
+      var s = selection(), key = selKey(s), status = q(root, '[data-qb-status]');
+      if (saved && savedKey === key) return Promise.resolve(saved);
+      if (saving && saving.key === key) return saving.p;
+      status.textContent = 'Saving…';
+      var p = fetch(root.getAttribute('data-endpoint'), {
+        method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ csrf_token: root.getAttribute('data-csrf'), action: 'save', submission_id: sid, sel: s })
+      })
+        .then(function (r) { return r.json().catch(function () { return { ok: false }; }); },
+              function () { return { ok: false, error: 'Could not reach the server. Nothing was saved.' }; })
+        .then(function (d) {
+          saving = null;
+          if (!d || !d.ok) {
+            var msg = (d && d.error) || 'Could not save this quote.';
+            status.textContent = msg;
+            throw new Error(msg);
+          }
+          saved = d.saved; savedKey = key;
+          status.textContent = 'Saved as Option ' + saved.option_no + '.';
+          document.dispatchEvent(new CustomEvent('qb:saved', { detail: saved }));
+          return saved;
+        });
+      saving = { key: key, p: p };
+      return p;
+    }
+    var saveBtn = q(root, '[data-qb-save]');
+    if (saveBtn) saveBtn.addEventListener('click', function () { save().catch(function () {}); });
+
     // ── Output ──────────────────────────────────────────────────────────────
     q(root, '[data-qb-copy]').addEventListener('click', function () {
       var b = this;
       if (!last) return;
+      var text = isSaved(selection()) ? saved.text : last.text;
       var done = function () { var o = b.textContent; b.textContent = 'Copied'; setTimeout(function () { b.textContent = o; }, 1400); };
-      if (navigator.clipboard) navigator.clipboard.writeText(last.text).then(done, function () {});
+      if (navigator.clipboard) navigator.clipboard.writeText(text).then(done, function () {});
     });
     q(root, '[data-qb-print]').addEventListener('click', function () {
-      if (!last) return;
-      var out = q(root, '[data-qb-printout]'), c = last.currency;
-      var t = window.tsMoney ? window.tsMoney.text : function (v) { return String(Math.round(v)); };
-      var rows = (last.lines || []).map(function (l) {
-        return '<tr class="' + (l.kind === 'total' ? 'qb-p-total' : '') + '"><td>' + esc(l.label) + '</td><td>'
-          + (l.kind === 'discount' ? '−' : '') + esc(t(l.amt, c, false)) + '</td></tr>';
-      }).join('');
-      var lines = last.text.split('\n');
-      out.innerHTML = '<img src="/images/whitelogo11.png" alt="Tribal Sand">'
-        + '<h1>' + esc(lines[0]) + '</h1>' + (lines[1] ? '<p>' + esc(lines[1]) + '</p>' : '')
-        + '<table>' + rows + '</table>'
-        + (last.fx_note ? '<p>' + esc(last.fx_note) + '</p>' : '')
-        + '<p>' + esc(lines[lines.length - 1]) + '</p>';
-      // Scope the print stylesheet to this action only (see the view's @media print).
-      var body = document.body;
-      var done = function () { body.classList.remove('qb-printing'); window.removeEventListener('afterprint', done); };
-      body.classList.add('qb-printing');
-      window.addEventListener('afterprint', done);
-      window.print();
-      if (!('onafterprint' in window)) setTimeout(done, 1000);   // fallback where afterprint never fires
+      if (!priced()) { q(root, '[data-qb-status]').textContent = 'Add rooms or extras with a price first.'; return; }
+      if (canSave) {
+        // Open the window now, inside the click (popup blockers), then point it at the saved quote.
+        var w = window.open('', '_blank');
+        if (w) { try { w.document.title = 'Quotation'; w.document.body.textContent = 'Preparing the quotation…'; } catch (e) {} }
+        save().then(function (sv) {
+          if (w && !w.closed) w.location.href = sv.pdf_url; else window.open(sv.pdf_url, '_blank');
+        }, function () { if (w) w.close(); });
+        return;
+      }
+      // Builder page: POST the selection to a new tab; the print page re-prices it.
+      var f = document.createElement('form');
+      f.method = 'POST'; f.action = root.getAttribute('data-print-url'); f.target = '_blank'; f.style.display = 'none';
+      [['csrf_token', root.getAttribute('data-csrf')], ['sel', JSON.stringify(selection())]].forEach(function (kv) {
+        var i = document.createElement('input');
+        i.type = 'hidden'; i.name = kv[0]; i.value = kv[1];
+        f.appendChild(i);
+      });
+      document.body.appendChild(f);
+      f.submit();
+      f.remove();
     });
     var ins = q(root, '[data-qb-insert]');
     if (ins) ins.addEventListener('click', function () {
       if (!last) return;
-      document.dispatchEvent(new CustomEvent('qb:insert', { detail: { text: last.text } }));
+      var send = function (detail) { document.dispatchEvent(new CustomEvent('qb:insert', { detail: detail })); };
+      if (!canSave) { send({ text: last.text }); return; }
+      ins.disabled = true;
+      save().then(function (sv) { send({ text: sv.text, option_no: sv.option_no, ref: sv.ref }); }, function () {})
+        .then(function () { ins.disabled = false; });
     });
 
     // The enquiry pop-up sits hidden on every page load — pricing it then would fire a
