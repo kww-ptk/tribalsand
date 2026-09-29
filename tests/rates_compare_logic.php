@@ -13,6 +13,63 @@ function check(string $label, bool $cond): void {
     else       { echo "FAIL  {$label}\n"; $GLOBALS['failures']++; }
 }
 
+// ── Pure helpers ────────────────────────────────────────────────────────────
+function n(float $p, ?string $label): array {
+    return ['price' => $p, 'label' => $label, 'rate_id' => $label === null ? null : 1, 'is_override' => $label !== null];
+}
+check('class: standard/mid/peak/other/base',
+    rc_season_class('Standard season') === 'std' && rc_season_class('Mid season') === 'mid'
+    && rc_season_class('Peak season') === 'peak' && rc_season_class('Christmas') === 'other'
+    && rc_season_class(null) === 'base');
+check('labels sort Standard, Mid, Peak, then others A-Z',
+    rc_sort_labels(['Peak season', 'Zeta', 'Mid season', 'Alpha', 'Standard season'])
+        === ['Standard season', 'Mid season', 'Peak season', 'Alpha', 'Zeta']);
+
+$map = ['2027-12-18' => n(97812, 'Mid season'), '2027-12-19' => n(97812, 'Mid season'),
+        '2027-12-20' => n(119500, 'Peak season'), '2027-12-21' => n(143400, 'Peak season'),
+        '2027-12-22' => n(80000, null), '2027-12-23' => n(5000, '')];
+$row = rc_rate_card_row($map, 80000.0);
+check('card row: one price per season', $row['seasons']['Mid season'] === ['min' => 97812.0, 'max' => 97812.0]);
+check('card row: two peak prices become a range', $row['seasons']['Peak season'] === ['min' => 119500.0, 'max' => 143400.0]);
+check('card row: base nights counted, base price kept', $row['base_nights'] === 1 && $row['base'] === 80000.0);
+check('card row: unlabelled override is "Other rate"', isset($row['seasons']['Other rate']));
+
+$runs = rc_season_runs([
+    1 => ['2027-03-26' => n(1, 'Peak season'), '2027-03-27' => n(1, 'Peak season'), '2027-03-28' => n(1, 'Mid season')],
+    2 => ['2027-03-27' => n(1, 'Peak season'), '2027-03-29' => n(1, 'Peak season'), '2027-03-30' => n(1, null)],
+]);
+check('runs: union across rooms, split on gaps',
+    $runs['Peak season'] === [['2027-03-26', '2027-03-27'], ['2027-03-29', '2027-03-29']]);
+check('runs: base nights are not a season', !isset($runs['']) && count($runs) === 2);
+check('runs: keys in season order', array_keys($runs) === ['Mid season', 'Peak season']);
+check('run label: same month', rc_run_label(['2027-12-20', '2027-12-31']) === '20 – 31 Dec');
+check('run label: across months', rc_run_label(['2027-03-26', '2027-04-04']) === '26 Mar – 4 Apr');
+check('run label: one night', rc_run_label(['2027-12-25', '2027-12-25']) === '25 Dec');
+
+check('mix: counts per season in order',
+    rc_season_mix(['a' => n(1, 'Peak season'), 'b' => n(1, 'Mid season'), 'c' => n(1, 'Mid season'), 'd' => n(1, null)])
+        === '2 Mid + 1 Peak + 1 Base');
+check('mix: empty map', rc_season_mix([]) === '');
+
+$fx = ['USD' => 1.0, 'KES' => 129.0];
+check('convert: same currency is exact', rc_convert(48360.0, 'KES', 'KES', $fx) === 48360.0);
+check('convert: KES → USD', abs(rc_convert(129000.0, 'KES', 'USD', $fx) - 1000.0) < 0.0001);
+check('convert: missing rate is null', rc_convert(10.0, 'KES', 'EUR', $fx) === null);
+
+check('text: KES full', rc_money_text(48360.4, 'KES') === 'KES 48,360');
+check('text: USD full', rc_money_text(374.6, 'USD') === '$375');
+check('short: KES thousands', rc_money_text(48360, 'KES', true) === '48.4k');
+check('short: KES round thousands', rc_money_text(100000, 'KES', true) === '100k');
+check('short: KES millions', rc_money_text(1250000, 'KES', true) === '1.25m');
+check('short: KES small', rc_money_text(950, 'KES', true) === '950');
+check('short: USD', rc_money_text(375.2, 'USD', true) === '$375');
+check('html: own currency, exact',
+    rc_money_html(48360.0, 'KES', 'KES', $fx) === '<span class="mny" data-amt="48360" data-cur="KES">KES 48,360</span>');
+check('html: converted is marked ≈',
+    rc_money_html(129000.0, 'KES', 'USD', $fx) === '<span class="mny is-approx" data-amt="129000" data-cur="KES">≈ $1,000</span>');
+check('html: short cells carry data-fmt and no ≈ prefix',
+    rc_money_html(129000.0, 'KES', 'USD', $fx, true) === '<span class="mny is-approx" data-amt="129000" data-cur="KES" data-fmt="short">$1,000</span>');
+
 // ── DB: room_stay_quotes() is the ONE summation ─────────────────────────────
 $pdo = null;
 try { $pdo = db(); } catch (Throwable $e) { echo "SKIP  DB block (no database)\n"; }
