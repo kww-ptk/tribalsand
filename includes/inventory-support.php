@@ -55,6 +55,22 @@ function inv_orders_supported(): bool {
     return $ok;
 }
 
+/**
+ * True once add_inventory_order_receipt_moves.sql has run: each receipt links to the
+ * inv_moves row it created (inv_order_receipts.move_id). A catalog lookup — safe inside
+ * a transaction.
+ */
+function inv_order_receipt_moves_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try {
+        $ok = inv_orders_supported() && (bool) db_query(
+            "SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema = 'public' AND table_name = 'inv_order_receipts' AND column_name = 'move_id')"
+        )->fetchColumn();
+    } catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
 /** True once the container hints table exists (packing lists on orders). Catalog lookup. */
 function inv_order_containers_supported(): bool {
     static $ok = null;

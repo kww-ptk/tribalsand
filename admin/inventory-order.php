@@ -67,6 +67,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported && $order) {
             inv_order_cancel($orderId);
             audit_log('inv.order_cancel', 'inv_order', $orderId, (string)$order['name']);
             $_SESSION['inv_flash'] = ['type' => 'success', 'msg' => 'Order cancelled.'];
+        } elseif ($act === 'undo_receipt') {
+            if (!$canManage) throw new InvRefusal('Only the owner or a manager can undo a receipt.');
+            $rid = (int)($_POST['receipt_id'] ?? 0);
+            // The receipt must belong to a line of THIS order that this account can see — the id is the client's.
+            $rl = $rid > 0 ? (int) db_query('SELECT line_id FROM inv_order_receipts WHERE id = :id', [':id' => $rid])->fetchColumn() : 0;
+            if ($rl <= 0 || !isset($byLine[$rl])) throw new InvRefusal('That receipt is not part of this order.');
+            inv_order_undo_receipt($rid, $meId);
+            audit_log('inv.order_undo_receipt', 'inv_order', $orderId, "receipt #{$rid}");
+            $_SESSION['inv_flash'] = ['type' => 'success', 'msg' => 'Receipt undone.'];
         } elseif ($act === 'receive_container') {
             if (!in_array($pickedContainer, $containerNames, true)) throw new InvRefusal('That container is not part of this order.');
             $r = inv_order_receive_container($orderId, $pickedContainer, $vids, $meId);
@@ -216,7 +225,8 @@ include __DIR__ . '/_layout.php';
         <td class="ig-num"><?= (int)$l['qty_ordered'] ?>
           <?php if ($l['pack_diff'] !== null): ?><span class="io-diff io-diff--<?= $l['pack_diff'] === 'more_packed' ? 'grey' : 'orange' ?>"><?= e(sprintf($diffLabels[$l['pack_diff']], (int)$l['packed_total'])) ?></span><?php endif; ?></td>
         <td class="ig-num"><strong><?= (int)$l['qty_received'] ?></strong>
-          <?php foreach ($l['receipts'] as $rc): ?><span class="io-rc"><?= (int)$rc['qty'] ?> → <?= e($rc['location_name']) ?> · <?= e(date('j M', strtotime($rc['created_at']))) ?></span><?php endforeach; ?></td>
+          <?php foreach ($l['receipts'] as $rc): ?><span class="io-rc"><?= (int)$rc['qty'] ?> → <?= e($rc['location_name']) ?> · <?= e(date('j M', strtotime($rc['created_at']))) ?>
+            <?php if ($canManage && $order['status'] !== 'cancelled'): ?><button type="submit" form="io-undo-form" name="receipt_id" value="<?= (int)$rc['id'] ?>" class="btn-icon io-rc-x" data-tip="Undo this receipt" aria-label="Undo this receipt" data-confirm="<?= e('Undo this receipt? The stock goes back out of ' . $rc['location_name'] . ' and the line is still to come again.') ?>">×</button><?php endif; ?></span><?php endforeach; ?></td>
         <td class="ig-num"><?= $left > 0 ? $left : '<span class="text-muted">0</span>' ?></td>
         <?php if ($open): ?>
           <?php if ($left > 0): ?>
@@ -243,12 +253,18 @@ include __DIR__ . '/_layout.php';
     <button type="button" class="btn-outline btn-sm" id="igClear"><?= admin_icon('x', 14) ?> Clear</button>
   </div>
 </form>
+<?php if ($canManage): ?>
+<form method="POST" action="<?= $self ?>" id="io-undo-form" hidden>
+  <?= csrf_field() ?><input type="hidden" name="id" value="<?= $orderId ?>"><input type="hidden" name="action" value="undo_receipt">
+</form>
+<?php endif; ?>
 <?php endif; ?>
 
 <?= inv_shared_css() ?>
 <?= inv_grid_css() ?>
 <style>
 .io-rc{display:block;font-size:11.5px;color:var(--muted);font-weight:400;white-space:nowrap}
+.io-rc-x{width:20px;height:20px;padding:0;margin-left:4px;vertical-align:middle;font-size:15px;line-height:1}
 .io-qty{width:84px}
 .io-diff{display:block;margin-top:2px;font-size:11.5px;font-weight:500;white-space:nowrap}
 .io-diff--orange{color:#e65100}
