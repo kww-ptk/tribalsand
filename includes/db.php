@@ -1591,27 +1591,47 @@ function generate_access_code(int $len = 8): string {
  * shown in Admin can never differ from the price a guest is quoted.
  */
 function room_stay_quote(int $room_id, float $default_price, string $check_in, string $check_out): array {
+    return room_stay_quotes([$room_id => $default_price], $check_in, $check_out)[$room_id];
+}
+
+/**
+ * room_stay_quote() for MANY rooms in ONE query: [room_id => default price] in,
+ * [room_id => ['nights' => int, 'total' => float]] out. This IS the summation of
+ * the nightly map — room_stay_quote() is a one-room call into it — so a batch
+ * quote (the Quote Builder) and a single quote (the booking widget) can never
+ * disagree about a stay.
+ *
+ * $withNightly adds 'nightly' => the resolved per-night map (for season mixes),
+ * so a caller that needs both does not run the resolver twice.
+ *
+ * A window it cannot parse is "not a quote": nights = 0 for every room.
+ */
+function room_stay_quotes(array $defaults, string $check_in, string $check_out, bool $withNightly = false): array {
     // Required here, not at file scope: rates.php requires this file, so a
     // file-scope require would be a load-order cycle.
     require_once __DIR__ . '/rates.php';
 
+    $out = [];
+    foreach ($defaults as $rid => $_) {
+        $out[(int)$rid] = ['nights' => 0, 'total' => 0.0] + ($withNightly ? ['nightly' => []] : []);
+    }
     // A window we cannot parse is not a $0 stay, and it is not a 47,000-night
     // stay either — strtotime() returns false for garbage, which silently
-    // becomes epoch. It is simply not a quote. Say so, and let the caller
-    // decide; every caller must reject nights === 0 before displaying a price.
+    // becomes epoch. Every caller must reject nights === 0 before showing a price.
     $ci = rates_window_ymd($check_in);
     $co = rates_window_ymd($check_out);
-    if ($ci === null || $co === null || $ci >= $co) return ['nights' => 0, 'total' => 0.0];
+    if (!$defaults || $ci === null || $co === null || $ci >= $co) return $out;
 
     $nights = max(1, (int)((strtotime($co) - strtotime($ci)) / 86400));
-
-    // A valid window always yields a full map (defaults included), so this can
-    // never sum to zero.
-    $total = 0.0;
-    foreach (rates_nightly_map($room_id, $default_price, $ci, $co) as $night) {
-        $total += $night['price'];
+    foreach (rates_nightly_maps($defaults, $ci, $co) as $rid => $map) {
+        // A valid window always yields a full map (defaults included), so this
+        // can never sum to zero.
+        $total = 0.0;
+        foreach ($map as $night) $total += $night['price'];
+        $out[(int)$rid] = ['nights' => $nights, 'total' => round($total, 2)]
+                        + ($withNightly ? ['nightly' => $map] : []);
     }
-    return ['nights' => $nights, 'total' => round($total, 2)];
+    return $out;
 }
 
 /**
