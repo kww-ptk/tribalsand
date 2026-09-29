@@ -1,9 +1,10 @@
 <?php
 declare(strict_types=1);
 /**
- * Inventory — import items from a supplier Excel into the catalogue. ITEMS ONLY:
- * no stock is EVER moved by an import (quantities are added later by receiving
- * or counting). ONE ITEM PER SUPPLIER CODE (inv_ship_group(): a name shared by two
+ * Inventory — import items from a supplier Excel into the catalogue. Creating
+ * items never moves stock; the confirm step can OPTIONALLY also put the list
+ * quantities in stock at each mapped place (inv_import_receive_stock(), once per
+ * list — see inv_import_list_fingerprint()). ONE ITEM PER SUPPLIER CODE (inv_ship_group(): a name shared by two
  * codes gets " (CODE)" added); an item whose final name already exists as an
  * active item (same merge key) is left as it is.
  *
@@ -176,4 +177,94 @@ function inv_import_apply_pars(array $plan, ?int $userId = null): int {
         }
         return $n;
     });
+}
+
+// ── Putting the list quantities in stock (once per list) ────────────────────
+
+const INV_IMPORT_STOCKED_SETTING = 'inv_import_stocked_lists';
+
+/**
+ * Identifies ONE list — PURE. sha1 of a canonical JSON of the lines (sheet, row,
+ * code, description, qty, in order), so the same file always gives the same
+ * fingerprint and a changed quantity (or a different file) gives another.
+ */
+function inv_import_list_fingerprint(array $lines): string {
+    $canon = [];
+    foreach ($lines as $l) {
+        $canon[] = [(string)($l['sheet'] ?? ''), (int)($l['row'] ?? 0), (string)($l['code'] ?? ''),
+                    (string)($l['description'] ?? ''), (int)($l['qty'] ?? 0)];
+    }
+    return sha1(json_encode($canon, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+}
+
+/** Read the {fingerprint: 'Y-m-d H:i'} map defensively — a bad value is "nothing stocked yet". */
+function inv_import_stocked_map(): array {
+    try {
+        $raw = setting(INV_IMPORT_STOCKED_SETTING, '');
+        if ($raw === '') return [];
+        $d = json_decode($raw, true);
+        return is_array($d) ? $d : [];
+    } catch (Throwable $e) { return []; }
+}
+
+/** The date this list was put in stock, or null when it never was. */
+function inv_import_stock_done(string $fingerprint): ?string {
+    $v = inv_import_stocked_map()[$fingerprint] ?? null;
+    return is_string($v) && $v !== '' ? $v : null;
+}
+
+/** Remember that this list has been put in stock (Nairobi time). */
+function inv_import_mark_stock_done(string $fingerprint): void {
+    $map = inv_import_stocked_map();
+    $map[$fingerprint] = date('Y-m-d H:i');
+    set_setting(INV_IMPORT_STOCKED_SETTING, json_encode($map, JSON_UNESCAPED_UNICODE));
+}
+
+/**
+ * Put the quantities of a plan ("{item}:{loc}" => qty, the SAME plan used for
+ * par levels) in stock — a 'receive' move into each place, via inv_move() only.
+ * Serial-tracked items are skipped (their units need serial numbers). All pairs
+ * are pre-locked in the global order first. Call inside the caller's inv_tx().
+ * Returns ['moved' => pieces, 'lines' => (item, place) receipts,
+ * 'skipped_serial' => serial items skipped].
+ */
+function inv_import_receive_stock(array $plan, string $note, ?int $userId = null): array {
+    if (!inv_supported()) throw new InvRefusal('Inventory is not set up yet.');
+    return inv_tx(function () use ($plan, $note, $userId): array {
+        $todo = [];
+        $serial = [];
+        foreach ($plan as $key => $qty) {
+            $parts = explode(':', (string)$key, 2);
+            if (count($parts) !== 2) continue;
+            [$itemId, $locId] = array_map('intval', $parts);
+            if ($itemId <= 0 || $locId <= 0 || (int)$qty <= 0) continue;
+            $item = inv_fetch_item($itemId);
+            if (!$item) continue;
+            if ($item['tracking'] !== 'qty') { $serial[$itemId] = true; continue; }
+            $todo[] = [$itemId, $locId, (int)$qty];
+        }
+        inv_lock_balances(array_map(fn(array $t): array => [$t[0], $t[1]], $todo));
+        $moved = 0;
+        foreach ($todo as [$itemId, $locId, $qty]) {
+            inv_move(['item_id' => $itemId, 'qty' => $qty, 'to' => $locId, 'reason' => 'receive',
+                      'user_id' => $userId, 'note' => $note]);
+            $moved += $qty;
+        }
+        return ['moved' => $moved, 'lines' => count($todo), 'skipped_serial' => count($serial)];
+    });
+}
+
+/**
+ * The confirm step's stock part, one call: when $wanted AND this list was never
+ * stocked (checked HERE, never trusted from the form), receive the plan and mark
+ * the list done. Returns the receive result, or null when nothing was stocked.
+ * Call inside the same inv_tx() as the items + pars, so all of it commits or none.
+ */
+function inv_import_stock_if_new(array $lines, array $plan, bool $wanted, string $filename, ?int $userId = null): ?array {
+    if (!$wanted) return null;
+    $fp = inv_import_list_fingerprint($lines);
+    if (inv_import_stock_done($fp) !== null) return null;
+    $res = inv_import_receive_stock($plan, 'Imported from ' . $filename, $userId);
+    inv_import_mark_stock_done($fp);
+    return $res;
 }

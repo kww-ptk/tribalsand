@@ -285,6 +285,12 @@ check('par plan: skips a line with no item, and a line whose prefix has no place
 check('par plan: an unmapped prefix (0 or absent) contributes nothing', inv_import_par_plan($parLines,
     [0 => 100, 2 => 200], ['V' => 5, 'HS' => 0]) === ['100:5' => 5]);
 
+// ── List fingerprint (pure) ─────────────────────────────────────────────────
+$fpA = [['sheet' => 'S', 'row' => 2, 'section' => 'x', 'code' => 'V1', 'description' => 'Chair', 'qty' => 4], ['sheet' => 'S', 'row' => 3, 'section' => 'x', 'code' => 'V2', 'description' => 'Table', 'qty' => 2]];
+$fpB = $fpA; $fpB[1]['qty'] = 3;
+check('fingerprint: stable for identical lines', inv_import_list_fingerprint($fpA) === inv_import_list_fingerprint($fpA) && strlen(inv_import_list_fingerprint($fpA)) === 40);
+check('fingerprint: changes when a quantity changes', inv_import_list_fingerprint($fpA) !== inv_import_list_fingerprint($fpB));
+
 // ── Pure checks (each task inserts its section above this line) ──
 
 // ── DB-backed ───────────────────────────────────────────────────────────────
@@ -457,6 +463,27 @@ try {
     $plan2    = inv_import_par_plan($wb['lines'], $lineItem, $prefixPlace);
     $parsSet2 = inv_import_apply_pars($plan2);
     check('par: re-importing gives the same par, never doubled', $parsSet2 === $parsSet && (int)$parOf($couchId, $miLocReal) === 8);
+
+    // ── Putting the list quantities in stock (DB) ──
+    db_query("DELETE FROM settings WHERE setting_key = :k", [':k' => INV_IMPORT_STOCKED_SETTING]);
+    $fp = inv_import_list_fingerprint($wb['lines']);
+    check('stock: a fresh list is not marked done', inv_import_stock_done($fp) === null);
+    $uid = (int) db_query('SELECT id FROM admin_users ORDER BY id LIMIT 1')->fetchColumn() ?: null;
+    $balOf = fn(int $item, int $loc) => (int) db_query('SELECT qty FROM inv_balances WHERE item_id = :i AND location_id = :l', [':i' => $item, ':l' => $loc])->fetchColumn();
+    $before = [$balOf($couchId, $miLocReal), $balOf($barstoolId, $odLocReal)];
+    check('stock: not ticked stocks nothing', inv_import_stock_if_new($wb['lines'], $plan, false, 'list.xlsx', $uid) === null && inv_import_stock_done($fp) === null
+        && [$balOf($couchId, $miLocReal), $balOf($barstoolId, $odLocReal)] === $before);
+    $stk = inv_import_stock_if_new($wb['lines'], $plan, true, 'list.xlsx', $uid);
+    check('stock: the import returned pieces, receipts and skipped serial', $stk !== null && $stk['moved'] > 0 && $stk['lines'] > 0 && $stk['skipped_serial'] >= 1);
+    check('stock: Couch 2.6m x 1m at Maya Ilai gains 8 (qty) and par is 8', $balOf($couchId, $miLocReal) === $before[0] + 8 && (int)$parOf($couchId, $miLocReal) === 8);
+    check('stock: Barstool at Off-Duty gains 15', $balOf($barstoolId, $odLocReal) === $before[1] + 15);
+    check('stock: Mini Bar Fridge (serial) has no stock anywhere', (int) db_query('SELECT COALESCE(SUM(qty),0) FROM inv_balances WHERE item_id = :i', [':i' => $fridgeId])->fetchColumn() === 0);
+    check('stock: receive moves carry the note "Imported from …"',
+        $count("SELECT COUNT(*) FROM inv_moves WHERE item_id = :i AND to_location_id = :l AND reason = 'receive' AND note = 'Imported from list.xlsx' AND qty = 8", [':i' => $couchId, ':l' => $miLocReal]) === 1);
+    check('stock: the list is marked done, with a date', preg_match('/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}$/', (string) inv_import_stock_done($fp)) === 1);
+    $after = [$balOf($couchId, $miLocReal), $balOf($barstoolId, $odLocReal)];
+    check('stock: a second import of the same list adds nothing', inv_import_stock_if_new($wb['lines'], $plan, true, 'list.xlsx', $uid) === null
+        && [$balOf($couchId, $miLocReal), $balOf($barstoolId, $odLocReal)] === $after);
 
     // ── DB checks (each task inserts its block above this line) ──
 } catch (Throwable $e) {
