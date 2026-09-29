@@ -62,5 +62,48 @@ check('text: extra line', str_contains($txt, '• Airport → Property × 1: KES
 check('text: total + fx + validity', str_contains($txt, "Total: KES 213,162\nConverted at 1 USD = 129 KES on 29 Sep 2026.\nPrices valid on 29 Sep 2026; subject to availability until booked."));
 check('fx note', qb_fx_note($fx, 'KES', '2026-09-29') === 'Converted at 1 USD = 129 KES on 29 Sep 2026.');
 
+// ── DB: catalogue + pricing (rolled back) ─────────────────────────────────────
+$pdo = null;
+try { $pdo = db(); } catch (Throwable $e) { echo "SKIP  DB block (no database)\n"; }
+if ($pdo) {
+    $pdo->beginTransaction();
+    try {
+        $cat = qb_catalog(null);
+        check('catalogue: rooms are published only', !array_filter($cat['rooms'], fn($r) => !qb_bool($r['is_published'] ?? true)));
+        check('catalogue: every room has max_qty ≥ 1', !array_filter($cat['rooms'], fn($r) => (int)$r['max_qty'] < 1));
+        check('catalogue: empty scope sees nothing', qb_catalog([])['rooms'] === []);
+
+        $room = $cat['rooms'][0] ?? null;
+        if (!$room) { echo "SKIP  pricing (no published rooms)\n"; }
+        else {
+            $rid = (int)$room['id'];
+            $sel = ['check_in' => '2099-05-10', 'check_out' => '2099-05-13', 'adults' => 2, 'children' => 0,
+                    'cur' => strtoupper((string)$room['price_currency']) === 'USD' ? 'USD' : 'KES',
+                    'rooms' => [['id' => $rid, 'qty' => 1, 'guests' => 2]], 'extras' => [], 'want_free' => true];
+            $q = qb_price_selection($sel, null);
+            $single = room_stay_quote($rid, (float)$room['price_amount'], '2099-05-10', '2099-05-13');
+            $line = null;
+            foreach ($q['rooms'] as $r) if ($r['id'] === $rid) $line = $r;
+            check('pricing: room line == the booking widget quote', $line && abs($line['line']['amt'] - $single['total']) < 0.001);
+            check('pricing: nights', $q['nights'] === 3);
+            check('pricing: every catalogue room is priced (avg)', count($q['rooms']) === count($cat['rooms']));
+            check('pricing: free computed when asked', array_key_exists('free', $line));
+
+            $foreign = qb_price_selection(['rooms' => [['id' => $rid, 'qty' => 1, 'guests' => 2]]] + $sel, []);
+            check('pricing: out-of-scope room is dropped', $foreign['rooms'] === [] && $foreign['summary']['accommodation'] === 0.0);
+
+            $bad = qb_price_selection(['check_in' => '2099-05-13', 'check_out' => '2099-05-10'] + $sel, null);
+            check('pricing: bad dates → no room lines, a notice', $bad['nights'] === 0
+                && in_array('Choose check-in and check-out dates.', array_column($bad['notices'], 'text'), true));
+
+            $cust = qb_price_selection(['extras' => [['key' => 'x1', 'kind' => 'custom', 'label' => 'Private chef',
+                'qty' => 2, 'price' => 100, 'price_cur' => 'USD', 'basis' => 'night']]] + $sel, null);
+            $x = $cust['extras'][0];
+            check('pricing: custom per-night extra', $x['line']['amt'] === 600.0 && $x['line']['cur'] === 'USD');
+            check('pricing: copy text present', str_contains($cust['text'], 'Private chef × 2'));
+        }
+    } finally { $pdo->rollBack(); }
+}
+
 echo $failures ? "\n{$failures} FAILED\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);
