@@ -1,0 +1,66 @@
+{
+  // Terminal → Run Task…  (or Ctrl+Shift+P → "Tasks: Run Task"). See README.md.
+  "version": "2.0.0",
+  // cmd.exe on Windows so `&&` works in every PowerShell version.
+  "windows": { "options": { "shell": { "executable": "cmd.exe", "args": ["/d", "/c"] } } },
+  "tasks": [
+    {
+      "label": "Docker: start the app",
+      "detail": "docker compose up — site http://localhost:8080, emails http://localhost:8025",
+      "type": "shell",
+      "command": "docker compose up --build",
+      "isBackground": true,
+      "problemMatcher": [],
+      "group": { "kind": "build", "isDefault": true }
+    },
+    {
+      "label": "Docker: stop the app",
+      "type": "shell",
+      "command": "docker compose down",
+      "problemMatcher": []
+    },
+    {
+      "label": "Docker: reset the database",
+      "detail": "Deletes the local database volume and rebuilds it from scratch (or from db/dev/snapshots)",
+      "type": "shell",
+      "command": "docker compose down -v && docker compose up --build",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Docker: run all tests",
+      "type": "shell",
+      "command": "docker compose exec app php bin/test.php",
+      "problemMatcher": [],
+      "group": "test"
+    },
+    {
+      "label": "Docker: apply new migrations",
+      "detail": "After a git pull that added db/migrations files (restarting the app does this too)",
+      "type": "shell",
+      "command": "docker compose exec app php bin/dev-setup.php",
+      "problemMatcher": []
+    },
+    {
+      "label": "Docker: open a database shell",
+      "type": "shell",
+      "command": "docker compose exec db psql -U tribalsand -d tribalsand",
+      "problemMatcher": []
+    },
+    {
+      "label": "Native: start PHP server",
+      "detail": "php -S localhost:8765 router.php — needs PHP 8.2+ and your own PostgreSQL (README → Option B)",
+      "type": "shell",
+      "command": "php bin/dev-setup.php && php -S localhost:8765 -t . router.php",
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "Native: run all tests",
+      "type": "shell",
+      "command": "php bin/test.php",
+      "problemMatcher": [],
+      "group": "test"
+    }
+  ]
+}

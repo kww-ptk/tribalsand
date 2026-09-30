@@ -1,0 +1,8 @@
+{
+  // VS Code suggests these when the folder is opened.
+  "recommendations": [
+    "bmewburn.vscode-intelephense-client",
+    "ms-azuretools.vscode-docker",
+    "ckolkman.vscode-postgres"
+  ]
+}

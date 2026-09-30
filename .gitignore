@@ -9,3 +9,8 @@ assets/img/rooms/
 .router-fast
 php-server*.log
 .superpowers/
+
+# Local dev: production snapshots hold real guest data — NEVER commit them.
+db/dev/snapshots/*
+!db/dev/snapshots/README.md
+*.dump

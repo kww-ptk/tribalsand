@@ -1,0 +1,80 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Tribal Sand — LOCAL DEVELOPMENT stack.   docker compose up   → http://localhost:8080
+#
+#   app      the SAME image production runs (Dockerfile: PHP 8.2 + Apache + the
+#            in-container job scheduler), with the repo mounted in so edits show
+#            on refresh. On start it runs bin/dev-setup.php (build / update the DB).
+#   db       PostgreSQL 18 + pgvector — same major version as production RDS.
+#            Exposed on localhost:54320 for a DB client (user/pass/db: tribalsand).
+#   mailpit  catches every email the app sends → http://localhost:8025.
+#            Nothing ever reaches a real inbox.
+#
+# Production does NOT use this file (it deploys the Dockerfile via GitHub Actions).
+# Everything below is local-only and safe to change. Full guide: README.md.
+# ─────────────────────────────────────────────────────────────────────────────
+name: tribalsand
+
+services:
+  app:
+    build: .
+    image: tribalsand-app:dev
+    command: ["bash", "/var/www/html/docker/dev/app-start.sh"]
+    ports:
+      - "${APP_PORT:-8080}:80"
+    volumes:
+      - .:/var/www/html
+      - private-files:/var/www/private      # check-in scans, HR documents (never web-served)
+    env_file:
+      - path: .env                          # optional: your own keys (AI, etc.) — see .env.example
+        required: false
+    environment:
+      # These win over .env, so one .env works both natively and in Docker.
+      DATABASE_URL: postgres://tribalsand:tribalsand@db:5432/tribalsand
+      APP_URL: http://localhost:${APP_PORT:-8080}
+      MAIL_DRIVER: smtp
+      SMTP_HOST: mailpit
+      SMTP_PORT: "1025"
+      SMTP_USER: dev
+      SMTP_PASS: dev
+      SMTP_SECURITY: none
+      MAIL_FROM: Tribal Sand (local) <noreply@tribalsand.test>
+      RESEND_API_KEY: ""                    # never send through a real provider locally
+      CHECKIN_STORAGE_DIR: /var/www/private/checkin
+      BOOKING_TOKEN_SECRET: ${BOOKING_TOKEN_SECRET:-local-dev-only-booking-token-secret-0000}
+      DEV_ADMIN_PASSWORD: ${DEV_ADMIN_PASSWORD:-TribalLocal-2026}   # local test logins only
+    depends_on:
+      db:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+
+  db:
+    image: pgvector/pgvector:pg18
+    environment:
+      POSTGRES_USER: tribalsand
+      POSTGRES_PASSWORD: tribalsand
+      POSTGRES_DB: tribalsand
+      TZ: Africa/Nairobi
+    ports:
+      - "${DB_PORT:-54320}:5432"
+    volumes:
+      - db-data:/var/lib/postgresql
+      - ./docker/dev/db-init:/docker-entrypoint-initdb.d:ro
+      - ./db/dev/snapshots:/snapshots:ro       # drop a production snapshot here (see README)
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U tribalsand -d tribalsand"]   # TCP: stays "not ready" while db-init restores a snapshot
+      interval: 3s
+      timeout: 3s
+      retries: 40
+
+  mailpit:
+    image: axllent/mailpit:latest
+    environment:
+      MP_SMTP_AUTH_ACCEPT_ANY: "1"
+      MP_SMTP_AUTH_ALLOW_INSECURE: "1"
+    ports:
+      - "${MAIL_UI_PORT:-8025}:8025"
+
+volumes:
+  db-data:
+  private-files:

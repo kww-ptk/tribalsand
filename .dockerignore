@@ -1,0 +1,9 @@
+# Kept out of the image build context (local AND production builds).
+# .git was previously copied into the production image; .htaccess hid it, but it
+# never belonged there.
+.git
+.env
+.claude
+logs
+db/dev/snapshots
+*.dump
