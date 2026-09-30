@@ -195,7 +195,7 @@ function set_setting(string $key, string $value): void {
 // Guests can VIEW prices in their currency; every booking still settles in the
 // property's real price_currency. Rates are USD-based, cached in settings['fx_rates'],
 // auto-refreshed daily (api/fx-sync.php) with per-rate admin overrides. Conversion is
-// indicative only — never a source of truth. See MULTICURRENCY-PLAN.md.
+// indicative only — never a source of truth. See docs/plans/MULTICURRENCY-PLAN.md.
 
 /** Supported display currencies. `round` = nearest N to round a *converted* figure to. */
 const TS_CURRENCIES = [

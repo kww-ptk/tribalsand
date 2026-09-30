@@ -105,10 +105,13 @@ clean-up in §4.
    2,079 lines and 72 functions (connection, env, escaping, availability, search,
    quotes, currency). Every page loads it, and there is no autoloader, so each
    file hand-maintains its own `require_once` list.
-6. **The repository root is crowded**: 145 entries, including 107 PHP files
-   (real pages, ~26 journal articles, ~28 one-line 301 stubs for old URLs), 13
-   planning documents, a PDF, a stray `_tmp_holds.txt` and a `.jpg`. It is hard to
-   see what the site's pages actually are.
+6. **The repository root is crowded**: 107 PHP files (real pages, ~26 journal
+   articles, ~28 one-line 301 stubs for old URLs), so it is hard to see what the
+   site's pages actually are. *Partly fixed:* the 12 planning documents, the brief
+   and a PDF moved to `docs/plans/` and `docs/reference/` (index: `docs/README.md`),
+   and `_tmp_holds.txt` was deleted. That file was a debug dump of booking rows
+   with guest names and emails that the web server was serving. `.txt` is
+   not in the `.htaccess` deny list.
 7. **Seed data drifted from production**: seed rooms price in USD while
    production is KES, so the 2027–28 KES rate migrations can't run locally, and
    the demo prices don't match what staff see.
@@ -167,7 +170,7 @@ tribalsand/
 |---|---|---|---|
 | **0 (done on this branch)** | Docker local stack, `bin/dev-setup.php`, `ORDER.txt`, `bin/test.php`, README, `.dockerignore` | none (local only) | done |
 | **1: safety** | `.htaccess` deny for `tests/ bin/ includes/ docker/ reference/`; CI `test` job before deploy; fix the 9 stale tests; branch protection on `master` | low | ½–1 day |
-| **2: tidy root** | Move 13 planning docs → `docs/plans/`; delete `_tmp_holds.txt`; move the stray jpg/pdf into `images/`/`content/`; move the 28 redirect stubs into `.htaccess` rules | low | ½ day |
+| **2: tidy root** | *Docs done* (plans → `docs/plans/`, temp file deleted). Remaining: move the 28 redirect stubs into `.htaccess` rules; remove the unused root `deep-sea-fishing.jpg`; articles → `journal/` | low | ½ day |
 | **3: migration ledger** | `schema_migrations` table; `/admin/migrate.php` records runs and shows "not yet run on production"; new migrations get a numeric prefix (`0128_…`) | low | 1 day |
 | **4: group `includes/` by domain** | Move files into `src/<domain>/` **with a thin forwarding file left at each old path** (`<?php require_once __DIR__.'/../src/rates/rates.php';`), then update callers domain by domain and delete the forwarders. Split `db.php` into core + domain files the same way | medium, mechanical, test-covered | 2–4 days |
 | **5: `public/` web root** | Move served files under `public/`; Dockerfile `DocumentRoot /var/www/html/public`; update `__DIR__ . '/../includes'` paths. After this, nothing outside `public/` can ever be served | medium, one careful PR | 1–2 days |

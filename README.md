@@ -75,7 +75,7 @@ db/seeds/  db/*.sql  demo / starting data
 tests/               one standalone PHP script per area: `php tests/<name>.php`
 docker/              production container: entrypoint + in-container scheduler
 docker/dev/          LOCAL ONLY: container start script, database init
-docs/                runbooks, specs and plans
+docs/                runbooks, specs and plans; start at docs/README.md
 CLAUDE.md            THE developer handbook: every convention and "why" (read it)
 docs/ARCHITECTURE.md how the pieces fit, plus the proposed clean-up plan
 ```
