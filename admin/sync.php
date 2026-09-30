@@ -261,7 +261,8 @@ include __DIR__ . '/_layout.php';
           <td><?= (int)$x['count'] ?></td>
           <td><?= $x['undelivered'] ? '<span class="badge badge--orange">' . (int)$x['undelivered'] . '</span>' : '<span class="text-muted">0</span>' ?></td>
           <td><code class="text-muted" style="font-size:11px"><?= e(substr((string)$x['checksum'], 0, 12)) ?></code></td>
-          <td><?= $x['peer_match'] === null ? '<span class="text-muted">—</span>' : ($x['peer_match'] ? '<span class="badge badge--green">Match</span>' : '<span class="badge badge--red">Mismatch</span>') ?></td>
+          <td><?= $x['peer_match'] === null ? '<span class="text-muted">—</span>' : ($x['peer_match'] ? '<span class="badge badge--green">Match</span>' : '<span class="badge badge--red">Mismatch</span>') ?>
+            <?php if ($x['peer_match'] === false): ?><div class="text-muted" style="font-size:11px;margin-top:2px"><?= e((string) ($x['peer_count'] ?? '?')) ?> rows · <code><?= e(substr((string) ($x['peer_checksum'] ?? '—'), 0, 12)) ?></code></div><?php endif; ?></td>
         </tr>
       <?php endforeach; ?></tbody>
     </table></div>
