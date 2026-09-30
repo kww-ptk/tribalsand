@@ -2,7 +2,8 @@
 /**
  * Admin navigation — ONE definition of the sidebar and the tab strips.
  *
- * The sidebar has two levels: a collapsible GROUP ("Bookings") and its ITEMS
+ * The sidebar has two levels: a collapsible GROUP ("Bookings", drawn as a row with
+ * an icon; its links sit indented under it along a vertical line) and its ITEMS
  * ("Calendar"). An item that covers several related pages lists them as TABS
  * ("Calendar · Conflicts · Highlights · Import"): the sidebar shows one link, and
  * admin/_layout.php prints the tab strip at the top of every page in that item.
@@ -48,7 +49,7 @@ function admin_nav_definition(array $f, array $badge = []): array {
             $item('Dashboard', 'dashboard', [$tab('Dashboard', 'dashboard.php', true)]),   // everyone's landing page
         ]],
 
-        ['key' => 'today', 'title' => 'Today', 'items' => [
+        ['key' => 'today', 'icon' => 'timetable', 'title' => 'Today', 'items' => [
             $item('Front desk', 'frontdesk', [$tab('Front desk', 'frontdesk.php', $on('frontdesk'))]),
             $item('My work', 'mywork', [$tab('My work', 'mywork.php', $on('mywork'))]),
             // Staff and reception count stock from here; owner + manager reach the
@@ -63,7 +64,7 @@ function admin_nav_definition(array $f, array $badge = []): array {
             $item('AI assistant', 'assistant', [$tab('AI assistant', 'assistant.php', $on('assistant'))]),
         ]],
 
-        ['key' => 'bookings', 'title' => 'Bookings', 'items' => [
+        ['key' => 'bookings', 'icon' => 'holds', 'title' => 'Bookings', 'items' => [
             $item('Bookings', 'holds', [
                 $tab('Bookings', ['holds.php', 'booking.php', 'hold-new.php', 'hold-action.php', 'itinerary.php'], $on('bookings')),
             ]),
@@ -85,7 +86,7 @@ function admin_nav_definition(array $f, array $badge = []): array {
             $item('Quote builder', 'quote-builder', [$tab('Quote builder', 'quote-builder.php', $on('bookings'))]),
         ]],
 
-        ['key' => 'team', 'title' => 'Team', 'items' => [
+        ['key' => 'team', 'icon' => 'staff', 'title' => 'Team', 'items' => [
             $item('Tasks', 'tasks', [
                 $tab('Tasks', 'tasks.php', $on('tasks')),
                 $tab('Job timetables', ['task-schedules.php', 'task-schedule-edit.php'], $ownerOrManager),
@@ -99,7 +100,7 @@ function admin_nav_definition(array $f, array $badge = []): array {
             $item('Staff', 'staff', [$tab('Staff', ['staff.php', 'employee.php'], $on('owner'))]),
         ]],
 
-        ['key' => 'restaurant', 'title' => 'Restaurant', 'items' => [
+        ['key' => 'restaurant', 'icon' => 'menus', 'title' => 'Restaurant', 'items' => [
             $item('Reservations', 'reservations', [$tab('Reservations', 'reservations.php', $on('restaurant'))]),
             $item('Menus & setup', 'menus', [
                 $tab('Menus', ['menus.php', 'menu-edit.php'], $on('restaurant') && $ownerOrManager),
@@ -107,7 +108,7 @@ function admin_nav_definition(array $f, array $badge = []): array {
             ]),
         ]],
 
-        ['key' => 'pos', 'title' => 'Point of Sale', 'items' => [
+        ['key' => 'pos', 'icon' => 'pos-till', 'title' => 'Point of Sale', 'items' => [
             ['label' => 'Open till', 'icon' => 'pos-till', 'blank' => true, 'tabs' => [
                 ['label' => 'Open till', 'solo' => 'Open till', 'href' => '/pos/', 'pages' => [], 'show' => $on('posTill'),
                  'badge' => 0, 'badge_class' => 'orange', 'badge_tip' => ''],
@@ -125,7 +126,7 @@ function admin_nav_definition(array $f, array $badge = []): array {
             ]),
         ]],
 
-        ['key' => 'inventory', 'title' => 'Inventory', 'items' => [
+        ['key' => 'inventory', 'icon' => 'inventory', 'title' => 'Inventory', 'items' => [
             $item('Inventory', 'inventory', [
                 $tab('Inventory', ['inventory.php', 'inventory-item.php', 'inventory-import.php'], $on('inventory')),
                 $tab('Locations', ['inventory-locations.php', 'inventory-location.php'], $on('inventory')),
@@ -138,7 +139,7 @@ function admin_nav_definition(array $f, array $badge = []): array {
             ]),
         ]],
 
-        ['key' => 'finance', 'title' => 'Finance', 'items' => [
+        ['key' => 'finance', 'icon' => 'reports', 'title' => 'Finance', 'items' => [
             $item('Reports', 'reports', [$tab('Reports', 'reports.php', $on('reports'))]),
             $item('Accounting', 'acct-documents', [
                 $tab('Invoices & payments', 'acct-documents.php', $on('acctDocs')),
@@ -147,7 +148,7 @@ function admin_nav_definition(array $f, array $badge = []): array {
             ]),
         ]],
 
-        ['key' => 'website', 'title' => 'Website', 'items' => [
+        ['key' => 'website', 'icon' => 'venues', 'title' => 'Website', 'items' => [
             $item('Properties & rooms', 'venues', [
                 $tab('Properties', ['venues.php', 'venue-edit.php'], $on('owner')),
                 $tab('Rooms', ['rooms.php', 'room-edit.php'], $on('owner')),
@@ -171,7 +172,7 @@ function admin_nav_definition(array $f, array $badge = []): array {
             ]),
         ]],
 
-        ['key' => 'settings', 'title' => 'Settings', 'items' => [
+        ['key' => 'settings', 'icon' => 'settings', 'title' => 'Settings', 'items' => [
             // Settings, Pre-Check-in and Migrations draw their OWN tab row (admin/settings.php),
             // so this is one plain link that owns all three pages — no second strip above it.
             $item('Settings', 'settings', [$tab('Settings', ['settings.php', 'checkin-settings.php', 'migrate.php'], $on('owner'))]),
@@ -228,7 +229,7 @@ function admin_nav_resolve(array $definition, string $script): array {
             if ($isActive) $active = $resolved;
             $items[] = $resolved;
         }
-        if ($items) $groups[] = ['key' => $g['key'], 'title' => $g['title'], 'items' => $items];
+        if ($items) $groups[] = ['key' => $g['key'], 'title' => $g['title'], 'icon' => $g['icon'] ?? '', 'items' => $items];
     }
     return ['groups' => $groups, 'active' => $active];
 }
@@ -271,7 +272,8 @@ function admin_nav_sidebar_html(array $nav): string {
         if ($g['title'] === '') { $out .= '<div class="navhome">' . $links . '</div>'; continue; }
         $open = ($hasActive || in_array($g['key'], ['today', 'bookings'], true)) ? ' open' : '';
         $out .= '<details class="navgroup" data-group="' . e($g['key']) . '"' . $open . '>'
-              . '<summary class="navgroup__head"><span>' . e($g['title']) . '</span>' . $chev . '</summary>'
+              . '<summary class="navgroup__head">' . ($g['icon'] !== '' ? admin_nav_icon($g['icon']) : '')
+              . '<span>' . e($g['title']) . '</span>' . $chev . '</summary>'
               . '<div class="navgroup__items">' . $links . '</div></details>';
     }
     return $out;

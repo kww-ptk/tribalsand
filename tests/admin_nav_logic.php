@@ -64,6 +64,10 @@ $noIcon = [];
 foreach (admin_nav_definition($none) as $g) foreach ($g['items'] as $it) if (!isset($icons[$it['icon']])) $noIcon[] = $it['icon'];
 check('every item has an icon' . ($noIcon ? ' — ' . implode(', ', $noIcon) : ''), !$noIcon);
 
+$noGroupIcon = [];
+foreach (admin_nav_definition($none) as $g) if (($g['title'] ?? '') !== '' && !isset($icons[$g['icon'] ?? ''])) $noGroupIcon[] = $g['key'];
+check('every titled group has an icon' . ($noGroupIcon ? ' — ' . implode(', ', $noGroupIcon) : ''), !$noGroupIcon);
+
 // ── What each role sees ─────────────────────────────────────────────────────
 $owner = $labels($nav('owner'));
 check('owner: Dashboard is the first link, outside any group', $owner[0] === 'Dashboard');
@@ -131,6 +135,7 @@ check('staff count through Today › Stock count', ($nav('housekeeping', 'invent
 $side = admin_nav_sidebar_html($nav('reception', 'frontdesk.php'));
 check('sidebar: Today + Bookings open by default, the rest closed', str_contains($side, 'data-group="today" open') && str_contains($side, 'data-group="bookings" open')
     && str_contains($side, 'data-group="restaurant">'));
+check('sidebar: a group header is icon + name + chevron', (bool)preg_match('~<summary class="navgroup__head"><svg[^>]*>.*?</svg><span>Today</span>~s', $side));
 check('sidebar: a link lists every page it stands for', str_contains(admin_nav_sidebar_html($n), 'data-pages="gantt.php conflicts.php calendar-highlights.php import-bookings.php"'));
 check('sidebar: Open till opens in a new tab', str_contains(admin_nav_sidebar_html($nav('shop')), 'href="/pos/" class="sidebar__link" target="_blank"'));
 check('sidebar: the active group opens even when it is closed by default', str_contains(admin_nav_sidebar_html($nav('owner', 'sync.php')), 'data-group="settings" open'));

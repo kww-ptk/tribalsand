@@ -179,6 +179,9 @@ $pageTitle  = 'Inventory';
 $activeMenu = 'inventory';
 include __DIR__ . '/_layout.php';
 ?>
+<?php /* Styles first: the table below is long, and CSS printed after it left the page unstyled while it loaded. */ ?>
+<?= inv_grid_css() ?>
+
 <div class="page-header">
   <h1>Inventory</h1>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -280,7 +283,7 @@ include __DIR__ . '/_layout.php';
 <?php else: ?>
 <form method="POST" action="/admin/inventory.php" id="igForm">
   <?= csrf_field() ?><input type="hidden" name="place" value="<?= (int)$place ?>">
-  <div class="ig-wrap"><table class="ig" id="igTable">
+  <div class="ig-wrap"><table class="ig" id="igTable" data-paginate="50">
     <thead><tr>
       <th class="ig-check"><input type="checkbox" id="igAll" aria-label="Select all shown"></th>
       <th data-sort="name">Item</th>
@@ -363,7 +366,6 @@ include __DIR__ . '/_layout.php';
 <?php endif; ?>
 <?php endif; ?>
 <?= inv_shared_css() ?>
-<?= inv_grid_css() ?>
 <?= inv_grid_js() ?>
 <script>
 (function () {

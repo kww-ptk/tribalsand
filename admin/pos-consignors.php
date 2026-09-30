@@ -230,7 +230,8 @@ document.querySelectorAll('#poscPeriod input[type=hidden]').forEach(function (i)
 @media (max-width:560px){.posc-two{grid-template-columns:1fr}.posc-pay .inp{width:100%!important}.posc-period{flex-wrap:wrap}}
 .posc-grid .table-wrap .data-table{min-width:0}
 .posc-num{text-align:right;white-space:nowrap}
-.posc-act{display:flex;gap:4px;justify-content:flex-end}
+.posc-act{white-space:nowrap;text-align:right}
+.posc-act > *{display:inline-flex;vertical-align:middle;margin-left:4px}
 .posc-off td{opacity:.6}
 .posc-note{font-size:12px;margin-top:2px}
 .posc-two{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
