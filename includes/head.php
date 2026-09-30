@@ -118,6 +118,7 @@ window.TS_CUR_META = <?= json_encode(array_map(fn($m) => ['symbol' => $m['symbol
 <link rel="stylesheet" href="css/booking.css?v=<?= filemtime(__DIR__ . '/../css/booking.css') ?>">
 <script src="js/datepicker.js?v=<?= filemtime(__DIR__ . '/../js/datepicker.js') ?>" defer></script>
 <script src="js/booking-widget.js?v=<?= filemtime(__DIR__ . '/../js/booking-widget.js') ?>" defer></script>
+<script src="js/alternatives.js?v=<?= filemtime(__DIR__ . '/../js/alternatives.js') ?>" defer></script>
 <?php endif; ?>
 
 <?php if (!empty($page_rooms_rates)): ?>
@@ -126,6 +127,7 @@ window.TS_CUR_META = <?= json_encode(array_map(fn($m) => ['symbol' => $m['symbol
 <link rel="stylesheet" href="css/rooms-and-rates.css?v=<?= filemtime(__DIR__ . '/../css/rooms-and-rates.css') ?>">
 <script src="js/datepicker.js?v=<?= filemtime(__DIR__ . '/../js/datepicker.js') ?>" defer></script>
 <script src="js/booking-widget.js?v=<?= filemtime(__DIR__ . '/../js/booking-widget.js') ?>" defer></script>
+<script src="js/alternatives.js?v=<?= filemtime(__DIR__ . '/../js/alternatives.js') ?>" defer></script>
 <script src="js/booking-modal.js?v=<?= filemtime(__DIR__ . '/../js/booking-modal.js') ?>" defer></script>
 <script src="js/availability-search.js?v=<?= filemtime(__DIR__ . '/../js/availability-search.js') ?>" defer></script>
 <?php endif; ?>

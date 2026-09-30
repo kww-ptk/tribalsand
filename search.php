@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/includes/db.php';
+require_once __DIR__ . '/includes/listing-alternatives.php';
 
 /* ── Inputs ── */
 $checkin  = trim($_GET['checkin']  ?? '');
@@ -40,15 +41,11 @@ $cur_url = function (string $code): string {
     return '?' . http_build_query($q);
 };
 
-/* Property type per venue (mirrors the homepage "Our Properties" filters). */
-$venue_type = [
-    'maya-kobe' => 'hotel', 'zuri' => 'hotel', 'maya_ilai' => 'hotel',
-    'my-amani'  => 'villa', 'enkare-bofa' => 'villa', 'sandbox' => 'villa',
-];
-/* Shown on each result card. Wording matches the filter chips above the list,
-   so "Private Villas" as a filter and "Private Villa" on the card agree. */
-$venue_type_label = ['hotel' => 'Boutique Hotel', 'villa' => 'Private Villa'];
-$loc_slug = fn($loc) => strtolower(trim(preg_split('/[·,]/', (string)$loc)[0] ?? ''));
+/* Property type per venue + card label — shared with the listing page's
+   "other places" list (includes/listing-alternatives.php). */
+$venue_type       = TS_VENUE_TYPES;
+$venue_type_label = TS_VENUE_TYPE_LABELS;
+$loc_slug = fn($loc) => ts_venue_town((string)$loc);
 
 /* ── Page meta ── */
 $page_title = 'Search Availability · Tribal Sand';

@@ -15,6 +15,9 @@
  *   $bk_hide_children = true;   // adults-only property — drop the Children
  *                               // stepper. The hidden children field stays at
  *                               // 0 so the submit payload is unchanged.
+ *   $bk_alternatives = true;    // whole-property page: when the chosen dates
+ *                               // are taken, list the other properties with
+ *                               // space (js/alternatives.js).
  */
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/turnstile.php';
@@ -66,6 +69,15 @@ $room_slug  = $__room['slug'];
 $room_name  = $__room['name'];
 $room_price = (float)($__room['price_amount'] ?? 0);
 $room_curr  = $__room['price_currency'] ?? 'USD';
+$bk_alternatives = !empty($bk_alternatives);
+$__bk_venue_slug = '';
+if ($bk_alternatives && !empty($__room['venue_id'])) {
+    try {
+        $__bk_venue_slug = (string) db_query('SELECT slug FROM venues WHERE id = :id', [':id' => (int)$__room['venue_id']])->fetchColumn();
+    } catch (Throwable $e) {
+        $__bk_venue_slug = '';
+    }
+}
 
 // ── ENQUIRY MODE ──────────────────────────────────────────────────────────────
 if ($__form_mode !== 'availability') {
@@ -190,6 +202,10 @@ if ($__form_mode !== 'availability') {
       </div>
       <div class="bk-total__hint">Final price confirmed by email</div>
     </div>
+
+    <?php if ($bk_alternatives): ?>
+    <div class="ts-alt" id="bkAlternatives" data-venue="<?= e($__bk_venue_slug) ?>" hidden></div>
+    <?php endif; ?>
 
     <div class="bk-feedback" data-bk-feedback hidden></div>
     <div class="bk-nav">
