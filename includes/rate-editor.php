@@ -1238,6 +1238,55 @@ function rate_editor_options(): array {
     ];
 }
 
+/**
+ * The Buyout check on the Rates page (owner): for every published property with
+ * ONE whole-property room and at least two published rooms, the nights from
+ * $today (Nairobi) over the next RE_BUYOUT_CHECK_NIGHTS where the buyout is not
+ * the sum of the rooms — computed exactly as mode 'sum' previews it, so the
+ * card's "Update" button sends that request + fingerprint to the normal apply
+ * (log + undo included). Writes nothing. Also compares the base prices, which
+ * the check does not change (they are set on the room page).
+ */
+function rate_editor_buyout_checks(string $today, int $nights = RE_BUYOUT_CHECK_NIGHTS): array {
+    $last = (new DateTime($today))->modify('+' . max(0, $nights - 1) . ' days')->format('Y-m-d');
+    $out = [];
+    foreach (rate_editor_options()['venues'] as $v) {
+        if (!$v['buyout_room_id'] || !$v['is_published']) continue;
+        $members = array_values(array_filter($v['rooms'], fn($r) => !$r['is_entire_place'] && $r['is_published']));
+        if (count($members) < 2) continue;
+        $buyout = null;
+        foreach ($v['rooms'] as $r) if ($r['id'] === $v['buyout_room_id']) $buyout = $r;
+        $data = ['rooms' => [$v['buyout_room_id']], 'ranges' => [[$today, $last]], 'mode' => 'sum'];
+        $row = ['venue_id' => $v['id'], 'venue_name' => $v['name'], 'room_id' => $buyout['id'], 'room_name' => $buyout['name'],
+                'currency' => $buyout['currency'], 'first' => $today, 'last' => $last, 'nights_checked' => $nights,
+                'nights_off' => 0, 'runs' => [], 'notes' => [], 'error' => null, 'request' => $data, 'fingerprint' => null];
+        // Base prices: the sum of the rooms' base prices in the buyout's currency.
+        $baseSum = 0.0;
+        foreach ($members as $m) if ($m['currency'] === $buyout['currency'] && $m['base_price'] > 0) $baseSum += $m['base_price'];
+        $row['base_price'] = $buyout['base_price'];
+        $row['base_sum']   = round($baseSum, 2);
+        try {
+            [$req, $rooms, $plan] = rate_editor_plan($data);
+        } catch (RateEditorRefusal $e) {
+            $out[] = ['error' => $e->getMessage()] + $row;
+            continue;
+        }
+        $e = $plan['rooms'][$buyout['id']];
+        $row['fingerprint'] = re_fingerprint($req, $plan, $rooms);
+        $row['nights_off']  = count($e['targets']);
+        $row['notes']       = $e['notes'];
+        foreach (re_group_runs($e['targets']) as $run) {
+            $was = [];
+            for ($d = $run['from']; $d < $run['to']; $d = re_next_day($d)) $was[] = (float)$e['before'][$d]['price'];
+            $row['runs'][] = ['first' => $run['from'], 'last' => re_prev_day($run['to']), 'nights' => $run['nights'],
+                              'price' => (float)$run['price'], 'label' => $run['label'],
+                              'was_min' => min($was), 'was_max' => max($was)];
+        }
+        $out[] = $row;
+    }
+    return $out;
+}
+
 /** Best-effort audit trail; inside a caller's transaction it runs in a SAVEPOINT so a failure cannot abort it. */
 function re_audit(string $action, int $changeId, string $notes): void {
     if (!function_exists('audit_log')) return;

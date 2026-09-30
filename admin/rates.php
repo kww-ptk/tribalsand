@@ -191,6 +191,8 @@ include __DIR__ . '/_layout.php';
 <div class="alert alert--info">No properties are assigned to your account.</div>
 <?php else: ?>
 
+<?php if ($reOwner) include __DIR__ . '/../includes/buyout-check-view.php'; ?>
+
 <div class="rc-bar">
   <nav class="rc-seg" aria-label="Rates view">
     <a href="<?= e($url(['view' => 'card', 'month' => null, 'venue' => null, 'year' => $year])) ?>" data-keep-cur class="<?= $view === 'card' ? 'is-on' : '' ?>">Rate card</a>
