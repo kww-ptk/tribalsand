@@ -286,6 +286,42 @@ $wsB = $bMaps; $wsB[10] = mk_map('2099-06-01', 3, 550, ' Mid season ');
 $p = plan(['rooms' => [11, 12], 'ranges' => $bRng, 'mode' => 'fixed', 'amount' => 200, 'label' => 'Mid season', 'update_buyouts' => true], $bRooms, $wsB);
 check('buyout: already at the sum with a whitespace-padded label → unchanged', ($p['rooms'][10]['targets'] ?? null) === []);
 
+// ── "Sum of the rooms" mode — the Buyout check (pure) ───────────────────────
+// Published, priced, same-currency rooms of Zuri add up to 100 + 120 + 150 = 370.
+$sm = $bMaps; $sm[10] = mk_map('2099-06-01', 3, 370, 'Mid season');
+$sreqS = ['rooms' => [10], 'ranges' => $bRng, 'mode' => 'sum'];
+$p = plan($sreqS, $bRooms, $sm);
+check('sum: buyout already at the sum → unchanged', $p['rooms'][10]['status'] === 'unchanged' && $p['rooms'][10]['targets'] === []
+    && $p['rooms'][10]['is_buyout'] === true);
+$sm[10]['2099-06-02'] = ['price' => 300.0, 'label' => 'Mid season', 'rate_id' => 1, 'is_override' => true];
+$p = plan($sreqS, $bRooms, $sm);
+check('sum: only the night that differs changes, to the sum',
+    array_keys($p['rooms'][10]['targets']) === ['2099-06-02'] && $p['rooms'][10]['targets']['2099-06-02']['price'] === 370.0);
+check('sum: label = the label most rooms carry that night',
+    $p['rooms'][10]['targets']['2099-06-02']['label'] === re_majority_label([null, null, 'Mid season']));
+$notes = implode(' ', $p['rooms'][10]['notes']);
+check('sum: 0-priced and other-currency rooms left out and named, unpublished ignored',
+    str_contains($notes, 'Anga Suite') && str_contains($notes, 'Jua Suite') && !str_contains($notes, 'Old Suite'));
+$bs = $bMaps; $bs[10] = mk_map('2099-06-01', 3, 370, null, false);
+check('sum: a base-price night already at the sum counts as matching', plan($sreqS, $bRooms, $bs)['rooms'][10]['targets'] === []);
+$lblOnly = $bMaps; $lblOnly[10] = mk_map('2099-06-01', 3, 370, 'Peak');
+check('sum: a different label alone is not a mismatch (price is what must add up)', plan($sreqS, $bRooms, $lblOnly)['rooms'][10]['targets'] === []);
+$none = ['rooms' => $bRooms, 'maps' => $bMaps];
+foreach ([11, 12, 13] as $mid) { $none['maps'][$mid] = mk_map('2099-06-01', 3, 0, null, false); }
+$p = plan($sreqS, $bRooms, $none['maps']);
+check('sum: a night with no priced rooms is left alone, with a note',
+    $p['rooms'][10]['targets'] === [] && str_contains(implode(' ', $p['rooms'][10]['notes']), 'no priced rooms'));
+check('sum: refuses a room that is not a whole-property room',
+    (refusal(fn() => plan(['rooms' => [11], 'ranges' => $bRng, 'mode' => 'sum'], $bRooms, $bMaps)) ?? '') !== ''
+    && str_contains((string)refusal(fn() => plan(['rooms' => [11], 'ranges' => $bRng, 'mode' => 'sum'], $bRooms, $bMaps)), 'whole-property'));
+check('sum: refuses a property with two whole-property rooms',
+    refusal(fn() => plan($sreqS, $two, $bMaps + [17 => mk_map('2099-06-01', 3, 0, null, false)])) !== null);
+$solo = [10 => $bRooms[10], 11 => $bRooms[11]];
+check('sum: refuses a property with fewer than two published rooms', refusal(fn() => plan($sreqS, $solo, $bMaps)) !== null);
+$sq = re_normalize_request($sreqS);
+check('sum: summary says what it does', str_contains(re_summary($sq, re_compute($sq, $bRooms, $sm), $bRooms), 'sum of the rooms'));
+check('sum: the buyout room is not also "buyout updated"', !str_contains(re_summary($sq, re_compute($sq, $bRooms, $sm), $bRooms), 'buyout updated'));
+
 // ── Money display: cents only when there are cents ──────────────────────────
 check('display: $99.50 keeps its cents', re_range_text(99.5, 99.5, 'USD') === '$99.50');
 check('display: a range with cents on one end', re_range_text(99.5, 120.0, 'USD') === '$99.50 – 120');

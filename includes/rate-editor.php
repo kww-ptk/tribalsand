@@ -51,7 +51,9 @@ const RE_MAX_AMOUNT    = 99999999.99;   // rates.price_amount is NUMERIC(10,2)
 const RE_LABEL_MAX     = 100;          // rates.label is VARCHAR(100)
 const RE_LOG_DEFAULT   = 20;
 const RE_LOG_MAX       = 100;
-const RE_MODES         = ['fixed', 'percent', 'match', 'base'];
+const RE_MODES         = ['fixed', 'percent', 'match', 'base', 'sum'];
+/** How far ahead the Buyout check looks (from today, Nairobi). */
+const RE_BUYOUT_CHECK_NIGHTS = 730;
 
 /** A request the owner can fix (bad input, currency mix, price ≤ 0, undo blocked) → 422. */
 class RateEditorRefusal extends RuntimeException {}
@@ -194,7 +196,8 @@ function re_normalize_request(array $data): array {
         $req['match_label'] = $m;
     }
 
-    if ($mode !== 'base') {
+    // 'sum' labels each night itself (the label most of the property's rooms carry).
+    if ($mode !== 'base' && $mode !== 'sum') {
         if (array_key_exists('label', $data) && $data['label'] !== null) {
             $l = re_clean_label($data['label']);
             $req['label'] = $l !== '' ? $l : null;
@@ -454,6 +457,8 @@ function re_compute(array $req, array $rooms, array $maps): array {
         }
     }
 
+    if ($req['mode'] === 'sum') return re_compute_sum($req, $rooms, $maps);
+
     $out = ['rooms' => [], 'buyouts' => [], 'buyouts_available' => false];
     foreach ($sel as $id) $out['rooms'][$id] = re_room_plan($req, $rooms[$id], $maps[$id] ?? []);
 
@@ -487,35 +492,13 @@ function re_compute(array $req, array $rooms, array $maps): array {
         $bDef = (float)$b['price_amount'];
         $bMap = $maps[$bid] ?? [];
         $targets = []; $before = []; $leftOut = [];
+        $memberTargets = array_map(fn($e) => $e['targets'], $out['rooms']);
         foreach (array_keys($affected) as $ymd) {
-            $sum = 0.0; $labels = [];
-            foreach ($members as $mid => $m) {
-                $mc = strtoupper((string)$m['price_currency']);
-                if ($mc !== $bCur) {
-                    $leftOut[$mid] = ['room_id' => (int)$mid, 'name' => (string)$m['name'],
-                                      'reason' => "priced in {$mc}, the whole-property room in {$bCur}"];
-                    continue;
-                }
-                $t = $out['rooms'][$mid]['targets'][$ymd] ?? null;
-                if ($t !== null) {
-                    $p = (float)$t['price'];
-                    $l = $t['base'] ? null : $t['label'];
-                } else {
-                    $night = $maps[$mid][$ymd] ?? re_base_night((float)$m['price_amount']);
-                    $p = (float)$night['price'];
-                    $l = !empty($night['is_override']) ? ($night['label'] ?? null) : null;
-                }
-                if ($p <= 0) {
-                    $leftOut[$mid] ??= ['room_id' => (int)$mid, 'name' => (string)$m['name'], 'reason' => 'no price set'];
-                    continue;
-                }
-                $sum += $p;
-                $labels[] = $l;
-            }
-            if ($sum <= 0) { $info['nights_skipped']++; continue; }
-            $tp = round($sum, 2);
+            $sum = re_buyout_night_sum($bCur, $members, $ymd, $maps, $memberTargets, $leftOut);
+            if ($sum === null) { $info['nights_skipped']++; continue; }
+            $tp = $sum['price'];
             re_check_max($tp, (string)$b['name'], $ymd);
-            $tl = re_majority_label($labels);
+            $tl = $sum['label'];
             $night = $bMap[$ymd] ?? re_base_night($bDef);
             $curL  = ($night['label'] ?? null) !== null && trim((string)$night['label']) !== '' ? (string)$night['label'] : null;
             if (!empty($night['is_override']) && abs((float)$night['price'] - $tp) < 0.005 && re_label_same($curL, $tl)) continue;
@@ -531,6 +514,98 @@ function re_compute(array $req, array $rooms, array $maps): array {
         $info['nights']   = count($targets);
         $out['buyouts'][] = $info;
         $out['rooms'][$bid] = ['room_id' => $bid, 'is_buyout' => true,
+            'status' => $targets ? 'change' : 'unchanged', 'targets' => $targets, 'before' => $before,
+            'notes' => $notes, 'skipped' => null];
+    }
+    return $out;
+}
+
+/**
+ * What a buyout costs on one night: the sum of its property's published rooms
+ * (`$members`). PURE. The ONE place that adds a buyout up — used by the editor's
+ * "Also update buyouts" and by the Buyout check (mode 'sum'), so the two can
+ * never disagree. `$memberTargets` [room id => [ymd => target]] is a change in
+ * flight: its new price counts instead of the current one. A room priced in
+ * another currency than the buyout, or with no price that night, is left out and
+ * recorded in `$leftOut` (never summed across currencies, never counted as 0).
+ * @return array{price: float, label: ?string}|null  null = no priced rooms that night
+ */
+function re_buyout_night_sum(string $bCur, array $members, string $ymd, array $maps, array $memberTargets, array &$leftOut): ?array {
+    $sum = 0.0; $labels = [];
+    foreach ($members as $mid => $m) {
+        $mc = strtoupper((string)$m['price_currency']);
+        if ($mc !== $bCur) {
+            $leftOut[$mid] = ['room_id' => (int)$mid, 'name' => (string)$m['name'],
+                              'reason' => "priced in {$mc}, the whole-property room in {$bCur}"];
+            continue;
+        }
+        $t = $memberTargets[$mid][$ymd] ?? null;
+        if ($t !== null) {
+            $p = (float)$t['price'];
+            $l = $t['base'] ? null : $t['label'];
+        } else {
+            $night = $maps[$mid][$ymd] ?? re_base_night((float)$m['price_amount']);
+            $p = (float)$night['price'];
+            $l = !empty($night['is_override']) ? ($night['label'] ?? null) : null;
+        }
+        if ($p <= 0) {
+            $leftOut[$mid] ??= ['room_id' => (int)$mid, 'name' => (string)$m['name'], 'reason' => 'no price set'];
+            continue;
+        }
+        $sum += $p;
+        $labels[] = $l;
+    }
+    if ($sum <= 0) return null;
+    return ['price' => round($sum, 2), 'label' => re_majority_label($labels)];
+}
+
+/**
+ * Mode 'sum' — set each selected buyout to the sum of its property's published
+ * rooms, on the nights where it differs. PURE. Only the PRICE must add up: a
+ * night already at the sum is left alone whatever its label or whether it is an
+ * override; a changed night gets the label most of the rooms carry. Refuses a
+ * room that is not the property's one whole-property room, or a property with
+ * fewer than two published rooms to add up.
+ * @throws RateEditorRefusal
+ */
+function re_compute_sum(array $req, array $rooms, array $maps): array {
+    $out = ['rooms' => [], 'buyouts' => [], 'buyouts_available' => false];
+    foreach ($req['rooms'] as $bid) {
+        $b = $rooms[$bid];
+        $bName = (string)$b['name'];
+        if (empty($b['is_entire_place']) || $b['venue_id'] === null) {
+            throw new RateEditorRefusal("{$bName} is not a whole-property room — only a buyout can be set to the sum of its property's rooms.");
+        }
+        $vid    = (int)$b['venue_id'];
+        $vRooms = array_filter($rooms, fn($r) => $r['venue_id'] !== null && (int)$r['venue_id'] === $vid);
+        if (count(array_filter($vRooms, fn($r) => !empty($r['is_entire_place']))) !== 1) {
+            throw new RateEditorRefusal(($b['venue_name'] ?? 'This property') . ' has more than one whole-property room — set its buyout by hand.');
+        }
+        $members = array_filter($vRooms, fn($r) => empty($r['is_entire_place']) && !empty($r['is_published']));
+        if (count($members) < 2) {
+            throw new RateEditorRefusal(($b['venue_name'] ?? 'This property') . ' needs at least two published rooms to add up.');
+        }
+        $bCur = strtoupper((string)$b['price_currency']);
+        $bMap = $maps[$bid] ?? [];
+        $targets = []; $before = []; $leftOut = []; $noPrice = 0;
+        foreach ($req['nights'] as $ymd) {
+            $sum = re_buyout_night_sum($bCur, $members, $ymd, $maps, [], $leftOut);
+            if ($sum === null) { $noPrice++; continue; }
+            re_check_max($sum['price'], $bName, $ymd);
+            $night = $bMap[$ymd] ?? re_base_night((float)$b['price_amount']);
+            if (abs((float)$night['price'] - $sum['price']) < 0.005) continue;   // already adds up
+            $targets[$ymd] = ['price' => $sum['price'], 'label' => $sum['label'], 'base' => false];
+            $before[$ymd]  = $night;
+        }
+        $notes = [];
+        if ($leftOut) {
+            $notes[] = 'Not counted: ' . implode(', ', array_map(fn($l) => $l['name'] . ' (' . $l['reason'] . ')', array_values($leftOut))) . '.';
+        }
+        if ($noPrice > 0) {
+            $notes[] = $noPrice . ' ' . ($noPrice === 1 ? 'night' : 'nights') . ' left as ' . ($noPrice === 1 ? 'it is' : 'they are')
+                     . ' — no priced rooms to add up.';
+        }
+        $out['rooms'][$bid] = ['room_id' => (int)$bid, 'is_buyout' => true,
             'status' => $targets ? 'change' : 'unchanged', 'targets' => $targets, 'before' => $before,
             'notes' => $notes, 'skipped' => null];
     }
@@ -597,6 +672,9 @@ function re_summary(array $req, array $plan, array $rooms): string {
             break;
         case 'match':
             $parts[] = 'match ' . $req['match_label'] . ($lbl !== '' && !re_label_eq($lbl, $req['match_label']) ? ' as ' . $lbl : '');
+            break;
+        case 'sum':
+            $parts[] = 'buyout = sum of the rooms';
             break;
         default:
             $parts[] = 'back to base price';
