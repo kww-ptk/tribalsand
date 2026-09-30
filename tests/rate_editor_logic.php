@@ -100,6 +100,22 @@ check('majority label: base majority → no label', re_majority_label([null, nul
 check('majority label: tie prefers a season over base', re_majority_label([null, 'Mid']) === 'Mid');
 check('majority label: tie between seasons → the higher season', re_majority_label(['Mid', 'Peak']) === 'Peak');
 
+// ── Limits are checked before any work (no fatal on a huge request) ─────────
+$m = refusal(fn() => re_normalize_request(['rooms' => [1], 'ranges' => [['0001-01-01', '9999-12-30']], 'mode' => 'base']));
+check('cap: a 0001 → 9999 range is refused (before building ~3.65M nights)', $m !== null && str_contains($m, 'nights per change'));
+check('cap: a last night of 9999-12-31 (checkout in year 10000) is refused, never silently dropped',
+    refusal(fn() => re_normalize_request(['rooms' => [1], 'ranges' => [['0001-01-01', '9999-12-31']], 'mode' => 'base'])) !== null);
+$m = refusal(fn() => re_normalize_request(['rooms' => [1], 'ranges' => [['2099-01-01', '2099-12-31'], ['2100-01-01', '2100-12-31'], ['2101-01-01', '2101-12-31'], ['2102-01-01', '2102-12-31']], 'mode' => 'base']));
+check('cap: the night cap counts every merged range together', $m !== null && str_contains($m, 'nights per change'));
+check('cap: a huge room list is refused', refusal(fn() => re_normalize_request(['rooms' => range(1, 200000), 'ranges' => [['2099-01-01', '2099-01-01']], 'mode' => 'base'])) !== null);
+
+// ── Amount ceiling (rates.price_amount is NUMERIC(10,2)) ────────────────────
+check('max: RE_MAX_AMOUNT is the NUMERIC(10,2) ceiling', RE_MAX_AMOUNT === 99999999.99);
+$m = refusal(fn() => re_normalize_request(['rooms' => [1], 'ranges' => [['2099-01-01', '2099-01-01']], 'mode' => 'fixed', 'amount' => 100000000]));
+check('max: a fixed price above the ceiling is refused, readably', $m !== null && str_contains($m, 'maximum price'));
+check('max: a fixed price AT the ceiling is accepted',
+    refusal(fn() => re_normalize_request(['rooms' => [1], 'ranges' => [['2099-01-01', '2099-01-01']], 'mode' => 'fixed', 'amount' => 99999999.99])) === null);
+
 // ── Run grouping ────────────────────────────────────────────────────────────
 $t = fn(float $p, ?string $l, bool $b = false) => ['price' => $p, 'label' => $l, 'base' => $b];
 $runs = re_group_runs([
@@ -171,6 +187,21 @@ $p = plan(['rooms' => [4], 'ranges' => [['2099-06-01', '2099-06-03']], 'mode' =>
 check('percent: a room with no price on any night is skipped', $p['rooms'][4]['status'] === 'skipped' && $p['rooms'][4]['skipped'] !== null);
 check('percent: a result that rounds to 0 is refused',
     refusal(fn() => plan(['rooms' => [1], 'ranges' => $rng, 'mode' => 'percent', 'pct' => -99.99], $rooms, $maps)) !== null);
+// Exact half-way results must round UP, not fall to x.4999… in binary.
+$pct = fn(float $price, string $cur, float $p) => plan(['rooms' => [7], 'ranges' => [['2099-06-01', '2099-06-01']], 'mode' => 'percent', 'pct' => $p],
+    [7 => mk_room(7, 'Half Room', 10, $price, $cur)], [7 => mk_map('2099-06-01', 1, $price, null, false)])['rooms'][7]['targets']['2099-06-01']['price'] ?? null;
+check('percent: KES 350 −30% = 245 → 250 (half up)', $pct(350, 'KES', -30) === 250.0);
+check('percent: KES 1,450 −30% = 1,015 → 1,020 (half up)', $pct(1450, 'KES', -30) === 1020.0);
+check('percent: USD 5 −30% = 3.5 → 4 (half up)', $pct(5, 'USD', -30) === 4.0);
+$m = refusal(fn() => plan(['rooms' => [7], 'ranges' => [['2099-06-01', '2099-06-01']], 'mode' => 'percent', 'pct' => 500],
+    [7 => mk_room(7, 'Big Room', 10, 20000000, 'KES')], [7 => mk_map('2099-06-01', 1, 20000000, null, false)]));
+check('percent: a result above the maximum price is refused', $m !== null && str_contains($m, 'maximum price') && str_contains($m, 'Big Room'));
+
+// Whitespace in a stored label is not a difference.
+$wsRooms = [8 => mk_room(8, 'Space Room', 10, 100, 'USD')];
+$wsMaps  = [8 => mk_map('2099-06-01', 2, 200, ' Mid season ')];
+$p = plan(['rooms' => [8], 'ranges' => [['2099-06-01', '2099-06-02']], 'mode' => 'fixed', 'amount' => 200, 'label' => 'Mid season'], $wsRooms, $wsMaps);
+check('label: " Mid season " already at 200 / "Mid season" is unchanged', $p['rooms'][8]['targets'] === [] && $p['rooms'][8]['status'] === 'unchanged');
 
 // match a season
 $mRooms = [
@@ -245,6 +276,27 @@ check('buyout: a change to an unpublished room does not touch the buyout', !isse
 $two = $bRooms; $two[17] = mk_room(17, 'Second Villa', 30, 0, 'USD', true);
 $p = plan(['rooms' => [11], 'ranges' => $bRng, 'mode' => 'fixed', 'amount' => 200, 'update_buyouts' => true], $two, $bMaps + [17 => mk_map('2099-06-01', 3, 0, null, false)]);
 check('buyout: not offered when a property has two whole-property rooms', $p['buyouts_available'] === false);
+$m = refusal(fn() => plan(['rooms' => [11, 12], 'ranges' => $bRng, 'mode' => 'fixed', 'amount' => 60000000, 'update_buyouts' => true], $bRooms, $bMaps));
+check('buyout: a sum above the maximum price is refused', $m !== null && str_contains($m, 'maximum price') && str_contains($m, 'Zuri — Whole Villa'));
+$wsB = $bMaps; $wsB[10] = mk_map('2099-06-01', 3, 550, ' Mid season ');
+$p = plan(['rooms' => [11, 12], 'ranges' => $bRng, 'mode' => 'fixed', 'amount' => 200, 'label' => 'Mid season', 'update_buyouts' => true], $bRooms, $wsB);
+check('buyout: already at the sum with a whitespace-padded label → unchanged', ($p['rooms'][10]['targets'] ?? null) === []);
+
+// ── Money display: cents only when there are cents ──────────────────────────
+check('display: $99.50 keeps its cents', re_range_text(99.5, 99.5, 'USD') === '$99.50');
+check('display: a range with cents on one end', re_range_text(99.5, 120.0, 'USD') === '$99.50 – 120');
+check('display: whole amounts stay whole', re_range_text(48000.0, 51000.0, 'KES') === 'KES 48,000 – 51,000');
+$sreq = re_normalize_request(['rooms' => [11], 'ranges' => $bRng, 'mode' => 'fixed', 'amount' => 99.5]);
+check('display: summary shows $99.50', str_contains(re_summary($sreq, re_compute($sreq, $bRooms, $bMaps), $bRooms), '$99.50'));
+
+// ── Fingerprint (pure) ──────────────────────────────────────────────────────
+$freq = re_normalize_request(['rooms' => [1, 2], 'ranges' => $rng, 'mode' => 'percent', 'pct' => 5]);
+$fp1  = re_fingerprint($freq, re_compute($freq, $rooms, $maps));
+check('fingerprint: 64 hex characters, stable', preg_match('/^[0-9a-f]{64}$/', $fp1) === 1 && $fp1 === re_fingerprint($freq, re_compute($freq, $rooms, $maps)));
+$maps3 = $maps; $maps3[2]['2099-06-02']['price'] = 52000.0;
+check('fingerprint: changes when a current price changes', re_fingerprint($freq, re_compute($freq, $rooms, $maps3)) !== $fp1);
+$freq2 = re_normalize_request(['rooms' => [1, 2], 'ranges' => $rng, 'mode' => 'percent', 'pct' => 6]);
+check('fingerprint: changes with the request', re_fingerprint($freq2, re_compute($freq2, $rooms, $maps)) !== $fp1);
 
 // ── DB block (rolled back) ─────────────────────────────────────────────────
 $pdo = null;
@@ -253,6 +305,14 @@ if ($pdo) {
     $pdo->beginTransaction();
     try {
         $hadLog = rate_log_supported(true);
+        /** Preview, then apply with that preview's fingerprint — what the UI does. */
+        $apply = function (array $d, ?int $adminId = 1): array {
+            return rate_editor_apply($d + ['fingerprint' => rate_editor_preview($d)['fingerprint']], $adminId);
+        };
+        /** The conflict (409) message a callable throws, or null. */
+        $conflict = function (callable $fn): ?string {
+            try { $fn(); return null; } catch (RateEditorConflict $e) { return $e->getMessage(); }
+        };
 
         // A test property: one whole-property room + three suites (one unpriced).
         $vid = (int) db_query("INSERT INTO venues (slug, name, sort_order, is_published)
@@ -288,7 +348,7 @@ if ($pdo) {
 
         // Pre-migration: apply still works, no log.
         if (!$hadLog) {
-            $r = rate_editor_apply(['rooms' => [$K], 'ranges' => [['2099-03-01', '2099-03-02']], 'mode' => 'fixed', 'amount' => 6000], 1);
+            $r = $apply(['rooms' => [$K], 'ranges' => [['2099-03-01', '2099-03-02']], 'mode' => 'fixed', 'amount' => 6000], 1);
             check('pre-migration: apply works without the log', $r['logged'] === false && $r['change_id'] === null && $r['log_note'] !== null);
             check('pre-migration: price written', $q($K, 5000, '2099-03-01', '2099-03-03') === 12000.0);
             $pdo->exec((string) file_get_contents(__DIR__ . '/../db/migrations/add_rate_change_log.sql'));
@@ -308,7 +368,7 @@ if ($pdo) {
         check('preview: totals', $pv['totals']['rooms'] === 3 && $pv['totals']['nights'] === 30);
 
         // A: fixed 200 on S1+S2, 10–19 Jun, buyout on.
-        $A = rate_editor_apply(['rooms' => [$S1, $S2], 'ranges' => [['2099-06-10', '2099-06-19']], 'mode' => 'fixed', 'amount' => 200, 'update_buyouts' => true], 1);
+        $A = $apply(['rooms' => [$S1, $S2], 'ranges' => [['2099-06-10', '2099-06-19']], 'mode' => 'fixed', 'amount' => 200, 'update_buyouts' => true], 1);
         check('apply A: logged', $A['logged'] === true && $A['change_id'] > 0);
         check('apply A: S1 quote reflects it', $q($S1, 100, '2099-06-10', '2099-06-20') === 2000.0);
         check('apply A: S2 quote reflects it', $q($S2, 120, '2099-06-10', '2099-06-20') === 2000.0);
@@ -326,7 +386,7 @@ if ($pdo) {
         $qA = $snap();
 
         // B: +10% on S1 over 15–17 Jun (overlaps A).
-        $Bc = rate_editor_apply(['rooms' => [$S1], 'ranges' => [['2099-06-15', '2099-06-17']], 'mode' => 'percent', 'pct' => 10], 1);
+        $Bc = $apply(['rooms' => [$S1], 'ranges' => [['2099-06-15', '2099-06-17']], 'mode' => 'percent', 'pct' => 10], 1);
         check('apply B (percent): 200 → 220', $q($S1, 100, '2099-06-15', '2099-06-18') === 660.0 && $overlaps() === 0);
 
         // Undo A refused while B (newer, overlapping) stands.
@@ -345,24 +405,24 @@ if ($pdo) {
         check('undo A: buyout restored', $q($B, 0, '2099-06-10', '2099-06-20') === 3200.0);
 
         // Match: move Peak onto 15–19 Dec for S1 and S2 (S2 has no Peak → skipped).
-        $M = rate_editor_apply(['rooms' => [$S1, $S2], 'ranges' => [['2099-12-15', '2099-12-19']], 'mode' => 'match', 'match_label' => 'Peak season'], 1);
+        $M = $apply(['rooms' => [$S1, $S2], 'ranges' => [['2099-12-15', '2099-12-19']], 'mode' => 'match', 'match_label' => 'Peak season'], 1);
         $mRows = array_column($M['preview']['rooms'], null, 'room_id');
         check('match: S1 gets its Peak price', $q($S1, 100, '2099-12-15', '2099-12-20') === 1500.0
             && rates_nightly_map($S1, 100, '2099-12-15', '2099-12-16')['2099-12-15']['label'] === 'Peak season');
         check('match: S2 skipped and listed', $mRows[$S2]['status'] === 'skipped' && $q($S2, 120, '2099-12-15', '2099-12-20') === 600.0);
 
         // Base: remove S1's override on 25–26 Jun.
-        rate_editor_apply(['rooms' => [$S1], 'ranges' => [['2099-06-25', '2099-06-26']], 'mode' => 'base'], 1);
+        $apply(['rooms' => [$S1], 'ranges' => [['2099-06-25', '2099-06-26']], 'mode' => 'base'], 1);
         check('base: override removed → base price', $q($S1, 100, '2099-06-25', '2099-06-27') === 200.0
             && $q($S1, 100, '2099-06-24', '2099-06-25') === 150.0 && $q($S1, 100, '2099-06-27', '2099-06-28') === 150.0 && $overlaps() === 0);
 
         // Nothing to change is refused (and writes no log row).
         $cnt = (int) db_query('SELECT COUNT(*) FROM rate_change_log')->fetchColumn();
-        check('apply: nothing to change refused', refusal(fn() => rate_editor_apply(['rooms' => [$S1], 'ranges' => [['2099-06-25', '2099-06-26']], 'mode' => 'base'], 1)) !== null
+        check('apply: nothing to change refused', refusal(fn() => $apply(['rooms' => [$S1], 'ranges' => [['2099-06-25', '2099-06-26']], 'mode' => 'base'], 1)) !== null
             && (int) db_query('SELECT COUNT(*) FROM rate_change_log')->fetchColumn() === $cnt);
 
         // Undo refused when the rates were edited elsewhere since.
-        $C = rate_editor_apply(['rooms' => [$S2], 'ranges' => [['2099-08-01', '2099-08-05']], 'mode' => 'fixed', 'amount' => 250, 'label' => 'Event'], 1);
+        $C = $apply(['rooms' => [$S2], 'ranges' => [['2099-08-01', '2099-08-05']], 'mode' => 'fixed', 'amount' => 250, 'label' => 'Event'], 1);
         rates_apply_ranges($S2, [['2099-08-03', '2099-08-04']], 999.0, 'Manual');
         $m = refusal(fn() => rate_editor_undo((int)$C['change_id'], 1));
         check('undo: refused when rows changed since', $m !== null && str_contains($m, 'edited elsewhere'));
@@ -370,11 +430,54 @@ if ($pdo) {
         check('log list: edited-since change shows cannot undo', $lst[$C['change_id']]['can_undo'] === false);
 
         // Edits OUTSIDE the span do not block undo (clipped comparison).
-        $D = rate_editor_apply(['rooms' => [$K], 'ranges' => [['2099-09-10', '2099-09-12']], 'mode' => 'fixed', 'amount' => 7000], 1);
+        $D = $apply(['rooms' => [$K], 'ranges' => [['2099-09-10', '2099-09-12']], 'mode' => 'fixed', 'amount' => 7000], 1);
         rates_apply_ranges($K, [['2099-09-20', '2099-09-21']], 8000.0, null);
         rate_editor_undo((int)$D['change_id'], 1);
         check('undo: allowed when only nights outside the span changed', $q($K, 5000, '2099-09-10', '2099-09-13') === 15000.0
             && $q($K, 5000, '2099-09-20', '2099-09-21') === 8000.0);
+
+        // ── Preview fingerprint: apply exactly what was previewed ───────────
+        $fq = ['rooms' => [$K], 'ranges' => [['2099-10-01', '2099-10-03']], 'mode' => 'percent', 'pct' => 5];
+        $fpv = rate_editor_preview($fq);
+        check('fingerprint: preview returns one', preg_match('/^[0-9a-f]{64}$/', (string)($fpv['fingerprint'] ?? '')) === 1);
+        check('fingerprint: missing → refused (422)', refusal(fn() => rate_editor_apply($fq, 1)) !== null);
+        check('fingerprint: malformed → refused (422)', refusal(fn() => rate_editor_apply($fq + ['fingerprint' => 'abc'], 1)) !== null);
+        $r = rate_editor_apply($fq + ['fingerprint' => $fpv['fingerprint']], 1);
+        check('fingerprint: correct one applies (+5% once: 5,000 → 5,250)', $r['change_id'] > 0 && $q($K, 5000, '2099-10-01', '2099-10-04') === 15750.0);
+        $m = $conflict(fn() => rate_editor_apply($fq + ['fingerprint' => $fpv['fingerprint']], 1));
+        check('fingerprint: the same one again is refused — a double submit cannot compound +5%',
+            $m !== null && str_contains($m, 'preview again') && $q($K, 5000, '2099-10-01', '2099-10-04') === 15750.0);
+        $fq2 = ['rooms' => [$K], 'ranges' => [['2099-10-10', '2099-10-12']], 'mode' => 'fixed', 'amount' => 5500];
+        $fpv2 = rate_editor_preview($fq2);
+        rates_apply_ranges($K, [['2099-10-11', '2099-10-12']], 5100.0, null);            // edited after the preview
+        check('fingerprint: stale after an intervening change is refused',
+            $conflict(fn() => rate_editor_apply($fq2 + ['fingerprint' => $fpv2['fingerprint']], 1)) !== null
+            && $q($K, 5000, '2099-10-10', '2099-10-13') === 15100.0);
+
+        // ── Undo is exact with legacy same-created_at overlapping rows ──────
+        $T = $mkRoom('zz-re-tie', 'ZZ Tie Room', 100, 'USD', false);
+        $ts = '2020-01-01 00:00:00';
+        db_query("INSERT INTO rates (room_id, date_from, date_to, price_amount, label, created_at) VALUES (:r, '2099-06-05', '2099-06-10', 200, 'Inner', :c)", [':r' => $T, ':c' => $ts]);
+        db_query("INSERT INTO rates (room_id, date_from, date_to, price_amount, label, created_at) VALUES (:r, '2099-06-01', '2099-06-30', 150, 'Outer', :c)", [':r' => $T, ':c' => $ts]);
+        $tq = fn() => $q($T, 100, '2099-06-01', '2099-06-30');
+        $tBefore = $tq();
+        $TA = $apply(['rooms' => [$T], 'ranges' => [['2099-06-07', '2099-06-07']], 'mode' => 'fixed', 'amount' => 500], 1);
+        check('undo tie: apply changed one night', $tq() === $tBefore + 350.0);
+        rate_editor_undo((int)$TA['change_id'], 1);
+        check('undo tie: totals identical to before (the higher id still wins the tie)', $tq() === $tBefore);
+
+        // ── Undo refuses (and changes nothing) when it cannot restore exactly
+        $TB = $apply(['rooms' => [$T], 'ranges' => [['2099-06-20', '2099-06-21']], 'mode' => 'fixed', 'amount' => 400], 1);
+        $tAfter = $tq();
+        db_query('UPDATE rate_change_log SET before_json = CAST(:b AS jsonb) WHERE id = :id', [':id' => $TB['change_id'],
+            ':b' => json_encode([['id' => 1, 'room_id' => $T, 'date_from' => '2099-06-20', 'date_to' => '2099-06-22',
+                                  'price_amount' => 150.005, 'label' => 'Outer', 'created_at' => $ts]])]);
+        $m = refusal(fn() => rate_editor_undo((int)$TB['change_id'], 1));
+        check('undo: a restore that does not match the logged before rows is refused',
+            $m !== null && str_contains($m, 'could not restore these rates exactly'));
+        check('undo: …and rolled back to its savepoint — nothing changed, not marked undone',
+            $tq() === $tAfter && db_query('SELECT undone_at IS NULL FROM rate_change_log WHERE id = :id', [':id' => $TB['change_id']])->fetchColumn() === true
+            && $overlaps() === 0);
 
         // ── Endpoint dispatcher (guards + actions) ──────────────────────────
         $owner = ['id' => 1, 'role' => 'owner', 'is_active' => true];
@@ -397,10 +500,15 @@ if ($pdo) {
         $r = rate_editor_dispatch('POST', ['csrf_token' => $tok, 'action' => 'options'], $owner, $tok);
         $zz = array_values(array_filter($r['body']['venues'] ?? [], fn($v) => $v['id'] === $vid));
         check('dispatch: options lists rooms by property + the buyout room',
-            $r['status'] === 200 && $zz && $zz[0]['buyout_room_id'] === $B && count($zz[0]['rooms']) === 5 && in_array('Peak season', $r['body']['labels'], true));
+            $r['status'] === 200 && $zz && $zz[0]['buyout_room_id'] === $B && count($zz[0]['rooms']) === 6 /* 5 + ZZ Tie Room */ && in_array('Peak season', $r['body']['labels'], true));
         $r = rate_editor_dispatch('POST', ['csrf_token' => $tok, 'action' => 'labels'], $owner, $tok);
         check('dispatch: labels', $r['status'] === 200 && in_array('Mid season', $r['body']['labels'], true));
         $r = rate_editor_dispatch('POST', ['action' => 'apply'] + $pvReq, $owner, $tok);
+        check('dispatch: apply without a fingerprint 422', $r['status'] === 422 && str_contains($r['body']['error'], 'Preview'));
+        $fp = rate_editor_dispatch('POST', $pvReq, $owner, $tok)['body']['preview']['fingerprint'];
+        $r = rate_editor_dispatch('POST', ['action' => 'apply', 'fingerprint' => str_repeat('0', 64)] + $pvReq, $owner, $tok);
+        check('dispatch: apply with a stale fingerprint 409', $r['status'] === 409 && str_contains($r['body']['error'], 'preview again'));
+        $r = rate_editor_dispatch('POST', ['action' => 'apply', 'fingerprint' => $fp] + $pvReq, $owner, $tok);
         check('dispatch: apply 200 + change id', $r['status'] === 200 && ($r['body']['applied']['change_id'] ?? 0) > 0
             && $q($S1, 100, '2099-06-02', '2099-06-03') === 180.0);
         $cid = (int)$r['body']['applied']['change_id'];

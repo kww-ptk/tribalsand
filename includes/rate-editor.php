@@ -21,7 +21,15 @@ declare(strict_types=1);
  *    written night is owned by exactly one row (no overlaps).
  *  - Apply never trusts a client preview: it recomputes from the database
  *    inside the transaction, under an advisory lock, and writes the rates and
- *    the log row in that ONE transaction.
+ *    the log row in that ONE transaction. It REQUIRES the preview's
+ *    re_fingerprint() and refuses (409) when the recomputed one differs — rates
+ *    edited since the preview, or a double submit, never write.
+ *  - Undo restores exactly or not at all: before rows are re-inserted oldest
+ *    first (created_at ASC, id ASC, so legacy created_at ties keep resolving the
+ *    same way), then every night of the span is compared with the logged before
+ *    rows (re_row_claims); a mismatch throws and re_tx rolls it all back.
+ *  - Prices are NUMERIC(10,2): anything above RE_MAX_AMOUNT is refused (422),
+ *    never left to fail the INSERT.
  *  - `rates.date_to` and `rate_change_log.span_to` are EXCLUSIVE. The request
  *    carries [first night, last night] INCLUSIVE, like the forms.
  *  - No venue scoping here: the editor is owner-only (every venue). The
@@ -39,7 +47,7 @@ const RE_MAX_ROOMS     = 50;
 const RE_MAX_NIGHTS    = 1100;
 const RE_MAX_RANGES    = 50;
 const RE_MAX_PCT       = 500.0;
-const RE_MAX_AMOUNT    = 1000000000.0;
+const RE_MAX_AMOUNT    = 99999999.99;   // rates.price_amount is NUMERIC(10,2)
 const RE_LABEL_MAX     = 100;          // rates.label is VARCHAR(100)
 const RE_LOG_DEFAULT   = 20;
 const RE_LOG_MAX       = 100;
@@ -51,6 +59,8 @@ class RateEditorRefusal extends RuntimeException {}
 class RateEditorNotFound extends RuntimeException {}
 /** The feature needs the migration (log / undo) → 409. */
 class RateEditorUnavailable extends RuntimeException {}
+/** Apply's fingerprint no longer matches the rates (changed since the preview, or a double submit) → 409. */
+class RateEditorConflict extends RuntimeException {}
 
 // ───────────────────────────────────────────────────────────────────────────
 // Pure helpers
@@ -81,9 +91,22 @@ function re_parse_ranges($ranges): array {
         $l = is_string($b) ? rates_ymd($b) : null;
         if ($f === null || $l === null) throw new RateEditorRefusal('Dates must be real dates (YYYY-MM-DD).');
         if ($l < $f) throw new RateEditorRefusal("A range ends before it starts ({$f} → {$l}).");
-        $excl[] = [$f, re_next_day($l)];
+        $to = re_next_day($l);
+        // 9999-12-31's checkout is year 10000, which rates_merge_ranges() would
+        // silently DROP (not a Y-m-d) — leaving an empty change. Refuse instead.
+        if (rates_ymd($to) === null) throw new RateEditorRefusal('Dates must be real dates (YYYY-MM-DD).');
+        $excl[] = [$f, $to];
     }
-    return rates_merge_ranges($excl);
+    $merged = rates_merge_ranges($excl);
+    if (!$merged) throw new RateEditorRefusal('Choose at least one range of nights.');
+    return $merged;
+}
+
+/** How many nights a list of [from, toExcl) ranges covers — counted, never listed. */
+function re_count_nights(array $excl): int {
+    $n = 0;
+    foreach ($excl as [$from, $to]) $n += (int)(new DateTime($from))->diff(new DateTime($to))->days;
+    return $n;
 }
 
 /** Every night (Y-m-d) in a list of [from, toExcl) ranges, in order. */
@@ -127,6 +150,8 @@ function re_clean_label($v, string $what = 'Season label'): string {
 function re_normalize_request(array $data): array {
     $ids = $data['rooms'] ?? null;
     if (!is_array($ids)) throw new RateEditorRefusal('Choose at least one room.');
+    // Cap the raw list BEFORE looping over it (a well-formed request never repeats an id).
+    if (count($ids) > RE_MAX_ROOMS) throw new RateEditorRefusal('At most ' . RE_MAX_ROOMS . ' rooms per change — split it into smaller changes.');
     $rooms = [];
     foreach ($ids as $id) {
         if (!(is_int($id) || (is_string($id) && ctype_digit($id))) || (int)$id <= 0) {
@@ -139,10 +164,11 @@ function re_normalize_request(array $data): array {
     if (count($rooms) > RE_MAX_ROOMS) throw new RateEditorRefusal('At most ' . RE_MAX_ROOMS . ' rooms per change — split it into smaller changes.');
 
     $ranges = re_parse_ranges($data['ranges'] ?? null);
-    $nights = re_nights($ranges);
-    if (count($nights) > RE_MAX_NIGHTS) {
+    // Count BEFORE listing: 0001-01-01 → 9999-12-30 would otherwise build ~3.65M strings.
+    if (re_count_nights($ranges) > RE_MAX_NIGHTS) {
         throw new RateEditorRefusal('At most ' . number_format(RE_MAX_NIGHTS) . ' nights per change — split it into smaller changes.');
     }
+    $nights = re_nights($ranges);
 
     $mode = is_string($data['mode'] ?? null) ? strtolower(trim($data['mode'])) : '';
     if (!in_array($mode, RE_MODES, true)) throw new RateEditorRefusal('Choose how to set the price.');
@@ -155,7 +181,7 @@ function re_normalize_request(array $data): array {
     if ($mode === 'fixed') {
         $a = re_number($data['amount'] ?? null);
         if ($a === null || round($a, 2) <= 0) throw new RateEditorRefusal('Enter a price above 0.');
-        if ($a > RE_MAX_AMOUNT) throw new RateEditorRefusal('That price is too large.');
+        if (round($a, 2) > RE_MAX_AMOUNT) throw new RateEditorRefusal('A price of ' . number_format($a, 2) . ' would exceed the maximum price (' . number_format(RE_MAX_AMOUNT, 2) . ').');
         $req['amount'] = round($a, 2);
     } elseif ($mode === 'percent') {
         $p = re_number($data['pct'] ?? null);
@@ -191,9 +217,26 @@ function re_load_window(array $req): array {
     return [$first, re_next_day($last)];
 }
 
-/** New price rounded to the nearest KES 10, or 1 unit of any other currency (half up). */
+/**
+ * New price rounded to the nearest KES 10, or 1 unit of any other currency (half up).
+ * The scaled value is first rounded to 6 places so binary noise (244.99999999999997
+ * for 245) cannot turn an exact half into a round-down.
+ */
 function re_round_price(float $v, string $currency): float {
-    return strtoupper($currency) === 'KES' ? rc_round_half_up($v / 10) * 10 : rc_round_half_up($v);
+    return strtoupper($currency) === 'KES' ? rc_round_half_up(round($v / 10, 6)) * 10 : rc_round_half_up(round($v, 6));
+}
+
+/** A price after a % change, rounded. `× (100 + pct) / 100` keeps 350 −30% an exact 245 (× 0.7 is not). */
+function re_percent_price(float $cur, float $pct, string $currency): float {
+    return re_round_price($cur * (100 + $pct) / 100, $currency);
+}
+
+/** Refuse a computed price above the column's ceiling — never let it reach the INSERT as a 500. */
+function re_check_max(float $price, string $roomName, string $ymd): void {
+    if ($price > RE_MAX_AMOUNT) {
+        throw new RateEditorRefusal("{$roomName} would exceed the maximum price (" . number_format(RE_MAX_AMOUNT, 2) . ') on '
+            . date('j M Y', strtotime($ymd)) . ' — nothing was changed.');
+    }
 }
 
 /** Most common price; a tie takes the higher price. Null for none. */
@@ -215,7 +258,7 @@ function re_most_common_price(array $prices): ?float {
 function re_majority_label(array $labels): ?string {
     $count = []; $val = [];
     foreach ($labels as $l) {
-        $l = ($l === null || trim((string)$l) === '') ? null : (string)$l;
+        $l = re_label_norm($l === null ? null : (string)$l);
         $k = $l === null ? "\0" : 'L' . $l;
         $count[$k] = ($count[$k] ?? 0) + 1;
         $val[$k] = $l;
@@ -229,6 +272,17 @@ function re_majority_label(array $labels): ?string {
         return (rc_season_rank($val[$b]) <=> rc_season_rank($val[$a])) ?: strcmp($val[$a], $val[$b]);
     });
     return $val[$keys[0]];
+}
+
+/** A label as stored → trimmed, '' = null (whitespace is never a difference). */
+function re_label_norm(?string $l): ?string {
+    $l = trim((string)$l);
+    return $l === '' ? null : $l;
+}
+
+/** Is a night's current label already the target label? Trimmed, case-SENSITIVE (a re-cased label is a change). */
+function re_label_same(?string $a, ?string $b): bool {
+    return re_label_norm($a) === re_label_norm($b);
 }
 
 /** Two labels are the same season: trimmed, case-insensitive. */
@@ -309,7 +363,7 @@ function re_room_plan(array $req, array $room, array $map): array {
             $tp = (float)$req['amount'];
         } elseif ($mode === 'percent') {
             if ($curP <= 0) { $unpriced++; continue; }
-            $tp = re_round_price($curP * (1 + $req['pct'] / 100), $cur);
+            $tp = re_percent_price($curP, (float)$req['pct'], $cur);
         } else {                                                     // match
             $y = substr($ymd, 0, 4);
             if (!isset($yearPrice[$y])) { $missingYears[$y] = true; $missed++; continue; }
@@ -321,7 +375,8 @@ function re_room_plan(array $req, array $room, array $map): array {
             throw new RateEditorRefusal("{$room['name']} would be priced at 0 or less on " . date('j M Y', strtotime($ymd))
                 . ' — nothing was changed. Use "Back to base price" to remove a rate.');
         }
-        if ($isO && abs($curP - $tp) < 0.005 && $curL === $tl) continue;   // already so
+        re_check_max($tp, (string)$room['name'], $ymd);
+        if ($isO && abs($curP - $tp) < 0.005 && re_label_same($curL, $tl)) continue;   // already so
         $targets[$ymd] = ['price' => $tp, 'label' => $tl, 'base' => false];
         $before[$ymd]  = $night;
     }
@@ -443,10 +498,11 @@ function re_compute(array $req, array $rooms, array $maps): array {
             }
             if ($sum <= 0) { $info['nights_skipped']++; continue; }
             $tp = round($sum, 2);
+            re_check_max($tp, (string)$b['name'], $ymd);
             $tl = re_majority_label($labels);
             $night = $bMap[$ymd] ?? re_base_night($bDef);
             $curL  = ($night['label'] ?? null) !== null && trim((string)$night['label']) !== '' ? (string)$night['label'] : null;
-            if (!empty($night['is_override']) && abs((float)$night['price'] - $tp) < 0.005 && $curL === $tl) continue;
+            if (!empty($night['is_override']) && abs((float)$night['price'] - $tp) < 0.005 && re_label_same($curL, $tl)) continue;
             $targets[$ymd] = ['price' => $tp, 'label' => $tl, 'base' => false];
             $before[$ymd]  = $night;
         }
@@ -465,12 +521,24 @@ function re_compute(array $req, array $rooms, array $maps): array {
     return $out;
 }
 
+/**
+ * "KES 48,000" / "$99.50": whole units unless the amount has cents — a stored
+ * NUMERIC(10,2) price of 99.50 must not read back as "$100".
+ */
+function re_money_text(float $amt, string $cur): string {
+    $amt = round($amt, 2);
+    if (abs($amt - round($amt)) < 0.005) return rc_money_text($amt, $cur);
+    $cur = strtoupper($cur);
+    $sym = TS_CURRENCIES[$cur]['symbol'] ?? ($cur . ' ');
+    return ($amt < 0 ? '-' : '') . $sym . number_format(abs($amt), 2);
+}
+
 /** "KES 48,000" or "KES 48,000 – 51,000" (same currency), "" for none. */
 function re_range_text(?float $min, ?float $max, string $cur): string {
     if ($min === null || $max === null) return '';
-    $a = rc_money_text($min, $cur);
+    $a = re_money_text($min, $cur);
     if (abs($max - $min) < 0.005) return $a;
-    $b = rc_money_text($max, $cur);
+    $b = re_money_text($max, $cur);
     $sym = TS_CURRENCIES[strtoupper($cur)]['symbol'] ?? (strtoupper($cur) . ' ');
     return $a . ' – ' . (str_starts_with($b, $sym) ? substr($b, strlen($sym)) : $b);
 }
@@ -505,7 +573,7 @@ function re_summary(array $req, array $plan, array $rooms): string {
     switch ($req['mode']) {
         case 'fixed':
             $cur = strtoupper((string)($rooms[$req['rooms'][0]]['price_currency'] ?? 'USD'));
-            $parts[] = ($lbl !== '' ? $lbl . ' → ' : '') . rc_money_text((float)$req['amount'], $cur);
+            $parts[] = ($lbl !== '' ? $lbl . ' → ' : '') . re_money_text((float)$req['amount'], $cur);
             break;
         case 'percent':
             $pct = rc_trimz(sprintf('%.2F', abs($req['pct'])));
@@ -588,6 +656,55 @@ function re_preview_view(array $req, array $plan, array $rooms): array {
 }
 
 /**
+ * The preview's fingerprint: sha256 over a canonical JSON of (the normalised
+ * request, and per room: its currency + base price and, for every night that
+ * changes, the target price/label AND the current price/label). Apply recomputes
+ * it under the advisory lock and refuses on any difference — so what is written
+ * is exactly what the owner saw, and a double-submitted "+5%" cannot compound
+ * (the second submit sees the first one's prices). Not a secret — a concurrency
+ * check on an owner-only endpoint. PURE.
+ */
+function re_fingerprint(array $req, array $plan, array $rooms = []): string {
+    $ids = $req['rooms'];
+    sort($ids);
+    $canon = [
+        'v'              => 1,
+        'rooms'          => $ids,
+        'ranges'         => $req['ranges'],
+        'mode'           => $req['mode'],
+        'amount'         => $req['amount'] === null ? null : sprintf('%.2F', (float)$req['amount']),
+        'pct'            => $req['pct'] === null ? null : rc_trimz(sprintf('%.6F', (float)$req['pct'])),
+        'match_label'    => $req['match_label'],
+        'label'          => $req['label'],
+        'keep_label'     => (bool)$req['keep_label'],
+        'update_buyouts' => (bool)$req['update_buyouts'],
+        'plan'           => [],
+    ];
+    $planIds = array_keys($plan['rooms']);
+    sort($planIds);
+    foreach ($planIds as $id) {
+        $e = $plan['rooms'][$id];
+        $t = $e['targets'];
+        ksort($t);
+        $nights = [];
+        foreach ($t as $ymd => $x) {
+            $cur = $e['before'][$ymd] ?? null;
+            $nights[] = [(string)$ymd,
+                sprintf('%.2F', (float)$x['price']), empty($x['base']) ? re_label_norm($x['label'] ?? null) : null, !empty($x['base']),
+                $cur === null ? null : sprintf('%.2F', (float)$cur['price']),
+                $cur === null ? null : re_label_norm($cur['label'] ?? null),
+                $cur !== null && !empty($cur['is_override'])];
+        }
+        $r = $rooms[$id] ?? null;
+        $canon['plan'][] = [(int)$id, (bool)$e['is_buyout'], (string)$e['status'],
+            $r === null ? null : strtoupper((string)$r['price_currency']),
+            $r === null ? null : sprintf('%.2F', (float)$r['price_amount']),
+            $nights];
+    }
+    return hash('sha256', json_encode($canon, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES));
+}
+
+/**
  * Which nights each room's rows claim inside [from, to), resolved exactly like
  * rates_nightly_maps() (created_at DESC, id DESC wins): [room][ymd] => "price|label".
  * Used to compare "current rows" with a logged after_json independent of how the
@@ -662,10 +779,11 @@ function rate_editor_plan(array $data): array {
     return [$req, $rooms, re_compute($req, $rooms, $maps)];
 }
 
-/** Server-computed preview; writes nothing. */
+/** Server-computed preview; writes nothing. Carries the fingerprint apply must send back. */
 function rate_editor_preview(array $data): array {
     [$req, $rooms, $plan] = rate_editor_plan($data);
-    return re_preview_view($req, $plan, $rooms) + ['log_supported' => rate_log_supported()];
+    return re_preview_view($req, $plan, $rooms)
+        + ['fingerprint' => re_fingerprint($req, $plan, $rooms), 'log_supported' => rate_log_supported()];
 }
 
 /** Every `rates` row of these rooms overlapping [from, to), as stored. */
@@ -704,20 +822,34 @@ function re_write_room(int $roomId, array $targets): void {
     }
 }
 
-/** Run $fn in the caller's transaction, or in a new one (PDO/pgsql cannot nest). */
+/**
+ * Run $fn atomically: in a new transaction, or — inside the caller's (PDO/pgsql
+ * cannot nest) — in a SAVEPOINT that is rolled back on failure, so a refusal
+ * thrown half-way (e.g. undo's post-condition) never leaves partial writes in the
+ * caller's transaction. Same pattern as create_hold_with_block() in db.php.
+ */
 function re_tx(callable $fn) {
+    static $n = 0;
     $pdo = db();
     $own = !$pdo->inTransaction();
+    $sp  = $own ? null : 're_tx_' . (++$n);
     if ($own) $pdo->beginTransaction();
+    else      $pdo->exec("SAVEPOINT {$sp}");
     try {
         // Serialise editor writes (apply / undo) so two owners cannot interleave
         // a recompute and a write, or undo across each other.
         db_query("SELECT pg_advisory_xact_lock(hashtext('ts_rate_editor'))");
         $out = $fn();
         if ($own) $pdo->commit();
+        else      $pdo->exec("RELEASE SAVEPOINT {$sp}");
         return $out;
     } catch (Throwable $e) {
-        if ($own && $pdo->inTransaction()) $pdo->rollBack();
+        if ($own) {
+            if ($pdo->inTransaction()) $pdo->rollBack();
+        } else {
+            // Surface the real error, never the rollback's.
+            try { $pdo->exec("ROLLBACK TO SAVEPOINT {$sp}"); } catch (Throwable $_) {}
+        }
         throw $e;
     }
 }
@@ -732,11 +864,22 @@ function re_pg_int_array($v): array {
 /**
  * Apply a change: recompute server-side, write every room's runs and the log row
  * in ONE transaction. Returns {change_id, logged, log_note, summary, totals, preview}.
- * @throws RateEditorRefusal (including "nothing to change")
+ * $data['fingerprint'] (from the preview) is REQUIRED and re-checked under the
+ * advisory lock: any difference — rates edited since, or the same change already
+ * applied (double submit) — refuses the whole apply.
+ * @throws RateEditorRefusal (missing/malformed fingerprint, "nothing to change", …)
+ * @throws RateEditorConflict when the fingerprint no longer matches
  */
 function rate_editor_apply(array $data, ?int $adminId): array {
-    return re_tx(function () use ($data, $adminId) {
+    $fp = $data['fingerprint'] ?? null;
+    if (!is_string($fp) || preg_match('/^[0-9a-f]{64}$/', $fp) !== 1) {
+        throw new RateEditorRefusal('Preview the change first, then apply it.');
+    }
+    return re_tx(function () use ($data, $adminId, $fp) {
         [$req, $rooms, $plan] = rate_editor_plan($data);
+        if (!hash_equals(re_fingerprint($req, $plan, $rooms), $fp)) {
+            throw new RateEditorConflict('Rates changed since the preview — preview again.');
+        }
         $view  = re_preview_view($req, $plan, $rooms);
         $write = array_filter($plan['rooms'], fn($e) => $e['targets'] !== []);
         if (!$write) throw new RateEditorRefusal('Nothing to change — these rates already match.');
@@ -822,17 +965,31 @@ function rate_editor_undo(int $changeId, ?int $adminId): array {
         $rooms = re_pg_int_array($row['rooms']);
         $from  = (string)$row['span_from'];
         $to    = (string)$row['span_to'];
+        $beforeRows = array_values(array_filter(
+            json_decode((string)$row['before_json'], true) ?: [],
+            fn($b) => is_array($b) && in_array((int)($b['room_id'] ?? 0), $rooms, true)
+        ));
+        // Re-insert OLDEST first (created_at ASC, id ASC): the resolver breaks a
+        // created_at tie by id DESC, and the restored rows get new ids in insert
+        // order — so this order keeps every legacy tie resolving as it did.
+        usort($beforeRows, fn($a, $b) => strcmp((string)$a['created_at'], (string)$b['created_at']) ?: ((int)$a['id'] <=> (int)$b['id']));
+
         foreach ($rooms as $rid) rates_clear_span($rid, $from, $to);
-        foreach (json_decode((string)$row['before_json'], true) ?: [] as $b) {
+        foreach ($beforeRows as $b) {
             $f = max((string)$b['date_from'], $from);
             $t = min((string)$b['date_to'], $to);
-            if ($f >= $t || !in_array((int)$b['room_id'], $rooms, true)) continue;
+            if ($f >= $t) continue;
             db_query(
                 'INSERT INTO rates (room_id, date_from, date_to, price_amount, label, created_at)
                  VALUES (:r, :f, :t, :p, :l, :c)',
                 [':r' => (int)$b['room_id'], ':f' => $f, ':t' => $t, ':p' => $b['price_amount'],
                  ':l' => $b['label'], ':c' => (string)$b['created_at']]
             );
+        }
+        // Post-condition: every night of the span resolves exactly as it did
+        // before the change. Otherwise throw — re_tx rolls the whole undo back.
+        if (re_row_claims(re_rows_in_span($rooms, $from, $to), $from, $to) !== re_row_claims($beforeRows, $from, $to)) {
+            throw new RateEditorRefusal('Undo could not restore these rates exactly — nothing was changed.');
         }
         db_query('UPDATE rate_change_log SET undone_at = NOW(), undone_by = :a WHERE id = :id',
             [':a' => $adminId, ':id' => $changeId]);
@@ -1002,6 +1159,8 @@ function rate_editor_dispatch(string $method, array $data, array|false $admin, s
     } catch (RateEditorNotFound $e) {
         return $res(404, ['ok' => false, 'error' => $e->getMessage()]);
     } catch (RateEditorUnavailable $e) {
+        return $res(409, ['ok' => false, 'error' => $e->getMessage()]);
+    } catch (RateEditorConflict $e) {
         return $res(409, ['ok' => false, 'error' => $e->getMessage()]);
     } catch (Throwable $e) {
         error_log('[rate-editor] ' . $action . ': ' . $e->getMessage());
