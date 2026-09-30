@@ -116,23 +116,33 @@ if ($zuri) {
     check('zuri/7: a combo is offered', !empty($z7['combos']));
     if (!empty($z7['combos']) && !empty($z7['entire'])) {
         $combo = $z7['combos'][0];
-        check('zuri/7: combo is cheaper than the buyout', $combo['total'] < $z7['entire'][0]['total']);
+        // A price comparison needs prices: a dev database seeds its rooms unpriced.
+        if ($combo['total'] > 0 && $z7['entire'][0]['total'] > 0) {
+            check('zuri/7: combo is cheaper than the buyout', $combo['total'] < $z7['entire'][0]['total']);
+        } else {
+            echo "SKIP  zuri/7: combo is cheaper than the buyout (rooms are unpriced in this database)
+";
+        }
         check('zuri/7: combo total = sum of per-room quotes', abs($combo['total'] - $comboCanonTotal($combo)) < 0.01);
     }
 } else {
     echo "SKIP  zuri not seeded\n";
 }
 
-// Maya Ilai: multi-unit room types → family(6)+junior/studio(2) for 7.
+// Maya Ilai: a villa sleeps 10, so 7 guests fit one product; 11 need a combination
+// (multi-unit room types: eight villas, eight studios).
 $ilai = $venueBySlug('maya_ilai');
 if ($ilai) {
     $i7 = ts_property_configurations($ilai, $ci, $co, 7);
-    check('maya_ilai/7: no single fits', $i7['singles'] === []);
-    check('maya_ilai/7: a combo is offered', !empty($i7['combos']));
-    if (!empty($i7['combos'])) {
-        $top = $i7['combos'][0];
-        check('maya_ilai/7: combo capacity >= 7', $top['capacity'] >= 7);
-        check('maya_ilai/7: combo total = sum of per-room quotes', abs($top['total'] - $comboCanonTotal($top)) < 0.01);
+    check('maya_ilai/7: the villa fits as a single', (bool)array_filter($i7['singles'], fn($s) => $s['slug'] === 'maya-ilai-villa'));
+    check('maya_ilai/7: no combo when a single fits', $i7['combos'] === []);
+    $i11 = ts_property_configurations($ilai, $ci, $co, 11);
+    check('maya_ilai/11: no single fits', $i11['singles'] === []);
+    check('maya_ilai/11: a combo is offered', !empty($i11['combos']));
+    if (!empty($i11['combos'])) {
+        $top = $i11['combos'][0];
+        check('maya_ilai/11: combo capacity >= 11', $top['capacity'] >= 11);
+        check('maya_ilai/11: combo total = sum of per-room quotes', abs($top['total'] - $comboCanonTotal($top)) < 0.01);
     }
     // Infeasible: a party larger than every bed combined → no combo.
     $iBig = ts_property_configurations($ilai, $ci, $co, 9999);
@@ -145,7 +155,11 @@ if ($ilai) {
 $amani = $venueBySlug('my-amani');
 if ($amani) {
     $a = ts_property_configurations($amani, $ci, $co, 7);
-    check('my-amani/7: whole place offered', !empty($a['entire']));
+    $amaniWhole = (bool) db_query('SELECT 1 FROM rooms WHERE venue_id = :v AND is_entire_place = TRUE AND is_published = TRUE AND price_amount > 0 LIMIT 1',
+        [':v' => (int)$amani['id']])->fetchColumn();
+    if ($amaniWhole) check('my-amani/7: whole place offered', !empty($a['entire']));
+    else echo "SKIP  my-amani/7: whole place offered (no priced whole-place room in this database)
+";
     check('my-amani/7: no combos (entire-only venue)', $a['combos'] === []);
 }
 

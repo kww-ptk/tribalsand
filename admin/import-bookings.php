@@ -42,7 +42,7 @@ $importVenue = null;
 foreach ($venues as $v) if ((int)$v['id'] === $importVenueId) { $importVenue = $v; break; }
 
 $MAX_BYTES = 4 * 1024 * 1024;
-$ALLOWED   = ['csv', 'tsv', 'xlsx'];
+$ALLOWED   = ['csv', 'tsv', 'xlsx', 'xls'];   // .xls = eZee's tab-separated "Excel" export
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 
@@ -91,7 +91,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canImport) {
         } else {
             $ext = strtolower(pathinfo((string)$f['name'], PATHINFO_EXTENSION));
             if (!in_array($ext, $ALLOWED, true)) {
-                $error = 'Unsupported file type — upload a .csv, .tsv or .xlsx export.';
+                $error = 'Unsupported file type — upload a .csv, .tsv, .xls or .xlsx export.';
             } else {
                 try {
                     $parsed   = import_read_file($f['tmp_name'], $ext);
@@ -134,9 +134,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canImport) {
             unset($__row);
             $report = import_commit($pv['resolved']);
             audit_log('bookings.import', 'venue', (int)($pv['venue_id'] ?? $importVenueId),
-                sprintf('imported=%d dup=%d conflict=%d unmapped=%d bad=%d',
+                sprintf('imported=%d dup=%d conflict=%d unmapped=%d bad=%d skipped=%d',
                     $report['imported'], $report['duplicate'], $report['conflict'],
-                    $report['unmapped'], $report['bad_dates']));
+                    $report['unmapped'], $report['bad_dates'], $report['skipped']));
             $_SESSION['import_report'] = $report + ['filename' => $pv['filename'] ?? ''];
             unset($_SESSION['import_preview']);
             header('Location: /admin/import-bookings.php?step=done');
@@ -163,6 +163,7 @@ $chip = function (string $s): string {
         'conflict'  => ['orange', 'ban',         'Conflict'],
         'unmapped'  => ['red',    'x',           'Unmapped room'],
         'bad_dates' => ['red',    'x',           'Bad dates'],
+        'skipped'   => ['grey',   'ban',         'Not a live booking'],
     ];
     [$color, $icon, $label] = $map[$s] ?? ['grey', 'variant', $s];
     return '<span style="display:inline-flex;align-items:center;gap:6px">'
@@ -210,7 +211,8 @@ $chip = function (string $s): string {
         <strong><?= (int)$report['duplicate'] ?></strong> already present ·
         <strong><?= (int)$report['conflict'] ?></strong> conflicts ·
         <strong><?= (int)$report['unmapped'] ?></strong> unmapped ·
-        <strong><?= (int)$report['bad_dates'] ?></strong> bad dates
+        <strong><?= (int)$report['bad_dates'] ?></strong> bad dates ·
+        <strong><?= (int)($report['skipped'] ?? 0) ?></strong> not live (cancelled / released)
       </p>
       <?php if ((int)$report['conflict'] > 0): ?>
       <p class="text-muted" style="margin:0 0 14px">Conflicts were recorded on the
@@ -242,7 +244,7 @@ $chip = function (string $s): string {
   <!-- ── Dry-run preview ── -->
   <?php
     $rows = $preview['resolved'];
-    $counts = ['ok'=>0,'duplicate'=>0,'conflict'=>0,'unmapped'=>0,'bad_dates'=>0];
+    $counts = ['ok'=>0,'duplicate'=>0,'conflict'=>0,'unmapped'=>0,'bad_dates'=>0,'skipped'=>0];
     foreach ($rows as $r) { $counts[$r['status']] = ($counts[$r['status']] ?? 0) + 1; }
     $willImport = $counts['ok'];
   ?>
@@ -255,7 +257,8 @@ $chip = function (string $s): string {
           <?= (int)$counts['duplicate'] ?> already present ·
           <?= (int)$counts['conflict'] ?> conflicts ·
           <?= (int)$counts['unmapped'] ?> unmapped ·
-          <?= (int)$counts['bad_dates'] ?> bad dates — these are skipped.
+          <?= (int)$counts['bad_dates'] ?> bad dates ·
+          <?= (int)$counts['skipped'] ?> not live (cancelled / released in eZee) — these are skipped.
         </span>
       </p>
       <?php if ((int)$counts['unmapped'] > 0): ?>
@@ -331,10 +334,10 @@ $chip = function (string $s): string {
         <input type="hidden" name="action" value="preview">
         <input type="hidden" name="venue_id" value="<?= (int)$importVenueId ?>">
         <div class="field">
-          <label>Bookings file <span class="text-muted">(.csv, .tsv or .xlsx — max 4 MB)</span></label>
+          <label>Bookings file <span class="text-muted">(.csv, .tsv, .xls or .xlsx — max 4 MB; eZee's CRS bookings report works as downloaded)</span></label>
           <label class="filefield">
             <span class="btn-outline btn-sm"><?= admin_icon('download', 14) ?> Choose file</span>
-            <input type="file" name="sheet" accept=".csv,.tsv,.xlsx" data-import-file>
+            <input type="file" name="sheet" accept=".csv,.tsv,.xls,.xlsx" data-import-file>
             <span class="filefield__name" data-import-filename>No file chosen</span>
           </label>
           <span class="field-hint" style="display:block;margin-top:8px">Tip: in Ezee, export the bookings sheet as CSV or XLSX. You'll see a preview before anything is saved.</span>
