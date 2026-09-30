@@ -117,16 +117,23 @@ function import_map_room_slug(string $ezeeRoom, int $venueId): ?string {
 }
 
 /**
- * Parse a sheet date to Y-m-d, or null. Accepts DD/MM/YYYY (and D/M/YYYY),
- * YYYY-MM-DD, and an Excel serial number (days since 1899-12-30) — a real .xlsx
+ * Parse a sheet date to Y-m-d, or null. Accepts day-first DD/MM/YYYY (and
+ * D/M/YYYY) with either separator — "09/01/2026" or "09-01-2026" — plus
+ * YYYY-MM-DD, and an Excel serial number (days since 1899-12-30); a real .xlsx
  * date cell stores the serial, not the display text.
+ *
+ * Day-first is tried BEFORE the ISO branch, and is unambiguous because it ends
+ * in the 4-digit year: "2026-01-09" can never match it (a 4-digit leading
+ * group fails \d{1,2}), so a dashed sheet date and an ISO date never collide.
  */
 function import_parse_date(string $raw): ?string {
     $raw = trim($raw);
     if ($raw === '') return null;
 
-    if (preg_match('#^(\d{1,2})/(\d{1,2})/(\d{4})$#', $raw, $m)) {
-        [$d, $mo, $y] = [(int)$m[1], (int)$m[2], (int)$m[3]];
+    // Day-first, slash- or dash-separated; the separator must be the same on
+    // both sides (\1), so a mixed "09-01/2026" is rejected rather than guessed.
+    if (preg_match('#^(\d{1,2})([/-])(\d{1,2})\2(\d{4})$#', $raw, $m)) {
+        [$d, $mo, $y] = [(int)$m[1], (int)$m[3], (int)$m[4]];
         if (checkdate($mo, $d, $y)) return sprintf('%04d-%02d-%02d', $y, $mo, $d);
         return null;
     }
@@ -166,6 +173,38 @@ function import_parse_amount(string $raw): ?float {
     }
     if (!is_numeric($s)) return null;
     return (float)$s;
+}
+
+/**
+ * Clean one sheet cell. eZee's "Excel" exports wrap values it wants kept as text
+ * in a formula — `="139"`, `="05/10/2026"` — so Excel doesn't turn a date into a
+ * number; unwrap that. A lone "-" is eZee's empty cell. Also drops a UTF-8 BOM.
+ */
+function import_clean_cell(string $v): string {
+    $v = trim(str_replace("\xEF\xBB\xBF", '', $v));
+    if (preg_match('/^="(.*)"$/s', $v, $m)) $v = trim($m[1]);
+    return $v === '-' ? '' : $v;
+}
+
+/**
+ * Why a row must NOT block the calendar, or null when it should. eZee's CRS
+ * export lists every reservation it knows about, including ones that no longer
+ * hold a room: a cancelled / void / no-show status, a "Released" hold (its
+ * release date passed, the inventory went back on sale), an unconfirmed
+ * inquiry or a failed online booking. "Hold Confirm Booking" still holds the
+ * room, so it imports.
+ */
+function import_skip_reason(string $status, string $resType): ?string {
+    $st = import_norm($status);
+    $ty = import_norm($resType);
+    foreach (['cancel', 'void', 'no show', 'noshow'] as $w) {
+        if ($st !== '' && str_contains($st, $w)) return 'Status in eZee: ' . $status;
+        if ($ty !== '' && str_contains($ty, $w)) return 'eZee reservation type: ' . $resType;
+    }
+    foreach (['released', 'inquiry', 'enquiry', 'failed'] as $w) {
+        if ($ty !== '' && str_contains($ty, $w)) return 'eZee reservation type: ' . $resType . ' — not holding the room';
+    }
+    return null;
 }
 
 /** Stable dedupe key for a source row (used only for reporting/audit). */
@@ -231,7 +270,7 @@ function import_conflict_hold_id(array $ru, string $from, string $to): int {
  */
 function import_extract_rows(array $raw): array {
     if (!$raw) return ['fields' => [], 'rows' => []];
-    $header = array_map(fn($h) => import_norm((string)$h), $raw[0]);
+    $header = array_map(fn($h) => import_norm(import_clean_cell((string)$h)), $raw[0]);
 
     $find = function (callable $pred) use ($header): ?int {
         foreach ($header as $i => $h) if ($pred($h)) return $i;
@@ -250,7 +289,18 @@ function import_extract_rows(array $raw): array {
         ?? $find(fn($h) => str_contains($h, 'total') || str_contains($h, 'amount')
                         || str_contains($h, 'revenue') || str_contains($h, 'payable'))
         ?? $find(fn($h) => str_contains($h, 'rate') || str_contains($h, 'tariff') || str_contains($h, 'price'));
-    $iUnit  = ($iRoom !== null) ? $iRoom + 1 : null;   // optional unit/sub-name column
+    // eZee's own reservation number ("Res No.") — the booking's identity.
+    $iRes    = $find(fn($h) => preg_match('/^(res|reservation)\.? ?(no|number|#)\.?$/', $h) === 1);
+    $iStatus = $find(fn($h) => $h === 'status' || $h === 'booking status');
+    $iType   = $find(fn($h) => $h === 'reservation type');
+    // Optional unit/sub-name column: the one right after "Room", but only when
+    // its header is blank or names a unit — in the CRS export that column is
+    // "Rate Type" ("Breakfast"), which is not a room.
+    $iUnit = null;
+    if ($iRoom !== null && array_key_exists($iRoom + 1, $header)) {
+        $hu = $header[$iRoom + 1];
+        if ($hu === '' || str_contains($hu, 'unit')) $iUnit = $iRoom + 1;
+    }
 
     $fields = [
         'guest' => $iGuest !== null, 'arrival' => $iArr !== null,
@@ -259,10 +309,11 @@ function import_extract_rows(array $raw): array {
     ];
 
     $rows = [];
+    $seen = [];
     $n = count($raw);
     for ($r = 1; $r < $n; $r++) {
         $cells = $raw[$r];
-        $cell = fn(?int $i) => ($i !== null && isset($cells[$i])) ? trim((string)$cells[$i]) : '';
+        $cell = fn(?int $i) => ($i !== null && isset($cells[$i])) ? import_clean_cell((string)$cells[$i]) : '';
         $guest = $cell($iGuest);
         $room  = $cell($iRoom);
         // Skip fully-blank trailing rows.
@@ -273,6 +324,14 @@ function import_extract_rows(array $raw): array {
             // Only treat it as a unit label if it isn't obviously the rate/agent column.
             if ($u !== '' && import_norm($u) !== import_norm($room)) $unit = $u;
         }
+        $resNo = $cell($iRes);
+        // The CRS export repeats a reservation once per payment received (same
+        // Res No., room and dates; only the receipt columns differ) — keep one.
+        if ($resNo !== '') {
+            $dk = import_norm($resNo . '|' . $room . '|' . $cell($iArr) . '|' . $cell($iDept));
+            if (isset($seen[$dk])) continue;
+            $seen[$dk] = true;
+        }
         $rows[] = [
             'guest'        => $guest,
             'arrival_raw'  => $cell($iArr),
@@ -282,23 +341,50 @@ function import_extract_rows(array $raw): array {
             'agent'        => $cell($iAgent),
             'booking_date' => $cell($iBook),
             'amount_raw'   => $cell($iAmt),
+            'res_no'       => $resNo,
+            'res_status'   => $cell($iStatus),
+            'res_type'     => $cell($iType),
         ];
     }
     return ['fields' => $fields, 'rows' => $rows];
 }
 
-/** Read + extract an uploaded file (.csv/.tsv via fgetcsv, .xlsx via the reader). */
+/**
+ * Read + extract an uploaded file (.csv/.tsv via fgetcsv, .xlsx via the reader).
+ *
+ * `.xls` is accepted for eZee's "Excel" download (e.g. the CRS bookings report),
+ * which is really tab-separated text with an .xls name. A genuine binary .xls
+ * (the old Excel 97 format) can't be read here, so it is refused with the fix.
+ */
 function import_read_file(string $path, string $ext): array {
     $ext = strtolower($ext);
     if ($ext === 'xlsx') {
         require_once __DIR__ . '/xlsx-reader.php';
         return import_extract_rows(xlsx_read_rows($path));
     }
-    // CSV / TSV
+    $head = (string)@file_get_contents($path, false, null, 0, 4096);
+    if ($ext === 'xls') {
+        if (str_starts_with($head, "\xD0\xCF\x11\xE0")) {
+            throw new RuntimeException('This is an old binary Excel file. Open it in Excel and save it as .xlsx (or CSV), then upload that.');
+        }
+        if (str_starts_with($head, "PK\x03\x04")) {   // an .xlsx that was renamed
+            require_once __DIR__ . '/xlsx-reader.php';
+            return import_extract_rows(xlsx_read_rows($path));
+        }
+        if (preg_match('/^\s*</', $head)) {
+            throw new RuntimeException('This export is a web page, not a spreadsheet. Open it in Excel and save it as .xlsx (or CSV), then upload that.');
+        }
+    }
+    // CSV / TSV — an .xls text export picks whichever separator its header uses.
     $rows = [];
     $fh = @fopen($path, 'r');
     if (!$fh) throw new RuntimeException('Could not open the uploaded file.');
-    $delim = ($ext === 'tsv') ? "\t" : ',';
+    $firstLine = strtok($head, "\n") ?: '';
+    $delim = match (true) {
+        $ext === 'tsv' => "\t",
+        $ext === 'xls' => substr_count($firstLine, "\t") >= substr_count($firstLine, ',') ? "\t" : ',',
+        default        => ',',
+    };
     // Explicit enclosure + empty escape: silences the PHP 8.4 default-escape
     // deprecation and avoids legacy backslash escaping mangling cell values.
     while (($line = fgetcsv($fh, 0, $delim, '"', '')) !== false) {
@@ -325,6 +411,13 @@ function import_resolve_row(array $row, int $venueId): array {
         'currency' => 'USD',
     ];
     $out['key'] = import_row_key($row['guest'], $row['arrival_raw'], $row['dept_raw'], $row['room_raw']);
+
+    $skip = import_skip_reason((string)($row['res_status'] ?? ''), (string)($row['res_type'] ?? ''));
+    if ($skip !== null) {
+        $out['status'] = 'skipped';
+        $out['detail'] = $skip;
+        return $out;
+    }
 
     $slug = import_map_room_slug($row['room_raw'], $venueId);
     if ($slug === null) {
@@ -383,14 +476,35 @@ function import_resolve_row(array $row, int $venueId): array {
     return $out;
 }
 
-/** Resolve every extracted row. */
+/**
+ * Resolve every extracted row. Two rows of one file landing on the same unit
+ * and dates (e.g. eZee's "Double" and "Twin" names for one physical room) would
+ * both say "Will import" and the second silently become a duplicate at commit —
+ * say so in the preview instead.
+ */
 function import_resolve_all(array $rows, int $venueId): array {
-    return array_map(fn(array $r) => import_resolve_row($r, $venueId), $rows);
+    $out = [];
+    $taken = [];
+    foreach ($rows as $r) {
+        $x = import_resolve_row($r, $venueId);
+        if ($x['status'] === 'ok' || $x['status'] === 'conflict') {
+            $k = $x['unit_id'] . '|' . $x['arrival'] . '|' . $x['dept'];
+            if (isset($taken[$k])) {
+                $x['status'] = 'duplicate';
+                $x['detail'] = 'Same room and dates as ' . $taken[$k] . ' earlier in this file';
+            } else {
+                $taken[$k] = ($x['res_no'] ?? '') !== '' ? 'reservation ' . $x['res_no'] : ($x['guest'] ?: 'another row');
+            }
+        }
+        $out[] = $x;
+    }
+    return $out;
 }
 
 /** A short human note stored on the availability block / conflict. */
 function import_block_note(array $r): string {
     $note = 'Ezee import · ' . ($r['guest'] !== '' ? $r['guest'] : 'guest');
+    if (!empty($r['res_no'])) $note .= ' · Res ' . $r['res_no'];
     if (!empty($r['unit_label'])) $note .= ' · ' . $r['unit_label'];
     if (!empty($r['agent']) && $r['agent'] !== '-') $note .= ' · ' . $r['agent'];
     return mb_substr($note, 0, 200);
@@ -403,11 +517,11 @@ function import_block_note(array $r): string {
  * duplicates/unmapped/bad dates. Returns counts + per-row outcome.
  */
 function import_commit(array $resolved): array {
-    $res = ['imported' => 0, 'duplicate' => 0, 'conflict' => 0, 'unmapped' => 0, 'bad_dates' => 0, 'rows' => []];
+    $res = ['imported' => 0, 'duplicate' => 0, 'conflict' => 0, 'unmapped' => 0, 'bad_dates' => 0, 'skipped' => 0, 'rows' => []];
     foreach ($resolved as $r) {
         $outcome = $r['status'];
 
-        if (in_array($r['status'], ['unmapped', 'bad_dates'], true)) {
+        if (in_array($r['status'], ['unmapped', 'bad_dates', 'skipped'], true)) {
             $res[$r['status']]++;
             $res['rows'][] = ['guest' => $r['guest'], 'room' => $r['room_raw'], 'outcome' => $outcome, 'detail' => $r['detail']];
             continue;
@@ -462,7 +576,8 @@ function import_commit(array $resolved): array {
             'check_in'     => $ci,             'check_out' => $co,
             'gross_amount' => (float)($r['amount'] ?? 0),
             'currency'     => (string)($r['currency'] ?? 'USD'),
-            'external_ref' => (string)($r['booking_date'] ?? ''),
+            // eZee's reservation number when the export has one (CRS report).
+            'external_ref' => (string)(($r['res_no'] ?? '') !== '' ? $r['res_no'] : ($r['booking_date'] ?? '')),
         ]);
 
         $res['imported']++;

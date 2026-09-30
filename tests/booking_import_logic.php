@@ -30,7 +30,12 @@ check('venue 0 maps nothing', import_map_room_slug('Standard Garden View Suite',
 
 check('date DD/MM/YYYY',  import_parse_date('05/09/2026') === '2026-09-05');
 check('date D/M/YYYY',    import_parse_date('5/9/2026') === '2026-09-05');
+check('date DD-MM-YYYY',  import_parse_date('09-01-2026') === '2026-01-09');
+check('date D-M-YYYY',    import_parse_date('9-1-2026')   === '2026-01-09');
+check('date dash impossible', import_parse_date('31-02-2026') === null);
+check('date mixed seps',  import_parse_date('09-01/2026') === null);
 check('date ISO',         import_parse_date('2026-09-05') === '2026-09-05');
+check('date ISO not day-first', import_parse_date('2026-01-09') === '2026-01-09');
 check('date Excel serial',import_parse_date('43831') === '2020-01-01');
 check('date invalid',     import_parse_date('not a date') === null);
 check('date impossible',  import_parse_date('31/02/2026') === null);
@@ -62,6 +67,61 @@ check('extract unit sub-name', $parsed['rows'][1]['unit_label'] === 'Anga Suite'
 check('extract agent value', $parsed['rows'][1]['agent'] === 'Booking.com');
 check('extract found amount column', $parsed['fields']['amount'] === true);
 check('extract amount raw value', ($parsed['rows'][0]['amount_raw'] ?? '') === '1');
+
+// ── eZee CRS bookings report (.xls that is really tab-separated text) ──
+check('clean unwraps ="…"',   import_clean_cell('="05/10/2026"') === '05/10/2026');
+check('clean dash is empty',  import_clean_cell('-') === '');
+check('clean drops BOM',      import_clean_cell("\xEF\xBB\xBFHotel Name") === 'Hotel Name');
+check('skip released',        import_skip_reason('Active', 'Released') !== null);
+check('skip cancelled',       import_skip_reason('Cancelled', 'Confirm Booking') !== null);
+check('skip inquiry',         import_skip_reason('Active', 'Unconfirmed Booking Inquiry') !== null);
+check('keep confirm',         import_skip_reason('Active', 'Confirm Booking') === null);
+check('keep hold confirm',    import_skip_reason('Active', 'Hold Confirm Booking') === null);
+
+// Synthetic copy of the real layout: one row per payment (Res 139 twice), a
+// quoted multi-line Remark (Booking.com notes), "-" empties, ="…" wrapped values.
+$crsHead = ['Hotel Name','Res No.','Booking Date','Booking Time','Guest Name','User','Arrival','Dept','Room','Rate Type','Pax','Total','ADR','Paid','Transaction ID','Receipt Date','Source','Total Tax','Total Charges','Commission','Voucher','Status','Balance','Email','Mobile No','City','Country','Zip Code','State','Folio No','Preference','Travelagent','Salesperson','Remark','Reservation Type','Market Segment','Payment Type','No of Nights','Cancellation Date','Last Modified Date','Last Modified By','Number of rooms booked'];
+$crsRow = function (string $res, string $guest, string $ci, string $co, string $room, string $total, string $paid, string $agent, string $remark, string $type) {
+    $q = fn($v) => '"' . str_replace('"', '""', $v) . '"';
+    $x = fn($v) => $q('="' . $v . '"');
+    return implode("\t", [
+        $q('Zuri | Watamu'), $x($res), $x('14/05/2026'), $q('10:46:29 AM'), $q($guest), $q('Staff'),
+        $x($ci), $x($co), $q($room), $q('Breakfast'), $q('2 \\ 0'), $q($total), $q('1.00'), $q($paid),
+        $q('117'), $q('28/05/2026'), $q($agent), $q('0'), $q('0'), $q('0'), '-', $q('Active'), $q('0.0000'),
+        '-', '-', '-', '-', '-', '-', $q('125'), '-', $agent === 'Walk-in' ? '-' : $q($agent), '-',
+        $remark === '' ? '-' : $q($remark), $q($type), '-', '-', $q('3'), '-', $x('22/08/2026'), $q('Staff'), $q('1'),
+    ]);
+};
+$tmp = sys_get_temp_dir() . '/ts_crs_test_' . getmypid() . '.xls';
+file_put_contents($tmp, implode("\n", [
+    implode("\t", array_map(fn($h) => '"' . $h . '"', $crsHead)),
+    $crsRow('139', 'Ms. Kelsey', '05/10/2030', '08/10/2030', 'Master Double Suite', '111435.00', '20718.00', 'Alpine Ltd', '', 'Confirm Booking'),
+    $crsRow('139', 'Ms. Kelsey', '05/10/2030', '08/10/2030', 'Master Double Suite', '111435.00', '35000.00', 'Alpine Ltd', '', 'Confirm Booking'),
+    $crsRow('189', 'Thomas C', '17/10/2030', '22/10/2030', 'Standard Garden View Suite', '170820.00', '0', 'Booking.com',
+            "Reservation has a cancellation grace period.\n,\n\nbooked rate: Non-refundable, \"Genius\" booker", 'Confirm Booking'),
+    $crsRow('106', 'Ms. Roukounis', '20/12/2030', '27/12/2030', 'Entire Retreat Buyout', '380450.00', '0', 'Walk-in', '', 'Released'),
+]) . "\n");
+$crs = import_read_file($tmp, 'xls');
+@unlink($tmp);
+$cr = $crs['rows'];
+check('crs: payment rows collapse to one per reservation', count($cr) === 3);
+check('crs: res no unwrapped',     ($cr[0]['res_no'] ?? '') === '139');
+check('crs: dates unwrapped',      $cr[0]['arrival_raw'] === '05/10/2030' && import_parse_date($cr[0]['dept_raw']) === '2030-10-08');
+check('crs: room',                 $cr[0]['room_raw'] === 'Master Double Suite');
+check('crs: total is the amount',  import_parse_amount($cr[0]['amount_raw']) === 111435.0);
+check('crs: rate type is not a unit', $cr[0]['unit_label'] === '');
+check('crs: agent',                $cr[0]['agent'] === 'Alpine Ltd');
+check('crs: multi-line remark kept in one row', $cr[1]['guest'] === 'Thomas C' && $cr[1]['res_type'] === 'Confirm Booking');
+check('crs: dash agent is empty',  $cr[2]['agent'] === '');
+check('crs: reservation type read', $cr[2]['res_type'] === 'Released');
+check('crs: released row resolves as skipped',
+      import_resolve_row($cr[2], $zuriV)['status'] === 'skipped');
+
+$bin = sys_get_temp_dir() . '/ts_crs_bin_' . getmypid() . '.xls';
+file_put_contents($bin, "\xD0\xCF\x11\xE0\xA1\xB1\x1A\xE1" . str_repeat("\0", 64));
+try { import_read_file($bin, 'xls'); $threw = false; } catch (RuntimeException $e) { $threw = str_contains($e->getMessage(), 'save it as .xlsx'); }
+@unlink($bin);
+check('binary .xls refused with the fix', $threw);
 
 // ── Resolution + commit (rolled-back transaction) ──
 $zuri = (int) db_query("SELECT id FROM venues WHERE slug='zuri'")->fetchColumn();
@@ -176,6 +236,16 @@ try {
     create_hold_with_block($juaUnit, null, '2030-12-01', '2030-12-03', 'Suite Guest', 's@x.com', 'pending', 24);
     $buyout = import_resolve_row($mk('Entire Retreat Buyout','01/12/2030','03/12/2030','Whole Place'), $zuriV);
     check('buyout conflicts with a booked suite', $buyout['status'] === 'conflict');
+
+    // Two rows of one file on the same unit + dates (Double and Twin both map to
+    // zuri-mwezi): the second is flagged in the preview, not silently dropped.
+    $pair = import_resolve_all([
+        $mk('Tropical Pool View Double Suite','10/02/2031','14/02/2031','A'),
+        $mk('Tropical Pool View Twin Suite','10/02/2031','14/02/2031','B'),
+    ], $zuriV);
+    check('in-file same room+dates → second is duplicate',
+        $pair[0]['status'] === 'ok' && $pair[1]['status'] === 'duplicate'
+        && str_contains($pair[1]['detail'], 'earlier in this file'));
 } finally {
     if (db()->inTransaction()) db()->rollBack();
 }
