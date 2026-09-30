@@ -249,7 +249,8 @@ migration**, the table predates the editors. Helpers in **`includes/rates.php`**
   acting account. `rates_delete()` does take a venue scope. That asymmetry is intentional but
   easy to trip over.
 - **Editing is owner-only** (`admin/venue-edit.php` and `admin/room-edit.php` Rates tabs, both
-  already `require_owner()`). `admin/rates.php` is read-only, `require_login()` + scoped by
+  already `require_owner()`, plus the owner-only global rate editor on `admin/rates.php` — see
+  *Global rate editor*). For everyone else `admin/rates.php` is read-only, `require_login()` + scoped by
   `admin_venue_ids()`, with `?venue=` validated against the account's own list — reception can
   quote from it. The Gantt's Price Overrides form is **gone**; don't reinstate it. It was
   `require_login()` only, so it let reception set prices, against the rule that pricing is owner
@@ -285,6 +286,15 @@ migration**, the table predates the editors. Helpers in **`includes/rates.php`**
 - **Quote terms** = setting `quote_terms` (owner, Admin → Settings → Quote Terms), read by `qb_quote_terms()` with the built-in default when blank/unreadable.
 - **Shell-safe scripts:** both scripts are emitted INLINE with `readfile()` (admin shell navigation re-runs inline scripts only) behind `$GLOBALS` once-guards, and guard themselves (`window.tsMoney`, `data-qb-ready`, `window.__qbGlobal`, `window.__qbInsertBound`).
 - The shared range datepicker fires no `change` for ranges — the builder watches its hidden inputs after each click. Maya Ilai is quoted at its live rates; group/availability deals stay in `admin/maya-ilai-rates.php`.
+
+### Global rate editor — owner sets any rooms' rates from the Rates page
+**Owner only**: `admin/rates.php` renders the editor (`includes/rate-editor-view.php`) only when `is_owner()` — managers/reception get the unchanged read-only page — and `api/rate-editor.php` re-checks the owner + CSRF-in-body on every call. Logic `includes/rate-editor.php` (pure core + I/O; `rate_editor_dispatch()` = the endpoint minus the session); the JSON contract is the endpoint's docblock. Spec: `docs/superpowers/specs/2026-09-30-global-rate-editor-design.md`. Tests: `php tests/rate_editor_logic.php` (+ `rates_logic`, `rates_compare_logic`).
+- **ONE Set-rates modal, three entry points** (`admin/assets/admin-rate-editor.js`): the toolbar **Set rates** button (empty form); a **Rate-card cell** (that room + the property's other rooms with the same uniform price for that season, pre-ticked; nights = that room's own runs of the season that year via `rc_season_runs()`; fixed = the most common price (`re_most_common_price()`); an empty cell uses the property's season nights; the **Base** cell pre-fills the room's base-price nights that year — it adds a rate on those nights, the base price itself stays on the room page); a **Timeline selection** (click a night, shift-click extends, ctrl/⌘-click or drag adds rooms, Esc clears → floating "Set rates for N rooms"). Cells carry the pre-fill as `data-*` (owner only).
+- **Four modes:** Fixed price (rooms must share a currency) · Change by % (rounded to KES 10 / $1) · Same as season (each room's own most common price for that label, same year) · Back to base price (removes overrides). Label: explicit text (datalist of labels in use) or "Keep each night's label" (default for %; match defaults to the matched label). A blank "Last night" = one night.
+- **Preview → confirm → apply.** Preview is server-computed and writes nothing; Apply re-sends the previewed body (plus the preview's `fingerprint` when the server issues one; a 409 sends the owner back to preview again) and the server **recomputes** and writes through `rates_apply_ranges()` / `rates_clear_span()` in ONE transaction with the log row. The UI never computes a price. After apply/undo the page reloads (the `?cur` in the URL keeps KES | USD) and a toast carries the summary via `sessionStorage`.
+- **Buyouts:** "Also update buyouts" (ticked by default; shown when a selected room's property has one whole-property room that isn't selected) sets the buyout = sum of the property's published rooms after the change; left-out rooms (0-priced / other currency) are named in the preview.
+- **Change log + undo** (migration **`add_rate_change_log.sql`**, apply on production via `/admin/migrate.php`): a collapsible "Rate changes" card (latest 10) with **Undo** only when `can_undo` — undo is refused while a newer not-undone change overlaps the same rooms/nights or the rows were edited since. Before the migration the editor still previews + applies, writes no log, and the page says "Run add_rate_change_log.sql to enable the change log and undo." `rate_log_supported()` is a `to_regclass` lookup.
+- **Shell-safe:** the modal/log live inside the page content; the script is emitted INLINE once per page (`$GLOBALS['__re_assets_done']`) and binds its delegated listeners once per window (`window.__reBound`), looking the editor up at event time. Range rows are cloned from a `<template>` (datepicker `data-dp-bound`), and the range picker's missing `change` event is covered by a capture-phase click re-sync.
 
 ### Maya Ilai — composite inventory (components on the block)
 Maya Ilai sells **eight products over eight shared villas**. Physical inventory is
@@ -665,7 +675,10 @@ The **Activity log** on Team → employee profile (`admin/employee.php` → `per
 | `includes/gantt-block-guard.php` | Guards the Gantt's drag-to-move against overselling a villa; excludes the moving block from accusing itself |
 | `includes/rates.php` | Nightly rate helpers — merge, resolve, trim/split writes, scoped delete |
 | `includes/rate-form.php` · `includes/rate-calendar.php` | Multi-range rate entry + read-only month grid partials |
-| `admin/rates.php` | Site-wide read-only rates: Rate card / Timeline / Calendar views (scoped, reception-visible) |
+| `admin/rates.php` | Site-wide read-only rates: Rate card / Timeline / Calendar views (scoped, reception-visible) + the owner-only global rate editor |
+| `includes/rate-editor.php` | Global rate editor core — four modes, buyout sums, run grouping, preview/apply/undo/log, `rate_editor_dispatch()` (owner-only) |
+| `api/rate-editor.php` | Rate editor JSON endpoint (owner + CSRF-in-body): options · labels · preview · apply · log · undo |
+| `includes/rate-editor-view.php` · `admin/assets/admin-rate-editor.js` | Set-rates modal, change-log card, Timeline selection bar + their script (inline, once per page) |
 | `includes/rates-compare.php` · `includes/money-switch.php` · `admin/assets/admin-money.js` | Rates comparison helpers (pure) + the KES/USD switch |
 | `includes/quote-builder.php` · `api/quote-builder.php` | Quote builder pricing (pure maths + catalogue + `qb_price_selection()`) and its JSON endpoint |
 | `admin/quote-builder.php` · `includes/quote-builder-view.php` · `admin/assets/admin-quote-builder.js` | Quote builder page, shared UI partial (also the enquiry pop-up) and script |
