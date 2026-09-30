@@ -77,7 +77,7 @@ check('manager: is_manager',        is_manager() === true);
 check('manager: not owner/staff',   !is_owner() && !is_staff());
 check('manager: venue set = [V1]',  admin_venue_ids() === [$V1]);
 check('manager: admin_job null',    admin_job() === null);
-check('manager: home = frontdesk',  admin_home_url() === '/admin/frontdesk.php');
+check('manager: home = dashboard',  admin_home_url() === '/admin/dashboard.php');
 if ($hold) check('manager A can act on V1 hold', staff_can_hold($hold) === true);
 
 as_admin($mgrB);
@@ -89,25 +89,25 @@ as_admin($sHouse);
 check('housekeeping: is_staff',        is_staff() === true);
 check('housekeeping: job',             admin_job() === 'housekeeping');
 check('housekeeping: job_is_ops',      job_is_ops(admin_job()) === true);
-check('housekeeping: home = mywork',   admin_home_url() === '/admin/mywork.php');
+check('housekeeping: home = dashboard', admin_home_url() === '/admin/dashboard.php');
 if ($hold) check('housekeeping (V1) can act on V1 hold', staff_can_hold($hold) === true);
 
 as_admin($sSecurity);
-check('security: home = gate',         admin_home_url() === '/admin/gate.php');
+check('security: home = dashboard',    admin_home_url() === '/admin/dashboard.php');
 check('security: not ops',             job_is_ops(admin_job()) === false);
 if ($hold) check('security (no venues) cannot act on V1 hold', staff_can_hold($hold) === false);
 
 as_admin($sDriver);
 check('driver: job_is_ops',            job_is_ops(admin_job()) === true);
-check('driver: home = mywork',         admin_home_url() === '/admin/mywork.php');
+check('driver: home = dashboard',      admin_home_url() === '/admin/dashboard.php');
 
 as_admin($sFront);
-check('frontdesk: home = frontdesk',   admin_home_url() === '/admin/frontdesk.php');
+check('frontdesk: home = dashboard',   admin_home_url() === '/admin/dashboard.php');
 check('frontdesk: not ops',            job_is_ops(admin_job()) === false);
 
 as_admin($sNull);
 check('null job treated as frontdesk (job)',  admin_job() === 'frontdesk');
-check('null job treated as frontdesk (home)', admin_home_url() === '/admin/frontdesk.php');
+check('null job treated as frontdesk (home = dashboard, front-desk kind)', admin_home_url() === '/admin/dashboard.php');
 
 // ── Phase 2: kind → job routing map (pure) ─────────────────────────────────
 check('route housekeeping', request_job_for_kind('housekeeping') === 'housekeeping');
@@ -127,8 +127,15 @@ check('worklist: gardening has no turnover list', staff_day_worklist(null, 'gard
 check('worklist: frontdesk has no turnover list', staff_day_worklist(null, 'frontdesk', '2026-01-01') === []);
 
 // ── Phase 2: default_assignee_for (job_type is new, so only ZZ fixtures match) ─
-// $sHouse is the sole housekeeping staffer at V1 → auto-assigns to them.
-check('auto-assign: single housekeeper at V1', default_assignee_for('housekeeping', $V1) === $sHouse);
+// $sHouse is the sole ZZ housekeeping staffer at V1 → auto-assigns to them — unless the
+// database already has a housekeeper there (a real one, or the local dev login), in
+// which case there are two and the rule correctly assigns to nobody.
+$otherHk = (int)db_query(
+    "SELECT COUNT(*) FROM admin_users a JOIN admin_user_venues av ON av.admin_user_id = a.id
+      WHERE a.role = 'staff' AND a.job_type = 'housekeeping' AND a.is_active = TRUE
+        AND av.venue_id = :v AND a.id <> :me", [':v' => $V1, ':me' => $sHouse])->fetchColumn();
+check('auto-assign: single housekeeper at V1' . ($otherHk ? ' (another already works there → nobody)' : ''),
+    default_assignee_for('housekeeping', $V1) === ($otherHk === 0 ? $sHouse : null));
 check('auto-assign: unrouted kind → null',     default_assignee_for('other', $V1) === null);
 check('auto-assign: null venue → null',        default_assignee_for('housekeeping', null) === null);
 check('auto-assign: no driver at V1 → null',   default_assignee_for('transfer', $V1) === null);

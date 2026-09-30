@@ -84,7 +84,7 @@ check('reception: is_reception',              is_reception() === true);
 check('reception: not owner/manager/staff',   !is_owner() && !is_manager() && !is_staff());
 check('reception: admin_job() is null',       admin_job() === null);
 check('reception: job_is_ops(null) false',    job_is_ops(admin_job()) === false);
-check('reception: lands on Front desk',       admin_home_url() === '/admin/frontdesk.php');
+check('reception: lands on the Dashboard',    admin_home_url() === '/admin/dashboard.php');
 
 as_admin($owner);
 check('owner: is_reception false',            is_reception() === false);

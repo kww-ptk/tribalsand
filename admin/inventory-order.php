@@ -199,6 +199,27 @@ $pageTitle  = $order ? (string)$order['name'] : 'Order';
 $activeMenu = 'inventory_orders';
 include __DIR__ . '/_layout.php';
 ?>
+<?php /* Styles first: the table below is long, and CSS printed after it left the page unstyled while it loaded. */ ?>
+<?= inv_grid_css() ?>
+<style>
+.io-rc{display:block;font-size:11.5px;color:var(--muted);font-weight:400;white-space:nowrap}
+.io-rc-x{width:20px;height:20px;padding:0;margin-left:4px;vertical-align:middle;font-size:15px;line-height:1}
+.io-qty{width:84px}
+.io-diff{display:block;margin-top:2px;font-size:11.5px;font-weight:500;white-space:nowrap}
+.io-diff--orange{color:#e65100}
+.io-diff--grey{color:var(--muted)}
+.io-packlinks{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 14px;font-size:13px}
+.io-packlinks .optchip{text-decoration:none}
+.ig:not(.io-show-cq) .io-cq{display:none}
+.ig .cell-select,.ig .eselect:has(> .cell-select){width:220px;max-width:220px}
+.ig td.ig-where{min-width:140px}
+.io-row-save{white-space:nowrap}
+.io-toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,20px);z-index:60;background:#1f3b3a;color:#fff;padding:10px 16px;border-radius:10px;box-shadow:var(--shadow);font-size:13.5px;opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;max-width:calc(100vw - 32px)}
+.io-toast.is-on{opacity:1;transform:translate(-50%,0)}
+.io-toast.is-bad{background:#b3261e}
+@media (min-width:769px){.io-toast{left:calc(50% + var(--sidebar-w) / 2)}}
+</style>
+
 <div class="page-header">
   <h1><?= $order ? e((string)$order['name']) : 'Order' ?></h1>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -263,7 +284,7 @@ include __DIR__ . '/_layout.php';
     <?php endif; ?>
   </div>
 
-  <div class="ig-wrap"><table class="ig" id="igTable">
+  <div class="ig-wrap"><table class="ig" id="igTable" data-paginate="25">
     <thead><tr>
       <th class="ig-check"><input type="checkbox" id="igAll" aria-label="Select all shown"></th>
       <th data-sort="name">Item</th>
@@ -296,25 +317,6 @@ include __DIR__ . '/_layout.php';
 <?php endif; ?>
 
 <?= inv_shared_css() ?>
-<?= inv_grid_css() ?>
-<style>
-.io-rc{display:block;font-size:11.5px;color:var(--muted);font-weight:400;white-space:nowrap}
-.io-rc-x{width:20px;height:20px;padding:0;margin-left:4px;vertical-align:middle;font-size:15px;line-height:1}
-.io-qty{width:84px}
-.io-diff{display:block;margin-top:2px;font-size:11.5px;font-weight:500;white-space:nowrap}
-.io-diff--orange{color:#e65100}
-.io-diff--grey{color:var(--muted)}
-.io-packlinks{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:0 0 14px;font-size:13px}
-.io-packlinks .optchip{text-decoration:none}
-.ig:not(.io-show-cq) .io-cq{display:none}
-.ig .cell-select,.ig .eselect:has(> .cell-select){width:220px;max-width:220px}
-.ig td.ig-where{min-width:140px}
-.io-row-save{white-space:nowrap}
-.io-toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,20px);z-index:60;background:#1f3b3a;color:#fff;padding:10px 16px;border-radius:10px;box-shadow:var(--shadow);font-size:13.5px;opacity:0;pointer-events:none;transition:opacity .18s,transform .18s;max-width:calc(100vw - 32px)}
-.io-toast.is-on{opacity:1;transform:translate(-50%,0)}
-.io-toast.is-bad{background:#b3261e}
-@media (min-width:769px){.io-toast{left:calc(50% + var(--sidebar-w) / 2)}}
-</style>
 <?php if ($order): ?>
 <?= inv_grid_js() ?>
 <script>

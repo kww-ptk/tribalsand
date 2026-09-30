@@ -783,6 +783,32 @@ function email_guest_toggle(array $hold, string $kind = 'confirm', bool $compact
 }
 
 /**
+ * The Holds list keeps its action buttons as plain icons: each form carries the
+ * choice as HIDDEN fields (email_guest_hidden()), and the row shows ONE visible
+ * tick (email_guest_row_toggle()) that admin/holds.php's script copies into them.
+ * Without JavaScript the hidden default stands — the same default the old
+ * per-button checkbox started from.
+ */
+function email_guest_hidden(array $hold, string $kind = 'confirm'): string {
+    $hold['ledger_source'] = $hold['ledger_source'] ?? email_hold_ledger_source((int)($hold['id'] ?? 0));
+    $d = email_hold_confirm_default($hold);
+    if (!$d['can']) return '<input type="hidden" name="email_guest" value="0">';
+    if ($kind === 'cancel') $d['default'] = email_address_is_relay_or_internal((string)$hold['guest_email']) === null;
+    return '<input type="hidden" name="email_choice" value="1">'
+         . '<input type="hidden" name="email_guest" value="' . ($d['default'] ? '1' : '0') . '" data-email-guest>';
+}
+
+/** The row's one visible "Email guest" tick ('' when this guest cannot be emailed). */
+function email_guest_row_toggle(array $hold, string $kind = 'confirm'): string {
+    $hold['ledger_source'] = $hold['ledger_source'] ?? email_hold_ledger_source((int)($hold['id'] ?? 0));
+    $d = email_hold_confirm_default($hold);
+    if (!$d['can']) return '<span class="hold-mail hold-mail--off" data-tip="' . e($d['reason']) . '">No guest email</span>';
+    if ($kind === 'cancel') $d['default'] = email_address_is_relay_or_internal((string)$hold['guest_email']) === null;
+    return '<label class="ckwrap hold-mail" data-tip="' . e($d['reason']) . '"><input type="checkbox" data-email-master'
+         . ($d['default'] ? ' checked' : '') . '><span class="ck"></span>Email guest</label>';
+}
+
+/**
  * Read the posted choice. A form that never carried the toggle (an old tab)
  * falls back to the default rule rather than silently emailing.
  */

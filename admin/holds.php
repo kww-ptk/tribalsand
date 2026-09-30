@@ -240,35 +240,33 @@ ob_start(); ?>
           <td><?php $__ci = checkin_badge($hold); if ($__ci): ?><span class="ci-badge <?= e($__ci['class']) ?>"><?= e($__ci['label']) ?></span><?php else: ?><span class="text-muted">—</span><?php endif; ?></td>
           <td style="font-size:12px;color:var(--muted)"><?= e($expires_str) ?></td>
           <td>
-            <div class="row-actions">
-            <?php if ($status === 'pending'): ?>
-            <form method="POST" style="display:inline">
-              <?= csrf_field() ?>
-              <input type="hidden" name="hold_id" value="<?= e($hold['id']) ?>">
-              <input type="hidden" name="action"  value="confirm">
-              <button type="submit" class="btn-icon btn-icon--primary" title="Confirm hold" aria-label="Confirm hold"
-                      data-confirm="Confirm this hold? The guest is emailed only if “Email” is ticked."><?= admin_icon('check') ?></button>
-              <?= email_guest_toggle($hold, 'confirm', true) ?>
-            </form>
-            <form method="POST" style="display:inline">
-              <?= csrf_field() ?>
-              <input type="hidden" name="hold_id" value="<?= e($hold['id']) ?>">
-              <input type="hidden" name="action"  value="cancel">
-              <button type="submit" class="btn-icon btn-icon--danger" title="Cancel hold" aria-label="Cancel hold"
-                      data-confirm="Cancel this hold? Dates will be freed; the guest is emailed only if “Email” is ticked."><?= admin_icon('x') ?></button>
-              <?= email_guest_toggle($hold, 'cancel', true) ?>
-            </form>
-            <?php elseif ($status === 'confirmed'): ?>
-            <form method="POST" style="display:inline">
-              <?= csrf_field() ?>
-              <input type="hidden" name="hold_id" value="<?= e($hold['id']) ?>">
-              <input type="hidden" name="action"  value="cancel">
-              <button type="submit" class="btn-icon btn-icon--danger" title="Cancel booking" aria-label="Cancel booking"
-                      data-confirm="Cancel this confirmed booking? Dates will be freed; the guest is emailed only if “Email” is ticked."><?= admin_icon('x') ?></button>
-              <?= email_guest_toggle($hold, 'cancel', true) ?>
-            </form>
-            <?php endif; ?>
-            <a href="/admin/booking.php?hold=<?= (int)$hold['id'] ?>" class="btn-icon btn-icon--outline" title="Manage booking" aria-label="Manage booking"><?= admin_icon('edit') ?></a>
+            <div class="hold-acts">
+              <div class="hold-acts__btns">
+              <?php if ($status === 'pending'): ?>
+              <form method="POST">
+                <?= csrf_field() ?>
+                <input type="hidden" name="hold_id" value="<?= e($hold['id']) ?>">
+                <input type="hidden" name="action"  value="confirm">
+                <?= email_guest_hidden($hold, 'confirm') ?>
+                <button type="submit" class="btn-icon btn-icon--primary" data-tip="Confirm" aria-label="Confirm hold"
+                        data-confirm="Confirm this hold? The guest is emailed only if “Email guest” is ticked."><?= admin_icon('check') ?></button>
+              </form>
+              <?php endif; ?>
+              <?php if ($status === 'pending' || $status === 'confirmed'): ?>
+              <form method="POST">
+                <?= csrf_field() ?>
+                <input type="hidden" name="hold_id" value="<?= e($hold['id']) ?>">
+                <input type="hidden" name="action"  value="cancel">
+                <?= email_guest_hidden($hold, 'cancel') ?>
+                <button type="submit" class="btn-icon btn-icon--danger" data-tip="<?= $status === 'pending' ? 'Decline' : 'Cancel booking' ?>" aria-label="<?= $status === 'pending' ? 'Cancel hold' : 'Cancel booking' ?>"
+                        data-confirm="<?= $status === 'pending' ? 'Cancel this hold?' : 'Cancel this confirmed booking?' ?> Dates will be freed; the guest is emailed only if “Email guest” is ticked."><?= admin_icon('x') ?></button>
+              </form>
+              <?php endif; ?>
+              <a href="/admin/booking.php?hold=<?= (int)$hold['id'] ?>" class="btn-icon btn-icon--outline" data-tip="Open booking" aria-label="Manage booking"><?= admin_icon('edit') ?></a>
+              </div>
+              <?php if ($status === 'pending' || $status === 'confirmed'): ?>
+              <?= email_guest_row_toggle($hold, $status === 'pending' ? 'confirm' : 'cancel') ?>
+              <?php endif; ?>
             </div>
           </td>
         </tr>
@@ -418,5 +416,20 @@ include __DIR__ . '/_layout.php';
   </div>
   <div class="dt-body" data-dt-body><?= $dtBody ?></div>
 </div>
+
+<script>
+/* One "Email guest" tick per row: copy it into the hidden field of that row's
+   Confirm and Cancel forms. Delegated and bound once, so it survives list swaps. */
+if (!window.__holdMailBound) {
+  window.__holdMailBound = true;
+  document.addEventListener('change', function (e) {
+    var m = e.target;
+    if (!m.matches || !m.matches('[data-email-master]')) return;
+    var row = m.closest('tr');
+    if (!row) return;
+    row.querySelectorAll('input[data-email-guest]').forEach(function (h) { h.value = m.checked ? '1' : '0'; });
+  });
+}
+</script>
 
 <?php include __DIR__ . '/_layout_end.php'; ?>

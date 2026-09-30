@@ -76,9 +76,14 @@ include __DIR__ . '/_layout.php';
 ?>
 
 <div class="page-header">
-  <h1>Migrations</h1>
-  <a href="/admin/dashboard.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Dashboard</a>
+  <h1>Settings</h1>
 </div>
+
+<nav class="tabs" aria-label="Settings sections">
+  <a href="/admin/settings.php" class="tab-btn">General</a>
+  <a href="/admin/checkin-settings.php" class="tab-btn">Pre-Check-in</a>
+  <a href="/admin/migrate.php" class="tab-btn is-active">Migrations</a>
+</nav>
 
 <?php if ($output): ?>
 <div class="alert alert--<?= $ok ? 'success' : 'error' ?>" style="white-space:pre-wrap;font-family:monospace;font-size:13px">

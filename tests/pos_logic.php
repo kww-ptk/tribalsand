@@ -577,7 +577,7 @@ try {
         $prevSession = $_SESSION['admin_id'] ?? null;
         $_SESSION['admin_id'] = $kiteGuy;
         check('jobs: kite staff is a POS job', job_is_pos(admin_job()) && !job_is_ops(admin_job()));
-        check('jobs: kite staff home is the till', admin_home_url() === '/pos/');
+        check('jobs: kite staff land on the Dashboard (its till card opens /pos/)', admin_home_url() === '/admin/dashboard.php');
         if ($prevSession === null) unset($_SESSION['admin_id']); else $_SESSION['admin_id'] = $prevSession;
     } else {
         echo "SKIP  jobs (add_pos_job_types.sql not applied)

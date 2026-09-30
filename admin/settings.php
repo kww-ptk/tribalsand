@@ -161,6 +161,7 @@ include __DIR__ . '/_layout.php';
 <nav class="tabs" aria-label="Settings sections">
   <a href="/admin/settings.php" class="tab-btn is-active">General</a>
   <a href="/admin/checkin-settings.php" class="tab-btn">Pre-Check-in</a>
+  <a href="/admin/migrate.php" class="tab-btn">Migrations</a>
 </nav>
 
 <?php if ($success): ?><div class="alert alert--success is-flash"><?= e($success) ?></div><?php endif; ?>

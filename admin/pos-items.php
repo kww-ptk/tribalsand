@@ -336,7 +336,7 @@ include __DIR__ . '/_layout.php';
   <?php if (!$items): ?>
     <?php dt_empty('No items yet — add one, or link activities below.'); ?>
   <?php else: ?>
-  <div class="table-wrap"><table class="data-table posi-table">
+  <div class="table-wrap"><table class="data-table posi-table" id="posiTable" data-paginate="25">
     <thead><tr><th style="width:30px"></th><th>Item</th><th>Category</th><th class="posi-num">Price</th><th class="posi-num">Stock</th><th>Status</th><th style="width:1%"></th></tr></thead>
     <tbody id="posiRows">
     <?php foreach ($items as $it):
@@ -434,7 +434,8 @@ include __DIR__ . '/_layout.php';
 .posi-thumb--lg{width:84px;height:84px}
 .posi-num{text-align:right;white-space:nowrap}
 .posi-status{border:0;cursor:pointer;font:inherit;font-size:11.5px}
-.posi-act{display:flex;gap:4px;justify-content:flex-end}
+.posi-act{white-space:nowrap;text-align:right}
+.posi-act > *{display:inline-flex;vertical-align:middle;margin-left:4px}
 </style>
 <script>
 (function(){

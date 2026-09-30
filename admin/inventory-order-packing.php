@@ -49,6 +49,26 @@ $pageTitle  = $order ? 'Packing list · ' . ($container !== '' ? $container : (s
 $activeMenu = 'inventory_orders';
 include __DIR__ . '/_layout.php';
 ?>
+<?php /* Styles first: the table below is long, and CSS printed after it left the page unstyled while it loaded. */ ?>
+<?= inv_grid_css() ?>
+<style>
+.pk-scroll{max-height:none;max-width:100%;overflow-x:auto}
+.pk-all{margin-bottom:16px}
+.pk-h{margin:0;padding:12px 16px 10px;font-size:14px}
+.pk-all .ig-wrap{border:0;border-radius:0}
+.pk-kpis{margin-bottom:12px;background:var(--white);border:1px solid var(--border);border-radius:var(--radius)}
+.pk-table thead th{cursor:default}
+.pk-table th.ig-num,.pk-table td.ig-num{text-align:right}
+.pk-table td.pk-desc{white-space:normal;min-width:220px;max-width:420px}
+.pk-table tfoot th,.pk-table tfoot td{background:var(--bg);font-size:12.5px;position:static}
+.pk-table tr.pk-current td{background:#f7f5f0;font-weight:600}
+.pk-table tr.pk-cont td{background:#fbfaf7}
+.pk-table tr.pk-cont td:first-child{padding-left:22px}
+.pk-arrow{color:var(--muted);font-size:12px}
+.pk-table tr.pk-note td{color:var(--muted);font-style:italic}
+.pk-table tr.pk-sheet td{color:var(--muted)}
+</style>
+
 <div class="page-header">
   <h1><?= $current ? 'Packing list · ' . e($container) : 'Packing list' ?></h1>
   <div style="display:flex;gap:8px;flex-wrap:wrap">
@@ -97,7 +117,7 @@ include __DIR__ . '/_layout.php';
   <?php if ($current['unmatched'] > 0): ?><div class="inv-kpi"><span>Not on the master list</span><strong><?= $current['unmatched'] ?> row<?= $current['unmatched'] === 1 ? '' : 's' ?></strong></div><?php endif; ?>
 </div>
 
-<div class="ig-wrap pk-scroll"><table class="ig pk-table">
+<div class="ig-wrap pk-scroll"><table class="ig pk-table pk-rows" data-paginate="50">
   <thead><tr>
     <th>Item no.</th><th>Description</th><th class="ig-num">Qty</th><th class="ig-num">Boxes</th>
     <th>L × W × H (m)</th><th class="ig-num">Weight (kg)</th><th class="ig-num">Cubes (m³)</th><th>Order line</th>
@@ -132,22 +152,4 @@ include __DIR__ . '/_layout.php';
 <?php endif; ?>
 
 <?= inv_shared_css() ?>
-<?= inv_grid_css() ?>
-<style>
-.pk-scroll{max-height:none;max-width:100%;overflow-x:auto}
-.pk-all{margin-bottom:16px}
-.pk-h{margin:0;padding:12px 16px 10px;font-size:14px}
-.pk-all .ig-wrap{border:0;border-radius:0}
-.pk-kpis{margin-bottom:12px;background:var(--white);border:1px solid var(--border);border-radius:var(--radius)}
-.pk-table thead th{cursor:default}
-.pk-table th.ig-num,.pk-table td.ig-num{text-align:right}
-.pk-table td.pk-desc{white-space:normal;min-width:220px;max-width:420px}
-.pk-table tfoot th,.pk-table tfoot td{background:var(--bg);font-size:12.5px;position:static}
-.pk-table tr.pk-current td{background:#f7f5f0;font-weight:600}
-.pk-table tr.pk-cont td{background:#fbfaf7}
-.pk-table tr.pk-cont td:first-child{padding-left:22px}
-.pk-arrow{color:var(--muted);font-size:12px}
-.pk-table tr.pk-note td{color:var(--muted);font-style:italic}
-.pk-table tr.pk-sheet td{color:var(--muted)}
-</style>
 <?php include __DIR__ . '/_layout_end.php'; ?>

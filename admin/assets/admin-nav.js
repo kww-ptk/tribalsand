@@ -265,15 +265,28 @@
   // ═══════════════════════════ SHELL (cross-page nav, #18) ═══════════════════
   var content = document.querySelector('.admin-content');
 
+  // A sidebar link can stand for several pages (its tabs + their detail pages):
+  // it lists their file names in data-pages (includes/admin-nav.php). Match on
+  // the file name so "/admin/conflicts.php" and the clean "/admin/conflicts"
+  // both light up Calendar.
+  function pageFile(url) {
+    var p;
+    try { p = new URL(url, location.href).pathname; } catch (e) { p = String(url || ''); }
+    var f = p.replace(/\/+$/, '').split('/').pop() || '';
+    return f && f.indexOf('.') < 0 ? f + '.php' : f;
+  }
   function setActiveNav(url) {
-    var path;
-    try { path = new URL(url, location.href).pathname; } catch (e) { path = url; }
+    var file = pageFile(url);
     document.querySelectorAll('.sidebar__link').forEach(function (a) {
-      var ap;
-      try { ap = new URL(a.getAttribute('href'), location.href).pathname; } catch (e) { ap = ''; }
-      var on = ap === path;
+      var pages = (a.getAttribute('data-pages') || '').split(' ');
+      var on = !!file && pages.indexOf(file) >= 0;
       a.classList.toggle('is-active', on);
-      if (on) { var g = a.closest('.navgroup'); if (g && !g.open) g.open = true; }
+      if (on) {
+        var g = a.closest('.navgroup');
+        // autoOpen: opened by navigation — the sidebar script must not remember it
+        // as the person's own choice.
+        if (g && !g.open) { g.dataset.autoOpen = '1'; g.open = true; }
+      }
     });
   }
 
