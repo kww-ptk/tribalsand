@@ -28,7 +28,7 @@ Live at https://tribalsand.com (AWS: ECS + RDS PostgreSQL + S3/CloudFront).
 8. [Working with real (production) data](#working-with-real-production-data)
 9. [Database changes (migrations)](#database-changes-migrations)
 10. [Tests](#tests)
-11. [Deploying](#deploying)
+11. [Branches and deploying](#branches-and-deploying)
 12. [Troubleshooting](#troubleshooting)
 
 ---
@@ -299,14 +299,37 @@ Run them against your **local** database only.
 
 ---
 
-## Deploying
+## Branches and deploying
 
-- Work on a branch and open a pull request into `master`.
-- **Every push to `master` deploys to the live site automatically** (GitHub
-  Actions → build image → ECR → ECS → CloudFront cache cleared, a few minutes).
-  There is no staging server, so test locally first and run the tests.
-- New migrations must then be run on production from Admin → Migrations.
-- Delete the branch after it is merged.
+There are two long-lived branches:
+
+| Branch | What it is | Who pushes to it |
+|---|---|---|
+| `master` | **The live site.** Every push deploys to tribalsand.com within minutes (GitHub Actions → build image → ECR → ECS → CloudFront cache cleared) | Nobody directly: it only changes by merging `dev` |
+| `dev` | The shared development branch: everyone's work, tested on localhost, not yet live | All developers |
+
+**Day to day:**
+
+```bash
+git checkout dev
+git pull origin dev          # get everyone's latest work
+# …edit, test on localhost…
+git add -A
+git commit -m "what changed"
+git pull origin dev          # pick up anything pushed meanwhile
+git push origin dev
+```
+
+For a bigger change, branch off `dev` (`git checkout -b feat/short-name`), then
+merge it back into `dev` when it works and delete the branch.
+
+**Going live:** when `dev` is tested and ready, open a pull request
+**`dev` → `master`** on GitHub and merge it. That merge is the deploy. There is no
+staging server, so `dev` on localhost is the test environment; run the tests first.
+
+- **Never push or commit straight to `master`.**
+- New migrations must be run on production from Admin → Migrations after the deploy.
+- Pushing to `dev` deploys nothing.
 
 ---
 
