@@ -234,10 +234,24 @@ function admin_nav_resolve(array $definition, string $script): array {
     return ['groups' => $groups, 'active' => $active];
 }
 
+function admin_nav_icon_set(): array {
+    static $icons = null;
+    return $icons ??= require __DIR__ . '/admin-nav-icons.php';
+}
+
+/**
+ * The icon a tab shows in the strip: the one named after its page ("conflicts.php"
+ * → conflicts), a stand-in for the few pages with none, else its item's icon.
+ */
+function admin_nav_tab_icon(array $tab, string $itemIcon): string {
+    $stem = basename((string)($tab['pages'][0] ?? ''), '.php');
+    $stem = ['submission-trends' => 'reports', 'reindex' => 'sync'][$stem] ?? $stem;
+    return isset(admin_nav_icon_set()[$stem]) ? $stem : $itemIcon;
+}
+
 /** One icon as an <svg> (inner paths live in includes/admin-nav-icons.php). */
 function admin_nav_icon(string $name): string {
-    static $icons = null;
-    $icons ??= require __DIR__ . '/admin-nav-icons.php';
+    $icons = admin_nav_icon_set();
     return '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
          . ($icons[$name] ?? '') . '</svg>';
 }
@@ -294,7 +308,7 @@ function admin_nav_tabs_html(array $nav, string $script = ''): string {
     $out = '<nav class="areatabs" aria-label="' . e($it['label']) . '"><div class="tabs areatabs__row">';
     foreach ($it['tabs'] as $t) {
         $out .= '<a class="tab-btn' . ($t['active'] ? ' is-active' : '') . '" href="' . e($t['href']) . '" data-shell-link'
-              . ($t['active'] ? ' aria-current="page"' : '') . '>' . e($t['label'])
+              . ($t['active'] ? ' aria-current="page"' : '') . '>' . admin_nav_icon(admin_nav_tab_icon($t, $it['icon'])) . e($t['label'])
               . ($t['badge'] > 0 ? ' <span class="tab-btn__count">' . (int)$t['badge'] . '</span>' : '')
               . '</a>';
     }

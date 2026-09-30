@@ -112,6 +112,10 @@ check('…and the item carries the tab badges', $n['active']['badge'] === 3 && $
 $html = admin_nav_tabs_html($n);
 check('tab strip: four tabs, shell links, count pill', substr_count($html, '<a class="tab-btn') === 4 && substr_count($html, 'data-shell-link') === 4
     && str_contains($html, 'tab-btn__count">3<') && str_contains($html, 'aria-current="page"'));
+check('tab strip: every tab carries an icon', substr_count($html, '<svg') === 4);
+check('tab icon: named after the page, else a stand-in, else the item icon', admin_nav_tab_icon(['pages' => ['conflicts.php']], 'gantt') === 'conflicts'
+    && admin_nav_tab_icon(['pages' => ['submission-trends.php']], 'submissions') === 'reports'
+    && admin_nav_tab_icon(['pages' => ['no-such-icon.php']], 'gantt') === 'gantt');
 check('detail pages belong to their list: room-edit.php → Rooms tab', array_column(array_filter($nav('owner', 'room-edit.php')['active']['tabs'], fn($t) => $t['active']), 'label') === ['Rooms']);
 check('booking.php lights Bookings', ($nav('owner', 'booking.php')['active']['label'] ?? '') === 'Bookings');
 check('pages sharing a menu key are told apart: submission-trends.php', array_column(array_filter($nav('owner', 'submission-trends.php')['active']['tabs'], fn($t) => $t['active']), 'label') === ['Trends']);

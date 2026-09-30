@@ -141,7 +141,7 @@ The sidebar and the tab strips come from **`admin_nav_definition()` in `includes
 - **Never two tab rows on one page.** A page that draws its own tab row gets no area strip: Settings · Pre-Check-in · Migrations share the row in `admin/settings.php` (one plain sidebar link owns all three pages — add a fourth there, not as an area tab), and the edit screens in `ADMIN_NAV_OWN_TABS` (`venue-edit`, `room-edit`, `property-edit`, `tour-edit`, `company-edit`) drop the strip while their list pages keep it.
 - **Every admin page is full width.** `.admin-content` has no `max-width` (the old 1270px cap left a band of empty space on wide monitors); don't reintroduce a centred column. The `.page-wide` marker is obsolete.
 
-- **Tab strip look:** a white bar of pills above the page title, the current section a filled teal pill (`.areatabs` in `admin.css`). Not the thin underline row — that was easy to miss and its underline was clipped by the row's sideways scroll.
+- **Tab strip look:** bold underline tabs, each with an icon, on a line across the page; the current one teal with a thick underline (`.areatabs` in `admin.css`). The icon is the one named after the tab's page (`admin_nav_tab_icon()`), else the item's. The line is an inset shadow and the tabs have no negative margin — the row scrolls sideways on a phone, and a scrolling box clips anything hanging below it (that hid the old underline).
 - **Sidebar look:** a group is a header row (icon · name · chevron — every titled group carries an `icon`) and its links sit indented under it along a vertical line (`.navgroup__items` has the `border-left`). Keep it to that one indent.
 
 ### Admin tables — pagination, full height, unbroken row lines
