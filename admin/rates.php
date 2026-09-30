@@ -7,9 +7,12 @@ require_once __DIR__ . '/../includes/rates-compare.php';
 
 require_login();
 
-// Read-only, so reception may look but not touch — editing lives on the
-// owner-only property and room pages. Scoped so a reception account only sees
-// rates for its own properties.
+// Read-only for everyone but the owner — reception may look but not touch.
+// Scoped so a reception account only sees rates for its own properties.
+// The OWNER also gets the global rate editor (includes/rate-editor-view.php):
+// a "Set rates" button, clickable Rate-card cells, a Timeline selection and the
+// change log. None of that markup is rendered for anyone else, and
+// api/rate-editor.php re-checks the owner on every call.
 //
 // Views (each a real URL — bookmarkable, works with JS off):
 //   card      every room of every chosen property × its seasons for a year
@@ -19,6 +22,8 @@ require_login();
 // nothing here can disagree with what a guest is charged. Amounts render in the
 // room's own currency and admin-money.js converts them (KES | USD).
 $scope = admin_venue_ids();                 // null = owner (every venue)
+$reOwner = is_owner();
+if ($reOwner) require_once __DIR__ . '/../includes/rate-editor.php';
 $venues = $scope === null
     ? db_query('SELECT id, name FROM venues ORDER BY sort_order ASC, name ASC')->fetchAll()
     : ($scope
@@ -90,6 +95,37 @@ if ($view === 'card') {
         foreach (array_keys($row['seasons']) as $l) $labelSet[$l] = true;
     }
     $labels = rc_sort_labels(array_keys($labelSet));
+
+    // Owner: what a click on a cell pre-fills — per room and season key, the
+    // most common price (re_most_common_price(), the editor's own tie rule),
+    // whether the price is uniform, and the room's own nights of that season
+    // this year as [first, last] runs (rc_season_runs()). Base = the room's
+    // nights with no seasonal rate, fed through the same run grouping.
+    $reCells = [];
+    if ($reOwner) {
+        foreach ($rooms as $r) {
+            $rid = (int)$r['id'];
+            $m = $maps[$rid] ?? [];
+            $prices = [];
+            foreach ($m as $night) {
+                $k = rc_night_key($night);
+                if ($k !== null) $prices[$k][] = (float)$night['price'];
+            }
+            $cell = ['seasons' => [], 'base' => []];
+            foreach (rc_season_runs([$m]) as $k => $runs) {
+                $s = $cardRows[$rid]['seasons'][$k];
+                $cell['seasons'][$k] = [
+                    'price'   => re_most_common_price($prices[$k] ?? []),
+                    'uniform' => $s['min'] === $s['max'],
+                    'ranges'  => $runs,
+                ];
+            }
+            $baseOnly = array_map(fn($n) => rc_night_key($n) === null
+                ? ['is_override' => true, 'label' => 'Base'] : ['is_override' => false], $m);
+            $cell['base'] = rc_season_runs([$baseOnly])['Base'] ?? [];
+            $reCells[$rid] = $cell;
+        }
+    }
 } elseif ($view === 'timeline') {
     $tFrom = $month . '-01';
     $tTo   = (new DateTime($tFrom))->modify('+1 month')->format('Y-m-d');
@@ -138,7 +174,11 @@ include __DIR__ . '/_layout.php';
 
 <div class="page-header">
   <h1>Rates</h1>
-  <a class="btn-outline btn-sm" href="/admin/quote-builder.php" data-keep-cur>Build a quote <?= admin_icon('chevron-right', 14) ?></a>
+  <?php if ($reOwner): ?><div class="re-headbtns">
+    <button type="button" class="btn-primary btn-sm" data-re-open><?= admin_icon('edit', 14) ?> Set rates</button>
+  <?php endif; ?>
+    <a class="btn-outline btn-sm" href="/admin/quote-builder.php" data-keep-cur>Build a quote <?= admin_icon('chevron-right', 14) ?></a>
+  <?php if ($reOwner): ?></div><?php endif; ?>
 </div>
 
 <?php if (!$venues): ?>
@@ -190,7 +230,7 @@ include __DIR__ . '/_layout.php';
   <div class="alert alert--info">These properties have no rooms yet.</div>
   <?php else: ?>
   <div class="rc-wrap">
-    <table class="rc-table">
+    <table class="rc-table<?= $reOwner ? ' re-card' : '' ?>">
       <thead><tr>
         <th>Room</th>
         <?php foreach ($labels as $l): ?><th><span class="rc-pill rc-<?= e(rc_season_class($l)) ?>"><?= e($l) ?></span></th><?php endforeach; ?>
@@ -210,20 +250,35 @@ include __DIR__ . '/_layout.php';
         </td></tr>
         <?php foreach ($vRooms as $r):
               $row = $cardRows[(int)$r['id']];
-              $c   = (string)($r['price_currency'] ?: 'USD'); ?>
+              $c   = (string)($r['price_currency'] ?: 'USD');
+              // Owner: the cell carries what the editor pre-fills (room, season, price,
+              // nights). An empty cell pre-fills the PROPERTY's nights of that season.
+              $reAttr = function (?array $pre, string $key, bool $base = false) use ($reOwner, $r, $vid, $c, $year, $runs): string {
+                  if (!$reOwner) return '';
+                  $ranges = $pre['ranges'] ?? ($base ? [] : ($runs[$key] ?? []));
+                  if (!$ranges) return '';
+                  $price = $pre['price'] ?? null;
+                  return ' data-re-cell tabindex="0" role="button" title="Set rates…"'
+                       . ' data-room="' . (int)$r['id'] . '" data-venue="' . (int)$vid . '" data-name="' . e($r['name']) . '"'
+                       . ' data-cur="' . e(strtoupper($c)) . '" data-year="' . (int)$year . '" data-key="' . e($key) . '"'
+                       . ($base ? ' data-base="1"' : '') . ($key === 'Other rate' ? ' data-other="1"' : '')
+                       . ' data-price="' . ($price !== null && $price > 0 ? e(rc_trimz(sprintf('%.2F', $price))) : '') . '"'
+                       . ' data-uniform="' . (!empty($pre['uniform']) ? '1' : '0') . '"'
+                       . ' data-ranges="' . e(json_encode($ranges)) . '"';
+              }; ?>
         <tr>
           <td class="rc-room"><a href="<?= e($calUrl((int)$vid)) ?>" data-keep-cur><?= e($r['name']) ?></a><?php if (empty($r['is_published']) || $r['is_published'] === 'f'): ?><span class="rc-hidden">hidden</span><?php endif; ?></td>
           <?php foreach ($labels as $l): $s = $row['seasons'][$l] ?? null; ?>
-          <td><?php if (!$s): ?>—<?php elseif ($s['min'] === $s['max']): ?><?= rc_money_html($s['min'], $c, $cur, $fx) ?><?php else: ?><?= rc_money_html($s['min'], $c, $cur, $fx) ?> – <?= rc_money_html($s['max'], $c, $cur, $fx) ?><?php endif; ?></td>
+          <td<?= $reAttr($reCells[(int)$r['id']]['seasons'][$l] ?? null, $l) ?>><?php if (!$s): ?>—<?php elseif ($s['min'] === $s['max']): ?><?= rc_money_html($s['min'], $c, $cur, $fx) ?><?php else: ?><?= rc_money_html($s['min'], $c, $cur, $fx) ?> – <?= rc_money_html($s['max'], $c, $cur, $fx) ?><?php endif; ?></td>
           <?php endforeach; ?>
-          <td><?= (float)$r['price_amount'] > 0 ? rc_money_html((float)$r['price_amount'], $c, $cur, $fx) : '—' ?></td>
+          <td<?= $reAttr(['ranges' => $reCells[(int)$r['id']]['base'] ?? [], 'price' => (float)$r['price_amount'], 'uniform' => true], 'Base', true) ?>><?= (float)$r['price_amount'] > 0 ? rc_money_html((float)$r['price_amount'], $c, $cur, $fx) : '—' ?></td>
         </tr>
         <?php endforeach; ?>
       <?php endforeach; ?>
       </tbody>
     </table>
   </div>
-  <p class="rc-foot">Seasons are the rate labels set on each room. <strong>Base</strong> is the room's own price, used on any night without a seasonal rate. Dates are last nights.</p>
+  <p class="rc-foot">Seasons are the rate labels set on each room. <strong>Base</strong> is the room's own price, used on any night without a seasonal rate. Dates are last nights.<?php if ($reOwner): ?> Click a price to change it.<?php endif; ?></p>
   <?php endif; ?>
 
 <?php elseif ($view === 'timeline'): ?>
@@ -231,7 +286,7 @@ include __DIR__ . '/_layout.php';
   <div class="alert alert--info">These properties have no rooms yet.</div>
   <?php else: ?>
   <div class="rc-wrap">
-    <table class="rc-table rc-tl">
+    <table class="rc-table rc-tl<?= $reOwner ? ' re-tl' : '' ?>"<?= $reOwner ? ' data-re-tl' : '' ?>>
       <thead><tr>
         <th>Room</th>
         <?php foreach ($days as $d): $we = in_array((int)date('N', strtotime($d)), [6, 7], true); ?>
@@ -242,7 +297,7 @@ include __DIR__ . '/_layout.php';
       <?php foreach ($byVenue as $vid => $vRooms): ?>
         <tr class="rc-group"><td><?= e($venueName[$vid] ?? '') ?></td><td colspan="<?= count($days) ?>"></td></tr>
         <?php foreach ($vRooms as $r): $c = (string)($r['price_currency'] ?: 'USD'); $m = $maps[(int)$r['id']] ?? []; ?>
-        <tr>
+        <tr<?php if ($reOwner): ?> data-re-row data-room="<?= (int)$r['id'] ?>" data-name="<?= e($r['name']) ?>"<?php endif; ?>>
           <td class="rc-room"><a href="<?= e($calUrl((int)$vid)) ?>" data-keep-cur><?= e($r['name']) ?></a></td>
           <?php foreach ($days as $d):
                 $night = $m[$d] ?? null;
@@ -250,7 +305,7 @@ include __DIR__ . '/_layout.php';
                 $cls   = rc_season_class($key);
                 $we    = in_array((int)date('N', strtotime($d)), [6, 7], true);
                 $tip   = $night ? date('D j M', strtotime($d)) . ' · ' . ($key ?? 'Base') . ' · ' . ((float)$night['price'] > 0 ? rc_money_text((float)$night['price'], $c) : 'no price') : ''; ?>
-          <td class="rc-<?= e($cls) ?><?= $we ? ' is-we' : '' ?>" title="<?= e($tip) ?>"><?= $night && (float)$night['price'] > 0 ? rc_money_html((float)$night['price'], $c, $cur, $fx, true) : '—' ?></td>
+          <td class="rc-<?= e($cls) ?><?= $we ? ' is-we' : '' ?>" title="<?= e($tip) ?>"<?= $reOwner ? ' data-d="' . e($d) . '"' : '' ?>><?= $night && (float)$night['price'] > 0 ? rc_money_html((float)$night['price'], $c, $cur, $fx, true) : '—' ?></td>
           <?php endforeach; ?>
         </tr>
         <?php endforeach; ?>
@@ -262,6 +317,7 @@ include __DIR__ . '/_layout.php';
     <span><span class="rc-pill rc-std">Standard</span></span><span><span class="rc-pill rc-mid">Mid</span></span>
     <span><span class="rc-pill rc-peak">Peak</span></span><span><span class="rc-pill rc-other">Other rate</span></span>
     <span>Uncoloured = base price · hover a cell for the full price</span>
+    <?php if ($reOwner): ?><span>Click a night to set rates · shift-click to extend · ctrl/⌘-click or drag to add rooms · Esc clears</span><?php endif; ?>
   </div>
   <?php endif; ?>
 
@@ -308,6 +364,8 @@ include __DIR__ . '/_layout.php';
   </div>
   <?php endforeach; endif; ?>
 <?php endif; ?>
+
+<?php if ($reOwner) include __DIR__ . '/../includes/rate-editor-view.php'; ?>
 
 <?php endif; ?>
 <?php include __DIR__ . '/_layout_end.php'; ?>
