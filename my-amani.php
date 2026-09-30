@@ -623,7 +623,7 @@ include __DIR__ . '/includes/property-photo-grid.php';
 
       <!-- Booking widget (mode driven by DB: enquiry or availability) -->
       <div class="book-body" style="padding:0">
-        <?php $booking_slug = 'my-amani-full-rental'; include __DIR__ . '/includes/booking-widget.php'; ?>
+        <?php $bk_alternatives = true; $booking_slug = 'my-amani-full-rental'; include __DIR__ . '/includes/booking-widget.php'; ?>
       </div>
 
       <!-- Policy accordion -->

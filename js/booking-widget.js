@@ -306,6 +306,8 @@
       if (!selStart || !selEnd) return;
       const ci = ymd(selStart), co = ymd(selEnd);
       setHint("Checking availability…", "loading");
+      const altBox = document.getElementById("bkAlternatives");
+      if (altBox && window.tsClearAlternatives) window.tsClearAlternatives(altBox);
       const mySeq = ++availSeq;
       try {
         const res  = await fetch(`/api/check-availability?room=${encodeURIComponent(slug)}&check_in=${ci}&check_out=${co}`);
@@ -323,6 +325,13 @@
           totalCard.hidden = false;
         } else {
           setHint("✗ Sorry — no availability for these dates. Try different ones.", "bad");
+          // Whole-property pages opt in: list the other properties with space.
+          if (altBox && window.tsShowAlternatives) {
+            window.tsShowAlternatives(altBox, {
+              venue: altBox.dataset.venue, checkin: ci, checkout: co,
+              adults: parseInt(adultsH.value, 10) || 1, children: parseInt(childrenH.value, 10) || 0,
+            });
+          }
         }
       } catch {
         if (mySeq !== availSeq) return;

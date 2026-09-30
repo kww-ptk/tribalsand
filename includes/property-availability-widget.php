@@ -397,6 +397,17 @@ if (empty($GLOBALS['__pa_modal_done'])) {
         results.appendChild(el('<p class="pa-none">Sorry — we don’t have space for ' + guests + ' guest' + (guests === 1 ? '' : 's') +
           ' at ' + esc(venueName) + ' for those dates.' + cap +
           ' Try different dates, or <a href="/search?checkin=' + ci + '&checkout=' + co + '&adults=' + data.adults + '&children=' + data.children + '">search all properties →</a></p>'));
+        // The other properties that DO have space (js/alternatives.js). `results`
+        // is emptied on every render, so a new check drops the old list.
+        var altBox = document.createElement('div');
+        altBox.className = 'ts-alt'; altBox.hidden = true;
+        results.appendChild(altBox);
+        // This inline script can run before the deferred js/alternatives.js has
+        // loaded (the check auto-runs from the URL during page load) — queue the
+        // call then; alternatives.js drains window.tsAltQueue when it loads.
+        var altQ = { venue: venue, checkin: ci, checkout: co, adults: data.adults, children: data.children };
+        if (typeof window.tsShowAlternatives === 'function') window.tsShowAlternatives(altBox, altQ);
+        else (window.tsAltQueue = window.tsAltQueue || []).push([altBox, altQ]);
       }
     }
 

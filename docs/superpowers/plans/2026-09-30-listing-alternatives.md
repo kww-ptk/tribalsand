@@ -188,7 +188,7 @@ function ts_alternative_properties(array $results, string $excludeSlug, int $lim
 }
 ```
 
-Note: comparing `from` across currencies is only an ordering hint (Maya Ilai is USD, most others KES); the displayed figures are never summed or converted server-side.
+Note (as built): the ranking takes an optional `$rankAmount(amount, currency)` callable; the endpoint passes `convert_price(…, 'USD')` so KES and USD prices compare fairly. The returned figures are never converted. Also as built: the multi-room widget queues its call on `window.tsAltQueue` when `js/alternatives.js` hasn't loaded yet (found in browser verification).
 
 - [ ] **Step 4: Run — expect ALL PASS.** `php tests/listing_alternatives_logic.php`
 - [ ] **Step 5: Commit** `git add includes/listing-alternatives.php tests/listing_alternatives_logic.php && git commit -m "feat(listing): rank other properties with space (pure helpers)"`
