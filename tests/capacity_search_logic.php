@@ -7,7 +7,7 @@ declare(strict_types=1);
  * Pure ts_rank_combos() logic is exercised without a DB. The DB-backed
  * ts_property_configurations() asserts run read-only against a far-future
  * window (so every unit is free); they SKIP when no DB / no seed is present.
- * Nothing is written, so there is nothing to roll back.
+ * The search-exclusion block at the end writes inside ONE rolled-back transaction.
  *
  * Acceptance bar (the ONE pricing path): a combo's total always equals the sum
  * of room_stay_quote() per room × units — the same figure the booking widget
@@ -161,6 +161,56 @@ if ($amani) {
     else echo "SKIP  my-amani/7: whole place offered (no priced whole-place room in this database)
 ";
     check('my-amani/7: no combos (entire-only venue)', $a['combos'] === []);
+}
+
+// ── Search: one booked room must not hide the property's other rooms ─────────
+// A whole-property room is unbookable whenever ANY room is taken (mutual
+// exclusion), and search used to read that as "the whole place is booked" and
+// hide every room — /search said "No availability" while the property page
+// listed free rooms. Built on Zuri with one room made the whole-property room,
+// inside a rolled-back transaction (the only writes in this file).
+$zuri = $venueBySlug('zuri');
+$units = $zuri ? db_query(
+    "SELECT r.id AS room_id, r.slug, u.id AS unit_id FROM rooms r
+     JOIN units u ON u.room_id = r.id AND u.is_active = TRUE
+     WHERE r.venue_id = :v AND r.is_published = TRUE ORDER BY r.sort_order, r.id, u.sort_order",
+    [':v' => (int)$zuri['id']])->fetchAll() : [];
+$bySlug = [];
+foreach ($units as $u) $bySlug[$u['slug']] ??= $u;
+if (count($bySlug) >= 3) {
+    $slugs  = array_keys($bySlug);
+    $whole  = $bySlug[$slugs[0]];            // stands in for the buyout
+    $booked = $bySlug[$slugs[1]];            // one individual room taken
+    $sci = '2098-03-10'; $sco = '2098-03-13';
+    $zuriRooms = function () use ($sci, $sco, $zuri): array {
+        foreach (ts_search_availability($sci, $sco, 1) as $res) {
+            if ((int)$res['venue']['id'] === (int)$zuri['id']) return array_column($res['rooms'], 'slug');
+        }
+        return [];
+    };
+    db()->beginTransaction();
+    try {
+        db_query("UPDATE rooms SET is_entire_place = (id = :w), capacity = COALESCE(NULLIF(capacity, 0), 2)
+                  WHERE venue_id = :v", [':w' => (int)$whole['room_id'], ':v' => (int)$zuri['id']]);
+        db_query("INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, notes)
+                  VALUES (:u, :f, :t, 'blocked', 'test')", [':u' => (int)$booked['unit_id'], ':f' => $sci, ':t' => $sco]);
+        $got = $zuriRooms();
+        check('search: one booked room keeps the other rooms listed',
+            count(array_diff($slugs, [$whole['slug'], $booked['slug']])) > 0
+            && array_diff($slugs, [$whole['slug'], $booked['slug']]) == array_intersect(array_diff($slugs, [$whole['slug'], $booked['slug']]), $got));
+        check('search: the booked room is not listed',      !in_array($booked['slug'], $got, true));
+        check('search: the whole property is not listed',   !in_array($whole['slug'], $got, true));
+
+        // The other direction still holds: the whole property booked hides every room.
+        db_query("DELETE FROM availability_blocks WHERE notes = 'test' AND date_from = :f", [':f' => $sci]);
+        db_query("INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, notes)
+                  VALUES (:u, :f, :t, 'blocked', 'test')", [':u' => (int)$whole['unit_id'], ':f' => $sci, ':t' => $sco]);
+        check('search: whole property booked hides every room', $zuriRooms() === []);
+    } finally {
+        if (db()->inTransaction()) db()->rollBack();
+    }
+} else {
+    echo "SKIP  search exclusion (Zuri needs 3 rooms with active units)\n";
 }
 
 echo ($failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n");

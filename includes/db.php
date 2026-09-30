@@ -1650,22 +1650,16 @@ function ts_search_availability(string $check_in, string $check_out, int $guests
             [':vid' => $v['id']]
         )->fetchAll();
 
-        // Free/booked status per room for the requested dates.
+        // Free/booked status per room for the requested dates. find_available_unit()
+        // already applies the whole-villa vs individual-room mutual exclusion both
+        // ways (room_conflict_unit_ids()): the whole villa is free only when every
+        // room is, and a room is free only when the whole villa isn't booked. Don't
+        // re-derive it at venue level — "the whole villa isn't free" also means
+        // "one room is taken", and reading that as "the villa is booked" hid every
+        // room of a property as soon as a single room sold.
         $free = [];
         foreach ($rooms as $r) {
             $free[$r['id']] = (bool) find_available_unit((int)$r['id'], $check_in, $check_out);
-        }
-        // Whole-villa vs individual-room mutual exclusion:
-        //  · the Entire Villa is bookable only when it AND every individual room is free
-        //  · individual rooms disappear once the Entire Villa is booked for these dates
-        $entire_booked  = false; // someone holds the whole villa
-        $all_rooms_free = true;  // every individual (non-entire) room is free
-        foreach ($rooms as $r) {
-            if (!empty($r['is_entire_place'])) {
-                if (!$free[$r['id']]) $entire_booked = true;
-            } else {
-                if (!$free[$r['id']]) $all_rooms_free = false;
-            }
         }
 
         $mkItem = function(array $r, bool $entire) use ($check_in, $check_out) {
@@ -1689,15 +1683,8 @@ function ts_search_availability(string $check_in, string $check_out, int $guests
         foreach ($rooms as $r) {
             $cap = (int)($r['capacity'] ?? 0);
             if ($cap > 0 && $guests > 0 && $cap < $guests) continue; // too small for the party
-            $entire = !empty($r['is_entire_place']);
-            if ($entire) {
-                // Entire villa: only when the villa itself and all rooms are free
-                if (!$free[$r['id']] || !$all_rooms_free) continue;
-            } else {
-                // Individual room: only when it's free and the villa isn't taken
-                if (!$free[$r['id']] || $entire_booked) continue;
-            }
-            $available[] = $mkItem($r, $entire);
+            if (!$free[$r['id']]) continue;
+            $available[] = $mkItem($r, !empty($r['is_entire_place']));
         }
 
         // Capacity-aware configurations (singles / entire / combos / max_capacity).
