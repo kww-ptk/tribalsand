@@ -159,7 +159,8 @@ function sync_reconcile_report(?array $peerHealth = null): array {
         $report['entities'][$entity] = [
             'count' => count($rows), 'checksum' => $sum,
             'undelivered' => count($undelivered), 'undelivered_sample' => array_slice($undelivered, 0, 10),
-            'peer_count' => is_array($peer) ? ($peer['count'] ?? null) : null, 'peer_match' => $match,
+            'peer_count' => is_array($peer) ? ($peer['count'] ?? null) : null,
+            'peer_checksum' => is_array($peer) ? ($peer['checksum'] ?? null) : null, 'peer_match' => $match,
         ];
         if ($undelivered || $match === false) $report['ok'] = false;
     }
