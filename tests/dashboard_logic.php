@@ -82,15 +82,53 @@ $bare = dashboard_plan('owner', []);
 check('a module that is not installed drops its tiles and sections', !array_intersect(['reservations', 'counts_review', 'team_overdue'], $bare['tiles'])
     && !in_array('my_tasks', $bare['sections'], true) && in_array('requests', $bare['tiles'], true));
 check('till card only for an account that can sell', !in_array('till', dashboard_plan('pos', ['tasks' => true])['sections'], true));
-check('AI assistant shortcut only with a key, and never for ops', in_array(['AI assistant', '/admin/assistant.php'], $plan('owner')['shortcuts'], true)
-    && !in_array(['AI assistant', '/admin/assistant.php'], dashboard_plan('owner', ['ai' => false])['shortcuts'], true)
-    && !in_array(['AI assistant', '/admin/assistant.php'], $plan('ops')['shortcuts'], true));
+check('AI assistant shortcut only with a key, and never for ops', in_array(['AI assistant', '/admin/assistant.php', 'sparkle'], $plan('owner')['shortcuts'], true)
+    && !in_array('/admin/assistant.php', array_column(dashboard_plan('owner', ['ai' => false])['shortcuts'], 1), true)
+    && !in_array('/admin/assistant.php', array_column($plan('ops')['shortcuts'], 1), true));
 
 // Every tile and shortcut points at a real admin page.
 $targets = array_column($meta, 'href');
 foreach (['owner', 'manager', 'reception', 'frontdesk', 'ops', 'security', 'pos'] as $k) foreach ($plan($k)['shortcuts'] as $sc) $targets[] = $sc[1];
 $dead = array_filter(array_unique($targets), fn($h) => !is_file(__DIR__ . '/..' . strtok($h, '?')));
 check('every tile and shortcut points at an existing page' . ($dead ? ' — ' . implode(', ', $dead) : ''), !$dead);
+
+// ── The bento pieces ────────────────────────────────────────────────────────
+foreach (['owner', 'manager', 'reception', 'frontdesk', 'ops', 'security', 'pos'] as $k) {
+    $pp = dashboard_profile($k, null, ['Zuri']);
+    check("{$k}: short 'you can' chips, each a few words", count($pp['chips']) >= 4 && !array_filter($pp['chips'], fn($c) => strlen($c) > 22));
+    check("{$k}: every shortcut has a label, a page and a drawn icon", !array_filter($plan($k)['shortcuts'],
+        fn($sc) => count($sc) !== 3 || str_contains(dashboard_icon($sc[2]), '<circle cx="12" cy="12" r="2"/>')));
+}
+check('icon: an unknown name draws a dot instead of nothing', str_contains(dashboard_icon('nope'), '<circle cx="12" cy="12" r="2"/>') && str_contains(dashboard_icon('plus', 20), 'width="20"'));
+
+$q = dashboard_queue(['requests' => 2, 'conflicts' => 0, 'team_chat' => 4, 'messages' => 1, 'counts_review' => null, 'guest_requests' => 0], $meta);
+check('queue: action items first, then informative ones, then unreadable', array_column($q['rows'], 'key') === ['requests', 'messages', 'team_chat', 'counts_review']);
+check('queue: only action items are hot', array_column($q['rows'], 'hot') === [true, true, false, false]);
+check('queue: zeros fold into the all-clear line', $q['clear'] === ['Calendar conflicts', 'Guest requests']);
+check('queue: a tile that could not be read is never reported as clear', !in_array('Stock counts', $q['clear'], true) && $q['rows'][3]['n'] === null);
+check('queue: everything at zero → no rows', dashboard_queue(['requests' => 0, 'team_chat' => 0], $meta)['rows'] === []);
+
+check('headline: arrivals and what needs you', dashboard_headline('owner', 3, 2, 4, 0, 0) === '3 guests arrive today and 4 things need you.');
+check('headline: singular forms', dashboard_headline('reception', 1, 0, 1, 0, 0) === '1 guest arrives today and 1 thing needs you.');
+check('headline: a quiet day', dashboard_headline('frontdesk', 0, 0, 0, 0, 0) === 'No arrivals today and nothing is waiting on you.');
+check('headline: gate counts who comes and goes', dashboard_headline('security', 2, 1, 0, 0, 0) === '2 guests arrive today, 1 leaves.');
+check('headline: task roles hear about their tasks', dashboard_headline('ops', null, null, 0, 2, 1) === 'You have 2 tasks today, and 1 overdue.'
+    && dashboard_headline('ops', null, null, 0, 0, 0) === 'No tasks for you today.' && dashboard_headline('ops', null, null, 0, 0, 2) === 'Nothing new today, and 2 overdue.');
+check('headline: the till', str_starts_with(dashboard_headline('pos', null, null, 0, 1, 0), 'The till is ready when you are. You have 1 task today'));
+
+check('initials: two names, one name, extra spaces, empty', dashboard_initials('Amina Njoroge') === 'AN' && dashboard_initials('cher') === 'CH'
+    && dashboard_initials('  Jean  Luc   Picard ') === 'JP' && dashboard_initials('') === '?' && dashboard_initials('Édith Piaf') === 'ÉP');
+check('occupancy: whole percent, capped, null without rooms', dashboard_occupancy_pct(14, 22) === 64 && dashboard_occupancy_pct(0, 10) === 0
+    && dashboard_occupancy_pct(30, 20) === 100 && dashboard_occupancy_pct(3, 0) === null);
+
+$rows = [['check_in' => '2026-09-02', 'gross_amount' => 100, 'currency' => 'USD'], ['check_in' => '2026-09-02', 'gross_amount' => 50000, 'currency' => 'KES'],
+         ['check_in' => '2026-09-04', 'gross_amount' => 20000, 'currency' => 'kes'], ['check_in' => '2026-08-31', 'gross_amount' => 99999, 'currency' => 'KES']];
+$ser = dashboard_daily_series($rows, '2026-09-01', '2026-09-05');
+check('bars: one currency only — the biggest — never a mix', $ser['currency'] === 'KES' && $ser['days']['2026-09-02'] === 50000.0 && $ser['days']['2026-09-04'] === 20000.0);
+check('bars: a day for every date in the window, days outside it ignored', array_keys($ser['days']) === ['2026-09-01', '2026-09-02', '2026-09-03', '2026-09-04', '2026-09-05']
+    && $ser['max'] === 50000.0);
+check('bars: nothing to draw without revenue', dashboard_daily_series([], '2026-09-01', '2026-09-05')['days'] === []
+    && dashboard_daily_series([['check_in' => '2026-09-02', 'gross_amount' => 0, 'currency' => 'USD']], '2026-09-01', '2026-09-05')['max'] === 0.0);
 
 // ── The heading only says "nothing waiting" when that is true ───────────────
 check('heading: a warn tile above zero', dashboard_heading(['requests' => 2, 'team_chat' => 0], $meta, 0, 0) === 'Needs your attention');
@@ -156,6 +194,8 @@ if (!$haveDb) {
         $m = dashboard_money(null, ['id' => 0, 'role' => 'owner'], $today);
         check('money: shape is stable whether or not the ledger exists', is_bool($m['supported']) && is_array($m['revenue']) && is_array($m['pos_today'])
             && ($m['occupancy'] === null || ($m['occupancy'] >= 0 && $m['occupancy'] <= 100)) && $m['month'] === date('F', strtotime($today)));
+        check('money: carries the bar series', isset($m['series']['currency'], $m['series']['days'], $m['series']['max']));
+        check('rooms tonight: a count ≥ 0, and none for an account assigned nowhere', dashboard_room_count(null) >= 0 && dashboard_room_count([]) === 0);
         check('money: one entry per currency, already formatted', !array_filter($m['revenue'], fn($r) => !is_string($r['amount']) || $r['amount'] === ''));
 
         $t = dashboard_my_tasks(0, $today);
