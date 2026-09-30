@@ -172,11 +172,9 @@ function admin_nav_definition(array $f, array $badge = []): array {
         ]],
 
         ['key' => 'settings', 'title' => 'Settings', 'items' => [
-            $item('Settings', 'settings', [
-                $tab('General', 'settings.php', $on('owner'), 'Settings'),
-                $tab('Check-in', 'checkin-settings.php', $on('owner'), 'Check-in settings'),
-                $tab('Migrations', 'migrate.php', $on('owner')),
-            ]),
+            // Settings, Pre-Check-in and Migrations draw their OWN tab row (admin/settings.php),
+            // so this is one plain link that owns all three pages — no second strip above it.
+            $item('Settings', 'settings', [$tab('Settings', ['settings.php', 'checkin-settings.php', 'migrate.php'], $on('owner'))]),
             $item('Emails', 'emails', [
                 $tab('Emails', ['emails.php', 'email-edit.php', 'email-preview.php'], $on('owner')),
                 $tab('Email log', 'email-log.php', $on('reports')),
@@ -279,10 +277,18 @@ function admin_nav_sidebar_html(array $nav): string {
     return $out;
 }
 
-/** The tab strip for the item being viewed ('' when it has fewer than two tabs). */
-function admin_nav_tabs_html(array $nav): string {
+/**
+ * Edit screens that draw their own tab row (Details · Content · Gallery …). The
+ * area strip is left off them — two rows of tabs on one page reads as clutter —
+ * while the sidebar link stays lit and their list page still carries the strip.
+ */
+const ADMIN_NAV_OWN_TABS = ['venue-edit.php', 'room-edit.php', 'property-edit.php', 'tour-edit.php', 'company-edit.php'];
+
+/** The tab strip for the item being viewed ('' when it has fewer than two tabs, or the page has its own). */
+function admin_nav_tabs_html(array $nav, string $script = ''): string {
     $it = $nav['active'] ?? null;
     if (!$it || count($it['tabs']) < 2) return '';
+    if ($script !== '' && in_array($script, ADMIN_NAV_OWN_TABS, true)) return '';
     $out = '<nav class="areatabs" aria-label="' . e($it['label']) . '"><div class="tabs areatabs__row">';
     foreach ($it['tabs'] as $t) {
         $out .= '<a class="tab-btn' . ($t['active'] ? ' is-active' : '') . '" href="' . e($t['href']) . '" data-shell-link'

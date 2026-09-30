@@ -120,7 +120,7 @@ $__nav = admin_nav_resolve(
     admin_nav_definition($__navFlags, $__navBadges($__shellFrag ? ($__navStripBadges[$__navScript] ?? []) : null)),
     $__navScript
 );
-$__navTabs = admin_nav_tabs_html($__nav);
+$__navTabs = admin_nav_tabs_html($__nav, $__navScript);
 if ($__shellFrag) { ob_start(); echo $__navTabs; return; }
 ?>
 <!DOCTYPE html>

@@ -110,7 +110,19 @@ check('tab strip: four tabs, shell links, count pill', substr_count($html, '<a c
     && str_contains($html, 'tab-btn__count">3<') && str_contains($html, 'aria-current="page"'));
 check('detail pages belong to their list: room-edit.php → Rooms tab', array_column(array_filter($nav('owner', 'room-edit.php')['active']['tabs'], fn($t) => $t['active']), 'label') === ['Rooms']);
 check('booking.php lights Bookings', ($nav('owner', 'booking.php')['active']['label'] ?? '') === 'Bookings');
-check('pages sharing a menu key are told apart: checkin-settings.php', array_column(array_filter($nav('owner', 'checkin-settings.php')['active']['tabs'], fn($t) => $t['active']), 'label') === ['Check-in']);
+check('pages sharing a menu key are told apart: submission-trends.php', array_column(array_filter($nav('owner', 'submission-trends.php')['active']['tabs'], fn($t) => $t['active']), 'label') === ['Trends']);
+// Settings, Pre-Check-in and Migrations share the page's own tab row: one link, no strip.
+foreach (['settings.php', 'checkin-settings.php', 'migrate.php'] as $pg) {
+    $sn = $nav('owner', $pg);
+    check("{$pg}: lights Settings and draws no second tab row", ($sn['active']['label'] ?? '') === 'Settings' && admin_nav_tabs_html($sn, $pg) === '');
+}
+// Edit screens with their own tabs keep the sidebar link lit but drop the area strip.
+foreach (ADMIN_NAV_OWN_TABS as $pg) {
+    $en = $nav('owner', $pg);
+    check("{$pg}: sidebar lit, no area strip over its own tabs", $en['active'] !== null && admin_nav_tabs_html($en, $pg) === ''
+        && is_file(__DIR__ . '/../admin/' . $pg) && str_contains((string)file_get_contents(__DIR__ . '/../admin/' . $pg), 'class="tabs'));
+}
+check('…while their list page still has the strip', admin_nav_tabs_html($nav('owner', 'rooms.php'), 'rooms.php') !== '');
 check('a single-tab item draws no strip', admin_nav_tabs_html($nav('owner', 'frontdesk.php')) === '');
 check('an unknown page lights nothing', $nav('owner', 'nope.php')['active'] === null && admin_nav_tabs_html($nav('owner', 'nope.php')) === '');
 check('owner counts stock through Inventory › Counts', ($nav('owner', 'inventory-count.php')['active']['label'] ?? '') === 'Counts');
