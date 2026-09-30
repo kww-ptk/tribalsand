@@ -518,6 +518,37 @@ if ($pdo) {
         check('dispatch: undo 200', $r['status'] === 200 && $q($S1, 100, '2099-06-02', '2099-06-03') === 150.0);
         check('dispatch: undo again 422', rate_editor_dispatch('POST', ['csrf_token' => $tok, 'action' => 'undo', 'change_id' => $cid], $owner, $tok)['status'] === 422);
         check('dispatch: undo unknown 404', rate_editor_dispatch('POST', ['csrf_token' => $tok, 'action' => 'undo', 'change_id' => 2147480000], $owner, $tok)['status'] === 404);
+
+        // ── Guard: a split must not flip a legacy created_at tie OUTSIDE the span ──
+        // Base 100. A (lower id) [06-01,06-30) 150 and B (higher id) [06-20,06-25) 200
+        // share created_at, so B wins 06-20..24. Fixing 06-10 alone splits A and
+        // re-inserts its remainder [06-11,06-30) with a NEW, higher id than B — which
+        // would now win the tie on 06-20..24 (price 200 → 150) on nights never targeted.
+        $G = $mkRoom('zz-re-guard', 'ZZ Guard Room', 100, 'USD', false);
+        $gts = '2020-01-01 00:00:00';
+        db_query("INSERT INTO rates (room_id, date_from, date_to, price_amount, label, created_at) VALUES (:r, '2099-06-01', '2099-06-30', 150, 'Outer', :c)", [':r' => $G, ':c' => $gts]);
+        db_query("INSERT INTO rates (room_id, date_from, date_to, price_amount, label, created_at) VALUES (:r, '2099-06-20', '2099-06-25', 200, 'Inner', :c)", [':r' => $G, ':c' => $gts]);
+        $gq = fn() => $q($G, 100, '2099-06-01', '2099-06-30');
+        $gRows = fn() => db_query('SELECT id, date_from, date_to, price_amount FROM rates WHERE room_id = :r ORDER BY id', [':r' => $G])->fetchAll();
+        $gBefore = $gq(); $gRowsBefore = $gRows();
+        $gLogBefore = (int) db_query('SELECT COUNT(*) FROM rate_change_log')->fetchColumn();
+        $m = refusal(fn() => $apply(['rooms' => [$G], 'ranges' => [['2099-06-10', '2099-06-10']], 'mode' => 'fixed', 'amount' => 500], 1));
+        check('guard: a split that would flip a created_at tie outside the span is refused',
+            $m !== null && str_contains($m, 'would also alter prices on other nights') && str_contains($m, 'nothing was changed'));
+        check('guard: …and nothing changed (quotes, rows, log)',
+            $gq() === $gBefore && $gRows() == $gRowsBefore
+            && (int) db_query('SELECT COUNT(*) FROM rate_change_log')->fetchColumn() === $gLogBefore);
+        // Through the dispatcher a refusal is a 422 with the message.
+        $gd = ['rooms' => [$G], 'ranges' => [['2099-06-10', '2099-06-10']], 'mode' => 'fixed', 'amount' => 500];
+        $r = rate_editor_dispatch('POST', ['csrf_token' => $tok, 'action' => 'apply', 'fingerprint' => rate_editor_preview($gd)['fingerprint']] + $gd, $owner, $tok);
+        check('guard: dispatcher maps it to 422', $r['status'] === 422 && str_contains($r['body']['error'], 'Clean up the overlapping rates'));
+        // A change whose split remainder cannot reach the tied row still applies: 06-26
+        // splits A but its remainder [06-27,06-30) never overlaps B, and the tie keeps its order.
+        $GA = $apply(['rooms' => [$G], 'ranges' => [['2099-06-26', '2099-06-26']], 'mode' => 'fixed', 'amount' => 250], 1);
+        check('guard: a tie-safe change still applies (06-26 = 250, B still wins 06-20..24)',
+            ($GA['change_id'] ?? 0) > 0 && $q($G, 100, '2099-06-26', '2099-06-27') === 250.0 && $q($G, 100, '2099-06-20', '2099-06-25') === 1000.0);
+        rate_editor_undo((int)$GA['change_id'], 1);
+        check('guard: …and its undo passes the guard and restores', $gq() === $gBefore);
     } finally {
         $pdo->rollBack();
         rate_log_supported(true);

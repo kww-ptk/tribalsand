@@ -806,6 +806,50 @@ function re_rows_in_span(array $roomIds, string $from, string $to): array {
     ], $rows);
 }
 
+/**
+ * Resolved claims for these rooms over the FULL extent of every row that touches
+ * [from, to) — so nights outside the span that a split or trim could disturb are
+ * covered too. One read. Returns {from, to, claims} where claims is
+ * re_row_claims() over that extent: [room][ymd] => "price|label" (absent = base).
+ */
+function re_guard_snapshot(array $roomIds, string $from, string $to): array {
+    $ef = $from; $et = $to;
+    foreach (re_rows_in_span($roomIds, $from, $to) as $r) {
+        if ($r['date_from'] < $ef) $ef = $r['date_from'];
+        if ($r['date_to']   > $et) $et = $r['date_to'];
+    }
+    return ['from' => $ef, 'to' => $et, 'claims' => re_claims_over($roomIds, $ef, $et)];
+}
+
+/** re_row_claims() over the rows currently stored for these rooms in [from, to). */
+function re_claims_over(array $roomIds, string $from, string $to): array {
+    return re_row_claims(re_rows_in_span($roomIds, $from, $to), $from, $to);
+}
+
+/**
+ * Safety net for legacy created_at ties: rates_clear_span() re-inserts the
+ * right-hand remainder of a split row with a new, higher id, and the resolver
+ * breaks a created_at tie on id DESC — so an overlapping older row that shares
+ * that created_at can silently start (or stop) winning on nights the edit never
+ * targeted. Recompute over the same extent and refuse if any night OUTSIDE
+ * $targeted(room, ymd) resolves differently. Throwing rolls the caller's
+ * transaction/savepoint back.
+ * @throws RateEditorRefusal
+ */
+function re_guard_check(array $roomIds, array $snap, callable $targeted): void {
+    $after = re_claims_over($roomIds, $snap['from'], $snap['to']);
+    foreach ($roomIds as $rid) {
+        $b = $snap['claims'][$rid] ?? [];
+        $a = $after[$rid] ?? [];
+        foreach ($b + $a as $ymd => $_) {
+            if ($targeted($rid, (string)$ymd)) continue;
+            if (($b[$ymd] ?? null) !== ($a[$ymd] ?? null)) {
+                throw new RateEditorRefusal('This change would also alter prices on other nights because of overlapping older rates — nothing was changed. Clean up the overlapping rates on the room page first.');
+            }
+        }
+    }
+}
+
 /** Write one room's targets: base runs cleared, priced runs via rates_apply_ranges() per (price, label). */
 function re_write_room(int $roomId, array $targets): void {
     $groups = [];
@@ -894,7 +938,9 @@ function rate_editor_apply(array $data, ?int $adminId): array {
 
         $logOn  = rate_log_supported();
         $before = $logOn ? re_rows_in_span($roomIds, $spanFrom, $spanTo) : [];
+        $snap   = re_guard_snapshot($roomIds, $spanFrom, $spanTo);
         foreach ($write as $id => $e) re_write_room((int)$id, $e['targets']);
+        re_guard_check($roomIds, $snap, fn($rid, $ymd) => isset($write[$rid]['targets'][$ymd]));
 
         $changeId = null;
         if ($logOn) {
@@ -974,6 +1020,7 @@ function rate_editor_undo(int $changeId, ?int $adminId): array {
         // order — so this order keeps every legacy tie resolving as it did.
         usort($beforeRows, fn($a, $b) => strcmp((string)$a['created_at'], (string)$b['created_at']) ?: ((int)$a['id'] <=> (int)$b['id']));
 
+        $snap = re_guard_snapshot($rooms, $from, $to);
         foreach ($rooms as $rid) rates_clear_span($rid, $from, $to);
         foreach ($beforeRows as $b) {
             $f = max((string)$b['date_from'], $from);
@@ -986,6 +1033,7 @@ function rate_editor_undo(int $changeId, ?int $adminId): array {
                  ':l' => $b['label'], ':c' => (string)$b['created_at']]
             );
         }
+        re_guard_check($rooms, $snap, fn($rid, $ymd) => $ymd >= $from && $ymd < $to);
         // Post-condition: every night of the span resolves exactly as it did
         // before the change. Otherwise throw — re_tx rolls the whole undo back.
         if (re_row_claims(re_rows_in_span($rooms, $from, $to), $from, $to) !== re_row_claims($beforeRows, $from, $to)) {
