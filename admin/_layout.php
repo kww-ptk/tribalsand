@@ -10,6 +10,7 @@ require_once __DIR__ . '/../includes/attendance-clock.php';  // clock_kiosk_enab
 require_once __DIR__ . '/../includes/pos-support.php';       // pos_supported() — gates the Point of Sale nav group
 require_once __DIR__ . '/../includes/inventory-support.php'; // inv_supported() — gates the Inventory nav group
 require_once __DIR__ . '/../includes/companies.php';         // companies_supported() — gates the Accounting nav group
+require_once __DIR__ . '/../includes/admin-nav.php';         // the sidebar + tab-strip definition (one place)
 $admin = current_admin();
 
 // ── Role / job aware nav visibility ──────────────────────────────────────
@@ -55,13 +56,72 @@ $__navAcctIc     = $__navAcctDocs && to_regclass_exists('acct_ic_entries');     
 // Chip shown under the logo for non-owner accounts.
 $__roleBadge = $__isManager ? 'Manager' : ($__isReception ? 'Reception' : (is_staff() ? ucfirst((string)$__job) : ''));
 
+// ── Navigation (includes/admin-nav.php) ──────────────────────────────────
+// The flags above are handed to ONE definition that both the sidebar and the
+// page's tab strip are rendered from. Clocking in ships dark: the OWNER always
+// sees "Clock kiosks" (that page holds the switch); everyone else only once it
+// is on. Maya Ilai's rate tool: owner, or a manager scoped to Maya Ilai (venue 6).
+$__clockOn = clock_kiosk_enabled();
+$__navFlags = [
+    'owner' => $__isOwner, 'manager' => $__isManager, 'reception' => $__isReception,
+    'frontdesk' => $__navFrontdesk, 'concierge' => $__navConcierge, 'messages' => $__navMessages,
+    'internal' => $__navInternal, 'tasks' => $__navTasks, 'timetable' => $__navTimetable,
+    'gate' => $__navGate, 'mywork' => $__navMyWork, 'assistant' => $__navAssistant,
+    'aiSettings' => $__navAiSettings, 'aiGaps' => $__navAiGaps, 'bookings' => $__navBookings,
+    'reports' => $__navReports, 'pos' => $__navPos, 'posTill' => $__navPosTill,
+    'inventory' => $__navInventory, 'invOrders' => $__navInventory && inv_orders_supported(), 'count' => $__navCount,
+    'accounting' => $__navAccounting, 'acctDocs' => $__navAcctDocs, 'acctIc' => $__navAcctIc,
+    'restaurant' => $__isOwner || $__isManager || $__isReception,
+    'clockOn' => $__clockOn, 'clockNav' => $__clockOn || $__isOwner,
+    'mayaIlai' => $__isOwner || ($__isManager && in_array(6, admin_venue_ids() ?? [], true)),
+];
+$__navScript = basename((string)($_SERVER['SCRIPT_NAME'] ?? ''));
+// Unread counts shown on sidebar links and tabs. Each is only queried for an
+// account that can see the link. A no-reload page swap (?shell=1) redraws just
+// the tab strip, so it asks only for the counts on the strip being shown.
+$__navBadges = function (?array $only) use ($__navMessages, $__navInternal, $__navBookings): array {
+    $want = fn(string $k): bool => $only === null || in_array($k, $only, true);
+    $out = ['messages' => 0, 'team' => 0, 'enquiries' => 0, 'conflicts' => 0];
+    if ($want('messages') && $__navMessages && function_exists('count_unread_admin')) $out['messages'] = (int)count_unread_admin(admin_venue_ids());
+    if ($want('team') && $__navInternal && function_exists('internal_unread_total')) $out['team'] = (int)internal_unread_total((int)($_SESSION['admin_id'] ?? 0));
+    if ($want('enquiries') && $__navBookings && function_exists('submission_unread_reply_count')) $out['enquiries'] = (int)submission_unread_reply_count();
+    if ($want('conflicts') && $__navBookings) {
+        // Scoped to the account's venues — reception must not see a count covering
+        // conflicts it cannot open. null = owner (all venues).
+        try {
+            $vids = admin_venue_ids();
+            if ($vids === null) {
+                $out['conflicts'] = (int)db_query("SELECT COUNT(*) FROM channel_conflicts WHERE status='pending'")->fetchColumn();
+            } elseif ($vids) {
+                $in = implode(',', array_map('intval', $vids));
+                $out['conflicts'] = (int)db_query(
+                    "SELECT COUNT(*) FROM channel_conflicts c
+                       JOIN units u ON u.id = c.unit_id
+                       JOIN rooms r ON r.id = u.room_id
+                      WHERE c.status='pending' AND r.venue_id IN ($in)"
+                )->fetchColumn();
+            }
+        } catch (\Throwable $e) { /* table may not exist yet on older deploys */ }
+    }
+    return $out;
+};
+$__navStripBadges = ['messages.php' => ['messages', 'team'], 'internal-messages.php' => ['messages', 'team'],
+                     'gantt.php' => ['conflicts'], 'conflicts.php' => ['conflicts'], 'calendar-highlights.php' => ['conflicts'],
+                     'import-bookings.php' => ['conflicts'], 'submissions.php' => ['enquiries'],
+                     'submission-view.php' => ['enquiries'], 'submission-trends.php' => ['enquiries']];
+
 // ── No-flicker shell (#18) ────────────────────────────────────────────────
 // On a `?shell=1` GET we skip ALL chrome (doctype/head/sidebar/topbar) and just
 // buffer the page's content; `_layout_end.php` emits it as a fragment the shell
 // swaps into `.admin-content`. Everything above (auth, nav-visibility vars) has
 // already run, so the page body renders exactly as it would in a full load.
 $__shellFrag = admin_shell_requested();
-if ($__shellFrag) { ob_start(); return; }
+$__nav = admin_nav_resolve(
+    admin_nav_definition($__navFlags, $__navBadges($__shellFrag ? ($__navStripBadges[$__navScript] ?? []) : null)),
+    $__navScript
+);
+$__navTabs = admin_nav_tabs_html($__nav);
+if ($__shellFrag) { ob_start(); echo $__navTabs; return; }
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -105,448 +165,28 @@ if ($__shellFrag) { ob_start(); return; }
     <div style="padding:8px 12px;font-size:12px;color:#9ca3af"><?= e($admin['name'] ?? ($__isManager ? 'Manager' : ($__isReception ? 'Reception' : 'Staff'))) ?> <?php if ($__roleBadge): ?><span class="badge <?= $__isManager ? 'badge--green' : ($__isReception ? 'badge--orange' : 'badge--blue') ?>" style="font-size:10px"><?= e($__roleBadge) ?></span><?php endif; ?></div>
     <?php endif; ?>
     <nav class="sidebar__nav">
-      <?php
-      // Collapsible nav groups (#17). Each group's links are buffered; the group
-      // header + disclosure is emitted only if ≥1 link is visible for this role,
-      // so role-limited accounts never see an empty section. Native <details> for
-      // free accessible toggling; a small script below restores collapsed state
-      // from localStorage and always keeps the active page's group open.
-      $__chev = '<svg class="navgroup__chev" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
-      $__navgroup = function (string $key, string $title, string $items) use ($__chev) {
-          if (trim($items) === '') return;
-          // Open a group by default when it is a primary work area (Operations,
-          // Bookings) or it contains the active page's link, so the current
-          // section is never collapsed out of view on a full load.
-          //
-          // Bookings is default-open because it is where reception actually
-          // works. Their home is Front desk, which lives in Operations, so with
-          // Operations alone open they landed on a page where Holds, Calendar,
-          // Rates, Submissions and Conflicts were all present in the markup but
-          // hidden behind a collapsed header — and reported having no access.
-          //
-          // NOTE: expand/collapse is NOT persisted (there is no localStorage for
-          // these groups), so every full page load returns to exactly this
-          // default. A group that is closed here is closed on every single load.
-          $__hasActive = strpos($items, 'is-active') !== false;
-          $open = (in_array($key, ['operations', 'bookings'], true) || $__hasActive) ? ' open' : '';
-          echo '<details class="navgroup" data-group="' . e($key) . '"' . $open . '>'
-             . '<summary class="navgroup__head"><span>' . e($title) . '</span>' . $__chev . '</summary>'
-             . '<div class="navgroup__items">' . $items . '</div>'
-             . '</details>';
-      };
-      ?>
-
-      <?php ob_start(); ?>
-        <?php if ($__navFrontdesk): ?>
-        <a href="/admin/frontdesk.php"    class="sidebar__link <?= ($activeMenu??'')==='frontdesk'    ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M9 3v3h6V3M8 11h8M8 15h5"/></svg>
-          Front desk
-        </a>
-        <?php endif; ?>
-        <?php if ($__navAssistant): ?>
-        <a href="/admin/assistant.php"    class="sidebar__link <?= ($activeMenu??'')==='assistant'    ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5 10.1 10.9 5.5 9l4.6-1.4L12 3z"/><path d="M19 15l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2z"/></svg>
-          Assistant
-        </a>
-        <?php endif; ?>
-        <?php if ($__navAiSettings): ?>
-        <a href="/admin/ai-settings.php"  class="sidebar__link <?= ($activeMenu??'')==='ai_settings'  ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9l-4.6 1.9L12 15.5 10.1 10.9 5.5 9l4.6-1.4L12 3z"/><circle cx="18.5" cy="17.5" r="2.4"/><path d="M18.5 13.6v1.1M18.5 20.3v1.1M22 17.5h-1.1M16.1 17.5H15M20.9 15.1l-.8.8M17 18.6l-.8.8M20.9 19.9l-.8-.8M17 16.4l-.8-.8"/></svg>
-          AI settings
-        </a>
-        <?php endif; ?>
-        <?php if ($__navAiGaps): ?>
-        <a href="/admin/ai-gaps.php"      class="sidebar__link <?= ($activeMenu??'')==='ai_gaps'      ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><path d="M9.5 8.5a2.5 2.5 0 1 1 3.5 2.3c-.6.3-1 .8-1 1.5"/><path d="M12 14.5h.01"/></svg>
-          AI gaps
-        </a>
-        <?php endif; ?>
-        <?php if ($__navMyWork): ?>
-        <a href="/admin/mywork.php"       class="sidebar__link <?= ($activeMenu??'')==='mywork'       ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-          My work
-        </a>
-        <?php endif; ?>
-        <?php if ($__navCount): ?>
-        <a href="/admin/inventory-count.php" class="sidebar__link <?= ($activeMenu ?? '') === 'inventory_count' ? 'is-active' : '' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
-          Stock count
-        </a>
-        <?php endif; ?>
-        <?php if ($__navConcierge): ?>
-        <a href="/admin/concierge-desk.php" class="sidebar__link <?= ($activeMenu??'')==='concierge_desk' ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19h16"/><path d="M5 19v-4a7 7 0 0 1 14 0v4"/><line x1="12" y1="5" x2="12" y2="8"/></svg>
-          Concierge desk
-        </a>
-        <?php endif; ?>
-        <?php if ($__navMessages): ?>
-        <a href="/admin/messages.php"     class="sidebar__link <?= ($activeMenu??'')==='messages'     ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          Customer messages<?php $u=function_exists('count_unread_admin')?count_unread_admin(admin_venue_ids()):0; if($u>0): ?> <span class="badge badge--orange" style="margin-left:6px"><?= (int)$u ?></span><?php endif; ?>
-        </a>
-        <?php endif; ?>
-        <?php if ($__navInternal): ?>
-        <a href="/admin/internal-messages.php" class="sidebar__link <?= ($activeMenu??'')==='internal_messages' ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          Team chat<?php
-            $iu = function_exists('internal_unread_total') ? internal_unread_total((int)($_SESSION['admin_id'] ?? 0)) : 0;
-            if ($iu > 0): ?> <span class="badge badge--orange" style="margin-left:6px"><?= (int)$iu ?></span><?php endif; ?>
-        </a>
-        <?php endif; ?>
-        <?php if ($__navTasks): ?>
-        <a href="/admin/tasks.php"        class="sidebar__link <?= ($activeMenu??'')==='tasks'        ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/><path d="M9 13l2 2 4-4"/></svg>
-          Tasks
-        </a>
-        <?php endif; ?>
-        <?php if ($__isOwner || $__isManager): ?>
-        <a href="/admin/task-schedules.php" class="sidebar__link <?= ($activeMenu??'')==='task_schedules' ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14l2 2 4-4"/></svg>
-          Job timetables
-        </a>
-        <a href="/admin/calendar-highlights.php" class="sidebar__link <?= ($activeMenu??'')==='cal_highlights' ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><rect x="7" y="13" width="10" height="4" rx="1" fill="currentColor" stroke="none" opacity=".35"/></svg>
-          Calendar highlights
-        </a>
-        <?php endif; ?>
-        <?php if ($__navTimetable): ?>
-        <a href="/admin/timetable.php"    class="sidebar__link <?= ($activeMenu??'')==='timetable'    ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="12" y1="14" x2="12" y2="18"/></svg>
-          Timetable
-        </a>
-        <?php endif; ?>
-        <?php if ($__navGate): ?>
-        <a href="/admin/gate.php"         class="sidebar__link <?= ($activeMenu??'')==='gate'         ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/></svg>
-          Gate
-        </a>
-        <?php endif; ?>
-      <?php $__navgroup('operations', 'Operations', ob_get_clean()); ?>
-
-      <?php if ($__isOwner || $__isManager || $__isReception): ?>
-      <?php ob_start(); ?>
-        <?php if ($__isOwner || $__isManager): /* menu editing is content — reception is excluded */ ?>
-        <a href="/admin/menus.php" class="sidebar__link <?= ($activeMenu??'')==='menus' ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 2v7c0 1.1.9 2 2 2h0a2 2 0 0 0 2-2V2"/><path d="M5 2v20"/><path d="M17 2v20"/><path d="M17 8c0-3 1.5-6 3-6v20"/></svg>
-          Menus
-        </a>
-        <a href="/admin/restaurant-setup.php" class="sidebar__link <?= ($activeMenu??'')==='restaurant_setup' ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 14"/></svg>
-          Hours &amp; tables
-        </a>
-        <?php endif; ?>
-        <a href="/admin/reservations.php" class="sidebar__link <?= ($activeMenu??'')==='reservations' ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01"/></svg>
-          Reservations
-        </a>
-      <?php $__navgroup('restaurant', 'Restaurant', ob_get_clean()); ?>
-      <?php endif; ?>
-
-      <?php if ($__navPos || $__navPosTill): ?>
-      <?php ob_start(); ?>
-        <?php if ($__navPosTill): ?>
-        <a href="/pos/" class="sidebar__link" target="_blank" rel="noopener">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>
-          Open till
-        </a>
-        <?php endif; ?>
-        <?php if ($__navPos): ?>
-        <a href="/admin/pos-sales.php" class="sidebar__link <?= ($activeMenu??'')==='pos_sales' ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6a2 2 0 1 0 0 4h4a2 2 0 1 1 0 4H8"/><path d="M12 17.5v-11"/></svg>
-          Sales
-        </a>
-        <?php endif; ?>
-        <?php if ($__isOwner && $__navPos): ?>
-        <a href="/admin/pos-outlets.php" class="sidebar__link <?= ($activeMenu??'')==='pos_outlets' ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m2 7 4.41-4.41A2 2 0 0 1 7.83 2h8.34a2 2 0 0 1 1.42.59L22 7"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><path d="M15 22v-4a2 2 0 0 0-2-2h-2a2 2 0 0 0-2 2v4"/><path d="M2 7h20"/></svg>
-          Outlets
-        </a>
-        <?php endif; ?>
-        <?php if ($__navPos): ?>
-        <a href="/admin/pos-items.php" class="sidebar__link <?= ($activeMenu??'')==='pos_items' ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>
-          Catalogue
-        </a>
-        <a href="/admin/pos-stock.php" class="sidebar__link <?= ($activeMenu??'')==='pos_stock' ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
-          Stock
-        </a>
-        <a href="/admin/pos-consignors.php" class="sidebar__link <?= ($activeMenu??'')==='pos_consignors' ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m11 17 2 2a1 1 0 1 0 3-3"/><path d="m14 14 2.5 2.5a1 1 0 1 0 3-3l-3.88-3.88a3 3 0 0 0-4.24 0l-.88.88a1 1 0 1 1-3-3l2.81-2.81a5.79 5.79 0 0 1 7.06-.87l.47.28a2 2 0 0 0 1.42.25L21 4"/><path d="m21 3 1 11h-2"/><path d="M3 3 2 14l6.5 6.5a1 1 0 1 0 3-3"/><path d="M3 4h8"/></svg>
-          Suppliers
-        </a>
-        <a href="/admin/pos-terminals.php" class="sidebar__link <?= ($activeMenu??'')==='pos_terminals' ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18.01"/></svg>
-          Terminals
-        </a>
-        <?php endif; ?>
-        <?php if ($__navPosTill): ?>
-        <a href="/admin/pos-pins.php" class="sidebar__link <?= ($activeMenu??'')==='pos_pins' ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
-          <?= $__navPos ? 'Staff PINs' : 'My till PIN' ?>
-        </a>
-        <?php endif; ?>
-      <?php $__navgroup('pos', 'Point of Sale', ob_get_clean()); ?>
-      <?php endif; ?>
-
-      <?php if ($__navInventory): ?>
-      <?php ob_start(); ?>
-        <a href="/admin/inventory.php" class="sidebar__link <?= in_array($activeMenu ?? '', ['inventory', 'inventory_item'], true) ? 'is-active' : '' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
-          Inventory
-        </a>
-        <?php if (inv_orders_supported()): ?>
-        <a href="/admin/inventory-orders.php" class="sidebar__link <?= ($activeMenu ?? '') === 'inventory_orders' ? 'is-active' : '' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17h4V5H2v12h3"/><path d="M14 8h4l3 3v6h-2"/><circle cx="7.5" cy="17.5" r="2.5"/><circle cx="16.5" cy="17.5" r="2.5"/></svg>
-          Orders
-        </a>
-        <?php endif; ?>
-        <a href="/admin/inventory-locations.php" class="sidebar__link <?= in_array($activeMenu ?? '', ['inventory_locations', 'inventory_location'], true) ? 'is-active' : '' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-          Locations
-        </a>
-        <a href="/admin/inventory-counts.php" class="sidebar__link <?= in_array($activeMenu ?? '', ['inventory_counts', 'inventory_count'], true) ? 'is-active' : '' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-          Counts
-        </a>
-      <?php $__navgroup('inventory', 'Inventory', ob_get_clean()); ?>
-      <?php endif; ?>
-
-      <?php if ($__navBookings): ?>
-      <?php ob_start(); ?>
-        <a href="/admin/holds.php"        class="sidebar__link <?= ($activeMenu??'')==='holds'        ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-          Holds
-        </a>
-        <a href="/admin/gantt.php"         class="sidebar__link <?= ($activeMenu??'')==='gantt'         ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="3" y1="10" x2="21" y2="10"/><line x1="8" y1="4" x2="8" y2="10"/><line x1="16" y1="4" x2="16" y2="10"/><line x1="7" y1="15" x2="13" y2="15"/><line x1="7" y1="18" x2="11" y2="18"/></svg>
-          Calendar
-        </a>
-        <a href="/admin/rates.php"         class="sidebar__link <?= ($activeMenu??'')==='rates'         ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-          Rates
-        </a>
-        <a href="/admin/quote-builder.php" class="sidebar__link <?= ($activeMenu??'')==='quote_builder' ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
-          Quote builder
-        </a>
-        <?php $__subsUnread = function_exists('submission_unread_reply_count') ? submission_unread_reply_count() : 0; ?>
-        <a href="/admin/submissions.php"  class="sidebar__link <?= ($activeMenu??'')==='submissions'  ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16v16H4z"/><path d="M4 9h16M9 9v11"/></svg>
-          Submissions<?php if ($__subsUnread > 0): ?> <span class="badge badge--red" data-tip="<?= (int)$__subsUnread ?> new customer repl<?= $__subsUnread === 1 ? 'y' : 'ies' ?>" style="margin-left:6px"><?= (int)$__subsUnread ?></span><?php endif; ?>
-        </a>
-        <?php
-          // Scoped to the account's venues — reception must not see a count
-          // covering conflicts it cannot open. null = owner (all venues).
-          $__conflict_count = 0;
-          try {
-            $__cfVids = admin_venue_ids();
-            if ($__cfVids === null) {
-              $__conflict_count = (int)db_query("SELECT COUNT(*) FROM channel_conflicts WHERE status='pending'")->fetchColumn();
-            } elseif ($__cfVids) {
-              $__cfIn = implode(',', array_map('intval', $__cfVids));
-              $__conflict_count = (int)db_query(
-                "SELECT COUNT(*) FROM channel_conflicts c
-                   JOIN units u ON u.id = c.unit_id
-                   JOIN rooms r ON r.id = u.room_id
-                  WHERE c.status='pending' AND r.venue_id IN ($__cfIn)"
-              )->fetchColumn();
-            }
-          } catch (\Throwable $e) { /* table may not exist yet on older deploys */ }
-        ?>
-        <a href="/admin/conflicts.php"    class="sidebar__link <?= ($activeMenu??'')==='conflicts'    ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          Conflicts<?php if ($__conflict_count > 0): ?> <span style="background:#dc2626;color:#fff;font-size:10px;padding:1px 5px;border-radius:8px;margin-left:4px;font-weight:700"><?= $__conflict_count ?></span><?php endif; ?>
-        </a>
-        <?php if ($__isOwner || $__isManager): /* channel-manager sheet import — not reception/staff */ ?>
-        <a href="/admin/import-bookings.php" class="sidebar__link <?= ($activeMenu??'')==='import_bookings' ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Import bookings
-        </a>
-        <?php endif; ?>
-      <?php $__navgroup('bookings', 'Bookings', ob_get_clean()); ?>
-      <?php endif; ?>
-
-      <?php if ($__navReports): ?>
-      <?php ob_start(); ?>
-        <a href="/admin/reports.php"      class="sidebar__link <?= ($activeMenu??'')==='reports'      ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-          Reports
-        </a>
-        <a href="/admin/email-log.php"    class="sidebar__link <?= ($activeMenu??'')==='email_log'    ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>
-          Email log
-        </a>
-        <a href="/admin/attendance.php"   class="sidebar__link <?= ($activeMenu??'')==='attendance'   ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="m9 16 2 2 4-4"/></svg>
-          Attendance
-        </a>
-        <?php
-          // Clocking in ships dark. The OWNER always sees "Clock kiosks" — that
-          // page holds the switch, so hiding it would hide the only way to turn
-          // the feature on. Everyone else sees these two only once it is on, so
-          // a manager is never shown a feature that cannot do anything.
-          $__clockOn   = clock_kiosk_enabled();
-          $__navClock  = $__clockOn || $__isOwner;
-        ?>
-        <?php if ($__navClock): ?>
-        <a href="/admin/attendance-devices.php" class="sidebar__link <?= ($activeMenu??'')==='attendance_devices' ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18.01"/></svg>
-          Clock kiosks
-        </a>
-        <?php endif; ?>
-        <?php if ($__clockOn): ?>
-        <a href="/admin/attendance-cards.php" class="sidebar__link <?= ($activeMenu??'')==='attendance_cards' ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="7" width="18" height="14" rx="2"/><path d="M7 7V5a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v2"/><rect x="8" y="11" width="4" height="4"/><line x1="14" y1="12" x2="17" y2="12"/><line x1="14" y1="15" x2="17" y2="15"/></svg>
-          Clock cards
-        </a>
-        <?php endif; ?>
-        <?php
-          // Maya Ilai rate tool — owner, or a manager scoped to Maya Ilai (venue 6).
-          $__miShow = $__isOwner || ($__isManager && in_array(6, admin_venue_ids() ?? [], true));
-          if ($__miShow): ?>
-        <a href="/admin/maya-ilai-rates.php" class="sidebar__link <?= ($activeMenu??'')==='maya_ilai_rates' ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-          Maya Ilai rates
-        </a>
-        <?php endif; ?>
-      <?php $__navgroup('reports', 'Reports', ob_get_clean()); ?>
-      <?php endif; ?>
-
-      <?php if ($__navAccounting || $__navAcctDocs): ?>
-      <?php ob_start(); ?>
-        <?php if ($__navAcctDocs): ?>
-        <a href="/admin/acct-documents.php" class="sidebar__link <?= ($activeMenu ?? '') === 'acct_documents' ? 'is-active' : '' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></svg>
-          Invoices &amp; payments
-        </a>
-        <?php endif; ?>
-        <?php if ($__navAcctIc): ?>
-        <a href="/admin/acct-intercompany.php" class="sidebar__link <?= ($activeMenu ?? '') === 'acct_intercompany' ? 'is-active' : '' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h13l-4-4"/><path d="M17 17H4l4 4"/></svg>
-          Between companies
-        </a>
-        <?php endif; ?>
-        <?php if ($__navAccounting): ?>
-        <a href="/admin/companies.php" class="sidebar__link <?= ($activeMenu ?? '') === 'companies' ? 'is-active' : '' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18"/><path d="M5 21V7l7-4 7 4v14"/><path d="M9 21v-5h6v5"/><path d="M9 10h.01M15 10h.01M9 13h.01M15 13h.01"/></svg>
-          Companies
-        </a>
-        <?php endif; ?>
-      <?php $__navgroup('accounting', 'Accounting', ob_get_clean()); ?>
-      <?php endif; ?>
-
-      <?php if ($__isOwner): /* Catalog + Admin stay owner-only */ ?>
-      <?php ob_start(); ?>
-        <a href="/admin/rooms.php"        class="sidebar__link <?= ($activeMenu??'')==='rooms'        ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18V8h13a5 5 0 0 1 5 5v5M3 14h18M3 18v2M21 18v2"/><path d="M6 12h4a2 2 0 0 1 2 2"/></svg>
-          Rooms
-        </a>
-        <a href="/admin/venues.php"       class="sidebar__link <?= ($activeMenu??'')==='venues'       ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
-          Properties
-        </a>
-        <a href="/admin/nav-menu.php"     class="sidebar__link <?= ($activeMenu??'')==='nav_menu'     ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-          Site Menu
-        </a>
-        <a href="/admin/pages.php"        class="sidebar__link <?= ($activeMenu??'')==='pages'        ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="16" y2="13"/><line x1="8" y1="17" x2="13" y2="17"/></svg>
-          Page Content
-        </a>
-        <a href="/admin/sustainability.php" class="sidebar__link <?= ($activeMenu??'')==='sustainability' ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 9.8 6.1C15.5 5 17 4.48 19 2c1 2 2 4.18 2 8 0 5.5-4.78 10-10 10z"/><path d="M2 21c0-3 1.85-5.36 5.08-6C9.5 14.52 12 13 13 12"/></svg>
-          Sustainability
-        </a>
-        <a href="/admin/media.php"        class="sidebar__link <?= ($activeMenu??'')==='media'        ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.6"/><path d="M21 15l-5-5L5 21"/></svg>
-          Media Library
-        </a>
-        <a href="/admin/properties.php"   class="sidebar__link <?= ($activeMenu??'')==='properties'   ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 21v-6h6v6"/></svg>
-          For Sale Listings
-        </a>
-        <a href="/admin/offers.php"       class="sidebar__link <?= ($activeMenu??'')==='offers'       ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-          Offers
-        </a>
-        <a href="/admin/tours.php"        class="sidebar__link <?= ($activeMenu??'')==='tours'        ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12h1m17 0h-1M5.6 5.6l.7.7m11.4-.7-.7.7M12 3v1m0 17v-1M7 17l-2 2m14-2 2 2"/><circle cx="12" cy="12" r="4"/></svg>
-          Tours
-        </a>
-        <a href="/admin/services.php"     class="sidebar__link <?= ($activeMenu??'')==='services'     ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M3 12h18M3 18h18"/><circle cx="8" cy="6" r="1.6" fill="currentColor" stroke="none"/><circle cx="16" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="8" cy="18" r="1.6" fill="currentColor" stroke="none"/></svg>
-          Service pricing
-        </a>
-        <a href="/admin/partners.php"     class="sidebar__link <?= ($activeMenu??'')==='partners'     ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          Partners
-        </a>
-        <a href="/admin/reviews.php"      class="sidebar__link <?= ($activeMenu??'')==='reviews'      ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-          Reviews
-        </a>
-      <?php $__navgroup('catalog', 'Catalog', ob_get_clean()); ?>
-
-      <?php ob_start(); ?>
-        <a href="/admin/dashboard.php"    class="sidebar__link <?= ($activeMenu??'')==='dashboard'    ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
-          Dashboard
-        </a>
-        <a href="/admin/staff.php" class="sidebar__link <?= ($activeMenu??'')==='staff' ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-          Staff
-        </a>
-        <a href="/admin/agents.php" class="sidebar__link <?= ($activeMenu??'')==='agents' ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 11l-3 3-2-2"/></svg>
-          Travel agents
-        </a>
-        <a href="/admin/settings.php"     class="sidebar__link <?= ($activeMenu??'')==='settings'     ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-          Settings
-        </a>
-        <a href="/admin/emails.php"       class="sidebar__link <?= ($activeMenu??'')==='emails'       ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/><circle cx="19" cy="17" r="3" fill="currentColor" stroke="none"/></svg>
-          Emails
-        </a>
-        <a href="/admin/audit.php"       class="sidebar__link <?= ($activeMenu??'')==='audit'        ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-          Audit Log
-        </a>
-        <a href="/admin/sync.php"         class="sidebar__link <?= ($activeMenu??'')==='sync'         ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 0 1-15.5 6.2L3 16"/><path d="M3 12a9 9 0 0 1 15.5-6.2L21 8"/><polyline points="21 3 21 8 16 8"/><polyline points="3 21 3 16 8 16"/></svg>
-          Zuri sync
-        </a>
-        <a href="/admin/guest-board.php"  class="sidebar__link <?= ($activeMenu??'')==='guest_board'  ? 'is-active':'' ?>">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="14" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="7" y1="13" x2="13" y2="13"/></svg>
-          Guest board
-        </a>
-      <?php $__navgroup('admin', 'Admin', ob_get_clean()); ?>
-      <?php endif; ?>
+      <?= admin_nav_sidebar_html($__nav) ?>
     </nav>
     <script>
-    /* Nav groups (#17): restore collapsed state; keep the active group open. */
+    /* Nav groups: remember what each person opened or closed; the group holding
+       the current page is always open so the page is never hidden in a closed one. */
     (function () {
-      // v3 discards every remembered collapse from v2. A stored collapse WINS over
-      // the server-rendered default (see below), so reception accounts that had
-      // Bookings collapsed would keep it hidden even now that it defaults open —
-      // the fix would silently not reach the people who reported the problem.
-      // Bump this key whenever a group's default changes.
-      var KEY = 'ts_nav_v3', saved = {};
+      // Bump the key whenever the groups or their defaults change, so nobody keeps
+      // a remembered state for a layout that no longer exists.
+      var KEY = 'ts_nav_v4', saved = {};
       try { saved = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) {}
-      // Default (server-rendered): Operations + the active page's group open, others
-      // closed. On load we honor a remembered COLLAPSE only — EXCEPT for the group
-      // that holds the active page, which is always kept open so the current page is
-      // never hidden inside a collapsed section (that was the "open Settings → its
-      // dropdown closes" bug). Expanding another group never persists.
+      var restoring = true;
       document.querySelectorAll('.navgroup[data-group]').forEach(function (g) {
         if (g.querySelector('.sidebar__link.is-active')) { g.open = true; return; }
-        if (saved[g.getAttribute('data-group')] === true) g.open = false;
+        var k = g.getAttribute('data-group');
+        if (typeof saved[k] === 'boolean') g.open = saved[k];
       });
+      setTimeout(function () { restoring = false; }, 0);   // toggle events from the restore above must not be saved
       document.addEventListener('toggle', function (e) {
         var g = e.target;
-        if (!g.classList || !g.classList.contains('navgroup')) return;
-        saved[g.getAttribute('data-group')] = !g.open;   // remember collapsed = true
+        if (restoring || !g.classList || !g.classList.contains('navgroup')) return;
+        if (g.dataset.autoOpen) { delete g.dataset.autoOpen; return; }   // opened by navigation, not by the person
+        saved[g.getAttribute('data-group')] = g.open;
         try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {}
       }, true);
     })();
@@ -560,3 +200,4 @@ if ($__shellFrag) { ob_start(); return; }
   <!-- Main content -->
   <main class="admin-main">
     <div class="admin-content">
+<?= $__navTabs ?>

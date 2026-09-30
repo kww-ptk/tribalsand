@@ -1083,3 +1083,22 @@ tr.is-unpriced td { background: #fff7ed; }
 .stm__head strong { color: var(--text); font-weight: 600; }
 .stm__body { font-size: 14px; line-height: 1.5; color: var(--text); white-space: pre-wrap; word-wrap: break-word; }
 @media (max-width: 560px) { .stm { max-width: 100%; } }
+
+/* ── Sidebar: top-level Dashboard link + unread badges ───────────────────── */
+.navhome { padding: 4px 0 6px; border-bottom: 1px solid rgba(255,255,255,.06); }
+.sidebar__link .navbadge { margin-left: auto; }
+.sidebar__link svg { flex: 0 0 auto; }
+
+/* ── Area tabs: one sidebar link, several related pages (includes/admin-nav.php).
+   Reuses the .tabs / a.tab-btn underline component; the row scrolls sideways on
+   a phone instead of wrapping into a second line. */
+.areatabs { margin: -8px 0 22px; }
+.areatabs__row { margin-bottom: 0; overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+.areatabs__row::-webkit-scrollbar { display: none; }
+.areatabs .tab-btn { white-space: nowrap; flex: 0 0 auto; }
+@media (max-width: 640px) {
+  .areatabs { margin: -4px -16px 16px; }
+  .areatabs__row { padding: 0 16px; }
+  .areatabs .tab-btn { padding: 10px 13px; }
+}
+@media print { .areatabs { display: none; } }
