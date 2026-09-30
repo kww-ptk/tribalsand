@@ -54,8 +54,13 @@ function ts_alternatives_window(string $ci, string $co, string $today): array {
  * current venue and every venue with nothing for the party (count 0); same
  * town as the current venue first, then the cheapest "from" (unpriced last),
  * then name. Returns ['options' => first $limit, 'more' => how many were cut].
+ *
+ * Prices come in each property's own currency (KES or USD), so "cheapest" is
+ * ranked on $rankAmount(amount, currency) — the endpoint passes a conversion
+ * to one currency. Ranking only: the figures returned are never converted.
  */
-function ts_alternative_properties(array $results, string $excludeSlug, int $limit = 3): array {
+function ts_alternative_properties(array $results, string $excludeSlug, int $limit = 3, ?callable $rankAmount = null): array {
+    $rankAmount ??= fn(float $a, string $c): float => $a;
     $homeTown = '';
     foreach ($results as $r) {
         if (($r['venue']['slug'] ?? '') === $excludeSlug) { $homeTown = ts_venue_town((string)($r['venue']['location'] ?? '')); break; }
@@ -76,12 +81,13 @@ function ts_alternative_properties(array $results, string $excludeSlug, int $lim
             'currency' => (string)($r['currency'] ?? 'USD'),
             '_home'    => $homeTown !== '' && ts_venue_town((string)($v['location'] ?? '')) === $homeTown,
         ];
+        $opts[count($opts) - 1]['_rank'] = $from === null ? null : (float)$rankAmount($from, (string)($r['currency'] ?? 'USD'));
     }
     usort($opts, function (array $a, array $b): int {
         if ($a['_home'] !== $b['_home']) return $a['_home'] ? -1 : 1;
-        if (($a['from'] === null) !== ($b['from'] === null)) return $a['from'] === null ? 1 : -1;
-        return [$a['from'], $a['name']] <=> [$b['from'], $b['name']];
+        if (($a['_rank'] === null) !== ($b['_rank'] === null)) return $a['_rank'] === null ? 1 : -1;
+        return [$a['_rank'], $a['name']] <=> [$b['_rank'], $b['name']];
     });
-    $opts = array_map(function (array $o) { unset($o['_home']); return $o; }, $opts);
+    $opts = array_map(function (array $o) { unset($o['_home'], $o['_rank']); return $o; }, $opts);
     return ['options' => array_slice($opts, 0, max(0, $limit)), 'more' => max(0, count($opts) - max(0, $limit))];
 }

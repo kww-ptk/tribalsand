@@ -51,7 +51,28 @@ $alt2 = ts_alternative_properties($results, 'unknown-slug', 10);
 check('unknown current venue: cheapest first', array_column($alt2['options'], 'slug') === ['enkare-bofa', 'my-amani', 'zuri', 'maya_ilai'] && $alt2['more'] === 0);
 $alt3 = ts_alternative_properties([$r('a', 'X', 1, null), $r('b', 'X', 1, 10)], 'none', 3);
 check('unpriced sorts last', array_column($alt3['options'], 'slug') === ['b', 'a'] && $alt3['options'][1]['from'] === null);
+// Mixed currencies rank on the converted amount, but return the original figure.
+$mixed = [$r('usd', 'X', 1, 450, 'USD'), $r('kes', 'X', 1, 40000, 'KES')];
+$toUsd = fn(float $a, string $c): float => $c === 'KES' ? $a / 129 : $a;
+$alt4 = ts_alternative_properties($mixed, 'none', 3, $toUsd);
+check('mixed currencies rank on converted price', array_column($alt4['options'], 'slug') === ['kes', 'usd']);
+check('ranking never changes the shown figure', $alt4['options'][0]['from'] === 40000.0 && $alt4['options'][0]['currency'] === 'KES');
 check('nothing free → empty', ts_alternative_properties([$r('a', 'X', 0, null)], 'none')['options'] === []);
+
+// ── DB: the endpoint's pipeline over real rows (read-only) ──
+require_once __DIR__ . '/../includes/db.php';
+try { db(); $hasDb = true; } catch (Throwable $e) { $hasDb = false; }
+if ($hasDb) {
+    $ci = '2098-04-10'; $co = '2098-04-13';
+    $res = ts_search_availability($ci, $co, 2);
+    $alt = ts_alternative_properties($res, 'zuri', 50);
+    $slugs = array_column($alt['options'], 'slug');
+    check('db: current venue never listed', !in_array('zuri', $slugs, true));
+    $free = array_values(array_filter($res, fn($r) => $r['count'] > 0 && $r['venue']['slug'] !== 'zuri'));
+    check('db: every free venue listed', count($slugs) === count($free));
+} else {
+    echo "SKIP  db round-trip (no database)\n";
+}
 
 echo ($failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n");
 exit($failures ? 1 : 0);
