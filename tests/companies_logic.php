@@ -198,8 +198,10 @@ try {
         }
 
         if (companies_locations_supported()) {
-            db_query("INSERT INTO inv_locations (kind, name) VALUES ('store', 'Main stock') ON CONFLICT (kind) WHERE kind = 'store' DO NOTHING");
-            $store = (int) db_query("SELECT id FROM inv_locations WHERE kind = 'store'")->fetchColumn();
+            // Any store will do (add_inventory_stores.sql allows several, so there is no
+            // one-store unique index to ON CONFLICT against any more).
+            $store = (int) db_query("SELECT id FROM inv_locations WHERE kind = 'store' ORDER BY id LIMIT 1")->fetchColumn();
+            if (!$store) $store = (int) db_query("INSERT INTO inv_locations (kind, name) VALUES ('store', 'Main stock') RETURNING id")->fetchColumn();
             db_query('UPDATE inv_locations SET company_id = NULL WHERE id = :l', [':l' => $store]);   // start from unowned (rolled back)
             check('db: unowned Main stock is unresolved and listed as a gap', company_for_location($store) === null
                 && in_array($store, array_map(fn($r) => (int)$r['id'], company_ownership_gaps()['locations']), true));

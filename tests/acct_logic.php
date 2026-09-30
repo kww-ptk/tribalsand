@@ -126,6 +126,10 @@ try {
     [$nd] = company_clean(['name' => "ZZ NoAcc {$sfx}", 'code' => "N{$sfx}", 'kra_pin' => 'P000000002Z']);
     $noAcc = company_save(null, $nd);
     check('db: go-live refused without a money account', refused(fn() => acct_set_company_invoicing($noAcc, $d(-1), true)));
+    // Going live is refused while an open POS outlet has no company (P2b, fail closed).
+    // A dev database has such outlets; give them an owner for this rolled-back run.
+    $unowned = array_map(fn($r) => (int)$r['id'], company_ownership_gaps()['outlets']);
+    if ($unowned) company_assign($other, 'outlets', $unowned);
     check('db: go-live accepted with PIN + account', !refused(fn() => acct_set_company_invoicing($co, $d(5), true)));
     db_query('UPDATE companies SET accounting_starts_on = :d WHERE id = :c', [':d' => $d(5), ':c' => $co]);
     check('db: a stay checking out before the start date stays out', !acct_hold_context($hold)['live']);

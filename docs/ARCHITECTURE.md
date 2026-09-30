@@ -170,7 +170,7 @@ tribalsand/
 |---|---|---|---|
 | **0 (done on this branch)** | Docker local stack, `bin/dev-setup.php`, `ORDER.txt`, `bin/test.php`, README, `.dockerignore` | none (local only) | done |
 | **1: safety** | `.htaccess` deny for `tests/ bin/ includes/ docker/ reference/`; CI `test` job before deploy; fix the 9 stale tests; branch protection on `master` | low | ½–1 day |
-| **2: tidy root** | *Docs done* (plans → `docs/plans/`, temp file deleted). Remaining: move the 28 redirect stubs into `.htaccess` rules; remove the unused root `deep-sea-fishing.jpg`; articles → `journal/` | low | ½ day |
+| **2: tidy root** | *Docs done* (plans → `docs/plans/`, temp file deleted). Remaining: move the 28 redirect stubs into `.htaccess` rules; articles → `journal/` | low | ½ day |
 | **3: migration ledger** | `schema_migrations` table; `/admin/migrate.php` records runs and shows "not yet run on production"; new migrations get a numeric prefix (`0128_…`) | low | 1 day |
 | **4: group `includes/` by domain** | Move files into `src/<domain>/` **with a thin forwarding file left at each old path** (`<?php require_once __DIR__.'/../src/rates/rates.php';`), then update callers domain by domain and delete the forwarders. Split `db.php` into core + domain files the same way | medium, mechanical, test-covered | 2–4 days |
 | **5: `public/` web root** | Move served files under `public/`; Dockerfile `DocumentRoot /var/www/html/public`; update `__DIR__ . '/../includes'` paths. After this, nothing outside `public/` can ever be served | medium, one careful PR | 1–2 days |

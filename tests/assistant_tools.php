@@ -131,10 +131,12 @@ check('unknown tool → error, no throw',       isset($r['error']));
 // ── DB-backed wrappers (read-only) ───────────────────────────────────────────
 try {
     $room = db_query(
+        // A priced room first: a dev database seeds most rooms unpriced, and an
+        // unpriced room cannot be quoted.
         "SELECT r.id, r.slug, r.venue_id FROM rooms r
            JOIN venues v ON v.id = r.venue_id
           WHERE r.is_published = TRUE AND v.is_published = TRUE
-          ORDER BY r.id LIMIT 1"
+          ORDER BY (r.price_amount > 0) DESC NULLS LAST, r.id LIMIT 1"
     )->fetch();
 } catch (\Throwable $e) {
     echo "\nSKIP  DB wrappers (database unavailable: " . $e->getMessage() . ")\n";

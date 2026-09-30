@@ -649,8 +649,18 @@ try {
         'SELECT id, slug, venue_id, is_entire_place FROM rooms WHERE slug = :s',
         [':s' => MAYA_ILAI_VILLA_ROOM_SLUG]
     )->fetch();
-    check('conflict: Maya Ilai has no venue-wide conflict units',
-        room_conflict_unit_ids($villaRoomRow) === []);
+    // The villa room is not a whole-place room, so the only units that may conflict with
+    // it are a compound buyout's (the direction that must keep working). Production has
+    // no bookable buyout; db/seed_rooms_2026.sql gives a dev database an unpublished one.
+    $buyoutUnits = array_map('intval', db_query(
+        'SELECT u.id FROM units u JOIN rooms r ON r.id = u.room_id
+          WHERE r.venue_id = :v AND r.is_entire_place = TRUE AND u.is_active = TRUE',
+        [':v' => (int)$villaRoomRow['venue_id']]
+    )->fetchAll(PDO::FETCH_COLUMN));
+    $conflictUnits = room_conflict_unit_ids($villaRoomRow);
+    sort($buyoutUnits); sort($conflictUnits);
+    check('conflict: Maya Ilai has no venue-wide conflict units (only those of a compound buyout, if one exists)',
+        $conflictUnits === $buyoutUnits);
 
     // The seed data never sets is_entire_place=TRUE on a Maya Ilai room, so the
     // assertion above passes even without the guard (the "else" branch finds no
@@ -896,7 +906,8 @@ try {
     // eight Maya Ilai products, that product renders an enquiry form and can never
     // be booked.
     $products = db_query(
-        'SELECT * FROM rooms WHERE venue_id = :v ORDER BY slug', [':v' => (int)$villaRow['venue_id']]
+        // Published only: the catalogue migration unpublishes anything else (an old buyout row).
+        'SELECT * FROM rooms WHERE venue_id = :v AND is_published = TRUE ORDER BY slug', [':v' => (int)$villaRow['venue_id']]
     )->fetchAll();
     check('inventory room: Maya Ilai lists all eight products', count($products) === 8);
     foreach ($products as $p) {

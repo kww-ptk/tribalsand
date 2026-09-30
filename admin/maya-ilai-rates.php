@@ -130,7 +130,7 @@ include __DIR__ . '/_layout.php';
   #mi-tool .mi-bar{display:flex;gap:9px;align-items:center;flex-wrap:wrap;margin-bottom:14px}
   #mi-tool .status{font-size:.82rem;color:var(--muted)}
   #mi-tool .btn{border:1px solid var(--line);background:#fff;color:var(--navy);border-radius:10px;padding:8px 13px;font-weight:650}#mi-tool .btn:hover{background:var(--bg)}#mi-tool .btn.primary{background:var(--teal);border-color:var(--teal);color:#fff}#mi-tool .btn.danger{color:var(--red);border-color:#f0c8c2}
-  #mi-tool nav.mi-nav{display:flex;gap:4px;overflow:auto;border-bottom:1px solid var(--line);margin-bottom:18px}#mi-tool .tab{white-space:nowrap;border:0;color:var(--muted);background:transparent;padding:11px 15px;font-weight:700;border-bottom:2px solid transparent}#mi-tool .tab.active{color:var(--navy);border-bottom-color:var(--teal)}
+  #mi-tool nav.mi-nav{display:inline-flex;max-width:100%;overflow:auto;scrollbar-width:none;border:1.5px solid var(--line);border-radius:10px;background:#fff;margin-bottom:18px}#mi-tool .tab{white-space:nowrap;border:0;color:var(--muted);background:transparent;padding:8px 14px;font-size:13px;font-weight:600;cursor:pointer}#mi-tool .tab:hover{color:var(--teal)}#mi-tool .tab.active{background:var(--teal);color:#fff}
   #mi-tool .view{display:none}#mi-tool .view.active{display:block}
   #mi-tool .section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:20px;margin-bottom:16px}#mi-tool .section-head h2{font-size:1.25rem;margin:0;color:var(--navy)}#mi-tool .section-head p{margin:4px 0 0;color:var(--muted);font-size:.9rem}
   #mi-tool .grid{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(320px,.8fr);gap:20px}#mi-tool .stack{display:grid;gap:18px}

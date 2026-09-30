@@ -32,6 +32,10 @@ if (!function_exists('ai_embed_request')) {
     }
 }
 
+// A stand-in key so ai_embed_supported() is true on a machine with no real one
+// (the request itself is the stub above; nothing leaves this process).
+putenv('AI_EMBED_KEY=test-key'); $_ENV['AI_EMBED_KEY'] = 'test-key';
+
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/ai.php';
 require_once __DIR__ . '/../includes/assistant-rag.php';

@@ -25,7 +25,9 @@ $sql = ''; $p = []; hr_scope_sql([], $sql, $p);
 check('scope: assigned nowhere matches nothing', str_contains($sql, '= -1'));
 
 $sql = ''; $p = []; hr_scope_sql([3, 5], $sql, $p);
-check('scope: bare column when no alias', str_contains($sql, 'venue_id IN (:sv0,:sv1)') && !str_contains($sql, '.venue_id'));
+// The home-venue test uses the bare column; with hr_staff_venues installed an EXISTS on the
+// extra-venues table (hv.venue_id, keyed on hr_staff.id) is OR-ed on.
+check('scope: bare column when no alias', (bool)preg_match('/^ AND \(?venue_id IN \(:sv0,:sv1\)/', $sql) && !preg_match('/\b(?!hv\.)\w+\.venue_id/', $sql));
 check('scope: params carry the venue ids', ($p[':sv0'] ?? null) === 3 && ($p[':sv1'] ?? null) === 5);
 
 $sql = ''; $p = []; hr_scope_sql([3], $sql, $p, 's');
