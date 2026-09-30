@@ -1,7 +1,7 @@
 <?php
 declare(strict_types=1);
 // Multi-currency display helpers (display-only). Run: php tests/currency_logic.php
-// Pure logic — no DB writes, no migration required. See MULTICURRENCY-PLAN.md.
+// Pure logic — no DB writes, no migration required. See docs/plans/MULTICURRENCY-PLAN.md.
 require_once __DIR__ . '/../includes/db.php';
 
 $failures = 0;
