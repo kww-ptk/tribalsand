@@ -5,10 +5,15 @@ RewriteEngine On
 # (a leaked .env = leaked database password). Deny them outright.
 Options -Indexes
 ErrorDocument 404 /404.php
-<FilesMatch "(^\.|\.env|\.sql$|\.md$|\.log$|^composer\.(json|lock)$|^package(-lock)?\.json$|^router\.php$)">
+<FilesMatch "(^\.|\.env|\.sql$|\.md$|\.log$|\.sh$|\.ya?ml$|^Dockerfile$|^composer\.(json|lock)$|^package(-lock)?\.json$|^router\.php$)">
   Require all denied
 </FilesMatch>
 RedirectMatch 404 (?i)/(\.git|logs|docs|deploy|db)(/|$)
+# Internal code folders. Nothing in the site links to them — pages only require()
+# them from disk — but Apache serves the whole repo, so without this a browser
+# could RUN a test suite (/tests/<name>) or read a script. Anchored at the root so
+# it can never catch a page path that merely contains one of these words.
+RedirectMatch 404 (?i)^/(tests|bin|includes|docker)(/|$)
 # ----------------------------------------------------------------------------
 
 # --- Dynamic sitemap --------------------------------------------------------
