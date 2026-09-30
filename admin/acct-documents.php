@@ -114,10 +114,11 @@ include __DIR__ . '/_layout.php';
   </span>
 </form>
 
-<div class="tabs">
-  <a class="tab-btn <?= $view === 'documents' ? 'is-active' : '' ?>" href="<?= e($qs(['view' => 'documents'])) ?>">Invoices &amp; credit notes <span class="tab-btn__count"><?= count($docs) ?></span></a>
-  <a class="tab-btn <?= $view === 'payments' ? 'is-active' : '' ?>" href="<?= e($qs(['view' => 'payments', 'type' => null])) ?>">Payments <span class="tab-btn__count"><?= count($pays) ?></span></a>
-</div>
+<?php /* A view switch, not a second row of tabs: the area strip above already carries the page's tabs. */ ?>
+<nav class="segswitch" aria-label="What to list">
+  <a class="<?= $view === 'documents' ? 'is-on' : '' ?>"<?= $view === 'documents' ? ' aria-current="true"' : '' ?> href="<?= e($qs(['view' => 'documents'])) ?>">Invoices &amp; credit notes <span class="segswitch__count"><?= count($docs) ?></span></a>
+  <a class="<?= $view === 'payments' ? 'is-on' : '' ?>"<?= $view === 'payments' ? ' aria-current="true"' : '' ?> href="<?= e($qs(['view' => 'payments', 'type' => null])) ?>">Payments <span class="segswitch__count"><?= count($pays) ?></span></a>
+</nav>
 
 <?php if ($view === 'documents'): ?>
   <?php if ($summary): ?>
