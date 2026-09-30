@@ -67,6 +67,7 @@ check('every item has an icon' . ($noIcon ? ' — ' . implode(', ', $noIcon) : '
 // ── What each role sees ─────────────────────────────────────────────────────
 $owner = $labels($nav('owner'));
 check('owner: Dashboard is the first link, outside any group', $owner[0] === 'Dashboard');
+foreach (array_keys($roles) as $r) check("{$r}: Dashboard is the landing link", $labels($nav($r))[0] === 'Dashboard' && ($nav($r, 'dashboard.php')['active']['label'] ?? '') === 'Dashboard');
 check('owner: about 36 links (was 63)', count($owner) >= 33 && count($owner) <= 38);
 check('owner: Home + nine titled groups', count($nav('owner')['groups']) === 10);
 foreach (['Today › Messages', 'Bookings › Calendar', 'Bookings › Enquiries', 'Team › Tasks', 'Team › Attendance',
@@ -76,7 +77,7 @@ foreach (['Today › Messages', 'Bookings › Calendar', 'Bookings › Enquiries
 }
 
 $mgr = $labels($nav('manager'));
-check('manager: no Dashboard, no Website, no Staff', !array_filter($mgr, fn($l) => $l === 'Dashboard' || str_starts_with($l, 'Website') || $l === 'Team › Staff'));
+check('manager: Dashboard first; no Website, no Staff', $mgr[0] === 'Dashboard' && !array_filter($mgr, fn($l) => str_starts_with($l, 'Website') || $l === 'Team › Staff'));
 check('manager: Bookings group holds only what a manager may open', $nav('manager')['groups'][array_search('bookings', array_column($nav('manager')['groups'], 'key'))]['items'][0]['label'] === 'Calendar'
     && !in_array('Bookings › Bookings', $mgr, true) && !in_array('Bookings › Enquiries', $mgr, true));
 $mgrCal = array_column($nav('manager', 'calendar-highlights.php')['active']['tabs'], 'label');
@@ -90,8 +91,8 @@ check('reception: Calendar tabs are Calendar + Conflicts only', array_column($na
 check('reception: counts stock from Today', in_array('Today › Stock count', $rec, true));
 
 $hk = $labels($nav('housekeeping'));
-check('housekeeping: My work, Stock count, Team chat, Timetable — nothing else', $hk === ['Today › My work', 'Today › Stock count', 'Today › Team chat', 'Team › Timetable']);
-check('security: Gate instead of My work', $labels($nav('security')) === ['Today › Stock count', 'Today › Team chat', 'Today › Gate', 'Team › Timetable']);
+check('housekeeping: Dashboard, My work, Stock count, Team chat, Timetable — nothing else', $hk === ['Dashboard', 'Today › My work', 'Today › Stock count', 'Today › Team chat', 'Team › Timetable']);
+check('security: Gate instead of My work', $labels($nav('security')) === ['Dashboard', 'Today › Stock count', 'Today › Team chat', 'Today › Gate', 'Team › Timetable']);
 $shop = $labels($nav('shop'));
 check('shop staff: Open till + their own PIN', in_array('Point of Sale › Open till', $shop, true) && in_array('Point of Sale › My till PIN', $shop, true)
     && !in_array('Point of Sale › Sales', $shop, true));

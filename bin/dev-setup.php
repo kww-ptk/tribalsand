@@ -8,6 +8,7 @@
  *   php bin/dev-setup.php --reset     Wipe the local database and build it again from scratch.
  *   php bin/dev-setup.php --retry     Also retry migrations that failed before.
  *   php bin/dev-setup.php --apply X.sql  Run one migration by hand (after importing a snapshot).
+ *   php bin/dev-setup.php --accounts  (Re)create the test logins, one per role, and reset their password.
  *   php bin/dev-setup.php --sanitize  Scrub personal data again (runs automatically after a
  *                                     production snapshot is imported — see README).
  *
@@ -48,6 +49,7 @@ $pdo = dev_connect();
 if ($flag('--status'))   { dev_status($pdo); exit(0); }
 if ($flag('--reset'))    { dev_reset($pdo); }
 if ($flag('--sanitize')) { dev_sanitize($pdo); exit(0); }
+if ($flag('--accounts')) { dev_accounts($pdo); exit(0); }
 if (($i = array_search('--apply', $args, true)) !== false) { dev_ledger_ensure($pdo); dev_apply_one($pdo, (string)($args[$i + 1] ?? '')); exit(0); }
 
 dev_ledger_ensure($pdo);
@@ -329,7 +331,8 @@ function dev_php_seeds(): void {
 }
 
 /**
- * Local test logins, one per role (owner, manager, reception, front-desk staff). Passwords come from DEV_ADMIN_PASSWORD
+ * Local test logins, one per kind of account (owner, manager, reception, front desk,
+ * housekeeping, gate security, shop till). Passwords come from DEV_ADMIN_PASSWORD
  * (see .env.example); they only ever exist in the local database.
  */
 function dev_accounts(PDO $pdo): void {
@@ -346,24 +349,45 @@ function dev_accounts(PDO $pdo): void {
             job_type = EXCLUDED.job_type, is_active = TRUE
         RETURNING id");
     $ids = [];
-    foreach ([['owner@tribalsand.test', 'Dev Owner', 'owner', null],
-              ['manager@tribalsand.test', 'Dev Manager', 'manager', null],
-              ['reception@tribalsand.test', 'Dev Reception', 'reception', null],
-              ['frontdesk@tribalsand.test', 'Dev Front Desk', 'staff', 'frontdesk']] as [$e, $n, $r, $j]) {
-        $up->execute([':e' => $e, ':n' => $n, ':h' => $hash, ':r' => $r, ':j' => $j]);
-        $ids[$r] = (int)$up->fetchColumn();
+    // [email, name, role, job type] — one login per kind of account the admin treats differently.
+    $accounts = [['owner@tribalsand.test', 'Dev Owner', 'owner', null],
+                 ['manager@tribalsand.test', 'Dev Manager', 'manager', null],
+                 ['reception@tribalsand.test', 'Dev Reception', 'reception', null],
+                 ['frontdesk@tribalsand.test', 'Dev Front Desk', 'staff', 'frontdesk'],
+                 ['housekeeping@tribalsand.test', 'Dev Housekeeping', 'staff', 'housekeeping'],
+                 ['security@tribalsand.test', 'Dev Security', 'staff', 'security'],
+                 ['shop@tribalsand.test', 'Dev Shop', 'staff', 'shop']];
+    foreach ($accounts as [$e, $n, $r, $j]) {
+        try {
+            $up->execute([':e' => $e, ':n' => $n, ':h' => $hash, ':r' => $r, ':j' => $j]);
+            $ids[strtok($e, '@')] = (int)$up->fetchColumn();
+        } catch (Throwable $ex) {
+            // e.g. the 'shop' job type before add_pos_job_types.sql has run
+            say('  ! ' . $e . ' not created: ' . strtok($ex->getMessage(), "\n"));
+        }
     }
-    // Manager + front desk are scoped to the first property, so venue scoping can be tested.
+    // Everyone but the owner is scoped to the first property, so venue scoping can be tested.
     if (dev_table_exists($pdo, 'admin_user_venues')) {
         $venue = $pdo->query('SELECT id FROM venues ORDER BY id LIMIT 1')->fetchColumn();
         if ($venue) {
-            foreach (['manager', 'reception', 'staff'] as $r) {
+            foreach ($ids as $who => $id) {
+                if ($who === 'owner') continue;
                 $pdo->prepare('INSERT INTO admin_user_venues (admin_user_id, venue_id) VALUES (:a, :v) ON CONFLICT DO NOTHING')
-                    ->execute([':a' => $ids[$r], ':v' => $venue]);
+                    ->execute([':a' => $id, ':v' => $venue]);
             }
         }
     }
-    say('✓ Test logins ready: owner@ / manager@ / reception@ / frontdesk@tribalsand.test (password = DEV_ADMIN_PASSWORD).');
+    // The shop login sells at the first outlet (that is what makes "Open till" appear).
+    if (isset($ids['shop']) && dev_table_exists($pdo, 'pos_outlet_staff')) {
+        try {
+            $outlet = $pdo->query('SELECT id FROM pos_outlets ORDER BY id LIMIT 1')->fetchColumn();
+            if ($outlet) {
+                $pdo->prepare('INSERT INTO pos_outlet_staff (outlet_id, admin_user_id) VALUES (:o, :a) ON CONFLICT DO NOTHING')
+                    ->execute([':o' => $outlet, ':a' => $ids['shop']]);
+            }
+        } catch (Throwable $ex) { say('  ! shop login not assigned to an outlet: ' . strtok($ex->getMessage(), "\n")); }
+    }
+    say('✓ Test logins ready (' . count($ids) . '): ' . implode(', ', array_keys($ids)) . ' @tribalsand.test — password = DEV_ADMIN_PASSWORD.');
 }
 
 /**

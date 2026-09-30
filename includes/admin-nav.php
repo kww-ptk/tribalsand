@@ -45,7 +45,7 @@ function admin_nav_definition(array $f, array $badge = []): array {
 
     return [
         ['key' => 'home', 'title' => '', 'items' => [
-            $item('Dashboard', 'dashboard', [$tab('Dashboard', 'dashboard.php', $on('owner'))]),
+            $item('Dashboard', 'dashboard', [$tab('Dashboard', 'dashboard.php', true)]),   // everyone's landing page
         ]],
 
         ['key' => 'today', 'title' => 'Today', 'items' => [

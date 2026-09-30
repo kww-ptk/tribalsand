@@ -127,18 +127,13 @@ function pos_jobs_supported(): bool {
 }
 
 /**
- * Post-login home for the current admin:
- *   owner → dashboard · manager → front desk · security staff → gate ·
- *   ops staff → My Work · frontdesk (or job-less) staff → front desk.
+ * Where an account lands after signing in, and where a page that refuses it
+ * sends it back to: the Dashboard, for every role (admin/dashboard.php shapes
+ * itself to the role — owner, manager, reception, front desk, ops, gate, till).
+ * The dashboard is require_login() only, so this can never bounce in a loop.
  */
 function admin_home_url(): string {
-    // Everyone who can reach the Front Desk lands there by default (owner included).
-    // Ops and gate-security keep their focused homes since Front Desk isn't theirs.
-    $job = admin_job();
-    if ($job === 'security') return '/admin/gate.php';
-    if (job_is_ops($job))    return '/admin/mywork.php';
-    if (job_is_pos($job))    return '/pos/';            // shop / spa / kite staff work at the till
-    return '/admin/frontdesk.php';
+    return '/admin/dashboard.php';
 }
 
 /** Venue ids the current admin may see; null = all (owner). Managers and staff are scoped. */

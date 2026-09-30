@@ -123,7 +123,7 @@ When the log shows `Ready`, open:
 | Every email the app sends (Mailpit) | http://localhost:8025 |
 | Database (for a DB client) | `localhost:54320`, user / password / database: `tribalsand` |
 
-**Test logins**, one per role. The password is `DEV_ADMIN_PASSWORD` in
+**Test logins**, one per kind of account. The password is `DEV_ADMIN_PASSWORD` in
 `.env.example`, which Docker uses by default:
 
 | Email | Role | Sees |
@@ -132,6 +132,12 @@ When the log shows `Ready`, open:
 | `manager@tribalsand.test` | manager | the first property only |
 | `reception@tribalsand.test` | reception | the first property only |
 | `frontdesk@tribalsand.test` | front-desk staff | the first property only |
+| `housekeeping@tribalsand.test` | housekeeping staff | their own tasks |
+| `security@tribalsand.test` | gate security | the gate |
+| `shop@tribalsand.test` | shop staff | the till (first outlet) |
+
+Everyone lands on their own Dashboard. An existing local database gets the newer
+logins with `php bin/dev-setup.php --accounts` (Docker: `docker compose exec app php bin/dev-setup.php --accounts`).
 
 You get demo data: 7 properties, 36 rooms, activities, menus, reviews, POS
 outlets, the staff roster and a sample inventory order. There are no guests or
