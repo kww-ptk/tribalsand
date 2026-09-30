@@ -14,8 +14,11 @@ declare(strict_types=1);
  * Errors are always {ok:false, error:"<human sentence>"}:
  *   401 not signed in / account inactive · 403 not the owner · 403 bad CSRF ·
  *   405 not POST · 400 unknown action · 422 refused (validation, currency mix,
- *   price ≤ 0, nothing to change, undo blocked) · 404 unknown change ·
- *   409 log/undo before the add_rate_change_log migration · 500 anything else.
+ *   price ≤ 0 or above the maximum, apply without a fingerprint, nothing to
+ *   change, undo blocked or not exactly restorable) · 404 unknown change ·
+ *   409 apply's fingerprint no longer matches ("Rates changed since the
+ *   preview — preview again.") · 409 log/undo before the add_rate_change_log
+ *   migration · 500 anything else.
  *
  * ── Dates ──────────────────────────────────────────────────────────────────
  * Every date is 'YYYY-MM-DD' (zero-padded, strict). Ranges are NIGHTS,
@@ -44,7 +47,7 @@ declare(strict_types=1);
  *   rooms:          [room id…]                         1–50, de-duplicated
  *   ranges:         [[first, last], …]  (or [{from, to}] / [{first, last}]) 1–50 ranges, ≤ 1,100 nights in all
  *   mode:           "fixed" | "percent" | "match" | "base"
- *   amount:         number > 0                          (fixed; rooms must share a currency)
+ *   amount:         number > 0, ≤ 99,999,999.99         (fixed; rooms must share a currency)
  *   pct:            number, -100 < pct ≤ 500, ≠ 0       (percent; e.g. 5 or -10)
  *   match_label:    string                              (match; a label in use)
  *   label:          string | null | absent              (ignored for base)
@@ -54,15 +57,20 @@ declare(strict_types=1);
  *   update_buyouts: bool, default false                 (the UI ticks it by default)
  * Modes:
  *   fixed   — every night = amount.
- *   percent — each PRICED night × (1 + pct/100), rounded half-up to the nearest
- *             KES 10 / 1 unit of any other currency. Nights with no price (≤ 0)
+ *   percent — each PRICED night × (100 + pct) / 100, rounded half-up to the
+ *             nearest KES 10 / 1 unit of any other currency (an exact half always
+ *             rounds up: KES 350 −30% = 245 → 250). Nights with no price (≤ 0)
  *             are left alone (a note); a room with none is skipped.
  *   match   — each room's own most common price for match_label in the SAME
  *             calendar year as each night (a tie takes the higher price). A room
  *             without that season in a year leaves those nights alone (note), or
  *             is skipped when it lacks it for every night.
  *   base    — removes the overrides on those nights (room's own price applies).
- * A result ≤ 0 (fixed/percent/match) refuses the whole change (422).
+ * A result ≤ 0 (fixed/percent/match) refuses the whole change (422), and so does
+ * any price or buyout sum above 99,999,999.99 (rates.price_amount NUMERIC(10,2)):
+ * "<room> would exceed the maximum price (99,999,999.99) on <date> — …".
+ * Money texts (summary, before_text/after_text) show whole units, or 2 decimals
+ * when the amount has cents ("$99.50").
  * Nights already at the target price AND label are not rewritten.
  * Buyouts: for each property touched with exactly one whole-property room that
  * is not selected, when a selected PUBLISHED non-whole-property room changes:
@@ -96,13 +104,24 @@ declare(strict_types=1);
  *              left_out: [{room_id, name, reason}], nights_skipped}],
  *   buyouts_available: bool,                 // show the "Also update buyouts" tick box
  *   totals: {rooms, nights, skipped, unchanged},   // rooms/nights = those that change
+ *   fingerprint: "<64 hex>",                 // send back with apply, unchanged
  *   log_supported: bool
  * }
+ * fingerprint = sha256 of a canonical JSON of the normalised request plus, per
+ * room, its currency + base price and, for every night that changes, the target
+ * price/label AND the current price/label. It is what apply checks.
  *
  * ── action: "apply" ────────────────────────────────────────────────────────
- * Same body as preview. Recomputed on the server (the client's preview is never
- * trusted), written with rates_apply_ranges() / rates_clear_span() and logged in
- * ONE transaction.
+ * Same body as preview PLUS  fingerprint: the preview's fingerprint (REQUIRED).
+ * Recomputed on the server (the client's preview is never trusted) under the
+ * editor's advisory lock; the recomputed fingerprint must equal the one sent,
+ * else 409 "Rates changed since the preview — preview again." and nothing is
+ * written. That covers rates edited between preview and apply AND a double
+ * submit (the second apply sees the first one's prices, so "+5%" never
+ * compounds). Missing/malformed fingerprint → 422 "Preview the change first,
+ * then apply it." On a 409 the UI should re-run preview and show it again.
+ * Written with rates_apply_ranges() / rates_clear_span() and logged in ONE
+ * transaction.
  * → {ok, applied: {change_id: int|null, logged: bool, log_note: string|null,
  *                  summary, totals, span: {first, last}, preview: Preview}}
  *   logged false (change_id null) before the migration — show log_note.
@@ -120,9 +139,11 @@ declare(strict_types=1);
  *   change_id: int
  * → {ok, undone: {change_id, summary, rooms: [id…], span: {first, last}}}
  *   422 when already undone, when a newer not-undone change overlaps the same
- *   rooms and nights ("Undo the newer change first: …"), or when the rates were
+ *   rooms and nights ("Undo the newer change first: …"), when the rates were
  *   edited elsewhere since ("These rates were edited elsewhere since — undo not
- *   possible."); 404 unknown id; 409 before the migration.
+ *   possible."), or when the restore would not resolve every night exactly as
+ *   before ("Undo could not restore these rates exactly — nothing was changed.",
+ *   rolled back); 404 unknown id; 409 before the migration.
  */
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
@@ -132,12 +153,17 @@ header('Content-Type: application/json');
 header('Cache-Control: no-store');
 
 $admin = current_admin();                 // starts the session
+$sessionToken = (string)($_SESSION['csrf_token'] ?? '');
+// Everything the endpoint needs from the session is read now; release the lock
+// so a long apply/undo does not block the owner's other tabs. Nothing below
+// writes to $_SESSION (audit_log() only READS admin_id, which stays readable).
+session_write_close();
 $data  = json_decode((string)file_get_contents('php://input'), true);
 $r = rate_editor_dispatch(
     (string)($_SERVER['REQUEST_METHOD'] ?? 'GET'),
     is_array($data) ? $data : [],
     $admin,
-    (string)($_SESSION['csrf_token'] ?? '')
+    $sessionToken
 );
 http_response_code($r['status']);
 echo json_encode($r['body'], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
