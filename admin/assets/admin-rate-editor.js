@@ -285,23 +285,27 @@
   }
 
   var lastBody = null;
+  // Preview a body and show it. Apply later sends back exactly what was previewed: the
+  // same body plus the preview's fingerprint, so a double submit or a rate changed since
+  // the preview is refused (409) instead of applied twice.
+  function runPreview(body, btn, note) {
+    busy(btn, true, 'Checking…');
+    delete body.fingerprint;
+    return api('preview', body).then(function (d) {
+      busy(btn, false);
+      lastBody = body;
+      if (d.preview && d.preview.fingerprint) lastBody.fingerprint = d.preview.fingerprint;
+      renderPreview(d.preview);
+      setStep('preview');
+      showError(note || '');
+      var m = modal(); if (m) m.scrollTop = 0;
+    }, function (e) { busy(btn, false); showError(e.message); });
+  }
   function doPreview() {
     var f = readForm();
     if (f.error) { showError(f.error); return; }
     showError('');
-    var btn = q('[data-re-preview-btn]');
-    busy(btn, true, 'Checking…');
-    api('preview', f.body).then(function (d) {
-      busy(btn, false);
-      lastBody = f.body;
-      // Apply sends back exactly what was previewed: the same body plus the preview's
-      // fingerprint (when the server issues one), so a double submit or a rate changed
-      // since the preview is refused instead of applied twice.
-      if (d.preview && d.preview.fingerprint) lastBody.fingerprint = d.preview.fingerprint;
-      renderPreview(d.preview);
-      setStep('preview');
-      var m = modal(); if (m) m.scrollTop = 0;
-    }, function (e) { busy(btn, false); showError(e.message); });
+    runPreview(f.body, q('[data-re-preview-btn]'));
   }
 
   function renderPreview(p) {
@@ -374,8 +378,9 @@
       flashAndReload('Saved: ' + (a.summary || 'rates updated') + (a.log_note ? ' — ' + a.log_note : ''));
     }, function (e) {
       busy(btn, false);
-      // 409 = the rates changed since this preview: back to the form to preview again.
-      if (e.status === 409) { lastBody = null; setStep('form'); }
+      // 409 = the rates changed since this preview (or a double submit): nothing was
+      // written — preview again and show the fresh figures before a second confirm.
+      if (e.status === 409) { runPreview(lastBody, btn, e.message + ' The preview below is up to date.'); return; }
       showError(e.message);
     });
   }
