@@ -29,7 +29,11 @@ $__preCo    = rates_window_ymd($__pre('check_out')) ?? '';
 $__preAd    = max(0, (int)($qb_prefill['adults'] ?? 2));
 $__preCh    = max(0, (int)($qb_prefill['children'] ?? 0));
 $__byVenue  = [];
-foreach ($__qbCat['rooms'] as $r) $__byVenue[(int)$r['venue_id']][] = $r;
+$__preferVenue = 0;   // the enquiry's property — its suggestions are listed first
+foreach ($__qbCat['rooms'] as $r) {
+    $__byVenue[(int)$r['venue_id']][] = $r;
+    if ((int)$r['id'] === $__preRoom) $__preferVenue = (int)$r['venue_id'];
+}
 $__clientCat = [
     'tours' => array_map(fn($t) => ['id' => (int)$t['id'], 'name' => (string)$t['name'],
         'price' => is_numeric($t['price_amount']) && (float)$t['price_amount'] > 0 ? (float)$t['price_amount'] : null,
@@ -42,7 +46,8 @@ $__uid = 'qb' . substr(md5((string)mt_rand()), 0, 6);
 ?>
 <div class="qb" data-qb data-context="<?= e($qb_context) ?>"
      data-endpoint="/api/quote-builder.php" data-print-url="/admin/quote-print.php" data-csrf="<?= e(csrf_token()) ?>"
-     data-submission-id="<?= $__qbSid ?>" data-can-save="<?= $__qbCanSave ? '1' : '0' ?>">
+     data-submission-id="<?= $__qbSid ?>" data-can-save="<?= $__qbCanSave ? '1' : '0' ?>"
+     data-prefer-venue="<?= $__preferVenue ?>">
   <script type="application/json" data-qb-catalog><?= json_encode($__clientCat, JSON_HEX_TAG | JSON_HEX_AMP) ?></script>
 
   <div class="qb-head">
@@ -75,6 +80,9 @@ $__uid = 'qb' . substr(md5((string)mt_rand()), 0, 6);
 
       <section class="qb-card">
         <div class="qb-card__head"><h3>Rooms</h3>
+          <?php if ($__byVenue): ?>
+          <button type="button" class="btn-outline btn-sm" data-qb-suggest title="Rooms, combinations and whole properties that are free and fit the party">Suggest options</button>
+          <?php endif; ?>
           <?php if (count($__byVenue) > 1): ?>
           <div class="qb-chips" role="group" aria-label="Show properties">
             <?php foreach ($__byVenue as $vid => $vr): ?>
@@ -86,6 +94,7 @@ $__uid = 'qb' . substr(md5((string)mt_rand()), 0, 6);
         <?php if (!$__byVenue): ?>
         <p class="qb-empty">No rooms are available to quote for your account.</p>
         <?php else: ?>
+        <div class="qb-sugg" data-qb-sugg hidden></div>
         <div class="qb-tablewrap">
           <table class="qb-table">
             <thead><tr><th>Room</th><th>Qty</th><th>Guests</th><th>Sleeps</th><th>Free</th><th class="qb-money">Avg / night</th><th class="qb-money">Stay total</th></tr></thead>
@@ -217,6 +226,23 @@ $__uid = 'qb' . substr(md5((string)mt_rand()), 0, 6);
 .qb-actions{display:flex;flex-wrap:wrap;gap:8px;padding:10px 16px 14px}
 .qb-foot{padding:0 16px 14px;margin:0;font-size:11.5px;color:var(--muted)}
 .qb-empty{color:var(--muted);font-size:13px;margin:0}
+/* Suggest options — per-property options loaded into the rooms table with "Use" */
+.qb-sugg{border:1px solid var(--qb-line);border-radius:12px;background:#fbf9f5;padding:12px 14px;margin:0 0 12px;display:grid;gap:10px}
+.qb-sugg[hidden]{display:none}
+.qb-sugg__top{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:12.5px;color:var(--muted)}
+.qb-sugg__close{border:0;background:none;color:var(--muted);font-size:18px;line-height:1;cursor:pointer;padding:2px 6px}
+.qb-sugg__venue{display:grid;gap:6px}
+.qb-sugg__vname{font-weight:700;font-size:13px}
+.qb-sugg__vname small{font-weight:600;color:#096c66;margin-left:6px}
+.qb-sugg__none{font-size:12.5px;color:var(--muted)}
+.qb-sugg__opt{display:flex;align-items:center;gap:12px;background:var(--white);border:1px solid var(--qb-line);border-radius:10px;padding:8px 10px;min-width:0}
+.qb-sugg__opt.is-used{border-color:#096c66;background:#f3faf8}
+.qb-sugg__main{flex:1 1 auto;min-width:0}
+.qb-sugg__label{font-size:13px;font-weight:600;overflow-wrap:anywhere}
+.qb-sugg__meta{font-size:11.5px;color:var(--muted)}
+.qb-sugg__price{font-size:13px;font-weight:700;white-space:nowrap;text-align:right}
+.qb-sugg__price.is-unpriced{font-weight:600;color:#a3362a;font-size:12px}
+@media (max-width:640px){.qb-sugg__opt{flex-wrap:wrap}.qb-sugg__price{text-align:left}}
 @media (max-width:1100px){.qb-grid{grid-template-columns:minmax(0,1fr)}.qb-summary{position:static}}
 @media (max-width:640px){.qb-form{grid-template-columns:repeat(2,minmax(0,1fr))}.qb-field--wide{grid-column:span 2}}
 </style>

@@ -40,6 +40,32 @@ if ($sess === '' || !hash_equals($sess, $token)) {
 $action = (string)($data['action'] ?? 'price');
 $sel    = is_array($data['sel'] ?? null) ? $data['sel'] : [];
 
+if ($action === 'suggest') {
+    // Read-only: what each property in the account's catalogue can offer for the
+    // dates + party (includes/quote-suggest.php → ts_property_configurations()).
+    require_once __DIR__ . '/../includes/quote-suggest.php';
+    $ci = rates_window_ymd((string)($sel['check_in'] ?? ''));
+    $co = rates_window_ymd((string)($sel['check_out'] ?? ''));
+    $party = max(0, min(500, (int)($sel['adults'] ?? 0))) + max(0, min(500, (int)($sel['children'] ?? 0)));
+    $err = match (true) {
+        $ci === null || $co === null => 'Pick the check-in and check-out dates first.',
+        $ci >= $co                   => 'Check-out must be after check-in.',
+        (strtotime($co) - strtotime($ci)) / 86400 > 60 => 'Suggestions cover stays of up to 60 nights.',
+        $party < 1                   => 'Add the number of guests first.',
+        default                      => null,
+    };
+    if ($err !== null) { http_response_code(422); exit(json_encode(['ok' => false, 'error' => $err])); }
+    $prefer = (int)($data['prefer_venue'] ?? 0) ?: null;   // ordering only — scope comes from the session
+    try {
+        $groups = qb_suggestions($ci, $co, $party, admin_venue_ids(), $prefer);
+    } catch (Throwable $e) {
+        error_log('[quote-builder suggest] ' . $e->getMessage());
+        http_response_code(500); exit(json_encode(['ok' => false, 'error' => 'Could not load suggestions right now.']));
+    }
+    exit(json_encode(['ok' => true, 'party' => $party, 'nights' => (int)round((strtotime($co) - strtotime($ci)) / 86400),
+                      'groups' => $groups], JSON_UNESCAPED_UNICODE));
+}
+
 if ($action === 'save') {
     $sid = (int)($data['submission_id'] ?? 0);
     if (!qb_quotes_supported()) {

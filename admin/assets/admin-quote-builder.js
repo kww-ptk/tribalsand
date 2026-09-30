@@ -195,6 +195,94 @@
       });
     });
 
+    // ── Suggest options: what each property can offer for the dates + party ──
+    // The server picks (api/quote-builder.php action 'suggest' → the /search
+    // function); "Use" only fills the rooms table, and the normal re-price below
+    // stays the one source of the figures that get saved, inserted or printed.
+    var sugBtn = q(root, '[data-qb-suggest]'), sugBox = q(root, '[data-qb-sugg]'), sugSeq = 0;
+    function fmtDay(ymd) {
+      var d = new Date(ymd + 'T12:00:00');
+      return isNaN(d) ? ymd : d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+    }
+    function useOption(opt, vid, el) {
+      qa(root, 'tr[data-room]').forEach(function (tr) {
+        q(tr, '[data-qb-qty]').value = 0;
+        q(tr, '[data-qb-guests]').value = 0;
+      });
+      opt.rooms.forEach(function (r) {
+        var tr = q(root, 'tr[data-room="' + r.id + '"]');
+        if (!tr) return;
+        var qi = q(tr, '[data-qb-qty]'), max = int(qi.getAttribute('max'));
+        qi.value = max ? Math.min(r.qty, max) : r.qty;
+        q(tr, '[data-qb-guests]').value = r.guests;
+      });
+      var cb = q(root, '[data-qb-venue="' + vid + '"]'), g = q(root, 'tbody[data-qb-group="' + vid + '"]');
+      if (cb) cb.checked = true;
+      if (g) g.hidden = false;
+      qa(sugBox, '.qb-sugg__opt').forEach(function (o) { o.classList.remove('is-used'); });
+      el.classList.add('is-used');
+      schedule();
+    }
+    function renderSuggestions(d, ci, co) {
+      sugBox.innerHTML = '';
+      var top = document.createElement('div');
+      top.className = 'qb-sugg__top';
+      top.innerHTML = '<span>Options for ' + esc(fmtDay(ci)) + ' – ' + esc(fmtDay(co)) + ' · ' + d.party + ' guest' + (d.party === 1 ? '' : 's') +
+        '. <b>Use</b> loads one into the rooms below — edit it, then save it as an option.</span>' +
+        '<button type="button" class="qb-sugg__close" aria-label="Close suggestions">×</button>';
+      q(top, '.qb-sugg__close').addEventListener('click', function () { sugBox.hidden = true; });
+      sugBox.appendChild(top);
+      (d.groups || []).forEach(function (g) {
+        var box = document.createElement('div');
+        box.className = 'qb-sugg__venue';
+        box.innerHTML = '<div class="qb-sugg__vname">' + esc(g.name) + (g.preferred ? '<small>requested</small>' : '') + '</div>';
+        if (!g.options.length) {
+          box.insertAdjacentHTML('beforeend', '<div class="qb-sugg__none">No availability for ' + d.party + ' guest' + (d.party === 1 ? '' : 's') + ' on these dates' +
+            (g.max_capacity > 0 ? ' — it has room for ' + g.max_capacity + '.' : '.') + '</div>');
+        }
+        g.options.forEach(function (o) {
+          var kind = o.kind === 'combo' ? 'Combination' : (o.kind === 'entire' ? 'Whole property' : 'Room');
+          var el = document.createElement('div');
+          el.className = 'qb-sugg__opt';
+          el.innerHTML = '<div class="qb-sugg__main"><div class="qb-sugg__label">' + esc(o.label) + '</div>' +
+            '<div class="qb-sugg__meta">' + kind + (o.sleeps ? ' · sleeps ' + o.sleeps : '') + ' · ' + d.nights + ' night' + (d.nights === 1 ? '' : 's') + '</div></div>' +
+            (o.total !== null ? '<div class="qb-sugg__price">' + money({ amt: o.total, cur: o.currency }) + '</div>'
+                              : '<div class="qb-sugg__price is-unpriced">No price set</div>') +
+            '<button type="button" class="btn-primary btn-sm">Use</button>';
+          q(el, 'button').addEventListener('click', function () { useOption(o, g.venue_id, el); });
+          box.appendChild(el);
+        });
+        sugBox.appendChild(box);
+      });
+      sugBox.hidden = false;
+      if (window.tsMoney) window.tsMoney.apply(sugBox);
+    }
+    if (sugBtn && sugBox) sugBtn.addEventListener('click', function () {
+      var s = selection(), my = ++sugSeq, status = q(root, '[data-qb-status]');
+      sugBtn.disabled = true;
+      sugBox.hidden = false;
+      sugBox.innerHTML = '<div class="qb-sugg__top"><span>Checking every property…</span></div>';
+      fetch(root.getAttribute('data-endpoint'), {
+        method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          csrf_token: root.getAttribute('data-csrf'), action: 'suggest',
+          prefer_venue: +(root.getAttribute('data-prefer-venue') || 0),
+          sel: { check_in: s.check_in, check_out: s.check_out, adults: s.adults, children: s.children }
+        })
+      })
+        .then(function (r) { return r.json().catch(function () { return { ok: false }; }); })
+        .then(function (d) {
+          if (my !== sugSeq) return;
+          if (!d || !d.ok) {
+            sugBox.innerHTML = '<div class="qb-sugg__top"><span>' + esc((d && d.error) || 'Could not load suggestions.') + '</span></div>';
+            return;
+          }
+          renderSuggestions(d, s.check_in, s.check_out);
+        })
+        .catch(function () { if (my === sugSeq) sugBox.innerHTML = '<div class="qb-sugg__top"><span>Could not reach the server.</span></div>'; })
+        .finally(function () { if (my === sugSeq) sugBtn.disabled = false; });
+    });
+
     // ── Any input change re-prices ──────────────────────────────────────────
     root.addEventListener('input', function (e) { if (!e.target.closest('[data-qb-pick]') && !e.target.closest('[data-qb-venue]')) schedule(); });
     root.addEventListener('change', function (e) { if (!e.target.closest('[data-qb-pick]') && !e.target.closest('[data-qb-venue]')) schedule(); });
