@@ -101,7 +101,10 @@ if ($view === 'card') {
     // whether the price is uniform, and the room's own nights of that season
     // this year as [first, last] runs (rc_season_runs()). Base = the room's
     // nights with no seasonal rate, fed through the same run grouping.
+    // Every pre-filled run is clipped to today (Nairobi) — never rewrite past nights;
+    // a cell whose nights are all past pre-fills nothing and stays non-clickable.
     $reCells = [];
+    $reToday = date('Y-m-d');
     if ($reOwner) {
         foreach ($rooms as $r) {
             $rid = (int)$r['id'];
@@ -117,12 +120,15 @@ if ($view === 'card') {
                 $cell['seasons'][$k] = [
                     'price'   => re_most_common_price($prices[$k] ?? []),
                     'uniform' => $s['min'] === $s['max'],
-                    'ranges'  => $runs,
+                    'ranges'  => re_clip_runs_from($runs, $reToday),
+                    'clipped' => $runs !== re_clip_runs_from($runs, $reToday),
                 ];
             }
             $baseOnly = array_map(fn($n) => rc_night_key($n) === null
                 ? ['is_override' => true, 'label' => 'Base'] : ['is_override' => false], $m);
-            $cell['base'] = rc_season_runs([$baseOnly])['Base'] ?? [];
+            $baseRuns = rc_season_runs([$baseOnly])['Base'] ?? [];
+            $cell['base'] = re_clip_runs_from($baseRuns, $reToday);
+            $cell['base_clipped'] = $baseRuns !== $cell['base'];
             $reCells[$rid] = $cell;
         }
     }
@@ -253,10 +259,12 @@ include __DIR__ . '/_layout.php';
               $c   = (string)($r['price_currency'] ?: 'USD');
               // Owner: the cell carries what the editor pre-fills (room, season, price,
               // nights). An empty cell pre-fills the PROPERTY's nights of that season.
-              $reAttr = function (?array $pre, string $key, bool $base = false) use ($reOwner, $r, $vid, $c, $year, $runs): string {
+              $reAttr = function (?array $pre, string $key, bool $base = false) use ($reOwner, $r, $vid, $c, $year, $runs, $reToday): string {
                   if (!$reOwner) return '';
-                  $ranges = $pre['ranges'] ?? ($base ? [] : ($runs[$key] ?? []));
+                  $full   = $pre['ranges'] ?? ($base ? [] : ($runs[$key] ?? []));
+                  $ranges = re_clip_runs_from($full, $reToday);   // idempotent for already-clipped runs
                   if (!$ranges) return '';
+                  $clipped = !empty($pre['clipped']) || $ranges !== $full;
                   $price = $pre['price'] ?? null;
                   return ' data-re-cell tabindex="0" role="button" title="Set rates…"'
                        . ' data-room="' . (int)$r['id'] . '" data-venue="' . (int)$vid . '" data-name="' . e($r['name']) . '"'
@@ -264,6 +272,7 @@ include __DIR__ . '/_layout.php';
                        . ($base ? ' data-base="1"' : '') . ($key === 'Other rate' ? ' data-other="1"' : '')
                        . ' data-price="' . ($price !== null && $price > 0 ? e(rc_trimz(sprintf('%.2F', $price))) : '') . '"'
                        . ' data-uniform="' . (!empty($pre['uniform']) ? '1' : '0') . '"'
+                       . ($clipped ? ' data-clipped="1"' : '')
                        . ' data-ranges="' . e(json_encode($ranges)) . '"';
               }; ?>
         <tr>
@@ -271,7 +280,7 @@ include __DIR__ . '/_layout.php';
           <?php foreach ($labels as $l): $s = $row['seasons'][$l] ?? null; ?>
           <td<?= $reAttr($reCells[(int)$r['id']]['seasons'][$l] ?? null, $l) ?>><?php if (!$s): ?>—<?php elseif ($s['min'] === $s['max']): ?><?= rc_money_html($s['min'], $c, $cur, $fx) ?><?php else: ?><?= rc_money_html($s['min'], $c, $cur, $fx) ?> – <?= rc_money_html($s['max'], $c, $cur, $fx) ?><?php endif; ?></td>
           <?php endforeach; ?>
-          <td<?= $reAttr(['ranges' => $reCells[(int)$r['id']]['base'] ?? [], 'price' => (float)$r['price_amount'], 'uniform' => true], 'Base', true) ?>><?= (float)$r['price_amount'] > 0 ? rc_money_html((float)$r['price_amount'], $c, $cur, $fx) : '—' ?></td>
+          <td<?= $reAttr(['ranges' => $reCells[(int)$r['id']]['base'] ?? [], 'clipped' => !empty($reCells[(int)$r['id']]['base_clipped']), 'price' => (float)$r['price_amount'], 'uniform' => true], 'Base', true) ?>><?= (float)$r['price_amount'] > 0 ? rc_money_html((float)$r['price_amount'], $c, $cur, $fx) : '—' ?></td>
         </tr>
         <?php endforeach; ?>
       <?php endforeach; ?>
@@ -286,7 +295,7 @@ include __DIR__ . '/_layout.php';
   <div class="alert alert--info">These properties have no rooms yet.</div>
   <?php else: ?>
   <div class="rc-wrap">
-    <table class="rc-table rc-tl<?= $reOwner ? ' re-tl' : '' ?>"<?= $reOwner ? ' data-re-tl' : '' ?>>
+    <table class="rc-table rc-tl<?= $reOwner ? ' re-tl' : '' ?>"<?= $reOwner ? ' data-re-tl data-today="' . e(date('Y-m-d')) . '"' : '' ?>>
       <thead><tr>
         <th>Room</th>
         <?php foreach ($days as $d): $we = in_array((int)date('N', strtotime($d)), [6, 7], true); ?>
@@ -317,7 +326,7 @@ include __DIR__ . '/_layout.php';
     <span><span class="rc-pill rc-std">Standard</span></span><span><span class="rc-pill rc-mid">Mid</span></span>
     <span><span class="rc-pill rc-peak">Peak</span></span><span><span class="rc-pill rc-other">Other rate</span></span>
     <span>Uncoloured = base price · hover a cell for the full price</span>
-    <?php if ($reOwner): ?><span>Click a night to set rates · shift-click to extend · ctrl/⌘-click or drag to add rooms · Esc clears</span><?php endif; ?>
+    <?php if ($reOwner): ?><span>Click a night to set rates · shift-click to extend · ⌘/ctrl-click or drag to add rooms · past days can't be selected · Esc clears</span><?php endif; ?>
   </div>
   <?php endif; ?>
 

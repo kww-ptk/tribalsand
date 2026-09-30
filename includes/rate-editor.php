@@ -239,6 +239,22 @@ function re_check_max(float $price, string $roomName, string $ymd): void {
     }
 }
 
+/**
+ * Clip [firstNight, lastNight] runs (inclusive) to $today onwards: runs that end
+ * before today are dropped, a straddling run starts today. Pre-filled editor dates
+ * never reach into the past, so a Confirm can't rewrite nights that have gone.
+ * Ymd strings compare chronologically (zero-padded).
+ */
+function re_clip_runs_from(array $runs, string $today): array {
+    $out = [];
+    foreach ($runs as $run) {
+        [$a, $b] = $run;
+        if ($b < $today) continue;
+        $out[] = [$a < $today ? $today : $a, $b];
+    }
+    return $out;
+}
+
 /** Most common price; a tie takes the higher price. Null for none. */
 function re_most_common_price(array $prices): ?float {
     $count = [];

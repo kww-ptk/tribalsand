@@ -299,7 +299,12 @@
       setStep('preview');
       showError(note || '');
       var m = modal(); if (m) m.scrollTop = 0;
-    }, function (e) { busy(btn, false); showError(e.message); });
+    }, function (e) {
+      busy(btn, false);
+      // A failed re-preview after a 409 must not leave Confirm live on the stale preview.
+      if (note) setStep('form');
+      showError(e.message);
+    });
   }
   function doPreview() {
     var f = readForm();
@@ -420,9 +425,10 @@
     var ranges = [];
     try { ranges = JSON.parse(cell.getAttribute('data-ranges') || '[]'); } catch (e) {}
     var pre = { rooms: [room], ranges: ranges, mode: 'fixed', amount: price };
+    var fromToday = cell.getAttribute('data-clipped') === '1' ? ' from today' : '';
 
     if (cell.getAttribute('data-base') === '1') {
-      pre.context = name + ' · the nights on its base price in ' + year
+      pre.context = name + ' · the nights on its base price in ' + year + fromToday
         + '. A fixed price here adds a rate on those nights; the base price itself is set on the room page.';
       return pre;
     }
@@ -441,12 +447,12 @@
     }
     pre.rooms = pre.rooms.concat(others);
     if (!price) {
-      pre.context = name + ' has no ' + key + ' price in ' + year + ' — the dates are the property’s ' + key + ' nights.';
+      pre.context = name + ' has no ' + key + ' price in ' + year + ' — the dates are the property’s ' + key + ' nights' + fromToday + '.';
     } else {
       pre.context = key + ' ' + year + ' · ' + name
         + (others.length ? ' + ' + plural(others.length, 'other room') + ' at the same price' : '')
         + (cell.getAttribute('data-uniform') === '1' ? '' : ' · its price varies, the most common one is filled in')
-        + '. Dates are ' + name + '’s ' + key + ' nights.';
+        + '. Dates are ' + name + '’s ' + key + ' nights' + fromToday + '.';
     }
     return pre;
   }
@@ -491,13 +497,16 @@
       context: 'From the timeline: ' + (names.length <= 3 ? names.join(', ') : plural(names.length, 'room')) + ' · ' + fmtRange(sel.from, sel.to) + '.'
     };
   }
+  // Past days can't be selected (rates only change from today on); dates are Nairobi-local, server-stamped.
+  function tlToday(table) { return (table && table.getAttribute('data-today')) || ''; }
   function onTlDown(e) {
     var td = e.target.closest ? e.target.closest('[data-re-tl] td[data-d]') : null;
     if (!td || e.button !== 0) return;
     var tr = td.closest('tr[data-re-row]'), table = td.closest('[data-re-tl]');
     if (!tr) return;
-    e.preventDefault();                               // no text selection while dragging
     var id = tr.getAttribute('data-room'), d = td.getAttribute('data-d');
+    if (d < tlToday(table)) return;
+    e.preventDefault();                               // no text selection while dragging
     var same = sel && sel.table === table;
     if (same && e.shiftKey) {
       sel.from = d < sel.anchor ? d : sel.anchor;
@@ -514,13 +523,16 @@
     paintSel();
   }
   function onTlOver(e) {
-    if (!drag || !sel) return;
+    if (!drag) return;
+    if (!(e.buttons & 1)) { drag = null; return; }    // the button was released outside the page
+    if (!sel) return;
     var td = e.target.closest ? e.target.closest('[data-re-tl] td[data-d]') : null;
     if (!td || td.closest('[data-re-tl]') !== drag.table) return;
     var tr = td.closest('tr[data-re-row]');
     if (!tr) return;
     var rows = tlRows(drag.table), i = rows.indexOf(tr), a = Math.min(i, drag.rowIdx), b = Math.max(i, drag.rowIdx);
-    var d = td.getAttribute('data-d');
+    var d = td.getAttribute('data-d'), today = tlToday(drag.table);
+    if (d < today) d = today;
     sel.from = d < sel.anchor ? d : sel.anchor;
     sel.to = d < sel.anchor ? sel.anchor : d;
     sel.rows = rows.slice(a, b + 1).map(function (r) { return r.getAttribute('data-room'); });
@@ -592,7 +604,8 @@
     // Capture phase: sees the datepicker popup / confirm dialog still open (their own
     // Escape handlers close them), so Escape closes only the topmost thing.
     document.addEventListener('keydown', function (e) {
-      if (e.key !== 'Escape' || datepickerOpen() || document.querySelector('.adm-confirm-back')) return;
+      if (e.key !== 'Escape' || datepickerOpen() || document.querySelector('.adm-confirm-back')
+          || document.querySelector('.eselect.is-open')) return;
       if (isOpen()) { closeEditor(); return; }
       if (sel) clearSel();
     }, true);
@@ -600,9 +613,15 @@
     document.addEventListener('mousedown', onTlDown);
     document.addEventListener('mouseover', onTlOver);
     document.addEventListener('mouseup', function () { drag = null; });
+    // macOS turns ctrl-click into a right-click: keep the context menu off the timeline
+    // days while ctrl is held or a selection gesture is running.
+    document.addEventListener('contextmenu', function (e) {
+      var td = e.target.closest ? e.target.closest('[data-re-tl] td[data-d]') : null;
+      if (td && (e.ctrlKey || drag)) e.preventDefault();
+    });
 
     // Back/Forward swaps the page without a reload; never leave the body scroll-locked.
-    window.addEventListener('popstate', function () { document.body.style.overflow = ''; sel = null; drag = null; });
+    window.addEventListener('popstate', function () { closeEditor(); sel = null; drag = null; });
   }
 
   // Per run (page load or shell navigation). The listeners above belong to the FIRST
