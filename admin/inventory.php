@@ -16,8 +16,7 @@ require_once __DIR__ . '/../includes/inventory-views.php';
 require_once __DIR__ . '/../includes/inventory-owner.php';   // owner-only corrections (reset all inventory)
 require_once __DIR__ . '/../includes/inventory-grid.php';    // the spreadsheet list + bulk actions
 require_once __DIR__ . '/../includes/inventory-orders.php';  // the "On order" column
-require_login();
-require_manager();
+require_inventory();   // owner, manager or storekeeper (scoped)
 
 $vids      = admin_venue_ids();
 $supported = inv_supported();

@@ -130,3 +130,4 @@ add_email_templates.sql
 add_inventory_order_receipt_moves.sql
 add_submission_quotes.sql
 add_rate_change_log.sql
+add_storekeeper_job.sql

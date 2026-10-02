@@ -14,12 +14,12 @@ require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/admin-pagination.php';   // dt_empty()
 require_once __DIR__ . '/../includes/inventory-count-views.php';
 require_once __DIR__ . '/../includes/inventory-orders.php';   // the "Orders to receive" card
-require_login();
+require_stock_count();   // owner, manager, storekeeper, ops staff — not reception / front desk / gate / till
 
 $self      = '/admin/inventory-count.php';
 $me        = current_admin();
 $meId      = (int)$me['id'];
-$role      = (string)($me['role'] ?? 'staff');
+$role      = inv_actor_role();   // owner · manager · storekeeper · staff (ops) — what inv_can_count() takes
 $vids      = admin_venue_ids();
 $supported = inv_supported();
 $today     = frontdesk_today_ymd();
@@ -64,7 +64,7 @@ $loc = (!$sheet && $supported && isset($_GET['location'])) ? inv_fetch_location(
 if ($loc && (!$countable($loc) || !inv_bool($loc['is_active']))) $loc = false;
 $places = (!$sheet && !$loc && $supported) ? inv_countable_locations($meId, $role, $vids, $today) : [];
 // Orders this account can receive (open / part-received, with a line for its places).
-$toReceive = (!$sheet && !$loc && $supported && inv_orders_supported())
+$toReceive = (!$sheet && !$loc && $supported && inv_orders_supported() && can_manage_inventory())   // receiving is owner / manager / storekeeper
     ? array_values(array_filter(inv_orders_list($vids), fn(array $o): bool => in_array($o['status'], ['open', 'partial'], true))) : [];
 $notFound = (isset($_GET['count']) && !$sheet) || (isset($_GET['location']) && !$loc);
 $locState = $loc ? inv_count_location_state((int)$loc['id']) : null;

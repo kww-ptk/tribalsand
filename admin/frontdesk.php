@@ -44,8 +44,8 @@ if ($venueFilter > 0 && in_array($venueFilter, $validIds, true)) {
 // what this account can resolve.
 $countScope = $venueFilter ? [$venueFilter] : $allowed;
 $reviewer   = $isOwner || is_manager();
-$countsCard = inv_supported() ? inv_counts_due_card(
-    inv_countable_locations($meId, admin_role(), $countScope, frontdesk_today_ymd()),
+$countsCard = (inv_supported() && inv_actor_role() !== '') ? inv_counts_due_card(
+    inv_countable_locations($meId, inv_actor_role(), $countScope, frontdesk_today_ymd()),
     $reviewer ? inv_count_queue_size($countScope, true) : 0,
     5, $reviewer ? '/admin/inventory-counts.php' : '/admin/inventory-count.php') : '';
 

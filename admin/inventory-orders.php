@@ -12,7 +12,7 @@ require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/admin-pagination.php';   // dt_empty()
 require_once __DIR__ . '/../includes/inventory-views.php';
 require_once __DIR__ . '/../includes/inventory-orders.php';
-require_login();
+require_inventory();   // owner, manager or storekeeper (scoped)
 
 $supported = inv_orders_supported();
 $vids      = admin_venue_ids();

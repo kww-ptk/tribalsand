@@ -16,7 +16,7 @@ require_once __DIR__ . '/../includes/admin-pagination.php';   // dt_empty()
 require_once __DIR__ . '/../includes/inventory-views.php';
 require_once __DIR__ . '/../includes/inventory-grid.php';     // inv_grid_css() / inv_grid_js() / inv_grid_ids()
 require_once __DIR__ . '/../includes/inventory-orders.php';
-require_login();
+require_inventory();   // owner, manager or storekeeper (scoped)
 
 $self      = '/admin/inventory-order.php';
 $orderId   = (int)($_GET['id'] ?? $_POST['id'] ?? 0);

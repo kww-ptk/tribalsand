@@ -53,8 +53,7 @@ function acct_supported(): bool {
 /** Who may record payments and issue invoices: the guest-facing tier (require_frontdesk()'s audience). */
 function acct_can_take_payments(): bool {
     if (is_owner() || is_manager() || is_reception()) return true;
-    $job = admin_job();
-    return is_staff() && !job_is_ops($job) && !job_is_pos($job) && $job !== 'security';
+    return is_frontdesk_staff();
 }
 
 /** Credit notes and refunds: the owner, or a manager of that property. */

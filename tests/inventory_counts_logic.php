@@ -28,6 +28,14 @@ check('resolve: a manager does not resolve shared Main stock', !inv_can_resolve(
 check('resolve: staff never resolve', !inv_can_resolve($amani, 'staff', [1]));
 check('resolve: a manager never resolves another property', inv_can_resolve(['kind' => 'property', 'venue_id' => 2], 'manager', [1]) === false);
 check('count: a stale assignee does not bypass a venue-bound place', !inv_can_count(['kind' => 'property', 'venue_id' => 1, 'count_assignee_id' => 5], 5, 'staff', [3]));
+// Storekeeper + accounts that never count (inv_actor_role() → '' for reception, front desk, gate, till).
+check('count: a storekeeper counts their property', inv_can_count($amani, 6, 'storekeeper', [1]));
+check('count: a storekeeper counts shared Main stock', inv_can_count($store, 6, 'storekeeper', [1]));
+check('count: a storekeeper does not count another property', !inv_can_count($amani, 6, 'storekeeper', [3]));
+check('resolve: a storekeeper never resolves', !inv_can_resolve($amani, 'storekeeper', [1]));
+check('count: reception never counts, even at its own property', !inv_can_count($amani, 4, 'reception', [1]));
+check('count: an account that may not count (empty role) is refused…', !inv_can_count($amani, 4, '', [1]));
+check('count: …even a shared place it was made responsible for', !inv_can_count(['count_assignee_id' => 4] + $store, 4, '', [1]));
 
 // ── Sorting and gaps ────────────────────────────────────────────────────────
 $sorted = inv_count_sort([
@@ -71,9 +79,12 @@ try {
     $locA  = inv_property_location_id($vA);
     $locB  = inv_property_location_id($vB);
     $area  = inv_create_area($locA, 'ZZ Pantry');
-    $mkUser = fn(string $role, string $tag) => $ins("INSERT INTO admin_users (email, role, name, is_active) VALUES (:e, :r, :n, TRUE)",
-        [':e' => "zz-cnt-{$tag}-{$sfx}@example.com", ':r' => $role, ':n' => "ZZ {$tag}"]);
-    $owner = $mkUser('owner', 'owner'); $mgrA = $mkUser('manager', 'mgra'); $mgrB = $mkUser('manager', 'mgrb'); $maid = $mkUser('staff', 'maid');
+    $mkUser = fn(string $role, string $tag, ?string $job = null) => $ins("INSERT INTO admin_users (email, role, name, is_active, job_type) VALUES (:e, :r, :n, TRUE, :j)",
+        [':e' => "zz-cnt-{$tag}-{$sfx}@example.com", ':r' => $role, ':n' => "ZZ {$tag}", ':j' => $job]);
+    // The maid is housekeeping: only ops staff (and storekeepers) count, never front-desk staff.
+    $owner = $mkUser('owner', 'owner'); $mgrA = $mkUser('manager', 'mgra'); $mgrB = $mkUser('manager', 'mgrb'); $maid = $mkUser('staff', 'maid', 'housekeeping');
+    $desk  = $mkUser('staff', 'desk');   // job_type NULL = front desk
+    db_query('INSERT INTO admin_user_venues (admin_user_id, venue_id) VALUES (:u, :v)', [':u' => $desk, ':v' => $vA]);
     foreach ([[$mgrA, $vA], [$mgrB, $vB], [$maid, $vA]] as [$u, $v]) db_query('INSERT INTO admin_user_venues (admin_user_id, venue_id) VALUES (:u, :v)', [':u' => $u, ':v' => $v]);
     $glass = inv_create_item(['name' => 'ZZ Count glass', 'item_type' => 'operational', 'replacement_value' => 400]);
     inv_move(['item_id' => $glass, 'qty' => 20, 'to' => $store, 'reason' => 'receive']);
@@ -86,6 +97,9 @@ try {
     check('places: staff do not get Main stock or another property', !in_array($store, $maidPlaces, true) && !in_array($locB, $maidPlaces, true));
     inv_update_location($store, ['count_every_days' => '', 'count_assignee_id' => $maid]);
     check('places: …Main stock appears once they are responsible for it', in_array($store, $ids(inv_countable_locations($maid, 'staff', [$vA], $today)), true));
+    $assignable = inv_assignable_users($vA);
+    check('assignee: housekeeping can be made responsible for a count', isset($assignable[$maid]));
+    check('assignee: front-desk staff cannot', !isset($assignable[$desk]));
     inv_update_location($area, ['count_every_days' => '7', 'count_assignee_id' => 0]);
     $due = inv_counts_due($maid, 'staff', [$vA], $today);
     check('due: a weekly place never counted is due', in_array($area, $ids($due), true) && !in_array($locA, $ids($due), true));

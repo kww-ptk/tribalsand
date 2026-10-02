@@ -34,6 +34,7 @@ check('kind: staff by job', dashboard_kind('staff', 'frontdesk') === 'frontdesk'
     && dashboard_kind('staff', 'housekeeping') === 'ops' && dashboard_kind('staff', 'laundry') === 'ops'
     && dashboard_kind('staff', 'driver') === 'ops' && dashboard_kind('staff', 'kite') === 'pos' && dashboard_kind('staff', 'spa') === 'pos');
 check('kind: staff with no job type is front desk (same rule as admin_job())', dashboard_kind('staff', null) === 'frontdesk');
+check('kind: a storekeeper gets the stock dashboard', dashboard_kind('staff', 'storekeeper') === 'store');
 check('everyone lands on the dashboard', admin_home_url() === '/admin/dashboard.php');
 
 check('greeting follows the Nairobi hour', dashboard_greeting(7) === 'Good morning' && dashboard_greeting(12) === 'Good afternoon'
@@ -52,7 +53,7 @@ check('staff are labelled by their job', dashboard_profile('ops', 'gardening', [
     && dashboard_profile('security', 'security', ['Zuri'])['label'] === 'Gate security'
     && dashboard_profile('pos', 'spa', ['Zuri'])['label'] === 'Salon & Spa'
     && dashboard_profile('frontdesk', null, ['Zuri'])['label'] === 'Front desk');
-foreach (['owner', 'manager', 'reception', 'frontdesk', 'ops', 'security', 'pos'] as $k) {
+foreach (['owner', 'manager', 'reception', 'frontdesk', 'ops', 'security', 'pos', 'store'] as $k) {
     $pp = dashboard_profile($k, null, ['Zuri']);
     check("{$k}: has a summary, a badge and at least three things they can do", $pp['summary'] !== '' && $pp['badge'] !== '' && count($pp['can']) >= 3);
 }
@@ -72,9 +73,15 @@ check('reception: booking-desk tiles but no money', in_array('requests', $plan('
 check('front desk: guest requests + messages only, and today', $plan('frontdesk')['tiles'] === ['guest_requests', 'messages', 'team_chat']
     && $plan('frontdesk')['sections'] === ['today', 'my_tasks']);
 check('ops: their tasks and the counts due; no guest data', $plan('ops')['tiles'] === ['team_chat'] && $plan('ops')['sections'] === ['my_tasks', 'counts_due']);
+check('store: counts due + tasks, no guest data, inventory shortcuts', $plan('store')['tiles'] === ['team_chat']
+    && $plan('store')['sections'] === ['counts_due', 'my_tasks']
+    && in_array('/admin/inventory.php', array_column($plan('store')['shortcuts'], 1), true)
+    && !in_array('/admin/assistant.php', array_column($plan('store')['shortcuts'], 1), true));
+check('reception: no stock or money on its dashboard', !array_intersect(['counts_review'], $plan('reception')['tiles'])
+    && !array_intersect(['money', 'counts_due'], $plan('reception')['sections']));
 check('security: arrivals and visitors, no guest messages', $plan('security')['tiles'] === ['visitors', 'team_chat'] && $plan('security')['sections'] === ['today', 'my_tasks']);
 check('till staff: the till card first', $plan('pos')['sections'] === ['till', 'my_tasks'] && $plan('pos')['tiles'] === ['team_chat']);
-foreach (['owner', 'manager', 'reception', 'frontdesk', 'ops', 'security', 'pos'] as $k) {
+foreach (['owner', 'manager', 'reception', 'frontdesk', 'ops', 'security', 'pos', 'store'] as $k) {
     check("{$k}: every tile is defined and everyone has the team chat", !array_diff($plan($k)['tiles'], array_keys($meta)) && in_array('team_chat', $plan($k)['tiles'], true));
 }
 
@@ -88,12 +95,12 @@ check('AI assistant shortcut only with a key, and never for ops', in_array(['AI 
 
 // Every tile and shortcut points at a real admin page.
 $targets = array_column($meta, 'href');
-foreach (['owner', 'manager', 'reception', 'frontdesk', 'ops', 'security', 'pos'] as $k) foreach ($plan($k)['shortcuts'] as $sc) $targets[] = $sc[1];
+foreach (['owner', 'manager', 'reception', 'frontdesk', 'ops', 'security', 'pos', 'store'] as $k) foreach ($plan($k)['shortcuts'] as $sc) $targets[] = $sc[1];
 $dead = array_filter(array_unique($targets), fn($h) => !is_file(__DIR__ . '/..' . strtok($h, '?')));
 check('every tile and shortcut points at an existing page' . ($dead ? ' — ' . implode(', ', $dead) : ''), !$dead);
 
 // ── The bento pieces ────────────────────────────────────────────────────────
-foreach (['owner', 'manager', 'reception', 'frontdesk', 'ops', 'security', 'pos'] as $k) {
+foreach (['owner', 'manager', 'reception', 'frontdesk', 'ops', 'security', 'pos', 'store'] as $k) {
     $pp = dashboard_profile($k, null, ['Zuri']);
     check("{$k}: short 'you can' chips, each a few words", count($pp['chips']) >= 4 && !array_filter($pp['chips'], fn($c) => strlen($c) > 22));
     check("{$k}: every shortcut has a label, a page and a drawn icon", !array_filter($plan($k)['shortcuts'],

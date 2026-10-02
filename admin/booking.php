@@ -33,8 +33,8 @@ if (!empty($_SESSION['hold_flash'])) { $flash = $_SESSION['hold_flash']; unset($
 if (!$hold) { $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Booking not found.']; header('Location: /admin/holds.php'); exit; }
 if (!is_owner() && !staff_can_hold($holdId)) { $_SESSION['hold_flash']=['type'=>'error','msg'=>'That booking is at a property you don’t manage.']; header('Location: ' . admin_home_url()); exit; }
 
-// Ops staff & gate-security get no guest messaging (mirrors require_frontdesk / the nav).
-$__noMessaging = is_staff() && (job_is_ops(admin_job()) || admin_job() === 'security');
+// Back-of-house staff (ops, gate, till, storekeeper) get no guest messaging (mirrors require_frontdesk / the nav).
+$__noMessaging = is_staff() && job_is_back_of_house(admin_job());
 
 $tab = $_GET['tab'] ?? 'requests';
 if (!in_array($tab, ['requests','messages','plan','bill','checkin','activity','details'], true)) $tab = 'requests';

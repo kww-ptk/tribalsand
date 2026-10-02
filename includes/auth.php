@@ -108,6 +108,66 @@ function job_is_pos(?string $job): bool {
     return in_array($job, ['shop','spa','kite'], true);
 }
 
+/** The storekeeper job — staff who run the stock: Inventory, orders and counts (scoped to their properties). */
+function job_is_store(?string $job): bool {
+    return $job === 'storekeeper';
+}
+
+/**
+ * Jobs with NO guest-facing desk: ops, till, storekeeper and gate security. They
+ * get no guest messaging, no booking workspace actions, no AI assistant and take
+ * no payments. Every "front-desk staff?" check goes through this one list, so a
+ * new back-of-house job is added here once instead of in each page.
+ */
+function job_is_back_of_house(?string $job): bool {
+    return job_is_ops($job) || job_is_pos($job) || job_is_store($job) || $job === 'security';
+}
+
+/** Staff whose job is the guest desk (front desk, or a job-less staff account). */
+function is_frontdesk_staff(): bool {
+    return is_staff() && !job_is_back_of_house(admin_job());
+}
+
+/**
+ * Inventory & Assets pages (list, items, places, import, orders, count review):
+ * the owner, managers and storekeepers — the last two scoped to their properties
+ * by admin_venue_ids(). Reception and every other job never see them.
+ */
+function can_manage_inventory(): bool {
+    return is_owner() || is_manager() || (is_staff() && job_is_store(admin_job()));
+}
+
+/**
+ * The role string the stock-count rules (inv_can_count()) take for this account:
+ * owner · manager · storekeeper · staff (ops jobs — housekeeping, laundry,
+ * maintenance, gardening, driver — who count linen and supplies). '' = may not
+ * count at all: reception, front-desk, gate and till staff.
+ */
+function inv_actor_role(): string {
+    if (is_owner())   return 'owner';
+    if (is_manager()) return 'manager';
+    if (is_staff()) {
+        $job = admin_job();
+        if (job_is_store($job)) return 'storekeeper';
+        if (job_is_ops($job))   return 'staff';
+    }
+    return '';
+}
+
+/** True once add_storekeeper_job.sql has widened the job_type CHECK (a catalog lookup). */
+function storekeeper_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try {
+        $ok = (bool) db_query(
+            "SELECT 1 FROM pg_constraint
+              WHERE conname = 'admin_users_job_type_check'
+                AND pg_get_constraintdef(oid) LIKE '%storekeeper%'"
+        )->fetchColumn();
+    } catch (\Throwable $e) { $ok = false; }
+    return $ok;
+}
+
 /**
  * True once add_pos_job_types.sql has widened the job_type CHECK. Used to hide
  * the POS jobs in the Team forms pre-migration (the UPDATE would be rejected).
@@ -188,9 +248,39 @@ function require_bookings(): void {
  */
 function require_frontdesk(): void {
     require_login();
-    $job = admin_job();
-    if (is_staff() && (job_is_ops($job) || job_is_pos($job) || $job === 'security')) {
+    if (is_staff() && job_is_back_of_house(admin_job())) {
         $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Messages aren’t available for your account.'];
+        header('Location: ' . admin_home_url()); exit;
+    }
+}
+
+/**
+ * Rates gate (admin/rates.php + its calendar fragment) — owner, manager or
+ * reception: the people who quote or run a property. Prices are business data,
+ * so ops, gate, till, storekeeper and front-desk staff are bounced home.
+ */
+function require_rates(): void {
+    require_login();
+    if (!is_owner() && !is_manager() && !is_reception()) {
+        $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Rates aren’t available for your account.'];
+        header('Location: ' . admin_home_url()); exit;
+    }
+}
+
+/** Inventory gate — owner, manager or storekeeper (see can_manage_inventory()). Others are bounced home. */
+function require_inventory(): void {
+    require_login();
+    if (!can_manage_inventory()) {
+        $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Inventory isn’t available for your account.'];
+        header('Location: ' . admin_home_url()); exit;
+    }
+}
+
+/** Stock-count gate — anyone inv_actor_role() lets count. Reception, front desk, gate and till staff are bounced home. */
+function require_stock_count(): void {
+    require_login();
+    if (inv_actor_role() === '') {
+        $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Stock counts aren’t available for your account.'];
         header('Location: ' . admin_home_url()); exit;
     }
 }

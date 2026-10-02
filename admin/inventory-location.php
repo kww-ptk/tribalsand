@@ -16,8 +16,7 @@ require_once __DIR__ . '/../includes/admin-pagination.php';   // dt_empty()
 require_once __DIR__ . '/../includes/inventory-views.php';
 require_once __DIR__ . '/../includes/frontdesk.php';          // frontdesk_today_ymd()
 require_once __DIR__ . '/../includes/inventory-count-views.php';   // inv_can_count() — the Count now button
-require_login();
-require_manager();
+require_inventory();   // owner, manager or storekeeper (scoped)
 
 $vids      = admin_venue_ids();
 $me        = current_admin();
@@ -102,7 +101,7 @@ $everyDays  = $loc['count_every_days'] !== null ? (int)$loc['count_every_days'] 
 $nextDue    = $everyDays ? inv_count_due_ymd($loc['last_counted_at'], $everyDays) : null;
 // Count now / Continue: only for someone allowed to count this open place, and only when something is expected here.
 $countState = inv_count_location_state((int)$loc['id']);
-$canCount   = $open && $countState['line_count'] > 0 && inv_can_count($loc, (int)$me['id'], (string)($me['role'] ?? ''), $vids);
+$canCount   = $open && $countState['line_count'] > 0 && inv_can_count($loc, (int)$me['id'], inv_actor_role(), $vids);
 $countUrl   = '/admin/inventory-count.php?' . ($countState['open_count_id'] ? 'count=' . $countState['open_count_id'] : 'location=' . (int)$loc['id']);
 $STATUS     = ['manual' => ['Counted by hand', 'badge--grey'], 'ok' => ['Up to date', 'badge--green'], 'due' => ['Count due today', 'badge--orange'], 'overdue' => ['Count overdue', 'badge--red']];
 

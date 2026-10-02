@@ -8,7 +8,7 @@ declare(strict_types=1);
  * with JavaScript off (or if this endpoint fails) the browser still navigates
  * and the calendar still works.
  *
- * Read-only, and scoped exactly like admin/rates.php: require_login() plus an
+ * Read-only, and scoped exactly like admin/rates.php: require_rates() plus an
  * admin_venue_ids() check on the room. The room id arrives from the client, so
  * it is validated against the account's own venues — never trusted.
  *
@@ -19,7 +19,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/rates.php';
-require_login();
+require_rates();
 
 header('Content-Type: text/html; charset=utf-8');
 header('Cache-Control: no-store');

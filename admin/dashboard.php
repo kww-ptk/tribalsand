@@ -69,7 +69,7 @@ $money    = $has('money')            ? dashboard_money($venueIds, $me, $todayYmd
 $myTasks  = $has('my_tasks')         ? dashboard_my_tasks($meId, $todayYmd)       : null;
 $recent   = $has('recent_enquiries') ? dashboard_recent_enquiries($venueIds, 5)   : null;
 $countsCard = $has('counts_due') ? (string)dashboard_safe(fn() => inv_counts_due_card(
-    inv_countable_locations($meId, $role, $venueIds, $todayYmd), 0, 5, '/admin/inventory-count.php'), '') : '';
+    inv_countable_locations($meId, inv_actor_role(), $venueIds, $todayYmd), 0, 5, '/admin/inventory-count.php'), '') : '';
 
 // A page that refused this account sends it here with the reason.
 $flash = null;

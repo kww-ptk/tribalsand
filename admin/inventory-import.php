@@ -16,8 +16,7 @@ require_once __DIR__ . '/../includes/xlsx-reader.php';
 require_once __DIR__ . '/../includes/inventory-item-import.php';
 require_once __DIR__ . '/../includes/inventory-orders.php';
 require_once __DIR__ . '/../includes/inventory-views.php';   // inv_shared_css()
-require_login();
-require_manager();
+require_inventory();   // owner, manager or storekeeper (scoped)
 
 $self      = '/admin/inventory-import.php';
 $supported = inv_supported();
