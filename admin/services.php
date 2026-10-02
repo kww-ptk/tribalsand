@@ -7,6 +7,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/services.php';
+require_once __DIR__ . '/../includes/upsells.php';   // upsell_transfers_supported() — the "Offer when booking" switch
 require_login();
 require_owner();
 
@@ -37,6 +38,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($id && $label !== '' && $price >= 0) {
             db_query("UPDATE service_options SET label=:l, price_amount=:p, is_active=:a WHERE id=:id",
                 [':l'=>$label, ':p'=>$price, ':a'=>$active, ':id'=>$id]);
+            // Transfers only: offered as an add-on while booking + in the booking-confirmed email.
+            if (upsell_transfers_supported()) {
+                db_query("UPDATE service_options SET offer_at_booking = :o WHERE id = :id AND service = 'transfer'",
+                    [':o' => isset($_POST['offer_at_booking']) ? 'TRUE' : 'FALSE', ':id' => $id]);
+            }
             audit_log('service_option.save', 'service_option', $id);
         }
         header('Location: /admin/services.php'); exit;
@@ -74,7 +80,7 @@ include __DIR__ . '/_layout.php';
   <h1>Service pricing</h1>
   <a href="/admin/settings.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Settings</a>
 </div>
-<p class="text-muted" style="margin:0 0 20px;font-size:13px">Guests see active options with their price when requesting laundry or transfers. A price of 0 shows the label only. Drag the handle to reorder.</p>
+<p class="text-muted" style="margin:0 0 20px;font-size:13px">Guests see active options with their price when requesting laundry or transfers. A price of 0 shows the label only. Drag the handle to reorder. <strong>Offer when booking</strong> also suggests a transfer while the guest books and in their booking-confirmed email.</p>
 
 <?php foreach ($SERVICES as $svc => $svcLabel):
     $rows     = fetch_service_options($svc, false);
@@ -100,6 +106,11 @@ include __DIR__ . '/_layout.php';
           <input type="number" name="price_amount" class="inp inp--num no-spin svc-price" value="<?= e($fmt_price($r['price_amount'])) ?>" min="0" step="0.01" placeholder="0">
         </span>
         <?php if (!is_priced($r['price_amount'])): ?><span class="badge badge--orange" data-tip="A price of 0 shows the label only — guests see no price">no price</span><?php endif; ?>
+        <?php if ($svc === 'transfer' && upsell_transfers_supported()): ?>
+        <label class="optchip svc-offer" data-tip="Offered as an add-on while booking and in the booking-confirmed email (when the property's add-ons are on)">
+          <input type="checkbox" name="offer_at_booking" value="1" <?= !empty($r['offer_at_booking']) ? 'checked' : '' ?>> Offer when booking
+        </label>
+        <?php endif; ?>
         <label class="toggle svc-toggle" data-tip="<?= $r['is_active'] ? 'Active — guests can pick this' : 'Hidden from guests' ?>">
           <input type="checkbox" name="is_active" value="1" <?= $r['is_active'] ? 'checked' : '' ?>>
           <span class="toggle-slider"></span>
@@ -142,7 +153,7 @@ include __DIR__ . '/_layout.php';
       row.addEventListener('dragenter', function(e){ e.preventDefault(); if (dragged && dragged !== row) { var k=[].slice.call(list.querySelectorAll('.svc-row')); var di=k.indexOf(dragged), ri=k.indexOf(row); list.insertBefore(dragged, di<ri ? row.nextSibling : row); } });
     });
     // Don't start a drag from inside the text/number inputs or the toggle.
-    list.querySelectorAll('input, .svc-toggle').forEach(function(i){ i.addEventListener('mousedown', function(e){ e.stopPropagation(); }); });
+    list.querySelectorAll('input, .svc-toggle, .svc-offer').forEach(function(i){ i.addEventListener('mousedown', function(e){ e.stopPropagation(); }); });
     function save(){
       var ids = [].slice.call(list.querySelectorAll('.svc-row')).map(function(x){ return x.dataset.id; });
       var fd = new FormData(); fd.append('action','reorder'); fd.append('service', svc); fd.append('order', JSON.stringify(ids)); fd.append('csrf_token', CSRF);

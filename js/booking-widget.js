@@ -559,6 +559,9 @@
           // server re-validates each against what this room's property offers.
           upsell: Array.from(form.querySelectorAll("[data-bk-upsell]:checked"))
                        .map(function (c) { return parseInt(c.value, 10); }),
+          // Airport transfers etc. the guest ticked (service option ids, re-validated server-side).
+          transfer: Array.from(form.querySelectorAll("[data-bk-transfer]:checked"))
+                       .map(function (c) { return parseInt(c.value, 10); }),
           // Snapshot of the total shown in the widget, so the admin enquiry view
           // records exactly what the guest was quoted (in the room's own currency).
           quoted_total:    lastTotal > 0 ? lastTotal : null,
@@ -628,6 +631,34 @@
       updateGuestsPill();
     }
 
+    // Booking pop-up only: the add-ons ("Add to your stay") for the room's property.
+    // The widget on single-room pages renders its own Extras step server-side.
+    const extrasBox = document.getElementById("bkExtras");
+    const esc = s => String(s == null ? "" : s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+    function extraRow(kind, it) {
+      const meta = [it.meta ? `<span>${esc(it.meta)}</span>` : "", it.price ? `<span class="bk-up__price">${esc(it.price)}</span>` : ""].join("");
+      return `<label class="bk-up"><input type="checkbox" value="${parseInt(it.id, 10)}" data-bk-${kind}>`
+           + `<span class="bk-up__tick" aria-hidden="true"></span><span class="bk-up__body">`
+           + `<span class="bk-up__name">${esc(it.name)}</span>${meta ? `<span class="bk-up__meta">${meta}</span>` : ""}</span></label>`;
+    }
+    function loadExtras(forSlug) {
+      if (!extrasBox) return;
+      extrasBox.hidden = true; extrasBox.innerHTML = "";
+      fetch(`/api/booking-extras?room=${encodeURIComponent(forSlug)}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(d => {
+          if (!d || forSlug !== slug) return;   // a newer room was opened meanwhile
+          const acts = d.activities || [], trs = d.transfers || [];
+          if (!acts.length && !trs.length) return;
+          extrasBox.innerHTML = `<div class="bk-ups__head">Add to your stay <span>optional</span></div>`
+            + acts.map(a => extraRow("upsell", a)).join("")
+            + (trs.length ? `<div class="bk-ups__sub">Airport transfer</div>` + trs.map(t => extraRow("transfer", t)).join("") : "")
+            + `<p class="bk-ups__note">Nothing is charged now — we’ll confirm availability and pricing by email.</p>`;
+          extrasBox.hidden = false;
+        })
+        .catch(() => {});
+    }
+
     // Re-point the widget at a new room (modal reuse)
     window.tsLoadRoom = function (newSlug, newPrice, newCurrency, prefill) {
       slug     = newSlug || wrap.dataset.slug || "";
@@ -650,6 +681,7 @@
       if (prefill && (prefill.adults != null || prefill.children != null)) {
         applyGuests(prefill.adults, prefill.children);
       }
+      if (slug) loadExtras(slug);
       if (slug) {
         fetch(`/api/check-availability?room=${encodeURIComponent(slug)}`)
           .then(r => r.json())

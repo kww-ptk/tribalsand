@@ -179,3 +179,105 @@ function upsell_attach_to_hold(int $holdId, array $items, int $pax = 1): int {
     }
     return $made;
 }
+
+// ── Transfers offered while booking ─────────────────────────────────────────
+// A transfer add-on is a service_options row (service = 'transfer') the owner
+// ticked "Offer when booking" in Admin → Service pricing — the SAME catalogue the
+// guest portal's Transfer tile and the quote builder read, so a price is set once.
+// It rides the property's master switch (venues.upsell_enabled) like activities.
+// Migration: db/migrations/add_booking_extras.sql.
+
+require_once __DIR__ . '/services.php';
+
+/** True once add_booking_extras.sql added service_options.offer_at_booking (catalog lookup). */
+function upsell_transfers_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try {
+        $ok = (bool) db_query(
+            "SELECT 1 FROM information_schema.columns
+              WHERE table_name = 'service_options' AND column_name = 'offer_at_booking' LIMIT 1"
+        )->fetchColumn();
+    } catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/** Transfer options offered at $venueId while booking. [] when switched off, pre-migration or on error. */
+function fetch_upsell_transfers(?int $venueId): array {
+    if (!upsell_transfers_supported() || !upsell_venue_enabled($venueId)) return [];
+    try {
+        return db_query(
+            "SELECT id, label, price_amount FROM service_options
+              WHERE service = 'transfer' AND is_active = TRUE AND offer_at_booking = TRUE
+              ORDER BY sort_order ASC, id ASC"
+        )->fetchAll();
+    } catch (Throwable $e) { return []; }
+}
+
+/** Keep only posted transfer ids genuinely offered at $venueId — a posted id is never trusted. */
+function upsell_validate_transfer_ids(array $postedIds, ?int $venueId): array {
+    $want = [];
+    foreach ($postedIds as $v) { $i = (int)$v; if ($i > 0) $want[$i] = true; }
+    if (!$want) return [];
+    return array_values(array_filter(fetch_upsell_transfers($venueId), fn($t) => isset($want[(int)$t['id']])));
+}
+
+/** "USD 45" in the site currency, or '' when unpriced (the portal's > 0 rule). */
+function upsell_transfer_price_label(array $t): string {
+    return is_priced($t['price_amount'] ?? null) ? format_price((float)$t['price_amount']) : '';
+}
+
+/** The compact shape stored on a submission's payload_json. */
+function upsell_transfer_payload_row(array $t): array {
+    return ['id' => (int)$t['id'], 'label' => (string)$t['label'],
+            'price_amount' => is_priced($t['price_amount'] ?? null) ? (float)$t['price_amount'] : null];
+}
+
+/**
+ * Attach validated transfers to a booking as transfer requests (kind 'transfer',
+ * price snapshotted, details = the option label — exactly what the portal's
+ * Transfer tile writes). Idempotent per option label; never throws.
+ */
+function upsell_attach_transfers_to_hold(int $holdId, array $transfers): int {
+    if ($holdId <= 0 || !$transfers) return 0;
+    try {
+        $have = db_query(
+            "SELECT details FROM booking_addons WHERE hold_id = :h AND kind = 'transfer' AND status <> 'cancelled'",
+            [':h' => $holdId]
+        )->fetchAll(PDO::FETCH_COLUMN);
+    } catch (Throwable $e) { $have = []; }
+    $made = 0;
+    foreach ($transfers as $t) {
+        $label = (string)($t['label'] ?? '');
+        if ($label === '' || in_array($label, $have, true)) continue;
+        try {
+            require_once __DIR__ . '/booking.php';
+            insert_booking_addon([
+                'hold_id'      => $holdId,
+                'kind'         => 'transfer',
+                'details'      => $label,
+                'price_amount' => is_priced($t['price_amount'] ?? null) ? (float)$t['price_amount'] : null,
+            ]);
+            $have[] = $label;
+            $made++;
+        } catch (Throwable $e) {
+            error_log('[upsell] transfer attach failed on hold ' . $holdId . ': ' . $e->getMessage());
+        }
+    }
+    return $made;
+}
+
+/**
+ * Everything offered while booking a room of $venueId, shaped for the booking
+ * pop-up (api/booking-extras.php) and the widget's add-ons step. Pure shaping
+ * over the two readers above — no second catalogue.
+ * @return array{activities: list<array{id:int,name:string,meta:string,price:string}>, transfers: list<array{id:int,name:string,price:string}>}
+ */
+function upsell_booking_extras(?int $venueId): array {
+    $acts = array_map(fn($u) => ['id' => (int)$u['id'], 'name' => (string)$u['name'],
+                                 'meta' => trim((string)($u['duration'] ?? '')), 'price' => upsell_price_label($u)],
+                      fetch_upsell_items($venueId, 'enquiry'));
+    $trs  = array_map(fn($t) => ['id' => (int)$t['id'], 'name' => (string)$t['label'], 'price' => upsell_transfer_price_label($t)],
+                      fetch_upsell_transfers($venueId));
+    return ['activities' => $acts, 'transfers' => $trs];
+}

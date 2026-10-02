@@ -63,7 +63,9 @@ if ($__form_mode === 'availability') {
 // property's master switch is on and activities are placed on the enquiry
 // surface). Resolved for both form modes below.
 require_once __DIR__ . '/upsells.php';
-$__upsells = fetch_upsell_items(((int)($__room['venue_id'] ?? 0)) ?: null, 'enquiry');
+$__upsells   = fetch_upsell_items(((int)($__room['venue_id'] ?? 0)) ?: null, 'enquiry');
+$__transfers = fetch_upsell_transfers(((int)($__room['venue_id'] ?? 0)) ?: null);   // airport transfers etc. ("Offer when booking")
+$__hasExtras = $__upsells || $__transfers;
 
 $room_slug  = $__room['slug'];
 $room_name  = $__room['name'];
@@ -99,12 +101,12 @@ if ($__form_mode !== 'availability') {
   <?php
     // Step numbers stay dynamic: the Extras step only exists when this property
     // offers add-ons, and the details step shifts accordingly.
-    $BK_EXTRAS  = $__upsells ? 2 : 0;
-    $BK_DETAILS = $__upsells ? 3 : 2;
+    $BK_EXTRAS  = $__hasExtras ? 2 : 0;
+    $BK_DETAILS = $__hasExtras ? 3 : 2;
   ?>
   <div class="bk-steps" id="bkSteps" data-extras="<?= (int)$BK_EXTRAS ?>" data-details="<?= (int)$BK_DETAILS ?>">
     <span class="bk-steps__dot is-active" data-bk-dot="1"><i>1</i> Dates</span>
-    <?php if ($__upsells): ?>
+    <?php if ($__hasExtras): ?>
     <span class="bk-steps__bar"></span>
     <span class="bk-steps__dot" data-bk-dot="<?= $BK_EXTRAS ?>"><i><?= $BK_EXTRAS ?></i> Extras</span>
     <?php endif; ?>
@@ -213,7 +215,7 @@ if ($__form_mode !== 'availability') {
     </div>
     </div><!-- /step 1 -->
 
-    <?php if ($__upsells): ?>
+    <?php if ($__hasExtras): ?>
     <!-- ── STEP: optional add-ons ── -->
     <div class="bk-step" data-bk-step="<?= $BK_EXTRAS ?>" hidden>
     <div class="bk-ups">
@@ -231,6 +233,19 @@ if ($__form_mode !== 'availability') {
         </span>
       </label>
       <?php endforeach; ?>
+      <?php if ($__transfers): ?>
+      <div class="bk-ups__sub">Airport transfer</div>
+      <?php foreach ($__transfers as $__bt): $__tpl = upsell_transfer_price_label($__bt); ?>
+      <label class="bk-up">
+        <input type="checkbox" name="transfer[]" value="<?= (int)$__bt['id'] ?>" data-bk-transfer>
+        <span class="bk-up__tick" aria-hidden="true"></span>
+        <span class="bk-up__body">
+          <span class="bk-up__name"><?= e((string)$__bt['label']) ?></span>
+          <?php if ($__tpl !== ''): ?><span class="bk-up__meta"><span class="bk-up__price"><?= e($__tpl) ?></span></span><?php endif; ?>
+        </span>
+      </label>
+      <?php endforeach; ?>
+      <?php endif; ?>
       <p class="bk-ups__note">Nothing is charged now &mdash; we&rsquo;ll confirm availability and pricing by email.</p>
     </div>
     <div class="bk-nav">

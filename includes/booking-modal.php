@@ -92,6 +92,9 @@ require_once __DIR__ . '/turnstile.php';
           <div class="bk-total__hint">Final price confirmed by email</div>
         </div>
 
+        <!-- Optional add-ons for this room's property — filled by js/booking-widget.js from /api/booking-extras -->
+        <div class="bk-ups" id="bkExtras" hidden></div>
+
         <div class="bk-fields">
           <label class="bk-field"><span>Your name</span><input type="text" name="name" placeholder="Full name" required></label>
           <label class="bk-field"><span>Email</span><input type="email" name="email" placeholder="you@example.com" required></label>

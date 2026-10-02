@@ -126,6 +126,38 @@ try {
     check('cancelled addon is offered again',
         in_array($tBoth, $ids(fetch_upsell_items($V1, 'checkin', $hold)), true));
 
+    // ── Transfers offered while booking (add_booking_extras.sql) ─────────────
+    if (upsell_transfers_supported()) {
+        $mkOpt = function (string $label, bool $offer, bool $active = true): int {
+            db_query("INSERT INTO service_options (service, label, price_amount, is_active, sort_order, offer_at_booking)
+                      VALUES ('transfer', :l, 45, :a, 99, :o)",
+                     [':l' => $label, ':a' => $active ? 'TRUE' : 'FALSE', ':o' => $offer ? 'TRUE' : 'FALSE']);
+            return (int)db()->lastInsertId();
+        };
+        $oOffer = $mkOpt('ZZ Airport in', true);
+        $oNot   = $mkOpt('ZZ Between', false);
+        $oOff   = $mkOpt('ZZ Inactive airport', true, false);
+        $tIds = $ids(fetch_upsell_transfers($V1));
+        check('transfers: an option marked "offer when booking" is offered', in_array($oOffer, $tIds, true));
+        check('transfers: an unmarked option is not', !in_array($oNot, $tIds, true));
+        check('transfers: an inactive option is not', !in_array($oOff, $tIds, true));
+        check('transfers: nothing at a property with add-ons switched off', fetch_upsell_transfers($V2) === []);
+        $valid = upsell_validate_transfer_ids([$oOffer, $oNot, 999999, 'x'], $V1);
+        check('transfers: only offered ids survive validation', $ids($valid) === [$oOffer]);
+        check('transfers: attach creates one transfer request', upsell_attach_transfers_to_hold($hold, $valid) === 1);
+        check('transfers: attach is idempotent', upsell_attach_transfers_to_hold($hold, $valid) === 0);
+        check('transfers: the request carries the label and price',
+            (string)db_query("SELECT details || '|' || price_amount FROM booking_addons WHERE hold_id = :h AND kind = 'transfer'", [':h' => $hold])->fetchColumn() === 'ZZ Airport in|45.00');
+        $ex = upsell_booking_extras($V1);
+        check('booking extras: activities + transfers in one shape',
+            in_array($tEnq, array_column($ex['activities'], 'id'), true) && in_array($oOffer, array_column($ex['transfers'], 'id'), true));
+        check('submission view lists a booking-time transfer',
+            in_array('Transfer: ZZ Airport in', array_column(submission_upsells(['transfers' => [upsell_transfer_payload_row($valid[0])]]), 'name'), true));
+    } else {
+        echo "SKIP  add_booking_extras migration not applied — transfer add-ons
+";
+    }
+
     // ── Presentation helpers ───────────────────────────────────────────────
     check('price label, per person', upsell_price_label(['price_amount' => 120, 'price_per_person' => true]) === '$120 per person');
     check('price label, flat',       upsell_price_label(['price_amount' => 400, 'price_per_person' => false]) === '$400');

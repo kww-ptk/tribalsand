@@ -80,6 +80,12 @@ if (!empty($data['upsell']) && is_array($data['upsell']) && $room) {
         'enquiry'
     );
 }
+// Transfers ticked while booking (service options marked "Offer when booking"),
+// re-checked the same way — never trusted as posted.
+$transferItems = [];
+if (!empty($data['transfer']) && is_array($data['transfer']) && $room) {
+    $transferItems = upsell_validate_transfer_ids($data['transfer'], ((int)($room['venue_id'] ?? 0)) ?: null);
+}
 
 // Check form mode — availability mode creates a 24h hold
 // Per-room override takes precedence over the global setting
@@ -165,6 +171,7 @@ try {
                                                          ? ((int)$data['quoted_nights'] . ' night' . ((int)$data['quoted_nights'] === 1 ? '' : 's') . ' · as shown to the guest')
                                                          : null,
                                   'upsells'        => array_map('upsell_payload_row', $upsellItems),
+                                  'transfers'      => array_map('upsell_transfer_payload_row', $transferItems),
                               ], fn($v) => $v !== [] && $v !== null && $v !== '')),
             ':source_page' => $tracking['source_page'] ?? '',
             ':referrer'    => $tracking['referrer']    ?? '',
@@ -201,6 +208,11 @@ try {
             http_response_code(409);
             exit(json_encode(['ok' => false, 'error' => 'No availability for those dates. Please try different dates or contact us directly.']));
         }
+        // The add-ons the guest ticked become requests on the new booking — the
+        // same rows the portal and the front desk work from (they used to stay on
+        // the enquiry payload only, so a held booking silently lost them).
+        upsell_attach_to_hold((int)$hold_id, $upsellItems, max(1, (int)($data['adults'] ?? 1)));
+        upsell_attach_transfers_to_hold((int)$hold_id, $transferItems);
         $hold_row = db_query(
             "SELECT h.*, u.name AS unit_name, r.name AS room_name
              FROM holds h JOIN units u ON u.id = h.unit_id JOIN rooms r ON r.id = " . hold_room_id_sql('h', 'u') . "

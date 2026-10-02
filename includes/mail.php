@@ -862,6 +862,51 @@ function _mail_hold_vars(array $hold, array $prop): array {
 }
 
 /**
+ * "Add to your stay" for the booking-confirmed email: up to 4 add-ons the
+ * property offers that are NOT already on the booking — activities placed on the
+ * pre-arrival surface (fetch_upsell_items(…, 'checkin', hold) — the same list the
+ * check-in wizard shows) and transfers marked "Offer when booking". Each links
+ * into the guest portal, where the request is made. Nothing when the property's
+ * add-ons are switched off. Never throws — it must not cost the guest their email.
+ * @return array{html:string, text:string[]}
+ */
+function _email_stay_extras(int $holdId, ?int $venueId, string $manageUrl): array {
+    $none = ['html' => '', 'text' => []];
+    if ($manageUrl === '' || !$venueId) return $none;
+    try {
+        require_once __DIR__ . '/upsells.php';
+        $rows = [];
+        foreach (fetch_upsell_items($venueId, 'checkin', $holdId) as $a) {
+            $rows[] = [(string)$a['name'], upsell_price_label($a), $manageUrl . '&view=activities'];
+        }
+        $have = db_query("SELECT details FROM booking_addons WHERE hold_id = :h AND kind = 'transfer' AND status <> 'cancelled'",
+                         [':h' => $holdId])->fetchAll(PDO::FETCH_COLUMN);
+        foreach (fetch_upsell_transfers($venueId) as $t) {
+            if (in_array((string)$t['label'], $have, true)) continue;
+            $rows[] = ['Airport transfer: ' . $t['label'], upsell_transfer_price_label($t), $manageUrl . '&view=requests'];
+        }
+    } catch (Throwable $e) { return $none; }
+    if (!$rows) return $none;
+    $rows = array_slice($rows, 0, 4);
+
+    $li = ''; $text = ['MAKE THE MOST OF YOUR STAY'];
+    foreach ($rows as [$name, $price, $url]) {
+        $li .= '<tr><td style="padding:9px 0;border-top:1px solid #e9e1d2;font-size:14px;color:#222">' . _email_esc($name)
+             . ($price !== '' ? ' <span style="color:#1E5C6B;font-weight:600">· ' . _email_esc($price) . '</span>' : '') . '</td>'
+             . '<td style="padding:9px 0;border-top:1px solid #e9e1d2;text-align:right;white-space:nowrap">'
+             . '<a href="' . _email_esc($url) . '" style="color:#1E5C6B;font-weight:600;font-size:13px;text-decoration:none">Add →</a></td></tr>';
+        $text[] = '  ' . $name . ($price !== '' ? " ({$price})" : '');
+    }
+    $text[] = 'Add any of these from your booking page: ' . $manageUrl;
+    $text[] = '';
+    $html = '<div style="border:1px solid #e9e1d2;border-radius:6px;padding:18px 22px;margin:20px 0">'
+          . '<p style="margin:0 0 4px;font-size:12px;font-weight:700;text-transform:uppercase;color:#B8965A;letter-spacing:.5px">Make the most of your stay</p>'
+          . '<p style="margin:0 0 10px;font-size:13px;color:#666;line-height:1.6">Book these ahead and we’ll have everything ready when you arrive — nothing is charged until we confirm.</p>'
+          . '<table style="width:100%;border-collapse:collapse">' . $li . '</table></div>';
+    return ['html' => $html, 'text' => $text];
+}
+
+/**
  * The guest's booking confirmation. $ctx['skip_reason'] logs it as "not sent"
  * (staff unticked "Email the guest") without sending — the rendered email is
  * still kept on the log row, so it's clear what the guest did NOT receive.
@@ -904,6 +949,8 @@ function send_hold_confirmed(array $hold, array $ctx = []): array {
         $text_lines[] = $manage_url;
         $text_lines[] = '';
     }
+    $extras = _email_stay_extras((int)$hold['id'], $prop['id'] ? (int)$prop['id'] : null, $manage_url);
+    array_push($text_lines, ...$extras['text']);
     if ($footer !== '') { $text_lines[] = _email_plain($footer); $text_lines[] = ''; }
     $text_lines[] = 'Warm regards,';
     $text_lines[] = 'Tribal Sand';
@@ -919,6 +966,7 @@ function send_hold_confirmed(array $hold, array $ctx = []): array {
             ['Check-out', $hold['check_out'] ?? ''],
         ], 'Your booking')
         . ($manage_url ? _email_button('View your booking →', $manage_url) : '')
+        . $extras['html']
         . ($checkin_instructions !== ''
             ? '<div style="background:#eef6f7;border-left:3px solid #1E5C6B;padding:14px 18px;margin:20px 0;border-radius:0 4px 4px 0">'
               . '<p style="margin:0 0 6px;font-size:12px;font-weight:700;text-transform:uppercase;color:#1E5C6B;letter-spacing:.5px">Check-in Information</p>'
