@@ -6,6 +6,7 @@ __MACOSX/
 *.DS_Store
 Thumbs.db
 assets/img/rooms/
+assets/img/menus/
 .router-fast
 php-server*.log
 .superpowers/
