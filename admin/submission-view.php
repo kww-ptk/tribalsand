@@ -244,6 +244,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'conve
             $__items = upsell_validate_ids($__picked, $__venueId ?: null, 'enquiry');
             $addonsMade = upsell_attach_to_hold($hold_id, $__items, max(1, (int)($sub['guests_adults'] ?? 1)));
         }
+        // Transfers ticked while booking, re-validated the same way.
+        $__tPicked = array_column(is_array($__payload['transfers'] ?? null) ? $__payload['transfers'] : [], 'id');
+        if ($__tPicked) {
+            $__venueId = $__venueId ?? (int)db_query(
+                'SELECT r.venue_id FROM units u JOIN rooms r ON r.id = u.room_id WHERE u.id = :u',
+                [':u' => $unit_id]
+            )->fetchColumn();
+            $addonsMade += upsell_attach_transfers_to_hold($hold_id, upsell_validate_transfer_ids($__tPicked, $__venueId ?: null));
+        }
     } catch (Throwable $e) {
         error_log('[convert-to-hold] upsell attach failed: ' . $e->getMessage());
     }

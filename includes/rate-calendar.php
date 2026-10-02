@@ -22,6 +22,7 @@
  * it steps by a whole block so Next never re-shows a month already on screen.
  */
 require_once __DIR__ . '/rates.php';
+require_once __DIR__ . '/calendar-highlights.php';   // weekends, public holidays + Calendar highlights, as on the Gantt
 
 $rc_month         = $rc_month         ?? date('Y-m');
 $rc_currency      = $rc_currency      ?? 'USD';
@@ -42,6 +43,13 @@ $__rcToday = date('Y-m-d');
 
 // One resolve for the whole span; each month grid slices its own days out.
 $__rcMap = rates_nightly_map((int)$rc_room_id, $rc_default_price, $__rcStart, $__rcEndEx);
+// Day markings for the span — ONE query per window, shared by every room on the page.
+$__rcHlKey = $__rcStart . '|' . $__rcEndEx;
+if (!isset($GLOBALS['__rc_hl'][$__rcHlKey])) {
+    try { $GLOBALS['__rc_hl'][$__rcHlKey] = cal_day_map($__rcStart, date('Y-m-d', strtotime($__rcEndEx . ' -1 day'))); }
+    catch (\Throwable $e) { $GLOBALS['__rc_hl'][$__rcHlKey] = []; }
+}
+$__rcHl = $GLOBALS['__rc_hl'][$__rcHlKey];
 
 /** Full money, for the legend. No decimals when the figure is whole. */
 $__rcMoney = function (float $v): string {
@@ -85,6 +93,17 @@ $__rcCell = function (float $v) use ($rc_compact, $__rcMoney): string {
 .rcal__lbl { font-size:9px; color:#92400e; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
 .rcal__legend { font-size:11px; color:var(--muted); margin-top:12px; }
 .rcal.is-loading { opacity:.45; pointer-events:none; transition:opacity .1s; }
+/* Day markings, matching the Availability Calendar: weekends grey, public
+   holidays red, Calendar highlights in their colour (a bar on top + the date). */
+.rcal__cell.is-weekend { background:#f4f6f9; }
+.rcal__cell.is-weekend .rcal__day { color:#334155; font-weight:700; }
+.rcal__cell.is-holiday, .rcal__cell.is-hl { border-top-width:3px; }
+.rcal__cell.is-holiday, .rcal__cell.is-hl--red { border-top-color:#e11d48; }
+.rcal__cell.is-holiday .rcal__day, .rcal__cell.is-hl--red .rcal__day { color:#be123c; font-weight:800; }
+.rcal__cell.is-hl--amber  { border-top-color:#f59e0b; } .rcal__cell.is-hl--amber .rcal__day  { color:#7a4b00; font-weight:800; }
+.rcal__cell.is-hl--green  { border-top-color:#22a046; } .rcal__cell.is-hl--green .rcal__day  { color:#1b5e20; font-weight:800; }
+.rcal__cell.is-hl--blue   { border-top-color:#3b82f6; } .rcal__cell.is-hl--blue .rcal__day   { color:#1e3a8a; font-weight:800; }
+.rcal__cell.is-hl--purple { border-top-color:#8b5cf6; } .rcal__cell.is-hl--purple .rcal__day { color:#5b21b6; font-weight:800; }
 
 /* Compact: several months side by side. Labels drop to the tooltip. */
 .rcal--sm .rcal__grid { gap:2px; }
@@ -144,13 +163,17 @@ $__rcCell = function (float $v) use ($rc_compact, $__rcMoney): string {
           if (strncmp($__ymd, $__mKey, 7) !== 0) continue;      // this month's days only
           $__cls = 'rcal__cell'
                  . ($__n['is_override'] ? ' rcal__cell--rate' : '')
-                 . ($__ymd === $__rcToday ? ' rcal__cell--today' : '');
+                 . ($__ymd === $__rcToday ? ' rcal__cell--today' : '')
+                 . ((int)date('N', strtotime($__ymd)) >= 6 ? ' is-weekend' : '');
+          $__hl  = cal_day_info($__rcHl[$__ymd] ?? []);
+          if ($__hl['class'] !== '') $__cls .= ' ' . $__hl['class'];
           $__price = (float)$__n['price'];
           $__title = date('D j M', strtotime($__ymd)) . ' · '
                    . ($__price > 0 ? $rc_currency . ' ' . $__rcMoney($__price) : 'no price set')
                    . ' · ' . ($__n['is_override']
                         ? ($__n['label'] !== null ? $__n['label'] : 'Rate override')
-                        : 'Default room price');
+                        : 'Default room price')
+                   . ($__hl['title'] !== '' ? ' · ' . $__hl['title'] : '');
         ?>
           <div class="<?= $__cls ?>" title="<?= e($__title) ?>">
             <div class="rcal__day"><?= (int)date('j', strtotime($__ymd)) ?></div>
@@ -179,6 +202,7 @@ $__rcCell = function (float $v) use ($rc_compact, $__rcMoney): string {
       other night shows “—” — set one under the room's <strong>Details</strong> tab, or these
       nights will quote as free.
     <?php endif; ?>
+    Weekends are grey; a coloured bar on top marks a public holiday (red) or a Calendar highlight — hover a day for its name.
   </p>
 </div>
 

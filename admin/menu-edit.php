@@ -5,6 +5,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/menu.php';
 require_once __DIR__ . '/../includes/menu-sync.php';   // outbox hooks + soft deletes (Zuri sync)
+require_once __DIR__ . '/../includes/menu-images.php'; // dish photos (local only — never synced)
 require_login();
 require_manager();   // owner or house manager
 
@@ -51,6 +52,36 @@ function menu_posted_badges(): array {
     foreach ($keys as $k) $out[$k] = isset($_POST[$k]) ? 'TRUE' : 'FALSE';
     return $out;
 }
+
+/**
+ * Apply the posted photo for a dish: a new upload replaces it, "remove" clears it.
+ * Photos are local only (not in the Zuri sync payload), so no sync event here.
+ * Returns an error message, or ''.
+ */
+function menu_apply_posted_photo(int $itemId, string $name): string {
+    if (!menu_images_supported() || $itemId <= 0) return '';
+    try {
+        $key = menu_store_upload($_FILES['photo'] ?? [], $name);
+        if ($key !== '') {
+            db_query('UPDATE menu_items SET image_key = :k WHERE id = :i', [':k' => $key, ':i' => $itemId]);
+        } elseif (isset($_POST['photo_remove'])) {
+            db_query('UPDATE menu_items SET image_key = NULL WHERE id = :i', [':i' => $itemId]);
+        }
+    } catch (RuntimeException $e) { return $e->getMessage(); }
+    return '';
+}
+
+/** The photo field on a dish form (house .filefield + remove tick). */
+function menu_photo_field(string $currentUrl): void { ?>
+  <div class="menu-photo">
+    <?php if ($currentUrl !== ''): ?><img src="<?= e($currentUrl) ?>" alt="" class="menu-photo__img"><?php endif; ?>
+    <div class="filefield">
+      <label class="btn-outline btn-sm" style="cursor:pointer"><?= admin_icon('image', 15) ?> <?= $currentUrl !== '' ? 'Replace photo' : 'Add a photo' ?><input type="file" name="photo" accept="image/jpeg,image/png,image/webp" data-menu-photo></label>
+      <span class="filefield__name" data-menu-photo-name>JPG, PNG or WebP · up to 8 MB</span>
+    </div>
+    <?php if ($currentUrl !== ''): ?><label class="toggle-row" style="margin:0"><input type="checkbox" name="photo_remove" value="1"><span>Remove photo</span></label><?php endif; ?>
+  </div>
+<?php }
 
 $id    = (int)($_GET['id'] ?? 0);
 $menu  = $id ? fetch_menu($id) : null;
@@ -197,9 +228,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                      ':glu'=>$b['has_gluten'], ':gf'=>$b['is_gf'], ':sig'=>$b['is_signature'],
                      ':av'=>isset($_POST['is_available'])?'TRUE':'FALSE']
                 );
-                menu_sync_emit('menu_item', (int)db()->lastInsertId(), 'create');
+                $GLOBALS['__newItemId'] = (int)db()->lastInsertId();
+                menu_sync_emit('menu_item', $GLOBALS['__newItemId'], 'create');
             });
-            $success = 'Item added.';
+            $photoErr = menu_apply_posted_photo((int)($GLOBALS['__newItemId'] ?? 0), $name);
+            $success = 'Item added.' . ($photoErr !== '' ? ' Photo not saved: ' . $photoErr : '');
         } else { $error = 'Item name is required.'; }
     }
     if ($action === 'save_item' && $itemCat((int)($_POST['item_id'] ?? 0))) {
@@ -216,7 +249,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             );
             menu_sync_emit('menu_item', (int)$_POST['item_id'], 'update');
         });
-        $success = 'Item saved.';
+        $photoErr = menu_apply_posted_photo((int)$_POST['item_id'], trim($_POST['name'] ?? ''));
+        if ($photoErr !== '') $error = 'Item saved, but the photo was not: ' . $photoErr;
+        else $success = 'Item saved.';
     }
     if ($action === 'toggle_item' && $itemCat((int)($_POST['item_id'] ?? 0))) {
         menu_sync_tx(function () {
@@ -227,6 +262,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     if ($action === 'delete_item' && $itemCat((int)($_POST['item_id'] ?? 0))) {
         menu_delete_item((int)$_POST['item_id']);
         $success = 'Item deleted.';
+    }
+    // Fill missing dish photos from Zuri's public menu (copied into our storage).
+    if ($action === 'import_zuri_photos' && $menu && menu_images_supported()) {
+        try {
+            @set_time_limit(180);
+            $r = menu_import_zuri_images($id);
+            audit_log('menu.import_photos', 'menu', $id, "{$r['saved']} saved, {$r['failed']} failed, {$r['unmatched']} without a match");
+            $success = "Photos imported from Zuri’s website: {$r['saved']} added"
+                     . ($r['failed'] ? ", {$r['failed']} couldn’t be downloaded" : '')
+                     . ($r['unmatched'] > 0 ? ". {$r['unmatched']} dish" . ($r['unmatched'] === 1 ? '' : 'es') . ' still without a photo (no dish of the same name on their site) — add those by hand.' : '.');
+        } catch (RuntimeException $e) { $error = $e->getMessage(); }
     }
     if (($action === 'item_up' || $action === 'item_down')) {
         $cid = $itemCat((int)($_POST['item_id'] ?? 0));
@@ -333,6 +379,36 @@ function menu_badge_checkboxes(?array $it): void {
 
 <?php if (!$isNew): ?>
 
+<style>
+.menu-thumb{width:52px;height:52px;object-fit:cover;border-radius:8px;flex:none}
+.menu-thumb--none{display:inline-grid;place-items:center;background:var(--bg,#f4f1ec);color:var(--muted);border:1px dashed var(--border)}
+.menu-photo{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:12px}
+.menu-photo__img{width:72px;height:72px;object-fit:cover;border-radius:10px}
+</style>
+<script>
+document.addEventListener('change', function (e) {
+  var i = e.target.closest ? e.target.closest('[data-menu-photo]') : null; if (!i) return;
+  var n = i.closest('.filefield').querySelector('[data-menu-photo-name]');
+  if (n) n.textContent = i.files && i.files[0] ? i.files[0].name : 'JPG, PNG or WebP · up to 8 MB';
+});
+</script>
+
+<?php if (menu_images_supported() && ($menu['slug'] ?? '') === 'zuri'):
+    $__noPhoto = (int) db_query("SELECT COUNT(*) FROM menu_items i JOIN menu_categories c ON c.id = i.category_id
+                                  WHERE c.menu_id = :m AND (i.image_key IS NULL OR i.image_key = '')" . menu_live_sql('i') . menu_live_sql('c'), [':m' => $id])->fetchColumn(); ?>
+<!-- ── Dish photos from Zuri's own website ── -->
+<div class="card" style="margin-top:22px">
+  <div class="card__head"><span class="card__title">Dish photos</span><span class="text-muted" style="font-size:13px"><?= $__noPhoto ?> dish<?= $__noPhoto === 1 ? '' : 'es' ?> without a photo</span></div>
+  <div class="card__body" style="padding:20px;display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+    <p class="text-muted" style="margin:0;flex:1;min-width:260px;font-size:13px">Copy the dish photos from <a href="https://zuriwatamu.com/menu/" target="_blank" rel="noopener">zuriwatamu.com</a> onto dishes with the same name. Only dishes without a photo are filled, and the photos are saved in our own storage. You can change any photo afterwards with the edit button.</p>
+    <form method="POST" action="/admin/menu-edit.php?id=<?= $id ?>" style="margin:0">
+      <?= csrf_field() ?><input type="hidden" name="action" value="import_zuri_photos">
+      <button type="submit" class="btn-primary btn-sm" <?= $__noPhoto === 0 ? 'disabled' : '' ?>><?= admin_icon('image', 14) ?> Import photos from Zuri’s website</button>
+    </form>
+  </div>
+</div>
+<?php endif; ?>
+
 <!-- ── Add a category ── -->
 <div class="card" style="margin-top:22px">
   <div class="card__head"><span class="card__title">Add a category</span></div>
@@ -386,9 +462,14 @@ function menu_badge_checkboxes(?array $it): void {
           <?php foreach ($c['items'] as $ii => $it): ?>
           <tr>
             <td>
+              <?php $__img = menu_images_supported() ? menu_item_image_url($it) : ''; ?>
+              <div style="display:flex;gap:12px;align-items:flex-start">
+              <?php if ($__img !== ''): ?><img src="<?= e($__img) ?>" alt="" loading="lazy" class="menu-thumb"><?php elseif (menu_images_supported()): ?><span class="menu-thumb menu-thumb--none" data-tip="No photo yet — add one with the edit button" aria-hidden="true"><?= admin_icon('image', 16) ?></span><?php endif; ?>
+              <div>
               <strong><?= e($it['name']) ?></strong>
               <?php if (trim((string)$it['description']) !== ''): ?><div class="text-muted" style="font-size:12px;max-width:520px"><?= e($it['description']) ?></div><?php endif; ?>
               <div style="margin-top:3px"><?php foreach (menu_badge_defs() as $col=>[$cls,$lbl]) { if (!empty($it[$col]) && $it[$col]!=='f') echo '<span class="badge badge--grey" style="font-size:10px;margin-right:3px">'.e($lbl).'</span>'; } ?></div>
+              </div></div>
             </td>
             <td><?= $it['price']!==null ? e(menu_price_label($it['price'], $menu['currency_label'])) : '<span class="text-muted">—</span>' ?></td>
             <td>
@@ -403,7 +484,7 @@ function menu_badge_checkboxes(?array $it): void {
                 <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="item_down"><input type="hidden" name="item_id" value="<?= (int)$it['id'] ?>"><button class="btn-icon btn-icon--outline" title="Move down" <?= $ii===count($c['items'])-1?'disabled':'' ?>><?= '↓' ?></button></form>
                 <details class="menu-inline"><summary class="btn-icon btn-icon--outline" title="Edit" style="list-style:none"><?= admin_icon('edit',15) ?></summary>
                   <div class="menu-inline-form">
-                    <form method="POST" action="/admin/menu-edit.php?id=<?= $id ?>">
+                    <form method="POST" action="/admin/menu-edit.php?id=<?= $id ?>" enctype="multipart/form-data">
                       <?= csrf_field() ?><input type="hidden" name="action" value="save_item"><input type="hidden" name="item_id" value="<?= (int)$it['id'] ?>">
                       <div class="form-row">
                         <div class="field"><label>Name</label><input type="text" name="name" value="<?= e($it['name']) ?>" required></div>
@@ -411,6 +492,7 @@ function menu_badge_checkboxes(?array $it): void {
                       </div>
                       <div class="field" style="margin-top:10px"><label>Description</label><textarea name="description" rows="2"><?= e($it['description']) ?></textarea></div>
                       <div style="margin-top:10px"><?php menu_badge_checkboxes($it); ?></div>
+                      <?php if (menu_images_supported()) menu_photo_field(menu_item_image_url($it)); ?>
                       <label class="toggle-row" style="margin-top:6px"><input type="checkbox" name="is_available" value="1" <?= ($it['is_available']&&$it['is_available']!=='f')?'checked':'' ?>><span>Available (shown on the menu)</span></label>
                       <div style="margin-top:12px;display:flex;gap:8px">
                         <button type="submit" class="btn-primary btn-sm">Save item</button>
@@ -438,7 +520,7 @@ function menu_badge_checkboxes(?array $it): void {
       <details class="menu-inline">
         <summary class="btn-primary btn-sm" style="list-style:none;display:inline-flex;align-items:center;gap:6px"><?= admin_icon('plus',14) ?> Add item</summary>
         <div class="menu-inline-form">
-          <form method="POST" action="/admin/menu-edit.php?id=<?= $id ?>">
+          <form method="POST" action="/admin/menu-edit.php?id=<?= $id ?>" enctype="multipart/form-data">
             <?= csrf_field() ?><input type="hidden" name="action" value="add_item"><input type="hidden" name="cat_id" value="<?= (int)$c['id'] ?>">
             <div class="form-row">
               <div class="field"><label>Name</label><input type="text" name="name" required placeholder="e.g. Zuri Garden Velouté"></div>
@@ -446,6 +528,7 @@ function menu_badge_checkboxes(?array $it): void {
             </div>
             <div class="field" style="margin-top:10px"><label>Description</label><textarea name="description" rows="2" placeholder="A short description."></textarea></div>
             <div style="margin-top:10px"><?php menu_badge_checkboxes(null); ?></div>
+            <?php if (menu_images_supported()) menu_photo_field(''); ?>
             <label class="toggle-row" style="margin-top:6px"><input type="checkbox" name="is_available" value="1" checked><span>Available (shown on the menu)</span></label>
             <div style="margin-top:12px"><button type="submit" class="btn-primary btn-sm">Add item</button></div>
           </form>

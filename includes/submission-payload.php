@@ -29,13 +29,12 @@ function submission_is_trip_builder(array $payload): bool {
  * generic label/value list must not also render them as a flattened string.
  */
 function submission_payload_own_render_keys(): array {
-    return ['upsells'];
+    return ['upsells', 'transfers'];
 }
 
 /** Booking add-ons the guest ticked during the enquiry, newest shape first. */
 function submission_upsells(array $payload): array {
-    $rows = $payload['upsells'] ?? null;
-    if (!is_array($rows)) return [];
+    $rows = is_array($payload['upsells'] ?? null) ? $payload['upsells'] : [];   // a transfer-only enquiry still lists its transfer
     $out = [];
     foreach ($rows as $r) {
         if (!is_array($r)) continue;
@@ -48,6 +47,17 @@ function submission_upsells(array $payload): array {
                 ? '$' . number_format((float)$r['price_amount'], ((float)$r['price_amount'] == floor((float)$r['price_amount'])) ? 0 : 2)
                   . (!empty($r['price_per_person']) ? ' pp' : '')
                 : '',
+        ];
+    }
+    // Transfers ticked while booking (service options, priced in the site currency).
+    foreach (is_array($payload['transfers'] ?? null) ? $payload['transfers'] : [] as $t) {
+        if (!is_array($t) || trim((string)($t['label'] ?? '')) === '') continue;
+        $amt = $t['price_amount'] ?? null;
+        $out[] = [
+            'id'    => (int)($t['id'] ?? 0),
+            'name'  => 'Transfer: ' . trim((string)$t['label']),
+            'price' => $amt !== null && (float)$amt > 0
+                ? '$' . number_format((float)$amt, ((float)$amt == floor((float)$amt)) ? 0 : 2) : '',
         ];
     }
     return $out;

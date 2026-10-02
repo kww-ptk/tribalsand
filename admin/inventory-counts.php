@@ -13,13 +13,12 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/admin-pagination.php';   // dt_empty()
 require_once __DIR__ . '/../includes/inventory-count-views.php';
-require_login();
-require_manager();
+require_inventory();   // owner, manager or storekeeper (scoped)
 
 $self      = '/admin/inventory-counts.php';
 $me        = current_admin();
 $meId      = (int)$me['id'];
-$role      = (string)($me['role'] ?? 'manager');
+$role      = inv_actor_role();   // resolving stays owner / manager (inv_can_resolve())
 $vids      = admin_venue_ids();
 $supported = inv_supported();
 $flash     = $_SESSION['inv_flash'] ?? null; unset($_SESSION['inv_flash']);

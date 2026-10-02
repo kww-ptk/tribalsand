@@ -23,7 +23,8 @@ $__job              = admin_job();               // null for owner/manager/recep
 $__isOps            = job_is_ops($__job);         // housekeeping / maintenance / gardening / driver
 $__isSecurity       = ($__job === 'security');
 $__isPosStaff       = job_is_pos($__job);          // shop / spa / kite — they work at the till (/pos/)
-$__isFrontdeskStaff = is_staff() && !$__isOps && !$__isSecurity && !$__isPosStaff;   // frontdesk or job-less staff
+$__isStorekeeper    = is_staff() && job_is_store($__job);   // storekeeper — the Inventory pages, scoped
+$__isFrontdeskStaff = is_frontdesk_staff();        // frontdesk or job-less staff (every other job is back-of-house)
 
 $__navFrontdesk = $__isOwner || $__isManager || $__isReception || $__isFrontdeskStaff;
 $__navConcierge = $__isOwner || $__isManager || $__isReception || $__isFrontdeskStaff;
@@ -47,14 +48,14 @@ $__navBookings  = $__isOwner || $__isReception;   // holds / calendar / submissi
 $__navReports   = $__isOwner || $__isManager;     // financial reports (scoped to their venues)
 $__navPos       = ($__isOwner || $__isManager) && pos_supported();   // POS catalogue/stock/sales (managers scoped to their outlets); outlets = owner
 $__navPosTill   = $admin && pos_is_seller($admin);                    // "Open till" + own PIN — anyone who can sell
-$__navInventory = ($__isOwner || $__isManager) && inv_supported();   // Inventory & Assets (managers scoped to their properties)
-$__navCount     = !$__navInventory && inv_supported() && ($__isReception || is_staff());   // the stock-count screen for staff and reception
+$__navInventory = can_manage_inventory() && inv_supported();   // Inventory & Assets: owner, managers + storekeepers (scoped to their properties)
+$__navCount     = !$__navInventory && inv_supported() && inv_actor_role() !== '';   // the stock-count screen for ops staff — never reception / front desk / gate / till
 $__navAccounting = $__isOwner && companies_supported();              // legal companies, KRA PINs, bank accounts — owner-only
 $__navAcctDocs   = ($__isOwner || $__isManager) && companies_supported() && to_regclass_exists('acct_documents') && to_regclass_exists('acct_ic_entries');   // invoices & payments (managers scoped)
 $__navAcctIc     = $__navAcctDocs && to_regclass_exists('acct_ic_entries');                                            // what the companies owe each other
 
 // Chip shown under the logo for non-owner accounts.
-$__roleBadge = $__isManager ? 'Manager' : ($__isReception ? 'Reception' : (is_staff() ? ucfirst((string)$__job) : ''));
+$__roleBadge = $__isManager ? 'Manager' : ($__isReception ? 'Reception' : ($__isStorekeeper ? 'Storekeeper' : (is_staff() ? ucfirst((string)$__job) : '')));
 
 // ── Navigation (includes/admin-nav.php) ──────────────────────────────────
 // The flags above are handed to ONE definition that both the sidebar and the

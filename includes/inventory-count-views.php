@@ -29,9 +29,12 @@ const INV_RESOLUTION_LABELS   = ['missing' => 'Missing', 'broken' => 'Broken', '
  */
 function inv_can_count(array $loc, int $adminId, string $role, ?array $venueIds): bool {
     if (($loc['kind'] ?? '') === 'person') return false;
+    // Only these may count (inv_actor_role()): reception, front-desk, gate and till staff
+    // pass '' and never see inventory — not even a place they were once made responsible for.
+    if (!in_array($role, ['owner', 'manager', 'storekeeper', 'staff'], true)) return false;
     if ($venueIds === null || $role === 'owner') return true;
     $v = $loc['venue_id'] ?? null;
-    if ($v === null || $v === '') return $role === 'manager' || ($adminId > 0 && (int)($loc['count_assignee_id'] ?? 0) === $adminId);
+    if ($v === null || $v === '') return $role === 'manager' || $role === 'storekeeper' || ($adminId > 0 && (int)($loc['count_assignee_id'] ?? 0) === $adminId);
     return in_array((int)$v, array_map('intval', $venueIds), true);
 }
 

@@ -356,7 +356,8 @@ function dev_accounts(PDO $pdo): void {
                  ['frontdesk@tribalsand.test', 'Dev Front Desk', 'staff', 'frontdesk'],
                  ['housekeeping@tribalsand.test', 'Dev Housekeeping', 'staff', 'housekeeping'],
                  ['security@tribalsand.test', 'Dev Security', 'staff', 'security'],
-                 ['shop@tribalsand.test', 'Dev Shop', 'staff', 'shop']];
+                 ['shop@tribalsand.test', 'Dev Shop', 'staff', 'shop'],
+                 ['store@tribalsand.test', 'Dev Storekeeper', 'staff', 'storekeeper']];
     foreach ($accounts as [$e, $n, $r, $j]) {
         try {
             $up->execute([':e' => $e, ':n' => $n, ':h' => $hash, ':r' => $r, ':j' => $j]);

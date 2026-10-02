@@ -26,6 +26,7 @@ declare(strict_types=1);
 function dashboard_kind(string $role, ?string $job): string {
     if ($role === 'owner' || $role === 'manager' || $role === 'reception') return $role;
     if ($job === 'security') return 'security';
+    if ($job === 'storekeeper') return 'store';
     if (in_array($job, ['shop', 'spa', 'kite'], true)) return 'pos';
     if (in_array($job, ['housekeeping', 'laundry', 'maintenance', 'gardening', 'driver'], true)) return 'ops';
     return 'frontdesk';   // front-desk staff, and staff with no job type (same rule as admin_job())
@@ -48,7 +49,8 @@ function dashboard_profile(string $kind, ?string $job, array $venueNames): array
         default                  => implode(', ', array_slice($venueNames, 0, -1)) . ' and ' . end($venueNames),
     };
     $jobLabel = ['housekeeping' => 'Housekeeping', 'laundry' => 'Laundry', 'maintenance' => 'Maintenance', 'gardening' => 'Gardening',
-                 'driver' => 'Driver', 'security' => 'Gate security', 'shop' => 'Shop', 'spa' => 'Salon & Spa', 'kite' => 'Kite school'][$job ?? ''] ?? 'Front desk';
+                 'driver' => 'Driver', 'security' => 'Gate security', 'shop' => 'Shop', 'spa' => 'Salon & Spa', 'kite' => 'Kite school',
+                 'storekeeper' => 'Storekeeper'][$job ?? ''] ?? 'Front desk';
     return match ($kind) {
         'owner' => ['label' => 'Owner', 'badge' => 'teal',
             'chips' => ['Confirm bookings', 'Set rates', 'Edit website', 'Manage staff', 'See accounts', 'Change settings'],
@@ -78,6 +80,12 @@ function dashboard_profile(string $kind, ?string $job, array $venueNames): array
             'summary' => 'You sell at the till.',
             'can' => ['Open the till and take payments', 'Charge a sale to a guest\'s room', 'Set your own till PIN', 'Chat with the team'],
             'cannot' => ''],
+        'store' => ['label' => $jobLabel, 'badge' => 'blue',
+            'chips' => ['Stock list', 'Receive orders', 'Move stock', 'Stock counts', 'Team chat'],
+            'summary' => "You look after the stock at {$where}.",
+            'can' => ['See and update the stock list', 'Receive deliveries against orders', 'Move stock between stores and places',
+                      'Count stock when a count is due', 'See your own tasks and timetable', 'Chat with the team'],
+            'cannot' => 'Item values, deleting items and settling count differences are for the owner or a manager.'],
         'ops' => ['label' => $jobLabel, 'badge' => 'blue',
             'chips' => ['Tasks today', 'Your timetable', 'Stock counts', 'Team chat'],
             'summary' => "Your work at {$where}.",
@@ -129,6 +137,12 @@ function dashboard_plan(string $kind, array $has = []): array {
             'tiles'     => [],
             'sections'  => ['till', 'my_tasks'],
             'shortcuts' => [['My till PIN', '/admin/pos-pins.php', 'lock'], ['Timetable', '/admin/timetable.php', 'calendar']],
+        ],
+        'store' => [
+            'tiles'     => [],
+            'sections'  => ['counts_due', 'my_tasks'],
+            'shortcuts' => [['Inventory', '/admin/inventory.php', 'box'], ['Orders', '/admin/inventory-orders.php', 'file'],
+                            ['Stock count', '/admin/inventory-count.php', 'check-square'], ['Timetable', '/admin/timetable.php', 'calendar']],
         ],
         'ops' => [
             'tiles'     => [],
@@ -211,7 +225,7 @@ function dashboard_headline(string $kind, ?int $arrivals, ?int $departures, int 
         $s = $myToday > 0 ? 'You have ' . $myToday . ' task' . ($myToday === 1 ? '' : 's') . ' today' : 'Nothing new today';
         return $s . ($myOverdue > 0 ? ', and ' . $myOverdue . ' overdue.' : '.');
     };
-    if ($kind === 'ops') return $tasks();
+    if ($kind === 'ops' || $kind === 'store') return $tasks();
     if ($kind === 'pos') return 'The till is ready when you are. ' . $tasks();
     $arr = $arrivals === null ? '' : ($arrivals === 0 ? 'No arrivals today' : ($arrivals === 1 ? '1 guest arrives today' : $arrivals . ' guests arrive today'));
     if ($kind === 'security') {
@@ -280,6 +294,7 @@ function dashboard_icon(string $name, int $size = 18): string {
         'chevron'      => '<path d="m9 18 6-6-6-6"/>',
         'check'        => '<path d="M20 6 9 17l-5-5"/>',
         'till'         => '<rect x="2" y="4" width="20" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>',
+        'box'          => '<path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="m3 8 9 5 9-5M12 13v8"/>',
         'settings'     => '<circle cx="12" cy="12" r="3"/><path d="M19.400 15a1.650 1.650 0 0 0 .330 1.820l.060.060a2 2 0 1 1-2.830 2.830l-.060-.060a1.650 1.650 0 0 0-1.820-.330 1.650 1.650 0 0 0-1 1.510V21a2 2 0 0 1-4 0v-.090A1.650 1.650 0 0 0 9 19.400a1.650 1.650 0 0 0-1.820.330l-.060.060a2 2 0 1 1-2.830-2.830l.060-.060A1.650 1.650 0 0 0 4.680 15a1.650 1.650 0 0 0-1.510-1H3a2 2 0 0 1 0-4h.090A1.650 1.650 0 0 0 4.600 9a1.650 1.650 0 0 0-.330-1.820l-.060-.060a2 2 0 1 1 2.830-2.830l.060.060A1.650 1.650 0 0 0 9 4.680a1.650 1.650 0 0 0 1-1.510V3a2 2 0 0 1 4 0v.090a1.650 1.650 0 0 0 1 1.510 1.650 1.650 0 0 0 1.820-.330l.060-.060a2 2 0 1 1 2.830 2.830l-.060.060A1.650 1.650 0 0 0 19.400 9a1.650 1.650 0 0 0 1.510 1H21a2 2 0 0 1 0 4h-.090a1.650 1.650 0 0 0-1.510 1z"/>',
     ];
     return '<svg class="dz-ic" viewBox="0 0 24 24" width="' . $size . '" height="' . $size . '" fill="none" stroke="currentColor" stroke-width="1.9"'

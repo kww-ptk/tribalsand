@@ -15,8 +15,7 @@ require_once __DIR__ . '/../includes/admin-pagination.php';   // dt_empty()
 require_once __DIR__ . '/../includes/inventory-views.php';
 require_once __DIR__ . '/../includes/inventory-owner.php';   // owner-only corrections (undo / clear / delete)
 require_once __DIR__ . '/../includes/pos.php';               // pos_upload_item_image() (shared photo pipeline)
-require_login();
-require_manager();
+require_inventory();   // owner, manager or storekeeper (scoped)
 
 $self      = '/admin/inventory-item.php';
 $vids      = admin_venue_ids();

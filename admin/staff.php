@@ -45,9 +45,11 @@ const STAFF_JOB_TYPES = [
     'driver'       => 'Driver',
 ];
 
-/** Job types offered in the forms: the ops/desk jobs, plus the POS jobs once their migration ran. */
+/** Job types offered in the forms: the ops/desk jobs, plus the POS jobs and the storekeeper once their migrations ran. */
 function staff_job_types(): array {
-    return STAFF_JOB_TYPES + (pos_jobs_supported() ? ['shop' => 'Shop (POS till)', 'spa' => 'Salon & Spa (POS till)', 'kite' => 'Kite school (POS till)'] : []);
+    return STAFF_JOB_TYPES
+         + (storekeeper_supported() ? ['storekeeper' => 'Storekeeper (inventory)'] : [])
+         + (pos_jobs_supported() ? ['shop' => 'Shop (POS till)', 'spa' => 'Salon & Spa (POS till)', 'kite' => 'Kite school (POS till)'] : []);
 }
 
 $venues    = db_query('SELECT id, name FROM venues ORDER BY sort_order ASC, name ASC')->fetchAll();

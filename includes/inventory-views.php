@@ -453,7 +453,10 @@ function inv_assignable_staff(?array $venueIds): array {
 
 /** Accounts that may be made responsible for counting a location of $venueId (null = any account): [id => label]. */
 function inv_assignable_users(?int $venueId): array {
-    $sql = "SELECT id, COALESCE(NULLIF(name, ''), email) AS label FROM admin_users WHERE is_active = TRUE";
+    // Only accounts inv_actor_role() lets count — never reception, front desk, gate or till staff.
+    $sql = "SELECT id, COALESCE(NULLIF(name, ''), email) AS label FROM admin_users WHERE is_active = TRUE
+               AND (role IN ('owner', 'manager')
+                    OR (role = 'staff' AND job_type IN ('storekeeper', 'housekeeping', 'laundry', 'maintenance', 'gardening', 'driver')))";
     $p   = [];
     if ($venueId !== null) {
         $sql .= " AND (role = 'owner' OR id IN (SELECT admin_user_id FROM admin_user_venues WHERE venue_id = :v))";

@@ -36,7 +36,7 @@ $today    = frontdesk_today_ymd();
 $worklist = staff_day_worklist(admin_venue_ids(), (string)$myJob, $today);
 
 // Places this person should count today (responsible for it, or works at its property).
-$countsCard = inv_supported() ? inv_counts_due_card(inv_countable_locations($meId, admin_role(), admin_venue_ids(), $today), 0) : '';
+$countsCard = inv_supported() ? inv_counts_due_card(inv_countable_locations($meId, inv_actor_role(), admin_venue_ids(), $today), 0) : '';
 
 /** One turnover row: guest, property · room, and the stay dates. */
 function worklist_row(array $r): void {

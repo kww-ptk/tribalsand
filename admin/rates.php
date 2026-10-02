@@ -4,8 +4,9 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/rates.php';
 require_once __DIR__ . '/../includes/rates-compare.php';
+require_once __DIR__ . '/../includes/calendar-highlights.php'; // cal_day_map() — public holidays + Calendar highlights, same as the Gantt
 
-require_login();
+require_rates();   // owner, manager, reception — prices are not for ops / till / gate / store staff
 
 // Read-only for everyone but the owner — reception may look but not touch.
 // Scoped so a reception account only sees rates for its own properties.
@@ -140,6 +141,23 @@ if ($view === 'card') {
     for ($d = new DateTime($tFrom); $d->format('Y-m-d') < $tTo; $d->modify('+1 day')) $days[] = $d->format('Y-m-d');
     $prevMonth = (new DateTime($tFrom))->modify('-1 month')->format('Y-m');
     $nextMonth = (new DateTime($tFrom))->modify('+1 month')->format('Y-m');
+    // The Gantt's day colouring for the same window, in ONE query: weekends,
+    // Kenyan public holidays and Admin → Calendar highlights.
+    $calMap   = $days ? cal_day_map($days[0], $days[count($days) - 1]) : [];
+    $tToday   = date('Y-m-d');
+    $dayClass = [];
+    foreach ($days as $d) {
+        $dow = (int)date('N', strtotime($d));
+        $hl  = cal_day_info($calMap[$d] ?? []);
+        $dayClass[$d] = [
+            'cls'   => ($d === $tToday ? ' is-today' : '') . ($dow >= 6 ? ' is-weekend' : '') . ($dow === 7 ? ' is-sun' : '')
+                     . ($hl['class'] !== '' ? ' ' . $hl['class'] : ''),
+            'title' => date('D j M', strtotime($d)) . ($hl['title'] !== '' ? ' · ' . $hl['title'] : ''),
+        ];
+    }
+    $venueLoc = $picked
+        ? array_column(db_query('SELECT id, location FROM venues WHERE id IN (' . implode(',', $picked) . ')')->fetchAll(), 'location', 'id')
+        : [];
 }
 
 $pageTitle  = 'Rates';
@@ -169,10 +187,69 @@ include __DIR__ . '/_layout.php';
 .rc-pill{display:inline-block;padding:2px 8px;border-radius:999px;font-size:11px;font-weight:700;text-transform:none;letter-spacing:0}
 .rc-std{background:#eaf3de;color:#27500a}.rc-mid{background:#faeeda;color:#633806}.rc-peak{background:#fcebeb;color:#791f1f}
 .rc-other{background:#e6eef5;color:#1f4460}.rc-base{background:transparent;color:inherit}
-.rc-tl td,.rc-tl th{padding:6px 5px;font-size:11.5px;text-align:center}
-.rc-tl th.is-we,.rc-tl td.is-we{box-shadow:inset 0 0 0 999px rgba(0,0,0,.03)}
-.rc-tl td:first-child,.rc-tl th:first-child{position:sticky;left:0;background:var(--white);z-index:1;text-align:left;min-width:170px}
-.rc-tl .rc-group td:first-child{background:#f5f1ea}
+/* Timeline — drawn like the Availability Calendar (admin/gantt.php): dark month
+   band, weekday letter over the date, today in blue, weekends grey, public
+   holidays red, Calendar highlights in their colour, collapsible property rows. */
+.tl-outer{overflow:auto;max-height:calc(100vh - 140px);min-height:320px;border-radius:var(--radius)}
+.rc-tl{width:auto;min-width:100%;border-collapse:separate;border-spacing:0}
+.rc-tl td,.rc-tl th{padding:0 3px;height:36px;min-width:44px;font-size:11px;text-align:center;border-bottom:1px solid var(--border);border-right:1px solid #eef0f2}
+.rc-tl thead th{position:sticky;z-index:3;text-transform:none;letter-spacing:0;padding:0}
+.rc-tl .tl-mrow th{top:0;height:20px;background:var(--sidebar-bg);color:#fff;font-size:10px;font-weight:700;border-right:1px solid rgba(255,255,255,.15);border-bottom:1px solid var(--border)}
+.rc-tl .tl-mrow .tl-month{text-align:left}
+.rc-tl .tl-month span{position:sticky;left:202px;padding:0 10px}
+.rc-tl .tl-corner{left:0;z-index:5!important;vertical-align:middle;text-align:left!important;padding:0 10px!important;font-size:10px;text-transform:uppercase;letter-spacing:.04em}
+.rc-tl .tl-dh{top:20px;height:38px;background:#f9fafb;color:#334155;font-size:11px;font-weight:600;line-height:1;border-bottom:2px solid var(--border)}
+.rc-tl .gd-dow{display:block;font-size:9px;font-weight:600;color:#94a3b8;margin-bottom:2px}
+.rc-tl .tl-dh.is-weekend{background:#dde3ea;color:#0f172a;font-weight:700}
+.rc-tl .tl-dh.is-weekend .gd-dow{color:#475569;font-weight:700}
+.rc-tl .tl-dh.is-holiday{background:#fbd5d5;color:#9f1239;font-weight:800}
+.rc-tl .tl-dh.is-holiday .gd-dow{color:#be123c;font-weight:700}
+.rc-tl .tl-dh.is-hl--amber{background:#fde7b0;color:#7a4b00;font-weight:800}
+.rc-tl .tl-dh.is-hl--red{background:#fbd5d5;color:#9f1239;font-weight:800}
+.rc-tl .tl-dh.is-hl--green{background:#cdeccf;color:#1b5e20;font-weight:800}
+.rc-tl .tl-dh.is-hl--blue{background:#d3e4fb;color:#1e3a8a;font-weight:800}
+.rc-tl .tl-dh.is-hl--purple{background:#e6d9f7;color:#5b21b6;font-weight:800}
+.rc-tl .tl-dh.is-hl .gd-dow{color:inherit;opacity:.75}
+.rc-tl .tl-dh.is-today{background:#1d4ed8;color:#fff;font-weight:800}
+.rc-tl .tl-dh.is-today .gd-dow{color:#dbe7ff}
+.rc-tl .is-sun{border-right:1px solid #cbd5e1}
+/* Day tint on base-price nights (seasonal nights keep their season colour). */
+.rc-tl td.rc-base.is-weekend{background:#eef1f5}
+.rc-tl td.rc-base.is-holiday,.rc-tl td.rc-base.is-hl--red{background:#fdeeee}
+.rc-tl td.rc-base.is-hl--amber{background:#fff6e0}
+.rc-tl td.rc-base.is-hl--green{background:#edf8ee}
+.rc-tl td.rc-base.is-hl--blue{background:#eef4fd}
+.rc-tl td.rc-base.is-hl--purple{background:#f5effc}
+.rc-tl td.rc-base{color:#64748b}
+.rc-tl td.is-today{box-shadow:inset 2px 0 0 #1d4ed8,inset -2px 0 0 #1d4ed8}
+.rc-tl tbody td:first-child,.rc-tl thead .tl-corner{position:sticky;left:0;z-index:2;text-align:left;min-width:190px;max-width:240px;padding:4px 10px;border-right:2px solid var(--border);white-space:normal;line-height:1.25}
+.rc-tl tbody td:first-child{background:#fff;font-weight:500;font-size:11.5px}
+.rc-tl .rc-room small{display:block;font-size:10px;color:var(--muted);font-weight:400}
+.rc-tl .tl-grow td{background:#eaf0f3;height:30px;border-top:2px solid var(--border);cursor:pointer;user-select:none}
+.rc-tl .tl-grow td:first-child{background:#eaf0f3;font-weight:700;font-size:12px;color:#102F3A}
+.rc-tl .tl-grow:hover td{background:#dfe8ed}
+.rc-tl .tl-grow:focus-visible{outline:2px solid #0369a1;outline-offset:-2px}
+.rc-tl .tl-grow__bar{text-align:left!important;font-size:10.5px;color:var(--muted);padding-left:10px!important}
+.rc-tl .tl-grow__loc{color:#102F3A;font-weight:600}
+.rc-tl .tl-grow__caret{display:inline-flex;vertical-align:-2px;margin-right:5px;color:#4a6b78;transition:transform .15s ease}
+.rc-tl .tl-grow__hint{display:none;font-style:italic}
+.rc-tl tbody.is-collapsed .tl-row{display:none}
+.rc-tl tbody.is-collapsed .tl-grow__caret{transform:rotate(-90deg)}
+.rc-tl tbody.is-collapsed .tl-grow__hint{display:inline}
+.rc-period__label{font-size:15px;font-weight:700;margin-left:6px}
+.tl-legend{align-items:center;gap:6px 16px;margin:0 0 12px}
+.tl-legend span{display:inline-flex;align-items:center;gap:6px}
+.tl-legend .gl{width:13px;height:13px;border-radius:3px;flex:none;border:1px solid rgba(0,0,0,.08)}
+.tl-legend .gl--today{background:#eff5ff;box-shadow:inset 2px 0 0 #1d4ed8,inset -2px 0 0 #1d4ed8;border-color:#1d4ed8}
+.tl-legend .gl--weekend{background:#dde3ea;border-color:#c5ced9}
+.tl-legend .gl--holiday{background:#fbd5d5;border-color:#f1a9b1}
+.tl-legend .gl--hl-amber{background:#fde7b0;border-color:#f3c96a}.tl-legend .gl--hl-red{background:#fbd5d5;border-color:#f1a9b1}
+.tl-legend .gl--hl-green{background:#cdeccf;border-color:#94cf98}.tl-legend .gl--hl-blue{background:#d3e4fb;border-color:#9dbff0}
+.tl-legend .gl--hl-purple{background:#e6d9f7;border-color:#c4a8ea}
+.tl-legend .gl--base{background:#fff}
+.tl-legend .gl-sep{width:1px;height:14px;background:var(--border);border:0}
+.tl-legend .gl-manage{color:var(--brand);font-weight:600;text-decoration:none}
+.tl-legend .gl-manage:hover{text-decoration:underline}
 .rc-legend{display:flex;gap:10px;flex-wrap:wrap;margin:10px 2px 0;font-size:12px;color:var(--muted)}
 .rc-foot{margin:8px 2px 0;font-size:12px;color:var(--muted)}
 @media (max-width:640px){.rc-spacer{display:none}.rc-bar{gap:8px}}
@@ -208,9 +285,10 @@ include __DIR__ . '/_layout.php';
   </span>
   <?php elseif ($view === 'timeline'): ?>
   <span class="rc-period">
-    <a class="btn-icon" href="<?= e($url(['month' => $prevMonth])) ?>" data-keep-cur aria-label="Previous month">‹</a>
-    <?= e(date('F Y', strtotime($month . '-01'))) ?>
-    <a class="btn-icon" href="<?= e($url(['month' => $nextMonth])) ?>" data-keep-cur aria-label="Next month">›</a>
+    <a class="btn-outline btn-sm" href="<?= e($url(['month' => $prevMonth])) ?>" data-keep-cur><?= admin_icon('chevron-left', 15) ?> Prev</a>
+    <a class="btn-outline btn-sm" href="<?= e($url(['month' => date('Y-m')])) ?>" data-keep-cur>Today</a>
+    <a class="btn-outline btn-sm" href="<?= e($url(['month' => $nextMonth])) ?>" data-keep-cur>Next <?= admin_icon('chevron-right', 15) ?></a>
+    <span class="rc-period__label"><?= e(date('F Y', strtotime($month . '-01'))) ?></span>
   </span>
   <?php endif; ?>
 
@@ -296,40 +374,78 @@ include __DIR__ . '/_layout.php';
   <?php if (!$rooms): ?>
   <div class="alert alert--info">These properties have no rooms yet.</div>
   <?php else: ?>
-  <div class="rc-wrap">
-    <table class="rc-table rc-tl<?= $reOwner ? ' re-tl' : '' ?>"<?= $reOwner ? ' data-re-tl data-today="' . e(date('Y-m-d')) . '"' : '' ?>>
-      <thead><tr>
-        <th>Room</th>
-        <?php foreach ($days as $d): $we = in_array((int)date('N', strtotime($d)), [6, 7], true); ?>
-        <th class="<?= $we ? 'is-we' : '' ?>"><?= e(date('D', strtotime($d))[0] . ' ' . date('j', strtotime($d))) ?></th>
+  <div class="rc-legend tl-legend" aria-label="Timeline legend">
+    <span><i class="gl gl--today"></i> Today</span>
+    <span><i class="gl gl--weekend"></i> Weekend</span>
+    <span><i class="gl gl--holiday"></i> Public holiday</span>
+    <?php foreach (cal_map_custom_legend($calMap) as $lg): ?>
+    <span><i class="gl gl--hl-<?= e($lg['color']) ?>"></i> <?= e($lg['label']) ?></span>
+    <?php endforeach; ?>
+    <?php if (is_owner() || is_manager()): ?>
+    <a href="/admin/calendar-highlights.php" class="gl-manage" data-tip="Mark school holidays, events or any other dates — they show here and on the Calendar">+ Highlight dates</a>
+    <?php endif; ?>
+    <span class="gl-sep" aria-hidden="true"></span>
+    <span><i class="gl rc-std"></i> Standard</span>
+    <span><i class="gl rc-mid"></i> Mid</span>
+    <span><i class="gl rc-peak"></i> Peak / High</span>
+    <span><i class="gl rc-other"></i> Other rate</span>
+    <span><i class="gl gl--base"></i> Base price</span>
+  </div>
+  <div class="rc-wrap tl-outer">
+    <table class="rc-table rc-tl<?= $reOwner ? ' re-tl' : '' ?>"<?= $reOwner ? ' data-re-tl data-today="' . e($tToday) . '"' : '' ?>>
+      <thead>
+        <tr class="tl-mrow">
+          <th class="tl-corner" rowspan="2">Room</th>
+          <th class="tl-month" colspan="<?= count($days) ?>"><span><?= e(date('F Y', strtotime($month . '-01'))) ?></span></th>
+        </tr>
+        <tr class="tl-drow">
+        <?php foreach ($days as $d): ?>
+          <th class="tl-dh<?= $dayClass[$d]['cls'] ?>" title="<?= e($dayClass[$d]['title']) ?>"><span class="gd-dow"><?= e(date('D', strtotime($d))[0]) ?></span><?= date('j', strtotime($d)) ?></th>
         <?php endforeach; ?>
-      </tr></thead>
-      <tbody>
-      <?php foreach ($byVenue as $vid => $vRooms): ?>
-        <tr class="rc-group"><td><?= e($venueName[$vid] ?? '') ?></td><td colspan="<?= count($days) ?>"></td></tr>
+        </tr>
+      </thead>
+      <?php foreach ($byVenue as $vid => $vRooms): $nR = count($vRooms); $loc = trim((string)($venueLoc[$vid] ?? '')); ?>
+      <tbody data-tl-venue="<?= (int)$vid ?>">
+        <tr class="rc-group tl-grow" tabindex="0" role="button" aria-expanded="true" aria-label="Collapse or expand <?= e($venueName[$vid] ?? '') ?>">
+          <td><span class="tl-grow__caret" aria-hidden="true"><?= admin_icon('chevron-down', 13) ?></span><?= e($venueName[$vid] ?? '') ?></td>
+          <td colspan="<?= count($days) ?>" class="tl-grow__bar"><?php if ($loc !== ''): ?><span class="tl-grow__loc"><?= e($loc) ?></span> · <?php endif; ?><?= $nR ?> room<?= $nR === 1 ? '' : 's' ?><span class="tl-grow__hint"> · collapsed</span></td>
+        </tr>
         <?php foreach ($vRooms as $r): $c = (string)($r['price_currency'] ?: 'USD'); $m = $maps[(int)$r['id']] ?? []; ?>
-        <tr<?php if ($reOwner): ?> data-re-row data-room="<?= (int)$r['id'] ?>" data-name="<?= e($r['name']) ?>"<?php endif; ?>>
-          <td class="rc-room"><a href="<?= e($calUrl((int)$vid)) ?>" data-keep-cur><?= e($r['name']) ?></a></td>
+        <tr class="tl-row"<?php if ($reOwner): ?> data-re-row data-room="<?= (int)$r['id'] ?>" data-name="<?= e($r['name']) ?>"<?php endif; ?>>
+          <td class="rc-room"><a href="<?= e($calUrl((int)$vid)) ?>" data-keep-cur><?= e($r['name']) ?></a><small><?= e($c) ?> / night</small></td>
           <?php foreach ($days as $d):
                 $night = $m[$d] ?? null;
                 $key   = $night ? rc_night_key($night) : null;
                 $cls   = rc_season_class($key);
-                $we    = in_array((int)date('N', strtotime($d)), [6, 7], true);
-                $tip   = $night ? date('D j M', strtotime($d)) . ' · ' . ($key ?? 'Base') . ' · ' . ((float)$night['price'] > 0 ? rc_money_text((float)$night['price'], $c) : 'no price') : ''; ?>
-          <td class="rc-<?= e($cls) ?><?= $we ? ' is-we' : '' ?>" title="<?= e($tip) ?>"<?= $reOwner ? ' data-d="' . e($d) . '"' : '' ?>><?= $night && (float)$night['price'] > 0 ? rc_money_html((float)$night['price'], $c, $cur, $fx, true) : '—' ?></td>
+                $tip   = $dayClass[$d]['title'] . ($night ? ' · ' . ($key ?? 'Base') . ' · ' . ((float)$night['price'] > 0 ? rc_money_text((float)$night['price'], $c) : 'no price') : ''); ?>
+          <td class="rc-<?= e($cls) ?><?= $dayClass[$d]['cls'] ?>" title="<?= e($tip) ?>"<?= $reOwner ? ' data-d="' . e($d) . '"' : '' ?>><?= $night && (float)$night['price'] > 0 ? rc_money_html((float)$night['price'], $c, $cur, $fx, true) : '—' ?></td>
           <?php endforeach; ?>
         </tr>
         <?php endforeach; ?>
-      <?php endforeach; ?>
       </tbody>
+      <?php endforeach; ?>
     </table>
   </div>
-  <div class="rc-legend">
-    <span><span class="rc-pill rc-std">Standard</span></span><span><span class="rc-pill rc-mid">Mid</span></span>
-    <span><span class="rc-pill rc-peak">Peak</span></span><span><span class="rc-pill rc-other">Other rate</span></span>
-    <span>Uncoloured = base price · hover a cell for the full price</span>
-    <?php if ($reOwner): ?><span>Click a night to set rates · shift-click to extend · ⌘/ctrl-click or drag to add rooms · past days can't be selected · Esc clears</span><?php endif; ?>
-  </div>
+  <p class="rc-foot">Coloured cells carry a seasonal rate; white cells use the room's base price. Weekends, public holidays and Calendar highlights are marked in the date row, as on the Calendar — hover a day for its name.<?php if ($reOwner): ?> Click a night to set rates · shift-click to extend · ⌘/ctrl-click or drag to add rooms · past days can't be selected · Esc clears.<?php endif; ?></p>
+  <script>
+  (function () {
+    var KEY = 'ts_rates_tl_collapsed';
+    function load() { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { return []; } }
+    function save(a) { try { localStorage.setItem(KEY, JSON.stringify(a)); } catch (e) {} }
+    var closed = load();
+    document.querySelectorAll('tbody[data-tl-venue]').forEach(function (tb) {
+      var id = tb.getAttribute('data-tl-venue'), head = tb.querySelector('.tl-grow');
+      function set(c) { tb.classList.toggle('is-collapsed', c); head.setAttribute('aria-expanded', c ? 'false' : 'true'); }
+      set(closed.indexOf(id) !== -1);
+      function toggle() {
+        var c = !tb.classList.contains('is-collapsed'); set(c);
+        closed = closed.filter(function (x) { return x !== id; }); if (c) closed.push(id); save(closed);
+      }
+      head.addEventListener('click', toggle);
+      head.addEventListener('keydown', function (e) { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(); } });
+    });
+  })();
+  </script>
   <?php endif; ?>
 
 <?php else: /* calendar */ ?>

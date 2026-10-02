@@ -211,10 +211,14 @@ function rates_clear_span(int $roomId, string $from, string $toExcl): void {
     $rows = db_query(
         "SELECT id, date_from, date_to, price_amount, label, created_at
            FROM rates
-          WHERE room_id = :rid AND date_from < :to AND date_to > :from",
+          WHERE room_id = :rid AND date_from < :to AND date_to > :from
+          ORDER BY id",
         [':rid' => $roomId, ':from' => $from, ':to' => $toExcl]
     )->fetchAll();
 
+    // In id order, so split remainders get new ids in the same relative order as
+    // their originals and a legacy created_at tie (broken on id DESC) still
+    // resolves the same way — row order from the planner is not guaranteed.
     foreach ($rows as $r) {
         $id = (int)$r['id'];
         $ef = (string)$r['date_from'];
