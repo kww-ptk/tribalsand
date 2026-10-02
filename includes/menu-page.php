@@ -32,6 +32,7 @@ function menu_marks_html(array $it): string {
     return $h;
 }
 
+$plate = '<svg viewBox="0 0 48 48" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="24" cy="24" r="13"/><circle cx="24" cy="24" r="8.5"/><path d="M6 10v9a3 3 0 0 0 3 3v16M9 10v8M12 10v9a3 3 0 0 1-3 3"/><path d="M41 38V10c-3 2-4.5 6-4.5 11v4H41"/></svg>';
 $soldOut = fn(array $it): string => menu_item_sold_out($it) ? ' <span class="so">Sold out</span>' : '';
 ?>
 <!DOCTYPE html>
@@ -56,11 +57,11 @@ body{font-family:'Jost',sans-serif;background:var(--off);color:var(--ink);-webki
 .cd-tagline{font:italic 400 1.15rem/1.65 'Cormorant Garamond',serif;color:rgba(255,255,255,.72);max-width:580px;margin:0 auto}
 .cd-loc{font-size:.72rem;letter-spacing:.16em;color:rgba(212,176,122,.8);margin-top:1rem}
 .cd-bar{position:sticky;top:0;z-index:30;background:rgba(250,248,244,.96);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
-.cd-bar__in{max-width:1240px;margin:0 auto;display:flex;align-items:center;gap:1rem;padding:.75rem clamp(14px,3vw,40px)}
+.cd-bar__in{max-width:1240px;margin:0 auto;display:flex;align-items:flex-start;gap:1rem;padding:.75rem clamp(14px,3vw,40px)}
 .cd-seg{display:inline-flex;flex:none;background:var(--cream);border-radius:99px;padding:4px}
 .cd-seg button{border:0;background:none;font:500 .68rem 'Jost',sans-serif;letter-spacing:.24em;text-transform:uppercase;color:var(--teal-d);padding:.65rem 1.4rem;border-radius:99px;cursor:pointer}
 .cd-seg button.on{background:var(--teal-d);color:#fff}
-.cd-chips{display:flex;gap:.4rem;overflow-x:auto;scrollbar-width:none;min-width:0}
+.cd-chips{display:flex;flex-wrap:wrap;gap:.4rem;min-width:0;flex:1;padding-top:2px}
 .cd-chips::-webkit-scrollbar{display:none}
 .cd-chips a{flex:none;font-size:.78rem;color:var(--muted);text-decoration:none;padding:.5rem .95rem;border:1px solid var(--line);border-radius:99px;white-space:nowrap;background:var(--paper)}
 .cd-chips a.on{color:var(--teal-d);border-color:var(--teal-d);font-weight:500}
@@ -71,12 +72,14 @@ body{font-family:'Jost',sans-serif;background:var(--off);color:var(--ink);-webki
 .cd-cat__name{font:400 2.1rem/1.1 'Cormorant Garamond',serif;color:var(--teal-d)}
 .cd-cat__tag{font-size:.62rem;letter-spacing:.3em;text-transform:uppercase;color:var(--muted);text-align:right}
 .cd-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
-.cd-card{position:relative;background:var(--paper);border:1px solid var(--line);border-radius:14px;padding:1.1rem 1.15rem;display:flex;gap:1rem;transition:box-shadow .2s,transform .2s}
+.cd-card{position:relative;background:var(--paper);border:1px solid var(--line);border-radius:14px;overflow:hidden;display:flex;flex-direction:column;transition:box-shadow .2s,transform .2s}
 .cd-card:hover{box-shadow:0 10px 26px rgba(16,47,58,.08);transform:translateY(-1px)}
 .cd-card.sig{border-color:var(--sand);background:linear-gradient(180deg,#fffaf0,var(--paper) 60%)}
-.cd-card__img{flex:none;width:104px;height:104px;border-radius:10px;object-fit:cover;background:var(--cream)}
-.cd-card__body{min-width:0;flex:1;display:flex;flex-direction:column;gap:.4rem}
-.cd-card__sig{font-size:.58rem;letter-spacing:.26em;text-transform:uppercase;color:var(--sand);font-weight:500}
+.cd-card__media{position:relative;aspect-ratio:4/3;background:linear-gradient(135deg,#efe5d3,#f8f2e7);display:grid;place-items:center;color:rgba(184,150,90,.55)}
+.cd-card__media img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.cd-card__media svg{width:46px;height:46px}
+.cd-card__body{min-width:0;flex:1;display:flex;flex-direction:column;gap:.45rem;padding:1rem 1.15rem 1.1rem}
+.cd-card__sig{position:absolute;top:12px;left:12px;z-index:1;font-size:.56rem;letter-spacing:.22em;text-transform:uppercase;color:var(--teal-d);font-weight:500;background:rgba(255,253,249,.94);border:1px solid var(--sand);border-radius:99px;padding:.38rem .7rem}
 .cd-card__top{display:flex;align-items:flex-start;justify-content:space-between;gap:.8rem}
 .cd-card .nm{font:500 1.3rem/1.2 'Cormorant Garamond',serif;color:var(--ink)}
 .cd-card .pr{flex:none;font:500 .8rem 'Jost',sans-serif;color:var(--teal-d);background:var(--cream);border-radius:99px;padding:.3rem .68rem;white-space:nowrap}
@@ -88,7 +91,7 @@ body{font-family:'Jost',sans-serif;background:var(--off);color:var(--ink);-webki
 .cd-row .nm{font:500 1.1rem 'Cormorant Garamond',serif}
 .cd-row .pr{font:500 .85rem 'Jost',sans-serif;color:var(--teal-d);white-space:nowrap}
 .so{display:inline-block;vertical-align:middle;margin-left:.45rem;font:500 .6rem/1 'Jost',sans-serif;letter-spacing:.1em;text-transform:uppercase;padding:.28rem .5rem;border-radius:99px;background:rgba(140,122,96,.14);color:#6d5c2a}
-.is-out .nm,.is-out .pr,.is-out .ds,.is-out .cd-card__img{opacity:.45}
+.is-out .nm,.is-out .pr,.is-out .ds,.is-out .cd-card__media img{opacity:.45}
 .cd-legend{display:flex;flex-wrap:wrap;justify-content:center;gap:.6rem 1.3rem;font-size:.8rem;color:var(--muted);padding:1.4rem 0 0;border-top:1px solid var(--line)}
 .lg-i{display:inline-flex;align-items:center;gap:.4rem}.cd-legend .star{color:var(--sand)}
 .cd-legend p{flex-basis:100%;text-align:center;font:italic 400 1rem 'Cormorant Garamond',serif}
@@ -102,10 +105,11 @@ body{font-family:'Jost',sans-serif;background:var(--off);color:var(--ink);-webki
 @media (max-width:1100px){.cd-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media (max-width:640px){
   .cd-grid,.cd-list{grid-template-columns:1fr}
-  .cd-card__img{width:88px;height:88px}
+  .cd-card__media{aspect-ratio:16/10}
   .cd-bar__in{flex-wrap:wrap;gap:.6rem}
   .cd-seg{width:100%;justify-content:center}.cd-seg button{flex:1}
-  .cd-chips{width:100%}
+  .cd-chips{width:100%;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+  .cd-chips::-webkit-scrollbar{display:none}
   .cd-cat__head{flex-direction:column;align-items:flex-start;gap:.2rem}.cd-cat__tag{text-align:left}
 }
 </style>
@@ -149,9 +153,12 @@ body{font-family:'Jost',sans-serif;background:var(--off);color:var(--ink);-webki
       <div class="cd-grid">
         <?php foreach ($c['items'] as $it): $price = menu_price_label($it['price'], $curLabel); $sig = menu_flag($it, 'is_signature'); $img = menu_item_image_url($it); ?>
         <div class="cd-card<?= $sig ? ' sig' : '' ?><?= menu_item_sold_out($it) ? ' is-out' : '' ?>">
-          <?php if ($img !== ''): ?><img class="cd-card__img" src="<?= e($img) ?>" alt="<?= e($it['name']) ?>" loading="lazy" decoding="async" width="104" height="104" onerror="this.remove()"><?php endif; ?>
-          <div class="cd-card__body">
+          <div class="cd-card__media">
+            <?= $plate ?>
+            <?php if ($img !== ''): ?><img src="<?= e($img) ?>" alt="<?= e($it['name']) ?>" loading="lazy" decoding="async" width="400" height="300" onerror="this.remove()"><?php endif; ?>
             <?php if ($sig): ?><span class="cd-card__sig">★ Chef’s signature</span><?php endif; ?>
+          </div>
+          <div class="cd-card__body">
             <div class="cd-card__top"><span class="nm"><?= e($it['name']) ?><?= $soldOut($it) ?></span><?php if ($price !== ''): ?><span class="pr"><?= e($price) ?></span><?php endif; ?></div>
             <?php if (trim((string)$it['description']) !== ''): ?><p class="ds"><?= e($it['description']) ?></p><?php endif; ?>
             <?php if (($mk = menu_marks_html($it)) !== ''): ?><div class="cd-marks"><?= $mk ?></div><?php endif; ?>
@@ -204,7 +211,8 @@ body{font-family:'Jost',sans-serif;background:var(--off);color:var(--ink);-webki
     var links = nav.querySelectorAll('a'), cur = 0;
     links.forEach(function (a, i) { var c = document.querySelector(a.getAttribute('href')); if (c && c.getBoundingClientRect().top < 120) cur = i; });
     links.forEach(function (a, i) { a.classList.toggle('on', i === cur); });
-    var on = links[cur]; if (on && nav.scrollWidth > nav.clientWidth) nav.scrollTo({ left: on.offsetLeft - 20, behavior: 'smooth' });
+    var on = links[cur];
+    if (on && nav.scrollWidth > nav.clientWidth) nav.scrollTo({ left: nav.scrollLeft + on.getBoundingClientRect().left - nav.getBoundingClientRect().left - 16, behavior: 'smooth' });
   }
   window.addEventListener('scroll', spy, { passive: true }); spy();
 })();
