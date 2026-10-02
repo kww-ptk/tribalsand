@@ -57,6 +57,7 @@ if (!function_exists('admin_icon')) {
             'send'           => '<path d="M22 2 11 13"/><path d="M22 2 15 22l-4-9-9-4Z"/>',
             // ── Added for team assignment / HR (assignee badges, employee profile) ──
             'user'           => '<path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+            'lock'           => '<rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/>',
             'users'          => '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
         ];
         $p = $paths[$name] ?? '';

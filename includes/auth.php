@@ -2,6 +2,7 @@
 declare(strict_types=1);
 
 require_once __DIR__ . '/db.php';
+require_once __DIR__ . '/access.php';   // the owner's "Access by role" choices (admin/staff.php?tab=access)
 
 function session_init(): void {
     if (session_status() !== PHP_SESSION_NONE) return;
@@ -39,6 +40,12 @@ function require_login(): void {
         session_destroy();
         header('Location: /admin/login.php');
         exit;
+    }
+    // A section the owner switched OFF for this role refuses its pages, whatever
+    // the page's own gate would allow (the Dashboard is never configurable).
+    if (access_page_blocked()) {
+        $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'That area isn’t available for your account.'];
+        header('Location: ' . admin_home_url()); exit;
     }
 }
 
@@ -151,6 +158,9 @@ function inv_actor_role(): string {
         if (job_is_store($job)) return 'storekeeper';
         if (job_is_ops($job))   return 'staff';
     }
+    // The owner switched stock counting (or the stock pages) ON for this role in
+    // "Access by role": count like staff — at their own properties only.
+    if (access_section_granted('inventory-count.php') || access_section_granted('inventory-counts.php') || access_section_granted('inventory.php')) return 'staff';
     return '';
 }
 
@@ -212,7 +222,7 @@ function require_owner(): void {
 /** Owner-or-manager gate — guards assignment, tasks and gate management. Staff are bounced home. */
 function require_manager(): void {
     require_login();
-    if (!is_owner() && !is_manager()) { $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'That area is only available to managers.']; header('Location: ' . admin_home_url()); exit; }
+    if (!is_owner() && !is_manager() && !access_page_granted()) { $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'That area is only available to managers.']; header('Location: ' . admin_home_url()); exit; }
 }
 
 /**
@@ -222,7 +232,7 @@ function require_manager(): void {
  */
 function require_reception(): void {
     require_login();
-    if (!is_owner() && !is_manager() && !is_reception()) {
+    if (!is_owner() && !is_manager() && !is_reception() && !access_page_granted()) {
         $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'That area is only available to managers.'];
         header('Location: ' . admin_home_url()); exit;
     }
@@ -235,7 +245,7 @@ function require_reception(): void {
  */
 function require_bookings(): void {
     require_login();
-    if (!is_owner() && !is_reception()) {
+    if (!is_owner() && !is_reception() && !access_page_granted()) {
         $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'That area is only available to the owner and reception.'];
         header('Location: ' . admin_home_url()); exit;
     }
@@ -248,7 +258,7 @@ function require_bookings(): void {
  */
 function require_frontdesk(): void {
     require_login();
-    if (is_staff() && job_is_back_of_house(admin_job())) {
+    if (is_staff() && job_is_back_of_house(admin_job()) && !access_page_granted()) {
         $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Messages aren’t available for your account.'];
         header('Location: ' . admin_home_url()); exit;
     }
@@ -261,7 +271,7 @@ function require_frontdesk(): void {
  */
 function require_rates(): void {
     require_login();
-    if (!is_owner() && !is_manager() && !is_reception()) {
+    if (!is_owner() && !is_manager() && !is_reception() && !access_page_granted()) {
         $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Rates aren’t available for your account.'];
         header('Location: ' . admin_home_url()); exit;
     }
@@ -270,7 +280,7 @@ function require_rates(): void {
 /** Inventory gate — owner, manager or storekeeper (see can_manage_inventory()). Others are bounced home. */
 function require_inventory(): void {
     require_login();
-    if (!can_manage_inventory()) {
+    if (!can_manage_inventory() && !access_page_granted()) {
         $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Inventory isn’t available for your account.'];
         header('Location: ' . admin_home_url()); exit;
     }
@@ -279,7 +289,7 @@ function require_inventory(): void {
 /** Stock-count gate — anyone inv_actor_role() lets count. Reception, front desk, gate and till staff are bounced home. */
 function require_stock_count(): void {
     require_login();
-    if (inv_actor_role() === '') {
+    if (inv_actor_role() === '' && !access_page_granted()) {
         $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Stock counts aren’t available for your account.'];
         header('Location: ' . admin_home_url()); exit;
     }
@@ -288,7 +298,7 @@ function require_stock_count(): void {
 /** Gate access — owner, manager, or gate-security staff. Others are bounced home. */
 function require_gate(): void {
     require_login();
-    if (!is_owner() && !is_manager() && !is_reception() && !(is_staff() && admin_job() === 'security')) {
+    if (!is_owner() && !is_manager() && !is_reception() && !(is_staff() && admin_job() === 'security') && !access_page_granted()) {
         $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'The gate isn’t available for your account.'];
         header('Location: ' . admin_home_url()); exit;
     }
