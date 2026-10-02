@@ -81,6 +81,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $action = $_POST['action'] ?? '';
 
+    // ── Access by role (includes/access.php) ─────────────────────────────────
+    if ($action === 'access_save' || $action === 'access_reset') {
+        $roles = access_role_options(staff_job_types());
+        $rk    = (string)($_POST['access_role'] ?? '');
+        $back  = '/admin/staff.php?tab=access&role=' . urlencode($rk);
+        if (!isset($roles[$rk])) { $_SESSION['hold_flash'] = 'Unknown role.'; $_SESSION['hold_flash_type'] = 'error'; header('Location: /admin/staff.php?tab=access'); exit; }
+        if ($action === 'access_reset') {
+            access_save_role($rk, []);
+            audit_log('access.reset', 'role', 0, $rk);
+            $_SESSION['hold_flash'] = $roles[$rk] . ' is back to the default access.';
+        } else {
+            $posted = [];
+            foreach ((array)($_POST['sec'] ?? []) as $k => $v) $posted[(string)$k] = (string)$v === '1';
+            $over = access_overrides_from($posted, $rk, access_defaults($rk, access_env()), access_sections());
+            access_save_role($rk, $over);
+            audit_log('access.save', 'role', 0, $rk . ': ' . ($over ? json_encode($over) : 'defaults'));
+            $_SESSION['hold_flash'] = 'Access saved for ' . $roles[$rk] . ($over ? ' — ' . count($over) . ' section' . (count($over) === 1 ? '' : 's') . ' changed from the default.' : ' — all defaults.');
+        }
+        $_SESSION['hold_flash_type'] = 'success';
+        header('Location: ' . $back); exit;
+    }
+
     // ── Directory (hr_staff) actions ─────────────────────────────────────────
     if (str_starts_with($action, 'hr_')) {
         if (!hr_staff_supported()) staff_flash('Directory needs the add_hr_staff migration — run it first.', 'error', 'directory');
@@ -263,7 +285,10 @@ if (!empty($_SESSION['hold_flash']) && is_string($_SESSION['hold_flash'])) {
 }
 
 // Which tab (default the Directory — the primary "who works where" view).
-$tab = ($_GET['tab'] ?? 'directory') === 'accounts' ? 'accounts' : 'directory';
+$tab = in_array($_GET['tab'] ?? '', ['accounts', 'access'], true) ? (string)$_GET['tab'] : 'directory';
+// "Access by role" — which role is being edited (validated against the known roles).
+$accessRoles = access_role_options(staff_job_types());
+$accessRole  = isset($accessRoles[(string)($_GET['role'] ?? '')]) ? (string)$_GET['role'] : (string)array_key_first($accessRoles);
 
 // ── Accounts: search + pagination (existing dt toolkit) ──────────────────────
 $pg = paginate_params(25);
@@ -440,7 +465,8 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
 <div class="page-header">
   <h1>Team</h1>
   <div class="actions">
-    <?php if ($tab === 'accounts'): ?>
+    <?php if ($tab === 'access'): ?>
+    <?php elseif ($tab === 'accounts'): ?>
     <button type="button" class="btn-primary btn-sm" id="addAccountBtn" aria-controls="createCard" aria-expanded="<?= $__openCreate ? 'true' : 'false' ?>"><?= admin_icon('plus', 15) ?> Add account</button>
     <?php else: ?>
     <button type="button" class="btn-primary btn-sm" id="addPersonBtn" aria-controls="personCard" aria-expanded="false"><?= admin_icon('plus', 15) ?> Add team member</button>
@@ -458,6 +484,10 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
   <a href="<?= $__accountsUrl ?>" data-shell-link role="tab" class="ts-tab<?= $tab === 'accounts' ? ' is-active' : '' ?>"
      style="padding:9px 16px;font-weight:600;font-size:14px;text-decoration:none;border-bottom:2px solid <?= $tab === 'accounts' ? 'var(--teal,#1E5C6B)' : 'transparent' ?>;color:<?= $tab === 'accounts' ? 'var(--teal,#1E5C6B)' : 'var(--muted,#6b7280)' ?>">
     Login accounts <span class="text-muted">(<?= $total ?>)</span>
+  </a>
+  <a href="/admin/staff.php?tab=access" data-shell-link role="tab" class="ts-tab<?= $tab === 'access' ? ' is-active' : '' ?>"
+     style="padding:9px 16px;font-weight:600;font-size:14px;text-decoration:none;border-bottom:2px solid <?= $tab === 'access' ? 'var(--teal,#1E5C6B)' : 'transparent' ?>;color:<?= $tab === 'access' ? 'var(--teal,#1E5C6B)' : 'var(--muted,#6b7280)' ?>">
+    Access by role
   </a>
 </div>
 
@@ -683,7 +713,7 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
 
 <?php endif; /* hr_staff_supported */ ?>
 
-<?php else: ?>
+<?php elseif ($tab === 'accounts'): ?>
 <!-- ═══════════ ACCOUNTS TAB ═══════════ -->
 <div class="card" style="margin-bottom:24px" id="createCard" <?= $__openCreate ? '' : 'hidden' ?>>
   <div class="card__head"><span class="card__title">Add an account</span></div>
@@ -808,6 +838,7 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
 })();
 </script>
 
+<?php else: /* access by role */ include __DIR__ . '/../includes/access-view.php'; ?>
 <?php endif; /* tab */ ?>
 
 <?php include __DIR__ . '/_layout_end.php'; ?>

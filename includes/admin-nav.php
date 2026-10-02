@@ -25,6 +25,49 @@
 declare(strict_types=1);
 
 /**
+ * The DEFAULT visibility flags for a kind of account — PURE (no DB, no session).
+ * admin/_layout.php feeds it the signed-in account; the Staff page's "Access by
+ * role" tab feeds it every role, to show each role's defaults. One rule set, so the
+ * two can never disagree.
+ *
+ * @param string  $role owner | manager | reception | staff
+ * @param ?string $job  the staff job (NULL for a staff account = front desk)
+ * @param array   $env  what is installed / per-account: ai, pos, inv, invOrders, companies,
+ *                      acctDocs, acctIc, clockOn (bool) + seller (can sell at a till),
+ *                      mayaIlai (a manager scoped to Maya Ilai)
+ */
+function admin_nav_flags(string $role, ?string $job, array $env): array {
+    $e = fn(string $k): bool => !empty($env[$k]);
+    $owner = $role === 'owner'; $manager = $role === 'manager'; $reception = $role === 'reception';
+    $staff = $role === 'staff';
+    $job   = $staff ? ($job ?: 'frontdesk') : null;
+    $ops   = in_array($job, ['housekeeping', 'laundry', 'maintenance', 'gardening', 'driver'], true);
+    $store = $job === 'storekeeper';
+    $security = $job === 'security';
+    $till  = in_array($job, ['shop', 'spa', 'kite'], true);
+    $deskStaff = $staff && !$ops && !$store && !$security && !$till;
+    $guestSide = $owner || $manager || $reception || $deskStaff;
+    $inventory = ($owner || $manager || ($staff && $store)) && $e('inv');
+    $countable = $owner || $manager || $store || $ops;
+    return [
+        'owner' => $owner, 'manager' => $manager, 'reception' => $reception,
+        'frontdesk' => $guestSide, 'concierge' => $guestSide, 'messages' => $guestSide,
+        'internal' => true, 'tasks' => $owner || $manager || $reception, 'timetable' => true,
+        'gate' => $owner || $manager || $reception || $security, 'mywork' => $ops || $reception,
+        'assistant' => $guestSide && $e('ai'), 'aiSettings' => $owner, 'aiGaps' => $owner || $manager,
+        'bookings' => $owner || $reception, 'reports' => $owner || $manager,
+        'pos' => ($owner || $manager) && $e('pos'), 'posTill' => $e('seller'),
+        'inventory' => $inventory, 'invOrders' => $inventory && $e('invOrders'),
+        'count' => !$inventory && $e('inv') && $countable,
+        'accounting' => $owner && $e('companies'),
+        'acctDocs' => ($owner || $manager) && $e('acctDocs'), 'acctIc' => ($owner || $manager) && $e('acctDocs') && $e('acctIc'),
+        'restaurant' => $owner || $manager || $reception,
+        'clockOn' => $e('clockOn'), 'clockNav' => $e('clockOn') || $owner,
+        'mayaIlai' => $owner || ($manager && $e('mayaIlai')),
+    ];
+}
+
+/**
  * The whole navigation for one account.
  *
  * @param array $f     visibility flags (see admin/_layout.php)
@@ -198,12 +241,13 @@ function admin_nav_definition(array $f, array $badge = []): array {
  * @param string $script the running page's file name, e.g. "gantt.php"
  * @return array{groups: array, active: ?array} `active` is the item being viewed.
  */
-function admin_nav_resolve(array $definition, string $script): array {
+function admin_nav_resolve(array $definition, string $script, ?callable $access = null): array {
     $groups = []; $active = null;
     foreach ($definition as $g) {
         $items = [];
         foreach ($g['items'] as $it) {
-            $tabs = array_values(array_filter($it['tabs'], fn($t) => !empty($t['show'])));
+            // $access(tab, defaultShow) lets the owner's "Access by role" choices override a default.
+            $tabs = array_values(array_filter($it['tabs'], fn($t) => $access ? (bool)$access($t, !empty($t['show'])) : !empty($t['show'])));
             if (!$tabs) continue;
             $pages = []; $badge = 0; $isActive = false;
             foreach ($tabs as $i => $t) {

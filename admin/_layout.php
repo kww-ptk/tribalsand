@@ -14,68 +14,36 @@ require_once __DIR__ . '/../includes/admin-nav.php';         // the sidebar + ta
 $admin = current_admin();
 
 // ── Role / job aware nav visibility ──────────────────────────────────────
-// Owner sees everything; manager gets ops surfaces (scoped); staff see only the
-// surface for their job (frontdesk → Front Desk, ops → My Work, security → Gate).
-$__isOwner          = is_owner();
-$__isManager        = is_manager();
-$__isReception      = is_reception();             // front of house: Operations + Bookings + Reservations
-$__job              = admin_job();               // null for owner/manager/reception; specialty for staff
-$__isOps            = job_is_ops($__job);         // housekeeping / maintenance / gardening / driver
-$__isSecurity       = ($__job === 'security');
-$__isPosStaff       = job_is_pos($__job);          // shop / spa / kite — they work at the till (/pos/)
-$__isStorekeeper    = is_staff() && job_is_store($__job);   // storekeeper — the Inventory pages, scoped
-$__isFrontdeskStaff = is_frontdesk_staff();        // frontdesk or job-less staff (every other job is back-of-house)
-
-$__navFrontdesk = $__isOwner || $__isManager || $__isReception || $__isFrontdeskStaff;
-$__navConcierge = $__isOwner || $__isManager || $__isReception || $__isFrontdeskStaff;
-$__navMessages  = $__isOwner || $__isManager || $__isReception || $__isFrontdeskStaff;  // ops & security get no GUEST messaging
-$__navInternal  = true;   // internal team chat — every signed-in account, incl. ops & gate staff
-$__navTasks     = $__isOwner || $__isManager || $__isReception;
-// admin/timetable.php has no role gate beyond require_login() — it locks a
-// STAFF person-filter to themselves internally (never a request param), so
-// every job type (ops/security/frontdesk), not just $__navTasks' audience,
-// can hold a task and needs to see their own week. Same "everyone" gate as
-// $__navInternal, not $__navTasks (which excludes ops/security/frontdesk staff).
-$__navTimetable = true;
-$__navGate      = $__isOwner || $__isManager || $__isReception || $__isSecurity;
-$__navMyWork    = $__isOps   || $__isReception;
-// Availability/price assistant — same guest-facing audience as messaging, and
-// only when a provider key is configured (feature hides itself otherwise).
-$__navAssistant = ($__isOwner || $__isManager || $__isReception || $__isFrontdeskStaff) && ai_assistant_supported();
-$__navAiSettings = $__isOwner;   // AI tone/knowledge tuning — site-wide config, owner-only (visible even before a key is set, so it can be prepared)
-$__navAiGaps     = $__isOwner || $__isManager;   // AI gaps — questions the guest concierge couldn't answer (read-only list)
-$__navBookings  = $__isOwner || $__isReception;   // holds / calendar / submissions / conflicts
-$__navReports   = $__isOwner || $__isManager;     // financial reports (scoped to their venues)
-$__navPos       = ($__isOwner || $__isManager) && pos_supported();   // POS catalogue/stock/sales (managers scoped to their outlets); outlets = owner
-$__navPosTill   = $admin && pos_is_seller($admin);                    // "Open till" + own PIN — anyone who can sell
-$__navInventory = can_manage_inventory() && inv_supported();   // Inventory & Assets: owner, managers + storekeepers (scoped to their properties)
-$__navCount     = !$__navInventory && inv_supported() && inv_actor_role() !== '';   // the stock-count screen for ops staff — never reception / front desk / gate / till
-$__navAccounting = $__isOwner && companies_supported();              // legal companies, KRA PINs, bank accounts — owner-only
-$__navAcctDocs   = ($__isOwner || $__isManager) && companies_supported() && to_regclass_exists('acct_documents') && to_regclass_exists('acct_ic_entries');   // invoices & payments (managers scoped)
-$__navAcctIc     = $__navAcctDocs && to_regclass_exists('acct_ic_entries');                                            // what the companies owe each other
+// The DEFAULTS come from ONE pure rule set, admin_nav_flags() (includes/admin-nav.php)
+// — the same one the Staff page's "Access by role" tab shows. The owner's choices
+// there (includes/access.php) then switch individual sections on or off per role,
+// applied by $__navAccess below when the sidebar is resolved.
+$__isOwner     = is_owner();
+$__isManager   = is_manager();
+$__isReception = is_reception();
+$__job         = admin_job();               // null for owner/manager/reception; specialty for staff
+$__isStorekeeper = is_staff() && job_is_store($__job);
+$__navFlags    = admin_nav_flags(admin_role(), $__job, access_env($admin ?: []));
+$__roleKey     = access_role_key(admin_role(), $__job);
+$__navAccess   = $__isOwner ? null : (function () use ($__roleKey): callable {
+    $matrix = access_matrix(); $sections = access_sections();
+    return function (array $tab, bool $default) use ($matrix, $sections, $__roleKey): bool {
+        $s = $sections[access_tab_key($tab)] ?? null;
+        return $s ? access_resolve($matrix, $__roleKey, $s, $default) : $default;
+    };
+})();
+// A section's effective visibility for this account (default, or the owner's choice).
+$__navOn = function (string $flag, string $section) use ($__navFlags, $__navAccess): bool {
+    $default = !empty($__navFlags[$flag]);
+    return $__navAccess ? $__navAccess(['pages' => [$section]], $default) : $default;
+};
+$__navMessages = $__navOn('messages', 'messages.php');
+$__navInternal = $__navOn('internal', 'internal-messages.php');
+$__navBookings = $__navOn('bookings', 'submissions.php') || $__navOn('bookings', 'gantt.php');
 
 // Chip shown under the logo for non-owner accounts.
 $__roleBadge = $__isManager ? 'Manager' : ($__isReception ? 'Reception' : ($__isStorekeeper ? 'Storekeeper' : (is_staff() ? ucfirst((string)$__job) : '')));
 
-// ── Navigation (includes/admin-nav.php) ──────────────────────────────────
-// The flags above are handed to ONE definition that both the sidebar and the
-// page's tab strip are rendered from. Clocking in ships dark: the OWNER always
-// sees "Clock kiosks" (that page holds the switch); everyone else only once it
-// is on. Maya Ilai's rate tool: owner, or a manager scoped to Maya Ilai (venue 6).
-$__clockOn = clock_kiosk_enabled();
-$__navFlags = [
-    'owner' => $__isOwner, 'manager' => $__isManager, 'reception' => $__isReception,
-    'frontdesk' => $__navFrontdesk, 'concierge' => $__navConcierge, 'messages' => $__navMessages,
-    'internal' => $__navInternal, 'tasks' => $__navTasks, 'timetable' => $__navTimetable,
-    'gate' => $__navGate, 'mywork' => $__navMyWork, 'assistant' => $__navAssistant,
-    'aiSettings' => $__navAiSettings, 'aiGaps' => $__navAiGaps, 'bookings' => $__navBookings,
-    'reports' => $__navReports, 'pos' => $__navPos, 'posTill' => $__navPosTill,
-    'inventory' => $__navInventory, 'invOrders' => $__navInventory && inv_orders_supported(), 'count' => $__navCount,
-    'accounting' => $__navAccounting, 'acctDocs' => $__navAcctDocs, 'acctIc' => $__navAcctIc,
-    'restaurant' => $__isOwner || $__isManager || $__isReception,
-    'clockOn' => $__clockOn, 'clockNav' => $__clockOn || $__isOwner,
-    'mayaIlai' => $__isOwner || ($__isManager && in_array(6, admin_venue_ids() ?? [], true)),
-];
 $__navScript = basename((string)($_SERVER['SCRIPT_NAME'] ?? ''));
 // Unread counts shown on sidebar links and tabs. Each is only queried for an
 // account that can see the link. A no-reload page swap (?shell=1) redraws just
@@ -119,7 +87,8 @@ $__navStripBadges = ['messages.php' => ['messages', 'team'], 'internal-messages.
 $__shellFrag = admin_shell_requested();
 $__nav = admin_nav_resolve(
     admin_nav_definition($__navFlags, $__navBadges($__shellFrag ? ($__navStripBadges[$__navScript] ?? []) : null)),
-    $__navScript
+    $__navScript,
+    $__navAccess
 );
 $__navTabs = admin_nav_tabs_html($__nav, $__navScript);
 if ($__shellFrag) { ob_start(); echo $__navTabs; return; }
