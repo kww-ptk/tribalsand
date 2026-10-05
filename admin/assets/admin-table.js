@@ -73,8 +73,9 @@
           body.classList.remove('is-loading');
           reenhance(body);
           try {
-            if (push) history.pushState({ dt: 1 }, '', url);
-            else history.replaceState({ dt: 1 }, '', url);
+            var st = window.tsShellState ? window.tsShellState({ dt: 1 }) : { dt: 1 };
+            if (push) history.pushState(st, '', url);
+            else history.replaceState(st, '', url);
           } catch (e) { /* file:// or blocked — non-fatal */ }
         })
         .catch(function (err) {
@@ -120,7 +121,10 @@
   }
 
   // Back/forward: re-fetch the URL we're now on and sync the toolbar fields.
-  window.addEventListener('popstate', function () {
+  window.addEventListener('popstate', function (e) {
+    // Back/forward onto ANOTHER page is the shell's job (admin-nav.js) — re-fetching
+    // this table would only race the page swap.
+    if (window.tsCrossPagePop && window.tsCrossPagePop(e)) return;
     document.querySelectorAll('[data-dt][data-dt-enhanced]').forEach(function (root) {
       var body = root.querySelector('[data-dt-body]');
       var form = root.querySelector('[data-dt-toolbar]');
@@ -152,7 +156,10 @@
     if (t.closest('a, button, input, select, textarea, label')) return;
     var row = t.closest('tr[data-href]');
     if (!row) return;
-    window.location.href = row.getAttribute('data-href');
+    var href = row.getAttribute('data-href');
+    // No-reload page swap when the shell can load it; a real navigation otherwise.
+    if (window.tsShellGo && window.tsShellGo(href)) return;
+    window.location.href = href;
   });
 
   function init(root) {

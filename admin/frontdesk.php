@@ -231,10 +231,10 @@ include __DIR__ . '/_layout.php';
   document.querySelectorAll('.fd-card[data-href]').forEach(function (card) {
     card.addEventListener('click', function (e) {
       if (e.target.closest('a, button')) return;
-      window.location.href = card.getAttribute('data-href');
+      var h = card.getAttribute('data-href'); if (!(window.tsShellGo && window.tsShellGo(h))) window.location.href = h;
     });
     card.addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') { e.preventDefault(); window.location.href = card.getAttribute('data-href'); }
+      if (e.key === 'Enter') { e.preventDefault(); var h2 = card.getAttribute('data-href'); if (!(window.tsShellGo && window.tsShellGo(h2))) window.location.href = h2; }
     });
   });
 })();

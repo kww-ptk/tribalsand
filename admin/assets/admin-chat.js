@@ -13,7 +13,8 @@
 
   var intervalStarted = false;
 
-  function thread() { return document.getElementById('amThread'); }
+  // Team chat (admin-internal-chat.js) uses the same ids — only the guest inbox is ours.
+  function thread() { var el = document.getElementById('amThread'); return el && !/internal-messages/.test(el.dataset.pollUrl || '') ? el : null; }
 
   function lastId(el) { return parseInt(el.dataset.last || '0', 10) || 0; }
 

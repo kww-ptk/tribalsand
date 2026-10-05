@@ -150,6 +150,9 @@ The sidebar and the tab strips come from **`admin_nav_definition()` in `includes
 - **Tab strip look:** bold underline tabs, each with an icon, on a line across the page; the current one teal with a thick underline (`.areatabs` in `admin.css`). The icon is the one named after the tab's page (`admin_nav_tab_icon()`), else the item's. The line is an inset shadow and the tabs have no negative margin — the row scrolls sideways on a phone, and a scrolling box clips anything hanging below it (that hid the old underline).
 - **Sidebar look:** a group is a header row (icon · name · chevron — every titled group carries an `icon`) and its links sit indented under it along a vertical line (`.navgroup__items` has the `border-left`). Keep it to that one indent.
 
+### Admin navigation never reloads the page — the shell takes every admin link
+`admin/assets/admin-nav.js` swaps `.admin-content` (`?shell=1`) for **every** link to an admin page — sidebar, tab strips, links and `tr[data-href]` rows inside a page (`window.tsShellGo(href)`), GET filter forms and `this.form.submit()` auto-submits. Left to the browser (`shellableUrl()`): pages without the layout (`*-print`, `*-file`, `*-poll`, `*-action`, login/logout…), `export=`/`print=`/`download=` URLs, `target`/`download` links and `data-no-shell`. Its click/submit listeners sit on **window**, so a page script that claims its own links on `document` (calendar prev/next) always runs first. Swapped pages' `<script src>` files load and run in order — a script that keeps a poll loop or document listeners must guard against running twice (see `admin-internal-chat.js`). Every history entry carries `sh` (the shell page it belongs to): `tsCrossPagePop(e)` tells "another page" (shell re-swaps) from "same page" (workspace tab / data-table query) — stamp new `pushState` calls with `tsShellState({...})`. The guest inbox (`admin-chat.js`) and team chat (`admin-internal-chat.js`) share `#amThread`/`#amForm`; each acts only on its own thread (by `data-poll-url`).
+
 ### Admin tables — pagination, full height, unbroken row lines
 `admin/assets/admin-fit.js` (loaded by `admin/_layout.php` on every admin page) gives plain tables the same footer as the server-paginated `dt_*` lists and stretches the page's last table to the bottom of the window.
 - **Pagination is opt-in: `<table id="…" data-paginate="25">`.** The footer (count · 10 / 25 / 50 / All · page buttons) is built client-side; the per-page choice is remembered per page + table id in `localStorage`. Other pages' rows are hidden with the class **`pg-off`, never the `hidden` attribute** — `hidden` belongs to the page's own search/filter, and the pager pages through whatever the filter leaves. Hidden rows stay in the DOM, so a form still posts every row and drag-reorder still sends the full order. Lists that already paginate on the server (`dt_*`) must not get the attribute.
@@ -309,9 +312,9 @@ migration**, the table predates the editors. Helpers in **`includes/rates.php`**
   `rates_nightly_map()` call and slices per month in the view — `admin/rates.php` renders one
   per room, so a per-month call would make an 8-room property fire 24 queries. Its CSS is
   emitted once per page (`$GLOBALS['__rc_css_done']`) for the same reason.
-  **Prev/Next swap only the calendar**, via `admin/rate-calendar-frag.php` — the admin
-  shell only intercepts `a.sidebar__link` / `a[data-shell-link]`, so these links used to do
-  a full page load. They are still real URLs and the handler falls back to following them
+  **Prev/Next swap only the calendar**, via `admin/rate-calendar-frag.php` (its own
+  document-level handler claims them before the admin shell, which would otherwise swap the
+  whole page). They are still real URLs and the handler falls back to following them
   when the fetch fails (expired session, offline), so the calendar works with JS off. The
   fragment endpoint re-reads price and currency from the room and re-checks the room
   against `admin_venue_ids()` — the room id comes from the client and is never trusted. Both use the shared `js/datepicker.js` loaded by `admin/_layout.php`. **Range rows are
