@@ -255,7 +255,9 @@ $room_prices = rates_nightly_maps($room_defaults, $start_str, $end_str);
 
 $env         = parse_env();
 $site_url    = rtrim($env['SITE_URL'] ?? 'https://tribalsand.com', '/');
-$sync_secret = $env['ICAL_SYNC_SECRET'] ?? '';
+// Sync iCal runs under the staff session (admin/ical-feeds.php action=sync_now),
+// so the scheduler's secret never reaches the page. Shown once a feed exists.
+$has_ical_feeds = (bool) db_query('SELECT 1 FROM ical_feeds LIMIT 1')->fetchColumn();
 
 $pageTitle  = 'Availability Calendar';
 $activeMenu = 'gantt';
@@ -458,8 +460,8 @@ include __DIR__ . '/_layout.php';
     <a href="?offset=<?= $offset - 1 ?>" class="btn-outline btn-sm"><?= admin_icon('chevron-left', 15) ?> Prev</a>
     <a href="/admin/gantt.php"            class="btn-outline btn-sm">Today</a>
     <a href="?offset=<?= $offset + 1 ?>" class="btn-outline btn-sm">Next <?= admin_icon('chevron-right', 15) ?></a>
-    <?php if ($sync_secret): ?>
-    <button class="btn-primary btn-sm" id="syncBtn"><?= admin_icon('rotate', 15) ?> Sync iCal</button>
+    <?php if ($has_ical_feeds): ?>
+    <button class="btn-primary btn-sm" id="syncBtn" data-csrf="<?= e(csrf_token()) ?>"><?= admin_icon('rotate', 15) ?> Sync iCal</button>
     <?php endif; ?>
   </div>
 </div>
@@ -1278,15 +1280,19 @@ if (syncBtn) {
   syncBtn.addEventListener('click', () => {
     syncBtn.disabled = true;
     syncBtn.textContent = 'Syncing…';
-    fetch('/api/sync-ical.php', { method: 'POST', headers: { 'Authorization': 'Bearer <?= e($sync_secret) ?>' } })
-      .then(r => r.json())
+    const fd = new FormData();
+    fd.append('action', 'sync_now');
+    fd.append('csrf_token', syncBtn.dataset.csrf);
+    fetch('/admin/ical-feeds.php', { method: 'POST', body: fd, credentials: 'same-origin' })
+      .then(r => { if (!r.ok) throw new Error(r.status); return r.json(); })
       .then(data => {
-        const total = (data.feeds||[]).reduce((s,f) => s + (f.imported||0), 0);
+        const total = (data.imported||0) + (data.removed||0) + (data.moved||0);
         const say = window.tsToast || function () {};
-        say('Sync finished — ' + total + ' new ' + (total === 1 ? 'block' : 'blocks') + ' imported.', 'ok');
+        say('Sync finished — ' + (data.imported||0) + ' added' + (data.removed ? ', ' + data.removed + ' cleared (cancelled)' : '')
+          + (data.errors ? '. ' + data.errors + ' feed(s) could not be read — see iCal feeds.' : '.'), data.errors ? 'err' : 'ok');
         if (total > 0) { if (!(window.tsShellGo && window.tsShellGo(location.pathname + location.search))) location.reload(); }
       })
-      .catch(() => { if (window.tsToast) window.tsToast('Sync failed. Check ICAL_SYNC_SECRET on the server.', 'err'); })
+      .catch(() => { if (window.tsToast) window.tsToast('Sync failed — please try again.', 'err'); })
       .finally(() => { syncBtn.disabled = false; syncBtn.textContent = '⟳ Sync iCal'; });
   });
 }

@@ -1,6 +1,11 @@
 <?php
+/**
+ * Outbound iCal feed for ONE unit — the link pasted into Airbnb / Booking.com /
+ * VRBO / Expedia so they close the dates we can't sell. Copied from Admin →
+ * Bookings → iCal feeds. Authenticated by the unit's random feed_token.
+ */
 declare(strict_types=1);
-require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/ical-sync.php';   // ical_export_blocks() (loads db.php)
 
 $unit_id = (int)($_GET['unit']  ?? 0);
 $token   = trim($_GET['token'] ?? '');
@@ -24,62 +29,48 @@ if (!$unit) {
     exit('Invalid token or unit not found.');
 }
 
-// All confirmed/blocked blocks for this unit (future-only)
-$blocks = db_query(
-    "SELECT ab.id, ab.date_from, ab.date_to, ab.block_type, ab.notes,
-            h.guest_name
-     FROM availability_blocks ab
-     LEFT JOIN holds h ON h.id = ab.hold_id
-     WHERE ab.unit_id = :uid
-       AND ab.date_to > CURRENT_DATE
-       AND ab.block_type IN ('booked','blocked')
-     ORDER BY ab.date_from ASC",
-    [':uid' => $unit_id]
-)->fetchAll();
+// Everything that makes this unit unavailable: our bookings + 24h holds +
+// closures + other channels' imported bookings + the buyout rule
+// (ical_export_blocks()). Each range goes out as an anonymous "Not available":
+// guest names and staff notes never leave our system.
+$blocks = ical_export_blocks($unit_id);
 
-$env      = parse_env();
-$site_url = rtrim($env['SITE_URL'] ?? 'https://sevenislandswatamu.com', '/');
 $now_utc  = gmdate('Ymd\THis\Z');
-$cal_name = $unit['room_name'] . ' — ' . $unit['name'];
+$cal_name = 'Tribal Sand — ' . $unit['room_name'] . ' — ' . $unit['name'];
 
 header('Content-Type: text/calendar; charset=UTF-8');
-header('Content-Disposition: attachment; filename="7islands-unit-' . $unit_id . '.ics"');
+header('Content-Disposition: inline; filename="tribalsand-unit-' . $unit_id . '.ics"');
 header('Cache-Control: no-cache');
 
-echo "BEGIN:VCALENDAR\r\n";
-echo "VERSION:2.0\r\n";
-echo "PRODID:-//Seven Islands Resort//Availability//EN\r\n";
-echo "CALSCALE:GREGORIAN\r\n";
-echo "METHOD:PUBLISH\r\n";
-echo "X-WR-CALNAME:" . ical_escape($cal_name) . "\r\n";
-echo "X-WR-TIMEZONE:Africa/Nairobi\r\n";
-echo "X-WR-CALDESC:Availability feed for " . ical_escape($cal_name) . "\r\n";
+$out = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Tribal Sand//Availability//EN',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'X-WR-CALNAME:' . ical_escape($cal_name),
+    'X-WR-TIMEZONE:Africa/Nairobi',
+];
 
 foreach ($blocks as $block) {
-    $uid     = 'block-' . $block['id'] . '-u' . $unit_id . '@sevenislandswatamu.com';
-    $dtstart = str_replace('-', '', $block['date_from']);
-    $dtend   = str_replace('-', '', $block['date_to']);
-
-    if ($block['block_type'] === 'booked') {
-        $summary = !empty($block['guest_name'])
-            ? 'Booked — ' . $block['guest_name']
-            : 'Booked';
-    } else {
-        $summary = !empty($block['notes']) ? $block['notes'] : 'Blocked';
-    }
-
-    echo "BEGIN:VEVENT\r\n";
-    echo "UID:{$uid}\r\n";
-    echo "DTSTAMP:{$now_utc}\r\n";
-    echo "DTSTART;VALUE=DATE:{$dtstart}\r\n";
-    echo "DTEND;VALUE=DATE:{$dtend}\r\n";
-    echo "SUMMARY:" . ical_escape($summary) . "\r\n";
-    echo "TRANSP:OPAQUE\r\n";
-    echo "END:VEVENT\r\n";
+    $dtstart = str_replace('-', '', (string) $block['date_from']);
+    $dtend   = str_replace('-', '', (string) $block['date_to']);
+    // Stable for the same range, so an OTA updates rather than duplicates.
+    $out[] = 'BEGIN:VEVENT';
+    $out[] = 'UID:ts-u' . $unit_id . '-' . $dtstart . '-' . $dtend . '@tribalsand.com';
+    $out[] = 'DTSTAMP:' . $now_utc;
+    $out[] = 'DTSTART;VALUE=DATE:' . $dtstart;
+    $out[] = 'DTEND;VALUE=DATE:' . $dtend;
+    $out[] = 'SUMMARY:Not available';
+    $out[] = 'TRANSP:OPAQUE';
+    $out[] = 'END:VEVENT';
 }
 
-echo "END:VCALENDAR\r\n";
+$out[] = 'END:VCALENDAR';
+echo implode("\r\n", $out) . "\r\n";
 
 function ical_escape(string $str): string {
-    return str_replace(["\r\n", "\n", "\r", ',', ';', '\\'], ['\\n', '\\n', '\\n', '\\,', '\\;', '\\\\'], $str);
+    // Backslash first, or the escapes added below would be doubled.
+    $str = str_replace('\\', '\\\\', $str);
+    return str_replace(["\r\n", "\n", "\r", ',', ';'], ['\\n', '\\n', '\\n', '\\,', '\\;'], $str);
 }
