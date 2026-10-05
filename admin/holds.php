@@ -360,12 +360,14 @@ include __DIR__ . '/_layout.php';
 <div class="page-header">
   <h1>Holds &amp; Bookings</h1>
   <div class="actions">
-    <a href="/admin/hold-new.php" class="btn-primary btn-sm">+ New Booking</a>
+    <a href="/admin/holds.php?new=1" class="btn-primary btn-sm" data-hn-open data-no-shell><?= admin_icon('plus', 15) ?> New booking</a>
   </div>
 </div>
 
 <?php if ($success): ?><div class="alert alert--success"><?= e($success) ?></div><?php endif; ?>
 <?php if ($error):   ?><div class="alert alert--error"><?= e($error) ?></div><?php endif; ?>
+
+<?php require __DIR__ . '/../includes/hold-new-form.php'; // inline "New booking" form, above the cards ?>
 
 <!-- KPIs -->
 <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr)">
