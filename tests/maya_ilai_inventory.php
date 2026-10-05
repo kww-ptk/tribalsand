@@ -1545,7 +1545,7 @@ try {
         && ($gp = strpos($createSrc, 'staff_hold_block_reason')) !== false
         && ($gi = strpos($createSrc, 'INSERT INTO availability_blocks')) !== false
         && $gp < $gi);
-    $updateSrc = $handler($ganttSrc, "\$action === 'update_block'", "\$action === 'add_ical_feed'");
+    $updateSrc = $handler($ganttSrc, "\$action === 'update_block'", 'iCal feed add/remove moved');
     check('gantt bypass: update_block no longer writes its own unguarded UPDATE',
         $updateSrc !== ''
         && strpos($updateSrc, 'gantt_block_move') !== false
