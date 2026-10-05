@@ -69,7 +69,9 @@ $result = chat_with_tools($system, $messages, $tools, $runTool);
 if (!($result['ok'] ?? false)) {
     // A model/service failure — 502 so the client can show a soft error, not a crash.
     http_response_code(502);
-    exit(json_encode(['ok' => false, 'error' => $result['error'] ?? 'The assistant could not answer just now.']));
+    $err = $result['error'] ?? 'The assistant could not answer just now.';
+    if (is_owner() && !empty($result['reason'])) $err .= ' ' . $result['reason'];   // the owner can fix it
+    exit(json_encode(['ok' => false, 'error' => $err]));
 }
 
 // Surface the last availability/quote result so the UI can render a structured

@@ -65,7 +65,9 @@
 
   // Turns sent back to the model for context (plain text only).
   function apiHistory() {
-    return thread.filter(function (e) { return e.role; })
+    // A question that got no answer is not context — re-sending it would stack
+    // the same question on every retry.
+    return thread.filter(function (e) { return e.role && !e.failed; })
       .map(function (e) { return { role: e.role === 'ai' ? 'assistant' : 'user', text: e.text }; })
       .slice(-10);
   }
@@ -190,7 +192,9 @@
 
     var hist = apiHistory();               // context BEFORE adding this turn
     paintBubble('user', text);
-    thread.push({ role: 'user', text: text }); persist();
+    var turn = { role: 'user', text: text };
+    thread.push(turn); persist();
+    function failed(msg) { turn.failed = true; persist(); paintBubble('err', msg); }
     remember(text);
     input.value = '';
     autosize();
@@ -214,7 +218,7 @@
       .then(function (r) {
         typingRow.remove();
         var b = r.body || {};
-        if (!b.ok) { paintBubble('err', b.error || 'The assistant could not answer just now.'); return; }
+        if (!b.ok) { failed(b.error || 'The assistant could not answer just now.'); return; }
         var answer = b.answer || '(no answer)';
         paintBubble('ai', answer);
         thread.push({ role: 'ai', text: answer });
@@ -222,7 +226,7 @@
         persist();
         showFollow(true);
       })
-      .catch(function () { typingRow.remove(); paintBubble('err', 'Network error — please try again.'); })
+      .catch(function () { typingRow.remove(); failed('Network error — please try again.'); })
       .finally(function () { setBusy(false); input.focus(); });
   }
 

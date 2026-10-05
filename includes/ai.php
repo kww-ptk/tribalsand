@@ -78,6 +78,27 @@ function ai_assistant_supported(): bool {
 }
 
 /**
+ * Why the provider refused, in plain words, for the OWNER (never a guest): the
+ * generic "temporarily unavailable" hides a revoked key and an empty balance
+ * alike, and those are fixed in different places. Pure.
+ */
+function ai_error_reason(int $code, string $msg): string {
+    $m = strtolower($msg);
+    if ($code === 401 || str_contains($m, 'api key') || str_contains($m, 'x-api-key')) {
+        return 'The AI key was rejected (HTTP ' . $code . '). Check the AI_API_KEY / ' . (ai_provider() === 'openai' ? 'OPENAI_API_KEY' : 'ANTHROPIC_API_KEY') . ' set on the server — it may have been rotated or revoked.';
+    }
+    if (str_contains($m, 'credit') || str_contains($m, 'billing') || str_contains($m, 'quota')) {
+        return 'The AI account is out of credit (HTTP ' . $code . '). Top up the balance with the AI provider.';
+    }
+    if ($code === 404 || str_contains($m, 'model')) {
+        return 'The AI model "' . ai_model() . '" was not accepted (HTTP ' . $code . '). Set AI_MODEL to a current model id.';
+    }
+    if ($code === 429) return 'The AI provider is rate-limiting us (HTTP 429). Try again in a minute.';
+    if ($code >= 500)  return 'The AI provider is having an outage (HTTP ' . $code . '). Try again shortly.';
+    return 'The AI provider refused the request (HTTP ' . $code . '): ' . mb_substr($msg, 0, 200);
+}
+
+/**
  * Run an agentic tool-use loop and return the model's final answer.
  *
  * @param string   $system      System prompt (instructions + guardrails).
@@ -157,7 +178,7 @@ function ai_claude_loop(string $system, array $messages, array $tools, callable 
         }
         $resp = ai_claude_request($payload);
         if (!($resp['ok'] ?? false)) {
-            return ['ok' => false, 'error' => $resp['error'] ?? 'The assistant service is unavailable.'];
+            return ['ok' => false, 'error' => $resp['error'] ?? 'The assistant service is unavailable.', 'reason' => $resp['reason'] ?? null];
         }
         $body    = $resp['data'];
         $content = $body['content'] ?? [];
@@ -244,7 +265,8 @@ function ai_claude_request(array $payload): array {
         $msg = $data['error']['message'] ?? ('HTTP ' . $code);
         error_log('[ai] Anthropic API error ' . $code . ': ' . $msg);
         // Don't leak the raw provider message to the UI; keep it in the log.
-        return ['ok' => false, 'error' => 'The assistant service is temporarily unavailable.'];
+        // `reason` is a plain-words cause the staff endpoint shows the owner only.
+        return ['ok' => false, 'error' => 'The assistant service is temporarily unavailable.', 'reason' => ai_error_reason($code, (string)$msg)];
     }
     return ['ok' => true, 'data' => $data];
 }
@@ -289,7 +311,7 @@ function ai_openai_loop(string $system, array $messages, array $tools, callable 
             'tool_choice' => 'auto',
         ]);
         if (!($resp['ok'] ?? false)) {
-            return ['ok' => false, 'error' => $resp['error'] ?? 'The assistant service is unavailable.'];
+            return ['ok' => false, 'error' => $resp['error'] ?? 'The assistant service is unavailable.', 'reason' => $resp['reason'] ?? null];
         }
         $choice  = $resp['data']['choices'][0] ?? [];
         $message = $choice['message'] ?? [];
@@ -346,7 +368,7 @@ function ai_openai_request(array $payload): array {
     if ($code >= 300) {
         $msg = $data['error']['message'] ?? ('HTTP ' . $code);
         error_log('[ai] OpenAI API error ' . $code . ': ' . $msg);
-        return ['ok' => false, 'error' => 'The assistant service is temporarily unavailable.'];
+        return ['ok' => false, 'error' => 'The assistant service is temporarily unavailable.', 'reason' => ai_error_reason($code, (string)$msg)];
     }
     return ['ok' => true, 'data' => $data];
 }

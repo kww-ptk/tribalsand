@@ -144,5 +144,24 @@ check('sidebar: a link lists every page it stands for', str_contains(admin_nav_s
 check('sidebar: Open till opens in a new tab', str_contains(admin_nav_sidebar_html($nav('shop')), 'href="/pos/" class="sidebar__link" target="_blank"'));
 check('sidebar: the active group opens even when it is closed by default', str_contains(admin_nav_sidebar_html($nav('owner', 'sync.php')), 'data-group="settings" open'));
 
+// ── Ctrl+K page search: built from the resolved nav, so it never offers a hidden page ──
+$hrefsOf = fn(array $n): array => array_merge(...array_map(fn($g) => array_merge(...array_map(
+    fn($it) => $it['tabs'] ? array_column($it['tabs'], 'href') : [$it['href']], $g['items'])), $n['groups']));
+foreach (array_keys($roles) as $r) {
+    $ix = admin_nav_search_index($nav($r));
+    check("search ({$r}): one entry per visible page/tab, nothing more", array_column($ix['items'], 'h') === $hrefsOf($nav($r)));
+}
+$own = admin_nav_search_index($nav('owner'));
+$byT = array_column($own['items'], null, 't');
+check('search: a tab reads "Item · Tab" and names its group', ($byT['Calendar · Conflicts']['g'] ?? '') === 'Bookings');
+check('search: the Dashboard sits under Home', ($byT['Dashboard']['g'] ?? '') === 'Home');
+check('search: keywords carry the file name and extra words', str_contains($byT['Calendar']['k'] ?? '', 'gantt') && str_contains($byT['Calendar']['k'] ?? '', 'availability'));
+check('search: every icon used is shipped once', !array_diff(array_unique(array_column($own['items'], 'i')), array_keys($own['icons'])));
+check('search: Open till keeps its new tab', !empty(array_column(admin_nav_search_index($nav('shop'))['items'], null, 't')['Open till']['b']));
+$sh = admin_nav_search_index($nav('housekeeping'));
+check('search: housekeeping is not offered Rates or Settings', !array_filter($sh['items'], fn($i) => str_contains($i['h'], 'rates.php') || str_contains($i['h'], 'settings.php')));
+$html = admin_nav_search_html($nav('owner'));
+check('search: the index JSON cannot break out of its script tag', substr_count($html, '</script>') === 1 && str_ends_with($html, '</script>'));
+
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);
