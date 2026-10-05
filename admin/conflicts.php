@@ -6,6 +6,7 @@ require_once __DIR__ . '/../includes/mail.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/admin-pagination.php';
 require_once __DIR__ . '/../includes/staff-hold-guard.php';   // staff_hold_block_reason()
+require_once __DIR__ . '/../includes/ical-sync.php';         // ical_tracking_supported()
 
 /**
  * Apply a "keep OTA" resolution: cancel the conflicting hold, block the dates
@@ -91,13 +92,18 @@ function conflict_keep_ota_apply(array $conflict, ?array $hold, ?int $adminId, s
             );
         }
 
+        // Tag the block with the feed (UID unknown here): the next sync adopts it,
+        // so a later cancellation on the OTA frees these dates again.
+        $feedId = ical_tracking_supported() && !empty($conflict['ical_feed_id']) ? (int) $conflict['ical_feed_id'] : null;
         db_query(
-            "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, notes)
-             VALUES (:uid, :df, :dt, 'blocked', :notes)",
+            "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, notes"
+                . ($feedId !== null ? ', ical_feed_id' : '') . ")
+             VALUES (:uid, :df, :dt, 'blocked', :notes" . ($feedId !== null ? ', :fid' : '') . ")",
             [':uid'   => $unitId,
              ':df'    => $from,
              ':dt'    => $to,
              ':notes' => 'iCal (conflict resolved): ' . mb_substr((string) $conflict['ota_summary'], 0, 200)]
+            + ($feedId !== null ? [':fid' => $feedId] : [])
         );
 
         db_query(

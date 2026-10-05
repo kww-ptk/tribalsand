@@ -40,10 +40,12 @@ log "scheduler started"
   done
 ) &
 
-# ── Job 2: OTA iCal import hourly + FX rates daily ──────────────────────────
+# ── Job 2: OTA iCal import every 15 min + FX rates daily ─────────────────────
 # The iCal import is the one that actually matters for availability: it pulls
 # Airbnb/Booking.com blocks into availability_blocks so those channels' bookings
-# block the direct site (prevents double-booking). FX is display-only.
+# block the direct site (prevents double-booking), and clears them when they are
+# cancelled there. Every 15 min keeps the double-booking window short; the OTAs
+# read OUR feed on their own (slower) schedule. FX is display-only.
 (
   fx_counter=0   # 0 → run FX on the first pass (refresh rates on deploy)
   while true; do
@@ -51,7 +53,7 @@ log "scheduler started"
     # 301-redirects *.php → the clean path, and these curls intentionally do NOT
     # follow redirects, so hitting .php would stop at the 301 and never sync.
     if [ -n "${ICAL_SYNC_SECRET:-}" ]; then
-      curl -fsS --max-time 90 "$BASE/api/sync-ical?secret=$ICAL_SYNC_SECRET" >> "$LOG" 2>&1 \
+      curl -fsS --max-time 300 "$BASE/api/sync-ical?secret=$ICAL_SYNC_SECRET" >> "$LOG" 2>&1 \
         || log "ical sync failed"
     else
       log "ICAL_SYNC_SECRET not set — skipping iCal import"
@@ -62,11 +64,11 @@ log "scheduler started"
         curl -fsS --max-time 60 "$BASE/api/fx-sync?secret=$FX_SYNC_SECRET" >> "$LOG" 2>&1 \
           || log "fx sync failed"
       fi
-      fx_counter=24   # ~once per 24 hourly cycles
+      fx_counter=96   # ~once per 96 fifteen-minute cycles = daily
     fi
     fx_counter=$((fx_counter - 1))
 
-    sleep 3600
+    sleep 900
   done
 ) &
 
