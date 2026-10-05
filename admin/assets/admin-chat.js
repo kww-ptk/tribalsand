@@ -13,7 +13,8 @@
 
   var intervalStarted = false;
 
-  function thread() { return document.getElementById('amThread'); }
+  // Team chat (admin-internal-chat.js) uses the same ids — only the guest inbox is ours.
+  function thread() { var el = document.getElementById('amThread'); return el && !/internal-messages/.test(el.dataset.pollUrl || '') ? el : null; }
 
   function lastId(el) { return parseInt(el.dataset.last || '0', 10) || 0; }
 
@@ -34,6 +35,7 @@
     var mine = m.sender === 'admin';
     var empty = el.querySelector('.am-empty');
     if (empty) empty.style.display = 'none';
+    window.tsChatDay(el);
     var bubble = document.createElement('div');
     bubble.className = 'am-msg ' + (mine ? 'am-msg--staff' : 'am-msg--guest');
     if (m.id) bubble.setAttribute('data-mid', m.id);
@@ -116,6 +118,59 @@
   }
 
   window.tsChatInit = init;
+
+  // A live message lands today: make sure the thread's last day separator says so
+  // (server-rendered threads group bubbles under .am-day labels). Shared with
+  // admin-internal-chat.js.
+  window.tsChatDay = function (el) {
+    var days = el.querySelectorAll('.am-day');
+    var last = days.length ? days[days.length - 1] : null;
+    if (last && last.textContent === 'Today') return;
+    var d = document.createElement('div');
+    d.className = 'am-day';
+    d.textContent = 'Today';
+    el.appendChild(d);
+  };
+
+  // ── Composer behaviour for every chat (.mx-composer): bound once, delegated, so
+  // it survives no-reload page swaps. Enter sends, Shift+Enter is a new line, the
+  // box grows with its text, quick-reply chips drop their text in.
+  if (!window.__mxComposerBound) {
+    window.__mxComposerBound = true;
+    var grow = function (ta) { ta.style.height = 'auto'; ta.style.height = Math.min(ta.scrollHeight + 2, 160) + 'px'; };
+    document.addEventListener('keydown', function (e) {
+      var ta = e.target;
+      if (!ta || ta.tagName !== 'TEXTAREA' || !ta.closest('.mx-composer')) return;
+      if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+        e.preventDefault();
+        if (ta.value.trim() === '') return;
+        var f = ta.form;
+        if (f.requestSubmit) f.requestSubmit(); else f.dispatchEvent(new Event('submit', { cancelable: true }));
+        setTimeout(function () { grow(ta); }, 0);
+      }
+    });
+    document.addEventListener('input', function (e) {
+      var ta = e.target;
+      if (ta && ta.tagName === 'TEXTAREA' && ta.closest('.mx-composer')) grow(ta);
+      // Team chat's "Find a channel" box filters the list in place.
+      if (ta && ta.hasAttribute && ta.hasAttribute('data-mx-filter')) {
+        var q = ta.value.trim().toLowerCase(), pane = ta.closest('.mx-pane');
+        pane.querySelectorAll('.mx-item[data-mx-name]').forEach(function (it) {
+          it.hidden = q !== '' && it.getAttribute('data-mx-name').indexOf(q) < 0;
+        });
+      }
+    });
+    document.addEventListener('click', function (e) {
+      var b = e.target.closest && e.target.closest('[data-mx-quick]');
+      if (!b) return;
+      var f = b.closest('form'), ta = f && f.querySelector('textarea');
+      if (!ta) return;
+      var t = b.getAttribute('data-mx-quick');
+      ta.value = ta.value.trim() ? ta.value.replace(/\s*$/, ' ') + t : t;
+      grow(ta);
+      ta.focus();
+    });
+  }
 
   if (document.readyState !== 'loading') init();
   else document.addEventListener('DOMContentLoaded', init);

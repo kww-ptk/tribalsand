@@ -485,13 +485,15 @@ function room_inventory_room_id(array $room): int {
 
 /**
  * Every active Room—Unit pair, for the "convert to hold" dropdown.
- * Returns rows: unit_id, unit_name, room_id, room_name (ordered by room then unit).
+ * Returns rows: unit_id, unit_name, room_id, room_name, venue_id, venue_name (ordered by room then unit).
  */
 function fetch_room_unit_options(): array {
     return db_query(
-        "SELECT u.id AS unit_id, u.name AS unit_name, r.id AS room_id, r.name AS room_name, r.venue_id AS venue_id
+        "SELECT u.id AS unit_id, u.name AS unit_name, r.id AS room_id, r.name AS room_name, r.venue_id AS venue_id,
+                v.name AS venue_name
          FROM units u
          JOIN rooms r ON r.id = u.room_id
+         LEFT JOIN venues v ON v.id = r.venue_id
          WHERE u.is_active = TRUE
          ORDER BY r.sort_order ASC, r.name ASC, u.sort_order ASC"
     )->fetchAll();

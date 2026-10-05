@@ -5,9 +5,13 @@
  */
 (function () {
   'use strict';
+  // A no-reload page swap re-runs this file each visit: keep ONE poll loop and
+  // just re-bind the freshly swapped thread.
+  if (window.tsInternalChatInit) { window.tsInternalChatInit(); return; }
 
   var intervalStarted = false;
-  function thread() { return document.getElementById('amThread'); }
+  // The guest inbox (admin-chat.js) uses the same ids — only team chat is ours.
+  function thread() { var el = document.getElementById('amThread'); return el && /internal-messages/.test(el.dataset.pollUrl || '') ? el : null; }
   function lastId(el) { return parseInt(el.dataset.last || '0', 10) || 0; }
 
   function atBottom(el) {
@@ -25,6 +29,7 @@
     if (m.id && el.querySelector('[data-mid="' + m.id + '"]')) return; // dedupe
     var empty = el.querySelector('.am-empty');
     if (empty) empty.style.display = 'none';
+    if (window.tsChatDay) window.tsChatDay(el);
     var bubble = document.createElement('div');
     bubble.className = 'am-msg ' + (m.mine ? 'am-msg--staff' : 'am-msg--guest');
     if (m.id) bubble.setAttribute('data-mid', m.id);

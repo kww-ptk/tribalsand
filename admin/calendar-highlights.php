@@ -95,7 +95,12 @@ include __DIR__ . '/_layout.php';
 ?>
 <div class="page-header">
   <h1>Calendar highlights</h1>
-  <a href="/admin/gantt.php" class="btn-outline btn-sm"><?= admin_icon('calendar', 15) ?> Open calendar</a>
+  <div class="actions">
+    <a href="/admin/gantt.php" class="btn-outline btn-sm"><?= admin_icon('calendar', 15) ?> Open calendar</a>
+    <?php if ($supported && !$isEdit): ?>
+    <button type="button" class="btn-primary btn-sm" id="chlAddBtn" aria-controls="form" aria-expanded="<?= $errs ? 'true' : 'false' ?>"><?= admin_icon('plus', 15) ?> Add highlight</button>
+    <?php endif; ?>
+  </div>
 </div>
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?> is-flash"><?= e($flash['msg']) ?></div><?php endif; ?>
 
@@ -103,12 +108,18 @@ include __DIR__ . '/_layout.php';
   <div class="alert alert--info">Run the <code>add_calendar_highlights.sql</code> migration (Admin → Migrations) to add your own highlights. Kenyan public holidays already show on the calendars automatically.</div>
 <?php else: ?>
 
-<p class="text-muted" style="margin:-6px 0 16px;font-size:13px;max-width:760px">Mark any dates on the team calendars — school holidays, Easter week, an event, peak season. They show on the <strong>Calendar</strong> and <strong>Timetable</strong> next to the Kenyan public holidays, which are added automatically.</p>
+<p class="text-muted" style="margin:-6px 0 14px;font-size:13px;max-width:760px">Mark any dates on the team calendars — school holidays, Easter week, an event, peak season. They show on the <strong>Calendar</strong> and <strong>Timetable</strong> next to the Kenyan public holidays, which are added automatically.</p>
 
-<div class="chl-grid">
-  <!-- Add / edit -->
-  <div class="card" id="form">
-    <div class="card__head"><span class="card__title"><?= $isEdit ? 'Edit highlight' : 'Add a highlight' ?></span></div>
+<!-- Add / edit — closed until "Add highlight" is pressed; open when editing or when a save was refused. -->
+<div class="card chl-formcard" id="form"<?= ($isEdit || $errs) ? '' : ' hidden' ?>>
+    <div class="card__head" style="display:flex;justify-content:space-between;align-items:center">
+      <span class="card__title"><?= $isEdit ? 'Edit highlight' : 'Add a highlight' ?></span>
+      <?php if ($isEdit): ?>
+      <a href="/admin/calendar-highlights.php" class="btn-icon btn-icon--outline" data-tip="Close" aria-label="Close"><?= admin_icon('x') ?></a>
+      <?php else: ?>
+      <button type="button" class="btn-icon btn-icon--outline" id="chlClose" data-tip="Close" aria-label="Close"><?= admin_icon('x') ?></button>
+      <?php endif; ?>
+    </div>
     <div class="card__body" style="padding:18px">
       <?php if (!empty($errs['_'])): ?><div class="alert alert--error"><?= e($errs['_']) ?></div><?php endif; ?>
       <form method="POST" action="/admin/calendar-highlights.php" class="chl-form" novalidate>
@@ -116,12 +127,11 @@ include __DIR__ . '/_layout.php';
         <input type="hidden" name="action" value="save">
         <input type="hidden" name="id" value="<?= (int)$form['id'] ?>">
 
-        <div class="field"><label for="chlLabel">Name</label>
-          <input id="chlLabel" name="label" class="inp<?= isset($errs['label']) ? ' is-invalid' : '' ?>" maxlength="120" value="<?= e((string)$form['label']) ?>" placeholder="e.g. Kenya school holiday" style="width:100%" required>
-          <?php if (isset($errs['label'])): ?><div class="field-error"><?= e($errs['label']) ?></div><?php endif; ?>
-        </div>
-
         <div class="chl-dates">
+          <div class="field"><label for="chlLabel">Name</label>
+            <input id="chlLabel" name="label" class="inp<?= isset($errs['label']) ? ' is-invalid' : '' ?>" maxlength="120" value="<?= e((string)$form['label']) ?>" placeholder="e.g. Kenya school holiday" style="width:100%" required>
+            <?php if (isset($errs['label'])): ?><div class="field-error"><?= e($errs['label']) ?></div><?php endif; ?>
+          </div>
           <div class="field"><label>First day</label>
             <button type="button" class="dp-btn" data-dp-target="chlFrom" data-dp-past data-dp-placeholder="First day" style="width:100%"><?= $form['date_from'] ? e(date('j M Y', strtotime((string)$form['date_from']))) : 'First day' ?></button>
             <input type="hidden" id="chlFrom" name="date_from" value="<?= e((string)$form['date_from']) ?>">
@@ -134,6 +144,7 @@ include __DIR__ . '/_layout.php';
           </div>
         </div>
 
+        <div class="chl-dates chl-dates--2">
         <div class="field"><label>Colour on the calendar</label>
           <div class="chl-colors">
             <?php foreach (cal_highlight_colors() as $ck => $cn): ?>
@@ -146,22 +157,24 @@ include __DIR__ . '/_layout.php';
         <div class="field"><label for="chlNote">Note <span class="text-muted">(optional)</span></label>
           <input id="chlNote" name="note" class="inp" maxlength="500" value="<?= e((string)$form['note']) ?>" placeholder="Shown in the list, e.g. “Expect family bookings”" style="width:100%">
         </div>
+        </div>
 
         <div class="chl-actions">
           <button type="submit" class="btn-primary btn-sm"><?= $isEdit ? 'Save changes' : 'Add highlight' ?></button>
-          <?php if ($isEdit): ?><a href="/admin/calendar-highlights.php" class="btn-outline btn-sm">Cancel</a><?php endif; ?>
+          <?php if ($isEdit): ?><a href="/admin/calendar-highlights.php" class="btn-outline btn-sm">Cancel</a><?php else: ?><button type="button" class="btn-outline btn-sm" data-chl-cancel>Cancel</button><?php endif; ?>
         </div>
       </form>
     </div>
-  </div>
+</div>
 
+<div class="chl-grid">
   <!-- Lists -->
   <div class="chl-col">
     <div class="card">
       <div class="card__head"><span class="card__title">Current &amp; upcoming</span></div>
       <div class="card__body" style="padding:<?= $upcoming ? '0' : '18px' ?>">
         <?php if (!$upcoming): ?>
-          <p class="text-muted" style="font-size:13px;margin:0">Nothing coming up. Add your first highlight on the left.</p>
+          <p class="text-muted" style="font-size:13px;margin:0">Nothing coming up. Press <strong>Add highlight</strong> to mark your first dates.</p>
         <?php else: ?>
           <ul class="chl-list"><?php foreach ($upcoming as $h) calhl_row($h); ?></ul>
         <?php endif; ?>
@@ -175,6 +188,8 @@ include __DIR__ . '/_layout.php';
     </details>
     <?php endif; ?>
 
+  </div>
+  <div class="chl-col">
     <div class="card">
       <div class="card__head"><span class="card__title">Kenyan public holidays <?= $year ?> <span class="text-muted" style="font-weight:400;font-size:12px">· automatic</span></span></div>
       <div class="card__body" style="padding:0">
@@ -193,14 +208,17 @@ include __DIR__ . '/_layout.php';
 <?php endif; ?>
 
 <style>
-.chl-grid{display:grid;grid-template-columns:minmax(300px,420px) 1fr;gap:16px;align-items:start}
+.chl-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:16px;align-items:start}
+.chl-formcard{margin:0 0 16px}
+.chl-formcard[hidden]{display:none}
 @media (max-width:900px){.chl-grid{grid-template-columns:1fr}}
 .chl-col{display:flex;flex-direction:column;gap:16px}
 .chl-form{display:flex;flex-direction:column;gap:14px}
 .chl-form .field > label{display:block;font-size:12px;color:var(--muted,#6b7280);margin-bottom:4px}
 .chl-form .optchip{cursor:pointer}
-.chl-dates{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-@media (max-width:420px){.chl-dates{grid-template-columns:1fr}}
+.chl-dates{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr) minmax(0,1fr);gap:12px;align-items:start}
+.chl-dates--2{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+@media (max-width:760px){.chl-dates,.chl-dates--2{grid-template-columns:1fr}}
 .chl-colors{display:flex;flex-wrap:wrap;gap:6px}
 .chl-actions{display:flex;gap:8px}
 .field-error{color:var(--red,#b42318);font-size:12px;margin-top:4px}
@@ -225,4 +243,20 @@ include __DIR__ . '/_layout.php';
 .chl-past[open] summary svg{transform:rotate(180deg)}
 </style>
 
+<script>
+(function () {
+  var card = document.getElementById('form');
+  var btn = document.getElementById('chlAddBtn');
+  if (!card || !btn) return;
+  function show(open) {
+    card.hidden = !open;
+    btn.setAttribute('aria-expanded', open ? 'true' : 'false');
+    btn.style.display = open ? "none" : "";
+    if (open) { var f = document.getElementById('chlLabel'); if (f) f.focus(); }
+  }
+  btn.style.display = card.hidden ? "" : "none";
+  btn.addEventListener('click', function () { show(true); });
+  card.querySelectorAll('#chlClose,[data-chl-cancel]').forEach(function (b) { b.addEventListener('click', function () { show(false); }); });
+})();
+</script>
 <?php include __DIR__ . '/_layout_end.php'; ?>

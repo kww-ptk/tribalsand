@@ -113,7 +113,7 @@ function dashboard_plan(string $kind, array $has = []): array {
         'owner' => [
             'tiles'     => ['requests', 'enquiries', 'conflicts', 'guest_requests', 'messages', 'reservations', 'team_overdue', 'counts_review'],
             'sections'  => ['today', 'money', 'my_tasks', 'recent_enquiries'],
-            'shortcuts' => [['New booking', '/admin/hold-new.php', 'plus'], ['Calendar', '/admin/gantt.php', 'calendar'], ['Quote builder', '/admin/quote-builder.php', 'file'],
+            'shortcuts' => [['New booking', '/admin/holds.php?new=1', 'plus'], ['Calendar', '/admin/gantt.php', 'calendar'], ['Quote builder', '/admin/quote-builder.php', 'file'],
                             ['Rates', '/admin/rates.php', 'coin'], ['Reports', '/admin/reports.php', 'chart']],
         ],
         'manager' => [
@@ -125,7 +125,7 @@ function dashboard_plan(string $kind, array $has = []): array {
         'reception' => [
             'tiles'     => ['requests', 'enquiries', 'conflicts', 'guest_requests', 'messages', 'reservations'],
             'sections'  => ['today', 'my_tasks', 'recent_enquiries'],
-            'shortcuts' => [['New booking', '/admin/hold-new.php', 'plus'], ['Calendar', '/admin/gantt.php', 'calendar'], ['Quote builder', '/admin/quote-builder.php', 'file'],
+            'shortcuts' => [['New booking', '/admin/holds.php?new=1', 'plus'], ['Calendar', '/admin/gantt.php', 'calendar'], ['Quote builder', '/admin/quote-builder.php', 'file'],
                             ['Front desk', '/admin/frontdesk.php', 'clipboard']],
         ],
         'security' => [

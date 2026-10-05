@@ -628,8 +628,6 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
                 <a href="/admin/internal-messages.php?dm=<?= (int)$p['admin_user_id'] ?>" class="btn-icon btn-icon--outline" data-tip="Message in team chat" aria-label="Message"><?= admin_icon('message') ?></a>
                 <?php elseif (!empty($p['phone']) && ($__wa = hr_whatsapp_link($p['phone'])) !== ''): ?>
                 <a href="<?= e($__wa) ?>" target="_blank" rel="noopener" class="btn-icon btn-icon--outline" data-tip="Message on WhatsApp" aria-label="WhatsApp"><?= admin_icon('phone') ?></a>
-                <?php elseif (!empty($p['email'])): ?>
-                <a href="mailto:<?= e($p['email']) ?>" class="btn-icon btn-icon--outline" data-tip="Email" aria-label="Email"><?= admin_icon('message') ?></a>
                 <?php endif; ?>
                 <button type="button" class="btn-icon btn-icon--outline hr-edit"
                         data-tip="Edit" aria-label="Edit"

@@ -380,3 +380,30 @@ function internal_message_payload(array $row, int $meId): array {
         'time_label'  => message_time_label((string)($row['created_at'] ?? 'now')),
     ];
 }
+
+/**
+ * The newest message of each channel the account can see, keyed by channel_key
+ * (see internal_channel_key()) — for the Team chat list's preview line.
+ * One query; [] pre-migration or on any read error (the list then shows no preview).
+ */
+function internal_channel_previews(array $channels): array {
+    if (!internal_messages_supported() || !$channels) return [];
+    $keys = array_map(fn($c) => (int)$c['key'], $channels);
+    $keyExpr = internal_group_channels_supported()
+        ? 'CASE WHEN m.group_channel_id IS NOT NULL THEN -m.group_channel_id WHEN m.channel_venue_id IS NOT NULL THEN m.channel_venue_id ELSE 0 END'
+        : 'COALESCE(m.channel_venue_id, 0)';
+    try {
+        $rows = db_query(
+            "SELECT DISTINCT ON (k) k, body, created_at, sender_name FROM (
+                SELECT {$keyExpr} AS k, m.id, m.body, m.created_at, u.name AS sender_name
+                  FROM internal_messages m
+                  LEFT JOIN admin_users u ON u.id = m.sender_admin_id
+             ) x
+             WHERE k IN (" . implode(',', array_map('intval', $keys)) . ")
+             ORDER BY k, id DESC"
+        )->fetchAll();
+    } catch (Throwable $e) { return []; }
+    $out = [];
+    foreach ($rows as $r) $out[(int)$r['k']] = $r;
+    return $out;
+}

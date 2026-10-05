@@ -2,7 +2,9 @@
  *
  * Two cooperating layers, split by *swap region* so they never fight:
  *
- *  1. SHELL (#18) — cross-page navigation. Intercepts sidebar links, fetches the
+ *  1. SHELL (#18) — cross-page navigation. Intercepts every link to an admin
+ *     page (sidebar, tab strips, links and whole-row links inside a page, GET
+ *     filter forms — see shellableUrl() for what is left to the browser), fetches the
  *     target with `?shell=1` (the server returns ONLY that page's `.admin-content`
  *     via _layout.php/_layout_end.php), shows a page skeleton, and swaps
  *     `.admin-content` — so the sidebar/topbar never repaint. history.pushState;
@@ -34,15 +36,29 @@
   }
 
   // innerHTML doesn't execute injected <script>s — re-create them so a swapped
-  // page's own inline scripts (drag reorder, filter auto-submit, …) run again.
+  // page's own scripts (drag reorder, filter auto-submit, team chat, …) run again.
+  // Several pages print a <script src> inside their content (assistant, team chat,
+  // attendance, timetable…), so external scripts are loaded too, and everything
+  // runs IN DOCUMENT ORDER: an inline script after a <script src> may use it.
   function runScripts(container) {
-    container.querySelectorAll('script').forEach(function (old) {
-      if (old.src) return; // no external <script src> is emitted inside content
+    var list = Array.prototype.slice.call(container.querySelectorAll('script'));
+    function next() {
+      var old = list.shift();
+      if (!old) return;
+      if (!old.parentNode) { next(); return; }
       var s = document.createElement('script');
       for (var i = 0; i < old.attributes.length; i++) s.setAttribute(old.attributes[i].name, old.attributes[i].value);
-      s.textContent = old.textContent;
-      old.parentNode.replaceChild(s, old);
-    });
+      if (old.src) {
+        s.async = false;
+        s.onload = s.onerror = next;
+        old.parentNode.replaceChild(s, old);
+      } else {
+        s.textContent = old.textContent;
+        old.parentNode.replaceChild(s, old);
+        next();
+      }
+    }
+    next();
   }
 
   // ── Shared: skeleton templates (Phase 1 #2) ──
@@ -133,6 +149,17 @@
   // same-path pops belong to the workspace/data-table layers; cross-path pops to
   // the shell).
   var shellPath = location.pathname;
+  // The URL whose content the shell is showing. Stamped on every history entry
+  // (as `sh`) so back/forward can tell "another page" from "same page, other tab".
+  var shellHref = location.pathname + location.search;
+  function shellState(obj) { obj = obj || {}; obj.sh = shellHref; return obj; }
+  function crossPagePop(e) {
+    var st = e && e.state;
+    if (st && typeof st.sh === 'string') return st.sh !== shellHref;
+    return location.pathname !== shellPath;
+  }
+  window.tsShellState = shellState;
+  window.tsCrossPagePop = crossPagePop;
 
   // ═══════════════════════════ WORKSPACE (booking.php) ═══════════════════════
   var wsEl = null, wsPanel = null;
@@ -173,7 +200,7 @@
         wsPanel.classList.remove('is-loading');
         runScripts(wsPanel);      // the panel's own inline scripts (check-in interactions…)
         reenhance(wsPanel);
-        try { if (push) history.pushState({ ws: 1 }, '', url); } catch (e) { /* non-fatal */ }
+        try { if (push) history.pushState(shellState({ ws: 1 }), '', url); } catch (e) { /* non-fatal */ }
       })
       .catch(function () { window.location.href = url; });
   }
@@ -237,7 +264,7 @@
           if (!doc.querySelector('[data-ws-panel]')) { window.location.href = res.url || location.href; return; }
           applyDoc(doc);
           toastFlash(doc);
-          try { if (res.url) history.replaceState({ ws: 1 }, '', res.url); } catch (e) { /* non-fatal */ }
+          try { if (res.url) history.replaceState(shellState({ ws: 1 }), '', res.url); } catch (e) { /* non-fatal */ }
         } catch (err) {
           // Post-commit: never re-submit. Fall back to a full navigation, which
           // shows the guest the real server state instead of repeating the write.
@@ -259,7 +286,7 @@
     ws.addEventListener('click', wsClick);
     ws.addEventListener('submit', wsSubmit);
     // Stamp this entry so a BACK to it re-swaps the panel instead of leaving a stale tab.
-    try { history.replaceState({ ws: 1 }, '', location.href); } catch (e) { /* non-fatal */ }
+    try { history.replaceState(shellState({ ws: 1 }), '', location.href); } catch (e) { /* non-fatal */ }
   }
 
   // ═══════════════════════════ SHELL (cross-page nav, #18) ═══════════════════
@@ -305,8 +332,12 @@
         content.classList.remove('is-swapping');
         var title = frag.getAttribute('data-title');
         if (title) document.title = title;
-        try { if (push) history.pushState({ shell: 1 }, '', url); } catch (e) { /* non-fatal */ }
-        try { shellPath = new URL(url, location.href).pathname; } catch (e) { shellPath = location.pathname; }
+        try { var nu = new URL(url, location.href); shellPath = nu.pathname; shellHref = nu.pathname + nu.search; }
+        catch (e) { shellPath = location.pathname; shellHref = location.pathname + location.search; }
+        try {
+          if (push) history.pushState(shellState({ shell: 1 }), '', url);
+          else history.replaceState(shellState({ shell: 1 }), '', location.href);
+        } catch (e) { /* non-fatal */ }
         setActiveNav(url);
         runScripts(content);      // page's own inline scripts
         reenhance(content);       // shared enhancers (tips, selects, tables, drag…)
@@ -364,8 +395,8 @@
           content.innerHTML = next.innerHTML;
           content.classList.remove('is-swapping', 'is-saving');
           if (doc.title) document.title = doc.title;
-          try { if (res.url) history.replaceState({ shell: 1 }, '', res.url); } catch (e) { /* non-fatal */ }
-          try { shellPath = new URL(res.url || location.href, location.href).pathname; } catch (e) { /* non-fatal */ }
+          try { var ru = new URL(res.url || location.href, location.href); shellPath = ru.pathname; shellHref = ru.pathname + ru.search; } catch (e) { /* non-fatal */ }
+          try { if (res.url) history.replaceState(shellState({ shell: 1 }), '', res.url); } catch (e) { /* non-fatal */ }
           setActiveNav(res.url || location.href);
           // Surface the server flash as a toast (matches the initial-load behaviour
           // in _layout_end.php) and drop the now-redundant inline banner.
@@ -382,49 +413,110 @@
       });
   }
 
+  // ── Which URLs the shell may load ──────────────────────────────────────────
+  // Every admin page that draws the normal layout answers `?shell=1` with just its
+  // content, so ANY link to one can swap instead of reloading — not only the
+  // sidebar. Left to the browser: pages without the layout (print views, files,
+  // pollers, login/logout, one-shot actions) and downloads/exports.
+  var NO_SHELL_PAGE = /^\/admin\/(?:_|index|login|logout|forgot-password|reset-password|sync-export|attendance-photo|rate-calendar-frag)|(?:-print|-file|-poll|-action)(?:\.php)?$/;
+  var NO_SHELL_QUERY = /[?&](?:export|format|download|print|shell|ajax)=/;
+  function shellableUrl(href) {
+    if (!href || href.charAt(0) === '#') return null;
+    if (/^(?:mailto|tel|javascript|data):/i.test(href)) return null;
+    var u;
+    try { u = new URL(href, location.href); } catch (e) { return null; }
+    if (u.origin !== location.origin) return null;
+    if (u.pathname.indexOf('/admin/') !== 0) return null;
+    if (NO_SHELL_PAGE.test(u.pathname) || NO_SHELL_QUERY.test(u.search)) return null;
+    // Same page, only a different #hash → let the browser scroll.
+    if (u.hash && u.pathname === location.pathname && u.search === location.search) return null;
+    return u.pathname + u.search + u.hash;
+  }
+  function closeDrawer() {
+    var sb = document.getElementById('adminSidebar');
+    var ov = document.getElementById('sidebarOverlay');
+    if (sb) sb.classList.remove('is-open');
+    if (ov) ov.classList.remove('is-visible');
+    document.body.style.overflow = '';
+    var burger = document.getElementById('sidebarBurger');
+    if (burger) burger.setAttribute('aria-expanded', 'false');
+  }
+  // Public entry point: other scripts (whole-row links in admin-table.js, inline
+  // page scripts) call this instead of setting location.href. Returns false when
+  // the URL must be a real navigation — the caller then does that itself.
+  function go(href) {
+    var url = shellableUrl(href);
+    if (!url || !content) return false;
+    // Highlight the target IMMEDIATELY (optimistic) so the active state never lags
+    // behind the fetch; shellNavigate() sets it again after the swap.
+    setActiveNav(url);
+    closeDrawer();
+    shellNavigate(url, true);
+    return true;
+  }
+  window.tsShellGo = go;
+
+  function shellGetForm(form, submitter) {
+    if ((form.getAttribute('method') || 'get').toLowerCase() !== 'get') return false;
+    if (form.hasAttribute('data-no-shell') || (form.target && form.target !== '_self')) return false;
+    var u;
+    try { u = new URL(form.getAttribute('action') || location.pathname, location.href); } catch (err) { return false; }
+    var fd = new FormData(form);
+    if (submitter && submitter.name) fd.append(submitter.name, submitter.value);
+    var qs = new URLSearchParams();
+    fd.forEach(function (v, k) { if (typeof v === 'string') qs.append(k, v); });
+    var s = qs.toString();
+    return go(u.pathname + (s ? '?' + s : ''));
+  }
+
   if (content) {
-    // Intercept sidebar links (always) + opt-in in-content links (Stage 3,
-    // [data-shell-link]) → shell navigation. Other in-content links keep doing a
-    // full navigation (safe); they can be brought in page-by-page later.
-    document.addEventListener('click', function (e) {
+    // Links anywhere on the page (sidebar, tab strips, links inside a page's
+    // content) → shell navigation. The workspace's own tab/thread links are
+    // claimed first by its listener on [data-ws] (it preventDefaults), and a
+    // link can opt out with data-no-shell. Bound on WINDOW so it runs after every
+    // document-level handler — a page script that claims its own links (calendar
+    // prev/next, …) preventDefaults first, whatever order the scripts loaded in.
+    window.addEventListener('click', function (e) {
       if (e.defaultPrevented || e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
-      var a = e.target.closest ? e.target.closest('a.sidebar__link, a[data-shell-link]') : null;
+      var a = e.target.closest ? e.target.closest('a[href]') : null;
       if (!a) return;
-      var href = a.getAttribute('href') || '';
-      if (!/^\/admin\//.test(href)) return;
       if ((a.target && a.target !== '_self') || a.hasAttribute('download') || a.hasAttribute('data-no-shell')) return;
-      if (/logout\.php/.test(href)) return;
-      e.preventDefault();
-      // Highlight the clicked link IMMEDIATELY (optimistic) so the active state
-      // never lags behind the fetch or gets lost if the swap falls back to a full
-      // load. shellNavigate() calls setActiveNav again after the swap (idempotent).
-      setActiveNav(href);
-      // Close the mobile drawer if open (the shell keeps the sidebar mounted).
-      var sb = document.getElementById('adminSidebar');
-      var ov = document.getElementById('sidebarOverlay');
-      if (sb) sb.classList.remove('is-open');
-      if (ov) ov.classList.remove('is-visible');
-      document.body.style.overflow = '';
-      var burger = document.getElementById('sidebarBurger');
-      if (burger) burger.setAttribute('aria-expanded', 'false');
-      shellNavigate(href, true);
+      if (go(a.getAttribute('href'))) e.preventDefault();
     });
 
     // Stage 2 (#18): capture-phase so it precedes the bubble-phase guards.
     document.addEventListener('submit', shellSubmit, true);
 
-    // Cross-page back/forward → shell re-swap. Same-path pops (workspace tabs,
-    // data-table query strings) are left to those layers' own popstate handlers.
-    window.addEventListener('popstate', function () {
-      if (location.pathname !== shellPath) shellNavigate(location.href, false);
+    // GET forms in the content (filters, searches) → shell navigation too.
+    // On window (last), so a form's own handler (the data-table toolbar) wins.
+    window.addEventListener('submit', function (e) {
+      if (e.defaultPrevented) return;
+      var form = e.target;
+      if (!(form instanceof HTMLFormElement) || !content.contains(form)) return;
+      if (shellGetForm(form, e.submitter)) e.preventDefault();
     });
-    try { history.replaceState({ shell: 1 }, '', location.href); } catch (e) { /* non-fatal */ }
+    // Many filters auto-submit with `onchange="this.form.submit()"`, which fires no
+    // submit event — route those GET forms through the shell as well.
+    var nativeSubmit = HTMLFormElement.prototype.submit;
+    HTMLFormElement.prototype.submit = function () {
+      if (content.contains(this) && shellGetForm(this, null)) return;
+      return nativeSubmit.call(this);
+    };
+
+    // Back/forward. Every entry records which shell page it belongs to (`sh`), so
+    // a pop that lands on another page — even one with the same path, like
+    // another booking — re-swaps the content; pops within one page (workspace
+    // tabs, data-table searches) are left to those layers.
+    window.addEventListener('popstate', function (e) {
+      if (crossPagePop(e)) shellNavigate(location.href, false);
+    });
+    try { history.replaceState(shellState({ shell: 1 }), '', location.href); } catch (e) { /* non-fatal */ }
   }
 
-  // Workspace back/forward (same-path only; cross-path handled by the shell).
-  window.addEventListener('popstate', function () {
+  // Workspace back/forward (same page only; another page is the shell's job).
+  window.addEventListener('popstate', function (e) {
     if (!wsEl || !wsPanel) return;
-    if (location.pathname !== shellPath) return;
+    if (crossPagePop(e)) return;
     wsLoadTab(location.href, false);
   });
 

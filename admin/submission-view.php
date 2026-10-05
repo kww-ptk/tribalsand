@@ -335,7 +335,7 @@ $is_trip_builder = submission_is_trip_builder($payload);
 $tb_sections     = $is_trip_builder ? trip_builder_sections($payload)  : [];
 $tb_itinerary    = $is_trip_builder ? trip_builder_itinerary($payload) : [];
 
-$pageTitle  = 'Submission #' . $id;
+$pageTitle  = (trim((string)($sub['guest_name'] ?? '')) ?: 'Enquiry') . ' · #' . $id;
 $activeMenu = 'submissions';
 include __DIR__ . '/_layout.php';
 ?>
@@ -347,154 +347,38 @@ include __DIR__ . '/_layout.php';
 <?php endif; ?>
 
 <div class="page-header">
-  <h1>Submission #<?= e($id) ?>
+  <h1><?= e(trim((string)($sub['guest_name'] ?? '')) ?: 'Enquiry #' . $id) ?>
     <span class="badge <?= $badge ?>" style="vertical-align:middle"><?= e($sub['type']) ?></span>
     <?php if ($status !== ''): ?><span class="badge <?= submission_status_badge($status) ?>" style="vertical-align:middle"><?= e(submission_status_label($status)) ?></span><?php endif; ?>
     <?php if (submission_assignee_supported() && !empty($sub['assigned_to'])): ?><span class="badge badge--blue" style="vertical-align:middle"><?= admin_icon('user', 12) ?> <?= e(team_member_name((int)$sub['assigned_to'])) ?></span><?php endif; ?>
   </h1>
   <div class="actions">
-    <a href="/admin/submissions.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Inbox</a>
-    <a href="mailto:<?= e($sub['guest_email']) ?>?subject=Re: Your enquiry — Tribal Sand"
-       class="btn-primary btn-sm">Reply via Email</a>
+    <a href="/admin/submissions.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Enquiries</a>
+    <a href="#conversation" class="btn-primary btn-sm" data-sv-reply data-no-shell><?= admin_icon('send', 14) ?> Reply</a>
   </div>
 </div>
+<?php
+$__svLine = ['#' . $id];
+if (!empty($sub['room_name'])) $__svLine[] = $sub['room_name'];
+elseif (!empty($sub['tour_name'])) $__svLine[] = $sub['tour_name'];
+if (!empty($sub['check_in'])) $__svLine[] = date('j M', strtotime($sub['check_in'])) . (!empty($sub['check_out']) ? ' → ' . date('j M Y', strtotime($sub['check_out'])) : '');
+if (!empty($sub['guests_adults'])) $__svLine[] = (int)$sub['guests_adults'] . ' adult' . ((int)$sub['guests_adults'] === 1 ? '' : 's') . (!empty($sub['guests_children']) ? ' · ' . (int)$sub['guests_children'] . ' child' . ((int)$sub['guests_children'] === 1 ? '' : 'ren') : '');
+$__svLine[] = 'received ' . date('j M Y, H:i', strtotime($sub['created_at']));
+?>
+<p class="text-muted" style="margin:-8px 0 14px;font-size:13px"><?= e(implode(' · ', $__svLine)) ?></p>
 
-<!-- Guest details -->
-<div class="card">
-  <div class="card__head"><span class="card__title">Guest Details</span></div>
-  <div class="card__body" style="padding:20px">
-    <div class="detail-grid">
-      <div>
-        <div class="detail-item__label">Name</div>
-        <div class="detail-item__value"><?= e($sub['guest_name'] ?? '—') ?></div>
-      </div>
-      <div>
-        <div class="detail-item__label">Email</div>
-        <div class="detail-item__value"><a href="mailto:<?= e($sub['guest_email']) ?>"><?= e($sub['guest_email'] ?? '—') ?></a></div>
-      </div>
-      <div>
-        <div class="detail-item__label">Phone</div>
-        <div class="detail-item__value"><?= e($sub['guest_phone'] ?? '—') ?></div>
-      </div>
-      <div>
-        <div class="detail-item__label">Submitted</div>
-        <div class="detail-item__value"><?= e(date('d M Y, H:i', strtotime($sub['created_at']))) ?></div>
-      </div>
+<?php
+// Sections as tabs (no long scroll). Client-side: every section is still in the
+// page, so each form posts exactly as before and works with JS off (all shown).
+$__svTabs = ['conversation' => 'Conversation', 'details' => 'Details', 'booking' => $linked_hold ? 'Booking' : 'Convert to hold', 'activity' => 'Activity'];
+?>
+<nav class="segswitch sv-tabs" aria-label="Enquiry sections" data-sv-tabs hidden>
+  <?php foreach ($__svTabs as $__k => $__l): ?>
+  <a href="#<?= e($__k) ?>" data-sv-tab="<?= e($__k) ?>" data-no-shell<?= $__k === 'conversation' ? ' class="is-on"' : '' ?>><?= e($__l) ?><?php if ($__k === 'booking' && $linked_hold): ?> <span class="badge badge--green" style="font-size:10px"><?= e($linked_hold['status']) ?></span><?php endif; ?></a>
+  <?php endforeach; ?>
+</nav>
 
-      <?php if ($sub['room_name']): ?>
-      <div>
-        <div class="detail-item__label">Room</div>
-        <div class="detail-item__value">
-          <a href="/<?= e($sub['room_slug']) ?>" target="_blank"><?= e($sub['room_name']) ?></a>
-        </div>
-      </div>
-      <?php endif; ?>
-
-      <?php if (!empty($sub['tour_name'])): ?>
-      <div>
-        <div class="detail-item__label">Tour / Activity</div>
-        <div class="detail-item__value">
-          <a href="/activities.php" target="_blank"><?= e($sub['tour_name']) ?></a>
-        </div>
-      </div>
-      <?php endif; ?>
-
-      <?php if ($sub['check_in']): ?>
-      <div>
-        <div class="detail-item__label">Check-in</div>
-        <div class="detail-item__value"><?= e(date('d M Y', strtotime($sub['check_in']))) ?></div>
-      </div>
-      <?php endif; ?>
-
-      <?php if ($sub['check_out']): ?>
-      <div>
-        <div class="detail-item__label">Check-out</div>
-        <div class="detail-item__value"><?= e(date('d M Y', strtotime($sub['check_out']))) ?></div>
-      </div>
-      <?php endif; ?>
-
-      <?php if ($sub['guests_adults'] || $sub['guests_children']): ?>
-      <div>
-        <div class="detail-item__label">Guests</div>
-        <div class="detail-item__value">
-          <?= e($sub['guests_adults']) ?> adult<?= $sub['guests_adults'] != 1 ? 's' : '' ?>
-          <?php if ($sub['guests_children']): ?>
-          · <?= e($sub['guests_children']) ?> child<?= $sub['guests_children'] != 1 ? 'ren' : '' ?>
-          <?php endif; ?>
-        </div>
-      </div>
-      <?php endif; ?>
-
-      <?php if ($enquiry_price): ?>
-      <div>
-        <div class="detail-item__label">Price at enquiry</div>
-        <div class="detail-item__value">
-          <strong><?= $enquiry_price['html'] ?></strong>
-          <div class="text-muted" style="font-size:11.5px;margin-top:2px"><?= e($enquiry_price['note']) ?></div>
-        </div>
-      </div>
-      <?php endif; ?>
-
-      <?php if (!$is_trip_builder): foreach (submission_payload_rows($payload) as [$pl_label, $pl_value]): ?>
-      <div>
-        <div class="detail-item__label"><?= e($pl_label) ?></div>
-        <div class="detail-item__value"><?= e($pl_value) ?: '—' ?></div>
-      </div>
-      <?php endforeach; endif; ?>
-    </div>
-
-    <?php $__ups = submission_upsells($payload); if ($__ups): ?>
-    <div style="margin-top:22px">
-      <div class="detail-item__label" style="margin-bottom:10px;color:var(--teal,#1E5C6B);font-weight:700">
-        Add-ons requested<?= $linked_hold ? '' : ' <span class="text-muted" style="font-weight:400">(attached to the booking when you convert this enquiry)</span>' ?>
-      </div>
-      <ul style="margin:0;padding-left:18px">
-        <?php foreach ($__ups as $__u): ?>
-        <li style="margin-bottom:4px"><?= e($__u['name']) ?><?= $__u['price'] !== '' ? ' <span class="text-muted">— ' . e($__u['price']) . '</span>' : '' ?></li>
-        <?php endforeach; ?>
-      </ul>
-    </div>
-    <?php endif; ?>
-
-    <?php foreach ($tb_sections as $sec): ?>
-    <div style="margin-top:22px">
-      <div class="detail-item__label" style="margin-bottom:10px;color:var(--teal,#1E5C6B);font-weight:700"><?= e($sec['title']) ?></div>
-      <div class="detail-grid">
-        <?php foreach ($sec['rows'] as [$sec_label, $sec_value]): ?>
-        <div>
-          <div class="detail-item__label"><?= e($sec_label) ?></div>
-          <div class="detail-item__value" style="white-space:pre-wrap"><?= e($sec_value) ?></div>
-        </div>
-        <?php endforeach; ?>
-      </div>
-    </div>
-    <?php endforeach; ?>
-
-    <?php if ($tb_itinerary): ?>
-    <div style="margin-top:22px">
-      <div class="detail-item__label" style="margin-bottom:10px;color:var(--teal,#1E5C6B);font-weight:700">Itinerary</div>
-      <div style="background:var(--bg);border-radius:6px;padding:14px 16px">
-        <?php foreach ($tb_itinerary as $tb_day): ?>
-        <div style="margin-bottom:12px">
-          <div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:5px"><?= e($tb_day['label']) ?></div>
-          <?php foreach ($tb_day['items'] as $tb_item): ?>
-          <div style="font-size:13.5px;line-height:1.65;padding-left:12px"><?= e($tb_item) ?></div>
-          <?php endforeach; ?>
-        </div>
-        <?php endforeach; ?>
-      </div>
-    </div>
-    <?php endif; ?>
-
-    <?php if ($sub['message']): ?>
-    <div style="margin-top:20px">
-      <div class="detail-item__label" style="margin-bottom:6px">Message</div>
-      <div style="background:var(--bg);border-radius:6px;padding:14px 16px;font-size:13.5px;line-height:1.6;white-space:pre-wrap"><?= e($sub['message']) ?></div>
-    </div>
-    <?php endif; ?>
-  </div>
-</div>
-
+<section class="sv-panel" data-sv-panel="conversation">
 <!-- Lead status + conversation thread (staff notes and replies to the guest) -->
 <div class="card" id="thread">
   <div class="card__head">
@@ -823,16 +707,144 @@ include __DIR__ . '/_layout.php';
   </div>
 </div>
 
-<!-- Activity log (Item 3): who did what, and when -->
-<div class="card" id="activity">
-  <div class="card__head"><span class="card__title">Activity Log</span></div>
-  <div class="card__body" style="padding:14px 20px">
-    <?php activity_log_html('submission', $id); ?>
+</section>
+
+<section class="sv-panel" data-sv-panel="details">
+<!-- Guest details -->
+<div class="card">
+  <div class="card__head"><span class="card__title">Guest Details</span></div>
+  <div class="card__body" style="padding:20px">
+    <div class="detail-grid">
+      <div>
+        <div class="detail-item__label">Name</div>
+        <div class="detail-item__value"><?= e($sub['guest_name'] ?? '—') ?></div>
+      </div>
+      <div>
+        <div class="detail-item__label">Email</div>
+        <div class="detail-item__value"><?= e($sub['guest_email'] ?? '—') ?></div>
+      </div>
+      <div>
+        <div class="detail-item__label">Phone</div>
+        <div class="detail-item__value"><?= e($sub['guest_phone'] ?? '—') ?></div>
+      </div>
+      <div>
+        <div class="detail-item__label">Submitted</div>
+        <div class="detail-item__value"><?= e(date('d M Y, H:i', strtotime($sub['created_at']))) ?></div>
+      </div>
+
+      <?php if ($sub['room_name']): ?>
+      <div>
+        <div class="detail-item__label">Room</div>
+        <div class="detail-item__value">
+          <a href="/<?= e($sub['room_slug']) ?>" target="_blank"><?= e($sub['room_name']) ?></a>
+        </div>
+      </div>
+      <?php endif; ?>
+
+      <?php if (!empty($sub['tour_name'])): ?>
+      <div>
+        <div class="detail-item__label">Tour / Activity</div>
+        <div class="detail-item__value">
+          <a href="/activities.php" target="_blank"><?= e($sub['tour_name']) ?></a>
+        </div>
+      </div>
+      <?php endif; ?>
+
+      <?php if ($sub['check_in']): ?>
+      <div>
+        <div class="detail-item__label">Check-in</div>
+        <div class="detail-item__value"><?= e(date('d M Y', strtotime($sub['check_in']))) ?></div>
+      </div>
+      <?php endif; ?>
+
+      <?php if ($sub['check_out']): ?>
+      <div>
+        <div class="detail-item__label">Check-out</div>
+        <div class="detail-item__value"><?= e(date('d M Y', strtotime($sub['check_out']))) ?></div>
+      </div>
+      <?php endif; ?>
+
+      <?php if ($sub['guests_adults'] || $sub['guests_children']): ?>
+      <div>
+        <div class="detail-item__label">Guests</div>
+        <div class="detail-item__value">
+          <?= e($sub['guests_adults']) ?> adult<?= $sub['guests_adults'] != 1 ? 's' : '' ?>
+          <?php if ($sub['guests_children']): ?>
+          · <?= e($sub['guests_children']) ?> child<?= $sub['guests_children'] != 1 ? 'ren' : '' ?>
+          <?php endif; ?>
+        </div>
+      </div>
+      <?php endif; ?>
+
+      <?php if ($enquiry_price): ?>
+      <div>
+        <div class="detail-item__label">Price at enquiry</div>
+        <div class="detail-item__value">
+          <strong><?= $enquiry_price['html'] ?></strong>
+          <div class="text-muted" style="font-size:11.5px;margin-top:2px"><?= e($enquiry_price['note']) ?></div>
+        </div>
+      </div>
+      <?php endif; ?>
+
+      <?php if (!$is_trip_builder): foreach (submission_payload_rows($payload) as [$pl_label, $pl_value]): ?>
+      <div>
+        <div class="detail-item__label"><?= e($pl_label) ?></div>
+        <div class="detail-item__value"><?= e($pl_value) ?: '—' ?></div>
+      </div>
+      <?php endforeach; endif; ?>
+    </div>
+
+    <?php $__ups = submission_upsells($payload); if ($__ups): ?>
+    <div style="margin-top:22px">
+      <div class="detail-item__label" style="margin-bottom:10px;color:var(--teal,#1E5C6B);font-weight:700">
+        Add-ons requested<?= $linked_hold ? '' : ' <span class="text-muted" style="font-weight:400">(attached to the booking when you convert this enquiry)</span>' ?>
+      </div>
+      <ul style="margin:0;padding-left:18px">
+        <?php foreach ($__ups as $__u): ?>
+        <li style="margin-bottom:4px"><?= e($__u['name']) ?><?= $__u['price'] !== '' ? ' <span class="text-muted">— ' . e($__u['price']) . '</span>' : '' ?></li>
+        <?php endforeach; ?>
+      </ul>
+    </div>
+    <?php endif; ?>
+
+    <?php foreach ($tb_sections as $sec): ?>
+    <div style="margin-top:22px">
+      <div class="detail-item__label" style="margin-bottom:10px;color:var(--teal,#1E5C6B);font-weight:700"><?= e($sec['title']) ?></div>
+      <div class="detail-grid">
+        <?php foreach ($sec['rows'] as [$sec_label, $sec_value]): ?>
+        <div>
+          <div class="detail-item__label"><?= e($sec_label) ?></div>
+          <div class="detail-item__value" style="white-space:pre-wrap"><?= e($sec_value) ?></div>
+        </div>
+        <?php endforeach; ?>
+      </div>
+    </div>
+    <?php endforeach; ?>
+
+    <?php if ($tb_itinerary): ?>
+    <div style="margin-top:22px">
+      <div class="detail-item__label" style="margin-bottom:10px;color:var(--teal,#1E5C6B);font-weight:700">Itinerary</div>
+      <div style="background:var(--bg);border-radius:6px;padding:14px 16px">
+        <?php foreach ($tb_itinerary as $tb_day): ?>
+        <div style="margin-bottom:12px">
+          <div style="font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);margin-bottom:5px"><?= e($tb_day['label']) ?></div>
+          <?php foreach ($tb_day['items'] as $tb_item): ?>
+          <div style="font-size:13.5px;line-height:1.65;padding-left:12px"><?= e($tb_item) ?></div>
+          <?php endforeach; ?>
+        </div>
+        <?php endforeach; ?>
+      </div>
+    </div>
+    <?php endif; ?>
+
+    <?php if ($sub['message']): ?>
+    <div style="margin-top:20px">
+      <div class="detail-item__label" style="margin-bottom:6px">Message</div>
+      <div style="background:var(--bg);border-radius:6px;padding:14px 16px;font-size:13.5px;line-height:1.6;white-space:pre-wrap"><?= e($sub['message']) ?></div>
+    </div>
+    <?php endif; ?>
   </div>
 </div>
-
-<?php // Every email linked to this enquiry (and any booking made from it) — Email Notifications Center. ?>
-<?= email_log_panel_html(email_log_for_submission((int)$id), is_owner() || is_manager()) ?>
 
 <!-- Tracking -->
 <div class="card">
@@ -875,6 +887,22 @@ include __DIR__ . '/_layout.php';
   </div>
 </div>
 
+<!-- Delete -->
+<div class="card" style="border:1.5px solid var(--red)">
+  <div class="card__head"><span class="card__title" style="color:var(--red)">Danger Zone</span></div>
+  <div class="card__body" style="padding:20px">
+    <p style="font-size:13px;color:var(--muted);margin-bottom:16px">Permanently delete this submission. Cannot be undone.</p>
+    <form method="POST" action="/admin/submission-view?id=<?= $id ?>">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="delete">
+      <button type="submit" class="btn-danger btn-sm" data-confirm="Delete this enquiry and its conversation for good?" data-confirm-title="Delete enquiry" data-confirm-label="Delete">Delete enquiry</button>
+    </form>
+  </div>
+</div>
+
+</section>
+
+<section class="sv-panel" data-sv-panel="booking">
 <!-- Convert to hold -->
 <div class="card">
   <div class="card__head"><span class="card__title">Convert to Hold</span></div>
@@ -958,18 +986,63 @@ include __DIR__ . '/_layout.php';
   </div>
 </div>
 
-<!-- Delete -->
-<div class="card" style="border:1.5px solid var(--red)">
-  <div class="card__head"><span class="card__title" style="color:var(--red)">Danger Zone</span></div>
-  <div class="card__body" style="padding:20px">
-    <p style="font-size:13px;color:var(--muted);margin-bottom:16px">Permanently delete this submission. Cannot be undone.</p>
-    <form method="POST" action="/admin/submission-view?id=<?= $id ?>"
-          onsubmit="return confirm('Delete this submission permanently?')">
-      <?= csrf_field() ?>
-      <input type="hidden" name="action" value="delete">
-      <button type="submit" class="btn-danger btn-sm">Delete Submission</button>
-    </form>
+</section>
+
+<section class="sv-panel" data-sv-panel="activity">
+<!-- Activity log (Item 3): who did what, and when -->
+<div class="card" id="activity">
+  <div class="card__head"><span class="card__title">Activity Log</span></div>
+  <div class="card__body" style="padding:14px 20px">
+    <?php activity_log_html('submission', $id); ?>
   </div>
 </div>
+
+<?php // Every email linked to this enquiry (and any booking made from it) — Email Notifications Center. ?>
+<?= email_log_panel_html(email_log_for_submission((int)$id), is_owner() || is_manager()) ?>
+
+</section>
+
+<style>
+.sv-panel{display:flex;flex-direction:column;gap:16px}
+.sv-panel > .card{margin:0}
+.sv-js .sv-panel{display:none}
+.sv-js .sv-panel.is-on{display:flex}
+</style>
+<script>
+(function () {
+  var nav = document.querySelector('[data-sv-tabs]');
+  if (!nav) return;
+  var root = document.querySelector('.admin-content') || document.body;
+  var panels = root.querySelectorAll('[data-sv-panel]');
+  var alias = { thread: 'conversation', activity: 'activity', convert: 'booking' };
+  function show(key, focus) {
+    var ok = false;
+    panels.forEach(function (p) { if (p.getAttribute('data-sv-panel') === key) ok = true; });
+    if (!ok) key = 'conversation';
+    panels.forEach(function (p) { p.classList.toggle('is-on', p.getAttribute('data-sv-panel') === key); });
+    nav.querySelectorAll('[data-sv-tab]').forEach(function (a) {
+      var on = a.getAttribute('data-sv-tab') === key;
+      a.classList.toggle('is-on', on);
+      if (on) a.setAttribute('aria-current', 'true'); else a.removeAttribute('aria-current');
+    });
+    if (focus) { var f = root.querySelector('[data-sv-panel="' + key + '"] #replyBody'); if (f) f.focus(); }
+    try { history.replaceState(history.state, '', location.pathname + location.search + '#' + key); } catch (e) {}
+    if (typeof window.tsTableFit === 'function') window.tsTableFit();
+  }
+  root.classList.add('sv-js');
+  nav.hidden = false;
+  nav.addEventListener('click', function (e) {
+    var a = e.target.closest('[data-sv-tab]');
+    if (!a) return;
+    e.preventDefault();
+    show(a.getAttribute('data-sv-tab'));
+  });
+  root.querySelectorAll('[data-sv-reply]').forEach(function (b) {
+    b.addEventListener('click', function (e) { e.preventDefault(); show('conversation', true); });
+  });
+  var h = (location.hash || '').replace('#', '');
+  show(alias[h] || h || 'conversation');
+})();
+</script>
 
 <?php include __DIR__ . '/_layout_end.php'; ?>

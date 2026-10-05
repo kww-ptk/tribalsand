@@ -9,7 +9,7 @@
       </div>
       <div>
         <div class="detail-item__label">Email</div>
-        <div class="detail-item__value"><?php if (!empty($hold['guest_email'])): ?><a href="mailto:<?= e($hold['guest_email']) ?>"><?= e($hold['guest_email']) ?></a><?php else: ?>—<?php endif; ?></div>
+        <div class="detail-item__value"><?= !empty($hold['guest_email']) ? e($hold['guest_email']) : '—' ?></div>
       </div>
       <div>
         <div class="detail-item__label">Property</div>

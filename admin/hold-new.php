@@ -88,91 +88,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'creat
     }
 }
 
-$ru_options = fetch_room_unit_options();
-$ruScope    = admin_venue_ids();          // null = owner (all venues)
-if ($ruScope !== null) {
-    $ru_options = array_values(array_filter(
-        $ru_options,
-        fn($o) => in_array((int)($o['venue_id'] ?? 0), $ruScope, true)
-    ));
+// The form lives inline on the Bookings list now (includes/hold-new-form.php).
+// A refusal goes back there with the message and what was typed; a plain GET
+// (old links, bookmarks) opens it.
+if ($error !== '') {
+    $_SESSION['hold_new_state'] = ['error' => $error, 'old' => $old, 'want_checkin' => $want_checkin];
 }
-
-$pageTitle  = 'New Booking';
-$activeMenu = 'holds';
-include __DIR__ . '/_layout.php';
-?>
-<div class="page-header">
-  <h1>New Booking</h1>
-  <div class="actions"><a href="/admin/holds.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Holds</a></div>
-</div>
-
-<?php if ($error): ?>
-<div class="card" style="border-left:4px solid var(--red,#dc2626);margin-bottom:16px">
-  <div class="card__body" style="padding:14px 18px;font-size:14px"><?= e($error) ?></div>
-</div>
-<?php endif; ?>
-
-<div class="card">
-  <div class="card__head"><span class="card__title">Create a booking</span></div>
-  <div class="card__body" style="padding:20px">
-    <?php if (!$ru_options): ?>
-      <p style="margin:0;color:var(--muted)">No availability units exist yet — add units to a room first (Rooms admin).</p>
-    <?php else: ?>
-    <p style="margin:0 0 16px;font-size:13px;color:var(--muted)">Creates a <strong>pending</strong> booking, generates the guest's login code, and blocks the dates. It will not expire — confirm it from Holds when you're ready. Availability is not checked — you control overlaps. The one exception is a Maya Ilai villa: a staff booking there takes the whole villa, so one with a bedroom already sold is refused.</p>
-    <form method="POST" action="/admin/hold-new.php">
-      <?= csrf_field() ?>
-      <input type="hidden" name="action" value="create">
-      <div class="detail-grid">
-        <div>
-          <div class="detail-item__label">Room / Unit</div>
-          <select name="unit_id" required style="width:100%;padding:9px;border:1px solid #d1d5db;border-radius:6px">
-            <option value="">— select —</option>
-            <?php foreach ($ru_options as $o): ?>
-            <option value="<?= (int)$o['unit_id'] ?>" <?= (int)$o['unit_id'] === (int)$old['unit_id'] ? 'selected' : '' ?>>
-              <?= e($o['room_name']) ?> — <?= e($o['unit_name']) ?>
-            </option>
-            <?php endforeach; ?>
-          </select>
-        </div>
-        <div>
-          <div class="detail-item__label">Check-in</div>
-          <button type="button" class="dp-btn" data-dp-role="ci" data-dp-pair="hnDates" data-dp-target="hnCheckin" data-dp-placeholder="Select check-in date">Select check-in date</button>
-          <input type="hidden" id="hnCheckin" name="check_in" value="<?= e($old['check_in']) ?>">
-        </div>
-        <div>
-          <div class="detail-item__label">Check-out</div>
-          <button type="button" class="dp-btn" data-dp-role="co" data-dp-pair="hnDates" data-dp-target="hnCheckout" data-dp-placeholder="Select check-out date">Select check-out date</button>
-          <input type="hidden" id="hnCheckout" name="check_out" value="<?= e($old['check_out']) ?>">
-        </div>
-        <div>
-          <div class="detail-item__label">Guest name</div>
-          <input type="text" name="guest_name" required value="<?= e($old['guest_name']) ?>" placeholder="Enter guest name"
-                 style="width:100%;padding:9px;border:1px solid #d1d5db;border-radius:6px">
-        </div>
-        <div>
-          <div class="detail-item__label">Guest email</div>
-          <input type="email" name="guest_email" required value="<?= e($old['guest_email']) ?>" placeholder="Enter guest email"
-                 style="width:100%;padding:9px;border:1px solid #d1d5db;border-radius:6px">
-        </div>
-        <?php if (checkin_supported()): ?>
-        <div>
-          <div class="detail-item__label">Number of adults</div>
-          <input type="number" name="guest_count" min="1" max="12" value="<?= e($old['guest_count']) ?>"
-                 style="width:100%;padding:9px;border:1px solid #d1d5db;border-radius:6px">
-        </div>
-        <div style="grid-column:1/-1">
-          <label style="display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer">
-            <input type="checkbox" name="require_checkin" value="1" <?= $want_checkin ? 'checked' : '' ?>>
-            Require this guest to complete Pre-Check-in before using the portal
-          </label>
-        </div>
-        <?php endif; ?>
-      </div>
-      <button type="submit" class="btn-primary btn-sm" style="margin-top:16px"
-              onclick="return confirm('Create this pending booking?')">Create Booking</button>
-    </form>
-    <?php endif; ?>
-  </div>
-</div>
-
-<?php include __DIR__ . '/_layout_end.php'; ?>
+header('Location: /admin/holds.php?new=1'); exit;
