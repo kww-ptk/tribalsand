@@ -176,8 +176,12 @@ if (!empty($__shellFrag)) {
             var h = form.querySelector('input[name="confirm_text"]') || document.createElement('input');
             h.type = 'hidden'; h.name = 'confirm_text'; h.value = typedWord; form.appendChild(h);
           }
+          if (form.checkValidity && !form.checkValidity()) { form.reportValidity(); return; }
           armSubmit(form, btn);
-          form.submit(); // native submit() skips the submit event below — no double-arm
+          // A no-reload form (data-shell-form) must go through its submit listener,
+          // which a native submit() skips; everything else keeps the old path.
+          if (form.hasAttribute('data-shell-form') && form.requestSubmit) form.requestSubmit();
+          else form.submit(); // native submit() skips the submit event below — no double-arm
         }, opts);
       });
     });

@@ -110,16 +110,24 @@ $lastId = $msgs ? (int)end($msgs)['id'] : 0;
 $__teamAccounts = $canCreateGroups
     ? db_query("SELECT id, name, email, role FROM admin_users WHERE is_active = TRUE ORDER BY name ASC")->fetchAll()
     : [];
-// Members of the active group (shown in the header).
+// Members of the active group (shown in the side panel).
 $__groupMembers = $activeGroup ? fetch_internal_group_members($activeGroup) : [];
+
+// Desk side panel: today's arrivals / in-house / departures for the channel's
+// property (all-team: every property the account sees) — the Front desk numbers.
+require_once __DIR__ . '/../includes/frontdesk.php';
+require_once __DIR__ . '/../includes/messages-view.php';
+$__scope = admin_venue_ids();
+$__dayVenues = $activeVenue !== null ? [(int)$activeVenue] : $__scope;
+try { $__today = frontdesk_day($__dayVenues, frontdesk_today_ymd()); } catch (Throwable $e) { $__today = null; }
+$__teamCount = $activeGroup ? count($__groupMembers)
+    : (int)(db_query("SELECT COUNT(*) FROM admin_users WHERE is_active = TRUE")->fetchColumn() ?: 0);
+$__previews = internal_channel_previews($channels);
+$__chIcon = fn(array $ch): string => !empty($ch['group_id']) ? admin_icon('message', 15) : (($ch['venue_id'] ?? null) === null ? admin_icon('users', 15) : admin_icon('home', 15));
 
 include __DIR__ . '/_layout.php';
 ?>
-<div class="page-header">
-  <h1>Team chat</h1>
-  <a href="/admin/dashboard.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Dashboard</a>
-</div>
-<?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?>"><?= e($flash['msg']) ?></div><?php endif; ?>
+<?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?> is-flash"><?= e($flash['msg']) ?></div><?php endif; ?>
 
 <?php if (!internal_messages_supported()): ?>
 <div class="card"><div class="card__body card__body--pad">
@@ -127,68 +135,111 @@ include __DIR__ . '/_layout.php';
 </div></div>
 <?php else: ?>
 
-<div class="im-wrap" style="display:grid;grid-template-columns:240px minmax(0,1fr);gap:18px;align-items:start">
-  <!-- Channel list -->
-  <div class="card im-channels" style="align-self:stretch">
-    <div class="card__head" style="display:flex;align-items:center;justify-content:space-between;gap:8px">
-      <span class="card__title">Channels</span>
+<div class="mx<?= isset($_GET['channel']) ? ' is-thread' : '' ?>" data-mx>
+  <!-- Channels -->
+  <section class="mx-pane" aria-label="Channels">
+    <div class="mx-pane__head">
+      <div class="mx-search">
+        <?= admin_icon('search', 15) ?>
+        <input type="search" placeholder="Find a channel" aria-label="Find a channel" data-mx-filter>
+      </div>
       <?php if ($canCreateGroups): ?>
-      <button type="button" class="btn-outline btn-sm" id="imNewGroupBtn"><?= admin_icon('plus', 14) ?> New group</button>
+      <div class="mx-row"><span class="text-muted" style="font-size:12px"><?= count($channels) ?> channels</span>
+        <button type="button" class="btn-outline btn-sm" id="imNewGroupBtn"><?= admin_icon('plus', 14) ?> New group</button></div>
       <?php endif; ?>
     </div>
-    <div class="card__body" style="padding:8px">
-      <?php $__lastKind = 'core'; foreach ($channels as $ch):
+    <div class="mx-list" data-mx-list>
+      <?php $__lastKind = ''; foreach ($channels as $ch):
+        $isGroup  = !empty($ch['group_id']);
+        $kind     = $isGroup ? 'Group chats' : 'Channels';
+        if ($kind !== $__lastKind): $__lastKind = $kind; ?>
+        <div class="mx-sec"><?= e($kind) ?></div>
+        <?php endif;
         $isActive = ($ch['venue_id'] ?? null) === $activeVenue && ($ch['group_id'] ?? null) === $activeGroup;
-        $u = (int)($unread[$ch['key']] ?? 0);
-        $addr = internal_channel_addr($ch['venue_id'] ?? null, $ch['group_id'] ?? null);
-        $isGroup = !empty($ch['group_id']);
-        if ($isGroup && $__lastKind !== 'group') { echo '<div style="border-top:1px solid var(--border,#e7ded7);margin:6px 4px 8px"></div><div class="text-muted" style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;padding:0 8px 4px">Group chats</div>'; $__lastKind = 'group'; }
+        $u    = (int)($unread[$ch['key']] ?? 0);
+        $pv   = $__previews[(int)$ch['key']] ?? null;
+        $who  = $pv ? (trim((string)($pv['sender_name'] ?? '')) ?: 'Team') : '';
       ?>
-      <a href="/admin/internal-messages.php?channel=<?= e($addr) ?>" data-shell-link class="im-channel<?= $isActive ? ' is-active' : '' ?>"
-         style="display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 12px;border-radius:8px;text-decoration:none;margin-bottom:2px;font-size:14px;<?= $isActive ? 'background:var(--teal,#1E5C6B);color:#fff;font-weight:600' : 'color:var(--text,#222)' ?>">
-        <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><?= ($ch['venue_id'] ?? null) === null && !$isGroup ? '★ ' : ($isGroup ? '# ' : '') ?><?= e($ch['label']) ?></span>
-        <?php if ($u > 0): ?><span class="badge <?= $isActive ? 'badge--grey' : 'badge--orange' ?>"><?= $u ?></span><?php endif; ?>
+      <a href="/admin/internal-messages.php?channel=<?= e(internal_channel_addr($ch['venue_id'] ?? null, $ch['group_id'] ?? null)) ?>"
+         class="mx-item<?= $isActive ? ' is-on' : '' ?><?= $u ? ' is-unread' : '' ?>"<?= $isActive ? ' aria-current="true"' : '' ?> data-mx-name="<?= e(mb_strtolower((string)$ch['label'])) ?>">
+        <span class="mx-av<?= ($ch['venue_id'] ?? null) === null && !$isGroup ? '' : ' mx-av--soft' ?>"><?= $__chIcon($ch) ?></span>
+        <span class="mx-item__body">
+          <span class="mx-item__l1"><span class="mx-item__name"><?= e($ch['label']) ?></span><?php if ($u): ?><span class="mx-dot"><?= $u ?></span><?php endif; ?><span class="mx-item__when"><?= $pv ? e(mx_when($pv['created_at'])) : '' ?></span></span>
+          <span class="mx-item__pv"><?= $pv ? e($who . ': ' . $pv['body']) : 'No messages yet' ?></span>
+        </span>
       </a>
       <?php endforeach; ?>
     </div>
-  </div>
+  </section>
 
   <!-- Conversation -->
-  <div class="card">
-    <div class="card__body" style="padding:20px">
-      <p style="margin:0 0 12px;font-weight:600"><?= $activeGroup ? '# ' : '' ?><?= e($activeLabel) ?>
-        <span class="text-muted" style="font-weight:400">· <?php
-          if ($activeGroup) {
-              $__names = array_map(fn($m) => trim((string)($m['name'] ?? '')) ?: (string)($m['email'] ?? ''), $__groupMembers);
-              echo e(count($__names) . ' member' . (count($__names) === 1 ? '' : 's') . ($__names ? ': ' . implode(', ', array_slice($__names, 0, 6)) . (count($__names) > 6 ? '…' : '') : ''));
-          } else {
-              echo $activeVenue === null ? 'everyone on the team' : 'this property\'s team';
-          }
-        ?></span>
-      </p>
-      <div id="amThread" class="am-thread"
-           data-poll-url="/admin/internal-messages-poll"
-           data-channel="<?= e($activeAddr) ?>"
-           data-last="<?= $lastId ?>">
-        <p class="text-muted am-empty"<?= $msgs ? ' style="display:none"' : '' ?>>No messages in this channel yet. Say hello 👋</p>
-        <?php foreach ($msgs as $m): $mine = (int)($m['sender_admin_id'] ?? 0) === $meId; ?>
-        <div class="am-msg <?= $mine ? 'am-msg--staff' : 'am-msg--guest' ?>" data-mid="<?= (int)$m['id'] ?>">
-          <?= e($m['body']) ?>
-          <div class="am-msg__meta"><?= e(trim((string)($m['sender_name'] ?? '')) ?: 'Team') ?> · <?= e(message_time_label($m['created_at'])) ?></div>
-        </div>
+  <section class="mx-pane" aria-label="Conversation">
+    <div class="mx-convhead">
+      <a href="/admin/internal-messages.php" class="btn-icon btn-icon--outline mx-back" aria-label="All channels"><?= admin_icon('arrow-left') ?></a>
+      <span class="mx-av<?= $activeVenue === null && !$activeGroup ? '' : ' mx-av--soft' ?>"><?= $activeGroup ? admin_icon('message', 15) : ($activeVenue === null ? admin_icon('users', 15) : admin_icon('home', 15)) ?></span>
+      <div class="mx-convhead__t">
+        <div class="mx-convhead__name"><?= e($activeLabel) ?></div>
+        <div class="mx-convhead__sub"><?php
+          if ($activeGroup) echo e($__teamCount . ' member' . ($__teamCount === 1 ? '' : 's'));
+          else echo $activeVenue === null ? 'Everyone on the team' : 'This property’s team';
+        ?></div>
+      </div>
+    </div>
+    <div id="amThread" class="am-thread"
+         data-poll-url="/admin/internal-messages-poll"
+         data-channel="<?= e($activeAddr) ?>"
+         data-last="<?= $lastId ?>">
+      <p class="am-empty"<?= $msgs ? ' style="display:none"' : '' ?>>No messages in this channel yet. Say hello 👋</p>
+      <?= mx_bubbles_html(array_map(fn($m) => [
+            'id' => $m['id'], 'body' => $m['body'], 'created_at' => $m['created_at'],
+            'mine' => (int)($m['sender_admin_id'] ?? 0) === $meId,
+            'who' => trim((string)($m['sender_name'] ?? '')) ?: 'Team',
+          ], $msgs)) ?>
+    </div>
+    <?= mx_composer_html('', ['channel' => $activeAddr], 'Message ' . $activeLabel . '…') ?>
+  </section>
+
+  <!-- About this channel -->
+  <aside class="mx-pane mx-pane--ctx" aria-label="About this channel">
+    <div class="mx-ctx">
+      <div>
+        <h4 style="margin-bottom:8px"><?= e($activeLabel) ?></h4>
+        <p class="text-muted" style="font-size:12.5px;margin:0"><?php
+          if ($activeGroup) echo 'A group chat. Only its members can read it.';
+          elseif ($activeVenue === null) echo 'Everyone on the team can read this channel — ' . (int)$__teamCount . ' people.';
+          else echo 'For the team at ' . e($activeLabel) . '.';
+        ?></p>
+      </div>
+
+      <?php if ($activeGroup && $__groupMembers): ?>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <h4>Members · <?= count($__groupMembers) ?></h4>
+        <?php foreach ($__groupMembers as $gm): $gmn = trim((string)($gm['name'] ?? '')) ?: (string)($gm['email'] ?? ''); ?>
+        <div class="mx-person"><?= mx_avatar($gmn, 'u' . (int)$gm['id'], true) ?><span><?= e($gmn) ?><?= (int)$gm['id'] === $meId ? ' <span class="text-muted">(you)</span>' : '' ?></span></div>
         <?php endforeach; ?>
       </div>
-      <form id="amForm" method="POST" class="am-composer">
-        <?= csrf_field() ?>
-        <input type="hidden" name="channel" value="<?= e($activeAddr) ?>">
-        <textarea name="body" rows="3" required placeholder="Message the team…"></textarea>
-        <div class="am-composer__actions">
-          <button type="submit" class="btn-primary"><?= admin_icon('send', 15) ?> Send</button>
-          <span class="am-status text-muted" aria-live="polite" style="font-size:13px"></span>
+      <?php endif; ?>
+
+      <?php if ($__today !== null && !$activeGroup && $__navOn('frontdesk', 'frontdesk.php')): ?>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <h4>Today<?= $activeVenue !== null ? ' at ' . e($activeLabel) : '' ?></h4>
+        <div class="mx-stat">
+          <div><b><?= count($__today['arriving']) ?></b><span>Arriving</span></div>
+          <div><b><?= count($__today['inhouse']) ?></b><span>In house</span></div>
+          <div><b><?= count($__today['departing']) ?></b><span>Leaving</span></div>
         </div>
-      </form>
+        <?php if ($__today['arriving']): ?>
+        <div>
+          <?php foreach (array_slice($__today['arriving'], 0, 5) as $ar): ?>
+          <div class="mx-req"><span><?= e(trim((string)($ar['guest_name'] ?? '')) ?: 'Guest') ?></span><span class="text-muted" style="font-size:11.5px"><?= e((string)($ar['room_name'] ?? '')) ?></span></div>
+          <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+        <a href="/admin/frontdesk.php" class="btn-outline btn-sm" style="align-self:flex-start">Open Front desk</a>
+      </div>
+      <?php endif; ?>
     </div>
-  </div>
+  </aside>
 </div>
 
 <?php if ($canCreateGroups): ?>
@@ -221,7 +272,6 @@ include __DIR__ . '/_layout.php';
 <?php endif; ?>
 
 <style>
-@media (max-width:720px){ .im-wrap{grid-template-columns:1fr!important} .im-channels .card__body{display:flex;flex-wrap:wrap;gap:4px} }
 .im-modal{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;display:flex;align-items:center;justify-content:center;padding:16px}
 .im-modal.is-hidden{display:none}
 .im-modal__box{background:#fff;border-radius:10px;padding:22px;width:100%;max-width:440px;box-shadow:0 8px 32px rgba(0,0,0,.2);max-height:88vh;overflow:auto}

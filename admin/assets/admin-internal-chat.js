@@ -29,6 +29,7 @@
     if (m.id && el.querySelector('[data-mid="' + m.id + '"]')) return; // dedupe
     var empty = el.querySelector('.am-empty');
     if (empty) empty.style.display = 'none';
+    if (window.tsChatDay) window.tsChatDay(el);
     var bubble = document.createElement('div');
     bubble.className = 'am-msg ' + (m.mine ? 'am-msg--staff' : 'am-msg--guest');
     if (m.id) bubble.setAttribute('data-mid', m.id);

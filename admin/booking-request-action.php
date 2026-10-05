@@ -24,6 +24,7 @@ verify_csrf();
 $rk = $_POST['return'] ?? '';
 if ($rk === 'concierge-desk') { $returnTo = '/admin/concierge-desk.php'; }
 elseif ($rk === 'mywork')     { $returnTo = '/admin/mywork.php'; }
+elseif ($rk === 'messages')   { $returnTo = '/admin/messages.php?hold=' . (int)($_POST['hold_id'] ?? 0) . '&thread=' . (int)($_POST['id'] ?? 0); }
 elseif ($rk === 'workspace')  { $returnTo = '/admin/booking.php?hold=' . (int)($_POST['hold_id'] ?? 0) . '&tab=requests'; }
 else { $returnTo = '/admin/holds.php'; }
 
