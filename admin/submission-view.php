@@ -370,7 +370,7 @@ include __DIR__ . '/_layout.php';
       </div>
       <div>
         <div class="detail-item__label">Email</div>
-        <div class="detail-item__value"><a href="mailto:<?= e($sub['guest_email']) ?>"><?= e($sub['guest_email'] ?? '—') ?></a></div>
+        <div class="detail-item__value"><?= e($sub['guest_email'] ?? '—') ?></div>
       </div>
       <div>
         <div class="detail-item__label">Phone</div>

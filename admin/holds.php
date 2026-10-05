@@ -219,7 +219,7 @@ ob_start(); ?>
           <td><?= e($hold['id']) ?></td>
           <td>
             <strong><?= e($hold['guest_name']) ?></strong><br>
-            <a href="mailto:<?= e($hold['guest_email']) ?>" style="font-size:12px;color:var(--muted)"><?= e($hold['guest_email']) ?></a>
+            <span style="font-size:12px;color:var(--muted)"><?= e($hold['guest_email']) ?></span>
             <?php if (!empty($hold['agent_id'])): ?>
             <div style="margin-top:4px"><span class="badge badge--blue" title="Requested through the trade portal">Trade · <?= e(trim((string)($hold['agent_agency'] ?? '')) ?: (string)($hold['agent_name'] ?? 'agent')) ?></span></div>
             <?php endif; ?>

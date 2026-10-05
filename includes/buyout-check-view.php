@@ -20,7 +20,8 @@ $__bcShow = 6;   // ranges listed per property before "+N more"
 ?>
 <details class="card bc" data-bc data-endpoint="/api/rate-editor.php" data-csrf="<?= e(csrf_token()) ?>"<?= $__bcOff ? ' open' : '' ?>>
   <summary class="card__head">
-    <span class="card__title">Buyout check</span>
+    <span class="card__title">Buyout check
+      <span class="bc-help" data-tip="A whole-property buyout should cost the sum of its published rooms. Checked night by night from today to <?= e(date('j M Y', strtotime($__bc[0]['last']))) ?>. Rooms with no price, or in another currency, are left out."><?= admin_icon('info', 14) ?></span></span>
     <span class="bc-meta">
       <?php if ($__bcOff): ?>
       <span class="badge badge--orange"><?= count($__bcOff) ?> <?= count($__bcOff) === 1 ? 'buyout needs' : 'buyouts need' ?> an update</span>
@@ -31,9 +32,6 @@ $__bcShow = 6;   // ranges listed per property before "+N more"
     </span>
   </summary>
   <div class="bc-body">
-    <p class="bc-intro">A whole-property buyout should cost the sum of its published rooms. Checked night by night from today to
-      <?= e(date('j M Y', strtotime($__bc[0]['last']))) ?>. Rooms with no price, or priced in another currency, are not counted.</p>
-
     <?php foreach ($__bc as $c): $cur = $c['currency']; ?>
     <div class="bc-venue">
       <div class="bc-venue__head">
@@ -73,9 +71,12 @@ $__bcShow = 6;   // ranges listed per property before "+N more"
       <?php foreach ($c['notes'] as $n): ?><p class="bc-note"><?= e($n) ?></p><?php endforeach; ?>
 
       <?php if ($c['base_sum'] > 0 && abs($c['base_price'] - $c['base_sum']) >= 0.005): ?>
-      <p class="bc-note bc-note--warn">Base price is <?= e(re_money_text($c['base_price'], $cur)) ?>; its rooms' base prices add up to
-        <?= e(re_money_text($c['base_sum'], $cur)) ?>. The base price applies on nights without a seasonal rate —
-        <a href="/admin/room-edit.php?id=<?= (int)$c['room_id'] ?>">change it on the room page</a>.</p>
+      <div class="bc-base">
+        <span><span class="text-muted">Base price</span> <strong><?= e(re_money_text($c['base_price'], $cur)) ?></strong>
+          <span class="text-muted">· rooms add up to</span> <strong><?= e(re_money_text($c['base_sum'], $cur)) ?></strong></span>
+        <a href="/admin/room-edit.php?id=<?= (int)$c['room_id'] ?>" class="btn-outline btn-sm"
+           data-tip="The base price applies on nights without a seasonal rate. It is set on the room page.">Edit base price</a>
+      </div>
       <?php endif; ?>
     </div>
     <?php endforeach; ?>
@@ -90,7 +91,8 @@ $__bcShow = 6;   // ranges listed per property before "+N more"
 .bc-meta{display:inline-flex;align-items:center;gap:8px;color:var(--muted)}
 .bc[open] .bc-meta svg{transform:rotate(180deg)}
 .bc-body{padding:4px 18px 16px;display:grid;gap:12px}
-.bc-intro{margin:0;font-size:12.5px;color:var(--muted);max-width:80ch}
+.bc-help{display:inline-flex;vertical-align:-2px;margin-left:4px;color:var(--muted);cursor:help}
+.bc-base{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:13px;background:#fbf3ec;border-radius:8px;padding:7px 10px}
 .bc-venue{border:1px solid var(--border);border-radius:12px;padding:12px 14px;display:grid;gap:8px;min-width:0}
 .bc-venue__head{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .bc-venue__name{flex:1 1 auto;min-width:0}

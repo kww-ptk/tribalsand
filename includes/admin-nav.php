@@ -115,6 +115,7 @@ function admin_nav_definition(array $f, array $badge = []): array {
                 $tab('Calendar', 'gantt.php', $on('bookings')),
                 $tab('Conflicts', 'conflicts.php', $on('bookings'), 'Conflicts', $b('conflicts'), 'red'),
                 $tab('Highlights', 'calendar-highlights.php', $ownerOrManager, 'Calendar highlights'),
+                $tab('iCal feeds', 'ical-feeds.php', $on('bookings')),
                 $tab('Import', 'import-bookings.php', $ownerOrManager, 'Import bookings'),
             ]),
             $item('Enquiries', 'submissions', [

@@ -183,7 +183,7 @@ ob_start(); ?>
               <?= e($r['guest_name']) ?>
               <div class="text-muted" style="font-size:12px">
                 <?php if ($r['guest_phone']): ?><a href="tel:<?= e($r['guest_phone']) ?>" style="color:inherit"><?= e($r['guest_phone']) ?></a><?php endif; ?>
-                <?php if ($r['guest_email']): ?> · <a href="mailto:<?= e($r['guest_email']) ?>" style="color:inherit"><?= e($r['guest_email']) ?></a><?php endif; ?>
+                <?php if ($r['guest_email']): ?> · <?= e($r['guest_email']) ?><?php endif; ?>
               </div>
               <?php if (trim((string)$r['notes']) !== ''): ?>
               <div class="text-muted" style="font-size:12px;margin-top:2px;font-style:italic">“<?= e($r['notes']) ?>”</div>

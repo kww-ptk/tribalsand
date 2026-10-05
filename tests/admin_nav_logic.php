@@ -91,7 +91,7 @@ check('manager: a lone tab becomes a plain link with its full name', in_array('S
 $rec = $labels($nav('reception'));
 check('reception: Bookings + Calendar + Enquiries, no Finance/Settings', in_array('Bookings › Bookings', $rec, true) && in_array('Bookings › Enquiries', $rec, true)
     && !array_filter($rec, fn($l) => str_starts_with($l, 'Finance') || str_starts_with($l, 'Settings') || str_starts_with($l, 'Inventory')));
-check('reception: Calendar tabs are Calendar + Conflicts only', array_column($nav('reception', 'gantt.php')['active']['tabs'], 'label') === ['Calendar', 'Conflicts']);
+check('reception: Calendar tabs are Calendar + Conflicts + iCal feeds', array_column($nav('reception', 'gantt.php')['active']['tabs'], 'label') === ['Calendar', 'Conflicts', 'iCal feeds']);
 check('reception: counts stock from Today', in_array('Today › Stock count', $rec, true));
 
 $hk = $labels($nav('housekeeping'));
@@ -110,9 +110,9 @@ check('conflicts.php lights Calendar', ($n['active']['label'] ?? '') === 'Calend
 check('…with the Conflicts tab active', array_column(array_filter($n['active']['tabs'], fn($t) => $t['active']), 'label') === ['Conflicts']);
 check('…and the item carries the tab badges', $n['active']['badge'] === 3 && $n['active']['badge_class'] === 'red');
 $html = admin_nav_tabs_html($n);
-check('tab strip: four tabs, shell links, count pill', substr_count($html, '<a class="tab-btn') === 4 && substr_count($html, 'data-shell-link') === 4
+check('tab strip: five tabs, shell links, count pill', substr_count($html, '<a class="tab-btn') === 5 && substr_count($html, 'data-shell-link') === 5
     && str_contains($html, 'tab-btn__count">3<') && str_contains($html, 'aria-current="page"'));
-check('tab strip: every tab carries an icon', substr_count($html, '<svg') === 4);
+check('tab strip: every tab carries an icon', substr_count($html, '<svg') === 5);
 check('tab icon: named after the page, else a stand-in, else the item icon', admin_nav_tab_icon(['pages' => ['conflicts.php']], 'gantt') === 'conflicts'
     && admin_nav_tab_icon(['pages' => ['submission-trends.php']], 'submissions') === 'reports'
     && admin_nav_tab_icon(['pages' => ['no-such-icon.php']], 'gantt') === 'gantt');
@@ -140,7 +140,7 @@ $side = admin_nav_sidebar_html($nav('reception', 'frontdesk.php'));
 check('sidebar: Today + Bookings open by default, the rest closed', str_contains($side, 'data-group="today" open') && str_contains($side, 'data-group="bookings" open')
     && str_contains($side, 'data-group="restaurant">'));
 check('sidebar: a group header is icon + name + chevron', (bool)preg_match('~<summary class="navgroup__head"><svg[^>]*>.*?</svg><span>Today</span>~s', $side));
-check('sidebar: a link lists every page it stands for', str_contains(admin_nav_sidebar_html($n), 'data-pages="gantt.php conflicts.php calendar-highlights.php import-bookings.php"'));
+check('sidebar: a link lists every page it stands for', str_contains(admin_nav_sidebar_html($n), 'data-pages="gantt.php conflicts.php calendar-highlights.php ical-feeds.php import-bookings.php"'));
 check('sidebar: Open till opens in a new tab', str_contains(admin_nav_sidebar_html($nav('shop')), 'href="/pos/" class="sidebar__link" target="_blank"'));
 check('sidebar: the active group opens even when it is closed by default', str_contains(admin_nav_sidebar_html($nav('owner', 'sync.php')), 'data-group="settings" open'));
 

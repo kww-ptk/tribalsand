@@ -403,6 +403,12 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .mt-16       { margin-top: 16px; }
 .mt-24       { margin-top: 24px; }
 a.no-style   { text-decoration: none; color: inherit; }
+/* Plain links inside a page (no class of their own) — brand teal, no browser-blue
+   underline; the underline only appears on hover/focus. Email addresses are never
+   links in the admin (they print as text). */
+.admin-content a:not([class]) { color: var(--brand); text-decoration: none; font-weight: 500; }
+.admin-content a:not([class]):hover,
+.admin-content a:not([class]):focus-visible { text-decoration: underline; text-underline-offset: 2px; }
 
 /* ══════════════════════════════════════════════
    RESPONSIVE — Mobile & Tablet

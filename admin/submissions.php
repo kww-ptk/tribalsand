@@ -148,7 +148,7 @@ $rooms = db_query(
     'SELECT id, name FROM rooms r' . ($sVenue !== '' ? " WHERE {$sVenue}" : '') . ' ORDER BY sort_order'
 )->fetchAll();
 
-$pageTitle  = 'Submissions';
+$pageTitle  = 'Enquiries';
 $activeMenu = 'submissions';
 
 // Derive a friendly "Source" label from a URL (HTTP_REFERER or source_page)
@@ -232,7 +232,7 @@ ob_start(); ?>
                 <?php endif; ?>
               </span>
               <?php if (!empty($row['guest_email'])): ?>
-              <a class="cell-stack__sub" href="mailto:<?= e($row['guest_email']) ?>"><?= e($row['guest_email']) ?></a>
+              <span class="cell-stack__sub"><?= e($row['guest_email']) ?></span>
               <?php endif; ?>
             </div>
           </td>
@@ -270,9 +270,8 @@ include __DIR__ . '/_layout.php';
 ?>
 
 <div class="page-header">
-  <h1>Submissions</h1>
+  <h1>Enquiries</h1>
   <div class="actions">
-    <a href="/admin/submission-trends.php" class="btn-outline btn-sm"><?= admin_icon('filter', 15) ?> Trends</a>
     <a href="/admin/submissions.php?<?= e($preserve_qs ? $preserve_qs . '&export=1' : 'export=1') ?>" class="btn-outline btn-sm"><?= admin_icon('download', 15) ?> Export CSV</a>
   </div>
 </div>
@@ -284,6 +283,25 @@ include __DIR__ . '/_layout.php';
 </div>
 <?php endif; ?>
 
+<?php
+// "Unread replies" is a VIEW of the list (like an inbox's Unread), not one more
+// filter among the dropdowns — so it sits in its own switch above them.
+$__subQs = function (array $set) use ($view_qs): string {
+    parse_str($view_qs, $q);
+    unset($q['page']);
+    foreach ($set as $k => $v) { if ($v === null) unset($q[$k]); else $q[$k] = $v; }
+    $s = http_build_query($q);
+    return '/admin/submissions.php' . ($s !== '' ? '?' . $s : '');
+};
+$__unreadCount = submission_reply_flags_supported() && function_exists('submission_unread_reply_count') ? (int)submission_unread_reply_count() : 0;
+?>
+<?php if (submission_reply_flags_supported()): ?>
+<nav class="segswitch" aria-label="Which enquiries">
+  <a class="<?= $unread ? '' : 'is-on' ?>"<?= $unread ? '' : ' aria-current="true"' ?> href="<?= e($__subQs(['unread' => null])) ?>">All enquiries</a>
+  <a class="<?= $unread ? 'is-on' : '' ?>"<?= $unread ? ' aria-current="true"' : '' ?> href="<?= e($__subQs(['unread' => '1'])) ?>">Unread replies <span class="segswitch__count"><?= $__unreadCount ?></span></a>
+</nav>
+<?php endif; ?>
+
 <!-- Filters + search share one aligned control row -->
 <div class="dt" data-dt>
   <div class="dt-controls">
@@ -291,6 +309,7 @@ include __DIR__ . '/_layout.php';
   <input type="hidden" name="q"   value="<?= e($pg['q']) ?>">
   <input type="hidden" name="per" value="<?= (int)$meta['per'] ?>">
   <?php if ($agent_id): ?><input type="hidden" name="agent_id" value="<?= (int)$agent_id ?>"><?php endif; ?>
+  <?php if ($unread): ?><input type="hidden" name="unread" value="1"><?php endif; ?>
   <select name="type" class="filter-select js-auto-submit" aria-label="Filter by type">
     <option value="">All types</option>
     <option value="enquiry"      <?= $type==='enquiry'     ?'selected':'' ?>>Enquiry</option>
@@ -316,19 +335,16 @@ include __DIR__ . '/_layout.php';
     <?php endforeach; ?>
   </select>
 
-  <?php if (submission_reply_flags_supported()): ?>
-  <label class="optchip" style="display:inline-flex;align-items:center;gap:6px">
-    <input type="checkbox" name="unread" value="1" class="js-auto-submit" <?= $unread ? 'checked' : '' ?>> Unread replies
-  </label>
-  <?php endif; ?>
-
-  <button type="button" class="dp-btn" data-dp-target="subDateFrom" data-dp-placeholder="From date" style="width:150px">From date</button>
+  <span class="sub-dates" role="group" aria-label="Received between">
+    <button type="button" class="dp-btn" data-dp-target="subDateFrom" data-dp-past data-dp-placeholder="Received from"><?= $date_from ? e(date('j M Y', strtotime($date_from))) : 'Received from' ?></button>
+    <span class="sub-dates__to" aria-hidden="true">→</span>
+    <button type="button" class="dp-btn" data-dp-target="subDateTo" data-dp-past data-dp-placeholder="to"><?= $date_to ? e(date('j M Y', strtotime($date_to))) : 'to' ?></button>
+  </span>
   <input type="hidden" id="subDateFrom" name="date_from" value="<?= e($date_from) ?>">
-  <button type="button" class="dp-btn" data-dp-target="subDateTo" data-dp-placeholder="To date" style="width:150px">To date</button>
   <input type="hidden" id="subDateTo" name="date_to" value="<?= e($date_to) ?>">
 
-  <?php if ($type || $status || $room_id || $agent_id || $unread || $date_from || $date_to || $pg['q']): ?>
-  <a href="/admin/submissions.php" class="btn-outline btn-sm"><?= admin_icon('x', 14) ?> Clear</a>
+  <?php if ($type || $status || $room_id || $date_from || $date_to): ?>
+  <a href="<?= e($__subQs(['type' => null, 'status' => null, 'room_id' => null, 'date_from' => null, 'date_to' => null])) ?>" class="btn-outline btn-sm"><?= admin_icon('x', 14) ?> Clear filters</a>
   <?php endif; ?>
 </form>
     <?php dt_toolbar(['per' => $meta['per'], 'placeholder' => 'Search name, email or message…']); ?>
@@ -336,6 +352,15 @@ include __DIR__ . '/_layout.php';
   <div class="dt-body" data-dt-body><?= $dtBody ?></div>
 </div>
 
+<style>
+.sub-dates{display:inline-flex;align-items:center;border:1px solid var(--border);border-radius:8px;background:var(--white);overflow:hidden}
+.sub-dates .dp-btn{border:0 !important;box-shadow:none !important;border-radius:0;min-width:0;width:auto;white-space:nowrap;padding:8px 10px;background:transparent;font-size:13px}
+#filtersForm{gap:10px}
+#filtersForm .eselect__btn{min-width:128px}
+#filtersForm .eselect{min-width:0 !important;max-width:200px}
+#filtersForm .eselect__btn{max-width:200px}
+.sub-dates__to{color:var(--muted);font-size:12px;padding:0 2px}
+</style>
 <script>
   (function () {
     var form = document.getElementById('filtersForm');

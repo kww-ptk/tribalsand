@@ -134,30 +134,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
-    if ($action === 'add_ical_feed') {
-        $unit_id   = (int)($_POST['feed_unit_id'] ?? 0);
-        $label     = trim($_POST['feed_label']    ?? '');
-        $feed_url  = trim($_POST['feed_url']      ?? '');
-        if ($unit_id && !$unitInScope($unit_id)) {
-            $err = 'That unit isn’t one of your properties.';
-        } elseif ($unit_id && $feed_url && filter_var($feed_url, FILTER_VALIDATE_URL)) {
-            db_query(
-                "INSERT INTO ical_feeds (unit_id, label, feed_url) VALUES (:uid, :label, :url)",
-                [':uid' => $unit_id, ':label' => $label, ':url' => $feed_url]
-            );
-            $msg = 'iCal feed added.';
-        } else {
-            $err = 'Invalid unit or feed URL.';
-        }
-    }
-
-    if ($action === 'delete_ical_feed') {
-        db_query(
-            'DELETE FROM ical_feeds WHERE id = :id' . ($gUnitIds !== '' ? " AND unit_id IN ({$gUnitIds})" : ''),
-            [':id' => (int)($_POST['feed_id'] ?? 0)]
-        );
-        $msg = 'iCal feed removed.';
-    }
+    // iCal feed add/remove moved to admin/ical-feeds.php (Calendar › iCal feeds).
 }
 
 // ── Date range: 3-month window with prev/next offset ────────────
@@ -275,13 +252,6 @@ $room_defaults = [];
 foreach ($units as $__u) $room_defaults[(int)$__u['room_db_id']] = (float)($__u['room_price'] ?? 0);
 $room_prices = rates_nightly_maps($room_defaults, $start_str, $end_str);
 
-$ical_feeds = db_query(
-    "SELECT f.*, u.name AS unit_name, r.name AS room_name
-     FROM ical_feeds f
-     JOIN units u ON u.id = f.unit_id
-     JOIN rooms r ON r.id = u.room_id
-     ORDER BY r.sort_order ASC, f.id ASC"
-)->fetchAll();
 
 $env         = parse_env();
 $site_url    = rtrim($env['SITE_URL'] ?? 'https://tribalsand.com', '/');
@@ -809,115 +779,6 @@ include __DIR__ . '/_layout.php';
 
 <?php endif; // end if units ?>
 
-<!-- ── Rate overrides moved ── -->
-<div class="card" style="margin-bottom:24px">
-  <div class="card__body" style="padding:16px 20px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">
-    <span class="text-muted" style="font-size:13px">
-      Nightly rates are edited on each property and room, and shown as a calendar on the Rates page.
-    </span>
-    <a href="/admin/rates.php" class="btn-sm btn-outline">Open Rates <?= admin_icon('chevron-right', 14) ?></a>
-  </div>
-</div>
-
-<!-- ── iCal feeds ── -->
-<div class="card">
-  <div class="card__head">
-    <span class="card__title">OTA iCal Feeds</span>
-    <span class="text-muted" style="font-size:12px">Import blocks from Airbnb, Booking.com etc. — add feed URL per unit</span>
-  </div>
-  <div class="card__body" style="padding:20px">
-    <!-- Push feeds: outbound iCal URLs for each unit -->
-    <?php if (!empty($units)): ?>
-    <div style="margin-bottom:20px">
-      <div class="form-section__title">Your iCal feed URLs (share with OTAs to export your calendar)</div>
-      <table class="data-table" style="margin-top:8px">
-        <thead><tr><th>Property</th><th>Room</th><th>Unit</th><th>Feed URL</th></tr></thead>
-        <tbody>
-        <?php foreach ($units as $u): ?>
-        <tr>
-          <td><?= e(trim((string)($u['venue_name'] ?? '')) ?: '—') ?></td>
-          <td><?= e($u['room_name']) ?></td>
-          <td><?= e($u['name']) ?></td>
-          <td>
-            <input type="text" readonly
-                   value="<?= e($site_url . '/api/ical.php?unit=' . $u['id'] . '&token=' . $u['feed_token']) ?>"
-                   onclick="this.select()"
-                   style="width:100%;font-size:11px;font-family:monospace;background:#f9fafb">
-          </td>
-        </tr>
-        <?php endforeach; ?>
-        </tbody>
-      </table>
-    </div>
-    <?php endif; ?>
-
-    <!-- Pull feeds: import from OTA -->
-    <div class="form-section__title" style="margin-bottom:12px">Import feeds (pull from OTA into your calendar)</div>
-    <form method="POST" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px">
-      <?= csrf_field() ?>
-      <input type="hidden" name="action" value="add_ical_feed">
-      <div class="field" style="margin:0">
-        <label>Unit</label>
-        <select name="feed_unit_id" required>
-          <?php foreach ($units_by_venue as $__vname => $__vunits): ?>
-          <optgroup label="<?= e($__vname) ?>">
-            <?php foreach ($__vunits as $u): ?>
-            <option value="<?= e($u['id']) ?>"><?= e($u['room_name'] . ' — ' . $u['name']) ?></option>
-            <?php endforeach; ?>
-          </optgroup>
-          <?php endforeach; ?>
-        </select>
-      </div>
-      <div class="field" style="margin:0"><label>Label</label><input type="text" name="feed_label" placeholder="Airbnb" style="width:110px"></div>
-      <div class="field" style="margin:0"><label>iCal URL</label><input type="url" name="feed_url" placeholder="https://www.airbnb.com/calendar/ical/..." required style="width:280px"></div>
-      <button type="submit" class="btn-primary btn-sm">Add Feed</button>
-    </form>
-
-    <?php if ($ical_feeds): ?>
-    <table class="data-table">
-      <thead><tr><th>Room / Unit</th><th>Label</th><th>Feed URL</th><th>Last synced</th><th></th></tr></thead>
-      <tbody>
-      <?php foreach ($ical_feeds as $feed): ?>
-      <tr>
-        <td><?= e($feed['room_name']) ?> — <?= e($feed['unit_name']) ?></td>
-        <td><?= e($feed['label'] ?? '') ?></td>
-        <td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;font-size:11px">
-          <a href="<?= e($feed['feed_url']) ?>" target="_blank" title="<?= e($feed['feed_url']) ?>" style="color:var(--brand)">
-            <?= e(parse_url($feed['feed_url'], PHP_URL_HOST) ?: $feed['feed_url']) ?>
-          </a>
-        </td>
-        <td style="font-size:12px;color:var(--muted)"><?= $feed['last_synced_at'] ? date('d M H:i', strtotime($feed['last_synced_at'])) : 'Never' ?></td>
-        <td>
-          <form method="POST" style="display:inline">
-            <?= csrf_field() ?>
-            <input type="hidden" name="action"  value="delete_ical_feed">
-            <input type="hidden" name="feed_id" value="<?= e($feed['id']) ?>">
-            <button type="submit" class="btn-danger btn-sm" onclick="return confirm('Remove this feed?')">Remove</button>
-          </form>
-        </td>
-      </tr>
-      <?php endforeach; ?>
-      </tbody>
-    </table>
-    <?php else: ?>
-    <p style="color:var(--muted);font-size:13px">No import feeds added yet.</p>
-    <?php endif; ?>
-
-    <?php if ($sync_secret): ?>
-    <p style="margin-top:12px;font-size:12px;color:var(--muted)">
-      Sync endpoint (call via external cron every 1–6 hours):
-      <code style="font-size:11px;background:#f4f6f8;padding:2px 6px;border-radius:3px">
-        <?= e($site_url . '/api/sync-ical.php?secret=' . $sync_secret) ?>
-      </code>
-    </p>
-    <?php else: ?>
-    <p style="margin-top:12px;font-size:12px;color:var(--muted)">
-      Set <code>ICAL_SYNC_SECRET</code> in your environment to enable pull sync.
-    </p>
-    <?php endif; ?>
-  </div>
-</div>
-
 <!-- ── Create block modal ── -->
 <!-- ── Block hover card ──────────────────────────────────────────────
      Hover a calendar block for the whole record, click to pin it so it can be
@@ -1421,10 +1282,11 @@ if (syncBtn) {
       .then(r => r.json())
       .then(data => {
         const total = (data.feeds||[]).reduce((s,f) => s + (f.imported||0), 0);
-        alert('Sync complete. ' + total + ' new block(s) imported.');
-        if (total > 0) location.reload();
+        const say = window.tsToast || function () {};
+        say('Sync finished — ' + total + ' new ' + (total === 1 ? 'block' : 'blocks') + ' imported.', 'ok');
+        if (total > 0) { if (!(window.tsShellGo && window.tsShellGo(location.pathname + location.search))) location.reload(); }
       })
-      .catch(() => alert('Sync failed — check the ICAL_SYNC_SECRET setting.'))
+      .catch(() => { if (window.tsToast) window.tsToast('Sync failed. Check ICAL_SYNC_SECRET on the server.', 'err'); })
       .finally(() => { syncBtn.disabled = false; syncBtn.textContent = '⟳ Sync iCal'; });
   });
 }

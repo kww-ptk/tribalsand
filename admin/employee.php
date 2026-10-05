@@ -203,7 +203,6 @@ if (attendance_supported()) {
 $dmUrl = '';
 if ($acctId > 0 && internal_group_channels_supported()) $dmUrl = '/admin/internal-messages.php?dm=' . $acctId;
 elseif (!empty($p['phone']) && ($wa = hr_whatsapp_link($p['phone'])) !== '') $dmUrl = $wa;
-elseif (!empty($p['email'])) $dmUrl = 'mailto:' . $p['email'];
 
 include __DIR__ . '/_layout.php';
 ?>
@@ -241,7 +240,7 @@ include __DIR__ . '/_layout.php';
           echo $ev ? e(implode(', ', $ev)) : '—'; ?></div></div>
         <div><div class="detail-item__label">Weekly off</div><div class="detail-item__value"><?= e($p['off_day'] ?: 'Sun') ?></div></div>
         <div><div class="detail-item__label">Phone</div><div class="detail-item__value"><?= $p['phone'] ? e($p['phone']) : '—' ?></div></div>
-        <div><div class="detail-item__label">Email</div><div class="detail-item__value"><?= $p['email'] ? '<a href="mailto:' . e($p['email']) . '">' . e($p['email']) . '</a>' : '—' ?></div></div>
+        <div><div class="detail-item__label">Email</div><div class="detail-item__value"><?= $p['email'] ? e($p['email']) : '—' ?></div></div>
         <div><div class="detail-item__label">Login account</div><div class="detail-item__value"><?= $acctId ? 'Linked' : 'None' ?></div></div>
       </div>
     </div>
