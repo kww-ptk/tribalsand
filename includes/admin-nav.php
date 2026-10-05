@@ -359,3 +359,93 @@ function admin_nav_tabs_html(array $nav, string $script = ''): string {
     }
     return $out . '</div></nav>';
 }
+
+/**
+ * Extra words a page answers to in the Ctrl+K search, beyond its label, its
+ * group and its file name — the words people actually type ("invoice" for
+ * Invoices & payments). Keyed by page file; every page of a tab is searched.
+ */
+const ADMIN_NAV_SEARCH_WORDS = [
+    'gantt.php'            => 'calendar availability blocks occupancy',
+    'holds.php'            => 'bookings reservations holds confirm',
+    'submissions.php'      => 'enquiries leads inbox requests',
+    'rates.php'            => 'prices pricing rate card season',
+    'quote-builder.php'    => 'quote quotation price offer',
+    'acct-documents.php'   => 'invoices payments receipts credit notes',
+    'staff.php'            => 'team users accounts roles access permissions',
+    'emails.php'           => 'email notifications templates',
+    'settings.php'         => 'settings configuration',
+    'conflicts.php'        => 'double booking overlap',
+    'ical-feeds.php'       => 'ical sync airbnb booking.com ota',
+    'pos-sales.php'        => 'till sales receipts z report',
+    'messages.php'         => 'chat whatsapp guest messages',
+    'assistant.php'        => 'ai ask question',
+];
+
+/**
+ * The Ctrl+K search index: one entry per page this account can open, built from
+ * the RESOLVED nav, so it can never offer a page the sidebar hides (same
+ * visibility, same owner "Access by role" overrides). An item with tabs gives
+ * one entry per tab ("Calendar · Conflicts"). Pure.
+ *
+ * @return array{items: list<array{t:string,g:string,h:string,i:string,k:string,b?:bool}>, icons: array<string,string>}
+ */
+function admin_nav_search_index(array $nav): array {
+    $items = []; $iconNames = [];
+    $words = function (array $pages): string {
+        $w = [];
+        foreach ($pages as $p) {
+            $w[] = str_replace(['-', '_'], ' ', preg_replace('/\.php$/', '', $p));
+            if (isset(ADMIN_NAV_SEARCH_WORDS[$p])) $w[] = ADMIN_NAV_SEARCH_WORDS[$p];
+        }
+        return implode(' ', array_unique($w));
+    };
+    foreach ($nav['groups'] as $g) {
+        $group = $g['title'] !== '' ? $g['title'] : 'Home';
+        foreach ($g['items'] as $it) {
+            $rows = $it['tabs']
+                ? array_map(fn($t) => [
+                    't' => $t['label'] === $it['label'] ? $it['label'] : $it['label'] . ' · ' . $t['label'],
+                    'h' => $t['href'], 'i' => admin_nav_tab_icon($t, $it['icon']), 'k' => $words($t['pages'])], $it['tabs'])
+                : [['t' => $it['label'], 'h' => $it['href'], 'i' => $it['icon'], 'k' => $words($it['pages'])]];
+            foreach ($rows as $r) {
+                $r['g'] = $group;
+                if ($it['blank']) $r['b'] = true;
+                $items[] = $r;
+                $iconNames[$r['i']] = true;
+            }
+        }
+    }
+    $set = admin_nav_icon_set(); $icons = [];
+    foreach (array_keys($iconNames) as $n) if (isset($set[$n])) $icons[$n] = $set[$n];
+    return ['items' => $items, 'icons' => $icons];
+}
+
+/** The search button for the sidebar. */
+function admin_nav_search_button_html(): string {
+    $mac = preg_match('/Mac|iPhone|iPad/', (string)($_SERVER['HTTP_USER_AGENT'] ?? ''));
+    return '<button type="button" class="navsearch-btn" data-navsearch-open aria-haspopup="dialog">'
+         . '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>'
+         . '<span>Search pages</span><kbd>' . ($mac ? '⌘K' : 'Ctrl K') . '</kbd></button>';
+}
+
+/**
+ * The search window (hidden until opened) + its index as JSON. Printed once per
+ * full page load OUTSIDE .admin-content, so no-reload page swaps never remove it.
+ */
+function admin_nav_search_html(array $nav): string {
+    $json = json_encode(admin_nav_search_index($nav), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP);
+    return '<div class="navsearch" id="navSearch" hidden>'
+         . '<div class="navsearch__backdrop" data-navsearch-close></div>'
+         . '<div class="navsearch__panel" role="dialog" aria-modal="true" aria-label="Search pages">'
+         . '<div class="navsearch__field">'
+         . '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>'
+         . '<input type="text" id="navSearchInput" placeholder="Search pages — calendar, rates, invoices…" autocomplete="off" spellcheck="false"'
+         . ' role="combobox" aria-expanded="true" aria-controls="navSearchList" aria-autocomplete="list">'
+         . '<button type="button" class="navsearch__esc" data-navsearch-close aria-label="Close">Esc</button>'
+         . '</div>'
+         . '<div class="navsearch__list" id="navSearchList" role="listbox"></div>'
+         . '<div class="navsearch__foot"><span><kbd>↑</kbd><kbd>↓</kbd> move</span><span><kbd>Enter</kbd> open</span><span><kbd>Esc</kbd> close</span></div>'
+         . '</div></div>'
+         . '<script type="application/json" id="navSearchIndex">' . $json . '</script>';
+}

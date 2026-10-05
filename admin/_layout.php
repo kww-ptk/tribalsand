@@ -110,6 +110,7 @@ if ($__shellFrag) { ob_start(); echo $__navTabs; return; }
   <script defer src="/admin/assets/admin-chat.js?v=<?= @filemtime(__DIR__ . '/assets/admin-chat.js') ?: '1' ?>"></script>
   <script defer src="/admin/assets/admin-gallery.js?v=<?= @filemtime(__DIR__ . '/assets/admin-gallery.js') ?: '1' ?>"></script>
   <script defer src="/admin/assets/admin-nav.js?v=<?= @filemtime(__DIR__ . '/assets/admin-nav.js') ?: '1' ?>"></script>
+  <script defer src="/admin/assets/admin-search.js?v=<?= @filemtime(__DIR__ . '/assets/admin-search.js') ?: '1' ?>"></script>
   <script defer src="/admin/assets/admin-fit.js?v=<?= @filemtime(__DIR__ . '/assets/admin-fit.js') ?: '1' ?>"></script>
 </head>
 <body class="admin-body">
@@ -120,6 +121,7 @@ if ($__shellFrag) { ob_start(); echo $__navTabs; return; }
     <span></span><span></span><span></span>
   </button>
   <span class="admin-topbar__title">Tribal Sand Admin</span>
+  <button type="button" class="admin-topbar__search" data-navsearch-open aria-label="Search pages"><?= admin_icon('search', 20) ?></button>
 </div>
 
 <!-- Sidebar overlay -->
@@ -135,6 +137,7 @@ if ($__shellFrag) { ob_start(); echo $__navTabs; return; }
     <?php if (!$__isOwner && ($admin || $__roleBadge)): ?>
     <div style="padding:8px 12px;font-size:12px;color:#9ca3af"><?= e($admin['name'] ?? ($__isManager ? 'Manager' : ($__isReception ? 'Reception' : 'Staff'))) ?> <?php if ($__roleBadge): ?><span class="badge <?= $__isManager ? 'badge--green' : ($__isReception ? 'badge--orange' : 'badge--blue') ?>" style="font-size:10px"><?= e($__roleBadge) ?></span><?php endif; ?></div>
     <?php endif; ?>
+    <?= admin_nav_search_button_html() ?>
     <nav class="sidebar__nav">
       <?= admin_nav_sidebar_html($__nav) ?>
     </nav>
@@ -167,6 +170,7 @@ if ($__shellFrag) { ob_start(); echo $__navTabs; return; }
       <a href="/admin/logout.php">Sign out</a>
     </div>
   </aside>
+  <?= admin_nav_search_html($__nav) ?>
 
   <!-- Main content -->
   <main class="admin-main">
