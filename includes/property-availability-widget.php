@@ -215,7 +215,7 @@ if (empty($GLOBALS['__pa_modal_done'])) {
   var enqCtx = null;
   function openEnq(ctx) {
     enqCtx = ctx;
-    if (enqIntro) enqIntro.textContent = 'For ' + ctx.guests + ' guest' + (ctx.guests === 1 ? '' : 's') + ', ' + ctx.dates + '. We’ll hold these rooms for you for 24 hours while we confirm by email — nothing is charged now.';
+    if (enqIntro) enqIntro.textContent = 'For ' + ctx.guests + ' guest' + (ctx.guests === 1 ? '' : 's') + ', ' + ctx.dates + '<?= website_holds_enabled() ? '. We’ll hold these rooms for you for 24 hours while we confirm by email — nothing is charged now.' : '. Our reservations team will confirm these rooms and the price by email — nothing is charged now.' ?>';
     if (enqMsg) { enqMsg.hidden = true; enqMsg.textContent = ''; }
     if (enq) { enq.hidden = false; document.body.style.overflow = 'hidden'; }
   }

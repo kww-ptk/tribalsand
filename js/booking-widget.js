@@ -582,13 +582,22 @@
           if (json.ok) {
             // Scroll the widget into view so guest sees the confirmation area
             wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
-            // Show animated success modal with 24h countdown
+            // A hold only when the website is allowed to place one (mode 'hold',
+            // with the 24h countdown); otherwise reservations confirm the request.
             if (typeof window.showSuccessModal === 'function') {
-              window.showSuccessModal(
-                'Your dates are held!',
-                'Good news — those dates are available. We\'ve put a 24-hour hold on your booking and will confirm by email shortly.',
-                true // show countdown
-              );
+              if (json.mode === 'hold') {
+                window.showSuccessModal(
+                  'Your dates are held!',
+                  'Good news — those dates are available. We\'ve put a 24-hour hold on your booking and will confirm by email shortly.',
+                  true // show countdown
+                );
+              } else {
+                window.showSuccessModal(
+                  'Request received',
+                  'Thank you — those dates are available and we\'ve received your booking request. Our reservations team will confirm by email shortly. Nothing is charged now.',
+                  false
+                );
+              }
             }
             return;
           }

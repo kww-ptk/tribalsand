@@ -107,7 +107,7 @@ require_once __DIR__ . '/turnstile.php';
         <div class="cf-turnstile" data-sitekey="<?= e(captcha_site_key()) ?>"></div>
         <?php endif; ?>
         <button type="submit" class="bk-submit"><span class="bk-submit__label">Check availability</span></button>
-        <p class="bk-hold-note">Dates are held for 24 hours pending confirmation</p>
+        <p class="bk-hold-note"><?= website_holds_enabled() ? 'Dates are held for 24 hours pending confirmation' : 'Our reservations team confirms your dates by email · nothing is charged now' ?></p>
       </form>
     </div>
   </div>

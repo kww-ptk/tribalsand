@@ -58,6 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Please enter a valid notification email.';
         } else {
             set_setting('form_mode',            $form_mode);
+            set_setting('website_holds',        isset($_POST['website_holds']) ? '1' : '0');
             set_setting('notify_email',         $notify_email);
             set_setting('site_currency',        $site_currency);
             set_setting('checkin_instructions', $checkin_instructions);
@@ -192,8 +193,12 @@ include __DIR__ . '/_layout.php';
           <input type="radio" name="form_mode" value="availability" <?= $form_mode==='availability'?'checked':'' ?> style="margin-top:3px">
           <div>
             <strong>Availability mode</strong> <span class="badge badge--orange" style="font-size:10px">v2</span>
-            <div style="font-size:12.5px;color:var(--muted)">Shows the live booking calendar — guests pick open dates and the dates are held for 24 hours.</div>
+            <div style="font-size:12.5px;color:var(--muted)">Shows the live booking calendar — guests can only pick open dates. Their request comes to reservations, who use <strong>Convert to Hold</strong>.</div>
           </div>
+        </label>
+        <label class="togglerow" style="margin-top:16px">
+          <span class="toggle"><input type="checkbox" name="website_holds" value="1" <?= website_holds_enabled() ? 'checked' : '' ?>><span class="toggle-slider"></span></span>
+          <span>Let the website place 24-hour holds by itself <span class="text-muted">(off: every hold is made by the reservations team — booking box, room combinations and the Maya Ilai configurator only send a request)</span></span>
         </label>
       </div>
 

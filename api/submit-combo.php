@@ -49,7 +49,9 @@ if ($errors) { http_response_code(422); exit(json_encode(['ok' => false, 'errors
 
 $resolved = hold_group_resolve($venue, $rooms, $adults + $children);
 if ($resolved['error']) { http_response_code(422); exit(json_encode(['ok' => false, 'error' => $resolved['error']])); }
-$holdMode = $resolved['mode'] === 'hold' && hold_groups_supported();
+// Holds only when the owner lets the website place them (off by default — the
+// reservations team converts the request to holds instead).
+$holdMode = $resolved['mode'] === 'hold' && hold_groups_supported() && website_holds_enabled();
 $roomsLabel = implode(' + ', array_map(fn($r) => $r['room']['name'] . ($r['units'] > 1 ? ' ×' . $r['units'] : ''), $resolved['rooms']));
 
 if (session_status() === PHP_SESSION_NONE) session_start();

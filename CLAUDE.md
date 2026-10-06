@@ -26,6 +26,9 @@ All CSS/JS `<link>`/`<script>` tags in `includes/head.php` use `?v=<?= filemtime
 ### Booking form label
 `includes/form-enquiry.php` — the submit button says **"Request to Book"** (not "Book Now"). The form creates a 24h hold enquiry, not an instant booking — wrong labels cause chargebacks.
 
+### No automatic holds — reservations make every hold
+Owner rule (Oct 2026): a public form never places a 24h hold by itself. The three public paths that used to — the booking box (`api/submit-enquiry.php`, rooms in "Live availability"), room combinations (`api/submit-combo.php`) and the Maya Ilai configurator (`api/maya-ilai-book.php` → `mi_book_configuration(..., $placeHolds)`) — all ask **`website_holds_enabled()`** (`includes/db.php`, setting `website_holds`, **default off**, owner switch in Settings → Booking Form Mode). Off: live availability is still checked (a taken date is refused with 409), the request is saved as an enquiry (add-ons on the payload, Maya Ilai's configured `products` + quoted price too) and reservations use **Convert to Hold**, which emails the guest their portal link. The guest is told "held" only when the response says `mode: 'hold'`. A new public booking path must ask the switch too. Test: `php tests/website_holds_logic.php`.
+
 ### iCal sync secret
 `api/sync-ical.php` — secret is passed via `Authorization: Bearer` header (or the legacy `?secret=`, which the in-container scheduler uses over loopback). Never revert to query-param-only (it logs the secret in plaintext). Staff "Sync now" (Calendar + iCal feeds pages) no longer uses the secret at all — it posts `action=sync_now` to `admin/ical-feeds.php` under the staff session, so the secret is never printed into a page.
 
