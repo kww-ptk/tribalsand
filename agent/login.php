@@ -17,8 +17,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $error = 'The trade portal is not enabled yet. Please contact us.';
     } else {
         $email    = trim($_POST['email']    ?? '');
-        $password = trim($_POST['password'] ?? '');
-        if ($email === '' || $password === '') {
+        $password = (string)($_POST['password'] ?? '');   // agent_login() handles stray spaces
+        if ($email === '' || trim($password) === '') {
             $error = 'Email and password are required.';
         } elseif (is_rate_limited(strtolower($email), client_ip())) {
             $error = 'Too many failed attempts. Please wait 10 minutes and try again.';

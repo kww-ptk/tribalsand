@@ -65,10 +65,16 @@ function agent_login(string $email, string $password, string $ip): bool {
         return false;
     }
     try {
-        $a = db_query('SELECT * FROM travel_agents WHERE email = :e', [':e' => $email])->fetch();
+        // Case-insensitive, so an account saved before emails were lower-cased still matches.
+        $a = db_query('SELECT * FROM travel_agents WHERE LOWER(TRIM(email)) = :e ORDER BY id LIMIT 1', [':e' => $email])->fetch();
     } catch (Throwable $e) { $a = false; }
 
-    $ok = $a && $a['is_active'] && password_verify($password, (string)$a['password_hash']);
+    // Forgiving about stray spaces around the password (a paste often carries one):
+    // the trimmed password is tried, then exactly as typed — which still lets in an
+    // account whose password was saved with a space before the admin form trimmed.
+    $hash = $a ? (string)$a['password_hash'] : '';
+    $ok = $a && $a['is_active']
+        && (password_verify(trim($password), $hash) || password_verify($password, $hash));
     db_query('INSERT INTO login_attempts (email, ip_address, success) VALUES (:e,:ip,:ok)',
         [':e' => $email, ':ip' => $ip, ':ok' => $ok ? 'TRUE' : 'FALSE']);
     if (!$ok) return false;
