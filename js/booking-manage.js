@@ -1,5 +1,10 @@
 // Guest booking manage — fetch submit for add-on & change forms.
+// Loaded once per full page. Tab switches swap .pa-wrap without a reload
+// (js/portal-nav.js), so everything that binds to page content lives in
+// init(root) and is re-run through window.tsPortalInit after each swap;
+// document-level listeners are bound once.
 (function () {
+  if (window.tsPortalInit) return;
   // Toast — a small card that slides up from the bottom, then fades out.
   function toast(message, type) {
     var wrap = document.getElementById('ts-toasts');
@@ -62,7 +67,9 @@
     document.addEventListener('keydown', onKey);
   }
 
-  document.querySelectorAll('form[data-bm]').forEach(function (form) {
+  function bindForms(root) {
+  root.querySelectorAll('form[data-bm]:not([data-bm-bound])').forEach(function (form) {
+    form.setAttribute('data-bm-bound', '1');
     form.addEventListener('submit', async function (e) {
       e.preventDefault();
       var btn = form.querySelector('button[type=submit]');
@@ -93,6 +100,7 @@
       }
     });
   });
+  }
 
   // Copy buttons for any .ci-linkrow outside the check-in form: the check-in
   // confirmation card and the party roster on Home. booking-manage.js loads on
@@ -110,7 +118,12 @@
   });
 
   // ── Live chat: append on send + poll for incoming (no page refresh) ──
-  var thread = document.getElementById('bmThread');
+  // One poll timer for the whole page: a tab swap stops the old thread's poll.
+  var chatTimer = null, chatPoll = null;
+  document.addEventListener('visibilitychange', function () { if (!document.hidden && chatPoll) chatPoll(); });
+  function initChat(root) {
+  if (chatTimer) { clearInterval(chatTimer); chatTimer = null; chatPoll = null; }
+  var thread = root.querySelector('#bmThread') || document.getElementById('bmThread');
   if (thread) {
     var lastId = parseInt(thread.dataset.last || '0', 10) || 0;
     var pollUrl = thread.dataset.pollUrl;
@@ -161,11 +174,11 @@
       } catch (_) { /* transient — try again next tick */ }
       polling = false;
     }
-    setInterval(poll, 5000);
-    document.addEventListener('visibilitychange', function () { if (!document.hidden) poll(); });
+    chatPoll = poll;
+    chatTimer = setInterval(poll, 5000);
 
     // Send: append the guest's own message immediately, then let the poll fill in replies.
-    var chatForm = document.querySelector('form[data-chat]');
+    var chatForm = root.querySelector('form[data-chat]') || document.querySelector('form[data-chat]');
     if (chatForm) {
       chatForm.addEventListener('submit', async function (e) {
         e.preventDefault();
@@ -198,4 +211,57 @@
       });
     }
   }
+  }
+
+  // ── Hold countdown: any [data-expires] (ms) element ticks down ──
+  var cdTimer = null;
+  function initCountdown(root) {
+    if (cdTimer) { clearInterval(cdTimer); cdTimer = null; }
+    var el = root.querySelector('[data-expires]');
+    if (!el) return;
+    var expires = parseInt(el.getAttribute('data-expires'), 10) || 0;
+    function tick() {
+      var diff = Math.floor((expires - Date.now()) / 1000);
+      if (diff <= 0) { el.textContent = 'Expiring…'; clearInterval(cdTimer); return; }
+      var h = Math.floor(diff / 3600), m = Math.floor((diff % 3600) / 60), sec = diff % 60;
+      el.textContent = h + 'h ' + String(m).padStart(2, '0') + 'm ' + String(sec).padStart(2, '0') + 's';
+    }
+    tick(); cdTimer = setInterval(tick, 1000);
+  }
+
+  // ── Styled confirm for serious guest actions (no browser pop-up) ──
+  // <form data-pa-confirm="Question" data-pa-confirm-yes="Yes, cancel" data-pa-confirm-no="Keep my booking">
+  document.addEventListener('submit', function (e) {
+    var form = e.target;
+    if (!form.matches || !form.matches('form[data-pa-confirm]') || form.dataset.paConfirmed) return;
+    e.preventDefault();
+    var back = document.createElement('div');
+    back.className = 'pa-modal-backdrop';
+    back.innerHTML = '<div class="pa-modal" role="alertdialog" aria-modal="true" aria-labelledby="paCfT">'
+      + '<h3 class="pa-modal__title" id="paCfT" style="font-size:20px"></h3>'
+      + '<p class="pa-modal__body"></p>'
+      + '<div class="pa-modal__actions"><button type="button" class="pa-btn pa-btn--danger" data-yes></button>'
+      + '<button type="button" class="pa-btn" data-no></button></div></div>';
+    back.querySelector('h3').textContent = form.getAttribute('data-pa-confirm');
+    back.querySelector('p').textContent = form.getAttribute('data-pa-confirm-body') || '';
+    back.querySelector('[data-yes]').textContent = form.getAttribute('data-pa-confirm-yes') || 'Yes';
+    back.querySelector('[data-no]').textContent = form.getAttribute('data-pa-confirm-no') || 'Go back';
+    document.body.appendChild(back);
+    function done() { back.remove(); document.removeEventListener('keydown', onKey); }
+    function onKey(ev) { if (ev.key === 'Escape') done(); }
+    document.addEventListener('keydown', onKey);
+    back.addEventListener('click', function (ev) { if (ev.target === back) done(); });
+    back.querySelector('[data-no]').addEventListener('click', done);
+    back.querySelector('[data-yes]').addEventListener('click', function () { form.dataset.paConfirmed = '1'; done(); form.submit(); });
+    back.querySelector('[data-no]').focus();
+  });
+
+  function init(root) {
+    root = root || document;
+    bindForms(root);
+    initChat(root);
+    initCountdown(root);
+  }
+  window.tsPortalInit = init;
+  init(document);
 })();

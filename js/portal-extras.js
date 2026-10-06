@@ -123,7 +123,11 @@
       .catch(function () { err.textContent = 'No connection. Please try again.'; refresh(); });
   }
 
+  // A tab swap (js/portal-nav.js) brings a new sheet and runs this file again;
+  // this copy's document listeners then belong to a detached sheet and stand down.
+  function live() { return document.body.contains(sheet); }
   document.addEventListener('click', function (e) {
+    if (!live()) return;
     var t = e.target; if (!t || !t.closest) return;
     var opener = t.closest('[data-extra]');
     if (opener && !opener.disabled) { e.preventDefault(); open(opener.getAttribute('data-extra')); return; }
@@ -135,7 +139,7 @@
     if (s) { pax = Math.max(1, Math.min(cur.max || 8, pax + parseInt(s.getAttribute('data-pax'), 10))); refresh(); }
     if (t.closest('#paSheetGo')) send();
   });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && !sheet.hidden) close(); });
+  document.addEventListener('keydown', function (e) { if (live() && e.key === 'Escape' && !sheet.hidden) close(); });
 
   // Category chips on the Extras list.
   var chips = document.getElementById('paXChips');
