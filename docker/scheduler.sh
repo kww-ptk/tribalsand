@@ -147,4 +147,16 @@ log "scheduler started"
   done
 ) &
 
+# ── Job 9: "add to your stay" reminders daily ───────────────────────────────
+# Emails confirmed guests the property's featured extras N days before arrival
+# (each property sets N in Admin → Properties → Guest extras; 0 = off). Each
+# booking is reminded once (holds.extras_reminder_sent_at), so several ECS tasks
+# running this is harmless. Quiet no-op until add_venue_extras.sql has run.
+(
+  while true; do
+    php "$APP_DIR/bin/extras-reminder.php" >> "$LOG" 2>&1 || log "extras-reminder failed"
+    sleep 86400
+  done
+) &
+
 wait

@@ -196,7 +196,7 @@ include __DIR__ . '/_layout.php';
             <div style="font-size:12.5px;color:var(--muted)">Shows the live booking calendar — guests can only pick open dates. Their request comes to reservations, who use <strong>Convert to Hold</strong>.</div>
           </div>
         </label>
-        <label class="togglerow" style="margin-top:16px">
+        <label class="togglerow" style="margin-top:16px" data-help="website-holds">
           <span class="toggle"><input type="checkbox" name="website_holds" value="1" <?= website_holds_enabled() ? 'checked' : '' ?>><span class="toggle-slider"></span></span>
           <span>Let the website place 24-hour holds by itself <span class="text-muted">(off: every hold is made by the reservations team — booking box, room combinations and the Maya Ilai configurator only send a request)</span></span>
         </label>

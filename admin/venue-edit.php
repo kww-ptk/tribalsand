@@ -7,6 +7,7 @@ require_once __DIR__ . '/../includes/upsells.php';   // checkin_deposit_supporte
 require_once __DIR__ . '/../includes/rates.php';
 require_once __DIR__ . '/../includes/inventory.php';   // delete guard: a property holding stock
 require_once __DIR__ . '/../includes/companies.php';   // which legal company owns this property
+require_once __DIR__ . '/../includes/guest-extras.php'; // Guest extras tab — what guests can add to their stay
 require_login();
 require_owner();
 
@@ -255,6 +256,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         }
     }
 
+    if ($action === 'save_extras' && !$isNew) {
+        if (!guest_extras_supported()) {
+            $error = 'Guest extras need the add_venue_extras migration — run it in Settings → Migrations.';
+        } else {
+            [$extraRows, $extraNotice] = guest_extras_clean_post(guest_extras_catalogue($id), $_POST);
+            try {
+                guest_extras_save($id, $extraRows, isset($_POST['extras_in_email']), (int)($_POST['extras_reminder_days'] ?? 3));
+                if (upsells_supported()) {
+                    db_query('UPDATE venues SET upsell_enabled = :u, updated_at = NOW() WHERE id = :id',
+                             [':u' => isset($_POST['upsell_enabled']) ? 'TRUE' : 'FALSE', ':id' => $id]);
+                }
+                audit_log('venue.extras', 'venue', $id, count(array_filter($extraRows, fn($r) => $r['shown'])) . ' shown');
+                $_SESSION['venue_extras_notice'] = $extraNotice;
+                header("Location: /admin/venue-edit.php?id={$id}&saved=1#extras");
+                exit;
+            } catch (Throwable $e) {
+                error_log('[venue-edit] save extras failed: ' . $e->getMessage());
+                $error = 'Could not save the guest extras. Please try again.';
+            }
+        }
+    }
+
     if ($action === 'save_publish' && !$isNew) {
         db_query('UPDATE venues SET is_published=:pub, updated_at=NOW() WHERE id=:id',
             [':pub' => isset($_POST['is_published']) ? 'TRUE' : 'FALSE', ':id' => $id]);
@@ -361,6 +384,7 @@ include __DIR__ . '/_layout.php';
   <button class="tab-btn" data-tab="rooms">Rooms<?php if ($rooms): ?> <span class="tab-btn__count"><?= count($rooms) ?></span><?php endif; ?></button>
   <button class="tab-btn" data-tab="rates">Rates<?php if ($venueRates): ?> <span class="tab-btn__count"><?= count($venueRates) ?></span><?php endif; ?></button>
   <button class="tab-btn" data-tab="gallery">Gallery<?php if ($images): ?> <span class="tab-btn__count"><?= count($images) ?></span><?php endif; ?></button>
+  <button class="tab-btn" data-tab="extras" data-help="extras-tab">Guest extras</button>
   <button class="tab-btn" data-tab="publish">Publish</button>
   <?php endif; ?>
 </div>
@@ -456,7 +480,7 @@ include __DIR__ . '/_layout.php';
             <input type="checkbox" name="upsell_enabled" value="1"<?= !empty($venue['upsell_enabled']) ? ' checked' : '' ?>><span class="ck"></span>
             <span>Offer add-ons in the booking flow</span>
           </label>
-          <span class="field-hint">Lets guests add activities to this property&rsquo;s enquiry and pre-arrival check-in. Which activities appear &mdash; and on which of the two &mdash; is set per activity under <a href="/admin/tours.php">Tours</a>.</span>
+          <span class="field-hint">Lets guests add activities and transfers while booking and from their booking page. Which extras guests see, their order and what is featured is set in the <strong>Guest extras</strong> tab.</span>
         </div>
         <?php endif; ?>
 
@@ -467,6 +491,8 @@ include __DIR__ . '/_layout.php';
 </div>
 
 <?php if (!$isNew): ?>
+<?php include __DIR__ . '/_venue_extras_tab.php'; ?>
+
 <!-- ── TAB: Content ── -->
 <div class="tab-panel" id="tab-content">
   <div class="card">

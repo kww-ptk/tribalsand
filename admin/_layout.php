@@ -11,6 +11,7 @@ require_once __DIR__ . '/../includes/pos-support.php';       // pos_supported() 
 require_once __DIR__ . '/../includes/inventory-support.php'; // inv_supported() — gates the Inventory nav group
 require_once __DIR__ . '/../includes/companies.php';         // companies_supported() — gates the Accounting nav group
 require_once __DIR__ . '/../includes/admin-nav.php';         // the sidebar + tab-strip definition (one place)
+require_once __DIR__ . '/../includes/help-guides.php';       // Help & guides — on-page panel + library
 $admin = current_admin();
 
 // ── Role / job aware nav visibility ──────────────────────────────────────
@@ -111,6 +112,7 @@ if ($__shellFrag) { ob_start(); echo $__navTabs; return; }
   <script defer src="/admin/assets/admin-gallery.js?v=<?= @filemtime(__DIR__ . '/assets/admin-gallery.js') ?: '1' ?>"></script>
   <script defer src="/admin/assets/admin-nav.js?v=<?= @filemtime(__DIR__ . '/assets/admin-nav.js') ?: '1' ?>"></script>
   <script defer src="/admin/assets/admin-search.js?v=<?= @filemtime(__DIR__ . '/assets/admin-search.js') ?: '1' ?>"></script>
+  <script defer src="/admin/assets/admin-help.js?v=<?= @filemtime(__DIR__ . '/assets/admin-help.js') ?: '1' ?>"></script>
   <script defer src="/admin/assets/admin-fit.js?v=<?= @filemtime(__DIR__ . '/assets/admin-fit.js') ?: '1' ?>"></script>
 </head>
 <body class="admin-body">
@@ -170,7 +172,9 @@ if ($__shellFrag) { ob_start(); echo $__navTabs; return; }
       <a href="/admin/logout.php">Sign out</a>
     </div>
   </aside>
-  <?= admin_nav_search_html($__nav) ?>
+  <?php $__helpGuides = help_visible_guides(help_guides(), help_visible_pages($__nav)); ?>
+  <?= admin_nav_search_html($__nav, help_search_items($__helpGuides)) ?>
+  <?= help_drawer_html($__helpGuides) ?>
 
   <!-- Main content -->
   <main class="admin-main">

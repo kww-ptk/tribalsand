@@ -1273,6 +1273,80 @@ tr.is-unpriced td { background: #fff7ed; }
 }
 @media print { .areatabs { display: none; } }
 
+/* ── Help & guides (design B): Help button, side panel, "Show me" walkthrough ──
+   The strip carries the Help button at its right end; pages without a strip get
+   the floating .helpfab (hidden whenever the content has a strip button). */
+.areatabs { display: flex; align-items: center; gap: 10px; box-shadow: inset 0 -1px 0 var(--border); }
+.areatabs__row { flex: 1 1 auto; min-width: 0; box-shadow: none; }
+.areatabs__help, .helpfab {
+  display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; cursor: pointer;
+  font: inherit; font-size: 13px; font-weight: 600; color: var(--brand);
+  background: var(--white); border: 1px solid var(--border); border-radius: 999px; padding: 6px 12px;
+}
+.areatabs__help { margin-bottom: 4px; }
+.areatabs__help svg, .helpfab svg { width: 16px; height: 16px; }
+.areatabs__help:hover, .helpfab:hover { border-color: var(--brand); }
+.areatabs__help:focus-visible, .helpfab:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.areatabs__help[data-count]::after, .helpfab[data-count]::after {
+  content: attr(data-count); min-width: 18px; height: 18px; border-radius: 9px; background: var(--accent); color: #fff;
+  font-size: 11px; display: inline-grid; place-items: center; padding: 0 5px;
+}
+.helpfab { position: fixed; right: 18px; bottom: 18px; z-index: 900; box-shadow: 0 6px 18px rgba(16,47,58,.18); }
+body:has(.admin-content .areatabs__help) .helpfab, body.help-open .helpfab { display: none; }
+@media (max-width: 640px) { .areatabs__help span { display: none; } .areatabs__help { margin-right: 12px; padding: 6px 8px; } }
+
+.helpdrawer {
+  position: fixed; top: 0; right: 0; bottom: 0; width: 380px; max-width: 100vw; z-index: 950;
+  background: var(--white); border-left: 1px solid var(--border); box-shadow: -14px 0 34px rgba(16,47,58,.14);
+  display: flex; flex-direction: column;
+}
+.helpdrawer[hidden] { display: none; }
+.helpdrawer__head { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid var(--border); font-size: 15px; }
+.helpdrawer__search { padding: 12px 16px 4px; }
+.helpdrawer__search .inp { width: 100%; box-sizing: border-box; }
+.helpdrawer__body { flex: 1; overflow-y: auto; padding: 8px 16px 20px; font-size: 14px; line-height: 1.55; }
+.helpdrawer__foot { padding: 12px 16px; border-top: 1px solid var(--border); font-size: 13.5px; }
+.helpdrawer__foot a { color: var(--brand); font-weight: 600; text-decoration: none; }
+.help-label { font-size: 11.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); margin: 14px 0 6px; }
+.help-card {
+  display: block; width: 100%; text-align: left; font: inherit; cursor: pointer; color: var(--text);
+  background: var(--white); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; margin: 0 0 8px;
+}
+.help-card:hover { border-color: var(--brand); }
+.help-card strong { display: block; font-size: 14px; }
+.help-card span { display: block; font-size: 12.5px; color: var(--muted); margin-top: 2px; }
+.help-back { background: none; border: 0; padding: 6px 0; color: var(--brand); font: inherit; font-size: 13px; cursor: pointer; }
+.help-guide h3 { font-size: 17px; margin: 6px 0 4px; }
+.help-guide__meta { font-size: 12.5px; color: var(--muted); margin-bottom: 12px; }
+.help-steps { list-style: none; counter-reset: hs; margin: 0 0 14px; padding: 0; display: grid; gap: 10px; }
+.help-steps li { counter-increment: hs; display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 10px; }
+.help-steps li::before {
+  content: counter(hs); width: 22px; height: 22px; border-radius: 50%; background: color-mix(in srgb, var(--accent) 22%, #fff);
+  color: var(--brand-dk); font-size: 12px; font-weight: 700; display: grid; place-items: center;
+}
+.help-tips { background: var(--bg); border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-bottom: 14px; }
+.help-tips p { margin: 0 0 6px; } .help-tips p:last-child { margin: 0; }
+.help-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.help-empty { color: var(--muted); font-size: 13.5px; margin: 12px 0; }
+
+.helptour__ring {
+  position: fixed; z-index: 1001; pointer-events: none; border-radius: 10px;
+  box-shadow: 0 0 0 4px var(--accent), 0 0 0 9999px rgba(16,47,58,.42); transition: all .2s ease;
+}
+.helptour__tip {
+  position: fixed; z-index: 1002; width: 300px; max-width: calc(100vw - 24px); background: var(--brand-dk); color: #fff;
+  border-radius: 12px; padding: 14px 16px; font-size: 14px; line-height: 1.5; box-shadow: 0 14px 34px rgba(0,0,0,.28);
+}
+.helptour__tip strong { color: #fff; }
+.helptour__count { font-size: 11.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--accent); margin-bottom: 4px; }
+.helptour__nav { display: flex; justify-content: space-between; align-items: center; margin-top: 12px; gap: 8px; }
+.helptour__nav button { font: inherit; font-size: 13px; font-weight: 600; border-radius: 8px; padding: 6px 12px; cursor: pointer; border: 1px solid rgba(255,255,255,.3); background: transparent; color: #fff; }
+.helptour__nav button[data-tour-next] { background: var(--accent); border-color: var(--accent); color: var(--brand-dk); }
+.helptour__nav button[disabled] { opacity: .4; cursor: default; }
+.helptour__tip.is-center { left: 50% !important; top: 50% !important; transform: translate(-50%, -50%); }
+@media (prefers-reduced-motion: reduce) { .helptour__ring { transition: none; } }
+@media print { .helpfab, .helpdrawer, .helptour__ring, .helptour__tip { display: none !important; } }
+
 /* ── Tables: breathing room, unbroken row lines, pagination, full height ───── */
 /* A search / per-page toolbar placed INSIDE a card must not touch the card's edge. */
 .card > .dt-toolbar, .card.dt > .dt-toolbar { padding: 16px 18px 0; margin-bottom: 14px; }

@@ -5,6 +5,7 @@
  * Home no longer carries in-page section tabs.
  * Expects $hold, $ref, $status, $can_cancel, $cancel_blocked_reason.
  */ ?>
+<?php include __DIR__ . '/_postcard.php';   // design 1: photo, booking card, featured extras ?>
 <?php include __DIR__ . '/_stay_essentials.php'; ?>
 
 <?php if ($can_cancel): ?>

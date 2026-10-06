@@ -264,6 +264,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'conve
     } catch (Throwable $e) {
         error_log('[convert-to-hold] audit failed: ' . $e->getMessage());
     }
+    // The guest's booking link. Every website booking now reaches the calendar
+    // through this button (no automatic holds), so this is where the guest first
+    // hears their dates are held and gets their portal link — unless staff untick
+    // "Email the guest" (then it is logged as not sent, with who decided).
+    $emailNote = '';
+    try {
+        $emailGuest = !empty($_POST['email_guest']);
+        $__h = db_query('SELECT h.access_code, r.name AS room_name FROM holds h JOIN units u ON u.id = h.unit_id
+                           JOIN rooms r ON r.id = ' . hold_room_id_sql('h', 'u') . ' WHERE h.id = :id', [':id' => $hold_id])->fetch() ?: [];
+        $__ctx = ['trigger' => 'convert'];
+        if (!$emailGuest) $__ctx['skip_reason'] = 'Staff unticked “Email the guest”.';
+        send_guest_acknowledgement([
+            'submission_id' => $id, 'kind' => 'hold', 'hold_id' => $hold_id,
+            'guest_name' => $g_name, 'guest_email' => $g_email,
+            'room_name' => (string)($__h['room_name'] ?? ''), 'check_in' => $check_in, 'check_out' => $check_out,
+            'guests_adults' => max(1, (int)($sub['guests_adults'] ?? 1)), 'guests_children' => max(0, (int)($sub['guests_children'] ?? 0)),
+            'access_code' => (string)($__h['access_code'] ?? ''),
+        ], $__ctx);
+        $emailNote = $emailGuest ? ' Booking link emailed to ' . $g_email . '.' : ' Guest not emailed.';
+    } catch (Throwable $e) {
+        error_log('[convert-to-hold] guest email failed: ' . $e->getMessage());
+        $emailNote = ' The email to the guest FAILED — see Admin → Email log, or copy the link below.';
+    }
+
     // The mismatch note rides on the success flash: the hold IS created (nothing
     // below the create may report a failure of it), but staff booked a different
     // room type from the one enquired about, so either the price or the room is
@@ -272,6 +296,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'conve
         . ($tradeTag ? ' Trade booking via ' . ($tradeTag['agency'] !== '' ? $tradeTag['agency'] : $tradeTag['agent'])
             . ($tradeTag['net'] > 0 ? ' at net ' . format_price($tradeTag['net'], $tradeTag['currency']) : '') . '.' : '')
         . ($addonsMade ? " {$addonsMade} add-on" . ($addonsMade === 1 ? '' : 's') . ' carried over.' : '')
+        . $emailNote
         . $room_mismatch];
     header('Location: ' . $redirect); exit;
 }
@@ -978,8 +1003,14 @@ $__svTabs = ['conversation' => 'Conversation', 'details' => 'Details', 'booking'
         <?= (int)($sub['guests_adults'] ?? 0) ?> adult(s)<?= (int)($sub['guests_children'] ?? 0) ? ', ' . (int)$sub['guests_children'] . ' child(ren)' : '' ?>
       </p>
       <?php endif; ?>
-      <button type="submit" class="btn-primary btn-sm" style="margin-top:16px"
-              onclick="return confirm('Create a hold from this enquiry?')">Create Hold</button>
+      <?php $__eg = email_hold_confirm_default(['guest_email' => (string)($sub['guest_email'] ?? ''), 'agent_id' => $__tradeAid ?: null]); ?>
+      <div style="margin-top:14px" data-help="convert-email">
+        <label class="togglerow"><span class="toggle"><input type="checkbox" name="email_guest" value="1"<?= $__eg['default'] ? ' checked' : '' ?>><span class="toggle-slider"></span></span>
+          <span>Email the guest their booking link <span class="text-muted">(dates held for 24h + their guest page, where they can add extras)</span></span></label>
+        <?php if (!$__eg['default'] && $__eg['reason'] !== ''): ?><p class="text-muted" style="font-size:12px;margin:6px 0 0"><?= e($__eg['reason']) ?></p><?php endif; ?>
+      </div>
+      <button type="submit" class="btn-primary btn-sm" style="margin-top:16px" data-help="convert-submit"
+              data-confirm="Create a 24-hour hold from this enquiry? The dates are blocked on the calendar.">Create Hold</button>
     </form>
     <?php endif; ?>
   <?php endif; ?>

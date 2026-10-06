@@ -350,11 +350,17 @@ function send_guest_acknowledgement(array $a, array $ctx = []): void {
         $tl[] = (string)$a['message'];
         $tl[] = '';
     }
+    // The property's suggested extras, so a held guest can add to their stay from
+    // the first email (the same block the booking-confirmed email carries).
+    $extras = ['html' => '', 'text' => []];
     if ($manage_url) {
         $tl[] = 'MANAGE YOUR BOOKING';
         $tl[] = "  View status & add tours/transfers: {$manage_url}";
         if ($access_code) $tl[] = "  Your booking code: {$access_code}";
         $tl[] = '';
+        $prop   = _mail_hold_property(['id' => (int)$a['hold_id']]);
+        $extras = _email_stay_extras((int)$a['hold_id'], $prop['id'] ? (int)$prop['id'] : null, $manage_url);
+        array_push($tl, ...$extras['text']);
     }
     if ($footer !== '') { $tl[] = _email_plain($footer); $tl[] = ''; }
     $tl[] = 'Warm regards,';
@@ -372,6 +378,7 @@ function send_guest_acknowledgement(array $a, array $ctx = []): void {
         'site'        => $site,
         'manage_url'  => $manage_url,
         'access_code' => $access_code,
+        'extras_html' => $extras['html'],
     ]);
 
     mail_send($key, ['to' => $to, 'subject' => $subject, 'text' => implode("\n", $tl), 'html' => $html, 'reply_to' => $reply],
@@ -432,6 +439,7 @@ function _guest_ack_html(array $d): string {
             . $detail_block
             . $message_block
             . $manage
+            . (string)($d['extras_html'] ?? '')
             . _email_note((string)($d['footer'] ?? ''))
             . '<p style="font-size:14px;margin:24px 0 0">Warm regards,<br><strong>Tribal Sand</strong></p>'
           . '</div>'
@@ -875,15 +883,24 @@ function _email_stay_extras(int $holdId, ?int $venueId, string $manageUrl): arra
     if ($manageUrl === '' || !$venueId) return $none;
     try {
         require_once __DIR__ . '/upsells.php';
+        require_once __DIR__ . '/guest-extras.php';
         $rows = [];
-        foreach (fetch_upsell_items($venueId, 'checkin', $holdId) as $a) {
-            $rows[] = [(string)$a['name'], upsell_price_label($a), $manageUrl . '&view=activities'];
-        }
-        $have = db_query("SELECT details FROM booking_addons WHERE hold_id = :h AND kind = 'transfer' AND status <> 'cancelled'",
-                         [':h' => $holdId])->fetchAll(PDO::FETCH_COLUMN);
-        foreach (fetch_upsell_transfers($venueId) as $t) {
-            if (in_array((string)$t['label'], $have, true)) continue;
-            $rows[] = ['Airport transfer: ' . $t['label'], upsell_transfer_price_label($t), $manageUrl . '&view=requests'];
+        if (guest_extras_supported()) {
+            // The property's own list (Admin → Properties → Guest extras): its featured
+            // extras the guest hasn't asked for, or none when its emails carry no extras.
+            $rows = guest_extras_email_rows($holdId, $venueId, $manageUrl);
+            if (!$rows) return $none;
+        } else {
+            // Before add_venue_extras.sql: the booking-flow add-ons, as before.
+            foreach (fetch_upsell_items($venueId, 'checkin', $holdId) as $a) {
+                $rows[] = [(string)$a['name'], upsell_price_label($a), $manageUrl . '&view=extras'];
+            }
+            $have = db_query("SELECT details FROM booking_addons WHERE hold_id = :h AND kind = 'transfer' AND status <> 'cancelled'",
+                             [':h' => $holdId])->fetchAll(PDO::FETCH_COLUMN);
+            foreach (fetch_upsell_transfers($venueId) as $t) {
+                if (in_array((string)$t['label'], $have, true)) continue;
+                $rows[] = ['Airport transfer: ' . $t['label'], upsell_transfer_price_label($t), $manageUrl . '&view=requests'];
+            }
         }
     } catch (Throwable $e) { return $none; }
     if (!$rows) return $none;
@@ -979,6 +996,68 @@ function send_hold_confirmed(array $hold, array $ctx = []): array {
     return mail_send('hold_confirmed', ['to' => (string)($hold['guest_email'] ?? ''), 'subject' => $subject, 'text' => implode("\n", $text_lines),
                                         'html' => $html, 'reply_to' => email_guest_reply_to()],
                      $ctx + ['hold_id' => (int)$hold['id'] ?: null, 'venue_id' => $prop['id']]);
+}
+
+/**
+ * "Add to your stay" — sent N days before arrival (the property's choice in
+ * Admin → Properties → Guest extras; bin/extras-reminder.php runs it daily).
+ * Lists up to 4 of the property's featured extras the guest hasn't asked for,
+ * each linking into their booking page. With nothing to offer it sends nothing
+ * (status 'skipped', not logged) — an empty "add something" email is noise.
+ */
+function send_extras_reminder(array $hold, array $ctx = []): array {
+    require_once __DIR__ . '/booking.php';
+    require_once __DIR__ . '/guest-extras.php';
+    $site = _mail_site();
+    $prop = _mail_hold_property($hold);
+    $ref  = !empty($hold['id']) ? make_guest_ref((int)$hold['id']) : '';
+    $manage_url = $ref ? $site . '/booking.php?ref=' . urlencode($ref) : $site . '/booking.php';
+    $vars = _mail_hold_vars($hold, $prop);
+    foreach (['check_in', 'check_out'] as $__d) {   // "Fri, 9 Oct 2026" reads better than 2026-10-09 in a friendly note
+        if (($ts = strtotime((string)$vars[$__d])) !== false) $vars[$__d] = date('D, j M Y', $ts);
+    }
+
+    $rows = [];
+    if (!empty($hold['id'])) {
+        foreach (guest_extras_featured(guest_extras_for_hold($hold), 4) as $x) {
+            $rows[] = [$x['name'], $x['price_label'], $manage_url . '&view=extras&extra=' . rawurlencode($x['key'])];
+        }
+    } else {   // catalogue preview (Admin → Emails): example rows
+        $rows = [['Deep tissue massage', 'USD 70 pp', $manage_url], ['Kite surfing lesson', 'USD 120 pp', $manage_url], ['Airport pickup', 'USD 45 per car', $manage_url]];
+    }
+    if (!$rows) return ['ok' => false, 'status' => 'skipped', 'error' => 'No extras to offer for this stay.', 'log_ids' => []];
+
+    $subject = email_field('extras_reminder', 'subject', $vars, $prop['id']);
+    $heading = email_field('extras_reminder', 'heading', $vars, $prop['id']);
+    $intro   = email_field('extras_reminder', 'intro', $vars, $prop['id']);
+    $footer  = email_field('extras_reminder', 'footer_note', $vars, $prop['id']);
+
+    $li = ''; $text = ["Dear {$hold['guest_name']},", '', _email_plain($intro), ''];
+    foreach ($rows as [$name, $price, $url]) {
+        $li .= '<tr><td style="padding:10px 0;border-top:1px solid #e9e1d2;font-size:14px;color:#222">' . _email_esc($name)
+             . ' <span style="color:#1E5C6B;font-weight:600">· ' . _email_esc($price) . '</span></td>'
+             . '<td style="padding:10px 0;border-top:1px solid #e9e1d2;text-align:right;white-space:nowrap">'
+             . '<a href="' . _email_esc($url) . '" style="color:#1E5C6B;font-weight:600;font-size:13px;text-decoration:none">Add →</a></td></tr>';
+        $text[] = "  {$name} ({$price}): {$url}";
+    }
+    $text[] = '';
+    $text[] = 'See everything you can add: ' . $manage_url . '&view=extras';
+    $text[] = '';
+    if ($footer !== '') { $text[] = _email_plain($footer); $text[] = ''; }
+    $text[] = 'Warm regards,';
+    $text[] = 'Tribal Sand';
+
+    $inner = '<p style="margin:0 0 20px;font-size:15px">Dear <strong>' . _email_esc($hold['guest_name'] ?? 'Guest') . '</strong>,</p>'
+        . _email_lead_rich($intro)
+        . '<table style="width:100%;border-collapse:collapse;margin:18px 0">' . $li . '</table>'
+        . _email_button('See all extras →', $manage_url . '&view=extras')
+        . _email_note($footer)
+        . '<p style="font-size:14px;margin:24px 0 0">Warm regards,<br><strong>Tribal Sand</strong></p>';
+    $html = _email_shell($heading, $inner, $site, $prop['name'] . ($prop['town'] !== '' ? ' — ' . $prop['town'] : ' — Kenya’s North Coast'));
+
+    return mail_send('extras_reminder', ['to' => (string)($hold['guest_email'] ?? ''), 'subject' => $subject, 'text' => implode("\n", $text),
+                                         'html' => $html, 'reply_to' => email_guest_reply_to()],
+                     $ctx + ['hold_id' => (int)($hold['id'] ?? 0) ?: null, 'venue_id' => $prop['id']]);
 }
 
 /**
