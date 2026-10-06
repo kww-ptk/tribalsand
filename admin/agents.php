@@ -33,11 +33,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
             $name   = trim($_POST['name']   ?? '');
             $agency = trim($_POST['agency'] ?? '');
             $email  = strtolower(trim($_POST['email'] ?? ''));
-            $pass   = (string)($_POST['password'] ?? '');
+            $pass   = trim((string)($_POST['password'] ?? ''));   // agent/login.php trims too
             $disc   = max(0.0, min(100.0, (float)($_POST['discount_pct'] ?? 0)));
             if ($name === '' || !filter_var($email, FILTER_VALIDATE_EMAIL) || strlen($pass) < 8) {
                 $flash = ['type' => 'error', 'msg' => 'Name, a valid email and a password of at least 8 characters are required.'];
-            } elseif (db_query('SELECT 1 FROM travel_agents WHERE email = :e', [':e' => $email])->fetchColumn()) {
+            } elseif (db_query('SELECT 1 FROM travel_agents WHERE LOWER(TRIM(email)) = :e', [':e' => $email])->fetchColumn()) {
                 $flash = ['type' => 'error', 'msg' => 'An agent with that email already exists.'];
             } else {
                 db_query(
@@ -59,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
             $flash['msg'] = 'Account status changed.';
         } elseif ($action === 'reset_password') {
             $id   = (int)($_POST['id'] ?? 0);
-            $pass = (string)($_POST['password'] ?? '');
+            $pass = trim((string)($_POST['password'] ?? ''));   // match the trim on agent/login.php
             if (strlen($pass) < 8) {
                 $flash = ['type' => 'error', 'msg' => 'New password must be at least 8 characters.'];
             } else {
