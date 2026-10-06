@@ -11,7 +11,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/hr.php';
 require_once __DIR__ . '/../includes/hr-documents.php';
 require_login();
-require_manager();
+require_hr();
 
 $docId = (int)($_GET['doc'] ?? 0);
 $doc   = hr_staff_documents_supported() ? fetch_hr_staff_document($docId) : false;

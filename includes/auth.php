@@ -95,6 +95,29 @@ function reception_supported(): bool {
 }
 
 /**
+ * HR: the people admin (Oct 2026). Runs the staff directory, employee profiles
+ * and their private documents, attendance (times, leave, clock cards and kiosks)
+ * for EVERY property — admin_venue_ids() returns null for HR. Email + password
+ * login like reception. No bookings, money, settings, login accounts or "Access
+ * by role" (those stay with the owner). Migration add_hr_role.sql.
+ */
+function is_hr(): bool { return admin_role() === 'hr'; }
+
+/** True once add_hr_role.sql has widened the role CHECK (hides the account type before). */
+function hr_role_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try {
+        $ok = (bool) db_query(
+            "SELECT 1 FROM pg_constraint
+              WHERE conname = 'admin_users_role_check'
+                AND pg_get_constraintdef(oid) LIKE '%''hr''%'"
+        )->fetchColumn();
+    } catch (\Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/**
  * Current staff member's operational specialty. A NULL job_type is treated as
  * 'frontdesk' (backward-compatible with pre-extension staff). Owner/manager
  * accounts are not job-driven, so they return null.
@@ -208,7 +231,8 @@ function admin_home_url(): string {
 
 /** Venue ids the current admin may see; null = all (owner). Managers and staff are scoped. */
 function admin_venue_ids(): ?array {
-    if (is_owner()) return null;
+    // HR looks after people at every property, so it is unscoped like the owner.
+    if (is_owner() || is_hr()) return null;
     $rows = db_query('SELECT venue_id FROM admin_user_venues WHERE admin_user_id = :id', [':id' => $_SESSION['admin_id'] ?? 0])->fetchAll(PDO::FETCH_COLUMN);
     return array_map('intval', $rows);
 }
@@ -223,6 +247,19 @@ function require_owner(): void {
 function require_manager(): void {
     require_login();
     if (!is_owner() && !is_manager() && !access_page_granted()) { $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'That area is only available to managers.']; header('Location: ' . admin_home_url()); exit; }
+}
+
+/**
+ * People tier — owner, manager or HR. Guards employee profiles + documents and
+ * attendance (times, leave, clock cards, kiosks, punch photos). Managers keep
+ * their own properties (admin_venue_ids()); HR sees every property.
+ */
+function require_hr(): void {
+    require_login();
+    if (!is_owner() && !is_manager() && !is_hr() && !access_page_granted()) {
+        $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'That area is only available to managers and HR.'];
+        header('Location: ' . admin_home_url()); exit;
+    }
 }
 
 /**

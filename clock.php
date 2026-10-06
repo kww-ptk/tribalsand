@@ -17,7 +17,7 @@ require_once __DIR__ . '/includes/attendance-clock.php';
 session_init();
 
 $signedIn = !empty($_SESSION['admin_id']);
-$canSetUp = $signedIn && (is_owner() || is_manager());
+$canSetUp = $signedIn && (is_owner() || is_manager() || is_hr());
 
 // The feature ships dark. While it is off the tablet says so plainly rather
 // than showing a camera that can never record anything — and the JS below is

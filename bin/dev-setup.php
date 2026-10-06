@@ -353,6 +353,7 @@ function dev_accounts(PDO $pdo): void {
     $accounts = [['owner@tribalsand.test', 'Dev Owner', 'owner', null],
                  ['manager@tribalsand.test', 'Dev Manager', 'manager', null],
                  ['reception@tribalsand.test', 'Dev Reception', 'reception', null],
+                 ['hr@tribalsand.test', 'Dev HR', 'hr', null],
                  ['frontdesk@tribalsand.test', 'Dev Front Desk', 'staff', 'frontdesk'],
                  ['housekeeping@tribalsand.test', 'Dev Housekeeping', 'staff', 'housekeeping'],
                  ['security@tribalsand.test', 'Dev Security', 'staff', 'security'],

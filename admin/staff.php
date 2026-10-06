@@ -1,6 +1,7 @@
 <?php
 /**
- * Admin: Team — internal directory + login accounts (owner-only).
+ * Admin: Team — internal directory + login accounts. Owner: all three tabs.
+ * HR: the Directory only (login accounts and "Access by role" stay owner-only).
  *
  * Two tabs:
  *   • Directory  — the whole workforce (hr_staff): who works where, position,
@@ -29,7 +30,12 @@ require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/pagination.php';
 require_once __DIR__ . '/../includes/admin-pagination.php';
 require_login();
-require_owner();
+// Owner: everything. HR: the Directory (people, not logins) — every other action
+// and tab stays owner-only, checked again below for each POST.
+if (!is_owner() && !is_hr()) {
+    $_SESSION['hold_flash'] = ['type' => 'error', 'msg' => 'That area is only available to the owner and HR.'];
+    header('Location: ' . admin_home_url()); exit;
+}
 
 $pageTitle  = 'Team';
 $activeMenu = 'staff';
@@ -80,6 +86,9 @@ function staff_flash(string $msg, string $type = 'success', string $tab = 'accou
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $action = $_POST['action'] ?? '';
+    if (!is_owner() && !str_starts_with((string)$action, 'hr_')) {
+        staff_flash('Only the owner can change login accounts and access.', 'error', 'directory');
+    }
 
     // ── Access by role (includes/access.php) ─────────────────────────────────
     if ($action === 'access_save' || $action === 'access_reset') {
@@ -185,14 +194,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($posted === 'reception' && !reception_supported()) {
             staff_flash('Reception accounts need the add_reception_role migration — run it first.', 'error');
         }
-        $type = in_array($posted, ['owner', 'manager', 'reception'], true) ? $posted : 'staff';
+        if ($posted === 'hr' && !hr_role_supported()) {
+            staff_flash('HR accounts need the add_hr_role migration — run it first.', 'error');
+        }
+        $type = in_array($posted, ['owner', 'manager', 'reception', 'hr'], true) ? $posted : 'staff';
         $name = trim((string)($_POST['name'] ?? ''));
         if ($name === '') staff_flash('Please enter a name.', 'error');
 
-        if ($type === 'owner' || $type === 'manager' || $type === 'reception') {
+        if ($type !== 'staff') {
             // All three are email + password accounts. Owner sees everything (no
             // venue scoping); manager/reception are scoped by admin_user_venues.
-            $label = $type === 'owner' ? 'Owner' : ($type === 'manager' ? 'Manager' : 'Reception');
+            $label = ['owner' => 'Owner', 'manager' => 'Manager', 'reception' => 'Reception', 'hr' => 'HR'][$type];
             $email = strtolower(trim((string)($_POST['email'] ?? '')));
             $pass  = (string)($_POST['password'] ?? '');
             if (!filter_var($email, FILTER_VALIDATE_EMAIL)) staff_flash("Enter a valid email for the " . strtolower($label) . " account.", 'error');
@@ -206,9 +218,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 [':n' => $name, ':e' => $email, ':h' => $hash, ':r' => $type]
             );
             $newId = (int)db()->lastInsertId();
-            // Owners are unscoped (admin_venue_ids() returns null for them), so
-            // property assignment only applies to manager/reception.
-            if ($type !== 'owner') {
+            // Owners and HR are unscoped (admin_venue_ids() returns null for them),
+            // so property assignment only applies to manager/reception.
+            if ($type !== 'owner' && $type !== 'hr') {
                 foreach (staff_posted_venue_ids($venueIds) as $vid) {
                     db_query('INSERT INTO admin_user_venues (admin_user_id, venue_id) VALUES (:s, :v)', [':s' => $newId, ':v' => $vid]);
                 }
@@ -231,7 +243,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } elseif ($action === 'venues') {
         $sid = (int)($_POST['staff_id'] ?? 0);
-        $ok  = db_query("SELECT 1 FROM admin_users WHERE id = :s AND role IN ('manager','reception','staff')", [':s' => $sid])->fetchColumn();
+        $ok  = db_query("SELECT 1 FROM admin_users WHERE id = :s AND role IN ('manager','reception','hr','staff')", [':s' => $sid])->fetchColumn();
         if ($ok) {
             db_query('DELETE FROM admin_user_venues WHERE admin_user_id = :s', [':s' => $sid]);
             foreach (staff_posted_venue_ids($venueIds) as $vid) {
@@ -256,7 +268,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $pass = (string)($_POST['password'] ?? '');
         if (strlen($pass) < 10) staff_flash('Password must be at least 10 characters.', 'error');
         $hash = password_hash($pass, PASSWORD_BCRYPT, ['cost' => 12]);
-        $n = db_query("UPDATE admin_users SET password_hash = :h WHERE id = :s AND role IN ('manager','reception')", [':h' => $hash, ':s' => $sid])->rowCount();
+        $n = db_query("UPDATE admin_users SET password_hash = :h WHERE id = :s AND role IN ('manager','reception','hr')", [':h' => $hash, ':s' => $sid])->rowCount();
         if ($n) { audit_log('staff_setpw', 'admin_user', $sid, ''); staff_flash('Password updated.'); }
         staff_flash('No change.', 'error');
     } elseif ($action === 'regen') {
@@ -266,12 +278,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         staff_flash('No change.', 'error');
     } elseif ($action === 'toggle') {
         $sid = (int)($_POST['staff_id'] ?? 0);
-        $n = db_query("UPDATE admin_users SET is_active = NOT is_active WHERE id = :s AND role IN ('manager','reception','staff')", [':s' => $sid])->rowCount();
+        $n = db_query("UPDATE admin_users SET is_active = NOT is_active WHERE id = :s AND role IN ('manager','reception','hr','staff')", [':s' => $sid])->rowCount();
         if ($n) { audit_log('staff_toggle', 'admin_user', $sid, ''); staff_flash('Account status updated.'); }
         staff_flash('No change.', 'error');
     } elseif ($action === 'delete') {
         $sid = (int)($_POST['staff_id'] ?? 0);
-        $n = db_query("DELETE FROM admin_users WHERE id = :s AND role IN ('manager','reception','staff')", [':s' => $sid])->rowCount();
+        $n = db_query("DELETE FROM admin_users WHERE id = :s AND role IN ('manager','reception','hr','staff')", [':s' => $sid])->rowCount();
         if ($n) { audit_log('staff_delete', 'admin_user', $sid, ''); staff_flash('Account removed.'); }
         staff_flash('No change.', 'error');
     }
@@ -285,7 +297,7 @@ if (!empty($_SESSION['hold_flash']) && is_string($_SESSION['hold_flash'])) {
 }
 
 // Which tab (default the Directory — the primary "who works where" view).
-$tab = in_array($_GET['tab'] ?? '', ['accounts', 'access'], true) ? (string)$_GET['tab'] : 'directory';
+$tab = is_owner() && in_array($_GET['tab'] ?? '', ['accounts', 'access'], true) ? (string)$_GET['tab'] : 'directory';
 // "Access by role" — which role is being edited (validated against the known roles).
 $accessRoles = access_role_options(staff_job_types());
 $accessRole  = isset($accessRoles[(string)($_GET['role'] ?? '')]) ? (string)$_GET['role'] : (string)array_key_first($accessRoles);
@@ -293,7 +305,7 @@ $accessRole  = isset($accessRoles[(string)($_GET['role'] ?? '')]) ? (string)$_GE
 // ── Accounts: search + pagination (existing dt toolkit) ──────────────────────
 $pg = paginate_params(25);
 $teamParams = [];
-$teamWhere  = "WHERE role IN ('manager','reception','staff')";
+$teamWhere  = "WHERE role IN ('manager','reception','hr','staff')";
 $sw = search_where(['name', "COALESCE(email,'')", "COALESCE(access_code,'')"], $pg['q'], $teamParams);
 if ($sw !== '') $teamWhere .= " AND $sw";
 
@@ -323,7 +335,7 @@ if (hr_staff_supported() && hr_staff_venues_supported()) {
 }
 
 // Login accounts available to link from a directory entry.
-$linkAccounts = db_query("SELECT id, name, email, role FROM admin_users WHERE role IN ('owner','manager','reception','staff') ORDER BY name ASC")->fetchAll();
+$linkAccounts = db_query("SELECT id, name, email, role FROM admin_users WHERE role IN ('owner','manager','reception','hr','staff') ORDER BY name ASC")->fetchAll();
 
 // ── Directory filters + grouped data ─────────────────────────────────────────
 $dirFilters = [
@@ -459,6 +471,7 @@ include __DIR__ . '/_layout.php';
 
 <?php
 $__openCreate = ($flash !== '' && $flashType === 'error' && $tab === 'accounts');
+$__ownerView  = is_owner();   // HR sees the Directory tab only
 $__accountsUrl = '/admin/staff.php?tab=accounts';
 $__directoryUrl = '/admin/staff.php?tab=directory';
 ?>
@@ -481,6 +494,7 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
      style="padding:9px 16px;font-weight:600;font-size:14px;text-decoration:none;border-bottom:2px solid <?= $tab === 'directory' ? 'var(--teal,#1E5C6B)' : 'transparent' ?>;color:<?= $tab === 'directory' ? 'var(--teal,#1E5C6B)' : 'var(--muted,#6b7280)' ?>">
     Directory<?= hr_staff_supported() ? ' <span class="text-muted">(' . $dirCount . ')</span>' : '' ?>
   </a>
+  <?php if ($__ownerView): ?>
   <a href="<?= $__accountsUrl ?>" data-shell-link role="tab" class="ts-tab<?= $tab === 'accounts' ? ' is-active' : '' ?>"
      style="padding:9px 16px;font-weight:600;font-size:14px;text-decoration:none;border-bottom:2px solid <?= $tab === 'accounts' ? 'var(--teal,#1E5C6B)' : 'transparent' ?>;color:<?= $tab === 'accounts' ? 'var(--teal,#1E5C6B)' : 'var(--muted,#6b7280)' ?>">
     Login accounts <span class="text-muted">(<?= $total ?>)</span>
@@ -489,6 +503,7 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
      style="padding:9px 16px;font-weight:600;font-size:14px;text-decoration:none;border-bottom:2px solid <?= $tab === 'access' ? 'var(--teal,#1E5C6B)' : 'transparent' ?>;color:<?= $tab === 'access' ? 'var(--teal,#1E5C6B)' : 'var(--muted,#6b7280)' ?>">
     Access by role
   </a>
+  <?php endif; ?>
 </div>
 
 <?php if ($flash): ?><div class="alert alert--<?= e($flashType) ?> is-flash"><?= e($flash) ?></div><?php endif; ?>
@@ -728,6 +743,9 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
           <?php if (reception_supported()): ?>
           <label class="optchip"><input type="radio" name="account_type" value="reception"> Reception (email + password)</label>
           <?php endif; ?>
+          <?php if (hr_role_supported()): ?>
+          <label class="optchip"><input type="radio" name="account_type" value="hr"> HR (email + password)</label>
+          <?php endif; ?>
           <label class="optchip"><input type="radio" name="account_type" value="owner"> Owner (full access)</label>
         </div>
         <span class="field-hint acct-owner-note" style="display:none;color:#8a1c13">Owner accounts have <strong>full, unrestricted access</strong> — pricing, settings, staff and every property. Only create one for someone you fully trust.</span>
@@ -824,7 +842,8 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
     var isOwner = val === 'owner';
     form.querySelectorAll('.acct-manager').forEach(function (el) { el.style.display = isPw ? '' : 'none'; });
     form.querySelectorAll('.acct-staff').forEach(function (el) { el.style.display = isPw ? 'none' : ''; });
-    form.querySelectorAll('.acct-scoped').forEach(function (el) { el.style.display = isOwner ? 'none' : ''; });
+    // Owner and HR cover every property, so they skip the property picker.
+    form.querySelectorAll('.acct-scoped').forEach(function (el) { el.style.display = (isOwner || val === 'hr') ? 'none' : ''; });
     form.querySelectorAll('.acct-owner-note').forEach(function (el) { el.style.display = isOwner ? '' : 'none'; });
     // Only require the fields that are visible, so the hidden set doesn't block submit.
     var email = form.querySelector('input[name=email]'), pw = form.querySelector('input[name=password]');

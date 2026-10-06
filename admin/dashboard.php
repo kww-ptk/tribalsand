@@ -26,6 +26,7 @@ require_once __DIR__ . '/../includes/bookings.php';
 require_once __DIR__ . '/../includes/task-calendar.php';
 require_once __DIR__ . '/../includes/internal-messages.php';
 require_once __DIR__ . '/../includes/submission-notes.php';
+require_once __DIR__ . '/../includes/attendance.php';         // leave_requests_supported() — HR's leave tile
 require_once __DIR__ . '/../includes/submission-status.php';
 require_once __DIR__ . '/../includes/pos-support.php';
 require_once __DIR__ . '/../includes/inventory-count-views.php';
@@ -41,7 +42,7 @@ $meId     = (int)($me['id'] ?? 0);
 $role     = admin_role();
 $job      = admin_job();
 $kind     = dashboard_kind($role, $job);
-$venueIds = is_owner() ? null : (admin_venue_ids() ?: []);   // null = every property
+$venueIds = admin_venue_ids();   // null = every property (owner, HR); [] = none assigned yet
 $todayYmd = frontdesk_today_ymd();
 $now      = new DateTime('now', new DateTimeZone('Africa/Nairobi'));
 
@@ -59,6 +60,7 @@ $plan    = dashboard_plan($kind, [
     'tasks'        => tasks_supported(),
     'visitors'     => visitors_supported(),
     'ai'           => ai_assistant_supported(),
+    'leave'        => function_exists('leave_requests_supported') && leave_requests_supported(),
 ]);
 $tileMeta = dashboard_tile_meta();
 $tiles    = dashboard_tile_values($plan['tiles'], $venueIds, $meId, $todayYmd);

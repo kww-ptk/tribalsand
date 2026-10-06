@@ -43,7 +43,7 @@ const ACCESS_MANAGERS_ONLY = ['pos-sales.php', 'pos-items.php', 'pos-stock.php',
 
 /** Every configurable kind of account: key => label. Owner is never listed (always everything). */
 function access_role_options(array $jobs): array {
-    $out = ['manager' => 'Manager', 'reception' => 'Reception'];
+    $out = ['manager' => 'Manager', 'reception' => 'Reception', 'hr' => 'HR'];
     foreach ($jobs as $k => $label) $out['staff:' . $k] = preg_replace('/\s*\(.*\)$/', '', (string)$label);
     return $out;
 }
@@ -68,7 +68,7 @@ function access_tab_key(array $tab): string {
  * pages, kind = free | owner | auto | managers.
  */
 function access_sections(): array {
-    $all = array_fill_keys(['owner', 'manager', 'reception', 'frontdesk', 'concierge', 'messages', 'internal', 'tasks', 'timetable',
+    $all = array_fill_keys(['owner', 'manager', 'reception', 'hr', 'frontdesk', 'concierge', 'messages', 'internal', 'tasks', 'timetable',
         'gate', 'mywork', 'assistant', 'aiSettings', 'aiGaps', 'bookings', 'reports', 'pos', 'posTill', 'inventory', 'invOrders',
         'count', 'accounting', 'acctDocs', 'acctIc', 'restaurant', 'clockOn', 'clockNav', 'mayaIlai'], true);
     $out = [];

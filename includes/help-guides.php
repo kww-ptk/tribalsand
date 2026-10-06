@@ -253,6 +253,58 @@ function help_guides(): array {
             ['text' => 'Owner-only sections (settings, prices, website) can never be given away.'],
          ]],
 
+        ['slug' => 'staff-directory', 'area' => 'team', 'minutes' => 3, 'pages' => ['staff.php'],
+         'title' => 'Add or update someone in the staff directory',
+         'summary' => 'Everyone who works for Tribal Sand, with position, property and off day.',
+         'steps' => [
+            ['text' => 'Open **Team → Staff**. The **Directory** lists everyone, grouped by property.'],
+            ['text' => 'Press **Add team member**, or open a person to change their details.', 'target' => '#addPersonBtn'],
+            ['text' => 'Fill in **Full name**, **Position**, **Department**, **Property** and the **Weekly off-day** (attendance uses it to mark days off).'],
+            ['text' => 'Set **Status** to inactive when someone leaves. Their history and documents stay.'],
+         ],
+         'tips' => ['A person in the directory does not need a login. Logins are created by the owner under Login accounts.']],
+
+        ['slug' => 'employee-documents', 'area' => 'team', 'minutes' => 2, 'pages' => ['employee.php'],
+         'title' => 'Keep contracts and ID documents on an employee',
+         'summary' => 'Private files on each person’s profile: contracts, IDs, certificates.',
+         'steps' => [
+            ['text' => 'Open the person from the staff directory and go to the **Documents** tab.', 'open' => '[data-tab="documents"]', 'target' => '[data-tab="documents"]'],
+            ['text' => 'Choose one or more files (PDF, Word, JPG, PNG; up to 15 MB each), add a label and press **Upload**.'],
+            ['text' => 'Documents are private: only the owner, managers of that property and HR can open them.'],
+            ['text' => 'The **Employment** tab holds contract type, start and end dates and HR notes. Press **Save details**.', 'target' => '[data-tab="employment"]'],
+         ]],
+
+        ['slug' => 'attendance-day', 'area' => 'team', 'minutes' => 3, 'pages' => ['attendance.php'],
+         'title' => 'Record or correct attendance times',
+         'summary' => 'Fill in a day for everyone, fix a missed clock-out, see the month.',
+         'steps' => [
+            ['text' => 'Open **Team → Attendance**. The **Daily** view shows one day for everyone. Use the arrows to change the day.'],
+            ['text' => 'For each person set the **Status** and the **In / Out** times. **Quick** buttons fill a standard shift.'],
+            ['text' => '**Bulk fill blank rows** fills everyone not yet done; **Auto off-days** marks people on their weekly off-day.'],
+            ['text' => 'Times scanned at a clock tablet appear as **Self-recorded**, with a photo. Correct them here if someone forgot to scan out.'],
+            ['text' => '**Month grid** shows everyone × every day, with totals and overtime. **Export CSV** opens it in Excel.'],
+         ]],
+
+        ['slug' => 'leave', 'area' => 'team', 'minutes' => 2, 'pages' => ['attendance.php'],
+         'title' => 'Record and approve leave',
+         'summary' => 'Annual, sick and other leave, approved in one place.',
+         'steps' => [
+            ['text' => 'Open **Team → Attendance → Leave**. The tab shows how many requests are waiting.'],
+            ['text' => 'To record leave, pick the **Staff member**, the **Type**, **Start date** and **End date**, then **Submit request**.'],
+            ['text' => 'Press **Approve** or **Decline** on a waiting request. Approved days show on the attendance grid.'],
+         ]],
+
+        ['slug' => 'clock-cards', 'area' => 'team', 'minutes' => 3, 'pages' => ['attendance-cards.php', 'attendance-devices.php'],
+         'title' => 'Clock cards and the clock tablet',
+         'summary' => 'Staff scan a card on a tablet to clock in and out.',
+         'steps' => [
+            ['text' => 'The owner switches clocking in on under **Attendance → Clock kiosks**.'],
+            ['text' => 'On the tablet, sign in and open **/clock** to register it to a property. The tablet then stays on the clock screen.'],
+            ['text' => '**Clock cards**: pick the property and press **Print all**. Each person gets a card with their own code.'],
+            ['text' => 'Lost card? Press **Reissue card**. The old card stops working straight away.'],
+         ],
+         'tips' => ['Remove a lost or replaced tablet with **Revoke** on the Clock kiosks page.']],
+
         // ── Restaurant ─────────────────────────────────────────────────
         ['slug' => 'table-reservations', 'area' => 'restaurant', 'minutes' => 2, 'pages' => ['reservations.php'],
          'title' => 'Confirm a table reservation',

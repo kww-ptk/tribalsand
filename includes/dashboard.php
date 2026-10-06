@@ -24,7 +24,7 @@ declare(strict_types=1);
 
 /** Which dashboard a signed-in account gets. */
 function dashboard_kind(string $role, ?string $job): string {
-    if ($role === 'owner' || $role === 'manager' || $role === 'reception') return $role;
+    if ($role === 'owner' || $role === 'manager' || $role === 'reception' || $role === 'hr') return $role;
     if ($job === 'security') return 'security';
     if ($job === 'storekeeper') return 'store';
     if (in_array($job, ['shop', 'spa', 'kite'], true)) return 'pos';
@@ -43,7 +43,7 @@ function dashboard_greeting(int $hour): string {
  */
 function dashboard_profile(string $kind, ?string $job, array $venueNames): array {
     $where = match (true) {
-        $kind === 'owner'        => 'every property',
+        $kind === 'owner' || $kind === 'hr' => 'every property',
         count($venueNames) === 0 => 'no property yet — ask the owner to assign you one',
         count($venueNames) === 1 => $venueNames[0],
         default                  => implode(', ', array_slice($venueNames, 0, -1)) . ' and ' . end($venueNames),
@@ -70,6 +70,12 @@ function dashboard_profile(string $kind, ?string $job, array $venueNames): array
             'can' => ['Confirm or decline booking requests', 'Answer enquiries and send quotes', 'Use the calendar and sort out conflicts',
                       'Look after guest requests and messages', 'Take table reservations', 'Sign visitors in at the gate'],
             'cannot' => 'Prices, menus and reports are handled by the owner or a manager.'],
+        'hr' => ['label' => 'HR', 'badge' => 'green',
+            'chips' => ['Staff directory', 'Documents', 'Attendance', 'Leave', 'Clock cards', 'Team chat'],
+            'summary' => 'You look after the team at every property.',
+            'can' => ['Add and update people in the staff directory', 'Keep contracts and ID documents on each employee',
+                      'Record and correct attendance times', 'Approve or decline leave', 'Print clock cards and set up clock kiosks', 'Chat with the team'],
+            'cannot' => 'Logins, access rights, bookings and money are handled by the owner.'],
         'security' => ['label' => $jobLabel, 'badge' => 'blue',
             'chips' => ['Arrivals today', 'Sign visitors in', 'Your tasks', 'Team chat'],
             'summary' => "You look after the gate at {$where}.",
@@ -128,6 +134,12 @@ function dashboard_plan(string $kind, array $has = []): array {
             'shortcuts' => [['New booking', '/admin/holds.php?new=1', 'plus'], ['Calendar', '/admin/gantt.php', 'calendar'], ['Quote builder', '/admin/quote-builder.php', 'file'],
                             ['Front desk', '/admin/frontdesk.php', 'clipboard']],
         ],
+        'hr' => [
+            'tiles'     => ['leave_pending'],
+            'sections'  => [],
+            'shortcuts' => [['Staff directory', '/admin/staff.php', 'clipboard'], ['Attendance', '/admin/attendance.php', 'clock'],
+                            ['Leave', '/admin/attendance.php?view=leave', 'calendar'], ['Month grid', '/admin/attendance.php?view=month', 'chart']],
+        ],
         'security' => [
             'tiles'     => ['visitors'],
             'sections'  => ['today', 'my_tasks'],
@@ -158,7 +170,7 @@ function dashboard_plan(string $kind, array $has = []): array {
     $plan['tiles'][] = 'team_chat';   // every account has the team chat
 
     // Drop what an optional module would show when that module is not installed.
-    $needs = ['reservations' => 'reservations', 'counts_review' => 'inventory', 'team_overdue' => 'tasks', 'visitors' => 'visitors'];
+    $needs = ['reservations' => 'reservations', 'counts_review' => 'inventory', 'team_overdue' => 'tasks', 'visitors' => 'visitors', 'leave_pending' => 'leave'];
     $plan['tiles'] = array_values(array_filter($plan['tiles'], fn($t) => !isset($needs[$t]) || $on($needs[$t])));
     $secNeeds = ['counts_due' => 'inventory', 'till' => 'pos', 'my_tasks' => 'tasks'];
     $plan['sections'] = array_values(array_filter($plan['sections'], fn($s) => !isset($secNeeds[$s]) || $on($secNeeds[$s])));
@@ -183,6 +195,7 @@ function dashboard_tile_meta(): array {
         'counts_review'  => ['label' => 'Stock counts', 'sub' => 'differences to review', 'href' => '/admin/inventory-counts.php', 'tone' => 'info'],
         'visitors'       => ['label' => 'Visitors on site', 'sub' => 'signed in, not yet out', 'href' => '/admin/gate.php', 'tone' => 'info'],
         'team_chat'      => ['label' => 'Team chat', 'sub' => 'unread', 'href' => '/admin/internal-messages.php', 'tone' => 'info'],
+        'leave_pending'  => ['label' => 'Leave requests', 'sub' => 'waiting for a decision', 'href' => '/admin/attendance.php?view=leave', 'tone' => 'warn'],
     ];
 }
 
@@ -351,6 +364,10 @@ function dashboard_tile_values(array $keys, ?array $venueIds, int $adminId, stri
             WHERE ba.status = 'requested'" . dashboard_venue_and('r.venue_id', $venueIds))->fetchColumn(),
         'messages'      => fn() => function_exists('count_unread_admin') ? (int)count_unread_admin($venueIds) : 0,
         'team_chat'     => fn() => function_exists('internal_unread_total') ? (int)internal_unread_total($adminId) : 0,
+        'leave_pending' => function () use ($venueIds) {
+            require_once __DIR__ . '/attendance.php';
+            return leave_requests_supported() ? (int)leave_pending_count($venueIds) : 0;
+        },
         'reservations'  => fn() => (int)(reservation_dashboard_counts($venueIds)['pending'] ?? 0),
         'team_overdue'  => fn() => (int)db_query("SELECT COUNT(*) FROM tasks t WHERE t.status IN ('todo','in_progress')
             AND t.due_date IS NOT NULL AND t.due_date < :d" . dashboard_venue_and('t.venue_id', $venueIds), [':d' => $todayYmd])->fetchColumn(),

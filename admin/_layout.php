@@ -43,7 +43,7 @@ $__navInternal = $__navOn('internal', 'internal-messages.php');
 $__navBookings = $__navOn('bookings', 'submissions.php') || $__navOn('bookings', 'gantt.php');
 
 // Chip shown under the logo for non-owner accounts.
-$__roleBadge = $__isManager ? 'Manager' : ($__isReception ? 'Reception' : ($__isStorekeeper ? 'Storekeeper' : (is_staff() ? ucfirst((string)$__job) : '')));
+$__roleBadge = $__isManager ? 'Manager' : (is_hr() ? 'HR' : ($__isReception ? 'Reception' : ($__isStorekeeper ? 'Storekeeper' : (is_staff() ? ucfirst((string)$__job) : ''))));
 
 $__navScript = basename((string)($_SERVER['SCRIPT_NAME'] ?? ''));
 // Unread counts shown on sidebar links and tabs. Each is only queried for an

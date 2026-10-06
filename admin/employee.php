@@ -19,7 +19,7 @@ require_once __DIR__ . '/../includes/hr-documents.php';      // Documents card (
 require_once __DIR__ . '/../includes/inventory-people.php';   // Assets tab (assigned items)
 require_once __DIR__ . '/../includes/icons.php';
 require_login();
-require_manager();   // owner or manager
+require_hr();   // owner or manager
 
 $pageTitle  = 'Employee';
 $activeMenu = 'staff';
@@ -300,7 +300,7 @@ include __DIR__ . '/_layout.php';
         <p class="text-muted" style="font-size:13px;margin:0">Run the <code>add_hr_staff_documents.sql</code> migration to upload contracts and other documents.</p>
       <?php else: ?>
         <?php if (!$docs): ?>
-          <p class="text-muted" style="font-size:13px;margin:0 0 14px">No documents yet. Upload the contract, ID copy or certificates here — they stay private to owners and managers.</p>
+          <p class="text-muted" style="font-size:13px;margin:0 0 14px">No documents yet. Upload the contract, ID copy or certificates here — they stay private to the owner, managers and HR.</p>
         <?php else: ?>
         <ul class="emp-docs">
           <?php foreach ($docs as $d):

@@ -19,7 +19,7 @@ require_once __DIR__ . '/../includes/attendance.php';
 require_once __DIR__ . '/../includes/attendance-clock.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_login();
-require_manager();
+require_hr();
 
 $venueIds = admin_venue_ids();
 $view = (string)($_GET['view'] ?? 'daily');

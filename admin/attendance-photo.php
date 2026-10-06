@@ -12,6 +12,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/storage.php';
 require_once __DIR__ . '/../includes/attendance-clock.php';
 require_login();
+require_hr();   // owner, managers (own properties) and HR — a staff login must not open colleagues' punch photos
 
 // Guard the read: attendance_punches_supported() is an information_schema probe,
 // never a failing SELECT, so a pre-migration deploy 404s cleanly instead of
