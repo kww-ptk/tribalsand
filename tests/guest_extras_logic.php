@@ -89,6 +89,17 @@ check('time of day maps to a clock time', GUEST_EXTRAS_PARTS_OF_DAY['afternoon']
 $p = guest_extra_payload($rc['tour:1'] + ['status' => '', 'price_label' => 'USD 120 pp']);
 check('payload for the sheet', $p['k'] === 'tour:1' && $p['slug'] === 'kite' && $p['max'] === 4 && $p['pp'] === true);
 
+// ── Stay info (bento A) helpers ──
+check('map: coordinates in the saved link win', venue_map_embed_url(['maps_url' => 'https://www.google.com/maps/place/Zuri/@-3.3512,40.0154,17z', 'address' => 'x'], 'Zuri', 'Watamu')
+    === 'https://www.google.com/maps?q=-3.3512%2C40.0154&z=15&output=embed');
+check('map: else address + town', str_contains(venue_map_embed_url(['maps_url' => '', 'address' => 'Zuri Beach Hotel'], 'Zuri', 'Watamu'), 'q=Zuri%20Beach%20Hotel%2C%20Watamu'));
+check('map: else name + town; nothing → no map', str_contains(venue_map_embed_url([], 'Zuri', 'Watamu'), 'q=Zuri%2C%20Watamu') && venue_map_embed_url([], '', '') === '');
+check('map: a stored value is only ever a search query', !str_contains(venue_map_embed_url(['address' => '"><script>'], '', ''), '<'));
+check('rules: one per line, bullets and blanks dropped', stay_rules_list("- No smoking indoors
+
+• Quiet after 22:00
+No pets") === ['No smoking indoors', 'Quiet after 22:00', 'No pets']);
+
 // ── DB round-trip (rolled back) ──
 try {
     $db = db();

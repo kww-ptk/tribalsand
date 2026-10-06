@@ -800,6 +800,35 @@ function venue_maps_link(array $stay): string {
 }
 
 /**
+ * The embedded Google map for a property's location (guest page stay info). PURE.
+ * Coordinates in the saved maps link win (…/@-3.35,40.02,… or ?q=/?ll=lat,lng);
+ * else the address, else the property name + town. A stored value only ever
+ * reaches the iframe url-encoded as a search query, never as a URL.
+ */
+function venue_map_embed_url(array $stay, string $name = '', string $town = ''): string {
+    $url = trim((string)($stay['maps_url'] ?? ''));
+    $q = '';
+    if ($url !== '' && preg_match('#[@=](-?\d{1,2}\.\d+),\s*(-?\d{1,3}\.\d+)#', $url, $m)) $q = $m[1] . ',' . $m[2];
+    if ($q === '') {
+        $addr = trim((string)($stay['address'] ?? ''));
+        $parts = array_values(array_unique(array_filter([$addr !== '' ? $addr : trim($name), trim($town)], fn($v) => $v !== '')));
+        // An address that is only the property's name ("Zuri Beach Hotel") still needs the town.
+        $q = implode(', ', $parts);
+    }
+    return $q === '' ? '' : 'https://www.google.com/maps?q=' . rawurlencode($q) . '&z=15&output=embed';
+}
+
+/** A property's house-rules text as a list: one rule per line, bullets stripped, empties dropped. PURE. */
+function stay_rules_list(string $text): array {
+    $out = [];
+    foreach (preg_split('/\r\n|\r|\n/', $text) as $line) {
+        $line = trim(preg_replace('/^[\s\-*•·–]+/u', '', $line));
+        if ($line !== '') $out[] = $line;
+    }
+    return $out;
+}
+
+/**
  * Open a concierge request's message thread by posting the guest's request as
  * the first message. Unread for staff, read for the guest who just sent it.
  */
