@@ -18,6 +18,8 @@ header('Content-Type: application/json');
 
 // Not-logged-in must answer JSON, not redirect HTML into a fetch.
 if (!current_admin()) { http_response_code(401); exit(json_encode(['ok' => false, 'error' => 'Not signed in.'])); }
+// Same audience as admin/assistant.php (require_frontdesk()): no back-of-house staff, no HR.
+if (no_guest_messaging()) { http_response_code(403); exit(json_encode(['ok' => false, 'error' => 'Not available for your account.'])); }
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
     http_response_code(405); exit(json_encode(['ok' => false, 'error' => 'Method not allowed']));

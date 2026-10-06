@@ -9,7 +9,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/frontdesk.php';
 require_once __DIR__ . '/../includes/checkin.php';
 require_once __DIR__ . '/../includes/inventory-count-views.php';   // "Stock counts" card
-require_login();
+require_guest_desk();   // every login but HR
 
 $pageTitle  = 'Front desk';
 $activeMenu = 'frontdesk';

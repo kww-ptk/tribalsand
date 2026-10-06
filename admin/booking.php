@@ -34,7 +34,7 @@ if (!$hold) { $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Booking not fou
 if (!is_owner() && !staff_can_hold($holdId)) { $_SESSION['hold_flash']=['type'=>'error','msg'=>'That booking is at a property you don’t manage.']; header('Location: ' . admin_home_url()); exit; }
 
 // Back-of-house staff (ops, gate, till, storekeeper) get no guest messaging (mirrors require_frontdesk / the nav).
-$__noMessaging = is_staff() && job_is_back_of_house(admin_job());
+$__noMessaging = no_guest_messaging();
 
 $tab = $_GET['tab'] ?? 'requests';
 if (!in_array($tab, ['requests','messages','plan','bill','checkin','activity','details'], true)) $tab = 'requests';

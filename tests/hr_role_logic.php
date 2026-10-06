@@ -67,6 +67,20 @@ check('Team page: owner or HR only', str_contains($staff, "if (!is_owner() && !i
 check('Team page: HR may only post directory (hr_) actions', str_contains($staff, "if (!is_owner() && !str_starts_with((string)\$action, 'hr_')) {"));
 check('Team page: HR never gets the Login accounts / Access tabs', str_contains($staff, "\$tab = is_owner() && in_array("));
 check('HR is unscoped like the owner', str_contains($src('includes/auth.php'), 'if (is_owner() || is_hr()) return null;'));
+// Gates that are not nav-driven — HR must be refused even by a typed URL (Oct 2026 fix:
+// Messages, the AI assistant and the concierge desk let any non-back-of-house login in).
+$auth = $src('includes/auth.php');
+check('no_guest_messaging() covers HR and back-of-house staff', str_contains($auth, "return is_hr() || (is_staff() && job_is_back_of_house(admin_job()));"));
+check('require_frontdesk() asks no_guest_messaging()', str_contains($auth, 'if (no_guest_messaging() && !access_page_granted()) {'));
+foreach (['admin/messages-poll.php', 'api/assistant.php', 'api/assistant-draft.php'] as $p) {
+    check("{$p} refuses HR (no_guest_messaging)", str_contains($src($p), 'if (no_guest_messaging()) {'));
+}
+check('booking workspace hides messaging from HR', str_contains($src('admin/booking.php'), '$__noMessaging = no_guest_messaging();'));
+check('require_guest_desk() refuses HR unless granted', str_contains($auth, 'if (is_hr() && !access_page_granted()) {'));
+foreach (['admin/frontdesk.php', 'admin/concierge-desk.php'] as $p) {
+    check("{$p} is guarded by require_guest_desk()", (bool)preg_match('/^require_guest_desk\(\);/m', $src($p)));
+}
+check('Login accounts list shows an HR account as HR (email, all properties)', str_contains($staff, "\$isHr        = (\$s['role'] ?? '') === 'hr';") && str_contains($staff, '<span class="badge badge--teal">HR</span>'));
 check('migration widens the role CHECK to hr', str_contains($src('db/migrations/add_hr_role.sql'), "'owner','manager','reception','hr','staff'"));
 
 // ── DB: an HR account can be stored (rolled back) ──

@@ -362,9 +362,10 @@ ob_start(); ?>
           $sid         = (int)$s['id'];
           $isManager   = ($s['role'] ?? '') === 'manager';
           $isReception = ($s['role'] ?? '') === 'reception';
-          // Manager and reception are both email + password accounts: they share
+          $isHr        = ($s['role'] ?? '') === 'hr';
+          // Manager, reception and HR are email + password accounts: they share
           // the sign-in cell, the password form, and have no access code or job.
-          $isPwAcct    = $isManager || $isReception;
+          $isPwAcct    = $isManager || $isReception || $isHr;
           $job         = $s['job_type'] ?? null;
           $jobEff      = $job ?: 'frontdesk';
           $jobLabel    = $isPwAcct ? '—' : (array_key_exists($jobEff, staff_job_types()) ? staff_job_types()[$jobEff] : STAFF_JOB_TYPES['frontdesk']);
@@ -378,6 +379,8 @@ ob_start(); ?>
               <span class="badge badge--green">Manager</span>
             <?php elseif ($isReception): ?>
               <span class="badge badge--orange">Reception</span>
+            <?php elseif ($isHr): ?>
+              <span class="badge badge--teal">HR</span>
             <?php else: ?>
               <span class="badge badge--blue">Staff</span> <span class="text-muted"><?= e($jobLabel) ?></span>
             <?php endif; ?>
@@ -390,7 +393,8 @@ ob_start(); ?>
             <?php endif; ?>
           </td>
           <td>
-            <?php if ($names): ?><?= e(implode(', ', $names)) ?>
+            <?php if ($isHr): ?><span class="text-muted">All properties</span>
+            <?php elseif ($names): ?><?= e(implode(', ', $names)) ?>
             <?php else: ?><span class="text-muted">None assigned</span><?php endif; ?>
           </td>
           <td>
@@ -418,7 +422,9 @@ ob_start(); ?>
               <input type="hidden" name="action" value="venues">
               <input type="hidden" name="staff_id" value="<?= $sid ?>">
               <span class="text-muted">Properties:</span>
-              <?php if (!$venues): ?>
+              <?php if ($isHr): ?>
+                <span class="text-muted">HR works across every property — nothing to choose.</span>
+              <?php elseif (!$venues): ?>
                 <span class="text-muted">No properties yet.</span>
               <?php else: ?>
                 <div class="optset">
