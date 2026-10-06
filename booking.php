@@ -108,7 +108,7 @@ if ($hold && !$error && !$isCoGuest) {
 }
 
 // Handle cancel POST
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && $hold && $can_cancel) {
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && $hold && $can_cancel && !$isCoGuest) {   // only the lead may cancel
     if (($_POST['action'] ?? '') === 'cancel') {
         db_query(
             "UPDATE holds SET status='cancelled', cancelled_at=NOW() WHERE id=:id AND status IN ('pending','confirmed')",
@@ -155,7 +155,7 @@ $status     = $hold['status'] ?? '';
 // via checkin-guest.php and has no business there, so it is not in their view set.
 // (Writing was already blocked: the form posts ref=<g-token>, which
 // checkin_auth_context() rejects. This closes the read side.)
-$__views = ['home','calendar','requests','extras','messages'];
+$__views = ['home','calendar','requests','extras','messages','settings'];
 // The old Activities tab is now Extras (old emails link to view=activities).
 if (($_GET['view'] ?? '') === 'activities') $_GET['view'] = 'extras';
 if (!$isCoGuest) $__views[] = 'checkin';
@@ -336,17 +336,18 @@ include __DIR__ . '/includes/head.php';
     </div>
     <?php endif; ?>
 
-    <?php if (in_array($view, ['calendar','requests'], true)): ?>
+    <?php if ($view === 'requests'): ?>
     <?php include __DIR__ . '/includes/app/status-header.php'; ?>
     <?php endif; ?>
 
       <?php if ($view === 'home'): ?>
         <?php include __DIR__ . '/includes/app/home.php'; ?>
       <?php elseif ($view === 'calendar'): ?>
-        <?php include __DIR__ . '/includes/app/_added.php'; ?>
-        <?php include __DIR__ . '/includes/app/_trip.php'; ?>
+        <?php include __DIR__ . '/includes/app/_timeline.php';   // My trip: design 1, day by day ?>
       <?php elseif ($view === 'requests'): ?>
         <?php include __DIR__ . '/includes/app/_services.php'; ?>
+      <?php elseif ($view === 'settings'): ?>
+        <?php include __DIR__ . '/includes/app/settings.php'; ?>
       <?php elseif ($view === 'extras'): ?>
         <?php include __DIR__ . '/includes/app/extras.php'; ?>
       <?php elseif ($view === 'messages'): ?>
@@ -361,36 +362,21 @@ include __DIR__ . '/includes/head.php';
 
   </div><!-- /pa-wrap -->
 
-  <!-- ── Fixed help footer ── -->
-  <div class="pa-help-footer">
+  <!-- ── Help bar, fixed to the bottom of the screen (above the phone tab bar) ── -->
+  <div class="pa-help-footer" role="contentinfo">
     <strong>Questions about your booking?</strong>
-    <a href="mailto:reservations@tribalsand.com">reservations@tribalsand.com</a>
-    <span class="sep">&middot;</span>
-    <a href="tel:+254115115247">+254 115 115 247</a>
+    <span class="pa-help-footer__links">
+      <a href="mailto:reservations@tribalsand.com">reservations@tribalsand.com</a>
+      <span class="sep">&middot;</span>
+      <a href="tel:+254115115247">+254 115 115 247</a>
+    </span>
   </div>
 </div><!-- /pa-app -->
 
-<?php if ($status === 'pending' && !empty($hold['expires_at'])): ?>
-<script>
-(function() {
-  var expires = <?= strtotime($hold['expires_at']) * 1000 ?>;
-  var el = document.getElementById('bkCountdown');
-  if (!el) return;
-  function tick() {
-    var diff = Math.floor((expires - Date.now()) / 1000);
-    if (diff <= 0) { el.textContent = 'Expiring…'; return; }
-    var h = Math.floor(diff / 3600);
-    var m = Math.floor((diff % 3600) / 60);
-    var s = diff % 60;
-    el.textContent = h + 'h ' + String(m).padStart(2,'0') + 'm ' + String(s).padStart(2,'0') + 's';
-    setTimeout(tick, 1000);
-  }
-  tick();
-})();
-</script>
-<?php endif; ?>
+<?php /* The hold countdown ([data-expires]) is driven by js/booking-manage.js, so it keeps ticking after a tab swap. */ ?>
 
 <script src="/js/booking-manage.js?v=<?= @filemtime(__DIR__ . '/js/booking-manage.js') ?: time() ?>" defer></script>
+<script src="/js/portal-nav.js?v=<?= @filemtime(__DIR__ . '/js/portal-nav.js') ?: time() ?>" defer></script>   <!-- tab switches without a reload -->
 <!-- Non-native dropdowns: reuse the admin's styled <select> enhancer (progressive; native select stays for no-JS). -->
 <script src="/admin/assets/admin-select.js?v=<?= @filemtime(__DIR__ . '/admin/assets/admin-select.js') ?: time() ?>" defer></script>
 

@@ -52,7 +52,7 @@ $__xFeat   = in_array($status, ['pending', 'confirmed'], true) ? guest_extras_fe
       <?php if ($status === 'pending' && !empty($hold['expires_at'])):
         $__left = strtotime((string)$hold['expires_at']) - time();
         $__fallback = $__left > 0 ? sprintf('%dh %02dm', intdiv($__left, 3600), intdiv($__left % 3600, 60)) : 'Expiring soon'; ?>
-      <div><dt>Dates held for</dt><dd id="bkCountdown" class="pa-warn"><?= e($__fallback) ?></dd></div>
+      <div><dt>Dates held for</dt><dd id="bkCountdown" class="pa-warn" data-expires="<?= (int)strtotime((string)$hold['expires_at']) * 1000 ?>"><?= e($__fallback) ?></dd></div>
       <?php endif; ?>
     </dl>
     <a class="pa-btn pa-post__btn" href="<?= e($__pu) ?>&amp;view=calendar">Trip details</a>
@@ -78,7 +78,7 @@ $__xFeat   = in_array($status, ['pending', 'confirmed'], true) ? guest_extras_fe
 </div>
 <?php endif; ?>
 
-<a class="pa-services" href="<?= e($__pu) ?>&amp;view=requests">
+<a class="pa-services" href="<?= e($__pu) ?>&amp;view=messages&amp;add=1">
   <span><b>Need something during your stay?</b><span>Housekeeping, laundry, restaurant, maintenance</span></span>
   <span aria-hidden="true">›</span>
 </a>

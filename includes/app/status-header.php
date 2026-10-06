@@ -17,7 +17,7 @@ $__nights = (int)((strtotime($hold['check_out']) - strtotime($hold['check_in']))
       // Server-rendered fallback; the inline countdown script replaces it live.
       $__left = strtotime($hold['expires_at']) - time();
       $__fallback = $__left > 0 ? sprintf('%dh %02dm', intdiv($__left, 3600), intdiv($__left % 3600, 60)) : 'Expiring soon';
-    ?><div class="pa-status__row"><dt>Hold expires</dt><dd id="bkCountdown" style="color:#b45309"><?= e($__fallback) ?></dd></div><?php endif; ?>
+    ?><div class="pa-status__row"><dt>Hold expires</dt><dd id="bkCountdown" style="color:#b45309" data-expires="<?= (int)strtotime((string)$hold['expires_at']) * 1000 ?>"><?= e($__fallback) ?></dd></div><?php endif; ?>
   </dl>
   <?php
     $__stay  = fetch_venue_stay(isset($hold['venue_id']) && $hold['venue_id'] !== null ? (int)$hold['venue_id'] : null);
