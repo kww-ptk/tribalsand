@@ -300,6 +300,12 @@
       f.querySelector('[data-reply-chip]').hidden = true;
       return;
     }
+    var qk = t.closest('[data-quick]');
+    if (qk) {   // empty conversation: a ready-made question fills the box
+      var qf = document.querySelector('form[data-chat] textarea');
+      if (qf) { qf.value = qk.getAttribute('data-quick'); qf.focus(); }
+      return;
+    }
     var cp = t.closest('[data-copy]');
     if (cp) {   // room key card: copy the Wi-Fi details
       var txt = cp.getAttribute('data-copy'), orig = cp.textContent;

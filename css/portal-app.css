@@ -706,3 +706,16 @@ a.pa-topbar__brand:hover .pa-topbar__title{opacity:.92;}
 .pa-tl__own{margin:4px 0 18px;}
 
 .pa-tl__slot .pa-addc{display:grid;place-items:center;}
+
+/* Messages polish (Oct 2026): a full-width composer, no empty white box, a welcome for a new chat. */
+.pa-convo__stream.pa-chat__thread{background:transparent;border:0;padding:4px 0;min-height:0;}
+.pa-convo__composer{display:block;padding:8px 8px 8px 8px;}
+.pa-convo__row{display:flex;gap:8px;align-items:flex-end;width:100%;}
+.pa-convo__row textarea{flex:1 1 auto;min-width:0;padding:10px 4px;}
+.pa-convo__welcome{display:grid;justify-items:center;text-align:center;gap:8px;background:#fff;border:1px solid var(--pa-line);border-radius:18px;padding:26px 18px;}
+.pa-convo__welcome>b{font-size:16px;font-weight:600;color:var(--pa-ink);}
+.pa-convo__welcome>span{font-size:13.5px;color:var(--pa-muted);max-width:420px;line-height:1.55;}
+.pa-convo__wicon{width:52px;height:52px;border-radius:50%;background:#F2E8D6;color:var(--pa-teal-d);display:grid;place-items:center;}
+.pa-convo__quick{display:flex;flex-wrap:wrap;justify-content:center;gap:8px;margin-top:6px;}
+.pa-convo__quick .pa-chip{font:inherit;font-size:13px;}
+.pa-convo__quick .pa-chip:hover{border-color:var(--pa-teal);color:var(--pa-teal-d);}

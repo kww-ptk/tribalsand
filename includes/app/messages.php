@@ -67,7 +67,16 @@ $__kindIco = [
        data-me-guest="<?= $__myGid ?>"
        data-labels="<?= e(json_encode((object)$__labels, JSON_UNESCAPED_UNICODE)) ?>"
        data-last="<?= $__lastId ?>">
-    <p class="pa-sub bm-empty"<?= $__stream ? ' style="display:none"' : '' ?>>No messages yet. Say hello, or tap <b>+</b> to ask for housekeeping, laundry, a transfer or anything else.</p>
+    <div class="bm-empty pa-convo__welcome"<?= $__stream ? ' style="display:none"' : '' ?>>
+      <span class="pa-convo__wicon" aria-hidden="true"><svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v11H8l-4 4z"/><path d="M8 9h8M8 12h5"/></svg></span>
+      <b>Say hello to the <?= e($__vname) ?> team</b>
+      <span>Ask us anything about your stay. Tap a question to start, or <b>+</b> to request housekeeping, laundry or a transfer.</span>
+      <div class="pa-convo__quick">
+        <?php foreach (['Can we check in early?', 'What time is breakfast?', 'Could you book us a table for dinner?', 'Can you arrange an airport pickup?'] as $__q): ?>
+        <button type="button" class="pa-chip" data-quick="<?= e($__q) ?>"><?= e($__q) ?></button>
+        <?php endforeach; ?>
+      </div>
+    </div>
     <?php $__prevDay = ''; foreach ($__stream as $__it):
         $__day = $__dayLabel($__it['t']);
         if ($__day !== $__prevDay): $__prevDay = $__day; ?>
