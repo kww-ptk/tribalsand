@@ -3,6 +3,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/booking.php';
 require_once __DIR__ . '/../includes/mail.php';
+require_once __DIR__ . '/../includes/guest-extras.php';   // GUEST_EXTRAS_PARTS_OF_DAY
 
 header('Content-Type: application/json');
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(405); exit(json_encode(['ok'=>false,'error'=>'Method not allowed'])); }
@@ -50,14 +51,22 @@ if ($kind === 'tour') {
         http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'Please choose a date within your stay.']));
     }
     $paxValue      = $pax;
-    $schedOverride = date('Y-m-d H:i:s', $ts);
+    // Optional time of day from the guest page's add sheet ('morning' → 09:00 …),
+    // or an exact HH:MM. Anything else is ignored: the date alone is still valid.
+    $atTime = $str($data['at_time'] ?? '');
+    $partLabel = '';
+    if (isset(GUEST_EXTRAS_PARTS_OF_DAY[$atTime])) { [$partLabel, $clock] = GUEST_EXTRAS_PARTS_OF_DAY[$atTime]; }
+    elseif (preg_match('/^([01]\d|2[0-3]):[0-5]\d$/', $atTime)) { $clock = $atTime; }
+    else { $clock = '00:00'; }
+    $schedOverride = $norm . ' ' . $clock . ':00';
     $priceSnapshot = activity_price_total($tour, $pax);
     $note = $str($data['details'] ?? '');
     // Stored details holds only the note — addon_label() already shows the tour
     // name and the admin views add "· N pax", so keep those out of details to
     // avoid duplication. The thread gets the full human-readable line.
     $details = $note;
-    $threadBody = $tour['name'] . ' · ' . $pax . ' pax' . ($note !== '' ? ' — ' . $note : '');
+    $threadBody = $tour['name'] . ' · ' . $pax . ' pax · ' . date('D j M', $ts) . ($partLabel !== '' ? ' (' . strtolower($partLabel) . ')' : '')
+                . ($note !== '' ? ' — ' . $note : '');
 } elseif ($kind === 'transfer' || $kind === 'laundry') {
     $optId = (int)($data[$kind === 'laundry' ? 'service' : 'transfer'] ?? 0);
     $opt   = fetch_service_option($optId);

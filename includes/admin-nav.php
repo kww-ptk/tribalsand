@@ -30,7 +30,7 @@ declare(strict_types=1);
  * role" tab feeds it every role, to show each role's defaults. One rule set, so the
  * two can never disagree.
  *
- * @param string  $role owner | manager | reception | staff
+ * @param string  $role owner | manager | reception | hr | staff
  * @param ?string $job  the staff job (NULL for a staff account = front desk)
  * @param array   $env  what is installed / per-account: ai, pos, inv, invOrders, companies,
  *                      acctDocs, acctIc, clockOn (bool) + seller (can sell at a till),
@@ -39,7 +39,7 @@ declare(strict_types=1);
 function admin_nav_flags(string $role, ?string $job, array $env): array {
     $e = fn(string $k): bool => !empty($env[$k]);
     $owner = $role === 'owner'; $manager = $role === 'manager'; $reception = $role === 'reception';
-    $staff = $role === 'staff';
+    $staff = $role === 'staff'; $hr = $role === 'hr';
     $job   = $staff ? ($job ?: 'frontdesk') : null;
     $ops   = in_array($job, ['housekeeping', 'laundry', 'maintenance', 'gardening', 'driver'], true);
     $store = $job === 'storekeeper';
@@ -50,7 +50,7 @@ function admin_nav_flags(string $role, ?string $job, array $env): array {
     $inventory = ($owner || $manager || ($staff && $store)) && $e('inv');
     $countable = $owner || $manager || $store || $ops;
     return [
-        'owner' => $owner, 'manager' => $manager, 'reception' => $reception,
+        'owner' => $owner, 'manager' => $manager, 'reception' => $reception, 'hr' => $hr,
         'frontdesk' => $guestSide, 'concierge' => $guestSide, 'messages' => $guestSide,
         'internal' => true, 'tasks' => $owner || $manager || $reception, 'timetable' => true,
         'gate' => $owner || $manager || $reception || $security, 'mywork' => $ops || $reception,
@@ -90,6 +90,8 @@ function admin_nav_definition(array $f, array $badge = []): array {
     return [
         ['key' => 'home', 'title' => '', 'items' => [
             $item('Dashboard', 'dashboard', [$tab('Dashboard', 'dashboard.php', true)]),   // everyone's landing page
+            // Everyone — the library lists only guides for pages this account can open.
+            $item('Help & guides', 'help', [$tab('Help & guides', 'help.php', true)]),
         ]],
 
         ['key' => 'today', 'icon' => 'timetable', 'title' => 'Today', 'items' => [
@@ -137,11 +139,11 @@ function admin_nav_definition(array $f, array $badge = []): array {
                 $tab('Week view', 'timetable.php', $on('timetable'), 'Timetable'),
             ]),
             $item('Attendance', 'attendance', [
-                $tab('Attendance', 'attendance.php', $on('reports')),
-                $tab('Clock kiosks', 'attendance-devices.php', $on('reports') && $on('clockNav')),
-                $tab('Clock cards', 'attendance-cards.php', $on('reports') && $on('clockOn')),
+                $tab('Attendance', 'attendance.php', $on('reports') || $on('hr')),
+                $tab('Clock kiosks', 'attendance-devices.php', ($on('reports') || $on('hr')) && $on('clockNav')),
+                $tab('Clock cards', 'attendance-cards.php', ($on('reports') || $on('hr')) && $on('clockOn')),
             ]),
-            $item('Staff', 'staff', [$tab('Staff', ['staff.php', 'employee.php'], $on('owner'))]),
+            $item('Staff', 'staff', [$tab('Staff', ['staff.php', 'employee.php'], $on('owner') || $on('hr'))]),
         ]],
 
         ['key' => 'restaurant', 'icon' => 'menus', 'title' => 'Restaurant', 'items' => [
@@ -357,7 +359,13 @@ function admin_nav_tabs_html(array $nav, string $script = ''): string {
               . ($t['badge'] > 0 ? ' <span class="tab-btn__count">' . (int)$t['badge'] . '</span>' : '')
               . '</a>';
     }
-    return $out . '</div></nav>';
+    return $out . '</div>' . admin_nav_help_button_html() . '</nav>';
+}
+
+/** The "Help" button that opens the on-page help panel (admin/assets/admin-help.js). */
+function admin_nav_help_button_html(): string {
+    return '<button type="button" class="areatabs__help" data-help-open aria-label="Help for this page">'
+         . admin_nav_icon('help') . '<span>Help</span></button>';
 }
 
 /**
@@ -433,8 +441,14 @@ function admin_nav_search_button_html(): string {
  * The search window (hidden until opened) + its index as JSON. Printed once per
  * full page load OUTSIDE .admin-content, so no-reload page swaps never remove it.
  */
-function admin_nav_search_html(array $nav): string {
-    $json = json_encode(admin_nav_search_index($nav), JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP);
+function admin_nav_search_html(array $nav, array $extraItems = []): string {
+    $index = admin_nav_search_index($nav);
+    if ($extraItems) {
+        // Extra entries (the help guides) — same shape; their icons ride along.
+        $index['items'] = array_merge($index['items'], $extraItems);
+        foreach ($extraItems as $x) if (!isset($index['icons'][$x['i']]) && isset(admin_nav_icon_set()[$x['i']])) $index['icons'][$x['i']] = admin_nav_icon_set()[$x['i']];
+    }
+    $json = json_encode($index, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE | JSON_HEX_TAG | JSON_HEX_AMP);
     return '<div class="navsearch" id="navSearch" hidden>'
          . '<div class="navsearch__backdrop" data-navsearch-close></div>'
          . '<div class="navsearch__panel" role="dialog" aria-modal="true" aria-label="Search pages">'

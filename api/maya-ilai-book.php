@@ -63,8 +63,10 @@ $res = mi_book_configuration(
     $name, $email,
     trim($data['phone'] ?? ''),
     trim($data['message'] ?? ''),
-    $tracking
+    $tracking,
+    website_holds_enabled()   // off by default: save the request, reservations hold it
 );
+$held = !empty($res['holds']);
 
 if (empty($res['ok'])) {
     http_response_code((int)($res['code'] ?? 422));
@@ -77,12 +79,12 @@ $firstCode = $res['holds'][0]['access_code'] ?? '';
 try {
     send_notification([
         'id'         => (int)$res['submission_id'],
-        'type'       => 'hold',
+        'type'       => $held ? 'hold' : 'enquiry',
         'room_name'  => 'Maya Ilai · ' . $res['rooms'],
         'guest_name' => $name,
         'guest_email'=> $email,
         'guest_phone'=> trim($data['phone'] ?? ''),
-        'message'    => 'Multi-room hold: ' . $res['rooms'] . ' · ' . $res['currency'] . ' ' . number_format((float)$res['total'], 2),
+        'message'    => ($held ? 'Multi-room hold: ' : 'Booking request (convert to hold): ') . $res['rooms'] . ' · ' . $res['currency'] . ' ' . number_format((float)$res['total'], 2),
         'check_in'   => (string)($data['check_in'] ?? ''),
         'check_out'  => (string)($data['check_out'] ?? ''),
         'created_at' => date('Y-m-d H:i:s'),
@@ -90,7 +92,7 @@ try {
 
     send_guest_acknowledgement([
         'submission_id' => (int)$res['submission_id'],
-        'kind'        => 'hold',
+        'kind'        => $held ? 'hold' : 'enquiry',
         'guest_name'  => $name,
         'guest_email' => $email,
         'room_name'   => 'Maya Ilai — ' . $res['rooms'],
@@ -105,7 +107,7 @@ try {
 
 echo json_encode([
     'ok'          => true,
-    'mode'        => 'hold',
+    'mode'        => $held ? 'hold' : 'enquiry',
     'rooms'       => $res['rooms'],
     'nights'      => $res['nights'],
     'total'       => $res['total'],

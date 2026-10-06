@@ -35,7 +35,7 @@ const ACCESS_OWNER_ONLY = ['settings.php', 'emails.php', 'ai-settings.php', 'rei
     'tours.php', 'services.php', 'offers.php', 'reviews.php', 'partners.php', 'guest-board.php', 'pos-outlets.php', 'companies.php'];
 
 /** Sections that follow something other than role (always on, or the person's till outlets). */
-const ACCESS_AUTOMATIC = ['dashboard.php' => 'Everyone’s home page', 'pos' => 'Follows the person’s till outlets',
+const ACCESS_AUTOMATIC = ['dashboard.php' => 'Everyone’s home page', 'help.php' => 'Everyone — shows only guides for pages the person can open', 'pos' => 'Follows the person’s till outlets',
                           'pos-pins.php' => 'Follows the person’s till outlets', 'maya-ilai-rates.php' => 'Follows the manager’s properties'];
 
 /** Sections that only work for a manager (their pages show nothing to anyone else), so only managers can be given them. */
@@ -43,7 +43,7 @@ const ACCESS_MANAGERS_ONLY = ['pos-sales.php', 'pos-items.php', 'pos-stock.php',
 
 /** Every configurable kind of account: key => label. Owner is never listed (always everything). */
 function access_role_options(array $jobs): array {
-    $out = ['manager' => 'Manager', 'reception' => 'Reception'];
+    $out = ['manager' => 'Manager', 'reception' => 'Reception', 'hr' => 'HR'];
     foreach ($jobs as $k => $label) $out['staff:' . $k] = preg_replace('/\s*\(.*\)$/', '', (string)$label);
     return $out;
 }
@@ -68,7 +68,7 @@ function access_tab_key(array $tab): string {
  * pages, kind = free | owner | auto | managers.
  */
 function access_sections(): array {
-    $all = array_fill_keys(['owner', 'manager', 'reception', 'frontdesk', 'concierge', 'messages', 'internal', 'tasks', 'timetable',
+    $all = array_fill_keys(['owner', 'manager', 'reception', 'hr', 'frontdesk', 'concierge', 'messages', 'internal', 'tasks', 'timetable',
         'gate', 'mywork', 'assistant', 'aiSettings', 'aiGaps', 'bookings', 'reports', 'pos', 'posTill', 'inventory', 'invOrders',
         'count', 'accounting', 'acctDocs', 'acctIc', 'restaurant', 'clockOn', 'clockNav', 'mayaIlai'], true);
     $out = [];

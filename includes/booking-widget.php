@@ -7,7 +7,8 @@
  *   include __DIR__ . '/includes/booking-widget.php';
  *
  * Form mode is read from the room record (rooms.form_mode):
- *   'availability' → live calendar + blocked dates + 24h hold on submit
+ *   'availability' → live calendar + blocked dates; submit sends a request
+ *                    (a 24h hold only when website_holds_enabled())
  *   'enquiry'      → simple date text inputs + enquiry email only
  *   NULL           → falls back to global setting('form_mode'), default 'enquiry'
  *
@@ -272,7 +273,7 @@ if ($__form_mode !== 'availability') {
       <span class="bk-submit__label">Check availability</span>
       <svg class="bk-submit__arrow" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg>
     </button>
-    <p class="bk-hold-note">Dates are held for 24 hours pending confirmation</p>
+    <p class="bk-hold-note"><?= website_holds_enabled() ? 'Dates are held for 24 hours pending confirmation' : 'Our reservations team confirms your dates by email · nothing is charged now' ?></p>
     <div class="bk-nav bk-nav--back">
       <button type="button" class="bk-back" data-bk-back>&lsaquo; Back</button>
     </div>

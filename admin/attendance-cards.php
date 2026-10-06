@@ -17,7 +17,7 @@ require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/hr.php';
 require_once __DIR__ . '/../includes/attendance-clock.php';
 require_login();
-require_manager();
+require_hr();
 
 // Printing cards for a feature that is switched off would hand out credentials
 // that do nothing. Send them to the one page that can turn it on.

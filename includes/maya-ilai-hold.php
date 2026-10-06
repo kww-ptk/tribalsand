@@ -39,7 +39,7 @@ require_once __DIR__ . '/maya-ilai-pricing.php';
 function mi_book_configuration(
     array $units, string $ci, string $co,
     string $guestName, string $guestEmail, string $guestPhone = '',
-    string $message = '', array $tracking = []
+    string $message = '', array $tracking = [], bool $placeHolds = true
 ): array {
     $cfg = maya_ilai_pricing_get();
     $err = fn(string $m, int $c = 422): array => ['ok' => false, 'error' => $m, 'code' => $c];
@@ -122,6 +122,12 @@ function mi_book_configuration(
                     'quoted_total'      => round((float)$quote['total'], 2),
                     'quoted_currency'   => $currency,
                     'quoted_label'      => $nights . ' night' . ($nights === 1 ? '' : 's') . ' · as shown to the guest',
+                    // What the guest configured, so reservations can hold exactly
+                    // this when the website is not allowed to hold by itself.
+                    'products'          => array_map(fn($pk, $g, $sh) => [
+                        'key' => (string)$pk['product']['key'],
+                        'qty' => (int)$pk['qty'], 'guests' => (int)$g, 'share' => round((float)$sh, 2),
+                    ], $picks, $alloc, $shares),
                 ], JSON_UNESCAPED_SLASHES),
                 ':source_page' => $tracking['source_page'] ?? '',
                 ':referrer'    => $tracking['referrer']    ?? '',
@@ -146,7 +152,9 @@ function mi_book_configuration(
 
         $slugMap = maya_ilai_room_slugs();
         $holds   = [];
-        foreach ($picks as $i => $pick) {
+        // Request only (the default — website holds are off): the submission is
+        // the whole result; reservations hold the rooms with Convert to Hold.
+        foreach (($placeHolds ? $picks : []) as $i => $pick) {
             $key  = (string)$pick['product']['key'];
             $qty  = (int)$pick['qty'];
             $slug = $slugMap[$key] ?? null;

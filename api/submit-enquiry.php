@@ -119,15 +119,20 @@ if ($form_mode === 'availability' && $room) {
     }
 }
 
+// Live availability still decides whether the dates can be requested (above), but
+// the hold itself is placed by reservations with Convert to Hold unless the owner
+// has let the website hold (website_holds_enabled(), off by default).
+$placeHold = $form_mode === 'availability' && $unit && website_holds_enabled();
+
 // Tracking from session
 if (session_status() === PHP_SESSION_NONE) session_start();
 $tracking = $_SESSION['tracking'] ?? [];
 
-// Idempotency guard — for the plain-enquiry path (no hold), a double-submit
+// Idempotency guard — for the plain-request path (no hold), a double-submit
 // within 30s reuses the existing lead instead of inserting a duplicate + firing
-// a second email. The availability/hold path is deliberately left alone so hold
-// creation logic is never short-circuited.
-if ($form_mode !== 'availability') {
+// a second email. The hold path is deliberately left alone so hold creation
+// logic is never short-circuited.
+if (!$placeHold) {
     $dupId = find_recent_duplicate_submission('enquiry', $email, $checkin ?: null, $checkout ?: null);
     if ($dupId) {
         echo json_encode(['ok' => true, 'id' => $dupId, 'mode' => 'enquiry', 'dedupe' => true]);
@@ -188,8 +193,8 @@ try {
     $id = (int)db()->lastInsertId();
 
 
-    // Availability mode: create hold + block dates
-    if ($form_mode === 'availability' && $unit) {
+    // Website holds switched on: create hold + block dates
+    if ($placeHold) {
         if (mi_is_composite_room($room)) {
             // Maya Ilai sells several products out of one pool of villas, so two
             // requests can claim the same component with nothing to show for it

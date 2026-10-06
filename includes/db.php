@@ -182,6 +182,18 @@ function setting(string $key, string $default = ''): string {
     return $row ? $row['setting_value'] : $default;
 }
 
+/**
+ * May a public form (booking box, room combination, Maya Ilai configurator) place
+ * a 24h hold by itself? OFF by default — the owner's rule (Oct 2026) is that every
+ * hold is made by the reservations team with Convert to Hold. With it off the
+ * public paths still check live availability (a taken date is still refused) but
+ * save the request only. Owner switch: Settings → Booking Form Mode.
+ */
+function website_holds_enabled(): bool {
+    try { return setting('website_holds', '0') === '1'; }
+    catch (Throwable $e) { return false; }
+}
+
 function set_setting(string $key, string $value): void {
     db_query(
         'INSERT INTO settings (setting_key, setting_value, updated_at)

@@ -95,9 +95,9 @@ function email_registry(): array {
                 'guests_adults' => 2, 'guests_children' => 1, 'message' => 'Do you have a cot for our little one?']),
         ],
         'ack_hold' => [
-            'name' => 'Booking request received (24h hold)', 'audience' => 'guest', 'topic' => 'Enquiries & requests',
-            'trigger' => 'A guest clicks "Request to Book" and the dates are held for 24 hours while staff confirm.',
-            'sources' => ['api/submit-enquiry.php', 'api/submit-combo.php', 'api/maya-ilai-book.php'],
+            'name' => 'Dates held for 24h — booking link', 'audience' => 'guest', 'topic' => 'Enquiries & requests',
+            'trigger' => 'Reservations press Convert to Hold on a request with "Email the guest" ticked (or, only when the owner lets the website hold, a guest clicks "Request to Book"). Carries the guest\'s booking link and the property\'s suggested extras.',
+            'sources' => ['admin/submission-view.php', 'api/submit-enquiry.php', 'api/submit-combo.php', 'api/maya-ilai-book.php'],
             'recipients' => 'The guest who made the request.',
             'fields' => [
                 'subject' => 'We’ve received your booking request — Tribal Sand',
@@ -151,6 +151,20 @@ function email_registry(): array {
         ],
 
         // ── Guest: bookings ──────────────────────────────────────────────
+        'extras_reminder' => [
+            'name' => 'Add to your stay (before arrival)', 'audience' => 'guest', 'topic' => 'Bookings',
+            'trigger' => 'Daily, for each confirmed booking arriving in the number of days the property chose (Admin → Properties → Guest extras → Reminder email). Sent once per booking, and only when there are extras the guest hasn’t added yet.',
+            'sources' => ['bin/extras-reminder.php'],
+            'recipients' => 'The email on the booking.',
+            'fields' => [
+                'subject' => 'Your stay at {{property_name}} is almost here',
+                'heading' => 'Make the most of your stay',
+                'intro'   => 'Your stay at {{property_name}} starts on {{check_in}}. Here are a few things guests love to add — book them now and we’ll have everything ready when you arrive.',
+                'footer_note' => 'Nothing is charged now. Our team confirms each request, and it goes on your bill once confirmed.',
+            ],
+            'placeholders' => $guestStay,
+            'sample' => fn(array $o = []) => send_extras_reminder($sampleHold($o)),
+        ],
         'hold_confirmed' => [
             'name' => 'Booking confirmed', 'audience' => 'guest', 'topic' => 'Bookings',
             'trigger' => 'Staff confirm a pending booking — in the booking workspace, the Holds list, or from the Confirm link in the staff email. Staff choose each time whether to email the guest; it defaults to off for bookings with no real guest address (OTA relay, internal, blank).',
@@ -362,7 +376,7 @@ function email_registry(): array {
 }
 
 /** Emails whose senders know the property, so a per-property wording applies. */
-const EMAIL_VENUE_AWARE = ['hold_confirmed', 'hold_cancelled', 'hold_expired',
+const EMAIL_VENUE_AWARE = ['hold_confirmed', 'extras_reminder', 'hold_cancelled', 'hold_expired',
                            'reservation_received_guest', 'reservation_confirmed', 'reservation_received_staff'];
 
 /** Registry entry or null. */

@@ -16,7 +16,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/attendance-clock.php';
 require_login();
-require_manager();
+require_hr();
 
 $scope = admin_venue_ids();   // null = owner (all); array = manager's venues
 

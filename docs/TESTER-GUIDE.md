@@ -191,9 +191,7 @@ There are two kinds:
 
 In both you can tick **"Add to your stay"** extras (massage, manicure, pedicure, airport pick-up / drop-off). Then enter name, email, phone and press **Request to Book**.
 
-What happens next depends on the room:
-- **Hold mode:** the dates are **held for 24 hours** (nobody else can book them) and staff confirm or decline. The guest gets an email saying so.
-- **Enquiry mode:** no hold — it becomes an enquiry the team answers.
+What happens next: the website checks the dates are free, then sends a **request**. It does **not** hold the dates (owner rule, Oct 2026). The request appears in **Bookings → Enquiries**; reservations press **Convert to Hold**, which blocks the dates for 24 hours and emails the guest their booking link. (The owner can let the website hold by itself again in Settings → Booking Form Mode.)
 
 If nothing is free for your dates, the box suggests **other properties with space**.
 
@@ -207,10 +205,10 @@ Every booking has a private page for the guest. The link is in the guest's email
 
 | Tab | What the guest can do |
 |---|---|
-| **Home** | Booking summary, status, arrival information, the property's notice board. |
-| **Calendar** | Their stay and anything booked during it, by day. |
-| **Request** | Ask for things: laundry, housekeeping, maintenance, restaurant, **airport transfer**, anything else. Each request opens a chat. |
-| **Activities** | Browse and request activities (with prices when set). |
+| **Home** | A photo of the property, the booking card (dates, code, status, hold countdown), the extras picked for that property and a link to ask for services. |
+| **My trip** | "Added to my stay" (each extra with its status: Waiting / Confirmed / Done) and the day-by-day calendar. |
+| **Extras** | Everything the property offers to add (activities, wellness, transfers). Tap one → choose the day, time of day and people → **Add to my stay**. Staff confirm it; it goes on the bill once confirmed. |
+| **Request** (from Home) | Ask for laundry, housekeeping, maintenance, restaurant, anything else. Each request opens a chat. |
 | **Messages** | Chat with the team. Updates every few seconds. |
 | **Check-in** | Online pre-check-in: guest details, passport scan, signing the terms, the security-deposit card photo. Co-guests can get their own link. |
 | **Bill** | What has been charged to the room (extras, till purchases) and payments. Appears only after staff press **Share reservation** on the booking's Check-in tab. |
@@ -229,6 +227,7 @@ Sign in at **http://localhost:8080/admin/login**. Everyone lands on the **Dashbo
 | Page | What it does |
 |---|---|
 | **Dashboard** | Everyone's home page, shaped to the role: a greeting, the "Needs you" list (requests to answer, unread messages…), arrivals/departures today, rooms occupied, revenue this month (owner/manager), your own tasks. Read-only. |
+| **Help & guides** | How-to guides for the pages you can open. On any page, the **Help** button (top right of the tabs, or bottom right) lists that page's guides; **Show me** walks you through it on the real page. Ctrl+K also finds guides. |
 
 ### Today
 | Page | What it does |
@@ -307,7 +306,7 @@ Sign in at **http://localhost:8080/admin/login**. Everyone lands on the **Dashbo
 ### Website (owner)
 | Page | What it does |
 |---|---|
-| **Properties & rooms** | Each property's details, text, photos, rates, deposit; each room's price, capacity, photos, units. "For sale" listings. |
+| **Properties & rooms** | Each property's details, text, photos, rates, deposit, **Guest extras** (what guests can add from their booking page, order, featured, reminder email); each room's price, capacity, photos, units. "For sale" listings. |
 | **Website content** | Page text and photos, the top menu (mega menu), media library, sustainability figures. |
 | **Activities & services** | Activities (tours): text, price, photos, **offer as an extra while booking**. **Service pricing**: laundry and transfer prices, and which transfers are **offered when booking**. |
 | **Marketing** | Offers, guest reviews, partners, the guest notice board. |

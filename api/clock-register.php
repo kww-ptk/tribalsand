@@ -11,7 +11,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/storage.php';
 require_once __DIR__ . '/../includes/attendance-clock.php';
 require_login();
-require_manager();
+require_hr();   // owner, managers and HR may register a clock tablet
 
 header('Content-Type: application/json');
 

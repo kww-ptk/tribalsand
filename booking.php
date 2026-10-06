@@ -5,6 +5,7 @@ require_once __DIR__ . '/includes/mail.php';
 require_once __DIR__ . '/includes/booking.php';
 require_once __DIR__ . '/includes/turnstile.php';
 require_once __DIR__ . '/includes/checkin.php';
+require_once __DIR__ . '/includes/guest-extras.php';   // Extras tab + Home's featured extras
 
 if (session_status() === PHP_SESSION_NONE) session_start();
 
@@ -154,7 +155,9 @@ $status     = $hold['status'] ?? '';
 // via checkin-guest.php and has no business there, so it is not in their view set.
 // (Writing was already blocked: the form posts ref=<g-token>, which
 // checkin_auth_context() rejects. This closes the read side.)
-$__views = ['home','calendar','requests','activities','messages'];
+$__views = ['home','calendar','requests','extras','messages'];
+// The old Activities tab is now Extras (old emails link to view=activities).
+if (($_GET['view'] ?? '') === 'activities') $_GET['view'] = 'extras';
 if (!$isCoGuest) $__views[] = 'checkin';
 if (share_reservation_on($hold ?: [])) $__views[] = 'bill';
 $view = in_array($_GET['view'] ?? '', $__views, true) ? $_GET['view'] : 'home';
@@ -333,18 +336,19 @@ include __DIR__ . '/includes/head.php';
     </div>
     <?php endif; ?>
 
-    <?php if (in_array($view, ['home','calendar','requests'], true)): ?>
+    <?php if (in_array($view, ['calendar','requests'], true)): ?>
     <?php include __DIR__ . '/includes/app/status-header.php'; ?>
     <?php endif; ?>
 
       <?php if ($view === 'home'): ?>
         <?php include __DIR__ . '/includes/app/home.php'; ?>
       <?php elseif ($view === 'calendar'): ?>
+        <?php include __DIR__ . '/includes/app/_added.php'; ?>
         <?php include __DIR__ . '/includes/app/_trip.php'; ?>
       <?php elseif ($view === 'requests'): ?>
         <?php include __DIR__ . '/includes/app/_services.php'; ?>
-      <?php elseif ($view === 'activities'): ?>
-        <?php include __DIR__ . '/includes/app/activities.php'; ?>
+      <?php elseif ($view === 'extras'): ?>
+        <?php include __DIR__ . '/includes/app/extras.php'; ?>
       <?php elseif ($view === 'messages'): ?>
         <?php include __DIR__ . '/includes/app/messages.php'; ?>
       <?php elseif ($view === 'bill'): ?>
