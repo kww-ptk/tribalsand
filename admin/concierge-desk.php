@@ -10,7 +10,7 @@ require_once __DIR__ . '/../includes/booking.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/pagination.php';
 require_once __DIR__ . '/../includes/admin-pagination.php';
-require_login();
+require_guest_desk();   // every login but HR
 
 $pageTitle  = 'Concierge desk';
 $activeMenu = 'concierge_desk';

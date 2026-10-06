@@ -14,7 +14,7 @@ header('Content-Type: application/json');
 
 // Not-logged-in / wrong-role must not redirect (HTML) into a JSON fetch — answer with JSON.
 if (!current_admin()) { http_response_code(401); exit(json_encode(['ok'=>false,'error'=>'Not signed in.'])); }
-if (is_staff() && job_is_back_of_house(admin_job())) {   // same audience as require_frontdesk()
+if (no_guest_messaging()) {   // same audience as require_frontdesk()
     http_response_code(403); exit(json_encode(['ok'=>false,'error'=>'Not available for your account.']));
 }
 

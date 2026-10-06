@@ -27,7 +27,7 @@ if (!current_admin()) { http_response_code(401); exit(json_encode(['ok' => false
 
 // Audience gate — owner/manager/reception/front-desk staff, like the assistant.
 // Ops & gate-security are bounced; answer JSON rather than redirecting HTML.
-if (is_staff() && job_is_back_of_house(admin_job())) {
+if (no_guest_messaging()) {
     http_response_code(403); exit(json_encode(['ok' => false, 'error' => 'Not available for your account.']));
 }
 

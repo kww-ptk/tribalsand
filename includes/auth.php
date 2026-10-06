@@ -293,9 +293,35 @@ function require_bookings(): void {
  * maintenance, gardening, driver) and gate-security get a focused interface with
  * no guest messaging, so they are bounced to their own home.
  */
+/**
+ * Accounts with NO guest messaging (and no AI availability assistant): back-of-house
+ * staff and HR. HR is company-wide (admin_venue_ids() = null), so letting it in would
+ * open every property's guest conversations. The ONE rule for require_frontdesk(),
+ * admin/messages-poll.php, api/assistant.php, api/assistant-draft.php and the booking
+ * workspace's no-messaging flag — never re-list the roles inline.
+ */
+function no_guest_messaging(): bool {
+    return is_hr() || (is_staff() && job_is_back_of_house(admin_job()));
+}
+
+/**
+ * Guest desk pages (admin/frontdesk.php, admin/concierge-desk.php): every login
+ * except HR. HR is the people admin — no guests, bookings or requests — and is
+ * company-wide, so the concierge desk would otherwise list every property's guest
+ * requests to it. Back-of-house staff keep their access here (the front desk's
+ * stock-count card, ops requests), unchanged.
+ */
+function require_guest_desk(): void {
+    require_login();
+    if (is_hr() && !access_page_granted()) {
+        $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'That page isn’t available for your account.'];
+        header('Location: ' . admin_home_url()); exit;
+    }
+}
+
 function require_frontdesk(): void {
     require_login();
-    if (is_staff() && job_is_back_of_house(admin_job()) && !access_page_granted()) {
+    if (no_guest_messaging() && !access_page_granted()) {
         $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Messages aren’t available for your account.'];
         header('Location: ' . admin_home_url()); exit;
     }
