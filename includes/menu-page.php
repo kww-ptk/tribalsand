@@ -16,6 +16,11 @@ require_once __DIR__ . '/menu-images.php';
 
 $sections = array_filter(['food' => $food, 'drinks' => $drinks]);
 
+// Dish photos are OFF on the public menu for now (owner, Oct 2026: there are no
+// real photos yet, and an empty plate placeholder on every dish only adds scroll).
+// Uploading stays in the admin menu editor; set this to true to show them again.
+const MENU_PUBLIC_PHOTOS = false;
+
 /** A boolean column as PDO returns it from Postgres (true / 't' / '1'). */
 function menu_flag(array $it, string $col): bool {
     $v = $it[$col] ?? false;
@@ -81,6 +86,7 @@ body{font-family:'Jost',sans-serif;background:var(--off);color:var(--ink);-webki
 .cd-card__body{min-width:0;flex:1;display:flex;flex-direction:column;gap:.45rem;padding:1rem 1.15rem 1.1rem}
 .cd-card__sig{position:absolute;top:12px;left:12px;z-index:1;font-size:.56rem;letter-spacing:.22em;text-transform:uppercase;color:var(--teal-d);font-weight:500;background:rgba(255,253,249,.94);border:1px solid var(--sand);border-radius:99px;padding:.38rem .7rem}
 .cd-card__top{display:flex;align-items:flex-start;justify-content:space-between;gap:.8rem}
+.cd-card__sigtxt{font-size:.56rem;letter-spacing:.22em;text-transform:uppercase;color:var(--sand);font-weight:500}
 .cd-card .nm{font:500 1.3rem/1.2 'Cormorant Garamond',serif;color:var(--ink)}
 .cd-card .pr{flex:none;font:500 .8rem 'Jost',sans-serif;color:var(--teal-d);background:var(--cream);border-radius:99px;padding:.3rem .68rem;white-space:nowrap}
 .cd-card .ds{font-size:.88rem;line-height:1.6;color:var(--muted)}
@@ -110,7 +116,26 @@ body{font-family:'Jost',sans-serif;background:var(--off);color:var(--ink);-webki
   .cd-seg{width:100%;justify-content:center}.cd-seg button{flex:1}
   .cd-chips{width:100%;flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
   .cd-chips::-webkit-scrollbar{display:none}
-  .cd-cat__head{flex-direction:column;align-items:flex-start;gap:.2rem}.cd-cat__tag{text-align:left}
+  .cd-cat__head{flex-direction:column;align-items:flex-start;gap:.2rem;margin-bottom:.8rem;padding-bottom:.5rem}.cd-cat__tag{text-align:left}
+  /* Phone: keep the menu short — dishes sit in ONE bordered box with hairline
+     dividers instead of separate cards with gaps, and everything is tighter. */
+  .cd-main{padding-top:1.4rem}
+  .cd-cat{margin-bottom:1.8rem;scroll-margin-top:118px}
+  .cd-cat__name{font-size:1.7rem}
+  .cd-grid{gap:0;background:var(--paper);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  .cd-card{border:0;border-radius:0;border-bottom:1px solid var(--line-soft);background:none}
+  .cd-card:last-child{border-bottom:0}
+  .cd-card:hover{box-shadow:none;transform:none}
+  .cd-card.sig{border-color:var(--line-soft);background:linear-gradient(90deg,#fffaf0,var(--paper) 70%)}
+  .cd-card__body{gap:.3rem;padding:.75rem .95rem}
+  .cd-card .nm{font-size:1.15rem}
+  .cd-card .pr{font-size:.74rem;padding:.22rem .55rem}
+  .cd-card .ds{font-size:.82rem;line-height:1.45}
+  .mk{min-width:20px;height:20px;font-size:.52rem}
+  .cd-list{padding:.1rem .95rem}
+  .cd-row{padding:.6rem 0}
+  .cd-row .nm{font-size:1.02rem}
+  .cd-hero{padding:2.4rem 1.2rem 2rem}
 }
 </style>
 </head>
@@ -153,12 +178,15 @@ body{font-family:'Jost',sans-serif;background:var(--off);color:var(--ink);-webki
       <div class="cd-grid">
         <?php foreach ($c['items'] as $it): $price = menu_price_label($it['price'], $curLabel); $sig = menu_flag($it, 'is_signature'); $img = menu_item_image_url($it); ?>
         <div class="cd-card<?= $sig ? ' sig' : '' ?><?= menu_item_sold_out($it) ? ' is-out' : '' ?>">
+          <?php if (MENU_PUBLIC_PHOTOS): ?>
           <div class="cd-card__media">
             <?= $plate ?>
             <?php if ($img !== ''): ?><img src="<?= e($img) ?>" alt="<?= e($it['name']) ?>" loading="lazy" decoding="async" width="400" height="300" onerror="this.remove()"><?php endif; ?>
             <?php if ($sig): ?><span class="cd-card__sig">★ Chef’s signature</span><?php endif; ?>
           </div>
+          <?php endif; ?>
           <div class="cd-card__body">
+            <?php if ($sig && !MENU_PUBLIC_PHOTOS): ?><span class="cd-card__sigtxt">★ Chef’s signature</span><?php endif; ?>
             <div class="cd-card__top"><span class="nm"><?= e($it['name']) ?><?= $soldOut($it) ?></span><?php if ($price !== ''): ?><span class="pr"><?= e($price) ?></span><?php endif; ?></div>
             <?php if (trim((string)$it['description']) !== ''): ?><p class="ds"><?= e($it['description']) ?></p><?php endif; ?>
             <?php if (($mk = menu_marks_html($it)) !== ''): ?><div class="cd-marks"><?= $mk ?></div><?php endif; ?>
