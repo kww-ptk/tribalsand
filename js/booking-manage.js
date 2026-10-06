@@ -148,10 +148,27 @@
       el.style.cssText = 'max-width:80%;padding:9px 12px;font-size:14px;line-height:1.5;' + (mine
         ? 'align-self:flex-end;background:var(--pa-teal-d);color:#fff;border-radius:12px 12px 2px 12px'
         : 'align-self:flex-start;background:var(--pa-card);border:1px solid var(--pa-line);border-radius:12px 12px 12px 2px');
+      // One conversation (thread=all): say which request a message is about, and
+      // keep the day dividers right for a message that arrives live.
+      var whole = thread.dataset.thread === 'all';
+      if (whole) {
+        var today = new Date(); var ymd = today.getFullYear() + '-' + String(today.getMonth() + 1).padStart(2, '0') + '-' + String(today.getDate()).padStart(2, '0');
+        var seps = thread.querySelectorAll('.pa-daysep');
+        if (!seps.length || seps[seps.length - 1].getAttribute('data-day') !== ymd) {
+          var sep = document.createElement('span'); sep.className = 'pa-daysep'; sep.setAttribute('data-day', ymd); sep.textContent = 'Today';
+          thread.appendChild(sep);
+        }
+        var labels = {}; try { labels = JSON.parse(thread.dataset.labels || '{}'); } catch (_) {}
+        if (m.addon_id && labels[m.addon_id]) {
+          var ab = document.createElement('div'); ab.className = 'bm-about'; ab.textContent = 'About: ' + labels[m.addon_id];
+          el.appendChild(ab);
+        }
+      }
       el.appendChild(document.createTextNode(m.body));
       var meta = document.createElement('div');
       meta.style.cssText = 'font-size:11px;margin-top:4px;' + (mine ? 'color:rgba(255,255,255,.7)' : 'color:var(--pa-muted)');
-      meta.textContent = (mine ? (authored ? 'You' : (m.sender_name || 'Guest')) : 'Concierge') + ' · ' + m.time_label;
+      var tl = whole ? String(m.time_label).split(', ').pop() : m.time_label;   // the day divider already says the date
+      meta.textContent = (mine ? (authored ? 'You' : (m.sender_name || 'Guest')) : 'Concierge') + ' · ' + tl;
       el.appendChild(meta);
       thread.appendChild(el);
       if (m.id && m.id > lastId) lastId = m.id;
@@ -256,11 +273,61 @@
     back.querySelector('[data-no]').focus();
   });
 
+  // ── One conversation: reply about a request, and the "+" services menu ──
+  function plusSheet(open) {
+    var sh = document.getElementById('paPlus'); if (!sh) return;
+    sh.hidden = !open;
+    document.body.style.overflow = open ? 'hidden' : '';
+    if (open) { var x = sh.querySelector('.pa-sheet__x'); if (x) x.focus(); }
+  }
+  document.addEventListener('click', function (e) {
+    var t = e.target; if (!t || !t.closest) return;
+    var r = t.closest('[data-reply]');
+    if (r) {
+      var form = document.querySelector('form[data-chat]'); if (!form) return;
+      var thread = document.getElementById('bmThread'), labels = {};
+      try { labels = JSON.parse((thread && thread.dataset.labels) || '{}'); } catch (_) {}
+      var id = r.getAttribute('data-reply');
+      form.querySelector('[data-reply-input]').value = id;
+      form.querySelector('[data-reply-label]').textContent = labels[id] || 'this request';
+      form.querySelector('[data-reply-chip]').hidden = false;
+      var ta = form.querySelector('textarea'); if (ta) ta.focus();
+      return;
+    }
+    if (t.closest('[data-reply-clear]')) {
+      var f = document.querySelector('form[data-chat]'); if (!f) return;
+      f.querySelector('[data-reply-input]').value = '';
+      f.querySelector('[data-reply-chip]').hidden = true;
+      return;
+    }
+    var cp = t.closest('[data-copy]');
+    if (cp) {   // room key card: copy the Wi-Fi details
+      var txt = cp.getAttribute('data-copy'), orig = cp.textContent;
+      var ok = function () { cp.textContent = 'Copied ✓'; setTimeout(function () { cp.textContent = orig; }, 1500); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(ok, function () { toast(txt, 'ok'); });
+      else toast(txt, 'ok');
+      return;
+    }
+    if (t.closest('[data-plus-open]')) { plusSheet(true); return; }
+    if (t.closest('[data-plus-close]')) { plusSheet(false); return; }
+  });
+  document.addEventListener('keydown', function (e) {
+    var sh = document.getElementById('paPlus');
+    if (e.key === 'Escape' && sh && !sh.hidden) plusSheet(false);
+  });
+  function initConversation(root) {
+    var thread = root.querySelector('#bmThread[data-thread="all"]');
+    if (thread) setTimeout(function () { window.scrollTo(0, document.body.scrollHeight); }, 30);   // newest at the bottom, like any chat
+    var sh = root.querySelector('#paPlus[data-open-on-load]');
+    if (sh) plusSheet(true);
+  }
+
   function init(root) {
     root = root || document;
     bindForms(root);
     initChat(root);
     initCountdown(root);
+    initConversation(root);
   }
   window.tsPortalInit = init;
   init(document);

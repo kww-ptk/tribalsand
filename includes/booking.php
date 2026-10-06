@@ -475,7 +475,30 @@ function message_payload(array $m): array {
         'body'        => (string)$m['body'],
         'time_label'  => message_time_label($m['created_at'] ?? 'now'),
         'guest_id'    => (int)($m['sender_guest_id'] ?? 0),
+        'addon_id'    => isset($m['addon_id']) && $m['addon_id'] !== null ? (int)$m['addon_id'] : null,
     ];
+}
+
+/**
+ * The guest's ONE conversation (guest page, Oct 2026): every message of the
+ * booking across all its request threads, oldest first, after $afterId. Staff
+ * still work per request (addon_id); only the guest's view is merged.
+ */
+function fetch_conversation_since(int $holdId, int $afterId = 0): array {
+    $on   = message_sender_guest_supported();
+    $sel  = $on ? ", cg.passport_name AS sender_name, cg.is_lead AS sender_is_lead, h.guest_name AS hold_guest_name" : "";
+    $join = $on ? "LEFT JOIN checkin_guests cg ON cg.id = bm.sender_guest_id JOIN holds h ON h.id = bm.hold_id" : "";
+    try {
+        return db_query("SELECT bm.*{$sel} FROM booking_messages bm {$join} WHERE bm.hold_id=:h AND bm.id > :after ORDER BY bm.id ASC",
+                        [':h'=>$holdId, ':after'=>$afterId])->fetchAll();
+    } catch (Throwable $e) { return []; }
+}
+
+/** Mark every staff message of the booking read by the guest (the one conversation is open). */
+function mark_conversation_read_by_guest(int $holdId): void {
+    try {
+        db_query("UPDATE booking_messages SET read_by_guest=TRUE WHERE hold_id=:h AND sender='admin' AND read_by_guest=FALSE", [':h'=>$holdId]);
+    } catch (Throwable $e) { /* table absent pre-migration */ }
 }
 
 /** Mark a thread's admin messages read by the guest. No-op if the table is absent. */

@@ -20,6 +20,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $actor = resolve_portal_actor($str($_GET['ref'] ?? $_GET['g'] ?? ''));
     $hold = $actor ? $actor['hold'] : false;
     if (!$hold) { http_response_code(403); exit(json_encode(['ok'=>false,'error'=>'Booking not found.'])); }
+    // thread=all → the guest's one conversation (every request thread merged).
+    if (($_GET['thread'] ?? '') === 'all') {
+        $after = (int)($_GET['after'] ?? 0);
+        $rows  = fetch_conversation_since((int)$hold['id'], $after);
+        if ($rows) mark_conversation_read_by_guest((int)$hold['id']);
+        $msgs = array_map('message_payload', $rows);
+        exit(json_encode(['ok'=>true, 'messages'=>$msgs, 'last_id'=>$msgs ? end($msgs)['id'] : $after]));
+    }
     [$addonId, $own] = $resolve_addon($hold, $_GET['thread'] ?? '');
     if (!$own) { http_response_code(422); exit(json_encode(['ok'=>false,'error'=>'Unknown request.'])); }
     $after = (int)($_GET['after'] ?? 0);
@@ -83,6 +91,7 @@ try {
         'sender_is_lead'  => !empty($actor['is_lead']),
         'hold_guest_name' => (string)($hold['guest_name'] ?? ''),
         'sender_guest_id' => (int)$actor['guest_id'],
+        'addon_id'        => $addonId,
     ])]);
 } catch (Throwable $e) {
     error_log('[booking-message] ' . $e->getMessage());

@@ -336,15 +336,14 @@ include __DIR__ . '/includes/head.php';
     </div>
     <?php endif; ?>
 
-    <?php if (in_array($view, ['calendar','requests'], true)): ?>
+    <?php if ($view === 'requests'): ?>
     <?php include __DIR__ . '/includes/app/status-header.php'; ?>
     <?php endif; ?>
 
       <?php if ($view === 'home'): ?>
         <?php include __DIR__ . '/includes/app/home.php'; ?>
       <?php elseif ($view === 'calendar'): ?>
-        <?php include __DIR__ . '/includes/app/_added.php'; ?>
-        <?php include __DIR__ . '/includes/app/_trip.php'; ?>
+        <?php include __DIR__ . '/includes/app/_timeline.php';   // My trip: design 1, day by day ?>
       <?php elseif ($view === 'requests'): ?>
         <?php include __DIR__ . '/includes/app/_services.php'; ?>
       <?php elseif ($view === 'settings'): ?>

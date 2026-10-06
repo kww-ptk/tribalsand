@@ -78,7 +78,7 @@ $__xFeat   = in_array($status, ['pending', 'confirmed'], true) ? guest_extras_fe
 </div>
 <?php endif; ?>
 
-<a class="pa-services" href="<?= e($__pu) ?>&amp;view=requests">
+<a class="pa-services" href="<?= e($__pu) ?>&amp;view=messages&amp;add=1">
   <span><b>Need something during your stay?</b><span>Housekeeping, laundry, restaurant, maintenance</span></span>
   <span aria-hidden="true">›</span>
 </a>

@@ -205,11 +205,12 @@ Every booking has a private page for the guest. The link is in the guest's email
 
 | Tab | What the guest can do |
 |---|---|
-| **Home** | A photo of the property, the booking card (dates, code, status, hold countdown), the extras picked for that property and a link to ask for services. |
-| **My trip** | "Added to my stay" (each extra with its status: Waiting / Confirmed / Done) and the day-by-day calendar. |
+| **Home** | A photo of the property, the booking card (dates, code, status, hold countdown), the extras picked for that property, a link to ask for services, and the "room key" card (Wi-Fi with Copy, check-in/out times, house rules). |
+| **My trip** | One day-by-day timeline: check-in/out, every extra on its day with its status (Waiting / Confirmed / Done), your own plan items; free days suggest an extra. |
 | **Extras** | Everything the property offers to add (activities, wellness, transfers). Tap one → choose the day, time of day and people → **Add to my stay**. Staff confirm it; it goes on the bill once confirmed. |
 | **Request** (from Home) | Ask for laundry, housekeeping, maintenance, restaurant, anything else. Each request opens a chat. |
-| **Messages** | Chat with the team. Updates every few seconds. |
+| **Messages** | One conversation with the team, with each request shown as a card (status, Reply). **+** asks for housekeeping, laundry, a transfer… Updates every few seconds. |
+| **Settings** | Booking details and code; **Cancel my booking** (asks to confirm). Tabs switch without reloading the page. |
 | **Check-in** | Online pre-check-in: guest details, passport scan, signing the terms, the security-deposit card photo. Co-guests can get their own link. |
 | **Bill** | What has been charged to the room (extras, till purchases) and payments. Appears only after staff press **Share reservation** on the booking's Check-in tab. |
 
