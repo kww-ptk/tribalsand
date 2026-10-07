@@ -105,3 +105,16 @@ One ticket per feature area, each with its context. Import `2026-10-07-tickets-s
 **Context:** Asked whether the admin has a staff role for Laundry.
 
 **Description:** Confirmed: "Laundry" exists as a staff job type (Team → Staff → Login accounts → job). Laundry staff land on My Work with their tasks, are treated as back-of-house (no guest messaging), and guest laundry requests and Laundry service pricing already exist. No change needed.
+
+## 18. Travel agent (trade) portal — sign-in fix and redesign
+
+**Context:** A test travel-agent account couldn't sign in: the agent's details were typed on the staff login (`/admin/login`), while agents have their own portal login (`/agent/login.php`). The portal pages (Availability, Rates, Your requests, Sign in) also looked plain compared with the rest of the site and needed a modern, clean design.
+
+**Description:** Fixed: an agent's correct email and password typed on the staff login now sign them into the trade portal (agent access only, never the admin) instead of showing "Invalid email or password"; staff logins are unchanged. Design: three directions mocked up for the whole portal (sign in, availability, rates, requests) — A "Clean light" (photo cards, one rounded search bar), B "Workspace" (dark sidebar, key numbers, filters + compact results list) and C "Editorial" (brand teal and sand, serif headings, photo hero, results grouped by property). Mockups: `docs/design/agent-portal-designs.html`. Next: owner picks a direction, then build it on the existing portal pages (same pricing, requests still never place a hold).
+
+## 19. Website and admin tidy-ups — nav search button removed, Help moved
+
+**Context:** The search button added to the website header pushed the language switcher off screen, and Help & guides sat at the top of the admin sidebar with an intro line the owner didn't want.
+
+**Description:** Removed the search button from the website header (search stays on the home page, Activities and Journal bars, the results page, and `/` or Ctrl+K). Moved Help & guides to the last link in the admin sidebar (bottom of Settings, still for every account) and removed the intro line on the Help & guides page.
+
