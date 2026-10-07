@@ -90,13 +90,13 @@ check('manager: a lone tab becomes a plain link with its full name', in_array('S
 
 $rec = $labels($nav('reception'));
 check('reception: Bookings + Calendar + Enquiries, no Finance/Settings', in_array('Bookings › Bookings', $rec, true) && in_array('Bookings › Enquiries', $rec, true)
-    && !array_filter($rec, fn($l) => str_starts_with($l, 'Finance') || str_starts_with($l, 'Settings') || str_starts_with($l, 'Inventory')));
+    && !array_filter($rec, fn($l) => str_starts_with($l, 'Finance') || (str_starts_with($l, 'Settings') && $l !== 'Settings › Help & guides') || str_starts_with($l, 'Inventory')));
 check('reception: Calendar tabs are Calendar + Conflicts + iCal feeds', array_column($nav('reception', 'gantt.php')['active']['tabs'], 'label') === ['Calendar', 'Conflicts', 'iCal feeds']);
 check('reception: counts stock from Today', in_array('Today › Stock count', $rec, true));
 
 $hk = $labels($nav('housekeeping'));
-check('housekeeping: Dashboard, Help, My work, Stock count, Team chat, Timetable — nothing else', $hk === ['Dashboard', 'Help & guides', 'Today › My work', 'Today › Stock count', 'Today › Team chat', 'Team › Timetable']);
-check('security: Gate instead of My work', $labels($nav('security')) === ['Dashboard', 'Help & guides', 'Today › Stock count', 'Today › Team chat', 'Today › Gate', 'Team › Timetable']);
+check('housekeeping: Dashboard, My work, Stock count, Team chat, Timetable, Help — nothing else', $hk === ['Dashboard', 'Today › My work', 'Today › Stock count', 'Today › Team chat', 'Team › Timetable', 'Settings › Help & guides']);
+check('security: Gate instead of My work', $labels($nav('security')) === ['Dashboard', 'Today › Stock count', 'Today › Team chat', 'Today › Gate', 'Team › Timetable', 'Settings › Help & guides']);
 $shop = $labels($nav('shop'));
 check('shop staff: Open till + their own PIN', in_array('Point of Sale › Open till', $shop, true) && in_array('Point of Sale › My till PIN', $shop, true)
     && !in_array('Point of Sale › Sales', $shop, true));
@@ -113,7 +113,7 @@ $html = admin_nav_tabs_html($n);
 check('tab strip: five tabs, shell links, count pill', substr_count($html, '<a class="tab-btn') === 5 && substr_count($html, 'data-shell-link') === 5
     && str_contains($html, 'tab-btn__count">3<') && str_contains($html, 'aria-current="page"'));
 check('tab strip: every tab carries an icon, plus the Help button', substr_count($html, '<svg') === 6 && str_contains($html, 'class="areatabs__help" data-help-open'));
-check('Help & guides: every account has it, right under the Dashboard', count(array_filter(array_keys($roles), fn($r) => $labels($nav($r))[1] === 'Help & guides')) === count($roles));
+check('Help & guides: every account has it, last in the sidebar (bottom of Settings)', count(array_filter(array_keys($roles), fn($r) => ($l = $labels($nav($r))) && end($l) === 'Settings › Help & guides')) === count($roles));
 check('tab icon: named after the page, else a stand-in, else the item icon', admin_nav_tab_icon(['pages' => ['conflicts.php']], 'gantt') === 'conflicts'
     && admin_nav_tab_icon(['pages' => ['submission-trends.php']], 'submissions') === 'reports'
     && admin_nav_tab_icon(['pages' => ['no-such-icon.php']], 'gantt') === 'gantt');

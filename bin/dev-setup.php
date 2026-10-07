@@ -390,6 +390,17 @@ function dev_accounts(PDO $pdo): void {
         } catch (Throwable $ex) { say('  ! shop login not assigned to an outlet: ' . strtok($ex->getMessage(), "\n")); }
     }
     say('✓ Test logins ready (' . count($ids) . '): ' . implode(', ', array_keys($ids)) . ' @tribalsand.test — password = DEV_ADMIN_PASSWORD.');
+
+    // A travel agent for the trade portal (/agent/login.php) — its own table, never an admin login.
+    if (dev_table_exists($pdo, 'travel_agents')) {
+        try {
+            $pdo->prepare("INSERT INTO travel_agents (name, agency, email, password_hash, discount_pct, is_active)
+                VALUES ('Dev Agent', 'Dev Travel Co', 'agent@tribalsand.test', :h, 10, TRUE)
+                ON CONFLICT (email) DO UPDATE SET password_hash = EXCLUDED.password_hash, is_active = TRUE")
+                ->execute([':h' => $hash]);
+            say('✓ Trade portal login ready: agent@tribalsand.test (10% off) — password = DEV_ADMIN_PASSWORD, sign in at /agent/login.php.');
+        } catch (Throwable $ex) { say('  ! agent@tribalsand.test not created: ' . strtok($ex->getMessage(), "\n")); }
+    }
 }
 
 /**

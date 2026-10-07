@@ -98,10 +98,23 @@ One ticket per feature area, each with its context. Import `2026-10-07-tickets-s
 
 **Context:** Guests had to navigate menus to find a room, restaurant, activity or guide. The ask was a search bar on the home page and in the sections, and a way to search from every page.
 
-**Description:** Added a "find anything" search across the website: properties, rooms, activities, restaurants and menus, events, area guides, policies and journal articles, read live so new content is searchable once published. A search button in the header on every page (also `/` or Ctrl+K) opens a search window with live, grouped results and keyboard navigation; a "What are you looking for?" bar under the home page hero and on the Activities and Journal pages; and a full results page that also works without JavaScript. Separate from the availability search for dates.
+**Description:** Added a "find anything" search across the website: properties, rooms, activities, restaurants and menus, events, area guides, policies and journal articles, read live so new content is searchable once published. A "What are you looking for?" bar under the home page hero and on the Activities and Journal pages shows live, grouped results as you type (keyboard navigation included); `/` or Ctrl+K opens the same search from any page; and a full results page also works without JavaScript. (A header search button was tried and removed — the nav has no room for it.) Separate from the availability search for dates.
 
 ## 17. Check: Laundry staff role in admin
 
 **Context:** Asked whether the admin has a staff role for Laundry.
 
 **Description:** Confirmed: "Laundry" exists as a staff job type (Team → Staff → Login accounts → job). Laundry staff land on My Work with their tasks, are treated as back-of-house (no guest messaging), and guest laundry requests and Laundry service pricing already exist. No change needed.
+
+## 18. Travel agent (trade) portal — sign-in fix and redesign
+
+**Context:** A test travel-agent account couldn't sign in: the agent's details were typed on the staff login (`/admin/login`), while agents have their own portal login (`/agent/login.php`). The portal pages (Availability, Rates, Your requests, Sign in) also looked plain compared with the rest of the site and needed a modern, clean design.
+
+**Description:** Fixed: an agent's correct email and password typed on the staff login now sign them into the trade portal (agent access only, never the admin) instead of showing "Invalid email or password"; staff logins are unchanged. Design: three directions mocked up for the whole portal (sign in, availability, rates, requests) — A "Clean light" (photo cards, one rounded search bar), B "Workspace" (dark sidebar, key numbers, filters + compact results list) and C "Editorial" (brand teal and sand, serif headings, photo hero, results grouped by property). Mockups: `docs/design/agent-portal-designs.html`. Built: design A "Clean light" (recommended — quickest to scan for occasional bookers and best on a phone): a split-screen sign in, a top bar with icon tabs and the agent's initials, one rounded search bar, every bookable option as a photo card (cheapest first, published price struck through, type and town filter chips), rates as one card per property, and requests with four headline numbers and coloured status pills. Same pricing as before; requests still never place a hold. Also added a local test agent login to the developer setup.
+
+## 19. Website and admin tidy-ups — nav search button removed, Help moved
+
+**Context:** The search button added to the website header pushed the language switcher off screen, and Help & guides sat at the top of the admin sidebar with an intro line the owner didn't want.
+
+**Description:** Removed the search button from the website header (search stays on the home page, Activities and Journal bars, the results page, and `/` or Ctrl+K). Moved Help & guides to the last link in the admin sidebar (bottom of Settings, still for every account) and removed the intro line on the Help & guides page.
+

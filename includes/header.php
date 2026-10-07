@@ -279,28 +279,6 @@ $__restoDrawer     = '<div><span class="ts-mob-lbl">Restaurants</span>' . $__res
 }
 .ts-btn-book:hover{background:var(--ts-sand-lt);border-color:var(--ts-sand-lt);}
 
-/* ── SEARCH BUTTON ── */
-.ts-search-btn{
-  display:inline-flex;align-items:center;gap:.4rem;
-  font-family:'Jost',sans-serif;font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;
-  color:rgba(255,255,255,.78);padding:.42rem .7rem;border:1px solid rgba(184,150,90,.3);border-radius:3px;
-  transition:color .2s,border-color .2s,background .2s;white-space:nowrap;cursor:pointer;
-}
-.ts-search-btn:hover,.ts-search-btn:focus-visible{color:#fff;border-color:rgba(184,150,90,.7);background:rgba(184,150,90,.08);}
-.ts-search-btn:focus-visible{outline:2px solid var(--ts-sand-lt);outline-offset:2px;}
-.ts-search-btn svg{flex-shrink:0;}
-@media(min-width:1101px) and (max-width:1440px){
-  .ts-search-btn__lbl{display:none;}.ts-search-btn{padding:.42rem .5rem;}
-  /* Room for the search icon: the links were already a touch wider than a 1440px screen. */
-  .ts-link{padding:.5rem .62rem;letter-spacing:.12em;}
-  .ts-nav{padding:0 28px;}
-}
-@media(min-width:1101px) and (max-width:1320px){
-  .ts-link{padding:.5rem .42rem;letter-spacing:.08em;font-size:.7rem;}
-  .ts-nav{padding:0 20px;}
-  .ts-actions{gap:.45rem;}
-}
-
 /* ── HAMBURGER ── */
 .ts-burger{
   display:none;position:relative;
@@ -465,8 +443,6 @@ $__restoDrawer     = '<div><span class="ts-mob-lbl">Restaurants</span>' . $__res
   .ts-actions{gap:.5rem;}
   /* Language switcher lives in the drawer footer on mobile — keep the nav clear so the menu button is prominent */
   .ts-actions .gtranslate_wrapper{display:none;}
-  .ts-search-btn__lbl{display:none;}
-  .ts-search-btn{padding:.4rem;border-color:transparent;}
   .ts-burger{width:40px;height:40px;margin-left:.25rem;}
 }
 @media(max-width:360px){
@@ -659,11 +635,6 @@ $__restoDrawer     = '<div><span class="ts-mob-lbl">Restaurants</span>' . $__res
   <div class="ts-actions">
 
     <a href="tel:+254115115247" class="ts-tel">+254 115 115 247</a>
-    <!-- Site search (js/site-search.js opens the overlay; the link is the no-JS fallback) -->
-    <a href="/site-search" class="ts-search-btn" data-ss-open aria-label="Search the website" title="Search (press /)">
-      <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-      <span class="ts-search-btn__lbl">Search</span>
-    </a>
     <a href="trip-builder.php" class="ts-btn-plan">Plan Your Trip</a>
     <a href="/#properties" class="ts-btn-book">Book Now</a>
     <!-- Currency switcher -->

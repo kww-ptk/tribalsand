@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Trade Portal Designs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&display=swap" rel="stylesheet">
+<style>
+/* Mockups only — three directions for the travel-agent (trade) portal.
+   Pick a design + a screen in the bar at the top. Data is sample data. */
+:root{
+  --teal:#1E5C6B;--teal-d:#102F3A;--teal-dd:#0B2129;--sand:#B8965A;--sand-lt:#D4B07A;--sand-faint:#FAF6EE;
+  --ink:#14211F;--mid:#5D6B6A;--muted:#8A9593;--line:#E6E9E8;--bg:#F5F7F6;--white:#fff;
+  --ok:#15803d;--ok-bg:#e8f5ec;--warn:#b45309;--warn-bg:#fdf3e4;--info:#1d4ed8;--info-bg:#e8eefc;--off:#9aa3a2;--off-bg:#f0f2f2;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:Inter,system-ui,sans-serif;color:var(--ink);background:#E9ECEB;font-size:14px;line-height:1.5}
+button{font:inherit;cursor:pointer}
+a{color:inherit}
+
+/* ── Picker bar (not part of the design) ── */
+.pick{position:sticky;top:0;z-index:50;background:#0d1615;color:#fff;display:flex;flex-wrap:wrap;gap:10px 22px;align-items:center;padding:10px 18px}
+.pick b{font-weight:600;letter-spacing:.02em}
+.pick .grp{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.pick .lbl{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#8fa7a3;margin-right:4px}
+.pick button{border:1px solid #2c3d3b;background:#16221f;color:#cfe0dc;border-radius:999px;padding:6px 14px;font-size:13px}
+.pick button.on{background:#fff;color:#0d1615;border-color:#fff}
+.pick .note{font-size:12px;color:#8fa7a3;margin-left:auto}
+.stage{padding:26px 18px 60px}
+.frame{max-width:1280px;margin:0 auto;border-radius:14px;overflow:hidden;box-shadow:0 30px 80px rgba(13,22,21,.18);background:#fff}
+.desc{max-width:1280px;margin:0 auto 14px;color:#33413f;font-size:14px}
+.desc strong{color:#0d1615}
+.screen{display:none}.screen.on{display:block}
+.design{display:none}.design.on{display:block}
+
+/* Shared bits */
+.pill{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:3px 10px;font-size:12px;font-weight:600}
+.pill::before{content:"";width:6px;height:6px;border-radius:50%;background:currentColor}
+.s-sent{color:var(--info);background:var(--info-bg)}
+.s-held{color:var(--warn);background:var(--warn-bg)}
+.s-conf{color:var(--ok);background:var(--ok-bg)}
+.s-off{color:var(--off);background:var(--off-bg)}
+.ph{background:linear-gradient(135deg,#9fc2c3,#1E5C6B);position:relative}
+.ph.p2{background:linear-gradient(135deg,#e8d3ad,#b8965a)}
+.ph.p3{background:linear-gradient(135deg,#bcd7cf,#2f6f63)}
+.ph.p4{background:linear-gradient(135deg,#d9c8b4,#7a5b3b)}
+.ph.p5{background:linear-gradient(135deg,#a9c7d8,#24536b)}
+.ph span{position:absolute;left:10px;bottom:8px;font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:rgba(255,255,255,.85)}
+.strike{text-decoration:line-through;color:var(--muted);font-size:12px}
+svg.i{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* ═══════════════ DESIGN A — Clean light ═══════════════ */
+.A{background:#fff;min-height:760px}
+.A .top{display:flex;align-items:center;gap:28px;padding:16px 32px;border-bottom:1px solid var(--line)}
+.A .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:17px;letter-spacing:-.01em}
+.A .brand em{font-style:normal;font-size:10px;letter-spacing:.14em;color:var(--teal);background:#e3f0ef;border-radius:6px;padding:3px 7px}
+.A nav{display:flex;gap:4px;margin-left:12px}
+.A nav a{text-decoration:none;color:var(--mid);padding:8px 14px;border-radius:8px;font-weight:500}
+.A nav a.on{color:var(--teal-d);background:#eef4f3}
+.A .who{margin-left:auto;display:flex;align-items:center;gap:10px;color:var(--mid)}
+.A .av{width:34px;height:34px;border-radius:50%;background:var(--teal);color:#fff;display:grid;place-items:center;font-weight:600;font-size:13px}
+.A main{padding:30px 32px 40px;max-width:1180px;margin:0 auto}
+.A h1{font-size:26px;letter-spacing:-.02em;margin:0 0 4px}
+.A .sub{color:var(--mid);margin:0 0 22px}
+.A .search{display:grid;grid-template-columns:1.4fr 1fr 1fr 1.2fr auto;border:1px solid var(--line);border-radius:16px;box-shadow:0 8px 30px rgba(16,47,58,.07);overflow:hidden}
+.A .search .f{padding:12px 18px;border-right:1px solid var(--line)}
+.A .search .f:last-of-type{border-right:0}
+.A .search label{display:block;font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.A .search .v{font-weight:500;margin-top:2px}
+.A .search .go{margin:8px;border:0;border-radius:11px;background:var(--teal-d);color:#fff;padding:0 22px;font-weight:600;display:flex;align-items:center;gap:8px}
+.A .chips{display:flex;gap:8px;margin:18px 0 6px;flex-wrap:wrap}
+.A .chip{border:1px solid var(--line);border-radius:999px;padding:6px 14px;background:#fff;color:var(--mid);font-weight:500}
+.A .chip.on{background:var(--teal-d);color:#fff;border-color:var(--teal-d)}
+.A .meta{display:flex;justify-content:space-between;color:var(--mid);margin:18px 0 12px}
+.A .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.A .card{border:1px solid var(--line);border-radius:16px;overflow:hidden;background:#fff;display:flex;flex-direction:column}
+.A .card .ph{height:150px}
+.A .card .b{padding:14px 16px 16px;display:flex;flex-direction:column;gap:6px;flex:1}
+.A .card .t{font-weight:600;font-size:15px}
+.A .card .l{color:var(--muted);font-size:13px}
+.A .card .row{display:flex;justify-content:space-between;align-items:flex-end;margin-top:auto;padding-top:10px}
+.A .card .price{font-size:18px;font-weight:700;color:var(--teal-d)}
+.A .card .price small{font-size:12px;font-weight:500;color:var(--muted)}
+.A .btn{border:0;border-radius:10px;background:var(--teal);color:#fff;padding:9px 14px;font-weight:600}
+.A .btn.ghost{background:#eef4f3;color:var(--teal-d)}
+.A .tag{font-size:11px;font-weight:600;color:var(--ok);background:var(--ok-bg);border-radius:6px;padding:2px 7px;align-self:flex-start}
+/* A rates */
+.A .rt{border:1px solid var(--line);border-radius:16px;overflow:hidden;margin-bottom:16px}
+.A .rt-h{display:flex;align-items:center;gap:14px;padding:14px 18px}
+.A .rt-h .ph{width:56px;height:56px;border-radius:12px;flex:none}
+.A .rt-h .t{font-weight:600;font-size:16px}
+.A .rt-h .l{color:var(--muted);font-size:13px}
+.A .rt-h .disc{margin-left:auto;font-weight:600;color:var(--ok);background:var(--ok-bg);border-radius:8px;padding:5px 10px;font-size:13px}
+.A table{width:100%;border-collapse:collapse}
+.A th{text-align:left;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:10px 18px;background:#fafbfb;border-top:1px solid var(--line)}
+.A td{padding:12px 18px;border-top:1px solid var(--line)}
+.A td.r,.A th.r{text-align:right}
+.A .yr{font-weight:700;color:var(--teal-d)}
+/* A requests */
+.A .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+.A .stat{border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+.A .stat b{display:block;font-size:24px;letter-spacing:-.02em}
+.A .stat span{color:var(--muted);font-size:13px}
+/* A login */
+.A.login{display:grid;grid-template-columns:1fr 1fr;min-height:720px}
+.A.login .art{background:linear-gradient(160deg,#1E5C6B,#0B2129);color:#fff;padding:48px;display:flex;flex-direction:column;justify-content:space-between}
+.A.login .art h2{font-size:34px;letter-spacing:-.02em;line-height:1.15;margin:0}
+.A.login .art ul{list-style:none;padding:0;margin:26px 0 0;display:grid;gap:12px;color:#cfe3e0}
+.A.login .art li{display:flex;gap:10px;align-items:center}
+.A.login .form{display:flex;align-items:center;justify-content:center;padding:40px}
+.A.login .box{width:100%;max-width:380px}
+.A .inp{width:100%;border:1px solid var(--line);border-radius:10px;padding:12px 14px;font:inherit;margin:6px 0 16px;background:#fff}
+.A .lab{font-size:13px;font-weight:600}
+.A .pwrow{position:relative}.A .pwrow svg{position:absolute;right:12px;top:19px;color:var(--muted)}
+
+/* ═══════════════ DESIGN B — Sidebar workspace ═══════════════ */
+.B{display:grid;grid-template-columns:240px 1fr;min-height:760px;background:var(--bg)}
+.B aside{background:var(--teal-dd);color:#cfe0dc;padding:22px 16px;display:flex;flex-direction:column;gap:6px}
+.B .brand{color:#fff;font-weight:700;font-size:17px;padding:0 10px 18px;display:flex;align-items:center;gap:8px}
+.B .brand em{font-style:normal;font-size:10px;letter-spacing:.14em;color:var(--sand-lt);border:1px solid rgba(212,176,122,.5);border-radius:6px;padding:2px 6px}
+.B aside a{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:10px;text-decoration:none;font-weight:500}
+.B aside a.on{background:rgba(255,255,255,.09);color:#fff}
+.B aside a .n{margin-left:auto;background:var(--sand);color:var(--teal-dd);border-radius:999px;font-size:11px;font-weight:700;padding:1px 8px}
+.B .acct{margin-top:auto;border-top:1px solid rgba(255,255,255,.08);padding:14px 10px 0;font-size:13px}
+.B .acct b{color:#fff;display:block}
+.B .main{padding:26px 30px}
+.B .hd{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:18px}
+.B h1{font-size:24px;margin:0;letter-spacing:-.02em}
+.B .sub{color:var(--mid);margin:2px 0 0}
+.B .panel{background:#fff;border:1px solid var(--line);border-radius:14px}
+.B .kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:18px}
+.B .kpi{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+.B .kpi span{color:var(--muted);font-size:12px;font-weight:500}
+.B .kpi b{display:block;font-size:22px;margin-top:2px;letter-spacing:-.02em}
+.B .kpi.dark{background:var(--teal-d);border-color:var(--teal-d);color:#fff}.B .kpi.dark span{color:#a9c5c1}
+.B .split{display:grid;grid-template-columns:300px 1fr;gap:18px}
+.B .filters{padding:18px;display:flex;flex-direction:column;gap:14px;align-self:start}
+.B .filters label{font-size:12px;font-weight:600;color:var(--mid)}
+.B .fld{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:5px;display:flex;justify-content:space-between;align-items:center}
+.B .step{display:flex;align-items:center;justify-content:space-between;border:1px solid var(--line);border-radius:10px;padding:6px 6px 6px 12px;margin-top:5px}
+.B .step button{width:30px;height:30px;border-radius:8px;border:1px solid var(--line);background:#fff}
+.B .go{border:0;border-radius:10px;background:var(--sand);color:var(--teal-dd);padding:12px;font-weight:700}
+.B .list .row{display:grid;grid-template-columns:110px 1fr auto;gap:16px;padding:14px;border-bottom:1px solid var(--line);align-items:center}
+.B .list .row:last-child{border-bottom:0}
+.B .list .ph{height:78px;border-radius:10px}
+.B .list .t{font-weight:600}
+.B .list .l{color:var(--muted);font-size:13px}
+.B .list .opts{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap}
+.B .list .o{font-size:12px;border:1px solid var(--line);border-radius:7px;padding:3px 8px;color:var(--mid)}
+.B .list .pr{text-align:right}
+.B .list .pr b{display:block;font-size:17px;color:var(--teal-d)}
+.B .btn{border:0;border-radius:9px;background:var(--teal);color:#fff;padding:8px 14px;font-weight:600;margin-top:6px}
+.B .lh{display:flex;justify-content:space-between;padding:14px;border-bottom:1px solid var(--line);color:var(--mid)}
+.B table{width:100%;border-collapse:collapse}
+.B th{text-align:left;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:11px 16px;border-bottom:1px solid var(--line)}
+.B td{padding:12px 16px;border-bottom:1px solid var(--line)}
+.B tr:last-child td{border-bottom:0}
+.B td.r,.B th.r{text-align:right}
+.B .tabs{display:flex;gap:4px;padding:6px;background:#eef1f0;border-radius:10px;width:max-content;margin-bottom:14px}
+.B .tabs span{padding:6px 12px;border-radius:7px;color:var(--mid);font-weight:500}
+.B .tabs span.on{background:#fff;color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.B.login{display:grid;place-items:center;background:radial-gradient(circle at 20% 20%,#1E5C6B,#0B2129 60%);grid-template-columns:1fr}
+.B .lbox{background:#fff;border-radius:18px;padding:34px;width:400px;box-shadow:0 30px 80px rgba(0,0,0,.35)}
+.B .inp{width:100%;border:1px solid var(--line);border-radius:10px;padding:12px 14px;font:inherit;margin:6px 0 14px}
+
+/* ═══════════════ DESIGN C — Editorial brand ═══════════════ */
+.C{background:var(--sand-faint);min-height:760px}
+.C .top{background:var(--teal-d);color:#fff;display:flex;align-items:center;padding:0 36px;height:64px;gap:30px}
+.C .brand{font-family:'Cormorant Garamond',serif;font-size:24px;letter-spacing:.02em}
+.C .brand i{font-family:Inter;font-style:normal;font-size:10px;letter-spacing:.24em;color:var(--sand-lt);margin-left:10px}
+.C nav{display:flex;gap:26px;margin:0 auto}
+.C nav a{text-decoration:none;font-size:12px;letter-spacing:.16em;text-transform:uppercase;color:rgba(255,255,255,.7);padding:22px 0;border-bottom:2px solid transparent}
+.C nav a.on{color:#fff;border-color:var(--sand)}
+.C .who{font-size:13px;color:rgba(255,255,255,.75)}
+.C .hero{background:linear-gradient(rgba(16,47,58,.55),rgba(16,47,58,.75)),linear-gradient(135deg,#7fb1b4,#1E5C6B 60%,#102F3A);color:#fff;padding:46px 36px 80px;text-align:center}
+.C .eyebrow{font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:var(--sand-lt)}
+.C h1{font-family:'Cormorant Garamond',serif;font-weight:400;font-size:44px;margin:8px 0 6px;line-height:1.1}
+.C h1 em{color:var(--sand-lt)}
+.C .hero p{color:rgba(255,255,255,.8);margin:0}
+.C .sbar{max-width:980px;margin:-40px auto 0;background:#fff;border-radius:4px;display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr auto;box-shadow:0 20px 50px rgba(16,47,58,.18);position:relative}
+.C .sbar .f{padding:14px 20px;border-right:1px solid #eee5d6}
+.C .sbar label{display:block;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--sand);font-weight:600}
+.C .sbar .v{margin-top:3px}
+.C .sbar button{border:0;background:var(--teal-d);color:#fff;padding:0 28px;letter-spacing:.16em;text-transform:uppercase;font-size:12px;font-weight:600}
+.C main{max-width:1100px;margin:0 auto;padding:34px 36px 50px}
+.C h2{font-family:'Cormorant Garamond',serif;font-weight:400;font-size:30px;margin:0 0 4px;color:var(--teal-d)}
+.C .sub{color:var(--mid);margin:0 0 20px}
+.C .prop{display:grid;grid-template-columns:320px 1fr;background:#fff;margin-bottom:20px;border:1px solid #efe6d6}
+.C .prop .ph{min-height:220px}
+.C .prop .b{padding:22px 26px}
+.C .prop .t{font-family:'Cormorant Garamond',serif;font-size:26px;color:var(--teal-d)}
+.C .prop .l{font-size:11px;letter-spacing:.2em;text-transform:uppercase;color:var(--sand)}
+.C .opt{display:grid;grid-template-columns:1fr auto auto;gap:18px;align-items:center;padding:12px 0;border-top:1px solid #f1eadf}
+.C .opt:first-of-type{margin-top:12px}
+.C .opt .n{font-weight:500}
+.C .opt .n small{display:block;color:var(--muted);font-weight:400}
+.C .opt .p{text-align:right}
+.C .opt .p b{display:block;color:var(--teal-d);font-size:16px}
+.C .btn{border:1px solid var(--teal-d);background:var(--teal-d);color:#fff;padding:9px 16px;font-size:11px;letter-spacing:.14em;text-transform:uppercase;font-weight:600}
+.C .btn.o{background:transparent;color:var(--teal-d)}
+.C table{width:100%;border-collapse:collapse;background:#fff;border:1px solid #efe6d6}
+.C th{text-align:left;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--sand);font-weight:600;padding:14px 18px;border-bottom:1px solid #efe6d6}
+.C td{padding:14px 18px;border-bottom:1px solid #f5efe4}
+.C td.r,.C th.r{text-align:right}
+.C .disc{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:var(--sand);border:1px solid var(--sand);padding:4px 10px}
+.C .rh{display:flex;align-items:baseline;justify-content:space-between;margin:28px 0 12px}
+.C .rh:first-child{margin-top:0}
+.C.login{display:grid;grid-template-columns:1.1fr 1fr;min-height:720px}
+.C.login .art{background:linear-gradient(rgba(16,47,58,.45),rgba(16,47,58,.85)),linear-gradient(140deg,#c9a46a,#1E5C6B 55%,#102F3A);color:#fff;padding:56px;display:flex;flex-direction:column;justify-content:flex-end}
+.C.login .art h1{font-size:50px;text-align:left}
+.C.login .form{display:flex;align-items:center;justify-content:center;padding:40px;background:var(--sand-faint)}
+.C .lbox{width:100%;max-width:360px}
+.C .inp{width:100%;border:0;border-bottom:1px solid #d9ccb5;background:transparent;padding:12px 2px;font:inherit;margin:4px 0 22px;border-radius:0}
+.C .lab{font-size:10px;letter-spacing:.22em;text-transform:uppercase;color:var(--sand);font-weight:600}
+.C .wide{width:100%;padding:14px}
+
+@media (max-width:1100px){
+  .B .split{grid-template-columns:1fr}
+  .B .filters{display:grid;grid-template-columns:repeat(3,1fr);align-items:end}
+  .C .prop{grid-template-columns:220px 1fr}
+  .A .grid{grid-template-columns:repeat(2,1fr)}
+}
+@media (max-width:900px){
+  .A .search,.C .sbar{grid-template-columns:1fr 1fr}
+  .A .grid{grid-template-columns:1fr}
+  .A.login,.C.login,.B{grid-template-columns:1fr}
+  .B aside{display:none}
+  .B .split,.C .prop{grid-template-columns:1fr}
+  .A .stats,.B .kpis{grid-template-columns:1fr 1fr}
+}
+</style>
+</head>
+<body>
+
+<div class="pick">
+  <b>Trade portal — 3 designs</b>
+  <div class="grp"><span class="lbl">Design</span>
+    <button data-d="A" class="on">A · Clean light</button>
+    <button data-d="B">B · Workspace</button>
+    <button data-d="C">C · Editorial</button>
+  </div>
+  <div class="grp"><span class="lbl">Screen</span>
+    <button data-s="login">Sign in</button>
+    <button data-s="avail" class="on">Availability</button>
+    <button data-s="rates">Rates</button>
+    <button data-s="req">Your requests</button>
+  </div>
+  <span class="note">Sample data · photos are placeholders</span>
+</div>
+
+<div class="stage">
+
+<!-- ═════════════════════════ DESIGN A ═════════════════════════ -->
+<section class="design on" data-design="A">
+  <p class="desc"><strong>A · Clean light.</strong> A white, airy layout like a modern booking site. One rounded search bar, results as photo cards with the agent's rate up front and the published price struck through. A clear top bar with the agent's name and avatar.</p>
+  <div class="frame">
+
+    <div class="screen" data-screen="login">
+      <div class="A login">
+        <div class="art">
+          <div style="font-weight:700;font-size:18px">Tribal Sand <span style="font-size:10px;letter-spacing:.14em;background:rgba(255,255,255,.15);border-radius:6px;padding:3px 7px;margin-left:6px">TRADE</span></div>
+          <div>
+            <h2>Your partner desk for Kenya's north coast.</h2>
+            <ul>
+              <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg> Live availability across every property</li>
+              <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg> Your agreed trade rate, already applied</li>
+              <li><svg class="i" viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg> Request a booking in one step, track every request</li>
+            </ul>
+          </div>
+          <div style="font-size:12px;color:#9fbcb8">Trade rates are confidential and for booking purposes only.</div>
+        </div>
+        <div class="form"><div class="box">
+          <h1>Welcome back</h1>
+          <p class="sub">Sign in to the travel trade portal.</p>
+          <div class="lab">Email</div><input class="inp" value="alysaemilio@gmail.com">
+          <div class="lab">Password</div>
+          <div class="pwrow"><input class="inp" type="password" value="passwordpass"><svg class="i" viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg></div>
+          <button class="btn" style="width:100%;padding:13px">Sign in</button>
+          <p style="text-align:center;color:var(--mid);font-size:13px;margin-top:18px">Not a partner yet? <a href="#">Apply for a trade account</a></p>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="screen on" data-screen="avail">
+      <div class="A">
+        <div class="top">
+          <div class="brand">Tribal Sand <em>TRADE</em></div>
+          <nav><a class="on" href="#">Availability</a><a href="#">Rates</a><a href="#">Your requests</a></nav>
+          <div class="who">AlysaTest Travel<div class="av">AT</div></div>
+        </div>
+        <main>
+          <h1>Check availability</h1>
+          <p class="sub">Live rooms and prices at your trade rate. Request an option and reservations confirm it by email.</p>
+          <div class="search">
+            <div class="f"><label>Dates</label><div class="v">12 Dec → 16 Dec · 4 nights</div></div>
+            <div class="f"><label>Adults</label><div class="v">2</div></div>
+            <div class="f"><label>Children</label><div class="v">1</div></div>
+            <div class="f"><label>Property</label><div class="v">All properties</div></div>
+            <button class="go"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>Search</button>
+          </div>
+          <div class="chips"><span class="chip on">All</span><span class="chip">Boutique hotels</span><span class="chip">Private villas</span><span class="chip">Kilifi</span><span class="chip">Watamu</span><span class="chip">Vipingo</span></div>
+          <div class="meta"><span><b style="color:var(--ink)">5 options</b> for 3 guests · 4 nights</span><span>Sort: lowest price</span></div>
+          <div class="grid">
+            <div class="card"><div class="ph p2"><span>Maya Kobe · Kilifi</span></div><div class="b"><span class="tag">Fits 3 guests</span><div class="t">Prestige Suite</div><div class="l">Maya Kobe · Kilifi · sleeps 4</div><div class="row"><div><span class="strike">KES 291,200</span><div class="price">KES 262,080 <small>· 4 nights</small></div></div><button class="btn">Request</button></div></div></div>
+            <div class="card"><div class="ph"><span>Zuri · Watamu</span></div><div class="b"><span class="tag">Fits 3 guests</span><div class="t">Ocean Suite</div><div class="l">Zuri · Watamu · sleeps 3</div><div class="row"><div><span class="strike">KES 240,000</span><div class="price">KES 216,000 <small>· 4 nights</small></div></div><button class="btn">Request</button></div></div></div>
+            <div class="card"><div class="ph p3"><span>My Amani · Vipingo</span></div><div class="b"><span class="tag">Whole villa</span><div class="t">My Amani — entire villa</div><div class="l">Vipingo · sleeps 10</div><div class="row"><div><span class="strike">KES 600,000</span><div class="price">KES 540,000 <small>· 4 nights</small></div></div><button class="btn">Request</button></div></div></div>
+            <div class="card"><div class="ph p4"><span>Maya Kobe · Kilifi</span></div><div class="b"><span class="tag" style="color:var(--info);background:var(--info-bg)">2 rooms together</span><div class="t">Haze + Glow Suites</div><div class="l">Maya Kobe · 2 rooms · sleeps 4</div><div class="row"><div><span class="strike">KES 270,400</span><div class="price">KES 243,360 <small>· 4 nights</small></div></div><button class="btn">Request</button></div></div></div>
+            <div class="card"><div class="ph p5"><span>Enkare Bofa · Kilifi</span></div><div class="b"><span class="tag">Whole villa</span><div class="t">Enkare Bofa — entire villa</div><div class="l">Kilifi · sleeps 10</div><div class="row"><div><span class="strike">KES 560,000</span><div class="price">KES 504,000 <small>· 4 nights</small></div></div><button class="btn">Request</button></div></div></div>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <div class="screen" data-screen="rates">
+      <div class="A">
+        <div class="top"><div class="brand">Tribal Sand <em>TRADE</em></div><nav><a href="#">Availability</a><a class="on" href="#">Rates</a><a href="#">Your requests</a></nav><div class="who">AlysaTest Travel<div class="av">AT</div></div></div>
+        <main>
+          <h1>Your rates</h1>
+          <p class="sub">Nightly rates from, with your agreed discount already applied. <a href="#" style="color:var(--teal)">Check live availability →</a></p>
+          <div class="rt">
+            <div class="rt-h"><div class="ph p3"></div><div><div class="t">My Amani</div><div class="l">Vipingo · private villa</div></div><span class="disc">10% off published</span></div>
+            <table><tr><th>Room</th><th>Sleeps</th><th class="r">Published / night</th><th class="r">Your rate / night</th></tr>
+              <tr><td>My Amani — whole villa</td><td>10</td><td class="r strike">KES 150,000</td><td class="r yr">KES 135,000</td></tr></table>
+          </div>
+          <div class="rt">
+            <div class="rt-h"><div class="ph p2"></div><div><div class="t">Maya Kobe</div><div class="l">Kilifi · boutique hotel</div></div><span class="disc">10% off published</span></div>
+            <table><tr><th>Room</th><th>Sleeps</th><th class="r">Published / night</th><th class="r">Your rate / night</th></tr>
+              <tr><td>Prestige Suite</td><td>4</td><td class="r strike">KES 72,800</td><td class="r yr">KES 65,520</td></tr>
+              <tr><td>Haze · Glow · Tide · Drift Suites</td><td>2</td><td class="r strike">KES 33,800</td><td class="r yr">KES 30,420</td></tr>
+              <tr><td>Entire Retreat — whole property</td><td>12</td><td class="r strike">KES 208,000</td><td class="r yr">KES 187,200</td></tr></table>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <div class="screen" data-screen="req">
+      <div class="A">
+        <div class="top"><div class="brand">Tribal Sand <em>TRADE</em></div><nav><a href="#">Availability</a><a href="#">Rates</a><a class="on" href="#">Your requests</a></nav><div class="who">AlysaTest Travel<div class="av">AT</div></div></div>
+        <main>
+          <h1>Your requests</h1>
+          <p class="sub">Every request and where it stands. Confirmations go to alysaemilio@gmail.com.</p>
+          <div class="stats"><div class="stat"><b>6</b><span>Requests sent</span></div><div class="stat"><b>2</b><span>Waiting for reply</span></div><div class="stat"><b>3</b><span>Confirmed</span></div><div class="stat"><b>KES 1.2M</b><span>Booked at your rate</span></div></div>
+          <div class="rt">
+            <table><tr><th>Guest</th><th>Stay</th><th>Property & room</th><th>Status</th><th class="r">Your price</th></tr>
+              <tr><td><b>J. Mwangi</b><div class="strike" style="text-decoration:none">2 adults · 1 child</div></td><td>12–16 Dec</td><td>Maya Kobe · Prestige Suite</td><td><span class="pill s-sent">Sent</span></td><td class="r yr">KES 262,080</td></tr>
+              <tr><td><b>S. Fischer</b><div class="strike" style="text-decoration:none">2 adults</div></td><td>3–7 Jan</td><td>Zuri · Ocean Suite</td><td><span class="pill s-held">Held 24h</span></td><td class="r yr">KES 216,000</td></tr>
+              <tr><td><b>Patel family</b><div class="strike" style="text-decoration:none">6 adults · 3 children</div></td><td>20–27 Dec</td><td>My Amani · whole villa</td><td><span class="pill s-conf">Confirmed</span></td><td class="r yr">KES 945,000</td></tr>
+              <tr><td><b>L. Rossi</b><div class="strike" style="text-decoration:none">2 adults</div></td><td>8–10 Nov</td><td>Maya Kobe · Haze Suite</td><td><span class="pill s-off">Not available</span></td><td class="r" style="color:var(--muted)">—</td></tr></table>
+          </div>
+        </main>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════ DESIGN B ═════════════════════════ -->
+<section class="design" data-design="B">
+  <p class="desc"><strong>B · Workspace.</strong> A dark sidebar like the admin, built for agents who book often. Numbers at the top (requests, confirmed, your discount), filters on the left and results as a compact list where every bookable option is visible at once.</p>
+  <div class="frame">
+
+    <div class="screen" data-screen="login">
+      <div class="B login" style="min-height:720px">
+        <div class="lbox">
+          <div style="font-weight:700;font-size:18px;margin-bottom:22px">Tribal Sand <span style="font-size:10px;letter-spacing:.14em;color:var(--sand);border:1px solid var(--sand);border-radius:6px;padding:2px 6px;margin-left:6px">TRADE</span></div>
+          <h1 style="font-size:22px;margin:0 0 4px">Sign in</h1>
+          <p style="color:var(--mid);margin:0 0 20px">Travel trade portal for our partners.</p>
+          <label style="font-size:13px;font-weight:600">Email</label><input class="inp" value="alysaemilio@gmail.com">
+          <label style="font-size:13px;font-weight:600">Password</label><input class="inp" type="password" value="passwordpass">
+          <button class="go" style="width:100%;border:0;border-radius:10px;background:var(--teal-d);color:#fff;padding:13px;font-weight:700">Sign in</button>
+          <p style="font-size:12px;color:var(--muted);margin:18px 0 0;text-align:center">Trade rates are confidential and for booking purposes only.</p>
+        </div>
+      </div>
+    </div>
+
+    <div class="screen on" data-screen="avail">
+      <div class="B">
+        <aside>
+          <div class="brand">Tribal Sand <em>TRADE</em></div>
+          <a class="on" href="#"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>Availability</a>
+          <a href="#"><svg class="i" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Rates</a>
+          <a href="#"><svg class="i" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Your requests<span class="n">2</span></a>
+          <div class="acct"><b>AlysaTest Travel</b>alysaemilio@gmail.com<br><a href="#" style="padding:8px 0;color:var(--sand-lt)">Sign out</a></div>
+        </aside>
+        <div class="main">
+          <div class="hd"><div><h1>Availability</h1><p class="sub">Every property, live, at your trade rate.</p></div></div>
+          <div class="kpis"><div class="kpi dark"><span>Your discount</span><b>10% off</b></div><div class="kpi"><span>Requests this month</span><b>6</b></div><div class="kpi"><span>Waiting for reply</span><b>2</b></div><div class="kpi"><span>Confirmed</span><b>3</b></div></div>
+          <div class="split">
+            <div class="panel filters">
+              <div><label>Check-in → check-out</label><div class="fld">12 Dec → 16 Dec <span style="color:var(--muted)">4 nights</span></div></div>
+              <div><label>Adults</label><div class="step"><b>2</b><span><button>−</button> <button>+</button></span></div></div>
+              <div><label>Children</label><div class="step"><b>1</b><span><button>−</button> <button>+</button></span></div></div>
+              <div><label>Property</label><div class="fld">All properties <span>▾</span></div></div>
+              <div><label>Type</label><div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><span class="o" style="border:1px solid var(--teal);color:var(--teal);border-radius:7px;padding:4px 9px;font-size:12px">Hotels</span><span style="border:1px solid var(--teal);color:var(--teal);border-radius:7px;padding:4px 9px;font-size:12px">Villas</span></div></div>
+              <button class="go">Check availability</button>
+            </div>
+            <div class="panel list">
+              <div class="lh"><span><b style="color:var(--ink)">5 options</b> · 3 guests · 4 nights</span><span>Lowest price ▾</span></div>
+              <div class="row"><div class="ph p2"></div><div><div class="t">Maya Kobe · Prestige Suite</div><div class="l">Kilifi · sleeps 4</div><div class="opts"><span class="o">Breakfast</span><span class="o">Sea view</span></div></div><div class="pr"><span class="strike">KES 291,200</span><b>KES 262,080</b><button class="btn">Request</button></div></div>
+              <div class="row"><div class="ph"></div><div><div class="t">Zuri · Ocean Suite</div><div class="l">Watamu · sleeps 3</div><div class="opts"><span class="o">Beachfront</span></div></div><div class="pr"><span class="strike">KES 240,000</span><b>KES 216,000</b><button class="btn">Request</button></div></div>
+              <div class="row"><div class="ph p4"></div><div><div class="t">Maya Kobe · Haze + Glow Suites</div><div class="l">2 rooms together · sleeps 4</div></div><div class="pr"><span class="strike">KES 270,400</span><b>KES 243,360</b><button class="btn">Request</button></div></div>
+              <div class="row"><div class="ph p3"></div><div><div class="t">My Amani · whole villa</div><div class="l">Vipingo · sleeps 10</div></div><div class="pr"><span class="strike">KES 600,000</span><b>KES 540,000</b><button class="btn">Request</button></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="screen" data-screen="rates">
+      <div class="B">
+        <aside>
+          <div class="brand">Tribal Sand <em>TRADE</em></div>
+          <a href="#"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>Availability</a>
+          <a class="on" href="#"><svg class="i" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Rates</a>
+          <a href="#"><svg class="i" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Your requests<span class="n">2</span></a>
+          <div class="acct"><b>AlysaTest Travel</b>alysaemilio@gmail.com</div>
+        </aside>
+        <div class="main">
+          <div class="hd"><div><h1>Rates</h1><p class="sub">Nightly rates from · your discount applied.</p></div></div>
+          <div class="tabs"><span class="on">All</span><span>My Amani</span><span>Maya Kobe</span><span>Zuri</span><span>Enkare Bofa</span></div>
+          <div class="panel"><table>
+            <tr><th>Property</th><th>Room</th><th>Sleeps</th><th class="r">Published</th><th class="r">Your rate</th><th class="r">Discount</th></tr>
+            <tr><td><b>My Amani</b></td><td>Whole villa</td><td>10</td><td class="r strike">KES 150,000</td><td class="r"><b style="color:var(--teal-d)">KES 135,000</b></td><td class="r">10%</td></tr>
+            <tr><td><b>Maya Kobe</b></td><td>Prestige Suite</td><td>4</td><td class="r strike">KES 72,800</td><td class="r"><b style="color:var(--teal-d)">KES 65,520</b></td><td class="r">10%</td></tr>
+            <tr><td></td><td>Haze Suite</td><td>2</td><td class="r strike">KES 33,800</td><td class="r"><b style="color:var(--teal-d)">KES 30,420</b></td><td class="r">10%</td></tr>
+            <tr><td></td><td>Glow Suite</td><td>2</td><td class="r strike">KES 33,800</td><td class="r"><b style="color:var(--teal-d)">KES 30,420</b></td><td class="r">10%</td></tr>
+            <tr><td></td><td>Entire Retreat Buyout</td><td>12</td><td class="r strike">KES 208,000</td><td class="r"><b style="color:var(--teal-d)">KES 187,200</b></td><td class="r">10%</td></tr>
+          </table></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="screen" data-screen="req">
+      <div class="B">
+        <aside>
+          <div class="brand">Tribal Sand <em>TRADE</em></div>
+          <a href="#"><svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>Availability</a>
+          <a href="#"><svg class="i" viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Rates</a>
+          <a class="on" href="#"><svg class="i" viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Your requests<span class="n">2</span></a>
+          <div class="acct"><b>AlysaTest Travel</b>alysaemilio@gmail.com</div>
+        </aside>
+        <div class="main">
+          <div class="hd"><div><h1>Your requests</h1><p class="sub">Confirmations go to alysaemilio@gmail.com.</p></div></div>
+          <div class="tabs"><span class="on">All 6</span><span>Waiting 2</span><span>Confirmed 3</span><span>Closed 1</span></div>
+          <div class="panel"><table>
+            <tr><th>Ref</th><th>Guest</th><th>Stay</th><th>Room</th><th>Status</th><th class="r">Your price</th></tr>
+            <tr><td style="color:var(--muted)">TSR-1042</td><td><b>J. Mwangi</b></td><td>12–16 Dec · 4n</td><td>Maya Kobe · Prestige</td><td><span class="pill s-sent">Sent</span></td><td class="r"><b>KES 262,080</b></td></tr>
+            <tr><td style="color:var(--muted)">TSR-1039</td><td><b>S. Fischer</b></td><td>3–7 Jan · 4n</td><td>Zuri · Ocean Suite</td><td><span class="pill s-held">Held 24h</span></td><td class="r"><b>KES 216,000</b></td></tr>
+            <tr><td style="color:var(--muted)">TSR-1031</td><td><b>Patel family</b></td><td>20–27 Dec · 7n</td><td>My Amani · villa</td><td><span class="pill s-conf">Confirmed</span></td><td class="r"><b>KES 945,000</b></td></tr>
+            <tr><td style="color:var(--muted)">TSR-1022</td><td><b>L. Rossi</b></td><td>8–10 Nov · 2n</td><td>Maya Kobe · Haze</td><td><span class="pill s-off">Not available</span></td><td class="r" style="color:var(--muted)">—</td></tr>
+          </table></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═════════════════════════ DESIGN C ═════════════════════════ -->
+<section class="design" data-design="C">
+  <p class="desc"><strong>C · Editorial.</strong> Matches the public website: deep teal, sand accents and serif headings. A photo hero with the search bar overlapping it, then results grouped by property, each with its bookable rooms listed underneath. It feels premium and on-brand when agents share their screen with clients.</p>
+  <div class="frame">
+
+    <div class="screen" data-screen="login">
+      <div class="C login">
+        <div class="art"><div class="eyebrow">Travel trade portal</div><h1>Kenya as it was <em>meant</em> to be experienced.</h1><p style="color:rgba(255,255,255,.8);margin:0">Live availability and your agreed rates across Watamu, Kilifi and Vipingo.</p></div>
+        <div class="form"><div class="lbox">
+          <div style="font-family:'Cormorant Garamond',serif;font-size:30px;color:var(--teal-d)">Partner sign in</div>
+          <p style="color:var(--mid);margin:4px 0 28px">Welcome back.</p>
+          <div class="lab">Email</div><input class="inp" value="alysaemilio@gmail.com">
+          <div class="lab">Password</div><input class="inp" type="password" value="passwordpass">
+          <button class="btn wide">Sign in</button>
+          <p style="font-size:12px;color:var(--muted);margin-top:20px">Trade rates are confidential and for booking purposes only.</p>
+        </div></div>
+      </div>
+    </div>
+
+    <div class="screen on" data-screen="avail">
+      <div class="C">
+        <div class="top"><div class="brand">Tribal Sand<i>TRADE</i></div><nav><a class="on" href="#">Availability</a><a href="#">Rates</a><a href="#">Your requests</a></nav><div class="who">AlysaTest Travel · Sign out</div></div>
+        <div class="hero"><div class="eyebrow">Live availability · your trade rate</div><h1>Where will your guests <em>stay?</em></h1><p>Request an option and our reservations team confirms it by email.</p></div>
+        <div class="sbar">
+          <div class="f"><label>Dates</label><div class="v">12 – 16 December</div></div>
+          <div class="f"><label>Adults</label><div class="v">2</div></div>
+          <div class="f"><label>Children</label><div class="v">1</div></div>
+          <div class="f"><label>Property</label><div class="v">All properties</div></div>
+          <button>Search</button>
+        </div>
+        <main>
+          <h2>3 properties have space</h2>
+          <p class="sub">4 nights · 3 guests · prices are your rate for the whole stay</p>
+          <div class="prop"><div class="ph p2"><span>Maya Kobe</span></div><div class="b">
+            <div class="l">Kilifi · Boutique hotel</div><div class="t">Maya Kobe</div>
+            <div class="opt"><div class="n">Prestige Suite<small>Sleeps 4 · fits your party</small></div><div class="p"><span class="strike">KES 291,200</span><b>KES 262,080</b></div><button class="btn">Request</button></div>
+            <div class="opt"><div class="n">Haze + Glow Suites<small>2 rooms together · sleeps 4</small></div><div class="p"><span class="strike">KES 270,400</span><b>KES 243,360</b></div><button class="btn o">Request</button></div>
+          </div></div>
+          <div class="prop"><div class="ph"><span>Zuri</span></div><div class="b">
+            <div class="l">Watamu · Boutique hotel</div><div class="t">Zuri</div>
+            <div class="opt"><div class="n">Ocean Suite<small>Sleeps 3 · fits your party</small></div><div class="p"><span class="strike">KES 240,000</span><b>KES 216,000</b></div><button class="btn">Request</button></div>
+          </div></div>
+        </main>
+      </div>
+    </div>
+
+    <div class="screen" data-screen="rates">
+      <div class="C">
+        <div class="top"><div class="brand">Tribal Sand<i>TRADE</i></div><nav><a href="#">Availability</a><a class="on" href="#">Rates</a><a href="#">Your requests</a></nav><div class="who">AlysaTest Travel · Sign out</div></div>
+        <main>
+          <div class="rh"><div><h2>Your rates</h2><p class="sub" style="margin:0">Nightly rates from, your agreed discount applied.</p></div></div>
+          <div class="rh"><h2 style="font-size:24px">My Amani <span style="font-family:Inter;font-size:12px;color:var(--muted)">· Vipingo</span></h2><span class="disc">10% off published</span></div>
+          <table><tr><th>Room</th><th>Sleeps</th><th class="r">Published / night</th><th class="r">Your rate / night</th></tr>
+            <tr><td>Whole villa</td><td>10</td><td class="r strike">KES 150,000</td><td class="r"><b style="color:var(--teal-d)">KES 135,000</b></td></tr></table>
+          <div class="rh"><h2 style="font-size:24px">Maya Kobe <span style="font-family:Inter;font-size:12px;color:var(--muted)">· Kilifi</span></h2><span class="disc">10% off published</span></div>
+          <table><tr><th>Room</th><th>Sleeps</th><th class="r">Published / night</th><th class="r">Your rate / night</th></tr>
+            <tr><td>Prestige Suite</td><td>4</td><td class="r strike">KES 72,800</td><td class="r"><b style="color:var(--teal-d)">KES 65,520</b></td></tr>
+            <tr><td>Haze · Glow · Tide · Drift Suites</td><td>2</td><td class="r strike">KES 33,800</td><td class="r"><b style="color:var(--teal-d)">KES 30,420</b></td></tr>
+            <tr><td>Entire Retreat Buyout</td><td>12</td><td class="r strike">KES 208,000</td><td class="r"><b style="color:var(--teal-d)">KES 187,200</b></td></tr></table>
+        </main>
+      </div>
+    </div>
+
+    <div class="screen" data-screen="req">
+      <div class="C">
+        <div class="top"><div class="brand">Tribal Sand<i>TRADE</i></div><nav><a href="#">Availability</a><a href="#">Rates</a><a class="on" href="#">Your requests</a></nav><div class="who">AlysaTest Travel · Sign out</div></div>
+        <main>
+          <h2>Your requests</h2>
+          <p class="sub">Reservations confirm each one by email to alysaemilio@gmail.com.</p>
+          <table><tr><th>Guest</th><th>Stay</th><th>Property</th><th>Status</th><th class="r">Your price</th></tr>
+            <tr><td><b>J. Mwangi</b><br><small style="color:var(--muted)">2 adults · 1 child</small></td><td>12–16 Dec</td><td>Maya Kobe · Prestige Suite</td><td><span class="pill s-sent">Sent</span></td><td class="r"><b style="color:var(--teal-d)">KES 262,080</b></td></tr>
+            <tr><td><b>S. Fischer</b><br><small style="color:var(--muted)">2 adults</small></td><td>3–7 Jan</td><td>Zuri · Ocean Suite</td><td><span class="pill s-held">Held 24h</span></td><td class="r"><b style="color:var(--teal-d)">KES 216,000</b></td></tr>
+            <tr><td><b>Patel family</b><br><small style="color:var(--muted)">6 adults · 3 children</small></td><td>20–27 Dec</td><td>My Amani · whole villa</td><td><span class="pill s-conf">Confirmed</span></td><td class="r"><b style="color:var(--teal-d)">KES 945,000</b></td></tr>
+          </table>
+        </main>
+      </div>
+    </div>
+  </div>
+</section>
+
+</div>
+
+<script>
+(function () {
+  var d = 'A', s = 'avail';
+  function show() {
+    document.querySelectorAll('.design').forEach(function (el) { el.classList.toggle('on', el.dataset.design === d); });
+    document.querySelectorAll('.design.on .screen').forEach(function (el) { el.classList.toggle('on', el.dataset.screen === s); });
+    document.querySelectorAll('[data-d]').forEach(function (b) { b.classList.toggle('on', b.dataset.d === d); });
+    document.querySelectorAll('[data-s]').forEach(function (b) { b.classList.toggle('on', b.dataset.s === s); });
+  }
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('[data-d],[data-s]');
+    if (!b) return;
+    if (b.dataset.d) d = b.dataset.d; else s = b.dataset.s;
+    show();
+  });
+  show();
+})();
+</script>
+</body>
+</html>
