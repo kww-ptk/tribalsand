@@ -11,6 +11,7 @@
  *   $page_type    — OG type, default "website"
  *   $page_schema  — JSON-LD markup string(s) to inject, optional
  *   $page_preload — <link rel="preload"> href for hero image, optional
+ *   $page_robots  — robots meta (e.g. "noindex,follow" for search results), optional
  *   $page_booking — set truthy to load the booking widget CSS/JS, optional
  *   $page_rooms_rates — set truthy to load the Rooms & Rates cards + booking modal assets, optional
  */
@@ -47,6 +48,7 @@ $__ts_currency = current_currency();     // resolve early so a ?cur= choice can 
 <!-- ── PRIMARY SEO ── -->
 <title><?= htmlspecialchars($page_title) ?></title>
 <meta name="description" content="<?= htmlspecialchars($page_desc) ?>">
+<?php if (!empty($page_robots)): ?><meta name="robots" content="<?= htmlspecialchars((string)$page_robots) ?>"><?php endif; ?>
 <?php if (!empty($noindex)): ?><meta name="robots" content="noindex,nofollow">
 <?php endif; ?><link rel="canonical" href="<?= htmlspecialchars($page_url) ?>">
 

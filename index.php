@@ -452,6 +452,8 @@ include 'includes/head.php';
 
 </section>
 
+<?php /* "Find anything" — site search bar (includes/site-search.php) */ include 'includes/site-search-bar.php'; ?>
+
 <?php include 'includes/promo-offers.php'; ?>
 
 <!-- ═══ INTRO STRIP ═══ -->

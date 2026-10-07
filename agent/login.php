@@ -39,7 +39,7 @@ include __DIR__ . '/_layout.php';
   <p class="tp-sub">Sign in to check live availability, see your agreed rates and request bookings across all Tribal Sand properties.</p>
 
   <div class="card"><div class="card__body card__body--pad">
-    <?php if ($error): ?><div class="alert alert--error"><?= e($error) ?></div><?php endif; ?>
+    <?php if ($error): ?><div class="alert alert--error is-flash" role="alert"><?= e($error) ?></div><?php endif; ?>
 
     <form method="POST" action="/agent/login.php" novalidate>
       <div class="field">
@@ -48,7 +48,7 @@ include __DIR__ . '/_layout.php';
       </div>
       <div class="field">
         <label for="password">Password</label>
-        <input type="password" id="password" name="password" class="inp" required style="width:100%">
+        <input type="password" id="password" name="password" class="inp" required autocomplete="current-password" placeholder="Enter your password" style="width:100%">
       </div>
       <button type="submit" class="btn-primary" style="width:100%">Sign in</button>
     </form>

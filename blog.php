@@ -183,6 +183,13 @@ require_once 'includes/head.php';
   </div>
 </section>
 
+<?php
+  $ssb_title = 'Search the journal and the site';
+  $ssb_sub   = 'Guides, stories, properties and experiences.';
+  $ssb_chips = ['Best time to visit', 'Weddings', 'Kilifi', 'Watamu', 'Honeymoon', 'Group trip'];
+  include 'includes/site-search-bar.php';
+?>
+
 <?php if ($featured): ?>
 <!-- FEATURED POST -->
 <div style="background:var(--off);padding:5rem 0 3rem;">

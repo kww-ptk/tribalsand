@@ -1,0 +1,107 @@
+# Jira tickets — work since the POS and Inventory build (26 Sep – 7 Oct 2026)
+
+One ticket per feature area, each with its context. Import `2026-10-07-tickets-since-pos.csv` into Jira (Summary, Description, Issue Type), or copy the text below.
+
+---
+
+## 1. Point of Sale (POS) — tills for the shop, salon & spa and kite school
+
+**Context:** The outlets (shop, salon & spa, kite school) were selling on paper with no link to the guest's bill or to stock. We needed one till that works on a tablet, lets in-house guests charge to their room, and gives managers clean daily takings.
+
+**Description:** Built the till at `/pos/` (tablet-first, also phone and desktop) and the admin under Point of Sale. Staff unlock a registered tablet with their own PIN; managers register tablets and set PINs. Every sale is re-priced on the server and can only be corrected by a void with a reason. Room charges land as one line on the guest's bill with the guest's signature, for guests of any Tribal Sand property. Added VAT (inclusive or added), service charge and tips per outlet, per-delivery consignment terms with supplier statements and payouts, sales history, daily Z-report and CSV. Follow-ups: every outlet sells in KES (one-click switch converts existing prices), linked activities convert from the website currency, receipts can be emailed from the till, and an offline mode saves a sale on the tablet when the connection drops and sends it once it's back (never twice). POS takings also appear on the financial reports page.
+
+## 2. Inventory core — one stock database for POS, properties, staff and central stores
+
+**Context:** Stock was only tracked per POS listing, so nothing covered the properties' equipment, linen, furniture or what staff hold. The owner wanted one inventory under everything, with value and accountability.
+
+**Description:** Designed and built a shared inventory: items, places (Main stock, stores, properties and their areas, POS outlets, people), balances and an append-only movement history. One write path handles every stock change (receive, transfer, assign, return, sell, report lost/broken/stolen, replace) with no negative stock and a value snapshot on each move. Serial-numbered items move one unit at a time. Par levels and "restock to par" from a chosen store. POS stock now lives in this inventory, so a sale, void, delivery or count moves the same balances. Stores can belong to a property and be shared with others; unpublished properties get locations too.
+
+## 3. Inventory admin pages and stock counts
+
+**Context:** With the database in place, managers and staff needed screens to see where everything is, act on it, and check it regularly.
+
+**Description:** Added the Inventory section: a spreadsheet-style list (place menu, search, category filter, sorting, multi-select with bulk move / set category / delete), an item page (details, where it is, units, history and every action), places (areas, count schedule, responsible person) and a place's stock (par levels, restock). Built a phone-first stock count screen that never moves stock by itself: differences go to a review queue where the owner or that property's manager resolves each line (missing, broken, stolen, found or recount). Counts due show on My Work, the Front Desk and the Dashboard. Employee profiles gained an Assets tab (what they hold, hand over, return or report lost). Added the Storekeeper job, and owner-only corrections (undo a movement, clear to zero, delete an item or place, reset inventory).
+
+## 4. Import supplier lists from Excel → orders → receiving
+
+**Context:** The Maya Ilai fit-out arrived as supplier spreadsheets (master list plus container packing lists). Typing hundreds of items by hand was not realistic, and stock should only count once it is physically received.
+
+**Description:** Import an Excel list into the catalogue: one item per supplier code, sections kept, item-code prefixes mapped to places (remembered per account) with list quantities becoming par levels. The import creates an order instead of stock. The order page receives quantities into places in several deliveries, or a whole container at once, with partial-receipt history and undo. All spreadsheet data is kept: HS codes per line and every packing-list row (boxes, dimensions, weight, cubes), with a packing-list page per container and badges where the packing list differs from the order. Includes a seed for the Maya Ilai shipment.
+
+## 5. Accounting — companies, room folio, tax invoices and inter-company
+
+**Context:** Properties belong to different legal companies and the shared outlets to a services company. Invoicing, KRA PINs and who-owes-whom had to be handled properly before eTIMS/QuickBooks.
+
+**Description:** Phase 1: companies with KRA PIN checks, VAT/eTIMS flags, money accounts (bank, M-Pesa till/paybill, cash, card) and gapless document numbering, plus what each company owns (properties, outlets, stores). Phase 2a: the booking's Bill tab gained a folio — balance per currency, record payments, issue the tax invoice, credit notes, refunds and pro-forma; invoiced lines are locked; an accountant CSV. Phase 2b: POS sales issue their own invoice inside the sale, inter-company ledger and settlements (room charges and stock transfers between companies), partial credit notes, applying a security deposit to damages, and optional invoice-at-confirmation. Everything stays off until the owner switches invoicing on per company.
+
+## 6. Bookings — room combinations, no automatic holds, extras while booking
+
+**Context:** Groups needed several rooms booked together, the owner decided the website should never place a hold on its own, and guests should be offered wellness and airport transfers while they book.
+
+**Description:** A room combination is now one request: all rooms are held together or none, with one confirmation and one email, and confirming or cancelling any room applies to the group. Public forms no longer place 24h holds by default (owner switch in Settings): availability is still checked, the request is saved as an enquiry and reservations use Convert to Hold, which now emails the guest their booking link. Wellness treatments and airport transfers are offered in the booking pop-up and in the booking-confirmed email.
+
+## 7. Email Notifications Center
+
+**Context:** Emails were sent from many places with no record, which caused wrong "Booking confirmed" emails and no way to check what a guest received.
+
+**Description:** Every email now goes through one send path that writes a log row per recipient (including emails switched off or skipped). Owner catalogue of every email (trigger, recipients, on/off, staff recipient override, 30-day stats), preview and test send, an editor for the wording with placeholders and version history, delete/restore, and an email log for owners and managers. Booking confirmed/cancelled emails are a staff choice every time ("Email the guest" tick with a safe default, e.g. off for OTA addresses). Added a reusable type-to-confirm dialog for serious actions and SES delivery/bounce tracking.
+
+## 8. Rates — compare every property, quote builder, global rate editor
+
+**Context:** Reception had to open each property's calendar to compare prices and built quotes by hand; the owner had no quick way to change rates across rooms.
+
+**Description:** The Rates page now has a Rate card and a Timeline across every property with a KES | USD switch. Bookings → Quote builder (also a pop-up on each enquiry) prices rooms and extras through the same pricing as the website, suggests options from the dates and party, saves options on the enquiry, prints a branded A4 quotation and uses owner-editable terms. The owner's Set-rates editor changes rates for many rooms at once (fixed price, % change, same as season, back to base) with preview, confirm, change log and undo, and a buyout check keeps each whole-property buyout equal to the sum of its rooms. Loaded the DIRECT nightly rates for Zuri, Maya Kobe and the villas (Jan 2027 – Jan 2029).
+
+## 9. Admin redesign — navigation, Dashboard, tables and page search
+
+**Context:** The sidebar had 63 links, pages reloaded on every click and there was no common landing page, so staff got lost and reported missing access.
+
+**Description:** Sidebar regrouped from 63 to 35 links with tabs for related pages, all from one navigation definition. Every account lands on a role-shaped Dashboard (bento design) showing who they are, what needs them and their shortcuts. Pages use the full width; tables get pagination, full height and clean row lines. Admin links swap the content without reloading. Ctrl+K page search, enquiry page in tabs, new booking inline, a Messages "Desk" (list · chat · guest's stay), a redesigned AI assistant panel, and a Help & guides panel with "Show me" walkthroughs.
+
+## 10. Roles and access — Access by role, HR account, activity log
+
+**Context:** Some pages were open to any logged-in account by URL, and the owner wanted to decide who sees what without a developer.
+
+**Description:** Owner-editable "Access by role" matrix in Team → Staff (sections on/off per role, enforced on the pages, not just hidden). Tightened role gates (rates for owner/manager/reception only; back-of-house jobs never see guest messages). New HR account type: staff directory, employee profiles and private documents, attendance and leave across every property, with no access to bookings, money or the guest side. Employee profiles show an activity log of what the person did (sign-ins, till unlocks, sales, clock in/out, admin actions).
+
+## 11. Channels and sync — two-way iCal, eZee import, Zuri relay
+
+**Context:** OTA cancellations stayed blocked on our calendar and could bounce between channels; Zuri's system requires calls from a fixed IP.
+
+**Description:** Two-way iCal sync: imported OTA blocks are tracked by UID so cancellations and date changes clear automatically, our own dates re-exported by an OTA are recognised as echoes, and a failed fetch never deletes anything. The bookings importer reads eZee's CRS report as downloaded. Calls to Zuri go through a fixed-IP relay, and the sync dashboard shows Zuri's row count and checksum next to a mismatch.
+
+## 12. Website — search fixes, other properties with space, reviews, menus
+
+**Context:** Guests hit dead ends when a property was full, and several website sections were still hard-coded.
+
+**Description:** Fixed search so one booked room no longer hides a property's other rooms. A full property page now lists the other properties with space for the same dates (same town first, then cheapest). Guest reviews come from the database and are owner-editable. Restaurant menus use the new Cards design (dish photos, currently hidden on the public menu). The guest concierge is linked from About. Maya Ilai's unit map uses the staff's room names.
+
+## 13. Guest portal — Postcard design, guest extras, one conversation
+
+**Context:** The guest page felt like an admin screen, and owners wanted to choose which extras each property offers.
+
+**Description:** Per-property guest extras chosen by the owner (show, feature, when to offer) built on the existing activities and transfers, with a reminder email before arrival. Guest page redesigned ("Postcard"): property photo and booking card, Extras tab, one conversation for all messages, a room key card, stay info as a bento grid with the property's real map, a day-by-day My trip, a Settings tab with cancel, and instant tab switches.
+
+## 14. Developer setup, security and tests
+
+**Context:** Two developers work in different ways and needed one shared way to run the site and one branch to meet on before production.
+
+**Description:** One-command local environment (Docker) with a README, the `dev` branch workflow (work on dev, go live by merging dev into master), docs gathered in one place, internal folders and build files no longer reachable from the web, and all test suites passing.
+
+## 15. Password fields — hidden while typing, show/hide eye, proper validation
+
+**Context:** Password fields were inconsistent: no way to check what was typed, browser-default error bubbles, and the change-password form allowed 8 characters while every other form required 10.
+
+**Description:** One shared password component applied to every password and PIN field (admin login, reset password, change password in Settings, staff accounts, till PINs, travel-agent login). Characters stay hidden while typing; an eye button shows or hides them. Errors appear under the field and in the reusable toast (empty, too short, "passwords don't match", PIN must be 4–6 digits), checked before the form posts and again on the server. Live checklist on new passwords, Caps Lock warning, correct autocomplete hints for password managers, and the minimum is now 10 characters everywhere (change password also refuses reusing the current one).
+
+## 16. Website search — find anything from every page
+
+**Context:** Guests had to navigate menus to find a room, restaurant, activity or guide. The ask was a search bar on the home page and in the sections, and a way to search from every page.
+
+**Description:** Added a "find anything" search across the website: properties, rooms, activities, restaurants and menus, events, area guides, policies and journal articles, read live so new content is searchable once published. A search button in the header on every page (also `/` or Ctrl+K) opens a search window with live, grouped results and keyboard navigation; a "What are you looking for?" bar under the home page hero and on the Activities and Journal pages; and a full results page that also works without JavaScript. Separate from the availability search for dates.
+
+## 17. Check: Laundry staff role in admin
+
+**Context:** Asked whether the admin has a staff role for Laundry.
+
+**Description:** Confirmed: "Laundry" exists as a staff job type (Team → Staff → Login accounts → job). Laundry staff land on My Work with their tasks, are treated as back-of-house (no guest messaging), and guest laundry requests and Laundry service pricing already exist. No change needed.

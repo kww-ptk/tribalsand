@@ -113,6 +113,7 @@ if ($__shellFrag) { ob_start(); echo $__navTabs; return; }
   <script defer src="/admin/assets/admin-nav.js?v=<?= @filemtime(__DIR__ . '/assets/admin-nav.js') ?: '1' ?>"></script>
   <script defer src="/admin/assets/admin-search.js?v=<?= @filemtime(__DIR__ . '/assets/admin-search.js') ?: '1' ?>"></script>
   <script defer src="/admin/assets/admin-help.js?v=<?= @filemtime(__DIR__ . '/assets/admin-help.js') ?: '1' ?>"></script>
+  <script defer src="/admin/assets/admin-password.js?v=<?= @filemtime(__DIR__ . '/assets/admin-password.js') ?: '1' ?>"></script>
   <script defer src="/admin/assets/admin-fit.js?v=<?= @filemtime(__DIR__ . '/assets/admin-fit.js') ?: '1' ?>"></script>
 </head>
 <body class="admin-body">

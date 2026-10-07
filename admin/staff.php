@@ -454,7 +454,7 @@ ob_start(); ?>
               <input type="hidden" name="action" value="setpw">
               <input type="hidden" name="staff_id" value="<?= $sid ?>">
               <span class="text-muted">Set password:</span>
-              <input type="password" name="password" minlength="10" required autocomplete="new-password" placeholder="min. 10 chars" class="inp inp--sm">
+              <input type="password" name="password" minlength="10" required autocomplete="new-password" data-pw-label="Password" placeholder="min. 10 chars" class="inp inp--sm" aria-label="New password">
               <button class="btn-outline btn-sm">Update</button>
             </form>
             <?php endif; ?>
@@ -784,7 +784,7 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
         </div>
         <div class="field" style="max-width:360px">
           <label for="stPass">Password <small class="text-muted">(min. 10 chars)</small></label>
-          <input id="stPass" type="password" name="password" class="inp" minlength="10" autocomplete="new-password" placeholder="Enter a password (min. 10 characters)" style="width:100%">
+          <input id="stPass" type="password" name="password" class="inp" minlength="10" autocomplete="new-password" data-pw-label="Password" placeholder="Enter a password (min. 10 characters)" style="width:100%">
           <span class="field-hint">Managers assign work, create tasks and run the gate — for their properties only. Reception additionally gets holds, the calendar, submissions and conflicts. Neither can touch pricing, site content, settings or accounts.</span>
         </div>
       </div>
