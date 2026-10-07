@@ -10,6 +10,26 @@ if (!empty($_SESSION['admin_id'])) {
     exit;
 }
 
+/**
+ * Travel agents have their own login (/agent/login.php, `travel_agents`), never an
+ * admin account. When agent credentials are typed on this page, sign them into the
+ * trade portal (agent_login(): agent session only, never admin_id) rather than
+ * refusing them. Loaded lazily so the admin login never depends on the portal code.
+ */
+function admin_login_as_agent(string $email, string $password): bool {
+    try {
+        require_once __DIR__ . '/../includes/agent.php';
+        if (!agents_supported()) return false;
+        // Only for an email that IS an agent — otherwise a wrong admin password
+        // would be logged twice and hit the rate limit at half the attempts.
+        $isAgent = db_query('SELECT 1 FROM travel_agents WHERE LOWER(TRIM(email)) = :e LIMIT 1',
+            [':e' => strtolower(trim($email))])->fetchColumn();
+        return $isAgent && agent_login($email, $password, client_ip());
+    } catch (Throwable $e) {
+        return false;
+    }
+}
+
 $error = '';
 // Which panel opens first: the last-attempted form, else a ?tab= hint, else Admin.
 if (($_POST['do'] ?? '') === 'staff' || ($_GET['tab'] ?? '') === 'staff') {
@@ -36,6 +56,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = 'Too many failed attempts. Please wait 10 minutes and try again.';
         } elseif (login($email, $password)) {
             header('Location: ' . admin_home_url());
+            exit;
+        } elseif (admin_login_as_agent($email, $password)) {
+            // A travel agent who typed their details here: their account lives in the
+            // separate trade portal, so sign them in there instead of "invalid password".
+            header('Location: /agent/availability.php');
             exit;
         } else {
             $error = 'Invalid email or password.';
