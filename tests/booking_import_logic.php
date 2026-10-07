@@ -114,6 +114,11 @@ check('crs: agent',                $cr[0]['agent'] === 'Alpine Ltd');
 check('crs: multi-line remark kept in one row', $cr[1]['guest'] === 'Thomas C' && $cr[1]['res_type'] === 'Confirm Booking');
 check('crs: dash agent is empty',  $cr[2]['agent'] === '');
 check('crs: reservation type read', $cr[2]['res_type'] === 'Released');
+check('crs: Source column read', ($cr[1]['source_raw'] ?? '') === 'Booking.com' && !empty($cr[1]['has_source_column']));
+check('crs: Commission column read', ($cr[0]['commission_raw'] ?? null) === '0');
+check('crs: Booking.com row files as OTA', bookings_classify_source($cr[1]['source_raw'], $cr[1]['agent'], true)['source'] === 'ota');
+check('crs: named agent files as agent', bookings_classify_source($cr[0]['source_raw'], $cr[0]['agent'], true)['source'] === 'agent');
+check('crs: walk-in files as direct', bookings_classify_source($cr[2]['source_raw'], $cr[2]['agent'], true)['source'] === 'direct');
 check('crs: released row resolves as skipped',
       import_resolve_row($cr[2], $zuriV)['status'] === 'skipped');
 
