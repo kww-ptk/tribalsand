@@ -98,7 +98,7 @@ One ticket per feature area, each with its context. Import `2026-10-07-tickets-s
 
 **Context:** Guests had to navigate menus to find a room, restaurant, activity or guide. The ask was a search bar on the home page and in the sections, and a way to search from every page.
 
-**Description:** Added a "find anything" search across the website: properties, rooms, activities, restaurants and menus, events, area guides, policies and journal articles, read live so new content is searchable once published. A search button in the header on every page (also `/` or Ctrl+K) opens a search window with live, grouped results and keyboard navigation; a "What are you looking for?" bar under the home page hero and on the Activities and Journal pages; and a full results page that also works without JavaScript. Separate from the availability search for dates.
+**Description:** Added a "find anything" search across the website: properties, rooms, activities, restaurants and menus, events, area guides, policies and journal articles, read live so new content is searchable once published. A "What are you looking for?" bar under the home page hero and on the Activities and Journal pages shows live, grouped results as you type (keyboard navigation included); `/` or Ctrl+K opens the same search from any page; and a full results page also works without JavaScript. (A header search button was tried and removed — the nav has no room for it.) Separate from the availability search for dates.
 
 ## 17. Check: Laundry staff role in admin
 

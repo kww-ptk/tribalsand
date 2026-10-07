@@ -75,7 +75,6 @@ $first   = ($admin['name'] ?? '') !== '' ? strtok((string)$admin['name'], ' ') :
 
 <div class="hl-head">
   <h1>How can we help<?= $first !== '' ? ', ' . e($first) : '' ?>?</h1>
-  <p>Pick a guide to read its steps. <strong>Open the page and show me</strong> walks you through the real page. On any page, <strong>Help</strong> at the top right shows the guides for that page.</p>
 </div>
 <?php if ($slug !== '' && !$open): ?><div class="alert alert--info" style="margin-bottom:14px">That guide isn’t available for your account.</div><?php endif; ?>
 

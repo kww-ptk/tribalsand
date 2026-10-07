@@ -90,8 +90,6 @@ function admin_nav_definition(array $f, array $badge = []): array {
     return [
         ['key' => 'home', 'title' => '', 'items' => [
             $item('Dashboard', 'dashboard', [$tab('Dashboard', 'dashboard.php', true)]),   // everyone's landing page
-            // Everyone — the library lists only guides for pages this account can open.
-            $item('Help & guides', 'help', [$tab('Help & guides', 'help.php', true)]),
         ]],
 
         ['key' => 'today', 'icon' => 'timetable', 'title' => 'Today', 'items' => [
@@ -234,6 +232,8 @@ function admin_nav_definition(array $f, array $badge = []): array {
             $item('Travel agents', 'agents', [$tab('Travel agents', 'agents.php', $on('owner'))]),
             $item('Zuri sync', 'sync', [$tab('Zuri sync', 'sync.php', $on('owner'))]),
             $item('Audit log', 'audit', [$tab('Audit log', 'audit.php', $on('owner'))]),
+            // Everyone, last in the sidebar — the library lists only guides for pages this account can open.
+            $item('Help & guides', 'help', [$tab('Help & guides', 'help.php', true)]),
         ]],
     ];
 }
