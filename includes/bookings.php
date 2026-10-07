@@ -195,44 +195,129 @@ function bookings_mark_hold_cancelled(int $holdId): void {
     db_query("UPDATE bookings SET status='cancelled' WHERE hold_id = :h", [':h' => $holdId]);
 }
 
+/** True once add_bookings_channel_commission.sql has run (catalog lookup, memoised). */
+function bookings_channel_supported(): bool {
+    static $c = null;
+    if ($c !== null) return $c;
+    if (!bookings_supported()) return $c = false;
+    try {
+        return $c = (bool) db_query(
+            "SELECT 1 FROM information_schema.columns
+              WHERE table_schema = current_schema() AND table_name = 'bookings' AND column_name = 'commission_amount'"
+        )->fetchColumn();
+    } catch (Throwable $e) { return $c = false; }
+}
+
+/** Online travel agencies, as eZee names them in Source / Travelagent (lower-case, no spaces). */
+const BOOKINGS_OTA_NAMES = ['booking.com', 'bookingcom', 'expedia', 'airbnb', 'agoda', 'hotels.com', 'trip.com',
+    'tripadvisor', 'vrbo', 'hostelworld', 'makemytrip', 'goibibo', 'priceline', 'traveloka', 'ctrip', 'despegar'];
+
+/**
+ * Which ledger source an imported booking is, from eZee's Source and Travelagent
+ * cells. Pure. Returns ['source' => website|ota|agent|direct, 'channel' => name].
+ *
+ *   · An OTA name in either cell                      → ota    (channel = that OTA)
+ *   · A travel agent named (not an OTA, not "-")      → agent  (channel = the agent)
+ *   · A Source cell that names neither (walk-in, email, phone, the hotel's own
+ *     website, "-")                                   → direct
+ *   · NOTHING known (the sheet had no Source column and no agent) → ota, channel ''
+ *     — what every import was before this rule; a sheet that can't say must not
+ *     be guessed as direct.
+ *
+ * $hasSourceColumn says whether the sheet carried a Source column at all, so an
+ * empty cell there (= the hotel took it directly) is told apart from no column.
+ */
+function bookings_classify_source(string $source, string $agent, bool $hasSourceColumn = true): array {
+    $clean = static function (string $v): string {
+        $v = trim($v);
+        return ($v === '-' || $v === '—') ? '' : $v;
+    };
+    $source = $clean($source);
+    $agent  = $clean($agent);
+    $isOta = static function (string $v): bool {
+        $k = str_replace(' ', '', mb_strtolower($v));
+        if ($k === '') return false;
+        foreach (BOOKINGS_OTA_NAMES as $o) { if (str_contains($k, $o)) return true; }
+        return false;
+    };
+    if ($isOta($agent))  return ['source' => 'ota', 'channel' => $agent];
+    if ($isOta($source)) return ['source' => 'ota', 'channel' => $source];
+    if ($agent !== '')   return ['source' => 'agent', 'channel' => $agent];
+    if ($source !== '' || $hasSourceColumn) return ['source' => 'direct', 'channel' => $source !== '' ? $source : 'Direct'];
+    return ['source' => 'ota', 'channel' => ''];
+}
+
 /**
  * Write/refresh the ledger row for an imported calendar block. Idempotent per
  * block_id. Called by the importer right after it inserts the availability block,
  * with the amount staff entered in the preview (0 allowed — unpriced import).
  * $ctx: venue_id, room_id, unit_id, guest_name, agent, check_in, check_out,
- *       gross_amount, currency, external_ref.
+ *       gross_amount, currency, external_ref, and optionally source_raw +
+ *       has_source_column (eZee's Source cell) and commission_amount.
  */
 function bookings_import_upsert(int $blockId, array $ctx): void {
     if (!bookings_supported() || $blockId <= 0) return;
 
     $nights = bookings_night_count((string)$ctx['check_in'], (string)$ctx['check_out']);
     $agent  = trim((string)($ctx['agent'] ?? ''));
-    $source = ($agent !== '' && $agent !== '-') ? 'agent' : 'ota';
+    $cls    = bookings_classify_source((string)($ctx['source_raw'] ?? ''), $agent, !empty($ctx['has_source_column']));
+    $source = $cls['source'];
     $cur    = strtoupper(trim((string)($ctx['currency'] ?? 'USD'))) ?: 'USD';
     $gross  = max(0.0, (float)($ctx['gross_amount'] ?? 0));
+    $comm   = max(0.0, min($gross, (float)($ctx['commission_amount'] ?? 0)));
+    $chOn   = bookings_channel_supported();
 
     $existing = db_query('SELECT id FROM bookings WHERE block_id = :b', [':b' => $blockId])->fetchColumn();
     if ($existing) {
         db_query(
             "UPDATE bookings SET venue_id=:v, room_id=:r, unit_id=:u, source=:src, guest_name=:gn,
                     agent=:ag, check_in=:ci, check_out=:co, nights=:n, gross_amount=:g, currency=:cur,
-                    external_ref=:ref WHERE id=:id",
+                    external_ref=:ref" . ($chOn ? ', channel=:ch, commission_amount=:cm' : '') . " WHERE id=:id",
             [':v'=>$ctx['venue_id'], ':r'=>$ctx['room_id'], ':u'=>$ctx['unit_id'], ':src'=>$source,
              ':gn'=>$ctx['guest_name'], ':ag'=>$agent, ':ci'=>$ctx['check_in'], ':co'=>$ctx['check_out'],
              ':n'=>$nights, ':g'=>$gross, ':cur'=>$cur, ':ref'=>trim((string)($ctx['external_ref'] ?? '')),
-             ':id'=>$existing]
+             ':id'=>$existing] + ($chOn ? [':ch' => mb_substr($cls['channel'], 0, 120), ':cm' => $comm] : [])
         );
     } else {
         db_query(
             "INSERT INTO bookings (venue_id, room_id, unit_id, source, guest_name, agent, check_in,
-                    check_out, nights, gross_amount, currency, status, block_id, external_ref, imported_at)
-             VALUES (:v,:r,:u,:src,:gn,:ag,:ci,:co,:n,:g,:cur,'confirmed',:b,:ref,NOW())",
+                    check_out, nights, gross_amount, currency, status, block_id, external_ref, imported_at"
+                    . ($chOn ? ', channel, commission_amount' : '') . ")
+             VALUES (:v,:r,:u,:src,:gn,:ag,:ci,:co,:n,:g,:cur,'confirmed',:b,:ref,NOW()"
+                    . ($chOn ? ',:ch,:cm' : '') . ")",
             [':v'=>$ctx['venue_id'], ':r'=>$ctx['room_id'], ':u'=>$ctx['unit_id'], ':src'=>$source,
              ':gn'=>$ctx['guest_name'], ':ag'=>$agent, ':ci'=>$ctx['check_in'], ':co'=>$ctx['check_out'],
              ':n'=>$nights, ':g'=>$gross, ':cur'=>$cur, ':b'=>$blockId,
              ':ref'=>trim((string)($ctx['external_ref'] ?? ''))]
+             + ($chOn ? [':ch' => mb_substr($cls['channel'], 0, 120), ':cm' => $comm] : [])
         );
     }
+}
+
+/**
+ * Re-importing a sheet whose booking is ALREADY on the calendar refreshes the
+ * ledger row's source, channel and commission (and the amount, when the sheet
+ * has one) — the block itself is left alone. This is how rows imported before
+ * the channel rule existed (all filed as "OTA") get corrected: import the eZee
+ * CRS report again. Never touches a row a website hold owns.
+ */
+function bookings_import_refresh(int $blockId, array $ctx): bool {
+    if (!bookings_supported() || $blockId <= 0) return false;
+    $row = db_query('SELECT id, hold_id, source, gross_amount FROM bookings WHERE block_id = :b', [':b' => $blockId])->fetch();
+    if (!$row) return false;
+    if ((string)$row['source'] === 'website') return false;
+
+    $cls   = bookings_classify_source((string)($ctx['source_raw'] ?? ''), (string)($ctx['agent'] ?? ''), !empty($ctx['has_source_column']));
+    $gross = (float)($ctx['gross_amount'] ?? 0) > 0 ? (float)$ctx['gross_amount'] : (float)$row['gross_amount'];
+    $comm  = max(0.0, min($gross, (float)($ctx['commission_amount'] ?? 0)));
+    $chOn  = bookings_channel_supported();
+    db_query(
+        "UPDATE bookings SET source = :src, agent = :ag, gross_amount = :g"
+        . ($chOn ? ', channel = :ch, commission_amount = :cm' : '') . " WHERE id = :id",
+        [':src' => $cls['source'], ':ag' => trim((string)($ctx['agent'] ?? '')), ':g' => $gross, ':id' => (int)$row['id']]
+        + ($chOn ? [':ch' => mb_substr($cls['channel'], 0, 120), ':cm' => $comm] : [])
+    );
+    return true;
 }
 
 /* ─────────────────────── Pure date maths ─────────────────────── */

@@ -233,9 +233,14 @@ function import_room_unit(string $slug): ?array {
  * iCal importer's guard: same unit + exact dates + block_type='blocked'.
  */
 function import_block_exists(int $unitId, string $from, string $to): bool {
-    return (bool) db_query(
-        "SELECT 1 FROM availability_blocks
-         WHERE unit_id=:u AND date_from=:f AND date_to=:t AND block_type='blocked' LIMIT 1",
+    return import_block_id($unitId, $from, $to) > 0;
+}
+
+/** The id of that identical 'blocked' block, or 0. */
+function import_block_id(int $unitId, string $from, string $to): int {
+    return (int) db_query(
+        "SELECT id FROM availability_blocks
+         WHERE unit_id=:u AND date_from=:f AND date_to=:t AND block_type='blocked' ORDER BY id LIMIT 1",
         [':u' => $unitId, ':f' => $from, ':t' => $to]
     )->fetchColumn();
 }
@@ -292,6 +297,10 @@ function import_extract_rows(array $raw): array {
     // eZee's own reservation number ("Res No.") — the booking's identity.
     $iRes    = $find(fn($h) => preg_match('/^(res|reservation)\.? ?(no|number|#)\.?$/', $h) === 1);
     $iStatus = $find(fn($h) => $h === 'status' || $h === 'booking status');
+    // eZee's business source ("Booking.com", "Walk-in", an agent) and the
+    // commission on the booking — they decide direct / agent / OTA and net revenue.
+    $iSource = $find(fn($h) => $h === 'source' || str_contains($h, 'business source') || $h === 'channel');
+    $iComm   = $find(fn($h) => str_contains($h, 'commission'));
     $iType   = $find(fn($h) => $h === 'reservation type');
     // Optional unit/sub-name column: the one right after "Room", but only when
     // its header is blank or names a unit — in the CRS export that column is
@@ -306,6 +315,7 @@ function import_extract_rows(array $raw): array {
         'guest' => $iGuest !== null, 'arrival' => $iArr !== null,
         'dept'  => $iDept !== null,  'room'    => $iRoom !== null,
         'agent' => $iAgent !== null, 'amount'  => $iAmt !== null,
+        'source' => $iSource !== null, 'commission' => $iComm !== null,
     ];
 
     $rows = [];
@@ -344,6 +354,9 @@ function import_extract_rows(array $raw): array {
             'res_no'       => $resNo,
             'res_status'   => $cell($iStatus),
             'res_type'     => $cell($iType),
+            'source_raw'   => $cell($iSource),
+            'has_source_column' => $iSource !== null,
+            'commission_raw'    => $cell($iComm),
         ];
     }
     return ['fields' => $fields, 'rows' => $rows];
@@ -501,6 +514,18 @@ function import_resolve_all(array $rows, int $venueId): array {
     return $out;
 }
 
+/** The money + channel part of a resolved row, as the ledger writers take it. */
+function import_ledger_ctx(array $r): array {
+    return [
+        'guest_name'        => (string)($r['guest'] ?? ''),
+        'agent'             => (string)($r['agent'] ?? ''),
+        'gross_amount'      => (float)($r['amount'] ?? 0),
+        'commission_amount' => (float)(import_parse_amount((string)($r['commission_raw'] ?? '')) ?? 0),
+        'source_raw'        => (string)($r['source_raw'] ?? ''),
+        'has_source_column' => !empty($r['has_source_column']),
+    ];
+}
+
 /** A short human note stored on the availability block / conflict. */
 function import_block_note(array $r): string {
     $note = 'Ezee import · ' . ($r['guest'] !== '' ? $r['guest'] : 'guest');
@@ -530,9 +555,15 @@ function import_commit(array $resolved): array {
         $unitId = (int)$r['unit_id'];
         $ci = $r['arrival']; $co = $r['dept'];
 
-        if (import_block_exists($unitId, $ci, $co)) {
+        $dupBlock = import_block_id($unitId, $ci, $co);
+        if ($dupBlock > 0) {
+            // Already on the calendar — but refresh its ledger row's source,
+            // channel and commission from this sheet, so re-importing the eZee
+            // report corrects bookings filed before the channel rule existed.
+            $refreshed = bookings_import_refresh($dupBlock, import_ledger_ctx($r));
             $res['duplicate']++;
-            $res['rows'][] = ['guest' => $r['guest'], 'room' => $r['room_name'], 'outcome' => 'duplicate', 'detail' => 'Already imported'];
+            $res['rows'][] = ['guest' => $r['guest'], 'room' => $r['room_name'], 'outcome' => 'duplicate',
+                              'detail' => $refreshed ? 'Already imported — channel and commission updated' : 'Already imported'];
             continue;
         }
 
@@ -572,13 +603,11 @@ function import_commit(array $resolved): array {
         // or from what staff typed in the preview; 0 is a valid (unpriced) import.
         bookings_import_upsert($blockId, [
             'venue_id'     => $ru['venue_id'], 'room_id' => (int)$r['room_id'], 'unit_id' => $unitId,
-            'guest_name'   => $r['guest'],     'agent'   => (string)($r['agent'] ?? ''),
             'check_in'     => $ci,             'check_out' => $co,
-            'gross_amount' => (float)($r['amount'] ?? 0),
             'currency'     => (string)($r['currency'] ?? 'USD'),
             // eZee's reservation number when the export has one (CRS report).
             'external_ref' => (string)(($r['res_no'] ?? '') !== '' ? $r['res_no'] : ($r['booking_date'] ?? '')),
-        ]);
+        ] + import_ledger_ctx($r));
 
         $res['imported']++;
         $res['rows'][] = ['guest' => $r['guest'], 'room' => $r['room_name'], 'outcome' => 'imported',

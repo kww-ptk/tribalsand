@@ -40,6 +40,7 @@ const HELP_AREAS = [
     'restaurant' => 'Restaurant',
     'pos'      => 'Point of Sale',
     'inventory'=> 'Inventory',
+    'finance'  => 'Finance & reports',
     'settings' => 'Settings',
 ];
 
@@ -58,6 +59,21 @@ function help_guides(): array {
             ['text' => 'Stuck on a page? Press **Help** at the top right of the page. It lists the guides for that page, and **Show me** walks you through it.', 'target' => '[data-help-open]'],
          ],
          'tips' => ['Pages open without reloading, so the back button works as usual.']],
+
+        // ── Finance & reports ──────────────────────────────────────────
+        ['slug' => 'monthly-report', 'area' => 'finance', 'minutes' => 3, 'pages' => ['reports.php'],
+         'title' => 'Read the monthly report',
+         'summary' => 'What the month earned, property by property, and how to print it for the team.',
+         'steps' => [
+            ['text' => 'Pick the period with the **‹ ›** arrows (Month, Quarter, Year or 12 months) and, if you like, one property. The headline and figures are written from the bookings ledger.', 'target' => '[data-help="rp-band"]'],
+            ['text' => '**Total revenue** = rooms after commission + extras. Each figure shows the change against the period before.'],
+            ['text' => 'One card per property: its total, gross, commission and extras, and a bar per night showing how full it was.', 'target' => '[data-help="rp-props"]'],
+            ['text' => 'Occupancy day by day: darker squares are fuller nights. Tap a square for the exact figure.', 'target' => '[data-help="rp-occupancy"]'],
+            ['text' => 'Channels and top partners show where the room revenue came from: direct, travel agents or OTAs.', 'target' => '[data-help="rp-channels"]'],
+            ['text' => 'Write the team’s **Highlights**, **Watch** and **Next steps** here. Press **Print / PDF** to send the whole report.', 'target' => '[data-help="rp-notes"]'],
+         ],
+         'tips' => ['Revenue counts each night of a stay in the month it falls in, the same as eZee’s stay-date reports.',
+                    'Import the eZee CRS report again to fill in channels and commission for older bookings.']],
 
         // ── Bookings & enquiries ───────────────────────────────────────
         ['slug' => 'new-request', 'area' => 'bookings', 'minutes' => 2, 'pages' => ['submissions.php', 'submission-view.php'],
