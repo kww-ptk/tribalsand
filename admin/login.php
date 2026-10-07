@@ -61,6 +61,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     .login-switch__btn:focus-visible{outline:2px solid var(--brand,#168e86);outline-offset:2px}
     .login-pane{margin:0}
   </style>
+  <script defer src="/admin/assets/admin-password.js?v=<?= filemtime(__DIR__ . '/assets/admin-password.js') ?>"></script>
 </head>
 <body class="login-page">
 
@@ -71,7 +72,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     <h1 class="login-title">Admin Login</h1>
 
     <?php if ($error): ?>
-    <div class="alert alert--error"><?= e($error) ?></div>
+    <div class="alert alert--error is-flash" role="alert"><?= e($error) ?></div>
     <?php endif; ?>
 
     <div class="login-switch" role="tablist" aria-label="Choose login type">
@@ -92,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         </div>
         <div class="field">
           <label for="password">Password</label>
-          <input type="password" id="password" name="password" placeholder="••••••••">
+          <input type="password" id="password" name="password" required autocomplete="current-password" placeholder="Enter your password">
         </div>
         <button type="submit" class="btn-primary btn-full">Sign in</button>
       </form>

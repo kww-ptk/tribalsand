@@ -23,6 +23,7 @@ $__agent = agent_current();
 <link rel="stylesheet" href="/css/datepicker.css?v=<?= @filemtime(__DIR__ . '/../css/datepicker.css') ?: '1' ?>">
 <script defer src="/admin/assets/admin-select.js?v=<?= @filemtime(__DIR__ . '/../admin/assets/admin-select.js') ?: '1' ?>"></script>
 <script defer src="/admin/assets/admin-tip.js?v=<?= @filemtime(__DIR__ . '/../admin/assets/admin-tip.js') ?: '1' ?>"></script>
+<script defer src="/admin/assets/admin-password.js?v=<?= @filemtime(__DIR__ . '/../admin/assets/admin-password.js') ?: '1' ?>"></script>
 <script defer src="/js/datepicker.js?v=<?= @filemtime(__DIR__ . '/../js/datepicker.js') ?: '1' ?>"></script>
 <style>
   /* Portal chrome only — everything else is an admin component. */

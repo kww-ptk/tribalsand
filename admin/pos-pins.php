@@ -85,8 +85,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported) {
 function posp_form(int $uid, bool $hasPin, string $self): void { ?>
   <form method="POST" action="<?= $self ?>" class="posp-form" autocomplete="off">
     <?= csrf_field() ?><input type="hidden" name="user_id" value="<?= $uid ?>">
-    <input name="pin" type="password" inputmode="numeric" pattern="\d{4,6}" maxlength="6" class="inp posp-pin" placeholder="New PIN" aria-label="New PIN" required autocomplete="new-password">
-    <input name="pin_again" type="password" inputmode="numeric" pattern="\d{4,6}" maxlength="6" class="inp posp-pin" placeholder="Repeat" aria-label="Repeat PIN" required autocomplete="new-password">
+    <input name="pin" type="password" inputmode="numeric" pattern="\d{4,6}" maxlength="6" class="inp posp-pin" placeholder="New PIN" aria-label="New PIN" required autocomplete="new-password" data-pw-label="PIN" data-pw-pattern-msg="A PIN is 4 to 6 digits.">
+    <input name="pin_again" type="password" inputmode="numeric" pattern="\d{4,6}" maxlength="6" class="inp posp-pin" placeholder="Repeat" aria-label="Repeat PIN" required autocomplete="new-password" data-pw-label="PIN" data-pw-match="pin" data-pw-pattern-msg="A PIN is 4 to 6 digits.">
     <button type="submit" name="action" value="set" class="btn-primary btn-sm"><?= admin_icon('check', 15) ?> <?= $hasPin ? 'Change' : 'Set PIN' ?></button>
     <?php if ($hasPin): ?><button type="submit" name="action" value="clear" formnovalidate class="btn-icon btn-icon--danger" data-confirm="Remove this PIN?" data-tip="Remove PIN" aria-label="Remove PIN"><?= admin_icon('trash', 15) ?></button><?php endif; ?>
   </form>

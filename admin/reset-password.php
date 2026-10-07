@@ -76,6 +76,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid) {
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Reset Password — Tribal Sand Admin</title>
   <link rel="stylesheet" href="/admin/assets/admin.css?v=<?= filemtime(__DIR__ . '/assets/admin.css') ?>">
+  <script defer src="/admin/assets/admin-password.js?v=<?= filemtime(__DIR__ . '/assets/admin-password.js') ?>"></script>
 </head>
 <body class="login-page">
 
@@ -99,18 +100,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $valid) {
 
     <?php else: ?>
       <?php if ($error): ?>
-        <div class="alert alert--error"><?= e($error) ?></div>
+        <div class="alert alert--error is-flash" role="alert"><?= e($error) ?></div>
       <?php endif; ?>
       <form method="POST" action="/admin/reset-password.php" novalidate>
         <input type="hidden" name="token" value="<?= e($token) ?>">
         <input type="hidden" name="email" value="<?= e($email) ?>">
         <div class="field">
           <label for="password">New password <small>(min. 10 chars)</small></label>
-          <input type="password" id="password" name="password" required autofocus minlength="10" placeholder="Enter new password">
+          <input type="password" id="password" name="password" required autofocus minlength="10" data-pw-label="New password" autocomplete="new-password" placeholder="Enter new password">
         </div>
         <div class="field">
           <label for="password2">Confirm new password</label>
-          <input type="password" id="password2" name="password2" required minlength="10" placeholder="Re-enter new password">
+          <input type="password" id="password2" name="password2" required data-pw-match="password" data-pw-label="New password" autocomplete="new-password" placeholder="Re-enter new password">
         </div>
         <button type="submit" class="btn-primary btn-full">Set New Password</button>
       </form>

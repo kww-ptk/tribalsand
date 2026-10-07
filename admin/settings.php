@@ -123,14 +123,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if (!password_verify($current, $user['password_hash'])) {
             $error = 'Current password is incorrect.';
-        } elseif (strlen($new) < 8) {
-            $error = 'New password must be at least 8 characters.';
+        } elseif (strlen($new) < 10) {
+            $error = 'New password must be at least 10 characters.';
+        } elseif ($new === $current) {
+            $error = 'The new password must be different from the current one.';
         } elseif ($new !== $confirm) {
             $error = 'New passwords do not match.';
         } else {
             db_query(
                 'UPDATE admin_users SET password_hash = :hash WHERE id = :id',
-                [':hash' => password_hash($new, PASSWORD_BCRYPT), ':id' => $admin['id']]
+                [':hash' => password_hash($new, PASSWORD_BCRYPT, ['cost' => 12]), ':id' => $admin['id']]
             );
             $success = 'Password changed successfully.';
         }
@@ -354,16 +356,16 @@ include __DIR__ . '/_layout.php';
       <input type="hidden" name="action" value="change_password">
 
       <div class="field">
-        <label>Current password</label>
-        <input type="password" name="current_password" required placeholder="••••••••">
+        <label for="curPw">Current password</label>
+        <input type="password" id="curPw" name="current_password" required autocomplete="current-password" data-pw-label="Current password" placeholder="Enter your current password">
       </div>
       <div class="field">
-        <label>New password <span class="text-muted">(min 8 characters)</span></label>
-        <input type="password" name="new_password" required placeholder="••••••••" minlength="8">
+        <label for="newPw">New password <span class="text-muted">(min. 10 characters)</span></label>
+        <input type="password" id="newPw" name="new_password" required minlength="10" autocomplete="new-password" data-pw-label="New password" placeholder="Enter a new password">
       </div>
       <div class="field">
-        <label>Confirm new password</label>
-        <input type="password" name="confirm_password" required placeholder="••••••••">
+        <label for="confirmPw">Confirm new password</label>
+        <input type="password" id="confirmPw" name="confirm_password" required data-pw-match="new_password" data-pw-label="New password" autocomplete="new-password" placeholder="Re-enter the new password">
       </div>
 
       <button type="submit" class="btn-primary">Change Password</button>

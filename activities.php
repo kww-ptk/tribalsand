@@ -116,6 +116,13 @@ include 'includes/header.php';
     <p class="act-hero__sub">Ocean adventures, cultural encounters and coastal wellness — every experience arranged and guided by your Tribal Sand concierge.</p>
   </div>
 
+  <?php
+    $ssb_title = 'Looking for something specific?';
+    $ssb_sub   = 'Search every activity, restaurant, room and guide.';
+    $ssb_chips = ['Snorkelling', 'Dhow cruise', 'Kitesurfing', 'Deep sea fishing', 'Safari', 'Spa'];
+    include 'includes/site-search-bar.php';
+  ?>
+
   <?php if ($__acts): ?>
   <div class="act-filters">
     <button type="button" class="act-chip is-active" data-cat-filter="all">All</button>
