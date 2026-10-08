@@ -23,6 +23,9 @@ Affects: rate limiting, audit logs, tracking.
 ### Asset cache busting
 All CSS/JS `<link>`/`<script>` tags in `includes/head.php` use `?v=<?= filemtime(...) ?>` to force cache invalidation on deploy.
 
+### Social share image — site default is a setting
+`includes/head.php` uses `$page_image` when a page sets a non-empty one, else **`site_share_image()`** (`includes/db.php`): the `site_share_image` setting (owner, **Admin → Settings → Social Sharing Image**, the shared media picker), else `SITE_SHARE_IMAGE_DEFAULT`. No migration. The home page and `events-gallery.php` deliberately set no `$page_image` so they follow the setting — don't hardcode one back. Keys are checked with `share_image_key_ok()` on save and on read, and resolved by `share_image_url()` to an **absolute** URL (a crawler fetches og:image). Property pages (`ts_venue_meta()`) and page-content `og_image` slots still override it per page. Test: `php tests/site_share_image_logic.php`.
+
 ### Booking form label
 `includes/form-enquiry.php` — the submit button says **"Request to Book"** (not "Book Now"). The form creates a 24h hold enquiry, not an instant booking — wrong labels cause chargebacks.
 

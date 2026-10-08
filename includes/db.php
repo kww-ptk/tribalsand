@@ -1497,6 +1497,54 @@ function get_room_blocked_dates(int $room_id, string $from, string $to): array {
     return $fully_blocked;
 }
 
+/** The site-wide share image when the owner has not chosen one (Settings → Social sharing). */
+const SITE_SHARE_IMAGE_DEFAULT = 'images/Maya-Kobe-1-hero.webp';
+
+/**
+ * Is $key something the share-image setting may hold? A storage key from the
+ * media picker ("pages/abc.jpg"), a bundled path ("images/…") or an http(s) URL (S3 uploads store one).
+ * Anything else (a stray newline, javascript:, a relative "../") is refused on save.
+ */
+function share_image_key_ok(string $key): bool {
+    if ($key === '' || strlen($key) > 500) return false;
+    if (preg_match('#^https?://[^\s"<>]+$#', $key)) return true;
+    return (bool) preg_match('#^[A-Za-z0-9][A-Za-z0-9 _./()-]*$#', $key) && !str_contains($key, '..');
+}
+
+/**
+ * ABSOLUTE URL for a share-image key — og:image is fetched by a third-party
+ * crawler, so a root-relative storage_url() would not resolve. Pure.
+ * "images/…" paths have spaces encoded per segment (as page_image() does).
+ */
+function share_image_url(string $key): string {
+    $k = trim($key);
+    if ($k === '') return '';
+    if (str_starts_with($k, 'images/')) {
+        return asset_url(implode('/', array_map(
+            fn(string $seg) => str_contains($seg, ' ') ? rawurlencode($seg) : $seg,
+            explode('/', $k)
+        )));
+    }
+    $url = storage_url($k);
+    if ($url === '') return '';
+    return str_starts_with($url, 'http') ? $url : site_url($url);
+}
+
+/**
+ * The site-wide social share image (og:image / twitter:image) — used by the home
+ * page and by every page that does not set its own $page_image. Owner-editable in
+ * Settings; stored as the `site_share_image` setting. Never throws: a settings or
+ * DB hiccup falls back to the built-in image so no page loses its share card.
+ */
+function site_share_image(): string {
+    static $memo = null;
+    if ($memo !== null) return $memo;
+    $key = '';
+    try { $key = trim(setting('site_share_image', '')); } catch (Throwable $e) { $key = ''; }
+    $url = ($key !== '' && share_image_key_ok($key)) ? share_image_url($key) : '';
+    return $memo = ($url !== '' ? $url : share_image_url(SITE_SHARE_IMAGE_DEFAULT));
+}
+
 function e(mixed $val): string {
     return htmlspecialchars((string)$val, ENT_QUOTES, 'UTF-8');
 }
