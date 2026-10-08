@@ -7,7 +7,8 @@
  *   $page_title   — full <title> string
  *   $page_desc    — meta description (150-160 chars)
  *   $page_url     — canonical URL (full https://tribalsand.com/…)
- *   $page_image   — OG image (full URL, ideally 1200×630)
+ *   $page_image   — OG image (full URL, ideally 1200×630). Unset or empty = the
+ *                   site-wide share image (Admin → Settings → Social sharing).
  *   $page_type    — OG type, default "website"
  *   $page_schema  — JSON-LD markup string(s) to inject, optional
  *   $page_preload — <link rel="preload"> href for hero image, optional
@@ -19,7 +20,7 @@
 $page_title  = $page_title  ?? 'Tribal Sand · Luxury Beachfront Hotels & Villas · Kenya';
 $page_desc   = $page_desc   ?? 'Luxury beachfront boutique hotels and private villas in Watamu, Kilifi and Vipingo, Kenya. Kenya as it was meant to be experienced.';
 $page_url    = $page_url    ?? 'https://tribalsand.com/';
-$page_image  = $page_image  ?? asset_url('images/Maya-Kobe-1-hero.webp');
+$page_image  = (isset($page_image) && trim((string)$page_image) !== '') ? $page_image : site_share_image();
 $page_type   = $page_type   ?? 'website';
 $page_schema = $page_schema ?? '';
 $page_preload = $page_preload ?? '';

@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/admin-media-picker.php';
 require_login();
 require_owner();
 
@@ -78,6 +79,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             set_setting('quote_terms', $quote_terms);
             audit_log('settings.save_quote_terms');
             $success = 'Quote terms saved.';
+        }
+    }
+
+    if ($action === 'save_share_image') {
+        // og:image for the home page and every page without its own (includes/head.php).
+        // Blank = the built-in image (SITE_SHARE_IMAGE_DEFAULT).
+        $key = trim((string)($_POST['site_share_image'] ?? ''));
+        if ($key === SITE_SHARE_IMAGE_DEFAULT) $key = '';
+        if ($key !== '' && !share_image_key_ok($key)) {
+            $error = 'That image could not be used. Choose it again from the image library.';
+        } else {
+            set_setting('site_share_image', $key);
+            audit_log('settings.save_share_image', '', 0, $key !== '' ? $key : 'default');
+            $success = $key !== '' ? 'Share image saved. It is live now.' : 'Share image reset to the built-in one.';
         }
     }
 
@@ -273,6 +288,27 @@ include __DIR__ . '/_layout.php';
   </div>
 </div>
 
+<!-- Social sharing image (site-wide og:image) -->
+<?php $share_key = trim(setting('site_share_image', '')); ?>
+<div class="card">
+  <div class="card__head"><span class="card__title">Social Sharing Image</span></div>
+  <div class="card__body" style="padding:20px">
+    <form method="POST" action="/admin/settings">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="save_share_image">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:14px">
+        The picture shown when someone shares a link to the website on WhatsApp, Facebook, LinkedIn or X.
+        Used for the home page and every page that has no share image of its own.
+        Property pages and some content pages set their own (Website &rarr; Properties &rarr; Content tab, and Website &rarr; Website content &rarr; Pages).
+      </p>
+      <?php media_picker_field('site_share_image', $share_key, 'Default share image',
+            'Landscape works best: it is shown at 1200 × 630, so a tall photo is cropped top and bottom. Apps such as WhatsApp and Facebook keep the old preview for a while after a change.',
+            SITE_SHARE_IMAGE_DEFAULT); ?>
+      <button type="submit" class="btn-primary" style="margin-top:16px">Save Share Image</button>
+    </form>
+  </div>
+</div>
+
 <!-- Quote terms (printed on every quotation) -->
 <div class="card">
   <div class="card__head"><span class="card__title">Quote Terms</span></div>
@@ -421,4 +457,5 @@ include __DIR__ . '/_layout.php';
   </div>
 </div>
 
+<?php media_picker_modal(); ?>
 <?php include __DIR__ . '/_layout_end.php'; ?>
