@@ -74,9 +74,11 @@ $out = ['ok' => true];
 $reads = (int)($_SESSION['ci_passport_reads'] ?? 0);
 if ($bytes !== '' && ai_assistant_supported() && $reads < CHECKIN_PASSPORT_READS_MAX) {
     $_SESSION['ci_passport_reads'] = $reads + 1;
+    $out['read'] = false;   // tried; true once the model answered with something usable
     try {
         $raw = ai_read_image_json($bytes, $mime, checkin_passport_read_prompt());
         if ($raw !== null) {
+            $out['read']     = true;
             $read = checkin_passport_from_ai($raw, date('Y-m-d'));
             $out['fields']   = $read['fields'];
             $out['warnings'] = $read['warnings'];

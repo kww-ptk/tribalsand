@@ -32,6 +32,19 @@ $ciUpsells = isset($cfg['upsell'])
 $deposit      = checkin_venue_deposit($hold);   // ['amount','currency','formatted']
 $depositNote  = checkin_deposit_note();
 $depositOnFile = checkin_deposit_card_on_file($data);
+// "I can't upload my card" → card or cash at arrival (add_checkin_deposit_plan.sql).
+// With it, Complete check-in only appears once the deposit is dealt with.
+$planOn        = $showDeposit && checkin_deposit_plan_supported();
+$depositPlan   = $planOn ? (string)($data['deposit_plan'] ?? '') : '';
+$depositHandled = checkin_deposit_handled($data);
+// Sharing a guest's personal link (Your party step + the waiting-on-others card).
+$shareProperty = trim((string)($hold['venue_name'] ?? ''));
+$shareDates    = date('j M', strtotime((string)$hold['check_in'])) . ' – ' . date('j M', strtotime((string)$hold['check_out']));
+$shareWa = function (string $name, string $link) use ($shareProperty, $shareDates): string {
+    return checkin_whatsapp_url(checkin_guest_share_text($name, $shareProperty, $shareDates, $link));
+};
+$waIcon = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.47 14.38c-.3-.15-1.75-.86-2.02-.96-.27-.1-.47-.15-.67.15-.2.3-.77.96-.94 1.16-.17.2-.35.22-.64.07-.3-.15-1.25-.46-2.38-1.47-.88-.79-1.47-1.76-1.64-2.05-.17-.3-.02-.46.13-.6.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.07-.15-.67-1.6-.92-2.2-.24-.58-.49-.5-.67-.5h-.57c-.2 0-.52.07-.79.37-.27.3-1.04 1.02-1.04 2.48s1.07 2.88 1.21 3.08c.15.2 2.1 3.2 5.08 4.49.71.31 1.26.49 1.69.63.71.23 1.36.2 1.87.12.57-.09 1.75-.72 2-1.41.25-.69.25-1.29.17-1.41-.07-.12-.27-.2-.57-.35zM12.04 21.5h-.01a9.45 9.45 0 0 1-4.82-1.32l-.35-.21-3.58.94.96-3.49-.23-.36a9.43 9.43 0 0 1-1.45-5.03c0-5.22 4.25-9.47 9.48-9.47 2.53 0 4.91.99 6.7 2.78a9.41 9.41 0 0 1 2.77 6.7c0 5.23-4.25 9.47-9.47 9.47zm8.06-17.53A11.33 11.33 0 0 0 12.04.63C5.76.63.65 5.74.65 12.02c0 2.01.52 3.97 1.52 5.7L.55 23.62l6.03-1.58a11.36 11.36 0 0 0 5.45 1.39h.01c6.28 0 11.39-5.11 11.39-11.39 0-3.04-1.18-5.9-3.33-8.05z"/></svg>';
+$ppHint = 'Upload a photo of the passport’s photo page and we’ll fill in the details for you — or type them below.';
 $guests   = fetch_checkin_guests($holdId);
 $adults   = array_values(array_filter($guests, fn($g) => empty($g['is_child'])));
 $kids     = [];
@@ -113,7 +126,7 @@ foreach ($flowKeys as $idx => $fk) {
 $autoResume = ($_GET['resume'] ?? '') === '1';
 
 $needs = [];
-if ($showPassport)           $needs[] = ['&#128179;', 'A passport for every adult — a clear photo or PDF'];
+if ($showPassport)           $needs[] = ['&#128179;', 'A passport for every adult — a photo of the photo page, or just the details'];
 if (isset($cfg['transfer'])) $needs[] = ['&#9992;&#65039;', 'If you&rsquo;d like us to collect you: your flight number &amp; landing time'];
 if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — for the security deposit'
                                 . ($deposit['formatted'] !== '' ? ' (' . e($deposit['formatted']) . ')' : '')
@@ -151,10 +164,12 @@ if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — for 
       <span><?= e(checkin_guest_label($og, $adults)) ?></span>
       <span class="ci-chip">Pending</span>
     </div>
-    <div class="ci-linkrow" style="margin-bottom:12px">
-      <input class="ci-in" readonly value="<?= e(make_guest_pass_url($holdId, $ogid)) ?>" onclick="this.select()">
+    <?php $__ogLink = make_guest_pass_url($holdId, $ogid); ?>
+    <div class="ci-linkrow" style="margin-bottom:6px">
+      <input class="ci-in" readonly value="<?= e($__ogLink) ?>" onclick="this.select()">
       <button type="button" class="pa-btn pa-btn--ghost ci-copy">Copy</button>
     </div>
+    <a class="pa-btn ci-wa" style="margin-bottom:14px" target="_blank" rel="noopener" href="<?= e($shareWa((string)($og['passport_name'] ?? ''), $__ogLink)) ?>"><?= $waIcon ?>Send on WhatsApp</a>
     <?php endforeach; ?>
   </div>
   <?php endif; ?>
@@ -343,18 +358,22 @@ if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — for 
           <div class="ci-guest__title"><span class="ci-guest__who">You (lead guest)</span>
             <span class="ci-chip <?= (checkin_guest_passport_complete($lead) && (!$showWaiver || checkin_guest_waiver_signed($lead))) ? 'ci-chip--ok' : '' ?>"><?= (checkin_guest_passport_complete($lead) && (!$showWaiver || checkin_guest_waiver_signed($lead))) ? 'Complete' : 'Your details' ?></span></div>
           <?php if ($showPassport): ?>
-          <label class="ci-l">Full name (as on passport)</label>
-          <input class="ci-in" name="passport_name" value="<?= $val('passport_name', $lead) ?>">
-          <label class="ci-l">Passport number</label>
-          <input class="ci-in" name="passport_number" value="<?= $val('passport_number', $lead) ?>">
-          <label class="ci-l">Nationality</label>
-          <input class="ci-in" name="nationality" value="<?= $val('nationality', $lead) ?>">
-          <label class="ci-l">Passport expiry</label>
-          <input class="ci-in" type="date" name="passport_expiry" value="<?= $val('passport_expiry', $lead) ?>">
-          <label class="ci-l">Passport scan (photo or PDF)</label>
-          <div class="ci-upload" data-has="<?= !empty($lead['passport_file_key']) ? '1' : '0' ?>">
-            <input type="file" accept="image/jpeg,image/png,application/pdf">
-            <span class="ci-upload__state"><?= !empty($lead['passport_file_key']) ? 'Uploaded &#10003;' : 'No file yet' ?></span>
+          <div class="ci-pp" data-pp>
+            <label class="ci-l">Passport photo <span class="ci-opt">(the page with your photo)</span></label>
+            <p class="ci-pp-hint"><?= e($ppHint) ?></p>
+            <div class="ci-upload" data-has="<?= !empty($lead['passport_file_key']) ? '1' : '0' ?>">
+              <label class="ci-filebtn">&#128247; Choose photo<input type="file" accept="image/jpeg,image/png,application/pdf"></label>
+              <span class="ci-upload__state"><?= !empty($lead['passport_file_key']) ? 'Uploaded &#10003;' : 'No photo yet' ?></span>
+            </div>
+            <div class="ci-pp-note" role="status" hidden></div>
+            <label class="ci-l">Full name (as on passport)</label>
+            <input class="ci-in" name="passport_name" value="<?= $val('passport_name', $lead) ?>">
+            <label class="ci-l">Passport number</label>
+            <input class="ci-in" name="passport_number" value="<?= $val('passport_number', $lead) ?>">
+            <label class="ci-l">Nationality</label>
+            <input class="ci-in" name="nationality" value="<?= $val('nationality', $lead) ?>">
+            <label class="ci-l">Passport expiry</label>
+            <input class="ci-in" type="date" name="passport_expiry" value="<?= $val('passport_expiry', $lead) ?>">
           </div>
           <?php endif; ?>
           <?php if ($showWaiver): $leadSigned = checkin_guest_waiver_signed($lead); ?>
@@ -394,95 +413,78 @@ if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — for 
         </div>
 
       <?php elseif ($key === 'party'): ?>
-        <p class="ci-party__head">Every other adult needs <?= $showPassport ? 'their own passport' : '' ?><?= $showPassport && $showWaiver ? ' and ' : '' ?><?= $showWaiver ? 'to sign the waiver' : '' ?>. Add each guest, then fill their details or send them their own link.</p>
+        <p class="ci-party__head">Every other adult needs <?= $showPassport ? 'their own passport' : '' ?><?= $showPassport && $showWaiver ? ' and ' : '' ?><?= $showWaiver ? 'to sign the terms' : '' ?>. Add each guest and save — then send them their own link on WhatsApp<?= $showPassport ? ', or fill their passport in for them' : '' ?>.</p>
 
-        <!-- Additional adult cards (data-field inputs → saved via per-guest AJAX, NOT the main submit) -->
-        <?php foreach ($adults as $g): if (!empty($g['is_lead'])) continue; $gid = (int)$g['id'];
-              $gc = checkin_guest_passport_complete($g) && (!$showWaiver || checkin_guest_waiver_signed($g)); ?>
-        <div class="ci-guest" data-guest-id="<?= $gid ?>">
-          <div class="ci-guest__title">
-            <input class="ci-in ci-guest__name" data-field="passport_name" value="<?= e((string)$g['passport_name']) ?>" placeholder="Guest full name">
-            <span class="ci-chip <?= $gc ? 'ci-chip--ok' : '' ?>"><?= $gc ? 'Complete' : 'Pending' ?></span>
-            <button type="button" class="ci-guest__remove" aria-label="Remove guest">&times;</button>
-          </div>
-          <div class="ci-guest__modes">
-            <button type="button" class="ci-mode ci-guest__fill">Fill in for them</button>
-            <button type="button" class="ci-mode ci-guest__share">Send them a link</button>
-          </div>
-          <div class="ci-guest__inline" hidden>
+        <?php
+        // One card, three uses: saved guests (collapsed to a summary + their link),
+        // a guest still being filled in (open), and the <template> js/checkin-wizard.js
+        // clones when "+ Add adult" is pressed ($g = null). A saved guest = has a name.
+        $guestCard = function (?array $g) use ($showPassport, $showWaiver, $holdId, $kids, $shareWa, $waIcon, $ppHint): void {
+            $gid   = (int)($g['id'] ?? 0);
+            $name  = trim((string)($g['passport_name'] ?? ''));
+            $done  = $g !== null && $name !== '';
+            $gc    = $g !== null && checkin_guest_passport_complete($g) && (!$showWaiver || checkin_guest_waiver_signed($g));
+            $link  = $gid ? make_guest_pass_url($holdId, $gid) : '';
+            $fv    = fn($k) => e((string)($g[$k] ?? ''));
+            ?>
+        <div class="ci-guest" data-guest-id="<?= $gid ?: '' ?>" data-link="<?= e($link) ?>">
+          <div class="ci-guest__form"<?= $done ? ' hidden' : '' ?>>
+            <div class="ci-guest__title">
+              <input class="ci-in ci-guest__name" data-field="passport_name" value="<?= e($name) ?>" placeholder="Guest full name">
+              <button type="button" class="ci-guest__remove" aria-label="Remove guest">&times;</button>
+            </div>
             <?php if ($showPassport): ?>
-            <label class="ci-l">Passport number</label>
-            <input class="ci-in" data-field="passport_number" value="<?= e((string)$g['passport_number']) ?>">
-            <label class="ci-l">Nationality</label>
-            <input class="ci-in" data-field="nationality" value="<?= e((string)$g['nationality']) ?>">
-            <label class="ci-l">Passport expiry</label>
-            <input class="ci-in" type="date" data-field="passport_expiry" value="<?= e((string)$g['passport_expiry']) ?>">
-            <label class="ci-l">Passport scan</label>
-            <div class="ci-upload" data-has="<?= !empty($g['passport_file_key']) ? '1' : '0' ?>">
-              <input type="file" accept="image/jpeg,image/png,application/pdf">
-              <span class="ci-upload__state"><?= !empty($g['passport_file_key']) ? 'Uploaded &#10003;' : 'No file yet' ?></span>
+            <div class="ci-pp" data-pp>
+              <p class="ci-pp-hint"><?= e($ppHint) ?> Or leave it for them to add from their own link.</p>
+              <div class="ci-upload" data-has="<?= !empty($g['passport_file_key']) ? '1' : '0' ?>">
+                <label class="ci-filebtn">&#128247; Choose photo<input type="file" accept="image/jpeg,image/png,application/pdf"></label>
+                <span class="ci-upload__state"><?= !empty($g['passport_file_key']) ? 'Uploaded &#10003;' : 'No photo yet' ?></span>
+              </div>
+              <div class="ci-pp-note" role="status" hidden></div>
+              <label class="ci-l">Passport number</label>
+              <input class="ci-in" data-field="passport_number" value="<?= $fv('passport_number') ?>">
+              <label class="ci-l">Nationality</label>
+              <input class="ci-in" data-field="nationality" value="<?= $fv('nationality') ?>">
+              <label class="ci-l">Passport expiry</label>
+              <input class="ci-in" type="date" data-field="passport_expiry" value="<?= $fv('passport_expiry') ?>">
             </div>
             <?php endif; ?>
             <?php if ($showWaiver): ?>
-            <p class="ci-hint">They sign the waiver themselves — use “Send them a link”, or “Sign on this device” from the admin check-in tab if they’re with you.</p>
+            <p class="ci-hint">They sign the terms themselves — from the link you send them after saving.</p>
             <?php endif; ?>
             <button type="button" class="pa-btn pa-btn--primary ci-guest__save">Save this guest</button>
           </div>
-          <div class="ci-guest__link" hidden>
-            <label class="ci-l">Their private check-in link</label>
-            <div class="ci-linkrow"><input class="ci-in" readonly value="<?= e(make_guest_pass_url($holdId, $gid)) ?>" onclick="this.select()"><button type="button" class="pa-btn pa-btn--ghost ci-copy">Copy</button></div>
+          <div class="ci-guest__done"<?= $done ? '' : ' hidden' ?>>
+            <span class="ci-guest__done-name"><?= e($name) ?></span>
+            <span class="ci-chip <?= $gc ? 'ci-chip--ok' : '' ?>"><?= $gc ? 'Complete' : 'Saved &#10003;' ?></span>
+            <button type="button" class="ci-guest__edit">Edit</button>
           </div>
-          <div class="ci-kids" data-parent="<?= $gid ?>">
+          <div class="ci-send"<?= ($done && !$gc) ? '' : ' hidden' ?>>
+            <p class="ci-send__t">Send <span class="ci-send__name"><?= e($name !== '' ? explode(' ', $name)[0] : 'them') ?></span> their check-in link</p>
+            <div class="ci-send__btns">
+              <a class="pa-btn ci-wa" target="_blank" rel="noopener" href="<?= $done ? e($shareWa($name, $link)) : '#' ?>"><?= $waIcon ?>WhatsApp</a>
+            </div>
+            <div class="ci-linkrow"><input class="ci-in" readonly value="<?= e($link) ?>" onclick="this.select()"><button type="button" class="pa-btn pa-btn--ghost ci-copy">Copy link</button></div>
+          </div>
+          <div class="ci-kids" data-parent="<?= $gid ?: '' ?>">
             <?php foreach (($kids[$gid] ?? []) as $c): ?>
             <span class="ci-kid" data-guest-id="<?= (int)$c['id'] ?>"><?= e((string)$c['passport_name']) ?><button type="button" class="ci-kid__x" aria-label="Remove">&times;</button></span>
             <?php endforeach; ?>
             <button type="button" class="ci-addkid">+ Add child</button>
           </div>
         </div>
-        <?php endforeach; ?>
+            <?php
+        };
+        ?>
+        <div class="ci-party" data-share-property="<?= e($shareProperty) ?>" data-share-dates="<?= e($shareDates) ?>">
+          <!-- Additional adult cards (data-field inputs → saved via per-guest AJAX, NOT the main submit) -->
+          <?php foreach ($adults as $g) { if (!empty($g['is_lead'])) continue; $guestCard($g); } ?>
+        </div>
 
         <!-- Cloned by js/checkin-wizard.js when a new adult is added. Template
              content is inert, so its inputs never post and never match a
              document querySelectorAll. -->
-        <template id="ciGuestTpl">
-          <div class="ci-guest" data-guest-id="">
-            <div class="ci-guest__title">
-              <input class="ci-in ci-guest__name" data-field="passport_name" value="" placeholder="Guest full name">
-              <span class="ci-chip">Pending</span>
-              <button type="button" class="ci-guest__remove" aria-label="Remove guest">&times;</button>
-            </div>
-            <div class="ci-guest__modes">
-              <button type="button" class="ci-mode ci-guest__fill">Fill in for them</button>
-              <button type="button" class="ci-mode ci-guest__share">Send them a link</button>
-            </div>
-            <div class="ci-guest__inline" hidden>
-              <?php if ($showPassport): ?>
-              <label class="ci-l">Passport number</label>
-              <input class="ci-in" data-field="passport_number" value="">
-              <label class="ci-l">Nationality</label>
-              <input class="ci-in" data-field="nationality" value="">
-              <label class="ci-l">Passport expiry</label>
-              <input class="ci-in" type="date" data-field="passport_expiry" value="">
-              <label class="ci-l">Passport scan</label>
-              <div class="ci-upload" data-has="0">
-                <input type="file" accept="image/jpeg,image/png,application/pdf">
-                <span class="ci-upload__state">No file yet</span>
-              </div>
-              <?php endif; ?>
-              <?php if ($showWaiver): ?>
-              <p class="ci-hint">They sign the waiver themselves — use “Send them a link”, or “Sign on this device” from the admin check-in tab if they’re with you.</p>
-              <?php endif; ?>
-              <button type="button" class="pa-btn pa-btn--primary ci-guest__save">Save this guest</button>
-            </div>
-            <div class="ci-guest__link" hidden>
-              <label class="ci-l">Their private check-in link</label>
-              <div class="ci-linkrow"><input class="ci-in" readonly value="" onclick="this.select()"><button type="button" class="pa-btn pa-btn--ghost ci-copy">Copy</button></div>
-            </div>
-            <div class="ci-kids" data-parent="">
-              <button type="button" class="ci-addkid">+ Add child</button>
-            </div>
-          </div>
-        </template>
+        <template id="ciGuestTpl"><?php $guestCard(null); ?></template>
 
         <button type="button" class="pa-btn pa-btn--ghost ci-addguest" data-need="<?= $need ?>" <?= count($adults) >= $need ? 'hidden' : '' ?>>+ Add adult (<?= count($adults) ?>/<?= $need ?>)</button>
 
@@ -495,7 +497,7 @@ if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — for 
         <textarea class="ci-in" name="special_requests" rows="4" placeholder="Birthday surprise, a bottle of wine in the room…"><?= $val('special_requests') ?></textarea>
 
       <?php elseif ($key === 'deposit'): ?>
-        <div class="ci-deposit"<?= ($showDeposit && !empty($cfg['deposit']['required'])) ? ' data-deposit-required' : '' ?>>
+        <div class="ci-deposit"<?= ($showDeposit && !empty($cfg['deposit']['required'])) ? ' data-deposit-required' : '' ?><?= $planOn ? ' data-deposit-gate' : '' ?>>
           <?php if ($deposit['formatted'] !== ''): ?>
           <div class="ci-deposit__amt">
             <span class="ci-deposit__amt-k">Security deposit</span>
@@ -514,7 +516,25 @@ if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — for 
             <span class="ci-upload__state"><?= $depositOnFile ? 'Uploaded &#10003;' : 'No photo yet' ?></span>
           </div>
           <p class="ci-hint">Your card image is private, encrypted at rest and shared only with the Tribal Sand front desk. We never charge it online.</p>
+          <?php if ($planOn): ?>
+          <div class="ci-noncard">
+            <button type="button" class="ci-noncard__toggle" aria-expanded="<?= $depositPlan !== '' ? 'true' : 'false' ?>">I can&rsquo;t upload my card now</button>
+            <div class="ci-noncard__opts"<?= $depositPlan !== '' ? '' : ' hidden' ?>>
+              <p class="ci-hint" style="margin-top:0">That&rsquo;s fine — the deposit is still needed when you arrive. How will you pay it?</p>
+              <!-- The empty value posts first, so the key is always present when this
+                   step is on the page; a ticked radio (later in the form) wins. -->
+              <input type="hidden" name="deposit_plan" value="">
+              <?php foreach (checkin_deposit_plans() as $__pk => $__pl):
+                    $__lbl = $__pl . ($__pk === 'cash_at_arrival' && $deposit['formatted'] !== '' ? ' (' . $deposit['formatted'] . ')' : ''); ?>
+              <label class="ci-radio"><input type="radio" class="ci-f-plan" name="deposit_plan" value="<?= e($__pk) ?>" <?= $depositPlan === $__pk ? 'checked' : '' ?>> <?= e($__lbl) ?></label>
+              <?php endforeach; ?>
+            </div>
+          </div>
+          <?php endif; ?>
         </div>
+        <?php if ($planOn && $i === $n): ?>
+        <p class="ci-hint ci-deposit__wait"<?= $depositHandled ? ' hidden' : '' ?>>Upload a photo of your card, or choose how you&rsquo;ll pay the deposit, to complete your check-in.</p>
+        <?php endif; ?>
       <?php endif; ?>
 
       <div class="ci-nav">
@@ -522,7 +542,7 @@ if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — for 
         <?php if ($i < $n): ?>
           <button type="button" class="pa-btn pa-btn--primary ci-next">Save &amp; continue &rarr;</button>
         <?php else: ?>
-          <button type="submit" class="pa-btn pa-btn--primary ci-submit" name="do" value="submit">Complete check-in</button>
+          <button type="submit" class="pa-btn pa-btn--primary ci-submit" name="do" value="submit"<?= ($key === 'deposit' && $planOn && !$depositHandled) ? ' hidden' : '' ?>>Complete check-in</button>
         <?php endif; ?>
       </div>
     </section>
@@ -532,4 +552,5 @@ if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — for 
   <p class="ci-help"><a data-ci-leave href="/booking.php?ref=<?= e($ref) ?>&view=messages">Message the team</a> if you need help.</p>
 </form>
 <script src="/js/signature-pad.js?v=<?= @filemtime(__DIR__ . '/../../js/signature-pad.js') ?: time() ?>" defer></script>
+<script src="/js/checkin-terms.js?v=<?= @filemtime(__DIR__ . '/../../js/checkin-terms.js') ?: time() ?>" defer></script>
 <script src="/js/checkin-wizard.js?v=<?= @filemtime(__DIR__ . '/../../js/checkin-wizard.js') ?: time() ?>" defer></script>

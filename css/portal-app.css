@@ -269,6 +269,7 @@
 .ci-in--ai{background:#fff8e1;border-color:#f2c94c}
 .ci-pp-note{background:#fff8e1;border:1px solid #f2c94c;color:#6b4e00;border-radius:9px;padding:9px 12px;font-size:13.5px;line-height:1.5;margin:10px 0 4px}
 .ci-pp-note--warn{background:#fbe6e6;border-color:#f0c2c2;color:#a12}
+.ci-in.is-invalid{border-color:#d9534f;box-shadow:0 0 0 3px rgba(217,83,79,.15)}
 /* Party: saved guest summary + link to send */
 .ci-guest__done{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .ci-guest__done-name{font-weight:600;color:var(--pa-ink);flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
