@@ -113,13 +113,17 @@ $__ci = (string)$hold['check_in']; $__co = (string)$hold['check_out']; $__todayY
         $__ymd = $__ym . '-' . str_pad((string)$__dn, 2, '0', STR_PAD_LEFT);
         $__in  = $__ymd >= $__ci && $__ymd <= $__co;
         $__its = $__days[$__ymd]['items'] ?? [];
+        // Dots are for real plans only — the automatic Check-in / Check-out entries
+        // are already shown by the dark start and end days.
+        $__dot = array_values(array_filter($__its, fn($i) => ($i['source'] ?? '') !== 'auto'));
         $__cls = 'pa-cal__day' . ($__in ? ' is-stay' : '') . ($__ymd === $__ci ? ' is-start' : '') . ($__ymd === $__co ? ' is-end' : '')
-               . ($__ymd === $__todayYmd ? ' is-today' : '') . ($__its ? ' has-items' : '');
+               . ($__ymd === $__todayYmd ? ' is-today' : '') . ($__dot ? ' has-items' : '');
       ?>
       <?php if ($__in): ?>
-      <button type="button" class="<?= $__cls ?>" data-calday="<?= e($__ymd) ?>" aria-label="<?= e(date('l j F', strtotime($__ymd))) ?><?= $__its ? ', ' . count($__its) . ' planned' : '' ?>">
+      <button type="button" class="<?= $__cls ?>" data-calday="<?= e($__ymd) ?>" aria-label="<?= e(date('l j F', strtotime($__ymd))) ?><?= $__ymd === $__todayYmd ? ', today' : '' ?><?= $__dot ? ', ' . count($__dot) . ' planned' : '' ?>">
         <span class="pa-cal__n"><?= $__dn ?></span>
-        <?php if ($__its): ?><span class="pa-cal__dots"><?php foreach (array_slice($__its, 0, 3) as $__it): ?><i class="is-<?= e($__it['source'] === 'extra' ? (string)$__it['status'] : 'plan') ?>"></i><?php endforeach; ?></span><?php endif; ?>
+        <?php if ($__ymd === $__todayYmd): ?><span class="pa-cal__today">Today</span><?php endif; ?>
+        <?php if ($__dot): ?><span class="pa-cal__dots"><?php foreach (array_slice($__dot, 0, 3) as $__it): ?><i class="is-<?= e($__it['source'] === 'extra' ? (string)$__it['status'] : 'plan') ?>"></i><?php endforeach; ?></span><?php endif; ?>
       </button>
       <?php else: ?>
       <span class="<?= $__cls ?>"><span class="pa-cal__n"><?= $__dn ?></span></span>
@@ -213,9 +217,12 @@ $__ci = (string)$hold['check_in']; $__co = (string)$hold['check_out']; $__todayY
       cal.querySelectorAll('[data-calday]').forEach(function (x) { x.classList.toggle('is-picked', x === b); });
       cal.querySelectorAll('[data-caldetail]').forEach(function (x) { x.hidden = x.getAttribute('data-caldetail') !== d; });
       var det = cal.querySelector('[data-caldetail="' + d + '"]');
-      if (det) det.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      if (det && !cal.hidden && b.dataset.auto !== '1') det.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     });
   });
+  // Open on today's plans when today is in the stay, else on the first day.
+  var first = cal.querySelector('[data-calday].is-today') || cal.querySelector('[data-calday]');
+  if (first) first.click();
   var saved = 'list'; try { saved = localStorage.getItem('ts_trip_view') || 'list'; } catch (e) {}
   if (saved === 'cal') show('cal');
 })();

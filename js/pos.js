@@ -142,8 +142,12 @@
   }
   function renderGrid() {
     $('#outletTitle').textContent = S.outlet.name;
-    var chips = ['<button type="button" class="chip ' + (S.cat.t === 'all' ? 'is-on' : '') + '" data-c="all">All</button>'];
-    S.cats.forEach(function (c) { chips.push('<button type="button" class="chip ' + (S.cat.t === 'cat' && S.cat.id === c.id ? 'is-on' : '') + '" data-c="cat:' + c.id + '">' + esc(c.name) + '</button>'); });
+    var sub = $('#outletSub');
+    if (sub) sub.textContent = [S.outlet.venue_name, new Date().toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short' })].filter(Boolean).join(' · ');
+    var own = S.items.filter(function (i) { return i.outlet_id === S.outlet.id; });
+    var count = function (n) { return n ? ' <i>' + n + '</i>' : ''; };
+    var chips = ['<button type="button" class="chip ' + (S.cat.t === 'all' ? 'is-on' : '') + '" data-c="all">All' + count(own.length) + '</button>'];
+    S.cats.forEach(function (c) { chips.push('<button type="button" class="chip ' + (S.cat.t === 'cat' && S.cat.id === c.id ? 'is-on' : '') + '" data-c="cat:' + c.id + '">' + esc(c.name) + count(own.filter(function (i) { return i.category_id === c.id; }).length) + '</button>'); });
     S.sources.forEach(function (o) { chips.push('<button type="button" class="chip chip--src ' + (S.cat.t === 'src' && S.cat.id === o.id ? 'is-on' : '') + '" data-c="src:' + o.id + '">' + esc(o.name) + '</button>'); });
     $('#chips').innerHTML = chips.join('');
     var list = visibleItems();
@@ -156,10 +160,12 @@
       if (i.consignor) tags.push('<span class="tag tag--cons">Consignment</span>');
       var img = i.image ? ' style="background-image:url(\'' + esc(i.image) + '\')"' : '';
       var price = i.price === null ? '<small>Enter price</small>' : fmt(i.price) + (i.per_person ? ' <small>/pp</small>' : '');
-      return '<button type="button" class="tile" data-i="' + i.id + '"' + (out ? ' disabled' : '') + '>' +
+      var inCart = 0; S.cart.forEach(function (l) { if (l.id === i.id) inCart += l.qty; });
+      return '<button type="button" class="tile' + (inCart ? ' is-in' : '') + '" data-i="' + i.id + '"' + (out ? ' disabled' : '') + '>' +
         '<div class="tile__img"' + img + '>' + (i.image ? '' : ico('image')) + '</div>' +
         (tags.length ? '<div class="tags">' + tags.join('') + '</div>' : '') +
-        '<div class="tile__b"><div class="tile__n">' + esc(i.name) + '</div><div class="tile__p"><span>' + price + '</span><span class="plus">' + ico('plus') + '</span></div></div></button>';
+        '<div class="tile__b"><div class="tile__n">' + esc(i.name) + '</div><div class="tile__p"><span>' + price + '</span>' +
+        (inCart ? '<span class="incart">×' + inCart + '</span>' : '<span class="plus">' + ico('plus') + '</span>') + '</div></div></button>';
     }).join('') || '<div class="empty">' + (S.items.length ? 'No items match.' : 'Nothing on sale at this outlet yet.') + '</div>';
   }
   $('#outlets').addEventListener('click', function (e) {
@@ -315,11 +321,12 @@
     $('#lines').innerHTML = S.cart.length ? S.cart.map(function (l, idx) {
       var i = item(l.id), left = stockLeft(i);
       var src = i.outlet_id !== S.outlet.id ? '<div class="line__src">from ' + esc(i.outlet_name) + '</div>' : (i.consignor ? '<div class="line__src">Consignment · ' + esc(i.consignor) + '</div>' : '');
-      return '<div class="line"><div><div class="line__n">' + esc(i.name) + '</div>' + src +
-        '<div class="qty"><button type="button" data-dec="' + idx + '" aria-label="Less">' + ico(l.qty > 1 ? 'minus' : 'x') + '</button><span>' + l.qty + (i.per_person ? ' pax' : '') + '</span>' +
-        '<button type="button" data-inc="' + idx + '" aria-label="More"' + (left !== null && left <= 0 ? ' disabled' : '') + '>' + ico('plus') + '</button>' +
-        '<span class="qty__at">× ' + fmt(unitPrice(l)) + '</span>' + (i.price === null ? '<button type="button" class="qty__edit" data-edit="' + idx + '">edit</button>' : '') +
-        '</div></div><div class="line__t">' + fmt(unitPrice(l) * l.qty) + '</div></div>';
+      return '<div class="line"><div class="line__info"><div class="line__n">' + esc(i.name) + '</div>' + src +
+        '<div class="qty__at">' + fmt(unitPrice(l)) + (i.per_person ? ' per person' : ' each') +
+        (i.price === null ? ' · <button type="button" class="qty__edit" data-edit="' + idx + '">edit price</button>' : '') + '</div></div>' +
+        '<div class="qty"><button type="button" data-dec="' + idx + '" aria-label="Less">' + ico(l.qty > 1 ? 'minus' : 'x') + '</button><span>' + l.qty + '</span>' +
+        '<button type="button" data-inc="' + idx + '" aria-label="More"' + (left !== null && left <= 0 ? ' disabled' : '') + '>' + ico('plus') + '</button></div>' +
+        '<div class="line__t">' + fmt(unitPrice(l) * l.qty) + '</div></div>';
     }).join('') : '<div class="empty">Tap an item to add it.</div>';
     var t = totals(0);
     $('#totals').innerHTML = '<div><span>Subtotal</span><span>' + fmt(t.sub) + '</span></div>' +
@@ -372,7 +379,8 @@
     $('#payNote').textContent = S.pay === 'room_charge' && S.cust ? 'Posts to ' + guestName() + '’s bill (' + S.cust.room + ').' : (block && S.custMode === 'inhouse' && S.cust ? block : '');
     var ready = S.cart.length && S.pay && (S.custMode === 'walkin' || S.cust);
     $('#cta').disabled = !ready;
-    $('#cta').innerHTML = 'Review sale ' + (S.cart.length ? fmt(totals(0).total) : '') + ' ' + ico('arrow');
+    var amt = S.cart.length ? fmt(totals(0).total) : '';
+    $('#cta').innerHTML = (S.pay === 'room_charge' && S.cust && amt ? 'Charge ' + amt + ' to room' : 'Review sale' + (amt ? ' · ' + amt : '')) + ' ' + ico('arrow');
   }
   $('#pay').addEventListener('click', function (e) { var b = e.target.closest('[data-pay]'); if (!b || b.disabled) return; S.pay = b.dataset.pay; renderPay(); });
 

@@ -1087,6 +1087,10 @@ include __DIR__ . '/_layout.php';
 </div>
 
 <script>
+// Own scope: the admin shell re-runs this script when the page is swapped in without
+// a reload (zoom, Prev/Next, coming back to the Calendar), and top-level const/let
+// would be declared twice — the whole script then failed (no Show rates, filters, drag).
+(function () {
 // ── Data from PHP ─────────────────────────────────────────────────
 const unitNames  = {<?php foreach ($units as $u) echo (int)$u['id'] . ':"' . addslashes($u['room_name'].' — '.$u['name']) . '",'; ?>};
 const days       = <?= json_encode(array_values($days)) ?>;
@@ -1524,6 +1528,7 @@ function makePicker(popId, hiddenId, displayId) {
 
 const dpFrom     = makePicker('dpFromPop',     'm_date_from',  'dpFromDisplay');
 const dpTo       = makePicker('dpToPop',       'm_date_to',    'dpToDisplay');
+})();
 </script>
 
 <?php include __DIR__ . '/_layout_end.php'; ?>
