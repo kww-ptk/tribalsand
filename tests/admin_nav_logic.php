@@ -85,7 +85,7 @@ check('manager: Dashboard first; no Website, no Staff', $mgr[0] === 'Dashboard' 
 check('manager: Bookings group holds only what a manager may open', $nav('manager')['groups'][array_search('bookings', array_column($nav('manager')['groups'], 'key'))]['items'][0]['label'] === 'Calendar'
     && !in_array('Bookings › Bookings', $mgr, true) && !in_array('Bookings › Enquiries', $mgr, true));
 $mgrCal = array_column($nav('manager', 'calendar-highlights.php')['active']['tabs'], 'label');
-check('manager: Calendar shows Highlights + Import, not the owner/reception tabs', $mgrCal === ['Highlights', 'Import']);
+check('manager: Calendar shows Highlights + Import + Group import, not the owner/reception tabs', $mgrCal === ['Highlights', 'Import', 'Group import']);
 check('manager: a lone tab becomes a plain link with its full name', in_array('Settings › Email log', $mgr, true) && in_array('Settings › AI gaps', $mgr, true));
 
 $rec = $labels($nav('reception'));
@@ -110,9 +110,9 @@ check('conflicts.php lights Calendar', ($n['active']['label'] ?? '') === 'Calend
 check('…with the Conflicts tab active', array_column(array_filter($n['active']['tabs'], fn($t) => $t['active']), 'label') === ['Conflicts']);
 check('…and the item carries the tab badges', $n['active']['badge'] === 3 && $n['active']['badge_class'] === 'red');
 $html = admin_nav_tabs_html($n);
-check('tab strip: five tabs, shell links, count pill', substr_count($html, '<a class="tab-btn') === 5 && substr_count($html, 'data-shell-link') === 5
+check('tab strip: six tabs, shell links, count pill', substr_count($html, '<a class="tab-btn') === 6 && substr_count($html, 'data-shell-link') === 6
     && str_contains($html, 'tab-btn__count">3<') && str_contains($html, 'aria-current="page"'));
-check('tab strip: every tab carries an icon, plus the Help button', substr_count($html, '<svg') === 6 && str_contains($html, 'class="areatabs__help" data-help-open'));
+check('tab strip: every tab carries an icon, plus the Help button', substr_count($html, '<svg') === 7 && str_contains($html, 'class="areatabs__help" data-help-open'));
 check('Help & guides: every account has it, last in the sidebar (bottom of Settings)', count(array_filter(array_keys($roles), fn($r) => ($l = $labels($nav($r))) && end($l) === 'Settings › Help & guides')) === count($roles));
 check('tab icon: named after the page, else a stand-in, else the item icon', admin_nav_tab_icon(['pages' => ['conflicts.php']], 'gantt') === 'conflicts'
     && admin_nav_tab_icon(['pages' => ['submission-trends.php']], 'submissions') === 'reports'
@@ -142,7 +142,7 @@ check('sidebar: only the current-page group opens, the rest closed', str_contain
     && str_contains($side, 'data-group="restaurant">'));
 check('sidebar: on the Dashboard every group is closed', !str_contains(admin_nav_sidebar_html($nav('owner', 'dashboard.php')), '" open>'));
 check('sidebar: a group header is icon + name + chevron', (bool)preg_match('~<summary class="navgroup__head"><svg[^>]*>.*?</svg><span>Today</span>~s', $side));
-check('sidebar: a link lists every page it stands for', str_contains(admin_nav_sidebar_html($n), 'data-pages="gantt.php conflicts.php calendar-highlights.php ical-feeds.php import-bookings.php"'));
+check('sidebar: a link lists every page it stands for', str_contains(admin_nav_sidebar_html($n), 'data-pages="gantt.php conflicts.php calendar-highlights.php ical-feeds.php import-bookings.php import-group.php"'));
 check('sidebar: Open till opens in a new tab', str_contains(admin_nav_sidebar_html($nav('shop')), 'href="/pos/" class="sidebar__link" target="_blank"'));
 check('sidebar: the active group opens even when it is closed by default', str_contains(admin_nav_sidebar_html($nav('owner', 'sync.php')), 'data-group="settings" open'));
 
