@@ -62,30 +62,33 @@ $v = fn(string $rel) => (int) @filemtime(__DIR__ . '/../' . $rel);
 <meta name="theme-color" content="#102F3A">
 <title>Tribal Sand POS</title>
 <link rel="manifest" href="/pos/manifest.json">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
 <link rel="stylesheet" href="/css/pos.css?v=<?= $v('css/pos.css') ?>">
 </head>
 <body class="pos pos--<?= e($state) ?>">
 <?php include __DIR__ . '/_icons.php'; ?>
 
 <?php if ($state === 'off'): ?>
-  <div class="lock"><div class="lock__card"><div class="lock__brand">TRIBAL SAND POS</div>
+  <div class="lock"><div class="lock__card"><div class="lock__brand"><img src="/images/whitelogo11.png" alt="Tribal Sand" width="186" height="63"><span>Point of sale</span></div>
     <h1 class="lock__title">The till isn’t switched on yet</h1>
     <p class="lock__text">An administrator needs to run the POS migration first.</p></div></div>
 
 <?php elseif ($state === 'signin'): ?>
-  <div class="lock"><div class="lock__card"><div class="lock__brand">TRIBAL SAND POS</div>
+  <div class="lock"><div class="lock__card"><div class="lock__brand"><img src="/images/whitelogo11.png" alt="Tribal Sand" width="186" height="63"><span>Point of sale</span></div>
     <h1 class="lock__title">Sign in to open the till</h1>
     <p class="lock__text">Use your admin account, or ask a manager to register this tablet as a till.</p>
     <a class="lock__btn" href="/admin/login.php">Sign in</a></div></div>
 
 <?php elseif ($state === 'revoked'): ?>
-  <div class="lock"><div class="lock__card"><div class="lock__brand">TRIBAL SAND POS</div>
+  <div class="lock"><div class="lock__card"><div class="lock__brand"><img src="/images/whitelogo11.png" alt="Tribal Sand" width="186" height="63"><span>Point of sale</span></div>
     <h1 class="lock__title">This tablet is no longer a till</h1>
     <p class="lock__text">Its registration was removed. A manager can set it up again.</p>
     <a class="lock__btn" href="/pos/register.php">Set up this tablet</a></div></div>
 
 <?php elseif ($state === 'none'): ?>
-  <div class="lock"><div class="lock__card"><div class="lock__brand">TRIBAL SAND POS</div>
+  <div class="lock"><div class="lock__card"><div class="lock__brand"><img src="/images/whitelogo11.png" alt="Tribal Sand" width="186" height="63"><span>Point of sale</span></div>
     <h1 class="lock__title">No outlets for you here</h1>
     <p class="lock__text"><?= $ctx['mode'] === 'pin' ? 'You are not assigned to any outlet this tablet sells for.' : 'You are not assigned to any POS outlet yet. Ask the owner to add you under Admin → POS outlets.' ?></p>
     <?php if ($ctx['mode'] === 'pin'): ?><button class="lock__btn" data-action="lock" type="button">Back to the lock screen</button>
@@ -95,7 +98,7 @@ $v = fn(string $rel) => (int) @filemtime(__DIR__ . '/../' . $rel);
 <?php elseif ($state === 'lock'): ?>
   <div class="lock" id="lock">
     <div class="lock__card">
-      <div class="lock__brand">TRIBAL SAND POS</div>
+      <div class="lock__brand"><img src="/images/whitelogo11.png" alt="Tribal Sand" width="186" height="63"><span>Point of sale</span></div>
       <div class="lock__term"><?= e($term['name']) ?></div>
       <?php if (!$people): ?>
         <h1 class="lock__title">No one can unlock this till yet</h1>
@@ -122,25 +125,26 @@ $v = fn(string $rel) => (int) @filemtime(__DIR__ . '/../' . $rel);
 <?php else: ?>
 <div class="app" id="app">
   <aside class="side">
-    <div class="logo">TRIBAL SAND</div>
+    <div class="logo"><img src="/images/favicon.png" alt="Tribal Sand" width="64" height="64"></div>
     <div id="outlets" class="side__outlets"></div>
     <div class="side__sep"></div>
-    <button class="outlet" id="histBtn" type="button"><svg><use href="#i-clock"/></svg><span>Sales history</span></button>
+    <div class="side__fill"></div>
+    <button class="outlet" id="histBtn" type="button"><svg><use href="#i-clock"/></svg><span>History</span></button>
     <?php if ($boot['mode'] === 'pin'): ?>
     <button class="outlet" id="lockBtn" type="button"><svg><use href="#i-lock"/></svg><span>Lock</span></button>
     <?php else: ?>
     <a class="outlet" href="/admin/"><svg><use href="#i-back"/></svg><span>Admin</span></a>
     <?php endif; ?>
-    <div class="side__foot"><?= $boot['terminal'] ? e($boot['terminal']) . '<br>' : '' ?><?= $boot['idleLock'] ? 'Locks after ' . (int)ceil($boot['idleLock'] / 60) . ' min idle' : 'Signed in via admin' ?></div>
+    <?php $__foot = trim(($boot['terminal'] ? $boot['terminal'] . ' · ' : '') . ($boot['idleLock'] ? 'Locks after ' . (int)ceil($boot['idleLock'] / 60) . ' min idle' : 'Signed in via admin')); ?>
   </aside>
 
   <main class="main">
     <div class="top">
-      <h1 id="outletTitle">&nbsp;</h1>
-      <div class="who"><span class="avatar"><?= e($boot['user']['initials']) ?></span><div><div class="who__n"><?= e($boot['user']['name']) ?></div><div class="who__r"><?= e($boot['user']['role']) ?></div></div></div>
+      <div class="top__t"><h1 id="outletTitle">&nbsp;</h1><div class="top__sub" id="outletSub"></div></div>
+      <label class="search"><svg><use href="#i-search"/></svg><input id="q" placeholder="Search items…" autocomplete="off" enterkeyhint="search"></label>
+      <div class="who" title="<?= e($__foot) ?>"><span class="avatar"><?= e($boot['user']['initials']) ?></span><div><div class="who__n"><?= e($boot['user']['name']) ?></div><div class="who__r"><?= e($boot['user']['role']) ?></div></div></div>
     </div>
     <div class="chips" id="chips"></div>
-    <label class="search"><svg><use href="#i-search"/></svg><input id="q" placeholder="Search items…" autocomplete="off" enterkeyhint="search"></label>
     <div class="grid" id="grid"><div class="empty">Loading…</div></div>
   </main>
 
@@ -148,7 +152,7 @@ $v = fn(string $rel) => (int) @filemtime(__DIR__ . '/../' . $rel);
     <button class="panel__handle" id="panelHandle" type="button" aria-label="Show order"><span id="handleText">Order</span><svg><use href="#i-up"/></svg></button>
     <div class="panel__scroll">
       <div class="panel__sec">
-        <h3>Customer</h3>
+        <h3 class="panel__lbl">Customer</h3>
         <div class="seg">
           <button type="button" id="segIn" class="is-on"><svg><use href="#i-bed"/></svg>In-house guest</button>
           <button type="button" id="segWalk"><svg><use href="#i-user"/></svg>Walk-in</button>
@@ -156,14 +160,16 @@ $v = fn(string $rel) => (int) @filemtime(__DIR__ . '/../' . $rel);
         <div id="custBox"></div>
       </div>
       <div class="panel__sec order" id="orderSec">
-        <div class="order__head"><h3 id="orderTitle">Order</h3><button type="button" class="linkbtn" id="clearBtn">Clear all</button></div>
+        <div class="order__head"><h3 class="panel__lbl" id="orderTitle">Order</h3><button type="button" class="linkbtn" id="clearBtn">Clear all</button></div>
         <div id="lines"></div>
       </div>
     </div>
+    <div class="panel__foot">
     <div class="totals" id="totals"></div>
     <div class="pay" id="pay"></div>
     <div class="note" id="payNote"></div>
     <button type="button" class="cta" id="cta" disabled>Review sale <svg><use href="#i-arrow"/></svg></button>
+    </div>
   </section>
 </div>
 <div class="modal hidden" id="modal" role="dialog" aria-modal="true"><div class="sheet" id="sheet"></div></div>
