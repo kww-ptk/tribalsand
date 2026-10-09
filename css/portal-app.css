@@ -742,3 +742,27 @@ a.pa-topbar__brand:hover .pa-topbar__title{opacity:.92;}
   .pa-bento__v{font-size:15px;}
   .pa-bento__frame{min-height:190px;}
 }
+
+/* My trip — Day by day | Calendar (includes/app/_timeline.php) */
+.pa-tlview{display:flex;gap:8px;margin:0 0 14px;}
+.pa-cal{margin:0 0 18px;}
+.pa-cal__month{background:#fff;border:1px solid var(--pa-line);border-radius:14px;padding:14px 12px 12px;margin:0 0 12px;}
+.pa-cal__title{font-size:14px;font-weight:600;color:var(--pa-ink);margin:0 4px 10px;}
+.pa-cal__grid{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px;}
+.pa-cal__dow{font-size:11px;font-weight:600;color:var(--pa-muted);text-align:center;padding:2px 0 4px;}
+.pa-cal__day{position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;min-height:44px;border-radius:10px;border:1px solid transparent;background:none;font:inherit;color:#b9b2a6;padding:0;}
+.pa-cal__n{font-size:13px;line-height:1;}
+button.pa-cal__day{cursor:pointer;}
+.pa-cal__day.is-stay{background:#eef4f5;color:var(--pa-teal-d);}
+.pa-cal__day.is-start,.pa-cal__day.is-end{background:var(--pa-teal-d);color:#fff;}
+.pa-cal__day.is-today{border-color:var(--pa-gold);}
+.pa-cal__day.has-items .pa-cal__n{font-weight:700;}
+.pa-cal__day.is-picked{outline:2px solid var(--pa-gold);outline-offset:1px;}
+.pa-cal__dots{display:flex;gap:3px;}
+.pa-cal__dots i{width:6px;height:6px;border-radius:50%;background:var(--pa-teal);}
+.pa-cal__day.is-start .pa-cal__dots i,.pa-cal__day.is-end .pa-cal__dots i{background:var(--pa-gold);}
+.pa-cal__dots i.is-requested{background:none;border:1.5px solid currentColor;}
+.pa-cal__dots i.is-plan{background:#9aa5ab;}
+.pa-cal__detail{background:#fff;border:1px solid var(--pa-line);border-radius:14px;padding:14px;margin:0 0 12px;}
+.pa-cal__hint{font-size:12px;color:var(--pa-muted);margin:0;}
+.pa-tl[hidden],.pa-cal[hidden],.pa-cal__detail[hidden]{display:none;}

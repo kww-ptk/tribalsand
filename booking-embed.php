@@ -51,6 +51,10 @@ body{position:relative;font-family:'Jost',sans-serif;color:var(--dark);-webkit-f
 .tse__name{font-family:'Cormorant Garamond',serif;font-size:1.6rem;line-height:1.1}
 .tse__loc{font-size:.76rem;color:rgba(255,255,255,.65);margin-top:4px}
 .tse__body{padding:0}
+/* The single-room widget has no inner padding of its own (on the property page its card
+   gives it none either) — inset it here, and drop its room title, which repeats the header. */
+.tse__body--room{padding:18px 20px 20px}
+.tse__body--room .bk-room-label{display:none}
 .tse__mi{padding:20px}
 .tse__mi p{font-size:.86rem;color:var(--mid);line-height:1.6;margin:0 0 14px}
 .tse__btn{display:block;width:100%;padding:14px 16px;border:0;border-radius:8px;background:var(--sand);color:#fff;font:500 .78rem 'Jost',sans-serif;letter-spacing:.12em;text-transform:uppercase;cursor:pointer}
@@ -70,7 +74,7 @@ body{position:relative;font-family:'Jost',sans-serif;color:var(--dark);-webkit-f
     <div class="tse__name"><?= e($__embVenue['name']) ?></div>
     <?php if (trim((string)($__embVenue['location'] ?? '')) !== ''): ?><div class="tse__loc"><?= e($__embVenue['location']) ?></div><?php endif; ?>
   </div>
-  <div class="tse__body">
+  <div class="tse__body<?= $__embPlan['kind'] === 'room' ? ' tse__body--room' : '' ?>">
   <?php if ($__embPlan['kind'] === 'property'): ?>
     <?php $pa_venue_slug = $__embVenue['slug']; include __DIR__ . '/includes/property-availability-widget.php'; ?>
   <?php elseif ($__embPlan['kind'] === 'room'): ?>
