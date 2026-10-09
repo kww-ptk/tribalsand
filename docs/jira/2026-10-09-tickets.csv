@@ -78,3 +78,21 @@ Description: The line is gone. ""Needs you"" now shows only the items that have 
 How to test:
 1. Open the Dashboard as owner. Expected: the Needs you list ends after the last item; no ""All clear: …"" text under it.
 2. Sign in as an account with nothing waiting. Expected: ""Nothing is waiting on you"".","Task"
+"Guest ""My trip"" calendar — clearer Today and dots","Context: In the guest calendar, today and the day the guest tapped both had a gold border, the check-in / check-out days carried a dot for the automatic ""Check-in"" / ""Check-out"" entry, and the panel under the grid started empty.
+
+Description: Today now carries a small TODAY label (gold border only = the day you tapped). Dots show real plans only (excursions, transfers, dinners, the guest's own plans), not the automatic check-in/out entries. The calendar opens with today's plans showing (or the first day's when today isn't in the stay).
+
+How to test:
+1. Open a guest link for a stay that includes today → My trip → Calendar.
+2. Expected: today shows ""TODAY""; the panel below already shows today's plans.
+3. Expected: the check-out day has no dot unless something is planned that day.
+4. Tap another day → it gets the gold border and its plans show below.","Task"
+"Calendar — Show rates / filters / drag stop working after Week, Month, Prev or Next","Context: Clicking Week (or Month, Quarter, Prev, Next) and then ticking Show rates did nothing.
+
+Description: Those buttons load the next view without reloading the page, and the Calendar's controls were set up a second time and crashed (""already declared""), so Show rates, Show rate overrides, the services filters and dragging blocks all stopped. The controls now live in their own scope and can be set up any number of times.
+
+How to test:
+1. Bookings → Calendar → Week → tick Show rates. Expected: nightly prices appear in the cells.
+2. Click Next, Month, then Week again. Expected: prices still show; untick/tick works.
+3. Toggle Show rate overrides → the orange marks hide and come back.
+4. Drag a block one day → it moves.","Task"
