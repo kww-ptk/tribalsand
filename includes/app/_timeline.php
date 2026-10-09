@@ -88,7 +88,58 @@ $__item = function (array $it) use ($__icon) {
 </div>
 <?php endif; ?>
 
-<div class="pa-tl">
+<?php
+/* Calendar view (Oct 2026): the same days and items as a month grid. The stay is
+   shaded, a day with something on it carries a dot per item, and tapping a day
+   shows its items under the grid. Built from $__days — the timeline's own data —
+   so the two views can never disagree. The choice is kept on the device. */
+$__calMonths = [];
+for ($__m = new DateTime(date('Y-m-01', strtotime((string)$hold['check_in']))); $__m <= new DateTime((string)$hold['check_out']); $__m->modify('+1 month')) $__calMonths[] = $__m->format('Y-m');
+$__ci = (string)$hold['check_in']; $__co = (string)$hold['check_out']; $__todayYmd = date('Y-m-d');
+?>
+<div class="pa-tlview" role="tablist" aria-label="How to show your trip">
+  <button type="button" class="pa-sectab is-active" data-tlview="list" role="tab" aria-selected="true">Day by day</button>
+  <button type="button" class="pa-sectab" data-tlview="cal" role="tab" aria-selected="false">Calendar</button>
+</div>
+
+<div class="pa-cal" id="paTripCal" hidden>
+  <?php foreach ($__calMonths as $__ym): $__first = strtotime($__ym . '-01'); $__lead = (int)date('N', $__first) - 1; $__dim = (int)date('t', $__first); ?>
+  <div class="pa-cal__month">
+    <div class="pa-cal__title"><?= e(date('F Y', $__first)) ?></div>
+    <div class="pa-cal__grid">
+      <?php foreach (['M','T','W','T','F','S','S'] as $__dw): ?><span class="pa-cal__dow"><?= $__dw ?></span><?php endforeach; ?>
+      <?php for ($__i = 0; $__i < $__lead; $__i++): ?><span></span><?php endfor; ?>
+      <?php for ($__dn = 1; $__dn <= $__dim; $__dn++):
+        $__ymd = $__ym . '-' . str_pad((string)$__dn, 2, '0', STR_PAD_LEFT);
+        $__in  = $__ymd >= $__ci && $__ymd <= $__co;
+        $__its = $__days[$__ymd]['items'] ?? [];
+        $__cls = 'pa-cal__day' . ($__in ? ' is-stay' : '') . ($__ymd === $__ci ? ' is-start' : '') . ($__ymd === $__co ? ' is-end' : '')
+               . ($__ymd === $__todayYmd ? ' is-today' : '') . ($__its ? ' has-items' : '');
+      ?>
+      <?php if ($__in): ?>
+      <button type="button" class="<?= $__cls ?>" data-calday="<?= e($__ymd) ?>" aria-label="<?= e(date('l j F', strtotime($__ymd))) ?><?= $__its ? ', ' . count($__its) . ' planned' : '' ?>">
+        <span class="pa-cal__n"><?= $__dn ?></span>
+        <?php if ($__its): ?><span class="pa-cal__dots"><?php foreach (array_slice($__its, 0, 3) as $__it): ?><i class="is-<?= e($__it['source'] === 'extra' ? (string)$__it['status'] : 'plan') ?>"></i><?php endforeach; ?></span><?php endif; ?>
+      </button>
+      <?php else: ?>
+      <span class="<?= $__cls ?>"><span class="pa-cal__n"><?= $__dn ?></span></span>
+      <?php endif; ?>
+      <?php endfor; ?>
+    </div>
+  </div>
+  <?php endforeach; ?>
+  <?php foreach ($__days as $__ymd => $__d): ?>
+  <div class="pa-cal__detail" data-caldetail="<?= e($__ymd) ?>" hidden>
+    <div class="pa-tl__label"><?= e(date('l j F', strtotime($__ymd))) ?></div>
+    <?php if ($__d['items']): foreach ($__d['items'] as $__it) echo $__item($__it); else: ?>
+    <div class="pa-tl__free">Nothing planned yet<?= $__active ? ' — see <a href="' . e($__tu) . '&amp;view=extras">Extras</a>' : '' ?></div>
+    <?php endif; ?>
+  </div>
+  <?php endforeach; ?>
+  <p class="pa-cal__hint">Tap a day to see what’s planned.</p>
+</div>
+
+<div class="pa-tl" id="paTripList">
 <?php foreach ($__rows as $__r):
     if (isset($__r['day'])): $__d = $__r['day']; $__ts = strtotime($__d['date']); ?>
   <div class="pa-tl__day<?= $__d['today'] ? ' is-today' : '' ?>">
@@ -143,4 +194,30 @@ $__item = function (array $it) use ($__icon) {
 })();
 </script>
 <?php endif; ?>
+<script>
+/* Day by day | Calendar. Re-run on every portal tab swap (js/portal-nav.js), so it
+   binds to this render's elements only. */
+(function () {
+  var list = document.getElementById('paTripList'), cal = document.getElementById('paTripCal');
+  if (!list || !cal) return;
+  var tabs = document.querySelectorAll('[data-tlview]');
+  function show(v) {
+    list.hidden = v === 'cal'; cal.hidden = v !== 'cal';
+    tabs.forEach(function (t) { var on = t.getAttribute('data-tlview') === v; t.classList.toggle('is-active', on); t.setAttribute('aria-selected', on ? 'true' : 'false'); });
+    try { localStorage.setItem('ts_trip_view', v); } catch (e) {}
+  }
+  tabs.forEach(function (t) { t.addEventListener('click', function () { show(t.getAttribute('data-tlview')); }); });
+  cal.querySelectorAll('[data-calday]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var d = b.getAttribute('data-calday');
+      cal.querySelectorAll('[data-calday]').forEach(function (x) { x.classList.toggle('is-picked', x === b); });
+      cal.querySelectorAll('[data-caldetail]').forEach(function (x) { x.hidden = x.getAttribute('data-caldetail') !== d; });
+      var det = cal.querySelector('[data-caldetail="' + d + '"]');
+      if (det) det.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    });
+  });
+  var saved = 'list'; try { saved = localStorage.getItem('ts_trip_view') || 'list'; } catch (e) {}
+  if (saved === 'cal') show('cal');
+})();
+</script>
 <?php include __DIR__ . '/_extras_sheet.php'; ?>

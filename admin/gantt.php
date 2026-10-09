@@ -137,15 +137,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // iCal feed add/remove moved to admin/ical-feeds.php (Calendar › iCal feeds).
 }
 
-// ── Date range: 3-month window with prev/next offset ────────────
+// ── Date range: zoom (week / month / quarter) + prev/next offset ──
+// Quarter (3 months from the 1st, a month per step) is the original view and
+// stays the default; the zoom only changes the window and the day width.
+require_once __DIR__ . '/../includes/gantt-services.php';
+$zoom   = gantt_zoom($_GET['zoom'] ?? null);
+$dayW   = GANTT_ZOOMS[$zoom]['day_w'];
 $offset = (int)($_GET['offset'] ?? 0);
-$start  = new DateTime('first day of this month');
-if ($offset) $start->modify("{$offset} months");
-$end = clone $start;
-$end->modify('+3 months');
-
-$start_str = $start->format('Y-m-d');
-$end_str   = $end->format('Y-m-d');
+[$start_str, $end_str] = gantt_window($zoom, $offset, date('Y-m-d'));
+$start = new DateTime($start_str);
+$end   = new DateTime($end_str);
+$navQs = function (int $off) use ($zoom): string {
+    $q = array_filter(['zoom' => $zoom === 'quarter' ? null : $zoom, 'offset' => $off ?: null,
+                       'room' => isset($_GET['room']) ? (int)$_GET['room'] : null]);
+    return '/admin/gantt.php' . ($q ? '?' . http_build_query($q) : '');
+};
 
 // Build day list
 $days = [];
@@ -253,6 +259,13 @@ foreach ($units as $__u) $room_defaults[(int)$__u['room_db_id']] = (float)($__u[
 $room_prices = rates_nightly_maps($room_defaults, $start_str, $end_str);
 
 
+// Services & excursions: guest requests + plan items for the stays on screen,
+// drawn as one row per property (read-only — see includes/gantt-services.php).
+$services       = gantt_services($start_str, $end_str, $gVenueOk);
+$svc_by_venue   = [];
+foreach ($services['scheduled'] as $__s) $svc_by_venue[$__s['venue']][] = $__s;
+$svc_groups_on  = array_count_values(array_column(array_merge($services['scheduled'], $services['unscheduled']), 'group'));
+
 $env         = parse_env();
 $site_url    = rtrim($env['SITE_URL'] ?? 'https://tribalsand.com', '/');
 // Sync iCal runs under the staff session (admin/ical-feeds.php action=sync_now),
@@ -303,7 +316,7 @@ include __DIR__ . '/_layout.php';
    hovering. Each marker owns ONE visual channel so they never blur together:
    weekend = slate column band, holiday = rose column band, today = blue outline,
    rate override = amber bar across the top (opt-in filter, see .show-rates). */
-.gantt-day-h { position: relative; width: 28px; min-width: 28px; height: 38px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; font-size: 11px; font-weight: 600; color: #334155; border-right: 1px solid var(--border); flex-shrink: 0; line-height: 1; }
+.gantt-day-h { position: relative; width: var(--gday, 28px); min-width: var(--gday, 28px); height: 38px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; font-size: 11px; font-weight: 600; color: #334155; border-right: 1px solid var(--border); flex-shrink: 0; line-height: 1; }
 .gantt-day-h .gd-dow { font-size: 9px; font-weight: 600; color: #94a3b8; letter-spacing: .02em; }
 /* Weekends — a solid slate header and a visible column band down the grid */
 .gantt-day-h.is-weekend { background: #dde3ea; color: #0f172a; font-weight: 700; }
@@ -313,7 +326,7 @@ include __DIR__ . '/_layout.php';
 .gantt-day-h.is-holiday .gd-dow { color: #be123c; font-weight: 700; }
 /* Row cells */
 .gantt-cells { position: relative; display: flex; flex: 1; height: 36px; border-bottom: 1px solid var(--border); }
-.gantt-day-cell { width: 28px; min-width: 28px; height: 100%; border-right: 1px solid #eef0f2; cursor: pointer; flex-shrink: 0; transition: background .1s; }
+.gantt-day-cell { width: var(--gday, 28px); min-width: var(--gday, 28px); height: 100%; border-right: 1px solid #eef0f2; cursor: pointer; flex-shrink: 0; transition: background .1s; }
 .gantt-day-cell:hover { background: #e3f0f4; }
 .gantt-day-cell.is-weekend { background: #eef1f5; border-right-color: #e2e7ed; }
 .gantt-day-cell.is-weekend:hover { background: #e2e8ef; }
@@ -452,14 +465,46 @@ include __DIR__ . '/_layout.php';
 .dp__cell:hover:not(.dp__cell--blank) { background: #e8f4f6; color: var(--brand); }
 .dp__cell--sel { background: var(--brand) !important; color: #fff !important; font-weight: 600; }
 .dp__cell--blank { cursor: default; }
+/* Zoom switch + Services & excursions row (includes/gantt-services.php) */
+.gantt-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 12px; }
+.gantt-tools .segswitch { margin: 0; }
+.gantt-svc .gantt-label { background: #fbf8f2; color: #6b5a3a; }
+.gantt-svc .gantt-label small { color: #8a7a5c; }
+.gantt-svc-cells { position: relative; flex: none; min-height: 36px; border-bottom: 1px solid var(--border); background: #fdfbf7;
+  background-image: repeating-linear-gradient(90deg, transparent 0 calc(var(--gday, 28px) - 1px), #f1ece2 calc(var(--gday, 28px) - 1px) var(--gday, 28px)); }
+.gsvc { position: absolute; height: 18px; display: flex; align-items: center; gap: 3px; padding: 0 4px; border-radius: 4px; font-size: 10px; font-weight: 600;
+  line-height: 1; white-space: nowrap; overflow: hidden; text-decoration: none; color: #fff; box-sizing: border-box; z-index: 2; }
+.gsvc:hover { filter: brightness(1.08); z-index: 3; overflow: visible; min-width: max-content; box-shadow: 0 2px 8px rgba(0,0,0,.18); }
+.gsvc__t { opacity: .85; font-weight: 700; }
+.gsvc--excursion { background: #0f766e; } .gsvc--transfer { background: #1d4ed8; } .gsvc--dining { background: #b45309; }
+.gsvc--house { background: #7c3aed; } .gsvc--repair { background: #b91c1c; } .gsvc--other { background: #475569; }
+.gsvc.is-requested { background: #fff !important; border: 1.5px dashed currentColor; }
+.gsvc--excursion.is-requested { color: #0f766e; } .gsvc--transfer.is-requested { color: #1d4ed8; } .gsvc--dining.is-requested { color: #b45309; }
+.gsvc--house.is-requested { color: #7c3aed; } .gsvc--repair.is-requested { color: #b91c1c; } .gsvc--other.is-requested { color: #475569; }
+.gsvc.is-planned { opacity: .8; }
+.gl--svc-excursion { background: #0f766e; } .gl--svc-transfer { background: #1d4ed8; } .gl--svc-dining { background: #b45309; }
+.gl--svc-house { background: #7c3aed; } .gl--svc-repair { background: #b91c1c; } .gl--svc-other { background: #475569; }
+.gl--svc-req { background: #fff; border: 1.5px dashed #64748b; }
+<?php foreach (array_keys(GANTT_SERVICE_GROUPS) as $__g): ?>
+.gantt-outer.hide-svc-<?= $__g ?> .gsvc--<?= $__g ?>, .gsvc-tray.hide-svc-<?= $__g ?> .gsvc-item--<?= $__g ?> { display: none; }
+<?php endforeach; ?>
+.gantt-outer.hide-svc .gantt-svc { display: none; }
+.gsvc-tray { margin: 0 0 20px; }
+.gsvc-tray__list { list-style: none; margin: 0; padding: 0; }
+.gsvc-item { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; padding: 9px 16px; border-bottom: 1px solid var(--border); font-size: 13px; }
+.gsvc-item:last-child { border-bottom: 0; }
+.gsvc-item__dot { width: 10px; height: 10px; border-radius: 50%; flex: none; }
+.gsvc-item__what { font-weight: 600; }
+.gsvc-item__who { color: var(--muted); font-size: 12px; }
+.gsvc-item a { margin-left: auto; }
 </style>
 
 <div class="page-header">
   <h1>Availability Calendar</h1>
   <div class="actions">
-    <a href="?offset=<?= $offset - 1 ?>" class="btn-outline btn-sm"><?= admin_icon('chevron-left', 15) ?> Prev</a>
-    <a href="/admin/gantt.php"            class="btn-outline btn-sm">Today</a>
-    <a href="?offset=<?= $offset + 1 ?>" class="btn-outline btn-sm">Next <?= admin_icon('chevron-right', 15) ?></a>
+    <a href="<?= e($navQs($offset - 1)) ?>" class="btn-outline btn-sm"><?= admin_icon('chevron-left', 15) ?> Prev</a>
+    <a href="<?= e($navQs(0)) ?>"           class="btn-outline btn-sm">Today</a>
+    <a href="<?= e($navQs($offset + 1)) ?>" class="btn-outline btn-sm">Next <?= admin_icon('chevron-right', 15) ?></a>
     <?php if ($has_ical_feeds): ?>
     <button class="btn-primary btn-sm" id="syncBtn" data-csrf="<?= e(csrf_token()) ?>"><?= admin_icon('rotate', 15) ?> Sync iCal</button>
     <?php endif; ?>
@@ -478,6 +523,16 @@ include __DIR__ . '/_layout.php';
 <?php if (empty($units)): ?>
 <div class="alert alert--info">No units defined yet. Go to <a href="/admin/rooms.php">Rooms</a>, edit a room, and add units under the <strong>Units</strong> tab.</div>
 <?php else: ?>
+
+<div class="gantt-tools">
+  <nav class="segswitch" aria-label="Zoom">
+    <?php foreach (GANTT_ZOOMS as $__z => $__zm):
+      $__q = array_filter(['zoom' => $__z === 'quarter' ? null : $__z, 'room' => $filterRoom ?: null]); ?>
+    <a class="<?= $zoom === $__z ? 'is-on' : '' ?>"<?= $zoom === $__z ? ' aria-current="true"' : '' ?> href="/admin/gantt.php<?= $__q ? '?' . e(http_build_query($__q)) : '' ?>"><?= e($__zm['label']) ?></a>
+    <?php endforeach; ?>
+  </nav>
+  <span class="text-muted" style="font-size:12.5px"><?= e(date('j M', strtotime($start_str)) . ' – ' . date('j M Y', strtotime($end_str . ' -1 day'))) ?></span>
+</div>
 
 <div class="gantt-legend" aria-label="Calendar legend">
   <span><i class="gl gl--booked"></i> Booked</span>
@@ -501,9 +556,20 @@ include __DIR__ . '/_layout.php';
     <input type="checkbox" id="ganttShowPrices"> <i class="gl gl--price">k</i> Show rates
   </label>
 </div>
+<div class="gantt-legend" aria-label="Services and excursions">
+  <label class="optchip" title="Show each property's guest requests and plan on the calendar">
+    <input type="checkbox" id="ganttShowSvc" checked> Services &amp; excursions
+  </label>
+  <?php foreach (GANTT_SERVICE_GROUPS as $__g => $__gl): ?>
+  <label class="optchip" title="Show <?= e(strtolower($__gl)) ?>">
+    <input type="checkbox" data-svc-group="<?= e($__g) ?>" checked> <i class="gl gl--svc-<?= e($__g) ?>"></i> <?= e($__gl) ?><?php if (!empty($svc_groups_on[$__g])): ?> <b><?= (int)$svc_groups_on[$__g] ?></b><?php endif; ?>
+  </label>
+  <?php endforeach; ?>
+  <span><i class="gl gl--svc-req"></i> Requested (not confirmed)</span>
+</div>
 
 <!-- ── Gantt ── -->
-<div class="gantt-outer" id="ganttOuter">
+<div class="gantt-outer" id="ganttOuter" style="--gday:<?= (int)$dayW ?>px" data-day-w="<?= (int)$dayW ?>">
 
   <!-- Month band -->
   <?php
@@ -520,7 +586,7 @@ include __DIR__ . '/_layout.php';
     <div class="gantt-months">
       <div class="gantt-label" style="background:var(--sidebar-bg);color:#fff;font-size:10px">Unit</div>
       <?php foreach ($month_spans as [$mname, $mspan]): ?>
-      <div class="gantt-month-cell" style="width:<?= $mspan * 28 ?>px;min-width:<?= $mspan * 28 ?>px"><?= e($mname) ?></div>
+      <div class="gantt-month-cell" style="width:<?= $mspan * $dayW ?>px;min-width:<?= $mspan * $dayW ?>px"><?= e($mname) ?></div>
       <?php endforeach; ?>
     </div>
     <div class="gantt-head" style="min-width:0">
@@ -538,7 +604,7 @@ include __DIR__ . '/_layout.php';
           $ttl = date('D d M', strtotime($day)) . ($hl['title'] !== '' ? ' · ' . $hl['title'] : '') . ($isRate ? ' ★ Rate override' : '');
         ?>
         <div class="gantt-day-h<?= $cls ?>" title="<?= e($ttl) ?>">
-          <span class="gd-dow"><?= substr(date('D', strtotime($day)), 0, 1) ?></span><?= date('j', strtotime($day)) ?>
+          <span class="gd-dow"><?= $dayW >= 40 ? date('D', strtotime($day)) : substr(date('D', strtotime($day)), 0, 1) ?></span><?= date('j', strtotime($day)) ?>
         </div>
         <?php endforeach; ?>
       </div>
@@ -549,7 +615,30 @@ include __DIR__ . '/_layout.php';
   <?php
   $prev_room  = '';
   $prev_venue = null;
-  $grid_w     = count($days) * 28;   // day cells are 28px wide (see block maths below)
+  $grid_w     = count($days) * $dayW;   // day width follows the zoom (see block maths below)
+  /* One "Services & excursions" row closes each property's section. */
+  $svcRow = function (string $venueName, string $vKey) use ($svc_by_venue, $day_index, $dayW, $grid_w): string {
+      $items = $svc_by_venue[$venueName] ?? [];
+      if (!$items) return '';
+      $lay = gantt_service_lanes($items, $day_index);
+      if (!$lay['lanes']) return '';
+      $h = max(36, $lay['count'] * 21 + 6);
+      $html = '';
+      foreach ($items as $it) {
+          if (!isset($lay['lanes'][$it['key']])) continue;
+          $tip = $it['kind_label'] . ': ' . $it['title'] . ' · ' . $it['guest'] . ' (' . $it['unit'] . ')'
+               . ' · ' . date('D j M', strtotime($it['day'])) . ($it['time'] !== '' ? ' ' . $it['time'] : '')
+               . ' · ' . ucfirst($it['status']);
+          $html .= '<a class="gsvc gsvc--' . e($it['group']) . ' is-' . e($it['status']) . '" href="' . e($it['url']) . '"'
+                 . ' style="left:' . ($day_index[$it['day']] * $dayW + 1) . 'px;top:' . ($lay['lanes'][$it['key']] * 21 + 4) . 'px;width:' . max(10, $dayW - 2) . 'px"'
+                 . ' title="' . e($tip) . '">'
+                 . ($it['time'] !== '' ? '<span class="gsvc__t">' . e($it['time']) . '</span>' : '') . e($it['title']) . '</a>';
+      }
+      return '<div class="gantt-row gantt-svc" data-venue-key="' . e($vKey) . '">'
+           . '<div class="gantt-label"><small>' . e($venueName) . '</small>Services &amp; excursions</div>'
+           . '<div class="gantt-svc-cells" style="width:' . (int)$grid_w . 'px;height:' . $h . 'px">' . $html . '</div></div>';
+  };
+  $prev_v_key = null;
   foreach ($units as $unit):
     $unit_blocks = $blocks_by_unit[(int)$unit['id']] ?? [];
     $view_start_ts = strtotime($start_str);
@@ -589,7 +678,9 @@ include __DIR__ . '/_layout.php';
     // the header to its unit rows, and keeps the collapsed state across reloads.
     $v_key      = 'v' . substr(md5($venue_name), 0, 8);
     if ($venue_name !== $prev_venue):
+      if ($prev_venue !== null) echo $svcRow($prev_venue, $prev_v_key);
       $prev_venue = $venue_name;
+      $prev_v_key = $v_key;
       $prev_room  = '';           // reprint the room label at the top of each property
       $v_units    = count($units_by_venue[$venue_name] ?? []);
       $v_loc      = trim((string)($unit['venue_location'] ?? ''));
@@ -642,8 +733,8 @@ include __DIR__ . '/_layout.php';
         if ($vis_end <= $vis_start) continue;
         $left_days = (int)(($vis_start - $view_start_ts) / 86400);
         $span_days = (int)(($vis_end   - $vis_start)     / 86400);
-        $left_px   = $left_days * 28;
-        $width_px  = max(4, $span_days * 28 - 2);
+        $left_px   = $left_days * $dayW;
+        $width_px  = max(4, $span_days * $dayW - 2);
         // Maya Ilai: a block may consume only part of a villa. NULL means the
         // whole unit, which is what every block at every other property means.
         $miLabel = '';
@@ -734,7 +825,26 @@ include __DIR__ . '/_layout.php';
     </div>
   </div>
   <?php endforeach; ?>
+  <?php if ($prev_venue !== null) echo $svcRow($prev_venue, $prev_v_key); ?>
 </div>
+
+<?php if ($services['unscheduled']): ?>
+<div class="card gsvc-tray" id="gsvcTray">
+  <div class="card__head"><span class="card__title">Not scheduled yet (<?= count($services['unscheduled']) ?>)</span>
+    <span class="text-muted" style="font-size:12px">Requests for stays on screen with no date — set the day on the booking's Requests tab</span></div>
+  <ul class="gsvc-tray__list">
+    <?php foreach ($services['unscheduled'] as $it): ?>
+    <li class="gsvc-item gsvc-item--<?= e($it['group']) ?>">
+      <i class="gsvc-item__dot gl--svc-<?= e($it['group']) ?>"></i>
+      <span class="gsvc-item__what"><?= e($it['title']) ?></span>
+      <span class="badge"><?= e(ucfirst($it['status'])) ?></span>
+      <span class="gsvc-item__who"><?= e($it['guest']) ?> · <?= e($it['venue']) ?> · <?= e($it['unit']) ?> · stay <?= e(date('j M', strtotime($it['check_in']))) ?> → <?= e(date('j M', strtotime($it['check_out']))) ?></span>
+      <a class="btn-outline btn-sm" href="<?= e($it['url']) ?>">Open booking</a>
+    </li>
+    <?php endforeach; ?>
+  </ul>
+</div>
+<?php endif; ?>
 
 <!-- Mobile list (shown below 900px instead of Gantt) -->
 <div class="gantt-mobile">
@@ -982,7 +1092,7 @@ const unitNames  = {<?php foreach ($units as $u) echo (int)$u['id'] . ':"' . add
 const days       = <?= json_encode(array_values($days)) ?>;
 const dayIndex   = <?= json_encode($day_index) ?>;
 const csrfToken  = () => document.querySelector('input[name="csrf_token"]')?.value ?? '';
-const CELL_W     = 28;
+const CELL_W     = <?= (int)$dayW ?>;   // day width follows the zoom
 const roomFilter = <?= $filterRoom ? 'true' : 'false' ?>;
 
 // ── Modal helpers ────────────────────────────────────────────────
@@ -1064,6 +1174,33 @@ function setVenueCollapsed(key, collapsed) {
     try { localStorage.setItem(id, box.checked ? '1' : '0'); } catch (e) {}
   });
 });
+
+// ── Services & excursions filters (remembered like the toggles above) ──
+(function () {
+  const outer = document.getElementById('ganttOuter'), tray = document.getElementById('gsvcTray');
+  const all = document.getElementById('ganttShowSvc');
+  if (!outer || !all) return;
+  const KEY = 'ganttSvcOff';
+  let off = new Set();
+  try { off = new Set(JSON.parse(localStorage.getItem(KEY) || '[]')); } catch (e) {}
+  const apply = () => {
+    outer.classList.toggle('hide-svc', off.has('_all'));
+    if (tray) tray.hidden = off.has('_all');
+    document.querySelectorAll('[data-svc-group]').forEach(box => {
+      const g = box.dataset.svcGroup, hide = off.has(g);
+      box.checked = !hide;
+      outer.classList.toggle('hide-svc-' + g, hide);
+      if (tray) tray.classList.toggle('hide-svc-' + g, hide);
+    });
+    all.checked = !off.has('_all');
+  };
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify([...off])); } catch (e) {} };
+  all.addEventListener('change', () => { all.checked ? off.delete('_all') : off.add('_all'); apply(); save(); });
+  document.querySelectorAll('[data-svc-group]').forEach(box => box.addEventListener('change', () => {
+    box.checked ? off.delete(box.dataset.svcGroup) : off.add(box.dataset.svcGroup); apply(); save();
+  }));
+  apply();
+})();
 
 // ── Block drag-move / resize ──────────────────────────────────────
 let dragState = null; // { block, mode, blockId, unitId, dateFrom, dateTo, duration, dayOffset, startX, moved, highlights }
