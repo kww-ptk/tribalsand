@@ -116,6 +116,22 @@ if ($isLead && ($_POST['scope'] ?? '') !== 'guest') {
          ON CONFLICT (hold_id) DO UPDATE SET ' . implode(', ', $sets) . ', updated_at=now()',
         $p
     );
+
+    // Deposit without a card photo: how the guest will pay at arrival. The wizard
+    // posts an empty deposit_plan alongside the radios, so the key is present
+    // exactly when the deposit step was on the page — absent = leave it alone.
+    // The timestamp moves only when the answer actually changes.
+    if (array_key_exists('deposit_plan', $_POST) && checkin_deposit_plan_supported()) {
+        $plan = (string)$_POST['deposit_plan'];
+        $plan = array_key_exists($plan, checkin_deposit_plans()) ? $plan : null;
+        db_query(
+            'UPDATE booking_checkin
+                SET deposit_plan_at = CASE WHEN deposit_plan IS NOT DISTINCT FROM CAST(:p1 AS TEXT) THEN deposit_plan_at
+                                           WHEN CAST(:p2 AS TEXT) IS NULL THEN NULL ELSE now() END,
+                    deposit_plan    = CAST(:p3 AS TEXT)
+              WHERE hold_id = :h',
+            [':p1' => $plan, ':p2' => $plan, ':p3' => $plan, ':h' => $holdId]);
+    }
 }
 
 // ── Passport identity for the target guest (lead: any guest; co-guest: own) ─
@@ -254,7 +270,11 @@ $do = $_POST['do'] ?? 'save';
 if ($do === 'submit') {
     if ($isLead) {
         $config  = checkin_config();
-        $missing = checkin_missing_steps($config, fetch_checkin($holdId), checkin_lead_guest($holdId)); // booking-level + lead's own
+        $missing = checkin_submit_missing($config, fetch_checkin($holdId), checkin_lead_guest($holdId)); // booking-level + lead's own + deposit
+        if ($missing === ['deposit']) {
+            $_SESSION['ci_error'] = 'Please upload a photo of your card, or tell us how you’ll pay the deposit at arrival.';
+            header('Location: ' . $back); exit;
+        }
         if ($missing) {
             $_SESSION['ci_error'] = 'Please complete: ' . implode(', ', array_map(fn($k) => checkin_step_catalog()[$k]['label'] ?? $k, $missing));
             header('Location: ' . $back); exit;

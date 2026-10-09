@@ -201,6 +201,52 @@ function checkin_deposit_card_on_file(?array $data): bool {
     return checkin_deposit_supported() && trim((string)(($data ?? [])['deposit_card_file_key'] ?? '')) !== '';
 }
 
+/** How a guest without a card photo will pay the deposit at arrival. Keys are stored. */
+function checkin_deposit_plans(): array {
+    return [
+        'card_at_arrival' => 'I’ll bring my card — the deposit will be taken at arrival',
+        'cash_at_arrival' => 'I’ll pay the deposit in cash at arrival',
+    ];
+}
+
+/**
+ * True once add_checkin_deposit_plan.sql is applied. A catalog lookup, never a
+ * failing SELECT — it can run inside a caller's transaction. Cached per request.
+ */
+function checkin_deposit_plan_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try {
+        $ok = (bool) db_query("SELECT 1 FROM information_schema.columns
+                                WHERE table_schema = current_schema() AND table_name = 'booking_checkin'
+                                  AND column_name = 'deposit_plan'")->fetchColumn();
+    } catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/** The deposit is dealt with: a card photo is on file, or the guest chose how to pay at arrival. */
+function checkin_deposit_handled(?array $data): bool {
+    if (checkin_deposit_card_on_file($data)) return true;
+    return array_key_exists((string)(($data ?? [])['deposit_plan'] ?? ''), checkin_deposit_plans());
+}
+
+/**
+ * The message a lead sends another adult with their personal check-in link.
+ * js/checkin-wizard.js builds the same sentence for guests added on the page —
+ * keep the two in step. Pure.
+ */
+function checkin_guest_share_text(string $name, string $property, string $dates, string $link): string {
+    $first = trim($name) !== '' ? explode(' ', trim($name))[0] : '';
+    $where = trim($property) !== '' ? ' for ' . trim($property) : '';
+    $when  = ($where !== '' && trim($dates) !== '') ? ', ' . trim($dates) : '';
+    return 'Hi' . ($first !== '' ? ' ' . $first : '') . ', please complete your check-in' . $where . $when . ': ' . $link;
+}
+
+/** WhatsApp share link — the sender picks the contact in WhatsApp. Pure. */
+function checkin_whatsapp_url(string $text): string {
+    return 'https://wa.me/?text=' . rawurlencode($text);
+}
+
 function checkin_required(array $hold): bool {
     return checkin_supported() && !empty($hold['require_checkin']);
 }
@@ -410,10 +456,27 @@ function checkin_step_complete(string $key, ?array $data, ?array $lead): bool {
         case 'upsell':   return true;
         // Complete once the lead has uploaded a credit-card image. The deposit is
         // charged at the property, so the upload is the only thing to "provide".
-        case 'deposit':  return checkin_deposit_card_on_file($data);
+        case 'deposit':  return checkin_deposit_handled($data);
         case 'waiver':   return checkin_guest_waiver_signed($lead);   // per-guest (moved off booking_checkin)
         default:         return false;
     }
+}
+
+/**
+ * The guest's own submit gate: checkin_missing_steps() plus the deposit whenever
+ * that step is ENABLED (not only when marked required) — the owner's rule is that
+ * the guest either uploads the card or says how they will pay at arrival. Needs the
+ * plan column; before add_checkin_deposit_plan.sql there is no "I can't upload"
+ * choice, so asking would trap a guest without a card. Staff completion
+ * (checkin_recompute_completion) is deliberately NOT tightened.
+ */
+function checkin_submit_missing(array $config, ?array $data, ?array $lead): array {
+    $missing = checkin_missing_steps($config, $data, $lead);
+    if (!empty($config['deposit']['enabled']) && !in_array('deposit', $missing, true)
+        && checkin_deposit_plan_supported() && !checkin_deposit_handled($data)) {
+        $missing[] = 'deposit';
+    }
+    return $missing;
 }
 
 /** Enabled+required steps that are still incomplete. Empty array = ready to submit. */
@@ -428,12 +491,129 @@ function checkin_missing_steps(array $config, ?array $data, ?array $lead): array
 
 // ── Multi-guest per booking ─────────────────────────────────────────────────
 
-/** A single guest row has a complete passport (name + number + scan). */
+/**
+ * A single guest row has a complete passport: name + number, plus EITHER the photo
+ * OR nationality + expiry typed in (owner rule, Oct 2026 — a guest may upload or
+ * type). The photo is read into the fields, so a photo normally brings all four.
+ */
 function checkin_guest_passport_complete(?array $g): bool {
-    return $g !== null
-        && trim((string)($g['passport_name'] ?? '')) !== ''
-        && trim((string)($g['passport_number'] ?? '')) !== ''
-        && trim((string)($g['passport_file_key'] ?? '')) !== '';
+    if ($g === null) return false;
+    $has = fn($k) => trim((string)($g[$k] ?? '')) !== '';
+    return $has('passport_name') && $has('passport_number')
+        && ($has('passport_file_key') || ($has('nationality') && $has('passport_expiry')));
+}
+
+// ── Passport reading (photo → fields) ───────────────────────────────────────
+// An uploaded passport photo is read by the AI (api/checkin-upload.php →
+// ai_read_image_json()). The model's reply is never trusted as-is: everything goes
+// through checkin_passport_from_ai(), which keeps only well-formed values and checks
+// the passport number against the ICAO check digit in the machine-readable zone.
+// The guest always sees — and can correct — what was filled.
+
+const CHECKIN_PASSPORT_READS_MAX = 6;   // AI reads per browser session (cost + abuse cap)
+
+/** The instruction sent with the passport photo. Asks for JSON only. */
+function checkin_passport_read_prompt(): string {
+    return 'This image should be the photo page of a passport. Read it and reply with ONLY a JSON object, no other text: '
+         . '{"is_passport": true or false, "given_names": "", "surname": "", "passport_number": "", '
+         . '"nationality": "country name in English", "nationality_code": "3-letter code as printed", '
+         . '"date_of_expiry": "YYYY-MM-DD", "mrz_line2": "the second machine-readable line at the bottom, exactly as printed, 44 characters including < fillers"}. '
+         . 'Use "" for anything you cannot read clearly. Never guess a character.';
+}
+
+/** ICAO 9303 check digit: weights 7,3,1; 0-9 as is, A-Z = 10..35, '<' = 0. Pure. */
+function checkin_mrz_check_digit(string $s): int {
+    $w = [7, 3, 1]; $sum = 0;
+    foreach (str_split(strtoupper($s)) as $i => $c) {
+        if (ctype_digit($c))             $v = (int)$c;
+        elseif ($c >= 'A' && $c <= 'Z')  $v = ord($c) - 55;
+        else                             $v = 0;
+        $sum += $v * $w[$i % 3];
+    }
+    return $sum % 10;
+}
+
+/**
+ * Parse the second MRZ line of a passport (TD3, 44 characters). Returns null when
+ * it is not a well-formed line. Pure.
+ * @return array{number:string,number_ok:bool,nat:string,expiry:string,expiry_ok:bool}|null
+ */
+function checkin_mrz_line2(string $line): ?array {
+    $l = strtoupper(preg_replace('/\s+/', '', $line) ?? '');
+    if (strlen($l) !== 44 || !preg_match('/^[A-Z0-9<]{44}$/', $l)) return null;
+    $numRaw = substr($l, 0, 9);
+    $expRaw = substr($l, 21, 6);
+    $expiry = '';
+    if (ctype_digit($expRaw)) {
+        $y = 2000 + (int)substr($expRaw, 0, 2); $m = (int)substr($expRaw, 2, 2); $d = (int)substr($expRaw, 4, 2);
+        if (checkdate($m, $d, $y)) $expiry = sprintf('%04d-%02d-%02d', $y, $m, $d);
+    }
+    return [
+        'number'    => str_replace('<', '', $numRaw),
+        'number_ok' => ctype_digit($l[9]) && checkin_mrz_check_digit($numRaw) === (int)$l[9],
+        'nat'       => substr($l, 10, 3),
+        'expiry'    => $expiry,
+        'expiry_ok' => $expiry !== '' && ctype_digit($l[27]) && checkin_mrz_check_digit($expRaw) === (int)$l[27],
+    ];
+}
+
+/** English name for a passport nationality code ('' when not in the list). Pure. */
+function checkin_nationality_name(string $code): string {
+    static $names = [
+        'KEN' => 'Kenya', 'TZA' => 'Tanzania', 'UGA' => 'Uganda', 'RWA' => 'Rwanda', 'ETH' => 'Ethiopia',
+        'GBR' => 'United Kingdom', 'USA' => 'United States', 'D' => 'Germany', 'DEU' => 'Germany',
+        'ITA' => 'Italy', 'FRA' => 'France', 'NLD' => 'Netherlands', 'BEL' => 'Belgium',
+        'CHE' => 'Switzerland', 'AUT' => 'Austria', 'ESP' => 'Spain', 'PRT' => 'Portugal',
+        'SWE' => 'Sweden', 'NOR' => 'Norway', 'DNK' => 'Denmark', 'FIN' => 'Finland',
+        'IRL' => 'Ireland', 'POL' => 'Poland', 'CZE' => 'Czech Republic', 'CAN' => 'Canada',
+        'AUS' => 'Australia', 'NZL' => 'New Zealand', 'ZAF' => 'South Africa', 'IND' => 'India',
+        'CHN' => 'China', 'JPN' => 'Japan', 'ISR' => 'Israel', 'ARE' => 'United Arab Emirates',
+        'RUS' => 'Russia', 'UKR' => 'Ukraine', 'BRA' => 'Brazil',
+    ];
+    $c = strtoupper(str_replace('<', '', trim($code)));
+    return $names[$c] ?? '';
+}
+
+/**
+ * Turn the AI's reading of a passport photo into form fields. Pure.
+ * Keeps only well-formed values; a number that fails its MRZ check digit is
+ * dropped (the guest types it), and a check-digit-verified MRZ number or expiry
+ * wins over the model's reading of the printed text.
+ * @return array{fields:array<string,string>,warnings:list<string>}
+ */
+function checkin_passport_from_ai(array $raw, string $today): array {
+    $fields = []; $warnings = [];
+    if (($raw['is_passport'] ?? true) === false) {
+        return ['fields' => [], 'warnings' => ["That doesn't look like a passport photo page."]];
+    }
+    $str = fn($k) => trim((string)(is_scalar($raw[$k] ?? null) ? $raw[$k] : ''));
+
+    $name = trim(preg_replace('/\s+/', ' ', $str('given_names') . ' ' . $str('surname')) ?? '');
+    // Passports print names in capitals; title-case each part, including after a
+    // hyphen or apostrophe (O'Neill, Anne-Marie), which MB_CASE_TITLE does not.
+    if ($name !== '') {
+        $fields['passport_name'] = preg_replace_callback("/(^|[\\s\\-'’])(\\p{Ll})/u",
+            fn($m) => $m[1] . mb_strtoupper($m[2], 'UTF-8'), mb_strtolower($name, 'UTF-8')) ?? $name;
+    }
+
+    $number = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $str('passport_number')) ?? '');
+    $mrz    = checkin_mrz_line2($str('mrz_line2'));
+    if ($mrz !== null) {
+        $number = $mrz['number_ok'] ? $mrz['number'] : '';
+    }
+    if (strlen($number) >= 5 && strlen($number) <= 20) $fields['passport_number'] = $number;
+
+    $nat  = $str('nationality');
+    $code = $str('nationality_code') !== '' ? $str('nationality_code') : ($mrz['nat'] ?? '');
+    if ($nat === '' && $code !== '') $nat = checkin_nationality_name($code) ?: strtoupper(str_replace('<', '', $code));
+    if ($nat !== '') $fields['nationality'] = mb_substr($nat, 0, 60);
+
+    $exp = ($mrz !== null && $mrz['expiry_ok']) ? $mrz['expiry'] : $str('date_of_expiry');
+    if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $exp, $m) && checkdate((int)$m[2], (int)$m[3], (int)$m[1])) {
+        $fields['passport_expiry'] = $exp;
+        if ($exp < $today) $warnings[] = 'This passport has expired.';
+    }
+    return ['fields' => $fields, 'warnings' => $warnings];
 }
 
 /** A single guest row has signed the waiver (name + timestamp + a drawn signature). */

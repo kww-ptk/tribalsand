@@ -31,11 +31,18 @@
   if (editBtn)  editBtn.addEventListener('click', function () { openSteps(0); });
 
   // Save the lead's main-form fields via AJAX, then continue.
+  // A 422 is the server refusing the consent step (checkin_consent_missing) —
+  // show its sentence on the current step and stay. Any other failure still
+  // continues, so a save problem can never trap the guest.
   function saveThen(next) {
     var fd = new FormData(form);
     fd.set('do', 'save'); fd.set('ajax', '1');
     fetch(form.action, { method: 'POST', body: fd, credentials: 'same-origin' })
-      .then(function () { next(); }).catch(function () { next(); });
+      .then(function (r) {
+        if (r.status !== 422) { next(); return; }
+        return r.json().then(function (d) { showMsg(steps[cur], (d && d.error) || 'Please check this step.'); }, next);
+      })
+      .catch(function () { next(); });
   }
 
   // Leaving the wizard mid-step — "Message the team" — must not lose what is
@@ -179,7 +186,7 @@
     return el ? String(el.value).trim() : '';
   }
   function clearErr(sec) { var box = sec.querySelector('.ci-err'); if (box) box.hidden = true; }
-  function showErr(sec, items) {
+  function showMsg(sec, text) {
     var box = sec.querySelector('.ci-err');
     if (!box) {
       box = document.createElement('div');
@@ -187,20 +194,83 @@
       box.setAttribute('role', 'alert');
       sec.insertBefore(box, sec.querySelector('.ci-nav'));
     }
-    box.textContent = 'Before you continue, please ' + items.join(', ') + '.';
+    box.textContent = text;
     box.hidden = false;
     box.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
+  function showErr(sec, items) { showMsg(sec, 'Before you continue, please ' + items.join(', ') + '.'); }
+
+  // ── Deposit: Complete check-in appears once the card is dealt with ─────────
+  // data-deposit-gate (set when the "I can't upload" choice exists): the card
+  // photo is on file OR a way to pay at arrival is ticked. Mirrors
+  // checkin_deposit_handled() / checkin_submit_missing() on the server.
+  function depositHandled(sec) {
+    var up = sec.querySelector('.ci-upload[data-kind="deposit"]');
+    return (up && up.getAttribute('data-has') === '1') || !!sec.querySelector('.ci-f-plan:checked');
+  }
+  function syncDepositGate() {
+    var sec = form.querySelector('.ci-step[data-key="deposit"]');
+    if (!sec || !sec.querySelector('[data-deposit-gate]')) return;
+    var ok = depositHandled(sec);
+    var btn = sec.querySelector('.ci-submit'); if (btn) btn.hidden = !ok;
+    var wait = sec.querySelector('.ci-deposit__wait'); if (wait) wait.hidden = ok;
+  }
+
+  // ── Passport photo → fields ────────────────────────────────────────────────
+  // Fill what the server read from the photo. A field the guest typed is never
+  // overwritten; one we filled earlier (data-ai-filled) may be replaced by a
+  // newer photo. Filled fields are highlighted until the guest edits them.
+  function fillPassport(pp, d) {
+    var scope = pp.closest('.ci-guest') || pp;
+    var fields = d.fields || {}, warnings = d.warnings || [], filled = 0;
+    Object.keys(fields).forEach(function (k) {
+      var el = scope.querySelector('[name="' + k + '"], [data-field="' + k + '"]');
+      if (!el || (String(el.value).trim() !== '' && !el.hasAttribute('data-ai-filled'))) return;
+      el.value = fields[k];
+      el.setAttribute('data-ai-filled', '1');
+      el.classList.add('ci-in--ai');
+      filled++;
+    });
+    var note = pp.querySelector('.ci-pp-note'); if (!note) return;
+    var msgs = [];
+    if (filled) msgs.push('We filled in the details from the photo — please check them.');
+    else if (d.read === false || (Object.keys(fields).length === 0 && !warnings.length)) msgs.push('We couldn’t read the photo clearly — please type the details below.');
+    msgs = msgs.concat(warnings);
+    note.textContent = msgs.join(' ');
+    note.classList.toggle('ci-pp-note--warn', warnings.length > 0);
+    note.hidden = msgs.length === 0;
+  }
+  form.addEventListener('input', function (e) {
+    var el = e.target;
+    if (el && el.hasAttribute && el.hasAttribute('data-ai-filled')) { el.removeAttribute('data-ai-filled'); el.classList.remove('ci-in--ai'); }
+  });
+
+  // ── Sharing a guest's link — same sentence as checkin_guest_share_text() ───
+  function shareText(name, link) {
+    var party = form.querySelector('.ci-party');
+    var prop  = party ? (party.getAttribute('data-share-property') || '').trim() : '';
+    var dates = party ? (party.getAttribute('data-share-dates') || '').trim() : '';
+    var first = String(name || '').trim().split(/\s+/)[0] || '';
+    var where = prop ? ' for ' + prop : '';
+    var when  = (where && dates) ? ', ' + dates : '';
+    return 'Hi' + (first ? ' ' + first : '') + ', please complete your check-in' + where + when + ': ' + link;
+  }
+  function waUrl(text) { return 'https://wa.me/?text=' + encodeURIComponent(text); }
 
   // "Your details" is the consent gate: terms + typed name + a signature, plus
   // the passport fields when that step is configured as required. The wording
   // mirrors checkin_consent_missing() in includes/checkin.php.
-  function validateStep(sec) {
+  // retry: what to run again once the guest accepts the terms in the dialog.
+  function validateStep(sec, retry) {
     if (!sec) return true;
     clearErr(sec);
-    // Deposit: when the step is required, the card image must be on file.
     if (sec.getAttribute('data-key') === 'deposit') {
       var dep = sec.querySelector('.ci-deposit');
+      if (dep && dep.hasAttribute('data-deposit-gate')) {
+        if (!depositHandled(sec)) { showErr(sec, ['upload a photo of your card, or tell us how you’ll pay the deposit']); return false; }
+        return true;
+      }
+      // Pre-migration: when the step is required, the card image must be on file.
       if (dep && dep.hasAttribute('data-deposit-required')) {
         var du = sec.querySelector('.ci-upload');
         if (du && du.getAttribute('data-has') !== '1') { showErr(sec, ['upload a photo of your credit card']); return false; }
@@ -210,6 +280,12 @@
     if (sec.getAttribute('data-key') !== 'you') return true;
     var missing = [];
     var agree = sec.querySelector('.ci-agree');
+    // Unticked terms: show them in a dialog and let the guest accept there,
+    // instead of an error. Accepting ticks the box and re-runs the action.
+    if (agree && !agree.checked && window.ciTermsDialog && retry) {
+      window.ciTermsDialog(sec.querySelector('.ci-waiver'), function () { agree.checked = true; retry(); });
+      return false;
+    }
     if (agree) {
       if (!agree.checked) missing.push('agree to the terms');
       if (fieldVal(sec, 'waiver_signed_name') === '') missing.push('type your full name');
@@ -220,10 +296,14 @@
       }
     }
     if (sec.hasAttribute('data-passport-required')) {
+      // Photo OR typed details — mirrors checkin_guest_passport_complete().
       if (fieldVal(sec, 'passport_name') === '')   missing.push('enter your passport name');
       if (fieldVal(sec, 'passport_number') === '') missing.push('enter your passport number');
-      var up = sec.querySelector('.ci-upload');
-      if (up && up.getAttribute('data-has') !== '1') missing.push('upload your passport scan');
+      var up = sec.querySelector('.ci-pp .ci-upload');
+      var hasPhoto = up && up.getAttribute('data-has') === '1';
+      if (!hasPhoto && (fieldVal(sec, 'nationality') === '' || fieldVal(sec, 'passport_expiry') === '')) {
+        missing.push('upload a passport photo or enter your nationality and passport expiry');
+      }
     }
     if (!missing.length) return true;
     showErr(sec, missing);
@@ -247,8 +327,17 @@
 
     if (t.classList.contains('ci-next')) {
       e.preventDefault();
-      if (!validateStep(steps[cur])) return;
+      if (!validateStep(steps[cur], function () { t.click(); })) return;
       saveThen(function () { show(cur + 1); });
+      return;
+    }
+
+    if (t.classList.contains('ci-noncard__toggle')) {
+      e.preventDefault();
+      var opts = t.parentNode.querySelector('.ci-noncard__opts');
+      var open = opts.hidden;
+      opts.hidden = !open;
+      t.setAttribute('aria-expanded', open ? 'true' : 'false');
       return;
     }
     if (t.classList.contains('ci-back')) { e.preventDefault(); if (cur === 0) backToStart(); else show(cur - 1); return; }
@@ -263,9 +352,11 @@
           var card = tpl.content.firstElementChild.cloneNode(true);
           card.setAttribute('data-guest-id', d.guest_id);
           card.querySelector('.ci-kids').setAttribute('data-parent', d.guest_id);
-          var link = card.querySelector('.ci-guest__link input');
+          card.setAttribute('data-link', d.link || '');
+          var link = card.querySelector('.ci-send .ci-linkrow input');
           if (link) link.value = d.link || '';
-          addBtn.parentNode.insertBefore(card, addBtn);
+          var party = form.querySelector('.ci-party');
+          if (party) party.appendChild(card); else addBtn.parentNode.insertBefore(card, addBtn);
           addBtn.disabled = false;
           updateAddBtn();
           card.querySelector('.ci-guest__name').focus();
@@ -284,8 +375,15 @@
       apiPost('/api/checkin-guest.php', { action: 'remove', guest_id: gid }).then(function () { card.remove(); updateAddBtn(); });
       return;
     }
-    if (t.classList.contains('ci-guest__fill'))  { e.preventDefault(); var c = t.closest('.ci-guest'); c.querySelector('.ci-guest__inline').hidden = false; c.querySelector('.ci-guest__link').hidden = true; return; }
-    if (t.classList.contains('ci-guest__share')) { e.preventDefault(); var c = t.closest('.ci-guest'); c.querySelector('.ci-guest__link').hidden = false; c.querySelector('.ci-guest__inline').hidden = true; return; }
+    if (t.classList.contains('ci-guest__edit')) {   // reopen a saved guest's form
+      e.preventDefault();
+      var ec = t.closest('.ci-guest');
+      ec.querySelector('.ci-guest__form').hidden = false;
+      ec.querySelector('.ci-guest__done').hidden = true;
+      ec.querySelector('.ci-send').hidden = true;
+      var en = ec.querySelector('.ci-guest__name'); if (en) en.focus();
+      return;
+    }
 
     if (t.classList.contains('ci-copy')) {
       e.preventDefault();
@@ -298,6 +396,12 @@
     if (t.classList.contains('ci-guest__save')) {   // save an additional adult's data (per-guest AJAX)
       e.preventDefault();
       var card = t.closest('.ci-guest'), gid = card.getAttribute('data-guest-id');
+      var nameEl = card.querySelector('.ci-guest__name');
+      var gname = nameEl ? nameEl.value.trim() : '';
+      if (!gname) {
+        if (nameEl) { nameEl.focus(); nameEl.classList.add('is-invalid'); nameEl.setAttribute('placeholder', 'Type their full name first'); }
+        return;
+      }
       var fd = new FormData();
       fd.append('ref', REF); fd.append('csrf_token', CSRF); fd.append('guest_id', gid); fd.append('ajax', '1');
       // This posts ONE guest card, not the whole form — but it carries `ref`, so the
@@ -313,8 +417,26 @@
       });
       t.disabled = true; t.textContent = 'Saving…';
       fetch('/api/checkin-save.php', { method: 'POST', body: fd, credentials: 'same-origin' })
-        .then(function () { t.textContent = 'Saved ✓'; setTimeout(function () { t.textContent = 'Save this guest'; t.disabled = false; }, 1300); })
-        .catch(function () { t.textContent = 'Try again'; t.disabled = false; });
+        .then(function (r) { if (!r.ok) return Promise.reject(); })
+        .then(function () {
+          // Saved: close the form, show the summary and the link to send them.
+          t.textContent = 'Save this guest'; t.disabled = false;
+          if (nameEl) nameEl.classList.remove('is-invalid');
+          var link = card.getAttribute('data-link') || '';
+          card.querySelector('.ci-guest__form').hidden = true;
+          var done = card.querySelector('.ci-guest__done');
+          done.querySelector('.ci-guest__done-name').textContent = gname;
+          var chip = done.querySelector('.ci-chip');
+          if (chip && !chip.classList.contains('ci-chip--ok')) chip.textContent = 'Saved ✓';
+          done.hidden = false;
+          var send = card.querySelector('.ci-send');
+          send.querySelector('.ci-send__name').textContent = gname.split(/\s+/)[0];
+          send.querySelector('.ci-wa').setAttribute('href', waUrl(shareText(gname, link)));
+          var li = send.querySelector('.ci-linkrow input'); if (li && !li.value) li.value = link;
+          send.hidden = !!(chip && chip.classList.contains('ci-chip--ok'));
+          card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        })
+        .catch(function () { t.textContent = 'Could not save — try again'; t.disabled = false; });
       return;
     }
 
@@ -385,7 +507,8 @@
     var f = input.files && input.files[0]; if (!f) return;
     var wrap = input.closest('.ci-upload'), state = wrap.querySelector('.ci-upload__state');
     var isDeposit = wrap.getAttribute('data-kind') === 'deposit';
-    state.textContent = 'Uploading…';
+    var isImage = /^image\//.test(f.type || '');
+    state.textContent = (!isDeposit && isImage) ? 'Uploading and reading your passport…' : 'Uploading…';
     var fd = new FormData();
     fd.append('ref', REF); fd.append('csrf_token', CSRF);
     if (isDeposit) {
@@ -396,8 +519,17 @@
     }
     fetch('/api/checkin-upload.php', { method: 'POST', body: fd, credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
-      .then(function () { state.innerHTML = 'Uploaded ✓'; wrap.setAttribute('data-has', '1'); })
+      .then(function (d) {
+        state.innerHTML = 'Uploaded ✓'; wrap.setAttribute('data-has', '1');
+        if (isDeposit) { syncDepositGate(); return; }
+        var pp = wrap.closest('[data-pp]');
+        if (pp && d && (d.fields || d.read === false || d.warnings)) fillPassport(pp, d);
+      })
       .catch(function () { state.textContent = 'Upload failed — try again'; });
+  });
+
+  form.addEventListener('change', function (e) {
+    if (e.target.classList && e.target.classList.contains('ci-f-plan')) syncDepositGate();
   });
 
   // Server renders the correct initial state; this keeps it right if the browser
@@ -417,12 +549,18 @@
   // Final submit re-checks the consent step, so it cannot be skipped by jumping
   // straight to the last step. The server enforces the same rule regardless.
   form.addEventListener('submit', function (e) {
+    var submitter = e.submitter || form.querySelector('.ci-submit');
+    var retry = function () { if (form.requestSubmit) form.requestSubmit(submitter); else submitter.click(); };
     var you = form.querySelector('.ci-step[data-key="you"]');
-    if (you && !validateStep(you)) {
+    if (you && !validateStep(you, retry)) {
       e.preventDefault();
       var idx = steps.indexOf(you);
-      if (idx >= 0) openSteps(idx);
+      if (idx >= 0 && idx !== cur) openSteps(idx);
+      return;
     }
+    var dep = form.querySelector('.ci-step[data-key="deposit"]');
+    if (dep && !validateStep(dep)) { e.preventDefault(); openSteps(steps.indexOf(dep)); }
   });
+  syncDepositGate();
 
 })();

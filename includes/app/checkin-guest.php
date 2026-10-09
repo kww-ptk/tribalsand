@@ -24,6 +24,7 @@ $otherStatus = function (array $g) use ($showWaiver) {
 ?>
 <link rel="stylesheet" href="/css/portal-app.css?v=<?= @filemtime(__DIR__ . '/../../css/portal-app.css') ?: time() ?>">
 <script src="/js/signature-pad.js?v=<?= @filemtime(__DIR__ . '/../../js/signature-pad.js') ?: time() ?>" defer></script>
+<script src="/js/checkin-terms.js?v=<?= @filemtime(__DIR__ . '/../../js/checkin-terms.js') ?: time() ?>" defer></script>
 <div class="pa-app">
   <div class="pa-topbar"><div class="pa-topbar__inner"><div class="pa-topbar__brand"><div class="pa-topbar__eyebrow">Tribal Sand</div><div class="pa-topbar__title">Guest check-in</div></div></div></div>
   <div class="pa-wrap" style="padding-top:16px">
@@ -66,6 +67,14 @@ $otherStatus = function (array $g) use ($showWaiver) {
             <details class="ci-review">
               <summary>Your details are on file — tap to review or edit</summary>
             <?php endif; ?>
+            <div class="ci-pp" data-pp>
+            <label class="ci-l">Passport photo <span class="ci-opt">(the page with your photo)</span></label>
+            <p class="ci-pp-hint">Upload a photo of your passport’s photo page and we’ll fill in the details for you — or type them below.</p>
+            <div class="ci-upload" data-has="<?= !empty($me['passport_file_key']) ? '1' : '0' ?>">
+              <label class="ci-filebtn"><span class="ci-filebtn__t">&#128247; Choose photo</span><input type="file" id="ciGFile" accept="image/jpeg,image/png,application/pdf"></label>
+              <span class="ci-upload__state"><?= !empty($me['passport_file_key']) ? 'Uploaded &#10003;' : 'No photo yet' ?></span>
+            </div>
+            <div class="ci-pp-note" role="status" hidden></div>
             <div class="ci-grid2">
               <div class="ci-fld">
                 <label class="ci-l">Full name <span class="ci-opt">(as on passport)</span></label>
@@ -83,13 +92,7 @@ $otherStatus = function (array $g) use ($showWaiver) {
                 <label class="ci-l">Passport expiry</label>
                 <input class="ci-in" type="date" name="passport_expiry" value="<?= $v('passport_expiry') ?>">
               </div>
-              <div class="ci-fld ci-span2">
-                <label class="ci-l">Passport scan (photo or PDF)</label>
-                <div class="ci-upload" data-has="<?= !empty($me['passport_file_key']) ? '1' : '0' ?>">
-                  <label class="ci-filebtn"><span class="ci-filebtn__t">Choose file</span><input type="file" id="ciGFile" accept="image/jpeg,image/png,application/pdf"></label>
-                  <span class="ci-upload__state"><?= !empty($me['passport_file_key']) ? 'Uploaded &#10003;' : 'No file yet' ?></span>
-                </div>
-              </div>
+            </div>
             </div>
             <?php if ($state === 'review_sign'): ?></details><?php endif; ?>
             <?php endif; ?>
@@ -108,7 +111,7 @@ $otherStatus = function (array $g) use ($showWaiver) {
             <label class="ci-l">Terms &amp; conditions</label>
             <div class="ci-waiver"><?= nl2br(e($waiverText)) ?></div>
             <h3 class="ci-wg__title" style="margin-top:18px">Agree &amp; sign</h3>
-            <label class="ci-radio"><input type="checkbox" name="waiver_agree" value="1" <?= checkin_guest_waiver_signed($me) ? 'checked' : '' ?>> I have read and agree to the terms</label>
+            <label class="ci-radio"><input type="checkbox" class="ci-agree" name="waiver_agree" value="1" <?= checkin_guest_waiver_signed($me) ? 'checked' : '' ?>> I have read and agree to the terms</label>
             <?php endif; ?>
           </div>
 
@@ -123,7 +126,7 @@ $otherStatus = function (array $g) use ($showWaiver) {
               <button type="button" class="ci-sign-clear">Clear</button>
               <canvas class="ci-sign-pad" data-target="#ciGSig"></canvas>
             </div>
-            <input type="hidden" name="waiver_signature" id="ciGSig">
+            <input type="hidden" name="waiver_signature" id="ciGSig" data-signed="<?= checkin_guest_waiver_signed($me) ? '1' : '0' ?>">
             <?php endif; ?>
             <?php if ($others): ?>
             <div class="ci-others">
@@ -133,7 +136,8 @@ $otherStatus = function (array $g) use ($showWaiver) {
               <?php endforeach; ?>
             </div>
             <?php endif; ?>
-            <button type="submit" class="pa-btn pa-btn--primary" name="do" value="submit" style="margin-top:20px">Complete my check-in</button>
+            <div class="ci-err" role="alert" hidden></div>
+            <button type="submit" class="pa-btn pa-btn--primary ci-gsubmit" name="do" value="submit" style="margin-top:20px">Complete my check-in</button>
           </div>
         </div>
       </form>
@@ -156,12 +160,68 @@ $otherStatus = function (array $g) use ($showWaiver) {
   if (file) file.addEventListener('change', function () {
     var f = file.files && file.files[0]; if (!f) return;
     var wrap = file.closest('.ci-upload'), state = wrap.querySelector('.ci-upload__state');
-    state.textContent = 'Uploading…';
+    state.textContent = /^image\//.test(f.type || '') ? 'Uploading and reading your passport…' : 'Uploading…';
     var fd = new FormData(); fd.append('g', GTOK); fd.append('csrf_token', CSRF); fd.append('passport', f);
     fetch('/api/checkin-upload.php', { method: 'POST', body: fd, credentials: 'same-origin' })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
-      .then(function () { state.innerHTML = 'Uploaded ✓'; wrap.setAttribute('data-has', '1'); })
+      .then(function (d) {
+        state.innerHTML = 'Uploaded ✓'; wrap.setAttribute('data-has', '1');
+        if (d && (d.fields || d.read === false || d.warnings)) fillPassport(wrap.closest('[data-pp]'), d);
+      })
       .catch(function () { state.textContent = 'Upload failed — try again'; });
+  });
+
+  // Same rules as fillPassport() in js/checkin-wizard.js: never overwrite what the
+  // guest typed; highlight what we filled until they edit it.
+  function fillPassport(pp, d) {
+    if (!pp) return;
+    var fields = d.fields || {}, warnings = d.warnings || [], filled = 0;
+    Object.keys(fields).forEach(function (k) {
+      var el = pp.querySelector('[name="' + k + '"]');
+      if (!el || (String(el.value).trim() !== '' && !el.hasAttribute('data-ai-filled'))) return;
+      el.value = fields[k]; el.setAttribute('data-ai-filled', '1'); el.classList.add('ci-in--ai'); filled++;
+    });
+    var note = pp.querySelector('.ci-pp-note'); if (!note) return;
+    var msgs = [];
+    if (filled) msgs.push('We filled in your details from the photo — please check them.');
+    else if (d.read === false || (Object.keys(fields).length === 0 && !warnings.length)) msgs.push('We couldn’t read the photo clearly — please type your details below.');
+    msgs = msgs.concat(warnings);
+    note.textContent = msgs.join(' ');
+    note.classList.toggle('ci-pp-note--warn', warnings.length > 0);
+    note.hidden = msgs.length === 0;
+  }
+  form.addEventListener('input', function (e) {
+    var el = e.target;
+    if (el && el.hasAttribute && el.hasAttribute('data-ai-filled')) { el.removeAttribute('data-ai-filled'); el.classList.remove('ci-in--ai'); }
+  });
+
+  // Finish: an unticked terms box opens the terms in a dialog (accepting ticks it
+  // and carries on); a missing name or signature is said here, without a reload.
+  // api/checkin-save.php still checks everything (checkin_consent_missing()).
+  form.addEventListener('submit', function (e) {
+    var agree = form.querySelector('.ci-agree');
+    if (!agree) return;   // no terms step
+    var err = form.querySelector('.ci-err'); if (err) err.hidden = true;
+    var submitter = e.submitter || form.querySelector('.ci-gsubmit');
+    if (!agree.checked && window.ciTermsDialog) {
+      e.preventDefault();
+      window.ciTermsDialog(form.querySelector('.ci-waiver'), function () {
+        agree.checked = true;
+        if (form.requestSubmit) form.requestSubmit(submitter); else submitter.click();
+      });
+      return;
+    }
+    var missing = [];
+    var nm = form.querySelector('[name="waiver_signed_name"]');
+    if (nm && nm.value.trim() === '') missing.push('type your full name');
+    var sig = document.getElementById('ciGSig');
+    if (sig && sig.getAttribute('data-signed') !== '1' && sig.value === '') missing.push('draw your signature');
+    if (missing.length && err) {
+      e.preventDefault();
+      err.textContent = 'Before you finish, please ' + missing.join(' and ') + '.';
+      err.hidden = false;
+      err.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
   });
 
   function esc(s){ return String(s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }

@@ -4,6 +4,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/booking.php';
 require_once __DIR__ . '/../includes/checkin.php';
 require_once __DIR__ . '/../includes/storage.php';
+require_once __DIR__ . '/../includes/ai.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 header('Content-Type: application/json');
 
@@ -53,6 +54,9 @@ if ($isDeposit) {
 
 // Per-guest private key. Files are stored by hold + guest, never a public URL.
 $guestId = checkin_target_guest_id($holdId, $onlyGuestId);
+// Read the bytes now: the passport photo is also sent to the AI below, after the
+// file is safely stored (storage may move the temp file).
+$bytes = in_array($mime, ['image/jpeg', 'image/png'], true) ? (string) @file_get_contents($f['tmp_name']) : '';
 $key = 'checkin/' . $holdId . '/' . $guestId . '/' . bin2hex(random_bytes(12)) . '.' . $allowed[$mime];
 if (!storage_put_private($f['tmp_name'], $key, $mime)) { http_response_code(500); echo json_encode(['error' => 'store failed']); exit; }
 
@@ -62,4 +66,25 @@ if ($prev && !empty($prev['passport_file_key']) && $prev['passport_file_key'] !=
     try { storage_delete_private($prev['passport_file_key']); } catch (Throwable $e) {}
 }
 checkin_recompute_completion($holdId);   // flips green + notifies iff this was the last passport
-echo json_encode(['ok' => true]);
+
+// Read the photo into form fields for the guest to check. Images only (no PDFs),
+// only with an AI key, and capped per session. Never fails the upload: the photo
+// is already on file, so any problem just means the guest types the details.
+$out = ['ok' => true];
+$reads = (int)($_SESSION['ci_passport_reads'] ?? 0);
+if ($bytes !== '' && ai_assistant_supported() && $reads < CHECKIN_PASSPORT_READS_MAX) {
+    $_SESSION['ci_passport_reads'] = $reads + 1;
+    $out['read'] = false;   // tried; true once the model answered with something usable
+    try {
+        $raw = ai_read_image_json($bytes, $mime, checkin_passport_read_prompt());
+        if ($raw !== null) {
+            $out['read']     = true;
+            $read = checkin_passport_from_ai($raw, date('Y-m-d'));
+            $out['fields']   = $read['fields'];
+            $out['warnings'] = $read['warnings'];
+        }
+    } catch (Throwable $e) {
+        error_log('[checkin-upload] passport read failed for hold ' . $holdId . ': ' . $e->getMessage());
+    }
+}
+echo json_encode($out);
