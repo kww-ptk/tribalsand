@@ -755,7 +755,8 @@ a.pa-topbar__brand:hover .pa-topbar__title{opacity:.92;}
 button.pa-cal__day{cursor:pointer;}
 .pa-cal__day.is-stay{background:#eef4f5;color:var(--pa-teal-d);}
 .pa-cal__day.is-start,.pa-cal__day.is-end{background:var(--pa-teal-d);color:#fff;}
-.pa-cal__day.is-today{border-color:var(--pa-gold);}
+.pa-cal__today{font-size:9px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;line-height:1;color:var(--pa-teal);}
+.pa-cal__day.is-start .pa-cal__today,.pa-cal__day.is-end .pa-cal__today{color:var(--pa-gold);}
 .pa-cal__day.has-items .pa-cal__n{font-weight:700;}
 .pa-cal__day.is-picked{outline:2px solid var(--pa-gold);outline-offset:1px;}
 .pa-cal__dots{display:flex;gap:3px;}
