@@ -511,7 +511,7 @@ include __DIR__ . '/includes/property-gallery.php';
       <div class="sec-label">Build Your Stay</div>
       <h2 class="sec-h">Choose Your <em>Units &amp; Guests</em></h2>
       <div class="sec-rule"></div>
-      <p class="sec-p" style="margin-bottom:1.4rem">Tell us your party and your dates, and we'll show you the stays that fit — with the price. Group discounts for larger parties, extra-guest charges and the Eco-Resort Fee are all included in what you see.</p>
+      <p class="sec-p" style="margin-bottom:1.4rem">Tell us your party and your dates, and we'll show you the stays that fit — with the price. Group discounts for larger parties and extra-guest charges are included in what you see; a Resort Fee of <?php require_once __DIR__ . '/includes/maya-ilai-pricing.php'; echo e(maya_ilai_resort_fee_amount()); ?> per person is paid on site.</p>
       <button type="button" class="btn-book-full" data-mib-open style="max-width:340px">Build your stay &amp; get a price →</button>
       <?php include __DIR__ . '/includes/maya-ilai-booking.php'; ?>
     </div>
@@ -862,7 +862,7 @@ include __DIR__ . '/includes/property-photo-grid.php';
           <strong>Adults only — min. age 16.</strong> Guests 16–17 may stay unaccompanied.
         </div>
         <div style="padding:1.3rem 1.4rem">
-          <p style="font-size:.9rem;color:var(--mid);line-height:1.6;margin-bottom:1rem">Build a stay from villas, studios, bunk and double rooms — with live pricing, group discounts and the Eco-Resort Fee included.</p>
+          <p style="font-size:.9rem;color:var(--mid);line-height:1.6;margin-bottom:1rem">Build a stay from villas, studios, bunk and double rooms — with live pricing and group discounts included (the Resort Fee is paid on site).</p>
           <a href="#book-config" data-mib-open class="btn-book-full" style="text-decoration:none">Build your stay &amp; get a price →</a>
           <a href="#book-config" data-mib-open class="btn-ghost-full" style="text-decoration:none">Full compound buyout? Start here</a>
         </div>

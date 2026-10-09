@@ -17,14 +17,15 @@ require_once __DIR__ . '/../includes/maya-ilai-pricing.php';
 require_once __DIR__ . '/../includes/maya-ilai-unitmap.php';   // read-only live occupancy for the Unit Map tab
 require_once __DIR__ . '/../includes/icons.php';
 require_login();
-require_manager();
 
-// Scope: owner sees all; a manager must have Maya Ilai in their venue set.
-$__ids = admin_venue_ids();
-if ($__ids !== null && !in_array(MAYA_ILAI_VENUE_ID, array_map('intval', $__ids), true)) {
-    $_SESSION['hold_flash'] = ['type' => 'error', 'msg' => 'The Maya Ilai rate tool is only available to Maya Ilai managers.'];
+// Owner + Maya Ilai managers edit; reception at Maya Ilai quotes and views only
+// (maya_ilai_tool_mode()). Everyone else is sent home.
+$miMode = maya_ilai_tool_mode();
+if ($miMode === null) {
+    $_SESSION['hold_flash'] = ['type' => 'error', 'msg' => 'The Maya Ilai rate tool is only available to Maya Ilai managers and reception.'];
     header('Location: ' . admin_home_url()); exit;
 }
+$miCanEdit = $miMode === 'edit';
 
 // ── AJAX save / reset (JSON, CSRF-in-body) ───────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -92,6 +93,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    // Saving and resetting change prices for everyone — view-only accounts
+    // (reception) are refused here, whatever the page let them click.
+    if (!$miCanEdit) {
+        http_response_code(403); exit(json_encode(['ok' => false, 'error' => 'View only — ask the owner or the Maya Ilai manager to change rates.']));
+    }
     try {
         if ($action === 'reset') {
             $state = maya_ilai_pricing_save(maya_ilai_pricing_defaults());
@@ -118,12 +124,17 @@ include __DIR__ . '/_layout.php';
   <a href="/admin/dashboard.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Dashboard</a>
 </div>
 <p class="text-muted" style="margin:-6px 0 18px;font-size:13px;max-width:760px">
+  <?php if ($miCanEdit): ?>
   Internal quoting tool for Maya Ilai (USD). Amber fields are editable and save to the server —
-  shared across everyone on the team, on every device. This tool is independent of the live
-  booking calendar and rates.
+  shared across everyone on the team, on every device. These rates also price Maya Ilai on the
+  guest website and in the Quote builder.
+  <?php else: ?>
+  Maya Ilai quoting tool (USD) — the same rates the guest website and the Quote builder use.
+  Build and copy quotes here; the rates themselves are view only for your account.
+  <?php endif; ?>
 </p>
 
-<div id="mi-tool">
+<div id="mi-tool"<?= $miCanEdit ? '' : ' class="mi-viewonly"' ?>>
 <style>
   #mi-tool{--navy:#182247;--navy2:#26335f;--teal:#168e86;--teal-soft:#e6f4f2;--ink:#24324a;--muted:#69758a;--line:#dfe5ec;--panel:#fff;--bg:#f4f7fa;--amber:#fff1cc;--amber-ink:#81520b;--red:#a3362a;--red-soft:#fff0ed;--shadow:0 8px 24px rgba(23,34,71,.06);--r:14px;color:var(--ink);font-size:15px}
   #mi-tool button,#mi-tool input,#mi-tool select{font:inherit}#mi-tool button{cursor:pointer}
@@ -137,6 +148,8 @@ include __DIR__ . '/_layout.php';
   #mi-tool .card{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}#mi-tool .card-head{padding:15px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;gap:12px}#mi-tool .card-head h3{font-size:1rem;margin:0;color:var(--navy)}#mi-tool .card-body{padding:18px}#mi-tool .subtle{font-size:.82rem;color:var(--muted)}
   #mi-tool .form-grid{display:grid;grid-template-columns:repeat(4,minmax(130px,1fr));gap:14px}#mi-tool .field{display:grid;gap:6px}#mi-tool .field label{font-size:.78rem;color:var(--muted);font-weight:750}#mi-tool .field input,#mi-tool .field select{width:100%;border:1px solid #cfd7e2;border-radius:10px;padding:9px 11px;color:var(--ink);background:#fff;min-height:42px}#mi-tool .field input:focus,#mi-tool .field select:focus{outline:3px solid rgba(22,142,134,.14);border-color:var(--teal)}#mi-tool .help{font-size:.74rem;color:var(--muted)}
   #mi-tool .config{width:100%;border-collapse:collapse}#mi-tool .config th,#mi-tool .config td{padding:11px 9px;text-align:left;border-bottom:1px solid var(--line);vertical-align:middle}#mi-tool .config th{color:var(--muted);font-size:.74rem;text-transform:uppercase;letter-spacing:.04em}#mi-tool .config tr:last-child td{border-bottom:0}#mi-tool .unit-name{font-weight:760;color:var(--navy)}#mi-tool .unit-note{display:block;color:var(--muted);font-size:.74rem;margin-top:2px}#mi-tool .num{width:88px!important}#mi-tool .money{text-align:right!important;font-variant-numeric:tabular-nums;font-weight:700}#mi-tool .pill{display:inline-flex;padding:4px 8px;border-radius:999px;background:var(--teal-soft);color:#08736c;font-size:.72rem;font-weight:800}
+  #mi-tool.mi-viewonly input:disabled,#mi-tool.mi-viewonly select:disabled{background:#f1f3f6;color:var(--ink);border-color:var(--line);cursor:not-allowed;opacity:1}
+  #mi-tool.mi-viewonly button:disabled{opacity:.45;cursor:not-allowed}
   #mi-tool .summary{position:sticky;top:18px}#mi-tool .fee-note{margin:10px 0 0;font-size:.82rem;color:var(--muted,#64748b);line-height:1.45}#mi-tool .totalbox{background:linear-gradient(145deg,var(--navy),var(--navy2));color:#fff;padding:20px}#mi-tool .totalbox .label{color:#cdd5ea;font-size:.8rem}#mi-tool .grand{font-size:2rem;font-weight:820;letter-spacing:-.04em;margin:4px 0}#mi-tool .per{color:#cdd5ea}#mi-tool .metrics{display:grid;grid-template-columns:1fr 1fr;gap:1px;background:var(--line)}#mi-tool .metric{background:#fff;padding:13px 15px}#mi-tool .metric span{display:block;color:var(--muted);font-size:.72rem}#mi-tool .metric strong{font-size:1rem;color:var(--navy);font-variant-numeric:tabular-nums}#mi-tool .breakdown{padding:16px}#mi-tool .line{display:flex;justify-content:space-between;gap:16px;padding:6px 0;font-size:.86rem}#mi-tool .line span:first-child{color:var(--muted)}#mi-tool .line.total{border-top:1px solid var(--line);margin-top:7px;padding-top:12px;font-weight:800}#mi-tool .notice{margin-top:14px;padding:10px 13px;border-radius:10px;background:var(--teal-soft);color:#096c66;font-size:.8rem}#mi-tool .notice.error{background:var(--red-soft);color:var(--red)}#mi-tool .summary-actions{display:grid;grid-template-columns:1fr 1fr;gap:9px;margin-top:14px}
   #mi-tool .settings-grid{display:grid;grid-template-columns:repeat(3,minmax(230px,1fr));gap:18px}#mi-tool .setting-list{display:grid;gap:13px}#mi-tool .setting-row{display:grid;grid-template-columns:1fr 118px;gap:14px;align-items:center}#mi-tool .setting-row label{font-size:.86rem;font-weight:680}#mi-tool .setting-row small{display:block;color:var(--muted);font-weight:400}#mi-tool .setting-row input{width:100%;border:1px solid #ecd89d;background:var(--amber);color:var(--amber-ink);border-radius:9px;padding:8px;font-weight:750;text-align:right}
   #mi-tool .table-wrap{overflow:auto}#mi-tool .data-table{border-collapse:collapse;width:100%;min-width:640px}#mi-tool .data-table th,#mi-tool .data-table td{padding:10px 13px;border-bottom:1px solid var(--line);text-align:right;font-variant-numeric:tabular-nums}#mi-tool .data-table th{background:var(--navy);color:#fff;font-size:.74rem;letter-spacing:.02em;position:sticky;top:0}#mi-tool .data-table th:first-child,#mi-tool .data-table td:first-child{text-align:left}#mi-tool .data-table tbody tr:nth-child(even){background:#f7f9fb}#mi-tool .data-table .bad{color:var(--red);background:var(--red-soft);font-weight:750}#mi-tool .editable-table input{width:88px;background:var(--amber);border:1px solid #ead59b;border-radius:8px;padding:7px;color:var(--amber-ink);font-weight:750;text-align:right}#mi-tool .two-col{display:grid;grid-template-columns:1fr 1fr;gap:18px}
@@ -146,8 +159,8 @@ include __DIR__ . '/_layout.php';
 </style>
 
   <div class="mi-bar">
-    <span class="status" id="saveStatus">Saved on the server</span>
-    <button class="btn danger" id="resetBtn" style="margin-left:auto">Reset to defaults</button>
+    <span class="status" id="saveStatus"><?= $miCanEdit ? 'Saved on the server' : 'View only — ask the owner or the Maya Ilai manager to change rates' ?></span>
+    <?php if ($miCanEdit): ?><button class="btn danger" id="resetBtn" style="margin-left:auto">Reset to defaults</button><?php endif; ?>
   </div>
 
   <nav class="mi-nav" aria-label="Tool sections">
@@ -189,7 +202,7 @@ include __DIR__ . '/_layout.php';
   </section>
 
   <section class="view" id="view-rates">
-    <div class="section-head"><div><h2>Rates &amp; fees</h2><p>Amber fields are editable. Changes save automatically and update every calculation.</p></div></div>
+    <div class="section-head"><div><h2>Rates &amp; fees</h2><p><?= $miCanEdit ? 'Amber fields are editable. Changes save automatically and update every calculation.' : 'View only — these are the rates every quote uses. Only the owner or the Maya Ilai manager can change them.' ?></p></div></div>
     <div class="settings-grid" id="rateSettings"></div>
   </section>
 
@@ -308,6 +321,7 @@ include __DIR__ . '/_layout.php';
 <script>
 const MI_DEFAULTS = <?= json_encode(maya_ilai_pricing_defaults(), JSON_UNESCAPED_SLASHES) ?>;
 const MI_CSRF = <?= json_encode(csrf_token()) ?>;
+const MI_CAN_EDIT = <?= $miCanEdit ? 'true' : 'false' ?>;
 let state = <?= json_encode($state, JSON_UNESCAPED_SLASHES) ?>;
 (function () {
   const root = document.getElementById('mi-tool');
@@ -320,6 +334,7 @@ let state = <?= json_encode($state, JSON_UNESCAPED_SLASHES) ?>;
   // ── Persistence: save the whole state to the server (debounced) ──
   let saveTimer = null;
   function save() {
+    if (!MI_CAN_EDIT) { renderAll(); return; }   // view only: the fields are locked anyway
     if ($('saveStatus')) $('saveStatus').textContent = 'Saving…';
     renderAll();
     clearTimeout(saveTimer);
@@ -458,7 +473,14 @@ let state = <?= json_encode($state, JSON_UNESCAPED_SLASHES) ?>;
     const notice = $('quoteNotice'); notice.className = `notice${x.errors.length ? ' error' : ''}`;
     notice.innerHTML = x.errors.length ? x.errors.join('<br>') : `Configuration fits inventory · uses ${x.physicalVillas} of ${state.inventory.villas} villas and ${x.q.studio} of ${state.inventory.studios} studios.`;
   }
-  function renderAll() { renderSettings(); renderGroupSettings(); renderGroupTables(); renderAvailability(); requestQuote(); }
+  // View only (reception): every rate / discount / band control is locked after
+  // each render. Quoting stays live — the Quote Builder's own fields are not locked.
+  function lockIfViewOnly() {
+    if (MI_CAN_EDIT) return;
+    root.querySelectorAll('#view-rates input, #view-rates select, #view-groups input, #view-groups select, #view-availability input, #view-availability select, #view-availability button')
+      .forEach(el => { el.disabled = true; });
+  }
+  function renderAll() { renderSettings(); renderGroupSettings(); renderGroupTables(); renderAvailability(); lockIfViewOnly(); requestQuote(); }
 
   root.querySelectorAll('.tab').forEach(btn => btn.addEventListener('click', () => { root.querySelectorAll('.tab').forEach(x => x.classList.remove('active')); root.querySelectorAll('.view').forEach(x => x.classList.remove('active')); btn.classList.add('active'); $(`view-${btn.dataset.tab}`).classList.add('active'); }));
   root.querySelectorAll('.cfg,#season,#nights,#program,#availableUnits,#clientName').forEach(el => el.addEventListener('input', requestQuote));
@@ -470,7 +492,7 @@ let state = <?= json_encode($state, JSON_UNESCAPED_SLASHES) ?>;
     state.availability.push({ min: from, max: from, adjustment: 0, label: 'New band' });
     save();
   });
-  $('resetBtn').addEventListener('click', () => {
+  if ($('resetBtn')) $('resetBtn').addEventListener('click', () => {
     if (!confirm('Reset every rate and discount to the original defaults?')) return;
     state = clone(MI_DEFAULTS);
     if ($('saveStatus')) $('saveStatus').textContent = 'Saving…';

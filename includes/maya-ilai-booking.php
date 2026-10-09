@@ -45,6 +45,9 @@
  * including.
  */
 require_once __DIR__ . '/maya-ilai-pricing.php';
+// Every Maya Ilai price a guest sees is ACCOMMODATION; the Resort Fee is paid on
+// site and said once, in the owner's wording, wherever a price is shown.
+$mibFeeNote = maya_ilai_resort_fee_note();
 $mibCfg   = maya_ilai_pricing_get();
 $mibRates = $mibCfg['rates'];
 $mibRules = $mibCfg['rules'];
@@ -191,6 +194,8 @@ $mibMaxNights = 30;
   .mib-sum-total{font-family:'Cormorant Garamond',serif;font-size:2.1rem;line-height:1;margin:.3rem 0 .15rem}
   .mib-sum-per{font-size:.78rem;color:rgba(255,255,255,.55)}
   .mib-lines{padding:1rem 1.4rem}
+  .mib-fee{font-size:.8rem;color:var(--mib-mut);line-height:1.5;margin:.75rem 0 0}
+  .mib-fee--sum{margin:-.4rem 1.4rem .6rem}
   .mib-line{display:flex;justify-content:space-between;gap:1rem;font-size:.85rem;padding:.32rem 0;color:var(--mib-mut)}
   .mib-line strong{color:var(--mib-ink);font-weight:500}
   .mib-line--total{border-top:1px solid var(--mib-line);margin-top:.35rem;padding-top:.6rem;font-size:.95rem}
@@ -492,6 +497,7 @@ $mibMaxNights = 30;
     <p class="mib-offers__lede">These are the stays that fit your party. For a particular mix of rooms, build your own below.</p>
 
     <div class="mib-offers" id="mibOffers"></div>
+    <p class="mib-fee"><?= e($mibFeeNote) ?></p>
 
     <div class="mib-bespoke">
       <button type="button" class="mib-bespoke__btn" id="mibBespokeBtn" aria-expanded="false" aria-controls="mibBespoke">Build it yourself</button>
@@ -559,11 +565,12 @@ $mibMaxNights = 30;
 
           <aside class="mib-summary">
             <div class="mib-sum-top">
-              <div class="mib-sum-lbl">Estimated total</div>
+              <div class="mib-sum-lbl">Estimated total*</div>
               <div class="mib-sum-total" id="mibTotal">$0</div>
               <div class="mib-sum-per" id="mibPer">Add rooms to price your stay</div>
             </div>
             <div class="mib-lines" id="mibLines"></div>
+            <p class="mib-fee mib-fee--sum"><?= e($mibFeeNote) ?></p>
             <div class="mib-notice" id="mibNotice">Choose your rooms and guests.</div>
             <button class="mib-cta" id="mibRequest" disabled>Request to book</button>
             <div class="mib-fine">Prices in USD. The property confirms availability and holds your dates — you are not charged now. Group discounts apply automatically for larger parties (min <?= (int)$mibRules['minNights'] ?> nights).</div>
@@ -810,7 +817,7 @@ $mibMaxNights = 30;
       // No Eco-Resort Fee row, and the footing is ACCOMMODATION. An itemised
       // breakdown that hides a line but keeps it in the total is worse than
       // either showing or omitting the fee — the visible rows would not add up.
-      row('<strong>Estimated total</strong>', '<strong>' + priceSpan(q.accommodation) + '</strong>', true);
+      row('<strong>Estimated total*</strong>', '<strong>' + priceSpan(q.accommodation) + '</strong>', true);
     noticeEl.className = 'mib-notice' + (hasErr ? ' err' : '');
     noticeEl.innerHTML = hasErr ? q.errors.join('<br>') : ('Fits the compound · ' + q.guests + ' guest' + (q.guests === 1 ? '' : 's') + ', capacity ' + q.capacity + '.');
     cta.disabled = hasErr || !q.guests;
@@ -1340,7 +1347,8 @@ $mibMaxNights = 30;
         + ' (' + dates.ci + ' → ' + dates.co + ', ' + nightsWord(dates.nights) + ')'
       : 'Dates: not given (' + nightsWord(q.nights) + ')';
     var message = 'Maya Ilai booking request:\n' + dateLine + '\nRooms: ' + modalRooms +
-      '\nAccommodation/night: ' + usd(q.nightly) + ' · Eco fee: ' + usd(q.eco) + ' · Estimated total: ' + usd(q.total) +
+      '\nAccommodation/night: ' + usd(q.nightly) + ' · Accommodation total: ' + usd(q.accommodation) +
+      ' · Resort Fee (paid on site): ' + usd(q.eco) +
       '\nThe property will confirm and hold these dates by email.' +
       (f.note.value.trim() ? ('\n\nGuest note: ' + f.note.value.trim()) : '');
     // The real Turnstile token from the widget in this form (empty in dev, where

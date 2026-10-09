@@ -34,7 +34,7 @@ declare(strict_types=1);
  * @param ?string $job  the staff job (NULL for a staff account = front desk)
  * @param array   $env  what is installed / per-account: ai, pos, inv, invOrders, companies,
  *                      acctDocs, acctIc, clockOn (bool) + seller (can sell at a till),
- *                      mayaIlai (a manager scoped to Maya Ilai)
+ *                      mayaIlai (a manager or reception scoped to Maya Ilai)
  */
 function admin_nav_flags(string $role, ?string $job, array $env): array {
     $e = fn(string $k): bool => !empty($env[$k]);
@@ -63,7 +63,7 @@ function admin_nav_flags(string $role, ?string $job, array $env): array {
         'acctDocs' => ($owner || $manager) && $e('acctDocs'), 'acctIc' => ($owner || $manager) && $e('acctDocs') && $e('acctIc'),
         'restaurant' => $owner || $manager || $reception,
         'clockOn' => $e('clockOn'), 'clockNav' => $e('clockOn') || $owner,
-        'mayaIlai' => $owner || ($manager && $e('mayaIlai')),
+        'mayaIlai' => $owner || (($manager || $reception) && $e('mayaIlai')),   // reception: view only
     ];
 }
 
