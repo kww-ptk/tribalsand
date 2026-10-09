@@ -605,7 +605,9 @@ function maya_ilai_quote(array $sel, ?array $cfg = null): array {
         'bunkExtra'=>round($bunkExtra,2),'villaExtra'=>round($villaExtra,2),
         'adjustedBase'=>round($adjustedBase,2),'singleRooms'=>$singleRooms,
         'adjustmentAmount'=>round($adjustedBase - $base, 2),
-        'perGuestNight'=>($guests && !$sold) ? round($total / $guests / $nights, 2) : null,
+        // Accommodation only, like every figure a guest is quoted — the Eco-Resort
+        // Fee is paid on site (only the staff quote tool reads this).
+        'perGuestNight'=>($guests && !$sold) ? round($accommodation / $guests / $nights, 2) : null,
         'requiredVillas'=>$requiredVillas,'physicalVillas'=>$physicalVillas,
         'lines'=>[
             'double' => round($doubleBase, 2),
