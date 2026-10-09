@@ -172,7 +172,13 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
     <div class="ci-fact"><span class="ci-fact__k">Card image</span><span class="ci-fact__v">
       <?php if ($__depCard && $__canDocs): ?><a href="/admin/checkin-file.php?hold=<?= $holdId ?>&kind=deposit" target="_blank" class="btn-sm btn-outline">View card</a>
       <?php elseif ($__depCard): ?>On file ✓ <span class="text-muted">(restricted)</span>
+      <?php else:
+            // No photo: the guest may have said how they will pay at arrival instead.
+            $__plan = (string)($__ci['deposit_plan'] ?? '');
+            if ($__plan === 'card_at_arrival'): ?><strong>No card photo — will bring card</strong>
+      <?php elseif ($__plan === 'cash_at_arrival'): ?><strong>Will pay cash deposit at arrival</strong>
       <?php else: ?><span class="text-muted">Not uploaded</span><?php endif; ?>
+      <?php endif; ?>
     </span></div>
     <?php endif; ?>
   </div>

@@ -63,7 +63,7 @@ $fullCfg      = checkin_config();
 $outstanding  = checkin_outstanding_adults($guests, $fullCfg);
 $unnamedSlots = max(0, $need - count($adults));   // adult slots never added to the roster
 $leadDone     = checkin_guest_complete($lead ?: null, $fullCfg)
-                && checkin_missing_steps($fullCfg, $data, $lead ?: null) === [];
+                && checkin_submit_missing($fullCfg, $data, $lead ?: null) === [];   // incl. the deposit choice
 $leadWaiting  = !$done && $leadDone && ($outstanding || $unnamedSlots > 0);
 
 // Short labels for the sentence ("waiting on Patrik and Sarah"); the itemised
