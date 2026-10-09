@@ -118,6 +118,7 @@ function admin_nav_definition(array $f, array $badge = []): array {
                 $tab('iCal feeds', 'ical-feeds.php', $on('bookings')),
                 $tab('Import', 'import-bookings.php', $ownerOrManager, 'Import bookings'),
                 $tab('Group import', 'import-group.php', $ownerOrManager, 'Group import'),
+                $tab('Ilai unit map', 'unit-map.php', $on('mayaIlai'), 'Ilai unit map'),
             ]),
             $item('Enquiries', 'submissions', [
                 $tab('Enquiries', ['submissions.php', 'submission-view.php'], $on('bookings'), 'Enquiries', $b('enquiries'), 'red',
@@ -377,6 +378,7 @@ function admin_nav_help_button_html(): string {
  * Invoices & payments). Keyed by page file; every page of a tab is searched.
  */
 const ADMIN_NAV_SEARCH_WORDS = [
+    'unit-map.php'         => 'maya ilai villa bedroom studio occupancy aerial map',
     'gantt.php'            => 'calendar availability blocks occupancy',
     'holds.php'            => 'bookings reservations holds confirm',
     'submissions.php'      => 'enquiries leads inbox requests',

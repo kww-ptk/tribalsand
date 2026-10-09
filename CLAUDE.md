@@ -523,18 +523,17 @@ Test: `php tests/maya_ilai_inventory.php`.
   at 30 nights. And `ts_search_availability()`'s cross-exclusion is inert only because no
   Maya Ilai room has `is_entire_place = TRUE` — ticking that box would hide products.
 
-### Maya Ilai rate & quote tool — who may use it, and the Resort Fee
-- **Access = `maya_ilai_tool_mode()`** (`includes/maya-ilai-pricing.php`): `'edit'` = owner or a manager whose properties include Maya Ilai; `'view'` = reception whose properties include Maya Ilai (owner, Oct 2026: reception quotes, never changes rates); null = sent home. View-only locks every rate/discount/band control, hides Reset, and `admin/maya-ilai-rates.php` refuses `save`/`reset` with 403 server-side (quote + unit map stay open). The nav flag `mayaIlai` covers manager and reception (`access_env()`).
-- **The Resort Fee (`rules.ecoFee`) is never in a quoted price** — staff tool, Quote builder and the public Maya Ilai page show accommodation only, with "Estimated total*" / "Total*" and the one wording `maya_ilai_resort_fee_note()`: "* A Resort Fee of $20 per person is applied, to be paid on-site." (`maya_ilai_resort_fee_amount()` for prose). `perGuestNight` is accommodation-based. The fee still travels in the quote payload (`eco`) and on the enquiry to the property, labelled "paid on site".
+### Maya Ilai rates & settings — ONE Quote builder, who may use it, the Resort Fee
+- **There is one Quote builder** (owner, Oct 2026): `admin/maya-ilai-rates.php` is now **settings only** — Rates & Fees · Group Discounts · Availability Pricing — and these settings price Maya Ilai on the guest site AND in the main Quote builder (`qb_maya_ilai_price()`). Its old Quote Builder tab, its `quote` action, the season/programme/no-dates overrides and the standalone living-room line are gone; don't bring a second builder back. The page links to the Quote builder (shown only when `require_bookings()` would let the account in) and to the Ilai unit map.
+- **Access = `maya_ilai_tool_mode()`** (`includes/maya-ilai-pricing.php`): `'edit'` = owner or a manager whose properties include Maya Ilai; `'view'` = reception whose properties include Maya Ilai (reads rates, never changes them); null = sent home. View-only locks every rate/discount/band control, hides Reset, and the page refuses `save`/`reset` with 403 server-side. The nav flag `mayaIlai` covers manager and reception (`access_env()`). Note the main Quote builder is owner + reception (`require_bookings()`); a Maya Ilai manager needs it granted in Team → Staff → Access by role to quote.
+- **The Resort Fee (`rules.ecoFee`) is never in a quoted price** — the Quote builder and the public Maya Ilai page show accommodation only, with "Estimated total*" / "Total*" and the one wording `maya_ilai_resort_fee_note()`: "* A Resort Fee of $20 per person is applied, to be paid on-site." (`maya_ilai_resort_fee_amount()` for prose). `perGuestNight` is accommodation-based. The fee still travels in the quote payload (`eco`) and on the enquiry to the property, labelled "paid on site".
 
 ### Maya Ilai unit map — live aerial view, READ-ONLY
-The **Unit Map** tab in `admin/maya-ilai-rates.php` renders the aerial compound
+**Calendar → Ilai unit map** (`admin/unit-map.php`, view `includes/maya-ilai-unitmap-view.php`; moved out of the Maya Ilai rates page, Oct 2026) renders the aerial compound
 (8 villas × Double A/Double B/Bunk/Living + 8 studios) with live per-bedroom
 booking status for a chosen day. Helpers in **`includes/maya-ilai-unitmap.php`**;
 every read is pre-migration-safe. Test: `php tests/maya_ilai_unitmap.php` (pure).
-- **It is READ-ONLY and does NOT breach this page's "standalone" contract.** The
-  four pricing tabs never feed the live rooms/rates tables (a WRITE rule); this
-  tab only READS `availability_blocks` / `holds` / `bookings`. `mi_unit_map($date)`
+- **It is READ-ONLY.** It only READS `availability_blocks` / `holds` / `bookings`. `mi_unit_map($date)`
   reuses the SAME calendar the Gantt draws, so it is "synced with the system" by
   construction — website holds, OTA iCal imports, channel-manager/eZee spreadsheet
   imports, agent holds and maintenance closures all appear, with no new sync path.
@@ -553,10 +552,11 @@ every read is pre-migration-safe. Test: `php tests/maya_ilai_unitmap.php` (pure)
   never `mi_pg_array_decode()` directly. Pre-composite-migration every villa block
   reads as the whole villa; post-migration a `double_a`-only booking colours only
   Double A. Villas/studios are numbered 1..8 by `sort_order` (staff say "Villa 3").
-- The tab posts `{action:'unitmap', date}` to the page (session-authed +
-  Maya Ilai scope + CSRF-in-body, exactly like the quote/save actions). The SVG is
-  ported from the aerial prototype; the date navigates via the shared `.dp-btn`
-  picker (single mode) + Prev/Today/Next. Lazy-loads on first tab open.
+- The page posts `{action:'unitmap', date}` to itself (session + `maya_ilai_tool_mode()` gate +
+  CSRF-in-body). It shows guest names, so the audience is `maya_ilai_tool_mode()` (owner; managers
+  and reception whose properties include Maya Ilai), and the tab uses the `mayaIlai` nav flag — NOT
+  the Calendar's own audience. The SVG is ported from the aerial prototype; the date navigates via
+  the shared `.dp-btn` picker (single mode) + Prev/Today/Next.
 - **Channel-manager (eZee) API is NOT wired here** — a live two-way API sync
   (rate/image push) needs eZee/channel-manager API credentials (a business
   application step). The map already reflects channel bookings today because the
@@ -808,7 +808,8 @@ The **Activity log** on Team → employee profile (`admin/employee.php` → `per
 | `includes/maya-ilai-inventory.php` | Maya Ilai composite inventory — component map, resolution, ring-fencing, villa ordering (pure, no I/O) |
 | `includes/staff-hold-guard.php` | Refuses a staff hold that would sell a villa bedroom twice (Maya Ilai villa units only) |
 | `includes/maya-ilai-unitmap.php` | Live aerial unit-map data — `mi_unit_map($date)` + pure `mi_unitmap_cell_status()` (read-only occupancy, pre-migration-safe) |
-| `admin/maya-ilai-rates.php` | Maya Ilai rate/quote tool (standalone) **+ the read-only live Unit Map tab** |
+| `admin/maya-ilai-rates.php` | Maya Ilai rates & settings (rates, group discounts, availability bands) — prices the guest site + the Quote builder |
+| `admin/unit-map.php` · `includes/maya-ilai-unitmap-view.php` | Calendar → Ilai unit map: the read-only live aerial view of Maya Ilai |
 | `includes/gantt-lanes.php` | First-fit lane packing so concurrent blocks on one unit stay visible on the Gantt (pure) |
 | `includes/gantt-block-guard.php` | Guards the Gantt's drag-to-move against overselling a villa; excludes the moving block from accusing itself |
 | `includes/rates.php` | Nightly rate helpers — merge, resolve, trim/split writes, scoped delete |
