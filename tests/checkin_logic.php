@@ -102,7 +102,7 @@ check('transfer no = complete',           checkin_step_complete('transfer', ['ne
 // these two are testing the road/pickup branch, so they must say so.
 check('transfer yes needs details',       checkin_step_complete('transfer', ['needs_transfer' => true, 'arrival_mode' => 'road', 'needs_departure_transfer' => false], null) === false);
 check('transfer yes + details = complete',checkin_step_complete('transfer', ['needs_transfer' => true, 'arrival_mode' => 'road', 'needs_departure_transfer' => false, 'transfer_details' => 'JKIA 2pm'], null) === true);
-check('passport needs name+num+file',     checkin_step_complete('passport', [], ['passport_name' => 'A', 'passport_number' => 'B']) === false);
+check('passport needs name+num+(file or nat+expiry)',     checkin_step_complete('passport', [], ['passport_name' => 'A', 'passport_number' => 'B']) === false);
 check('passport complete w/ file',        checkin_step_complete('passport', [], ['passport_name' => 'A', 'passport_number' => 'B', 'passport_file_key' => 'checkin/1/x.jpg']) === true);
 check('waiver needs signature',           checkin_step_complete('waiver', [], ['waiver_signed_name' => 'A']) === false);
 check('waiver complete when signed',      checkin_step_complete('waiver', [], ['waiver_signed_name' => 'A', 'waiver_signed_at' => '2026-08-06 10:00', 'waiver_signature' => 'sig']) === true);
@@ -155,6 +155,35 @@ check('optional step never missing',     !in_array('dietary', checkin_missing_st
 $adult = ['passport_name'=>'A','passport_number'=>'B','passport_file_key'=>'k','waiver_signed_name'=>'A','waiver_signed_at'=>'2026-08-06','waiver_signature'=>'sig'];
 check('guest passport complete',   checkin_guest_passport_complete($adult) === true);
 check('guest passport incomplete', checkin_guest_passport_complete(['passport_name'=>'A','passport_number'=>'B']) === false);
+check('passport: typed nat+expiry instead of photo', checkin_guest_passport_complete(['passport_name'=>'A','passport_number'=>'B','nationality'=>'Kenya','passport_expiry'=>'2030-01-01']) === true);
+check('passport: nationality alone is not enough',   checkin_guest_passport_complete(['passport_name'=>'A','passport_number'=>'B','nationality'=>'Kenya']) === false);
+check('passport: photo still needs name+number',     checkin_guest_passport_complete(['passport_name'=>'A','passport_file_key'=>'k']) === false);
+
+// ── Deposit: card photo OR a chosen plan ────────────────────────────────────
+if (checkin_deposit_supported()) {
+    check('deposit: card on file handles it',  checkin_deposit_handled(['deposit_card_file_key' => 'k']) === true);
+    check('deposit: nothing = not handled',    checkin_deposit_handled([]) === false);
+}
+check('deposit: card plan handles it',     checkin_deposit_handled(['deposit_plan' => 'card_at_arrival']) === true);
+check('deposit: cash plan handles it',     checkin_deposit_handled(['deposit_plan' => 'cash_at_arrival']) === true);
+check('deposit: unknown plan ignored',     checkin_deposit_handled(['deposit_plan' => 'cheque']) === false);
+check('deposit: step_complete follows',    checkin_step_complete('deposit', ['deposit_plan' => 'cash_at_arrival'], null) === true);
+check('deposit: two plans offered',        array_keys(checkin_deposit_plans()) === ['card_at_arrival', 'cash_at_arrival']);
+$__subCfg = ['deposit' => ['enabled' => true, 'required' => false]];
+if (checkin_deposit_plan_supported()) {
+    check('submit gate: optional deposit still asked', checkin_submit_missing($__subCfg, [], null) === ['deposit']);
+    check('submit gate: plan satisfies it',            checkin_submit_missing($__subCfg, ['deposit_plan' => 'card_at_arrival'], null) === []);
+} else {
+    echo "SKIP  submit gate deposit (run add_checkin_deposit_plan.sql)\n";
+}
+check('submit gate: disabled deposit not asked', checkin_submit_missing(['deposit' => ['enabled' => false, 'required' => true]], [], null) === []);
+
+// ── Sharing a guest's link ──────────────────────────────────────────────────
+check('share text: first name',  checkin_guest_share_text('Sarah Jones', 'Maya Kobe', '12–15 Dec', 'https://x/b?g=1')
+                                   === 'Hi Sarah, please complete your check-in for Maya Kobe, 12–15 Dec: https://x/b?g=1');
+check('share text: no name',     checkin_guest_share_text('  ', 'Maya Kobe', '', 'L') === 'Hi, please complete your check-in for Maya Kobe: L');
+check('share text: no property', checkin_guest_share_text('Ann', '', '', 'L') === 'Hi Ann, please complete your check-in: L');
+check('whatsapp url encodes',    checkin_whatsapp_url('Hi A & B: https://x?g=1') === 'https://wa.me/?text=Hi%20A%20%26%20B%3A%20https%3A%2F%2Fx%3Fg%3D1');
 check('guest waiver signed',       checkin_guest_waiver_signed($adult) === true);
 check('guest waiver unsigned',     checkin_guest_waiver_signed(['waiver_signed_name'=>'A']) === false);
 check('waiver needs a signature',  checkin_guest_waiver_signed(['waiver_signed_name'=>'A','waiver_signed_at'=>'2026-08-06']) === false);

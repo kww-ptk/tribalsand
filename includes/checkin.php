@@ -201,6 +201,52 @@ function checkin_deposit_card_on_file(?array $data): bool {
     return checkin_deposit_supported() && trim((string)(($data ?? [])['deposit_card_file_key'] ?? '')) !== '';
 }
 
+/** How a guest without a card photo will pay the deposit at arrival. Keys are stored. */
+function checkin_deposit_plans(): array {
+    return [
+        'card_at_arrival' => 'I’ll bring my card — the deposit will be taken at arrival',
+        'cash_at_arrival' => 'I’ll pay the deposit in cash at arrival',
+    ];
+}
+
+/**
+ * True once add_checkin_deposit_plan.sql is applied. A catalog lookup, never a
+ * failing SELECT — it can run inside a caller's transaction. Cached per request.
+ */
+function checkin_deposit_plan_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try {
+        $ok = (bool) db_query("SELECT 1 FROM information_schema.columns
+                                WHERE table_schema = current_schema() AND table_name = 'booking_checkin'
+                                  AND column_name = 'deposit_plan'")->fetchColumn();
+    } catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/** The deposit is dealt with: a card photo is on file, or the guest chose how to pay at arrival. */
+function checkin_deposit_handled(?array $data): bool {
+    if (checkin_deposit_card_on_file($data)) return true;
+    return array_key_exists((string)(($data ?? [])['deposit_plan'] ?? ''), checkin_deposit_plans());
+}
+
+/**
+ * The message a lead sends another adult with their personal check-in link.
+ * js/checkin-wizard.js builds the same sentence for guests added on the page —
+ * keep the two in step. Pure.
+ */
+function checkin_guest_share_text(string $name, string $property, string $dates, string $link): string {
+    $first = trim($name) !== '' ? explode(' ', trim($name))[0] : '';
+    $where = trim($property) !== '' ? ' for ' . trim($property) : '';
+    $when  = ($where !== '' && trim($dates) !== '') ? ', ' . trim($dates) : '';
+    return 'Hi' . ($first !== '' ? ' ' . $first : '') . ', please complete your check-in' . $where . $when . ': ' . $link;
+}
+
+/** WhatsApp share link — the sender picks the contact in WhatsApp. Pure. */
+function checkin_whatsapp_url(string $text): string {
+    return 'https://wa.me/?text=' . rawurlencode($text);
+}
+
 function checkin_required(array $hold): bool {
     return checkin_supported() && !empty($hold['require_checkin']);
 }
@@ -410,10 +456,27 @@ function checkin_step_complete(string $key, ?array $data, ?array $lead): bool {
         case 'upsell':   return true;
         // Complete once the lead has uploaded a credit-card image. The deposit is
         // charged at the property, so the upload is the only thing to "provide".
-        case 'deposit':  return checkin_deposit_card_on_file($data);
+        case 'deposit':  return checkin_deposit_handled($data);
         case 'waiver':   return checkin_guest_waiver_signed($lead);   // per-guest (moved off booking_checkin)
         default:         return false;
     }
+}
+
+/**
+ * The guest's own submit gate: checkin_missing_steps() plus the deposit whenever
+ * that step is ENABLED (not only when marked required) — the owner's rule is that
+ * the guest either uploads the card or says how they will pay at arrival. Needs the
+ * plan column; before add_checkin_deposit_plan.sql there is no "I can't upload"
+ * choice, so asking would trap a guest without a card. Staff completion
+ * (checkin_recompute_completion) is deliberately NOT tightened.
+ */
+function checkin_submit_missing(array $config, ?array $data, ?array $lead): array {
+    $missing = checkin_missing_steps($config, $data, $lead);
+    if (!empty($config['deposit']['enabled']) && !in_array('deposit', $missing, true)
+        && checkin_deposit_plan_supported() && !checkin_deposit_handled($data)) {
+        $missing[] = 'deposit';
+    }
+    return $missing;
 }
 
 /** Enabled+required steps that are still incomplete. Empty array = ready to submit. */
@@ -428,12 +491,16 @@ function checkin_missing_steps(array $config, ?array $data, ?array $lead): array
 
 // ── Multi-guest per booking ─────────────────────────────────────────────────
 
-/** A single guest row has a complete passport (name + number + scan). */
+/**
+ * A single guest row has a complete passport: name + number, plus EITHER the photo
+ * OR nationality + expiry typed in (owner rule, Oct 2026 — a guest may upload or
+ * type). The photo is read into the fields, so a photo normally brings all four.
+ */
 function checkin_guest_passport_complete(?array $g): bool {
-    return $g !== null
-        && trim((string)($g['passport_name'] ?? '')) !== ''
-        && trim((string)($g['passport_number'] ?? '')) !== ''
-        && trim((string)($g['passport_file_key'] ?? '')) !== '';
+    if ($g === null) return false;
+    $has = fn($k) => trim((string)($g[$k] ?? '')) !== '';
+    return $has('passport_name') && $has('passport_number')
+        && ($has('passport_file_key') || ($has('nationality') && $has('passport_expiry')));
 }
 
 // ── Passport reading (photo → fields) ───────────────────────────────────────
