@@ -260,6 +260,32 @@
 .ci-done-card .pa-btn{margin-bottom:9px}
 .ci-alert{max-width:520px;margin:0 auto 16px;background:#fbe6e6;border:1px solid #f0c2c2;color:#a12;border-radius:10px;padding:12px 16px;font-size:14px;line-height:1.5}
 .ci-err{background:#fbe6e6;border:1px solid #f0c2c2;color:#a12;border-radius:9px;padding:11px 14px;font-size:13.5px;line-height:1.55;margin:16px 0 0}
+/* Terms dialog (js/checkin-terms.js) — wider, left-aligned .pa-modal with the waiver text */
+.ci-terms-modal{max-width:520px;text-align:left;max-height:calc(100vh - 48px);display:flex;flex-direction:column}
+.ci-terms-modal .ci-terms-modal__text{max-height:none;flex:1 1 auto;min-height:120px;overflow:auto;margin-bottom:16px}
+@media (max-width:560px){.pa-modal-backdrop:has(.ci-terms-modal){padding:12px}.ci-terms-modal{padding:20px 16px}}
+/* Passport photo → fields */
+.ci-pp-hint{font-size:13.5px;color:var(--pa-muted);line-height:1.55;margin:2px 0 10px}
+.ci-in--ai{background:#fff8e1;border-color:#f2c94c}
+.ci-pp-note{background:#fff8e1;border:1px solid #f2c94c;color:#6b4e00;border-radius:9px;padding:9px 12px;font-size:13.5px;line-height:1.5;margin:10px 0 4px}
+.ci-pp-note--warn{background:#fbe6e6;border-color:#f0c2c2;color:#a12}
+/* Party: saved guest summary + link to send */
+.ci-guest__done{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.ci-guest__done-name{font-weight:600;color:var(--pa-ink);flex:1 1 auto;min-width:0;overflow-wrap:anywhere}
+.ci-guest__edit{background:none;border:0;color:var(--pa-teal);font-weight:600;cursor:pointer;padding:4px 2px;font-size:14px}
+.ci-send{margin-top:12px;padding:12px 14px;border:1px solid var(--pa-line);border-radius:12px;background:#f8fafa}
+.ci-send__t{font-size:14px;font-weight:600;color:var(--pa-ink);margin:0 0 10px}
+.ci-send__btns{display:flex;gap:8px;flex-wrap:wrap}
+.ci-send__btns .pa-btn{flex:1 1 140px;width:auto}
+.ci-wa{background:#25d366;border-color:#25d366;color:#fff}
+.ci-wa:hover{background:#1ebe5a;border-color:#1ebe5a;color:#fff}
+.ci-wa svg{width:18px;height:18px;margin-right:6px;vertical-align:-3px}
+.ci-send .ci-linkrow{margin-top:10px}
+/* Deposit: no card photo → how they'll pay */
+.ci-noncard{margin-top:12px}
+.ci-noncard__toggle{background:none;border:0;padding:4px 0;color:var(--pa-teal);font-weight:600;font-size:14px;cursor:pointer;text-decoration:underline}
+.ci-noncard__opts{margin-top:8px;padding:12px 14px;border:1px solid var(--pa-line);border-radius:12px;background:#f8fafa}
+.ci-noncard__opts .ci-radio{margin-bottom:6px}
 /* Check-in window notice + the early/late arrival warning */
 /* .ci-l sets display:block, which beats the [hidden] UA rule — restore it so the
    mode-specific arrival labels can actually hide. */
