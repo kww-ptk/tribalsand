@@ -1,0 +1,73 @@
+﻿"Summary","Description","Issue Type"
+"Admin sidebar — every group starts closed","Context: The owner wants a tidy sidebar when the admin opens. Today and Bookings were open by default, and what someone opened stayed open on every later visit.
+
+Description: Every sidebar group now starts closed when the admin is opened (the Dashboard shows a fully collapsed sidebar). Only the group holding the page you're on opens. What you open or close is remembered until you close the browser tab, so a new visit starts closed again.
+
+How to test:
+1. Sign in to admin. Expected: on the Dashboard every group (Today, Bookings, Team…) is closed.
+2. Open Bookings → Calendar. Expected: only the Bookings group is open.
+3. Open the Team group by hand, then go to another page. Expected: Team stays open during this visit.
+4. Close the browser tab, open the admin again. Expected: everything is closed again.","Task"
+"Website search — taken off the home page for now","Context: The new ""find anything"" search should be tested and improved before it sits on the home page.
+
+Description: Removed the search bar and the keyboard search window (`/` or Ctrl+K) from the home page only. Search still works on Activities, the Journal and its own page `/site-search`, where it can be tested. Putting it back is a two-line change.
+
+How to test:
+1. Open the home page. Expected: no search bar under the hero; pressing `/` does nothing.
+2. Open `/site-search`, search ""villa"". Expected: results appear.
+3. Open Activities and press `/`. Expected: the search window opens.","Task"
+"Date picker — the check-in day stays highlighted","Context: On the search page, picking 8 → 14 Oct wrote the dates correctly but the 8th looked crossed out instead of highlighted as the start of the stay.
+
+Description: While choosing the check-out, the check-in day can't be clicked again, and that ""can't click"" style was winning over the ""start of stay"" highlight. The chosen dates now always show first: check-in highlighted, the nights in between shaded, check-out highlighted. Fixed in the shared date picker, so it applies everywhere it's used.
+
+How to test:
+1. Open `/search`, click Check-in, pick a date.
+2. Expected: that day stays highlighted (gold) while the picker asks for the check-out.
+3. Pick a check-out 6 days later. Expected: start and end highlighted, the days between shaded, nothing crossed out inside the range.","Task"
+"Booking widget for each property's own website (embed code)","Context: Each property has its own small website on its own domain for linking and ranking. Those sites need the same booking form as tribalsand.com, booking into the same calendar, so nothing can be double-booked.
+
+Description: New page Website → Properties & rooms → Booking widgets (owner) gives a copy-paste code per property, with a live preview. The code shows the exact widget that property's page uses (Maya Kobe and Zuri: pick dates and guests, then a room or the whole property; My Amani, Enkare Bofa and Sandbox: whole property; Maya Ilai: its build-your-stay configurator). It sends to the same booking system, so availability, prices and requests are shared. The widget resizes itself on the page, and the booking form opens over the whole window. Leads that come through it are tagged with the property website's address as their source (visible in Enquiry trends). A plain frame version is offered for sites that don't allow scripts. The whole-property widget got proper padding and no longer repeats the property name.
+
+How to test:
+1. Admin → Website → Properties & rooms → Booking widgets. Expected: one card per published property with a code, Copy code, Preview and Open on its own.
+2. Click Preview on Maya Kobe, then on My Amani. Expected: Maya Kobe shows dates + guests and a room list after ""Check availability""; My Amani shows the whole-villa widget with padding.
+3. Click Copy code and paste it into a test page on another website (or a WordPress Custom HTML block). Expected: the widget appears and grows to fit.
+4. In the test page pick dates, check availability, choose a room. Expected: the booking form covers the whole window; closing it returns to the normal widget.
+5. Send a test request. Expected: it appears in Bookings → Enquiries; in Enquiry trends its source is the test website's address.","Task"
+"Calendar — Week / Month / Quarter zoom","Context: The calendar only showed a fixed three-month view with narrow days, hard to read for a busy week.
+
+Description: Bookings → Calendar has a Week | Month | Quarter switch. Week shows 14 days from Monday with wide days and weekday names, Month shows one month, Quarter is the old three-month view and stays the default. Prev, Next and Today move by the zoom you're on. Dragging blocks still works at every zoom.
+
+How to test:
+1. Open Bookings → Calendar. Expected: Quarter is selected; the view looks as before.
+2. Click Week. Expected: 14 wide days from this Monday; the date range shows next to the switch.
+3. Click Next. Expected: moves one week. Switch to Month and click Next: moves one month.
+4. In Week view drag a block one day. Expected: it moves by exactly one day.","Task"
+"Calendar — excursions and all services on the main calendar","Context: Reception needed to see, on the same screen as the bookings, what has to be arranged for guests: excursions, transfers, dinners, housekeeping.
+
+Description: Under each property the Calendar shows a Services & excursions row: every guest request (activities, transfers, dining, housekeeping, laundry, maintenance…) and every item of the guest's plan on the day it happens. Confirmed = solid, requested = dashed, plan items = faded. Several on one day stack. Hovering shows the guest, room, time and status; clicking opens that booking. Filter chips per type (Excursions, Transfers, Dining, Housekeeping & laundry, Maintenance, Other) are remembered. Requests with no date yet are listed under the calendar in Not scheduled yet. Read-only: scheduling and confirming stay on the booking's Requests tab.
+
+How to test:
+Before you start: a booking in the next weeks with a dated request (e.g. a tour with a day and time) and one request with no date.
+1. Open Bookings → Calendar, Week view. Expected: under that property a ""Services & excursions"" row with the tour on its day, showing its time.
+2. Hover it. Expected: kind, title, guest, room, date/time and status.
+3. Click it. Expected: the booking opens on its Requests tab.
+4. Untick Excursions. Expected: tours disappear; tick again to bring them back (remembered after a reload).
+5. Scroll below the calendar. Expected: ""Not scheduled yet"" lists the request with no date.","Task"
+"Guest portal — calendar view on ""My trip""","Context: Guests asked for a calendar-style view of their stay, not only the day-by-day list.
+
+Description: The guest's My trip tab has a Day by day | Calendar switch. Calendar is a month grid: the stay is shaded, check-in and check-out highlighted, a dot for each planned item (hollow = still waiting). Tapping a day shows what's on it. Built from the same data as the list, so both always agree. The guest's choice is remembered on their phone.
+
+How to test:
+1. Open a guest booking link → My trip.
+2. Tap Calendar. Expected: month grid with the stay shaded and dots on days with plans.
+3. Tap a day with a dot. Expected: that day's items show below the grid.
+4. Reload. Expected: the calendar view is still selected. Check on a phone: nothing scrolls sideways.","Task"
+"GoHighLevel — duplicate blank enquiry email switched off","Context: Guests got a second ""Your enquiry to Tribal Sand — we'll be in touch shortly"" email from GHL, often with empty property, dates and guests, on top of our own complete acknowledgement.
+
+Description: Traced it to the GHL workflow New Website Enquiry — Confirmation, whose Email step sent a booking template even for Contact-page enquiries (which have no dates). The Email step was removed in GHL; the workflow keeps the internal notification and opportunity steps, and our website still creates the GHL contact, tags, fields and opportunity directly. Guests now get only our email. Noted for later: the GHL ""Property"" field is a dropdown that our booking forms' values don't match, and the ""Booking Info"" fields (Check In, Check Out, N. of Guest…) are never filled — both can be fixed once we have the field options/keys from GHL.
+
+How to test:
+1. Send a test enquiry from the website's Contact page.
+2. Expected: one email arrives (ours, ""Thank you…""); no ""Your enquiry to Tribal Sand — we'll be in touch shortly"" from GHL.
+3. In GHL open the contact. Expected: tags `website-enquiry`, the message in Enquiry Message, an opportunity in Website Leads.","Task"
