@@ -201,5 +201,46 @@ if ($pdo) {
     } finally { $pdo->rollBack(); }
 }
 
+// ── Maya Ilai: priced like the guest website (maya_ilai_quote, live) ───────
+$miIds = [];
+try { $miIds = db_query("SELECT slug, id FROM rooms WHERE slug IN ('maya-ilai-villa','maya-ilai-studio','maya-ilai-double') AND is_published")->fetchAll(PDO::FETCH_KEY_PAIR); } catch (Throwable $e) {}
+if (count($miIds) < 3) {
+    echo "SKIP  Maya Ilai pricing (rooms not published here)\n";
+} else {
+    $ci = '2099-03-10'; $co = '2099-03-14';
+    $sel = ['cur' => 'USD', 'check_in' => $ci, 'check_out' => $co, 'adults' => 12, 'children' => 0, 'rooms' => [
+        ['id' => (int)$miIds['maya-ilai-villa'],  'qty' => 1, 'guests' => 8],
+        ['id' => (int)$miIds['maya-ilai-studio'], 'qty' => 1, 'guests' => 2],
+        ['id' => (int)$miIds['maya-ilai-double'], 'qty' => 1, 'guests' => 2],
+    ], 'extras' => []];
+    $q = qb_price_selection($sel, null);
+    // What the guest website (api/maya-ilai-quote.php) quotes for the same stay.
+    $live = mi_live_availability($ci, $co);
+    $prog = !empty($live['supported']) ? 'live' : 'group';
+    $ref  = maya_ilai_quote(['qtyVilla' => 1, 'guestVilla' => 8, 'qtyStudio' => 1, 'guestStudio' => 2, 'qtyDouble' => 1, 'guestDouble' => 2,
+                             'nights' => 4, 'checkIn' => $ci, 'season' => 'high', 'program' => $prog,
+                             'availableUnits' => (int)($live['freeVillas'] ?? 0)], maya_ilai_pricing_get());
+    $miSum = 0.0; $miRows = 0;
+    foreach ($q['rooms'] as $r) if (in_array($r['id'], array_map('intval', $miIds), true) && $r['line']) { $miSum += $r['line']['amt']; $miRows++; }
+    check('maya ilai: every line priced',            $miRows === 3);
+    check('maya ilai: total = the guest site quote', abs($miSum - (float)$ref['accommodation']) < 0.01 && $ref['errors'] === []);
+    check('maya ilai: resort fee not in the price',  abs($q['summary']['accommodation'] - (float)$ref['accommodation']) < 0.01);
+    check('maya ilai: fee note given',               str_contains((string)$q['fee_note'], 'Resort Fee') && str_contains($q['text'], 'paid on-site'));
+    check('maya ilai: total marked with *',          end($q['lines'])['label'] === 'Total*' && str_contains($q['text'], 'Total*:'));
+    check('maya ilai: says what was applied',        (bool)array_filter($q['notices'], fn($n) => str_starts_with($n['text'], 'Maya Ilai is priced on its own rates')));
+
+    // Guests left blank are filled from the party — same total.
+    $auto = qb_price_selection(['rooms' => array_map(fn($r) => ['guests' => 0] + $r, $sel['rooms'])] + $sel, null);
+    $autoSum = 0.0;
+    foreach ($auto['rooms'] as $r) if (in_array($r['id'], array_map('intval', $miIds), true) && $r['line']) $autoSum += $r['line']['amt'];
+    check('maya ilai: blank guests filled from the party', abs($autoSum - $miSum) < 0.01);
+
+    // Too many people for the rooms → no price, a reason instead (never 0).
+    $over = qb_price_selection(['rooms' => [['id' => (int)$miIds['maya-ilai-studio'], 'qty' => 1, 'guests' => 5]]] + $sel, null);
+    $st = array_values(array_filter($over['rooms'], fn($r) => $r['id'] === (int)$miIds['maya-ilai-studio']))[0];
+    check('maya ilai: over capacity is unpriced',    $st['line'] === null && (bool)array_filter($over['notices'], fn($n) => str_starts_with($n['text'], 'Maya Ilai: ')));
+    check('maya ilai: no fee note when not priced',  $over['fee_note'] === null);
+}
+
 echo $failures ? "\n{$failures} FAILED\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);

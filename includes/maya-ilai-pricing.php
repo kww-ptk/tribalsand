@@ -28,6 +28,35 @@ const MAYA_ILAI_SETTING_KEY = 'maya_ilai_pricing';
  */
 const MAYA_ILAI_PHOTO_MAX = 6;
 
+/**
+ * Who may open the Maya Ilai rate & quote tool, and how (admin pages only — needs
+ * includes/auth.php). 'edit' = owner, or a manager whose properties include Maya
+ * Ilai; 'view' = reception whose properties include Maya Ilai (owner rule, Oct
+ * 2026: reception quotes and looks, never changes rates); null = no access.
+ * An owner's "Access by role" grant keeps working as 'view'.
+ */
+function maya_ilai_tool_mode(): ?string {
+    if (!function_exists('is_owner')) return null;
+    if (is_owner()) return 'edit';
+    $mine = in_array(MAYA_ILAI_VENUE_ID, array_map('intval', admin_venue_ids() ?? []), true);
+    if (is_manager() && $mine) return 'edit';
+    if (is_reception() && $mine) return 'view';
+    if (function_exists('access_page_granted') && access_page_granted('maya-ilai-rates.php') && $mine) return 'view';
+    return null;
+}
+
+/** The Resort Fee per person as shown to people: "$20" (cents only when there are any). */
+function maya_ilai_resort_fee_amount(?array $cfg = null): string {
+    $cfg = $cfg ?: maya_ilai_pricing_get();
+    $fee = (float)($cfg['rules']['ecoFee'] ?? 0);
+    return '$' . (floor($fee) == $fee ? number_format($fee, 0) : number_format($fee, 2));
+}
+
+/** "* A Resort Fee of $20 per person is applied, to be paid on-site." — one wording, from the saved fee. */
+function maya_ilai_resort_fee_note(?array $cfg = null): string {
+    return '* A Resort Fee of ' . maya_ilai_resort_fee_amount($cfg) . ' per person is applied, to be paid on-site.';
+}
+
 /** Feature guard (the settings KV table is core, but stay defensive). */
 function maya_ilai_pricing_supported(): bool {
     static $c = null;

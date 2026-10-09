@@ -124,7 +124,8 @@
       q(root, '[data-qb-breakdown]').innerHTML = any ? (qt.lines || []).map(function (l) {
         return '<div class="qb-line' + (l.kind === 'total' ? ' qb-line--total' : '') + '"><span>' + esc(l.label) + '</span><span>'
           + (l.kind === 'discount' ? '−' : '') + m(l.amt) + '</span></div>';
-      }).join('') + (qt.fx_note ? '<p class="qb-fx">' + esc(qt.fx_note) + '</p>' : '') : '';
+      }).join('') + (qt.fee_note ? '<p class="qb-fx">' + esc(qt.fee_note) + '</p>' : '')
+        + (qt.fx_note ? '<p class="qb-fx">' + esc(qt.fx_note) + '</p>' : '') : '';
       q(root, '[data-qb-notices]').innerHTML = (qt.notices || []).map(function (n) {
         return '<div class="qb-notice qb-notice--' + esc(n.type) + '">' + esc(n.text) + '</div>';
       }).join('');

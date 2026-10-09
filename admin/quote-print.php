@@ -198,7 +198,8 @@ th+th,td+td{padding-left:10px}
     </section>
     <?php endif; ?>
 
-    <div class="qp-total"><span>Total (<?= e($doc['currency']) ?>)</span><strong><?= e($doc['total']) ?></strong></div>
+    <div class="qp-total"><span>Total<?= !empty($doc['fee_note']) ? '*' : '' ?> (<?= e($doc['currency']) ?>)</span><strong><?= e($doc['total']) ?></strong></div>
+    <?php if (!empty($doc['fee_note'])): ?><p class="qp-fx"><?= e($doc['fee_note']) ?></p><?php endif; ?>
     <?php if ($doc['fx_note']): ?><p class="qp-fx"><?= e($doc['fx_note']) ?></p><?php endif; ?>
 
     <section class="qp-terms">

@@ -148,6 +148,8 @@ function qb_quote_document(array $priced, array $meta, string $terms): array {
         'total'         => $fmt($sum['total'] ?? 0),
         'currency'      => $cur,
         'fx_note'       => !empty($priced['fx_note']) ? (string)$priced['fx_note'] : null,
+        // Maya Ilai: "* A Resort Fee of $20 per person is applied, to be paid on-site."
+        'fee_note'      => !empty($priced['fee_note']) ? (string)$priced['fee_note'] : null,
         'terms'         => $terms,
         'contact'       => QB_QUOTE_CONTACT,
     ];
@@ -166,7 +168,7 @@ function qb_quote_has_priced_lines(array $priced): bool {
  */
 function qb_quote_snapshot_quote(array $priced): array {
     $keep = ['currency', 'check_in', 'check_out', 'nights', 'name', 'adults', 'children', 'issued',
-             'summary', 'lines', 'fx_note', 'text', 'quote_rooms', 'quote_extras'];
+             'summary', 'lines', 'fx_note', 'fee_note', 'text', 'quote_rooms', 'quote_extras'];
     return array_intersect_key($priced, array_flip($keep));
 }
 

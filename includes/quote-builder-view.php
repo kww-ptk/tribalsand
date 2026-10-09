@@ -52,9 +52,13 @@ $__uid = 'qb' . substr(md5((string)mt_rand()), 0, 6);
 
   <div class="qb-head">
     <?php if ($qb_context === 'page'): ?>
-    <p class="qb-sub">Rooms at live website prices, plus activities, transfers and your own lines. Nothing is saved or booked.</p>
+    <p class="qb-sub">Rooms at live website prices (Maya Ilai on its own rates, like the guest site), plus activities, transfers and your own lines. Nothing is saved or booked.</p>
     <?php endif; ?>
     <span class="qb-spacer"></span>
+    <?php if (function_exists('maya_ilai_tool_mode') && maya_ilai_tool_mode() !== null): ?>
+    <a class="btn-outline btn-sm" href="/admin/maya-ilai-rates.php"<?= $qb_context === 'modal' ? ' target="_blank" rel="noopener" data-no-shell' : '' ?>
+       title="Maya Ilai's own rate & quote tool — group discounts, availability pricing, unit map">Maya Ilai quote tool &rarr;</a>
+    <?php endif; ?>
     <?php $ms_cur = $qb_cur; include __DIR__ . '/money-switch.php'; ?>
   </div>
 

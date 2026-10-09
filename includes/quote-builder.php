@@ -26,6 +26,7 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/rates.php';
 require_once __DIR__ . '/rates-compare.php';
 require_once __DIR__ . '/services.php';
+require_once __DIR__ . '/maya-ilai-pricing.php';   // Maya Ilai lines price like the guest site (qb_maya_ilai_price)
 
 const QB_CURRENCIES = ['KES', 'USD'];
 const QB_BASES      = ['stay', 'night', 'person'];
@@ -225,7 +226,8 @@ function qb_quote_text(array $q): string {
         }
     }
     $lines[] = '';
-    $lines[] = 'Total: ' . qb_fmt((float)$q['total'], $c);
+    $lines[] = 'Total' . (!empty($q['fee_note']) ? '*' : '') . ': ' . qb_fmt((float)$q['total'], $c);
+    if (!empty($q['fee_note'])) $lines[] = $q['fee_note'];
     if (!empty($q['fx_note'])) $lines[] = $q['fx_note'];
     $lines[] = 'Prices valid on ' . date('j M Y', strtotime($q['today'])) . '; subject to availability until booked.';
     return implode("\n", $lines);
@@ -294,6 +296,94 @@ function qb_free_units(array $room, string $ci, string $co): ?int {
 }
 
 /**
+ * The Maya Ilai product a builder room is, in maya_ilai_products() shape, or null
+ * for any other room. The bare bunk room is not a guest product but staff may
+ * quote one (the Maya Ilai tool does), and a combination the guest list leaves out
+ * as "dominated" is still a real room — both are built from the same rules.
+ */
+function qb_mi_product(string $slug, array $cfg): ?array {
+    $key = array_search($slug, maya_ilai_room_slugs(), true);
+    if ($key === false) return null;
+    foreach (maya_ilai_products($cfg) as $p) if ($p['key'] === $key) return $p;
+    if ($key === 'Private Bunk Room') {
+        $r = $cfg['rules'];
+        return ['key' => $key, 'parts' => ['bunk' => 1], 'min' => 1, 'included' => (int)$r['bunkIncluded'],
+                'max' => (int)$r['bunkMax'], 'combo' => false];
+    }
+    foreach (maya_ilai_combos() as $c) {
+        if ($c['key'] !== $key) continue;
+        $occ = maya_ilai_combo_occupancy($cfg, $c['parts']);
+        return ['key' => $key, 'parts' => $c['parts'], 'min' => $occ['min'], 'included' => $occ['included'],
+                'max' => $occ['max'], 'combo' => true];
+    }
+    return null;
+}
+
+/**
+ * Price a selection's Maya Ilai rooms TOGETHER, exactly as the guest website does
+ * (api/maya-ilai-quote.php): the Maya Ilai tool's saved rates, the season night by
+ * night from the check-in date, and — when the calendar can be read — the 'live'
+ * programme (availability band from the free-villa count + the group discount).
+ * The stay total is ACCOMMODATION only; the Resort Fee is paid on site and is
+ * returned as a note, never added. The total is split across the rooms by
+ * mi_proportional_shares(), the same split a real booking records.
+ *
+ * $lines: [room_id => ['slug'=>string, 'qty'=>int, 'guests'=>int]] (qty > 0).
+ * Guests left at 0 are filled from the party (what is left after the rooms that
+ * have a number). A selection that does not fit returns no prices, only notices.
+ * @return array{rows: array<int,array{line:float,mix:string}>, notices: list<array>, fee_note: string}
+ */
+function qb_maya_ilai_price(array $lines, string $ci, string $co, int $nights, int $party): array {
+    $cfg = maya_ilai_pricing_get();
+    $out = ['rows' => [], 'notices' => [], 'fee_note' => maya_ilai_resort_fee_note($cfg)];
+    $picks = []; $set = []; $unset = [];
+    foreach ($lines as $rid => $l) {
+        $p = qb_mi_product((string)$l['slug'], $cfg);
+        if ($p === null) continue;
+        $picks[$rid] = ['product' => $p, 'qty' => (int)$l['qty']];
+        if ((int)$l['guests'] > 0) $set[$rid] = (int)$l['guests']; else $unset[$rid] = true;
+    }
+    if (!$picks) return $out;
+
+    $alloc = $set;
+    if ($unset) {
+        $left = $party - array_sum($set);
+        $part = array_intersect_key($picks, $unset);
+        $fill = $left > 0 ? maya_ilai_allocate_guests($part, $left) : null;
+        if ($fill === null) {
+            $out['notices'][] = ['type' => 'warn', 'text' => 'Maya Ilai: enter how many guests stay in each Maya Ilai room to price it.'];
+            return $out;
+        }
+        $alloc += $fill;
+    }
+    $order = array_keys($picks);
+    $sel = maya_ilai_picks_to_sel(array_values($picks), array_map(fn($k) => (int)$alloc[$k], $order), $nights, $cfg);
+
+    $program = 'group'; $free = 0;
+    $live = mi_live_availability($ci, $co);
+    if (!empty($live['supported'])) { $program = 'live'; $free = (int)$live['freeVillas']; }
+    // Override (not +): maya_ilai_picks_to_sel() fills program/season with its own defaults.
+    $q = maya_ilai_quote(array_merge($sel, ['checkIn' => $ci, 'season' => 'high', 'program' => $program, 'availableUnits' => $free]), $cfg);
+
+    if ($q['errors']) {
+        foreach ($q['errors'] as $e) $out['notices'][] = ['type' => 'warn', 'text' => 'Maya Ilai: ' . $e];
+        return $out;
+    }
+    $shares = mi_proportional_shares(array_values($picks), (float)$q['accommodation'], $cfg);
+    $split  = (array)($q['seasonNights'] ?? []);
+    $mix = [];
+    if (!empty($split['high']))     $mix[] = (int)$split['high'] . ' High season';
+    if (!empty($split['standard'])) $mix[] = (int)$split['standard'] . ' Standard season';
+    foreach ($order as $i => $rid) $out['rows'][$rid] = ['line' => (float)$shares[$i], 'mix' => implode(' + ', $mix)];
+
+    $adj = (float)$q['adjustment'];
+    $out['notices'][] = ['type' => 'info', 'text' => 'Maya Ilai is priced on its own rates (Maya Ilai tool)'
+        . ($adj != 0.0 ? ': ' . $q['adjustmentLabel'] . ' ' . ($adj > 0 ? '+' : '') . rc_trimz(number_format($adj, 2, '.', '')) . '%' : '')
+        . ($program === 'live' ? ' · ' . $free . ' villa' . ($free === 1 ? '' : 's') . ' free' : '') . '.'];
+    return $out;
+}
+
+/**
  * Price a builder selection. $sel (from the client, untrusted):
  *   name, check_in, check_out, adults, children, discount_pct, discount_note,
  *   cur ('KES'|'USD'), want_free (bool: dates changed → count free for every room),
@@ -329,6 +419,18 @@ function qb_price_selection(array $sel, ?array $scope): array {
     foreach ($cat['rooms'] as $room) $defaults[(int)$room['id']] = (float)$room['price_amount'];
     $quotes = ($okDates && $defaults) ? room_stay_quotes($defaults, $ci, $co, true) : [];
 
+    // Maya Ilai rooms are priced together on the Maya Ilai tool's rates (like the
+    // guest site), never on rooms.price_amount + the rates table.
+    $miSlugs = array_flip(maya_ilai_room_slugs());
+    $miLines = [];
+    foreach ($cat['rooms'] as $room) {
+        $w = $want[(int)$room['id']] ?? null;
+        if ($w && $w['qty'] > 0 && isset($miSlugs[(string)$room['slug']])) {
+            $miLines[(int)$room['id']] = ['slug' => (string)$room['slug'], 'qty' => min($w['qty'], (int)$room['max_qty']), 'guests' => $w['guests']];
+        }
+    }
+    $mi = ($okDates && $miLines) ? qb_maya_ilai_price($miLines, $ci, $co, $nights, $party) : null;
+
     $roomsOut = []; $picked = []; $roomLines = []; $textRooms = []; $unpricedRooms = [];
     foreach ($cat['rooms'] as $room) {
         $id   = (int)$room['id'];
@@ -340,6 +442,20 @@ function qb_price_selection(array $sel, ?array $scope): array {
         // No base price and no override covering the stay = unpriced, never quoted at 0.
         $unpricedRoom = $unit !== null && $unit <= 0;
         if ($unpricedRoom) $unit = null;
+        $isMi = isset($miSlugs[(string)$room['slug']]);
+        if ($isMi) {
+            // Maya Ilai: the line is its share of the stay quoted on the Maya Ilai
+            // tool's rates (USD). Not chosen / not priced → no figure, never 0.
+            $unpricedRoom = false;
+            $m = $mi['rows'][$id] ?? null;
+            $row = [
+                'id' => $id, 'qty' => $qty, 'guests' => $w['guests'],
+                'capacity' => (int)$room['capacity'] * max(1, $qty),
+                'avg'  => ($m && $qty > 0) ? ['amt' => round($m['line'] / max(1, $nights) / $qty, 2), 'cur' => 'USD'] : null,
+                'line' => ($m && $qty > 0) ? ['amt' => round($m['line'], 2), 'cur' => 'USD'] : null,
+                'mix'  => $m['mix'] ?? '',
+            ];
+        } else {
         $row  = [
             'id' => $id, 'qty' => $qty, 'guests' => $w['guests'],
             'capacity' => (int)$room['capacity'] * max(1, $qty),
@@ -347,6 +463,7 @@ function qb_price_selection(array $sel, ?array $scope): array {
             'line' => ($unit !== null && $qty > 0) ? ['amt' => round($unit * $qty, 2), 'cur' => $c] : null,
             'mix'  => $q ? rc_season_mix($q['nightly']) : '',
         ];
+        }
         if ($okDates && ($wantFree || $qty > 0)) {
             $row['free'] = qb_free_units($room, $ci, $co);
             $row['free_exact'] = empty($room['composite']);
@@ -414,6 +531,9 @@ function qb_price_selection(array $sel, ?array $scope): array {
     $capTotal = array_sum(array_column($picked, 'capacity'));
     $notices  = qb_notices($picked, $party, $okDates, $unpriced);
     foreach ($unpricedRooms as $n) $notices[] = ['type' => 'warn', 'text' => "{$n}: no price set for these dates."];
+    foreach (($mi['notices'] ?? []) as $n) $notices[] = $n;
+    // Maya Ilai: the Resort Fee is never in the price — it is paid on site (owner, Oct 2026).
+    $feeNote = ($mi && $mi['rows']) ? $mi['fee_note'] : null;
     foreach ($needDates as $n) $notices[] = ['type' => 'warn', 'text' => "{$n}: choose dates for a per-night price."];
     foreach ($t['missing'] as $m) $notices[] = ['type' => 'warn', 'text' => "No exchange rate for {$m}; those lines are left out of the total."];
     $today  = date('Y-m-d');
@@ -431,7 +551,7 @@ function qb_price_selection(array $sel, ?array $scope): array {
         $breakdown[] = ['kind' => 'discount', 'label' => 'Discount ' . rc_trimz(number_format($t['discount_pct'], 2, '.', '')) . '%' . ($qNote !== '' ? " ({$qNote})" : ''), 'amt' => $t['discount']];
     }
     foreach ($convExtras as $x) $breakdown[] = ['kind' => 'extra', 'label' => qb_extra_label($x['label'], $x['qty'], $x['basis'], $nights), 'amt' => $x['conv']];
-    $breakdown[] = ['kind' => 'total', 'label' => 'Total', 'amt' => $t['total']];
+    $breakdown[] = ['kind' => 'total', 'label' => $feeNote ? 'Total*' : 'Total', 'amt' => $t['total']];
 
     $text = qb_quote_text([
         'name' => $qName, 'check_in' => $ci ?? '', 'check_out' => $co ?? '', 'nights' => $nights,
@@ -439,7 +559,7 @@ function qb_price_selection(array $sel, ?array $scope): array {
         'rooms'  => array_map(fn($r) => ['name' => $r['name'], 'qty' => $r['qty'], 'mix' => $r['mix'], 'amt' => $r['conv']], $convRooms),
         'extras' => array_map(fn($x) => ['label' => $x['label'], 'qty' => $x['qty'], 'basis' => $x['basis'], 'amt' => $x['conv']], $convExtras),
         'discount_pct' => $t['discount_pct'], 'discount_note' => $qNote,
-        'discount' => $t['discount'], 'total' => $t['total'], 'fx_note' => $fxNote,
+        'discount' => $t['discount'], 'total' => $t['total'], 'fx_note' => $fxNote, 'fee_note' => $feeNote,
     ]);
 
     return [
@@ -452,7 +572,7 @@ function qb_price_selection(array $sel, ?array $scope): array {
             'per_guest' => $party > 0 && $t['total'] > 0 ? round($t['total'] / $party, 2) : null,
             'nightly'   => $nights > 0 && $t['accommodation'] > 0 ? round($t['accommodation'] / $nights, 2) : null,
         ],
-        'lines' => $breakdown, 'notices' => $notices, 'fx_note' => $fxNote, 'text' => $text,
+        'lines' => $breakdown, 'notices' => $notices, 'fx_note' => $fxNote, 'fee_note' => $feeNote, 'text' => $text,
         // For the printable document (includes/quote-docs.php): the same converted
         // lines the text uses, with the property and room kept apart.
         'name' => $qName, 'adults' => $adults, 'children' => $children, 'issued' => $today,

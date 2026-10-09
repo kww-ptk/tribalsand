@@ -36,7 +36,7 @@ const ACCESS_OWNER_ONLY = ['settings.php', 'emails.php', 'ai-settings.php', 'rei
 
 /** Sections that follow something other than role (always on, or the person's till outlets). */
 const ACCESS_AUTOMATIC = ['dashboard.php' => 'Everyone’s home page', 'help.php' => 'Everyone — shows only guides for pages the person can open', 'pos' => 'Follows the person’s till outlets',
-                          'pos-pins.php' => 'Follows the person’s till outlets', 'maya-ilai-rates.php' => 'Follows the manager’s properties'];
+                          'pos-pins.php' => 'Follows the person’s till outlets', 'maya-ilai-rates.php' => 'Managers and reception whose properties include Maya Ilai (reception: view only)'];
 
 /** Sections that only work for a manager (their pages show nothing to anyone else), so only managers can be given them. */
 const ACCESS_MANAGERS_ONLY = ['pos-sales.php', 'pos-items.php', 'pos-stock.php', 'pos-consignors.php', 'pos-terminals.php'];
@@ -174,7 +174,7 @@ function access_env(array $account = []): array {
         'acctIc'    => $has('acct_ic_entries'),
         'clockOn'   => function_exists('clock_kiosk_enabled') && clock_kiosk_enabled(),
         'seller'    => $account && function_exists('pos_is_seller') && pos_is_seller($account),
-        'mayaIlai'  => ($account['role'] ?? '') === 'manager' && in_array(6, admin_venue_ids() ?? [], true),
+        'mayaIlai'  => in_array($account['role'] ?? '', ['manager', 'reception'], true) && in_array(6, admin_venue_ids() ?? [], true),
     ];
 }
 
