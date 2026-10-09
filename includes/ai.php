@@ -375,6 +375,89 @@ function ai_openai_request(array $payload): array {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Vision — read one image into a JSON object (check-in passport photos)
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// A single turn, no tools: an image plus an instruction that asks for JSON. Same
+// provider switch and the same (stubbable) request functions as the chat loop.
+// The caller must treat the result as untrusted input — see
+// checkin_passport_from_ai(), which validates every field.
+
+const AI_VISION_MAX_TOKENS = 1024;
+
+/** Claude Messages payload for one image + instruction. Pure. */
+function ai_vision_claude_payload(string $bytes, string $mime, string $instruction, string $model): array {
+    $p = [
+        'model'      => $model,
+        'max_tokens' => AI_VISION_MAX_TOKENS,
+        'messages'   => [[
+            'role'    => 'user',
+            'content' => [
+                ['type' => 'image', 'source' => ['type' => 'base64', 'media_type' => $mime, 'data' => base64_encode($bytes)]],
+                ['type' => 'text',  'text' => $instruction],
+            ],
+        ]],
+    ];
+    if (stripos($model, 'haiku') === false) $p['output_config'] = ['effort' => AI_EFFORT];   // same rule as the chat loop
+    return $p;
+}
+
+/** OpenAI Chat Completions payload for one image + instruction (JSON mode). Pure. */
+function ai_vision_openai_payload(string $bytes, string $mime, string $instruction, string $model): array {
+    return [
+        'model'           => $model,
+        'max_tokens'      => AI_VISION_MAX_TOKENS,
+        'response_format' => ['type' => 'json_object'],
+        'messages'        => [[
+            'role'    => 'user',
+            'content' => [
+                ['type' => 'text', 'text' => $instruction],
+                ['type' => 'image_url', 'image_url' => ['url' => 'data:' . $mime . ';base64,' . base64_encode($bytes)]],
+            ],
+        ]],
+    ];
+}
+
+/** The model's text out of a provider response body. Pure. */
+function ai_vision_reply_text(string $provider, array $data): string {
+    if ($provider === 'openai') return (string)($data['choices'][0]['message']['content'] ?? '');
+    $out = '';
+    foreach (($data['content'] ?? []) as $b) {
+        if (($b['type'] ?? '') === 'text') $out .= (string)($b['text'] ?? '');
+    }
+    return $out;
+}
+
+/** The first JSON object in a model's text (``` fences and prose tolerated), or null. Pure. */
+function ai_json_from_text(string $text): ?array {
+    $t = trim($text);
+    $t = preg_replace('/^```(?:json)?\s*|\s*```$/i', '', $t) ?? $t;
+    $a = strpos($t, '{'); $b = strrpos($t, '}');
+    if ($a === false || $b === false || $b < $a) return null;
+    $obj = json_decode(substr($t, $a, $b - $a + 1), true);
+    return (is_array($obj) && !array_is_list($obj)) ? $obj : null;
+}
+
+/**
+ * Send one image with an instruction and return the JSON object the model replied
+ * with, or null (no key, unsupported provider, request failed, no JSON). Never throws.
+ */
+function ai_read_image_json(string $bytes, string $mime, string $instruction): ?array {
+    if (!ai_assistant_supported()) return null;
+    try {
+        $provider = ai_provider();
+        if ($provider === 'claude')      $resp = ai_claude_request(ai_vision_claude_payload($bytes, $mime, $instruction, ai_model()));
+        elseif ($provider === 'openai')  $resp = ai_openai_request(ai_vision_openai_payload($bytes, $mime, $instruction, ai_model()));
+        else                             return null;
+        if (!($resp['ok'] ?? false) || !is_array($resp['data'] ?? null)) return null;
+        return ai_json_from_text(ai_vision_reply_text($provider, $resp['data']));
+    } catch (Throwable $e) {
+        error_log('[ai] vision read failed: ' . $e->getMessage());
+        return null;
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Embeddings (Phase 2 RAG) — vectorising prose for similarity search
 // ─────────────────────────────────────────────────────────────────────────────
 //

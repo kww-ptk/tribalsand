@@ -436,6 +436,119 @@ function checkin_guest_passport_complete(?array $g): bool {
         && trim((string)($g['passport_file_key'] ?? '')) !== '';
 }
 
+// ── Passport reading (photo → fields) ───────────────────────────────────────
+// An uploaded passport photo is read by the AI (api/checkin-upload.php →
+// ai_read_image_json()). The model's reply is never trusted as-is: everything goes
+// through checkin_passport_from_ai(), which keeps only well-formed values and checks
+// the passport number against the ICAO check digit in the machine-readable zone.
+// The guest always sees — and can correct — what was filled.
+
+const CHECKIN_PASSPORT_READS_MAX = 6;   // AI reads per browser session (cost + abuse cap)
+
+/** The instruction sent with the passport photo. Asks for JSON only. */
+function checkin_passport_read_prompt(): string {
+    return 'This image should be the photo page of a passport. Read it and reply with ONLY a JSON object, no other text: '
+         . '{"is_passport": true or false, "given_names": "", "surname": "", "passport_number": "", '
+         . '"nationality": "country name in English", "nationality_code": "3-letter code as printed", '
+         . '"date_of_expiry": "YYYY-MM-DD", "mrz_line2": "the second machine-readable line at the bottom, exactly as printed, 44 characters including < fillers"}. '
+         . 'Use "" for anything you cannot read clearly. Never guess a character.';
+}
+
+/** ICAO 9303 check digit: weights 7,3,1; 0-9 as is, A-Z = 10..35, '<' = 0. Pure. */
+function checkin_mrz_check_digit(string $s): int {
+    $w = [7, 3, 1]; $sum = 0;
+    foreach (str_split(strtoupper($s)) as $i => $c) {
+        if (ctype_digit($c))             $v = (int)$c;
+        elseif ($c >= 'A' && $c <= 'Z')  $v = ord($c) - 55;
+        else                             $v = 0;
+        $sum += $v * $w[$i % 3];
+    }
+    return $sum % 10;
+}
+
+/**
+ * Parse the second MRZ line of a passport (TD3, 44 characters). Returns null when
+ * it is not a well-formed line. Pure.
+ * @return array{number:string,number_ok:bool,nat:string,expiry:string,expiry_ok:bool}|null
+ */
+function checkin_mrz_line2(string $line): ?array {
+    $l = strtoupper(preg_replace('/\s+/', '', $line) ?? '');
+    if (strlen($l) !== 44 || !preg_match('/^[A-Z0-9<]{44}$/', $l)) return null;
+    $numRaw = substr($l, 0, 9);
+    $expRaw = substr($l, 21, 6);
+    $expiry = '';
+    if (ctype_digit($expRaw)) {
+        $y = 2000 + (int)substr($expRaw, 0, 2); $m = (int)substr($expRaw, 2, 2); $d = (int)substr($expRaw, 4, 2);
+        if (checkdate($m, $d, $y)) $expiry = sprintf('%04d-%02d-%02d', $y, $m, $d);
+    }
+    return [
+        'number'    => str_replace('<', '', $numRaw),
+        'number_ok' => ctype_digit($l[9]) && checkin_mrz_check_digit($numRaw) === (int)$l[9],
+        'nat'       => substr($l, 10, 3),
+        'expiry'    => $expiry,
+        'expiry_ok' => $expiry !== '' && ctype_digit($l[27]) && checkin_mrz_check_digit($expRaw) === (int)$l[27],
+    ];
+}
+
+/** English name for a passport nationality code ('' when not in the list). Pure. */
+function checkin_nationality_name(string $code): string {
+    static $names = [
+        'KEN' => 'Kenya', 'TZA' => 'Tanzania', 'UGA' => 'Uganda', 'RWA' => 'Rwanda', 'ETH' => 'Ethiopia',
+        'GBR' => 'United Kingdom', 'USA' => 'United States', 'D' => 'Germany', 'DEU' => 'Germany',
+        'ITA' => 'Italy', 'FRA' => 'France', 'NLD' => 'Netherlands', 'BEL' => 'Belgium',
+        'CHE' => 'Switzerland', 'AUT' => 'Austria', 'ESP' => 'Spain', 'PRT' => 'Portugal',
+        'SWE' => 'Sweden', 'NOR' => 'Norway', 'DNK' => 'Denmark', 'FIN' => 'Finland',
+        'IRL' => 'Ireland', 'POL' => 'Poland', 'CZE' => 'Czech Republic', 'CAN' => 'Canada',
+        'AUS' => 'Australia', 'NZL' => 'New Zealand', 'ZAF' => 'South Africa', 'IND' => 'India',
+        'CHN' => 'China', 'JPN' => 'Japan', 'ISR' => 'Israel', 'ARE' => 'United Arab Emirates',
+        'RUS' => 'Russia', 'UKR' => 'Ukraine', 'BRA' => 'Brazil',
+    ];
+    $c = strtoupper(str_replace('<', '', trim($code)));
+    return $names[$c] ?? '';
+}
+
+/**
+ * Turn the AI's reading of a passport photo into form fields. Pure.
+ * Keeps only well-formed values; a number that fails its MRZ check digit is
+ * dropped (the guest types it), and a check-digit-verified MRZ number or expiry
+ * wins over the model's reading of the printed text.
+ * @return array{fields:array<string,string>,warnings:list<string>}
+ */
+function checkin_passport_from_ai(array $raw, string $today): array {
+    $fields = []; $warnings = [];
+    if (($raw['is_passport'] ?? true) === false) {
+        return ['fields' => [], 'warnings' => ["That doesn't look like a passport photo page."]];
+    }
+    $str = fn($k) => trim((string)(is_scalar($raw[$k] ?? null) ? $raw[$k] : ''));
+
+    $name = trim(preg_replace('/\s+/', ' ', $str('given_names') . ' ' . $str('surname')) ?? '');
+    // Passports print names in capitals; title-case each part, including after a
+    // hyphen or apostrophe (O'Neill, Anne-Marie), which MB_CASE_TITLE does not.
+    if ($name !== '') {
+        $fields['passport_name'] = preg_replace_callback("/(^|[\\s\\-'’])(\\p{Ll})/u",
+            fn($m) => $m[1] . mb_strtoupper($m[2], 'UTF-8'), mb_strtolower($name, 'UTF-8')) ?? $name;
+    }
+
+    $number = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $str('passport_number')) ?? '');
+    $mrz    = checkin_mrz_line2($str('mrz_line2'));
+    if ($mrz !== null) {
+        $number = $mrz['number_ok'] ? $mrz['number'] : '';
+    }
+    if (strlen($number) >= 5 && strlen($number) <= 20) $fields['passport_number'] = $number;
+
+    $nat  = $str('nationality');
+    $code = $str('nationality_code') !== '' ? $str('nationality_code') : ($mrz['nat'] ?? '');
+    if ($nat === '' && $code !== '') $nat = checkin_nationality_name($code) ?: strtoupper(str_replace('<', '', $code));
+    if ($nat !== '') $fields['nationality'] = mb_substr($nat, 0, 60);
+
+    $exp = ($mrz !== null && $mrz['expiry_ok']) ? $mrz['expiry'] : $str('date_of_expiry');
+    if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $exp, $m) && checkdate((int)$m[2], (int)$m[3], (int)$m[1])) {
+        $fields['passport_expiry'] = $exp;
+        if ($exp < $today) $warnings[] = 'This passport has expired.';
+    }
+    return ['fields' => $fields, 'warnings' => $warnings];
+}
+
 /** A single guest row has signed the waiver (name + timestamp + a drawn signature). */
 function checkin_guest_waiver_signed(?array $g): bool {
     return $g !== null
