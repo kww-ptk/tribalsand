@@ -313,7 +313,7 @@ include 'includes/head.php';
 </head>
 <body class="ts-nav-transparent">
 
-<?php include 'includes/header.php'; ?>
+<?php $hide_site_search = true; /* search is tested on /site-search before it returns here (owner, Oct 2026) */ include 'includes/header.php'; ?>
 
 <!-- ═══ HERO ═══ -->
 <section class="hero" aria-label="Tribal Sand — Luxury beachfront hotels and villas on Kenya's North Coast">
@@ -451,7 +451,7 @@ include 'includes/head.php';
 
 </section>
 
-<?php /* "Find anything" — site search bar (includes/site-search.php) */ include 'includes/site-search-bar.php'; ?>
+<?php /* The "find anything" search bar is off the home page while it is tested on /site-search (owner, Oct 2026). */ ?>
 
 <?php include 'includes/promo-offers.php'; ?>
 

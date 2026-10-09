@@ -664,7 +664,9 @@ $__restoDrawer     = '<div><span class="ts-mob-lbl">Restaurants</span>' . $__res
 
 </nav>
 
-<!-- Site search overlay — "find anything" (includes/site-search.php, js/site-search.js) -->
+<!-- Site search overlay — "find anything" (includes/site-search.php, js/site-search.js).
+     A page sets $hide_site_search = true to leave it out (the home page, while search is tested on /site-search). -->
+<?php if (empty($hide_site_search)): ?>
 <div class="ss-overlay" id="ssOverlay" hidden>
   <div class="ss-overlay__backdrop" data-ss-close></div>
   <div class="ss-overlay__panel" role="dialog" aria-modal="true" aria-label="Search the website">
@@ -679,6 +681,7 @@ $__restoDrawer     = '<div><span class="ts-mob-lbl">Restaurants</span>' . $__res
 </div>
 <link rel="stylesheet" href="/css/site-search.css?v=<?= @filemtime(__DIR__ . '/../css/site-search.css') ?: '1' ?>">
 <script defer src="/js/site-search.js?v=<?= @filemtime(__DIR__ . '/../js/site-search.js') ?: '1' ?>"></script>
+<?php endif; ?>
 
 <!-- Mobile drawer -->
 <div class="ts-drawer" id="tsDrawer">

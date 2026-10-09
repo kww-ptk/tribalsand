@@ -31,7 +31,7 @@ require_once __DIR__ . '/admin-nav.php';
 
 /** Sections only the owner can ever open — site-wide configuration and money settings. */
 const ACCESS_OWNER_ONLY = ['settings.php', 'emails.php', 'ai-settings.php', 'reindex.php', 'agents.php', 'sync.php', 'audit.php',
-    'staff.php', 'venues.php', 'rooms.php', 'properties.php', 'pages.php', 'nav-menu.php', 'media.php', 'sustainability.php',
+    'staff.php', 'venues.php', 'rooms.php', 'properties.php', 'pages.php', 'nav-menu.php', 'booking-widgets.php', 'media.php', 'sustainability.php',
     'tours.php', 'services.php', 'offers.php', 'reviews.php', 'partners.php', 'guest-board.php', 'pos-outlets.php', 'companies.php'];
 
 /** Sections that follow something other than role (always on, or the person's till outlets). */

@@ -197,6 +197,7 @@ function admin_nav_definition(array $f, array $badge = []): array {
                 $tab('Properties', ['venues.php', 'venue-edit.php'], $on('owner')),
                 $tab('Rooms', ['rooms.php', 'room-edit.php'], $on('owner')),
                 $tab('For sale', ['properties.php', 'property-edit.php'], $on('owner'), 'For Sale Listings'),
+                $tab('Booking widgets', 'booking-widgets.php', $on('owner')),
             ]),
             $item('Website content', 'pages', [
                 $tab('Pages', ['pages.php', 'page-edit.php'], $on('owner')),
@@ -331,7 +332,8 @@ function admin_nav_sidebar_html(array $nav): string {
                     . '</a>';
         }
         if ($g['title'] === '') { $out .= '<div class="navhome">' . $links . '</div>'; continue; }
-        $open = ($hasActive || in_array($g['key'], ['today', 'bookings'], true)) ? ' open' : '';
+        // Every group starts closed (owner, Oct 2026); only the one holding the current page opens.
+        $open = $hasActive ? ' open' : '';
         $out .= '<details class="navgroup" data-group="' . e($g['key']) . '"' . $open . '>'
               . '<summary class="navgroup__head">' . ($g['icon'] !== '' ? admin_nav_icon($g['icon']) : '')
               . '<span>' . e($g['title']) . '</span>' . $chev . '</summary>'
@@ -388,6 +390,7 @@ const ADMIN_NAV_SEARCH_WORDS = [
     'pos-sales.php'        => 'till sales receipts z report',
     'messages.php'         => 'chat whatsapp guest messages',
     'assistant.php'        => 'ai ask question',
+    'booking-widgets.php'  => 'embed code iframe property website sub-site booking form',
 ];
 
 /**
