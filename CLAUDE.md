@@ -316,6 +316,14 @@ the `ezee_room_maps` setting.
 - Test: `php tests/booking_import_logic.php`. Note one pre-existing failure on a DB with
   no `zuri-buyout` room — the seed map references a slug that install may not have.
 
+### Group allocation import — one booking per room, links to send (Oct 2026)
+**Bookings → Calendar → Group import** (`admin/import-group.php`, owner + manager, scoped by `admin_venue_ids()`); logic `includes/group-import.php`; spec `docs/superpowers/specs/2026-10-09-group-allocation-import-design.md`; test `php tests/group_import_logic.php`. **No migration.** First use: the Chris & Bini wedding (CSV made from the allocation PDF — kept out of the repo, it holds guest emails).
+- CSV `property, room, guests, head, email, check_in, check_out` → preview (writes nothing) → **Create** (ONE transaction, all ready rows or none) → links page `?batch=<slug>` (+ `&export=csv`).
+- **Maya Ilai labels are read, never mapped:** "Studio No. 0NA" = studio unit N; "Villa 0N: Room N01|N02|N03" = villa unit N, component `double_a`|`double_b`|`bunk`, product `maya-ilai-double`|`maya-ilai-bunk-room` — only that bedroom is booked (`create_hold_with_block(…, $components, $productRoomId)`). Units are numbered by `sort_order`. The venue slug is `maya_ilai`; both spellings are accepted. Other properties: each label → a room on the preview, saved in setting `group_import_room_map`.
+- Each room = a **confirmed, never-expiring** hold: name = the head if they stay in that room, else the room's first guest (`gi_booking_name()`); email = the head's; `require_checkin`, `guest_count` = names, the room's guests pre-filled into `checkin_guests` (lead first). Nicknames in brackets dropped; a bare first name equal to the head's becomes the head's full name.
+- **No price, no emails, no invoices** (owner): a ledger row `gross 0, source 'direct', agent = group label` — `bookings_sync_hold()` never re-prices a non-website row. Statuses: ready · taken (calendar or an earlier row in the file) · imported (same unit + dates + email — its link is reused, so re-running is safe) · skipped (no dates / empty room) · unmapped · scope.
+- Batch = setting `group_import:<slug>` (`hold_ids` + `heads` = who each room's links go to). The links page groups by the head's email: WhatsApp (`gi_share_text()`), Email (mailto — the site sends nothing), Copy.
+
 ### Nightly rates — per room, edited on the property and the room
 Rate overrides live in `rates` (`room_id, date_from, date_to, price_amount, label`) — **no
 migration**, the table predates the editors. Helpers in **`includes/rates.php`**.

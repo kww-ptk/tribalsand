@@ -39,7 +39,7 @@ if (isset($_GET['batch'], $_GET['export']) && ($b = gi_batch((string)$_GET['batc
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF");
     fputcsv($out, ['Head / contact email', 'Property', 'Room', 'Booking name', 'Check-in', 'Check-out', 'Status', 'Guest link'], ',', '"', '');
-    foreach (gi_batch_links($scopedIds($b['hold_ids'])) as $g) {
+    foreach (gi_batch_links($scopedIds($b['hold_ids']), $b['heads']) as $g) {
         foreach ($g['rooms'] as $r) {
             fputcsv($out, [$g['email'], $r['property'], $r['room'], $r['guest'], $r['check_in'], $r['check_out'], $r['status'], $r['link']], ',', '"', '');
         }
@@ -151,7 +151,7 @@ $fmtD = fn(?string $d) => $d ? date('j M', strtotime($d)) : '—';
 
 <?php if ($batch): ?>
   <?php
-    $groups  = gi_batch_links($scopedIds($batch['hold_ids']));
+    $groups  = gi_batch_links($scopedIds($batch['hold_ids']), $batch['heads']);
     $rooms   = array_sum(array_map(fn($g) => count($g['rooms']), $groups));
     $created = isset($_GET['created']) ? (int)$_GET['created'] : null;
   ?>
@@ -249,9 +249,11 @@ $fmtD = fn(?string $d) => $d ? date('j M', strtotime($d)) : '—';
               <td class="text-muted"><?= (int)$p['line'] ?></td>
               <td><?= e($p['venue_name'] ?: $p['property']) ?><div class="gi-names"><?= e($p['room']) ?></div></td>
               <td><?= e($p['target'] ?: '—') ?></td>
+              <?php if (!$p['names']): ?><td class="text-muted">Empty room</td><?php else: ?>
               <td><strong><?= e($p['booking_name']) ?></strong><?php $others = array_values(array_filter($p['names'], fn($n) => strcasecmp($n, $p['booking_name']) !== 0)); ?>
                 <?php if ($others): ?><div class="gi-names">+ <?= e(implode(', ', $others)) ?></div><?php endif; ?>
                 <div class="gi-names"><?= (int)$p['adults'] ?> adult<?= $p['adults'] === 1 ? '' : 's' ?></div></td>
+              <?php endif; ?>
               <td><?= e($p['head']) ?><div class="gi-names"><?= e($p['email']) ?></div></td>
               <td style="white-space:nowrap"><?= e($fmtD($p['check_in'])) ?> → <?= e($fmtD($p['check_out'])) ?></td>
               <td><?= $badge($p['status']) ?><?php if ($p['reason'] !== '' && $p['status'] !== 'ready'): ?><div class="gi-reason"><?= e($p['reason']) ?></div><?php endif; ?></td>
@@ -263,7 +265,7 @@ $fmtD = fn(?string $d) => $d ? date('j M', strtotime($d)) : '—';
       <div style="margin-top:16px;display:flex;gap:10px;flex-wrap:wrap">
         <form method="POST" style="margin:0"><?= csrf_field() ?><input type="hidden" name="action" value="create">
           <button type="submit" class="btn-primary" <?= ($ready + (int)($counts['imported'] ?? 0)) ? '' : 'disabled' ?>
-                  data-confirm="Create <?= $ready ?> confirmed booking<?= $ready === 1 ? '' : 's' ?> for <?= e($gi['label']) ?>? No emails are sent."><?= admin_icon('check', 15) ?> Create <?= $ready ?> booking<?= $ready === 1 ? '' : 's' ?></button></form>
+                  <?php if ($ready): ?>data-confirm="Create <?= $ready ?> confirmed booking<?= $ready === 1 ? '' : 's' ?> for <?= e($gi['label']) ?>? No emails are sent."<?php endif; ?>><?= admin_icon('check', 15) ?> <?= $ready ? 'Create ' . $ready . ' booking' . ($ready === 1 ? '' : 's') : 'Show the links' ?></button></form>
         <form method="POST" style="margin:0"><?= csrf_field() ?><input type="hidden" name="action" value="cancel">
           <button type="submit" class="btn-outline">Start again</button></form>
       </div>

@@ -312,12 +312,12 @@ function gi_plan(array $rows, array $roomMap, ?array $scope): array {
 function gi_create(array $plan, string $label, int $adminId): array {
     $label = trim($label) !== '' ? trim($label) : 'Group booking';
     $slug  = gi_batch_slug($label);
-    $ids = []; $created = 0;
+    $ids = []; $created = 0; $heads = [];
     $own = !db()->inTransaction();
     if ($own) db()->beginTransaction();
     try {
         foreach ($plan as $p) {
-            if ($p['status'] === 'imported' && $p['hold_id']) { $ids[] = (int)$p['hold_id']; continue; }
+            if ($p['status'] === 'imported' && $p['hold_id']) { $ids[] = (int)$p['hold_id']; $heads[(int)$p['hold_id']] = (string)$p['head']; continue; }
             if ($p['status'] !== 'ready') continue;
             // Re-check under the transaction: the preview may be minutes old.
             if ($p['components'] !== null) {
@@ -348,13 +348,15 @@ function gi_create(array $plan, string $label, int $adminId): array {
                      ':n' => (int) round((strtotime($p['check_out']) - strtotime($p['check_in'])) / 86400), ':h' => $hid]);
             }
             audit_log('group_import.create', 'hold', $hid, "{$label}: {$p['booking_name']} — {$p['venue_name']} {$p['target']} {$p['check_in']}→{$p['check_out']}");
-            $ids[] = $hid; $created++;
+            $ids[] = $hid; $heads[$hid] = (string)$p['head']; $created++;
         }
         $prev = gi_batch($slug);
         $all  = array_values(array_unique(array_merge($prev['hold_ids'] ?? [], $ids)));
         set_setting(GI_BATCH_PREFIX . $slug, json_encode([
             'label' => $label, 'created_at' => $prev['created_at'] ?? date('c'), 'updated_at' => date('c'),
             'by' => $adminId, 'hold_ids' => $all,
+            // Who each room's links go to — the file's Head / Group, not the booking name.
+            'heads' => array_replace((array)($prev['heads'] ?? []), array_map('strval', $heads)),
         ]));
         if ($own) db()->commit();
     } catch (Throwable $e) {
@@ -369,13 +371,14 @@ function gi_batch(string $slug): ?array {
     $b = json_decode(setting(GI_BATCH_PREFIX . $slug, ''), true);
     if (!is_array($b) || !isset($b['hold_ids'])) return null;
     $b['hold_ids'] = array_map('intval', (array)$b['hold_ids']);
+    $b['heads']    = (array)($b['heads'] ?? []);
     $b['slug'] = $slug;
     return $b;
 }
 
 /** Every saved batch, newest first: [[slug,label,count,updated_at],…]. */
 function gi_batches(): array {
-    $rows = db_query("SELECT key, value FROM settings WHERE key LIKE :p", [':p' => GI_BATCH_PREFIX . '%'])->fetchAll();
+    $rows = db_query("SELECT setting_key AS key, setting_value AS value FROM settings WHERE setting_key LIKE :p", [':p' => GI_BATCH_PREFIX . '%'])->fetchAll();
     $out = [];
     foreach ($rows as $r) {
         $b = json_decode((string)$r['value'], true);
@@ -393,12 +396,13 @@ function gi_batches(): array {
  * The head's name is the most common booking name among the group's rooms that…
  * simply: the first booking name under that email.
  */
-function gi_batch_links(array $holdIds): array {
+function gi_batch_links(array $holdIds, array $heads = []): array {
     $ids = array_values(array_filter(array_map('intval', $holdIds)));
     if (!$ids) return [];
     $rows = db_query(
         "SELECT h.id, h.guest_name, h.guest_email, h.check_in, h.check_out, h.status,
-                v.name AS venue_name, r.name AS room_name, u.name AS unit_name
+                v.name AS venue_name, r.name AS room_name, u.name AS unit_name,
+                (SELECT " . mi_components_select('ab') . " FROM availability_blocks ab WHERE ab.hold_id = h.id ORDER BY ab.id LIMIT 1) AS components
            FROM holds h JOIN units u ON u.id = h.unit_id
            JOIN rooms r ON r.id = " . hold_room_id_sql('h', 'u') . "
            LEFT JOIN venues v ON v.id = r.venue_id
@@ -408,14 +412,19 @@ function gi_batch_links(array $holdIds): array {
     $byEmail = [];
     foreach ($rows as $h) {
         $e = strtolower((string)$h['guest_email']);
-        $byEmail[$e] ??= ['email' => $e, 'head' => (string)$h['guest_name'], 'rooms' => []];
+        $byEmail[$e] ??= ['email' => $e, 'head' => (string)($heads[(int)$h['id']] ?? $heads[(string)$h['id']] ?? $h['guest_name']), 'rooms' => []];
+        // A Maya Ilai bedroom: say which one ("Villa 6 · second double").
+        $comp = $h['components'] !== null ? mi_block_taken_components($h['components']) : [];
+        $bed  = count($comp) === 1 ? (['double_a' => 'first double', 'double_b' => 'second double', 'bunk' => 'bunk room', 'living' => 'living room'][$comp[0]] ?? '') : '';
         $ref = make_guest_ref((int)$h['id']);
         $byEmail[$e]['rooms'][] = [
             'hold_id' => (int)$h['id'], 'property' => (string)$h['venue_name'],
-            'room' => (string)$h['room_name'] . (((string)$h['unit_name'] !== '') ? ' · ' . $h['unit_name'] : ''),
+            'room' => (string)$h['room_name'] . (((string)$h['unit_name'] !== '') ? ' · ' . $h['unit_name'] : '') . ($bed !== '' ? ' · ' . $bed : ''),
             'guest' => (string)$h['guest_name'], 'check_in' => (string)$h['check_in'], 'check_out' => (string)$h['check_out'],
             'status' => (string)$h['status'], 'link' => $ref !== '' ? site_url('/booking.php?ref=' . $ref) : '',
         ];
     }
-    return array_values($byEmail);
+    $out = array_values($byEmail);
+    usort($out, fn($a, $b) => strcasecmp($a['head'], $b['head']));
+    return $out;
 }

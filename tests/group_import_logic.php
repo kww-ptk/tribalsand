@@ -122,8 +122,13 @@ if (!$haveMi) {
 
         $batch = gi_batch($res['slug']);
         check('batch saved',                    $batch !== null && $batch['hold_ids'] === $res['hold_ids']);
-        $links = gi_batch_links($batch['hold_ids']);
+        check('batch listed',                   in_array($res['slug'], array_column(gi_batches(), 'slug'), true));
+        $links = gi_batch_links($batch['hold_ids'], $batch['heads']);
         check('links: grouped by email',        count($links) === 3 && str_contains($links[0]['rooms'][0]['link'], '/booking.php?ref='));
+        check('links: head from the file',      in_array('Vishal Shah', array_column($links, 'head'), true));
+        check('links: sorted by head',          array_column($links, 'head') === ['Pankaj Vagadia', 'Purav Vagadia', 'Vishal Shah']);
+        $vishal = array_values(array_filter($links, fn($g) => $g['head'] === 'Vishal Shah'))[0];
+        check('links: bedroom named',           str_ends_with($vishal['rooms'][0]['room'], '· first double'));
     } finally {
         db()->rollBack();
     }
