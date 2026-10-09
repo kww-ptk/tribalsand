@@ -315,9 +315,7 @@ a.dz-row:hover{background:var(--bg)}
     <?php endforeach; ?>
     <?php if (!$queue['rows'] && !$overdue): ?>
     <div class="dz-calm"><i><?= dashboard_icon('check', 24) ?></i><b>Nothing is waiting on you</b><?= e(implode(' · ', $queue['clear'])) ?></div>
-    <?php elseif ($queue['clear']): ?>
-    <div class="dz-clear"><?= dashboard_icon('check', 15) ?><span>All clear: <?= e(strtolower(implode(', ', $queue['clear']))) ?></span></div>
-    <?php endif; ?>
+    <?php endif; /* No "All clear: …" list under the queue — the owner asked for it gone (Oct 2026); items at zero simply don't show. */ ?>
   </section>
 
   <?php if ($today !== null): ?>
