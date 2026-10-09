@@ -93,19 +93,22 @@
       const date = new Date(vy, vm, d);
       const key  = ymd(date);
       let cls = "bk-cell";
-      if ((date < today && !(mode === "single" && allowPast)) || (mode === "co" && selStart && date <= selStart)) {
-        cls += " bk-cell--blocked";
-      } else if (selStart && key === ymd(selStart)) {
+      const blocked = (date < today && !(mode === "single" && allowPast)) || (mode === "co" && selStart && date <= selStart);
+      // The chosen dates are marked first: while picking the check-out, the check-in
+      // day itself can't be clicked, but it must still read as the start of the range.
+      if (selStart && key === ymd(selStart)) {
         cls += " bk-cell--start";
       } else if (selEnd && mode !== "single" && key === ymd(selEnd)) {
         cls += " bk-cell--end";
       } else if (selStart && selEnd && mode !== "single" && date > selStart && date < selEnd) {
         cls += " bk-cell--in-range";
+      } else if (blocked) {
+        cls += " bk-cell--blocked";
       }
-      html += `<div class="${cls}" data-date="${key}">${d}</div>`;
+      html += `<div class="${cls}" data-date="${key}"${blocked ? " data-dp-off" : ""}>${d}</div>`;
     }
     dpGrid.innerHTML = html;
-    dpGrid.querySelectorAll(".bk-cell:not(.bk-cell--blocked):not(.bk-cell--blank)").forEach(cell => {
+    dpGrid.querySelectorAll(".bk-cell[data-date]:not([data-dp-off])").forEach(cell => {
       cell.addEventListener("click",      () => onDayClick(cell.dataset.date));
       cell.addEventListener("mouseenter", () => onCellHover(cell.dataset.date));
     });

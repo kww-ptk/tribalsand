@@ -1362,6 +1362,7 @@ $mibMaxNights = 30;
           message: message, check_in: dates.ci, check_out: dates.co, nights: dates.nights, rooms: modalRooms,
           quoted_total: q.total, quoted_currency: 'USD', 'cf-turnstile-response': token };
 
+    if (window.TS_EMBED_FROM) body.embed_from = window.TS_EMBED_FROM;   // property website (booking-embed.php)
     fetch(endpoint2, {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)

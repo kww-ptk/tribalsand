@@ -145,13 +145,15 @@ if ($__shellFrag) { ob_start(); echo $__navTabs; return; }
       <?= admin_nav_sidebar_html($__nav) ?>
     </nav>
     <script>
-    /* Nav groups: remember what each person opened or closed; the group holding
-       the current page is always open so the page is never hidden in a closed one. */
+    /* Nav groups: every group starts closed when the admin is opened; what the person
+       opens or closes is remembered for this visit only (sessionStorage), so a new
+       visit starts closed again. The group holding the current page is always open
+       so the page is never hidden in a closed one. */
     (function () {
       // Bump the key whenever the groups or their defaults change, so nobody keeps
       // a remembered state for a layout that no longer exists.
-      var KEY = 'ts_nav_v4', saved = {};
-      try { saved = JSON.parse(localStorage.getItem(KEY) || '{}') || {}; } catch (e) {}
+      var KEY = 'ts_nav_v5', saved = {};
+      try { saved = JSON.parse(sessionStorage.getItem(KEY) || '{}') || {}; } catch (e) {}
       var restoring = true;
       document.querySelectorAll('.navgroup[data-group]').forEach(function (g) {
         if (g.querySelector('.sidebar__link.is-active')) { g.open = true; return; }
@@ -164,7 +166,7 @@ if ($__shellFrag) { ob_start(); echo $__navTabs; return; }
         if (restoring || !g.classList || !g.classList.contains('navgroup')) return;
         if (g.dataset.autoOpen) { delete g.dataset.autoOpen; return; }   // opened by navigation, not by the person
         saved[g.getAttribute('data-group')] = g.open;
-        try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {}
+        try { sessionStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {}
       }, true);
     })();
     </script>

@@ -243,6 +243,7 @@ if (empty($GLOBALS['__pa_modal_done'])) {
           // Snapshot of the combo total shown, so the admin enquiry view can show
           // a structured "Price at enquiry" for multi-room requests too.
           quoted_total: enqCtx.total, quoted_currency: enqCtx.currency,
+          embed_from: window.TS_EMBED_FROM || undefined,   // property website (booking-embed.php)
           'cf-turnstile-response': (enqForm.querySelector('[name="cf-turnstile-response"]') || {}).value || ''
         })
       })

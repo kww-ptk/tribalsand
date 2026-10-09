@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/booking-embed.php';
 require_once __DIR__ . '/../includes/mail.php';
 require_once __DIR__ . '/../includes/ghl.php';
 
@@ -65,7 +66,7 @@ if ($errors) {
 
 // Tracking
 if (session_status() === PHP_SESSION_NONE) session_start();
-$tracking = $_SESSION['tracking'] ?? [];
+$tracking = booking_embed_tracking($_SESSION['tracking'] ?? [], $data['embed_from'] ?? null);   // embedded widget → its site
 
 // Insert
 db_query(

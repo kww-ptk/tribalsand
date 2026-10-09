@@ -1,6 +1,7 @@
 <?php
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/booking-embed.php';
 require_once __DIR__ . '/../includes/upsells.php';
 require_once __DIR__ . '/../includes/mail.php';
 require_once __DIR__ . '/../includes/ghl.php';
@@ -126,7 +127,7 @@ $placeHold = $form_mode === 'availability' && $unit && website_holds_enabled();
 
 // Tracking from session
 if (session_status() === PHP_SESSION_NONE) session_start();
-$tracking = $_SESSION['tracking'] ?? [];
+$tracking = booking_embed_tracking($_SESSION['tracking'] ?? [], $data['embed_from'] ?? null);   // embedded widget → its site
 
 // Idempotency guard — for the plain-request path (no hold), a double-submit
 // within 30s reuses the existing lead instead of inserting a duplicate + firing

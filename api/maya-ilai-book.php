@@ -8,6 +8,7 @@ declare(strict_types=1);
  * mi_book_configuration().
  */
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/booking-embed.php';
 require_once __DIR__ . '/../includes/mail.php';
 require_once __DIR__ . '/../includes/maya-ilai-hold.php';
 
@@ -54,7 +55,7 @@ if (!$units)                                    $errors['rooms'] = 'No rooms wer
 if ($errors) { http_response_code(422); exit(json_encode(['ok'=>false, 'errors'=>$errors])); }
 
 if (session_status() === PHP_SESSION_NONE) session_start();
-$tracking = ($_SESSION['tracking'] ?? []) + ['ip' => $ip];
+$tracking = booking_embed_tracking($_SESSION['tracking'] ?? [], $data['embed_from'] ?? null) + ['ip' => $ip];   // embedded widget → its site
 
 $res = mi_book_configuration(
     $units,

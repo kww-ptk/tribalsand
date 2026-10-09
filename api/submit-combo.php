@@ -9,6 +9,7 @@ declare(strict_types=1);
  * rate limit. The room list is re-validated server-side (includes/hold-groups.php).
  */
 require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/booking-embed.php';
 require_once __DIR__ . '/../includes/mail.php';
 require_once __DIR__ . '/../includes/ghl.php';
 require_once __DIR__ . '/../includes/hold-groups.php';
@@ -55,7 +56,7 @@ $holdMode = $resolved['mode'] === 'hold' && hold_groups_supported() && website_h
 $roomsLabel = implode(' + ', array_map(fn($r) => $r['room']['name'] . ($r['units'] > 1 ? ' ×' . $r['units'] : ''), $resolved['rooms']));
 
 if (session_status() === PHP_SESSION_NONE) session_start();
-$tracking = $_SESSION['tracking'] ?? [];
+$tracking = booking_embed_tracking($_SESSION['tracking'] ?? [], $data['embed_from'] ?? null);   // embedded widget → its site
 $phone = mb_substr(trim((string)($data['phone'] ?? '')), 0, 40);
 $note  = mb_substr(trim((string)($data['message'] ?? '')), 0, 2000);
 $message = "Room combination for {$venue['name']}: {$roomsLabel}" . ($note !== '' ? "\n\nGuest note: {$note}" : '');

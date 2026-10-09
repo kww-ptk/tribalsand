@@ -138,8 +138,9 @@ check('owner counts stock through Inventory › Counts', ($nav('owner', 'invento
 check('staff count through Today › Stock count', ($nav('housekeeping', 'inventory-count.php')['active']['label'] ?? '') === 'Stock count');
 
 $side = admin_nav_sidebar_html($nav('reception', 'frontdesk.php'));
-check('sidebar: Today + Bookings open by default, the rest closed', str_contains($side, 'data-group="today" open') && str_contains($side, 'data-group="bookings" open')
+check('sidebar: only the current-page group opens, the rest closed', str_contains($side, 'data-group="today" open') && str_contains($side, 'data-group="bookings">')
     && str_contains($side, 'data-group="restaurant">'));
+check('sidebar: on the Dashboard every group is closed', !str_contains(admin_nav_sidebar_html($nav('owner', 'dashboard.php')), '" open>'));
 check('sidebar: a group header is icon + name + chevron', (bool)preg_match('~<summary class="navgroup__head"><svg[^>]*>.*?</svg><span>Today</span>~s', $side));
 check('sidebar: a link lists every page it stands for', str_contains(admin_nav_sidebar_html($n), 'data-pages="gantt.php conflicts.php calendar-highlights.php ical-feeds.php import-bookings.php"'));
 check('sidebar: Open till opens in a new tab', str_contains(admin_nav_sidebar_html($nav('shop')), 'href="/pos/" class="sidebar__link" target="_blank"'));

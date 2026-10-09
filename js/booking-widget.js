@@ -567,6 +567,8 @@
           quoted_total:    lastTotal > 0 ? lastTotal : null,
           quoted_currency: currency,
           quoted_nights:   lastNights > 0 ? lastNights : null,
+          // The property website this widget is embedded on (booking-embed.php), if any.
+          embed_from:      window.TS_EMBED_FROM || undefined,
         };
 
         saveGuest();   // persist for the next property they look at
