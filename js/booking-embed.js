@@ -31,13 +31,18 @@
     el.setAttribute("data-ts-ready", "1");
     var id = "tse" + (++seq);
     var f = document.createElement("iframe");
+    var theme = '';
+    ['primary', 'header', 'accent', 'background', 'radius', 'font'].forEach(function (key) {
+      var value = el.getAttribute('data-' + key);
+      if (value) theme += '&' + key + '=' + encodeURIComponent(value);
+    });
     f.src = origin + "/booking-embed?venue=" + encodeURIComponent(slug) +
-            "&from=" + encodeURIComponent(location.hostname) + "#tsid=" + id;
+            "&from=" + encodeURIComponent(location.hostname) + theme + "#tsid=" + id;
     f.title = "Book your stay";
     f.setAttribute("loading", "lazy");
     f.setAttribute("allowtransparency", "true");
-    f.style.cssText = "display:block;width:100%;max-width:" + (el.getAttribute("data-max-width") || "440px") +
-                      ";height:620px;border:0;margin:0 auto;background:transparent;color-scheme:normal";
+    f.style.cssText = "display:block;width:100%;height:620px;border:0;margin:0 auto;background:transparent;color-scheme:normal";
+    f.style.maxWidth = el.getAttribute("data-max-width") || "440px";
     el.appendChild(f);
     frames[id] = { frame: f, height: 620, overlay: false, inline: f.style.cssText };
   }

@@ -31,6 +31,23 @@
     const monthLbl2  = document.getElementById("bkMonthLabel2");
     const prevBtn    = document.getElementById("bkPrevMonth");
     const nextBtn    = document.getElementById("bkNextMonth");
+    // Navigation must stay visible when the second month is hidden. Observe
+    // the widget width: a sidebar can be narrow even on a wide desktop.
+    const leftHead = datesPop.querySelector(".bk-cal--left .bk-cal__head");
+    const rightHead = datesPop.querySelector(".bk-cal--right .bk-cal__head");
+    function placeMonthNavigation() {
+      if (!leftHead || !rightHead) return;
+      const narrow = wrap.getBoundingClientRect().width <= 540 || window.innerWidth <= 768;
+      const head = narrow ? leftHead : rightHead;
+      if (nextBtn.parentNode !== head) head.appendChild(nextBtn);
+      const spacer = leftHead.querySelector(".bk-cal__nav--hidden");
+      if (spacer) spacer.hidden = narrow;
+    }
+    placeMonthNavigation();
+    if (!bound) {
+      window.addEventListener("resize", placeMonthNavigation);
+      if (window.ResizeObserver) new ResizeObserver(placeMonthNavigation).observe(wrap);
+    }
     const ciHidden   = document.getElementById("availCheckin");
     const coHidden   = document.getElementById("availCheckout");
     const adultsH    = document.getElementById("availAdults");

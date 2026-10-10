@@ -62,6 +62,12 @@ body{position:relative;font-family:'Jost',sans-serif;color:var(--dark);-webkit-f
 .tse__foot{padding:10px 20px 14px;border-top:1px solid var(--border);font-size:.7rem;color:var(--light);text-align:center}
 .tse__foot a{color:var(--mid)}
 .tse__none{padding:28px 20px;text-align:center;font-size:.9rem;color:var(--mid)}
+.tse{max-width:100%;background:var(--embed-background,#fff);border-radius:var(--embed-radius,14px)}
+.tse__head{border-radius:var(--embed-radius,14px) var(--embed-radius,14px) 0 0}
+.tse__name{font-family:var(--embed-heading-font,'Cormorant Garamond',serif)}
+.ts-embed .bk-cal__title,.ts-embed .bk-date-trigger__value:not(.is-empty),.ts-embed .bk-total__price{font-family:var(--embed-heading-font,'Cormorant Garamond',serif)}
+@media(max-width:360px){.tse__head,.tse__body--room{padding:14px 12px}}
+:root{<?= booking_embed_theme($_GET) ?>}
 </style>
 </head>
 <body class="ts-embed">
@@ -109,7 +115,9 @@ body{position:relative;font-family:'Jost',sans-serif;color:var(--dark);-webkit-f
       || b.style.overflow === 'hidden' || !!document.querySelector('.ts-modal-backdrop');
   }
   function needed() {
-    var h = document.body.scrollHeight;
+    // Measure content, not body.scrollHeight (which can retain the iframe's
+    // old viewport height and prevent it shrinking after a panel closes).
+    var h = document.getElementById('tsEmbed').getBoundingClientRect().bottom + window.scrollY;
     var pop = document.querySelector('.dp-pop:not([hidden])');
     var a = document.activeElement;
     if (pop) {   // the date picker is fixed-position: leave room for it under its button
