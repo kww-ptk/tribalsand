@@ -166,6 +166,10 @@
   function positionPop(trigger) {
     const r    = trigger.getBoundingClientRect();
     const popW = Math.min(310, window.innerWidth - 32);
+    pop.style.width = `${popW}px`;
+    pop.style.boxSizing = 'border-box';
+    pop.style.maxHeight = `${Math.max(120, window.innerHeight - 16)}px`;
+    pop.style.overflowY = 'auto';
     const gap  = 8;
 
     let left = r.left;
