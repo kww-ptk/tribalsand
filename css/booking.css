@@ -157,6 +157,26 @@
 .bk-pop[hidden] { display: none !important; }
 .bk-pop--narrow { left: auto; min-width: 290px; }
 
+/* Keep panels in the form's flow so cards, scrolling dialogs and embed
+   height reporting include every calendar row and the Done button. */
+.bk-avail, .bk-avail * { box-sizing: border-box; }
+.bk-avail { min-width: 0; container-type: inline-size; }
+.bk-avail .bk-pop {
+  position: relative;
+  inset: auto;
+  width: 100%;
+  min-width: 0;
+  margin: 0 0 10px;
+}
+.bk-avail .bk-pop__footer { flex-wrap: wrap; }
+.bk-avail .bk-date-trigger { min-width: 0; }
+@container (max-width: 540px) {
+  .bk-cal-months { flex-direction: column; gap: 16px; }
+  .bk-cal--right { display: none; }
+  .bk-pop { padding: 12px; }
+  .bk-cell { min-height: 36px; aspect-ratio: auto; }
+}
+
 @keyframes bkPopIn {
   from { opacity: 0; transform: translateY(-6px); }
   to   { opacity: 1; transform: translateY(0); }

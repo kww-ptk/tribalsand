@@ -61,5 +61,9 @@ check('loader checks the message origin and source frame', str_contains($js, 'e.
 check('page posts tsEmbed height + overlay with the loader\'s id', str_contains($page, 'tsEmbed: 1, id: id, height:') && str_contains($js, '#tsid=') && str_contains($page, 'tsid='));
 check('page is noindex and has no site footer (chat, cookie banner)', str_contains($page, '$noindex          = true') && !str_contains($page, 'footer.php'));
 
+check('theme accepts colors and maps booking/header tokens', str_contains(booking_embed_theme(['primary' => '#123abc']), '--bk-teal:#123abc'));
+check('theme rejects injected CSS and array query values', booking_embed_theme(['primary' => '#fff;display:none', 'accent' => ['red'], 'radius' => ['1']]) === '');
+check('theme clamps corners and supports sans headings', str_contains(booking_embed_theme(['radius' => '99', 'font' => 'sans']), '--embed-radius:32px'));
+
 echo $failures ? "\n{$failures} FAILED\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);

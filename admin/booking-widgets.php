@@ -68,6 +68,16 @@ include __DIR__ . '/_layout.php';
           <li>On the property website, paste it where the booking form should appear (in WordPress: an <strong>HTML</strong> / <strong>Custom HTML</strong> block).</li>
           <li>Publish, then open the page and check the form shows. Requests and holds land in Bookings here, with the website’s address as the lead source.</li>
         </ol>
+        <p style="margin-top:16px">Customize the widget for your website, then copy its code below. Width follows the space available; the script adjusts height automatically.</p>
+        <div class="bw-actions" id="bwTheme">
+          <label>Maximum width <input data-bw-option="max-width" value="440px" placeholder="440px or 100%" style="width:100px"></label>
+          <label>Buttons <input type="color" data-bw-option="primary" value="#1e5c6b"></label>
+          <label>Header <input type="color" data-bw-option="header" value="#102f3a"></label>
+          <label>Accent <input type="color" data-bw-option="accent" value="#b8965a"></label>
+          <label>Background <input type="color" data-bw-option="background" value="#ffffff"></label>
+          <label>Corners <input type="number" data-bw-option="radius" value="14" min="0" max="32" style="width:60px"> px</label>
+          <label>Headings <select data-bw-option="font"><option value="serif">Classic serif</option><option value="sans">Simple sans serif</option></select></label>
+        </div>
       </div>
     </div>
 
@@ -114,6 +124,34 @@ include __DIR__ . '/_layout.php';
 (function () {
   if (window.__bwBound) return;   // the admin shell re-runs inline scripts on every swap
   window.__bwBound = true;
+  function theme() {
+    var options = {};
+    document.querySelectorAll('[data-bw-option]').forEach(function (input) { options[input.getAttribute('data-bw-option')] = input.value; });
+    return options;
+  }
+  function previewUrl(slug) {
+    var params = new URLSearchParams(theme());
+    params.set('venue', slug);
+    return '/booking-embed?' + params.toString();
+  }
+  document.addEventListener('input', function (event) {
+    if (!event.target.matches('[data-bw-option]')) return;
+    var options = theme();
+    document.querySelectorAll('.bw-item').forEach(function (item) {
+      var box = item.querySelector('.bw-code');
+      var template = document.createElement('template');
+      template.innerHTML = box.value;
+      var div = template.content.querySelector('[data-tribalsand-booking]');
+      if (!div) return;
+      Object.keys(options).forEach(function (key) { div.setAttribute('data-' + key, options[key]); });
+      box.value = div.outerHTML + '\n' + template.content.querySelector('script').outerHTML;
+    });
+    var frame = document.getElementById('bwPreviewFrame');
+    if (frame && frame.dataset.venue) {
+      frame.style.maxWidth = options['max-width'];
+      frame.src = previewUrl(frame.dataset.venue);
+    }
+  });
   document.addEventListener('click', function (e) {
     var copy = e.target.closest('[data-bw-copy]');
     if (copy) {
@@ -127,7 +165,9 @@ include __DIR__ . '/_layout.php';
     if (prev) {
       var f = document.getElementById('bwPreviewFrame');
       if (!f) return;
-      f.src = '/booking-embed?venue=' + encodeURIComponent(prev.getAttribute('data-bw-preview'));
+      f.dataset.venue = prev.getAttribute('data-bw-preview');
+      f.style.maxWidth = theme()['max-width'];
+      f.src = previewUrl(f.dataset.venue);
       f.hidden = false;
       document.getElementById('bwPreviewEmpty').hidden = true;
       document.getElementById('bwPreviewTitle').textContent = 'Preview — ' + prev.getAttribute('data-bw-name');

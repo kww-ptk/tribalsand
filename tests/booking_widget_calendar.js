@@ -165,7 +165,7 @@ function boot(slug, answer, base) {
   }
 
   const sandbox = {
-    document: fx.doc, window: {}, console,
+    document: fx.doc, window: {}, console, addEventListener() {},
     localStorage: { getItem: () => null, setItem() {} },
     sessionStorage: { getItem: () => null, setItem() {} },
     fetch: fakeFetch,

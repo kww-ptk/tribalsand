@@ -23,6 +23,25 @@ declare(strict_types=1);
  */
 require_once __DIR__ . '/db.php';
 
+/** Only allow documented theme values, never arbitrary CSS from a URL. */
+function booking_embed_theme(array $options): string
+{
+    $rules = [];
+    foreach (['primary' => ['--bk-teal', '--teal', '--ts-teal'],
+              'header' => ['--bk-teal-d', '--teal-d', '--ts-teal-d'],
+              'accent' => ['--bk-sand', '--sand', '--ts-sand'],
+              'background' => ['--embed-background']] as $key => $tokens) {
+        $value = $options[$key] ?? '';
+        if (!is_string($value) || !preg_match('/^#[a-f0-9]{6}$/i', $value)) continue;
+        foreach ($tokens as $token) $rules[] = $token . ':' . $value;
+    }
+    if (isset($options['radius']) && is_scalar($options['radius']) && preg_match('/^\d{1,2}$/', (string)$options['radius'])) {
+        $rules[] = '--embed-radius:' . min(32, (int)$options['radius']) . 'px';
+    }
+    if (($options['font'] ?? '') === 'sans') $rules[] = '--embed-heading-font:Arial,sans-serif';
+    return implode(';', $rules);
+}
+
 /**
  * The widget each property PAGE shows (maya-kobe.php, zuri.php, my-amani.php …).
  * Keep in step with those pages: the embed must offer exactly what the page offers.
