@@ -9,7 +9,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/quote-builder.php';
 
-require_bookings();
+require_quote_builder();   // owner, reception, grants, Maya Ilai managers
 
 $pageTitle  = 'Quote builder';
 $activeMenu = 'quote_builder';

@@ -76,7 +76,7 @@ include __DIR__ . '/_layout.php';
   and the Quote builder charge. View only for your account.
   <?php endif; ?>
 </p>
-<?php $miCanQuote = is_owner() || is_reception() || access_page_granted('quote-builder.php'); /* = require_bookings() */ ?>
+<?php require_once __DIR__ . '/../includes/quote-builder.php'; $miCanQuote = qb_can_build(); ?>
 <div class="alert" style="margin:0 0 18px;max-width:760px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
   <span>Quotes for Maya Ilai are built in the <strong>Quote builder</strong>, priced with these settings.</span>
   <?php if ($miCanQuote): ?><a class="btn-outline btn-sm" href="/admin/quote-builder.php">Open the Quote builder &rarr;</a><?php endif; ?>

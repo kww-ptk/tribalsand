@@ -129,7 +129,8 @@ function admin_nav_definition(array $f, array $badge = []): array {
                 $tab('Rates', ['rates.php'], $on('bookings')),
                 $tab('Maya Ilai', 'maya-ilai-rates.php', $on('mayaIlai'), 'Maya Ilai rates'),
             ]),
-            $item('Quote builder', 'quote-builder', [$tab('Quote builder', 'quote-builder.php', $on('bookings'))]),
+            // Owner + reception, plus Maya Ilai managers (qb_can_build()) since the Maya Ilai page stopped quoting.
+            $item('Quote builder', 'quote-builder', [$tab('Quote builder', 'quote-builder.php', $on('bookings') || ($on('manager') && $on('mayaIlai')))]),
         ]],
 
         ['key' => 'team', 'icon' => 'staff', 'title' => 'Team', 'items' => [

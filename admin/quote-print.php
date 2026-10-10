@@ -9,13 +9,13 @@ declare(strict_types=1);
  *   POST sel=<json>   a live print from the Quote builder page: the selection is
  *                     re-priced with qb_price_selection(admin_venue_ids()); the
  *                     quote number is Q-YYYYMMDD-HHMM. CSRF-checked.
- * Same audience as the builder: require_bookings(). Model: qb_quote_document().
+ * Same audience as the builder: require_quote_builder(). Model: qb_quote_document().
  */
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/quote-docs.php';
 
-require_bookings();
+require_quote_builder();   // same audience as the builder
 header('Cache-Control: no-store');
 header('X-Robots-Tag: noindex');
 

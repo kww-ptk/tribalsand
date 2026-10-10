@@ -165,5 +165,15 @@ check('search: housekeeping is not offered Rates or Settings', !array_filter($sh
 $html = admin_nav_search_html($nav('owner'));
 check('search: the index JSON cannot break out of its script tag', substr_count($html, '</script>') === 1 && str_ends_with($html, '</script>'));
 
+// ── Quote builder: owner + reception, and Maya Ilai managers (one Quote builder, Oct 2026) ──
+$qbOpen = function (array $flags) use ($none): bool {
+    $n = admin_nav_resolve(admin_nav_definition(array_fill_keys($flags, true) + $none, []), '');
+    foreach ($n['groups'] as $g) foreach ($g['items'] as $it) if (in_array('quote-builder.php', $it['pages'] ?? [], true) || ($it['href'] ?? '') === 'quote-builder.php' || str_contains((string)($it['href'] ?? ''), 'quote-builder.php')) return true;
+    return false;
+};
+check('quote builder: Maya Ilai manager sees it',    $qbOpen(array_merge($roles['manager'], ['mayaIlai'])));
+check('quote builder: other managers do not',        !$qbOpen($roles['manager']));
+check('quote builder: reception sees it',            $qbOpen($roles['reception']));
+
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);
