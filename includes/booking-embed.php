@@ -135,7 +135,7 @@ function booking_embed_iframe_code(string $venueSlug, string $base, string $titl
 {
     return '<iframe src="' . htmlspecialchars(rtrim($base, '/') . '/booking-embed?venue=' . rawurlencode($venueSlug), ENT_QUOTES) . '"'
          . ' title="' . htmlspecialchars($title, ENT_QUOTES) . '" loading="lazy"'
-         . ' style="width:100%;max-width:440px;height:760px;border:0"></iframe>';
+         . ' style="display:block;width:100%;max-width:504px;height:760px;border:0;margin:0 auto"></iframe>';
 }
 
 /**

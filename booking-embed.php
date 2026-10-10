@@ -44,7 +44,8 @@ include __DIR__ . '/includes/head.php';
 html,body{margin:0;padding:0;background:transparent;overflow-x:hidden}
 /* position:relative makes body the containing block of the widget's pop-overs,
    so body.scrollHeight includes them and the iframe grows to show them. */
-body{position:relative;font-family:'Jost',sans-serif;color:var(--dark);-webkit-font-smoothing:antialiased}
+body{position:relative;font-family:'Jost',sans-serif;color:var(--dark);-webkit-font-smoothing:antialiased;padding:clamp(12px,3vw,32px);box-sizing:border-box}
+.ts-embed-standalone body{min-height:100svh;display:flex;flex-direction:column;justify-content:center}
 .tse{max-width:440px;margin:0 auto;background:#fff;border:1px solid var(--border);border-radius:14px;overflow:visible;box-shadow:0 1px 2px rgba(16,47,58,.04)}
 .tse__head{background:var(--teal-d);color:#fff;padding:18px 20px;border-radius:14px 14px 0 0}
 .tse__eyebrow{font-size:.62rem;letter-spacing:.16em;text-transform:uppercase;color:var(--sand-lt);margin-bottom:4px}
@@ -62,7 +63,15 @@ body{position:relative;font-family:'Jost',sans-serif;color:var(--dark);-webkit-f
 .tse__foot{padding:10px 20px 14px;border-top:1px solid var(--border);font-size:.7rem;color:var(--light);text-align:center}
 .tse__foot a{color:var(--mid)}
 .tse__none{padding:28px 20px;text-align:center;font-size:.9rem;color:var(--mid)}
-.tse{width:100%;max-width:var(--embed-max-width,440px);background:var(--embed-background,#fff);border-radius:var(--embed-radius,14px)}
+.tse{width:100%;max-width:440px;box-sizing:border-box;background:var(--embed-background,#fff);border-radius:var(--embed-radius,14px);box-shadow:0 8px 32px rgba(16,47,58,.08)}
+.ts-embed .pa-wrap,.tse__head,.tse__body--room,.tse__mi{padding:clamp(14px,4vw,24px)}
+.ts-embed .pa-dates{grid-template-columns:repeat(2,minmax(0,1fr))}
+.ts-embed .pa-field{min-width:0}
+.ts-embed .dp-btn{min-height:44px;padding:10px;font-size:14px}
+.ts-embed .pa-step button,.ts-embed .bk-stepper button{width:40px;height:40px}
+.ts-embed .bk-modal__dialog{max-height:calc(100dvh - 24px);overscroll-behavior:contain;padding:clamp(14px,4vw,24px)}
+.ts-embed .pae-dlg{max-height:calc(100dvh - 36px);overscroll-behavior:contain}
+@media(max-width:360px){.ts-embed .pa-dates{grid-template-columns:minmax(0,1fr)}.ts-embed .pa-opt__main{flex-direction:column;align-items:stretch}.ts-embed .pa-opt__thumb{flex:auto;width:100%}.ts-embed .pa-opt__right{align-items:flex-start;text-align:left}}
 .tse__head{border-radius:var(--embed-radius,14px) var(--embed-radius,14px) 0 0}
 .tse__name{font-family:var(--embed-heading-font,'Cormorant Garamond',serif)}
 .ts-embed .bk-cal__title,.ts-embed .bk-date-trigger__value:not(.is-empty),.ts-embed .bk-total__price{font-family:var(--embed-heading-font,'Cormorant Garamond',serif)}
@@ -103,6 +112,7 @@ body{position:relative;font-family:'Jost',sans-serif;color:var(--dark);-webkit-f
    widget needs, and asks for the whole window while a pop-up (booking modal,
    confirmation, configurator) is open — inside a short iframe it would be cut off. */
 (function () {
+  document.documentElement.classList.toggle('ts-embed-standalone', window.parent === window);
   window.TS_EMBED_FROM = <?= json_encode($__embFrom) ?> || (function () {
     try { return document.referrer ? new URL(document.referrer).hostname : ''; } catch (e) { return ''; }
   })();
@@ -125,7 +135,7 @@ body{position:relative;font-family:'Jost',sans-serif;color:var(--dark);-webkit-f
       h = Math.max(h, below + pop.offsetHeight + 24, lastH);   // never shrink under an open picker (it would jump)
     }
     lastH = Math.ceil(h);
-    return lastH + 2;
+    return lastH + parseFloat(getComputedStyle(document.body).paddingBottom) + 2;
   }
   function report() {
     var msg = { tsEmbed: 1, id: id, height: needed(), overlay: overlayOpen() };

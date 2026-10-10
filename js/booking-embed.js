@@ -9,7 +9,7 @@
  * guest uses the same widget, availability and booking flow as tribalsand.com.
  * The iframe follows the widget's height, and covers the whole window while a
  * pop-up (booking form, confirmation) is open, then shrinks back.
- * Options on the element: data-max-width="440px" (default 440px).
+ * Width adapts to the host container, with a centered card and side gutters.
  * Admin → Website → Properties & rooms → Booking widgets gives the code.
  */
 (function () {
@@ -42,7 +42,7 @@
     f.setAttribute("loading", "lazy");
     f.setAttribute("allowtransparency", "true");
     f.style.cssText = "display:block;width:100%;height:620px;border:0;margin:0 auto;background:transparent;color-scheme:normal";
-    f.style.maxWidth = el.getAttribute("data-max-width") || "440px";
+    f.style.maxWidth = "504px";
     el.appendChild(f);
     frames[id] = { frame: f, height: 620, overlay: false, inline: f.style.cssText };
   }

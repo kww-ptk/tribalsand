@@ -45,24 +45,12 @@ include __DIR__ . '/_layout.php';
 .bw-preview__frame{display:block;width:100%;height:720px;border:0;background:#f6f3ec;border-radius:0 0 10px 10px}
 .bw-preview__empty{padding:40px 20px;text-align:center;color:var(--muted,#888);font-size:13px}
 .bw-steps{margin:0;padding-left:18px;font-size:13px;line-height:1.7}
-.bw-theme{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
-.bw-field{display:flex;flex-direction:column;gap:7px;min-width:0;font-size:12px;font-weight:600;color:var(--text)}
-.bw-field input:not([type=color]),.bw-field select{width:100%;min-height:42px;border:1px solid var(--border);border-radius:var(--radius,8px);padding:10px 12px;background:var(--white,#fff);color:var(--text);font:inherit;font-weight:400;box-sizing:border-box}
-.bw-field input:focus-visible,.bw-field select:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
-.bw-field small{font-size:11px;font-weight:400;color:var(--muted);line-height:1.5}
-.bw-color{display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--radius,8px);background:var(--white,#fff);min-height:42px;box-sizing:border-box}
-.bw-color input{width:28px;height:28px;padding:0;border:0;background:transparent;cursor:pointer;flex-shrink:0}
-.bw-color input::-webkit-color-swatch-wrapper{padding:0}
-.bw-color input::-webkit-color-swatch{border:1px solid var(--border);border-radius:6px}
-.bw-color input::-moz-color-swatch{border:1px solid var(--border);border-radius:6px}
-.bw-color output{font:12px ui-monospace,Consolas,monospace;color:var(--muted)}
-.bw-description{font-size:13px;line-height:1.6;color:var(--muted);margin:0 0 18px}
 .bw-preview .card__head{gap:12px;flex-wrap:wrap}
 .bw-preview__stage{padding:16px;background:var(--bg,#f6f3ec);border-radius:0 0 var(--radius,8px) var(--radius,8px)}
 .bw-preview__frame{margin:0 auto;background:transparent;border-radius:var(--radius,8px)}
 .bw-preview__frame[hidden],#bwPreviewOpen[hidden]{display:none}
-@media(max-width:640px){.bw-theme{grid-template-columns:repeat(2,minmax(0,1fr))}.bw-preview{position:static}}
-@media(max-width:380px){.bw-theme{grid-template-columns:minmax(0,1fr)}}
+@media(max-width:640px){.bw-preview{position:static}}
+
 </style>
 
 <div class="page-header">
@@ -88,21 +76,6 @@ include __DIR__ . '/_layout.php';
         </ol>
       </div>
     </div>
-    <div class="card">
-      <div class="card__head"><span class="card__title">Widget appearance</span></div>
-      <div class="card__body card__body--pad">
-        <p class="bw-description">Match the booking form to your website. Changes update the preview and embed codes below.</p>
-        <div class="bw-theme" id="bwTheme">
-          <label class="bw-field"><span>Maximum width</span><input data-bw-option="max-width" value="440px" placeholder="440px or 100%"><small>Fits the available space. Use 100% for full width.</small></label>
-          <label class="bw-field"><span>Corner radius (px)</span><input type="number" data-bw-option="radius" value="14" min="0" max="32"><small>0 for square corners, up to 32 for rounded.</small></label>
-          <label class="bw-field"><span>Heading style</span><select data-bw-option="font"><option value="serif">Classic serif</option><option value="sans">Simple sans serif</option></select></label>
-          <?php foreach (['primary' => ['Buttons', '#1e5c6b'], 'header' => ['Header', '#102f3a'], 'accent' => ['Accent', '#b8965a'], 'background' => ['Background', '#ffffff']] as $key => [$label, $color]): ?>
-          <label class="bw-field"><span><?= e($label) ?></span><span class="bw-color"><input type="color" data-bw-option="<?= e($key) ?>" value="<?= e($color) ?>"><output><?= e(strtoupper($color)) ?></output></span></label>
-          <?php endforeach; ?>
-        </div>
-      </div>
-    </div>
-
     <div class="card">
       <div class="card__head"><span class="card__title">Codes per property</span></div>
       <div class="card__body" style="padding:0">
@@ -146,38 +119,7 @@ include __DIR__ . '/_layout.php';
 (function () {
   if (window.__bwBound) return;   // the admin shell re-runs inline scripts on every swap
   window.__bwBound = true;
-  function theme() {
-    var options = {};
-    document.querySelectorAll('[data-bw-option]').forEach(function (input) { options[input.getAttribute('data-bw-option')] = input.value; });
-    return options;
-  }
-  function previewUrl(slug) {
-    var params = new URLSearchParams(theme());
-    params.set('venue', slug);
-    return '/booking-embed?' + params.toString();
-  }
-  document.addEventListener('input', function (event) {
-    if (!event.target.matches('[data-bw-option]')) return;
-    var options = theme();
-    var swatch = event.target.closest('.bw-color');
-    if (swatch) swatch.querySelector('output').textContent = event.target.value.toUpperCase();
-    document.querySelectorAll('[data-bw-open]').forEach(function (link) { link.href = previewUrl(link.getAttribute('data-bw-open')); });
-    document.querySelectorAll('.bw-item').forEach(function (item) {
-      var box = item.querySelector('.bw-code');
-      var template = document.createElement('template');
-      template.innerHTML = box.value;
-      var div = template.content.querySelector('[data-tribalsand-booking]');
-      if (!div) return;
-      Object.keys(options).forEach(function (key) { div.setAttribute('data-' + key, options[key]); });
-      box.value = div.outerHTML + '\n' + template.content.querySelector('script').outerHTML;
-    });
-    var frame = document.getElementById('bwPreviewFrame');
-    if (frame && frame.dataset.venue) {
-      frame.style.maxWidth = options['max-width'];
-      frame.src = previewUrl(frame.dataset.venue);
-      document.getElementById('bwPreviewOpen').href = frame.src;
-    }
-  });
+  function previewUrl(slug) { return '/booking-embed?venue=' + encodeURIComponent(slug); }
   document.addEventListener('click', function (e) {
     var copy = e.target.closest('[data-bw-copy]');
     if (copy) {
@@ -192,7 +134,7 @@ include __DIR__ . '/_layout.php';
       var f = document.getElementById('bwPreviewFrame');
       if (!f) return;
       f.dataset.venue = prev.getAttribute('data-bw-preview');
-      f.style.maxWidth = theme()['max-width'];
+
       f.src = previewUrl(f.dataset.venue);
       f.hidden = false;
       var open = document.getElementById('bwPreviewOpen');
