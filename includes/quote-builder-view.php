@@ -57,7 +57,7 @@ $__uid = 'qb' . substr(md5((string)mt_rand()), 0, 6);
     <span class="qb-spacer"></span>
     <?php if (function_exists('maya_ilai_tool_mode') && maya_ilai_tool_mode() !== null): ?>
     <a class="btn-outline btn-sm" href="/admin/maya-ilai-rates.php"<?= $qb_context === 'modal' ? ' target="_blank" rel="noopener" data-no-shell' : '' ?>
-       title="Maya Ilai's own rate & quote tool — group discounts, availability pricing, unit map">Maya Ilai quote tool &rarr;</a>
+       title="The rates, group discounts and availability pricing Maya Ilai is priced with here">Maya Ilai rates &rarr;</a>
     <?php endif; ?>
     <?php $ms_cur = $qb_cur; include __DIR__ . '/money-switch.php'; ?>
   </div>
@@ -174,7 +174,7 @@ $__uid = 'qb' . substr(md5((string)mt_rand()), 0, 6);
         <button type="button" class="btn-primary btn-sm qb-insert" data-qb-insert>Insert into reply</button>
         <?php endif; ?>
       </div>
-      <p class="qb-foot">Maya Ilai group and availability deals: <a href="/admin/maya-ilai-rates.php">Maya Ilai rate tool</a>.</p>
+      <p class="qb-foot">Maya Ilai is priced with its own rates, group discounts and availability pricing<?php if (function_exists('maya_ilai_tool_mode') && maya_ilai_tool_mode() !== null): ?> (<a href="/admin/maya-ilai-rates.php">Maya Ilai rates</a>)<?php endif; ?>. The Resort Fee is paid on site.</p>
     </aside>
   </div>
 

@@ -118,6 +118,7 @@ function admin_nav_definition(array $f, array $badge = []): array {
                 $tab('iCal feeds', 'ical-feeds.php', $on('bookings')),
                 $tab('Import', 'import-bookings.php', $ownerOrManager, 'Import bookings'),
                 $tab('Group import', 'import-group.php', $ownerOrManager, 'Group import'),
+                $tab('Ilai unit map', 'unit-map.php', $on('mayaIlai'), 'Ilai unit map'),
             ]),
             $item('Enquiries', 'submissions', [
                 $tab('Enquiries', ['submissions.php', 'submission-view.php'], $on('bookings'), 'Enquiries', $b('enquiries'), 'red',
@@ -128,7 +129,8 @@ function admin_nav_definition(array $f, array $badge = []): array {
                 $tab('Rates', ['rates.php'], $on('bookings')),
                 $tab('Maya Ilai', 'maya-ilai-rates.php', $on('mayaIlai'), 'Maya Ilai rates'),
             ]),
-            $item('Quote builder', 'quote-builder', [$tab('Quote builder', 'quote-builder.php', $on('bookings'))]),
+            // Owner + reception, plus Maya Ilai managers (qb_can_build()) since the Maya Ilai page stopped quoting.
+            $item('Quote builder', 'quote-builder', [$tab('Quote builder', 'quote-builder.php', $on('bookings') || ($on('manager') && $on('mayaIlai')))]),
         ]],
 
         ['key' => 'team', 'icon' => 'staff', 'title' => 'Team', 'items' => [
@@ -377,6 +379,7 @@ function admin_nav_help_button_html(): string {
  * Invoices & payments). Keyed by page file; every page of a tab is searched.
  */
 const ADMIN_NAV_SEARCH_WORDS = [
+    'unit-map.php'         => 'maya ilai villa bedroom studio occupancy aerial map',
     'gantt.php'            => 'calendar availability blocks occupancy',
     'holds.php'            => 'bookings reservations holds confirm',
     'submissions.php'      => 'enquiries leads inbox requests',

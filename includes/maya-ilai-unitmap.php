@@ -3,7 +3,8 @@ declare(strict_types=1);
 /**
  * Maya Ilai live "unit map" — read-only occupancy for the aerial compound view.
  *
- * This is the data behind the Unit Map tab in admin/maya-ilai-rates.php. It is
+ * This is the data behind Calendar → Ilai unit map (admin/unit-map.php; view in
+ * includes/maya-ilai-unitmap-view.php). It is
  * READ-ONLY end to end: it never writes a hold, a block or a rate. It answers one
  * question — "on date D, what is the status of every villa bedroom and every
  * studio, and who is in it?" — from the SAME availability_blocks / holds / bookings

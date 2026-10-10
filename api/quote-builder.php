@@ -11,7 +11,7 @@ declare(strict_types=1);
  * server re-prices, never trusts client figures) — needs the enquiry in scope
  * (submission_in_scope()) and the add_submission_quotes migration.
  * Guards: signed-in admin session; Bookings audience (owner or reception, the
- * same rule as require_bookings()); CSRF token in the JSON body (verify_csrf()
+ * same rule as require_quote_builder()); CSRF token in the JSON body (verify_csrf()
  * reads $_POST, which a JSON fetch does not fill) and the session token must be
  * non-empty (hash_equals('', '') is true); rooms scoped by admin_venue_ids().
  */
@@ -27,7 +27,8 @@ $__admin = current_admin();
 if (!$__admin || (array_key_exists('is_active', $__admin) && !$__admin['is_active'])) {
     http_response_code(401); exit(json_encode(['ok' => false, 'error' => 'Your session expired. Sign in again.']));
 }
-if (!is_owner() && !is_reception()) { http_response_code(403); exit(json_encode(['ok' => false, 'error' => 'Only the owner and reception can build quotes.'])); }
+// Same audience as the page (qb_can_build(): owner, reception, grants, Maya Ilai managers).
+if (!qb_can_build()) { http_response_code(403); exit(json_encode(['ok' => false, 'error' => 'The Quote builder isn’t available for your account.'])); }
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') { http_response_code(405); exit(json_encode(['ok' => false, 'error' => 'Method not allowed'])); }
 
 $data  = json_decode((string)file_get_contents('php://input'), true) ?? [];

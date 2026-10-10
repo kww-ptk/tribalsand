@@ -296,6 +296,29 @@ function qb_free_units(array $room, string $ci, string $co): ?int {
 }
 
 /**
+ * Who may build quotes (admin pages only — needs includes/auth.php): the owner,
+ * reception, an "Access by role" grant, and — since the Maya Ilai page stopped
+ * quoting (Oct 2026, one Quote builder) — managers whose properties include Maya
+ * Ilai, who used to quote there. A manager's catalogue is still their own
+ * properties (qb_catalog(admin_venue_ids())).
+ */
+function qb_can_build(): bool {
+    if (!function_exists('is_owner')) return false;
+    if (is_owner() || is_reception()) return true;
+    if (function_exists('access_page_granted') && access_page_granted('quote-builder.php')) return true;
+    return is_manager() && in_array(MAYA_ILAI_VENUE_ID, array_map('intval', admin_venue_ids() ?? []), true);
+}
+
+/** Page gate for the Quote builder and its printed quotation (qb_can_build()). */
+function require_quote_builder(): void {
+    require_login();
+    if (!qb_can_build()) {
+        $_SESSION['hold_flash'] = ['type' => 'error', 'msg' => 'The Quote builder isn’t available for your account.'];
+        header('Location: ' . admin_home_url()); exit;
+    }
+}
+
+/**
  * The Maya Ilai product a builder room is, in maya_ilai_products() shape, or null
  * for any other room. The bare bunk room is not a guest product but staff may
  * quote one (the Maya Ilai tool does), and a combination the guest list leaves out
