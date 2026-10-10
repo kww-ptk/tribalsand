@@ -39,6 +39,10 @@ function booking_embed_theme(array $options): string
         $rules[] = '--embed-radius:' . min(32, (int)$options['radius']) . 'px';
     }
     if (($options['font'] ?? '') === 'sans') $rules[] = '--embed-heading-font:Arial,sans-serif';
+    $width = $options['max-width'] ?? '';
+    if (is_string($width) && preg_match('/^(?:[1-9]\d{0,3}(?:\.\d{1,2})?(?:px|rem|em|vw)|100%)$/', $width)) {
+        $rules[] = '--embed-max-width:' . $width;
+    }
     return implode(';', $rules);
 }
 
