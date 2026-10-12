@@ -375,7 +375,7 @@ function help_guides(): array {
          'title' => 'Let the website hold dates (or not)',
          'summary' => 'Off by default: the reservations team makes every hold.',
          'steps' => [
-            ['text' => 'In **Settings**, under Booking Form Mode, **Let the website place 24-hour holds by itself** controls all public booking forms.', 'target' => '[data-help="website-holds"]'],
+            ['text' => 'In **Settings**, in the **Booking** group, **Let the website place 24-hour holds by itself** controls all public booking forms.', 'target' => '[data-help="website-holds"]'],
             ['text' => 'Off: the website checks the dates and sends a request; reservations use **Convert to Hold**. On: the website blocks the dates for 24 hours itself.'],
          ]],
     ];

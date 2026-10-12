@@ -2,7 +2,7 @@
 // Reply on WhatsApp (admin/submission-view.php, Conversation tab).
 // Opens the guest's chat in the WhatsApp signed in on this computer (wa.me →
 // desktop app or WhatsApp Web) with the owner's message filled in (Admin →
-// Settings → WhatsApp Reply). Staff press Send in WhatsApp; the page notes the
+// Settings → Messages → WhatsApp reply). Staff press Send in WhatsApp; the page notes the
 // message in the thread above. Nothing is sent from our side.
 // Expects $sub, $payload, $id from the page.
 require_once __DIR__ . '/../includes/whatsapp-reply.php';
@@ -57,7 +57,7 @@ $__waNoHint = 'Type the guest’s number with the country code to open WhatsApp.
       <span class="text-muted" id="waHint" style="font-size:12.5px"><?= e($__waDigits === '' ? $__waNoHint : $__waOkHint) ?></span>
     </div>
     <?php if (is_owner()): ?>
-    <p class="text-muted" style="font-size:12px;margin:12px 0 0">Change the wording in <a href="/admin/settings#waReplySettings">Settings → WhatsApp Reply</a>.</p>
+    <p class="text-muted" style="font-size:12px;margin:12px 0 0">Change the wording in <a href="/admin/settings#waReplySettings">Settings → Messages → WhatsApp reply</a>.</p>
     <?php endif; ?>
   </div>
 </div>
