@@ -14,10 +14,17 @@ function check(string $label, bool $cond): void {
 
 $dir   = __DIR__ . '/../db/migrations';
 $files = array_map('basename', glob($dir . '/*.sql') ?: []);
-$lines = array_values(array_filter(
+$rows  = array_values(array_filter(
     array_map('trim', file($dir . '/ORDER.txt', FILE_IGNORE_NEW_LINES) ?: []),
     fn($l) => $l !== '' && $l[0] !== '#'
 ));
+// Each line is "<file>  <date added, YYYY-MM-DD>" (admin/migrate.php shows the date).
+$lines = array_map(fn($l) => preg_split('/\s+/', $l)[0], $rows);
+$undated = array_values(array_filter($rows, function ($l) {
+    $p = preg_split('/\s+/', $l);
+    return count($p) < 2 || !preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $p[1], $m) || !checkdate((int)$m[2], (int)$m[3], (int)$m[1]);
+}));
+check('every ORDER.txt line carries the date it was added' . ($undated ? ' — fix: ' . implode(', ', array_map(fn($l) => preg_split('/\s+/', $l)[0], $undated)) : ''), !$undated);
 
 $missing = array_diff($files, $lines);
 $stale   = array_diff($lines, $files);

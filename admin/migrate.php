@@ -20,15 +20,25 @@ $paths = is_dir($dir) ? (glob($dir . '/*.sql') ?: []) : [];
 $files = array_map('basename', $paths);
 sort($files);
 
-// $display: what the table renders — MOST RECENTLY ADDED FIRST (by file
-// modified time), name as a stable tiebreak. A pull that adds a migration
-// touches only that file, so the newest ones rise to the top where they are
-// easy to find. On a fresh clone every file shares the checkout time and the
-// name tiebreak keeps the order deterministic.
+// $display: what the table renders — NEWEST FIRST, by the order and date each
+// file was added (db/migrations/ORDER.txt: "<file>  <YYYY-MM-DD>", appended last).
+// File times are useless here: every file gets the image build time on deploy.
+// A file not yet listed in ORDER.txt shows at the very top as "Not listed".
+$added = [];   // file => ['pos' => n, 'date' => 'YYYY-MM-DD'|'' ]
+foreach (@file($dir . '/ORDER.txt', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $line) {
+    $line = trim($line);
+    if ($line === '' || $line[0] === '#') continue;
+    $parts = preg_split('/\s+/', $line);
+    $date  = (isset($parts[1]) && preg_match('/^\d{4}-\d{2}-\d{2}$/', $parts[1])) ? $parts[1] : '';
+    $added[$parts[0]] = ['pos' => count($added), 'date' => $date];
+}
 $display = [];
-foreach ($paths as $p) $display[] = ['name' => basename($p), 'mtime' => (int)(@filemtime($p) ?: 0)];
-usort($display, fn($a, $b) => ($b['mtime'] <=> $a['mtime']) ?: strcmp($a['name'], $b['name']));
-$newest = $display ? $display[0]['mtime'] : 0;   // to badge the freshest batch
+foreach ($files as $f) {
+    $display[] = ['name' => $f, 'pos' => $added[$f]['pos'] ?? PHP_INT_MAX, 'date' => $added[$f]['date'] ?? '', 'listed' => isset($added[$f])];
+}
+usort($display, fn($a, $b) => ($b['pos'] <=> $a['pos']) ?: strcmp($a['name'], $b['name']));
+$today = date('Y-m-d');
+$weekAgo = date('Y-m-d', strtotime('-7 days'));
 
 $output = '';
 $ok     = null;
@@ -76,14 +86,11 @@ include __DIR__ . '/_layout.php';
 ?>
 
 <div class="page-header">
-  <h1>Settings</h1>
+  <h1>Migrations</h1>
+  <div class="actions">
+    <a href="/admin/settings.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Settings</a>
+  </div>
 </div>
-
-<nav class="tabs" aria-label="Settings sections">
-  <a href="/admin/settings.php" class="tab-btn">General</a>
-  <a href="/admin/checkin-settings.php" class="tab-btn">Pre-Check-in</a>
-  <a href="/admin/migrate.php" class="tab-btn is-active">Migrations</a>
-</nav>
 
 <?php if ($output): ?>
 <div class="alert alert--<?= $ok ? 'success' : 'error' ?>" style="white-space:pre-wrap;font-family:monospace;font-size:13px">
@@ -94,7 +101,7 @@ include __DIR__ . '/_layout.php';
 <div class="card">
   <div class="card__head">
     <span class="card__title">Available migrations</span>
-    <span class="text-muted" style="font-size:12px">Newest first · files in <code>db/migrations/</code></span>
+    <span class="text-muted" style="font-size:12px">Newest first · by the date each was added to <code>db/migrations/</code></span>
   </div>
   <div class="card__body" style="padding:0">
     <table class="data-table">
@@ -104,15 +111,22 @@ include __DIR__ . '/_layout.php';
       <tbody>
         <?php if (!$display): ?>
         <tr><td colspan="3" style="text-align:center;padding:2rem;color:var(--muted)">No migration files found.</td></tr>
-        <?php else: foreach ($display as $row): $f = $row['name']; $isNew = $row['mtime'] > 0 && $row['mtime'] === $newest; ?>
+        <?php else: foreach ($display as $row): $f = $row['name']; ?>
         <tr>
-          <td><strong><?= e($f) ?></strong><?php if ($isNew): ?> <span class="badge badge--green">Recent</span><?php endif; ?></td>
-          <td><span class="text-muted" style="font-size:12px"><?= $row['mtime'] ? e(date('j M Y, H:i', $row['mtime'])) : '—' ?></span></td>
+          <td><strong><?= e($f) ?></strong>
+            <?php if (!$row['listed']): ?> <span class="badge badge--orange">Not listed in ORDER.txt</span>
+            <?php elseif ($row['date'] === $today): ?> <span class="badge badge--green">Today</span>
+            <?php elseif ($row['date'] !== '' && $row['date'] >= $weekAgo): ?> <span class="badge badge--green">New</span><?php endif; ?>
+          </td>
+          <td><span class="text-muted" style="font-size:12px"><?= $row['date'] !== '' ? e(date('j M Y', strtotime($row['date']))) : '—' ?></span></td>
           <td style="text-align:right">
-            <form method="POST" style="display:inline" onsubmit="return confirm('Run migration <?= e($f) ?>?\n\nThis will execute SQL against the production database. Migrations are designed to be safe to re-run, but make sure you have a backup if anything important is at stake.')">
+            <form method="POST" style="display:inline">
               <?= csrf_field() ?>
               <input type="hidden" name="run" value="<?= e($f) ?>">
-              <button type="submit" class="btn-primary btn-sm">Run</button>
+              <button type="submit" class="btn-primary btn-sm"
+                      data-confirm-title="Run <?= e($f) ?>?"
+                      data-confirm="This runs SQL against the live database. Migrations are written to be safe to re-run, but make sure you have a backup if anything important is at stake."
+                      data-confirm-label="Run migration">Run</button>
             </form>
           </td>
         </tr>
