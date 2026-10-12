@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings Designs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Mockups only — three directions for Admin → Settings → General.
+   Every design: ONE "Save changes" button for every setting on the page, shown
+   as soon as something changes, with a count and Discard. Actions that are not
+   settings (Fetch latest rates, Export, Change password) keep their own button.
+   No browser-default controls: radio cards, switches, styled dropdown, lock toggles. */
+:root{
+  --brand:#1E5C6B;--brand-dk:#102F3A;--accent:#B8965A;--bg:#FAF6EE;--white:#fff;
+  --text:#141412;--muted:#6B6050;--border:#e7ded7;--soft:#f4efe6;--tint:#e6f0f1;
+  --red:#c0392b;--green:#2e7d32;--green-bg:#e8f5e9;--warn:#b45309;--warn-bg:#fdf3e4;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:Inter,system-ui,sans-serif;color:var(--text);background:#E9E4DA;font-size:14px;line-height:1.5}
+button{font:inherit;cursor:pointer;color:inherit}
+input,textarea{font:inherit;color:inherit}
+svg.i{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* ── Picker bar (not part of the design) ── */
+.pick{position:sticky;top:0;z-index:80;background:#0d1615;color:#fff;display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;padding:10px 18px}
+.pick b{font-weight:600}
+.pick .grp{display:flex;gap:6px;flex-wrap:wrap}
+.pick button{border:1px solid #2c3d3b;background:#16221f;color:#cfe0dc;border-radius:999px;padding:6px 14px;font-size:13px}
+.pick button.on{background:#fff;color:#0d1615;border-color:#fff}
+.pick .note{font-size:12px;color:#8fa7a3;margin-left:auto}
+.stage{padding:22px 18px 60px}
+.desc{max-width:1280px;margin:0 auto 14px;color:#33413f;font-size:14px}
+.desc strong{color:#0d1615}
+.frame{max-width:1280px;margin:0 auto;border-radius:14px;overflow:clip;box-shadow:0 30px 80px rgba(13,22,21,.18);display:flex;min-height:820px;background:var(--bg);position:relative}
+.design{display:none}.design.on{display:block}
+
+/* ── Fake admin chrome ── */
+.side{width:200px;flex:none;background:var(--brand-dk);color:#cfe0dc;padding:18px 12px;font-size:12.5px}
+.side .logo{color:#fff;font-weight:600;letter-spacing:.06em;margin:0 6px 18px}
+.side .logo span{color:var(--accent)}
+.side a{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:7px;color:#cfe0dc;text-decoration:none}
+.side a.on{background:rgba(255,255,255,.1);color:#fff;font-weight:600}
+.side .sub{margin:2px 0 6px 14px;border-left:1px solid rgba(255,255,255,.15);padding-left:6px}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.ph{padding:22px 32px 0}
+.ph h1{font-size:22px;margin:0 0 12px;letter-spacing:-.01em}
+.ptabs{display:flex;gap:22px;border-bottom:1px solid var(--border)}
+.ptabs a{padding:8px 0 10px;font-size:13px;font-weight:600;color:var(--muted);text-decoration:none;border-bottom:2.5px solid transparent;margin-bottom:-1px}
+.ptabs a.on{color:var(--brand);border-color:var(--brand)}
+.body{padding:24px 32px 40px;flex:1;min-width:0}
+
+/* ── Shared controls (house style) ── */
+.lbl{font-size:13px;font-weight:600;margin:0 0 4px;display:block}
+.hint{font-size:12.5px;color:var(--muted);margin:0}
+.inp{width:100%;border:1.5px solid var(--border);border-radius:9px;padding:9px 12px;background:#fff;outline:none;transition:border-color .15s,box-shadow .15s}
+.inp:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(30,92,107,.12)}
+textarea.inp{resize:vertical;min-height:92px;line-height:1.55}
+.btn{display:inline-flex;align-items:center;gap:7px;border-radius:9px;padding:9px 16px;font-weight:600;font-size:13.5px;border:1.5px solid transparent}
+.btn-p{background:var(--brand);color:#fff}.btn-p:hover{background:var(--brand-dk)}
+.btn-o{background:#fff;border-color:var(--border);color:var(--brand)}.btn-o:hover{border-color:var(--brand)}
+.btn-g{background:transparent;color:var(--muted)}.btn-g:hover{color:var(--text)}
+.btn-sm{padding:6px 12px;font-size:12.5px}
+.btn[disabled]{opacity:.45;cursor:not-allowed}
+
+/* radio cards */
+.rcs{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:10px}
+.rc{position:relative;display:flex;gap:11px;align-items:flex-start;border:1.5px solid var(--border);border-radius:11px;padding:12px 14px;background:#fff;cursor:pointer;transition:border-color .15s,background .15s}
+.rc input{position:absolute;opacity:0;pointer-events:none}
+.rc .dot{width:18px;height:18px;border-radius:50%;border:2px solid #cbbfb4;flex:none;margin-top:1px;display:grid;place-items:center}
+.rc .dot::after{content:"";width:8px;height:8px;border-radius:50%;background:var(--brand);transform:scale(0);transition:transform .15s}
+.rc b{display:block;font-size:13.5px}
+.rc small{display:block;font-size:12.5px;color:var(--muted);line-height:1.45;margin-top:2px}
+.rc:has(input:checked){border-color:var(--brand);background:var(--tint)}
+.rc:has(input:checked) .dot{border-color:var(--brand)}
+.rc:has(input:checked) .dot::after{transform:scale(1)}
+.rc:has(input:focus-visible){box-shadow:0 0 0 3px rgba(30,92,107,.18)}
+.tag{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.04em;padding:1px 7px;border-radius:999px;background:var(--warn-bg);color:var(--warn);margin-left:6px;vertical-align:1px}
+
+/* switch */
+.sw{display:flex;align-items:flex-start;gap:12px;cursor:pointer}
+.sw input{position:absolute;opacity:0;pointer-events:none}
+.sw .tr{width:40px;height:23px;border-radius:999px;background:#d8cfc6;flex:none;position:relative;transition:background .15s;margin-top:1px}
+.sw .tr::after{content:"";position:absolute;top:3px;left:3px;width:17px;height:17px;border-radius:50%;background:#fff;box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .15s}
+.sw:has(input:checked) .tr{background:var(--brand)}
+.sw:has(input:checked) .tr::after{transform:translateX(17px)}
+.sw:has(input:focus-visible) .tr{box-shadow:0 0 0 3px rgba(30,92,107,.18)}
+.sw b{display:block;font-size:13.5px}
+
+/* styled dropdown */
+.dd{position:relative;max-width:280px}
+.dd>button{width:100%;display:flex;justify-content:space-between;align-items:center;border:1.5px solid var(--border);border-radius:9px;padding:9px 12px;background:#fff;text-align:left}
+.dd>button:focus-visible{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(30,92,107,.12)}
+.dd ul{position:absolute;z-index:20;left:0;right:0;top:calc(100% + 4px);list-style:none;margin:0;padding:5px;background:#fff;border:1px solid var(--border);border-radius:10px;box-shadow:0 12px 30px rgba(16,47,58,.14);display:none}
+.dd.open ul{display:block}
+.dd li{padding:8px 10px;border-radius:7px;cursor:pointer;display:flex;justify-content:space-between}
+.dd li:hover{background:var(--soft)}
+.dd li.on{color:var(--brand);font-weight:600}
+
+/* segmented switch */
+.seg{display:inline-flex;border:1.5px solid var(--border);border-radius:9px;overflow:hidden;background:#fff}
+.seg button{border:0;background:transparent;padding:6px 13px;font-size:12.5px;font-weight:600;color:var(--muted)}
+.seg button.on{background:var(--brand);color:#fff}
+
+/* chips (placeholders) */
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{border:1px solid var(--border);background:var(--soft);border-radius:999px;padding:3px 10px;font-size:12px;color:var(--brand);font-weight:600}
+.chip:hover{border-color:var(--brand)}
+
+/* rates table */
+.rates{width:100%;border-collapse:collapse;font-size:13px}
+.rates th{text-align:left;font-size:11.5px;font-weight:600;color:var(--muted);letter-spacing:.04em;text-transform:uppercase;padding:0 10px 8px}
+.rates td{padding:6px 10px;border-top:1px solid var(--border)}
+.rates .inp{max-width:130px;padding:7px 10px}
+.lock{display:inline-flex;align-items:center;gap:6px;border:1.5px solid var(--border);border-radius:999px;padding:4px 11px;background:#fff;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;user-select:none}
+.lock input{position:absolute;opacity:0;pointer-events:none}
+.lock:has(input:checked){background:var(--brand);border-color:var(--brand);color:#fff}
+
+/* share image */
+.img{display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.img .th{width:132px;height:70px;border-radius:9px;background:linear-gradient(135deg,#9fc2c3,#1E5C6B 60%,#B8965A);flex:none;position:relative;overflow:hidden}
+.img .th::after{content:"1200 × 630";position:absolute;right:6px;bottom:4px;font-size:10px;color:rgba(255,255,255,.85)}
+
+/* ── The one save bar (shared) ── */
+.savebar{position:sticky;bottom:0;z-index:30;display:none;align-items:center;gap:14px;padding:12px 32px;background:var(--brand-dk);color:#fff;box-shadow:0 -8px 24px rgba(16,47,58,.18);animation:up .2s ease}
+.savebar.show{display:flex}
+@keyframes up{from{transform:translateY(100%)}to{transform:none}}
+.savebar .n{display:inline-grid;place-items:center;min-width:24px;height:24px;border-radius:999px;background:var(--accent);color:#102F3A;font-weight:700;font-size:12px;padding:0 7px}
+.savebar .list{font-size:12.5px;color:#a9c4c7;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.savebar .btn-g{color:#cfe0dc}
+.savebar .btn-s{background:#fff;color:var(--brand-dk)}
+.toast{position:fixed;right:24px;top:64px;z-index:40;background:var(--green);color:#fff;border-radius:10px;padding:10px 16px;font-weight:600;font-size:13px;box-shadow:0 10px 30px rgba(0,0,0,.18);opacity:0;transform:translateY(-6px);transition:all .2s;pointer-events:none}
+.toast.show{opacity:1;transform:none}
+.changed{position:relative}
+.dotc{display:none;width:7px;height:7px;border-radius:50%;background:var(--accent);margin-left:6px;vertical-align:2px}
+.is-changed .dotc{display:inline-block}
+
+/* ═══════════════ A — Section menu + one long page ═══════════════ */
+.A .wrap{display:grid;grid-template-columns:200px minmax(0,1fr);gap:28px;align-items:start}
+.A .toc{position:sticky;top:16px;display:flex;flex-direction:column;gap:2px}
+.A .toc a{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:8px;color:var(--muted);text-decoration:none;font-weight:600;font-size:13px}
+.A .toc a:hover{background:var(--soft);color:var(--text)}
+.A .toc a.on{background:#fff;color:var(--brand);box-shadow:0 1px 3px rgba(0,0,0,.06)}
+.A .sec{background:#fff;border:1px solid var(--border);border-radius:14px;margin-bottom:18px;scroll-margin-top:16px}
+.A .sec>h2{display:flex;align-items:center;gap:10px;font-size:15px;margin:0;padding:16px 22px;border-bottom:1px solid var(--border)}
+.A .sec>h2 .ic{width:30px;height:30px;border-radius:8px;background:var(--tint);color:var(--brand);display:grid;place-items:center}
+.A .sec>h2 small{font-weight:400;color:var(--muted);font-size:12.5px;margin-left:auto}
+.A .f{padding:18px 22px}
+.A .f+.f{border-top:1px solid var(--soft)}
+.A .f .lbl{margin-bottom:2px}
+.A .f .hint{margin-bottom:10px}
+
+/* ═══════════════ B — Label left, control right (rows) ═══════════════ */
+.B .top{display:flex;align-items:center;gap:14px;margin:-4px 0 18px}
+.B .top p{margin:0;color:var(--muted);font-size:13px;flex:1}
+.B .grp{margin-bottom:26px}
+.B .grp h2{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--muted);margin:0 0 8px 4px;font-weight:700}
+.B .box{background:#fff;border:1px solid var(--border);border-radius:14px}
+.B .row{display:grid;grid-template-columns:minmax(0,320px) minmax(0,1fr);gap:28px;padding:18px 22px;align-items:start}
+.B .row+.row{border-top:1px solid var(--border)}
+.B .row .lbl{font-size:14px}
+.B .row.is-changed{background:linear-gradient(90deg,rgba(184,150,90,.10),transparent 40%)}
+.B .row.is-changed::before{content:"";position:absolute}
+@media (max-width:900px){.B .row{grid-template-columns:1fr;gap:10px}}
+
+/* ═══════════════ C — Overview tiles that open in place ═══════════════ */
+.C .intro{display:flex;gap:16px;align-items:center;margin:-4px 0 18px}
+.C .intro p{margin:0;color:var(--muted);font-size:13px}
+.C .acc{background:#fff;border:1px solid var(--border);border-radius:14px;margin-bottom:12px;overflow:hidden;transition:box-shadow .15s}
+.C .acc.open{box-shadow:0 8px 28px rgba(16,47,58,.08);border-color:#d6cabd}
+.C .acc>button{width:100%;display:grid;grid-template-columns:40px minmax(0,1fr) auto 22px;gap:14px;align-items:center;border:0;background:transparent;padding:16px 20px;text-align:left}
+.C .acc .ic{width:40px;height:40px;border-radius:11px;background:var(--tint);color:var(--brand);display:grid;place-items:center}
+.C .acc .t b{display:block;font-size:15px}
+.C .acc .t span{display:block;font-size:12.5px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.C .acc .badge{font-size:11.5px;font-weight:700;color:#7a5b20;background:#f6ecd8;border-radius:999px;padding:2px 9px;display:none}
+.C .acc.is-changed .badge{display:inline-block}
+.C .acc .chev{transition:transform .2s;color:var(--muted)}
+.C .acc.open .chev{transform:rotate(180deg)}
+.C .acc .in{display:none;padding:4px 20px 20px 74px}
+.C .acc.open .in{display:block}
+.C .acc .in .f{padding:14px 0}
+.C .acc .in .f+.f{border-top:1px solid var(--soft)}
+.C .acc .in .hint{margin-bottom:10px}
+.C .cols{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media (max-width:900px){.C .acc .in{padding-left:20px}.C .cols{grid-template-columns:1fr}}
+
+.own{border:1px dashed #d6cabd;border-radius:12px;padding:14px 16px;background:#fffdf9;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.own p{margin:0;font-size:12.5px;color:var(--muted);flex:1;min-width:220px}
+.sys{font-size:12px;color:var(--muted);display:flex;gap:18px;flex-wrap:wrap;margin-top:6px}
+
+@media (max-width:820px){
+  .side{display:none}.savebar{padding:12px 16px}.body{padding:18px 16px 40px}.ph{padding:18px 16px 0}
+  .A .wrap{grid-template-columns:1fr}.A .toc{display:none}
+}
+</style>
+</head>
+<body>
+
+<div class="pick">
+  <b>Settings — 3 designs</b>
+  <div class="grp" id="pickD">
+    <button class="on" data-d="A">A · Section menu</button>
+    <button data-d="B">B · Label + control rows</button>
+    <button data-d="C">C · Overview that opens</button>
+  </div>
+  <span class="note">Change anything — the one Save bar appears. Sample data.</span>
+</div>
+
+<div class="stage">
+  <p class="desc" data-desc="A"><strong>A · Section menu.</strong> One page in clear sections (Booking, Guests &amp; email, Money, Messages, Website, Your account), with a small menu on the left that jumps to each and lights up as you scroll. Each setting has a plain title and one line of explanation. Change anything and a dark bar slides up: <em>“3 changes — Booking form mode, Notification email… · Discard · Save changes”</em>. One button saves all of them.</p>
+  <p class="desc" data-desc="B" hidden><strong>B · Label + control rows.</strong> The calm “settings app” look: the explanation sits on the left, the control on the right, one row per setting, grouped under small headings. A changed row gets a soft gold edge so you can see what you touched before saving. Save sits both at the top of the page (always visible, greyed out until something changes) and in the bar at the bottom.</p>
+  <p class="desc" data-desc="C" hidden><strong>C · Overview that opens.</strong> Short page: each group is one line showing what is set right now (“Enquiry mode · website holds off · units auto”). Tap a group to open it in place and edit; groups you changed show “2 changed”. The same single Save bar saves every open or closed group at once.</p>
+
+  <div class="frame" id="frame">
+    <aside class="side">
+      <div class="logo">TRIBAL <span>SAND</span></div>
+      <a>▦ Dashboard</a><a>☀ Today</a><a>▤ Bookings</a><a>☺ Team</a><a>⌂ Website</a>
+      <a class="on">⚙ Settings</a>
+      <div class="sub"><a class="on">Settings</a><a>Emails</a><a>AI</a><a>Travel agents</a><a>Audit log</a></div>
+    </aside>
+    <div class="main">
+      <div class="ph">
+        <h1>Settings</h1>
+        <nav class="ptabs"><a class="on">General</a><a>Pre-Check-in</a><a>Migrations</a></nav>
+      </div>
+      <div class="body">
+        <div class="design A on" data-design="A"></div>
+        <div class="design B" data-design="B"></div>
+        <div class="design C" data-design="C"></div>
+      </div>
+    <div class="savebar" id="savebar">
+      <span class="n" id="sbN">0</span>
+      <span class="list" id="sbList"></span>
+      <button class="btn btn-g btn-sm" id="sbDiscard">Discard</button>
+      <button class="btn btn-s" id="sbSave">Save changes</button>
+    </div>
+    </div>
+    <div class="toast" id="toast">Settings saved.</div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var ic = {
+    cal:'<svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+    mail:'<svg class="i" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 6L2 7"/></svg>',
+    coin:'<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15 9.5c-.5-1-1.6-1.5-3-1.5-1.7 0-3 .9-3 2.2 0 3 6 1.6 6 4.6 0 1.3-1.3 2.2-3 2.2-1.4 0-2.5-.5-3-1.5M12 6v2M12 16v2"/></svg>',
+    msg:'<svg class="i" viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+    globe:'<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 1 0 20M12 2a15 15 0 0 0 0 20"/></svg>',
+    user:'<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>',
+    chev:'<svg class="i chev" viewBox="0 0 24 24"><path d="m6 9 6 6 6-6"/></svg>',
+    lock:'<svg class="i" viewBox="0 0 24 24" style="width:13px;height:13px"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>',
+    dl:'<svg class="i" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>',
+    sync:'<svg class="i" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15 6.7L3 16M3 12a9 9 0 0 1 15-6.7L21 8M21 3v5h-5M3 21v-5h5"/></svg>'
+  };
+  var WA_EN = "Hi {{first_name}}, this is {{property}}.\nWe are answering your enquiry about a stay for {{party}}, {{dates}} ({{nights}}).\nYou also asked about: {{extras}}.";
+  var WA_IT = "Ciao {{first_name}}, siamo {{property}}.\nRispondiamo alla tua richiesta per un soggiorno per {{party}}, {{dates}} ({{nights}}).\nCi hai chiesto anche: {{extras}}.";
+
+  // ── Controls (each returns markup; p = per-design name prefix) ──
+  function radios(p, name, opts, val) {
+    return '<div class="rcs" data-field="' + name + '">' + opts.map(function (o) {
+      return '<label class="rc"><input type="radio" name="' + p + name + '" value="' + o[0] + '"' + (o[0] === val ? ' checked' : '') + '><span class="dot"></span><span><b>' + o[1] + '</b><small>' + o[2] + '</small></span></label>';
+    }).join('') + '</div>';
+  }
+  function sw(name, title, sub, on) {
+    return '<label class="sw" data-field="' + name + '"><input type="checkbox"' + (on ? ' checked' : '') + '><span class="tr"></span><span><b>' + title + '</b><span class="hint">' + sub + '</span></span></label>';
+  }
+  function text(name, val, ph) { return '<input class="inp" data-field="' + name + '" value="' + val + '" placeholder="' + (ph || '') + '">'; }
+  function area(name, val, ph, rows) { return '<textarea class="inp" rows="' + (rows || 4) + '" data-field="' + name + '" placeholder="' + (ph || '') + '">' + val + '</textarea>'; }
+  function dd(name, opts, val) {
+    var cur = opts.filter(function (o) { return o[0] === val; })[0];
+    return '<div class="dd" data-field="' + name + '" data-value="' + val + '"><button type="button"><span>' + cur[1] + '</span>' + ic.chev + '</button><ul>' +
+      opts.map(function (o) { return '<li data-v="' + o[0] + '"' + (o[0] === val ? ' class="on"' : '') + '>' + o[1] + '</li>'; }).join('') + '</ul></div>';
+  }
+  var CURR = [['USD','USD — US Dollar'],['KES','KES — Kenyan Shilling'],['EUR','EUR — Euro'],['GBP','GBP — British Pound']];
+  function rates() {
+    var rows = [['KES','Kenyan Shilling','129.25',true],['EUR','Euro','0.92',false],['GBP','British Pound','0.79',false],['CHF','Swiss Franc','0.88',false],['ZAR','South African Rand','18.1',false]];
+    return '<table class="rates"><thead><tr><th>Currency</th><th>Per 1 USD</th><th>Daily auto-update</th></tr></thead><tbody>' +
+      rows.map(function (r) {
+        return '<tr><td><b>' + r[0] + '</b> <span class="hint" style="display:inline">' + r[1] + '</span></td><td><input class="inp" inputmode="decimal" data-field="Rate ' + r[0] + '" value="' + r[2] + '"></td>' +
+          '<td><label class="lock" data-field="Lock ' + r[0] + '"><input type="checkbox"' + (r[3] ? ' checked' : '') + '>' + ic.lock + '<span>' + (r[3] ? 'Locked — I set it' : 'Auto-updates') + '</span></label></td></tr>';
+      }).join('') + '</tbody></table>' +
+      '<div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-top:12px"><button class="btn btn-o btn-sm" data-act="Rates fetched — unlocked currencies updated.">' + ic.sync + ' Fetch latest rates now</button><span class="hint">Last updated 12 Oct 2026, 06:00 · display only — bookings keep their real price.</span></div>';
+  }
+  function wa(p) {
+    return '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px"><div class="seg" data-wa-seg><button class="on" data-l="en">English</button><button data-l="it">Italiano</button></div><span class="hint">Click a detail to insert it</span></div>' +
+      '<textarea class="inp" rows="4" data-field="WhatsApp message (English)" data-wa="en">' + WA_EN + '</textarea>' +
+      '<textarea class="inp" rows="4" data-field="WhatsApp message (Italiano)" data-wa="it" hidden>' + WA_IT + '</textarea>' +
+      '<div class="chips">' + ['first_name','guest_name','property','room','party','dates','nights','extras','staff_name'].map(function (c) { return '<button class="chip" data-ins="{{' + c + '}}">{{' + c + '}}</button>'; }).join('') + '</div>';
+  }
+  function img() { return '<div class="img" data-field="Share image" data-value="img1"><div class="th"></div><div><button class="btn btn-o btn-sm" data-img>Choose image</button> <button class="btn btn-g btn-sm" data-img-reset>Use default</button><p class="hint" style="margin-top:6px">Landscape works best — shown at 1200 × 630. WhatsApp and Facebook keep the old preview for a while.</p></div></div>'; }
+  function account() {
+    return '<div class="own"><p><b style="color:var(--text)">Password</b> — admin@tribalsand.com. Changed on its own (it asks for your current password), not with Save changes.</p><button class="btn btn-o btn-sm" data-act="Password window opens here.">Change password</button></div>' +
+      '<div class="own" style="margin-top:10px"><p><b style="color:var(--text)">Export active holds</b> — a CSV of every pending and confirmed hold with guest contact details.</p><button class="btn btn-o btn-sm" data-act="holds-2026-10-12.csv downloaded.">' + ic.dl + ' Download CSV</button></div>' +
+      '<div class="sys"><span>PHP 8.2.24</span><span>Form mode: enquiry</span><span>Currency: USD</span><span>Units: auto</span></div>';
+  }
+
+  var F = function (p) { return {
+    mode: radios(p, 'Booking form mode', [['enquiry','Enquiry form','Guests send name, dates and a message. Goes to your inbox.'],['availability','Live availability <span class="tag">V2</span>','Guests pick open dates on the calendar; reservations use Convert to Hold.']], 'enquiry'),
+    holds: sw('Website holds', 'Let the website place 24-hour holds by itself', 'Off: every hold is made by the reservations team (booking box, room combinations, Maya Ilai).', false),
+    units: radios(p, 'Unit assignment', [['auto','Automatic','The first free unit is given when the request comes in.'],['manual','I choose','Pick the unit on the Holds page before confirming.']], 'auto'),
+    email: text('Notification email', 'reservations@tribalsand.com', 'reservations@…'),
+    checkin: area('Check-in instructions', '', 'e.g. Check-in is from 14:00. Reception is open 24 hours. Please WhatsApp us your flight details 48 hours before arrival…', 3),
+    cur: dd('Default currency', CURR, 'USD'),
+    rates: rates(),
+    terms: area('Quote terms', '', 'Prices are per stay in the currency shown. This quote is valid for 7 days and is not a booking until confirmed.', 3),
+    wa: wa(p),
+    img: img(),
+    account: account()
+  }; };
+
+  // ── A ──
+  (function () {
+    var f = F('a'), el = document.querySelector('[data-design="A"]');
+    function sec(id, icon, title, note, fields) {
+      return '<section class="sec" id="A-' + id + '"><h2><span class="ic">' + icon + '</span>' + title + '<small>' + note + '</small></h2>' +
+        fields.map(function (x) { return '<div class="f"><span class="lbl">' + x[0] + '<span class="dotc"></span></span><p class="hint">' + x[1] + '</p>' + x[2] + '</div>'; }).join('') + '</section>';
+    }
+    el.innerHTML = '<div class="wrap"><nav class="toc">' +
+      [['booking',ic.cal,'Booking'],['guests',ic.mail,'Guests &amp; email'],['money',ic.coin,'Money'],['messages',ic.msg,'Messages'],['website',ic.globe,'Website'],['account',ic.user,'Your account']].map(function (t, i) {
+        return '<a href="#A-' + t[0] + '"' + (i ? '' : ' class="on"') + '>' + t[1] + t[2] + '</a>'; }).join('') + '</nav><div>' +
+      sec('booking', ic.cal, 'Booking', 'How guests book on the website', [
+        ['Booking form mode', 'Used by every room set to “Use global setting”. Live on the website straight away.', f.mode],
+        ['Automatic holds', '', f.holds],
+        ['Unit assignment', 'Which physical room a booking gets.', f.units]]) +
+      sec('guests', ic.mail, 'Guests &amp; email', 'Who hears about new requests', [
+        ['Notification email', 'Every form on the website sends a copy here.', f.email],
+        ['Check-in instructions', 'Added to the booking confirmation email. Leave blank to leave it out.', f.checkin]]) +
+      sec('money', ic.coin, 'Money', 'Currency guests see', [
+        ['Default currency', 'Prices show in this currency until a guest switches.', f.cur],
+        ['Exchange rates', 'What guests see when they switch currency. Lock a rate to keep the one you typed.', f.rates]]) +
+      sec('messages', ic.msg, 'Messages', 'Text that goes out to guests', [
+        ['Quote terms', 'Printed at the foot of every quotation. Blank = the default.', f.terms],
+        ['WhatsApp reply', 'Filled in when staff press “Open in WhatsApp” on an enquiry. Lines with missing details are left out.', f.wa]]) +
+      sec('website', ic.globe, 'Website', 'How links look when shared', [
+        ['Social sharing image', 'Shown when someone shares a link to the website.', f.img]]) +
+      sec('account', ic.user, 'Your account', 'Not part of Save changes', [['', '', f.account]]) +
+      '</div></div>';
+    var body = document.querySelector('.body');
+    body.addEventListener('scroll', function () {});
+    el.querySelectorAll('.toc a').forEach(function (a) {
+      a.addEventListener('click', function (e) {
+        e.preventDefault();
+        document.getElementById(a.getAttribute('href').slice(1)).scrollIntoView({ behavior: 'smooth', block: 'start' });
+        el.querySelectorAll('.toc a').forEach(function (x) { x.classList.toggle('on', x === a); });
+      });
+    });
+  })();
+
+  // ── B ──
+  (function () {
+    var f = F('b'), el = document.querySelector('[data-design="B"]');
+    function grp(title, rows) {
+      return '<div class="grp"><h2>' + title + '</h2><div class="box">' + rows.map(function (r) {
+        return '<div class="row changed"><div><span class="lbl">' + r[0] + '<span class="dotc"></span></span><p class="hint">' + r[1] + '</p></div><div>' + r[2] + '</div></div>'; }).join('') + '</div></div>';
+    }
+    el.innerHTML = '<div class="top"><p>Changes apply to the whole website. Nothing is saved until you press Save.</p><button class="btn btn-p" id="bTopSave" disabled>Save changes</button></div>' +
+      grp('Booking', [
+        ['Booking form mode', 'For every room set to “Use global setting”.', f.mode],
+        ['Automatic holds', 'Off is the owner rule: the team makes every hold.', f.holds],
+        ['Unit assignment', 'Which physical room a booking gets.', f.units]]) +
+      grp('Guests &amp; email', [
+        ['Notification email', 'Every website form sends a copy here.', f.email],
+        ['Check-in instructions', 'Added to the confirmation email. Blank = left out.', f.checkin]]) +
+      grp('Money', [
+        ['Default currency', 'Until the guest switches.', f.cur],
+        ['Exchange rates', 'Display only. Locked rates are never auto-updated.', f.rates]]) +
+      grp('Messages', [
+        ['Quote terms', 'Foot of every quotation. Blank = default.', f.terms],
+        ['WhatsApp reply', 'Pre-filled on “Open in WhatsApp”.', f.wa]]) +
+      grp('Website', [['Social sharing image', 'Shown when a link to the site is shared.', f.img]]) +
+      grp('Your account', [['Password &amp; data', 'These act straight away, separate from Save.', f.account]]);
+  })();
+
+  // ── C ──
+  (function () {
+    var f = F('c'), el = document.querySelector('[data-design="C"]');
+    function acc(icon, title, summary, inner, open) {
+      return '<div class="acc' + (open ? ' open' : '') + '"><button type="button"><span class="ic">' + icon + '</span><span class="t"><b>' + title + '</b><span>' + summary + '</span></span><span class="badge"></span>' + ic.chev + '</button><div class="in">' + inner + '</div></div>';
+    }
+    function fl(l, h, c) { return '<div class="f"><span class="lbl">' + l + '<span class="dotc"></span></span><p class="hint">' + h + '</p>' + c + '</div>'; }
+    el.innerHTML = '<div class="intro"><p>Each line shows what is set now. Open one to change it — everything saves together.</p></div>' +
+      acc(ic.cal, 'Booking', 'Enquiry form · website holds off · units automatic',
+        fl('Booking form mode', 'For every room set to “Use global setting”.', f.mode) + fl('Automatic holds', '', f.holds) + fl('Unit assignment', '', f.units), true) +
+      acc(ic.mail, 'Guests &amp; email', 'reservations@tribalsand.com · no check-in instructions',
+        fl('Notification email', 'Every website form sends a copy here.', f.email) + fl('Check-in instructions', 'Added to the confirmation email.', f.checkin)) +
+      acc(ic.coin, 'Money', 'USD · KES 129.25 locked · rates updated today 06:00',
+        fl('Default currency', 'Until the guest switches.', f.cur) + fl('Exchange rates', 'Display only.', f.rates)) +
+      acc(ic.msg, 'Messages', 'Default quote terms · WhatsApp reply in English and Italiano',
+        fl('Quote terms', 'Foot of every quotation.', f.terms) + fl('WhatsApp reply', 'Pre-filled on “Open in WhatsApp”.', f.wa)) +
+      acc(ic.globe, 'Website', 'Custom share image', fl('Social sharing image', '', f.img)) +
+      acc(ic.user, 'Your account', 'Password · export holds · system info', f.account);
+    el.querySelectorAll('.acc>button').forEach(function (b) {
+      b.addEventListener('click', function () { b.parentNode.classList.toggle('open'); });
+    });
+  })();
+
+  // ── Shared behaviour: change tracking, one save ──
+  function val(n) {
+    if (n.matches('.dd,.img')) return n.dataset.value;
+    if (n.matches('.rcs')) { var c = n.querySelector('input:checked'); return c ? c.value : ''; }
+    if (n.matches('.sw,.lock')) return n.querySelector('input').checked ? '1' : '0';
+    return n.value;
+  }
+  document.querySelectorAll('[data-field]').forEach(function (n) { n.dataset.orig = val(n); });
+  var active = 'A';
+  function design() { return document.querySelector('[data-design="' + active + '"]'); }
+  function holder(n) { return n.closest('.f,.row,.acc') ; }
+  function refresh() {
+    var d = design(), names = [];
+    d.querySelectorAll('.is-changed').forEach(function (x) { x.classList.remove('is-changed'); });
+    d.querySelectorAll('.acc .badge').forEach(function (b) { b.textContent = ''; });
+    d.querySelectorAll('[data-field]').forEach(function (n) {
+      if (val(n) === n.dataset.orig) return;
+      names.push(n.dataset.field);
+      var h = n.closest('.f,.row'); if (h) h.classList.add('is-changed');
+      var a = n.closest('.acc'); if (a) { a.classList.add('is-changed'); var b = a.querySelector('.badge'); b.textContent = (parseInt(b.textContent, 10) || 0) + 1 + ' changed'; }
+    });
+    document.getElementById('sbN').textContent = names.length;
+    document.getElementById('sbList').textContent = names.length + ' change' + (names.length === 1 ? '' : 's') + ' — ' + names.join(', ');
+    document.getElementById('savebar').classList.toggle('show', names.length > 0);
+    var t = document.getElementById('bTopSave'); if (t) t.disabled = !(active === 'B' && names.length);
+  }
+  document.addEventListener('input', refresh);
+  document.addEventListener('change', function (e) {
+    var l = e.target.closest('.lock'); if (l) l.querySelector('span').textContent = e.target.checked ? 'Locked — I set it' : 'Auto-updates';
+    refresh();
+  });
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('.dd>button');
+    document.querySelectorAll('.dd.open').forEach(function (d) { if (!b || d !== b.parentNode) d.classList.remove('open'); });
+    if (b) { b.parentNode.classList.toggle('open'); return; }
+    var li = e.target.closest('.dd li');
+    if (li) { var dd = li.closest('.dd'); dd.dataset.value = li.dataset.v; dd.querySelector('button span').textContent = li.textContent; dd.querySelectorAll('li').forEach(function (x) { x.classList.toggle('on', x === li); }); refresh(); return; }
+    var s = e.target.closest('[data-wa-seg] button');
+    if (s) { var box = s.closest('.f,.row,.in') || s.parentNode.parentNode.parentNode; s.parentNode.querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === s); });
+      box.querySelectorAll('[data-wa]').forEach(function (t) { t.hidden = t.dataset.wa !== s.dataset.l; }); return; }
+    var c = e.target.closest('[data-ins]');
+    if (c) { var bx = c.closest('.f,.row,.in'); var ta = [].filter.call(bx.querySelectorAll('[data-wa]'), function (t) { return !t.hidden; })[0];
+      var p = ta.selectionStart || ta.value.length; ta.value = ta.value.slice(0, p) + c.dataset.ins + ta.value.slice(p); ta.focus(); refresh(); return; }
+    if (e.target.closest('[data-img]')) { var im = e.target.closest('.img'); im.dataset.value = 'img2'; im.querySelector('.th').style.background = 'linear-gradient(135deg,#e8d3ad,#b8965a 55%,#1E5C6B)'; refresh(); return; }
+    if (e.target.closest('[data-img-reset]')) { var im2 = e.target.closest('.img'); im2.dataset.value = 'default'; im2.querySelector('.th').style.background = '#d8cfc6'; refresh(); return; }
+    var act = e.target.closest('[data-act]'); if (act) { toast(act.dataset.act); return; }
+    if (e.target.closest('#sbSave,#bTopSave')) { save(); return; }
+    if (e.target.closest('#sbDiscard')) { location.reload(); }
+  });
+  function toast(m) { var t = document.getElementById('toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toast.h); toast.h = setTimeout(function () { t.classList.remove('show'); }, 2200); }
+  function save() {
+    var n = design().querySelectorAll('[data-field]'), k = 0;
+    n.forEach(function (x) { if (val(x) !== x.dataset.orig) { k++; x.dataset.orig = val(x); } });
+    refresh(); toast(k + ' setting' + (k === 1 ? '' : 's') + ' saved.');
+  }
+
+  // picker
+  document.getElementById('pickD').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    active = b.dataset.d;
+    this.querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); });
+    document.querySelectorAll('[data-design]').forEach(function (d) { d.classList.toggle('on', d.dataset.design === active); });
+    document.querySelectorAll('[data-desc]').forEach(function (d) { d.hidden = d.dataset.desc !== active; });
+    refresh();
+  });
+})();
+</script>
+</body>
+</html>
