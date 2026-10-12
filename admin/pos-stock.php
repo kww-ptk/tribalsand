@@ -36,7 +36,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $supported && $outlet) {
     $act  = (string)($_POST['action'] ?? '');
     $iid  = (int)($_POST['item_id'] ?? 0);
     $item = pos_fetch_item($iid);
-    $back = $self . '?outlet=' . $oid . ($iid ? '&item=' . $iid : '');
+    $back = $self . '?outlet=' . $oid . ($iid ? '&open=stock-' . $iid : '');   // reopens the item's side drawer
     // The item must be a stock-tracked item of THIS outlet.
     if (!$item || (int)$item['outlet_id'] !== $oid || !pos_bool($item['track_stock'])) {
         $_SESSION['poss_flash'] = ['type' => 'error', 'msg' => 'Pick a stock-tracked item of this outlet.'];
@@ -102,179 +102,250 @@ $REASONS = ['receive' => ['Received', 'badge--green'], 'opening' => ['Opening', 
             'missing' => ['Count −', 'badge--purple'], 'return' => ['Return', 'badge--teal'], 'transfer' => ['Transfer', 'badge--teal'],
             'assign' => ['Assigned', 'badge--teal'], 'replaced' => ['Replacement', 'badge--teal'], 'broken' => ['Broken', 'badge--red'],
             'stolen' => ['Stolen', 'badge--red'], 'written_off' => ['Written off', 'badge--red']];
+$isDrawer = !empty($_GET['drawer']);
+$mode     = ($_GET['mode'] ?? '') === 'count' ? 'count' : 'receive';
+$link     = fn(string $extra) => $self . '?outlet=' . $oid . $extra;
 
-include __DIR__ . '/_layout.php';
-?>
-<div class="page-header">
-  <h1>POS stock</h1>
-  <?php if ($outlet): ?><a href="/admin/pos-items.php?outlet=<?= $oid ?>" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Catalogue</a><?php endif; ?>
-</div>
-<?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?> is-flash"><?= e($flash['msg']) ?></div><?php endif; ?>
-
-<?php if (!$supported): ?>
-  <div class="alert alert--info">Run the <code>add_pos.sql</code> migration (Admin → Migrations) to set up the POS.</div>
-<?php elseif (!$outlets): ?>
-  <?php dt_empty('You do not manage any POS outlets yet.'); ?>
-<?php else: ?>
-
-<form method="GET" action="<?= $self ?>" class="poss-pick">
-  <span class="text-muted">Outlet</span>
-  <select name="outlet" class="eselect" onchange="this.form.submit()" aria-label="Outlet">
-    <?php foreach ($outlets as $o): ?><option value="<?= (int)$o['id'] ?>" <?= (int)$o['id'] === $oid ? 'selected' : '' ?>><?= e($o['name']) ?></option><?php endforeach; ?>
-  </select>
-  <?php if ($low): ?><span class="badge badge--orange"><?= count($low) ?> low or out</span><?php endif; ?>
-</form>
-
-<?php if (!$items): ?>
-  <?php dt_empty('Nothing at this outlet tracks stock. Turn on "Track stock" for a product in the catalogue.'); ?>
-<?php else: ?>
-<div class="poss-grid">
-  <div class="card">
-    <div class="card__head"><span class="card__title">On hand</span><span class="text-muted" style="font-size:12.5px">Tap an item for its history</span></div>
-    <div class="table-wrap"><table class="data-table poss-table">
-      <thead><tr><th>Item</th><th class="poss-num">On hand</th><th class="poss-num">Alert at</th><th></th></tr></thead>
-      <tbody>
-      <?php foreach ($items as $i): $q = (int)$i['stock_on_hand']; ?>
-        <tr class="<?= (int)$i['id'] === $pickId ? 'is-picked' : '' ?>">
-          <td><a href="<?= $self ?>?outlet=<?= $oid ?>&item=<?= (int)$i['id'] ?>#ledger" class="poss-link"><?= e($i['name']) ?></a>
-            <?php if (!empty($i['consignor_id'])): ?><span class="badge badge--purple">Consignment</span><?php endif; ?>
-            <?php if (!pos_bool($i['is_active'])): ?><span class="badge badge--grey">Hidden</span><?php endif; ?></td>
-          <td class="poss-num"><strong><?= $q ?></strong></td>
-          <td class="poss-num text-muted"><?= $i['low_stock_at'] === null ? '—' : (int)$i['low_stock_at'] ?></td>
-          <td><?php if ($q <= 0): ?><span class="badge badge--red">Out</span><?php elseif ($isLow($i)): ?><span class="badge badge--orange">Low</span><?php endif; ?></td>
-        </tr>
-      <?php endforeach; ?>
-      </tbody>
-    </table></div>
-  </div>
-
-  <div class="card" id="form">
-    <div class="card__head"><span class="card__title">Receive or count</span></div>
-    <div class="card__body" style="padding:18px 20px">
-      <form method="POST" action="<?= $self ?>" class="poss-form" novalidate>
+/**
+ * Receive / count form for one item (or with an item picker) + its history — the
+ * side-drawer fragment, or a card on the page without JavaScript.
+ */
+$stockPanel = function (?array $picked, bool $inDrawer) use ($items, $moves, $consignors, $v2, $cur, $REASONS, $mode, $oid, $self, $link): void {
+    $q = $picked ? (int)$picked['stock_on_hand'] : 0;
+    ?>
+    <div class="adrawer__head">
+      <h2><?= $picked ? e($picked['name']) : 'Receive or count' ?></h2>
+      <p><?= $picked ? 'On hand: <strong>' . $q . '</strong>' . ($picked['low_stock_at'] !== null ? ' · alert at ' . (int)$picked['low_stock_at'] : '') : 'Pick the item, then what happened.' ?></p>
+      <?php if ($picked): ?><div class="badges">
+        <?php if ($q <= 0): ?><span class="badge badge--red">Out</span><?php elseif ($picked['low_stock_at'] !== null && $q <= (int)$picked['low_stock_at']): ?><span class="badge badge--orange">Low</span><?php endif; ?>
+        <?php if (!empty($picked['consignor_id'])): ?><span class="badge badge--purple">Consignment</span><?php endif; ?>
+        <?php if (!pos_bool($picked['is_active'])): ?><span class="badge badge--grey">Hidden</span><?php endif; ?>
+      </div><?php endif; ?>
+    </div>
+    <div class="adrawer__body">
+      <form method="POST" action="<?= $self ?>" class="poss-form" id="possForm" novalidate>
         <?= csrf_field() ?>
         <input type="hidden" name="outlet_id" value="<?= $oid ?>">
+        <?php if ($picked): ?><input type="hidden" name="item_id" value="<?= (int)$picked['id'] ?>">
+        <?php else: ?>
         <div class="field"><label>Item</label>
           <select name="item_id" class="eselect eselect--block" required>
-            <?php foreach ($items as $i): ?><option value="<?= (int)$i['id'] ?>" <?= (int)$i['id'] === $pickId ? 'selected' : '' ?>><?= e($i['name']) ?> — <?= (int)$i['stock_on_hand'] ?> on hand</option><?php endforeach; ?>
+            <?php foreach ($items as $i): ?><option value="<?= (int)$i['id'] ?>"><?= e($i['name']) ?> — <?= (int)$i['stock_on_hand'] ?> on hand</option><?php endforeach; ?>
           </select></div>
+        <?php endif; ?>
         <div class="field"><label>What happened</label>
           <div class="poss-chips">
-            <label class="optchip"><input type="radio" name="action" value="receive" checked data-mode="receive">Delivery arrived</label>
-            <label class="optchip"><input type="radio" name="action" value="count" data-mode="count">Shelf count</label>
+            <label class="optchip"><input type="radio" name="action" value="receive"<?= $mode === 'receive' ? ' checked' : '' ?>>Delivery arrived</label>
+            <label class="optchip"><input type="radio" name="action" value="count"<?= $mode === 'count' ? ' checked' : '' ?>>Shelf count</label>
           </div></div>
         <div class="poss-row" data-when="receive">
-          <div class="field"><label>Quantity received</label><input name="qty" type="number" class="inp inp--num no-spin" min="1" step="1" placeholder="0"></div>
+          <div class="field"><label>Quantity received</label><input name="qty" type="number" class="inp inp--num no-spin" min="1" step="1" placeholder="0"<?= $mode === 'receive' ? ' autofocus' : '' ?>></div>
           <div class="field"><label>Unit cost <span class="text-muted">(optional)</span></label>
             <span class="inp-money"><span class="inp-money__cur"><?= e($cur) ?></span><input name="unit_cost" type="number" class="inp inp--num no-spin" min="0" step="0.01" placeholder="—"></span></div>
         </div>
         <div class="poss-row" data-when="count" hidden>
-          <div class="field"><label>Counted on the shelf</label><input name="counted" type="number" class="inp inp--num no-spin" min="0" step="1" placeholder="0"></div>
+          <div class="field"><label>Counted on the shelf</label><input name="counted" type="number" class="inp inp--num no-spin" min="0" step="1" placeholder="0"<?= $mode === 'count' ? ' autofocus' : '' ?>></div>
         </div>
         <?php if ($v2): ?>
         <div data-when="receive">
           <div class="field"><label>Whose stock is this?</label>
-            <div class="poss-chips" id="possTerms">
+            <div class="poss-chips" data-poss-terms>
               <label class="optchip"><input type="radio" name="terms_mode" value="own" checked>Ours</label>
               <?php if ($consignors): ?>
               <label class="optchip"><input type="radio" name="terms_mode" value="commission">Consignment — we keep a %</label>
               <label class="optchip"><input type="radio" name="terms_mode" value="fixed">Consignment — fixed per item</label>
               <?php endif; ?>
             </div>
-            <?php if (!$consignors): ?><div class="text-muted" style="font-size:12px;margin-top:6px">Add suppliers under Point of Sale → Suppliers to receive consignment stock.</div><?php endif; ?>
+            <?php if (!$consignors): ?><div class="text-muted" style="font-size:12px;margin-top:6px">Add suppliers under Catalogue & stock → Suppliers to receive consignment stock.</div><?php endif; ?>
           </div>
-          <div class="poss-cons" id="possCons" hidden>
+          <div class="poss-cons" data-poss-cons hidden>
             <div class="field"><label>Supplier</label>
-              <select name="consignor_id" class="eselect eselect--block" id="possConsignor">
+              <select name="consignor_id" class="eselect eselect--block" data-poss-consignor>
                 <?php foreach ($consignors as $c): ?><option value="<?= (int)$c['id'] ?>"><?= e($c['name']) ?></option><?php endforeach; ?>
               </select></div>
             <div class="field" data-terms="commission"><label>We keep (%)</label>
-              <input name="terms_pct" id="possPct" type="number" class="inp inp--num no-spin" min="0" max="100" step="0.01" style="width:100%"></div>
+              <input name="terms_pct" data-poss-pct type="number" class="inp inp--num no-spin" min="0" max="100" step="0.01" style="width:100%"></div>
             <div class="field" data-terms="fixed" hidden><label>We owe per item</label>
-              <span class="inp-money"><span class="inp-money__cur"><?= e($cur) ?></span><input name="terms_fixed" id="possFixed" type="number" class="inp inp--num no-spin" min="0" step="0.01"></span></div>
-            <div class="text-muted" style="font-size:12px;margin:-6px 0 12px">Applies to this item from now on. Earlier sales keep their own terms.</div>
+              <span class="inp-money"><span class="inp-money__cur"><?= e($cur) ?></span><input name="terms_fixed" data-poss-fixed type="number" class="inp inp--num no-spin" min="0" step="0.01"></span></div>
+            <div class="text-muted" style="font-size:12px;margin:-6px 0 6px">Applies to this item from now on. Earlier sales keep their own terms.</div>
           </div>
         </div>
         <?php endif; ?>
         <div class="field"><label>Note <span class="text-muted" data-when="receive">(optional — supplier, invoice #)</span><span class="text-muted" data-when="count" hidden>(required — e.g. stock take, damaged)</span></label>
           <input name="note" class="inp" maxlength="500" style="width:100%"></div>
-        <button type="submit" class="btn-primary btn-sm"><?= admin_icon('check', 15) ?> Record</button>
       </form>
+
+      <?php if ($picked): ?>
+      <div class="adrawer__sec">
+        <h3>History</h3>
+        <?php if (!$moves): ?><p class="text-muted" style="margin:0;font-size:13px">No stock movements yet.</p>
+        <?php else: ?>
+        <div class="poss-hist">
+          <?php foreach ($moves as $m): [$lbl, $cls] = $REASONS[$m['reason']] ?? [$m['reason'], 'badge--grey']; $dq = (int)$m['qty_delta']; ?>
+          <div>
+            <span class="text-muted"><?= e(date('j M, H:i', strtotime((string)$m['created_at']))) ?></span>
+            <span><span class="badge <?= e($cls) ?>"><?= e($lbl) ?></span> <?= e((string)($m['note'] ?: ($m['sale_reference'] ?? ''))) ?><?php if (!empty($m['consignor_id'])): ?> <span class="badge badge--purple"><?= e($m['consignor_name'] ?? 'Consignment') ?> · <?= $m['consignor_cost'] !== null ? e(pos_money((float)$m['consignor_cost'], $cur)) . '/item' : e(rtrim(rtrim((string)$m['consign_pct'], '0'), '.')) . '% ours' ?></span><?php endif; ?><?= $m['unit_cost'] !== null ? ' <span class="text-muted">@ ' . e(pos_money((float)$m['unit_cost'], $cur)) . '</span>' : '' ?><?= !empty($m['user_name']) ? ' <span class="text-muted">· ' . e($m['user_name']) . '</span>' : '' ?></span>
+            <b class="<?= $dq < 0 ? 'poss-neg' : 'poss-pos' ?>"><?= $dq > 0 ? '+' : '' ?><?= $dq ?></b>
+          </div>
+          <?php endforeach; ?>
+        </div>
+        <?php endif; ?>
+      </div>
+      <?php endif; ?>
     </div>
+    <div class="adrawer__foot">
+      <?php if ($inDrawer): ?><button type="button" class="btn-outline btn-sm" data-adrawer-close>Close</button>
+      <?php else: ?><a href="<?= e($link('')) ?>" class="btn-outline btn-sm">Close</a><?php endif; ?>
+      <button type="submit" form="possForm" class="btn-primary btn-sm"><?= admin_icon('check', 15) ?> Record</button>
+    </div>
+    <?php
+};
+
+if ($isDrawer) {
+    if (!$outlet || !$items || ($pickId && !$picked)) { echo '<div class="adrawer__head"><h2>Not available</h2><p>Pick a stock-tracked item of this outlet.</p></div>'; exit; }
+    $stockPanel($picked, true);
+    exit;
+}
+$totalUnits = array_sum(array_map(fn($i) => max(0, (int)$i['stock_on_hand']), $items));
+$nOut = count(array_filter($items, fn($i) => (int)$i['stock_on_hand'] <= 0));
+
+include __DIR__ . '/_layout.php';
+?>
+<div class="page-header">
+  <h1>Stock</h1>
+  <?php if ($outlet): ?>
+  <div class="actions">
+    <?php if (count($outlets) > 1): ?>
+    <form method="GET" action="<?= $self ?>" style="display:inline-flex">
+      <select name="outlet" class="eselect" onchange="this.form.submit()" aria-label="Outlet">
+        <?php foreach ($outlets as $o): ?><option value="<?= (int)$o['id'] ?>" <?= (int)$o['id'] === $oid ? 'selected' : '' ?>><?= e($o['name']) ?></option><?php endforeach; ?>
+      </select>
+    </form>
+    <?php endif; ?>
+    <?php if ($items): ?><a href="<?= e($link('&receive=1')) ?>" class="btn-primary btn-sm" data-drawer="<?= e($link('&receive=1')) ?>" data-drawer-key="stock-new"><?= admin_icon('plus', 15) ?> Receive delivery</a><?php endif; ?>
   </div>
+  <?php endif; ?>
+</div>
+<?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?> is-flash"><?= e($flash['msg']) ?></div><?php endif; ?>
+
+<?php if (!$supported): ?>
+  <div class="alert alert--info">Run the <code>add_pos.sql</code> migration (Settings → Your account → Migrations) to set up the POS.</div>
+<?php elseif (!$outlets): ?>
+  <?php dt_empty('You do not manage any POS outlets yet.'); ?>
+<?php elseif (!$items): ?>
+  <?php dt_empty('Nothing at this outlet tracks stock. Turn on "Track stock" for a product in the Catalogue.'); ?>
+<?php else: ?>
+
+<?php if (empty($_GET['open']) && ($picked || !empty($_GET['receive']))): ?>
+<div class="card poss-panel" data-inline-form data-close-href="<?= e($link('')) ?>"><?php $stockPanel($picked, false); ?></div>
+<?php endif; ?>
+
+<div class="pos-kpis">
+  <div class="pos-kpi pos-kpi--dark"><span>Items tracked</span><b><?= count($items) ?></b><small>at <?= e($outlet['name']) ?></small></div>
+  <div class="pos-kpi"><span>Units on hand</span><b><?= $totalUnits ?></b><small>across all tracked items</small></div>
+  <div class="pos-kpi<?= count($low) - $nOut > 0 ? ' pos-kpi--warn' : '' ?>"><span>Low</span><b><?= count($low) - $nOut ?></b><small>at or under the alert</small></div>
+  <div class="pos-kpi<?= $nOut ? ' pos-kpi--bad' : '' ?>"><span>Out</span><b><?= $nOut ?></b><small>the till won’t sell these</small></div>
 </div>
 
-<?php if ($picked): ?>
-<div class="card" id="ledger" style="margin-top:18px">
-  <div class="card__head"><span class="card__title"><?= e($picked['name']) ?> — history</span><span class="text-muted" style="font-size:12.5px"><?= (int)$picked['stock_on_hand'] ?> on hand</span></div>
-  <?php if (!$moves): ?>
-    <?php dt_empty('No stock movements yet.'); ?>
-  <?php else: ?>
-  <div class="table-wrap"><table class="data-table">
-    <thead><tr><th>When</th><th>What</th><th class="poss-num">Change</th><th>Detail</th><th>By</th></tr></thead>
-    <tbody>
-    <?php foreach ($moves as $m): [$lbl, $cls] = $REASONS[$m['reason']] ?? [$m['reason'], 'badge--grey']; $dq = (int)$m['qty_delta']; ?>
-      <tr>
-        <td class="text-muted"><?= e(date('j M Y, H:i', strtotime((string)$m['created_at']))) ?></td>
-        <td><span class="badge <?= e($cls) ?>"><?= e($lbl) ?></span></td>
-        <td class="poss-num"><strong class="<?= $dq < 0 ? 'poss-neg' : 'poss-pos' ?>"><?= $dq > 0 ? '+' : '' ?><?= $dq ?></strong></td>
-        <td><?= e((string)($m['note'] ?: ($m['sale_reference'] ?? ''))) ?><?php if (!empty($m['consignor_id'])): ?> <span class="badge badge--purple"><?= e($m['consignor_name'] ?? 'Consignment') ?> · <?= $m['consignor_cost'] !== null ? e(pos_money((float)$m['consignor_cost'], $cur)) . '/item' : e(rtrim(rtrim((string)$m['consign_pct'], '0'), '.')) . '% ours' ?></span><?php endif; ?><?= $m['unit_cost'] !== null ? ' <span class="text-muted">@ ' . e(pos_money((float)$m['unit_cost'], $cur)) . '</span>' : '' ?></td>
-        <td class="text-muted"><?= e($m['user_name'] ?? '—') ?></td>
+<div class="pos-toolbar">
+  <div class="pos-chips" id="possChips">
+    <button type="button" class="pos-chip is-on" data-poss-filter="all">All<b><?= count($items) ?></b></button>
+    <?php if (count($low) - $nOut > 0): ?><button type="button" class="pos-chip" data-poss-filter="low">Low<b><?= count($low) - $nOut ?></b></button><?php endif; ?>
+    <?php if ($nOut): ?><button type="button" class="pos-chip" data-poss-filter="out">Out<b><?= $nOut ?></b></button><?php endif; ?>
+  </div>
+  <span class="sp"></span>
+  <span class="dt-search" style="width:260px;max-width:100%"><span class="dt-search__icon" aria-hidden="true"><?= admin_icon('search', 16) ?></span><input type="search" id="possSearch" class="dt-search__input" placeholder="Search items…" autocomplete="off" aria-label="Search items"></span>
+</div>
+
+<div class="card">
+  <div class="table-wrap"><table class="data-table poss-table" id="possTable" data-paginate="25">
+    <thead><tr><th>Item</th><th class="poss-num">On hand</th><th class="poss-num">Alert at</th><th>Whose</th><th style="width:1%"></th></tr></thead>
+    <tbody id="possRows">
+    <?php foreach ($items as $i): $q = (int)$i['stock_on_hand']; $out = $q <= 0; $isL = !$out && $isLow($i); $dUrl = $link('&item=' . (int)$i['id']); ?>
+      <tr data-drawer="<?= e($dUrl) ?>" data-drawer-key="stock-<?= (int)$i['id'] ?>" data-tags="<?= $out ? 'out' : ($isL ? 'low' : '') ?>" data-find="<?= e(mb_strtolower((string)$i['name'] . ' ' . ($i['sku'] ?? ''))) ?>">
+        <td><div class="pos-who">
+          <?php if (!empty($i['image_key'])): ?><img src="<?= e(storage_url((string)$i['image_key'])) ?>" alt="" class="pos-thumb" loading="lazy"><?php else: ?><span class="pos-thumb"><?= admin_icon('image', 14) ?></span><?php endif; ?>
+          <span><a href="<?= e($dUrl) ?>" data-drawer="<?= e($dUrl) ?>" data-drawer-key="stock-<?= (int)$i['id'] ?>" style="color:inherit;text-decoration:none"><b><?= e($i['name']) ?></b></a>
+            <?php if (!pos_bool($i['is_active'])): ?><small>Hidden from the till</small><?php elseif (!empty($i['sku'])): ?><small>SKU <?= e($i['sku']) ?></small><?php endif; ?></span></div></td>
+        <td class="poss-num"><?php if ($out): ?><span class="badge badge--red"><?= $q ?> · out</span><?php elseif ($isL): ?><span class="badge badge--orange"><?= $q ?> · low</span><?php else: ?><span class="badge badge--green"><?= $q ?></span><?php endif; ?></td>
+        <td class="poss-num text-muted"><?= $i['low_stock_at'] === null ? '—' : (int)$i['low_stock_at'] ?></td>
+        <td><?= !empty($i['consignor_id']) ? '<span class="badge badge--purple">Consignment</span>' : '<span class="badge badge--grey">Ours</span>' ?></td>
+        <td style="white-space:nowrap;text-align:right">
+          <a href="<?= e($dUrl) ?>" class="btn-outline btn-sm" data-drawer="<?= e($dUrl) ?>" data-drawer-key="stock-<?= (int)$i['id'] ?>">Receive</a>
+          <a href="<?= e($dUrl . '&mode=count') ?>" class="btn-outline btn-sm" data-drawer="<?= e($dUrl . '&mode=count') ?>" data-drawer-key="stock-<?= (int)$i['id'] ?>">Count</a>
+        </td>
       </tr>
     <?php endforeach; ?>
     </tbody>
   </table></div>
-  <?php endif; ?>
+  <p class="text-muted" id="possNone" style="padding:28px;text-align:center;margin:0" hidden>No items match.</p>
 </div>
-<?php endif; ?>
 <?php endif; ?>
 
 <style>
-.poss-pick{display:flex;align-items:center;gap:10px;margin:-6px 0 18px;flex-wrap:wrap;font-size:13px}
-.poss-grid{display:grid;grid-template-columns:minmax(0,1.4fr) minmax(280px,1fr);gap:18px;align-items:start}
-@media (max-width:900px){.poss-grid{grid-template-columns:minmax(0,1fr)}}
 .card__head{flex-wrap:wrap;gap:8px 12px}
-@media (max-width:560px){.poss-row{grid-template-columns:1fr}}
-.poss-grid .table-wrap .data-table{min-width:0}
+.poss-panel{margin-bottom:16px;display:flex;flex-direction:column;max-width:640px}
 .poss-num{text-align:right;white-space:nowrap}
-.poss-table tr.is-picked td{background:rgba(30,92,107,.06)}
-.poss-link{font-weight:500}
+.poss-form{display:flex;flex-direction:column;gap:2px}
 .poss-chips{display:flex;flex-wrap:wrap;gap:8px}
 .poss-row{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
 .poss-row .inp{width:100%}
+@media (max-width:560px){.poss-row{grid-template-columns:1fr}}
 .field .inp-money{display:flex;width:100%}.field .inp-money .inp{flex:1;min-width:0;width:auto}
 .poss-row[hidden],[data-when][hidden],.poss-cons[hidden],[data-terms][hidden]{display:none}
-.poss-cons .inp-money{display:flex;width:100%}.poss-cons .inp-money .inp{flex:1;min-width:0}
 .poss-neg{color:var(--red)}
 .poss-pos{color:var(--green)}
+.poss-hist{display:flex;flex-direction:column}
+.poss-hist > div{display:grid;grid-template-columns:86px minmax(0,1fr) auto;gap:10px;padding:8px 0;border-bottom:1px dashed var(--border);font-size:13px;align-items:baseline}
+.poss-hist > div:last-child{border-bottom:0}
 </style>
 <script>
 (function(){
-  var form = document.querySelector('.poss-form'); if (!form) return;
-  function sync(){ var m = form.querySelector('input[name=action]:checked').value;
-    form.querySelectorAll('[data-when]').forEach(function(el){ el.hidden = el.getAttribute('data-when') !== m; }); }
-  form.querySelectorAll('input[name=action]').forEach(function(r){ r.addEventListener('change', sync); });
-  sync();
-  // Consignment terms: pre-fill from the item's current terms, show only what applies.
   var TERMS = <?= json_encode($termsOf) ?>, DEF = <?= json_encode($defaultPct) ?>;
-  var box = document.getElementById('possCons'); if (!box) return;
-  var sel = form.querySelector('select[name=item_id]'), cons = document.getElementById('possConsignor');
-  var pct = document.getElementById('possPct'), fixed = document.getElementById('possFixed');
-  function mode(){ var m = form.querySelector('input[name=terms_mode]:checked'); return m ? m.value : 'own'; }
-  function show(){ var m = mode(); box.hidden = m === 'own';
-    box.querySelectorAll('[data-terms]').forEach(function(el){ el.hidden = el.getAttribute('data-terms') !== m; }); }
-  function load(){ var t = TERMS[sel.value]; if (!t) return;
-    var r = form.querySelector('input[name=terms_mode][value="' + t.mode + '"]'); if (r) r.checked = true;
-    if (t.consignor_id && cons) { cons.value = t.consignor_id; cons.dispatchEvent(new Event('change')); }
-    pct.value = t.pct !== null && t.pct !== undefined ? t.pct : (DEF[cons && cons.value] !== undefined ? DEF[cons.value] : '');
-    fixed.value = t.fixed !== null && t.fixed !== undefined ? t.fixed : '';
-    show(); }
-  form.querySelectorAll('input[name=terms_mode]').forEach(function(r){ r.addEventListener('change', function(){
-    if (mode() === 'commission' && pct.value === '' && cons) pct.value = DEF[cons.value] !== undefined ? DEF[cons.value] : '';
-    show(); }); });
-  if (cons) cons.addEventListener('change', function(){ if (mode() === 'commission' && pct.value === '') pct.value = DEF[cons.value] !== undefined ? DEF[cons.value] : ''; });
-  sel.addEventListener('change', load); load();
+  // The receive / count form — on the page and in the side drawer.
+  function formInit(root){
+    var form = root.querySelector('.poss-form'); if (!form || form.dataset.ready) return; form.dataset.ready = '1';
+    function sync(){ var m = form.querySelector('input[name=action]:checked').value;
+      root.querySelectorAll('[data-when]').forEach(function(el){ el.hidden = el.getAttribute('data-when') !== m; }); }
+    form.querySelectorAll('input[name=action]').forEach(function(r){ r.addEventListener('change', sync); });
+    sync();
+    var box = form.querySelector('[data-poss-cons]'); if (!box) return;
+    var sel = form.querySelector('[name=item_id]'), cons = form.querySelector('[data-poss-consignor]');
+    var pct = form.querySelector('[data-poss-pct]'), fixed = form.querySelector('[data-poss-fixed]');
+    function mode(){ var m = form.querySelector('input[name=terms_mode]:checked'); return m ? m.value : 'own'; }
+    function show(){ var m = mode(); box.hidden = m === 'own';
+      box.querySelectorAll('[data-terms]').forEach(function(el){ el.hidden = el.getAttribute('data-terms') !== m; }); }
+    function load(){ var t = TERMS[sel.value]; if (!t) return;
+      var r = form.querySelector('input[name=terms_mode][value="' + t.mode + '"]'); if (r) r.checked = true;
+      if (t.consignor_id && cons) { cons.value = t.consignor_id; cons.dispatchEvent(new Event('change')); }
+      pct.value = t.pct !== null && t.pct !== undefined ? t.pct : (DEF[cons && cons.value] !== undefined ? DEF[cons.value] : '');
+      fixed.value = t.fixed !== null && t.fixed !== undefined ? t.fixed : '';
+      show(); }
+    form.querySelectorAll('input[name=terms_mode]').forEach(function(r){ r.addEventListener('change', function(){
+      if (mode() === 'commission' && pct.value === '' && cons) pct.value = DEF[cons.value] !== undefined ? DEF[cons.value] : '';
+      show(); }); });
+    if (cons) cons.addEventListener('change', function(){ if (mode() === 'commission' && pct.value === '') pct.value = DEF[cons.value] !== undefined ? DEF[cons.value] : ''; });
+    if (sel) { sel.addEventListener('change', load); load(); }
+  }
+  formInit(document);
+  window.__possFormInit = formInit;
+  if (!window.__possDrawerBound) {
+    window.__possDrawerBound = true;
+    document.addEventListener('adrawer:loaded', function (e) { if (e.detail && e.detail.panel && window.__possFormInit) window.__possFormInit(e.detail.panel); });
+  }
+
+  // Filter chips + search over the table (the pager pages what is left).
+  var rows = [].slice.call(document.querySelectorAll('#possRows tr')), chips = document.getElementById('possChips'),
+      search = document.getElementById('possSearch'), none = document.getElementById('possNone'), want = 'all';
+  function apply(){
+    var q = (search && search.value || '').trim().toLowerCase(), shown = 0;
+    rows.forEach(function(r){ var ok = (want === 'all' || r.dataset.tags === want) && (!q || r.dataset.find.indexOf(q) >= 0); r.hidden = !ok; if (ok) shown++; });
+    if (none) none.hidden = shown > 0;
+    if (window.tsTableFit) window.tsTableFit();
+  }
+  if (chips) chips.addEventListener('click', function(e){ var b = e.target.closest('[data-poss-filter]'); if (!b) return;
+    want = b.dataset.possFilter; chips.querySelectorAll('.pos-chip').forEach(function(c){ c.classList.toggle('is-on', c === b); }); apply(); });
+  if (search) search.addEventListener('input', apply);
 })();
 </script>
-<?php endif; ?>
 <?php include __DIR__ . '/_layout_end.php'; ?>

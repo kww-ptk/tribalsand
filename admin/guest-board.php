@@ -223,7 +223,7 @@ include __DIR__ . '/_layout.php';
 <?php if ($flash): ?><div class="alert alert--success"><?= e($flash) ?></div><?php endif; ?>
 <?php foreach ($errs as $er): ?><div class="alert alert--error"><?= e($er) ?></div><?php endforeach; ?>
 
-<div class="card" style="margin-bottom:24px" id="postCard" <?= $__openForm ? '' : 'hidden' ?>>
+<div class="card" style="margin-bottom:24px" id="postCard" data-inline-form <?= $__openForm ? '' : 'hidden' ?>>
   <div class="card__head"><span class="card__title"><?= $edit ? 'Edit post' : 'New post' ?></span></div>
   <div class="card__body card__body--pad">
     <?php

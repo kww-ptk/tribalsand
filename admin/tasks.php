@@ -332,7 +332,7 @@ include __DIR__ . '/_layout.php';
 
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type'] ?? 'success') ?> is-flash"><?= e($flash['msg'] ?? '') ?></div><?php endif; ?>
 
-<div class="card" id="taskCreateCard" style="margin-bottom:20px<?= $formOpen ? '' : ';display:none' ?>">
+<div class="card" id="taskCreateCard" data-inline-form style="margin-bottom:20px<?= $formOpen ? '' : ';display:none' ?>">
   <div class="card__head"><span class="card__title">New task</span></div>
   <div class="card__body" style="padding:20px 24px">
     <?php if (!$venues): ?>

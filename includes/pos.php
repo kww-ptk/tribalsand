@@ -1545,12 +1545,19 @@ function pos_sales_query(array $f, int $limit = 200, int $offset = 0): array {
     $v2cols = pos_v2_supported() ? ', SUM(s.tip_amount) AS tips, SUM(s.vat_amount) AS vat' : ', 0 AS tips, 0 AS vat';
     $sums = db_query("SELECT s.currency, COUNT(*) AS n, SUM(s.total) AS total, SUM(s.service_charge) AS service{$v2cols}
                         FROM pos_sales s WHERE {$where} AND s.status = 'completed' GROUP BY s.currency ORDER BY s.currency", $p)->fetchAll();
+    // The same completed sales split by how they were paid (per currency), and the
+    // voided ones counted apart — for the Sales page's summary tiles.
+    $byMethod = db_query("SELECT s.currency, s.payment_method, COUNT(*) AS n, SUM(s.total) AS total
+                            FROM pos_sales s WHERE {$where} AND s.status = 'completed'
+                           GROUP BY s.currency, s.payment_method ORDER BY s.currency, SUM(s.total) DESC", $p)->fetchAll();
+    $voided = db_query("SELECT s.currency, COUNT(*) AS n, SUM(s.total) AS total
+                          FROM pos_sales s WHERE {$where} AND s.status = 'voided' GROUP BY s.currency ORDER BY s.currency", $p)->fetchAll();
     $rows = db_query(
         "SELECT s.*, o.name AS outlet_name, a.name AS user_name
            FROM pos_sales s JOIN pos_outlets o ON o.id = s.outlet_id LEFT JOIN admin_users a ON a.id = s.admin_user_id
           WHERE {$where} ORDER BY s.created_at DESC, s.id DESC LIMIT " . max(1, min(1000, $limit)) . ' OFFSET ' . max(0, $offset), $p
     )->fetchAll();
-    return ['rows' => $rows, 'total' => $total, 'sums' => $sums];
+    return ['rows' => $rows, 'total' => $total, 'sums' => $sums, 'by_method' => $byMethod, 'voided' => $voided];
 }
 
 /**

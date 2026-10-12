@@ -523,7 +523,7 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
 <?php else: ?>
 
 <!-- Add / edit person form (hidden until "Add team member" or an Edit click) -->
-<div class="card" style="margin-bottom:24px" id="personCard" hidden>
+<div class="card" style="margin-bottom:24px" id="personCard" data-inline-form hidden>
   <div class="card__head"><span class="card__title" id="personCardTitle">Add a team member</span></div>
   <div class="card__body card__body--pad">
     <form method="POST" id="personForm">
@@ -734,7 +734,7 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
 
 <?php elseif ($tab === 'accounts'): ?>
 <!-- ═══════════ ACCOUNTS TAB ═══════════ -->
-<div class="card" style="margin-bottom:24px" id="createCard" <?= $__openCreate ? '' : 'hidden' ?>>
+<div class="card" style="margin-bottom:24px" id="createCard" data-inline-form <?= $__openCreate ? '' : 'hidden' ?>>
   <div class="card__head"><span class="card__title">Add an account</span></div>
   <div class="card__body card__body--pad">
     <form method="POST" id="createForm">

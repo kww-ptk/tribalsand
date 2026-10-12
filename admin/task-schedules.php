@@ -147,7 +147,7 @@ $asgSelect = function (string $name, ?int $current) use ($candidates) {
 <?php else: ?>
 
 <!-- Create panel -->
-<div class="card" id="schedCreateCard" style="margin-bottom:20px;display:none">
+<div class="card" id="schedCreateCard" data-inline-form data-inline-toggle="#schedCreateToggle, #schedCreateToggle2" style="margin-bottom:20px;display:none">
   <div class="card__head"><span class="card__title">New job timetable</span></div>
   <div class="card__body card__body--pad">
     <form method="POST" action="/admin/task-schedules.php" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;align-items:end">

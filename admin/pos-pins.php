@@ -93,48 +93,79 @@ function posp_form(int $uid, bool $hasPin, string $self): void { ?>
 <?php }
 
 include __DIR__ . '/_layout.php';
+$__ini = fn(string $n) => mb_strtoupper(implode('', array_map(fn($w) => mb_substr($w, 0, 1), array_slice(preg_split('/\s+/', trim($n)) ?: [], 0, 2))));
+$__withPin = count(array_filter($people, fn($p) => !empty($p['pos_pin_hash'])));
+$__team = $role === 'owner' || $role === 'manager';
 ?>
-<div class="page-header"><h1><?= $people ? 'POS PINs' : 'My till PIN' ?></h1></div>
+<div class="page-header"><h1><?= $people ? 'Staff PINs' : 'My till PIN' ?></h1></div>
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?> is-flash"><?= e($flash['msg']) ?></div><?php endif; ?>
 
 <?php if (!$supported): ?>
-  <div class="alert alert--info">Run the <code>add_pos.sql</code> migration (Admin → Migrations) to set up the POS.</div>
+  <div class="alert alert--info">Run the <code>add_pos.sql</code> migration (Settings → Your account → Migrations) to set up the POS.</div>
 <?php else: ?>
-<p class="text-muted" style="margin:-6px 0 18px;font-size:13px;max-width:760px">On a registered till tablet you tap your name and enter this PIN. Use 4–6 digits that aren’t easy to guess (not 1234, 0000 or your birth year). Five wrong tries lock you out for 15 minutes.</p>
+<div class="posp-split<?= $__team ? '' : ' posp-split--solo' ?>">
+  <div class="card posp-mine">
+    <div class="posp-mine__top">
+      <span class="posp-av posp-av--me"><?= admin_icon('lock', 18) ?></span>
+      <div><b>Your PIN</b>
+        <?= !empty($me['pos_pin_hash']) ? '<span class="badge badge--green">Set ' . e(date('j M Y', strtotime((string)$me['pos_pin_set_at']))) . '</span>' : '<span class="badge badge--orange">Not set</span>' ?></div>
+    </div>
+    <p class="text-muted posp-help">On a till tablet you tap your name and enter this PIN. Use 4–6 digits that aren’t easy to guess (not 1234, 0000 or a birth year). Five wrong tries lock it for 15 minutes.</p>
+    <?php posp_form((int)$me['id'], !empty($me['pos_pin_hash']), $self); ?>
+  </div>
 
-<div class="card" style="margin-bottom:18px">
-  <div class="card__head"><span class="card__title">Your PIN</span>
-    <?= !empty($me['pos_pin_hash']) ? '<span class="badge badge--green">Set ' . e(date('j M Y', strtotime((string)$me['pos_pin_set_at']))) . '</span>' : '<span class="badge badge--orange">Not set</span>' ?></div>
-  <div class="card__body" style="padding:16px 20px"><?php posp_form((int)$me['id'], !empty($me['pos_pin_hash']), $self); ?></div>
-</div>
-
-<?php if ($role === 'owner' || $role === 'manager'): ?>
-<div class="card">
-  <div class="card__head"><span class="card__title">Team</span><span class="text-muted" style="font-size:12.5px"><?= $role === 'owner' ? 'Everyone' : 'Staff at the outlets you manage' ?></span></div>
-  <?php if (!$people): ?>
-    <?php dt_empty($role === 'owner' ? 'No team accounts yet.' : 'No staff are assigned to your outlets yet — the owner assigns them under POS outlets.'); ?>
-  <?php else: ?>
-  <div class="table-wrap"><table class="data-table posp-table">
-    <thead><tr><th>Person</th><th>PIN</th><th>Set / change</th></tr></thead>
-    <tbody>
-    <?php foreach ($people as $p): $has = !empty($p['pos_pin_hash']); ?>
-      <tr id="u<?= (int)$p['id'] ?>">
-        <td><strong><?= e($p['name'] ?: $p['email']) ?></strong><div class="text-muted" style="font-size:12px"><?= e(pos_role_label($p)) ?></div></td>
-        <td><?= $has ? '<span class="badge badge--green">Set</span>' : '<span class="badge badge--grey">None</span>' ?></td>
-        <td><?php posp_form((int)$p['id'], $has, $self); ?></td>
-      </tr>
-    <?php endforeach; ?>
-    </tbody>
-  </table></div>
+  <?php if ($__team): ?>
+  <div class="posp-team">
+    <div class="pos-ribbon">
+      <div><span>Team</span><b><?= count($people) ?></b></div>
+      <div><span>With a PIN</span><b><?= $__withPin ?></b></div>
+      <div><span>No PIN yet</span><b class="<?= count($people) - $__withPin ? 'posp-warn' : '' ?>"><?= count($people) - $__withPin ?></b></div>
+    </div>
+    <?php if (!$people): ?>
+      <?php dt_empty($role === 'owner' ? 'No team accounts yet.' : 'No staff are assigned to your outlets yet — the owner assigns them under Setup → Outlets.'); ?>
+    <?php else: ?>
+    <div class="posp-cards">
+      <?php foreach ($people as $p): $has = !empty($p['pos_pin_hash']); ?>
+      <div class="card posp-card" id="u<?= (int)$p['id'] ?>">
+        <div class="posp-card__top">
+          <span class="posp-av"><?= e($__ini((string)($p['name'] ?: $p['email']))) ?></span>
+          <span class="posp-card__who"><b><?= e($p['name'] ?: $p['email']) ?></b><small><?= e(pos_role_label($p)) ?></small></span>
+          <?= $has ? '<span class="badge badge--green">PIN set</span>' : '<span class="badge badge--grey">No PIN</span>' ?>
+        </div>
+        <?php posp_form((int)$p['id'], $has, $self); ?>
+      </div>
+      <?php endforeach; ?>
+    </div>
+    <?php endif; ?>
+  </div>
   <?php endif; ?>
 </div>
-<?php endif; ?>
 
 <style>
-.card__head{flex-wrap:wrap;gap:8px 12px}
-.posp-form{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin:0}
-.posp-pin{width:110px;letter-spacing:.3em;text-align:center}
-.posp-table td{vertical-align:middle}
+.posp-split{display:grid;grid-template-columns:minmax(260px,320px) minmax(0,1fr);gap:16px;align-items:start}
+.posp-split--solo{grid-template-columns:minmax(0,420px)}
+.posp-mine{padding:18px;display:flex;flex-direction:column;gap:12px;position:sticky;top:12px}
+.posp-mine__top{display:flex;align-items:center;gap:12px}
+.posp-mine__top b{display:block;margin-bottom:2px}
+.posp-help{font-size:12.5px;margin:0}
+.posp-av{width:40px;height:40px;border-radius:50%;background:var(--brand);color:#fff;display:inline-grid;place-items:center;font-weight:700;font-size:13px;flex:none}
+.posp-av--me{background:#e6f0f1;color:var(--brand);border-radius:11px}
+.posp-team{min-width:0}
+.posp-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(320px,100%),1fr));gap:12px}
+.posp-card{padding:14px 16px;display:flex;flex-direction:column;gap:12px}
+.posp-card__top{display:flex;align-items:center;gap:10px}
+.posp-card__who{flex:1;min-width:0}
+.posp-card__who b{display:block}
+.posp-card__who small{display:block;color:var(--muted);font-size:12px}
+.posp-warn{color:#b45309}
+.posp-form{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto auto;gap:8px;align-items:center;margin:0}
+.posp-form .pwfield{min-width:0;width:100%;display:block}
+.posp-form .pwfield > .posp-pin{width:100%;letter-spacing:.25em;text-align:center}
+.posp-form .pwfield__error,.posp-form .pwfield__caps{grid-column:1/-1}
+.posp-mine .posp-form{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+.posp-mine .posp-form button{justify-self:start}
+@media (max-width:480px){.posp-form{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}}
+@media (max-width:900px){.posp-split{grid-template-columns:minmax(0,1fr)}.posp-mine{position:static}}
 </style>
 <?php endif; ?>
 <?php include __DIR__ . '/_layout_end.php'; ?>

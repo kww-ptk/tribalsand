@@ -146,7 +146,6 @@ include __DIR__ . '/_layout.php';
   <div class="card" style="margin-bottom:16px">
     <div class="card__head" style="gap:12px;flex-wrap:wrap">
       <span class="card__title" style="display:inline-flex;align-items:center;gap:8px"><?= admin_icon('inbox', 16) ?> All images</span>
-      <span class="text-muted" style="font-size:12px">Library plus every venue, room and tour gallery</span>
       <span style="flex:1 1 auto"></span>
       <?php dt_toolbar(['per' => $meta['per'], 'placeholder' => 'Search filename…']); ?>
     </div>

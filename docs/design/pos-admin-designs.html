@@ -1,0 +1,420 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>POS Admin Designs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* Mockups only — two directions for the Point of Sale admin pages:
+   Sales · Catalogue · Stock · Suppliers · Outlets · Terminals · Staff PINs.
+   A = table + side drawer, B = list + detail. Sample data, nothing saves. */
+:root{
+  --brand:#1E5C6B;--brand-dk:#102F3A;--accent:#B8965A;--bg:#FAF6EE;--white:#fff;
+  --text:#141412;--muted:#6B6050;--border:#e7ded7;--soft:#f4efe6;--tint:#e6f0f1;
+  --red:#c0392b;--red-bg:#fdecea;--green:#2e7d32;--green-bg:#e8f5e9;--warn:#b45309;--warn-bg:#fdf3e4;--blue:#1d4ed8;--blue-bg:#e8eefc;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:Inter,system-ui,sans-serif;color:var(--text);background:#E9E4DA;font-size:14px;line-height:1.5}
+button{font:inherit;cursor:pointer;color:inherit}
+input{font:inherit}
+svg.i{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+.pick{position:sticky;top:0;z-index:80;background:#0d1615;color:#fff;display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;padding:10px 18px}
+.pick b{font-weight:600}
+.pick .grp{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.pick .lbl{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#8fa7a3;margin-right:2px}
+.pick button{border:1px solid #2c3d3b;background:#16221f;color:#cfe0dc;border-radius:999px;padding:5px 13px;font-size:13px}
+.pick button.on{background:#fff;color:#0d1615;border-color:#fff}
+.stage{padding:20px 18px 60px}
+.desc{max-width:1320px;margin:0 auto 12px;color:#33413f;font-size:14px}
+.desc strong{color:#0d1615}
+.frame{max-width:1320px;margin:0 auto;border-radius:14px;overflow:hidden;box-shadow:0 30px 80px rgba(13,22,21,.18);display:flex;min-height:780px;background:var(--bg);position:relative}
+.side{width:196px;flex:none;background:var(--brand-dk);color:#cfe0dc;padding:18px 12px;font-size:12.5px}
+.side .logo{color:#fff;font-weight:600;letter-spacing:.06em;margin:0 6px 18px}
+.side .logo span{color:var(--accent)}
+.side a{display:block;padding:6px 8px;border-radius:7px;color:#cfe0dc;text-decoration:none}
+.side a.on{background:rgba(255,255,255,.1);color:#fff;font-weight:600}
+.side .g{color:#fff;font-weight:600;margin:10px 0 2px 8px}
+.side .sub{margin-left:14px;border-left:1px solid rgba(255,255,255,.15);padding-left:6px}
+.main{flex:1;min-width:0;padding:0 28px 28px}
+.atabs{display:flex;gap:22px;border-bottom:1px solid var(--border);padding-top:14px;margin-bottom:18px}
+.atabs a{padding:6px 0 10px;font-size:13.5px;font-weight:700;color:var(--muted);border-bottom:2.5px solid transparent;margin-bottom:-1px;text-decoration:none}
+.atabs a.on{color:var(--brand);border-color:var(--brand)}
+.ph{display:flex;align-items:center;gap:12px;margin:0 0 16px;flex-wrap:wrap}
+.ph h1{font-size:22px;margin:0;letter-spacing:-.01em}
+.ph .sp{flex:1}
+.btn{display:inline-flex;align-items:center;gap:7px;border-radius:9px;padding:8px 14px;font-weight:600;font-size:13px;border:1.5px solid transparent;background:none;white-space:nowrap}
+.btn-p{background:var(--brand);color:#fff}
+.btn-o{background:#fff;border-color:var(--border);color:var(--brand)}
+.btn-d{background:#fff;border-color:#f1c9c4;color:var(--red)}
+.btn-sm{padding:5px 10px;font-size:12px}
+.ib{width:30px;height:30px;border-radius:8px;border:1px solid var(--border);background:#fff;display:inline-grid;place-items:center;color:var(--muted)}
+.card{background:#fff;border:1px solid var(--border);border-radius:14px;min-width:0}
+.ch{display:flex;align-items:center;gap:10px;padding:13px 18px;border-bottom:1px solid var(--border);font-weight:600}
+.ch .sp{flex:1}
+.ch small{font-weight:400;color:var(--muted)}
+.pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 9px;font-size:11.5px;font-weight:600;white-space:nowrap}
+.p-g{background:var(--green-bg);color:var(--green)}.p-r{background:var(--red-bg);color:var(--red)}.p-w{background:var(--warn-bg);color:var(--warn)}.p-b{background:var(--blue-bg);color:var(--blue)}.p-n{background:var(--soft);color:var(--muted)}
+.muted{color:var(--muted)}
+.num{font-variant-numeric:tabular-nums}
+table{width:100%;border-collapse:collapse;font-size:13px}
+th{text-align:left;font-size:11px;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);font-weight:600;padding:10px 14px;background:#fbf8f3;border-bottom:1px solid var(--border);white-space:nowrap}
+td{padding:11px 14px;border-bottom:1px solid #f1ebe2;vertical-align:middle}
+tr.click{cursor:pointer}
+tr.click:hover td{background:#fbf8f3}
+tr.sel td{background:var(--tint)}
+.r{text-align:right}
+.chips{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.chip{border:1.5px solid var(--border);background:#fff;border-radius:999px;padding:5px 12px;font-size:12.5px;font-weight:600;color:var(--muted)}
+.chip.on{background:var(--brand);border-color:var(--brand);color:#fff}
+.sel-btn{display:inline-flex;align-items:center;gap:6px;border:1.5px solid var(--border);background:#fff;border-radius:9px;padding:6px 10px;font-size:12.5px;font-weight:600}
+.search{display:flex;align-items:center;gap:8px;border:1.5px solid var(--border);border-radius:9px;padding:7px 11px;background:#fff;color:var(--muted);font-size:13px;min-width:220px}
+.kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-bottom:14px}
+.kpi{background:#fff;border:1px solid var(--border);border-radius:14px;padding:14px 16px}
+.kpi span{display:block;font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.kpi b{display:block;font-size:22px;margin-top:2px;letter-spacing:-.01em}
+.kpi small{color:var(--muted);font-size:12px}
+.kpi.dark{background:var(--brand-dk);border-color:var(--brand-dk);color:#fff}
+.kpi.dark span,.kpi.dark small{color:#a9c4c7}
+.bar{height:8px;border-radius:99px;background:var(--soft);overflow:hidden;display:flex}
+.bar i{display:block;height:100%}
+.leg{display:flex;gap:12px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:8px}
+.leg i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:-1px}
+.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.toolbar .sp{flex:1}
+.av{width:30px;height:30px;border-radius:50%;display:inline-grid;place-items:center;font-size:11px;font-weight:700;color:#fff;background:var(--brand);flex:none}
+.thumb{width:38px;height:38px;border-radius:9px;flex:none;background:linear-gradient(135deg,#e8d3ad,#b8965a)}
+.t2{background:linear-gradient(135deg,#9fc2c3,#1E5C6B)}.t3{background:linear-gradient(135deg,#bcd7cf,#2f6f63)}.t4{background:linear-gradient(135deg,#d9c8b4,#7a5b3b)}.t5{background:linear-gradient(135deg,#f0d6cf,#c0392b)}
+.who{display:flex;align-items:center;gap:10px;min-width:0}
+.who b{display:block;font-weight:600}
+.who small{display:block;color:var(--muted);font-size:12px}
+.foot{display:flex;align-items:center;gap:10px;padding:10px 14px;font-size:12.5px;color:var(--muted)}
+.foot .sp{flex:1}
+.pg{display:inline-flex;gap:4px}.pg span{min-width:28px;height:28px;border-radius:7px;border:1px solid var(--border);display:inline-grid;place-items:center;font-size:12px;background:#fff}.pg span.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+.field{display:flex;flex-direction:column;gap:4px;min-width:0}
+.field label{font-size:12px;font-weight:600;color:var(--muted)}
+.inp{border:1.5px solid var(--border);border-radius:9px;padding:8px 11px;background:#fff;font-size:13px;min-height:36px;display:flex;align-items:center;justify-content:space-between;color:var(--text)}
+.inp.ph{color:#a89f93}
+.form{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
+.seg{display:inline-flex;border:1.5px solid var(--border);border-radius:9px;overflow:hidden;background:#fff}
+.seg span{padding:6px 12px;font-size:12.5px;font-weight:600;color:var(--muted)}
+.seg span.on{background:var(--brand);color:#fff}
+.tog{display:flex;align-items:center;gap:10px;font-size:13px}
+.tog i{width:34px;height:20px;border-radius:99px;background:#d8cfc6;position:relative;flex:none}
+.tog i::after{content:"";position:absolute;top:3px;left:3px;width:14px;height:14px;border-radius:50%;background:#fff}
+.tog.on i{background:var(--brand)}.tog.on i::after{left:17px}
+.x{margin-left:auto}
+
+/* A — drawer */
+.A-wrap{position:relative}
+.drawer{position:absolute;top:0;right:0;bottom:0;width:380px;background:#fff;border-left:1px solid var(--border);box-shadow:-18px 0 40px -18px rgba(16,47,58,.25);display:flex;flex-direction:column;z-index:5}
+.drawer .dh{display:flex;align-items:flex-start;gap:10px;padding:16px 18px;border-bottom:1px solid var(--border)}
+.drawer .dh b{display:block;font-size:16px}
+.drawer .db{padding:16px 18px;overflow:auto;flex:1;display:flex;flex-direction:column;gap:14px}
+.drawer .df{padding:12px 18px;border-top:1px solid var(--border);display:flex;gap:8px;justify-content:flex-end}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13px}
+.kv dt{color:var(--muted)}.kv dd{margin:0;text-align:right;font-weight:500}
+.lines div{display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px dashed var(--border);font-size:13px}
+.lines div:last-child{border:0;font-weight:700}
+.scrim{position:absolute;inset:0;background:rgba(250,246,238,.55);z-index:4}
+
+/* B — list + detail */
+.split{display:grid;grid-template-columns:360px minmax(0,1fr);gap:14px;align-items:start}
+.list{background:#fff;border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.list .lh{padding:12px;border-bottom:1px solid var(--border);display:flex;flex-direction:column;gap:8px}
+.list .li{display:flex;gap:10px;align-items:center;padding:11px 14px;border-bottom:1px solid #f1ebe2;cursor:pointer}
+.list .li:hover{background:#fbf8f3}
+.list .li.on{background:var(--tint);box-shadow:inset 3px 0 0 var(--brand)}
+.list .li .m{flex:1;min-width:0}
+.list .li .m b{display:block;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.list .li .m small{display:block;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.list .li .v{text-align:right;font-size:13px;font-weight:600}
+.list .li .v small{display:block;font-weight:400;color:var(--muted);font-size:11.5px}
+.list .day{padding:8px 14px;background:#fbf8f3;font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);display:flex;justify-content:space-between}
+.detail{display:flex;flex-direction:column;gap:14px}
+.dhero{background:#fff;border:1px solid var(--border);border-radius:14px;padding:18px 20px;display:flex;gap:16px;align-items:center;flex-wrap:wrap}
+.dhero .big{font-size:26px;font-weight:700;letter-spacing:-.01em}
+.dhero .sp{flex:1}
+.ribbon{display:flex;gap:0;background:#fff;border:1px solid var(--border);border-radius:14px;margin-bottom:14px;overflow:hidden}
+.ribbon div{flex:1;padding:12px 16px;border-right:1px solid var(--border);min-width:0}
+.ribbon div:last-child{border:0}
+.ribbon span{display:block;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.ribbon b{font-size:18px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
+.tile{background:#fff;border:1px solid var(--border);border-radius:14px;overflow:hidden}
+.tile .ti{height:96px;position:relative}
+.tile .ti .pill{position:absolute;top:8px;right:8px}
+.tile .tb{padding:10px 12px}
+.tile .tb b{display:block}
+.tile .tb .row{display:flex;justify-content:space-between;align-items:center;margin-top:6px}
+.gauge{height:6px;border-radius:99px;background:var(--soft);overflow:hidden;margin-top:6px}
+.gauge i{display:block;height:100%;background:var(--brand)}
+.gauge.low i{background:var(--warn)}.gauge.out i{background:var(--red)}
+.tl{display:flex;flex-direction:column}
+.tl div{display:grid;grid-template-columns:92px 1fr auto;gap:10px;padding:9px 0;border-bottom:1px dashed var(--border);font-size:13px}
+.tl div:last-child{border:0}
+@media (max-width:1000px){.side{display:none}.split{grid-template-columns:1fr}.kpis{grid-template-columns:repeat(2,1fr)}.drawer{position:static;width:auto;box-shadow:none;border:1px solid var(--border);border-radius:14px;margin-top:14px}.scrim{display:none}.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="pick">
+  <b>Point of Sale admin — 2 designs</b>
+  <div class="grp"><span class="lbl">Design</span><span id="pickD"><button class="on" data-d="A">A · Table + side drawer</button> <button data-d="B">B · List + detail</button></span></div>
+  <div class="grp"><span class="lbl">Page</span><span id="pickP"></span></div>
+</div>
+<div class="stage">
+  <p class="desc" id="desc"></p>
+  <div class="frame">
+    <aside class="side">
+      <div class="logo">TRIBAL <span>SAND</span></div>
+      <div class="g">Point of Sale</div>
+      <div class="sub" id="sideNav"></div>
+      <div class="g" style="opacity:.6">Inventory</div><div class="g" style="opacity:.6">Finance</div>
+    </aside>
+    <div class="main" id="main"></div>
+  </div>
+</div>
+
+<script>
+var I = {
+  plus:'<svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>',
+  x:'<svg class="i" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>',
+  dl:'<svg class="i" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>',
+  cal:'<svg class="i" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>',
+  srch:'<svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>',
+  chev:'<svg class="i" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="m6 9 6 6 6-6"/></svg>',
+  edit:'<svg class="i" viewBox="0 0 24 24" style="width:14px;height:14px"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>',
+  rcpt:'<svg class="i" viewBox="0 0 24 24"><path d="M4 2v20l3-2 3 2 3-2 3 2 3-2 3 2V2l-3 2-3-2-3 2-3-2-3 2Z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>',
+  ban:'<svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m5.6 5.6 12.8 12.8"/></svg>',
+  box:'<svg class="i" viewBox="0 0 24 24"><path d="M21 8 12 3 3 8v8l9 5 9-5Z"/><path d="m3 8 9 5 9-5M12 13v8"/></svg>',
+  tab:'<svg class="i" viewBox="0 0 24 24"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M11 18h2"/></svg>',
+  key:'<svg class="i" viewBox="0 0 24 24"><circle cx="8" cy="15" r="4"/><path d="m10.8 12.2 9.2-9.2M17 6l3 3M15 8l2 2"/></svg>',
+  pay:'<svg class="i" viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>'
+};
+var KES = function (n) { return 'KES ' + n.toLocaleString('en-US'); };
+
+var SALES = [
+  ['14:52','POS-000231','Tribal Shop','Walk-in','Amina','M-Pesa',4300,'ok'],
+  ['14:20','POS-000230','Spa','Jess Smith · Maya Kobe, Villa 2','Wanjiru','Room',9000,'ok'],
+  ['13:41','POS-000229','Kite School','Walk-in','Omar','Card',12900,'ok'],
+  ['12:58','POS-000228','Tribal Shop','Walk-in','Amina','Cash',2450,'ok'],
+  ['12:10','POS-000227','Tribal Shop','Paolo Rossi · Maya Ilai, Studio 3','Amina','Room',5300,'void'],
+  ['11:32','POS-000226','Spa','Walk-in','Wanjiru','Card',6500,'ok'],
+  ['10:47','POS-000225','Tribal Shop','Walk-in','Amina','M-Pesa',1800,'ok'],
+  ['10:05','POS-000224','Kite School','Lara Weber · Zuri, Suite 4','Omar','Room',25800,'ok']
+];
+var ITEMS = [
+  ['Sunscreen SPF 50','Shop · Beach care','Tribal Shop',1800,14,5,'t1','own'],
+  ['Kikoi wrap','Shop · Textiles','Tribal Shop',3500,3,5,'t4','consign'],
+  ['Beach towel','Shop · Textiles','Tribal Shop',2200,0,4,'t2','own'],
+  ['Coconut soap','Shop · Beauty','Tribal Shop',650,32,10,'t3','consign'],
+  ['Deep tissue massage 60′','Spa · Treatments','Spa',9000,null,null,'t5','activity'],
+  ['Kite lesson 2h','Kite · Lessons','Kite School',12900,null,null,'t2','activity'],
+  ['Board rental (day)','Kite · Rental','Kite School',4500,null,null,'t3','own']
+];
+var SUPS = [['Watamu Weavers','Fatma · 0722 104 556',25,6,18400],['Kilifi Soap Co.','hello@kilifisoap.co.ke',30,4,5600],['Malindi Leather','0711 220 431',null,3,0]];
+var OUTLETS = [['Tribal Shop','Shop','Maya Ilai','Tribal Dunes Services Ltd',16,0,true,true],['Spa','Spa','Maya Kobe','Maya Kobe Ltd',16,10,true,true],['Kite School','Kite','—','Tribal Dunes Services Ltd',16,0,true,false]];
+var TERMS = [['Shop iPad','Tribal Shop','2 min ago','ok'],['Spa tablet','Spa','1 h ago','ok'],['Kite tablet','Kite School','3 days ago','idle'],['Old front-desk iPad','—','12 Sep','revoked']];
+var PINS = [['Amina Said','Shop','Tribal Shop','set',''],['Wanjiru K.','Spa','Spa','set',''],['Omar Ali','Kite','Kite School','locked','5 wrong · 12 min'],['Grace N.','Shop','Tribal Shop','none','']];
+
+function shell(tabs, active) {
+  return '<nav class="atabs">' + tabs.map(function (t) { return '<a' + (t === active ? ' class="on"' : '') + '>' + t + '</a>'; }).join('') + '</nav>';
+}
+function payPill(p) { return '<span class="pill ' + ({'Room':'p-b','Card':'p-n','Cash':'p-g','M-Pesa':'p-g'}[p] || 'p-n') + '">' + p + '</span>'; }
+function stockPill(o, a) {
+  if (o === null) return '<span class="pill p-n">No stock</span>';
+  if (o === 0) return '<span class="pill p-r">Out</span>';
+  if (o <= a) return '<span class="pill p-w">' + o + ' · low</span>';
+  return '<span class="pill p-g">' + o + '</span>';
+}
+function typePill(t) { return {own:'<span class="pill p-n">Ours</span>',consign:'<span class="pill p-w">Consignment</span>',activity:'<span class="pill p-b">Activity</span>'}[t]; }
+function drawer(title, sub, body, foot) {
+  return '<div class="scrim"></div><aside class="drawer"><div class="dh"><div><b>' + title + '</b><small class="muted">' + sub + '</small></div><button class="ib x" aria-label="Close">' + I.x + '</button></div>' +
+         '<div class="db">' + body + '</div>' + (foot ? '<div class="df">' + foot + '</div>' : '') + '</aside>';
+}
+function pager(n) { return '<div class="foot"><span>' + n + '</span><span class="sp"></span><span class="seg"><span>10</span><span class="on">25</span><span>50</span><span>All</span></span><span class="pg"><span class="on">1</span><span>2</span></span></div>'; }
+
+var PAGES = {
+  'Sales': {area: null, A: function () {
+    var rows = SALES.map(function (s, i) {
+      return '<tr class="click' + (i === 1 ? ' sel' : '') + '"><td class="num">' + s[0] + '</td><td><b>' + s[1] + '</b></td><td>' + s[2] + '</td><td>' + s[3] + '</td><td class="muted">' + s[4] + '</td><td>' + payPill(s[5]) + '</td><td class="r num"><b' + (s[7] === 'void' ? ' style="text-decoration:line-through;color:var(--muted)"' : '') + '>' + KES(s[6]) + '</b>' + (s[7] === 'void' ? ' <span class="pill p-r">Void</span>' : '') + '</td></tr>';
+    }).join('');
+    var s = SALES[1];
+    return '<div class="ph"><h1>Sales</h1><span class="sp"></span><button class="btn btn-o">' + I.cal + ' Daily close</button><button class="btn btn-o">' + I.dl + ' CSV</button></div>' +
+      '<div class="toolbar"><div class="chips"><span class="chip on">Today</span><span class="chip">Yesterday</span><span class="chip">7 days</span><span class="chip">This month</span><span class="sel-btn">' + I.cal + ' 12 Oct 2026</span></div><span class="sp"></span><span class="sel-btn">All outlets ' + I.chev + '</span><span class="sel-btn">All payments ' + I.chev + '</span><span class="sel-btn">All staff ' + I.chev + '</span></div>' +
+      '<div class="kpis"><div class="kpi dark"><span>Takings today</span><b>KES 62,750</b><small>8 sales · 1 voided</small></div><div class="kpi"><span>Average sale</span><b>KES 8,964</b><small>+12% on last Monday</small></div><div class="kpi"><span>Charged to rooms</span><b>KES 34,800</b><small>2 guests · on their bills</small></div>' +
+      '<div class="kpi"><span>How guests paid</span><div class="bar" style="margin-top:10px"><i style="width:55%;background:var(--brand)"></i><i style="width:21%;background:#7fa9b1"></i><i style="width:14%;background:var(--accent)"></i><i style="width:10%;background:#d8cfc6"></i></div><div class="leg"><span><i style="background:var(--brand)"></i>Room</span><span><i style="background:#7fa9b1"></i>Card</span><span><i style="background:var(--accent)"></i>M-Pesa</span><span><i style="background:#d8cfc6"></i>Cash</span></div></div></div>' +
+      '<div class="A-wrap"><div class="card"><div class="ch">Sales <small>8</small><span class="sp"></span><span class="search">' + I.srch + ' Receipt # or customer…</span></div>' +
+      '<table><thead><tr><th>Time</th><th>Receipt</th><th>Outlet</th><th>Customer</th><th>Staff</th><th>Paid</th><th class="r">Total</th></tr></thead><tbody>' + rows + '</tbody></table>' + pager('8 sales') + '</div>' +
+      drawer(s[1], ' · today ' + s[0] + ' · ' + s[2],
+        '<div><span class="pill p-b">Room charge</span> <span class="pill p-g">Completed</span></div><dl class="kv"><dt>Guest</dt><dd>Jess Smith</dd><dt>Stay</dt><dd>Maya Kobe · Villa 2</dd><dt>Staff</dt><dd>Wanjiru</dd><dt>Signed</dt><dd>Yes</dd></dl>' +
+        '<div class="lines"><div><span>Deep tissue massage 60′ × 1</span><span>KES 9,000</span></div><div><span>incl. VAT 16%</span><span class="muted">KES 1,241</span></div><div><span>Total</span><span>KES 9,000</span></div></div>' +
+        '<p class="muted" style="margin:0;font-size:12.5px">On the bill as USD 69.77 at 129 KES/USD.</p>',
+        '<button class="btn btn-d btn-sm">' + I.ban + ' Void sale</button><button class="btn btn-o btn-sm">' + I.rcpt + ' Receipt</button>') + '</div>';
+  }, B: function () {
+    var li = SALES.map(function (s, i) {
+      return '<div class="li' + (i === 1 ? ' on' : '') + '"><div class="av" style="background:' + (s[5] === 'Room' ? 'var(--blue)' : 'var(--brand)') + '">' + s[2].split(' ').map(function (w) { return w[0]; }).join('').slice(0, 2) + '</div><div class="m"><b>' + s[3].split(' · ')[0] + '</b><small>' + s[0] + ' · ' + s[1] + ' · ' + s[4] + '</small></div><div class="v">' + KES(s[6]) + (s[7] === 'void' ? '<small style="color:var(--red)">Voided</small>' : '<small>' + s[5] + '</small>') + '</div></div>';
+    }).join('');
+    return '<div class="ph"><h1>Sales</h1><span class="sp"></span><span class="seg"><span class="on">Today</span><span>Yesterday</span><span>7 days</span><span>Month</span></span><span class="sel-btn">' + I.cal + ' 12 Oct</span><button class="btn btn-o">' + I.cal + ' Daily close</button><button class="btn btn-o">' + I.dl + ' CSV</button></div>' +
+      '<div class="ribbon"><div><span>Takings</span><b>KES 62,750</b></div><div><span>Sales</span><b>8</b> <small class="muted">· 1 void</small></div><div><span>To rooms</span><b>KES 34,800</b></div><div><span>Card</span><b>KES 19,400</b></div><div><span>M-Pesa · Cash</span><b>KES 8,550</b></div></div>' +
+      '<div class="split"><div class="list"><div class="lh"><span class="search">' + I.srch + ' Search receipts or guests…</span><div class="chips"><span class="chip on">All outlets</span><span class="chip">Shop</span><span class="chip">Spa</span><span class="chip">Kite</span></div></div><div class="day"><span>Today</span><span>KES 62,750</span></div>' + li + '</div>' +
+      '<div class="detail"><div class="dhero"><div><small class="muted">POS-000230 · today 14:20 · Spa</small><div class="big">KES 9,000</div><span class="pill p-b">Charged to room</span> <span class="pill p-g">Completed</span></div><span class="sp"></span><button class="btn btn-o">' + I.rcpt + ' Receipt</button><button class="btn btn-d">' + I.ban + ' Void</button></div>' +
+      '<div class="grid2"><div class="card"><div class="ch">Items</div><div style="padding:6px 18px 12px" class="lines"><div><span>Deep tissue massage 60′ × 1</span><span>KES 9,000</span></div><div><span>incl. VAT 16%</span><span class="muted">KES 1,241</span></div><div><span>Total</span><span>KES 9,000</span></div></div></div>' +
+      '<div class="card"><div class="ch">Guest &amp; bill</div><dl class="kv" style="padding:14px 18px"><dt>Guest</dt><dd>Jess Smith</dd><dt>Stay</dt><dd>Maya Kobe · Villa 2</dd><dt>On the bill</dt><dd>USD 69.77 @ 129</dd><dt>Signed</dt><dd>Yes</dd><dt>Staff</dt><dd>Wanjiru</dd></dl></div></div>' +
+      '<div class="card"><div class="ch">Today by outlet</div><table><thead><tr><th>Outlet</th><th>Sales</th><th class="r">Room</th><th class="r">Card</th><th class="r">M-Pesa / cash</th><th class="r">Total</th></tr></thead><tbody><tr><td>Tribal Shop</td><td>4</td><td class="r">—</td><td class="r">—</td><td class="r">KES 8,550</td><td class="r"><b>KES 8,550</b></td></tr><tr><td>Spa</td><td>2</td><td class="r">KES 9,000</td><td class="r">KES 6,500</td><td class="r">—</td><td class="r"><b>KES 15,500</b></td></tr><tr><td>Kite School</td><td>2</td><td class="r">KES 25,800</td><td class="r">KES 12,900</td><td class="r">—</td><td class="r"><b>KES 38,700</b></td></tr></tbody></table></div></div></div>';
+  }},
+  'Catalogue': {area: ['Catalogue','Stock','Suppliers'], A: function () {
+    var rows = ITEMS.map(function (it, i) {
+      return '<tr class="click' + (i === 1 ? ' sel' : '') + '"><td><div class="who"><span class="thumb ' + it[6] + '"></span><span><b>' + it[0] + '</b><small>' + it[1] + '</small></span></div></td><td>' + it[2] + '</td><td>' + typePill(it[7]) + '</td><td class="r num">' + KES(it[3]) + '</td><td>' + stockPill(it[4], it[5]) + '</td><td><span class="pill p-g">On sale</span></td><td class="r"><span class="ib">' + I.edit + '</span></td></tr>';
+    }).join('');
+    return '<div class="ph"><h1>Catalogue</h1><span class="sp"></span><button class="btn btn-o">' + I.plus + ' From activities</button><button class="btn btn-p">' + I.plus + ' Add item</button></div>' +
+      '<div class="toolbar"><div class="chips"><span class="chip on">All 7</span><span class="chip">Low stock 1</span><span class="chip">Out 1</span><span class="chip">Activities 2</span><span class="chip">Consignment 2</span></div><span class="sp"></span><span class="sel-btn">All outlets ' + I.chev + '</span><span class="search">' + I.srch + ' Search items or SKU…</span></div>' +
+      '<div class="A-wrap"><div class="card"><table><thead><tr><th>Item</th><th>Outlet</th><th>Type</th><th class="r">Price</th><th>Stock</th><th>Status</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>' + pager('7 items') + '</div>' +
+      drawer('Kikoi wrap', 'Tribal Shop · SKU KK-102',
+        '<div class="thumb t4" style="width:100%;height:120px;border-radius:12px"></div><div class="form"><div class="field"><label>Name</label><div class="inp">Kikoi wrap</div></div><div class="field"><label>Category</label><div class="inp">Textiles ' + I.chev + '</div></div><div class="field"><label>Price</label><div class="inp">KES 3,500</div></div><div class="field"><label>Low-stock alert at</label><div class="inp">5</div></div></div>' +
+        '<div class="field"><label>Whose stock</label><span class="seg"><span>Ours</span><span class="on">Consignment</span></span></div><dl class="kv"><dt>Supplier</dt><dd>Watamu Weavers · we keep 25%</dd><dt>On hand</dt><dd>3 (low)</dd></dl>',
+        '<button class="btn btn-o btn-sm">Hide from till</button><button class="btn btn-p btn-sm">Save</button>') + '</div>';
+  }, B: function () {
+    var tiles = ITEMS.map(function (it) {
+      var pct = it[4] === null ? 0 : Math.min(100, it[4] / Math.max(1, it[5] * 3) * 100);
+      var cls = it[4] === 0 ? ' out' : (it[4] !== null && it[4] <= it[5] ? ' low' : '');
+      return '<div class="tile"><div class="ti thumb ' + it[6] + '" style="width:auto;height:96px;border-radius:0">' + typePill(it[7]).replace('pill ', 'pill ') + '</div><div class="tb"><b>' + it[0] + '</b><small class="muted">' + it[1] + '</small><div class="row"><b class="num">' + KES(it[3]) + '</b>' + stockPill(it[4], it[5]) + '</div>' + (it[4] === null ? '' : '<div class="gauge' + cls + '"><i style="width:' + pct + '%"></i></div>') + '</div></div>';
+    }).join('');
+    return '<div class="ph"><h1>Catalogue</h1><span class="sp"></span><span class="seg"><span class="on">Tribal Shop</span><span>Spa</span><span>Kite School</span></span><button class="btn btn-o">' + I.plus + ' From activities</button><button class="btn btn-p">' + I.plus + ' Add item</button></div>' +
+      '<div class="ribbon"><div><span>Items on sale</span><b>7</b></div><div><span>Low stock</span><b style="color:var(--warn)">1</b></div><div><span>Out of stock</span><b style="color:var(--red)">1</b></div><div><span>Stock value</span><b>KES 61,300</b></div></div>' +
+      '<div class="toolbar"><div class="chips"><span class="chip on">All</span><span class="chip">Beach care</span><span class="chip">Textiles</span><span class="chip">Beauty</span><span class="chip">Treatments</span><span class="chip">Lessons</span></div><span class="sp"></span><span class="search">' + I.srch + ' Search items or SKU…</span></div>' +
+      '<div class="tiles">' + tiles + '</div>';
+  }},
+  'Stock': {area: ['Catalogue','Stock','Suppliers'], A: function () {
+    var rows = ITEMS.filter(function (it) { return it[4] !== null; }).map(function (it, i) {
+      return '<tr class="click' + (i === 1 ? ' sel' : '') + '"><td><div class="who"><span class="thumb ' + it[6] + '"></span><span><b>' + it[0] + '</b><small>' + it[2] + '</small></span></div></td><td>' + stockPill(it[4], it[5]) + '</td><td class="num">' + it[5] + '</td><td class="muted">' + ['2 Oct','6 Oct','28 Sep','11 Oct','—'][i] + '</td><td class="r"><button class="btn btn-o btn-sm">Receive</button> <button class="btn btn-o btn-sm">Count</button></td></tr>';
+    }).join('');
+    return '<div class="ph"><h1>Stock</h1><span class="sp"></span><span class="sel-btn">Tribal Shop ' + I.chev + '</span><button class="btn btn-o">' + I.box + ' Count everything</button><button class="btn btn-p">' + I.plus + ' Receive delivery</button></div>' +
+      '<div class="kpis"><div class="kpi"><span>Items tracked</span><b>5</b></div><div class="kpi"><span>Low</span><b style="color:var(--warn)">1</b><small>Kikoi wrap</small></div><div class="kpi"><span>Out</span><b style="color:var(--red)">1</b><small>Beach towel</small></div><div class="kpi"><span>Stock value</span><b>KES 61,300</b></div></div>' +
+      '<div class="A-wrap"><div class="card"><table><thead><tr><th>Item</th><th>On hand</th><th>Alert at</th><th>Last delivery</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>' + pager('5 items') + '</div>' +
+      drawer('Kikoi wrap — receive', 'Tribal Shop · 3 on hand',
+        '<div class="field"><label>What happened</label><span class="seg"><span class="on">Received</span><span>Counted</span></span></div><div class="form"><div class="field"><label>Quantity received</label><div class="inp">12</div></div><div class="field"><label>Unit cost</label><div class="inp ph">optional</div></div></div>' +
+        '<div class="field"><label>Whose stock</label><span class="seg"><span>Ours</span><span class="on">Consignment %</span><span>Fixed per item</span></span></div><div class="form"><div class="field"><label>Supplier</label><div class="inp">Watamu Weavers ' + I.chev + '</div></div><div class="field"><label>We keep</label><div class="inp">25%</div></div></div>' +
+        '<div class="card"><div class="ch">History</div><div class="tl" style="padding:4px 14px"><div><span class="muted">6 Oct</span><span>Received from Watamu Weavers</span><b style="color:var(--green)">+10</b></div><div><span class="muted">8 Oct</span><span>Sold · 4 sales</span><b>−5</b></div><div><span class="muted">11 Oct</span><span>Count · “one torn”</span><b style="color:var(--red)">−2</b></div></div></div>',
+        '<button class="btn btn-p btn-sm">Record</button>') + '</div>';
+  }, B: function () {
+    var li = ITEMS.filter(function (it) { return it[4] !== null; }).map(function (it, i) {
+      return '<div class="li' + (i === 1 ? ' on' : '') + '"><span class="thumb ' + it[6] + '"></span><div class="m"><b>' + it[0] + '</b><small>alert at ' + it[5] + '</small></div><div class="v">' + stockPill(it[4], it[5]) + '</div></div>';
+    }).join('');
+    return '<div class="ph"><h1>Stock</h1><span class="sp"></span><span class="seg"><span class="on">Tribal Shop</span><span>Spa</span><span>Kite School</span></span><button class="btn btn-o">' + I.box + ' Count everything</button></div>' +
+      '<div class="split"><div class="list"><div class="lh"><span class="search">' + I.srch + ' Search items…</span><div class="chips"><span class="chip on">All 5</span><span class="chip">Low 1</span><span class="chip">Out 1</span></div></div>' + li + '</div>' +
+      '<div class="detail"><div class="dhero"><span class="thumb t4" style="width:64px;height:64px;border-radius:14px"></span><div><small class="muted">Tribal Shop · consignment · Watamu Weavers</small><div class="big">Kikoi wrap</div></div><span class="sp"></span><div style="text-align:right"><small class="muted">On hand</small><div class="big" style="color:var(--warn)">3</div></div></div>' +
+      '<div class="grid2"><div class="card"><div class="ch">Receive or count</div><div style="padding:14px 18px;display:flex;flex-direction:column;gap:12px"><span class="seg"><span class="on">Received</span><span>Counted</span></span><div class="form"><div class="field"><label>Quantity</label><div class="inp">12</div></div><div class="field"><label>Unit cost</label><div class="inp ph">optional</div></div></div><div class="field"><label>Whose stock</label><span class="seg"><span>Ours</span><span class="on">Consignment %</span><span>Fixed</span></span></div><button class="btn btn-p" style="align-self:flex-start">Record</button></div></div>' +
+      '<div class="card"><div class="ch">Last 30 days</div><div style="padding:14px 18px"><div style="display:flex;align-items:flex-end;gap:5px;height:90px">' + [3,5,4,8,10,9,7,6,9,8,6,5,4,3].map(function (h) { return '<i style="flex:1;background:var(--tint);border-top:3px solid var(--brand);height:' + h * 9 + 'px;border-radius:4px 4px 0 0"></i>'; }).join('') + '</div><div class="tl" style="margin-top:8px"><div><span class="muted">11 Oct</span><span>Count · one torn</span><b style="color:var(--red)">−2</b></div><div><span class="muted">6 Oct</span><span>Received</span><b style="color:var(--green)">+10</b></div></div></div></div></div></div></div>';
+  }},
+  'Suppliers': {area: ['Catalogue','Stock','Suppliers'], A: function () {
+    var rows = SUPS.map(function (s, i) {
+      return '<tr class="click' + (i === 0 ? ' sel' : '') + '"><td><b>' + s[0] + '</b></td><td class="muted">' + s[1] + '</td><td>' + (s[2] === null ? '<span class="pill p-n">Fixed per item</span>' : s[2] + '%') + '</td><td class="num">' + s[3] + '</td><td class="r num">' + (s[4] ? '<b>' + KES(s[4]) + '</b>' : '<span class="muted">Settled</span>') + '</td></tr>';
+    }).join('');
+    return '<div class="ph"><h1>Suppliers</h1><span class="sp"></span><button class="btn btn-p">' + I.plus + ' Add supplier</button></div>' +
+      '<div class="kpis"><div class="kpi dark"><span>We owe suppliers</span><b>KES 24,000</b><small>2 suppliers</small></div><div class="kpi"><span>Paid this month</span><b>KES 31,500</b></div><div class="kpi"><span>Consignment items</span><b>13</b></div><div class="kpi"><span>Sold for them</span><b>KES 96,400</b><small>this month</small></div></div>' +
+      '<div class="A-wrap"><div class="card"><table><thead><tr><th>Supplier</th><th>Contact</th><th>We keep</th><th>Items</th><th class="r">We owe</th></tr></thead><tbody>' + rows + '</tbody></table>' + pager('3 suppliers') + '</div>' +
+      drawer('Watamu Weavers', 'Fatma · 0722 104 556 · we keep 25%',
+        '<div class="card"><div class="ch">Statement · October</div><dl class="kv" style="padding:12px 16px"><dt>Units sold</dt><dd>14</dd><dt>Sold for</dt><dd>KES 49,000</dd><dt>We keep (25%)</dt><dd>KES 12,250</dd><dt>Owed</dt><dd>KES 36,750</dd><dt>Paid</dt><dd>KES 18,350</dd><dt><b>Balance</b></dt><dd><b>KES 18,400</b></dd></dl></div>' +
+        '<div class="form"><div class="field"><label>Pay now</label><div class="inp">KES 18,400</div></div><div class="field"><label>Note</label><div class="inp ph">M-Pesa ref…</div></div></div>',
+        '<button class="btn btn-o btn-sm">' + I.edit + ' Edit</button><button class="btn btn-p btn-sm">' + I.pay + ' Record payment</button>') + '</div>';
+  }, B: function () {
+    var cards = SUPS.map(function (s, i) {
+      return '<div class="card" style="padding:16px 18px;' + (i === 0 ? 'box-shadow:inset 3px 0 0 var(--brand)' : '') + '"><div style="display:flex;align-items:center;gap:10px"><div class="av" style="background:var(--accent)">' + s[0].split(' ').map(function (w) { return w[0]; }).join('').slice(0, 2) + '</div><div style="flex:1;min-width:0"><b>' + s[0] + '</b><small class="muted" style="display:block">' + s[1] + '</small></div>' + (s[4] ? '<span class="pill p-w">Owe ' + KES(s[4]) + '</span>' : '<span class="pill p-g">Settled</span>') + '</div>' +
+        '<div class="ribbon" style="margin:12px 0 10px"><div><span>We keep</span><b>' + (s[2] === null ? 'Fixed' : s[2] + '%') + '</b></div><div><span>Items</span><b>' + s[3] + '</b></div><div><span>Sold (Oct)</span><b>' + KES([49000, 18600, 9200][i]) + '</b></div></div>' +
+        '<div style="display:flex;gap:8px"><button class="btn btn-o btn-sm">Statement</button><button class="btn btn-o btn-sm">' + I.edit + ' Edit</button>' + (s[4] ? '<button class="btn btn-p btn-sm" style="margin-left:auto">' + I.pay + ' Pay ' + KES(s[4]) + '</button>' : '') + '</div></div>';
+    }).join('');
+    return '<div class="ph"><h1>Suppliers</h1><span class="sp"></span><span class="search">' + I.srch + ' Search suppliers…</span><button class="btn btn-p">' + I.plus + ' Add supplier</button></div>' +
+      '<div class="ribbon"><div><span>We owe</span><b>KES 24,000</b></div><div><span>Paid this month</span><b>KES 31,500</b></div><div><span>Sold for suppliers</span><b>KES 96,400</b></div></div>' +
+      '<div class="grid2" style="grid-template-columns:repeat(auto-fill,minmax(340px,1fr))">' + cards + '</div>';
+  }},
+  'Outlets': {area: ['Outlets','Terminals','Staff PINs'], A: function () {
+    var rows = OUTLETS.map(function (o, i) {
+      return '<tr class="click' + (i === 1 ? ' sel' : '') + '"><td><b>' + o[0] + '</b><small class="muted" style="display:block">' + o[1] + '</small></td><td>' + o[2] + '</td><td class="muted">' + o[3] + '</td><td>KES</td><td class="num">' + o[5] + '%</td><td class="num">' + o[4] + '% incl.</td><td>' + (o[6] ? '<span class="pill p-b">Room charge</span>' : '') + '</td><td><span class="pill p-g">Open</span></td></tr>';
+    }).join('');
+    return '<div class="ph"><h1>Outlets</h1><span class="sp"></span><button class="btn btn-p">' + I.plus + ' Add outlet</button></div>' +
+      '<div class="A-wrap"><div class="card"><table><thead><tr><th>Outlet</th><th>Property</th><th>Company</th><th>Currency</th><th>Service</th><th>VAT</th><th>Rooms</th><th>Status</th></tr></thead><tbody>' + rows + '</tbody></table>' + pager('3 outlets') + '</div>' +
+      drawer('Spa', 'Maya Kobe · Maya Kobe Ltd',
+        '<div class="form"><div class="field"><label>Name</label><div class="inp">Spa</div></div><div class="field"><label>Kind</label><div class="inp">Spa ' + I.chev + '</div></div><div class="field"><label>Property</label><div class="inp">Maya Kobe ' + I.chev + '</div></div><div class="field"><label>Service %</label><div class="inp">10</div></div><div class="field"><label>VAT %</label><div class="inp">16</div></div><div class="field"><label>VAT is</label><span class="seg"><span class="on">In the price</span><span>Added</span></span></div></div>' +
+        '<div class="tog on"><i></i>Guests can charge to their room</div><div class="tog on"><i></i>Guest signs for room charges</div><div class="tog"><i></i>Tips</div>' +
+        '<div class="field"><label>Staff</label><div class="chips"><span class="chip on">Wanjiru K.</span><span class="chip">+ Add</span></div></div><div class="field"><label>Categories</label><div class="chips"><span class="chip">Treatments</span><span class="chip">Retail</span><span class="chip">+ Add</span></div></div>',
+        '<button class="btn btn-o btn-sm">Close outlet</button><button class="btn btn-p btn-sm">Save outlet</button>') + '</div>';
+  }, B: function () {
+    var li = OUTLETS.map(function (o, i) {
+      return '<div class="li' + (i === 1 ? ' on' : '') + '"><div class="av">' + o[0].slice(0, 2).toUpperCase() + '</div><div class="m"><b>' + o[0] + '</b><small>' + o[1] + ' · ' + o[2] + '</small></div><div class="v"><span class="pill p-g">Open</span></div></div>';
+    }).join('');
+    return '<div class="ph"><h1>Outlets</h1><span class="sp"></span><button class="btn btn-p">' + I.plus + ' Add outlet</button></div>' +
+      '<div class="split"><div class="list"><div class="lh"><span class="search">' + I.srch + ' Search outlets…</span></div>' + li + '</div>' +
+      '<div class="detail"><div class="dhero"><div class="av" style="width:52px;height:52px;font-size:16px">SP</div><div><small class="muted">Spa · Maya Kobe · Maya Kobe Ltd</small><div class="big">Spa</div></div><span class="sp"></span><button class="btn btn-o">Close outlet</button><button class="btn btn-p">Save</button></div>' +
+      '<div class="grid2"><div class="card"><div class="ch">Money</div><div style="padding:14px 18px" class="form"><div class="field"><label>Currency</label><div class="inp">KES</div></div><div class="field"><label>Service %</label><div class="inp">10</div></div><div class="field"><label>VAT %</label><div class="inp">16</div></div><div class="field"><label>VAT is</label><span class="seg"><span class="on">In price</span><span>Added</span></span></div></div></div>' +
+      '<div class="card"><div class="ch">Rooms &amp; guests</div><div style="padding:14px 18px;display:flex;flex-direction:column;gap:10px"><div class="tog on"><i></i>Charge to room</div><div class="tog on"><i></i>Guest signs</div><div class="tog"><i></i>Tips</div><div class="field"><label>Guests of</label><div class="chips"><span class="chip on">Every property</span></div></div></div></div>' +
+      '<div class="card"><div class="ch">Staff</div><div style="padding:14px 18px" class="chips"><span class="chip on">Wanjiru K.</span><span class="chip">+ Add</span></div></div><div class="card"><div class="ch">Categories &amp; cross-sell</div><div style="padding:14px 18px" class="chips"><span class="chip">Treatments</span><span class="chip">Retail</span><span class="chip">Sells Tribal Shop items</span></div></div></div></div></div>';
+  }},
+  'Terminals': {area: ['Outlets','Terminals','Staff PINs'], A: function () {
+    var rows = TERMS.map(function (t, i) {
+      return '<tr class="click' + (i === 2 ? ' sel' : '') + '"><td><div class="who"><span class="ib">' + I.tab + '</span><b>' + t[0] + '</b></div></td><td>' + t[1] + '</td><td class="muted">' + t[2] + '</td><td>' + ({ok:'<span class="pill p-g">Active</span>',idle:'<span class="pill p-w">Not seen 3 days</span>',revoked:'<span class="pill p-r">Revoked</span>'}[t[3]]) + '</td><td class="r"><span class="ib">' + I.edit + '</span></td></tr>';
+    }).join('');
+    return '<div class="ph"><h1>Terminals</h1><span class="sp"></span><button class="btn btn-o">' + I.tab + ' How to register a tablet</button></div>' +
+      '<div class="A-wrap"><div class="card"><table><thead><tr><th>Tablet</th><th>Outlets</th><th>Last seen</th><th>Status</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>' + pager('4 tablets') + '</div>' +
+      drawer('Kite tablet', 'Registered 2 Sep by Patrik · last seen 3 days ago',
+        '<div class="field"><label>Name</label><div class="inp">Kite tablet</div></div><div class="field"><label>Can sell at</label><div class="chips"><span class="chip on">Kite School</span><span class="chip">Tribal Shop</span><span class="chip">Spa</span></div></div><p class="muted" style="font-size:12.5px;margin:0">Staff unlock it with their own PIN. Revoking stops it working as a till at once.</p>',
+        '<button class="btn btn-d btn-sm">' + I.ban + ' Revoke</button><button class="btn btn-p btn-sm">Save</button>') + '</div>';
+  }, B: function () {
+    var cards = TERMS.map(function (t) {
+      return '<div class="card" style="padding:16px 18px;display:flex;flex-direction:column;gap:10px' + (t[3] === 'revoked' ? ';opacity:.6' : '') + '"><div style="display:flex;gap:10px;align-items:center"><span class="ib" style="width:42px;height:42px">' + I.tab + '</span><div style="flex:1"><b>' + t[0] + '</b><small class="muted" style="display:block">Last seen ' + t[2] + '</small></div>' + ({ok:'<span class="pill p-g">Active</span>',idle:'<span class="pill p-w">Idle</span>',revoked:'<span class="pill p-r">Revoked</span>'}[t[3]]) + '</div><div class="chips"><span class="chip">' + t[1] + '</span></div><div style="display:flex;gap:8px"><button class="btn btn-o btn-sm">' + I.edit + ' Edit</button>' + (t[3] === 'revoked' ? '<button class="btn btn-o btn-sm">Restore</button>' : '<button class="btn btn-d btn-sm">' + I.ban + ' Revoke</button>') + '</div></div>';
+    }).join('');
+    return '<div class="ph"><h1>Terminals</h1><span class="sp"></span></div>' +
+      '<div class="card" style="padding:14px 18px;margin-bottom:14px;display:flex;gap:14px;align-items:center"><span class="ib" style="width:42px;height:42px;background:var(--tint);color:var(--brand);border:0">' + I.tab + '</span><div style="flex:1"><b>Add a tablet</b><small class="muted" style="display:block">On the tablet, sign in and open /pos/register — it becomes a till and signs you out there.</small></div><button class="btn btn-o">Copy the link</button></div>' +
+      '<div class="grid2" style="grid-template-columns:repeat(auto-fill,minmax(280px,1fr))">' + cards + '</div>';
+  }},
+  'Staff PINs': {area: ['Outlets','Terminals','Staff PINs'], A: function () {
+    var rows = PINS.map(function (p, i) {
+      return '<tr class="click' + (i === 2 ? ' sel' : '') + '"><td><div class="who"><div class="av">' + p[0].split(' ').map(function (w) { return w[0]; }).join('') + '</div><span><b>' + p[0] + '</b><small>' + p[1] + '</small></span></div></td><td>' + p[2] + '</td><td>' + ({set:'<span class="pill p-g">PIN set</span>',none:'<span class="pill p-n">No PIN</span>',locked:'<span class="pill p-r">Locked · ' + p[4] + '</span>'}[p[3]]) + '</td><td class="r"><button class="btn btn-o btn-sm">' + (p[3] === 'none' ? 'Set PIN' : 'Change') + '</button></td></tr>';
+    }).join('');
+    return '<div class="ph"><h1>Staff PINs</h1><span class="sp"></span><button class="btn btn-o">' + I.key + ' My PIN</button></div>' +
+      '<div class="kpis" style="grid-template-columns:repeat(3,1fr)"><div class="kpi"><span>With a PIN</span><b>2</b></div><div class="kpi"><span>No PIN yet</span><b>1</b><small>can’t use a till</small></div><div class="kpi"><span>Locked out</span><b style="color:var(--red)">1</b><small>setting a PIN unlocks</small></div></div>' +
+      '<div class="A-wrap"><div class="card"><table><thead><tr><th>Person</th><th>Outlets</th><th>PIN</th><th></th></tr></thead><tbody>' + rows + '</tbody></table>' + pager('4 people') + '</div>' +
+      drawer('Omar Ali', 'Kite · Kite School · locked 12 min',
+        '<div class="field"><label>New PIN (4–6 digits)</label><div class="inp">••••</div></div><div class="field"><label>Again</label><div class="inp">••••</div></div><p class="muted" style="font-size:12.5px;margin:0">Simple PINs like 1234 or 0000 are refused. Setting a PIN clears the lock.</p>',
+        '<button class="btn btn-p btn-sm">' + I.key + ' Set PIN</button>') + '</div>';
+  }, B: function () {
+    var cards = PINS.map(function (p) {
+      return '<div class="card" style="padding:16px 18px;display:flex;gap:12px;align-items:center"><div class="av" style="width:42px;height:42px">' + p[0].split(' ').map(function (w) { return w[0]; }).join('') + '</div><div style="flex:1;min-width:0"><b>' + p[0] + '</b><small class="muted" style="display:block">' + p[1] + ' · ' + p[2] + '</small></div>' + ({set:'<span class="pill p-g">PIN set</span>',none:'<span class="pill p-n">No PIN</span>',locked:'<span class="pill p-r">Locked</span>'}[p[3]]) + '<button class="btn btn-o btn-sm">' + (p[3] === 'none' ? 'Set' : 'Change') + '</button></div>';
+    }).join('');
+    return '<div class="ph"><h1>Staff PINs</h1><span class="sp"></span><span class="search">' + I.srch + ' Search people…</span></div>' +
+      '<div class="split" style="grid-template-columns:320px minmax(0,1fr)"><div class="card" style="padding:18px"><b>Your PIN</b><p class="muted" style="font-size:12.5px;margin:4px 0 12px">Unlocks a till tablet as you.</p><div class="field"><label>New PIN</label><div class="inp">••••</div></div><div class="field" style="margin-top:10px"><label>Again</label><div class="inp">••••</div></div><button class="btn btn-p" style="margin-top:12px">' + I.key + ' Save my PIN</button></div>' +
+      '<div class="detail">' + cards + '</div></div>';
+  }}
+};
+
+var DESC = {
+  A: '<strong>A · Table + side drawer.</strong> Every page has the same rhythm: a few summary tiles, filter chips, then one clean table with the usual pager. Clicking a row opens a panel on the right with the full details and its actions (void, receive, pay, save), with an × to close it. Add / New forms open in that same panel, so the table never jumps.',
+  B: '<strong>B · List + detail.</strong> A searchable list on the left; the selected sale, item, outlet or supplier fills the right with everything about it — totals in a big header, then cards for each part. Summary numbers sit in one slim ribbon. Catalogue becomes photo tiles with a stock bar; suppliers and terminals become cards with their actions on them.'
+};
+
+var page = 'Sales', design = 'A';
+var pp = document.getElementById('pickP');
+Object.keys(PAGES).forEach(function (k, i) {
+  var b = document.createElement('button'); b.textContent = k; b.dataset.p = k; if (!i) b.className = 'on'; pp.appendChild(b); pp.appendChild(document.createTextNode(' '));
+});
+function render() {
+  var P = PAGES[page];
+  var nav = ['Open till', 'Sales', 'Catalogue & stock', 'Setup'];
+  var on = page === 'Sales' ? 'Sales' : (P.area && P.area[0] === 'Catalogue' ? 'Catalogue & stock' : 'Setup');
+  document.getElementById('sideNav').innerHTML = nav.map(function (n) { return '<a' + (n === on ? ' class="on"' : '') + '>' + n + '</a>'; }).join('');
+  document.getElementById('main').innerHTML = (P.area ? shell(P.area, page) : '<div style="height:18px"></div>') + P[design]();
+  document.getElementById('desc').innerHTML = DESC[design];
+}
+document.getElementById('pickD').addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; design = b.dataset.d; this.querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); }); render(); });
+pp.addEventListener('click', function (e) { var b = e.target.closest('button'); if (!b) return; page = b.dataset.p; pp.querySelectorAll('button').forEach(function (x) { x.classList.toggle('on', x === b); }); render(); });
+document.getElementById('main').addEventListener('click', function (e) {
+  if (e.target.closest('.drawer .x') || e.target.closest('.scrim')) { var d = document.querySelector('.drawer'), s = document.querySelector('.scrim'); if (d) d.remove(); if (s) s.remove(); }
+});
+render();
+</script>
+</body>
+</html>

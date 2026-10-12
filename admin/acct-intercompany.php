@@ -97,7 +97,7 @@ include __DIR__ . '/_layout.php';
 <?php endif; ?>
 
 <div class="card">
-  <div class="card__head"><span class="card__title">Ledger</span><span class="text-muted ic-hint" style="margin:0">Newest first · last 200</span></div>
+  <div class="card__head"><span class="card__title">Ledger</span></div>
   <?php if (!$entries): dt_empty('No inter-company entries yet.', 'inbox'); else: ?>
   <div class="table-wrap">
   <table class="data-table">

@@ -115,7 +115,7 @@ include __DIR__ . '/_layout.php';
     <div class="card__head" style="display:flex;justify-content:space-between;align-items:center">
       <span class="card__title"><?= $isEdit ? 'Edit highlight' : 'Add a highlight' ?></span>
       <?php if ($isEdit): ?>
-      <a href="/admin/calendar-highlights.php" class="btn-icon btn-icon--outline" data-tip="Close" aria-label="Close"><?= admin_icon('x') ?></a>
+      <a href="/admin/calendar-highlights.php" class="btn-icon btn-icon--outline" data-tip="Close" aria-label="Close" data-inline-close-own><?= admin_icon('x') ?></a> 
       <?php else: ?>
       <button type="button" class="btn-icon btn-icon--outline" id="chlClose" data-tip="Close" aria-label="Close"><?= admin_icon('x') ?></button>
       <?php endif; ?>

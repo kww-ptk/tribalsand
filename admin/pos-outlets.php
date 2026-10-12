@@ -218,16 +218,27 @@ foreach (array_unique(array_map(fn($x) => strtoupper((string)$x['currency']), $o
 }
 $roleLabel = fn(array $p) => $p['role'] === 'staff' ? ucfirst((string)($p['job_type'] ?: 'frontdesk')) : ucfirst((string)$p['role']);
 
+// Design B: the outlet list on the left, the picked outlet's settings on the right.
+$sel = null;
+foreach ($outlets as $o) if ((int)$o['id'] === $openId) { $sel = $o; break; }
+if (!$sel && $outlets) $sel = $outlets[0];
+$initials = fn(string $n) => mb_strtoupper(implode('', array_map(fn($w) => mb_substr($w, 0, 1), array_slice(preg_split('/\s+/', trim($n)) ?: [], 0, 2))));
+$pctTxt = fn($v) => rtrim(rtrim((string)$v, '0'), '.') ?: '0';
+
 include __DIR__ . '/_layout.php';
 ?>
 <div class="page-header">
-  <h1>POS outlets</h1>
-  <?php if ($supported): ?><a href="/admin/pos-items.php" class="btn-outline btn-sm"><?= admin_icon('grip', 15) ?> Catalogue</a><?php endif; ?>
+  <h1>Outlets</h1>
+  <?php if ($supported): ?>
+  <div class="actions">
+    <button type="button" class="btn-primary btn-sm" id="posxAddBtn" aria-controls="posxAdd" aria-expanded="<?= $outlets ? 'false' : 'true' ?>"><?= admin_icon('plus', 15) ?> Add outlet</button>
+  </div>
+  <?php endif; ?>
 </div>
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?> is-flash"><?= e($flash['msg']) ?></div><?php endif; ?>
 
 <?php if (!$supported): ?>
-  <div class="alert alert--info">Run the <code>add_pos.sql</code> migration (Admin → Migrations), then <code>db/seeds/seed_pos.php</code> for the starter outlets.</div>
+  <div class="alert alert--info">Run the <code>add_pos.sql</code> migration (Settings → Your account → Migrations), then <code>db/seeds/seed_pos.php</code> for the starter outlets.</div>
 <?php else: ?>
 
 <?php $__nonKes = array_values(array_filter($outlets, fn($x) => strtoupper((string)$x['currency']) !== 'KES')); if ($__nonKes): ?>
@@ -238,35 +249,62 @@ include __DIR__ . '/_layout.php';
     <button type="submit" class="btn-primary btn-sm" data-confirm="Switch <?= count($__nonKes) ?> outlet(s) to KES and convert their prices at today's rate? Past sales stay as they were.">Switch all to KES</button></form>
 </div>
 <?php endif; ?>
-<p class="text-muted posx-intro">Each outlet is a till: the Experiences desk, the shop, the spa, the kite school. Staff only see the outlets they are assigned to (managers also see every outlet at their property). <strong>Also sells from</strong> lets one desk ring up another outlet's items — the sale still counts for the outlet that owns the item. Drag the handle to reorder.</p>
 
-<div class="posx-list" id="posxList">
-<?php foreach ($outlets as $o):
-    $oid = (int)$o['id']; $mine = $staffOf[$oid] ?? []; $lk = $linksOf[$oid] ?? [];
-    $cats = pos_fetch_categories($oid); ?>
-  <details class="card posx" id="outlet-<?= $oid ?>" data-id="<?= $oid ?>" <?= $openId === $oid ? 'open' : '' ?>>
-    <summary class="posx__head">
-      <span class="posx__grip" draggable="true" data-tip="Drag to reorder" aria-hidden="true"><?= admin_icon('grip', 18) ?></span>
-      <span class="posx__title"><?= e($o['name']) ?></span>
-      <span class="posx__meta">
-        <span class="badge badge--grey"><?= e(POS_KINDS[$o['kind']] ?? $o['kind']) ?></span>
-        <span class="badge badge--blue"><?= e($o['venue_name'] ?? 'All properties') ?></span>
-        <?php if ($coOn): $__oc = company_outlet_owner($outletCo[$oid] ?? null, $o['venue_id'] ? ($venueCo[(int)$o['venue_id']] ?? null) : null); ?>
-        <?= $__oc ? '<span class="badge badge--grey">' . e($coNames[$__oc] ?? '') . '</span>' : '<span class="badge badge--orange">No company</span>' ?>
-        <?php endif; ?>
-        <span class="badge badge--teal"><?= e($o['currency']) ?><?= (float)$o['service_charge_pct'] > 0 ? ' · ' . e(rtrim(rtrim((string)$o['service_charge_pct'], '0'), '.')) . '% service' : '' ?><?= $v2 && (float)$o['vat_pct'] > 0 ? ' · VAT ' . e(rtrim(rtrim((string)$o['vat_pct'], '0'), '.')) . '%' : '' ?></span>
-        <span class="text-muted"><?= (int)($itemCount[$oid] ?? 0) ?> items · <?= count($mine) ?> staff</span>
-        <?php if (!pos_bool($o['is_active'])): ?><span class="badge badge--orange">Closed</span><?php endif; ?>
-      </span>
-      <svg class="posx__chev" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
-    </summary>
+<div class="card posx-add" id="posxAdd" data-inline-form<?= $outlets ? ' hidden' : '' ?>>
+  <div class="card__head"><span class="card__title">Add an outlet</span></div>
+  <div class="card__body" style="padding:16px 20px">
+    <form method="POST" action="<?= $self ?>" class="ws-addform">
+      <?= csrf_field() ?><input type="hidden" name="action" value="outlet_add">
+      <label class="wsf wsf--grow"><span>Name</span><input name="name" class="inp" maxlength="120" placeholder="e.g. Beach Bar" required></label>
+      <label class="wsf"><span>Kind</span><select name="kind" class="eselect"><?php foreach (POS_KINDS as $k => $lbl): ?><option value="<?= e($k) ?>"><?= e($lbl) ?></option><?php endforeach; ?></select></label>
+      <button type="submit" class="btn-primary btn-sm"><?= admin_icon('plus', 15) ?> Add outlet</button>
+    </form>
+    <p class="text-muted" style="font-size:12.5px;margin:10px 0 0">Each outlet is a till: the shop, the spa, the kite school. Next you set its property, staff and categories.</p>
+  </div>
+</div>
 
-    <div class="posx__body">
-      <form method="POST" action="<?= $self ?>" class="posx-form">
-        <?= csrf_field() ?>
-        <input type="hidden" name="action" value="outlet_save">
-        <input type="hidden" name="outlet_id" value="<?= $oid ?>">
-        <div class="posx-grid">
+<?php if (!$outlets): ?>
+  <?php dt_empty('No outlets yet — press Add outlet, or run db/seeds/seed_pos.php for the starter four.', 'inbox'); ?>
+<?php else: ?>
+<div class="posx-split">
+  <nav class="posx-list card" id="posxList" aria-label="Outlets">
+    <?php foreach ($outlets as $o): $oid = (int)$o['id']; $on = $sel && (int)$sel['id'] === $oid; ?>
+    <a href="<?= $self ?>?open=<?= $oid ?>" class="posx-li<?= $on ? ' is-on' : '' ?>" data-id="<?= $oid ?>"<?= $on ? ' aria-current="true"' : '' ?>>
+      <span class="posx__grip" draggable="true" data-tip="Drag to reorder" aria-hidden="true"><?= admin_icon('grip', 16) ?></span>
+      <span class="posx-av"><?= e($initials((string)$o['name'])) ?></span>
+      <span class="posx-li__m"><b><?= e($o['name']) ?></b><small><?= e(POS_KINDS[$o['kind']] ?? $o['kind']) ?> · <?= e($o['venue_name'] ?? 'All properties') ?> · <?= (int)($itemCount[$oid] ?? 0) ?> items</small></span>
+      <?= pos_bool($o['is_active']) ? '<span class="badge badge--green">Open</span>' : '<span class="badge badge--orange">Closed</span>' ?>
+    </a>
+    <?php endforeach; ?>
+  </nav>
+
+  <?php if ($sel): $oid = (int)$sel['id']; $o = $sel; $mine = $staffOf[$oid] ?? []; $lk = $linksOf[$oid] ?? []; $cats = pos_fetch_categories($oid); ?>
+  <section class="posx-detail" aria-label="<?= e($o['name']) ?>">
+    <div class="card posx-hero">
+      <span class="posx-av posx-av--lg"><?= e($initials((string)$o['name'])) ?></span>
+      <div class="posx-hero__t">
+        <small><?= e(POS_KINDS[$o['kind']] ?? $o['kind']) ?> · <?= e($o['venue_name'] ?? 'All properties') ?><?php if ($coOn): $__oc = company_outlet_owner($outletCo[$oid] ?? null, $o['venue_id'] ? ($venueCo[(int)$o['venue_id']] ?? null) : null); ?> · <?= $__oc ? e($coNames[$__oc] ?? '') : '<span class="badge badge--orange">No company</span>' ?><?php endif; ?></small>
+        <h2><?= e($o['name']) ?></h2>
+        <span class="text-muted" style="font-size:12.5px"><?= (int)($itemCount[$oid] ?? 0) ?> items on sale · <?= count($mine) ?> staff · <?= count($cats) ?> categories</span>
+      </div>
+      <div class="posx-hero__a">
+        <a href="/admin/pos-items.php?outlet=<?= $oid ?>" class="btn-outline btn-sm"><?= admin_icon('edit', 14) ?> Items</a>
+        <form method="POST" action="<?= $self ?>" style="margin:0">
+          <?= csrf_field() ?><input type="hidden" name="action" value="outlet_delete"><input type="hidden" name="outlet_id" value="<?= $oid ?>">
+          <button type="submit" class="btn-icon btn-icon--outline btn-icon--danger" data-confirm="Delete <?= e($o['name']) ?>? An outlet with sales is closed instead." data-confirm-label="Delete" data-tip="Delete outlet" aria-label="Delete outlet"><?= admin_icon('trash', 16) ?></button>
+        </form>
+        <button type="submit" form="posxForm" class="btn-primary btn-sm"><?= admin_icon('check', 15) ?> Save outlet</button>
+      </div>
+    </div>
+
+    <form method="POST" action="<?= $self ?>" id="posxForm" class="posx-cards">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="outlet_save">
+      <input type="hidden" name="outlet_id" value="<?= $oid ?>">
+
+      <div class="card posx-card">
+        <div class="card__head"><span class="card__title">Basics</span></div>
+        <div class="posx-card__b posx-grid">
           <div class="field"><label>Name</label><input name="name" class="inp" maxlength="120" value="<?= e($o['name']) ?>" required></div>
           <div class="field"><label>Kind</label>
             <select name="kind" class="eselect"><?php foreach (POS_KINDS as $k => $lbl): ?><option value="<?= e($k) ?>" <?= $o['kind'] === $k ? 'selected' : '' ?>><?= e($lbl) ?></option><?php endforeach; ?></select></div>
@@ -285,177 +323,178 @@ include __DIR__ . '/_layout.php';
             <div class="posx-cur"><span class="badge badge--orange"><?= e(strtoupper((string)$o['currency'])) ?></span>
               <button type="submit" form="kes-<?= $oid ?>" class="btn-outline btn-sm" data-confirm="Switch <?= e($o['name']) ?> to KES? Its item prices and supplier costs are converted at today's rate (1 <?= e(strtoupper((string)$o['currency'])) ?> = <?= e($__kesRate[strtoupper((string)$o['currency'])] ?? '?') ?> KES), rounded to whole shillings. Past sales stay as they were.">Switch to KES</button></div>
             <?php endif; ?></div>
-          <div class="field"><label>Service charge (%)</label><input name="service_charge_pct" type="number" class="inp inp--num no-spin" min="0" max="100" step="0.01" value="<?= e(rtrim(rtrim((string)$o['service_charge_pct'], '0'), '.') ?: '0') ?>"></div>
+        </div>
+        <div class="posx-card__b" style="padding-top:0">
+          <label class="togglerow"><span class="toggle"><input type="checkbox" name="is_active" value="1" <?= pos_bool($o['is_active']) ? 'checked' : '' ?>><span class="toggle-slider"></span></span><span>Open — shows on the till</span></label>
+        </div>
+      </div>
+
+      <div class="card posx-card">
+        <div class="card__head"><span class="card__title">Money</span></div>
+        <div class="posx-card__b posx-grid">
+          <div class="field"><label>Service charge (%)</label><input name="service_charge_pct" type="number" class="inp inp--num no-spin" min="0" max="100" step="0.01" value="<?= e($pctTxt($o['service_charge_pct'])) ?>"></div>
           <?php if ($v2): ?>
-          <div class="field"><label>VAT / tax (%)</label><input name="vat_pct" type="number" class="inp inp--num no-spin" min="0" max="100" step="0.01" value="<?= e(rtrim(rtrim((string)$o['vat_pct'], '0'), '.') ?: '0') ?>" placeholder="e.g. 16"></div>
+          <div class="field"><label>VAT / tax (%)</label><input name="vat_pct" type="number" class="inp inp--num no-spin" min="0" max="100" step="0.01" value="<?= e($pctTxt($o['vat_pct'])) ?>" placeholder="e.g. 16"></div>
           <?php endif; ?>
         </div>
-        <div class="posx-toggles">
-          <label class="togglerow"><span class="toggle"><input type="checkbox" name="allow_room_charge" value="1" <?= pos_bool($o['allow_room_charge']) ? 'checked' : '' ?>><span class="toggle-slider"></span></span><span>Room charge — in-house guests can put it on their bill<?= strtoupper($o['currency']) !== strtoupper(setting('site_currency', 'USD')) ? ' <span class="badge badge--blue">converted to ' . e(strtoupper(setting('site_currency', 'USD'))) . ' on the bill at the day’s rate</span>' : '' ?></span></label>
-          <label class="togglerow"><span class="toggle"><input type="checkbox" name="is_active" value="1" <?= pos_bool($o['is_active']) ? 'checked' : '' ?>><span class="toggle-slider"></span></span><span>Open — shows on the till</span></label>
-          <?php if ($v2): ?>
-          <label class="togglerow"><span class="toggle"><input type="checkbox" name="vat_inclusive" value="1" <?= pos_bool($o['vat_inclusive']) ? 'checked' : '' ?>><span class="toggle-slider"></span></span><span>Prices already include VAT <span class="text-muted">(off = VAT is added on top at the till)</span></span></label>
+        <?php if ($v2): ?>
+        <div class="posx-card__b posx-toggles" style="padding-top:0">
+          <label class="togglerow"><span class="toggle"><input type="checkbox" name="vat_inclusive" value="1" <?= pos_bool($o['vat_inclusive']) ? 'checked' : '' ?>><span class="toggle-slider"></span></span><span>Prices already include VAT <span class="text-muted">(off = added at the till)</span></span></label>
           <label class="togglerow"><span class="toggle"><input type="checkbox" name="tips_enabled" value="1" <?= pos_bool($o['tips_enabled']) ? 'checked' : '' ?>><span class="toggle-slider"></span></span><span>Ask for a tip at checkout</span></label>
+        </div>
+        <?php endif; ?>
+      </div>
+
+      <div class="card posx-card">
+        <div class="card__head"><span class="card__title">Rooms &amp; guests</span></div>
+        <div class="posx-card__b posx-toggles">
+          <label class="togglerow"><span class="toggle"><input type="checkbox" name="allow_room_charge" value="1" <?= pos_bool($o['allow_room_charge']) ? 'checked' : '' ?>><span class="toggle-slider"></span></span><span>In-house guests can charge to their room<?= strtoupper($o['currency']) !== strtoupper(setting('site_currency', 'USD')) ? ' <span class="badge badge--blue">converted to ' . e(strtoupper(setting('site_currency', 'USD'))) . ' on the bill</span>' : '' ?></span></label>
+          <?php if ($v2): ?>
           <label class="togglerow"><span class="toggle"><input type="checkbox" name="require_signature" value="1" <?= pos_bool($o['require_signature']) ? 'checked' : '' ?>><span class="toggle-slider"></span></span><span>Guest signs on the tablet for a room charge</span></label>
           <?php endif; ?>
         </div>
-
         <?php if ($v2): $cv = $chargeOf[$oid] ?? []; ?>
-        <div class="posx-sub">Room charge — whose guests can charge here</div>
-        <div class="posx-chips">
-          <?php foreach ($venues as $v): ?>
-          <label class="optchip"><input type="checkbox" name="charge_venues[]" value="<?= (int)$v['id'] ?>" <?= in_array((int)$v['id'], $cv, true) ? 'checked' : '' ?>><?= e($v['name']) ?></label>
-          <?php endforeach; ?>
-        </div>
-        <p class="text-muted posx-hint">None ticked = guests of <strong>every</strong> property. Tick properties to limit it — e.g. the Tribal Dunes shop for Tribal Dunes, Maya Ilai and Off Duty guests. The till shows which property each guest is staying at, and the bill line says where it was bought.</p>
-        <?php endif; ?>
-
-        <div class="posx-sub">Who can sell here</div>
-        <?php if (!$people): ?><p class="text-muted posx-hint">No staff accounts yet — add them under Admin → Team.</p><?php else: ?>
-        <div class="posx-chips">
-          <?php foreach ($people as $p): ?>
-          <label class="optchip"><input type="checkbox" name="staff[]" value="<?= (int)$p['id'] ?>" <?= in_array((int)$p['id'], $mine, true) ? 'checked' : '' ?>><?= e($p['name'] ?: $p['email']) ?> <span class="posx-chip-role"><?= e($roleLabel($p)) ?></span></label>
-          <?php endforeach; ?>
-        </div>
-        <p class="text-muted posx-hint">You (the owner) can sell everywhere. Managers already see every outlet at their property.</p>
-        <?php endif; ?>
-
-        <?php $others = array_filter($outlets, fn($x) => (int)$x['id'] !== $oid); if ($others): ?>
-        <div class="posx-sub">Also sells from</div>
-        <div class="posx-chips">
-          <?php foreach ($others as $x): ?>
-          <label class="optchip"><input type="checkbox" name="links[]" value="<?= (int)$x['id'] ?>" <?= in_array((int)$x['id'], $lk, true) ? 'checked' : '' ?>><?= e($x['name']) ?></label>
-          <?php endforeach; ?>
+        <div class="posx-card__b" style="padding-top:0">
+          <div class="posx-sub">Guests of</div>
+          <div class="posx-chips">
+            <?php foreach ($venues as $v): ?>
+            <label class="optchip"><input type="checkbox" name="charge_venues[]" value="<?= (int)$v['id'] ?>" <?= in_array((int)$v['id'], $cv, true) ? 'checked' : '' ?>><?= e($v['name']) ?></label>
+            <?php endforeach; ?>
+          </div>
+          <p class="text-muted posx-hint">None ticked = guests of every property.</p>
         </div>
         <?php endif; ?>
-
-        <div class="posx-actions">
-          <button type="submit" class="btn-primary btn-sm"><?= admin_icon('check', 15) ?> Save outlet</button>
-        </div>
-      </form>
-
-      <div class="posx-sub">Till categories</div>
-      <div class="posx-cats" data-outlet="<?= $oid ?>">
-        <?php if (!$cats): ?><p class="text-muted posx-hint">No categories yet — the till then shows one "All" list.</p><?php endif; ?>
-        <?php foreach ($cats as $c): ?>
-        <form method="POST" action="<?= $self ?>" class="posx-cat" draggable="true" data-id="<?= (int)$c['id'] ?>">
-          <?= csrf_field() ?>
-          <input type="hidden" name="outlet_id" value="<?= $oid ?>"><input type="hidden" name="cat_id" value="<?= (int)$c['id'] ?>">
-          <span class="posx__grip" aria-hidden="true"><?= admin_icon('grip', 16) ?></span>
-          <input name="name" class="inp" maxlength="80" value="<?= e($c['name']) ?>" aria-label="Category name">
-          <button type="submit" name="action" value="cat_save" class="btn-icon btn-icon--primary" data-tip="Rename" aria-label="Save category"><?= admin_icon('check', 15) ?></button>
-          <button type="submit" name="action" value="cat_delete" class="btn-icon btn-icon--danger" data-confirm="Delete this category? Its items stay, uncategorised." data-tip="Delete" aria-label="Delete category"><?= admin_icon('trash', 15) ?></button>
-        </form>
-        <?php endforeach; ?>
       </div>
-      <form method="POST" action="<?= $self ?>" class="posx-catadd">
-        <?= csrf_field() ?><input type="hidden" name="action" value="cat_add"><input type="hidden" name="outlet_id" value="<?= $oid ?>">
-        <input name="name" class="inp" maxlength="80" placeholder="New category" required aria-label="New category">
-        <button type="submit" class="btn-outline btn-sm"><?= admin_icon('plus', 14) ?> Add category</button>
-      </form>
 
-      <?php if (strtoupper((string)$o['currency']) !== 'KES'): ?>
-      <form method="POST" action="<?= $self ?>" id="kes-<?= $oid ?>" style="display:none"><?= csrf_field() ?><input type="hidden" name="action" value="convert_kes"><input type="hidden" name="outlet_id" value="<?= $oid ?>"></form>
-      <?php endif; ?>
-      <div class="posx-foot">
-        <a href="/admin/pos-items.php?outlet=<?= $oid ?>" class="btn-outline btn-sm"><?= admin_icon('edit', 14) ?> Items</a>
-        <form method="POST" action="<?= $self ?>" style="margin:0">
-          <?= csrf_field() ?><input type="hidden" name="action" value="outlet_delete"><input type="hidden" name="outlet_id" value="<?= $oid ?>">
-          <button type="submit" class="btn-icon btn-icon--danger" data-confirm="Delete <?= e($o['name']) ?>? An outlet with sales is closed instead." data-tip="Delete outlet" aria-label="Delete outlet"><?= admin_icon('trash', 16) ?></button>
+      <div class="card posx-card">
+        <div class="card__head"><span class="card__title">Who can sell here</span></div>
+        <div class="posx-card__b">
+          <?php if (!$people): ?><p class="text-muted posx-hint" style="margin:0">No staff accounts yet — add them under Team → Staff.</p><?php else: ?>
+          <div class="posx-chips">
+            <?php foreach ($people as $p): ?>
+            <label class="optchip"><input type="checkbox" name="staff[]" value="<?= (int)$p['id'] ?>" <?= in_array((int)$p['id'], $mine, true) ? 'checked' : '' ?>><?= e($p['name'] ?: $p['email']) ?> <span class="posx-chip-role"><?= e($roleLabel($p)) ?></span></label>
+            <?php endforeach; ?>
+          </div>
+          <p class="text-muted posx-hint">The owner sells everywhere; managers already see every outlet at their property.</p>
+          <?php endif; ?>
+          <?php $others = array_filter($outlets, fn($x) => (int)$x['id'] !== $oid); if ($others): ?>
+          <div class="posx-sub">Also sells items from</div>
+          <div class="posx-chips">
+            <?php foreach ($others as $x): ?>
+            <label class="optchip"><input type="checkbox" name="links[]" value="<?= (int)$x['id'] ?>" <?= in_array((int)$x['id'], $lk, true) ? 'checked' : '' ?>><?= e($x['name']) ?></label>
+            <?php endforeach; ?>
+          </div>
+          <p class="text-muted posx-hint">The sale still counts for the outlet that owns the item.</p>
+          <?php endif; ?>
+        </div>
+      </div>
+    </form>
+
+    <div class="card posx-card">
+      <div class="card__head"><span class="card__title">Till categories</span></div>
+      <div class="posx-card__b">
+        <div class="posx-cats" data-outlet="<?= $oid ?>">
+          <?php if (!$cats): ?><p class="text-muted posx-hint" style="margin:0">No categories yet — the till then shows one "All" list.</p><?php endif; ?>
+          <?php foreach ($cats as $c): ?>
+          <form method="POST" action="<?= $self ?>" class="posx-cat" draggable="true" data-id="<?= (int)$c['id'] ?>">
+            <?= csrf_field() ?>
+            <input type="hidden" name="outlet_id" value="<?= $oid ?>"><input type="hidden" name="cat_id" value="<?= (int)$c['id'] ?>">
+            <span class="posx__grip" aria-hidden="true"><?= admin_icon('grip', 16) ?></span>
+            <input name="name" class="inp" maxlength="80" value="<?= e($c['name']) ?>" aria-label="Category name">
+            <button type="submit" name="action" value="cat_save" class="btn-icon btn-icon--outline" data-tip="Rename" aria-label="Save category"><?= admin_icon('check', 15) ?></button>
+            <button type="submit" name="action" value="cat_delete" class="btn-icon btn-icon--outline btn-icon--danger" data-confirm="Delete this category? Its items stay, uncategorised." data-confirm-label="Delete" data-tip="Delete" aria-label="Delete category"><?= admin_icon('trash', 15) ?></button>
+          </form>
+          <?php endforeach; ?>
+        </div>
+        <form method="POST" action="<?= $self ?>" class="posx-catadd">
+          <?= csrf_field() ?><input type="hidden" name="action" value="cat_add"><input type="hidden" name="outlet_id" value="<?= $oid ?>">
+          <input name="name" class="inp" maxlength="80" placeholder="New category" required aria-label="New category">
+          <button type="submit" class="btn-outline btn-sm"><?= admin_icon('plus', 14) ?> Add category</button>
         </form>
       </div>
     </div>
-  </details>
-<?php endforeach; ?>
+    <?php if (strtoupper((string)$o['currency']) !== 'KES'): ?>
+    <form method="POST" action="<?= $self ?>" id="kes-<?= $oid ?>" style="display:none"><?= csrf_field() ?><input type="hidden" name="action" value="convert_kes"><input type="hidden" name="outlet_id" value="<?= $oid ?>"></form>
+    <?php endif; ?>
+  </section>
+  <?php endif; ?>
 </div>
-<?php if (!$outlets): ?><?php dt_empty('No outlets yet — add one below, or run db/seeds/seed_pos.php for the starter four.', 'inbox'); ?><?php endif; ?>
-
-<div class="card" style="margin-top:18px">
-  <div class="card__head"><span class="card__title">Add an outlet</span></div>
-  <div class="card__body" style="padding:16px 20px">
-    <form method="POST" action="<?= $self ?>" class="ws-addform">
-      <?= csrf_field() ?><input type="hidden" name="action" value="outlet_add">
-      <label class="wsf wsf--grow"><span>Name</span><input name="name" class="inp" maxlength="120" placeholder="e.g. Beach Bar" required></label>
-      <label class="wsf"><span>Kind</span><select name="kind" class="eselect"><?php foreach (POS_KINDS as $k => $lbl): ?><option value="<?= e($k) ?>"><?= e($lbl) ?></option><?php endforeach; ?></select></label>
-      <button type="submit" class="btn-primary btn-sm"><?= admin_icon('plus', 15) ?> Add outlet</button>
-    </form>
-  </div>
-</div>
+<?php endif; ?>
 
 <style>
 .card__head{flex-wrap:wrap;gap:8px 12px}
-.posx-intro{margin:-6px 0 18px;font-size:13px;max-width:820px}
 .posx-kes{margin:0 0 16px;font-size:13px}
-.posx-cur{display:flex;align-items:center;gap:8px;min-height:38px}
-.posx-list{display:grid;gap:12px}
-.posx{overflow:hidden}
-.posx__head{display:flex;align-items:center;gap:12px;padding:14px 18px;cursor:pointer;list-style:none}
-.posx__head::-webkit-details-marker{display:none}
+.posx-add{margin-bottom:16px}
+.posx-split{display:grid;grid-template-columns:minmax(260px,330px) minmax(0,1fr);gap:16px;align-items:start}
+.posx-list{padding:6px;display:flex;flex-direction:column;gap:2px;position:sticky;top:12px}
+.posx-li{display:flex;align-items:center;gap:10px;padding:10px;border-radius:10px;text-decoration:none;color:inherit}
+.posx-li:hover{background:#fbf8f3}
+.posx-li.is-on{background:#e6f0f1;box-shadow:inset 3px 0 0 var(--brand)}
+.posx-li.is-dragging{opacity:.5}
+.posx-li__m{flex:1;min-width:0}
+.posx-li__m b{display:block;font-weight:600}
+.posx-li__m small{display:block;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .posx__grip{color:var(--muted);cursor:grab;display:inline-flex}
-.posx__title{font-weight:600;font-size:15px}
-.posx__meta{display:flex;flex-wrap:wrap;align-items:center;gap:6px;font-size:12.5px;flex:1}
-.posx__chev{color:var(--muted);transition:transform .15s}
-.posx[open] .posx__chev{transform:rotate(180deg)}
-.posx__body{border-top:1px solid var(--border);padding:18px}
-.posx-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:0 16px}
+.posx-av{width:34px;height:34px;border-radius:50%;background:var(--brand);color:#fff;display:inline-grid;place-items:center;font-weight:700;font-size:12px;flex:none}
+.posx-av--lg{width:52px;height:52px;font-size:16px}
+.posx-detail{display:flex;flex-direction:column;gap:14px;min-width:0}
+.posx-hero{display:flex;align-items:center;gap:14px;padding:16px 18px;flex-wrap:wrap}
+.posx-hero__t{flex:1;min-width:200px}
+.posx-hero__t small{color:var(--muted);font-size:12.5px}
+.posx-hero__t h2{margin:2px 0;font-size:22px;letter-spacing:-.01em}
+.posx-hero__a{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.posx-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;margin:0}
+.posx-card__b{padding:14px 18px}
+.posx-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:0 14px}
 .posx-grid .inp{width:100%}
-.posx-toggles{display:flex;flex-direction:column;gap:10px;margin:2px 0 6px}
-.posx-sub{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:18px 0 8px}
+.posx-cur{display:flex;align-items:center;gap:8px;min-height:38px}
+.posx-toggles{display:flex;flex-direction:column;gap:10px}
+.posx-sub{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:14px 0 8px}
 .posx-chips{display:flex;flex-wrap:wrap;gap:8px}
 .posx-chip-role{opacity:.65;font-size:11.5px;margin-left:2px}
 .posx-hint{font-size:12.5px;margin:8px 0 0}
-.posx-actions{margin-top:16px}
-.posx-cats{display:grid;gap:6px;max-width:460px}
+.posx-cats{display:grid;gap:6px;max-width:520px}
 .posx-cat{display:flex;align-items:center;gap:8px;margin:0}
-.posx-cat .inp{flex:1}
-.posx-cat.is-dragging,.posx.is-dragging{opacity:.5}
-.posx-catadd{display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;max-width:460px}
+.posx-cat .inp{flex:1;min-width:0}
+.posx-cat.is-dragging{opacity:.5}
+.posx-catadd{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;max-width:520px}
 .posx-catadd .inp{flex:1 1 160px;min-width:0}
-.posx-cat .inp{min-width:0}
-.posx-foot{display:flex;justify-content:space-between;align-items:center;margin-top:20px;padding-top:14px;border-top:1px solid var(--border)}
-@media (max-width:640px){
-  .posx__head{flex-wrap:wrap;padding:12px 14px;gap:8px}
-  .posx__meta{flex-basis:100%;order:3}
-  .posx__meta .text-muted{display:none}
-  .posx__body{padding:14px}
-  .posx-cat,.posx-catadd{max-width:none}
-  .posx-foot{flex-wrap:wrap;gap:10px}
-}
+@media (max-width:900px){.posx-split{grid-template-columns:minmax(0,1fr)}.posx-list{position:static}}
+@media (max-width:640px){.posx-cards{grid-template-columns:minmax(0,1fr)}.posx-cat,.posx-catadd{max-width:none}}
 </style>
 <script>
 (function(){
   var CSRF = <?= json_encode(csrf_token()) ?>;
   function post(data){ var fd=new FormData(); Object.keys(data).forEach(function(k){ fd.append(k, data[k]); }); fd.append('csrf_token', CSRF);
     return fetch(<?= json_encode($self) ?>, {method:'POST', body:fd, credentials:'same-origin'}); }
-  function sortable(list, rowSel, onDone){
+  var ab = document.getElementById('posxAddBtn'), ac = document.getElementById('posxAdd');
+  if (ab && ac) ab.addEventListener('click', function(){ var open = ac.hidden; ac.hidden = !open; ab.setAttribute('aria-expanded', open ? 'true' : 'false'); if (open) { var f = ac.querySelector('[name=name]'); if (f) f.focus(); } });
+  // Outlet order: drag a row in the list by its grip.
+  var list = document.getElementById('posxList');
+  if (list) {
     var dragged = null;
-    list.querySelectorAll(rowSel).forEach(function(row){
-      row.addEventListener('dragstart', function(e){ if (e.target !== row && !e.target.closest('.posx__grip')) return; dragged = row; row.classList.add('is-dragging'); e.stopPropagation(); });
-      row.addEventListener('dragend',   function(){ if (!dragged) return; dragged.classList.remove('is-dragging'); dragged = null; onDone(); });
-      row.addEventListener('dragover',  function(e){ if (dragged) e.preventDefault(); });
-      row.addEventListener('dragenter', function(e){ if (!dragged || dragged === row || row.parentNode !== dragged.parentNode) return; e.preventDefault();
-        var k=[].slice.call(list.querySelectorAll(rowSel)), di=k.indexOf(dragged), ri=k.indexOf(row); list.insertBefore(dragged, di<ri ? row.nextSibling : row); });
-    });
-    list.querySelectorAll('input').forEach(function(i){ i.addEventListener('mousedown', function(e){ e.stopPropagation(); }); });
-  }
-  // Outlet cards: the grip in the summary is the drag handle.
-  var outlets = document.getElementById('posxList');
-  if (outlets) {
-    var dragged = null;
-    outlets.querySelectorAll('.posx').forEach(function(card){
-      var grip = card.querySelector('.posx__head .posx__grip');
-      grip.addEventListener('click', function(e){ e.preventDefault(); });
-      grip.addEventListener('dragstart', function(e){ dragged = card; card.classList.add('is-dragging'); e.dataTransfer.setDragImage(card, 20, 20); });
+    list.querySelectorAll('.posx-li').forEach(function(row){
+      var grip = row.querySelector('.posx__grip');
+      grip.addEventListener('click', function(e){ e.preventDefault(); e.stopPropagation(); });
+      grip.addEventListener('dragstart', function(e){ dragged = row; row.classList.add('is-dragging'); e.dataTransfer.setDragImage(row, 20, 20); });
       grip.addEventListener('dragend', function(){ if (!dragged) return; dragged.classList.remove('is-dragging'); dragged = null;
-        post({action:'outlet_reorder', order: JSON.stringify([].map.call(outlets.querySelectorAll('.posx'), function(x){ return x.dataset.id; }))}); });
-      card.addEventListener('dragover', function(e){ if (dragged) e.preventDefault(); });
-      card.addEventListener('dragenter', function(e){ if (!dragged || dragged === card) return; e.preventDefault();
-        var k=[].slice.call(outlets.querySelectorAll('.posx')), di=k.indexOf(dragged), ri=k.indexOf(card); outlets.insertBefore(dragged, di<ri ? card.nextSibling : card); });
+        post({action:'outlet_reorder', order: JSON.stringify([].map.call(list.querySelectorAll('.posx-li'), function(x){ return x.dataset.id; }))}); });
+      row.addEventListener('dragover', function(e){ if (dragged) e.preventDefault(); });
+      row.addEventListener('dragenter', function(e){ if (!dragged || dragged === row) return; e.preventDefault();
+        var k=[].slice.call(list.querySelectorAll('.posx-li')), di=k.indexOf(dragged), ri=k.indexOf(row); list.insertBefore(dragged, di<ri ? row.nextSibling : row); });
     });
   }
-  document.querySelectorAll('.posx-cats').forEach(function(list){
-    sortable(list, '.posx-cat', function(){
-      post({action:'cat_reorder', outlet_id: list.dataset.outlet, order: JSON.stringify([].map.call(list.querySelectorAll('.posx-cat'), function(x){ return x.dataset.id; }))});
+  // Till categories: drag to reorder.
+  document.querySelectorAll('.posx-cats').forEach(function(box){
+    var d = null;
+    box.querySelectorAll('.posx-cat').forEach(function(row){
+      row.addEventListener('dragstart', function(e){ if (e.target !== row && !e.target.closest('.posx__grip')) return; d = row; row.classList.add('is-dragging'); });
+      row.addEventListener('dragend', function(){ if (!d) return; d.classList.remove('is-dragging'); d = null;
+        post({action:'cat_reorder', outlet_id: box.dataset.outlet, order: JSON.stringify([].map.call(box.querySelectorAll('.posx-cat'), function(x){ return x.dataset.id; }))}); });
+      row.addEventListener('dragover', function(e){ if (d) e.preventDefault(); });
+      row.addEventListener('dragenter', function(e){ if (!d || d === row) return; e.preventDefault();
+        var k=[].slice.call(box.querySelectorAll('.posx-cat')), di=k.indexOf(d), ri=k.indexOf(row); box.insertBefore(d, di<ri ? row.nextSibling : row); });
+      row.querySelectorAll('input').forEach(function(i){ i.addEventListener('mousedown', function(e){ e.stopPropagation(); }); });
     });
   });
 })();

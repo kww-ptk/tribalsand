@@ -74,33 +74,46 @@ $outlets = $supported ? pos_fetch_outlets(null, false) : [];
 $outletName = []; foreach ($outlets as $o) $outletName[(int)$o['id']] = $o['name'];
 
 include __DIR__ . '/_layout.php';
+$__regUrl = site_url('/pos/register.php');
+$__tab = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M11 18h2"/></svg>';
+$__nOn = count(array_filter($terms ?? [], fn($t) => pos_bool($t['is_active'])));
 ?>
-<div class="page-header"><h1>POS terminals</h1></div>
+<div class="page-header"><h1>Terminals</h1></div>
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?> is-flash"><?= e($flash['msg']) ?></div><?php endif; ?>
 
 <?php if (!$supported): ?>
-  <div class="alert alert--info">Run the <code>add_pos.sql</code> migration (Admin → Migrations) to set up the POS.</div>
+  <div class="alert alert--info">Run the <code>add_pos.sql</code> migration (Settings → Your account → Migrations) to set up the POS.</div>
 <?php else: ?>
-<div class="card" style="margin-bottom:18px"><div class="card__body" style="padding:16px 20px;font-size:13.5px">
-  <p style="margin:0 0 6px"><strong>To register a tablet as a till:</strong> sign in to admin on the tablet, then open <code><?= e(site_url('/pos/register.php')) ?></code> and follow the steps. Your admin sign-in ends on that tablet once it’s set up — from then on staff unlock it with their PIN.</p>
-  <p class="text-muted" style="margin:0;font-size:12.5px">The tablet keeps a secret key only it holds, so registration has to happen on the device. Revoking below cuts it off at once.</p>
-</div></div>
+<div class="card postm-reg">
+  <span class="postm-ic postm-ic--brand"><?= $__tab ?></span>
+  <div class="postm-reg__t">
+    <b>Register a tablet as a till</b>
+    <span>On the tablet, sign in to admin and open <code><?= e($__regUrl) ?></code>. Your sign-in ends there once it’s set up — from then on staff unlock it with their own PIN. The tablet keeps a key only it holds, so this has to happen on the device.</span>
+  </div>
+  <button type="button" class="btn-outline btn-sm copy-link" data-link="<?= e($__regUrl) ?>">Copy the link</button>
+</div>
 
 <?php if (!$terms): ?>
   <?php dt_empty('No tablets registered yet.'); ?>
 <?php else: ?>
+<div class="pos-ribbon">
+  <div><span>Tablets</span><b><?= count($terms) ?></b></div>
+  <div><span>Active</span><b><?= $__nOn ?></b></div>
+  <div><span>Revoked</span><b><?= count($terms) - $__nOn ?></b></div>
+</div>
 <div class="postm-list">
-  <?php foreach ($terms as $t): $tOut = pos_terminal_outlet_ids((int)$t['id']); $on = pos_bool($t['is_active']); ?>
-  <div class="card postm <?= $on ? '' : 'is-off' ?>">
+  <?php foreach ($terms as $t): $tOut = pos_terminal_outlet_ids((int)$t['id']); $on = pos_bool($t['is_active']);
+        $seen = $t['last_seen_at'] ? strtotime((string)$t['last_seen_at']) : 0; $idle = $on && (!$seen || $seen < time() - 3 * 86400); ?>
+  <div class="card postm<?= $on ? '' : ' is-off' ?>">
     <form method="POST" action="<?= $self ?>" class="postm__body">
       <?= csrf_field() ?><input type="hidden" name="terminal_id" value="<?= (int)$t['id'] ?>">
       <div class="postm__top">
+        <span class="postm-ic"><?= $__tab ?></span>
         <input name="name" class="inp postm__name" maxlength="120" value="<?= e($t['name']) ?>" aria-label="Terminal name" <?= $on ? '' : 'disabled' ?>>
-        <?= $on ? '<span class="badge badge--green">Active</span>' : '<span class="badge badge--grey">Revoked</span>' ?>
+        <?= !$on ? '<span class="badge badge--grey">Revoked</span>' : ($idle ? '<span class="badge badge--orange">Idle</span>' : '<span class="badge badge--green">Active</span>') ?>
       </div>
       <div class="text-muted postm__meta">
-        <?= e($t['venue_name'] ?? 'Shared') ?> ·
-        <?= $t['last_seen_at'] ? 'last used ' . e(date('j M, H:i', strtotime((string)$t['last_seen_at']))) : 'never used' ?> ·
+        <?= $seen ? 'Last used ' . e(date('j M, H:i', $seen)) : 'Never used' ?> · <?= e($t['venue_name'] ?? 'Shared') ?> ·
         registered <?= e(date('j M Y', strtotime((string)$t['created_at']))) ?><?= $t['created_by_name'] ? ' by ' . e($t['created_by_name']) : '' ?>
       </div>
       <div class="postm__sub">Sells for</div>
@@ -111,8 +124,8 @@ include __DIR__ . '/_layout.php';
       </div>
       <div class="postm__actions">
         <?php if ($on): ?>
+        <button type="submit" name="action" value="revoke" class="btn-outline btn-sm postm-revoke" data-confirm="Revoke <?= e($t['name']) ?>? It stops working as a till immediately." data-confirm-label="Revoke"><?= admin_icon('ban', 15) ?> Revoke</button>
         <button type="submit" name="action" value="save" class="btn-primary btn-sm"><?= admin_icon('check', 15) ?> Save</button>
-        <button type="submit" name="action" value="revoke" class="btn-outline btn-sm" data-confirm="Revoke <?= e($t['name']) ?>? It stops working as a till immediately."><?= admin_icon('ban', 15) ?> Revoke</button>
         <?php else: ?>
         <button type="submit" name="action" value="restore" class="btn-outline btn-sm"><?= admin_icon('rotate', 15) ?> Restore</button>
         <?php endif; ?>
@@ -125,15 +138,24 @@ include __DIR__ . '/_layout.php';
 
 <style>
 .card__head{flex-wrap:wrap;gap:8px 12px}
+.postm-reg{display:flex;align-items:center;gap:14px;padding:16px 18px;margin-bottom:16px;flex-wrap:wrap}
+.postm-reg__t{flex:1;min-width:240px}
+.postm-reg__t b{display:block}
+.postm-reg__t span{display:block;font-size:12.5px;color:var(--muted);margin-top:2px}
+.postm-reg__t code{font-size:12px}
+.postm-ic{width:42px;height:42px;border-radius:11px;border:1px solid var(--border);display:inline-grid;place-items:center;color:var(--muted);flex:none;background:var(--white)}
+.postm-ic--brand{background:#e6f0f1;color:var(--brand);border:0}
 .postm-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(340px,100%),1fr));gap:14px}
 .postm.is-off{opacity:.7}
-.postm__body{padding:16px 18px;margin:0}
+.postm__body{padding:16px 18px;margin:0;display:flex;flex-direction:column;height:100%}
 .postm__top{display:flex;align-items:center;gap:10px}
-.postm__name{flex:1;font-weight:600}
-.postm__meta{font-size:12.5px;margin:8px 0 2px}
-.postm__sub{font-size:12px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:14px 0 8px}
+.postm__name{flex:1;min-width:0;font-weight:600}
+.postm__meta{font-size:12.5px;margin:10px 0 2px}
+.postm__sub{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:14px 0 8px}
 .postm__chips{display:flex;flex-wrap:wrap;gap:8px}
-.postm__actions{display:flex;gap:8px;margin-top:16px}
+.postm__actions{display:flex;gap:8px;margin-top:auto;padding-top:16px}
+.postm__actions .btn-primary{margin-left:auto}
+.postm-revoke{color:var(--red)}
 </style>
 <?php endif; ?>
 <?php include __DIR__ . '/_layout_end.php'; ?>

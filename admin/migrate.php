@@ -101,7 +101,6 @@ include __DIR__ . '/_layout.php';
 <div class="card">
   <div class="card__head">
     <span class="card__title">Available migrations</span>
-    <span class="text-muted" style="font-size:12px">Newest first · by the date each was added to <code>db/migrations/</code></span>
   </div>
   <div class="card__body" style="padding:0">
     <table class="data-table">

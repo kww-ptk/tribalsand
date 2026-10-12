@@ -87,6 +87,13 @@ $id    = (int)($_GET['id'] ?? 0);
 $menu  = $id ? fetch_menu($id) : null;
 $isNew = !$menu;
 
+// A new menu is started inline on the Menus list (admin/menus.php); this page is
+// for editing. A plain visit without a menu goes to that form.
+if ($isNew && $_SERVER['REQUEST_METHOD'] !== 'POST') {
+    header('Location: /admin/menus.php?new=1#newMenu');
+    exit;
+}
+
 // Guard: editing an existing menu you don't own → bounce.
 if ($menu && !menu_editable($menu, $scope)) {
     $_SESSION['hold_flash'] = ['type' => 'error', 'msg' => 'That menu belongs to another property.'];
@@ -115,7 +122,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     // ---- Menu meta (create / update) ----
     if ($action === 'save_menu') {
         $title = trim($_POST['title'] ?? '');
-        $slug  = menu_slugify($_POST['slug'] ?? $title);
+        $slug  = menu_slugify(trim((string)($_POST['slug'] ?? '')) !== '' ? (string)$_POST['slug'] : $title);   // blank = from the title
         $venId = (int)($_POST['venue_id'] ?? 0) ?: null;
 
         // Managers can only attach to a venue in their scope.
@@ -167,6 +174,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             });
             audit_log('menu.save', 'menu', $id, $title);
             $success = 'Menu details saved.';
+        }
+        // A refused create from the inline form on the Menus list goes back there,
+        // with what was typed, rather than to a separate "New Menu" page.
+        if ($error && $isNew) {
+            $_SESSION['menu_new_flash'] = ['error' => $error, 'old' => array_intersect_key($_POST,
+                array_flip(['title', 'slug', 'venue_id', 'subtitle', 'is_published']))];
+            header('Location: /admin/menus.php?new=1#newMenu');
+            exit;
         }
     }
 

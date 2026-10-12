@@ -281,8 +281,8 @@ include __DIR__ . '/_layout.php';
   $nbV   = (int)($nbOld['venue_id'] ?? 0) ?: (int)$venueOpts[0]['id'];
   $nbSlots = reservation_slots();
 ?>
-<details class="card rz-new" id="new-booking"<?= $resNew ? ' open' : '' ?>>
-  <summary class="card__head"><span class="card__title">New booking</span><span class="text-muted" style="font-size:12px">Zuri bookings are checked against Zuri's tables when sync is on</span></summary>
+<details class="card rz-new" id="new-booking" data-inline-form<?= $resNew ? ' open' : '' ?>>
+  <summary class="card__head"><span class="card__title">New booking</span></summary>
   <div class="card__body" style="padding:18px">
     <?php if (!empty($nbErr['general'])): ?><div class="alert alert--error"><?= e($nbErr['general']) ?></div><?php endif; ?>
     <form method="POST" action="/admin/reservations.php" class="rz-form">

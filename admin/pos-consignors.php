@@ -100,6 +100,7 @@ $form = ['id' => 0, 'name' => '', 'phone' => '', 'email' => '', 'commission_pct'
 foreach ($rows as $r) if ((int)$r['id'] === $editId) { $form = $r; break; }
 if ($old) $form = array_merge($form, array_intersect_key($old, $form), ['is_active' => !empty($old['is_active'])]);
 $isEdit = (int)$form['id'] > 0;
+$formOpen = $isEdit || !empty($_GET['new']) || $errs;
 $pctTxt = fn($v) => rtrim(rtrim(number_format((float)$v, 2, '.', ''), '0'), '.') ?: '0';
 
 // Statement period — defaults to this month so far (Nairobi).
@@ -110,131 +111,164 @@ $stTo   = $valid($_GET['to'] ?? '') ?? $today;
 if ($stTo < $stFrom) [$stFrom, $stTo] = [$stTo, $stFrom];
 $statement = $supported ? pos_consignment_statement($stFrom, $stTo) : [];
 
+// Per supplier: their statement lines (one per currency). Totals per currency.
+$stBy = []; $tot = [];
+foreach ($statement as $st) {
+    $stBy[(int)$st['consignor_id']][] = $st;
+    $c = (string)$st['currency'];
+    $tot[$c] = $tot[$c] ?? ['owe' => 0.0, 'paid' => 0.0, 'gross' => 0.0];
+    $tot[$c]['owe']   += max(0, (float)$st['balance']);
+    $tot[$c]['paid']  += (float)$st['paid'];
+    $tot[$c]['gross'] += (float)$st['gross'];
+}
+$initials = fn(string $n) => mb_strtoupper(implode('', array_map(fn($w) => mb_substr($w, 0, 1), array_slice(preg_split('/\s+/', trim($n)) ?: [], 0, 2))));
+$periodTxt = date('j M', strtotime($stFrom)) . ' – ' . date('j M Y', strtotime($stTo));
+
 include __DIR__ . '/_layout.php';
 ?>
-<div class="page-header"><h1>POS suppliers</h1></div>
-<?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?> is-flash"><?= e($flash['msg']) ?></div><?php endif; ?>
-
-<?php if (!$supported): ?>
-  <div class="alert alert--info">Run the <code>add_pos.sql</code> migration (Admin → Migrations) to set up the POS.</div>
-<?php else: ?>
-<p class="text-muted" style="margin:-6px 0 18px;font-size:13px;max-width:780px">Consignment suppliers — local makers whose goods we sell and pay out for. <strong>Commission</strong> is the share we keep; the rest is owed to the supplier. An item can instead carry a fixed "cost to us". Each sale remembers the terms it was sold on.</p>
-
-<div class="posc-grid">
-  <div class="card">
-    <div class="card__head"><span class="card__title"><?= count($rows) ?> supplier<?= count($rows) === 1 ? '' : 's' ?></span></div>
-    <?php if (!$rows): ?>
-      <?php dt_empty('No suppliers yet — add the first one.'); ?>
-    <?php else: ?>
-    <div class="table-wrap"><table class="data-table">
-      <thead><tr><th>Supplier</th><th>Contact</th><th class="posc-num">We keep</th><th class="posc-num">Items</th><th style="width:1%"></th></tr></thead>
-      <tbody>
-      <?php foreach ($rows as $r): ?>
-        <tr class="<?= pos_bool($r['is_active']) ? '' : 'posc-off' ?>">
-          <td><strong><?= e($r['name']) ?></strong><?php if (!pos_bool($r['is_active'])): ?> <span class="badge badge--grey">Inactive</span><?php endif; ?>
-            <?php if (!empty($r['notes'])): ?><div class="text-muted posc-note"><?= e($r['notes']) ?></div><?php endif; ?></td>
-          <td class="text-muted"><?= e(implode(' · ', array_filter([(string)$r['phone'], (string)$r['email']]))) ?: '—' ?></td>
-          <td class="posc-num"><?= e($pctTxt($r['commission_pct'])) ?>%</td>
-          <td class="posc-num"><?= (int)$r['item_count'] ?></td>
-          <td class="posc-act">
-            <a href="<?= $self ?>?edit=<?= (int)$r['id'] ?>#form" class="btn-icon" data-tip="Edit" aria-label="Edit <?= e($r['name']) ?>"><?= admin_icon('edit', 15) ?></a>
-            <form method="POST" action="<?= $self ?>" style="margin:0">
-              <?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
-              <button type="submit" class="btn-icon btn-icon--danger" data-confirm="Delete <?= e($r['name']) ?>? A supplier with items or sales is made inactive instead." data-tip="Delete" aria-label="Delete <?= e($r['name']) ?>"><?= admin_icon('trash', 15) ?></button>
-            </form>
-          </td>
-        </tr>
-      <?php endforeach; ?>
-      </tbody>
-    </table></div>
-    <?php endif; ?>
-  </div>
-
-  <div class="card" id="form">
-    <div class="card__head"><span class="card__title"><?= $isEdit ? 'Edit ' . e($form['name']) : 'Add a supplier' ?></span>
-      <?php if ($isEdit): ?><a href="<?= $self ?>" class="btn-icon" data-tip="Close" aria-label="Close"><?= admin_icon('x', 16) ?></a><?php endif; ?></div>
-    <div class="card__body" style="padding:18px 20px">
-      <form method="POST" action="<?= $self ?>" novalidate>
-        <?= csrf_field() ?><input type="hidden" name="action" value="save"><input type="hidden" name="id" value="<?= (int)$form['id'] ?>">
-        <div class="field"><label>Name</label><input name="name" class="inp<?= isset($errs['name']) ? ' is-invalid' : '' ?>" maxlength="120" value="<?= e((string)$form['name']) ?>" style="width:100%" required>
-          <?php if (isset($errs['name'])): ?><div class="field-error"><?= e($errs['name']) ?></div><?php endif; ?></div>
-        <div class="posc-two">
-          <div class="field"><label>Phone</label><input name="phone" class="inp" maxlength="40" value="<?= e((string)$form['phone']) ?>" style="width:100%"></div>
-          <div class="field"><label>Email</label><input name="email" type="email" class="inp<?= isset($errs['email']) ? ' is-invalid' : '' ?>" maxlength="160" value="<?= e((string)$form['email']) ?>" style="width:100%">
-            <?php if (isset($errs['email'])): ?><div class="field-error"><?= e($errs['email']) ?></div><?php endif; ?></div>
-        </div>
-        <div class="field"><label>Commission we keep (%)</label><input name="commission_pct" type="number" class="inp inp--num no-spin<?= isset($errs['commission_pct']) ? ' is-invalid' : '' ?>" min="0" max="100" step="0.01" value="<?= e($pctTxt($form['commission_pct'])) ?>" style="width:140px">
-          <?php if (isset($errs['commission_pct'])): ?><div class="field-error"><?= e($errs['commission_pct']) ?></div><?php endif; ?></div>
-        <div class="field"><label>Notes <span class="text-muted">(payment terms, M-Pesa number…)</span></label><textarea name="notes" class="inp inp--area" rows="3" style="width:100%"><?= e((string)$form['notes']) ?></textarea></div>
-        <label class="togglerow" style="margin-bottom:16px"><span class="toggle"><input type="checkbox" name="is_active" value="1" <?= pos_bool($form['is_active']) ? 'checked' : '' ?>><span class="toggle-slider"></span></span><span>Active</span></label>
-        <div><button type="submit" class="btn-primary btn-sm"><?= admin_icon('check', 15) ?> <?= $isEdit ? 'Save supplier' : 'Add supplier' ?></button></div>
-      </form>
-    </div>
-  </div>
-</div>
-
-<div class="card" id="statement" style="margin-top:18px">
-  <div class="card__head"><span class="card__title">Statement — what we owe</span>
+<div class="page-header">
+  <h1>Suppliers</h1>
+  <?php if ($supported): ?>
+  <div class="actions">
     <form method="GET" action="<?= $self ?>" class="posc-period" id="poscPeriod">
       <button type="button" class="dp-btn inp" data-dp-target="poscFrom" data-dp-past data-dp-placeholder="From"><?= e(date('j M Y', strtotime($stFrom))) ?></button>
       <input type="hidden" id="poscFrom" name="from" value="<?= e($stFrom) ?>">
       <span class="text-muted">to</span>
       <button type="button" class="dp-btn inp" data-dp-target="poscTo" data-dp-past data-dp-placeholder="To"><?= e(date('j M Y', strtotime($stTo))) ?></button>
       <input type="hidden" id="poscTo" name="to" value="<?= e($stTo) ?>">
-    </form></div>
-  <?php if (!$statement): ?>
-    <?php dt_empty('No consignment sales or payments in this period.'); ?>
-  <?php else: ?>
-  <div class="table-wrap"><table class="data-table">
-    <thead><tr><th>Supplier</th><th class="posc-num">Units</th><th class="posc-num">Sold for</th><th class="posc-num">We keep</th><th class="posc-num">Owed</th><th class="posc-num">Paid</th><th class="posc-num">Balance</th><th>Record a payment</th></tr></thead>
-    <tbody>
-    <?php foreach ($statement as $st): $c = $st['currency']; ?>
-      <tr>
-        <td><strong><?= e($st['consignor']) ?></strong></td>
-        <td class="posc-num"><?= (int)$st['qty'] ?></td>
-        <td class="posc-num"><?= e(pos_money($st['gross'], $c)) ?></td>
-        <td class="posc-num text-muted"><?= e(pos_money($st['kept'], $c)) ?></td>
-        <td class="posc-num"><?= e(pos_money($st['owed'], $c)) ?></td>
-        <td class="posc-num text-muted"><?= e(pos_money($st['paid'], $c)) ?></td>
-        <td class="posc-num"><strong class="<?= $st['balance'] > 0 ? 'posc-due' : '' ?>"><?= e(pos_money($st['balance'], $c)) ?></strong></td>
-        <td>
-          <?php if ($st['balance'] > 0): ?>
-          <form method="POST" action="<?= $self ?>" class="posc-pay">
-            <?= csrf_field() ?><input type="hidden" name="action" value="payout"><input type="hidden" name="id" value="<?= (int)$st['consignor_id'] ?>">
-            <input type="hidden" name="from" value="<?= e($stFrom) ?>"><input type="hidden" name="to" value="<?= e($stTo) ?>"><input type="hidden" name="currency" value="<?= e($c) ?>">
-            <span class="inp-money"><span class="inp-money__cur"><?= e($c) ?></span><input name="amount" type="number" class="inp inp--sm inp--num no-spin" min="0.01" step="0.01" value="<?= e(number_format($st['balance'], 2, '.', '')) ?>" style="width:100px" aria-label="Amount paid"></span>
-            <input name="note" class="inp inp--sm" maxlength="200" placeholder="M-Pesa code / note" style="width:150px" aria-label="Note">
-            <button type="submit" class="btn-outline btn-sm" data-confirm="Record this payment to <?= e($st['consignor']) ?>?"><?= admin_icon('check', 14) ?> Paid</button>
-          </form>
-          <?php else: ?><span class="badge badge--green">Settled</span><?php endif; ?>
-        </td>
-      </tr>
-    <?php endforeach; ?>
-    </tbody>
-  </table></div>
-  <p class="text-muted" style="font-size:12px;margin:0;padding:10px 16px">Owed is worked out from the terms each item was sold on. A payment counts toward every period it overlaps, so record it against the period you are settling.</p>
+    </form>
+    <button type="button" class="btn-primary btn-sm" id="poscAddBtn" aria-controls="form" aria-expanded="<?= $formOpen && !$isEdit ? 'true' : 'false' ?>"><?= admin_icon('plus', 15) ?> Add supplier</button>
+  </div>
   <?php endif; ?>
 </div>
+<?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?> is-flash"><?= e($flash['msg']) ?></div><?php endif; ?>
+
+<?php if (!$supported): ?>
+  <div class="alert alert--info">Run the <code>add_pos.sql</code> migration (Settings → Your account → Migrations) to set up the POS.</div>
+<?php else: ?>
+
+<div class="card posc-formcard" id="form" data-inline-form<?= $isEdit ? ' data-close-href="' . e($self) . '"' : '' ?><?= $formOpen ? '' : ' hidden' ?>>
+  <div class="card__head"><span class="card__title"><?= $isEdit ? 'Edit ' . e($form['name']) : 'Add a supplier' ?></span></div>
+  <div class="card__body" style="padding:18px 20px">
+    <form method="POST" action="<?= $self ?>" novalidate>
+      <?= csrf_field() ?><input type="hidden" name="action" value="save"><input type="hidden" name="id" value="<?= (int)$form['id'] ?>">
+      <div class="posc-fields">
+        <div class="field"><label>Name</label><input name="name" class="inp<?= isset($errs['name']) ? ' is-invalid' : '' ?>" maxlength="120" value="<?= e((string)$form['name']) ?>" required>
+          <?php if (isset($errs['name'])): ?><div class="field-error"><?= e($errs['name']) ?></div><?php endif; ?></div>
+        <div class="field"><label>Phone</label><input name="phone" class="inp" maxlength="40" value="<?= e((string)$form['phone']) ?>"></div>
+        <div class="field"><label>Email</label><input name="email" type="email" class="inp<?= isset($errs['email']) ? ' is-invalid' : '' ?>" maxlength="160" value="<?= e((string)$form['email']) ?>">
+          <?php if (isset($errs['email'])): ?><div class="field-error"><?= e($errs['email']) ?></div><?php endif; ?></div>
+        <div class="field"><label>We keep (%)</label><input name="commission_pct" type="number" class="inp inp--num no-spin<?= isset($errs['commission_pct']) ? ' is-invalid' : '' ?>" min="0" max="100" step="0.01" value="<?= e($pctTxt($form['commission_pct'])) ?>">
+          <?php if (isset($errs['commission_pct'])): ?><div class="field-error"><?= e($errs['commission_pct']) ?></div><?php endif; ?></div>
+      </div>
+      <div class="field" style="margin-top:12px"><label>Notes <span class="text-muted">(payment terms, M-Pesa number…)</span></label><textarea name="notes" class="inp inp--area" rows="2" style="width:100%"><?= e((string)$form['notes']) ?></textarea></div>
+      <div class="posc-formfoot">
+        <label class="togglerow"><span class="toggle"><input type="checkbox" name="is_active" value="1" <?= pos_bool($form['is_active']) ? 'checked' : '' ?>><span class="toggle-slider"></span></span><span>Active</span></label>
+        <button type="submit" class="btn-primary btn-sm"><?= admin_icon('check', 15) ?> <?= $isEdit ? 'Save supplier' : 'Add supplier' ?></button>
+      </div>
+      <p class="text-muted" style="font-size:12px;margin:10px 0 0">What we keep is our share; the rest is owed to the supplier. An item can instead carry a fixed amount we owe. Each sale remembers the terms it was sold on.</p>
+    </form>
+  </div>
+</div>
+
+<div class="pos-ribbon">
+  <?php if (!$tot): ?>
+    <div><span>We owe</span><b>—</b></div><div><span>Paid</span><b>—</b></div><div><span>Sold for suppliers</span><b>—</b></div>
+  <?php else: foreach ($tot as $c => $t): ?>
+    <div><span>We owe<?= count($tot) > 1 ? ' · ' . e($c) : '' ?></span><b class="<?= $t['owe'] > 0 ? 'posc-due' : '' ?>"><?= e(pos_money($t['owe'], $c)) ?></b></div>
+    <div><span>Paid<?= count($tot) > 1 ? ' · ' . e($c) : '' ?></span><b><?= e(pos_money($t['paid'], $c)) ?></b></div>
+    <div><span>Sold for suppliers<?= count($tot) > 1 ? ' · ' . e($c) : '' ?></span><b><?= e(pos_money($t['gross'], $c)) ?></b></div>
+  <?php endforeach; endif; ?>
+  <div><span>Period</span><b style="font-size:14px"><?= e($periodTxt) ?></b></div>
+</div>
+
+<?php if (!$rows): ?>
+  <?php dt_empty('No suppliers yet — press Add supplier.'); ?>
+<?php else: ?>
+<div class="posc-cards">
+  <?php foreach ($rows as $r): $sid = (int)$r['id']; $lines = $stBy[$sid] ?? []; $owe = array_filter($lines, fn($l) => (float)$l['balance'] > 0); $active = pos_bool($r['is_active']); ?>
+  <article class="card posc-card<?= $active ? '' : ' is-off' ?>" id="sup-<?= $sid ?>">
+    <header class="posc-card__head">
+      <span class="posc-av"><?= e($initials((string)$r['name'])) ?></span>
+      <span class="posc-card__who"><b><?= e($r['name']) ?></b>
+        <small><?= e(implode(' · ', array_filter([(string)$r['phone'], (string)$r['email']]))) ?: 'No contact details' ?></small></span>
+      <?php if (!$active): ?><span class="badge badge--grey">Inactive</span>
+      <?php elseif ($owe): ?><span class="badge badge--orange">Owe <?= e(implode(' + ', array_map(fn($l) => pos_money((float)$l['balance'], (string)$l['currency']), $owe))) ?></span>
+      <?php else: ?><span class="badge badge--green">Settled</span><?php endif; ?>
+    </header>
+    <div class="posc-mini">
+      <div><span>We keep</span><b><?= e($pctTxt($r['commission_pct'])) ?>%</b></div>
+      <div><span>Items</span><b><?= (int)$r['item_count'] ?></b></div>
+      <div><span>Sold (period)</span><b><?= $lines ? e(implode(' + ', array_map(fn($l) => pos_money((float)$l['gross'], (string)$l['currency']), $lines))) : '—' ?></b></div>
+    </div>
+    <?php if (!empty($r['notes'])): ?><p class="posc-note"><?= e($r['notes']) ?></p><?php endif; ?>
+    <?php if ($lines): ?>
+    <dl class="posc-stmt">
+      <?php foreach ($lines as $l): $c = (string)$l['currency']; ?>
+      <dt><?= (int)$l['qty'] ?> sold · we keep <?= e(pos_money((float)$l['kept'], $c)) ?></dt><dd>owed <?= e(pos_money((float)$l['owed'], $c)) ?> · paid <?= e(pos_money((float)$l['paid'], $c)) ?></dd>
+      <?php endforeach; ?>
+    </dl>
+    <?php endif; ?>
+    <?php foreach ($owe as $l): $c = (string)$l['currency']; ?>
+    <form method="POST" action="<?= $self ?>" class="posc-pay">
+      <?= csrf_field() ?><input type="hidden" name="action" value="payout"><input type="hidden" name="id" value="<?= $sid ?>">
+      <input type="hidden" name="from" value="<?= e($stFrom) ?>"><input type="hidden" name="to" value="<?= e($stTo) ?>"><input type="hidden" name="currency" value="<?= e($c) ?>">
+      <span class="inp-money"><span class="inp-money__cur"><?= e($c) ?></span><input name="amount" type="number" class="inp inp--sm inp--num no-spin" min="0.01" step="0.01" value="<?= e(number_format((float)$l['balance'], 2, '.', '')) ?>" aria-label="Amount paid"></span>
+      <input name="note" class="inp inp--sm" maxlength="200" placeholder="M-Pesa code / note" aria-label="Note">
+      <button type="submit" class="btn-primary btn-sm" data-confirm="Record this payment to <?= e($r['name']) ?>?" data-confirm-label="Record payment"><?= admin_icon('check', 14) ?> Paid</button>
+    </form>
+    <?php endforeach; ?>
+    <footer class="posc-card__foot">
+      <a href="<?= $self ?>?edit=<?= $sid ?>#form" class="btn-outline btn-sm"><?= admin_icon('edit', 14) ?> Edit</a>
+      <form method="POST" action="<?= $self ?>" style="margin:0">
+        <?= csrf_field() ?><input type="hidden" name="action" value="delete"><input type="hidden" name="id" value="<?= $sid ?>">
+        <button type="submit" class="btn-icon btn-icon--outline btn-icon--danger" data-confirm="Delete <?= e($r['name']) ?>? A supplier with items or sales is made inactive instead." data-confirm-label="Delete" data-tip="Delete" aria-label="Delete <?= e($r['name']) ?>"><?= admin_icon('trash', 15) ?></button>
+      </form>
+    </footer>
+  </article>
+  <?php endforeach; ?>
+</div>
+<?php endif; ?>
+
 <script>
-document.querySelectorAll('#poscPeriod input[type=hidden]').forEach(function (i) { i.addEventListener('change', function () { document.getElementById('poscPeriod').submit(); }); });
+(function () {
+  document.querySelectorAll('#poscPeriod input[type=hidden]').forEach(function (i) { i.addEventListener('change', function () { document.getElementById('poscPeriod').submit(); }); });
+  var b = document.getElementById('poscAddBtn'), c = document.getElementById('form');
+  if (b && c) b.addEventListener('click', function () { var open = c.hidden; c.hidden = !open; b.setAttribute('aria-expanded', open ? 'true' : 'false'); if (open) { var f = c.querySelector('[name=name]'); if (f) f.focus(); } });
+})();
 </script>
 
 <style>
-.posc-period{display:flex;align-items:center;gap:8px;margin:0;font-size:13px}
-.posc-period .dp-btn{width:auto;min-width:130px;flex:0 0 auto}
-.posc-pay{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0}
-.posc-due{color:var(--red)}
-.posc-grid{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,1fr);gap:18px;align-items:start}
-@media (max-width:900px){.posc-grid{grid-template-columns:minmax(0,1fr)}}
-.card__head{flex-wrap:wrap;gap:8px 12px}
-@media (max-width:560px){.posc-two{grid-template-columns:1fr}.posc-pay .inp{width:100%!important}.posc-period{flex-wrap:wrap}}
-.posc-grid .table-wrap .data-table{min-width:0}
-.posc-num{text-align:right;white-space:nowrap}
-.posc-act{white-space:nowrap;text-align:right}
-.posc-act > *{display:inline-flex;vertical-align:middle;margin-left:4px}
-.posc-off td{opacity:.6}
-.posc-note{font-size:12px;margin-top:2px}
-.posc-two{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
+.posc-period{display:inline-flex;align-items:center;gap:8px;margin:0;font-size:13px}
+.posc-period .dp-btn{width:auto;min-width:126px;flex:0 0 auto}
+.posc-formcard{margin-bottom:16px}
+.posc-fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:0 14px}
+.posc-fields .inp{width:100%}
+.posc-formfoot{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:8px}
+.posc-formfoot .btn-primary{margin-left:auto}
+.posc-due{color:#b45309}
+.posc-cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:14px}
+.posc-card{padding:16px 18px;display:flex;flex-direction:column;gap:12px}
+.posc-card.is-off{opacity:.65}
+.posc-card__head{display:flex;align-items:center;gap:10px}
+.posc-av{width:38px;height:38px;border-radius:50%;background:var(--accent);color:#fff;display:inline-grid;place-items:center;font-weight:700;font-size:13px;flex:none}
+.posc-card__who{flex:1;min-width:0}
+.posc-card__who b{display:block}
+.posc-card__who small{display:block;color:var(--muted);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.posc-mini{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.posc-mini > div{padding:8px 10px;border-right:1px solid var(--border);min-width:0}
+.posc-mini > div:last-child{border-right:0}
+.posc-mini span{display:block;font-size:10.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+.posc-mini b{font-size:14px;overflow-wrap:anywhere}
+.posc-note{margin:0;font-size:12.5px;color:var(--muted)}
+.posc-stmt{margin:0;display:grid;grid-template-columns:1fr auto;gap:4px 10px;font-size:12.5px}
+.posc-stmt dt{color:var(--muted)}.posc-stmt dd{margin:0;text-align:right}
+.posc-pay{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin:0;padding:10px;background:#fdf7ec;border-radius:10px}
+.posc-pay .inp-money{flex:0 0 140px;display:flex}.posc-pay .inp-money .inp{flex:1;min-width:0}
+.posc-pay > .inp{flex:1 1 120px;min-width:0}
+.posc-card__foot{display:flex;gap:8px;align-items:center;margin-top:auto}
+.posc-card__foot form{margin-left:auto}
+@media (max-width:560px){.posc-cards{grid-template-columns:1fr}.posc-period{flex-wrap:wrap}}
 </style>
 <?php endif; ?>
 <?php include __DIR__ . '/_layout_end.php'; ?>

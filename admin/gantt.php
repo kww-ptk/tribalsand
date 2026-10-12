@@ -830,8 +830,7 @@ include __DIR__ . '/_layout.php';
 
 <?php if ($services['unscheduled']): ?>
 <div class="card gsvc-tray" id="gsvcTray">
-  <div class="card__head"><span class="card__title">Not scheduled yet (<?= count($services['unscheduled']) ?>)</span>
-    <span class="text-muted" style="font-size:12px">Requests for stays on screen with no date — set the day on the booking's Requests tab</span></div>
+  <div class="card__head"><span class="card__title">Not scheduled yet (<?= count($services['unscheduled']) ?>)</span></div>
   <ul class="gsvc-tray__list">
     <?php foreach ($services['unscheduled'] as $it): ?>
     <li class="gsvc-item gsvc-item--<?= e($it['group']) ?>">
