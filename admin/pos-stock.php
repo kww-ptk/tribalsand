@@ -258,7 +258,7 @@ include __DIR__ . '/_layout.php';
 </div>
 
 <div class="card">
-  <div class="table-wrap"><table class="data-table poss-table" id="possTable" data-paginate="25">
+  <div class="table-wrap"><table class="data-table poss-table is-phone-fit" id="possTable" data-paginate="25">
     <thead><tr><th>Item</th><th class="poss-num">On hand</th><th class="poss-num">Alert at</th><th>Whose</th><th style="width:1%"></th></tr></thead>
     <tbody id="possRows">
     <?php foreach ($items as $i): $q = (int)$i['stock_on_hand']; $out = $q <= 0; $isL = !$out && $isLow($i); $dUrl = $link('&item=' . (int)$i['id']); ?>
@@ -298,6 +298,7 @@ include __DIR__ . '/_layout.php';
 .poss-hist{display:flex;flex-direction:column}
 .poss-hist > div{display:grid;grid-template-columns:86px minmax(0,1fr) auto;gap:10px;padding:8px 0;border-bottom:1px dashed var(--border);font-size:13px;align-items:baseline}
 .poss-hist > div:last-child{border-bottom:0}
+@media (max-width:640px){#possTable th:nth-child(3),#possTable td:nth-child(3),#possTable th:nth-child(4),#possTable td:nth-child(4),#possTable th:nth-child(5),#possTable td:nth-child(5){display:none}#possTable .pos-thumb{display:none}}   /* phone: tap the row — the panel has Receive and Count */
 </style>
 <script>
 (function(){

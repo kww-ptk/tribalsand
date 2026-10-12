@@ -460,7 +460,7 @@ include __DIR__ . '/_layout.php';
 .posx-catadd{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px;max-width:520px}
 .posx-catadd .inp{flex:1 1 160px;min-width:0}
 @media (max-width:900px){.posx-split{grid-template-columns:minmax(0,1fr)}.posx-list{position:static}}
-@media (max-width:640px){.posx-cards{grid-template-columns:minmax(0,1fr)}.posx-cat,.posx-catadd{max-width:none}}
+@media (max-width:640px){.posx-cards{grid-template-columns:minmax(0,1fr)}.posx-cat,.posx-catadd{max-width:none}.posx-card__b{padding:12px 14px}.posx-cat{gap:6px}.posx-hero__a{width:100%}.posx-hero__a .btn-primary{margin-left:auto}}
 </style>
 <script>
 (function(){

@@ -1298,6 +1298,9 @@ tr.is-unpriced td { background: #fff7ed; }
   .areatabs__row { padding: 0 12px; }
   .areatabs .tab-btn { padding: 10px 12px 9px; font-size: 13.5px; }
 }
+/* The page gutter is 12px under 480px: the strip bleeds by exactly that, never more
+   (a -16px bleed made every page with a tab strip scroll sideways by 4px). */
+@media (max-width: 480px) { .areatabs { margin-left: -12px; margin-right: -12px; } }
 @media print { .areatabs { display: none; } }
 
 /* ── Help & guides (design B): Help button, side panel, "Show me" walkthrough ──
@@ -1429,6 +1432,7 @@ summary.inline-form__head { cursor: pointer; }
            border-left: 1px solid var(--border); box-shadow: -24px 0 48px -24px rgba(16,47,58,.35);
            display: flex; flex-direction: column; animation: adrawer-in .18s ease; }
 @keyframes adrawer-in { from { transform: translateX(24px); opacity: .4; } to { transform: none; opacity: 1; } }
+.adrawer[hidden], .adrawer-scrim[hidden] { display: none; }   /* .adrawer is display:flex, which beats the hidden attribute */
 .adrawer__x { position: absolute; top: 12px; right: 12px; z-index: 2; }
 .adrawer__head { padding: 18px 56px 14px 20px; border-bottom: 1px solid var(--border); }
 .adrawer__head h2 { margin: 0; font-size: 18px; letter-spacing: -.01em; }
@@ -1482,3 +1486,15 @@ tr[data-drawer] { cursor: pointer; }
 .pos-ribbon > div:last-child{border-right:0}
 .pos-ribbon span{display:block;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
 .pos-ribbon b{font-size:18px;font-variant-numeric:tabular-nums}
+
+/* Phones: summary tiles two per row (the first, dark one across), compact numbers. */
+@media (max-width: 640px) {
+  .pos-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+  .pos-kpi { padding: 11px 12px; }
+  .pos-kpi > b { font-size: 18px; }
+  .pos-kpi > small { font-size: 11.5px; }
+  .pos-kpi--dark { grid-column: 1 / -1; }
+  .pos-toolbar .dt-search { width: 100% !important; }
+  /* Tables that hide their secondary columns on a phone fit without a 720px floor. */
+  .table-wrap .data-table.is-phone-fit { min-width: 0; }
+}

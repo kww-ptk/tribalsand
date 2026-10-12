@@ -402,7 +402,7 @@ include __DIR__ . '/_layout.php';
   <?php if (!$items): ?>
     <?php dt_empty('No items yet — press Add item, or link activities.'); ?>
   <?php else: ?>
-  <div class="table-wrap"><table class="data-table posi-table" id="posiTable" data-paginate="25">
+  <div class="table-wrap"><table class="data-table posi-table is-phone-fit" id="posiTable" data-paginate="25">
     <thead><tr><th style="width:30px" data-tip="Drag to set the till order"></th><th>Item</th><th>Category</th><th>Type</th><th class="posi-num">Price</th><th class="posi-num">Stock</th><th>Status</th><th style="width:1%"></th></tr></thead>
     <tbody id="posiRows">
     <?php foreach ($items as $it):
@@ -482,6 +482,7 @@ include __DIR__ . '/_layout.php';
 .posi-act{white-space:nowrap;text-align:right}
 .posi-act > *{display:inline-flex;vertical-align:middle;margin-left:4px}
 .posi-none{padding:28px;text-align:center;margin:0}
+@media (max-width:640px){#posiTable th:nth-child(1),#posiTable td:nth-child(1),#posiTable th:nth-child(3),#posiTable td:nth-child(3),#posiTable th:nth-child(4),#posiTable td:nth-child(4),#posiTable th:nth-child(7),#posiTable td:nth-child(7){display:none}#posiTable .pos-thumb{display:none}#posiTable .posi-act>*{margin-left:2px}}
 </style>
 <script>
 (function(){
