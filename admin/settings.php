@@ -82,6 +82,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    if ($action === 'save_whatsapp_reply') {
+        // Pre-filled message for "Reply on WhatsApp" on an enquiry. Blank = the built-in default.
+        require_once __DIR__ . '/../includes/whatsapp-reply.php';
+        $wa_typed = [];
+        foreach (array_keys(WA_REPLY_LANGS) as $l) {
+            $wa_typed[$l] = trim(str_replace("\r\n", "\n", (string)($_POST['whatsapp_reply_' . $l] ?? '')));
+            if (!$error && ($p = wa_reply_template_problem($wa_typed[$l]))) $error = WA_REPLY_LANGS[$l] . ': ' . $p;
+        }
+        if (!$error) {
+            foreach ($wa_typed as $l => $t) set_setting('whatsapp_reply_' . $l, $t === trim(WA_REPLY_DEFAULTS[$l]) ? '' : $t);
+            audit_log('settings.save_whatsapp_reply');
+            $success = 'WhatsApp message saved.';
+            $wa_typed = null;
+        }
+    }
+
     if ($action === 'save_share_image') {
         // og:image for the home page and every page without its own (includes/head.php).
         // Blank = the built-in image (SITE_SHARE_IMAGE_DEFAULT).
@@ -161,6 +177,10 @@ $checkin_instructions = setting('checkin_instructions', '');
 $unit_assignment      = setting('unit_assignment',      'auto');
 require_once __DIR__ . '/../includes/quote-docs.php';   // QB_QUOTE_TERMS_DEFAULT
 $quote_terms          = $quote_terms_typed ?? setting('quote_terms', '');   // typed text wins after a refused save
+
+require_once __DIR__ . '/../includes/whatsapp-reply.php';
+$wa_reply = [];
+foreach (array_keys(WA_REPLY_LANGS) as $l) $wa_reply[$l] = $wa_typed[$l] ?? wa_reply_template($l);   // typed text wins after a refused save
 
 $fx           = fx_rates(true); // fresh read so a just-saved/synced value shows immediately
 $fx_rates_map = $fx['rates']  ?? [];
@@ -324,6 +344,35 @@ include __DIR__ . '/_layout.php';
         <textarea name="quote_terms" rows="4" maxlength="2000" class="inp inp--area" style="width:100%;min-height:96px" placeholder="<?= e(QB_QUOTE_TERMS_DEFAULT) ?>"><?= e($quote_terms) ?></textarea>
       </div>
       <button type="submit" class="btn-primary">Save Quote Terms</button>
+    </form>
+  </div>
+</div>
+
+<!-- WhatsApp reply (pre-filled on an enquiry's "Reply on WhatsApp") -->
+<div class="card" id="waReplySettings">
+  <div class="card__head"><span class="card__title">WhatsApp Reply</span></div>
+  <div class="card__body" style="padding:20px">
+    <form method="POST" action="/admin/settings" data-shell-form>
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="save_whatsapp_reply">
+      <p style="font-size:13px;color:var(--muted);margin-bottom:14px">
+        The message filled in when staff press <strong>Open in WhatsApp</strong> on an enquiry. They can still edit it before sending.
+        Words in <code>{{double braces}}</code> are filled from the enquiry; a line whose details are all missing is left out
+        (no “You also asked about:” when the guest asked for nothing extra). Clear a box to go back to the default.
+      </p>
+      <?php foreach (WA_REPLY_LANGS as $l => $lname): ?>
+      <div class="field" style="margin-bottom:14px">
+        <label class="detail-item__label" for="wa_<?= e($l) ?>"><?= e($lname) ?></label>
+        <textarea id="wa_<?= e($l) ?>" name="whatsapp_reply_<?= e($l) ?>" rows="4" maxlength="<?= WA_REPLY_MAX_LEN ?>" class="inp inp--area"
+                  style="width:100%;min-height:96px" placeholder="<?= e(WA_REPLY_DEFAULTS[$l]) ?>"><?= e($wa_reply[$l]) ?></textarea>
+      </div>
+      <?php endforeach; ?>
+      <div style="font-size:12.5px;color:var(--muted);margin:0 0 16px;line-height:1.8">
+        <?php foreach (WA_REPLY_PLACEHOLDERS as $ph => $what): ?>
+        <span style="white-space:nowrap;margin-right:14px"><code>{{<?= e($ph) ?>}}</code> <?= e($what) ?></span>
+        <?php endforeach; ?>
+      </div>
+      <button type="submit" class="btn-primary">Save WhatsApp Message</button>
     </form>
   </div>
 </div>
