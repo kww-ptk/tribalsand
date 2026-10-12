@@ -649,6 +649,8 @@ $canPrint = $T !== null;
     var el = target(e); el ? show(e, el.getAttribute('data-tip')) : hide();
   });
   addEventListener('scroll', hide, { passive: true });
+  document.addEventListener('mouseleave', hide);
+  addEventListener('blur', hide);
 })();
 </script>
 

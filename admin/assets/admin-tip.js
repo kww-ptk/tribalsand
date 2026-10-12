@@ -64,31 +64,59 @@
     });
   }
 
+  var pending = null, watch = null;
+
+  // Is the pointer (or keyboard focus) still on this element, and is it still on
+  // the page? A shell navigation removes it without any mouseout.
+  function stillThere(t) {
+    try { return t.isConnected && t.matches(':hover, :focus-within'); } catch (e) { return false; }
+  }
+
   function hide() {
-    current = null;
+    current = null; pending = null;
     if (showTimer) { clearTimeout(showTimer); showTimer = null; }
+    if (watch) { clearInterval(watch); watch = null; }
     if (tip) { tip.classList.remove('is-in'); }
   }
 
   function onEnter(e) {
     var t = e.target.closest ? e.target.closest('[data-tip]') : null;
-    if (!t || t === current) return;
+    if (!t || t === current || t === pending) return;
     if (showTimer) clearTimeout(showTimer);
-    showTimer = setTimeout(function () { show(t); }, 120);
+    pending = t;
+    showTimer = setTimeout(function () {
+      showTimer = null;
+      pending = null;
+      // The pointer may have left during the delay: never show for a stale target.
+      if (!stillThere(t)) return;
+      show(t);
+      // Safety net while visible: the target can vanish (page swap) or the pointer
+      // leave without a mouseout reaching us (fast moves, window edge).
+      if (watch) clearInterval(watch);
+      watch = setInterval(function () { if (!current || !stillThere(current)) hide(); }, 250);
+    }, 120);
   }
   function onLeave(e) {
     var t = e.target.closest ? e.target.closest('[data-tip]') : null;
-    if (t && t === current) hide();
+    if (!t || (t !== current && t !== pending)) return;
+    // Moving between children of the same element is not leaving it.
+    if (e.relatedTarget && t.contains(e.relatedTarget)) return;
+    hide();
   }
 
   document.addEventListener('mouseover', onEnter);
   document.addEventListener('mouseout', onLeave);
   document.addEventListener('focusin', onEnter);
   document.addEventListener('focusout', onLeave);
-  // Any scroll/resize invalidates the fixed position — just dismiss.
+  // A click (often a navigation), leaving the window, scroll or resize all dismiss.
+  document.addEventListener('mousedown', hide, true);
+  document.addEventListener('mouseleave', hide);
+  window.addEventListener('blur', hide);
+  window.addEventListener('popstate', hide);
   window.addEventListener('scroll', hide, true);
   window.addEventListener('resize', hide);
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hide(); });
+  window.tsTipHide = hide;
 
   // Migrate `title=` → `data-tip` on eligible controls so hovering doesn't show
   // BOTH the native tooltip and ours. Keeps title's a11y value in aria-label.

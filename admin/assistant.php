@@ -92,7 +92,7 @@ include __DIR__ . '/_layout.php';
   <p style="margin:0;color:var(--muted);font-size:14px">Set <code>AI_API_KEY</code> (and optionally <code>AI_PROVIDER</code> / <code>AI_MODEL</code>) in the environment to enable it. It only ever reads availability and prices — it can’t book anything.</p>
 </div></div>
 <?php else: ?>
-<div class="aiq">
+<div class="aiq" data-fill-screen="901">
   <aside class="aiq-side" aria-label="Recent and suggested questions">
     <button type="button" class="btn-primary btn-sm" id="aiqClear" style="justify-content:center"><?= admin_icon('plus', 15) ?> New question</button>
     <div style="display:flex;flex-direction:column;gap:6px">
