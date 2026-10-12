@@ -270,7 +270,7 @@ $__fmtHeld = function (int $m): string { return $m >= 60 && $m % 60 === 0 ? ($m 
     <div style="padding:40px 20px;text-align:center"><p class="text-muted" style="margin:0">No tables yet. Press <strong>Add table</strong> to add the first one.</p></div>
   <?php else: ?>
   <div class="table-wrap">
-    <table class="data-table" id="rsTables" data-paginate="25">
+    <table class="data-table is-phone-fit" id="rsTables" data-paginate="25">
       <thead><tr><th style="width:90px">No.</th><?php if ($hasName): ?><th>Name</th><?php endif; ?><th style="width:110px">Seats</th><th>Zone</th><th style="width:150px">Status</th><th style="width:1%;text-align:right">Actions</th></tr></thead>
       <tbody>
       <?php foreach ($tables as $t): ?>
@@ -319,6 +319,7 @@ $__fmtHeld = function (int $m): string { return $m >= 60 && $m % 60 === 0 ? ($m 
 .field-error{color:var(--red,#b42318);font-size:12px;margin-top:4px}
 .inp.is-invalid{border-color:var(--red,#b42318)}
 .data-table tr.is-selected td{background:var(--bg-soft,#faf6f2)}
+@media (max-width:640px){#rsTables th:nth-child(4),#rsTables td:nth-child(4),#rsTables th:nth-child(5),#rsTables td:nth-child(5){display:none}}
 </style>
 <script>
   (function () {
