@@ -314,22 +314,27 @@ $periodLabel = $from === $to ? ($from === $today ? 'today' : date('j M', strtoti
 
   <?php if ($view === 'list'): ?>
     <div class="pos-kpis">
-      <?php if (!$byCur): ?>
-        <div class="pos-kpi pos-kpi--dark"><span>Takings <?= e($periodLabel) ?></span><b>0</b><small>No completed sales</small></div>
-      <?php endif; ?>
+      <?php if (!$byCur):
+        // No sales for these filters: the same four tiles, at zero, in the outlets' currency.
+        $zc = $fOut ? strtoupper((string)(array_values(array_filter($outlets, fn($o) => (int)$o['id'] === $fOut))[0]['currency'] ?? POS_DEFAULT_CURRENCY)) : POS_DEFAULT_CURRENCY;
+        $byCur[$zc] = ['sum' => ['currency' => $zc, 'n' => 0, 'total' => 0, 'service' => 0, 'vat' => 0, 'tips' => 0], 'methods' => [], 'voided' => null];
+      endif; ?>
       <?php foreach ($byCur as $cur => $bc): $su = $bc['sum']; $n = (int)$su['n']; $room = (float)($bc['methods']['room_charge']['total'] ?? 0); ?>
         <div class="pos-kpi pos-kpi--dark"><span>Takings <?= e($periodLabel) ?><?= count($byCur) > 1 ? ' · ' . e($cur) : '' ?></span><b><?= e($m($su['total'], $cur)) ?></b>
           <small><?= $n ?> sale<?= $n === 1 ? '' : 's' ?><?= $bc['voided'] ? ' · ' . (int)$bc['voided']['n'] . ' voided' : '' ?><?= (float)$su['tips'] > 0 ? ' · ' . e($m($su['tips'], $cur)) . ' tips' : '' ?></small></div>
-        <div class="pos-kpi"><span>Average sale</span><b><?= $n ? e($m((float)$su['total'] / $n, $cur)) : '—' ?></b>
+        <div class="pos-kpi"><span>Average sale</span><b><?= e($m($n ? (float)$su['total'] / $n : 0, $cur)) ?></b>
           <small><?= (float)$su['vat'] > 0 ? e($m($su['vat'], $cur)) . ' VAT' : 'No VAT' ?><?= (float)$su['service'] > 0 ? ' · ' . e($m($su['service'], $cur)) . ' service' : '' ?></small></div>
         <div class="pos-kpi"><span>Charged to rooms</span><b><?= e($m($room, $cur)) ?></b>
           <small><?= (int)($bc['methods']['room_charge']['n'] ?? 0) ?> sale<?= (int)($bc['methods']['room_charge']['n'] ?? 0) === 1 ? '' : 's' ?> · on the guests’ bills</small></div>
-        <?php if ((float)$su['total'] > 0): ?>
         <div class="pos-kpi"><span>How it was paid</span>
+          <?php if ((float)$su['total'] > 0): ?>
           <div class="pos-split"><?php foreach ($bc['methods'] as $k => $bm): ?><i style="width:<?= round((float)$bm['total'] / (float)$su['total'] * 100, 2) ?>%;background:<?= $methodColors[$k] ?? '#e2d9cd' ?>" data-tip="<?= e((POS_PAYMENT_METHODS[$k] ?? $k) . ' ' . $m($bm['total'], $cur)) ?>"></i><?php endforeach; ?></div>
           <div class="pos-legend"><?php foreach ($bc['methods'] as $k => $bm): ?><span><i style="background:<?= $methodColors[$k] ?? '#e2d9cd' ?>"></i><?= e(POS_PAYMENT_METHODS[$k] ?? $k) ?> <?= round((float)$bm['total'] / (float)$su['total'] * 100) ?>%</span><?php endforeach; ?></div>
+          <?php else: ?>
+          <div class="pos-split"></div>
+          <div class="pos-legend"><span>No payments yet</span></div>
+          <?php endif; ?>
         </div>
-        <?php endif; ?>
       <?php endforeach; ?>
     </div>
     <div class="card dt" data-dt>
