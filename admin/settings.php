@@ -273,19 +273,16 @@ include __DIR__ . '/_layout.php';
   .st-pw{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px;width:100%;margin-top:4px}
   .st-pw .field{margin:0}
   .st-sys{font-size:12px;color:var(--muted);display:flex;gap:18px;flex-wrap:wrap;margin-top:6px}
-  .st-savebar{position:sticky;bottom:0;z-index:30;display:none;align-items:center;gap:14px;margin:6px -4px 0;padding:12px 20px;border-radius:12px;background:var(--brand-dk);color:#fff;box-shadow:0 -8px 24px rgba(16,47,58,.18)}
-  .st-savebar.is-on{display:flex}
-  .st-savebar__n{display:inline-grid;place-items:center;min-width:24px;height:24px;border-radius:999px;background:var(--accent);color:var(--brand-dk);font-weight:700;font-size:12px;padding:0 7px}
-  .st-savebar__list{font-size:12.5px;color:#a9c4c7;flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .st-savebar__discard{background:transparent;border:0;color:#cfe0dc;font:inherit;font-weight:600;font-size:13px;cursor:pointer;padding:6px 10px}
-  .st-savebar__discard:hover{color:#fff}
-  .st-savebar__save{background:#fff;color:var(--brand-dk);border:0;border-radius:9px;padding:9px 18px;font:inherit;font-weight:700;font-size:13.5px;cursor:pointer}
+  .st-tabbar{display:flex;align-items:flex-end;gap:12px;border-bottom:2px solid var(--border);margin-bottom:20px;flex-wrap:wrap}
+  .st-tabbar .tabs{border-bottom:0;margin-bottom:0}
+  .st-save{margin-left:auto;display:flex;align-items:center;gap:10px;padding-bottom:8px;min-width:0}
+  .st-save__list{font-size:12.5px;color:var(--muted);max-width:420px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .st-save__list b{color:#7a5b20}
   @media (max-width:760px){
     .st-acc__body{padding:2px 16px 18px}
     .st-acc__head{grid-template-columns:36px minmax(0,1fr) 20px;padding:14px 16px}
     .st-acc__badge{display:none}
-    .st-savebar{padding:10px 14px}
-    .st-savebar__list{display:none}
+    .st-save__list{display:none}
   }
 </style>
 <?php
@@ -311,16 +308,22 @@ $radio = function (string $name, string $value, string $current, string $title, 
   <h1>Settings</h1>
 </div>
 
-<nav class="tabs" aria-label="Settings sections">
-  <a href="/admin/settings.php" class="tab-btn is-active">General</a>
-  <a href="/admin/checkin-settings.php" class="tab-btn">Pre-Check-in</a>
-  <a href="/admin/migrate.php" class="tab-btn">Migrations</a>
-</nav>
+<div class="st-tabbar">
+  <nav class="tabs" aria-label="Settings sections">
+    <a href="/admin/settings.php" class="tab-btn is-active">General</a>
+    <a href="/admin/checkin-settings.php" class="tab-btn">Pre-Check-in</a>
+  </nav>
+  <div class="st-save">
+    <span class="st-save__list" id="stSaveList" aria-live="polite"></span>
+    <button type="button" class="btn-outline btn-sm" id="stDiscard" hidden>Discard</button>
+    <button type="submit" form="stForm" class="btn-primary btn-sm" id="stSaveBtn" disabled>Save changes</button>
+  </div>
+</div>
 
 <?php if ($success): ?><div class="alert alert--success is-flash"><?= e($success) ?></div><?php endif; ?>
 <?php if ($error):   ?><div class="alert alert--error is-flash"><?= e($error) ?></div><?php endif; ?>
 
-<p class="st-intro">Each line shows what is set now. Open one to change it — everything saves together with one button.</p>
+<p class="st-intro">Each line shows what is set now. Open one to change it, then press <strong>Save changes</strong> at the top — everything saves together.</p>
 
 <form method="POST" action="/admin/settings" id="stForm" data-shell-form>
   <?= csrf_field() ?>
@@ -464,17 +467,11 @@ $radio = function (string $name, string $value, string $current, string $title, 
     </div>
   </div>
 
-  <div class="st-savebar" id="stSavebar" role="region" aria-label="Unsaved changes">
-    <span class="st-savebar__n" id="stSaveN">0</span>
-    <span class="st-savebar__list" id="stSaveList"></span>
-    <button type="button" class="st-savebar__discard" id="stDiscard">Discard</button>
-    <button type="submit" class="st-savebar__save">Save changes</button>
-  </div>
 </form>
 
 <!-- Your account — acts straight away, not part of Save changes -->
 <div class="st-acc" data-acc="account">
-  <?= $accHead('account', 'Your account', 'Password · export holds · system info') ?>
+  <?= $accHead('account', 'Your account', 'Password · export holds · database migrations') ?>
   <div class="st-acc__body">
     <form method="POST" action="/admin/settings" data-shell-form class="st-own">
       <?= csrf_field() ?>
@@ -504,6 +501,11 @@ $radio = function (string $name, string $value, string $current, string $title, 
       <button type="submit" class="btn-outline btn-sm"><?= admin_icon('download', 14) ?> Download CSV</button>
     </form>
 
+    <div class="st-own">
+      <p><b>Database migrations</b> — run new database changes after a deploy. Newest first, with the date each was added.</p>
+      <a href="/admin/migrate.php" class="btn-outline btn-sm">Open migrations</a>
+    </div>
+
     <div class="st-sys">
       <span>Form mode: <strong><?= e($form_mode) ?></strong></span>
       <span>Notify: <strong><?= e($notify_email ?: '—') ?></strong></span>
@@ -523,7 +525,7 @@ $radio = function (string $name, string $value, string $current, string $title, 
     var form = document.getElementById('stForm');
     if (!form || form.dataset.stReady) return;
     form.dataset.stReady = '1';
-    var bar = document.getElementById('stSavebar'), nEl = document.getElementById('stSaveN'), listEl = document.getElementById('stSaveList');
+    var saveBtn = document.getElementById('stSaveBtn'), discardBtn = document.getElementById('stDiscard'), listEl = document.getElementById('stSaveList');
     var accs = document.querySelectorAll('.st-acc');
 
     // Open / close groups. The Booking group starts open; a #hash opens its group.
@@ -539,7 +541,8 @@ $radio = function (string $name, string $value, string $current, string $title, 
     }
     <?php if ($error && $posted !== null): ?>accs.forEach(function (acc) { if (acc.dataset.acc !== 'account') setOpen(acc, true); });<?php endif; ?>
 
-    // Change tracking: compare every field with what the page loaded with.
+    // Change tracking: compare every field with what the page loaded with; the Save
+    // button beside the tabs lights up with the count.
     function snapshot() {
       var s = {};
       form.querySelectorAll('input[name],textarea[name],select[name]').forEach(function (el) {
@@ -566,9 +569,12 @@ $radio = function (string $name, string $value, string $current, string $title, 
         var b = acc.querySelector('.st-acc__badge'), n = perAcc[acc.dataset.acc] || 0;
         b.hidden = !n; b.textContent = n + ' changed';
       });
-      nEl.textContent = labels.length;
-      listEl.textContent = labels.length + ' change' + (labels.length === 1 ? '' : 's') + ' — ' + labels.join(', ');
-      bar.classList.toggle('is-on', labels.length > 0);
+      var n = labels.length;
+      saveBtn.disabled = !n;
+      saveBtn.textContent = n ? 'Save ' + n + ' change' + (n === 1 ? '' : 's') : 'Save changes';
+      discardBtn.hidden = !n;
+      listEl.textContent = n ? 'Unsaved: ' + labels.join(', ') : '';
+      listEl.title = listEl.textContent;
       // Fetching rates reloads the page: say so when something is unsaved.
       var fx = document.getElementById('stFxBtn');
       if (labels.length) fx.setAttribute('data-confirm', 'You have unsaved changes. Fetching rates reloads the page and they will be lost.');
@@ -579,7 +585,7 @@ $radio = function (string $name, string $value, string $current, string $title, 
     form.addEventListener('click', function () { setTimeout(refresh, 0); });   // media picker "reset" sets the value without an event
     document.addEventListener('change', function (e) { if (e.target.closest && e.target.closest('#stForm')) refresh(); });
 
-    document.getElementById('stDiscard').addEventListener('click', function () {
+    discardBtn.addEventListener('click', function () {
       if (window.tsShellGo) window.tsShellGo(location.pathname + location.search); else location.reload();
     });
 

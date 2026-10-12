@@ -221,8 +221,8 @@ function admin_nav_definition(array $f, array $badge = []): array {
         ]],
 
         ['key' => 'settings', 'icon' => 'settings', 'title' => 'Settings', 'items' => [
-            // Settings, Pre-Check-in and Migrations draw their OWN tab row (admin/settings.php),
-            // so this is one plain link that owns all three pages — no second strip above it.
+            // Settings and Pre-Check-in draw their OWN tab row (admin/settings.php); Migrations has no
+            // tab (linked from Settings → Your account). One plain link owns all three — no second strip.
             $item('Settings', 'settings', [$tab('Settings', ['settings.php', 'checkin-settings.php', 'migrate.php'], $on('owner'))]),
             $item('Emails', 'emails', [
                 $tab('Emails', ['emails.php', 'email-edit.php', 'email-preview.php'], $on('owner')),

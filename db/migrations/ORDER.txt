@@ -2,138 +2,140 @@
 # bin/dev-setup.php applies them in this order. Several are not commutative
 # (add_staff_role / add_team_roles / add_reception_role each rewrite the same
 # constraint), so alphabetical order builds the wrong schema.
-# ADDING A MIGRATION: append its file name as the LAST line. tests/migration_order_logic.php checks this.
-add_audit_log.sql
-add_availability.sql
-add_channel_conflicts.sql
-add_faqs.sql
-add_properties.sql
-add_room_entire_place.sql
-add_room_form_mode.sql
-add_room_tag_label.sql
-add_tours.sql
-add_venue_images.sql
-add_venues.sql
-enrich_tours.sql
-add_venue_content.sql
-add_tour_price.sql
-add_booking_management.sql
-add_concierge.sql
-add_guest_board.sql
-add_concierge_desk.sql
-add_messages.sql
-add_itinerary.sql
-add_staff_role.sql
-add_venue_stay_info.sql
-add_service_options.sql
-add_activity_booking.sql
-add_bill_items.sql
-add_events.sql
-add_addon_assignee.sql
-add_tasks.sql
-add_team_roles.sql
-add_visitors.sql
-add_checkin.sql
-add_multiguest_checkin.sql
-add_submission_notes.sql
-add_checkin_signature.sql
-add_shared_portal.sql
-add_shared_portal_bill_msg.sql
-add_checkin_arrival.sql
-add_hold_no_expiry.sql
-add_property_arrival_time.sql
-add_departure_transfer.sql
-add_submission_availability_type.sql
-add_checkin_reference.sql
-add_checkin_record_integrity.sql
-add_menus.sql
-add_reservations.sql
-add_checkin_deposit.sql
-fix_r2_urls_to_cloudfront.sql
-add_nav_menu.sql
-add_offers.sql
-add_media.sql
-add_page_content.sql
-add_event_submission_type.sql
-add_submission_notes_kind.sql
-add_submission_status.sql
-rewrite_image_host.sql
-add_reception_role.sql
-add_upsells.sql
-add_sustainability_metrics.sql
-add_tour_favourite_location.sql
-add_bookings_finance.sql
-seed_venue_content.sql
-fix_maya_ilai_superior_suite_booking.sql
-add_content_embeddings.sql
-add_concierge_log.sql
-add_inbound_mail_log.sql
-reclassify_trip_builder_submissions.sql
-rates_maya_kobe_2027_2029.sql
-rates_maya_kobe_2026.sql
-rates_zuri_2026.sql
-deactivate_admin_neha_patel.sql
-seed_venue_stay_facts.sql
-seed_zuri_experiences.sql
-add_maya_ilai_components.sql
-maya_ilai_rooms_2026.sql
-add_holds_room_id.sql
-rates_maya_ilai_2026.sql
-add_attendance.sql
-add_hr_staff.sql
-add_internal_messages.sql
-add_leave_requests.sql
-seed_hr_staff_roster.sql
-add_laundry_job.sql
-add_travel_agents.sql
-add_holds_quoted_amount.sql
-add_venue_seo.sql
-add_holds_agent.sql
-add_hr_staff_venues.sql
-add_submission_reply_flags.sql
-add_agency_partners.sql
-add_recurring_tasks.sql
-add_task_procedures.sql
-add_attendance_punches.sql
-add_lead_assignee.sql
-add_internal_group_channels.sql
-add_hr_staff_profile.sql
-add_restaurant_sync.sql
-add_restaurant_sync_models.sql
-add_calendar_highlights.sql
-add_ghl_webhook_log.sql
-add_hr_staff_documents.sql
-add_restaurant_hours.sql
-add_sync_applier.sql
-add_restaurant_table_name.sql
-seed_zuri_tables.sql
-add_nav_tribal_gym.sql
-add_pos.sql
-add_pos_job_types.sql
-add_pos_v2.sql
-add_inventory.sql
-add_companies.sql
-add_acct_documents.sql
-add_acct_p2b.sql
-add_hold_groups.sql
-add_reviews.sql
-add_pos_receipt_email.sql
-add_pos_offline.sql
-add_pos_kes_default.sql
-zuri_rates_2027_2028.sql
-villa_rates_2027_2028.sql
-maya_kobe_rates_2027_2028.sql
-add_inventory_stores.sql
-add_inventory_orders.sql
-add_email_log.sql
-add_email_templates.sql
-add_inventory_order_receipt_moves.sql
-add_submission_quotes.sql
-add_rate_change_log.sql
-add_storekeeper_job.sql
-add_booking_extras.sql
-add_menu_item_images.sql
-add_ical_sync_tracking.sql
-add_venue_extras.sql
-add_hr_role.sql
-add_bookings_channel_commission.sql
+# ADDING A MIGRATION: append "<file name>  <date added, YYYY-MM-DD>" as the LAST line.
+# admin/migrate.php lists them newest first with that date; tests/migration_order_logic.php checks it.
+add_audit_log.sql                                    2026-06-05
+add_availability.sql                                 2026-06-05
+add_channel_conflicts.sql                            2026-06-05
+add_faqs.sql                                         2026-06-05
+add_properties.sql                                   2026-06-05
+add_room_entire_place.sql                            2026-06-05
+add_room_form_mode.sql                               2026-06-05
+add_room_tag_label.sql                               2026-06-05
+add_tours.sql                                        2026-06-05
+add_venue_images.sql                                 2026-06-05
+add_venues.sql                                       2026-06-05
+enrich_tours.sql                                     2026-06-05
+add_venue_content.sql                                2026-07-14
+add_tour_price.sql                                   2026-07-14
+add_booking_management.sql                           2026-07-19
+add_concierge.sql                                    2026-07-21
+add_guest_board.sql                                  2026-07-22
+add_concierge_desk.sql                               2026-07-22
+add_messages.sql                                     2026-07-23
+add_itinerary.sql                                    2026-08-03
+add_staff_role.sql                                   2026-08-03
+add_venue_stay_info.sql                              2026-08-04
+add_service_options.sql                              2026-08-04
+add_activity_booking.sql                             2026-08-04
+add_bill_items.sql                                   2026-08-05
+add_events.sql                                       2026-08-05
+add_addon_assignee.sql                               2026-08-06
+add_tasks.sql                                        2026-08-06
+add_team_roles.sql                                   2026-08-06
+add_visitors.sql                                     2026-08-06
+add_checkin.sql                                      2026-08-06
+add_multiguest_checkin.sql                           2026-08-07
+add_submission_notes.sql                             2026-08-10
+add_checkin_signature.sql                            2026-08-10
+add_shared_portal.sql                                2026-08-11
+add_shared_portal_bill_msg.sql                       2026-08-11
+add_checkin_arrival.sql                              2026-08-11
+add_hold_no_expiry.sql                               2026-08-11
+add_property_arrival_time.sql                        2026-08-12
+add_departure_transfer.sql                           2026-08-13
+add_submission_availability_type.sql                 2026-08-14
+add_checkin_reference.sql                            2026-08-17
+add_checkin_record_integrity.sql                     2026-08-18
+add_menus.sql                                        2026-08-20
+add_reservations.sql                                 2026-08-20
+add_checkin_deposit.sql                              2026-08-24
+fix_r2_urls_to_cloudfront.sql                        2026-08-26
+add_nav_menu.sql                                     2026-08-28
+add_offers.sql                                       2026-08-29
+add_media.sql                                        2026-09-01
+add_page_content.sql                                 2026-09-01
+add_event_submission_type.sql                        2026-09-01
+add_submission_notes_kind.sql                        2026-09-02
+add_submission_status.sql                            2026-09-02
+rewrite_image_host.sql                               2026-09-02
+add_reception_role.sql                               2026-09-02
+add_upsells.sql                                      2026-09-02
+add_sustainability_metrics.sql                       2026-09-03
+add_tour_favourite_location.sql                      2026-09-04
+add_bookings_finance.sql                             2026-09-05
+seed_venue_content.sql                               2026-09-05
+fix_maya_ilai_superior_suite_booking.sql             2026-09-07
+add_content_embeddings.sql                           2026-09-08
+add_concierge_log.sql                                2026-09-08
+add_inbound_mail_log.sql                             2026-09-08
+reclassify_trip_builder_submissions.sql              2026-09-08
+rates_maya_kobe_2027_2029.sql                        2026-09-08
+rates_maya_kobe_2026.sql                             2026-09-08
+rates_zuri_2026.sql                                  2026-09-08
+deactivate_admin_neha_patel.sql                      2026-09-10
+seed_venue_stay_facts.sql                            2026-09-10
+seed_zuri_experiences.sql                            2026-09-10
+add_maya_ilai_components.sql                         2026-09-13
+maya_ilai_rooms_2026.sql                             2026-09-13
+add_holds_room_id.sql                                2026-09-14
+rates_maya_ilai_2026.sql                             2026-09-14
+add_attendance.sql                                   2026-09-14
+add_hr_staff.sql                                     2026-09-14
+add_internal_messages.sql                            2026-09-14
+add_leave_requests.sql                               2026-09-14
+seed_hr_staff_roster.sql                             2026-09-14
+add_laundry_job.sql                                  2026-09-15
+add_travel_agents.sql                                2026-09-15
+add_holds_quoted_amount.sql                          2026-09-15
+add_venue_seo.sql                                    2026-09-15
+add_holds_agent.sql                                  2026-09-15
+add_hr_staff_venues.sql                              2026-09-16
+add_submission_reply_flags.sql                       2026-09-16
+add_agency_partners.sql                              2026-09-19
+add_recurring_tasks.sql                              2026-09-19
+add_task_procedures.sql                              2026-09-21
+add_attendance_punches.sql                           2026-09-21
+add_lead_assignee.sql                                2026-09-22
+add_internal_group_channels.sql                      2026-09-22
+add_hr_staff_profile.sql                             2026-09-22
+add_restaurant_sync.sql                              2026-09-22
+add_restaurant_sync_models.sql                       2026-09-22
+add_calendar_highlights.sql                          2026-09-23
+add_ghl_webhook_log.sql                              2026-09-23
+add_hr_staff_documents.sql                           2026-09-23
+add_restaurant_hours.sql                             2026-09-23
+add_sync_applier.sql                                 2026-09-23
+add_restaurant_table_name.sql                        2026-09-23
+seed_zuri_tables.sql                                 2026-09-23
+add_nav_tribal_gym.sql                               2026-09-25
+add_pos.sql                                          2026-09-26
+add_pos_job_types.sql                                2026-09-26
+add_pos_v2.sql                                       2026-09-26
+add_inventory.sql                                    2026-09-27
+add_companies.sql                                    2026-09-28
+add_acct_documents.sql                               2026-09-28
+add_acct_p2b.sql                                     2026-09-28
+add_hold_groups.sql                                  2026-09-28
+add_reviews.sql                                      2026-09-28
+add_pos_receipt_email.sql                            2026-09-28
+add_pos_offline.sql                                  2026-09-28
+add_pos_kes_default.sql                              2026-09-28
+zuri_rates_2027_2028.sql                             2026-09-28
+villa_rates_2027_2028.sql                            2026-09-28
+maya_kobe_rates_2027_2028.sql                        2026-09-28
+add_inventory_stores.sql                             2026-09-28
+add_inventory_orders.sql                             2026-09-28
+add_email_log.sql                                    2026-09-29
+add_email_templates.sql                              2026-09-29
+add_inventory_order_receipt_moves.sql                2026-09-29
+add_submission_quotes.sql                            2026-09-29
+add_rate_change_log.sql                              2026-09-29
+add_storekeeper_job.sql                              2026-10-02
+add_booking_extras.sql                               2026-10-02
+add_menu_item_images.sql                             2026-10-02
+add_ical_sync_tracking.sql                           2026-10-05
+add_venue_extras.sql                                 2026-10-06
+add_hr_role.sql                                      2026-10-06
+add_bookings_channel_commission.sql                  2026-10-07
+add_checkin_deposit_plan.sql                         2026-10-09

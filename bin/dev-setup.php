@@ -254,7 +254,7 @@ function dev_migration_files(): array {
     foreach (glob($dir . '/*.sql') ?: [] as $f) $all[basename($f)] = $f;
     $order = [];
     foreach (@file($dir . '/ORDER.txt', FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $line) {
-        $line = trim($line);
+        $line = (string) preg_split('/\s+/', trim($line))[0];   // "<file>  <date added>"
         if ($line === '' || $line[0] === '#' || !isset($all[$line])) continue;
         $order[] = $all[$line];
         unset($all[$line]);
