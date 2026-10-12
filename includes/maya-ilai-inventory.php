@@ -278,3 +278,90 @@ function mi_can_place_products(
 
     return $place($keyed, array_values($villaProductSlugs));
 }
+
+/**
+ * Can a "build it yourself" selection be booked against the live calendar?
+ *
+ * The picker sells whole products (villa, suites, family room — $fixedSlugs, each
+ * in ONE villa) plus LOOSE parts the guest adds one by one: double bedrooms, bunk
+ * rooms and standalone living rooms. Loose parts may share a villa or spread over
+ * several, but every villa has ONE living room and a living room can only be
+ * rented in a villa where this booking also has a bedroom — the owner's "one
+ * living room per villa" rule. A villa product and every component product go
+ * through mi_resolve(), the one component authority, against what is already
+ * taken, so a `true` is always genuine.
+ *
+ * Fixed products are placed by backtracking (the same search as
+ * mi_can_place_products()); for each arrangement the loose parts are packed over
+ * the component-eligible villas (ring-fenced villas excluded, as the allocator
+ * does) with a memoised search. Inputs are tiny (<= 8 villas). Pure.
+ */
+function mi_can_place_selection(
+    array $villaStates,
+    array $fixedSlugs,
+    int $looseDouble,
+    int $looseBunk,
+    int $looseLiving,
+    int $studioDemand,
+    int $studioFree,
+    int $reserved
+): bool {
+    if ($looseDouble < 0 || $looseBunk < 0 || $looseLiving < 0) return false;
+    if ($studioDemand > max(0, $studioFree)) return false;
+    if (!$fixedSlugs && !$looseDouble && !$looseBunk && !$looseLiving) return true;
+
+    $keyed = [];
+    foreach ($villaStates as $s) {
+        $uid = (int)($s['unit_id'] ?? 0);
+        if ($uid <= 0) continue;
+        $keyed[$uid] = ['unit_id' => $uid, 'sort_order' => (int)($s['sort_order'] ?? 0),
+                        'taken' => array_values($s['taken'] ?? [])];
+    }
+    if (!$keyed) return false;
+    $map = mi_product_map();
+
+    // Pack the loose parts over the component-eligible villas, in allocator order.
+    $packLoose = function (array $states) use ($looseDouble, $looseBunk, $looseLiving, $reserved): bool {
+        if (!$looseDouble && !$looseBunk && !$looseLiving) return true;
+        $villas = array_values(mi_order_villas(array_values($states), false, $reserved));
+        $memo = [];
+        $go = function (int $i, int $d, int $b, int $l) use (&$go, &$memo, $villas): bool {
+            if (!$d && !$b && !$l) return true;
+            if ($i >= count($villas)) return false;
+            $k = "$i|$d|$b|$l";
+            if (isset($memo[$k])) return $memo[$k];
+            $taken = $villas[$i]['taken'];
+            for ($dd = min(2, $d); $dd >= 0; $dd--) {
+                for ($bb = min(1, $b); $bb >= 0; $bb--) {
+                    for ($ll = min(1, $l); $ll >= 0; $ll--) {
+                        if ($ll && !$dd && !$bb) continue;   // a living room needs a bedroom of ours in that villa
+                        $pattern = array_merge(array_fill(0, $dd, 'double'), $bb ? ['bunk'] : [], $ll ? ['living'] : []);
+                        if ($pattern && mi_resolve($pattern, $taken) === null) continue;
+                        if ($go($i + 1, $d - $dd, $b - $bb, $l - $ll)) return $memo[$k] = true;
+                    }
+                }
+            }
+            return $memo[$k] = false;
+        };
+        return $go(0, $looseDouble, $looseBunk, $looseLiving);
+    };
+
+    $place = function (array $states, array $slugs) use (&$place, $map, $reserved, $packLoose): bool {
+        if (!$slugs) return $packLoose($states);
+        $slug    = array_shift($slugs);
+        $pattern = $map[$slug] ?? null;
+        if ($pattern === null) return false;                 // unknown product — cannot place
+        $ordered = mi_order_villas(array_values($states), $slug === MAYA_ILAI_VILLA_ROOM_SLUG, $reserved);
+        foreach ($ordered as $villa) {
+            $resolved = mi_resolve($pattern, $villa['taken']);
+            if ($resolved === null) continue;
+            $uid  = (int)$villa['unit_id'];
+            $next = $states;
+            $next[$uid]['taken'] = array_values(array_unique(array_merge($next[$uid]['taken'], $resolved)));
+            if ($place($next, $slugs)) return true;
+        }
+        return false;
+    };
+
+    return $place($keyed, array_values($fixedSlugs));
+}

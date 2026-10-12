@@ -123,6 +123,7 @@ $cfg = maya_ilai_pricing_get();
 $program = 'group';
 $availableUnits = 0;
 $freeVillas = null;
+$live = null;
 $ci = isset($data['check_in'])  ? (string)$data['check_in']  : '';
 $co = isset($data['check_out']) ? (string)$data['check_out'] : '';
 if ($ci !== '' && $co !== '') {
@@ -167,5 +168,14 @@ $quote = maya_ilai_quote([
     'program'        => $program,
     'availableUnits' => $availableUnits,
 ], $cfg);
+
+// Never price a stay that can't be booked: check the picked rooms against the
+// live calendar (whole products in one villa each; loose doubles and living
+// rooms packed with one living room per villa). An unbookable pick comes back
+// as a quote error — the picker shows it, hides the price and disables Request.
+if ($live !== null) {
+    $why = maya_ilai_picker_unbookable(is_array($data['rows'] ?? null) ? $data['rows'] : [], $data, $live, $cfg);
+    if ($why !== null) $quote['errors'][] = $why;
+}
 
 echo json_encode(['ok'=>true, 'quote'=>$quote, 'freeVillas'=>$freeVillas]);

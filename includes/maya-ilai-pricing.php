@@ -1454,3 +1454,56 @@ function maya_ilai_suggest(int $guests, int $nights, ?array $cfg = null, int $li
     }
     return $out;
 }
+
+/**
+ * The "build it yourself" picker's live-calendar check: an error message when the
+ * picked rooms cannot all be booked for the dates, else null.
+ *
+ * $rows = what the guest picked, [['key' => product key, 'qty' => n], …] (keys of
+ * maya_ilai_products()); $qtyLiving = every living room in the selection
+ * (the ones combinations bring + standalone ones); $live = mi_live_availability().
+ * Whole villas and combinations each take ONE villa; Double Rooms and standalone
+ * living rooms are loose parts packed by mi_can_place_selection(), which keeps
+ * the one-living-room-per-villa rule. With no $rows (an older page) every
+ * primitive is treated as loose — never stricter than the real products. Pure.
+ */
+function maya_ilai_picker_unbookable(array $rows, array $prim, array $live, ?array $cfg = null): ?string {
+    if (empty($live['supported'])) return null;   // no calendar to ask (pre-migration / no dates)
+    $slugs  = maya_ilai_room_slugs();
+    $known  = [];
+    foreach (maya_ilai_products($cfg) as $p) $known[$p['key']] = $p;
+    $fixed = []; $looseDouble = 0; $looseBunk = 0; $studios = 0; $comboLiving = 0;
+
+    if ($rows) {
+        foreach ($rows as $r) {
+            $key = is_array($r) ? (string)($r['key'] ?? '') : '';
+            $qty = is_array($r) ? max(0, min(16, (int)($r['qty'] ?? 0))) : 0;
+            if ($qty < 1) continue;
+            if (!isset($known[$key])) return 'One of the rooms picked is no longer offered. Please refresh and choose again.';
+            $parts = $known[$key]['parts'];
+            if (!empty($parts['studio']))       { $studios += $qty; continue; }
+            if ($key === 'Double Room')         { $looseDouble += $qty; continue; }
+            $slug = $slugs[$key] ?? null;
+            if ($slug === null) return 'One of the rooms picked is no longer offered. Please refresh and choose again.';
+            for ($i = 0; $i < $qty; $i++) $fixed[] = $slug;
+            $comboLiving += (int)($parts['living'] ?? 0) * $qty;
+        }
+    } else {
+        for ($i = 0; $i < max(0, (int)($prim['qtyVilla'] ?? 0)); $i++) $fixed[] = MAYA_ILAI_VILLA_ROOM_SLUG;
+        $looseDouble = max(0, (int)($prim['qtyDouble'] ?? 0));
+        $looseBunk   = max(0, (int)($prim['qtyBunk'] ?? 0));
+        $studios     = max(0, (int)($prim['qtyStudio'] ?? 0));
+    }
+    $looseLiving = max(0, (int)($prim['qtyLiving'] ?? 0) - $comboLiving);
+
+    $ok = mi_can_place_selection(
+        $live['villaStates'] ?? [], $fixed, $looseDouble, $looseBunk, $looseLiving,
+        $studios, (int)($live['freeStudios'] ?? 0), (int)($live['reserved'] ?? 0)
+    );
+    if ($ok) return null;
+    if ($studios > (int)($live['freeStudios'] ?? 0)) {
+        $f = (int)($live['freeStudios'] ?? 0);
+        return 'Not available for your dates: only ' . $f . ' studio' . ($f === 1 ? ' is' : 's are') . ' free.';
+    }
+    return 'Not available for your dates: these rooms can\'t all fit in the villas still free (each villa has one living room). Try fewer rooms, another mix, or other dates.';
+}
