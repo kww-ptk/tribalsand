@@ -3,7 +3,8 @@
  * Homepage Offers & Specials strip (Tribal Sand). Include once on index.php.
  *
  * Renders published, in-window offers (includes/offers.php). 3+ offers → an
- * auto-scrolling marquee; 1–2 → a static centered row. Each card is a <button>
+ * gently auto-scrolling carousel with ‹ › arrows (TRI-77), swipeable, pausing on
+ * hover / touch / an arrow press; 1–2 → a static centered row. Each card is a <button>
  * that opens the shared "Request this offer" modal (includes/offer-modal.php).
  * Pre-migration-safe: fetch_published_offers() returns [] before the migration,
  * so this whole block renders nothing.
@@ -23,6 +24,15 @@ $__offerMarquee = count($__offers) > 2;
     <h2 class="offers-strip__title">This season at Tribal Sand</h2>
     <p class="offers-strip__lead">Stay deals, dining treats and curated experiences &mdash; updated by our team.</p>
   </div>
+  <div class="offers-carousel">
+  <?php if ($__offerMarquee): ?>
+  <button type="button" class="offers-nav offers-nav--prev" data-offers-nav="-1" aria-label="Previous offers">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+  </button>
+  <button type="button" class="offers-nav offers-nav--next" data-offers-nav="1" aria-label="Next offers">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>
+  </button>
+  <?php endif; ?>
   <div class="offers-marquee">
     <div class="offers-marquee__track"<?= $__offerMarquee ? ' style="--n:' . count($__offers) . '"' : '' ?>>
       <?php
@@ -50,7 +60,75 @@ $__offerMarquee = count($__offers) > 2;
       <?php endforeach; ?>
     </div>
   </div>
+  </div>
 </section>
+<?php if ($__offerMarquee): ?>
+<script>
+// Offers carousel: a slow auto-scroll over repeated copies of the offers (it
+// wraps after one copy, so it never runs out), ‹ › arrows that move one card, swipe /
+// trackpad scrolling. Pauses on hover, focus, touch and for a few seconds after
+// an arrow; no auto-scroll with reduced motion or a hidden tab.
+(function () {
+  var box = document.querySelector('.offers-strip--marquee .offers-marquee');
+  if (!box || box.dataset.ready) return;
+  box.dataset.ready = '1';
+  var track = box.querySelector('.offers-marquee__track');
+  var n = parseInt(getComputedStyle(track).getPropertyValue('--n'), 10) || (track.children.length / 2);
+  var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var SPEED = 32;                       // px per second
+  var hover = false, holdUntil = 0, pos = 0, last = 0;
+  function slides() { return track.querySelectorAll('.offer-slide'); }
+  // Width of ONE copy of the offers (the loop length).
+  function copyW() { var s = slides(); return s[n] ? s[n].offsetLeft - s[0].offsetLeft : track.scrollWidth / 2; }
+  function step() { var s = slides(); return s[1] ? s[1].offsetLeft - s[0].offsetLeft : 340; }
+  // The row must be at least one copy + a screen + a card long, or it would stop
+  // at its end (3 offers on a wide screen). Add copies as needed.
+  function fill() {
+    var guard = 0;
+    while (track.scrollWidth < copyW() + box.clientWidth + step() && guard++ < 8) {
+      for (var i = 0; i < n; i++) {
+        var c = slides()[i].cloneNode(true);
+        c.setAttribute('aria-hidden', 'true'); c.setAttribute('tabindex', '-1');
+        track.appendChild(c);
+      }
+    }
+  }
+  function wrap() { var w = copyW(); if (w > 0 && box.scrollLeft >= w) box.scrollLeft -= w; pos = box.scrollLeft; }
+  function tick(t) {
+    var dt = last ? Math.min(64, t - last) / 1000 : 0; last = t;
+    if (!still && !hover && !document.hidden && t > holdUntil) {
+      pos += SPEED * dt;
+      var w = copyW();
+      if (w > 0 && pos >= w) pos -= w;
+      box.scrollLeft = pos;
+    } else {
+      pos = box.scrollLeft;
+    }
+    requestAnimationFrame(tick);
+  }
+  fill();
+  window.addEventListener('resize', fill);
+  box.addEventListener('mouseenter', function () { hover = true; });
+  box.addEventListener('mouseleave', function () { hover = false; });
+  box.addEventListener('focusin', function () { hover = true; });
+  box.addEventListener('focusout', function () { hover = false; });
+  box.addEventListener('touchstart', function () { holdUntil = performance.now() + 6000; }, { passive: true });
+  box.addEventListener('wheel', function () { holdUntil = performance.now() + 6000; }, { passive: true });
+  box.addEventListener('scrollend', wrap);   // after a swipe, step back into the first copy (same picture)
+  document.querySelectorAll('[data-offers-nav]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var dir = parseInt(b.getAttribute('data-offers-nav'), 10), w = copyW();
+      holdUntil = performance.now() + 6000;
+      // Shift by one copy first (an identical picture) so the glide never hits an end.
+      if (dir > 0 && box.scrollLeft >= w) box.scrollLeft -= w;
+      if (dir < 0 && box.scrollLeft - step() < 0) box.scrollLeft += w;
+      box.scrollTo({ left: box.scrollLeft + dir * step(), behavior: still ? 'auto' : 'smooth' });
+    });
+  });
+  requestAnimationFrame(tick);
+})()
+</script>
+<?php endif; ?>
 <?php include __DIR__ . '/offer-modal.php'; ?>
 <script>
 (function () {

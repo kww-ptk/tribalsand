@@ -20,8 +20,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $password = (string)($_POST['password'] ?? '');   // agent_login() handles stray spaces
         if ($email === '' || trim($password) === '') {
             $error = 'Email and password are required.';
-        } elseif (is_rate_limited(strtolower($email), client_ip())) {
-            $error = 'Too many failed attempts. Please wait 10 minutes and try again.';
+        } elseif (($__lock = login_lock_seconds(strtolower($email), client_ip())) > 0) {
+            $error = login_lock_message($__lock);
         } elseif (agent_login($email, $password, client_ip())) {
             header('Location: /agent/availability.php');
             exit;

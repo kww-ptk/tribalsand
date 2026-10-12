@@ -25,15 +25,16 @@ require_once 'includes/head.php';
 .prog-wrap{position:fixed;top:var(--nav-h,72px);left:0;right:0;z-index:299;background:var(--teal-d);border-bottom:1px solid rgba(184,150,90,.1);padding:0 20px;}
 .prog-inner{display:flex;align-items:center;gap:0;height:56px;}
 .prog-step{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;position:relative;padding:0 4px;}
-.prog-step::after{content:'';position:absolute;right:0;top:50%;transform:translateY(-50%);width:1px;height:18px;background:rgba(184,150,90,.12);}
+.prog-step::after{content:'';position:absolute;right:0;top:50%;transform:translateY(-50%);width:1px;height:18px;background:rgba(184,150,90,.3);}
 .prog-step:last-child::after{display:none;}
-.prog-num{width:26px;height:26px;border-radius:50%;border:1px solid rgba(184,150,90,.2);display:flex;align-items:center;justify-content:center;font-size:.72rem;color:rgba(184,150,90,.35);margin-bottom:4px;transition:all .25s;flex-shrink:0;}
+.prog-num{width:26px;height:26px;border-radius:50%;border:1px solid rgba(212,176,122,.55);display:flex;align-items:center;justify-content:center;font-size:.72rem;color:rgba(240,228,206,.85);margin-bottom:4px;transition:all .25s;flex-shrink:0;}
 .prog-num svg{width:13px;height:13px;}
 .prog-step.active .prog-num{background:var(--sand);border-color:var(--sand);color:var(--teal-d);}
 .prog-step.done .prog-num{background:var(--teal-m);border-color:var(--teal-m);color:#fff;font-size:.72rem;}
-.prog-lbl{font-size:.56rem;letter-spacing:.1em;text-transform:uppercase;color:rgba(184,150,90,.3);white-space:nowrap;}
-.prog-step.active .prog-lbl{color:rgba(184,150,90,.65);}
-.prog-step.done .prog-lbl{color:rgba(184,150,90,.35);}
+/* Readable on the dark bar (TRI-78): upcoming steps were 30% sand on deep teal. */
+.prog-lbl{font-size:.6rem;letter-spacing:.1em;text-transform:uppercase;color:rgba(240,228,206,.78);white-space:nowrap;}
+.prog-step.active .prog-lbl{color:var(--sand-lt,#D4B07A);font-weight:600;}
+.prog-step.done .prog-lbl{color:rgba(240,228,206,.9);}
 .prog-bar{position:absolute;bottom:0;left:0;height:2px;background:var(--sand);transition:width .35s ease;}
 .tb-main{padding-top:calc(var(--nav-h,72px) + 52px);padding-bottom:100px;min-height:100vh;background:var(--off);}
 .step{display:none;animation:fadeUp .3s ease;}

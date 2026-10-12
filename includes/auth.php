@@ -418,10 +418,8 @@ function submission_in_scope(int $submissionId): bool {
 function login_staff(string $code, string $ip): bool {
     session_init();
     $code = strtoupper(trim($code));
-    if ($code === '' || is_rate_limited($code, $ip)) {
-        db_query('INSERT INTO login_attempts (email, ip_address, success) VALUES (:e,:ip,FALSE)', [':e'=>($code !== '' ? $code : 'staff'), ':ip'=>$ip]);
-        return false;
-    }
+    if ($code === '') return false;
+    if (is_rate_limited($code, $ip)) return false;   // not recorded: a try while locked must not extend the lock
     $user = db_query("SELECT * FROM admin_users WHERE access_code = :c AND role='staff' AND is_active=TRUE", [':c'=>$code])->fetch();
     db_query('INSERT INTO login_attempts (email, ip_address, success) VALUES (:e,:ip,:ok)', [':e'=>$code, ':ip'=>$ip, ':ok'=>$user ? 'TRUE' : 'FALSE']);
     if (!$user) return false;
@@ -477,21 +475,57 @@ function logout(): void {
     session_destroy();
 }
 
+// Sign-in lockout (TRI-76). Two separate limits over a 10-minute window:
+//   • per account (email / staff code): 5 wrong tries;
+//   • per IP: 20 wrong tries — the whole office signs in from ONE public IP, so at
+//     5 (the old shared limit) one person's typos locked everyone out, and with a
+//     team on site the office IP rarely got below 5 inside any 10 minutes.
+// Tries made WHILE locked are no longer recorded (they used to slide the window
+// forward, so retrying kept you locked indefinitely), and a correct sign-in
+// clears that account's earlier mistakes.
+// POS PIN attempts share login_attempts (keyed 'pos:<id>', includes/pos-auth.php)
+// and are limited there; they never count here.
+const LOGIN_LOCK_WINDOW       = 600;
+const LOGIN_MAX_FAILS_ACCOUNT = 5;
+const LOGIN_MAX_FAILS_IP      = 20;
+
+/**
+ * Seconds until this account / IP may try again; 0 = not locked. The lock lifts
+ * when enough failures age out of the window: the Nth most recent failure + 10 min.
+ */
+function login_lock_seconds(string $email, string $ip): int {
+    $since = date('Y-m-d H:i:s', time() - LOGIN_LOCK_WINDOW);
+    $until = 0;
+    // Account: failures since the window start AND since its last successful sign-in.
+    $lastOk = (string) (db_query(
+        "SELECT MAX(created_at) FROM login_attempts WHERE email = :e AND success = TRUE AND created_at > :w",
+        [':e' => $email, ':w' => $since]
+    )->fetchColumn() ?: '');
+    $acct = db_query(
+        "SELECT created_at FROM login_attempts
+          WHERE email = :e AND success = FALSE AND created_at > :w
+          ORDER BY created_at DESC LIMIT " . LOGIN_MAX_FAILS_ACCOUNT,
+        [':e' => $email, ':w' => $lastOk !== '' && $lastOk > $since ? $lastOk : $since]
+    )->fetchAll(PDO::FETCH_COLUMN);
+    if (count($acct) >= LOGIN_MAX_FAILS_ACCOUNT) $until = max($until, strtotime((string) end($acct)) + LOGIN_LOCK_WINDOW);
+    $byIp = db_query(
+        "SELECT created_at FROM login_attempts
+          WHERE ip_address = :ip AND email NOT LIKE 'pos:%' AND success = FALSE AND created_at > :w
+          ORDER BY created_at DESC LIMIT " . LOGIN_MAX_FAILS_IP,
+        [':ip' => $ip, ':w' => $since]
+    )->fetchAll(PDO::FETCH_COLUMN);
+    if (count($byIp) >= LOGIN_MAX_FAILS_IP) $until = max($until, strtotime((string) end($byIp)) + LOGIN_LOCK_WINDOW);
+    return max(0, $until - time());
+}
+
 function is_rate_limited(string $email, string $ip): bool {
-    $window = date('Y-m-d H:i:s', time() - 600); // 10 minutes
-    // POS PIN attempts share this table (keyed 'pos:<id>', includes/pos-auth.php) and
-    // are rate-limited there. They must not count here: a till sits on the same
-    // property network as the office, so a few wrong PINs would otherwise lock
-    // every admin sign-in from that IP.
-    $row = db_query(
-        "SELECT COUNT(*) AS cnt FROM login_attempts
-         WHERE (email = :email OR ip_address = :ip)
-           AND email NOT LIKE 'pos:%'
-           AND success = FALSE
-           AND created_at > :window",
-        [':email' => $email, ':ip' => $ip, ':window' => $window]
-    )->fetch();
-    return (int)$row['cnt'] >= 5;
+    return login_lock_seconds($email, $ip) > 0;
+}
+
+/** "Too many failed attempts. Try again in 4 minutes." — the real time left, never a fixed "10 minutes". */
+function login_lock_message(int $seconds): string {
+    $min = max(1, (int) ceil($seconds / 60));
+    return 'Too many failed attempts. Please try again in ' . $min . ' minute' . ($min === 1 ? '' : 's') . '.';
 }
 
 function csrf_token(): string {

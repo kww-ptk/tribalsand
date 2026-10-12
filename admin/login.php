@@ -41,19 +41,23 @@ if (($_POST['do'] ?? '') === 'staff' || ($_GET['tab'] ?? '') === 'staff') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (($_POST['do'] ?? '') === 'staff') {
         // Onsite staff — access-code sign-in. Land on the job-appropriate home.
-        if (login_staff($_POST['staff_code'] ?? '', client_ip())) {
+        $__code = strtoupper(trim((string)($_POST['staff_code'] ?? '')));
+        if ($__code !== '' && ($__lock = login_lock_seconds($__code, client_ip())) > 0) {
+            $error = login_lock_message($__lock);
+        } elseif (login_staff($__code, client_ip())) {
             header('Location: ' . admin_home_url());
             exit;
+        } else {
+            $error = 'Invalid or inactive staff code.';
         }
-        $error = 'Invalid or inactive staff code.';
     } else {
         $email    = trim($_POST['email']    ?? '');
         $password = trim($_POST['password'] ?? '');
 
         if (!$email || !$password) {
             $error = 'Email and password are required.';
-        } elseif (is_rate_limited($email, client_ip())) {
-            $error = 'Too many failed attempts. Please wait 10 minutes and try again.';
+        } elseif (($__lock = login_lock_seconds($email, client_ip())) > 0) {
+            $error = login_lock_message($__lock);
         } elseif (login($email, $password)) {
             header('Location: ' . admin_home_url());
             exit;

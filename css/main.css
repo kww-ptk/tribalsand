@@ -1415,22 +1415,30 @@ p {
   display: flex; gap: 1.4rem; flex-wrap: wrap;
   justify-content: center; align-items: stretch; padding: .4rem 1.5rem;
 }
-/* Marquee (3+ offers): single line, auto-scroll, faded edges */
+/* Carousel (3+ offers): single line, script-driven slow scroll (includes/promo-offers.php),
+   ‹ › arrows, swipe; faded edges. Without JS it is a plain sideways-scrolling row. */
+.offers-carousel { position: relative; }
 .offers-strip--marquee .offers-marquee {
-  overflow: hidden;
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: none; -webkit-overflow-scrolling: touch;
   -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 6%, #000 94%, transparent 100%);
           mask-image: linear-gradient(90deg, transparent 0, #000 6%, #000 94%, transparent 100%);
 }
+.offers-strip--marquee .offers-marquee::-webkit-scrollbar { display: none; }
 .offers-strip--marquee .offers-marquee__track {
   flex-wrap: nowrap; justify-content: flex-start; width: max-content;
-  animation: ts-offers-marquee calc(var(--n, 4) * 6s) linear infinite; will-change: transform;
 }
-.offers-strip--marquee .offers-marquee:hover .offers-marquee__track { animation-play-state: paused; }
-@keyframes ts-offers-marquee { from { transform: translateX(0); } to { transform: translateX(-50%); } }
-@media (prefers-reduced-motion: reduce) {
-  .offers-strip--marquee .offers-marquee { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .offers-strip--marquee .offers-marquee__track { animation: none; }
+.offers-nav {
+  position: absolute; top: 50%; z-index: 2; transform: translateY(-50%);
+  width: 46px; height: 46px; border-radius: 50%; border: 1px solid rgba(184,150,90,.45);
+  background: var(--teal-d); color: var(--sand-lt, #D4B07A); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 10px 26px -12px rgba(16,47,58,.55); transition: background .2s, color .2s, transform .2s;
 }
+.offers-nav:hover { background: var(--teal); color: #fff; }
+.offers-nav:focus-visible { outline: 2px solid var(--sand); outline-offset: 3px; }
+.offers-nav--prev { left: clamp(.5rem, 2.5vw, 2rem); }
+.offers-nav--next { right: clamp(.5rem, 2.5vw, 2rem); }
+@media (max-width: 640px) { .offers-nav { width: 38px; height: 38px; } }
 
 .offer-slide {
   flex: 0 0 320px; width: 320px;

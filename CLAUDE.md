@@ -17,6 +17,9 @@ Affects: rate limiting, audit logs, tracking.
 ### Timezone — the whole app runs in Africa/Nairobi
 `includes/db.php` sets `date_default_timezone_set('Africa/Nairobi')` at module load **and** issues `SET TIME ZONE 'Africa/Nairobi'` on every PDO connect. So PHP `date()`/`strtotime()`/`DateTime('now')` and Postgres `NOW()`/`CURRENT_DATE`/`::date`/`timestamptz` rendering all agree on Kenya local time. **Never assume UTC** and never hardcode a UTC offset — "today" (e.g. `frontdesk_today_ymd()`, the gate visitor day-filter in `includes/team.php`) is Nairobi-local and must match the DB. Note: legacy naive `TIMESTAMP` rows written before this change hold UTC wall-clock and read ~3h off until superseded; `TIMESTAMPTZ` columns are unaffected.
 
+### Sign-in lockout — per account AND per IP, real time left (TRI-76)
+`login_lock_seconds($emailOrCode, $ip)` in `includes/auth.php` (`is_rate_limited()` wraps it): **5** wrong tries per account or **20** per IP in 10 minutes (`LOGIN_MAX_FAILS_ACCOUNT` / `_IP`). The office signs in from ONE public IP, so the old shared limit of 5 let one person's typos lock everyone. **A try made while locked is never recorded** (it used to slide the window, so retrying kept you locked indefinitely); a correct sign-in clears that account's earlier mistakes; `pos:%` PIN rows never count. The message is `login_lock_message()` with the real minutes left — never a fixed "10 minutes". Used by admin, staff-code and agent sign-in. Test: `php tests/login_lockout_logic.php`.
+
 ### Cloudflare Turnstile — fail-closed in production
 `verify_captcha()` is in `includes/turnstile.php`. If `TURNSTILE_SITE_KEY` is set but secret is missing, it returns `false` (fail-closed). Both absent = dev mode bypass. Never revert to the old `return true` bypass. Widget class is `.cf-turnstile`, token field is `cf-turnstile-response`, script is `challenges.cloudflare.com/turnstile/v0/api.js`.
 
@@ -522,6 +525,7 @@ Test: `php tests/maya_ilai_inventory.php`.
   calendar load ~1,096 queries (~7,700 for a click-through of all seven products); it is
   now ~4. Note the two readers answer different questions: `mi_villa_states()` unions a
   span (what a stay needs), `mi_villa_states_window()` indexes per night.
+- **The "build it yourself" picker never prices an unbookable stay** (Maya Ilai ticket): with dates, `api/maya-ilai-quote.php` Mode 2 asks `maya_ilai_picker_unbookable()` → `mi_can_place_selection()` (pure, `includes/maya-ilai-inventory.php`): whole villas and combinations each take one villa via `mi_resolve()`, loose Double Rooms and standalone living rooms are packed over the component-eligible villas with **one living room per villa, only beside one of our bedrooms**. A refusal is a quote error; the picker then shows "—" instead of a price and disables Request. The picker posts `rows` (product key + qty) so the server knows the combinations. The date suggestions were already filtered by `mi_can_place_products()`. Test: `php tests/maya_ilai_picker_logic.php`.
 - **Known limits, deliberate:** staff-entered holds still take the WHOLE villa
   (`components = NULL`) — safe, but a per-bedroom admin booking needs a component picker
   first. Occupancy in `admin/reports.php` counts a bunk-room night as a full unit-night,

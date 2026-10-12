@@ -775,6 +775,10 @@ $mibMaxNights = 30;
     var p = expand();
     p.qtyLiving += livingQty;
     p.nights = Math.max(1, nights);   // the picker is only reachable with real dates
+    // Which products were picked, so the server can check they really fit the
+    // villas still free for these dates (maya_ilai_picker_unbookable()).
+    p.rows = [];
+    rows.forEach(function (r) { var s = state[r.dataset.unit]; if (s.qty) p.rows.push({ key: r.dataset.unit, qty: s.qty }); });
     // Send the dates so the server can price on the live availability band; the
     // picker is only reachable once a real range is chosen in step 1.
     if (dates.ci && dates.co) { p.check_in = dates.ci; p.check_out = dates.co; }
@@ -806,9 +810,11 @@ $mibMaxNights = 30;
     var totalEl = document.getElementById('mibTotal'), perEl = document.getElementById('mibPer');
     var linesEl = document.getElementById('mibLines'), noticeEl = document.getElementById('mibNotice'), cta = document.getElementById('mibRequest');
     var hasErr = q.errors && q.errors.length;
-    totalEl.innerHTML = q.guests ? priceSpan(q.accommodation) : '$0';
+    // A selection that can't be booked shows no price at all — only the reason.
+    totalEl.innerHTML = hasErr ? '—' : (q.guests ? priceSpan(q.accommodation) : '$0');
     perEl.textContent = q.guests && !hasErr ? (priceSpanText(q.accommodation / q.guests / q.nights) + ' per guest / night') : 'Add rooms to price your stay';
     var disc = q.base * q.adjustment / 100;
+    linesEl.hidden = !!hasErr;
     linesEl.innerHTML =
       row('Accommodation / night', priceSpan(q.base)) +
       (q.adjustment ? row(q.adjustmentLabel + ' (' + q.adjustment + '%)', priceSpan(disc)) : '') +
