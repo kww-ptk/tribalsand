@@ -59,11 +59,7 @@ function agent_login(string $email, string $password, string $ip): bool {
     session_init();
     if (!agents_supported()) return false;
     $email = strtolower(trim($email));
-    if ($email === '' || is_rate_limited($email, $ip)) {
-        db_query('INSERT INTO login_attempts (email, ip_address, success) VALUES (:e,:ip,FALSE)',
-            [':e' => ($email !== '' ? $email : 'agent'), ':ip' => $ip]);
-        return false;
-    }
+    if ($email === '' || is_rate_limited($email, $ip)) return false;   // a try while locked is not recorded (it would extend the lock)
     try {
         // Case-insensitive, so an account saved before emails were lower-cased still matches.
         $a = db_query('SELECT * FROM travel_agents WHERE LOWER(TRIM(email)) = :e ORDER BY id LIMIT 1', [':e' => $email])->fetch();
