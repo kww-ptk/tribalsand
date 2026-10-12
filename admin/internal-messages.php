@@ -135,7 +135,7 @@ include __DIR__ . '/_layout.php';
 </div></div>
 <?php else: ?>
 
-<div class="mx<?= isset($_GET['channel']) ? ' is-thread' : '' ?>" data-mx>
+<div class="mx<?= isset($_GET['channel']) ? ' is-thread' : '' ?>" data-mx data-fill-screen="1241">
   <!-- Channels -->
   <section class="mx-pane" aria-label="Channels">
     <div class="mx-pane__head">

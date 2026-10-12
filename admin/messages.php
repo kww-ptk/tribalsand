@@ -130,7 +130,7 @@ include __DIR__ . '/_layout.php';
 ?>
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?> is-flash"><?= e($flash['msg']) ?></div><?php endif; ?>
 
-<div class="mx<?= $picked ? ' is-thread' : '' ?>" data-mx>
+<div class="mx<?= $picked ? ' is-thread' : '' ?>" data-mx data-fill-screen="1241">
   <!-- Conversations -->
   <section class="mx-pane" aria-label="Conversations">
     <div class="mx-pane__head">

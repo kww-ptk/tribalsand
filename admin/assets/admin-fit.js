@@ -162,10 +162,30 @@
     }
   }
 
+  // ─────────────────────── fill the screen ──────────────────────────
+  // A full-height app layout (Messages, AI assistant) marked data-fill-screen="<min
+  // window width>" gets exactly the window height left below its top, so there is
+  // no gap under it on a tall screen. Its CSS height stays the fallback (no JS, and
+  // narrower windows, where those layouts stack).
+  function fillScreen() {
+    var c = document.querySelector('.admin-content');
+    if (!c) return;
+    var pad = parseFloat(getComputedStyle(c).paddingBottom) || 0;
+    c.querySelectorAll('[data-fill-screen]').forEach(function (el) {
+      el.style.height = '';
+      if (window.innerWidth < (parseInt(el.getAttribute('data-fill-screen'), 10) || 0)) return;
+      var top = el.getBoundingClientRect().top + window.scrollY;
+      var min = parseFloat(getComputedStyle(el).minHeight) || 0;
+      var h = Math.floor(window.innerHeight - top - pad);
+      if (h > min) el.style.height = h + 'px';
+    });
+  }
+
   // ─────────────────────────── wiring ───────────────────────────────
   var pending, fitted = -1;
   function run() {
     document.querySelectorAll('table[data-paginate]').forEach(bind);
+    fillScreen();
     fill();
     var c = document.querySelector('.admin-content');
     fitted = c ? c.offsetHeight : -1;
