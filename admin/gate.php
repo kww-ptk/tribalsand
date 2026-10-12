@@ -234,7 +234,7 @@ include __DIR__ . '/_layout.php';
 <div class="card"><div class="card__body"><p class="text-muted" style="margin:0">The visitor register isn’t enabled yet. Ask the owner to run the <code>add_visitors.sql</code> migration.</p></div></div>
 <?php else: ?>
 
-<div class="card" id="gateSignInCard" style="margin-bottom:16px<?= $signInOpen ? '' : ';display:none' ?>">
+<div class="card" id="gateSignInCard" data-inline-form style="margin-bottom:16px<?= $signInOpen ? '' : ';display:none' ?>">
   <div class="card__head"><span class="card__title">Sign in a visitor</span></div>
   <div class="card__body" style="padding:20px 24px">
     <?php if (!$venues): ?>

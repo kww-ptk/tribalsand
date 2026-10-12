@@ -100,7 +100,7 @@ include __DIR__ . '/_layout.php';
 <!-- ── Switches + our queues ── -->
 <div class="sy-grid">
   <div class="card">
-    <div class="card__head"><span class="card__title">Switches</span><span class="text-muted" style="font-size:12px">Set in the ECS environment</span></div>
+    <div class="card__head"><span class="card__title">Switches</span></div>
     <div class="card__body" style="padding:0">
       <ul class="sy-list">
         <?php foreach (['SYNC_ENABLED' => 'Master switch', 'SYNC_SHADOW' => 'Shadow (log only)', 'SYNC_TS_TO_ZURI' => 'Menu, tables, hours → Zuri',
@@ -204,7 +204,7 @@ include __DIR__ . '/_layout.php';
 
 <!-- ── Conflicts ── -->
 <div class="card" style="margin-top:16px">
-  <div class="card__head"><span class="card__title">Open conflicts</span><span class="text-muted" style="font-size:12px">Both sides are kept; the system already applied the winner</span></div>
+  <div class="card__head"><span class="card__title">Open conflicts</span></div>
   <div class="card__body" style="padding:<?= $conflicts ? '0' : '18px' ?>">
     <?php if (!$conflicts): ?><p class="text-muted" style="margin:0;font-size:13px">No open conflicts.</p><?php else: ?>
     <?php foreach ($conflicts as $c): ?>

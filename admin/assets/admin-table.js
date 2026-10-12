@@ -14,6 +14,25 @@
 
   var DEBOUNCE = 350;
 
+  // `url` + ajax=1 as a real query parameter. Appending "&ajax=1" to a string that
+  // carries a #hash put it AFTER the hash, the server never saw it and answered
+  // with the whole page, which then landed inside the list (Reservations → New
+  // booking, whose button is a #new-booking link).
+  function withAjax(url) {
+    try {
+      var u = new URL(url, location.href);
+      u.hash = '';
+      u.searchParams.set('ajax', '1');
+      return u.pathname + u.search;
+    } catch (e) {
+      var clean = String(url).split('#')[0];
+      return clean + (clean.indexOf('?') >= 0 ? '&' : '?') + 'ajax=1';
+    }
+  }
+  // The query string the lists on this page last showed: a history step that only
+  // changes the #hash (an in-page link) must not reload them.
+  var shownSearch = location.search;
+
   // Re-apply the shared admin enhancements (styled confirm / "Working…" wiring
   // from _layout_end.php, and enhanced dropdowns) to freshly-swapped content, so
   // AJAX-loaded rows behave exactly like server-rendered ones.
@@ -27,6 +46,7 @@
   function enhance(root) {
     if (root.dataset.dtEnhanced) return;
     root.dataset.dtEnhanced = '1';
+    shownSearch = location.search;   // a shell swap brought a new page's lists
 
     var form = root.querySelector('[data-dt-toolbar]');
     var body = root.querySelector('[data-dt-body]');
@@ -51,8 +71,7 @@
     // Load `url` via AJAX and swap the body. `push` true => history entry,
     // false => replace (used for debounced typing so history isn't spammed).
     function load(url, push) {
-      var sep = url.indexOf('?') >= 0 ? '&' : '?';
-      var ajaxUrl = url + sep + 'ajax=1';
+      var ajaxUrl = withAjax(url);
 
       if (controller) controller.abort();
       controller = ('AbortController' in window) ? new AbortController() : null;
@@ -76,6 +95,7 @@
             var st = window.tsShellState ? window.tsShellState({ dt: 1 }) : { dt: 1 };
             if (push) history.pushState(st, '', url);
             else history.replaceState(st, '', url);
+            shownSearch = location.search;
           } catch (e) { /* file:// or blocked — non-fatal */ }
         })
         .catch(function (err) {
@@ -125,6 +145,8 @@
     // Back/forward onto ANOTHER page is the shell's job (admin-nav.js) — re-fetching
     // this table would only race the page swap.
     if (window.tsCrossPagePop && window.tsCrossPagePop(e)) return;
+    if (location.search === shownSearch) return;   // only the #hash moved (an in-page link)
+    shownSearch = location.search;
     document.querySelectorAll('[data-dt][data-dt-enhanced]').forEach(function (root) {
       var body = root.querySelector('[data-dt-body]');
       var form = root.querySelector('[data-dt-toolbar]');
@@ -138,9 +160,8 @@
         // listener would fire load()+pushState and fight this popstate handler.
         if (ps && params.get('per')) ps.value = params.get('per');
       }
-      var sep = location.href.indexOf('?') >= 0 ? '&' : '?';
       body.classList.add('is-loading');
-      fetch(location.href + sep + 'ajax=1', { headers: { 'X-Requested-With': 'fetch' }, credentials: 'same-origin' })
+      fetch(withAjax(location.href), { headers: { 'X-Requested-With': 'fetch' }, credentials: 'same-origin' })
         .then(function (r) { return r.text(); })
         .then(function (html) { body.innerHTML = html; body.classList.remove('is-loading'); })
         .catch(function () { window.location.reload(); });

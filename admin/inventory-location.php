@@ -145,7 +145,7 @@ include __DIR__ . '/_layout.php';
 </div>
 
 <div class="card">
-  <div class="card__head"><span class="card__title">Stock here</span><span class="text-muted" style="font-size:12.5px">Par = what this place should always have</span></div>
+  <div class="card__head"><span class="card__title">Stock here</span></div>
   <?php if (!$stock): ?>
     <?php dt_empty('Nothing here yet. Give an item a par level below, then restock from a store — or receive stock on the item page.'); ?>
   <?php else: ?>

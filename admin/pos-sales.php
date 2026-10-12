@@ -292,7 +292,7 @@ include __DIR__ . '/_layout.php';
       </div>
       <div class="pss-grid">
         <div class="card">
-          <div class="card__head"><span class="card__title">By outlet and payment</span><span class="text-muted" style="font-size:12.5px">Count the drawer against Cash; card slips against Card</span></div>
+          <div class="card__head"><span class="card__title">By outlet and payment</span></div>
           <div class="table-wrap"><table class="data-table">
             <thead><tr><th>Outlet</th><th>Payment</th><th class="num">Sales</th><th class="num">Service</th><th class="num">VAT</th><th class="num">Tips</th><th class="num">Total</th></tr></thead>
             <tbody>
@@ -312,7 +312,7 @@ include __DIR__ . '/_layout.php';
         </div>
       </div>
       <div class="card" style="margin-top:18px">
-        <div class="card__head"><span class="card__title">Items sold</span><span class="text-muted" style="font-size:12.5px">Grouped by the outlet that owns the item</span></div>
+        <div class="card__head"><span class="card__title">Items sold</span></div>
         <div class="table-wrap"><table class="data-table">
           <thead><tr><th>Item</th><th>Outlet</th><th class="num">Qty</th><th class="num">Gross</th></tr></thead>
           <tbody><?php foreach ($z['items'] as $r): ?><tr><td><?= e($r['name']) ?></td><td class="text-muted"><?= e($r['outlet']) ?></td><td class="num"><?= (int)$r['qty'] ?></td><td class="num"><?= e($m($r['gross'], $r['currency'])) ?></td></tr><?php endforeach; ?></tbody>

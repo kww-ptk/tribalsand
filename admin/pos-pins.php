@@ -110,7 +110,7 @@ include __DIR__ . '/_layout.php';
 
 <?php if ($role === 'owner' || $role === 'manager'): ?>
 <div class="card">
-  <div class="card__head"><span class="card__title">Team</span><span class="text-muted" style="font-size:12.5px"><?= $role === 'owner' ? 'Everyone' : 'Staff at the outlets you manage' ?></span></div>
+  <div class="card__head"><span class="card__title">Team</span></div>
   <?php if (!$people): ?>
     <?php dt_empty($role === 'owner' ? 'No team accounts yet.' : 'No staff are assigned to your outlets yet — the owner assigns them under POS outlets.'); ?>
   <?php else: ?>

@@ -130,7 +130,7 @@ include __DIR__ . '/_layout.php';
 <?php else: ?>
 <div class="poss-grid">
   <div class="card">
-    <div class="card__head"><span class="card__title">On hand</span><span class="text-muted" style="font-size:12.5px">Tap an item for its history</span></div>
+    <div class="card__head"><span class="card__title">On hand</span></div>
     <div class="table-wrap"><table class="data-table poss-table">
       <thead><tr><th>Item</th><th class="poss-num">On hand</th><th class="poss-num">Alert at</th><th></th></tr></thead>
       <tbody>

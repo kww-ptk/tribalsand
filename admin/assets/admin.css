@@ -1417,3 +1417,8 @@ a.dt-page { user-select: none; }
 .segswitch a.is-on { background: var(--brand); color: #fff; }
 .segswitch__count { min-width: 18px; padding: 1px 6px; border-radius: 999px; background: var(--border); color: var(--muted); font-size: 11px; font-weight: 700; text-align: center; }
 .segswitch a.is-on .segswitch__count { background: rgba(255,255,255,.24); color: #fff; }
+
+/* Inline forms: the × the shared script adds to the panel header (admin-inline-form.js). */
+.inline-form__head { display: flex; align-items: center; gap: 10px; }
+.inline-form__head > .inline-form__close { margin-left: auto; flex: none; }
+summary.inline-form__head { cursor: pointer; }

@@ -382,7 +382,7 @@ include __DIR__ . '/_layout.php';
 
 <?php if ($unlinked): ?>
 <div class="card" style="margin-top:18px">
-  <div class="card__head"><span class="card__title">Add from Activities</span><span class="text-muted" style="font-size:12.5px">Linked, not copied — edit the price on the activity</span></div>
+  <div class="card__head"><span class="card__title">Add from Activities</span></div>
   <div class="card__body" style="padding:16px 20px">
     <form method="POST" action="<?= $self ?>">
       <?= csrf_field() ?><input type="hidden" name="action" value="link_tours"><input type="hidden" name="outlet_id" value="<?= $oid ?>">

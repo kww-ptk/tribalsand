@@ -124,7 +124,7 @@ include __DIR__ . '/_layout.php';
 
 <div class="inv-grid">
   <div class="card">
-    <div class="card__head"><span class="card__title">Places</span><span class="text-muted" style="font-size:12.5px">Open one for its stock and par levels</span></div>
+    <div class="card__head"><span class="card__title">Places</span></div>
     <?php if (!$rows): ?>
       <?php dt_empty('No locations yet.'); ?>
     <?php else: ?>

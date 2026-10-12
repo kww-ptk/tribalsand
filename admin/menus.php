@@ -36,6 +36,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
 $menus = fetch_menus($scope);
 
+// Inline "New menu" form (posts to menu-edit.php's create path, which opens the new
+// menu for its categories and items; a refused create comes back here with the error).
+$newFlash = $_SESSION['menu_new_flash'] ?? null;
+unset($_SESSION['menu_new_flash']);
+$newOld   = is_array($newFlash['old'] ?? null) ? $newFlash['old'] : [];
+$newOpen  = isset($_GET['new']) || $newFlash;
+$venueRows = ($scope === null)
+    ? db_query("SELECT id, name FROM venues ORDER BY sort_order, name")->fetchAll()
+    : ($scope ? db_query("SELECT id, name FROM venues WHERE id IN (" . implode(',', array_map('intval', $scope)) . ") ORDER BY sort_order, name")->fetchAll() : []);
+
 $pageTitle  = 'Menus';
 $activeMenu = 'menus';
 include __DIR__ . '/_layout.php';
@@ -43,18 +53,73 @@ include __DIR__ . '/_layout.php';
 
 <div class="page-header">
   <h1>Restaurant Menus</h1>
-  <a href="/admin/menu-edit.php" class="btn-primary btn-sm"><?= admin_icon('plus', 15) ?> New Menu</a>
+  <button type="button" class="btn-primary btn-sm" id="newMenuBtn" aria-controls="newMenu" aria-expanded="<?= $newOpen ? 'true' : 'false' ?>"><?= admin_icon('plus', 15) ?> New Menu</button>
 </div>
+
+<?php if (!empty($newFlash['error'])): ?><div class="alert alert--error is-flash"><?= e($newFlash['error']) ?></div><?php endif; ?>
+
+<div class="card" id="newMenu" data-inline-form style="margin-bottom:20px"<?= $newOpen ? '' : ' hidden' ?>>
+  <div class="card__head"><span class="card__title">New menu</span></div>
+  <div class="card__body" style="padding:20px">
+    <form method="POST" action="/admin/menu-edit.php">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="save_menu">
+      <div class="form-row">
+        <div class="field">
+          <label for="nmTitle">Title</label>
+          <input type="text" id="nmTitle" name="title" value="<?= e((string)($newOld['title'] ?? '')) ?>" required placeholder="e.g. Zuri">
+        </div>
+        <div class="field">
+          <label for="nmSlug">URL slug <span class="text-muted">(/menu.php?m=…)</span></label>
+          <input type="text" id="nmSlug" name="slug" value="<?= e((string)($newOld['slug'] ?? '')) ?>" placeholder="Made from the title if left blank">
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:14px">
+        <div class="field">
+          <label for="nmVenue">Property</label>
+          <select id="nmVenue" name="venue_id">
+            <?php if ($scope === null): ?><option value="">— none —</option><?php endif; ?>
+            <?php foreach ($venueRows as $v): ?>
+            <option value="<?= (int)$v['id'] ?>" <?= (int)($newOld['venue_id'] ?? 0) === (int)$v['id'] ? 'selected' : '' ?>><?= e($v['name']) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+        <div class="field">
+          <label for="nmSub">Subtitle</label>
+          <input type="text" id="nmSub" name="subtitle" value="<?= e((string)($newOld['subtitle'] ?? '')) ?>" placeholder="e.g. Boutique Hotel · Watamu">
+        </div>
+      </div>
+      <label class="toggle-row" style="margin-top:14px">
+        <input type="checkbox" name="is_published" value="1" <?= ($newFlash === null || !empty($newOld['is_published'])) ? 'checked' : '' ?>>
+        <span>Published (visible on the site)</span>
+      </label>
+      <div style="margin-top:16px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+        <button type="submit" class="btn-primary btn-sm">Create menu</button>
+        <span class="text-muted" style="font-size:12.5px">Next you add its categories and dishes.</span>
+      </div>
+    </form>
+  </div>
+</div>
+<script>
+  (function () {
+    var b = document.getElementById('newMenuBtn'), c = document.getElementById('newMenu');
+    if (!b || !c || b.dataset.ready) return; b.dataset.ready = '1';
+    b.addEventListener('click', function () {
+      var open = c.hidden;
+      c.hidden = !open; b.setAttribute('aria-expanded', open ? 'true' : 'false');
+      if (open) { var t = document.getElementById('nmTitle'); if (t) t.focus(); }
+    });
+  })();
+</script>
 
 <div class="card">
   <div class="card__head">
     <span class="card__title">All Menus</span>
-    <span class="text-muted" style="font-size:12px">Edits here are live on the site — hidden categories and unavailable items don’t show publicly.</span>
   </div>
   <div class="card__body" style="padding:0">
     <?php if (!$menus): ?>
     <div style="text-align:center;padding:2.5rem;color:var(--muted)">
-      No menus yet. <a href="/admin/menu-edit.php">Create your first menu →</a>
+      No menus yet. Press <strong>New Menu</strong> to create the first one.
     </div>
     <?php else: ?>
     <div class="table-wrap">
