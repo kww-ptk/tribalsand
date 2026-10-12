@@ -732,6 +732,8 @@ $__svTabs = ['conversation' => 'Conversation', 'details' => 'Details', 'booking'
   </div>
 </div>
 
+<?php include __DIR__ . '/_sv_whatsapp.php'; ?>
+
 </section>
 
 <section class="sv-panel" data-sv-panel="details">
