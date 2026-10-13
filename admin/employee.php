@@ -18,6 +18,7 @@ require_once __DIR__ . '/../includes/activity-log.php';
 require_once __DIR__ . '/../includes/hr-documents.php';      // Documents card (contracts / IDs)
 require_once __DIR__ . '/../includes/hr-establishment.php';  // company + payroll no., company scope
 require_once __DIR__ . '/../includes/hr-balances.php';       // Attendance tab: month figures + balances
+require_once __DIR__ . '/../includes/staff-rooms.php';       // current staff room on the Overview
 require_once __DIR__ . '/../includes/inventory-people.php';   // Assets tab (assigned items)
 require_once __DIR__ . '/../includes/icons.php';
 require_login();
@@ -289,6 +290,9 @@ include __DIR__ . '/_layout.php';
         <div><div class="detail-item__label">Also works at</div><div class="detail-item__value"><?php
           $ev = array_values(array_filter(array_map(fn($v) => $venueNames[$v] ?? '', $extraVids)));
           echo $ev ? e(implode(', ', $ev)) : '—'; ?></div></div>
+        <?php if (staff_rooms_supported()): $__room = staff_room_of($id); ?>
+        <div><div class="detail-item__label">Staff room</div><div class="detail-item__value"><?php if ($__room): ?><a href="/admin/staff-rooms.php"><?= e($__room['label']) ?></a><span class="text-muted" style="font-size:12px"> · <?= e($__room['venue_name'] ?? 'no property') ?><?= $__room['bed'] ? ' · bed ' . (int)$__room['bed'] : '' ?> · since <?= e(date('j M Y', strtotime((string)$__room['date_from']))) ?></span><?php else: ?>—<?php endif; ?></div></div>
+        <?php endif; ?>
         <div><div class="detail-item__label">Weekly off</div><div class="detail-item__value"><?= e($p['off_day'] ?: 'Sun') ?></div></div>
         <div><div class="detail-item__label">Phone</div><div class="detail-item__value"><?= $p['phone'] ? e($p['phone']) : '—' ?></div></div>
         <div><div class="detail-item__label">Email</div><div class="detail-item__value"><?= $p['email'] ? e($p['email']) : '—' ?></div></div>

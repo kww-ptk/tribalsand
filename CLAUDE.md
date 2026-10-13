@@ -96,6 +96,9 @@ Migration `add_night_duty.sql` (`attendance.night_duty`, guard `attendance_night
 ### Weekly grid (Oct 2026)
 **Attendance → Week** (`admin/attendance.php?view=week&week=<any day>`; Monday-first): one card per property/unit, people × Mon–Sun with times or status, hours, a moon on night duties; totals (days, hours, overtime) and flags — **missing time out**, **no rest day** (worked all 7: Employment Act s.27, one rest day in seven), **off day worked**. Print + CSV export. A report of what was worked — a rota planned in advance is not built (open question for HR). Logic `attendance_week()` / pure `attendance_week_figures()` / `attendance_week_start()` in `includes/attendance.php`; tests in `tests/attendance_logic.php`.
 
+### Staff room allocation (Oct 2026)
+**Team → Staff rooms** (`admin/staff-rooms.php`, `require_hr()`: owner, manager, HR; managers see only their properties' rooms and people they can see). Logic `includes/staff-rooms.php`; migration `add_staff_rooms.sql` (`staff_rooms` + `staff_room_allocations`, guard `staff_rooms_supported()`). Read as **staff housing** (which room/bed someone lives in) — Valentina's "staff room allocation" could also mean guest rooms per housekeeper; confirm. Rules: **one current room per person** (unique open allocation) — putting someone in a new room MOVES them (old allocation closed that day, one transaction, room row locked); a bed holds one person, a room never more people than beds; a used room is switched off, never deleted. The person's room shows on their profile Overview. Test: `php tests/staff_rooms_logic.php`.
+
 ### Clock kiosk — the system picks the action, the camera sleeps
 `clock.php` + `js/clock-kiosk.js`, model in `includes/attendance-clock.php`. Migrations:
 `add_hr_staff` → `add_attendance` → `add_attendance_punches`. Owner kill switch:
