@@ -53,7 +53,7 @@ check('leave tile is described', isset(dashboard_tile_meta()['leave_pending']));
 
 // ── Help ──
 $g = array_column(help_visible_guides(help_guides(), $hr), 'slug');
-check('HR reads the HR guides', !array_diff(['staff-directory', 'employee-documents', 'attendance-day', 'leave', 'clock-cards'], $g));
+check('HR reads the HR guides', !array_diff(['staff-directory', 'employee-documents', 'attendance-day', 'staff-requests', 'month-summary', 'attendance-import', 'staff-import', 'staff-rooms', 'clock-cards'], $g));
 check('HR does not read booking or owner guides', !array_intersect(['convert-to-hold', 'set-rates', 'website-holds', 'emails'], $g));
 
 // ── The pages enforce it (source checks — the nav only hides links) ──
