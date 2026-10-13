@@ -117,13 +117,13 @@ function dashboard_plan(string $kind, array $has = []): array {
     $on = fn(string $k): bool => !empty($has[$k]);
     $plan = match ($kind) {
         'owner' => [
-            'tiles'     => ['requests', 'enquiries', 'conflicts', 'guest_requests', 'messages', 'reservations', 'team_overdue', 'counts_review'],
+            'tiles'     => ['requests', 'enquiries', 'conflicts', 'guest_requests', 'messages', 'reservations', 'team_overdue', 'counts_review', 'leave_pending'],
             'sections'  => ['today', 'money', 'my_tasks', 'recent_enquiries'],
             'shortcuts' => [['New booking', '/admin/holds.php?new=1', 'plus'], ['Calendar', '/admin/gantt.php', 'calendar'], ['Quote builder', '/admin/quote-builder.php', 'file'],
                             ['Rates', '/admin/rates.php', 'coin'], ['Reports', '/admin/reports.php', 'chart']],
         ],
         'manager' => [
-            'tiles'     => ['guest_requests', 'messages', 'reservations', 'team_overdue', 'counts_review'],
+            'tiles'     => ['guest_requests', 'messages', 'reservations', 'team_overdue', 'counts_review', 'requests_supervisor'],
             'sections'  => ['today', 'money', 'my_tasks'],
             'shortcuts' => [['Front desk', '/admin/frontdesk.php', 'clipboard'], ['Tasks', '/admin/tasks.php', 'check-square'], ['Attendance', '/admin/attendance.php', 'clock'],
                             ['Reports', '/admin/reports.php', 'chart']],
@@ -138,7 +138,7 @@ function dashboard_plan(string $kind, array $has = []): array {
             'tiles'     => ['leave_pending'],
             'sections'  => [],
             'shortcuts' => [['Staff directory', '/admin/staff.php', 'clipboard'], ['Attendance', '/admin/attendance.php', 'clock'],
-                            ['Leave', '/admin/attendance.php?view=leave', 'calendar'], ['Month grid', '/admin/attendance.php?view=month', 'chart']],
+                            ['Requests', '/admin/attendance.php?view=leave', 'calendar'], ['Month summary', '/admin/attendance.php?view=summary', 'chart']],
         ],
         'security' => [
             'tiles'     => ['visitors'],
@@ -170,7 +170,7 @@ function dashboard_plan(string $kind, array $has = []): array {
     $plan['tiles'][] = 'team_chat';   // every account has the team chat
 
     // Drop what an optional module would show when that module is not installed.
-    $needs = ['reservations' => 'reservations', 'counts_review' => 'inventory', 'team_overdue' => 'tasks', 'visitors' => 'visitors', 'leave_pending' => 'leave'];
+    $needs = ['reservations' => 'reservations', 'counts_review' => 'inventory', 'team_overdue' => 'tasks', 'visitors' => 'visitors', 'leave_pending' => 'leave', 'requests_supervisor' => 'leave'];
     $plan['tiles'] = array_values(array_filter($plan['tiles'], fn($t) => !isset($needs[$t]) || $on($needs[$t])));
     $secNeeds = ['counts_due' => 'inventory', 'till' => 'pos', 'my_tasks' => 'tasks'];
     $plan['sections'] = array_values(array_filter($plan['sections'], fn($s) => !isset($secNeeds[$s]) || $on($secNeeds[$s])));
@@ -195,7 +195,10 @@ function dashboard_tile_meta(): array {
         'counts_review'  => ['label' => 'Stock counts', 'sub' => 'differences to review', 'href' => '/admin/inventory-counts.php', 'tone' => 'info'],
         'visitors'       => ['label' => 'Visitors on site', 'sub' => 'signed in, not yet out', 'href' => '/admin/gate.php', 'tone' => 'info'],
         'team_chat'      => ['label' => 'Team chat', 'sub' => 'unread', 'href' => '/admin/internal-messages.php', 'tone' => 'info'],
-        'leave_pending'  => ['label' => 'Leave requests', 'sub' => 'waiting for a decision', 'href' => '/admin/attendance.php?view=leave', 'tone' => 'warn'],
+        // Staff requests (leave, sick, corrections …). Owner/HR act on both approval steps; a
+        // manager only on the supervisor step. The old ?view=leave link forwards to Requests.
+        'leave_pending'  => ['label' => 'Staff requests', 'sub' => 'waiting for a decision', 'href' => '/admin/attendance.php?view=leave', 'tone' => 'warn'],
+        'requests_supervisor' => ['label' => 'Staff requests', 'sub' => 'waiting for your approval', 'href' => '/admin/attendance.php?view=leave', 'tone' => 'warn'],
     ];
 }
 
@@ -367,6 +370,11 @@ function dashboard_tile_values(array $keys, ?array $venueIds, int $adminId, stri
         'leave_pending' => function () use ($venueIds) {
             require_once __DIR__ . '/attendance.php';
             return leave_requests_supported() ? (int)leave_pending_count($venueIds) : 0;
+        },
+        // Only the first step — the one a manager can approve.
+        'requests_supervisor' => function () use ($venueIds) {
+            require_once __DIR__ . '/attendance.php';
+            return leave_requests_supported() ? count(fetch_leave_requests($venueIds, ['status' => 'pending'])) : 0;
         },
         'reservations'  => fn() => (int)(reservation_dashboard_counts($venueIds)['pending'] ?? 0),
         'team_overdue'  => fn() => (int)db_query("SELECT COUNT(*) FROM tasks t WHERE t.status IN ('todo','in_progress')

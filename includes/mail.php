@@ -1601,6 +1601,29 @@ function send_checkin_completed(array $hold, ?array $data, array $ctx = []): voi
     ], $ctx + ['hold_id' => (int)($hold['id'] ?? 0) ?: null]);
 }
 
+/**
+ * A staff request waits for its next approver ($step 'pending' = the supervisor,
+ * 'pending_hr' = HR). One email per approver address; the link opens the inbox.
+ */
+function send_staff_request_waiting(array $req, string $to, string $step, array $ctx = []): void {
+    require_once __DIR__ . '/staff-requests.php';
+    $dates = date('j M', strtotime((string)$req['start_date'])) . ($req['end_date'] !== $req['start_date'] ? ' – ' . date('j M Y', strtotime((string)$req['end_date'])) : ' ' . date('Y', strtotime((string)$req['start_date'])));
+    $vars = ['person' => (string)$req['full_name'], 'type' => staff_request_type_label((string)$req['leave_type']), 'dates' => $dates,
+             'step' => $step === 'pending_hr' ? 'HR' : 'the supervisor'];
+    $url = site_url('/admin/staff-requests.php');
+    $intro = email_field('staff_request_waiting', 'intro', $vars);
+    $rows = [['For', $vars['person']], ['Request', $vars['type']], ['Dates', $dates], ['Reason', (string)($req['reason'] ?? '')],
+             ['Entered by', (string)($req['requested_by_name'] ?? '')]];
+    $lines = [];
+    foreach ($rows as [$k, $v]) if ($v !== '') $lines[] = $k . ': ' . $v;
+    $text = _email_plain($intro) . "\n\n" . implode("\n", $lines) . "\n\nOpen the requests: " . $url;
+    $inner = _email_lead_rich($intro) . _email_detail_block($rows, 'Request') . _email_button('Open the requests', $url);
+    mail_send('staff_request_waiting', [
+        'to' => $to, 'subject' => email_field('staff_request_waiting', 'subject', $vars), 'text' => $text,
+        'html' => _email_shell(email_field('staff_request_waiting', 'heading', $vars), $inner, _mail_site()),
+    ], $ctx);
+}
+
 /** Admin password-reset link. Always sent (locked), never re-routed. */
 function send_password_reset(string $email, string $resetUrl, array $ctx = []): array {
     $text = "You requested a password reset for the Tribal Sand admin panel.\n\n"

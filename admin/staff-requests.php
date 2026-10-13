@@ -60,7 +60,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $id = staff_request_create($sid, $in, $uid, $approve);
             $r = staff_request_fetch($id);
             audit_log('hr.request_' . ($approve ? 'approved' : 'create'), 'leave_request', $id, staff_request_type_label((string)$r['leave_type']) . ' · ' . $r['full_name']);
-            $msg = $approve ? 'Request entered and approved' : 'Request entered — waiting for the supervisor';
+            $sent = $approve ? 0 : staff_request_notify($id, $uid);
+            $msg = $approve ? 'Request entered and approved' : 'Request entered — waiting for the supervisor' . ($sent ? ' (' . $sent . ' emailed)' : '');
             if (!empty($r['details']['skipped'])) $msg .= '. Not changed (already worked): ' . implode(', ', array_map(fn($d) => date('j M', strtotime($d)), $r['details']['skipped']));
             sq_back($msg . '.');
         }
@@ -72,7 +73,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $st = staff_request_approve($id, $role, $uid, $inScope);
             audit_log('hr.request_' . ($st === 'approved' ? 'approved' : 'supervisor_ok'), 'leave_request', $id, $r['full_name']);
             $r2 = staff_request_fetch($id);
-            $msg = $st === 'approved' ? 'Approved — the attendance is updated.' : 'Approved by the supervisor — now waiting for HR.';
+            $sent = $st === 'pending_hr' ? staff_request_notify($id, $uid) : 0;
+            $msg = $st === 'approved' ? 'Approved — the attendance is updated.' : 'Approved by the supervisor — now waiting for HR' . ($sent ? ' (HR emailed)' : '') . '.';
             if ($st === 'approved' && !empty($r2['details']['skipped'])) $msg .= ' Not changed (already worked): ' . implode(', ', array_map(fn($d) => date('j M', strtotime($d)), $r2['details']['skipped'])) . '.';
             sq_back($msg);
         }

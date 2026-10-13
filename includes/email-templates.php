@@ -363,6 +363,21 @@ function email_registry(): array {
             'placeholders' => ['guest_name' => 'Guest name', 'room_name' => 'Room'],
             'sample' => fn() => send_checkin_completed($sampleHold(), ['flight_number' => 'KQ612', 'arrival_airport' => 'Malindi', 'arrival_at' => '14:20', 'needs_transfer' => true, 'transfer_details' => 'Airport pickup', 'dietary' => 'Vegetarian', 'special_requests' => '']),
         ],
+        'staff_request_waiting' => [
+            'name' => 'Staff request waiting for approval', 'audience' => 'staff', 'topic' => 'Staff alerts',
+            'trigger' => 'A staff request (leave, sick, correction …) is entered, or the supervisor approves it and it now waits for HR.',
+            'sources' => ['includes/staff-requests.php'],
+            'recipients' => 'Step 1: the managers of the person\'s property (or company); step 2: the HR accounts. Falls back to HR, then the owner.',
+            'default_on' => true,
+            'fields' => [
+                'subject' => 'Request to approve — {{person}}, {{type}}',
+                'heading' => 'A request is waiting for you',
+                'intro'   => '{{type}} for **{{person}}** ({{dates}}) is waiting for {{step}}.',
+            ],
+            'placeholders' => ['person' => 'Who it is for', 'type' => 'Kind of request (e.g. Annual leave)', 'dates' => 'The dates', 'step' => 'Whose approval: "the supervisor" or "HR"'],
+            'sample' => fn() => send_staff_request_waiting(['id' => 0, 'full_name' => 'Henry Ouma Okaka', 'leave_type' => 'annual', 'start_date' => '2026-11-02',
+                'end_date' => '2026-11-06', 'reason' => 'Family wedding', 'requested_by_name' => 'Nusra Hassan'], 'you@example.com', 'pending'),
+        ],
         'password_reset' => [
             'name' => 'Admin password reset', 'audience' => 'staff', 'topic' => 'Staff alerts',
             'trigger' => 'Someone asks for a password reset on the admin sign-in page.',
