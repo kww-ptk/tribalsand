@@ -140,7 +140,7 @@ function admin_nav_definition(array $f, array $badge = []): array {
                 $tab('Week view', 'timetable.php', $on('timetable'), 'Timetable'),
             ]),
             $item('Attendance', 'attendance', [
-                $tab('Attendance', 'attendance.php', $on('reports') || $on('hr')),
+                $tab('Attendance', ['attendance.php', 'attendance-import.php'], $on('reports') || $on('hr')),
                 $tab('Clock kiosks', 'attendance-devices.php', ($on('reports') || $on('hr')) && $on('clockNav')),
                 $tab('Clock cards', 'attendance-cards.php', ($on('reports') || $on('hr')) && $on('clockOn')),
             ]),

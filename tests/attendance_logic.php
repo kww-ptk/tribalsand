@@ -28,10 +28,10 @@ check('hours: standard split = 8',       attendance_hours($std) === 8.0);
 check('hours: security night = 12',      attendance_hours($secNight) === 12.0);
 check('hours: empty = 0',                attendance_hours(['in1'=>null,'out1'=>null,'in2'=>null,'out2'=>null]) === 0.0);
 
-check('standard hrs: Security = 12',     attendance_standard_hours('Security') === 12);
+check('standard hrs: Security = 8 (HR: the extra 4 h is overtime)', attendance_standard_hours('Security') === 8);
 check('standard hrs: Housekeeping = 8',  attendance_standard_hours('Housekeeping') === 8);
 check('OT: 8h normal = 0',               attendance_overtime($std, 'Housekeeping') === 0.0);
-check('OT: 12h security = 0',            attendance_overtime($secNight, 'Security') === 0.0);
+check('OT: 12h security night = +4',     attendance_overtime($secNight, 'Security') === 4.0);
 check('OT: 12h normal = +4',            attendance_overtime($secNight, 'Housekeeping') === 4.0);
 
 check('effective: worked ⇒ P',           attendance_effective_status($std) === 'P');
@@ -66,10 +66,11 @@ if (!attendance_supported() || !hr_staff_supported()) {
     echo ($failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n"); exit($failures ? 1 : 0);
 }
 
-$sid = (int) db_query("SELECT id FROM hr_staff ORDER BY id LIMIT 1")->fetchColumn();
-if (!$sid) { echo "\nSKIP  no hr_staff rows (run seed_hr_staff)\n"; echo ($failures?"\n{$failures} FAILURE(S)\n":"\nALL PASS\n"); exit($failures?1:0); }
-
 db()->beginTransaction();
+// Its own person, inside the rolled-back transaction: a real person's imported
+// attendance would otherwise sit on the test dates.
+db_query("INSERT INTO hr_staff (full_name, position, department, status) VALUES ('ATTENDANCE TEST PERSON', 'COOK', 'Kitchen', 'active')");
+$sid = (int) db()->lastInsertId();
 
 // Upsert a night shift → stored as minutes, status implied P.
 $id = attendance_upsert($sid, '2026-05-01', ['in1'=>'19:00','out1'=>'07:00+1'], null);

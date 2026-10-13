@@ -34,6 +34,7 @@ function attendance_statuses(): array {
         'ABS'   => 'Absent',
         'LV'    => 'Leave',
         'REC_L' => 'Rec + Leave',
+        'UL'    => 'Unpaid leave',
     ];
 }
 
@@ -47,7 +48,7 @@ function attendance_status_badge(string $s): string {
         'PH'    => 'badge--orange',
         'SK'    => 'badge--blue',
         'ABS'   => 'badge--red',
-        'LV', 'REC_L' => 'badge--orange',
+        'LV', 'REC_L', 'UL' => 'badge--orange',
         default => 'badge--grey',
     };
 }
@@ -82,15 +83,23 @@ function attendance_min_to_hhmm(?int $min): string {
 
 /** Worked hours from the four minute columns. */
 function attendance_hours(array $row): float {
+    // Per section, never below 0: an out typed earlier than its in (a typo in an
+    // imported sheet) must not eat the other section's hours.
     $h = 0;
-    if ($row['in1'] !== null && $row['out1'] !== null) $h += (int)$row['out1'] - (int)$row['in1'];
-    if ($row['in2'] !== null && $row['out2'] !== null) $h += (int)$row['out2'] - (int)$row['in2'];
-    return round(max(0, $h) / 60, 2);
+    if ($row['in1'] !== null && $row['out1'] !== null) $h += max(0, (int)$row['out1'] - (int)$row['in1']);
+    if ($row['in2'] !== null && $row['out2'] !== null) $h += max(0, (int)$row['out2'] - (int)$row['in2']);
+    return round($h / 60, 2);
 }
 
-/** Role standard hours/day: Security = 12, everyone else = 8. */
-function attendance_standard_hours(?string $department): int {
-    return $department === 'Security' ? 12 : 8;
+/**
+ * Standard hours in a day before overtime: 8 for EVERYONE (HR, Oct 2026). Security
+ * works 12-hour day and night shifts and HR counts the extra 4 h as overtime —
+ * the old 12-hour standard for Security showed them 0 overtime where HR's sheet
+ * shows 4 h a shift. $department is kept for callers; it no longer changes the rule.
+ */
+const ATTENDANCE_STANDARD_HOURS = 8;
+function attendance_standard_hours(?string $department = null): int {
+    return ATTENDANCE_STANDARD_HOURS;
 }
 
 /** Overtime for a worked day = hours − role standard (may be negative). */
@@ -118,12 +127,22 @@ function attendance_is_off_day(?string $offDay, string $ymd): bool {
     return $off === '' ? ($wd === 'SUN') : ($off === $wd);
 }
 
+/** attendance.source present (add_attendance_import.sql)? Catalog lookup — safe inside a transaction. */
+function attendance_source_supported(): bool {
+    static $c = null;
+    if ($c !== null) return $c;
+    try { return $c = (bool) db_query("SELECT 1 FROM information_schema.columns WHERE table_name = 'attendance' AND column_name = 'source'")->fetchColumn(); }
+    catch (Throwable $e) { return $c = false; }
+}
+
 /**
  * Upsert one staff member's day. $data may carry either a status code (clears
  * times) or the four HH:MM strings (a worked shift ⇒ status becomes P). Returns
- * the stored row's id.
+ * the stored row's id. $source says where it came from — 'manual' (the daily
+ * editor), 'kiosk' (a clock card), 'request' (an approved request); the
+ * attendance import writes its own rows ('import').
  */
-function attendance_upsert(int $staffId, string $ymd, array $data, ?int $loggedBy): int {
+function attendance_upsert(int $staffId, string $ymd, array $data, ?int $loggedBy, string $source = 'manual'): int {
     $status = trim((string)($data['status'] ?? ''));
     $in1 = $out1 = $in2 = $out2 = null;
     if ($status === '' || $status === 'P') {
@@ -134,13 +153,14 @@ function attendance_upsert(int $staffId, string $ymd, array $data, ?int $loggedB
         $out2 = array_key_exists('out2', $data) ? attendance_hhmm_to_min($data['out2']) : null;
         $status = ''; // P is implied by hours, never stored literally
     }
+    $src = attendance_source_supported();
     db_query(
-        "INSERT INTO attendance (hr_staff_id, work_date, status, in1, out1, in2, out2, logged_by, updated_at)
-         VALUES (:s, :d, :st, :i1, :o1, :i2, :o2, :lb, now())
+        "INSERT INTO attendance (hr_staff_id, work_date, status, in1, out1, in2, out2, logged_by, updated_at" . ($src ? ', source' : '') . ")
+         VALUES (:s, :d, :st, :i1, :o1, :i2, :o2, :lb, now()" . ($src ? ', :src' : '') . ")
          ON CONFLICT (hr_staff_id, work_date)
-         DO UPDATE SET status=:st, in1=:i1, out1=:o1, in2=:i2, out2=:o2, logged_by=:lb, updated_at=now()",
+         DO UPDATE SET status=:st, in1=:i1, out1=:o1, in2=:i2, out2=:o2, logged_by=:lb, updated_at=now()" . ($src ? ', source=:src' : ''),
         [':s'=>$staffId, ':d'=>$ymd, ':st'=>($status ?: null),
-         ':i1'=>$in1, ':o1'=>$out1, ':i2'=>$in2, ':o2'=>$out2, ':lb'=>$loggedBy]
+         ':i1'=>$in1, ':o1'=>$out1, ':i2'=>$in2, ':o2'=>$out2, ':lb'=>$loggedBy] + ($src ? [':src' => $source] : [])
     );
     return (int) db_query("SELECT id FROM attendance WHERE hr_staff_id=:s AND work_date=:d", [':s'=>$staffId, ':d'=>$ymd])->fetchColumn();
 }
@@ -399,7 +419,7 @@ function leave_decide(int $id, string $status, ?int $by): int {
     $cur = $req['start_date'];
     while ($cur <= $req['end_date']) {
         if (!attendance_is_off_day($req['off_day'] ?? '', $cur)) {
-            attendance_upsert((int)$req['hr_staff_id'], $cur, ['status' => 'LV'], $by);
+            attendance_upsert((int)$req['hr_staff_id'], $cur, ['status' => 'LV'], $by, 'request');
             $stamped++;
         }
         $cur = date('Y-m-d', strtotime($cur . ' +1 day'));

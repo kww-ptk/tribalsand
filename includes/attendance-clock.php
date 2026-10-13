@@ -429,7 +429,7 @@ function clock_record_punch(int $staffId, string $kind, int $minutes, string $to
         return ['ok' => false, 'error' => 'Already recorded a moment ago.'];
     }
 
-    attendance_upsert($staffId, $workDate, clock_merge_times($row, $slot, $minutes), null);
+    attendance_upsert($staffId, $workDate, clock_merge_times($row, $slot, $minutes), null, 'kiosk');
 
     db_query(
         "INSERT INTO attendance_punches (hr_staff_id, device_id, venue_id, kind, work_date, slot, photo_key)

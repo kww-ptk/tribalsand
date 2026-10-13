@@ -56,7 +56,7 @@ function hr_est_name_tokens(string $name): array {
 
 /**
  * Two name words are the same person-word: identical; an initial ("C") and a
- * word it starts ("CHONDO"); a 4-letter word with one letter added (JUMA / JUMAA);
+ * word it starts ("CHONDO"); a letter added at the end (JUMA / JUMAA, IDD / IDDI);
  * or one typo apart when both are 5+ letters
  * (SHUKRANI / SHUKURANI, SITIRINGA / SITIRINGAH), two typos when both are 7+
  * (JENNIFER / JENIFFER), or two letters swapped (LEYIAN / LEIYAN).
@@ -66,7 +66,8 @@ function hr_est_word_eq(string $a, string $b): bool {
     $la = strlen($a); $lb = strlen($b);
     if ($la === 1 && $lb > 1) return $b[0] === $a;
     if ($lb === 1 && $la > 1) return $a[0] === $b;
-    // A 4-letter word one letter short of the other (JUMA / JUMAA, the commonest roster variant).
+    // One letter added at the end of a short word (JUMA / JUMAA, IDD / IDDI, KEA / KEAH).
+    if (min($la, $lb) >= 3 && abs($la - $lb) === 1 && ($la < $lb ? str_starts_with($b, $a) : str_starts_with($a, $b))) return true;
     if (min($la, $lb) === 4 && abs($la - $lb) === 1 && levenshtein($a, $b) === 1) return true;
     if ($la < 5 || $lb < 5) return false;
     if (levenshtein($a, $b) <= ($la >= 7 && $lb >= 7 ? 2 : 1)) return true;   // JENNIFER / JENIFFER
@@ -339,7 +340,7 @@ function hr_est_match(array $rows, array $existing, int $companyId): array {
         if (count($idx) < 2) continue;
         foreach ($idx as $i) {
             if ($res[$i]['status'] === 'payroll') continue;
-            $res[$i]['status'] = 'decide'; $res[$i]['staff_id'] = null;
+            $res[$i]['status'] = 'decide'; $res[$i]['staff_id'] = null; $res[$i]['claimed'] = $sid;
             $res[$i]['why'] = 'Another row in this list matches the same person.';
             if (!$res[$i]['candidates']) $res[$i]['candidates'] = [['id' => $sid, 'overlap' => 0, 'contained' => false, 'note' => '']];
         }

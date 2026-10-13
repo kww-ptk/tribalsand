@@ -18,6 +18,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/attendance.php';
 require_once __DIR__ . '/../includes/attendance-clock.php';
 require_once __DIR__ . '/../includes/hr-establishment.php';
+require_once __DIR__ . '/../includes/attendance-import.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_login();
 require_hr();
@@ -156,7 +157,12 @@ include __DIR__ . '/_layout.php';
 ?>
 <div class="page-header">
   <h1>Attendance</h1>
-  <a href="/admin/staff.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Team</a>
+  <div class="actions">
+    <?php if ((is_owner() || is_hr()) && function_exists('attendance_import_supported') && attendance_import_supported()): ?>
+    <a href="/admin/attendance-import.php" class="btn-outline btn-sm" data-help="attendance-import"><?= admin_icon('upload', 15) ?> Import from Excel</a>
+    <?php endif; ?>
+    <a href="/admin/staff.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Team</a>
+  </div>
 </div>
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?> is-flash"><?= e($flash['msg']) ?></div><?php endif; ?>
 
