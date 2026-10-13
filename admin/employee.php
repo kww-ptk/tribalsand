@@ -17,6 +17,7 @@ require_once __DIR__ . '/../includes/internal-messages.php'; // DM button
 require_once __DIR__ . '/../includes/activity-log.php';
 require_once __DIR__ . '/../includes/hr-documents.php';      // Documents card (contracts / IDs)
 require_once __DIR__ . '/../includes/hr-establishment.php';  // company + payroll no., company scope
+require_once __DIR__ . '/../includes/hr-balances.php';       // Attendance tab: month figures + balances
 require_once __DIR__ . '/../includes/inventory-people.php';   // Assets tab (assigned items)
 require_once __DIR__ . '/../includes/icons.php';
 require_login();
@@ -87,6 +88,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
         $_SESSION['emp_flash'] = ['type'=>'success','msg'=>'Employment details saved.'];
     }
     header('Location: /admin/employee.php?id=' . $id); exit;
+}
+
+// ── Balances: HR's correction / days paid out / opening balance (owner + HR) ──
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'bal_move') {
+    verify_csrf();
+    if (!is_owner() && !is_hr()) {
+        $_SESSION['emp_flash'] = ['type'=>'error','msg'=>'Balances are changed by the owner or HR.'];
+    } else {
+        try {
+            $days = (float) str_replace(',', '.', (string)($_POST['days'] ?? ''));
+            hr_bal_add_move($id, (string)($_POST['kind'] ?? ''), (string)($_POST['reason'] ?? ''), $days,
+                (string)($_POST['on'] ?? date('Y-m-d')), (string)($_POST['note'] ?? ''), (int)($_SESSION['admin_id'] ?? 0));
+            audit_log('hr.balance_' . (string)$_POST['reason'], 'hr_staff', $id, (string)$_POST['kind'] . ' ' . $days . ': ' . (string)($_POST['note'] ?? ''));
+            $_SESSION['emp_flash'] = ['type'=>'success','msg'=>'Balance updated.'];
+        } catch (Throwable $e) {
+            $_SESSION['emp_flash'] = ['type'=>'error','msg'=>$e->getMessage()];
+        }
+    }
+    header('Location: /admin/employee.php?id=' . $id . '&amonth=' . urlencode((string)($_POST['amonth'] ?? '')) . '#attendance'); exit;
 }
 
 // ── Assets: assign / return / report lost (owner/manager, scoped above; every move re-checked) ──
@@ -203,17 +223,27 @@ $assetValue  = inv_sum_by_currency($assets['rows']);
 // Linked account's open tasks + recent activity.
 $tasks = ($acctId > 0) ? mywork_tasks($acctId) : [];
 
-// Attendance for the current + previous month (clock in/out), most recent first.
-$now = time();
-$att = [];
+// Attendance tab: one month as a calendar + its figures, the balances and their history.
+$aMonth = preg_match('/^\d{4}-\d{2}$/', (string)($_GET['amonth'] ?? '')) ? (string)$_GET['amonth'] : date('Y-m');
+$aDays  = [];
+$aFig   = null; $nowFig = null;
 if (attendance_supported()) {
-    foreach ([0, -1] as $off) {
-        $ym = strtotime(date('Y-m-01', $now) . " {$off} month");
-        foreach (fetch_attendance_month($id, (int)date('Y', $ym), (int)date('n', $ym)) as $row) { $att[] = $row; }
+    foreach (fetch_attendance_month($id, (int)substr($aMonth, 0, 4), (int)substr($aMonth, 5, 2)) as $row) $aDays[(string)$row['work_date']] = $row;
+    $aHol  = hr_public_holidays($aMonth . '-01', date('Y-m-t', strtotime($aMonth . '-01')));
+    $aFig  = $aDays ? hr_bal_month_figures($aDays, (string)$p['off_day'], $aMonth, $aHol) : null;
+    if ($aMonth === date('Y-m')) $nowFig = $aFig;
+    else {
+        $nd = [];
+        foreach (fetch_attendance_month($id, (int)date('Y'), (int)date('n')) as $row) $nd[(string)$row['work_date']] = $row;
+        $nowFig = $nd ? hr_bal_month_figures($nd, (string)$p['off_day'], date('Y-m'), hr_public_holidays(date('Y-m-01'), date('Y-m-t'))) : null;
     }
-    usort($att, fn($a, $b) => strcmp((string)$b['work_date'], (string)$a['work_date']));
-    $att = array_slice($att, 0, 20);
 }
+$balOn   = hr_balances_supported();
+$bal     = $balOn ? (hr_bal_balances([$id])[$id] ?? []) : [];
+$balMoves= $balOn ? hr_bal_moves($id) : [];
+$canBal  = $balOn && (is_owner() || is_hr());
+$leaveReqs = leave_requests_supported()
+    ? db_query("SELECT * FROM leave_requests WHERE hr_staff_id = :s ORDER BY start_date DESC LIMIT 8", [':s' => $id])->fetchAll() : [];
 
 // Message action target.
 $dmUrl = '';
@@ -240,6 +270,7 @@ include __DIR__ . '/_layout.php';
   <button type="button" class="tab-btn is-active" data-tab="overview">Overview</button>
   <button type="button" class="tab-btn" data-tab="employment">Employment</button>
   <button type="button" class="tab-btn" data-tab="documents">Documents</button>
+  <?php if (attendance_supported()): ?><button type="button" class="tab-btn" data-tab="attendance">Attendance</button><?php endif; ?>
   <?php if ($invOn): ?><button type="button" class="tab-btn" data-tab="assets">Assets<?= $assets['rows'] ? ' (' . count($assets['rows']) . ')' : '' ?></button><?php endif; ?>
 </nav>
 
@@ -263,6 +294,15 @@ include __DIR__ . '/_layout.php';
         <div><div class="detail-item__label">Email</div><div class="detail-item__value"><?= $p['email'] ? e($p['email']) : '—' ?></div></div>
         <div><div class="detail-item__label">Login account</div><div class="detail-item__value"><?= $acctId ? 'Linked' : 'None' ?></div></div>
       </div>
+      <?php if ($nowFig || $bal): ?>
+      <div class="emp-now">
+        <?php if ($nowFig): ?><span><strong><?= $nowFig['worked'] ?></strong> days worked in <?= e(date('F', strtotime('now'))) ?></span>
+        <span><strong><?= ($nowFig['ot_hours'] > 0 ? '+' : '') . number_format($nowFig['ot_hours'], 1) ?> h</strong> overtime</span><?php endif; ?>
+        <?php if (isset($bal['off_days'])): ?><span><strong><?= e(hr_bal_fmt($bal['off_days'])) ?></strong> off days owed</span><?php endif; ?>
+        <?php if (isset($bal['annual_leave'])): ?><span><strong><?= e(hr_bal_fmt($bal['annual_leave'])) ?></strong> leave days</span><?php endif; ?>
+        <a href="#attendance" data-open-tab="attendance">Attendance →</a>
+      </div>
+      <?php endif; ?>
     </div>
   </div>
 </div>
@@ -382,6 +422,116 @@ include __DIR__ . '/_layout.php';
   </div>
 </div>
 
+<?php if (attendance_supported()):
+  $aStart = $aMonth . '-01'; $aDaysIn = (int)date('t', strtotime($aStart));
+  $aLead  = (int)date('N', strtotime($aStart)) - 1;   // Monday-first grid
+  $aPrev  = date('Y-m', strtotime($aStart . ' -1 month')); $aNext = date('Y-m', strtotime($aStart . ' +1 month')); ?>
+<div class="tab-panel" id="tab-attendance">
+  <div class="card">
+    <div class="card__head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+      <span class="card__title"><?= e(date('F Y', strtotime($aStart))) ?></span>
+      <span style="display:flex;gap:6px;align-items:center">
+        <a class="btn-icon btn-icon--outline" href="/admin/employee.php?id=<?= $id ?>&amp;amonth=<?= e($aPrev) ?>#attendance" aria-label="Previous month"><?= admin_icon('chevron-left') ?></a>
+        <a class="btn-icon btn-icon--outline" href="/admin/employee.php?id=<?= $id ?>&amp;amonth=<?= e($aNext) ?>#attendance" aria-label="Next month"><?= admin_icon('chevron-right') ?></a>
+        <a class="btn-outline btn-sm" href="/admin/attendance.php?view=person&amp;staff=<?= $id ?>&amp;month=<?= e($aMonth) ?>">Times &amp; print</a>
+      </span>
+    </div>
+    <div class="card__body" style="padding:14px 18px">
+      <div class="emp-cal" role="grid" aria-label="Attendance <?= e(date('F Y', strtotime($aStart))) ?>">
+        <?php foreach (['Mon','Tue','Wed','Thu','Fri','Sat','Sun'] as $wd): ?><div class="emp-cal__wd"><?= $wd ?></div><?php endforeach; ?>
+        <?php for ($i = 0; $i < $aLead; $i++): ?><div class="emp-cal__pad"></div><?php endfor; ?>
+        <?php for ($d = 1; $d <= $aDaysIn; $d++):
+          $ymd = sprintf('%s-%02d', $aMonth, $d); $row = $aDays[$ymd] ?? null;
+          $eff = $row ? attendance_effective_status($row) : ''; $hrs = $row ? attendance_hours($row) : 0;
+          $isOff = attendance_is_off_day((string)$p['off_day'], $ymd); $ph = $aHol[$ymd] ?? null;
+          $tip = $row ? trim(attendance_min_to_hhmm($row['in1'] !== null ? (int)$row['in1'] : null) . '–' . attendance_min_to_hhmm($row['out1'] !== null ? (int)$row['out1'] : null)
+                 . ($row['in2'] !== null ? ', ' . attendance_min_to_hhmm((int)$row['in2']) . '–' . attendance_min_to_hhmm($row['out2'] !== null ? (int)$row['out2'] : null) : ''), '–, ')
+                 . (!empty($row['note']) ? ' · ' . $row['note'] : '') . (!empty($row['source']) ? ' · ' . $row['source'] : '') : ''; ?>
+        <div class="emp-cal__day<?= $isOff ? ' is-off' : '' ?><?= $ph ? ' is-ph' : '' ?><?= $ymd === date('Y-m-d') ? ' is-today' : '' ?>"<?= $tip !== '' || $ph ? ' data-tip="' . e(trim(($ph ? $ph . ' · ' : '') . $tip, ' ·')) . '"' : '' ?>>
+          <span class="emp-cal__n"><?= $d ?></span>
+          <?php if ($eff !== ''): ?><span class="badge <?= e(attendance_status_badge($eff)) ?>"><?= e($eff) ?></span><?php endif; ?>
+          <?php if ($hrs > 0): ?><span class="emp-cal__h"><?= number_format($hrs, 1) ?>h</span><?php endif; ?>
+        </div>
+        <?php endfor; ?>
+      </div>
+      <?php if ($aFig): $f = $aFig; ?>
+      <div class="emp-figs">
+        <div><span>Worked</span><strong><?= $f['worked'] ?></strong></div>
+        <div><span>Off taken / entitled</span><strong><?= $f['off_taken'] ?> / <?= $f['entitled'] ?></strong></div>
+        <div><span>Sick</span><strong><?= $f['sick'] ?></strong></div>
+        <div><span>Leave</span><strong><?= $f['leave'] ?><?= $f['unpaid'] ? ' + ' . $f['unpaid'] . ' unpaid' : '' ?></strong></div>
+        <div><span>Hours</span><strong><?= number_format($f['hours'], 1) ?></strong></div>
+        <div><span>Overtime</span><strong><?= ($f['ot_hours'] > 0 ? '+' : '') . number_format($f['ot_hours'], 1) ?> h</strong></div>
+        <div><span>Off days earned</span><strong><?= e(hr_bal_fmt($f['off_earned'])) ?></strong></div>
+        <?php if ($f['not_recorded']): ?><div class="is-warn"><span>Not recorded</span><strong><?= $f['not_recorded'] ?> days</strong></div><?php endif; ?>
+      </div>
+      <?php else: ?>
+      <p class="text-muted" style="margin:12px 0 0;font-size:13px">Nothing recorded for <?= e(date('F Y', strtotime($aStart))) ?>.</p>
+      <?php endif; ?>
+    </div>
+  </div>
+
+  <?php if ($balOn): ?>
+  <div class="card" style="margin-top:16px">
+    <div class="card__head"><span class="card__title">Balances</span></div>
+    <div class="card__body" style="padding:14px 18px">
+      <div class="emp-figs emp-figs--big">
+        <div><span>Off days owed</span><strong><?= e(hr_bal_fmt($bal['off_days'] ?? 0)) ?></strong></div>
+        <div><span>Annual leave</span><strong><?= e(hr_bal_fmt($bal['annual_leave'] ?? 0)) ?></strong></div>
+      </div>
+      <?php if ($balMoves): ?>
+      <div class="table-wrap" style="margin-top:12px"><table class="data-table">
+        <thead><tr><th>Date</th><th>What</th><th>Balance</th><th style="text-align:right">Days</th><th>Note</th></tr></thead>
+        <tbody>
+        <?php foreach ($balMoves as $m): $det = json_decode((string)$m['detail'], true) ?: []; ?>
+          <tr><td style="white-space:nowrap"><?= e(date('j M Y', strtotime((string)$m['effective_on']))) ?></td>
+            <td><?= e(hr_bal_reason_label((string)$m['reason'])) ?><?= $m['period'] ? ' · ' . e(date('M Y', strtotime($m['period'] . '-01'))) : '' ?></td>
+            <td class="text-muted"><?= $m['kind'] === 'off_days' ? 'Off days' : 'Annual leave' ?></td>
+            <td style="text-align:right"><strong><?= e(((float)$m['days'] > 0 ? '+' : '') . hr_bal_fmt((float)$m['days'])) ?></strong></td>
+            <td class="text-muted" style="font-size:12.5px"><?php
+              if ($m['reason'] === 'month' && $m['kind'] === 'off_days' && $det) echo e("entitled {$det['entitled']} − taken {$det['off_taken']} + overtime " . hr_bal_fmt((float)$det['ot_days']) . ' d');
+              elseif ($m['reason'] === 'month' && $det) echo e('accrued ' . hr_bal_fmt((float)$det['leave_accrued']) . " − taken {$det['leave']}");
+              else echo e((string)($m['note'] ?? '')); ?><?= $m['by_name'] ? ' · ' . e($m['by_name']) : '' ?></td></tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table></div>
+      <?php else: ?><p class="text-muted" style="margin:10px 0 0;font-size:13px">No balance entries yet — the opening balance comes from HR's summary (Attendance → Import from Excel), then each closed month adds to it.</p><?php endif; ?>
+
+      <?php if ($canBal): ?>
+      <details class="emp-balform" style="margin-top:14px"><summary class="btn-outline btn-sm">Change a balance</summary>
+        <form method="POST" action="/admin/employee.php?id=<?= $id ?>" class="emp-form" style="margin-top:12px">
+          <?= csrf_field() ?><input type="hidden" name="action" value="bal_move"><input type="hidden" name="hr_id" value="<?= $id ?>"><input type="hidden" name="amonth" value="<?= e($aMonth) ?>">
+          <div class="field"><label>Balance</label><select name="kind" class="filter-select eselect--block"><option value="off_days">Off days owed</option><option value="annual_leave">Annual leave</option></select></div>
+          <div class="field"><label>What</label><select name="reason" class="filter-select eselect--block">
+            <option value="adjustment">Correction (+ or −)</option><option value="paid_out">Days paid out</option><option value="opening">Opening balance (replaces)</option></select></div>
+          <div class="field"><label>Days</label><input name="days" class="inp" inputmode="decimal" required placeholder="e.g. 2 or -1.5" style="width:100%"></div>
+          <div class="field"><label>Date</label>
+            <button type="button" class="dp-btn" data-dp-target="balOn" style="width:100%"><?= e(date('j M Y')) ?></button>
+            <input type="hidden" id="balOn" name="on" value="<?= e(date('Y-m-d')) ?>"></div>
+          <div class="field" style="grid-column:1/-1"><label>Note <span class="text-muted">(needed for a correction)</span></label><input name="note" class="inp" maxlength="300" style="width:100%"></div>
+          <div><button class="btn-primary btn-sm">Save</button></div>
+        </form>
+      </details>
+      <?php endif; ?>
+    </div>
+  </div>
+  <?php endif; ?>
+
+  <?php if (leave_requests_supported()): ?>
+  <div class="card" style="margin-top:16px">
+    <div class="card__head" style="display:flex;justify-content:space-between;align-items:center"><span class="card__title">Leave requests</span><a class="btn-outline btn-sm" href="/admin/attendance.php?view=leave">All requests</a></div>
+    <div class="card__body" style="padding:<?= $leaveReqs ? '0' : '14px 18px' ?>">
+      <?php if (!$leaveReqs): ?><p class="text-muted" style="margin:0;font-size:13px">No leave requests.</p>
+      <?php else: ?><div class="table-wrap"><table class="data-table"><thead><tr><th>Dates</th><th>Type</th><th>Status</th><th>Reason</th></tr></thead><tbody>
+        <?php foreach ($leaveReqs as $lr): ?><tr><td style="white-space:nowrap"><?= e(date('j M', strtotime((string)$lr['start_date']))) ?> – <?= e(date('j M Y', strtotime((string)$lr['end_date']))) ?></td>
+          <td><?= e(ucfirst((string)$lr['leave_type'])) ?></td><td><span class="badge <?= e(leave_status_badge((string)$lr['status'])) ?>"><?= e(ucfirst((string)$lr['status'])) ?></span></td><td class="text-muted"><?= e((string)($lr['reason'] ?? '')) ?></td></tr><?php endforeach; ?>
+      </tbody></table></div><?php endif; ?>
+    </div>
+  </div>
+  <?php endif; ?>
+</div>
+<?php endif; ?>
+
 <?php if ($invOn): ?>
 <div class="tab-panel" id="tab-assets">
   <div class="card">
@@ -475,41 +625,6 @@ include __DIR__ . '/_layout.php';
     </div>
   </div>
 
-  <!-- Attendance / clock in-out -->
-  <div class="card">
-    <div class="card__head" style="display:flex;justify-content:space-between;align-items:center">
-      <span class="card__title">Clock in / out</span>
-      <?php if (attendance_supported()): ?><a href="/admin/attendance.php" class="btn-outline btn-sm">Full attendance</a><?php endif; ?>
-    </div>
-    <div class="card__body" style="padding:0">
-      <?php if (!attendance_supported()): ?>
-        <p class="text-muted" style="font-size:13px;margin:0;padding:18px">Attendance needs the <code>add_attendance</code> migration.</p>
-      <?php elseif (!$att): ?>
-        <p class="text-muted" style="font-size:13px;margin:0;padding:18px">No attendance recorded in the last two months.</p>
-      <?php else: ?>
-      <div class="table-wrap">
-        <table class="data-table">
-          <thead><tr><th>Date</th><th>Status</th><th>In</th><th>Out</th><th>In</th><th>Out</th><th style="text-align:right">Hours</th></tr></thead>
-          <tbody>
-            <?php foreach ($att as $r):
-              $eff = attendance_effective_status($r); $hrs = attendance_hours($r); ?>
-            <tr>
-              <td style="white-space:nowrap"><?= e(date('D j M', strtotime((string)$r['work_date']))) ?></td>
-              <td><span class="badge <?= e(attendance_status_badge($eff)) ?>"><?= e(attendance_status_label($eff)) ?></span></td>
-              <td class="text-muted"><?= e(attendance_min_to_hhmm($r['in1'] ?? null) ?: '—') ?></td>
-              <td class="text-muted"><?= e(attendance_min_to_hhmm($r['out1'] ?? null) ?: '—') ?></td>
-              <td class="text-muted"><?= e(attendance_min_to_hhmm($r['in2'] ?? null) ?: '—') ?></td>
-              <td class="text-muted"><?= e(attendance_min_to_hhmm($r['out2'] ?? null) ?: '—') ?></td>
-              <td style="text-align:right"><?= $hrs > 0 ? number_format($hrs, 1) : '—' ?></td>
-            </tr>
-            <?php endforeach; ?>
-          </tbody>
-        </table>
-      </div>
-      <?php endif; ?>
-    </div>
-  </div>
-
   <!-- Activity log -->
   <div class="card">
     <div class="card__head"><span class="card__title">Activity log</span></div>
@@ -519,6 +634,27 @@ include __DIR__ . '/_layout.php';
 
 <style>
 .emp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:16px;align-items:start}
+.emp-now{display:flex;flex-wrap:wrap;gap:8px 18px;align-items:center;margin-top:16px;padding-top:14px;border-top:1px solid var(--border,#e7ded7);font-size:13px;color:var(--muted,#6b7280)}
+.emp-now strong{color:var(--ink,#1f2937)}
+.emp-now a{margin-left:auto;font-weight:600}
+.emp-cal{display:grid;grid-template-columns:repeat(7,minmax(0,1fr));gap:4px}
+.emp-cal__wd{font-size:11px;font-weight:700;color:var(--muted,#6b7280);text-align:center;text-transform:uppercase;letter-spacing:.04em;padding:2px 0}
+.emp-cal__day{min-height:58px;border:1px solid var(--border,#e7ded7);border-radius:8px;padding:4px 6px;display:flex;flex-direction:column;gap:3px;background:#fff}
+.emp-cal__day.is-off{background:#f6f3ef}
+.emp-cal__day.is-ph{background:#fdf0ec}
+.emp-cal__day.is-today{outline:2px solid var(--teal,#1E5C6B);outline-offset:-1px}
+.emp-cal__day .badge{align-self:flex-start;padding:1px 5px;font-size:10px}
+.emp-cal__n{font-size:11px;color:var(--muted,#6b7280);font-weight:600}
+.emp-cal__h{font-size:11.5px;font-weight:600}
+.emp-figs{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-top:14px}
+.emp-figs>div{border:1px solid var(--border,#e7ded7);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:2px}
+.emp-figs span{font-size:11px;color:var(--muted,#6b7280);text-transform:uppercase;letter-spacing:.03em}
+.emp-figs strong{font-size:15px}
+.emp-figs .is-warn{border-color:#f2c48f;background:#fff8ef}
+.emp-figs--big strong{font-size:22px}
+.emp-balform>summary{list-style:none;display:inline-flex;cursor:pointer}
+.emp-balform>summary::-webkit-details-marker{display:none}
+@media (max-width:560px){.emp-cal__day{min-height:46px;padding:3px}.emp-cal__h{display:none}}
 .emp-stack{display:flex;flex-direction:column;gap:16px;margin-top:16px}
 .emp-form{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px}
 .emp-form .field label{display:block;font-size:12px;color:var(--muted,#6b7280);margin-bottom:4px}
@@ -555,6 +691,9 @@ include __DIR__ . '/_layout.php';
   }
   btns.forEach(function (b) {
     b.addEventListener('click', function () { activate(b.dataset.tab); });
+  });
+  document.querySelectorAll('[data-open-tab]').forEach(function (a) {
+    a.addEventListener('click', function (e) { e.preventDefault(); activate(a.getAttribute('data-open-tab')); });
   });
   var h = window.location.hash.slice(1);
   if ((h === 'documents' || h === 'assets' || h === 'employment' || h === 'attendance') && document.getElementById('tab-' + h)) activate(h);

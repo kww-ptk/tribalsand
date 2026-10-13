@@ -19,6 +19,7 @@ require_once __DIR__ . '/../includes/attendance.php';
 require_once __DIR__ . '/../includes/attendance-clock.php';
 require_once __DIR__ . '/../includes/hr-establishment.php';
 require_once __DIR__ . '/../includes/attendance-import.php';
+require_once __DIR__ . '/../includes/hr-balances.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_login();
 require_hr();
@@ -26,7 +27,7 @@ require_hr();
 $venueIds   = admin_venue_ids();
 $companyIds = hr_admin_company_ids();   // companies this account manages (Tribal Sand Limited has no property)
 $view = (string)($_GET['view'] ?? 'daily');
-if (!in_array($view, ['daily', 'month', 'dashboard', 'person', 'leave'], true)) $view = 'daily';
+if (!in_array($view, ['daily', 'month', 'summary', 'dashboard', 'person', 'leave'], true)) $view = 'daily';
 
 /** True when the acting account may manage attendance/leave for this staff id. */
 function att_staff_in_scope(int $staffId, ?array $venueIds, ?array $companyIds = null): bool {
@@ -106,6 +107,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'leave
     header('Location: /admin/attendance.php?view=leave'); exit;
 }
 
+// ── Close a month: write everyone's balances for it (owner + HR) ─────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'close_month') {
+    verify_csrf();
+    $ym = (string)($_POST['month'] ?? '');
+    if (!is_owner() && !is_hr()) {
+        $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Closing a month is for the owner and HR.'];
+    } else {
+        try {
+            $n = hr_bal_close_month($ym, (int)($_SESSION['admin_id'] ?? 0));
+            $_SESSION['hold_flash'] = ['type'=>'success','msg'=>date('F Y', strtotime($ym . '-01')) . ' closed — balances updated for ' . $n['people'] . ' people'
+                . ($n['skipped'] ? ' (' . $n['skipped'] . ' already covered by their opening balance)' : '') . '.'];
+        } catch (Throwable $e) {
+            $_SESSION['hold_flash'] = ['type'=>'error','msg'=>$e->getMessage()];
+        }
+    }
+    header('Location: /admin/attendance.php?view=summary&month=' . urlencode($ym)); exit;
+}
+
 $pageTitle  = 'Attendance';
 $activeMenu = 'attendance';
 
@@ -118,9 +137,43 @@ $month = preg_match('/^\d{4}-\d{2}$/', (string)($_GET['month'] ?? '')) ? $_GET['
 $depts   = hr_departments();
 $fDept   = in_array(($_GET['dept'] ?? ''), $depts, true) ? $_GET['dept'] : '';
 $fVenue  = (int)($_GET['venue'] ?? 0);
-$filters = array_filter(['department' => $fDept, 'venue_id' => $fVenue]);
+// Employing company — everyone sees the companies their scope reaches (managers: the ones they look after).
+$coNames = hr_staff_company_supported() ? hr_company_names() : [];
+if ($venueIds !== null) $coNames = array_intersect_key($coNames, array_flip($companyIds ?? []));
+$fCo     = isset($coNames[(int)($_GET['co'] ?? 0)]) ? (int)$_GET['co'] : 0;
+$filters = array_filter(['department' => $fDept, 'venue_id' => $fVenue, 'company_id' => $fCo]);
 
 $venues = db_query('SELECT id, name FROM venues ORDER BY sort_order ASC, name ASC')->fetchAll();
+
+// ── Month summary CSV (HR's own columns; same scope + filters) ───────────────
+if (($_GET['export'] ?? '') === 'summary' && attendance_supported()) {
+    $sumRows = hr_bal_month($month, $venueIds, $companyIds, $filters);
+    $venueNamesX = []; foreach ($venues as $v) { $venueNamesX[(int)$v['id']] = $v['name']; }
+    $coAll = hr_company_names();
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="attendance-summary_' . $month . '.csv"');
+    $out = fopen('php://output', 'w');
+    fwrite($out, "\xEF\xBB\xBF");   // Excel reads UTF-8 with a BOM
+    fputcsv($out, ['Company', 'Payroll no.', 'Name', 'Position', 'Property', 'Off day', 'Entitled off days (off day + PH)', 'Days worked',
+        'Days off taken', 'Of which recovery', 'PH not worked', 'Sick', 'Leave', 'Unpaid leave', 'Absent', 'Not recorded', 'Hours worked',
+        'Overtime hours', 'Overtime days', 'Off days earned', 'Off days owed (start)', 'Off days owed (end)', 'Leave accrued', 'Leave taken',
+        'Annual leave (end)', 'Rest days worked', 'Holidays worked', 'Holiday hours']);
+    foreach ($sumRows as $sr) {
+        $s = $sr['staff']; $f = $sr['fig'];
+        if (!$f) continue;
+        $offStart = (float)($sr['before']['off_days'] ?? 0); $lvStart = (float)($sr['before']['annual_leave'] ?? 0);
+        $closed = hr_bal_month_closed($month) !== null;
+        $offEnd = $closed ? (float)($sr['after']['off_days'] ?? 0) : $offStart + ($sr['counts'] ? $f['off_earned'] : 0);
+        $lvEnd  = $closed ? (float)($sr['after']['annual_leave'] ?? 0) : $lvStart + ($sr['counts'] ? $f['leave_change'] : 0);
+        fputcsv($out, [$coAll[(int)($s['company_id'] ?? 0)] ?? '', $s['payroll_no'] ?? '', $s['full_name'], $s['position'],
+            $s['venue_id'] !== null ? ($venueNamesX[(int)$s['venue_id']] ?? '') : (string)$s['unit_label'], $s['off_day'] ?: 'SUN',
+            $f['entitled'], $f['worked'], $f['off_taken'], $f['rec'], $f['ph_taken'], $f['sick'], $f['leave'], $f['unpaid'], $f['absent'], $f['not_recorded'],
+            $f['hours'], $f['ot_hours'], $f['ot_days'], $f['off_earned'], round($offStart, 3), round($offEnd, 3),
+            $f['leave_accrued'], $f['leave'], round($lvEnd, 3), $f['rest_day_worked'], $f['holiday_worked'], $f['holiday_hours']]);
+    }
+    fclose($out);
+    exit;
+}
 
 // ── CSV export of the month (same scope + filters) ───────────────────────────
 // Native .xlsx with preserved formulas needs the zip extension + the original
@@ -174,14 +227,14 @@ include __DIR__ . '/_layout.php';
 
 <?php
 // Preserve the active date/month + filters across the tab links.
-$qs = function (array $extra) use ($date, $month, $fDept, $fVenue) {
-    return http_build_query(array_merge(['date'=>$date,'month'=>$month,'dept'=>$fDept,'venue'=>$fVenue], $extra));
+$qs = function (array $extra) use ($date, $month, $fDept, $fVenue, $fCo) {
+    return http_build_query(array_merge(['date'=>$date,'month'=>$month,'dept'=>$fDept,'venue'=>$fVenue,'co'=>$fCo], $extra));
 };
 $tab = fn($v, $label) => '<a href="/admin/attendance.php?' . e($qs(['view'=>$v])) . '" data-shell-link class="ts-tab' . ($view===$v?' is-active':'') . '" style="padding:9px 16px;font-weight:600;font-size:14px;text-decoration:none;border-bottom:2px solid ' . ($view===$v?'var(--teal,#1E5C6B)':'transparent') . ';color:' . ($view===$v?'var(--teal,#1E5C6B)':'var(--muted,#6b7280)') . '">' . e($label) . '</a>';
 ?>
 <?php $__leavePending = leave_requests_supported() ? leave_pending_count($venueIds, $companyIds) : 0; ?>
 <div class="ts-tabs" role="tablist" style="display:flex;gap:6px;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:18px">
-  <?= $tab('daily', 'Daily') ?><?= $tab('month', 'Month grid') ?><?= $tab('dashboard', 'Dashboard') ?><?= $tab('leave', 'Leave' . ($__leavePending ? ' (' . $__leavePending . ')' : '')) ?>
+  <?= $tab('daily', 'Daily') ?><?= $tab('month', 'Month grid') ?><?= hr_balances_supported() ? $tab('summary', 'Month summary') : '' ?><?= $tab('dashboard', 'Dashboard') ?><?= $tab('leave', 'Leave' . ($__leavePending ? ' (' . $__leavePending . ')' : '')) ?>
 </div>
 
 <!-- Shared filters -->
@@ -223,6 +276,14 @@ $tab = fn($v, $label) => '<a href="/admin/attendance.php?' . e($qs(['view'=>$v])
       <?php foreach ($depts as $d): ?><option value="<?= e($d) ?>" <?= $fDept===$d?'selected':'' ?>><?= e($d) ?></option><?php endforeach; ?>
     </select>
   </div>
+  <?php if ($coNames): ?>
+  <div class="filter-field"><span>Company</span>
+    <select name="co" class="filter-select" onchange="this.form.submit()">
+      <option value="0">All companies</option>
+      <?php foreach ($coNames as $cid => $cn): ?><option value="<?= (int)$cid ?>" <?= $fCo===(int)$cid?'selected':'' ?>><?= e($cn) ?></option><?php endforeach; ?>
+    </select>
+  </div>
+  <?php endif; ?>
 </form>
 
 <?php
@@ -355,6 +416,78 @@ elseif ($view === 'month'):
   </table>
 </div></div></div>
 <p class="text-muted" style="font-size:12px;margin-top:10px">Wk = days worked · Off = normal days off · SK = sick · Rec = recovery · PH = public holiday. Click a name for that person's month; click a day to edit it.</p>
+
+<?php
+elseif ($view === 'summary'):
+  $sumRows = hr_bal_month($month, $venueIds, $companyIds, $filters);
+  $closed  = hr_bal_month_closed($month);
+  $canClose = (is_owner() || is_hr()) && $month < date('Y-m');
+  $coAll   = hr_company_names();
+  $groups  = [];
+  foreach ($sumRows as $sr) {
+    if (!$sr['fig']) continue;
+    $g = $coAll[(int)($sr['staff']['company_id'] ?? 0)] ?? 'No company yet';
+    $groups[$g][] = $sr;
+  }
+?>
+<div class="card" style="margin-bottom:16px">
+  <div class="card__body" style="padding:14px 18px;display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+    <div>
+      <?php if ($closed): ?>
+        <span class="badge badge--green">Closed</span> <span class="text-muted" style="font-size:13px"><?= e(date('j M Y H:i', strtotime((string)$closed['closed_at']))) ?><?= $closed['by_name'] ? ' · ' . e($closed['by_name']) : '' ?> — balances include <?= e(date('F', strtotime($month . '-01'))) ?>.</span>
+      <?php elseif ($month >= date('Y-m')): ?>
+        <span class="badge badge--grey">Open</span> <span class="text-muted" style="font-size:13px">The month is still running — balances shown include it as it stands today.</span>
+      <?php else: ?>
+        <span class="badge badge--orange">Not closed</span> <span class="text-muted" style="font-size:13px">Check the month, then close it to add it to everyone's balances.</span>
+      <?php endif; ?>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <a href="/admin/attendance.php?<?= e($qs(['view'=>'summary','export'=>'summary'])) ?>" class="btn-outline btn-sm" data-tip="HR's monthly table, opens in Excel"><?= admin_icon('download', 15) ?> Export</a>
+      <?php if ($canClose): ?>
+      <form method="POST" action="/admin/attendance.php" style="margin:0"><?= csrf_field() ?><input type="hidden" name="action" value="close_month"><input type="hidden" name="month" value="<?= e($month) ?>">
+        <button class="btn-<?= $closed ? 'outline' : 'primary' ?> btn-sm" data-confirm="<?= $closed ? 'Close ' . e(date('F Y', strtotime($month . '-01'))) . ' again? Its balances are worked out afresh from the attendance as it is now.' : 'Close ' . e(date('F Y', strtotime($month . '-01'))) . '? Everyone\'s off days and leave for the month are added to their balances.' ?>"><?= admin_icon('check', 15) ?> <?= $closed ? 'Close again' : 'Close month' ?></button>
+      </form>
+      <?php endif; ?>
+    </div>
+  </div>
+</div>
+<?php if (!$groups): ?>
+<div class="card"><div class="card__body card__body--pad"><p class="text-muted" style="margin:0">No attendance recorded for <?= e(date('F Y', strtotime($month . '-01'))) ?> with these filters.</p></div></div>
+<?php else: foreach ($groups as $gName => $list): ?>
+<div class="card" style="margin-bottom:16px">
+  <div class="card__head"><span class="card__title"><?= e($gName) ?></span><span class="text-muted" style="font-size:12px"><?= count($list) ?> people</span></div>
+  <div class="table-wrap"><table class="data-table att-sum">
+    <thead><tr><th>Name</th><th class="n" data-tip="Weekly off days + public holidays this month">Entitled off</th><th class="n">Worked</th><th class="n">Off taken</th>
+      <th class="n">Sick</th><th class="n">Leave</th><th class="n">Hours</th><th class="n" data-tip="Hours over 8 a day worked (short days count against)">Overtime</th>
+      <th class="n" data-tip="Entitled − taken + overtime ÷ 8">Off days earned</th><th class="n">Off days owed</th><th class="n">Annual leave</th><th></th></tr></thead>
+    <tbody>
+    <?php foreach ($list as $sr): $s = $sr['staff']; $f = $sr['fig'];
+      $offB = (float)($sr['before']['off_days'] ?? 0); $lvB = (float)($sr['before']['annual_leave'] ?? 0);
+      $offA = $closed ? (float)($sr['after']['off_days'] ?? 0) : $offB + ($sr['counts'] ? $f['off_earned'] : 0);
+      $lvA  = $closed ? (float)($sr['after']['annual_leave'] ?? 0) : $lvB + ($sr['counts'] ? $f['leave_change'] : 0); ?>
+      <tr>
+        <td><a href="/admin/employee.php?id=<?= (int)$s['id'] ?>#attendance"><strong><?= e($s['full_name']) ?></strong></a>
+          <div class="text-muted" style="font-size:12px"><?= e($s['position'] ?: '—') ?> · off <?= e($s['off_day'] ?: 'SUN') ?><?= ($s['payroll_no'] ?? '') !== '' ? ' · No. ' . e($s['payroll_no']) : '' ?></div></td>
+        <td class="n"><?= $f['entitled'] ?></td>
+        <td class="n"><strong><?= $f['worked'] ?></strong></td>
+        <td class="n"><?= $f['off_taken'] ?><?= $f['rec'] ? ' <span class="text-muted" data-tip="of which recovery days">(' . $f['rec'] . ' rec)</span>' : '' ?></td>
+        <td class="n"><?= $f['sick'] ?: '' ?></td>
+        <td class="n"><?= $f['leave'] ?: '' ?><?= $f['unpaid'] ? ' <span class="text-muted" data-tip="unpaid leave">+' . $f['unpaid'] . ' unpaid</span>' : '' ?></td>
+        <td class="n"><?= number_format($f['hours'], 1) ?></td>
+        <td class="n"><?= ($f['ot_hours'] > 0 ? '+' : '') . number_format($f['ot_hours'], 1) ?>h</td>
+        <td class="n"><?= $sr['counts'] ? e(hr_bal_fmt($f['off_earned'])) : '<span class="text-muted" data-tip="Already inside their opening balance">—</span>' ?></td>
+        <td class="n"><strong><?= e(hr_bal_fmt($offA)) ?></strong></td>
+        <td class="n"><strong><?= e(hr_bal_fmt($lvA)) ?></strong></td>
+        <td><?php if ($f['not_recorded']): ?><span class="badge badge--orange" data-tip="Days in the month with nothing recorded (no times, no status)"><?= $f['not_recorded'] ?> not recorded</span><?php endif; ?>
+            <?php if (!$sr['opened'] && $sr['counts']): ?><span class="badge badge--grey" data-tip="No opening balance yet — balances start from 0">no opening</span><?php endif; ?></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table></div>
+</div>
+<?php endforeach; endif; ?>
+<p class="text-muted" style="font-size:12px">Off days earned = entitled off days (weekly off + public holidays) − days off taken (off, recovery, holiday not worked) + overtime ÷ 8. Annual leave grows 1.75 days a month and drops by each leave day. Sick and unpaid days change neither.</p>
+<style>.att-sum .n{text-align:right;white-space:nowrap}.att-sum td{vertical-align:top}</style>
 
 <?php
 elseif ($view === 'leave'):

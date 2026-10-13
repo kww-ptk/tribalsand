@@ -76,6 +76,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             . ($n['same'] ? ', ' . $n['same'] . ' already the same' : '') . ($kept ? ', ' . $kept . ' kept as they were' : '')
             . ($n['former'] ? ', ' . $n['former'] . ' former staff added' : '') . '.', 'success', '?import=' . $id);
     }
+    if ($action === 'apply_openings') {
+        $id  = (int)($_POST['import'] ?? 0);
+        $dec = [];
+        foreach ((array)($_POST['person'] ?? []) as $k => $v) $dec[(string)$k] = (string)$v;
+        try {
+            $n = att_imp_apply_openings($id, $dec, !empty($_POST['fill_contracts']), (int)($_SESSION['admin_id'] ?? 0));
+        } catch (Throwable $e) {
+            aim_back('No balances were saved: ' . $e->getMessage(), 'error', '?import=' . $id . '&openings=1');
+        }
+        aim_back('Opening balances saved for ' . $n['people'] . ' people' . ($n['contracts'] ? ' (' . $n['contracts'] . ' contract dates filled)' : '')
+            . '. Close each month after it in Attendance → Month summary.', 'success', '?import=' . $id);
+    }
     aim_back('Unknown action.', 'error');
 }
 
@@ -88,7 +100,8 @@ $pv     = null;
 if ($imp && preg_match('/^\d{4}-\d{2}$/', $ym) && isset($imp['months'][$ym])) {
     try { $pv = att_imp_preview($imp, $ym, $replace); } catch (Throwable $e) { $flash = ['type' => 'error', 'msg' => $e->getMessage()]; }
 }
-$staffAll = $pv ? db_query("SELECT s.id, s.full_name, s.status, v.name AS venue FROM hr_staff s LEFT JOIN venues v ON v.id = s.venue_id
+$obPv = ($imp && !$pv && !empty($_GET['openings']) && !empty($imp['balances'])) ? att_imp_openings_preview($imp['balances']) : null;
+$staffAll = ($pv || $obPv) ? db_query("SELECT s.id, s.full_name, s.status, v.name AS venue FROM hr_staff s LEFT JOIN venues v ON v.id = s.venue_id
                              ORDER BY s.status ASC, s.full_name ASC")->fetchAll() : [];
 $codeMap  = $ready ? att_imp_code_map() : [];
 $labels   = ['write' => 'new', 'update' => 'updated', 'replace' => 'replaced', 'same' => 'same', 'kiosk' => 'kept: kiosk', 'manual' => 'kept: typed in', 'unmatched' => 'no person'];
@@ -98,7 +111,7 @@ include __DIR__ . '/_layout.php';
 <div class="page-header">
   <h1>Import attendance</h1>
   <div class="actions">
-    <?php if ($imp && $pv): ?><a href="<?= $self ?>?import=<?= (int)$imp['id'] ?>" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Months</a><?php endif; ?>
+    <?php if ($imp && ($pv || !empty($_GET['openings']))): ?><a href="<?= $self ?>?import=<?= (int)$imp['id'] ?>" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Months</a><?php endif; ?>
     <a href="/admin/attendance.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Attendance</a>
   </div>
 </div>
@@ -142,6 +155,43 @@ include __DIR__ . '/_layout.php';
 </div>
 <?php endif; ?>
 
+<?php elseif ($obPv): $ob = $imp['balances']; ?>
+<!-- ═══════════ OPENING BALANCES PREVIEW ═══════════ -->
+<form method="POST" action="<?= $self ?>">
+  <?= csrf_field() ?><input type="hidden" name="action" value="apply_openings"><input type="hidden" name="import" value="<?= (int)$imp['id'] ?>">
+  <div class="card" style="margin-bottom:16px">
+    <div class="card__head"><span class="card__title">Opening balances · as at <?= e(date('j F Y', strtotime($ob['as_of']))) ?></span><span class="text-muted" style="font-size:12px"><?= e($ob['sheet'] ?? '') ?> · <?= count($obPv) ?> people</span></div>
+    <div class="card__body" style="padding:12px 18px">
+      <p class="text-muted" style="margin:0 0 10px;font-size:13px">HR's last worked-out balances: <strong>off days owed</strong> (<?= e($ob['label']) ?>) and <strong>annual leave</strong> (pro-rata leave days). From here the system adds each month when you close it — the months up to <?= e(date('F Y', strtotime($ob['as_of']))) ?> are already inside these figures. Saving again replaces a person's opening balance.</p>
+      <label class="optchip"><input type="checkbox" name="fill_contracts" value="1"> Also fill empty contract start / end dates from the sheet's CONTRACT PERIOD</label>
+    </div>
+  </div>
+  <div class="card"><div class="table-wrap"><table class="data-table aim-table">
+    <thead><tr><th>On the sheet</th><th>Person</th><th class="aim-num">Off days owed</th><th class="aim-num">Annual leave</th><th class="aim-num">Sheet "leave balance"</th><th>Contract period</th></tr></thead>
+    <tbody>
+    <?php foreach ($obPv as $p): $m = $p['match']; $auto = in_array($m['status'], ['remembered', 'name'], true); ?>
+      <tr class="<?= !$auto ? 'aim-row--decide' : '' ?>">
+        <td><strong><?= e($p['name']) ?></strong></td>
+        <td><select name="person[<?= e($p['key']) ?>]" class="filter-select aim-person" aria-label="Who is <?= e($p['name']) ?>">
+          <?php if ($auto): ?><option value="" selected><?= e($p['staff']['full_name'] ?? '') ?></option><?php else: ?><option value="skip" selected>Choose…</option><?php endif; ?>
+          <?php foreach ($m['candidates'] as $c): if ($auto && (int)$c['id'] === (int)$m['staff_id']) continue; ?><option value="match:<?= (int)$c['id'] ?>"><?= e($c['name']) ?></option><?php endforeach; ?>
+          <?php if (!$auto): ?><optgroup label="Everyone"><?php foreach ($staffAll as $s): ?><option value="match:<?= (int)$s['id'] ?>"><?= e($s['full_name']) ?><?= $s['status'] !== 'active' ? ' (left)' : '' ?></option><?php endforeach; ?></optgroup><?php endif; ?>
+          <option value="skip">Leave out</option>
+        </select></td>
+        <td class="aim-num"><?= e(hr_bal_fmt((float)$p['pending'])) ?></td>
+        <td class="aim-num"><?= $p['prorata'] !== null ? e(hr_bal_fmt((float)$p['prorata'])) : '—' ?></td>
+        <td class="aim-num text-muted"><?= $p['leave_balance'] !== null ? e(hr_bal_fmt((float)$p['leave_balance'])) : '—' ?></td>
+        <td class="text-muted"><?= $p['contract_from'] ? e(date('j M Y', strtotime($p['contract_from']))) . ' – ' . ($p['contract_to'] ? e(date('j M Y', strtotime($p['contract_to']))) : '…') : '—' ?></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table></div></div>
+  <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap;align-items:center">
+    <button type="submit" class="btn-primary" data-confirm="Save these opening balances as at <?= e(date('j F Y', strtotime($ob['as_of']))) ?>?"><?= admin_icon('check', 15) ?> Save opening balances</button>
+    <span class="text-muted" style="font-size:12.5px">Rows with "Choose…" are left out.</span>
+  </div>
+</form>
+
 <?php elseif (!$pv): ?>
 <!-- ═══════════ MONTHS IN THE WORKBOOK ═══════════ -->
 <div class="card">
@@ -162,6 +212,15 @@ include __DIR__ . '/_layout.php';
     </tbody>
   </table></div>
 </div>
+<?php if (!empty($imp['balances']) && hr_balances_supported()): $ob = $imp['balances']; ?>
+<div class="card" style="margin-top:16px">
+  <div class="card__head"><span class="card__title">Opening balances</span><span class="text-muted" style="font-size:12px"><?= e($ob['sheet'] ?? '') ?></span></div>
+  <div class="card__body card__body--pad" style="display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+    <p class="text-muted" style="margin:0;font-size:13px">The workbook's summary has off days owed and annual leave for <?= count($ob['people']) ?> people as at <strong><?= e(date('j F Y', strtotime($ob['as_of']))) ?></strong> — the starting point for the balances.</p>
+    <a class="btn-outline btn-sm" href="<?= $self ?>?import=<?= (int)$imp['id'] ?>&amp;openings=1"><?= admin_icon('eye', 15) ?> Preview balances</a>
+  </div>
+</div>
+<?php endif; ?>
 
 <?php else: $t = $pv['totals']; ?>
 <!-- ═══════════ PREVIEW ONE MONTH ═══════════ -->

@@ -27,6 +27,7 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/attendance.php';
 require_once __DIR__ . '/hr-establishment.php';
 require_once __DIR__ . '/xlsx-reader.php';
+require_once __DIR__ . '/hr-balances.php';
 
 /** add_attendance_import.sql applied? (catalog lookups — safe inside a transaction) */
 function attendance_import_supported(): bool {
@@ -298,14 +299,15 @@ function att_imp_merge_month(?array $ts, ?array $grid): array {
  * Read a whole workbook: every sheet is tried as a time sheet, then as a code grid;
  * the rest (summaries, balances) are ignored. When two sheets claim one month the
  * one with more people wins. Returns ['is_1904', 'months' => [ym => ['sheets' =>
- * [names], 'people' => [...]]], 'skipped' => [sheet names]]. Throws RuntimeException.
+ * [names], 'people' => [...]]], 'skipped' => [sheet names], 'balances' => opening balances from
+ * the newest consolidated summary sheet (hr_bal_parse_summary()) or null]. Throws RuntimeException.
  */
 function att_imp_read_workbook(string $path): array {
     $zip    = xlsx_file_bytes($path);
     $is1904 = xlsx_is_1904($zip);
     $ss     = xlsx_zip_read($zip, 'xl/sharedStrings.xml');
     $shared = $ss !== null ? xlsx_shared_strings($ss) : [];
-    $ts = []; $grids = []; $skipped = [];
+    $ts = []; $grids = []; $skipped = []; $balances = null;
     foreach (xlsx_sheet_parts($zip) as $name => $part) {
         $rows = [];
         xlsx_stream_sheet($zip, $part, $shared, function (int $ri, array $cells) use (&$rows) { $rows[$ri] = $cells; });
@@ -316,6 +318,9 @@ function att_imp_read_workbook(string $path): array {
             if (!isset($grids[$g['ym']]) || count($g['people']) > count($grids[$g['ym']]['people'])) $grids[$g['ym']] = $g + ['sheet' => $name];
         } else {
             $skipped[] = $name;
+            // HR's consolidated summary carries the last balances they worked out — the opening point.
+            $b = hr_bal_parse_summary($rows);
+            if ($b !== null && ($balances === null || $b['as_of'] > $balances['as_of'])) $balances = $b + ['sheet' => $name];
         }
         unset($rows);
     }
@@ -328,7 +333,7 @@ function att_imp_read_workbook(string $path): array {
     }
     ksort($months);
     if (!$months) throw new RuntimeException('No attendance month found — the workbook needs a time sheet (TIME IN / TIME OUT columns) or an attendance grid (a row of dates with POSITION).');
-    return ['is_1904' => $is1904, 'months' => $months, 'skipped' => $skipped];
+    return ['is_1904' => $is1904, 'months' => $months, 'skipped' => $skipped, 'balances' => $balances];
 }
 
 // ── Pure: what happens to one day ───────────────────────────────────────────
@@ -404,7 +409,12 @@ function att_imp_store(string $path, string $filename, ?int $adminId): int {
     db_query('INSERT INTO attendance_imports (filename, is_1904, months, uploaded_by) VALUES (:f, :y, CAST(:m AS jsonb), :u)',
         [':f' => mb_substr($filename, 0, 200), ':y' => $wb['is_1904'] ? 'TRUE' : 'FALSE',
          ':m' => json_encode($wb['months'], JSON_UNESCAPED_UNICODE), ':u' => $adminId ?: null]);
-    return (int) db()->lastInsertId();
+    $id = (int) db()->lastInsertId();
+    if ($wb['balances'] !== null && hr_balances_supported()) {
+        db_query('UPDATE attendance_imports SET balances = CAST(:b AS jsonb) WHERE id = :id',
+            [':b' => json_encode($wb['balances'], JSON_UNESCAPED_UNICODE), ':id' => $id]);
+    }
+    return $id;
 }
 
 /** One stored import (months decoded), or null. */
@@ -412,8 +422,9 @@ function att_imp_fetch(int $id): ?array {
     if (!attendance_import_supported()) return null;
     $r = db_query('SELECT * FROM attendance_imports WHERE id = :id', [':id' => $id])->fetch();
     if (!$r) return null;
-    $r['months']  = json_decode((string)$r['months'], true) ?: [];
-    $r['applied'] = json_decode((string)$r['applied'], true) ?: [];
+    $r['months']   = json_decode((string)$r['months'], true) ?: [];
+    $r['applied']  = json_decode((string)$r['applied'], true) ?: [];
+    $r['balances'] = isset($r['balances']) && $r['balances'] !== null ? (json_decode((string)$r['balances'], true) ?: null) : null;
     return $r;
 }
 
@@ -646,6 +657,74 @@ function att_imp_apply(int $importId, string $ym, array $decisions, bool $replac
         db_query("UPDATE attendance_imports SET applied = applied || jsonb_build_object(CAST(:ym AS text), CAST(:info AS jsonb)) WHERE id = :id",
             [':ym' => $ym, ':info' => json_encode($n + ['at' => date('c'), 'by' => $adminId]), ':id' => $importId]);
         audit_log('attendance.import', 'attendance_import', $importId, "$ym: " . json_encode($n));
+        if ($own) $pdo->commit();
+        return $n;
+    } catch (Throwable $e) {
+        if ($own && $pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
+}
+
+/**
+ * Opening balances from the workbook's summary: who each name is (the same matching
+ * and remembered choices as the months) — writes nothing. Returns rows of
+ * [summary person + 'key','match','staff'].
+ */
+function att_imp_openings_preview(array $balances): array {
+    $match = att_imp_match_people($balances['people']);
+    $staff = [];
+    foreach (db_query('SELECT id, full_name, contract_start, contract_end FROM hr_staff')->fetchAll() as $s0) $staff[(int)$s0['id']] = $s0;
+    $out = [];
+    foreach ($balances['people'] as $p) {
+        $k = att_imp_name_key($p['name']);
+        $m = $match[$k] ?? ['status' => 'new', 'staff_id' => null, 'candidates' => [], 'why' => ''];
+        foreach ($m['candidates'] as &$c) $c['name'] = (string)($staff[$c['id']]['full_name'] ?? ('#' . $c['id']));
+        unset($c);
+        $out[] = $p + ['key' => $k, 'match' => $m, 'staff' => $m['staff_id'] ? ($staff[$m['staff_id']] ?? null) : null];
+    }
+    return $out;
+}
+
+/**
+ * Write the opening balances at the summary's date (one transaction): per matched
+ * person an 'opening' row for off days (TOTAL PENDING) and one for annual leave
+ * (PRORATA LEAVE DAYS), replacing their earlier openings. Empty contract dates are
+ * filled from CONTRACT PERIOD when $fillContracts. Returns ['people','contracts'].
+ */
+function att_imp_apply_openings(int $importId, array $decisions, bool $fillContracts, ?int $adminId): array {
+    $imp = att_imp_fetch($importId);
+    $bal = $imp['balances'] ?? null;
+    if (!$bal) throw new RuntimeException('This workbook has no summary sheet with balances.');
+    if (!hr_balances_supported()) throw new RuntimeException('Run the add_hr_balances migration first.');
+    $pdo = db();
+    $own = !$pdo->inTransaction();
+    if ($own) $pdo->beginTransaction();
+    try {
+        $valid = array_map('intval', array_column(db_query('SELECT id FROM hr_staff')->fetchAll(), 'id'));
+        $match = att_imp_match_people($bal['people']);
+        $n = ['people' => 0, 'contracts' => 0];
+        $done = [];
+        foreach ($bal['people'] as $p) {
+            $k   = att_imp_name_key($p['name']);
+            $sid = att_imp_resolved_staff($match[$k] ?? ['status' => 'new', 'staff_id' => null], (string)($decisions[$k] ?? ''));
+            if (!is_int($sid) || !in_array($sid, $valid, true) || isset($done[$sid])) continue;
+            $done[$sid] = true;
+            att_imp_remember_name($k, $sid);
+            $note = 'From HR\'s summary: ' . $bal['label'];
+            hr_bal_add_move($sid, 'off_days', 'opening', (float)$p['pending'], $bal['as_of'], $note, $adminId, ['sheet' => $bal['sheet'] ?? '']);
+            if ($p['prorata'] !== null) {
+                hr_bal_add_move($sid, 'annual_leave', 'opening', (float)$p['prorata'], $bal['as_of'], $note . ' (pro-rata leave)', $adminId,
+                    ['sheet' => $bal['sheet'] ?? '', 'leave_balance_on_sheet' => $p['leave_balance']]);
+            }
+            $n['people']++;
+            if ($fillContracts && hr_staff_profile_supported() && ($p['contract_from'] || $p['contract_to'])) {
+                $n['contracts'] += db_query('UPDATE hr_staff SET contract_start = COALESCE(contract_start, CAST(:a AS date)),
+                                                    contract_end = COALESCE(contract_end, CAST(:b AS date))
+                                              WHERE id = :id AND (contract_start IS NULL OR contract_end IS NULL)',
+                    [':a' => $p['contract_from'], ':b' => $p['contract_to'], ':id' => $sid])->rowCount();
+            }
+        }
+        audit_log('hr.opening_balances', 'attendance_import', $importId, json_encode($n) . ' as at ' . $bal['as_of']);
         if ($own) $pdo->commit();
         return $n;
     } catch (Throwable $e) {
