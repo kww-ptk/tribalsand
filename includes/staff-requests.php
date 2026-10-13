@@ -21,6 +21,8 @@
  *    before is kept in details.replaced, so cancelling an approved request puts it
  *    back exactly. A day clocked on the kiosk (or worked) is never stamped over —
  *    it is skipped and named.
+ *  • An approved shift swap exchanges the two people's planned shifts that day on
+ *    the rota (includes/staff-rota.php); cancelling it puts them back.
  *  • Balances follow through Close month (an LV day is leave taken, a REC day uses
  *    an off day) — the request itself writes no ledger row.
  *  • Cancelling: a pending request by whoever may act on it; an APPROVED one only
@@ -31,6 +33,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/attendance.php';
 require_once __DIR__ . '/hr.php';
+require_once __DIR__ . '/staff-rota.php';
 
 final class StaffRequestRefusal extends RuntimeException {}
 
@@ -352,6 +355,11 @@ function staff_request_apply(int $id, ?int $byAdmin): void {
                  ':n' => 'Corrected: ' . (string)($r['reason'] ?? ''), ':lb' => $byAdmin ?: null, ':rid' => $id]);
         }
     }
+    // A shift swap exchanges the two people's PLANNED shifts that day (the rota) —
+    // what each had is kept so cancelling the swap puts them back.
+    if ($r['leave_type'] === 'swap' && staff_rota_supported() && !empty($det['with_staff_id'])) {
+        $det['rota_swap'] = staff_rota_swap($sid, (int)$det['with_staff_id'], (string)$r['start_date'], $byAdmin);
+    }
     $det['replaced'] = $replaced;
     $det['skipped']  = $skipped;
     db_query('UPDATE leave_requests SET details = CAST(:d AS jsonb) WHERE id = :id', [':d' => json_encode($det), ':id' => $id]);
@@ -361,6 +369,7 @@ function staff_request_apply(int $id, ?int $byAdmin): void {
 function staff_request_unapply(int $id): void {
     $r = db_query('SELECT * FROM leave_requests WHERE id = :id', [':id' => $id])->fetch();
     $det = json_decode((string)$r['details'], true) ?: [];
+    if (!empty($det['rota_swap']) && staff_rota_supported()) staff_rota_restore($det['rota_swap'], (string)$r['start_date'], null);
     foreach (($det['replaced'] ?? []) as $d => $prev) {
         $cur = db_query('SELECT id FROM attendance WHERE hr_staff_id = :s AND work_date = :d AND request_id = :rid FOR UPDATE',
             [':s' => (int)$r['hr_staff_id'], ':d' => $d, ':rid' => $id])->fetchColumn();
