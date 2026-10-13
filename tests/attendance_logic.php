@@ -34,6 +34,19 @@ check('OT: 8h normal = 0',               attendance_overtime($std, 'Housekeeping
 check('OT: 12h security night = +4',     attendance_overtime($secNight, 'Security') === 4.0);
 check('OT: 12h normal = +4',            attendance_overtime($secNight, 'Housekeeping') === 4.0);
 
+check('week: Monday of a Thursday', attendance_week_start('2026-09-10') === '2026-09-07');
+check('week: a Monday is its own start', attendance_week_start('2026-09-07') === '2026-09-07');
+$wkDays = []; for ($i = 0; $i < 7; $i++) $wkDays[] = date('Y-m-d', strtotime("2026-09-07 +$i days"));
+$wkCells = [];
+foreach ($wkDays as $d) $wkCells[$d] = ['in1'=>480,'out1'=>1020,'in2'=>null,'out2'=>null,'status'=>null];
+$wf = attendance_week_figures($wkCells, 'SUN', $wkDays);
+check('week: seven days worked = no rest day', $wf['no_rest'] && $wf['days'] === 7 && $wf['off_worked'] === 1);
+$wkCells['2026-09-13'] = ['in1'=>null,'out1'=>null,'in2'=>null,'out2'=>null,'status'=>'OFF'];
+$wkCells['2026-09-08'] = ['in1'=>480,'out1'=>null,'in2'=>null,'out2'=>null,'status'=>null];
+$wf = attendance_week_figures($wkCells, 'SUN', $wkDays);
+check('week: a rest day taken + a missing time out', !$wf['no_rest'] && $wf['missing'] === 1 && $wf['off_worked'] === 0);
+check('week: hours and overtime (5 days of 9 h)', $wf['hours'] === 45.0 && $wf['ot'] === 5.0 && $wf['days'] === 5);
+
 check('effective: worked ⇒ P',           attendance_effective_status($std) === 'P');
 check('effective: stored OFF',           attendance_effective_status(['in1'=>null,'out1'=>null,'in2'=>null,'out2'=>null,'status'=>'OFF']) === 'OFF');
 

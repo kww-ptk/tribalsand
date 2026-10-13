@@ -335,6 +335,65 @@ function attendance_month_matrix(?array $venueIds, int $year, int $month, array 
     return ['days'=>$daysInMonth, 'staff'=>$out];
 }
 
+/** The Monday of the week holding a date (Y-m-d). */
+function attendance_week_start(string $ymd): string {
+    return date('Y-m-d', strtotime($ymd . ' -' . ((int)date('N', strtotime($ymd)) - 1) . ' days'));
+}
+
+/**
+ * One person's week, judged: ['days' => worked, 'hours', 'ot', 'nights',
+ * 'missing' => days with a time in and no time out (or the reverse),
+ * 'off_worked' => worked on their weekly off day, 'no_rest' => worked all 7 days
+ * (Employment Act s.27: one rest day in every seven)]. $cells: [Y-m-d => row].
+ */
+function attendance_week_figures(array $cells, string $offDay, array $days): array {
+    $f = ['days' => 0, 'hours' => 0.0, 'ot' => 0.0, 'nights' => 0, 'missing' => 0, 'off_worked' => 0, 'no_rest' => false];
+    foreach ($days as $ymd) {
+        $row = $cells[$ymd] ?? null;
+        if (!$row) continue;
+        if (($row['in1'] !== null) !== ($row['out1'] !== null) || ($row['in2'] !== null) !== ($row['out2'] !== null)) $f['missing']++;
+        if (attendance_effective_status($row) !== 'P') continue;
+        $f['days']++;
+        $h = attendance_hours($row);
+        $f['hours'] += $h;
+        $f['ot'] += $h - ATTENDANCE_STANDARD_HOURS;
+        if (attendance_is_night($row)) $f['nights']++;
+        if (attendance_is_off_day($offDay, $ymd)) $f['off_worked']++;
+    }
+    $f['no_rest'] = count($days) === 7 && $f['days'] === 7;
+    $f['hours'] = round($f['hours'], 2);
+    $f['ot'] = round($f['ot'], 2);
+    return $f;
+}
+
+/**
+ * The weekly grid: everyone in scope (active, plus anyone with a record that week)
+ * × the seven days from $monday. Returns ['days' => [Y-m-d ×7], 'staff' => [[...row,
+ * 'cells' => [Y-m-d => attendance row], 'fig' => attendance_week_figures()]]].
+ */
+function attendance_week(?array $venueIds, string $monday, array $filters = [], ?array $companyIds = null): array {
+    $days = [];
+    for ($i = 0; $i < 7; $i++) $days[] = date('Y-m-d', strtotime($monday . " +$i days"));
+    if (!attendance_supported() || !hr_staff_supported()) return ['days' => $days, 'staff' => []];
+    $params = [':a' => $days[0], ':b' => $days[6]];
+    $where = "WHERE (s.status = 'active' OR EXISTS (SELECT 1 FROM attendance x WHERE x.hr_staff_id = s.id AND x.work_date BETWEEN :a AND :b))";
+    $scope = ''; hr_scope_sql($venueIds, $scope, $params, 's', $companyIds);
+    $where .= $scope . attendance_filter_sql($filters, $params);
+    $staff = db_query("SELECT s.* FROM hr_staff s $where ORDER BY s.venue_id NULLS LAST, s.unit_label, s.sort_order, s.full_name", $params)->fetchAll();
+    if (!$staff) return ['days' => $days, 'staff' => []];
+    $in = implode(',', array_map(fn($x) => (int)$x['id'], $staff));
+    $cells = [];
+    foreach (db_query("SELECT * FROM attendance WHERE hr_staff_id IN ($in) AND work_date BETWEEN :a AND :b", [':a' => $days[0], ':b' => $days[6]])->fetchAll() as $row) {
+        $cells[(int)$row['hr_staff_id']][(string)$row['work_date']] = $row;
+    }
+    foreach ($staff as &$st) {
+        $st['cells'] = $cells[(int)$st['id']] ?? [];
+        $st['fig'] = attendance_week_figures($st['cells'], (string)$st['off_day'], $days);
+    }
+    unset($st);
+    return ['days' => $days, 'staff' => $staff];
+}
+
 /**
  * Dashboard aggregates for a month (scoped). KPI totals + by-property and
  * by-department breakdowns, built from the month matrix (one pass).

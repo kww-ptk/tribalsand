@@ -27,7 +27,7 @@ require_hr();
 $venueIds   = admin_venue_ids();
 $companyIds = hr_admin_company_ids();   // companies this account manages (Tribal Sand Limited has no property)
 $view = (string)($_GET['view'] ?? 'daily');
-if (!in_array($view, ['daily', 'month', 'summary', 'dashboard', 'person', 'leave'], true)) $view = 'daily';
+if (!in_array($view, ['daily', 'week', 'month', 'summary', 'dashboard', 'person', 'leave'], true)) $view = 'daily';
 
 /** True when the acting account may manage attendance/leave for this staff id. */
 function att_staff_in_scope(int $staffId, ?array $venueIds, ?array $companyIds = null): bool {
@@ -150,6 +150,7 @@ $activeMenu = 'attendance';
 $date  = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)($_GET['date'] ?? '')) ? $_GET['date'] : date('Y-m-d');
 $month = preg_match('/^\d{4}-\d{2}$/', (string)($_GET['month'] ?? '')) ? $_GET['month'] : date('Y-m');
 [$mY, $mM] = array_map('intval', explode('-', $month));
+$week  = attendance_week_start(preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)($_GET['week'] ?? '')) ? (string)$_GET['week'] : date('Y-m-d'));
 
 // Shared filters (department / property).
 $depts   = hr_departments();
@@ -162,6 +163,37 @@ $fCo     = isset($coNames[(int)($_GET['co'] ?? 0)]) ? (int)$_GET['co'] : 0;
 $filters = array_filter(['department' => $fDept, 'venue_id' => $fVenue, 'company_id' => $fCo]);
 
 $venues = db_query('SELECT id, name FROM venues ORDER BY sort_order ASC, name ASC')->fetchAll();
+
+// ── Week CSV (same scope + filters) ──────────────────────────────────────────
+if (($_GET['export'] ?? '') === 'week' && attendance_supported()) {
+    $wk = attendance_week($venueIds, $week, $filters, $companyIds);
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="attendance-week_' . $week . '.csv"');
+    $out = fopen('php://output', 'w');
+    fwrite($out, "\xEF\xBB\xBF");
+    $head = ['Name', 'Position', 'Property / unit', 'Off day'];
+    foreach ($wk['days'] as $d) $head[] = date('D j M', strtotime($d));
+    array_push($head, 'Days worked', 'Hours', 'Overtime hours', 'Night duties', 'Missing time out', 'Worked on off day', 'No rest day');
+    fputcsv($out, $head);
+    $venueNamesW = []; foreach ($venues as $v) { $venueNamesW[(int)$v['id']] = $v['name']; }
+    foreach ($wk['staff'] as $s) {
+        $row = [$s['full_name'], $s['position'], $s['venue_id'] !== null ? ($venueNamesW[(int)$s['venue_id']] ?? '') : (string)$s['unit_label'], $s['off_day'] ?: 'SUN'];
+        foreach ($wk['days'] as $d) {
+            $c = $s['cells'][$d] ?? null;
+            $eff = $c ? attendance_effective_status($c) : '';
+            $row[] = !$c ? '' : ($eff === 'P'
+                ? trim(attendance_min_to_hhmm($c['in1'] !== null ? (int)$c['in1'] : null) . '-' . attendance_min_to_hhmm($c['out1'] !== null ? (int)$c['out1'] : null)
+                  . ($c['in2'] !== null ? ' ' . attendance_min_to_hhmm((int)$c['in2']) . '-' . attendance_min_to_hhmm($c['out2'] !== null ? (int)$c['out2'] : null) : ''), '-')
+                  . ' (' . number_format(attendance_hours($c), 1) . 'h' . (attendance_is_night($c) ? ', night' : '') . ')'
+                : $eff);
+        }
+        $f = $s['fig'];
+        array_push($row, $f['days'], $f['hours'], $f['ot'], $f['nights'], $f['missing'], $f['off_worked'], $f['no_rest'] ? 'yes' : '');
+        fputcsv($out, $row);
+    }
+    fclose($out);
+    exit;
+}
 
 // ── Month summary CSV (HR's own columns; same scope + filters) ───────────────
 if (($_GET['export'] ?? '') === 'summary' && attendance_supported()) {
@@ -247,14 +279,14 @@ include __DIR__ . '/_layout.php';
 
 <?php
 // Preserve the active date/month + filters across the tab links.
-$qs = function (array $extra) use ($date, $month, $fDept, $fVenue, $fCo) {
-    return http_build_query(array_merge(['date'=>$date,'month'=>$month,'dept'=>$fDept,'venue'=>$fVenue,'co'=>$fCo], $extra));
+$qs = function (array $extra) use ($date, $month, $week, $fDept, $fVenue, $fCo) {
+    return http_build_query(array_merge(['date'=>$date,'month'=>$month,'week'=>$week,'dept'=>$fDept,'venue'=>$fVenue,'co'=>$fCo], $extra));
 };
 $tab = fn($v, $label) => '<a href="/admin/attendance.php?' . e($qs(['view'=>$v])) . '" data-shell-link class="ts-tab' . ($view===$v?' is-active':'') . '" style="padding:9px 16px;font-weight:600;font-size:14px;text-decoration:none;border-bottom:2px solid ' . ($view===$v?'var(--teal,#1E5C6B)':'transparent') . ';color:' . ($view===$v?'var(--teal,#1E5C6B)':'var(--muted,#6b7280)') . '">' . e($label) . '</a>';
 ?>
 <?php $__leavePending = leave_requests_supported() ? leave_pending_count($venueIds, $companyIds) : 0; ?>
 <div class="ts-tabs" role="tablist" style="display:flex;gap:6px;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:18px">
-  <?= $tab('daily', 'Daily') ?><?= $tab('month', 'Month grid') ?><?= hr_balances_supported() ? $tab('summary', 'Month summary') : '' ?><?= $tab('dashboard', 'Dashboard') ?><?= $tab('leave', 'Leave' . ($__leavePending ? ' (' . $__leavePending . ')' : '')) ?>
+  <?= $tab('daily', 'Daily') ?><?= $tab('week', 'Week') ?><?= $tab('month', 'Month grid') ?><?= hr_balances_supported() ? $tab('summary', 'Month summary') : '' ?><?= $tab('dashboard', 'Dashboard') ?><?= $tab('leave', 'Leave' . ($__leavePending ? ' (' . $__leavePending . ')' : '')) ?>
 </div>
 
 <!-- Shared filters -->
@@ -267,6 +299,15 @@ $tab = fn($v, $label) => '<a href="/admin/attendance.php?' . e($qs(['view'=>$v])
       <button type="button" class="dp-btn" data-dp-target="attDateInput" style="min-width:150px"><?= e(date('D j M Y', strtotime($date))) ?></button>
       <input type="hidden" name="date" id="attDateInput" value="<?= e($date) ?>">
       <a class="btn-icon btn-icon--outline" href="/admin/attendance.php?<?= e($qs(['view'=>'daily','date'=>date('Y-m-d', strtotime($date.' +1 day'))])) ?>" data-shell-link aria-label="Next day"><?= admin_icon('chevron-right') ?></a>
+    </div>
+  </div>
+  <?php elseif ($view === 'week'): ?>
+  <div class="filter-field"><span>Week</span>
+    <div style="display:flex;gap:4px;align-items:center">
+      <a class="btn-icon btn-icon--outline" href="/admin/attendance.php?<?= e($qs(['view'=>'week','week'=>date('Y-m-d', strtotime($week.' -7 days'))])) ?>" data-shell-link aria-label="Previous week"><?= admin_icon('chevron-left') ?></a>
+      <button type="button" class="dp-btn" data-dp-target="attWeekInput" style="min-width:190px"><?= e(date('j M', strtotime($week)) . ' – ' . date('j M Y', strtotime($week . ' +6 days'))) ?></button>
+      <input type="hidden" name="week" id="attWeekInput" value="<?= e($week) ?>" onchange="this.form.submit()">
+      <a class="btn-icon btn-icon--outline" href="/admin/attendance.php?<?= e($qs(['view'=>'week','week'=>date('Y-m-d', strtotime($week.' +7 days'))])) ?>" data-shell-link aria-label="Next week"><?= admin_icon('chevron-right') ?></a>
     </div>
   </div>
   <?php else: ?>
@@ -410,6 +451,90 @@ if ($view === 'daily'):
 <link rel="stylesheet" href="/css/timepicker.css?v=<?= @filemtime(__DIR__ . '/../css/timepicker.css') ?: '1' ?>">
 <script src="/js/timepicker.js?v=<?= @filemtime(__DIR__ . '/../js/timepicker.js') ?: '1' ?>"></script>
 <script src="/admin/assets/admin-attendance.js?v=<?= @filemtime(__DIR__ . '/assets/admin-attendance.js') ?: time() ?>"></script>
+
+<?php
+elseif ($view === 'week'):
+  $wk = attendance_week($venueIds, $week, $filters, $companyIds);
+  $wkHol = hr_public_holidays($wk['days'][0], $wk['days'][6]);
+  $wgroups = [];
+  foreach ($wk['staff'] as $s) {
+    $vid = $s['venue_id'] !== null ? (int)$s['venue_id'] : 0;
+    $wgroups[$vid > 0 ? ($venueNames[$vid] ?? 'Property') : (trim((string)$s['unit_label']) ?: 'No property')][] = $s;
+  }
+  $tot = ['missing' => 0, 'no_rest' => 0, 'nights' => 0];
+  foreach ($wk['staff'] as $s) { $tot['missing'] += $s['fig']['missing']; $tot['no_rest'] += $s['fig']['no_rest'] ? 1 : 0; $tot['nights'] += $s['fig']['nights']; }
+?>
+<div class="card no-print" style="margin-bottom:16px"><div class="card__body" style="padding:12px 18px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+  <span style="display:flex;gap:6px;flex-wrap:wrap">
+    <span class="badge badge--grey"><?= count($wk['staff']) ?> people</span>
+    <?php if ($tot['missing']): ?><span class="badge badge--orange"><?= $tot['missing'] ?> missing time out</span><?php endif; ?>
+    <?php if ($tot['no_rest']): ?><span class="badge badge--red"><?= $tot['no_rest'] ?> with no rest day</span><?php endif; ?>
+    <?php if ($tot['nights']): ?><span class="badge badge--blue"><?= $tot['nights'] ?> night duties</span><?php endif; ?>
+  </span>
+  <span style="display:flex;gap:8px">
+    <button type="button" class="btn-outline btn-sm" onclick="window.print()"><?= admin_icon('download', 15) ?> Print</button>
+    <a href="/admin/attendance.php?<?= e($qs(['view'=>'week','export'=>'week'])) ?>" class="btn-outline btn-sm"><?= admin_icon('download', 15) ?> Export</a>
+  </span>
+</div></div>
+<h2 class="att-week-title"><?= e(date('j M', strtotime($wk['days'][0])) . ' – ' . date('j M Y', strtotime($wk['days'][6]))) ?></h2>
+<?php if (!$wgroups): ?>
+<div class="card"><div class="card__body card__body--pad"><p class="text-muted" style="margin:0">No staff match these filters.</p></div></div>
+<?php else: foreach ($wgroups as $gl => $list): ?>
+<div class="card att-week-card" style="margin-bottom:16px">
+  <div class="card__head"><span class="card__title"><?= e($gl) ?></span><span class="text-muted" style="font-size:12px"><?= count($list) ?> people</span></div>
+  <div class="table-wrap"><table class="data-table att-week">
+    <thead><tr><th>Name</th>
+      <?php foreach ($wk['days'] as $d): ?><th class="d<?= isset($wkHol[$d]) ? ' is-ph' : '' ?>"<?= isset($wkHol[$d]) ? ' data-tip="' . e($wkHol[$d]) . '"' : '' ?>><?= e(date('D', strtotime($d))) ?><span><?= e(date('j M', strtotime($d))) ?></span></th><?php endforeach; ?>
+      <th class="n">Days</th><th class="n">Hours</th><th class="n">OT</th><th></th></tr></thead>
+    <tbody>
+    <?php foreach ($list as $s): $f = $s['fig']; ?>
+      <tr>
+        <td class="nm"><a href="/admin/employee.php?id=<?= (int)$s['id'] ?>#attendance"><strong><?= e($s['full_name']) ?></strong></a><span><?= e($s['position'] ?: '—') ?> · off <?= e($s['off_day'] ?: 'SUN') ?></span></td>
+        <?php foreach ($wk['days'] as $d): $c = $s['cells'][$d] ?? null; $eff = $c ? attendance_effective_status($c) : '';
+          $isOff = attendance_is_off_day((string)$s['off_day'], $d);
+          $miss = $c && (($c['in1'] !== null) !== ($c['out1'] !== null) || ($c['in2'] !== null) !== ($c['out2'] !== null)); ?>
+        <td class="d<?= $isOff ? ' is-off' : '' ?><?= isset($wkHol[$d]) ? ' is-ph' : '' ?><?= $miss ? ' is-miss' : '' ?>">
+          <a href="/admin/attendance.php?<?= e($qs(['view'=>'daily','date'=>$d])) ?>" data-shell-link>
+          <?php if (!$c): ?><span class="dot">·</span>
+          <?php elseif ($eff === 'P' || $c['in1'] !== null): ?>
+            <span class="t"><?= e(attendance_min_to_hhmm($c['in1'] !== null ? (int)$c['in1'] : null) ?: '?') ?>–<?= e(attendance_min_to_hhmm($c['out1'] !== null ? (int)$c['out1'] : null) ?: '?') ?></span>
+            <?php if ($c['in2'] !== null || $c['out2'] !== null): ?><span class="t"><?= e(attendance_min_to_hhmm($c['in2'] !== null ? (int)$c['in2'] : null) ?: '?') ?>–<?= e(attendance_min_to_hhmm($c['out2'] !== null ? (int)$c['out2'] : null) ?: '?') ?></span><?php endif; ?>
+            <span class="h"><?= number_format(attendance_hours($c), 1) ?>h<?= attendance_is_night($c) ? ' ' . admin_icon('moon', 11) : '' ?></span>
+          <?php else: ?><span class="badge <?= e(attendance_status_badge($eff)) ?>"><?= e($eff) ?></span><?php endif; ?>
+          </a>
+        </td>
+        <?php endforeach; ?>
+        <td class="n"><strong><?= $f['days'] ?></strong></td>
+        <td class="n"><?= number_format($f['hours'], 1) ?></td>
+        <td class="n"><?= ($f['ot'] > 0 ? '+' : '') . number_format($f['ot'], 1) ?></td>
+        <td class="fl"><?php if ($f['no_rest']): ?><span class="badge badge--red" data-tip="Worked all seven days — one rest day a week is the rule">no rest day</span><?php endif; ?>
+          <?php if ($f['missing']): ?><span class="badge badge--orange"><?= $f['missing'] ?> missing out</span><?php endif; ?>
+          <?php if ($f['off_worked']): ?><span class="badge badge--grey" data-tip="Worked on their weekly off day">off day worked</span><?php endif; ?></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table></div>
+</div>
+<?php endforeach; endif; ?>
+<style>
+.att-week-title{display:none}
+.att-week th.d{text-align:center;min-width:92px;font-size:11px}
+.att-week th.d span{display:block;font-weight:500;opacity:.8}
+.att-week td{vertical-align:top}
+.att-week td.nm strong{display:block;white-space:nowrap}
+.att-week td.nm span{font-size:11.5px;color:var(--muted,#6b7280);white-space:nowrap}
+.att-week td.d{text-align:center;padding:6px 4px}
+.att-week td.d a{display:flex;flex-direction:column;align-items:center;gap:1px;text-decoration:none;color:inherit}
+.att-week td.d .t{font-size:11.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.att-week td.d .h{font-size:11px;color:var(--muted,#6b7280);display:inline-flex;align-items:center;gap:2px}
+.att-week td.d .dot{color:var(--border,#e5e7eb)}
+.att-week td.is-off{background:#f6f3ef}
+.att-week .is-ph{background:#fdf0ec}
+.att-week td.is-miss{box-shadow:inset 0 0 0 2px #f2c48f}
+.att-week .n{text-align:right;white-space:nowrap}
+.att-week td.fl .badge{margin:0 4px 4px 0}
+@media print{.att-week-title{display:block;font-size:16px;margin:0 0 8px}.att-week-card{break-inside:avoid}.att-week td.d a{pointer-events:none}}
+</style>
 
 <?php
 elseif ($view === 'month'):
