@@ -230,7 +230,7 @@ $aDays  = [];
 $aFig   = null; $nowFig = null;
 if (attendance_supported()) {
     foreach (fetch_attendance_month($id, (int)substr($aMonth, 0, 4), (int)substr($aMonth, 5, 2)) as $row) $aDays[(string)$row['work_date']] = $row;
-    $aHol  = hr_public_holidays($aMonth . '-01', date('Y-m-t', strtotime($aMonth . '-01')));
+    $aHol  = hr_public_holidays($aMonth . '-01', date('Y-m-d', strtotime(date('Y-m-t', strtotime($aMonth . '-01')) . ' +1 day')));
     $aFig  = $aDays ? hr_bal_month_figures($aDays, (string)$p['off_day'], $aMonth, $aHol) : null;
     if ($aMonth === date('Y-m')) $nowFig = $aFig;
     else {

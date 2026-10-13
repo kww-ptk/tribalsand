@@ -27,7 +27,7 @@ require_hr();
 $venueIds   = admin_venue_ids();
 $companyIds = hr_admin_company_ids();   // companies this account manages (Tribal Sand Limited has no property)
 $view = (string)($_GET['view'] ?? 'daily');
-if (!in_array($view, ['daily', 'week', 'month', 'summary', 'dashboard', 'person', 'leave'], true)) $view = 'daily';
+if (!in_array($view, ['daily', 'week', 'month', 'summary', 'holidays', 'dashboard', 'person', 'leave'], true)) $view = 'daily';
 
 /** True when the acting account may manage attendance/leave for this staff id. */
 function att_staff_in_scope(int $staffId, ?array $venueIds, ?array $companyIds = null): bool {
@@ -106,6 +106,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'leave
         $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Not your request.'];
     }
     header('Location: /admin/attendance.php?view=leave'); exit;
+}
+
+// ── Public holidays as HR counts them (owner + HR) ───────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'holiday') {
+    verify_csrf();
+    $hy = (int)($_POST['year'] ?? date('Y'));
+    if (!is_owner() && !is_hr()) {
+        $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Holidays are changed by the owner or HR.'];
+    } else {
+        try {
+            $d = (string)($_POST['date'] ?? '');
+            $state = (string)($_POST['state'] ?? '');
+            if ($state === 'add') $state = trim((string)($_POST['name'] ?? '')) ?: throw new RuntimeException('Give the holiday a name.');
+            hr_holiday_set($d, $state, (string)($_POST['reason'] ?? ''), (string)(current_admin()['name'] ?? 'HR'));
+            audit_log('hr.holiday', 'setting', 0, "$d → $state: " . (string)($_POST['reason'] ?? ''));
+            $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Holiday list updated. Close the month again if it was already closed.'];
+            $hy = (int)substr($d, 0, 4);
+        } catch (Throwable $e) {
+            $_SESSION['hold_flash'] = ['type'=>'error','msg'=>$e->getMessage()];
+        }
+    }
+    header('Location: /admin/attendance.php?view=holidays&year=' . $hy); exit;
 }
 
 // ── Night allowance per property (owner + HR) ────────────────────────────────
@@ -207,7 +229,8 @@ if (($_GET['export'] ?? '') === 'summary' && attendance_supported()) {
     fputcsv($out, ['Company', 'Payroll no.', 'Name', 'Position', 'Property', 'Off day', 'Entitled off days (off day + PH)', 'Days worked',
         'Days off taken', 'Of which recovery', 'PH not worked', 'Sick', 'Leave', 'Unpaid leave', 'Absent', 'Not recorded', 'Hours worked',
         'Overtime hours', 'Overtime days', 'Off days earned', 'Off days owed (start)', 'Off days owed (end)', 'Leave accrued', 'Leave taken',
-        'Annual leave (end)', 'Rest days worked', 'Holidays worked', 'Holiday hours', 'Night duties', 'Night allowance (KES)']);
+        'Annual leave (end)', 'Rest days worked', 'Holidays worked', 'Holiday hours', 'Night duties', 'Night allowance (KES)',
+        'Normal hours', 'Overtime hours (paid)', 'Rest-day hours', 'Public-holiday hours']);
     $nightRates = attendance_night_rates();
     foreach ($sumRows as $sr) {
         $s = $sr['staff']; $f = $sr['fig'];
@@ -221,7 +244,8 @@ if (($_GET['export'] ?? '') === 'summary' && attendance_supported()) {
             $f['entitled'], $f['worked'], $f['off_taken'], $f['rec'], $f['ph_taken'], $f['sick'], $f['leave'], $f['unpaid'], $f['absent'], $f['not_recorded'],
             $f['hours'], $f['ot_hours'], $f['ot_days'], $f['off_earned'], round($offStart, 3), round($offEnd, 3),
             $f['leave_accrued'], $f['leave'], round($lvEnd, 3), $f['rest_day_worked'], $f['holiday_worked'], $f['holiday_hours'],
-            $f['nights'], $s['venue_id'] !== null && isset($nightRates[(int)$s['venue_id']]) ? $f['nights'] * $nightRates[(int)$s['venue_id']] : 0]);
+            $f['nights'], $s['venue_id'] !== null && isset($nightRates[(int)$s['venue_id']]) ? $f['nights'] * $nightRates[(int)$s['venue_id']] : 0,
+            $f['hours_normal'], $f['hours_overtime'], $f['hours_rest'], $f['hours_holiday']]);
     }
     fclose($out);
     exit;
@@ -286,7 +310,7 @@ $tab = fn($v, $label) => '<a href="/admin/attendance.php?' . e($qs(['view'=>$v])
 ?>
 <?php $__leavePending = leave_requests_supported() ? leave_pending_count($venueIds, $companyIds) : 0; ?>
 <div class="ts-tabs" role="tablist" style="display:flex;gap:6px;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:18px">
-  <?= $tab('daily', 'Daily') ?><?= $tab('week', 'Week') ?><?= $tab('month', 'Month grid') ?><?= hr_balances_supported() ? $tab('summary', 'Month summary') : '' ?><?= $tab('dashboard', 'Dashboard') ?><?= $tab('leave', 'Leave' . ($__leavePending ? ' (' . $__leavePending . ')' : '')) ?>
+  <?= $tab('daily', 'Daily') ?><?= $tab('week', 'Week') ?><?= $tab('month', 'Month grid') ?><?= hr_balances_supported() ? $tab('summary', 'Month summary') . $tab('holidays', 'Holidays') : '' ?><?= $tab('dashboard', 'Dashboard') ?><?= $tab('leave', 'Leave' . ($__leavePending ? ' (' . $__leavePending . ')' : '')) ?>
 </div>
 
 <!-- Shared filters -->
@@ -646,6 +670,26 @@ elseif ($view === 'summary'):
   </table></div>
 </div>
 <?php endforeach; endif; ?>
+<?php
+  $holWork = [];
+  foreach ($sumRows as $sr) foreach (($sr['fig']['holiday_work'] ?? []) as $hd => $hh) $holWork[$hd][] = ['name' => $sr['staff']['full_name'], 'id' => (int)$sr['staff']['id'], 'hours' => $hh];
+  ksort($holWork);
+  $holNames = hr_public_holidays($month . '-01', date('Y-m-d', strtotime(date('Y-m-t', strtotime($month . '-01')) . ' +1 day')));
+  if ($holWork): ?>
+<div class="card" style="margin-bottom:16px">
+  <div class="card__head"><span class="card__title">Public-holiday work</span><span class="text-muted" style="font-size:12px">hours that fell on the holiday — a night shift counts only from midnight</span></div>
+  <div class="table-wrap"><table class="data-table">
+    <thead><tr><th>Holiday</th><th>Who worked</th><th style="text-align:right">Hours</th></tr></thead>
+    <tbody>
+    <?php foreach ($holWork as $hd => $list): ?>
+      <tr><td style="white-space:nowrap"><strong><?= e(date('D j M', strtotime($hd))) ?></strong><div class="text-muted" style="font-size:12px"><?= e($holNames[$hd] ?? '') ?></div></td>
+        <td><?= implode(', ', array_map(fn($w) => '<a href="/admin/employee.php?id=' . $w['id'] . '#attendance">' . e($w['name']) . '</a> <span class="text-muted">' . e(number_format($w['hours'], 1)) . ' h</span>', $list)) ?></td>
+        <td style="text-align:right"><strong><?= e(number_format(array_sum(array_column($list, 'hours')), 1)) ?></strong></td></tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table></div>
+</div>
+<?php endif; ?>
 <?php if (is_owner() || is_hr()): ?>
 <details class="card att-rates" style="margin-bottom:16px" <?= $nightRates ? '' : 'open' ?>>
   <summary class="card__head" style="cursor:pointer"><span class="card__title"><?= admin_icon('moon', 15) ?> Night allowance</span>
@@ -664,6 +708,61 @@ elseif ($view === 'summary'):
 <?php endif; ?>
 <p class="text-muted" style="font-size:12px">Off days earned = entitled off days (weekly off + public holidays) − days off taken (off, recovery, holiday not worked) + overtime ÷ 8. Annual leave grows 1.75 days a month and drops by each leave day. Sick and unpaid days change neither.</p>
 <style>.att-sum .n{text-align:right;white-space:nowrap}.att-sum td{vertical-align:top}.att-rates>summary{list-style:none;display:flex;justify-content:space-between;align-items:center}.att-rates>summary::-webkit-details-marker{display:none}</style>
+
+<?php
+elseif ($view === 'holidays'):
+  $hy = (int)($_GET['year'] ?? date('Y'));
+  if ($hy < 2020 || $hy > 2100) $hy = (int)date('Y');
+  $hl = hr_holiday_list($hy);
+  $canHol = is_owner() || is_hr();
+?>
+<div class="card" style="margin-bottom:16px">
+  <div class="card__head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+    <span class="card__title">Public holidays <?= $hy ?></span>
+    <span style="display:flex;gap:6px">
+      <a class="btn-icon btn-icon--outline" href="/admin/attendance.php?view=holidays&amp;year=<?= $hy - 1 ?>" aria-label="Previous year"><?= admin_icon('chevron-left') ?></a>
+      <a class="btn-icon btn-icon--outline" href="/admin/attendance.php?view=holidays&amp;year=<?= $hy + 1 ?>" aria-label="Next year"><?= admin_icon('chevron-right') ?></a>
+    </span>
+  </div>
+  <div class="card__body" style="padding:10px 18px"><p class="text-muted" style="margin:0;font-size:13px">The days that count as public holidays for staff: entitled off days, holiday hours and the holiday-work list use this list. Kenya's calendar is built in (Easter moves each year; Eid dates are entered per year). Switch a day off or add a gazetted one with a reason. Moon-sighting holidays not yet entered for the year simply don't appear — add them here.</p></div>
+  <div class="table-wrap"><table class="data-table">
+    <thead><tr><th>Date</th><th>Holiday</th><th>From</th><th>Counts for staff</th><th>Why</th><?php if ($canHol): ?><th></th><?php endif; ?></tr></thead>
+    <tbody>
+    <?php foreach ($hl as $h): ?>
+      <tr<?= $h['counts'] ? '' : ' style="opacity:.6"' ?>>
+        <td style="white-space:nowrap"><strong><?= e(date('D j M', strtotime($h['date']))) ?></strong></td>
+        <td><?= e($h['name']) ?></td>
+        <td class="text-muted"><?= $h['source'] === 'kenya' ? 'Kenya calendar' : 'Added by HR' ?></td>
+        <td><?= $h['counts'] ? '<span class="badge badge--green">Yes</span>' : '<span class="badge badge--grey">Switched off</span>' ?></td>
+        <td class="text-muted" style="font-size:12.5px"><?= e($h['note']) ?></td>
+        <?php if ($canHol): ?>
+        <td style="text-align:right">
+          <form method="POST" action="/admin/attendance.php" class="hol-form"><?= csrf_field() ?><input type="hidden" name="action" value="holiday"><input type="hidden" name="year" value="<?= $hy ?>"><input type="hidden" name="date" value="<?= e($h['date']) ?>">
+            <input type="hidden" name="state" value="<?= $h['source'] === 'hr' ? '' : ($h['counts'] ? 'off' : 'on') ?>">
+            <input name="reason" class="inp inp--sm" required placeholder="Why?" style="width:150px" aria-label="Why">
+            <button class="btn-outline btn-sm"><?= $h['source'] === 'hr' ? 'Remove' : ($h['counts'] ? 'Switch off' : 'Switch on') ?></button>
+          </form>
+        </td>
+        <?php endif; ?>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table></div>
+</div>
+<?php if ($canHol): ?>
+<div class="card">
+  <div class="card__head"><span class="card__title">Add a holiday</span></div>
+  <div class="card__body card__body--pad">
+    <form method="POST" action="/admin/attendance.php" class="hol-add"><?= csrf_field() ?><input type="hidden" name="action" value="holiday"><input type="hidden" name="state" value="add"><input type="hidden" name="year" value="<?= $hy ?>">
+      <div class="filter-field"><span>Date</span><button type="button" class="dp-btn" data-dp-target="holDate" style="min-width:150px">Pick a date</button><input type="hidden" id="holDate" name="date" value=""></div>
+      <div class="filter-field"><span>Name</span><input name="name" class="inp inp--sm" required maxlength="80" placeholder="e.g. Eid al-Adha"></div>
+      <div class="filter-field"><span>Why</span><input name="reason" class="inp inp--sm" required maxlength="200" placeholder="e.g. Gazette notice 12 May 2026"></div>
+      <button class="btn-primary btn-sm"><?= admin_icon('plus', 15) ?> Add</button>
+    </form>
+  </div>
+</div>
+<?php endif; ?>
+<style>.hol-form{display:flex;gap:6px;justify-content:flex-end;align-items:center}.hol-add{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}</style>
 
 <?php
 elseif ($view === 'leave'):

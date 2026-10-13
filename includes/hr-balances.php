@@ -66,6 +66,94 @@ function hr_public_holidays(string $from, string $to): array {
     return $out;
 }
 
+/**
+ * The year's holidays as HR sees them: [['date','name','source' => 'kenya'|'hr',
+ * 'counts' => bool,'note' => string]] — the Kenyan calendar plus HR's additions,
+ * with HR's switched-off days kept in the list (counts = false) so they can be
+ * switched back on.
+ */
+function hr_holiday_list(int $year): array {
+    $over  = json_decode(setting('hr_holiday_overrides', '{}'), true);  $over  = is_array($over) ? $over : [];
+    $notes = json_decode(setting('hr_holiday_notes', '{}'), true);      $notes = is_array($notes) ? $notes : [];
+    $out = [];
+    foreach (ke_holidays_for_year($year) as $d => $n) {
+        $out[$d] = ['date' => $d, 'name' => $n, 'source' => 'kenya', 'counts' => ($over[$d] ?? null) !== false, 'note' => (string)($notes[$d] ?? '')];
+    }
+    foreach ($over as $d => $v) {
+        if (!is_string($v) || $v === '' || !str_starts_with((string)$d, (string)$year)) continue;
+        $out[$d] = ['date' => $d, 'name' => $v, 'source' => isset($out[$d]) ? $out[$d]['source'] : 'hr', 'counts' => true, 'note' => (string)($notes[$d] ?? '')];
+    }
+    ksort($out);
+    return array_values($out);
+}
+
+/**
+ * HR changes one day: $state = 'off' (switch a calendar holiday off), 'on' (back to
+ * the calendar), a name (add / rename a holiday) or '' (remove HR's own addition).
+ * A reason is required for every change; it is kept with the day.
+ */
+function hr_holiday_set(string $ymd, string $state, string $reason, string $by): void {
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $ymd) || !checkdate((int)substr($ymd, 5, 2), (int)substr($ymd, 8, 2), (int)substr($ymd, 0, 4))) {
+        throw new RuntimeException('Pick the date.');
+    }
+    $reason = trim($reason);
+    if ($reason === '') throw new RuntimeException('Say why (e.g. "Gazette notice 12 May 2026").');
+    $over  = json_decode(setting('hr_holiday_overrides', '{}'), true);  $over  = is_array($over) ? $over : [];
+    $notes = json_decode(setting('hr_holiday_notes', '{}'), true);      $notes = is_array($notes) ? $notes : [];
+    if ($state === 'off')                  $over[$ymd] = false;
+    elseif ($state === 'on' || $state === '') unset($over[$ymd]);
+    else {
+        $name = trim($state);
+        if (mb_strlen($name) > 80) throw new RuntimeException('Keep the holiday name short.');
+        $over[$ymd] = $name;
+    }
+    $notes[$ymd] = $reason . ' · ' . $by . ' · ' . date('j M Y');
+    set_setting('hr_holiday_overrides', json_encode($over, JSON_UNESCAPED_UNICODE));
+    set_setting('hr_holiday_notes', json_encode($notes, JSON_UNESCAPED_UNICODE));
+}
+
+// ── Pure: hours by type (for payroll) ───────────────────────────────────────
+
+/**
+ * One worked day's minutes per CALENDAR date: a night shift's part after midnight
+ * (minutes ≥ 1440) belongs to the next day — only those hours fall on a holiday
+ * that starts at midnight. Returns [Y-m-d => minutes]. Pure.
+ */
+function hr_day_minutes_by_date(array $row, string $ymd): array {
+    $next = date('Y-m-d', strtotime($ymd . ' +1 day'));
+    $out = [];
+    foreach ([['in1', 'out1'], ['in2', 'out2']] as [$i, $o]) {
+        if (($row[$i] ?? null) === null || ($row[$o] ?? null) === null) continue;
+        $a = (int)$row[$i]; $b = (int)$row[$o];
+        if ($b <= $a) continue;
+        $today = max(0, min($b, 1440) - $a);
+        $after = max(0, $b - max($a, 1440));
+        if ($today > 0) $out[$ymd]  = ($out[$ymd] ?? 0) + $today;
+        if ($after > 0) $out[$next] = ($out[$next] ?? 0) + $after;
+    }
+    return $out;
+}
+
+/**
+ * Hours of one worked day by type, for payroll — never counted twice:
+ *   holiday  = minutes falling on a public holiday (night shifts split at midnight)
+ *   rest     = minutes falling on the person's weekly off day (and not a holiday)
+ *   normal   = the rest, up to 8 h a day; overtime = beyond 8 h.
+ * normal + overtime + rest + holiday = the day's hours. Pure.
+ */
+function hr_day_hour_types(array $row, string $ymd, string $offDay, array $holidays): array {
+    $t = ['normal' => 0, 'overtime' => 0, 'rest' => 0, 'holiday' => 0];
+    $work = 0;
+    foreach (hr_day_minutes_by_date($row, $ymd) as $d => $m) {
+        if (isset($holidays[$d]))                    $t['holiday'] += $m;
+        elseif (attendance_is_off_day($offDay, $d))  $t['rest'] += $m;
+        else                                         $work += $m;
+    }
+    $t['normal']   = min($work, ATTENDANCE_STANDARD_HOURS * 60);
+    $t['overtime'] = $work - $t['normal'];
+    return array_map(fn($m) => round($m / 60, 2), $t);
+}
+
 // ── Pure: one month ─────────────────────────────────────────────────────────
 
 /**
@@ -82,7 +170,8 @@ function hr_bal_month_figures(array $days, string $offDay, string $ym, array $ho
     if ($from > $to) return null;
     $f = ['from' => $from, 'to' => $to, 'days' => 0, 'entitled' => 0, 'worked' => 0, 'off_taken' => 0, 'rec' => 0, 'ph_taken' => 0,
           'sick' => 0, 'leave' => 0, 'unpaid' => 0, 'absent' => 0, 'other' => 0, 'not_recorded' => 0,
-          'hours' => 0.0, 'ot_hours' => 0.0, 'rest_day_worked' => 0, 'holiday_worked' => 0, 'holiday_hours' => 0.0, 'nights' => 0];
+          'hours' => 0.0, 'ot_hours' => 0.0, 'rest_day_worked' => 0, 'holiday_worked' => 0, 'holiday_hours' => 0.0, 'nights' => 0,
+          'hours_normal' => 0.0, 'hours_overtime' => 0.0, 'hours_rest' => 0.0, 'hours_holiday' => 0.0, 'holiday_work' => []];
     for ($d = $from; $d <= $to; $d = date('Y-m-d', strtotime($d . ' +1 day'))) {
         $f['days']++;
         $isOff = attendance_is_off_day($offDay, $d);
@@ -99,7 +188,13 @@ function hr_bal_month_figures(array $days, string $offDay, string $ym, array $ho
                 $f['ot_hours'] += $h - ATTENDANCE_STANDARD_HOURS;
                 if ($isOff) $f['rest_day_worked']++;
                 if (attendance_is_night($row)) $f['nights']++;
-                if ($isPh)  { $f['holiday_worked']++; $f['holiday_hours'] += $h; }
+                if ($isPh)  $f['holiday_worked']++;
+                $ty = hr_day_hour_types($row, $d, $offDay, $holidays);
+                $f['hours_normal'] += $ty['normal']; $f['hours_overtime'] += $ty['overtime'];
+                $f['hours_rest'] += $ty['rest'];     $f['hours_holiday'] += $ty['holiday'];
+                foreach (hr_day_minutes_by_date($row, $d) as $hd => $m) {
+                    if (isset($holidays[$hd])) $f['holiday_work'][$hd] = round(($f['holiday_work'][$hd] ?? 0) + $m / 60, 2);
+                }
                 break;
             case 'OFF':   $f['off_taken']++; break;
             case 'REC':   $f['off_taken']++; $f['rec']++; break;
@@ -115,7 +210,8 @@ function hr_bal_month_figures(array $days, string $offDay, string $ym, array $ho
     }
     $monthDays = (int) date('t', strtotime($start));
     $f['hours']        = round($f['hours'], 2);
-    $f['holiday_hours']= round($f['holiday_hours'], 2);
+    foreach (['hours_normal', 'hours_overtime', 'hours_rest', 'hours_holiday'] as $k) $f[$k] = round($f[$k], 2);
+    $f['holiday_hours']= $f['hours_holiday'];
     $f['ot_hours']     = round($f['ot_hours'], 2);
     $f['ot_days']      = round($f['ot_hours'] / ATTENDANCE_STANDARD_HOURS, 3);
     $f['off_change']   = $f['entitled'] - $f['off_taken'];
@@ -240,7 +336,7 @@ function hr_bal_month(string $ym, ?array $venueIds, ?array $companyIds = null, a
     foreach (db_query("SELECT * FROM attendance WHERE hr_staff_id IN ($in) AND work_date BETWEEN :a AND :b", [':a' => $start, ':b' => $end])->fetchAll() as $r) {
         $byStaff[(int)$r['hr_staff_id']][(string)$r['work_date']] = $r;
     }
-    $hol = hr_public_holidays($start, $end);
+    $hol = hr_public_holidays($start, date('Y-m-d', strtotime($end . ' +1 day')));   // + the morning after the month
     $before = hr_bal_balances($ids, date('Y-m-d', strtotime($start . ' -1 day')));
     $after  = hr_bal_balances($ids, $end);
     $opened = hr_bal_openings($ids);

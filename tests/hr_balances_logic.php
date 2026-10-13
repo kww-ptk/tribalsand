@@ -67,6 +67,21 @@ check('part month: only 15 days counted', $f['days'] === 15 && $f['entitled'] ==
 check('part month: leave pro-rata (1.75 × 15/30)', $f['leave_accrued'] === 0.875);
 check('a window that ends before it starts = nothing', hr_bal_month_figures([], 'SUN', '2026-09', [], '2026-10-01') === null);
 
+// ── Hours by type ───────────────────────────────────────────────────────────
+$xmas = ['2026-12-25' => 'Christmas Day'];
+check('split: a night shift splits at midnight', hr_day_minutes_by_date(day(1080, 1800), '2026-12-24') === ['2026-12-24' => 360, '2026-12-25' => 360]);
+$t = hr_day_hour_types(day(1080, 1800), '2026-12-24', 'MON', $xmas);
+check('types: eve night → 6 h normal + 6 h holiday (only from midnight)', $t === ['normal' => 6.0, 'overtime' => 0.0, 'rest' => 0.0, 'holiday' => 6.0]);
+$t = hr_day_hour_types(day(420, 1260), '2026-12-23', 'MON', $xmas);
+check('types: 14 h on a normal day → 8 normal + 6 overtime', $t['normal'] === 8.0 && $t['overtime'] === 6.0);
+$t = hr_day_hour_types(day(480, 1020), '2026-12-27', 'SUN', $xmas);
+check('types: a day on the weekly off → rest hours', $t['rest'] === 9.0 && $t['normal'] === 0.0);
+$t = hr_day_hour_types(day(480, 1020), '2026-12-25', 'FRI', $xmas);
+check('types: holiday on the off day counts once, as holiday', $t['holiday'] === 9.0 && $t['rest'] === 0.0);
+$f = hr_bal_month_figures(['2026-12-24' => day(1080, 1800), '2026-12-25' => day(480, 1020)], 'MON', '2026-12', $xmas);
+check('month: holiday hours from both days + the list', $f['hours_holiday'] === 15.0 && $f['holiday_work'] === ['2026-12-25' => 15.0]);
+check('month: the types add up to the hours', abs($f['hours_normal'] + $f['hours_overtime'] + $f['hours_rest'] + $f['hours_holiday'] - $f['hours']) < 0.01);
+
 // ── Night duty ──────────────────────────────────────────────────────────────
 check('night: a shift past midnight', attendance_night_by_times(day(1080, 1800)) && attendance_is_night(day(1080, 1800)));
 check('night: a day shift is not', !attendance_night_by_times(day(480, 1020)));
@@ -147,6 +162,15 @@ if (!$haveDb) {
         $mine = array_values(array_filter($rows, fn($r) => (int)$r['staff']['id'] === $a))[0] ?? null;
         check('month view: before / after balances', $mine && abs(($mine['before']['off_days'] ?? 0) - 4.0) < 0.001 && $mine['counts'] === true);
         check('month closed record', hr_bal_month_closed('2026-06') !== null);
+        $keep = [setting('hr_holiday_overrides', '{}'), setting('hr_holiday_notes', '{}')];
+        hr_holiday_set('2026-11-08', 'off', 'test', 'tester');
+        hr_holiday_set('2026-03-21', 'Eid (moved)', 'test', 'tester');
+        $hl = []; foreach (hr_holiday_list(2026) as $h) $hl[$h['date']] = $h;
+        check('holidays: switched off stays listed, does not count', $hl['2026-11-08']['counts'] === false && !isset(hr_public_holidays('2026-11-01', '2026-11-30')['2026-11-08']));
+        check('holidays: an HR addition counts', $hl['2026-03-21']['source'] === 'hr' && isset(hr_public_holidays('2026-03-01', '2026-03-31')['2026-03-21']));
+        $threw = false; try { hr_holiday_set('2026-03-22', 'off', '', 'tester'); } catch (RuntimeException $e) { $threw = true; }
+        check('holidays: a change needs a reason', $threw);
+        set_setting('hr_holiday_overrides', $keep[0]); set_setting('hr_holiday_notes', $keep[1]);
         if (attendance_night_supported()) {
             attendance_upsert($a, '2026-06-30', ['in1' => '18:00', 'out1' => '06:00+1'], null);
             attendance_set_night($a, '2026-06-30', true);
