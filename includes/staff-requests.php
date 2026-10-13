@@ -375,3 +375,49 @@ function attendance_punches_supported_safe(): bool {
     try { return $c = (bool) db_query("SELECT to_regclass('public.attendance_punches')")->fetchColumn(); }
     catch (Throwable $e) { return $c = false; }
 }
+
+/**
+ * Who approves next, by email address: step 1 ('pending') = active managers whose
+ * properties include the person's home or extra property, or who look after their
+ * company; step 2 ('pending_hr') = active HR accounts. Nobody found → HR, then the
+ * owners. The person who just acted is never emailed about their own step.
+ */
+function staff_request_approver_emails(int $staffId, string $status, ?int $exceptAdmin = null): array {
+    $p = db_query('SELECT * FROM hr_staff WHERE id = :s', [':s' => $staffId])->fetch();
+    if (!$p) return [];
+    $emails = [];
+    $add = function (array $rows) use (&$emails, $exceptAdmin) {
+        foreach ($rows as $row) {
+            if ((int)$row['id'] !== (int)$exceptAdmin && filter_var((string)$row['email'], FILTER_VALIDATE_EMAIL)) $emails[strtolower((string)$row['email'])] = true;
+        }
+    };
+    if ($status === 'pending') {
+        $venues = array_values(array_filter(array_merge([(int)($p['venue_id'] ?? 0)], hr_staff_venue_ids($staffId))));
+        if ($venues) {
+            $add(db_query("SELECT DISTINCT a.id, a.email FROM admin_users a JOIN admin_user_venues v ON v.admin_user_id = a.id
+                            WHERE a.role = 'manager' AND a.is_active AND v.venue_id IN (" . implode(',', $venues) . ")")->fetchAll());
+        }
+        if (!empty($p['company_id']) && hr_staff_company_supported()) {
+            $add(db_query("SELECT a.id, a.email FROM admin_users a JOIN hr_company_managers c ON c.admin_user_id = a.id
+                            WHERE a.role = 'manager' AND a.is_active AND c.company_id = :c", [':c' => (int)$p['company_id']])->fetchAll());
+        }
+    }
+    if (!$emails) $add(db_query("SELECT id, email FROM admin_users WHERE role = 'hr' AND is_active")->fetchAll());
+    if (!$emails) $add(db_query("SELECT id, email FROM admin_users WHERE role = 'owner' AND is_active")->fetchAll());
+    return array_keys($emails);
+}
+
+/** Email the next approver(s). Best-effort: a mail problem never undoes the request. Returns how many were emailed. */
+function staff_request_notify(int $id, ?int $actorAdmin): int {
+    try {
+        $r = staff_request_fetch($id);
+        if (!$r || !in_array($r['status'], ['pending', 'pending_hr'], true)) return 0;
+        require_once __DIR__ . '/mail.php';
+        $to = staff_request_approver_emails((int)$r['hr_staff_id'], (string)$r['status'], $actorAdmin);
+        foreach ($to as $addr) send_staff_request_waiting($r, $addr, (string)$r['status']);
+        return count($to);
+    } catch (Throwable $e) {
+        error_log('[staff request] notify failed: ' . $e->getMessage());
+        return 0;
+    }
+}

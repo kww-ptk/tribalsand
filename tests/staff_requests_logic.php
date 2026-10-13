@@ -98,6 +98,25 @@ if (!$haveDb) {
         check('swap: colleague + agreement kept', ($w = staff_request_fetch($wid))['details']['with_staff_id'] === $col && !empty($w['details']['accepted_at']));
         $oid = staff_request_create($sid, ['type' => 'overtime', 'from' => '2026-11-13', 'hours' => '3', 'worked' => '1'], null, 'owner');
         check('overtime: recorded, attendance untouched', staff_request_fetch($oid)['status'] === 'approved' && $att('2026-11-13') === null);
+        // Who is emailed: step 1 → the property's managers, step 2 → HR; never the one who acted.
+        $vid = (int)db_query('SELECT id FROM venues ORDER BY id LIMIT 1')->fetchColumn();
+        db_query('UPDATE hr_staff SET venue_id = :v WHERE id = :s', [':v' => $vid, ':s' => $sid]);
+        $mkU = function (string $email, string $role) use ($pdo): int {
+            db_query("INSERT INTO admin_users (name, email, password_hash, role, is_active) VALUES (:n, :e, 'x', :r, TRUE)", [':n' => $email, ':e' => $email, ':r' => $role]);
+            return (int)$pdo->lastInsertId();
+        };
+        $mgr = $mkU('mgr-reqtest@tribalsand.test', 'manager');
+        db_query('INSERT INTO admin_user_venues (admin_user_id, venue_id) VALUES (:a, :v)', [':a' => $mgr, ':v' => $vid]);
+        $hrU = $mkU('hr-reqtest@tribalsand.test', 'hr');
+        $e1 = staff_request_approver_emails($sid, 'pending');
+        check('notify: step 1 goes to the property manager', in_array('mgr-reqtest@tribalsand.test', $e1, true) && !in_array('hr-reqtest@tribalsand.test', $e1, true));
+        check('notify: never to the one who acted', !in_array('mgr-reqtest@tribalsand.test', staff_request_approver_emails($sid, 'pending', $mgr), true));
+        check('notify: step 2 goes to HR', in_array('hr-reqtest@tribalsand.test', staff_request_approver_emails($sid, 'pending_hr'), true));
+        require_once __DIR__ . '/../includes/mail.php';
+        $nid = staff_request_create($sid, ['type' => 'sick', 'from' => '2026-11-20'], null);
+        $cap = mail_capture(fn() => staff_request_notify($nid, null));
+        $mine = array_values(array_filter($cap, fn($m) => $m['to'] === 'mgr-reqtest@tribalsand.test'));
+        check('notify: the email names the person and the request', $mine && str_contains($mine[0]['subject'], 'REQUEST TEST') && str_contains($mine[0]['html'], 'Sick leave'));
         check('waiting: a manager sees step-1 items, HR both', staff_requests_waiting(null, null, 'hr') >= staff_requests_waiting(null, null, 'manager'));
     } finally {
         $pdo->rollBack();

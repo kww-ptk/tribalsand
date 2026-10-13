@@ -243,6 +243,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     db_query('INSERT INTO admin_user_venues (admin_user_id, venue_id) VALUES (:s, :v)', [':s' => $newId, ':v' => $vid]);
                 }
             }
+            // A manager can look after a company's staff from the start (Tribal Sand Limited has no property).
+            if ($type === 'manager' && hr_staff_company_supported()) {
+                hr_set_company_managers($newId, array_map('intval', (array)($_POST['company_id'] ?? [])));
+            }
             audit_log('staff_create', 'admin_user', $newId, "{$type}: {$name}");
             staff_flash("{$label} account created.");
         } else {
@@ -879,6 +883,18 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
         <?php endif; ?>
       </div>
 
+      <?php if ($coNames): ?>
+      <div class="field acct-company" style="display:none">
+        <span>Company staff <small class="text-muted">(optional)</small></span>
+        <div class="optset">
+        <?php foreach ($coNames as $cid => $cname): ?>
+          <label class="optchip"><input type="checkbox" name="company_id[]" value="<?= (int)$cid ?>"> <?= e($cname) ?></label>
+        <?php endforeach; ?>
+        </div>
+        <span class="field-hint">They see these companies' staff and attendance even when the staff have no property — e.g. Tribal Sand Limited's kite school and drivers.</span>
+      </div>
+      <?php endif; ?>
+
       <button type="submit" class="btn-primary">Create</button>
       <button type="button" class="btn-outline btn-sm" data-close-create style="margin-left:8px">Cancel</button>
     </form>
@@ -928,6 +944,7 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
     // Owner and HR cover every property, so they skip the property picker.
     form.querySelectorAll('.acct-scoped').forEach(function (el) { el.style.display = (isOwner || val === 'hr') ? 'none' : ''; });
     form.querySelectorAll('.acct-owner-note').forEach(function (el) { el.style.display = isOwner ? '' : 'none'; });
+    form.querySelectorAll('.acct-company').forEach(function (el) { el.style.display = val === 'manager' ? '' : 'none'; });
     // Only require the fields that are visible, so the hidden set doesn't block submit.
     var email = form.querySelector('input[name=email]'), pw = form.querySelector('input[name=password]');
     if (email) email.required = isPw;
