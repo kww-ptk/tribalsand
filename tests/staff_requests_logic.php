@@ -1,0 +1,108 @@
+<?php
+declare(strict_types=1);
+// Staff requests — who may act at each step, what approval writes into the
+// attendance, and that cancelling puts every day back.
+// Run: php tests/staff_requests_logic.php
+// DB part runs inside ONE transaction that is ROLLED BACK; it SKIPs without a
+// database or before add_staff_requests.sql.
+require_once __DIR__ . '/../includes/db.php';
+require_once __DIR__ . '/../includes/staff-requests.php';
+require_once __DIR__ . '/../includes/hr-balances.php';
+
+$failures = 0;
+function check(string $label, bool $cond): void {
+    if ($cond) { echo "PASS  {$label}\n"; }
+    else       { echo "FAIL  {$label}\n"; $GLOBALS['failures']++; }
+}
+function refused(callable $fn): bool {
+    try { $fn(); return false; } catch (StaffRequestRefusal $e) { return true; }
+}
+
+// ── Pure ────────────────────────────────────────────────────────────────────
+check('steps: a manager acts at step 1 only', staff_request_can_act('pending', 'manager', true) && !staff_request_can_act('pending_hr', 'manager', true));
+check('steps: HR and the owner act at both', staff_request_can_act('pending', 'hr', true) && staff_request_can_act('pending_hr', 'owner', true));
+check('steps: nobody acts out of scope or on a closed request', !staff_request_can_act('pending', 'owner', false) && !staff_request_can_act('approved', 'hr', true));
+check('stamp days: the weekly off day is left alone', staff_request_stamp_days('2026-10-19', '2026-10-25', 'SUN') === ['2026-10-19', '2026-10-20', '2026-10-21', '2026-10-22', '2026-10-23', '2026-10-24']);
+check('types: leave codes', staff_request_types()['annual'][1] === 'LV' && staff_request_types()['day_off'][1] === 'REC' && staff_request_types()['unpaid'][1] === 'UL' && staff_request_types()['correction'][1] === null);
+
+// ── DB ──────────────────────────────────────────────────────────────────────
+try { db(); $haveDb = staff_requests_supported(); } catch (Throwable $e) { $haveDb = false; }
+if (!$haveDb) {
+    echo "SKIP  DB checks (no database or add_staff_requests not applied)\n";
+} else {
+    $pdo = db();
+    $pdo->beginTransaction();
+    try {
+        unset($_SESSION['admin_id']);
+        db_query("INSERT INTO hr_staff (full_name, position, department, status, off_day) VALUES ('REQUEST TEST', 'COOK', 'Kitchen', 'active', 'SUN')");
+        $sid = (int)$pdo->lastInsertId();
+        db_query("INSERT INTO hr_staff (full_name, position, department, status, off_day) VALUES ('REQUEST COLLEAGUE', 'COOK', 'Kitchen', 'active', 'MON')");
+        $col = (int)$pdo->lastInsertId();
+        $att = fn(string $d) => db_query('SELECT * FROM attendance WHERE hr_staff_id = :s AND work_date = :d', [':s' => $sid, ':d' => $d])->fetch() ?: null;
+
+        // Days that exist before the leave: one worked (must not be stamped), one typed OFF (stamped, then restored).
+        attendance_upsert($sid, '2026-10-20', ['in1' => '08:00', 'out1' => '17:00'], null, 'kiosk');
+        attendance_upsert($sid, '2026-10-21', ['status' => 'OFF'], null, 'manual');
+
+        check('create: needs a type and dates', refused(fn() => staff_request_create($sid, ['type' => 'nope', 'from' => '2026-10-19'], null))
+            && refused(fn() => staff_request_create($sid, ['type' => 'annual', 'from' => ''], null)));
+        check('create: the last day before the first refuses', refused(fn() => staff_request_create($sid, ['type' => 'annual', 'from' => '2026-10-22', 'to' => '2026-10-19'], null)));
+        $id = staff_request_create($sid, ['type' => 'annual', 'from' => '2026-10-19', 'to' => '2026-10-25', 'reason' => 'family'], null);
+        $r = staff_request_fetch($id);
+        check('create: waits for the supervisor, nothing written yet', $r['status'] === 'pending' && $att('2026-10-19') === null);
+        check('create: an overlapping leave is refused', refused(fn() => staff_request_create($sid, ['type' => 'sick', 'from' => '2026-10-24'], null)));
+
+        check('approve: a manager out of scope refuses', refused(fn() => staff_request_approve($id, 'manager', null, false)));
+        check('approve: manager → waiting for HR', staff_request_approve($id, 'manager', null, true) === 'pending_hr' && $att('2026-10-19') === null);
+        check('approve: the manager cannot give the final step', refused(fn() => staff_request_approve($id, 'manager', null, true)));
+        check('approve: HR → approved', staff_request_approve($id, 'hr', null, true) === 'approved');
+        $r = staff_request_fetch($id);
+        check('apply: leave stamped on working days', ($att('2026-10-19')['status'] ?? '') === 'LV' && ($att('2026-10-22')['status'] ?? '') === 'LV'
+            && (int)$att('2026-10-22')['request_id'] === $id && $att('2026-10-22')['source'] === 'request');
+        check('apply: the Sunday off is left alone', $att('2026-10-25') === null);
+        check('apply: a day already worked is skipped and named', ($att('2026-10-20')['status'] ?? null) === null && (int)$att('2026-10-20')['in1'] === 480 && $r['details']['skipped'] === ['2026-10-20']);
+        check('apply: a typed OFF is stamped, its old value kept', $att('2026-10-21')['status'] === 'LV' && ($r['details']['replaced']['2026-10-21']['status'] ?? '') === 'OFF');
+        $f = hr_bal_month_figures(array_column(db_query("SELECT * FROM attendance WHERE hr_staff_id = :s AND work_date BETWEEN '2026-10-01' AND '2026-10-31'", [':s' => $sid])->fetchAll(), null, 'work_date'), 'SUN', '2026-10', []);
+        check('balances: the leave days count as leave taken', (float)$f['leave'] === 5.0);
+
+        check('cancel: a manager cannot cancel an approved request', refused(fn() => staff_request_cancel($id, 'manager', null, true, 'x')));
+        check('cancel: an approved request needs a reason', refused(fn() => staff_request_cancel($id, 'hr', null, true, '')));
+        staff_request_cancel($id, 'hr', null, true, 'trip moved');
+        check('cancel: stamped days removed, the typed OFF back, the worked day untouched',
+            $att('2026-10-19') === null && $att('2026-10-21')['status'] === 'OFF' && $att('2026-10-21')['source'] === 'manual' && (int)$att('2026-10-20')['in1'] === 480);
+        check('cancel: status + reason recorded', ($c = staff_request_fetch($id))['status'] === 'cancelled' && $c['decline_reason'] === 'trip moved');
+
+        // Correction: keeps the original times, cancel restores them.
+        attendance_upsert($sid, '2026-10-14', ['in1' => '08:00', 'out1' => ''], null, 'kiosk');
+        check('correction: needs times + a reason', refused(fn() => staff_request_create($sid, ['type' => 'correction', 'from' => '2026-10-14', 'in1' => '08:00'], null))
+            && refused(fn() => staff_request_create($sid, ['type' => 'correction', 'from' => '2026-10-14', 'in1' => '08:00', 'out1' => '17:00'], null)));
+        $cid = staff_request_create($sid, ['type' => 'correction', 'from' => '2026-10-14', 'in1' => '08:00', 'out1' => '17:30', 'reason' => 'forgot to clock out'], null, 'owner');
+        $c = staff_request_fetch($cid);
+        check('correction: submit and approve records both steps', $c['status'] === 'approved' && $c['supervisor_at'] !== null && $c['hr_at'] !== null);
+        check('correction: new times written', (int)$att('2026-10-14')['out1'] === 1050 && attendance_hours($att('2026-10-14')) === 9.5);
+        check('correction: the original is kept', array_key_exists('2026-10-14', $c['details']['replaced']) && $c['details']['replaced']['2026-10-14']['out1'] === null);
+        staff_request_cancel($cid, 'owner', null, true, 'wrong day');
+        check('correction: cancel restores the original', $att('2026-10-14')['out1'] === null && $att('2026-10-14')['source'] === 'kiosk');
+
+        // Half day, decline, swap, overtime.
+        $hid = staff_request_create($sid, ['type' => 'annual', 'from' => '2026-10-27', 'half_day' => '1'], null, 'hr');
+        $f = hr_bal_month_figures(['2026-10-27' => $att('2026-10-27')], 'SUN', '2026-10', [], '2026-10-27', '2026-10-27');
+        check('half day: counts 0.5 leave', (float)$f['leave'] === 0.5);
+        check('half day: one day only', refused(fn() => staff_request_create($sid, ['type' => 'annual', 'from' => '2026-11-02', 'to' => '2026-11-03', 'half_day' => '1'], null)));
+        $did = staff_request_create($sid, ['type' => 'unpaid', 'from' => '2026-11-10'], null);
+        check('decline: needs a reason', refused(fn() => staff_request_decline($did, 'manager', null, true, '')));
+        staff_request_decline($did, 'manager', null, true, 'busy week');
+        check('decline: recorded at the supervisor step', ($d = staff_request_fetch($did))['status'] === 'declined' && $d['supervisor_at'] !== null && $att('2026-11-10') === null);
+        check('swap: needs a colleague', refused(fn() => staff_request_create($sid, ['type' => 'swap', 'from' => '2026-11-12'], null)));
+        $wid = staff_request_create($sid, ['type' => 'swap', 'from' => '2026-11-12', 'with_staff_id' => $col, 'accepted' => '1'], null);
+        check('swap: colleague + agreement kept', ($w = staff_request_fetch($wid))['details']['with_staff_id'] === $col && !empty($w['details']['accepted_at']));
+        $oid = staff_request_create($sid, ['type' => 'overtime', 'from' => '2026-11-13', 'hours' => '3', 'worked' => '1'], null, 'owner');
+        check('overtime: recorded, attendance untouched', staff_request_fetch($oid)['status'] === 'approved' && $att('2026-11-13') === null);
+        check('waiting: a manager sees step-1 items, HR both', staff_requests_waiting(null, null, 'hr') >= staff_requests_waiting(null, null, 'manager'));
+    } finally {
+        $pdo->rollBack();
+    }
+}
+
+echo $failures ? "\n{$failures} FAILED\n" : "\nALL PASS\n";
+exit($failures ? 1 : 0);

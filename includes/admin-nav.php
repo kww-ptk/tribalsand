@@ -141,6 +141,7 @@ function admin_nav_definition(array $f, array $badge = []): array {
             ]),
             $item('Attendance', 'attendance', [
                 $tab('Attendance', ['attendance.php', 'attendance-import.php'], $on('reports') || $on('hr')),
+                $tab('Requests', 'staff-requests.php', $on('reports') || $on('hr'), 'Staff requests'),
                 $tab('Clock kiosks', 'attendance-devices.php', ($on('reports') || $on('hr')) && $on('clockNav')),
                 $tab('Clock cards', 'attendance-cards.php', ($on('reports') || $on('hr')) && $on('clockOn')),
             ]),

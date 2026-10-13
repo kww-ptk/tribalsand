@@ -535,5 +535,7 @@ function leave_decide(int $id, string $status, ?int $by): int {
 /** Count of pending leave requests in scope — for a nav/section badge. */
 function leave_pending_count(?array $venueIds, ?array $companyIds = null): int {
     if (!leave_requests_supported()) return 0;
-    return count(fetch_leave_requests($venueIds, ['status' => 'pending'], $companyIds));
+    // Both approval steps are waiting (add_staff_requests.sql added 'pending_hr').
+    return count(fetch_leave_requests($venueIds, ['status' => 'pending'], $companyIds))
+         + count(fetch_leave_requests($venueIds, ['status' => 'pending_hr'], $companyIds));
 }

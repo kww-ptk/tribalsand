@@ -19,6 +19,7 @@ require_once __DIR__ . '/../includes/hr-documents.php';      // Documents card (
 require_once __DIR__ . '/../includes/hr-establishment.php';  // company + payroll no., company scope
 require_once __DIR__ . '/../includes/hr-balances.php';       // Attendance tab: month figures + balances
 require_once __DIR__ . '/../includes/staff-rooms.php';       // current staff room on the Overview
+require_once __DIR__ . '/../includes/staff-requests.php';    // request types + statuses on the Attendance tab
 require_once __DIR__ . '/../includes/inventory-people.php';   // Assets tab (assigned items)
 require_once __DIR__ . '/../includes/icons.php';
 require_login();
@@ -524,12 +525,13 @@ include __DIR__ . '/_layout.php';
 
   <?php if (leave_requests_supported()): ?>
   <div class="card" style="margin-top:16px">
-    <div class="card__head" style="display:flex;justify-content:space-between;align-items:center"><span class="card__title">Leave requests</span><a class="btn-outline btn-sm" href="/admin/attendance.php?view=leave">All requests</a></div>
+    <div class="card__head" style="display:flex;justify-content:space-between;align-items:center"><span class="card__title">Requests</span><a class="btn-outline btn-sm" href="/admin/attendance.php?view=leave">All requests</a></div>
     <div class="card__body" style="padding:<?= $leaveReqs ? '0' : '14px 18px' ?>">
       <?php if (!$leaveReqs): ?><p class="text-muted" style="margin:0;font-size:13px">No leave requests.</p>
       <?php else: ?><div class="table-wrap"><table class="data-table"><thead><tr><th>Dates</th><th>Type</th><th>Status</th><th>Reason</th></tr></thead><tbody>
         <?php foreach ($leaveReqs as $lr): ?><tr><td style="white-space:nowrap"><?= e(date('j M', strtotime((string)$lr['start_date']))) ?> – <?= e(date('j M Y', strtotime((string)$lr['end_date']))) ?></td>
-          <td><?= e(ucfirst((string)$lr['leave_type'])) ?></td><td><span class="badge <?= e(leave_status_badge((string)$lr['status'])) ?>"><?= e(ucfirst((string)$lr['status'])) ?></span></td><td class="text-muted"><?= e((string)($lr['reason'] ?? '')) ?></td></tr><?php endforeach; ?>
+          <?php [$__sl, $__sb] = function_exists('staff_request_status') ? staff_request_status((string)$lr['status']) : [ucfirst((string)$lr['status']), leave_status_badge((string)$lr['status'])]; ?>
+          <td><?= e(function_exists('staff_request_type_label') ? staff_request_type_label((string)$lr['leave_type']) : ucfirst((string)$lr['leave_type'])) ?></td><td><span class="badge <?= e($__sb) ?>"><?= e($__sl) ?></span></td><td class="text-muted"><?= e((string)($lr['reason'] ?? '')) ?></td></tr><?php endforeach; ?>
       </tbody></table></div><?php endif; ?>
     </div>
   </div>

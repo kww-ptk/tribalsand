@@ -201,7 +201,7 @@ function hr_bal_month_figures(array $days, string $offDay, string $ym, array $ho
             case 'REC_L': $f['off_taken']++; $f['rec']++; break;
             case 'PH':    $f['off_taken']++; $f['ph_taken']++; break;
             case 'SK':    $f['sick']++; break;
-            case 'LV':    $f['leave']++; break;
+            case 'LV':    $f['leave'] += str_starts_with((string)($row['note'] ?? ''), 'Half day') ? 0.5 : 1; break;
             case 'UL':    $f['unpaid']++; break;
             case 'ABS':   $f['absent']++; break;
             case '':      $f['not_recorded']++; break;

@@ -144,3 +144,4 @@ add_attendance_import.sql                            2026-10-13
 add_hr_balances.sql                                  2026-10-13
 add_night_duty.sql                                   2026-10-13
 add_staff_rooms.sql                                  2026-10-13
+add_staff_requests.sql                               2026-10-13

@@ -24,6 +24,11 @@ require_once __DIR__ . '/../includes/icons.php';
 require_login();
 require_hr();
 
+// Leave moved into Staff requests (one inbox, two-step approval) once that migration ran.
+if (($_GET['view'] ?? '') === 'leave' && function_exists('leave_requests_supported') && file_exists(__DIR__ . '/../includes/staff-requests.php')) {
+    require_once __DIR__ . '/../includes/staff-requests.php';
+    if (staff_requests_supported()) { header('Location: /admin/staff-requests.php'); exit; }
+}
 $venueIds   = admin_venue_ids();
 $companyIds = hr_admin_company_ids();   // companies this account manages (Tribal Sand Limited has no property)
 $view = (string)($_GET['view'] ?? 'daily');
@@ -310,7 +315,7 @@ $tab = fn($v, $label) => '<a href="/admin/attendance.php?' . e($qs(['view'=>$v])
 ?>
 <?php $__leavePending = leave_requests_supported() ? leave_pending_count($venueIds, $companyIds) : 0; ?>
 <div class="ts-tabs" role="tablist" style="display:flex;gap:6px;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:18px">
-  <?= $tab('daily', 'Daily') ?><?= $tab('week', 'Week') ?><?= $tab('month', 'Month grid') ?><?= hr_balances_supported() ? $tab('summary', 'Month summary') . $tab('holidays', 'Holidays') : '' ?><?= $tab('dashboard', 'Dashboard') ?><?= $tab('leave', 'Leave' . ($__leavePending ? ' (' . $__leavePending . ')' : '')) ?>
+  <?= $tab('daily', 'Daily') ?><?= $tab('week', 'Week') ?><?= $tab('month', 'Month grid') ?><?= hr_balances_supported() ? $tab('summary', 'Month summary') . $tab('holidays', 'Holidays') : '' ?><?= $tab('dashboard', 'Dashboard') ?><?= $tab('leave', (function_exists('staff_requests_supported') && staff_requests_supported() ? 'Requests' : 'Leave') . ($__leavePending ? ' (' . $__leavePending . ')' : '')) ?>
 </div>
 
 <!-- Shared filters -->
