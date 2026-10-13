@@ -28,11 +28,24 @@ check('hours: standard split = 8',       attendance_hours($std) === 8.0);
 check('hours: security night = 12',      attendance_hours($secNight) === 12.0);
 check('hours: empty = 0',                attendance_hours(['in1'=>null,'out1'=>null,'in2'=>null,'out2'=>null]) === 0.0);
 
-check('standard hrs: Security = 12',     attendance_standard_hours('Security') === 12);
+check('standard hrs: Security = 8 (HR: the extra 4 h is overtime)', attendance_standard_hours('Security') === 8);
 check('standard hrs: Housekeeping = 8',  attendance_standard_hours('Housekeeping') === 8);
 check('OT: 8h normal = 0',               attendance_overtime($std, 'Housekeeping') === 0.0);
-check('OT: 12h security = 0',            attendance_overtime($secNight, 'Security') === 0.0);
+check('OT: 12h security night = +4',     attendance_overtime($secNight, 'Security') === 4.0);
 check('OT: 12h normal = +4',            attendance_overtime($secNight, 'Housekeeping') === 4.0);
+
+check('week: Monday of a Thursday', attendance_week_start('2026-09-10') === '2026-09-07');
+check('week: a Monday is its own start', attendance_week_start('2026-09-07') === '2026-09-07');
+$wkDays = []; for ($i = 0; $i < 7; $i++) $wkDays[] = date('Y-m-d', strtotime("2026-09-07 +$i days"));
+$wkCells = [];
+foreach ($wkDays as $d) $wkCells[$d] = ['in1'=>480,'out1'=>1020,'in2'=>null,'out2'=>null,'status'=>null];
+$wf = attendance_week_figures($wkCells, 'SUN', $wkDays);
+check('week: seven days worked = no rest day', $wf['no_rest'] && $wf['days'] === 7 && $wf['off_worked'] === 1);
+$wkCells['2026-09-13'] = ['in1'=>null,'out1'=>null,'in2'=>null,'out2'=>null,'status'=>'OFF'];
+$wkCells['2026-09-08'] = ['in1'=>480,'out1'=>null,'in2'=>null,'out2'=>null,'status'=>null];
+$wf = attendance_week_figures($wkCells, 'SUN', $wkDays);
+check('week: a rest day taken + a missing time out', !$wf['no_rest'] && $wf['missing'] === 1 && $wf['off_worked'] === 0);
+check('week: hours and overtime (5 days of 9 h)', $wf['hours'] === 45.0 && $wf['ot'] === 5.0 && $wf['days'] === 5);
 
 check('effective: worked ⇒ P',           attendance_effective_status($std) === 'P');
 check('effective: stored OFF',           attendance_effective_status(['in1'=>null,'out1'=>null,'in2'=>null,'out2'=>null,'status'=>'OFF']) === 'OFF');
@@ -66,10 +79,11 @@ if (!attendance_supported() || !hr_staff_supported()) {
     echo ($failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n"); exit($failures ? 1 : 0);
 }
 
-$sid = (int) db_query("SELECT id FROM hr_staff ORDER BY id LIMIT 1")->fetchColumn();
-if (!$sid) { echo "\nSKIP  no hr_staff rows (run seed_hr_staff)\n"; echo ($failures?"\n{$failures} FAILURE(S)\n":"\nALL PASS\n"); exit($failures?1:0); }
-
 db()->beginTransaction();
+// Its own person, inside the rolled-back transaction: a real person's imported
+// attendance would otherwise sit on the test dates.
+db_query("INSERT INTO hr_staff (full_name, position, department, status) VALUES ('ATTENDANCE TEST PERSON', 'COOK', 'Kitchen', 'active')");
+$sid = (int) db()->lastInsertId();
 
 // Upsert a night shift → stored as minutes, status implied P.
 $id = attendance_upsert($sid, '2026-05-01', ['in1'=>'19:00','out1'=>'07:00+1'], null);

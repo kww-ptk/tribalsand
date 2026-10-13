@@ -34,6 +34,7 @@ function attendance_statuses(): array {
         'ABS'   => 'Absent',
         'LV'    => 'Leave',
         'REC_L' => 'Rec + Leave',
+        'UL'    => 'Unpaid leave',
     ];
 }
 
@@ -47,7 +48,7 @@ function attendance_status_badge(string $s): string {
         'PH'    => 'badge--orange',
         'SK'    => 'badge--blue',
         'ABS'   => 'badge--red',
-        'LV', 'REC_L' => 'badge--orange',
+        'LV', 'REC_L', 'UL' => 'badge--orange',
         default => 'badge--grey',
     };
 }
@@ -82,15 +83,23 @@ function attendance_min_to_hhmm(?int $min): string {
 
 /** Worked hours from the four minute columns. */
 function attendance_hours(array $row): float {
+    // Per section, never below 0: an out typed earlier than its in (a typo in an
+    // imported sheet) must not eat the other section's hours.
     $h = 0;
-    if ($row['in1'] !== null && $row['out1'] !== null) $h += (int)$row['out1'] - (int)$row['in1'];
-    if ($row['in2'] !== null && $row['out2'] !== null) $h += (int)$row['out2'] - (int)$row['in2'];
-    return round(max(0, $h) / 60, 2);
+    if ($row['in1'] !== null && $row['out1'] !== null) $h += max(0, (int)$row['out1'] - (int)$row['in1']);
+    if ($row['in2'] !== null && $row['out2'] !== null) $h += max(0, (int)$row['out2'] - (int)$row['in2']);
+    return round($h / 60, 2);
 }
 
-/** Role standard hours/day: Security = 12, everyone else = 8. */
-function attendance_standard_hours(?string $department): int {
-    return $department === 'Security' ? 12 : 8;
+/**
+ * Standard hours in a day before overtime: 8 for EVERYONE (HR, Oct 2026). Security
+ * works 12-hour day and night shifts and HR counts the extra 4 h as overtime —
+ * the old 12-hour standard for Security showed them 0 overtime where HR's sheet
+ * shows 4 h a shift. $department is kept for callers; it no longer changes the rule.
+ */
+const ATTENDANCE_STANDARD_HOURS = 8;
+function attendance_standard_hours(?string $department = null): int {
+    return ATTENDANCE_STANDARD_HOURS;
 }
 
 /** Overtime for a worked day = hours − role standard (may be negative). */
@@ -118,12 +127,68 @@ function attendance_is_off_day(?string $offDay, string $ymd): bool {
     return $off === '' ? ($wd === 'SUN') : ($off === $wd);
 }
 
+/** attendance.night_duty present (add_night_duty.sql)? Catalog lookup — safe inside a transaction. */
+function attendance_night_supported(): bool {
+    static $c = null;
+    if ($c !== null) return $c;
+    try { return $c = (bool) db_query("SELECT 1 FROM information_schema.columns WHERE table_name = 'attendance' AND column_name = 'night_duty'")->fetchColumn(); }
+    catch (Throwable $e) { return $c = false; }
+}
+
+/**
+ * The times alone say "night duty": a worked shift that runs past midnight (an out
+ * ≥ 1440 — every security night 18:00 → 06:00, every kiosk night shift).
+ */
+function attendance_night_by_times(array $row): bool {
+    if (attendance_hours($row) <= 0) return false;
+    foreach (['out1', 'out2'] as $f) if (($row[$f] ?? null) !== null && (int)$row[$f] >= 1440) return true;
+    return false;
+}
+
+/** Was this day a night duty? HR's own setting on the day wins; otherwise the times decide. */
+function attendance_is_night(array $row): bool {
+    if (array_key_exists('night_duty', $row) && $row['night_duty'] !== null) {
+        return $row['night_duty'] === true || $row['night_duty'] === 't' || $row['night_duty'] === '1' || $row['night_duty'] === 1;
+    }
+    return attendance_night_by_times($row);
+}
+
+/**
+ * Store HR's night-duty choice for a day: NULL when it matches what the times say
+ * (so a later change of times keeps deciding), else TRUE / FALSE.
+ */
+function attendance_set_night(int $staffId, string $ymd, bool $night): void {
+    if (!attendance_night_supported()) return;
+    $row = db_query('SELECT * FROM attendance WHERE hr_staff_id = :s AND work_date = :d', [':s' => $staffId, ':d' => $ymd])->fetch();
+    if (!$row) return;
+    $val = $night === attendance_night_by_times($row) ? null : ($night ? 'TRUE' : 'FALSE');
+    db_query('UPDATE attendance SET night_duty = ' . ($val ?? 'NULL') . ' WHERE id = :id', [':id' => (int)$row['id']]);
+}
+
+/** Night allowance per property (KES per night): [venue id => amount]; setting night_allowance. */
+function attendance_night_rates(): array {
+    $m = json_decode(setting('night_allowance', '{}'), true);
+    $out = [];
+    if (is_array($m)) foreach ($m as $vid => $amt) if ((int)$vid > 0 && is_numeric($amt) && (float)$amt > 0) $out[(int)$vid] = round((float)$amt, 2);
+    return $out;
+}
+
+/** attendance.source present (add_attendance_import.sql)? Catalog lookup — safe inside a transaction. */
+function attendance_source_supported(): bool {
+    static $c = null;
+    if ($c !== null) return $c;
+    try { return $c = (bool) db_query("SELECT 1 FROM information_schema.columns WHERE table_name = 'attendance' AND column_name = 'source'")->fetchColumn(); }
+    catch (Throwable $e) { return $c = false; }
+}
+
 /**
  * Upsert one staff member's day. $data may carry either a status code (clears
  * times) or the four HH:MM strings (a worked shift ⇒ status becomes P). Returns
- * the stored row's id.
+ * the stored row's id. $source says where it came from — 'manual' (the daily
+ * editor), 'kiosk' (a clock card), 'request' (an approved request); the
+ * attendance import writes its own rows ('import').
  */
-function attendance_upsert(int $staffId, string $ymd, array $data, ?int $loggedBy): int {
+function attendance_upsert(int $staffId, string $ymd, array $data, ?int $loggedBy, string $source = 'manual'): int {
     $status = trim((string)($data['status'] ?? ''));
     $in1 = $out1 = $in2 = $out2 = null;
     if ($status === '' || $status === 'P') {
@@ -134,28 +199,39 @@ function attendance_upsert(int $staffId, string $ymd, array $data, ?int $loggedB
         $out2 = array_key_exists('out2', $data) ? attendance_hhmm_to_min($data['out2']) : null;
         $status = ''; // P is implied by hours, never stored literally
     }
+    $src = attendance_source_supported();
     db_query(
-        "INSERT INTO attendance (hr_staff_id, work_date, status, in1, out1, in2, out2, logged_by, updated_at)
-         VALUES (:s, :d, :st, :i1, :o1, :i2, :o2, :lb, now())
+        "INSERT INTO attendance (hr_staff_id, work_date, status, in1, out1, in2, out2, logged_by, updated_at" . ($src ? ', source' : '') . ")
+         VALUES (:s, :d, :st, :i1, :o1, :i2, :o2, :lb, now()" . ($src ? ', :src' : '') . ")
          ON CONFLICT (hr_staff_id, work_date)
-         DO UPDATE SET status=:st, in1=:i1, out1=:o1, in2=:i2, out2=:o2, logged_by=:lb, updated_at=now()",
+         DO UPDATE SET status=:st, in1=:i1, out1=:o1, in2=:i2, out2=:o2, logged_by=:lb, updated_at=now()" . ($src ? ', source=:src' : ''),
         [':s'=>$staffId, ':d'=>$ymd, ':st'=>($status ?: null),
-         ':i1'=>$in1, ':o1'=>$out1, ':i2'=>$in2, ':o2'=>$out2, ':lb'=>$loggedBy]
+         ':i1'=>$in1, ':o1'=>$out1, ':i2'=>$in2, ':o2'=>$out2, ':lb'=>$loggedBy] + ($src ? [':src' => $source] : [])
     );
     return (int) db_query("SELECT id FROM attendance WHERE hr_staff_id=:s AND work_date=:d", [':s'=>$staffId, ':d'=>$ymd])->fetchColumn();
 }
 
+/**
+ * The page filters every attendance list shares (alias s = hr_staff):
+ * department, home property, employing company.
+ */
+function attendance_filter_sql(array $filters, array &$params): string {
+    $w = '';
+    if (!empty($filters['department'])) { $w .= ' AND s.department = :dept'; $params[':dept'] = (string)$filters['department']; }
+    if (!empty($filters['venue_id']))   { $w .= ' AND s.venue_id = :fvid';  $params[':fvid'] = (int)$filters['venue_id']; }
+    if (!empty($filters['company_id']) && hr_staff_company_supported()) { $w .= ' AND s.company_id = :fco'; $params[':fco'] = (int)$filters['company_id']; }
+    return $w;
+}
+
 /** Staff (scoped) with their attendance row for one date — LEFT JOIN so blanks show. */
-function fetch_attendance_for_date(?array $venueIds, string $ymd, array $filters = []): array {
+function fetch_attendance_for_date(?array $venueIds, string $ymd, array $filters = [], ?array $companyIds = null): array {
     if (!attendance_supported() || !hr_staff_supported()) return [];
     $where = "WHERE s.status = 'active'"; $params = [':d' => $ymd];
-    $scope = ''; hr_scope_sql($venueIds, $scope, $params, 's');   // hr_staff aliased as s (home OR extra venue)
-    $where .= $scope;
-    if (!empty($filters['department'])) { $where .= ' AND s.department = :dept'; $params[':dept'] = (string)$filters['department']; }
-    if (!empty($filters['venue_id']))   { $where .= ' AND s.venue_id = :fvid';  $params[':fvid'] = (int)$filters['venue_id']; }
+    $scope = ''; hr_scope_sql($venueIds, $scope, $params, 's', $companyIds);   // hr_staff aliased as s (home OR extra venue, or a managed company)
+    $where .= $scope . attendance_filter_sql($filters, $params);
     return db_query(
         "SELECT s.id AS hr_staff_id, s.full_name, s.position, s.department, s.venue_id, s.unit_label, s.off_day,
-                a.id AS att_id, a.status, a.in1, a.out1, a.in2, a.out2
+                a.id AS att_id, a.status, a.in1, a.out1, a.in2, a.out2" . (attendance_night_supported() ? ', a.night_duty' : '') . "
            FROM hr_staff s
            LEFT JOIN attendance a ON a.hr_staff_id = s.id AND a.work_date = :d
           $where
@@ -214,15 +290,13 @@ function attendance_person_summary(array $days, ?string $department): array {
  * with their per-day effective status and a computed summary.
  * Returns ['days'=>N, 'staff'=>[ ['id','name','department','venue_id','cells'=>[day=>status], 'summary'=>[...] ] ]].
  */
-function attendance_month_matrix(?array $venueIds, int $year, int $month, array $filters = []): array {
+function attendance_month_matrix(?array $venueIds, int $year, int $month, array $filters = [], ?array $companyIds = null): array {
     if (!attendance_supported() || !hr_staff_supported()) return ['days'=>0, 'staff'=>[]];
     $daysInMonth = (int) date('t', strtotime(sprintf('%04d-%02d-01', $year, $month)));
 
     $where = "WHERE s.status = 'active'"; $params = [];
-    $scope = ''; hr_scope_sql($venueIds, $scope, $params, 's');
-    $where .= $scope;
-    if (!empty($filters['department'])) { $where .= ' AND s.department = :dept'; $params[':dept'] = (string)$filters['department']; }
-    if (!empty($filters['venue_id']))   { $where .= ' AND s.venue_id = :fvid';  $params[':fvid'] = (int)$filters['venue_id']; }
+    $scope = ''; hr_scope_sql($venueIds, $scope, $params, 's', $companyIds);
+    $where .= $scope . attendance_filter_sql($filters, $params);
     $staff = db_query(
         "SELECT s.id, s.full_name, s.department, s.venue_id, s.off_day
            FROM hr_staff s $where
@@ -261,12 +335,71 @@ function attendance_month_matrix(?array $venueIds, int $year, int $month, array 
     return ['days'=>$daysInMonth, 'staff'=>$out];
 }
 
+/** The Monday of the week holding a date (Y-m-d). */
+function attendance_week_start(string $ymd): string {
+    return date('Y-m-d', strtotime($ymd . ' -' . ((int)date('N', strtotime($ymd)) - 1) . ' days'));
+}
+
+/**
+ * One person's week, judged: ['days' => worked, 'hours', 'ot', 'nights',
+ * 'missing' => days with a time in and no time out (or the reverse),
+ * 'off_worked' => worked on their weekly off day, 'no_rest' => worked all 7 days
+ * (Employment Act s.27: one rest day in every seven)]. $cells: [Y-m-d => row].
+ */
+function attendance_week_figures(array $cells, string $offDay, array $days): array {
+    $f = ['days' => 0, 'hours' => 0.0, 'ot' => 0.0, 'nights' => 0, 'missing' => 0, 'off_worked' => 0, 'no_rest' => false];
+    foreach ($days as $ymd) {
+        $row = $cells[$ymd] ?? null;
+        if (!$row) continue;
+        if (($row['in1'] !== null) !== ($row['out1'] !== null) || ($row['in2'] !== null) !== ($row['out2'] !== null)) $f['missing']++;
+        if (attendance_effective_status($row) !== 'P') continue;
+        $f['days']++;
+        $h = attendance_hours($row);
+        $f['hours'] += $h;
+        $f['ot'] += $h - ATTENDANCE_STANDARD_HOURS;
+        if (attendance_is_night($row)) $f['nights']++;
+        if (attendance_is_off_day($offDay, $ymd)) $f['off_worked']++;
+    }
+    $f['no_rest'] = count($days) === 7 && $f['days'] === 7;
+    $f['hours'] = round($f['hours'], 2);
+    $f['ot'] = round($f['ot'], 2);
+    return $f;
+}
+
+/**
+ * The weekly grid: everyone in scope (active, plus anyone with a record that week)
+ * × the seven days from $monday. Returns ['days' => [Y-m-d ×7], 'staff' => [[...row,
+ * 'cells' => [Y-m-d => attendance row], 'fig' => attendance_week_figures()]]].
+ */
+function attendance_week(?array $venueIds, string $monday, array $filters = [], ?array $companyIds = null): array {
+    $days = [];
+    for ($i = 0; $i < 7; $i++) $days[] = date('Y-m-d', strtotime($monday . " +$i days"));
+    if (!attendance_supported() || !hr_staff_supported()) return ['days' => $days, 'staff' => []];
+    $params = [':a' => $days[0], ':b' => $days[6]];
+    $where = "WHERE (s.status = 'active' OR EXISTS (SELECT 1 FROM attendance x WHERE x.hr_staff_id = s.id AND x.work_date BETWEEN :a AND :b))";
+    $scope = ''; hr_scope_sql($venueIds, $scope, $params, 's', $companyIds);
+    $where .= $scope . attendance_filter_sql($filters, $params);
+    $staff = db_query("SELECT s.* FROM hr_staff s $where ORDER BY s.venue_id NULLS LAST, s.unit_label, s.sort_order, s.full_name", $params)->fetchAll();
+    if (!$staff) return ['days' => $days, 'staff' => []];
+    $in = implode(',', array_map(fn($x) => (int)$x['id'], $staff));
+    $cells = [];
+    foreach (db_query("SELECT * FROM attendance WHERE hr_staff_id IN ($in) AND work_date BETWEEN :a AND :b", [':a' => $days[0], ':b' => $days[6]])->fetchAll() as $row) {
+        $cells[(int)$row['hr_staff_id']][(string)$row['work_date']] = $row;
+    }
+    foreach ($staff as &$st) {
+        $st['cells'] = $cells[(int)$st['id']] ?? [];
+        $st['fig'] = attendance_week_figures($st['cells'], (string)$st['off_day'], $days);
+    }
+    unset($st);
+    return ['days' => $days, 'staff' => $staff];
+}
+
 /**
  * Dashboard aggregates for a month (scoped). KPI totals + by-property and
  * by-department breakdowns, built from the month matrix (one pass).
  */
-function attendance_dashboard(?array $venueIds, int $year, int $month, array $filters = []): array {
-    $matrix = attendance_month_matrix($venueIds, $year, $month, $filters);
+function attendance_dashboard(?array $venueIds, int $year, int $month, array $filters = [], ?array $companyIds = null): array {
+    $matrix = attendance_month_matrix($venueIds, $year, $month, $filters, $companyIds);
     $daysInMonth = $matrix['days'];
     $kpi = ['staff'=>0,'daysWorked'=>0,'hours'=>0.0,'ot'=>0.0,'offLeave'=>0,'sick'=>0,'rec'=>0,'ph'=>0,'possible'=>0];
     $byProp = []; $byDept = [];
@@ -330,10 +463,10 @@ function leave_status_badge(string $s): string {
 }
 
 /** Scoped list of leave requests (pending first, then most recent). */
-function fetch_leave_requests(?array $venueIds, array $filters = []): array {
+function fetch_leave_requests(?array $venueIds, array $filters = [], ?array $companyIds = null): array {
     if (!leave_requests_supported() || !hr_staff_supported()) return [];
     $where = 'WHERE 1=1'; $params = [];
-    $scope = ''; hr_scope_sql($venueIds, $scope, $params, 's');
+    $scope = ''; hr_scope_sql($venueIds, $scope, $params, 's', $companyIds);
     $where .= $scope;
     if (!empty($filters['status'])) { $where .= ' AND l.status = :st'; $params[':st'] = (string)$filters['status']; }
     return db_query(
@@ -391,7 +524,7 @@ function leave_decide(int $id, string $status, ?int $by): int {
     $cur = $req['start_date'];
     while ($cur <= $req['end_date']) {
         if (!attendance_is_off_day($req['off_day'] ?? '', $cur)) {
-            attendance_upsert((int)$req['hr_staff_id'], $cur, ['status' => 'LV'], $by);
+            attendance_upsert((int)$req['hr_staff_id'], $cur, ['status' => 'LV'], $by, 'request');
             $stamped++;
         }
         $cur = date('Y-m-d', strtotime($cur . ' +1 day'));
@@ -400,7 +533,9 @@ function leave_decide(int $id, string $status, ?int $by): int {
 }
 
 /** Count of pending leave requests in scope — for a nav/section badge. */
-function leave_pending_count(?array $venueIds): int {
+function leave_pending_count(?array $venueIds, ?array $companyIds = null): int {
     if (!leave_requests_supported()) return 0;
-    return count(fetch_leave_requests($venueIds, ['status' => 'pending']));
+    // Both approval steps are waiting (add_staff_requests.sql added 'pending_hr').
+    return count(fetch_leave_requests($venueIds, ['status' => 'pending'], $companyIds))
+         + count(fetch_leave_requests($venueIds, ['status' => 'pending_hr'], $companyIds));
 }

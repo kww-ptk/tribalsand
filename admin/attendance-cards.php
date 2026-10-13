@@ -8,14 +8,16 @@ declare(strict_types=1);
  * handed out / laminated, a card is what lets someone clock in without
  * signing in to anything.
  *
- * Gate: owner or manager (require_manager). Property picker + every staff
- * row shown are scoped by admin_venue_ids().
+ * Gate: owner, manager or HR (require_hr). Pick a property, a company, or
+ * (owner/HR) everyone with no property; every row is scoped by admin_venue_ids()
+ * plus the companies a manager looks after (hr_admin_company_ids()).
  */
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/hr.php';
 require_once __DIR__ . '/../includes/attendance-clock.php';
+require_once __DIR__ . '/../includes/hr-establishment.php';
 require_login();
 require_hr();
 
@@ -26,20 +28,30 @@ if (!clock_kiosk_enabled()) {
     header('Location: /admin/attendance-devices.php'); exit;
 }
 
-$scope = admin_venue_ids();   // null = owner (all); array = manager's venues
+$scope      = admin_venue_ids();       // null = owner/HR (all); array = manager's venues
+$companyIds = hr_admin_company_ids();   // companies a manager looks after (Tribal Sand Limited has no property)
 
-// ── Property picker, scoped ─────────────────────────────────────────────
+// ── Who to print for: a property, a company, or (owner/HR) people with no property ──
+// Key "v<id>" / "c<id>" / "none"; the old ?venue=<id> links still work.
 $venues = $scope === null
     ? db_query("SELECT id, name FROM venues ORDER BY sort_order ASC, name ASC")->fetchAll()
     : ($scope
         ? db_query("SELECT id, name FROM venues WHERE id IN (" . implode(',', array_map('intval', $scope)) . ")
                     ORDER BY sort_order ASC, name ASC")->fetchAll()
         : []);
-$allowedVenueIds = array_map(fn($v) => (int)$v['id'], $venues);
+$groups = [];
+foreach ($venues as $v) $groups['v' . (int)$v['id']] = ['label' => $v['name'], 'filter' => ['venue_id' => (int)$v['id']]];
+if (hr_staff_company_supported()) {
+    foreach (hr_company_names() as $cid => $cname) {
+        if ($scope !== null && !in_array($cid, $companyIds ?? [], true)) continue;
+        $groups['c' . $cid] = ['label' => 'Company: ' . $cname, 'filter' => ['company_id' => $cid]];
+    }
+}
+if ($scope === null) $groups['none'] = ['label' => 'No property (office, restaurant, plots, kite school…)', 'filter' => ['no_venue' => true]];
 
-$venueId = (int)($_POST['venue_id'] ?? $_GET['venue'] ?? 0);
-if ($venueId && !in_array($venueId, $allowedVenueIds, true)) $venueId = 0;   // foreign id, ignored
-if (!$venueId && $allowedVenueIds) $venueId = $allowedVenueIds[0];
+$group = (string)($_POST['group'] ?? $_GET['group'] ?? '');
+if ($group === '' && (int)($_GET['venue'] ?? 0) > 0) $group = 'v' . (int)$_GET['venue'];
+if (!isset($groups[$group])) $group = (string)(array_key_first($groups) ?? '');   // foreign key ignored
 
 $flash = null;
 if (!empty($_SESSION['hold_flash'])) { $flash = $_SESSION['hold_flash']; unset($_SESSION['hold_flash']); }
@@ -50,7 +62,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if (($_POST['action'] ?? '') === 'reissue') {
         $sid  = (int)($_POST['id'] ?? 0);
         $staf = $sid ? fetch_hr_staff_row($sid) : false;
-        $ok = $staf && $staf['venue_id'] !== null && in_array((int)$staf['venue_id'], $allowedVenueIds, true);
+        $ok = $staf && hr_staff_in_venue_scope($sid, $staf['venue_id'] !== null ? (int)$staf['venue_id'] : null, $scope, $companyIds);
         if ($ok) {
             clock_reissue_token($sid);
             audit_log('attendance_device.card_reissue', 'hr_staff', $sid, (string)$staf['full_name']);
@@ -59,14 +71,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'That staff member isn’t yours to reissue.'];
         }
     }
-    header('Location: /admin/attendance-cards.php?venue=' . $venueId); exit;
+    header('Location: /admin/attendance-cards.php?group=' . urlencode($group)); exit;
 }
 
 $pageTitle  = 'Clock cards';
 $activeMenu = 'attendance_cards';
 
-$people = $venueId
-    ? fetch_hr_staff($scope, ['venue_id' => $venueId, 'status' => 'active'])
+$people = $group !== ''
+    ? fetch_hr_staff($scope, $groups[$group]['filter'] + ['status' => 'active'], $companyIds)
     : [];
 
 include __DIR__ . '/_layout.php';
@@ -95,21 +107,21 @@ include __DIR__ . '/_layout.php';
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?> is-flash"><?= e($flash['msg']) ?></div><?php endif; ?>
 
 <form method="GET" action="/admin/attendance-cards.php" class="no-print" style="display:flex;gap:12px;align-items:flex-end;margin-bottom:16px">
-  <div class="filter-field"><span>Property</span>
-    <select name="venue" class="eselect" onchange="this.form.submit()">
-      <?php if (!$allowedVenueIds): ?><option value="0">No properties</option><?php endif; ?>
-      <?php foreach ($venues as $v): ?>
-      <option value="<?= (int)$v['id'] ?>" <?= $venueId === (int)$v['id'] ? 'selected' : '' ?>><?= e($v['name']) ?></option>
+  <div class="filter-field"><span>Print cards for</span>
+    <select name="group" class="eselect" onchange="this.form.submit()">
+      <?php if (!$groups): ?><option value="">Nobody to print for</option><?php endif; ?>
+      <?php foreach ($groups as $k => $g): ?>
+      <option value="<?= e($k) ?>" <?= $group === $k ? 'selected' : '' ?>><?= e($g['label']) ?></option>
       <?php endforeach; ?>
     </select>
   </div>
   <button type="button" class="btn-primary btn-sm" onclick="window.print()"><?= admin_icon('download', 15) ?> Print all</button>
 </form>
 
-<?php if (!$venueId): ?>
-<div class="card"><div class="card__body card__body--pad"><p class="text-muted" style="margin:0">No property available to print cards for.</p></div></div>
+<?php if ($group === ''): ?>
+<div class="card"><div class="card__body card__body--pad"><p class="text-muted" style="margin:0">No property or company available to print cards for.</p></div></div>
 <?php elseif (!$people): ?>
-<div class="card"><div class="card__body card__body--pad"><p class="text-muted" style="margin:0">No active staff at this property. Add them in the <a href="/admin/staff.php?tab=directory">directory</a> first.</p></div></div>
+<div class="card"><div class="card__body card__body--pad"><p class="text-muted" style="margin:0">No active staff here. Add them in the <a href="/admin/staff.php?tab=directory">directory</a> first.</p></div></div>
 <?php else: ?>
 <div class="cards-grid">
   <?php foreach ($people as $p):
@@ -119,12 +131,12 @@ include __DIR__ . '/_layout.php';
   <div class="qr-card">
     <div data-qr="<?= e($tok) ?>"></div>
     <div class="qr-card__name"><?= e($p['full_name']) ?></div>
-    <div class="qr-card__pos"><?= e($p['position'] ?: '&mdash;') ?></div>
+    <div class="qr-card__pos"><?= e($p['position'] ?: '—') ?><?php if (!empty($p['payroll_no'])): ?> · No. <?= e($p['payroll_no']) ?><?php endif; ?></div>
     <form method="POST" action="/admin/attendance-cards.php" class="no-print">
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="reissue">
       <input type="hidden" name="id" value="<?= $sid ?>">
-      <input type="hidden" name="venue_id" value="<?= $venueId ?>">
+      <input type="hidden" name="group" value="<?= e($group) ?>">
       <button type="submit" class="btn-outline btn-sm" data-confirm="Issue <?= e($p['full_name']) ?> a new card? Their current printed card stops working the instant you do this.">Reissue card</button>
     </form>
   </div>

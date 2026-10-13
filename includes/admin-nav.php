@@ -140,11 +140,13 @@ function admin_nav_definition(array $f, array $badge = []): array {
                 $tab('Week view', 'timetable.php', $on('timetable'), 'Timetable'),
             ]),
             $item('Attendance', 'attendance', [
-                $tab('Attendance', 'attendance.php', $on('reports') || $on('hr')),
+                $tab('Attendance', ['attendance.php', 'attendance-import.php'], $on('reports') || $on('hr')),
+                $tab('Requests', 'staff-requests.php', $on('reports') || $on('hr'), 'Staff requests'),
                 $tab('Clock kiosks', 'attendance-devices.php', ($on('reports') || $on('hr')) && $on('clockNav')),
                 $tab('Clock cards', 'attendance-cards.php', ($on('reports') || $on('hr')) && $on('clockOn')),
             ]),
-            $item('Staff', 'staff', [$tab('Staff', ['staff.php', 'employee.php'], $on('owner') || $on('hr'))]),
+            $item('Staff', 'staff', [$tab('Staff', ['staff.php', 'employee.php', 'staff-import.php'], $on('owner') || $on('hr'))]),
+            $item('Staff rooms', 'staff-rooms', [$tab('Staff rooms', 'staff-rooms.php', $on('owner') || $on('hr') || $on('manager'))]),
         ]],
 
         ['key' => 'restaurant', 'icon' => 'menus', 'title' => 'Restaurant', 'items' => [
@@ -386,7 +388,8 @@ const ADMIN_NAV_SEARCH_WORDS = [
     'rates.php'            => 'prices pricing rate card season',
     'quote-builder.php'    => 'quote quotation price offer',
     'acct-documents.php'   => 'invoices payments receipts credit notes',
-    'staff.php'            => 'team users accounts roles access permissions',
+    'staff.php'            => 'team users accounts roles access permissions payroll company',
+    'staff-rooms.php'      => 'staff housing accommodation beds quarters room allocation',
     'emails.php'           => 'email notifications templates',
     'settings.php'         => 'settings configuration',
     'conflicts.php'        => 'double booking overlap',

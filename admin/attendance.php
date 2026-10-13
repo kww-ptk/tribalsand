@@ -17,21 +17,30 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/attendance.php';
 require_once __DIR__ . '/../includes/attendance-clock.php';
+require_once __DIR__ . '/../includes/hr-establishment.php';
+require_once __DIR__ . '/../includes/attendance-import.php';
+require_once __DIR__ . '/../includes/hr-balances.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_login();
 require_hr();
 
-$venueIds = admin_venue_ids();
+// Leave moved into Staff requests (one inbox, two-step approval) once that migration ran.
+if (($_GET['view'] ?? '') === 'leave' && function_exists('leave_requests_supported') && file_exists(__DIR__ . '/../includes/staff-requests.php')) {
+    require_once __DIR__ . '/../includes/staff-requests.php';
+    if (staff_requests_supported()) { header('Location: /admin/staff-requests.php'); exit; }
+}
+$venueIds   = admin_venue_ids();
+$companyIds = hr_admin_company_ids();   // companies this account manages (Tribal Sand Limited has no property)
 $view = (string)($_GET['view'] ?? 'daily');
-if (!in_array($view, ['daily', 'month', 'dashboard', 'person', 'leave'], true)) $view = 'daily';
+if (!in_array($view, ['daily', 'week', 'month', 'summary', 'holidays', 'dashboard', 'person', 'leave'], true)) $view = 'daily';
 
 /** True when the acting account may manage attendance/leave for this staff id. */
-function att_staff_in_scope(int $staffId, ?array $venueIds): bool {
+function att_staff_in_scope(int $staffId, ?array $venueIds, ?array $companyIds = null): bool {
     if (!$staffId) return false;
     $row = fetch_hr_staff_row($staffId);
     if (!$row) return false;
     // In scope via HOME venue OR any additional venue (Item 5).
-    return hr_staff_in_venue_scope($staffId, $row['venue_id'] !== null ? (int)$row['venue_id'] : null, $venueIds);
+    return hr_staff_in_venue_scope($staffId, $row['venue_id'] !== null ? (int)$row['venue_id'] : null, $venueIds, $companyIds);
 }
 
 $flash = null;
@@ -46,7 +55,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
 
     // Only staff in the acting account's scope may be written.
     $allowed = [];
-    foreach (fetch_attendance_for_date($venueIds, $ymd) as $r) $allowed[(int)$r['hr_staff_id']] = true;
+    foreach (fetch_attendance_for_date($venueIds, $ymd, [], $companyIds) as $r) $allowed[(int)$r['hr_staff_id']] = true;
 
     $status = $_POST['status'] ?? []; $in1 = $_POST['in1'] ?? []; $out1 = $_POST['out1'] ?? [];
     $in2 = $_POST['in2'] ?? []; $out2 = $_POST['out2'] ?? [];
@@ -61,6 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
         // Skip completely empty rows (no status, no times) so we don't create blank records.
         if ($st === '' && trim($row['in1'].$row['out1'].$row['in2'].$row['out2']) === '') continue;
         attendance_upsert((int)$sid, $ymd, $row, (int)($_SESSION['admin_id'] ?? 0));
+        if (isset($_POST['night_shown'][$sid])) attendance_set_night((int)$sid, $ymd, !empty($_POST['night'][$sid]));
         $n++;
     }
     audit_log('attendance.save_day', 'attendance', 0, "$ymd: $n rows");
@@ -72,7 +82,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'leave_create') {
     verify_csrf();
     $sid = (int)($_POST['hr_staff_id'] ?? 0);
-    if (leave_requests_supported() && att_staff_in_scope($sid, $venueIds)) {
+    if (leave_requests_supported() && att_staff_in_scope($sid, $venueIds, $companyIds)) {
         $id = leave_create($sid, (string)($_POST['start_date'] ?? ''), (string)($_POST['end_date'] ?? ''),
                            (string)($_POST['leave_type'] ?? 'annual'), trim((string)($_POST['reason'] ?? '')),
                            (int)($_SESSION['admin_id'] ?? 0));
@@ -91,7 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'leave
     $lid = (int)($_POST['leave_id'] ?? 0);
     $decision = ($_POST['decision'] ?? '') === 'approved' ? 'approved' : 'declined';
     $req = leave_requests_supported() ? fetch_leave_request($lid) : false;
-    if ($req && att_staff_in_scope((int)$req['hr_staff_id'], $venueIds)) {
+    if ($req && att_staff_in_scope((int)$req['hr_staff_id'], $venueIds, $companyIds)) {
         $stamped = leave_decide($lid, $decision, (int)($_SESSION['admin_id'] ?? 0));
         audit_log('attendance.leave_' . $decision, 'leave_request', $lid, $stamped ? "$stamped days" : '');
         $_SESSION['hold_flash'] = ['type'=>'success','msg'=>$decision === 'approved'
@@ -103,6 +113,63 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'leave
     header('Location: /admin/attendance.php?view=leave'); exit;
 }
 
+// ── Public holidays as HR counts them (owner + HR) ───────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'holiday') {
+    verify_csrf();
+    $hy = (int)($_POST['year'] ?? date('Y'));
+    if (!is_owner() && !is_hr()) {
+        $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Holidays are changed by the owner or HR.'];
+    } else {
+        try {
+            $d = (string)($_POST['date'] ?? '');
+            $state = (string)($_POST['state'] ?? '');
+            if ($state === 'add') $state = trim((string)($_POST['name'] ?? '')) ?: throw new RuntimeException('Give the holiday a name.');
+            hr_holiday_set($d, $state, (string)($_POST['reason'] ?? ''), (string)(current_admin()['name'] ?? 'HR'));
+            audit_log('hr.holiday', 'setting', 0, "$d → $state: " . (string)($_POST['reason'] ?? ''));
+            $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Holiday list updated. Close the month again if it was already closed.'];
+            $hy = (int)substr($d, 0, 4);
+        } catch (Throwable $e) {
+            $_SESSION['hold_flash'] = ['type'=>'error','msg'=>$e->getMessage()];
+        }
+    }
+    header('Location: /admin/attendance.php?view=holidays&year=' . $hy); exit;
+}
+
+// ── Night allowance per property (owner + HR) ────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'night_rates') {
+    verify_csrf();
+    if (is_owner() || is_hr()) {
+        $valid = array_map('intval', array_column(db_query('SELECT id FROM venues')->fetchAll(), 'id'));
+        $rates = [];
+        foreach ((array)($_POST['rate'] ?? []) as $vid => $amt) {
+            $amt = trim(str_replace(',', '', (string)$amt));
+            if (in_array((int)$vid, $valid, true) && is_numeric($amt) && (float)$amt > 0 && (float)$amt < 100000) $rates[(string)(int)$vid] = round((float)$amt, 2);
+        }
+        set_setting('night_allowance', json_encode($rates));
+        audit_log('attendance.night_rates', 'setting', 0, json_encode($rates));
+        $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Night allowance saved.'];
+    }
+    header('Location: /admin/attendance.php?view=summary&month=' . urlencode((string)($_POST['month'] ?? ''))); exit;
+}
+
+// ── Close a month: write everyone's balances for it (owner + HR) ─────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'close_month') {
+    verify_csrf();
+    $ym = (string)($_POST['month'] ?? '');
+    if (!is_owner() && !is_hr()) {
+        $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Closing a month is for the owner and HR.'];
+    } else {
+        try {
+            $n = hr_bal_close_month($ym, (int)($_SESSION['admin_id'] ?? 0));
+            $_SESSION['hold_flash'] = ['type'=>'success','msg'=>date('F Y', strtotime($ym . '-01')) . ' closed — balances updated for ' . $n['people'] . ' people'
+                . ($n['skipped'] ? ' (' . $n['skipped'] . ' already covered by their opening balance)' : '') . '.'];
+        } catch (Throwable $e) {
+            $_SESSION['hold_flash'] = ['type'=>'error','msg'=>$e->getMessage()];
+        }
+    }
+    header('Location: /admin/attendance.php?view=summary&month=' . urlencode($ym)); exit;
+}
+
 $pageTitle  = 'Attendance';
 $activeMenu = 'attendance';
 
@@ -110,21 +177,91 @@ $activeMenu = 'attendance';
 $date  = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)($_GET['date'] ?? '')) ? $_GET['date'] : date('Y-m-d');
 $month = preg_match('/^\d{4}-\d{2}$/', (string)($_GET['month'] ?? '')) ? $_GET['month'] : date('Y-m');
 [$mY, $mM] = array_map('intval', explode('-', $month));
+$week  = attendance_week_start(preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)($_GET['week'] ?? '')) ? (string)$_GET['week'] : date('Y-m-d'));
 
 // Shared filters (department / property).
 $depts   = hr_departments();
 $fDept   = in_array(($_GET['dept'] ?? ''), $depts, true) ? $_GET['dept'] : '';
 $fVenue  = (int)($_GET['venue'] ?? 0);
-$filters = array_filter(['department' => $fDept, 'venue_id' => $fVenue]);
+// Employing company — everyone sees the companies their scope reaches (managers: the ones they look after).
+$coNames = hr_staff_company_supported() ? hr_company_names() : [];
+if ($venueIds !== null) $coNames = array_intersect_key($coNames, array_flip($companyIds ?? []));
+$fCo     = isset($coNames[(int)($_GET['co'] ?? 0)]) ? (int)$_GET['co'] : 0;
+$filters = array_filter(['department' => $fDept, 'venue_id' => $fVenue, 'company_id' => $fCo]);
 
 $venues = db_query('SELECT id, name FROM venues ORDER BY sort_order ASC, name ASC')->fetchAll();
+
+// ── Week CSV (same scope + filters) ──────────────────────────────────────────
+if (($_GET['export'] ?? '') === 'week' && attendance_supported()) {
+    $wk = attendance_week($venueIds, $week, $filters, $companyIds);
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="attendance-week_' . $week . '.csv"');
+    $out = fopen('php://output', 'w');
+    fwrite($out, "\xEF\xBB\xBF");
+    $head = ['Name', 'Position', 'Property / unit', 'Off day'];
+    foreach ($wk['days'] as $d) $head[] = date('D j M', strtotime($d));
+    array_push($head, 'Days worked', 'Hours', 'Overtime hours', 'Night duties', 'Missing time out', 'Worked on off day', 'No rest day');
+    fputcsv($out, $head);
+    $venueNamesW = []; foreach ($venues as $v) { $venueNamesW[(int)$v['id']] = $v['name']; }
+    foreach ($wk['staff'] as $s) {
+        $row = [$s['full_name'], $s['position'], $s['venue_id'] !== null ? ($venueNamesW[(int)$s['venue_id']] ?? '') : (string)$s['unit_label'], $s['off_day'] ?: 'SUN'];
+        foreach ($wk['days'] as $d) {
+            $c = $s['cells'][$d] ?? null;
+            $eff = $c ? attendance_effective_status($c) : '';
+            $row[] = !$c ? '' : ($eff === 'P'
+                ? trim(attendance_min_to_hhmm($c['in1'] !== null ? (int)$c['in1'] : null) . '-' . attendance_min_to_hhmm($c['out1'] !== null ? (int)$c['out1'] : null)
+                  . ($c['in2'] !== null ? ' ' . attendance_min_to_hhmm((int)$c['in2']) . '-' . attendance_min_to_hhmm($c['out2'] !== null ? (int)$c['out2'] : null) : ''), '-')
+                  . ' (' . number_format(attendance_hours($c), 1) . 'h' . (attendance_is_night($c) ? ', night' : '') . ')'
+                : $eff);
+        }
+        $f = $s['fig'];
+        array_push($row, $f['days'], $f['hours'], $f['ot'], $f['nights'], $f['missing'], $f['off_worked'], $f['no_rest'] ? 'yes' : '');
+        fputcsv($out, $row);
+    }
+    fclose($out);
+    exit;
+}
+
+// ── Month summary CSV (HR's own columns; same scope + filters) ───────────────
+if (($_GET['export'] ?? '') === 'summary' && attendance_supported()) {
+    $sumRows = hr_bal_month($month, $venueIds, $companyIds, $filters);
+    $venueNamesX = []; foreach ($venues as $v) { $venueNamesX[(int)$v['id']] = $v['name']; }
+    $coAll = hr_company_names();
+    header('Content-Type: text/csv; charset=utf-8');
+    header('Content-Disposition: attachment; filename="attendance-summary_' . $month . '.csv"');
+    $out = fopen('php://output', 'w');
+    fwrite($out, "\xEF\xBB\xBF");   // Excel reads UTF-8 with a BOM
+    fputcsv($out, ['Company', 'Payroll no.', 'Name', 'Position', 'Property', 'Off day', 'Entitled off days (off day + PH)', 'Days worked',
+        'Days off taken', 'Of which recovery', 'PH not worked', 'Sick', 'Leave', 'Unpaid leave', 'Absent', 'Not recorded', 'Hours worked',
+        'Overtime hours', 'Overtime days', 'Off days earned', 'Off days owed (start)', 'Off days owed (end)', 'Leave accrued', 'Leave taken',
+        'Annual leave (end)', 'Rest days worked', 'Holidays worked', 'Holiday hours', 'Night duties', 'Night allowance (KES)',
+        'Normal hours', 'Overtime hours (paid)', 'Rest-day hours', 'Public-holiday hours']);
+    $nightRates = attendance_night_rates();
+    foreach ($sumRows as $sr) {
+        $s = $sr['staff']; $f = $sr['fig'];
+        if (!$f) continue;
+        $offStart = (float)($sr['before']['off_days'] ?? 0); $lvStart = (float)($sr['before']['annual_leave'] ?? 0);
+        $closed = hr_bal_month_closed($month) !== null;
+        $offEnd = $closed ? (float)($sr['after']['off_days'] ?? 0) : $offStart + ($sr['counts'] ? $f['off_earned'] : 0);
+        $lvEnd  = $closed ? (float)($sr['after']['annual_leave'] ?? 0) : $lvStart + ($sr['counts'] ? $f['leave_change'] : 0);
+        fputcsv($out, [$coAll[(int)($s['company_id'] ?? 0)] ?? '', $s['payroll_no'] ?? '', $s['full_name'], $s['position'],
+            $s['venue_id'] !== null ? ($venueNamesX[(int)$s['venue_id']] ?? '') : (string)$s['unit_label'], $s['off_day'] ?: 'SUN',
+            $f['entitled'], $f['worked'], $f['off_taken'], $f['rec'], $f['ph_taken'], $f['sick'], $f['leave'], $f['unpaid'], $f['absent'], $f['not_recorded'],
+            $f['hours'], $f['ot_hours'], $f['ot_days'], $f['off_earned'], round($offStart, 3), round($offEnd, 3),
+            $f['leave_accrued'], $f['leave'], round($lvEnd, 3), $f['rest_day_worked'], $f['holiday_worked'], $f['holiday_hours'],
+            $f['nights'], $s['venue_id'] !== null && isset($nightRates[(int)$s['venue_id']]) ? $f['nights'] * $nightRates[(int)$s['venue_id']] : 0,
+            $f['hours_normal'], $f['hours_overtime'], $f['hours_rest'], $f['hours_holiday']]);
+    }
+    fclose($out);
+    exit;
+}
 
 // ── CSV export of the month (same scope + filters) ───────────────────────────
 // Native .xlsx with preserved formulas needs the zip extension + the original
 // workbook template — a documented prod follow-up. CSV opens in Excel and
 // carries the same data the Month grid shows.
 if (($_GET['export'] ?? '') === 'csv' && attendance_supported()) {
-    $matrix = attendance_month_matrix($venueIds, $mY, $mM, $filters);
+    $matrix = attendance_month_matrix($venueIds, $mY, $mM, $filters, $companyIds);
     $daysIn = $matrix['days'];
     $venueNames = []; foreach ($venues as $v) { $venueNames[(int)$v['id']] = $v['name']; }
     $fname = 'attendance_' . $month . '.csv';
@@ -154,7 +291,12 @@ include __DIR__ . '/_layout.php';
 ?>
 <div class="page-header">
   <h1>Attendance</h1>
-  <a href="/admin/staff.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Team</a>
+  <div class="actions">
+    <?php if ((is_owner() || is_hr()) && function_exists('attendance_import_supported') && attendance_import_supported()): ?>
+    <a href="/admin/attendance-import.php" class="btn-outline btn-sm" data-help="attendance-import"><?= admin_icon('upload', 15) ?> Import from Excel</a>
+    <?php endif; ?>
+    <a href="/admin/staff.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Team</a>
+  </div>
 </div>
 <?php if ($flash): ?><div class="alert alert--<?= e($flash['type']) ?> is-flash"><?= e($flash['msg']) ?></div><?php endif; ?>
 
@@ -166,14 +308,14 @@ include __DIR__ . '/_layout.php';
 
 <?php
 // Preserve the active date/month + filters across the tab links.
-$qs = function (array $extra) use ($date, $month, $fDept, $fVenue) {
-    return http_build_query(array_merge(['date'=>$date,'month'=>$month,'dept'=>$fDept,'venue'=>$fVenue], $extra));
+$qs = function (array $extra) use ($date, $month, $week, $fDept, $fVenue, $fCo) {
+    return http_build_query(array_merge(['date'=>$date,'month'=>$month,'week'=>$week,'dept'=>$fDept,'venue'=>$fVenue,'co'=>$fCo], $extra));
 };
 $tab = fn($v, $label) => '<a href="/admin/attendance.php?' . e($qs(['view'=>$v])) . '" data-shell-link class="ts-tab' . ($view===$v?' is-active':'') . '" style="padding:9px 16px;font-weight:600;font-size:14px;text-decoration:none;border-bottom:2px solid ' . ($view===$v?'var(--teal,#1E5C6B)':'transparent') . ';color:' . ($view===$v?'var(--teal,#1E5C6B)':'var(--muted,#6b7280)') . '">' . e($label) . '</a>';
 ?>
-<?php $__leavePending = leave_requests_supported() ? leave_pending_count($venueIds) : 0; ?>
+<?php $__leavePending = leave_requests_supported() ? leave_pending_count($venueIds, $companyIds) : 0; ?>
 <div class="ts-tabs" role="tablist" style="display:flex;gap:6px;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:18px">
-  <?= $tab('daily', 'Daily') ?><?= $tab('month', 'Month grid') ?><?= $tab('dashboard', 'Dashboard') ?><?= $tab('leave', 'Leave' . ($__leavePending ? ' (' . $__leavePending . ')' : '')) ?>
+  <?= $tab('daily', 'Daily') ?><?= $tab('week', 'Week') ?><?= $tab('month', 'Month grid') ?><?= hr_balances_supported() ? $tab('summary', 'Month summary') . $tab('holidays', 'Holidays') : '' ?><?= $tab('dashboard', 'Dashboard') ?><?= $tab('leave', (function_exists('staff_requests_supported') && staff_requests_supported() ? 'Requests' : 'Leave') . ($__leavePending ? ' (' . $__leavePending . ')' : '')) ?>
 </div>
 
 <!-- Shared filters -->
@@ -186,6 +328,15 @@ $tab = fn($v, $label) => '<a href="/admin/attendance.php?' . e($qs(['view'=>$v])
       <button type="button" class="dp-btn" data-dp-target="attDateInput" style="min-width:150px"><?= e(date('D j M Y', strtotime($date))) ?></button>
       <input type="hidden" name="date" id="attDateInput" value="<?= e($date) ?>">
       <a class="btn-icon btn-icon--outline" href="/admin/attendance.php?<?= e($qs(['view'=>'daily','date'=>date('Y-m-d', strtotime($date.' +1 day'))])) ?>" data-shell-link aria-label="Next day"><?= admin_icon('chevron-right') ?></a>
+    </div>
+  </div>
+  <?php elseif ($view === 'week'): ?>
+  <div class="filter-field"><span>Week</span>
+    <div style="display:flex;gap:4px;align-items:center">
+      <a class="btn-icon btn-icon--outline" href="/admin/attendance.php?<?= e($qs(['view'=>'week','week'=>date('Y-m-d', strtotime($week.' -7 days'))])) ?>" data-shell-link aria-label="Previous week"><?= admin_icon('chevron-left') ?></a>
+      <button type="button" class="dp-btn" data-dp-target="attWeekInput" style="min-width:190px"><?= e(date('j M', strtotime($week)) . ' – ' . date('j M Y', strtotime($week . ' +6 days'))) ?></button>
+      <input type="hidden" name="week" id="attWeekInput" value="<?= e($week) ?>" onchange="this.form.submit()">
+      <a class="btn-icon btn-icon--outline" href="/admin/attendance.php?<?= e($qs(['view'=>'week','week'=>date('Y-m-d', strtotime($week.' +7 days'))])) ?>" data-shell-link aria-label="Next week"><?= admin_icon('chevron-right') ?></a>
     </div>
   </div>
   <?php else: ?>
@@ -215,6 +366,14 @@ $tab = fn($v, $label) => '<a href="/admin/attendance.php?' . e($qs(['view'=>$v])
       <?php foreach ($depts as $d): ?><option value="<?= e($d) ?>" <?= $fDept===$d?'selected':'' ?>><?= e($d) ?></option><?php endforeach; ?>
     </select>
   </div>
+  <?php if ($coNames): ?>
+  <div class="filter-field"><span>Company</span>
+    <select name="co" class="filter-select" onchange="this.form.submit()">
+      <option value="0">All companies</option>
+      <?php foreach ($coNames as $cid => $cn): ?><option value="<?= (int)$cid ?>" <?= $fCo===(int)$cid?'selected':'' ?>><?= e($cn) ?></option><?php endforeach; ?>
+    </select>
+  </div>
+  <?php endif; ?>
 </form>
 
 <?php
@@ -222,7 +381,7 @@ $tab = fn($v, $label) => '<a href="/admin/attendance.php?' . e($qs(['view'=>$v])
 $venueNames = []; foreach ($venues as $v) { $venueNames[(int)$v['id']] = $v['name']; }
 
 if ($view === 'daily'):
-  $rows = fetch_attendance_for_date($venueIds, $date, $filters);
+  $rows = fetch_attendance_for_date($venueIds, $date, $filters, $companyIds);
   // Group by property.
   $groups = [];
   foreach ($rows as $r) {
@@ -252,7 +411,7 @@ if ($view === 'daily'):
     <div class="card__head"><span class="card__title"><?= e($label) ?></span><span class="text-muted" style="font-size:12px"><?= count($gRows) ?> staff</span></div>
     <div class="card__body" style="padding:0"><div class="table-wrap">
       <table class="data-table att-table">
-        <thead><tr><th>Staff</th><th>Off</th><th>Quick</th><th>In 1</th><th>Out 1</th><th>In 2</th><th>Out 2</th><th>Status</th><th style="text-align:right">Total / OT</th></tr></thead>
+        <thead><tr><th>Staff</th><th>Off</th><th>Quick</th><th>In 1</th><th>Out 1</th><th>In 2</th><th>Out 2</th><th>Status</th><?php if (attendance_night_supported()): ?><th data-tip="Night duty — on its own when the shift runs past midnight; tick or untick to set it">Night</th><?php endif; ?><th style="text-align:right">Total / OT</th></tr></thead>
         <tbody>
           <?php foreach ($gRows as $r):
             $sid = (int)$r['hr_staff_id'];
@@ -300,6 +459,10 @@ if ($view === 'daily'):
                 <?php endforeach; ?>
               </select>
             </td>
+            <?php if (attendance_night_supported()): ?>
+            <td style="text-align:center"><input type="hidden" name="night_shown[<?= $sid ?>]" value="1">
+              <label class="att-night" data-tip="Night duty"><input type="checkbox" name="night[<?= $sid ?>]" value="1" <?= $r['att_id'] && attendance_is_night($r) ? 'checked' : '' ?> aria-label="Night duty for <?= e($r['full_name']) ?>"><?= admin_icon('moon', 15) ?></label></td>
+            <?php endif; ?>
             <td style="text-align:right"><span class="att-total" style="font-variant-numeric:tabular-nums"><?= $isP ? number_format(attendance_hours($r),1) . 'h' : '—' ?></span></td>
           </tr>
           <?php endforeach; ?>
@@ -310,13 +473,101 @@ if ($view === 'daily'):
   <?php endforeach; endif; ?>
 </form>
 
+<style>.att-night{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:1px solid var(--border,#e5e7eb);border-radius:8px;cursor:pointer;color:var(--muted,#6b7280)}
+.att-night input{position:absolute;opacity:0;width:1px;height:1px}
+.att-night:has(input:checked){background:#1E2A44;border-color:#1E2A44;color:#fff}
+.att-night:has(input:focus-visible){outline:2px solid var(--teal,#1E5C6B);outline-offset:2px}</style>
 <link rel="stylesheet" href="/css/timepicker.css?v=<?= @filemtime(__DIR__ . '/../css/timepicker.css') ?: '1' ?>">
 <script src="/js/timepicker.js?v=<?= @filemtime(__DIR__ . '/../js/timepicker.js') ?: '1' ?>"></script>
 <script src="/admin/assets/admin-attendance.js?v=<?= @filemtime(__DIR__ . '/assets/admin-attendance.js') ?: time() ?>"></script>
 
 <?php
+elseif ($view === 'week'):
+  $wk = attendance_week($venueIds, $week, $filters, $companyIds);
+  $wkHol = hr_public_holidays($wk['days'][0], $wk['days'][6]);
+  $wgroups = [];
+  foreach ($wk['staff'] as $s) {
+    $vid = $s['venue_id'] !== null ? (int)$s['venue_id'] : 0;
+    $wgroups[$vid > 0 ? ($venueNames[$vid] ?? 'Property') : (trim((string)$s['unit_label']) ?: 'No property')][] = $s;
+  }
+  $tot = ['missing' => 0, 'no_rest' => 0, 'nights' => 0];
+  foreach ($wk['staff'] as $s) { $tot['missing'] += $s['fig']['missing']; $tot['no_rest'] += $s['fig']['no_rest'] ? 1 : 0; $tot['nights'] += $s['fig']['nights']; }
+?>
+<div class="card no-print" style="margin-bottom:16px"><div class="card__body" style="padding:12px 18px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+  <span style="display:flex;gap:6px;flex-wrap:wrap">
+    <span class="badge badge--grey"><?= count($wk['staff']) ?> people</span>
+    <?php if ($tot['missing']): ?><span class="badge badge--orange"><?= $tot['missing'] ?> missing time out</span><?php endif; ?>
+    <?php if ($tot['no_rest']): ?><span class="badge badge--red"><?= $tot['no_rest'] ?> with no rest day</span><?php endif; ?>
+    <?php if ($tot['nights']): ?><span class="badge badge--blue"><?= $tot['nights'] ?> night duties</span><?php endif; ?>
+  </span>
+  <span style="display:flex;gap:8px">
+    <button type="button" class="btn-outline btn-sm" onclick="window.print()"><?= admin_icon('download', 15) ?> Print</button>
+    <a href="/admin/attendance.php?<?= e($qs(['view'=>'week','export'=>'week'])) ?>" class="btn-outline btn-sm"><?= admin_icon('download', 15) ?> Export</a>
+  </span>
+</div></div>
+<h2 class="att-week-title"><?= e(date('j M', strtotime($wk['days'][0])) . ' – ' . date('j M Y', strtotime($wk['days'][6]))) ?></h2>
+<?php if (!$wgroups): ?>
+<div class="card"><div class="card__body card__body--pad"><p class="text-muted" style="margin:0">No staff match these filters.</p></div></div>
+<?php else: foreach ($wgroups as $gl => $list): ?>
+<div class="card att-week-card" style="margin-bottom:16px">
+  <div class="card__head"><span class="card__title"><?= e($gl) ?></span><span class="text-muted" style="font-size:12px"><?= count($list) ?> people</span></div>
+  <div class="table-wrap"><table class="data-table att-week">
+    <thead><tr><th>Name</th>
+      <?php foreach ($wk['days'] as $d): ?><th class="d<?= isset($wkHol[$d]) ? ' is-ph' : '' ?>"<?= isset($wkHol[$d]) ? ' data-tip="' . e($wkHol[$d]) . '"' : '' ?>><?= e(date('D', strtotime($d))) ?><span><?= e(date('j M', strtotime($d))) ?></span></th><?php endforeach; ?>
+      <th class="n">Days</th><th class="n">Hours</th><th class="n">OT</th><th></th></tr></thead>
+    <tbody>
+    <?php foreach ($list as $s): $f = $s['fig']; ?>
+      <tr>
+        <td class="nm"><a href="/admin/employee.php?id=<?= (int)$s['id'] ?>#attendance"><strong><?= e($s['full_name']) ?></strong></a><span><?= e($s['position'] ?: '—') ?> · off <?= e($s['off_day'] ?: 'SUN') ?></span></td>
+        <?php foreach ($wk['days'] as $d): $c = $s['cells'][$d] ?? null; $eff = $c ? attendance_effective_status($c) : '';
+          $isOff = attendance_is_off_day((string)$s['off_day'], $d);
+          $miss = $c && (($c['in1'] !== null) !== ($c['out1'] !== null) || ($c['in2'] !== null) !== ($c['out2'] !== null)); ?>
+        <td class="d<?= $isOff ? ' is-off' : '' ?><?= isset($wkHol[$d]) ? ' is-ph' : '' ?><?= $miss ? ' is-miss' : '' ?>">
+          <a href="/admin/attendance.php?<?= e($qs(['view'=>'daily','date'=>$d])) ?>" data-shell-link>
+          <?php if (!$c): ?><span class="dot">·</span>
+          <?php elseif ($eff === 'P' || $c['in1'] !== null): ?>
+            <span class="t"><?= e(attendance_min_to_hhmm($c['in1'] !== null ? (int)$c['in1'] : null) ?: '?') ?>–<?= e(attendance_min_to_hhmm($c['out1'] !== null ? (int)$c['out1'] : null) ?: '?') ?></span>
+            <?php if ($c['in2'] !== null || $c['out2'] !== null): ?><span class="t"><?= e(attendance_min_to_hhmm($c['in2'] !== null ? (int)$c['in2'] : null) ?: '?') ?>–<?= e(attendance_min_to_hhmm($c['out2'] !== null ? (int)$c['out2'] : null) ?: '?') ?></span><?php endif; ?>
+            <span class="h"><?= number_format(attendance_hours($c), 1) ?>h<?= attendance_is_night($c) ? ' ' . admin_icon('moon', 11) : '' ?></span>
+          <?php else: ?><span class="badge <?= e(attendance_status_badge($eff)) ?>"><?= e($eff) ?></span><?php endif; ?>
+          </a>
+        </td>
+        <?php endforeach; ?>
+        <td class="n"><strong><?= $f['days'] ?></strong></td>
+        <td class="n"><?= number_format($f['hours'], 1) ?></td>
+        <td class="n"><?= ($f['ot'] > 0 ? '+' : '') . number_format($f['ot'], 1) ?></td>
+        <td class="fl"><?php if ($f['no_rest']): ?><span class="badge badge--red" data-tip="Worked all seven days — one rest day a week is the rule">no rest day</span><?php endif; ?>
+          <?php if ($f['missing']): ?><span class="badge badge--orange"><?= $f['missing'] ?> missing out</span><?php endif; ?>
+          <?php if ($f['off_worked']): ?><span class="badge badge--grey" data-tip="Worked on their weekly off day">off day worked</span><?php endif; ?></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table></div>
+</div>
+<?php endforeach; endif; ?>
+<style>
+.att-week-title{display:none}
+.att-week th.d{text-align:center;min-width:92px;font-size:11px}
+.att-week th.d span{display:block;font-weight:500;opacity:.8}
+.att-week td{vertical-align:top}
+.att-week td.nm strong{display:block;white-space:nowrap}
+.att-week td.nm span{font-size:11.5px;color:var(--muted,#6b7280);white-space:nowrap}
+.att-week td.d{text-align:center;padding:6px 4px}
+.att-week td.d a{display:flex;flex-direction:column;align-items:center;gap:1px;text-decoration:none;color:inherit}
+.att-week td.d .t{font-size:11.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.att-week td.d .h{font-size:11px;color:var(--muted,#6b7280);display:inline-flex;align-items:center;gap:2px}
+.att-week td.d .dot{color:var(--border,#e5e7eb)}
+.att-week td.is-off{background:#f6f3ef}
+.att-week .is-ph{background:#fdf0ec}
+.att-week td.is-miss{box-shadow:inset 0 0 0 2px #f2c48f}
+.att-week .n{text-align:right;white-space:nowrap}
+.att-week td.fl .badge{margin:0 4px 4px 0}
+@media print{.att-week-title{display:block;font-size:16px;margin:0 0 8px}.att-week-card{break-inside:avoid}.att-week td.d a{pointer-events:none}}
+</style>
+
+<?php
 elseif ($view === 'month'):
-  $matrix = attendance_month_matrix($venueIds, $mY, $mM, $filters);
+  $matrix = attendance_month_matrix($venueIds, $mY, $mM, $filters, $companyIds);
   $daysIn = $matrix['days'];
 ?>
 <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
@@ -349,14 +600,184 @@ elseif ($view === 'month'):
 <p class="text-muted" style="font-size:12px;margin-top:10px">Wk = days worked · Off = normal days off · SK = sick · Rec = recovery · PH = public holiday. Click a name for that person's month; click a day to edit it.</p>
 
 <?php
+elseif ($view === 'summary'):
+  $sumRows = hr_bal_month($month, $venueIds, $companyIds, $filters);
+  $closed  = hr_bal_month_closed($month);
+  $canClose = (is_owner() || is_hr()) && $month < date('Y-m');
+  $coAll   = hr_company_names();
+  $nightRates = attendance_night_rates();
+  $anyNights  = (bool) array_filter($sumRows, fn($sr) => ($sr['fig']['nights'] ?? 0) > 0);
+  $groups  = [];
+  foreach ($sumRows as $sr) {
+    if (!$sr['fig']) continue;
+    $g = $coAll[(int)($sr['staff']['company_id'] ?? 0)] ?? 'No company yet';
+    $groups[$g][] = $sr;
+  }
+?>
+<div class="card" style="margin-bottom:16px">
+  <div class="card__body" style="padding:14px 18px;display:flex;gap:14px;align-items:center;justify-content:space-between;flex-wrap:wrap">
+    <div>
+      <?php if ($closed): ?>
+        <span class="badge badge--green">Closed</span> <span class="text-muted" style="font-size:13px"><?= e(date('j M Y H:i', strtotime((string)$closed['closed_at']))) ?><?= $closed['by_name'] ? ' · ' . e($closed['by_name']) : '' ?> — balances include <?= e(date('F', strtotime($month . '-01'))) ?>.</span>
+      <?php elseif ($month >= date('Y-m')): ?>
+        <span class="badge badge--grey">Open</span> <span class="text-muted" style="font-size:13px">The month is still running — balances shown include it as it stands today.</span>
+      <?php else: ?>
+        <span class="badge badge--orange">Not closed</span> <span class="text-muted" style="font-size:13px">Check the month, then close it to add it to everyone's balances.</span>
+      <?php endif; ?>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <a href="/admin/attendance.php?<?= e($qs(['view'=>'summary','export'=>'summary'])) ?>" class="btn-outline btn-sm" data-tip="HR's monthly table, opens in Excel"><?= admin_icon('download', 15) ?> Export</a>
+      <?php if ($canClose): ?>
+      <form method="POST" action="/admin/attendance.php" style="margin:0"><?= csrf_field() ?><input type="hidden" name="action" value="close_month"><input type="hidden" name="month" value="<?= e($month) ?>">
+        <button class="btn-<?= $closed ? 'outline' : 'primary' ?> btn-sm" data-confirm="<?= $closed ? 'Close ' . e(date('F Y', strtotime($month . '-01'))) . ' again? Its balances are worked out afresh from the attendance as it is now.' : 'Close ' . e(date('F Y', strtotime($month . '-01'))) . '? Everyone\'s off days and leave for the month are added to their balances.' ?>"><?= admin_icon('check', 15) ?> <?= $closed ? 'Close again' : 'Close month' ?></button>
+      </form>
+      <?php endif; ?>
+    </div>
+  </div>
+</div>
+<?php if (!$groups): ?>
+<div class="card"><div class="card__body card__body--pad"><p class="text-muted" style="margin:0">No attendance recorded for <?= e(date('F Y', strtotime($month . '-01'))) ?> with these filters.</p></div></div>
+<?php else: foreach ($groups as $gName => $list): ?>
+<div class="card" style="margin-bottom:16px">
+  <div class="card__head"><span class="card__title"><?= e($gName) ?></span><span class="text-muted" style="font-size:12px"><?= count($list) ?> people</span></div>
+  <div class="table-wrap"><table class="data-table att-sum">
+    <thead><tr><th>Name</th><th class="n" data-tip="Weekly off days + public holidays this month">Entitled off</th><th class="n">Worked</th><th class="n">Off taken</th>
+      <th class="n">Sick</th><th class="n">Leave</th><th class="n">Hours</th><th class="n" data-tip="Hours over 8 a day worked (short days count against)">Overtime</th>
+      <th class="n" data-tip="Entitled − taken + overtime ÷ 8">Off days earned</th><th class="n">Off days owed</th><th class="n">Annual leave</th>
+      <?php if ($anyNights || $nightRates): ?><th class="n" data-tip="Night duties this month">Nights</th><th class="n" data-tip="Nights × the property's rate">Night allowance</th><?php endif; ?><th></th></tr></thead>
+    <tbody>
+    <?php foreach ($list as $sr): $s = $sr['staff']; $f = $sr['fig'];
+      $offB = (float)($sr['before']['off_days'] ?? 0); $lvB = (float)($sr['before']['annual_leave'] ?? 0);
+      $offA = $closed ? (float)($sr['after']['off_days'] ?? 0) : $offB + ($sr['counts'] ? $f['off_earned'] : 0);
+      $lvA  = $closed ? (float)($sr['after']['annual_leave'] ?? 0) : $lvB + ($sr['counts'] ? $f['leave_change'] : 0); ?>
+      <tr>
+        <td><a href="/admin/employee.php?id=<?= (int)$s['id'] ?>#attendance"><strong><?= e($s['full_name']) ?></strong></a>
+          <div class="text-muted" style="font-size:12px"><?= e($s['position'] ?: '—') ?> · off <?= e($s['off_day'] ?: 'SUN') ?><?= ($s['payroll_no'] ?? '') !== '' ? ' · No. ' . e($s['payroll_no']) : '' ?></div></td>
+        <td class="n"><?= $f['entitled'] ?></td>
+        <td class="n"><strong><?= $f['worked'] ?></strong></td>
+        <td class="n"><?= $f['off_taken'] ?><?= $f['rec'] ? ' <span class="text-muted" data-tip="of which recovery days">(' . $f['rec'] . ' rec)</span>' : '' ?></td>
+        <td class="n"><?= $f['sick'] ?: '' ?></td>
+        <td class="n"><?= $f['leave'] ?: '' ?><?= $f['unpaid'] ? ' <span class="text-muted" data-tip="unpaid leave">+' . $f['unpaid'] . ' unpaid</span>' : '' ?></td>
+        <td class="n"><?= number_format($f['hours'], 1) ?></td>
+        <td class="n"><?= ($f['ot_hours'] > 0 ? '+' : '') . number_format($f['ot_hours'], 1) ?>h</td>
+        <td class="n"><?= $sr['counts'] ? e(hr_bal_fmt($f['off_earned'])) : '<span class="text-muted" data-tip="Already inside their opening balance">—</span>' ?></td>
+        <td class="n"><strong><?= e(hr_bal_fmt($offA)) ?></strong></td>
+        <td class="n"><strong><?= e(hr_bal_fmt($lvA)) ?></strong></td>
+        <?php if ($anyNights || $nightRates): $nr = $s['venue_id'] !== null ? ($nightRates[(int)$s['venue_id']] ?? 0) : 0; ?>
+        <td class="n"><?= $f['nights'] ?: '' ?></td>
+        <td class="n"><?= $f['nights'] && $nr ? 'KES ' . e(number_format($f['nights'] * $nr)) : '' ?></td>
+        <?php endif; ?>
+        <td><?php if ($f['not_recorded']): ?><span class="badge badge--orange" data-tip="Days in the month with nothing recorded (no times, no status)"><?= $f['not_recorded'] ?> not recorded</span><?php endif; ?>
+            <?php if (!$sr['opened'] && $sr['counts']): ?><span class="badge badge--grey" data-tip="No opening balance yet — balances start from 0">no opening</span><?php endif; ?></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table></div>
+</div>
+<?php endforeach; endif; ?>
+<?php
+  $holWork = [];
+  foreach ($sumRows as $sr) foreach (($sr['fig']['holiday_work'] ?? []) as $hd => $hh) $holWork[$hd][] = ['name' => $sr['staff']['full_name'], 'id' => (int)$sr['staff']['id'], 'hours' => $hh];
+  ksort($holWork);
+  $holNames = hr_public_holidays($month . '-01', date('Y-m-d', strtotime(date('Y-m-t', strtotime($month . '-01')) . ' +1 day')));
+  if ($holWork): ?>
+<div class="card" style="margin-bottom:16px">
+  <div class="card__head"><span class="card__title">Public-holiday work</span><span class="text-muted" style="font-size:12px">hours that fell on the holiday — a night shift counts only from midnight</span></div>
+  <div class="table-wrap"><table class="data-table">
+    <thead><tr><th>Holiday</th><th>Who worked</th><th style="text-align:right">Hours</th></tr></thead>
+    <tbody>
+    <?php foreach ($holWork as $hd => $list): ?>
+      <tr><td style="white-space:nowrap"><strong><?= e(date('D j M', strtotime($hd))) ?></strong><div class="text-muted" style="font-size:12px"><?= e($holNames[$hd] ?? '') ?></div></td>
+        <td><?= implode(', ', array_map(fn($w) => '<a href="/admin/employee.php?id=' . $w['id'] . '#attendance">' . e($w['name']) . '</a> <span class="text-muted">' . e(number_format($w['hours'], 1)) . ' h</span>', $list)) ?></td>
+        <td style="text-align:right"><strong><?= e(number_format(array_sum(array_column($list, 'hours')), 1)) ?></strong></td></tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table></div>
+</div>
+<?php endif; ?>
+<?php if (is_owner() || is_hr()): ?>
+<details class="card att-rates" style="margin-bottom:16px" <?= $nightRates ? '' : 'open' ?>>
+  <summary class="card__head" style="cursor:pointer"><span class="card__title"><?= admin_icon('moon', 15) ?> Night allowance</span>
+    <span class="text-muted" style="font-size:12px"><?= $nightRates ? e(implode(' · ', array_map(fn($vid, $amt) => ($venueNames[$vid] ?? '#' . $vid) . ' KES ' . number_format($amt), array_keys($nightRates), $nightRates))) : 'not set' ?></span></summary>
+  <div class="card__body card__body--pad">
+    <form method="POST" action="/admin/attendance.php" style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">
+      <?= csrf_field() ?><input type="hidden" name="action" value="night_rates"><input type="hidden" name="month" value="<?= e($month) ?>">
+      <?php foreach ($venues as $v): ?>
+      <div class="filter-field"><span><?= e($v['name']) ?> · KES a night</span><input name="rate[<?= (int)$v['id'] ?>]" class="inp inp--sm" inputmode="decimal" value="<?= isset($nightRates[(int)$v['id']]) ? e((string)$nightRates[(int)$v['id']]) : '' ?>" placeholder="none" style="width:120px"></div>
+      <?php endforeach; ?>
+      <button class="btn-primary btn-sm">Save</button>
+    </form>
+    <p class="text-muted" style="font-size:12px;margin:10px 0 0">Paid to people whose home property has a rate, for each night duty — a shift past midnight counts on its own; tick the moon on the Daily page to set one by hand.</p>
+  </div>
+</details>
+<?php endif; ?>
+<p class="text-muted" style="font-size:12px">Off days earned = entitled off days (weekly off + public holidays) − days off taken (off, recovery, holiday not worked) + overtime ÷ 8. Annual leave grows 1.75 days a month and drops by each leave day. Sick and unpaid days change neither.</p>
+<style>.att-sum .n{text-align:right;white-space:nowrap}.att-sum td{vertical-align:top}.att-rates>summary{list-style:none;display:flex;justify-content:space-between;align-items:center}.att-rates>summary::-webkit-details-marker{display:none}</style>
+
+<?php
+elseif ($view === 'holidays'):
+  $hy = (int)($_GET['year'] ?? date('Y'));
+  if ($hy < 2020 || $hy > 2100) $hy = (int)date('Y');
+  $hl = hr_holiday_list($hy);
+  $canHol = is_owner() || is_hr();
+?>
+<div class="card" style="margin-bottom:16px">
+  <div class="card__head" style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap">
+    <span class="card__title">Public holidays <?= $hy ?></span>
+    <span style="display:flex;gap:6px">
+      <a class="btn-icon btn-icon--outline" href="/admin/attendance.php?view=holidays&amp;year=<?= $hy - 1 ?>" aria-label="Previous year"><?= admin_icon('chevron-left') ?></a>
+      <a class="btn-icon btn-icon--outline" href="/admin/attendance.php?view=holidays&amp;year=<?= $hy + 1 ?>" aria-label="Next year"><?= admin_icon('chevron-right') ?></a>
+    </span>
+  </div>
+  <div class="card__body" style="padding:10px 18px"><p class="text-muted" style="margin:0;font-size:13px">The days that count as public holidays for staff: entitled off days, holiday hours and the holiday-work list use this list. Kenya's calendar is built in (Easter moves each year; Eid dates are entered per year). Switch a day off or add a gazetted one with a reason. Moon-sighting holidays not yet entered for the year simply don't appear — add them here.</p></div>
+  <div class="table-wrap"><table class="data-table">
+    <thead><tr><th>Date</th><th>Holiday</th><th>From</th><th>Counts for staff</th><th>Why</th><?php if ($canHol): ?><th></th><?php endif; ?></tr></thead>
+    <tbody>
+    <?php foreach ($hl as $h): ?>
+      <tr<?= $h['counts'] ? '' : ' style="opacity:.6"' ?>>
+        <td style="white-space:nowrap"><strong><?= e(date('D j M', strtotime($h['date']))) ?></strong></td>
+        <td><?= e($h['name']) ?></td>
+        <td class="text-muted"><?= $h['source'] === 'kenya' ? 'Kenya calendar' : 'Added by HR' ?></td>
+        <td><?= $h['counts'] ? '<span class="badge badge--green">Yes</span>' : '<span class="badge badge--grey">Switched off</span>' ?></td>
+        <td class="text-muted" style="font-size:12.5px"><?= e($h['note']) ?></td>
+        <?php if ($canHol): ?>
+        <td style="text-align:right">
+          <form method="POST" action="/admin/attendance.php" class="hol-form"><?= csrf_field() ?><input type="hidden" name="action" value="holiday"><input type="hidden" name="year" value="<?= $hy ?>"><input type="hidden" name="date" value="<?= e($h['date']) ?>">
+            <input type="hidden" name="state" value="<?= $h['source'] === 'hr' ? '' : ($h['counts'] ? 'off' : 'on') ?>">
+            <input name="reason" class="inp inp--sm" required placeholder="Why?" style="width:150px" aria-label="Why">
+            <button class="btn-outline btn-sm"><?= $h['source'] === 'hr' ? 'Remove' : ($h['counts'] ? 'Switch off' : 'Switch on') ?></button>
+          </form>
+        </td>
+        <?php endif; ?>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table></div>
+</div>
+<?php if ($canHol): ?>
+<div class="card">
+  <div class="card__head"><span class="card__title">Add a holiday</span></div>
+  <div class="card__body card__body--pad">
+    <form method="POST" action="/admin/attendance.php" class="hol-add"><?= csrf_field() ?><input type="hidden" name="action" value="holiday"><input type="hidden" name="state" value="add"><input type="hidden" name="year" value="<?= $hy ?>">
+      <div class="filter-field"><span>Date</span><button type="button" class="dp-btn" data-dp-target="holDate" style="min-width:150px">Pick a date</button><input type="hidden" id="holDate" name="date" value=""></div>
+      <div class="filter-field"><span>Name</span><input name="name" class="inp inp--sm" required maxlength="80" placeholder="e.g. Eid al-Adha"></div>
+      <div class="filter-field"><span>Why</span><input name="reason" class="inp inp--sm" required maxlength="200" placeholder="e.g. Gazette notice 12 May 2026"></div>
+      <button class="btn-primary btn-sm"><?= admin_icon('plus', 15) ?> Add</button>
+    </form>
+  </div>
+</div>
+<?php endif; ?>
+<style>.hol-form{display:flex;gap:6px;justify-content:flex-end;align-items:center}.hol-add{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}</style>
+
+<?php
 elseif ($view === 'leave'):
   if (!leave_requests_supported()):
 ?>
 <div class="card"><div class="card__body card__body--pad"><p class="text-muted" style="margin:0">Leave requests are unavailable. Run the <code>add_leave_requests.sql</code> migration (after <code>add_attendance</code>) to enable it.</p></div></div>
 <?php
   else:
-    $activeStaff = fetch_hr_staff($venueIds, ['status' => 'active']);
-    $reqs = fetch_leave_requests($venueIds);
+    $activeStaff = fetch_hr_staff($venueIds, ['status' => 'active'], $companyIds);
+    $reqs = fetch_leave_requests($venueIds, [], $companyIds);
     $venueNamesL = []; foreach ($venues as $v) { $venueNamesL[(int)$v['id']] = $v['name']; }
 ?>
 <div class="card" style="margin-bottom:18px">
@@ -433,7 +854,7 @@ elseif ($view === 'person'):
   $sid = (int)($_GET['staff'] ?? 0);
   $person = fetch_hr_staff_row($sid);
   // Scope: a manager may only view staff at their own properties (home or extra).
-  $inScope = $person && att_staff_in_scope($sid, $venueIds);
+  $inScope = $person && att_staff_in_scope($sid, $venueIds, $companyIds);
   if (!$inScope):
 ?>
 <div class="card"><div class="card__body card__body--pad"><p class="text-muted" style="margin:0">Staff member not found or outside your properties. <a href="/admin/attendance.php?view=month&month=<?= e($month) ?>">Back to the month grid</a>.</p></div></div>
@@ -489,7 +910,7 @@ elseif ($view === 'person'):
 
 <?php
 else: // dashboard
-  $dash = attendance_dashboard($venueIds, $mY, $mM, $filters);
+  $dash = attendance_dashboard($venueIds, $mY, $mM, $filters, $companyIds);
   $k = $dash['kpi'];
   $card = fn($label, $val, $sub='') => '<div class="card" style="flex:1;min-width:150px"><div class="card__body" style="padding:16px 18px"><div class="text-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.04em">' . e($label) . '</div><div style="font-size:1.5rem;font-weight:800;color:var(--navy,#1E5C6B);margin-top:2px">' . e($val) . '</div>' . ($sub?'<div class="text-muted" style="font-size:11px">' . e($sub) . '</div>':'') . '</div></div>';
 ?>

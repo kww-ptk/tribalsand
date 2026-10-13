@@ -24,6 +24,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/hr.php';
+require_once __DIR__ . '/../includes/hr-establishment.php';   // company + payroll no., company-staff grants
 require_once __DIR__ . '/../includes/inventory.php';   // assigned-asset owner refresh + delete guard
 require_once __DIR__ . '/../includes/internal-messages.php';  // DM a teammate (Item 6)
 require_once __DIR__ . '/../includes/icons.php';
@@ -132,8 +133,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Optional link to a login account (validated against non-owner accounts).
             $auId  = (int)($_POST['admin_user_id'] ?? 0);
             $auOk  = $auId > 0 && db_query("SELECT 1 FROM admin_users WHERE id = :i", [':i' => $auId])->fetchColumn();
+            // Employing company + payroll number (staff establishment). The pair is unique.
+            $coId  = (int)($_POST['company_id'] ?? 0);
+            $coId  = isset(hr_company_names()[$coId]) ? $coId : 0;
+            $payNo = trim((string)($_POST['payroll_no'] ?? ''));
 
             if ($name === '') staff_flash('Please enter a name.', 'error', 'directory');
+            if (hr_staff_company_supported() && $coId && $payNo !== ''
+                && db_query('SELECT 1 FROM hr_staff WHERE company_id = :c AND UPPER(payroll_no) = UPPER(:p) AND id <> :id',
+                            [':c' => $coId, ':p' => $payNo, ':id' => $sid])->fetchColumn()) {
+                staff_flash('Someone at ' . hr_company_names()[$coId] . ' already has payroll number ' . $payNo . '.', 'error', 'directory');
+            }
             $params = [
                 ':n' => $name, ':p' => $posn, ':d' => $dept,
                 ':v' => $vid ?: null, ':u' => $vid ? null : trim((string)($_POST['unit_label'] ?? '')),
@@ -153,6 +163,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $params + [':id' => $sid]
                 );
                 hr_set_staff_venues($sid, $alsoVenues, $vid ?: null, $venueIds);
+                if (hr_staff_company_supported()) {
+                    db_query('UPDATE hr_staff SET company_id = :c, payroll_no = :p WHERE id = :id',
+                        [':c' => $coId ?: null, ':p' => $payNo !== '' ? $payNo : null, ':id' => $sid]);
+                }
                 inv_refresh_location_owners();   // their assets follow a new name/home venue
                 audit_log('hr_staff_update', 'hr_staff', $sid, $name);
                 staff_flash('Directory entry updated.', 'success', 'directory');
@@ -165,6 +179,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 );
                 $newId = (int)db()->lastInsertId();
                 hr_set_staff_venues($newId, $alsoVenues, $vid ?: null, $venueIds);
+                if (hr_staff_company_supported()) {
+                    db_query('UPDATE hr_staff SET company_id = :c, payroll_no = :p WHERE id = :id',
+                        [':c' => $coId ?: null, ':p' => $payNo !== '' ? $payNo : null, ':id' => $newId]);
+                }
                 audit_log('hr_staff_create', 'hr_staff', $newId, $name);
                 staff_flash('Team member added to the directory.', 'success', 'directory');
             }
@@ -253,6 +271,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             staff_flash('Properties updated.');
         }
         staff_flash('No change.', 'error');
+    } elseif ($action === 'companies') {
+        // A manager can look after a company's staff (Tribal Sand Limited has no property).
+        $sid = (int)($_POST['staff_id'] ?? 0);
+        if (hr_staff_company_supported() && db_query("SELECT 1 FROM admin_users WHERE id = :s AND role = 'manager'", [':s' => $sid])->fetchColumn()) {
+            hr_set_company_managers($sid, array_map('intval', (array)($_POST['company_id'] ?? [])));
+            audit_log('staff_companies', 'admin_user', $sid, implode(',', hr_company_manager_ids($sid)));
+            staff_flash('Company staff updated.');
+        }
+        staff_flash('No change.', 'error');
     } elseif ($action === 'job') {
         // Change a staff member's operational specialty (staff only — managers aren't job-driven).
         $sid = (int)($_POST['staff_id'] ?? 0);
@@ -324,6 +351,13 @@ foreach (db_query('SELECT admin_user_id, venue_id FROM admin_user_venues')->fetc
 }
 $venueNames = [];
 foreach ($venues as $v) { $venueNames[(int)$v['id']] = $v['name']; }
+$coNames    = hr_staff_company_supported() ? hr_company_names() : [];
+$coGrantMap = [];   // admin_user_id => [company_id, ...] (managers looking after a company's staff)
+if ($coNames) {
+    foreach (db_query('SELECT admin_user_id, company_id FROM hr_company_managers')->fetchAll() as $row) {
+        $coGrantMap[(int)$row['admin_user_id']][] = (int)$row['company_id'];
+    }
+}
 
 // Additional-venue assignments for directory rows: hr_staff_id => [venue_id, ...]
 // (Item 5). Prefetched once to avoid an N+1 across the directory tables.
@@ -343,6 +377,7 @@ $dirFilters = [
     'department' => in_array(($_GET['dept'] ?? ''), hr_departments(), true) ? $_GET['dept'] : '',
     'venue_id'   => (int)($_GET['dvenue'] ?? 0),
     'status'     => in_array(($_GET['dstatus'] ?? ''), ['active', 'inactive'], true) ? $_GET['dstatus'] : '',
+    'company_id' => isset($coNames[(int)($_GET['dco'] ?? 0)]) ? (int)$_GET['dco'] : 0,
 ];
 $dirGroups = hr_staff_supported() ? hr_staff_by_property(null, $dirFilters) : [];
 $dirCount  = 0; foreach ($dirGroups as $g) { $dirCount += count($g['staff']); }
@@ -393,9 +428,11 @@ ob_start(); ?>
             <?php endif; ?>
           </td>
           <td>
+            <?php $__coG = array_values(array_filter(array_map(fn($c) => $coNames[$c] ?? null, $coGrantMap[$sid] ?? []))); ?>
             <?php if ($isHr): ?><span class="text-muted">All properties</span>
             <?php elseif ($names): ?><?= e(implode(', ', $names)) ?>
-            <?php else: ?><span class="text-muted">None assigned</span><?php endif; ?>
+            <?php elseif (!$__coG): ?><span class="text-muted">None assigned</span><?php endif; ?>
+            <?php if ($__coG): ?><div class="text-muted" style="font-size:12px">Staff of <?= e(implode(', ', $__coG)) ?></div><?php endif; ?>
           </td>
           <td>
             <?php if (!empty($s['is_active'])): ?>
@@ -435,6 +472,20 @@ ob_start(); ?>
                 <button class="btn-outline btn-sm">Save properties</button>
               <?php endif; ?>
             </form>
+            <?php if ($isManager && $coNames): ?>
+            <form method="POST" style="display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-top:10px">
+              <?= csrf_field() ?>
+              <input type="hidden" name="action" value="companies">
+              <input type="hidden" name="staff_id" value="<?= $sid ?>">
+              <span class="text-muted" data-tip="They see these companies' staff and attendance even when the staff have no property (e.g. Tribal Sand Limited's kite school and drivers).">Company staff:</span>
+              <div class="optset">
+              <?php foreach ($coNames as $cid => $cname): ?>
+                <label class="optchip"><input type="checkbox" name="company_id[]" value="<?= (int)$cid ?>" <?= in_array((int)$cid, $coGrantMap[$sid] ?? [], true) ? 'checked' : '' ?>><?= e($cname) ?></label>
+              <?php endforeach; ?>
+              </div>
+              <button class="btn-outline btn-sm">Save company staff</button>
+            </form>
+            <?php endif; ?>
             <?php if (!$isPwAcct): ?>
             <form method="POST" style="display:flex;gap:10px;align-items:center;margin-top:10px;flex-wrap:wrap">
               <?= csrf_field() ?>
@@ -488,6 +539,7 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
     <?php elseif ($tab === 'accounts'): ?>
     <button type="button" class="btn-primary btn-sm" id="addAccountBtn" aria-controls="createCard" aria-expanded="<?= $__openCreate ? 'true' : 'false' ?>"><?= admin_icon('plus', 15) ?> Add account</button>
     <?php else: ?>
+    <?php if (hr_staff_supported()): ?><a href="/admin/staff-import.php" class="btn-outline btn-sm" data-help="staff-import"><?= admin_icon('upload', 15) ?> Import staff lists</a><?php endif; ?>
     <button type="button" class="btn-primary btn-sm" id="addPersonBtn" aria-controls="personCard" aria-expanded="false"><?= admin_icon('plus', 15) ?> Add team member</button>
     <?php endif; ?>
     <a href="/admin/dashboard.php" class="btn-outline btn-sm"><?= admin_icon('arrow-left', 15) ?> Dashboard</a>
@@ -557,6 +609,15 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
             <option value="inactive">Inactive</option>
           </select>
         </div>
+        <?php if ($coNames): ?>
+        <div class="field"><label for="hrCompany">Company</label>
+          <select id="hrCompany" name="company_id" class="filter-select eselect--block">
+            <option value="0">— not set —</option>
+            <?php foreach ($coNames as $cid => $cname): ?><option value="<?= (int)$cid ?>"><?= e($cname) ?></option><?php endforeach; ?>
+          </select>
+        </div>
+        <div class="field"><label for="hrPayroll">Payroll no.</label><input id="hrPayroll" name="payroll_no" class="inp" placeholder="As on the payroll, e.g. MKH032" style="width:100%"></div>
+        <?php endif; ?>
         <div class="field"><label for="hrPhone">Phone</label><input id="hrPhone" name="phone" class="inp" placeholder="Optional" style="width:100%"></div>
         <div class="field"><label for="hrEmail">Email</label><input id="hrEmail" name="email" type="email" class="inp" placeholder="Optional" style="width:100%"></div>
         <div class="field"><label for="hrLink">Login account <small class="text-muted">(optional)</small></label>
@@ -600,6 +661,14 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
       <?php foreach ($venues as $v): ?><option value="<?= (int)$v['id'] ?>" <?= $dirFilters['venue_id'] === (int)$v['id'] ? 'selected' : '' ?>><?= e($v['name']) ?></option><?php endforeach; ?>
     </select>
   </div>
+  <?php if ($coNames): ?>
+  <div class="filter-field"><span>Company</span>
+    <select name="dco" class="filter-select" onchange="this.form.submit()">
+      <option value="0">All companies</option>
+      <?php foreach ($coNames as $cid => $cname): ?><option value="<?= (int)$cid ?>" <?= $dirFilters['company_id'] === (int)$cid ? 'selected' : '' ?>><?= e($cname) ?></option><?php endforeach; ?>
+    </select>
+  </div>
+  <?php endif; ?>
   <div class="filter-field"><span>Status</span>
     <select name="dstatus" class="filter-select" onchange="this.form.submit()">
       <option value="">All</option>
@@ -608,13 +677,13 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
     </select>
   </div>
   <button class="btn-outline btn-sm">Filter</button>
-  <?php if ($dirFilters['q'] !== '' || $dirFilters['department'] || $dirFilters['venue_id'] || $dirFilters['status']): ?>
+  <?php if ($dirFilters['q'] !== '' || $dirFilters['department'] || $dirFilters['venue_id'] || $dirFilters['status'] || $dirFilters['company_id']): ?>
   <a href="<?= $__directoryUrl ?>" class="btn-outline btn-sm">Clear</a>
   <?php endif; ?>
 </form>
 
 <?php if (!$dirGroups): ?>
-  <div class="card"><div class="card__body card__body--pad"><p class="text-muted" style="margin:0"><?= $dirCount === 0 && ($dirFilters['q'] || $dirFilters['department'] || $dirFilters['venue_id'] || $dirFilters['status']) ? 'No team members match your filters.' : 'No team members yet. Add one, or run the roster seed.' ?></p></div></div>
+  <div class="card"><div class="card__body card__body--pad"><p class="text-muted" style="margin:0"><?= $dirCount === 0 && ($dirFilters['q'] || $dirFilters['department'] || $dirFilters['venue_id'] || $dirFilters['status'] || $dirFilters['company_id']) ? 'No team members match your filters.' : 'No team members yet. Add one, or run the roster seed.' ?></p></div></div>
 <?php else: foreach ($dirGroups as $g): ?>
 <div class="card" style="margin-bottom:18px">
   <div class="card__head">
@@ -624,7 +693,7 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
   <div class="card__body" style="padding:0">
     <div class="table-wrap">
       <table class="data-table">
-        <thead><tr><th>Name</th><th>Position</th><th>Department</th><th>Off day</th><th>Status</th><th style="text-align:right">Manage</th></tr></thead>
+        <thead><tr><th>Name</th><th>Position</th><th>Department</th><?php if ($coNames): ?><th>Company</th><th>Payroll no.</th><?php endif; ?><th>Off day</th><th>Status</th><th style="text-align:right">Manage</th></tr></thead>
         <tbody>
           <?php foreach ($g['staff'] as $p):
             $pid = (int)$p['id'];
@@ -640,6 +709,10 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
             </td>
             <td class="text-muted"><?= e($p['position'] ?: '—') ?></td>
             <td><span class="badge <?= e(hr_department_badge($dept)) ?>"><?= e($dept ?: 'Other') ?></span></td>
+            <?php if ($coNames): ?>
+            <td class="text-muted" style="white-space:nowrap" title="<?= e($coNames[(int)($p['company_id'] ?? 0)] ?? '') ?>"><?= e(isset($coNames[(int)($p['company_id'] ?? 0)]) ? trim((string)preg_replace('/\s+(Limited|Ltd\.?)$/i', '', $coNames[(int)$p['company_id']])) : '—') ?></td>
+            <td class="text-muted"><?= e(($p['payroll_no'] ?? '') !== '' ? $p['payroll_no'] : '—') ?></td>
+            <?php endif; ?>
             <td class="text-muted"><?= e($p['off_day'] ?: 'Sun') ?></td>
             <td><?php if ($isActive): ?><span class="badge badge--green">Active</span><?php else: ?><span class="badge badge--grey">Inactive</span><?php endif; ?></td>
             <td>
@@ -662,6 +735,8 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
                         data-phone="<?= e($p['phone'] ?? '') ?>"
                         data-email="<?= e($p['email'] ?? '') ?>"
                         data-link="<?= (int)($p['admin_user_id'] ?? 0) ?>"
+                        data-company="<?= (int)($p['company_id'] ?? 0) ?>"
+                        data-payroll="<?= e($p['payroll_no'] ?? '') ?>"
                         data-venues="<?= e(implode(',', $extraVids)) ?>"><?= admin_icon('edit') ?></button>
                 <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="hr_toggle"><input type="hidden" name="hr_id" value="<?= $pid ?>"><button class="btn-icon btn-icon--outline" data-tip="<?= $isActive ? 'Set inactive' : 'Set active' ?>" aria-label="<?= $isActive ? 'Set inactive' : 'Set active' ?>"><?= admin_icon($isActive ? 'ban' : 'check') ?></button></form>
                 <form method="POST" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="hr_delete"><input type="hidden" name="hr_id" value="<?= $pid ?>"><button class="btn-icon btn-icon--danger" data-confirm="Remove this person from the directory?" data-tip="Delete" aria-label="Delete"><?= admin_icon('trash') ?></button></form>
@@ -723,6 +798,8 @@ $__directoryUrl = '/admin/staff.php?tab=directory';
       setVal('phone', b.dataset.phone);
       setVal('email', b.dataset.email);
       setVal('admin_user_id', b.dataset.link);
+      setVal('company_id', b.dataset.company || '0');
+      setVal('payroll_no', b.dataset.payroll);
       setAlso(b.dataset.venues); syncHome();
       open();
     });

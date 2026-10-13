@@ -1,0 +1,623 @@
+{
+  "as_of": "2026-10-06",
+  "from": "Valentina Bertoncelli, STAFF ESTABLISHMENT email",
+  "companies": [
+    {
+      "company": "MK Holidays Limited",
+      "code": "MKH",
+      "source": "MK HOLIDAYS LIMITED.XLS",
+      "rows": [
+        {
+          "payroll_no": "MKH32",
+          "name": "PALMA Lisa Wanjira",
+          "position": "FRONT OF HOUSE",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH034",
+          "name": "OGOO George Otieno",
+          "position": "BACK OF HOUSE",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH022",
+          "name": "MWANTHI Alex Nguma",
+          "position": "Manager",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH018",
+          "name": "MURUNGI Caroline Makena",
+          "position": "House Supervisor",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH036",
+          "name": "KAZUNGU Benson Choga",
+          "position": "Accountant",
+          "unit": "TRIBAL DUNES / WATAMU OFFICE"
+        },
+        {
+          "payroll_no": "MKH042",
+          "name": "IBRAHIM Daudi Charo",
+          "position": "StoreKeeper",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH16",
+          "name": "NYALE Kenedy Kitti",
+          "position": "Carpenter",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH039",
+          "name": "MUTINDA Onesmus Mutua",
+          "position": "Electrician",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH031",
+          "name": "BETT Issac Cheruiyot",
+          "position": "Maintenance Technician",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH026",
+          "name": "PESA Salim Kashuru",
+          "position": "Head Gardener",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH13",
+          "name": "CHARO Baraka Kazungu",
+          "position": "Gardener",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH048",
+          "name": "JOSEPH SHOMO Kilunju",
+          "position": "General Cleaner",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH040",
+          "name": "KATANA Lawrence Mramba",
+          "position": "General Cleaner",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH15",
+          "name": "UNDA Stephen Charo",
+          "position": "Pool attendand",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH14",
+          "name": "CHARO Michael Kazungu",
+          "position": "Pool attendant",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH035",
+          "name": "HELLEN ROZZET Ojiambo",
+          "position": "Supervisor Housekeeping",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH038",
+          "name": "MBITI Felix Mwendwa",
+          "position": "Laundry/Linen Attendant",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH041",
+          "name": "CHARO Juliet Sidi",
+          "position": "House Keeper",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH02",
+          "name": "KEYA Judy Adhiambo",
+          "position": "House Keeper",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH17",
+          "name": "TSUMA Pascal Juma",
+          "position": "House Keeper",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH019",
+          "name": "WILLIE Jeniffer Menya",
+          "position": "House Keeper",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH03",
+          "name": "MJIMBA Kelvin Jumaa",
+          "position": "Head Security Day",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH024",
+          "name": "LEMARON Danson Kuyan",
+          "position": "Security",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH037",
+          "name": "NICHOLAS TAABU Juma",
+          "position": "Security Day",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH09",
+          "name": "FONDO Aloice Charo",
+          "position": "Security Day",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH07",
+          "name": "KAMBI Nerbert Shaha",
+          "position": "Security Night",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH025",
+          "name": "NANA Likamba",
+          "position": "Security Night",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH08",
+          "name": "METUI Satio Ole",
+          "position": "Security Night",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH04",
+          "name": "MEIBUKO Joana Ole",
+          "position": "Security Night",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH31",
+          "name": "MLACHA John Kizembera",
+          "position": "Security Night",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH023",
+          "name": "STEPHEN NGUMBAO Gona",
+          "position": "Security Reliver",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "MKH11",
+          "name": "KITI Katana Charo",
+          "position": "Dogs Care",
+          "unit": "TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "TTR012",
+          "name": "AUGUSTUS MUMO Mulwa",
+          "position": "Barback",
+          "unit": "TRIBAL TABLE"
+        },
+        {
+          "payroll_no": "TTR013",
+          "name": "MESHACK MATOKE Atuti",
+          "position": "Barback",
+          "unit": "TRIBAL TABLE"
+        },
+        {
+          "payroll_no": "TTR011",
+          "name": "DOMINIC BARAKA Tune",
+          "position": "Bartender",
+          "unit": "TRIBAL TABLE"
+        },
+        {
+          "payroll_no": "TTR020",
+          "name": "NGUNJIRI Jonathan Githua",
+          "position": "Cashier",
+          "unit": "TRIBAL TABLE"
+        },
+        {
+          "payroll_no": "TTR018",
+          "name": "PRAXIDES LIHAVI Anami",
+          "position": "Cashier",
+          "unit": "TRIBAL TABLE"
+        },
+        {
+          "payroll_no": "TTR005",
+          "name": "ALEX SITIRINGAH Kea",
+          "position": "Chef",
+          "unit": "TRIBAL TABLE"
+        },
+        {
+          "payroll_no": "TTR006",
+          "name": "FRED MWERI Baya",
+          "position": "Chef",
+          "unit": "TRIBAL TABLE"
+        },
+        {
+          "payroll_no": "TTR019",
+          "name": "MUTHONI John Thumbi",
+          "position": "Chef",
+          "unit": "TRIBAL TABLE"
+        },
+        {
+          "payroll_no": "MKH29",
+          "name": "MWAJANJI Albert Kiti",
+          "position": "Chef",
+          "unit": "TRIBAL TABLE"
+        },
+        {
+          "payroll_no": "TTR004",
+          "name": "MWANAIDI JUMA Maboga",
+          "position": "Chef",
+          "unit": "TRIBAL TABLE"
+        },
+        {
+          "payroll_no": "TTR014",
+          "name": "LUCY NEEMA Ndambuki",
+          "position": "Floor Supervisor",
+          "unit": "TRIBAL TABLE"
+        },
+        {
+          "payroll_no": "MKH033",
+          "name": "GILBERT Fiki Kwicha",
+          "position": "Food & Bev Waiter",
+          "unit": "TRIBAL TABLE"
+        },
+        {
+          "payroll_no": "MKH030",
+          "name": "MWALUNE Francis Chondo",
+          "position": "Food & Bev Waiter",
+          "unit": "TRIBAL TABLE"
+        },
+        {
+          "payroll_no": "TT010",
+          "name": "KEVIN KIPRUTO Tanui",
+          "position": "Head Bartender",
+          "unit": "TRIBAL TABLE"
+        },
+        {
+          "payroll_no": "TTR001",
+          "name": "SUERO Peter Alfred",
+          "position": "Head Chef",
+          "unit": "TRIBAL TABLE"
+        },
+        {
+          "payroll_no": "TTR008",
+          "name": "ANDERSON CHARO Ngumbao",
+          "position": "Kitchen Cleaner",
+          "unit": "TRIBAL TABLE"
+        },
+        {
+          "payroll_no": "TTR009",
+          "name": "SWEEN KEA Lango",
+          "position": "Kitchen Cleaner",
+          "unit": "TRIBAL TABLE"
+        },
+        {
+          "payroll_no": "TTR003",
+          "name": "HAWAA MOHAMED Juma",
+          "position": "Pastry Cook",
+          "unit": "TRIBAL TABLE"
+        },
+        {
+          "payroll_no": "MKH027",
+          "name": "NDORO James Katana",
+          "position": "StoreKeeper",
+          "unit": "TRIBAL TABLE"
+        },
+        {
+          "payroll_no": "TTR015",
+          "name": "MILTON OPONDO Ombayo",
+          "position": "Waiter",
+          "unit": "TRIBAL TABLE"
+        },
+        {
+          "payroll_no": "TTR016",
+          "name": "PURITY AKINYI Odhiambo",
+          "position": "Waitress",
+          "unit": "TRIBAL TABLE"
+        }
+      ]
+    },
+    {
+      "company": "Tribal Sand Holidays Limited",
+      "code": "TSH",
+      "source": "TRIBALSAND HOLIDAYS LIMITED.XLS",
+      "rows": [
+        {
+          "payroll_no": "03",
+          "name": "ABDALLA Nusra Hassan",
+          "position": "HR",
+          "unit": "watamu office"
+        },
+        {
+          "payroll_no": "22",
+          "name": "OMONDI Christine Adhiambo",
+          "position": "Asst. HR",
+          "unit": "watamu office"
+        },
+        {
+          "payroll_no": "05",
+          "name": "KAMU Faiza Lungu",
+          "position": "Reservation",
+          "unit": "watamu office"
+        },
+        {
+          "payroll_no": "17",
+          "name": "MANUELA Leticia Atieno",
+          "position": "Reservation",
+          "unit": "watamu office"
+        },
+        {
+          "payroll_no": "08",
+          "name": "VICTOR Matata Surusi",
+          "position": "Caretaker",
+          "unit": "MY AMANI"
+        },
+        {
+          "payroll_no": "11",
+          "name": "OCHIENG Lilian Awino",
+          "position": "HuseKeeper",
+          "unit": "MY AMANI"
+        },
+        {
+          "payroll_no": "10",
+          "name": "OKAKA Henry Ouma",
+          "position": "Gardener",
+          "unit": "MY AMANI"
+        },
+        {
+          "payroll_no": "01",
+          "name": "AMANI Rajab",
+          "position": "Gardener",
+          "unit": "plot 6 watamu"
+        },
+        {
+          "payroll_no": "02",
+          "name": "MUSONYE Nickson Ashivira",
+          "position": "Gardener",
+          "unit": "plot 22 watamu"
+        },
+        {
+          "payroll_no": "23",
+          "name": "NYONGINDI Lenice Auma",
+          "position": "House Supervisor",
+          "unit": "ENKARE / SANDBOX / TRIBAL DUNES"
+        },
+        {
+          "payroll_no": "12",
+          "name": "KAHAMBI Robert Mtawali",
+          "position": "Cook",
+          "unit": "ENKARE"
+        },
+        {
+          "payroll_no": "20",
+          "name": "BENJAMIN Florence Rehema",
+          "position": "House.Keeper",
+          "unit": "ENKARE"
+        },
+        {
+          "payroll_no": "27",
+          "name": "CHARO John Kazungu",
+          "position": "Gardener",
+          "unit": "ENKARE"
+        },
+        {
+          "payroll_no": "26",
+          "name": "KOIPAPI Sankori Ole",
+          "position": "Security_Night",
+          "unit": "ENKARE"
+        },
+        {
+          "payroll_no": "24",
+          "name": "KATANA Josphine Furaha",
+          "position": "House.Keeper",
+          "unit": "SANDBOX"
+        },
+        {
+          "payroll_no": "28",
+          "name": "KIFARU Amani Chengo",
+          "position": "Gardener",
+          "unit": "SANDBOX"
+        },
+        {
+          "payroll_no": "25",
+          "name": "NANA Kereku Ole",
+          "position": "Security_Night",
+          "unit": "SANDBOX"
+        }
+      ]
+    },
+    {
+      "company": "Retreats Zuri Limited",
+      "code": "RZL",
+      "source": "RETREATS ZURI LIMITED.XLS",
+      "rows": [
+        {
+          "payroll_no": "01",
+          "name": "YAA Moses Mangi",
+          "position": "House supervisor",
+          "unit": "Zuri"
+        },
+        {
+          "payroll_no": "29",
+          "name": "BARASA Martha Naomy",
+          "position": "Receptionist",
+          "unit": "Zuri"
+        },
+        {
+          "payroll_no": "26",
+          "name": "NDUTIRE Rafiki Allan",
+          "position": "Accountant",
+          "unit": "Watamu office"
+        },
+        {
+          "payroll_no": "02",
+          "name": "CHIPANGA George Kaingu",
+          "position": "Chef",
+          "unit": "Zuri"
+        },
+        {
+          "payroll_no": "24",
+          "name": "CHENGO Khamisi Charo",
+          "position": "Cook",
+          "unit": "Zuri"
+        },
+        {
+          "payroll_no": "30",
+          "name": "IDD Amani Katana",
+          "position": "Cook",
+          "unit": "Zuri"
+        },
+        {
+          "payroll_no": "03",
+          "name": "MWANGUE Fredrick Mwakirani",
+          "position": "Cook",
+          "unit": "Zuri"
+        },
+        {
+          "payroll_no": "28",
+          "name": "CHIPANGA Dalmus Kaingu",
+          "position": "Waiter",
+          "unit": "Zuri"
+        },
+        {
+          "payroll_no": "22",
+          "name": "SAFARI Ferdnand Wanje",
+          "position": "Waiter",
+          "unit": "Zuri"
+        },
+        {
+          "payroll_no": "12",
+          "name": "YAA Gideon Jefwa",
+          "position": "Electrician",
+          "unit": "Zuri"
+        },
+        {
+          "payroll_no": "13",
+          "name": "SAMUEL Joseph Mwavuo",
+          "position": "Plumber",
+          "unit": "Zuri"
+        },
+        {
+          "payroll_no": "23",
+          "name": "KATANA Jumaa Garama",
+          "position": "Pool Attendant",
+          "unit": "Zuri"
+        },
+        {
+          "payroll_no": "17",
+          "name": "CHARO Nickson Khamisi",
+          "position": "Gardener",
+          "unit": "Zuri"
+        },
+        {
+          "payroll_no": "16",
+          "name": "CHEA Katana Changawa",
+          "position": "Gardener",
+          "unit": "Zuri"
+        },
+        {
+          "payroll_no": "18",
+          "name": "KARISA Martin Shuhuli",
+          "position": "Gardener",
+          "unit": "Zuri"
+        },
+        {
+          "payroll_no": "15",
+          "name": "MBITHA Kanze Kalume",
+          "position": "Gardener",
+          "unit": "Zuri"
+        },
+        {
+          "payroll_no": "25",
+          "name": "CHARO Mariam Said",
+          "position": "HouseKeeper",
+          "unit": "Zuri"
+        },
+        {
+          "payroll_no": "06",
+          "name": "NGURE Blench Wanjiku",
+          "position": "HouseKeeper",
+          "unit": "Zuri"
+        },
+        {
+          "payroll_no": "31",
+          "name": "KARISA Mnyazi Joshua",
+          "position": "Laundry Attendant",
+          "unit": "Zuri"
+        },
+        {
+          "payroll_no": "11",
+          "name": "KOMBE Jumaa Charo",
+          "position": "Security_Day",
+          "unit": "Zuri"
+        },
+        {
+          "payroll_no": "21",
+          "name": "BAYA Josephat Mwaro",
+          "position": "Security_Night",
+          "unit": "Zuri"
+        },
+        {
+          "payroll_no": "20",
+          "name": "HAMISI Leyian Ole",
+          "position": "Security_Night",
+          "unit": "Zuri"
+        },
+        {
+          "payroll_no": "19",
+          "name": "MATEINE Leiyan Ole",
+          "position": "Security_Night",
+          "unit": "Zuri"
+        },
+        {
+          "payroll_no": "32",
+          "name": "JEFA Furaha Karisa",
+          "position": "Security_Reliver",
+          "unit": "Zuri"
+        }
+      ]
+    },
+    {
+      "company": "Tribal Sand Limited",
+      "code": "TSL",
+      "source": "TRIBAL SAND LIMITED.xlsx",
+      "manager_note": "Managed by Enock",
+      "rows": [
+        {
+          "payroll_no": "1",
+          "name": "RAMADHAN MZONJE MWACHIZI",
+          "position": "KITE INSTRUCTOR",
+          "unit": "Kite school"
+        },
+        {
+          "payroll_no": "2",
+          "name": "JORDAN MAORI MASIFWA",
+          "position": "HELPER INSTRUCTOR",
+          "unit": "Transfers"
+        },
+        {
+          "payroll_no": "3",
+          "name": "MUNENE MWIKUMI",
+          "position": "DRIVER",
+          "unit": "Transfers"
+        },
+        {
+          "payroll_no": "4",
+          "name": "JONATHAN MUTHUKA NZOMO",
+          "position": "DRIVER",
+          "unit": "Transfers"
+        }
+      ]
+    }
+  ]
+}

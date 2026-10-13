@@ -257,3 +257,77 @@ function xlsx_read_rows(string $path): array {
 
     return xlsx_sheet_cells($sheetXml, $shared, null, false);
 }
+
+/**
+ * True when the workbook counts dates from 1904 (`<workbookPr date1904="1"/>`,
+ * the Mac default — HR's attendance workbook is one). Serial numbers mean a
+ * different day in each system, and a night-shift clock-out stored as
+ * "1904-01-02 06:00" is 1.25 days = 06:00 the next day.
+ */
+function xlsx_is_1904(string $zip): bool {
+    $wb = xlsx_zip_read($zip, 'xl/workbook.xml');
+    return $wb !== null && (bool) preg_match('/<workbookPr\b[^>]*\bdate1904="(1|true)"/i', $wb);
+}
+
+/** An Excel date serial → 'Y-m-d' in the workbook's date system (time part ignored). */
+function xlsx_serial_to_ymd(float $serial, bool $is1904): string {
+    $base = $is1904 ? new DateTimeImmutable('1904-01-01', new DateTimeZone('UTC'))
+                    : new DateTimeImmutable('1899-12-30', new DateTimeZone('UTC'));
+    return $base->modify('+' . (int) floor($serial) . ' days')->format('Y-m-d');
+}
+
+/**
+ * Stream one worksheet row by row without building a DOM — HR's attendance
+ * sheets are ~800 rows × 1,000 columns (5 MB of XML each) and a DOMDocument of
+ * that runs out of memory. Calls $onRow(int $rowIndex0, array $cells) for every
+ * row that has a value, with $cells SPARSE: [column index => string]. Shared
+ * strings are resolved; numbers come back as their stored string.
+ */
+function xlsx_stream_sheet(string $zip, string $part, array $shared, callable $onRow): void {
+    $xml = xlsx_zip_read($zip, $part);
+    if ($xml === null) throw new RuntimeException('A worksheet could not be read.');
+    $r = new XMLReader();
+    if (!$r->XML($xml, null, LIBXML_NONET | LIBXML_COMPACT)) throw new RuntimeException('The worksheet XML could not be parsed.');
+    unset($xml);
+    $row = -1; $cells = []; $col = 0; $type = ''; $val = null; $inV = false; $inT = false; $next = 0;
+    while (@$r->read()) {
+        if ($r->nodeType === XMLReader::ELEMENT) {
+            switch ($r->localName) {
+                case 'row':
+                    $rn = (int) $r->getAttribute('r');
+                    $row = $rn > 0 ? $rn - 1 : $next;
+                    if ($row >= 1048576) throw new RuntimeException('The sheet has more rows than Excel allows.');
+                    $next = $row + 1;
+                    $cells = []; $col = 0;
+                    if ($r->isEmptyElement) $row = -1;
+                    break;
+                case 'c':
+                    $ref  = (string) $r->getAttribute('r');
+                    $col  = $ref !== '' ? xlsx_col_index($ref) : $col + 1;
+                    $type = (string) $r->getAttribute('t');
+                    $val  = null;
+                    break;
+                case 'v': $inV = !$r->isEmptyElement; $val = $val ?? ''; break;
+                case 't': $inT = !$r->isEmptyElement; $val = $val ?? ''; break;
+            }
+        } elseif ($r->nodeType === XMLReader::TEXT || $r->nodeType === XMLReader::CDATA || $r->nodeType === XMLReader::SIGNIFICANT_WHITESPACE) {
+            if ($inV || $inT) $val .= $r->value;
+        } elseif ($r->nodeType === XMLReader::END_ELEMENT) {
+            switch ($r->localName) {
+                case 'v': $inV = false; break;
+                case 't': $inT = false; break;
+                case 'c':
+                    if ($val !== null) {
+                        $v = ($type === 's') ? ($shared[(int) $val] ?? '') : $val;
+                        if ($v !== '') $cells[$col] = $v;
+                    }
+                    break;
+                case 'row':
+                    if ($row >= 0 && $cells) $onRow($row, $cells);
+                    $row = -1;
+                    break;
+            }
+        }
+    }
+    $r->close();
+}
