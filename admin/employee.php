@@ -16,6 +16,7 @@ require_once __DIR__ . '/../includes/booking.php';           // mywork_tasks() (
 require_once __DIR__ . '/../includes/internal-messages.php'; // DM button
 require_once __DIR__ . '/../includes/activity-log.php';
 require_once __DIR__ . '/../includes/hr-documents.php';      // Documents card (contracts / IDs)
+require_once __DIR__ . '/../includes/hr-establishment.php';  // company + payroll no., company scope
 require_once __DIR__ . '/../includes/inventory-people.php';   // Assets tab (assigned items)
 require_once __DIR__ . '/../includes/icons.php';
 require_login();
@@ -41,7 +42,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && !$_POST && (int)($_SERVER['CONTENT_
 $id   = (int)($_GET['id'] ?? $_POST['hr_id'] ?? 0);
 $p    = fetch_hr_staff_row($id);
 $vids = admin_venue_ids();   // null = owner
-if (!$p || !hr_staff_in_venue_scope($id, $p['venue_id'] !== null ? (int)$p['venue_id'] : null, $vids)) {
+$cids = hr_admin_company_ids();   // companies this account manages
+if (!$p || !hr_staff_in_venue_scope($id, $p['venue_id'] !== null ? (int)$p['venue_id'] : null, $vids, $cids)) {
     http_response_code(404);
     include __DIR__ . '/_layout.php';
     echo '<p style="padding:32px;color:var(--muted)">Employee not found. <a href="/admin/staff.php?tab=directory">Back to Team</a></p>';
@@ -63,10 +65,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
         if ($ctype !== null && !in_array($ctype, hr_contract_types(), true)) $ctype = null;
         $ymd = function ($k) { $v = trim((string)($_POST[$k] ?? '')); return preg_match('/^\d{4}-\d{2}-\d{2}$/', $v) ? $v : null; };
         db_query(
-            "UPDATE hr_staff SET company=:co, contract_type=:ct, contract_start=:cs, contract_end=:ce, national_id=:nid, hr_notes=:notes WHERE id=:id",
+            "UPDATE hr_staff SET company=COALESCE(:co, company), contract_type=:ct, contract_start=:cs, contract_end=:ce, national_id=:nid, hr_notes=:notes WHERE id=:id",
             [':co'=>$g('company'), ':ct'=>$ctype, ':cs'=>$ymd('contract_start'), ':ce'=>$ymd('contract_end'),
              ':nid'=>$g('national_id'), ':notes'=>$g('hr_notes'), ':id'=>$id]
         );
+        // Employing company + payroll number (staff establishment): a real company, and the
+        // (company, payroll no.) pair stays unique.
+        if (hr_staff_company_supported() && array_key_exists('company_id', $_POST)) {
+            $coId  = (int)$_POST['company_id'];
+            $coId  = isset(hr_company_names()[$coId]) ? $coId : 0;
+            $payNo = $g('payroll_no');
+            $clash = $coId && $payNo !== null && db_query('SELECT 1 FROM hr_staff WHERE company_id = :c AND UPPER(payroll_no) = UPPER(:p) AND id <> :id',
+                         [':c' => $coId, ':p' => $payNo, ':id' => $id])->fetchColumn();
+            if ($clash) {
+                $_SESSION['emp_flash'] = ['type'=>'error','msg'=>'Someone at ' . hr_company_names()[$coId] . ' already has payroll number ' . $payNo . '. The other details were saved.'];
+                header('Location: /admin/employee.php?id=' . $id . '#employment'); exit;
+            }
+            db_query('UPDATE hr_staff SET company_id = :c, payroll_no = :p WHERE id = :id', [':c' => $coId ?: null, ':p' => $payNo, ':id' => $id]);
+        }
         audit_log('hr.profile_save', 'hr_staff', $id, (string)$p['full_name']);
         $_SESSION['emp_flash'] = ['type'=>'success','msg'=>'Employment details saved.'];
     }
@@ -232,6 +248,10 @@ include __DIR__ . '/_layout.php';
     <div class="card__head"><span class="card__title">Overview</span></div>
     <div class="card__body" style="padding:18px">
       <div class="detail-grid">
+        <?php if (hr_staff_company_supported()): ?>
+        <div><div class="detail-item__label">Company</div><div class="detail-item__value"><?= e(hr_company_names()[(int)($p['company_id'] ?? 0)] ?? '—') ?></div></div>
+        <div><div class="detail-item__label">Payroll no.</div><div class="detail-item__value"><?= e(($p['payroll_no'] ?? '') !== '' ? $p['payroll_no'] : '—') ?></div></div>
+        <?php endif; ?>
         <div><div class="detail-item__label">Position</div><div class="detail-item__value"><?= e($p['position'] ?: '—') ?></div></div>
         <div><div class="detail-item__label">Department</div><div class="detail-item__value"><?= e($dept ?: 'Other') ?></div></div>
         <div><div class="detail-item__label">Home property</div><div class="detail-item__value"><?= e($homeVenue) ?></div></div>
@@ -259,7 +279,16 @@ include __DIR__ . '/_layout.php';
         <input type="hidden" name="action" value="save_profile">
         <input type="hidden" name="hr_id" value="<?= $id ?>">
         <div class="emp-form">
+          <?php if (hr_staff_company_supported() && hr_company_names()): ?>
+          <div class="field"><label>Company</label>
+            <select name="company_id" class="filter-select eselect--block">
+              <option value="0">— not set —</option>
+              <?php foreach (hr_company_names() as $cid => $cname): ?><option value="<?= (int)$cid ?>" <?= (int)($p['company_id'] ?? 0) === (int)$cid ? 'selected' : '' ?>><?= e($cname) ?></option><?php endforeach; ?>
+            </select></div>
+          <div class="field"><label>Payroll no.</label><input name="payroll_no" class="inp" value="<?= e($p['payroll_no'] ?? '') ?>" placeholder="e.g. MKH032" style="width:100%"></div>
+          <?php else: ?>
           <div class="field"><label>Company</label><input name="company" class="inp" value="<?= e($p['company'] ?? '') ?>" placeholder="Employing company" style="width:100%"></div>
+          <?php endif; ?>
           <div class="field"><label>Contract type</label>
             <select name="contract_type" class="filter-select eselect--block">
               <option value="">—</option>
@@ -528,7 +557,7 @@ include __DIR__ . '/_layout.php';
     b.addEventListener('click', function () { activate(b.dataset.tab); });
   });
   var h = window.location.hash.slice(1);
-  if ((h === 'documents' || h === 'assets') && document.getElementById('tab-' + h)) activate(h);
+  if ((h === 'documents' || h === 'assets' || h === 'employment' || h === 'attendance') && document.getElementById('tab-' + h)) activate(h);
 })();
 
 /* Styled file input (.filefield): show what was picked — one name, or "N files". */

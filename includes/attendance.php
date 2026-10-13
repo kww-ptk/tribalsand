@@ -145,14 +145,24 @@ function attendance_upsert(int $staffId, string $ymd, array $data, ?int $loggedB
     return (int) db_query("SELECT id FROM attendance WHERE hr_staff_id=:s AND work_date=:d", [':s'=>$staffId, ':d'=>$ymd])->fetchColumn();
 }
 
+/**
+ * The page filters every attendance list shares (alias s = hr_staff):
+ * department, home property, employing company.
+ */
+function attendance_filter_sql(array $filters, array &$params): string {
+    $w = '';
+    if (!empty($filters['department'])) { $w .= ' AND s.department = :dept'; $params[':dept'] = (string)$filters['department']; }
+    if (!empty($filters['venue_id']))   { $w .= ' AND s.venue_id = :fvid';  $params[':fvid'] = (int)$filters['venue_id']; }
+    if (!empty($filters['company_id']) && hr_staff_company_supported()) { $w .= ' AND s.company_id = :fco'; $params[':fco'] = (int)$filters['company_id']; }
+    return $w;
+}
+
 /** Staff (scoped) with their attendance row for one date — LEFT JOIN so blanks show. */
-function fetch_attendance_for_date(?array $venueIds, string $ymd, array $filters = []): array {
+function fetch_attendance_for_date(?array $venueIds, string $ymd, array $filters = [], ?array $companyIds = null): array {
     if (!attendance_supported() || !hr_staff_supported()) return [];
     $where = "WHERE s.status = 'active'"; $params = [':d' => $ymd];
-    $scope = ''; hr_scope_sql($venueIds, $scope, $params, 's');   // hr_staff aliased as s (home OR extra venue)
-    $where .= $scope;
-    if (!empty($filters['department'])) { $where .= ' AND s.department = :dept'; $params[':dept'] = (string)$filters['department']; }
-    if (!empty($filters['venue_id']))   { $where .= ' AND s.venue_id = :fvid';  $params[':fvid'] = (int)$filters['venue_id']; }
+    $scope = ''; hr_scope_sql($venueIds, $scope, $params, 's', $companyIds);   // hr_staff aliased as s (home OR extra venue, or a managed company)
+    $where .= $scope . attendance_filter_sql($filters, $params);
     return db_query(
         "SELECT s.id AS hr_staff_id, s.full_name, s.position, s.department, s.venue_id, s.unit_label, s.off_day,
                 a.id AS att_id, a.status, a.in1, a.out1, a.in2, a.out2
@@ -214,15 +224,13 @@ function attendance_person_summary(array $days, ?string $department): array {
  * with their per-day effective status and a computed summary.
  * Returns ['days'=>N, 'staff'=>[ ['id','name','department','venue_id','cells'=>[day=>status], 'summary'=>[...] ] ]].
  */
-function attendance_month_matrix(?array $venueIds, int $year, int $month, array $filters = []): array {
+function attendance_month_matrix(?array $venueIds, int $year, int $month, array $filters = [], ?array $companyIds = null): array {
     if (!attendance_supported() || !hr_staff_supported()) return ['days'=>0, 'staff'=>[]];
     $daysInMonth = (int) date('t', strtotime(sprintf('%04d-%02d-01', $year, $month)));
 
     $where = "WHERE s.status = 'active'"; $params = [];
-    $scope = ''; hr_scope_sql($venueIds, $scope, $params, 's');
-    $where .= $scope;
-    if (!empty($filters['department'])) { $where .= ' AND s.department = :dept'; $params[':dept'] = (string)$filters['department']; }
-    if (!empty($filters['venue_id']))   { $where .= ' AND s.venue_id = :fvid';  $params[':fvid'] = (int)$filters['venue_id']; }
+    $scope = ''; hr_scope_sql($venueIds, $scope, $params, 's', $companyIds);
+    $where .= $scope . attendance_filter_sql($filters, $params);
     $staff = db_query(
         "SELECT s.id, s.full_name, s.department, s.venue_id, s.off_day
            FROM hr_staff s $where
@@ -265,8 +273,8 @@ function attendance_month_matrix(?array $venueIds, int $year, int $month, array 
  * Dashboard aggregates for a month (scoped). KPI totals + by-property and
  * by-department breakdowns, built from the month matrix (one pass).
  */
-function attendance_dashboard(?array $venueIds, int $year, int $month, array $filters = []): array {
-    $matrix = attendance_month_matrix($venueIds, $year, $month, $filters);
+function attendance_dashboard(?array $venueIds, int $year, int $month, array $filters = [], ?array $companyIds = null): array {
+    $matrix = attendance_month_matrix($venueIds, $year, $month, $filters, $companyIds);
     $daysInMonth = $matrix['days'];
     $kpi = ['staff'=>0,'daysWorked'=>0,'hours'=>0.0,'ot'=>0.0,'offLeave'=>0,'sick'=>0,'rec'=>0,'ph'=>0,'possible'=>0];
     $byProp = []; $byDept = [];
@@ -330,10 +338,10 @@ function leave_status_badge(string $s): string {
 }
 
 /** Scoped list of leave requests (pending first, then most recent). */
-function fetch_leave_requests(?array $venueIds, array $filters = []): array {
+function fetch_leave_requests(?array $venueIds, array $filters = [], ?array $companyIds = null): array {
     if (!leave_requests_supported() || !hr_staff_supported()) return [];
     $where = 'WHERE 1=1'; $params = [];
-    $scope = ''; hr_scope_sql($venueIds, $scope, $params, 's');
+    $scope = ''; hr_scope_sql($venueIds, $scope, $params, 's', $companyIds);
     $where .= $scope;
     if (!empty($filters['status'])) { $where .= ' AND l.status = :st'; $params[':st'] = (string)$filters['status']; }
     return db_query(
@@ -400,7 +408,7 @@ function leave_decide(int $id, string $status, ?int $by): int {
 }
 
 /** Count of pending leave requests in scope — for a nav/section badge. */
-function leave_pending_count(?array $venueIds): int {
+function leave_pending_count(?array $venueIds, ?array $companyIds = null): int {
     if (!leave_requests_supported()) return 0;
-    return count(fetch_leave_requests($venueIds, ['status' => 'pending']));
+    return count(fetch_leave_requests($venueIds, ['status' => 'pending'], $companyIds));
 }

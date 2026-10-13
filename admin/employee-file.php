@@ -10,13 +10,14 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/hr.php';
 require_once __DIR__ . '/../includes/hr-documents.php';
+require_once __DIR__ . '/../includes/hr-establishment.php';
 require_login();
 require_hr();
 
 $docId = (int)($_GET['doc'] ?? 0);
 $doc   = hr_staff_documents_supported() ? fetch_hr_staff_document($docId) : false;
 $p     = $doc ? fetch_hr_staff_row((int)$doc['hr_staff_id']) : false;
-if (!$doc || !$p || !hr_staff_in_venue_scope((int)$p['id'], $p['venue_id'] !== null ? (int)$p['venue_id'] : null, admin_venue_ids())) {
+if (!$doc || !$p || !hr_staff_in_venue_scope((int)$p['id'], $p['venue_id'] !== null ? (int)$p['venue_id'] : null, admin_venue_ids(), hr_admin_company_ids())) {
     http_response_code(404);
     header('Content-Type: text/plain; charset=utf-8');
     exit('Document not found.');

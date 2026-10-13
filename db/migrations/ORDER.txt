@@ -139,3 +139,4 @@ add_venue_extras.sql                                 2026-10-06
 add_hr_role.sql                                      2026-10-06
 add_bookings_channel_commission.sql                  2026-10-07
 add_checkin_deposit_plan.sql                         2026-10-09
+add_hr_staff_establishment.sql                       2026-10-13

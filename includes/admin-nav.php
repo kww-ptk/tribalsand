@@ -144,7 +144,7 @@ function admin_nav_definition(array $f, array $badge = []): array {
                 $tab('Clock kiosks', 'attendance-devices.php', ($on('reports') || $on('hr')) && $on('clockNav')),
                 $tab('Clock cards', 'attendance-cards.php', ($on('reports') || $on('hr')) && $on('clockOn')),
             ]),
-            $item('Staff', 'staff', [$tab('Staff', ['staff.php', 'employee.php'], $on('owner') || $on('hr'))]),
+            $item('Staff', 'staff', [$tab('Staff', ['staff.php', 'employee.php', 'staff-import.php'], $on('owner') || $on('hr'))]),
         ]],
 
         ['key' => 'restaurant', 'icon' => 'menus', 'title' => 'Restaurant', 'items' => [

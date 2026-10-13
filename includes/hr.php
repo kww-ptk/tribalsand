@@ -41,6 +41,27 @@ function hr_staff_profile_supported(): bool {
     } catch (Throwable $e) { return $c = false; }
 }
 
+/** True once add_hr_staff_establishment.sql has been applied (company + payroll no. on each person). */
+function hr_staff_company_supported(): bool {
+    static $c = null;
+    if ($c !== null) return $c;
+    try {
+        return $c = (bool) db_query(
+            "SELECT 1 FROM information_schema.columns WHERE table_name = 'hr_staff' AND column_name = 'company_id'"
+        )->fetchColumn();
+    } catch (Throwable $e) { return $c = false; }
+}
+
+/** Company id → name for every company (empty before add_companies). */
+function hr_company_names(): array {
+    static $c = null;
+    if ($c !== null) return $c;
+    $c = [];
+    try { foreach (db_query('SELECT id, name FROM companies ORDER BY name')->fetchAll() as $r) $c[(int)$r['id']] = (string)$r['name']; }
+    catch (Throwable $e) { $c = []; }
+    return $c;
+}
+
 /** Contract-type options, in display order. */
 function hr_contract_types(): array {
     return ['Permanent', 'Contract', 'Casual', 'Probation', 'Intern', 'Other'];
@@ -92,7 +113,7 @@ function hr_whatsapp_link(?string $phone): string {
 
 /** The department buckets, in display order. */
 function hr_departments(): array {
-    return ['Housekeeping', 'Kitchen', 'Gardening', 'Maintenance', 'Security', 'Service', 'Stores', 'Admin', 'Other'];
+    return ['Housekeeping', 'Kitchen', 'Gardening', 'Maintenance', 'Security', 'Service', 'Stores', 'Transport', 'Admin', 'Other'];
 }
 
 /** Weekly off-day options (empty = Sunday-off by convention). */
@@ -110,13 +131,17 @@ function hr_department(?string $position): string {
     $p = strtoupper(trim((string)$position));
     if ($p === '') return 'Other';
     $has = fn(string ...$needles) => (bool) array_filter($needles, fn($n) => strpos($p, $n) !== false);
-    if ($has('WATCH', 'SECUR', 'GUARD'))                      return 'Security';
+    if ($has('WATCH', 'SECUR', 'GUARD', 'DOG'))               return 'Security';
     if ($has('GARD'))                                         return 'Gardening'; // GARDENER/GARDNER/GARDERNER
-    if ($has('COOK', 'CHEF', 'KITCHEN'))                      return 'Kitchen';
-    if ($has('HOUSE', 'CLEAN', 'POOL', 'LAUNDR'))            return 'Housekeeping';
+    if ($has('COOK', 'CHEF', 'KITCHEN', 'PASTRY'))            return 'Kitchen';
+    if ($has('STORE'))                                        return 'Stores';   // before KEEPER: "STORE KEEPER"
+    if ($has('FRONT OF HOUSE') || $p === 'FOH')              return 'Service';  // before HOUSE
+    if ($has('BACK OF HOUSE') || $p === 'BOH')               return 'Other';    // spans kitchen + stores + cleaning
+    if ($has('HOUSE', 'KEEPER', 'CLEAN', 'POOL', 'LAUNDR', 'LINEN', 'CARETAK')) return 'Housekeeping';
     if ($has('CARPENT', 'MAINT', 'ELECTRIC', 'PLUMB'))       return 'Maintenance';
-    if ($has('STORE'))                                        return 'Stores';
-    if ($has('WAIT', 'KITE'))                                 return 'Service';
+    if ($has('DRIVER', 'TRANSFER'))                           return 'Transport';
+    // Before the SUPERV rule: a "Floor Supervisor" runs the restaurant floor.
+    if ($has('WAIT', 'KITE', 'BAR', 'CASHIER', 'FLOOR', 'FRONT OF HOUSE', 'F&B', 'FOOD & BEV')) return 'Service';
     if ($has('MANAG', 'ACCOUNT', 'RESERV', 'OPERATION', 'SUPERV', 'HR', 'ADMIN')) return 'Admin';
     return 'Other';
 }
@@ -130,6 +155,7 @@ function hr_department_badge(string $dept): string {
         'Housekeeping' => 'badge--blue',
         'Maintenance'  => 'badge--purple',
         'Admin'        => 'badge--teal',
+        'Transport'    => 'badge--orange',
         default        => 'badge--grey',
     };
 }
@@ -139,52 +165,71 @@ function hr_department_badge(string $dept): string {
  * when unscoped (owner). $alias qualifies the hr_staff table: '' for an unaliased
  * `FROM hr_staff`, or e.g. 's' for `FROM hr_staff s`. A person is in scope when
  * their HOME venue (hr_staff.venue_id) OR any ADDITIONAL venue (hr_staff_venues)
- * is in the account's set — the many-to-many widens visibility only (Item 5).
- * Pre-migration (no join table) it is exactly the old home-venue-only clause.
+ * is in the account's set — the many-to-many widens visibility only (Item 5) —
+ * OR their employing company is one the account manages ($companyIds, from
+ * hr_admin_company_ids(); Tribal Sand Limited has no property, so its manager
+ * would otherwise see nobody). Pre-migration it is the old home-venue clause.
  */
-function hr_scope_sql(?array $venueIds, string &$sqlOut, array &$params, string $alias = ''): void {
+function hr_scope_sql(?array $venueIds, string &$sqlOut, array &$params, string $alias = '', ?array $companyIds = null): void {
     if ($venueIds === null) { $sqlOut = ''; return; } // owner — everyone
-    $ids = array_values(array_filter(array_map('intval', $venueIds)));
-    $vcol  = $alias !== '' ? "$alias.venue_id" : 'venue_id';
-    $idcol = $alias !== '' ? "$alias.id"       : 'hr_staff.id';
-    if (!$ids) { $sqlOut = " AND $vcol = -1"; return; } // scoped but no venues → nothing
-    $ph = [];
-    foreach ($ids as $i => $vid) { $k = ":sv$i"; $ph[] = $k; $params[$k] = $vid; }
-    $inList = implode(',', $ph);
-    if (hr_staff_venues_supported()) {
-        $sqlOut = " AND ($vcol IN ($inList)"
-                . " OR EXISTS (SELECT 1 FROM hr_staff_venues hv WHERE hv.hr_staff_id = $idcol AND hv.venue_id IN ($inList)))";
-    } else {
-        $sqlOut = " AND $vcol IN ($inList)";
+    $ids   = array_values(array_filter(array_map('intval', $venueIds)));
+    $cids  = hr_staff_company_supported() ? array_values(array_filter(array_map('intval', $companyIds ?? []))) : [];
+    $vcol  = $alias !== '' ? "$alias.venue_id"   : 'venue_id';
+    $idcol = $alias !== '' ? "$alias.id"         : 'hr_staff.id';
+    $ccol  = $alias !== '' ? "$alias.company_id" : 'hr_staff.company_id';
+    $or = [];
+    if ($ids) {
+        $ph = [];
+        foreach ($ids as $i => $vid) { $k = ":sv$i"; $ph[] = $k; $params[$k] = $vid; }
+        $inList = implode(',', $ph);
+        $or[] = "$vcol IN ($inList)";
+        if (hr_staff_venues_supported()) {
+            $or[] = "EXISTS (SELECT 1 FROM hr_staff_venues hv WHERE hv.hr_staff_id = $idcol AND hv.venue_id IN ($inList))";
+        }
     }
+    if ($cids) {
+        $ph = [];
+        foreach ($cids as $i => $cid) { $k = ":sc$i"; $ph[] = $k; $params[$k] = $cid; }
+        $or[] = "$ccol IN (" . implode(',', $ph) . ")";
+    }
+    $sqlOut = $or ? ' AND (' . implode(' OR ', $or) . ')' : " AND $vcol = -1"; // scoped but nothing → nobody
 }
 
 /**
  * Whether an account scoped to $venueIds (null = owner/all) may see/manage a
- * staff member — true if their HOME venue OR any ADDITIONAL venue is in scope.
+ * staff member — true if their HOME venue OR any ADDITIONAL venue is in scope,
+ * or their company is one the account manages ($companyIds).
  * The single-boundary version of hr_scope_sql(), for per-row write guards.
  */
-function hr_staff_in_venue_scope(int $staffId, ?int $homeVenueId, ?array $venueIds): bool {
+function hr_staff_in_venue_scope(int $staffId, ?int $homeVenueId, ?array $venueIds, ?array $companyIds = null): bool {
     if ($venueIds === null) return true;                                    // owner — everyone
     if ($homeVenueId !== null && in_array((int)$homeVenueId, $venueIds, true)) return true;
     foreach (hr_staff_venue_ids($staffId) as $vid) if (in_array($vid, $venueIds, true)) return true;
+    if ($companyIds && hr_staff_company_supported()) {
+        $co = db_query('SELECT company_id FROM hr_staff WHERE id = :id', [':id' => $staffId])->fetchColumn();
+        if ($co !== false && $co !== null && in_array((int)$co, array_map('intval', $companyIds), true)) return true;
+    }
     return false;
 }
 
 /**
  * List directory rows, scoped, with optional filters:
- *   ['q' => search, 'department' => bucket, 'venue_id' => int, 'status' => 'active'|'inactive'|'']
+ *   ['q' => search (name, position, unit, payroll no.), 'department' => bucket, 'venue_id' => int,
+ *    'no_venue' => true (people with no property), 'company_id' => int, 'status' => 'active'|'inactive'|'']
  */
-function fetch_hr_staff(?array $venueIds, array $filters = []): array {
+function fetch_hr_staff(?array $venueIds, array $filters = [], ?array $companyIds = null): array {
     if (!hr_staff_supported()) return [];
     $where = 'WHERE 1=1'; $params = [];
-    $scope = ''; hr_scope_sql($venueIds, $scope, $params); $where .= $scope;
+    $scope = ''; hr_scope_sql($venueIds, $scope, $params, '', $companyIds); $where .= $scope;
+    if (!empty($filters['company_id']) && hr_staff_company_supported()) { $where .= ' AND company_id = :fco'; $params[':fco'] = (int)$filters['company_id']; }
 
     if (!empty($filters['department'])) { $where .= ' AND department = :dept'; $params[':dept'] = (string)$filters['department']; }
     if (!empty($filters['venue_id']))   { $where .= ' AND venue_id = :fvid';  $params[':fvid'] = (int)$filters['venue_id']; }
+    if (!empty($filters['no_venue']))   { $where .= ' AND venue_id IS NULL'; }
     if (isset($filters['status']) && $filters['status'] !== '') { $where .= ' AND status = :st'; $params[':st'] = (string)$filters['status']; }
     if (!empty($filters['q'])) {
-        $where .= ' AND (full_name ILIKE :q OR position ILIKE :q OR COALESCE(unit_label,\'\') ILIKE :q)';
+        $where .= ' AND (full_name ILIKE :q OR position ILIKE :q OR COALESCE(unit_label,\'\') ILIKE :q'
+                . (hr_staff_company_supported() ? ' OR COALESCE(payroll_no,\'\') ILIKE :q' : '') . ')';
         $params[':q'] = '%' . $filters['q'] . '%';
     }
     return db_query(
@@ -204,8 +249,8 @@ function fetch_hr_staff_row(int $id): array|false {
  * ordered list of ['venue_id','label','staff'=>[...]] groups; unassigned staff
  * fall into a trailing "Other units" group keyed by their unit_label.
  */
-function hr_staff_by_property(?array $venueIds, array $filters = []): array {
-    $rows = fetch_hr_staff($venueIds, $filters);
+function hr_staff_by_property(?array $venueIds, array $filters = [], ?array $companyIds = null): array {
+    $rows = fetch_hr_staff($venueIds, $filters, $companyIds);
     if (!$rows) return [];
     $venueNames = [];
     foreach (db_query('SELECT id, name FROM venues')->fetchAll() as $v) { $venueNames[(int)$v['id']] = $v['name']; }
@@ -224,9 +269,9 @@ function hr_staff_by_property(?array $venueIds, array $filters = []): array {
 }
 
 /** Count of active directory rows (scoped). */
-function hr_staff_count(?array $venueIds): int {
+function hr_staff_count(?array $venueIds, ?array $companyIds = null): int {
     if (!hr_staff_supported()) return 0;
     $where = "WHERE status = 'active'"; $params = [];
-    $scope = ''; hr_scope_sql($venueIds, $scope, $params); $where .= $scope;
+    $scope = ''; hr_scope_sql($venueIds, $scope, $params, '', $companyIds); $where .= $scope;
     return (int) db_query("SELECT COUNT(*) FROM hr_staff $where", $params)->fetchColumn();
 }

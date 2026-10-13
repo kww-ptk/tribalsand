@@ -17,21 +17,23 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/attendance.php';
 require_once __DIR__ . '/../includes/attendance-clock.php';
+require_once __DIR__ . '/../includes/hr-establishment.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_login();
 require_hr();
 
-$venueIds = admin_venue_ids();
+$venueIds   = admin_venue_ids();
+$companyIds = hr_admin_company_ids();   // companies this account manages (Tribal Sand Limited has no property)
 $view = (string)($_GET['view'] ?? 'daily');
 if (!in_array($view, ['daily', 'month', 'dashboard', 'person', 'leave'], true)) $view = 'daily';
 
 /** True when the acting account may manage attendance/leave for this staff id. */
-function att_staff_in_scope(int $staffId, ?array $venueIds): bool {
+function att_staff_in_scope(int $staffId, ?array $venueIds, ?array $companyIds = null): bool {
     if (!$staffId) return false;
     $row = fetch_hr_staff_row($staffId);
     if (!$row) return false;
     // In scope via HOME venue OR any additional venue (Item 5).
-    return hr_staff_in_venue_scope($staffId, $row['venue_id'] !== null ? (int)$row['venue_id'] : null, $venueIds);
+    return hr_staff_in_venue_scope($staffId, $row['venue_id'] !== null ? (int)$row['venue_id'] : null, $venueIds, $companyIds);
 }
 
 $flash = null;
@@ -46,7 +48,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
 
     // Only staff in the acting account's scope may be written.
     $allowed = [];
-    foreach (fetch_attendance_for_date($venueIds, $ymd) as $r) $allowed[(int)$r['hr_staff_id']] = true;
+    foreach (fetch_attendance_for_date($venueIds, $ymd, [], $companyIds) as $r) $allowed[(int)$r['hr_staff_id']] = true;
 
     $status = $_POST['status'] ?? []; $in1 = $_POST['in1'] ?? []; $out1 = $_POST['out1'] ?? [];
     $in2 = $_POST['in2'] ?? []; $out2 = $_POST['out2'] ?? [];
@@ -72,7 +74,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'leave_create') {
     verify_csrf();
     $sid = (int)($_POST['hr_staff_id'] ?? 0);
-    if (leave_requests_supported() && att_staff_in_scope($sid, $venueIds)) {
+    if (leave_requests_supported() && att_staff_in_scope($sid, $venueIds, $companyIds)) {
         $id = leave_create($sid, (string)($_POST['start_date'] ?? ''), (string)($_POST['end_date'] ?? ''),
                            (string)($_POST['leave_type'] ?? 'annual'), trim((string)($_POST['reason'] ?? '')),
                            (int)($_SESSION['admin_id'] ?? 0));
@@ -91,7 +93,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'leave
     $lid = (int)($_POST['leave_id'] ?? 0);
     $decision = ($_POST['decision'] ?? '') === 'approved' ? 'approved' : 'declined';
     $req = leave_requests_supported() ? fetch_leave_request($lid) : false;
-    if ($req && att_staff_in_scope((int)$req['hr_staff_id'], $venueIds)) {
+    if ($req && att_staff_in_scope((int)$req['hr_staff_id'], $venueIds, $companyIds)) {
         $stamped = leave_decide($lid, $decision, (int)($_SESSION['admin_id'] ?? 0));
         audit_log('attendance.leave_' . $decision, 'leave_request', $lid, $stamped ? "$stamped days" : '');
         $_SESSION['hold_flash'] = ['type'=>'success','msg'=>$decision === 'approved'
@@ -124,7 +126,7 @@ $venues = db_query('SELECT id, name FROM venues ORDER BY sort_order ASC, name AS
 // workbook template — a documented prod follow-up. CSV opens in Excel and
 // carries the same data the Month grid shows.
 if (($_GET['export'] ?? '') === 'csv' && attendance_supported()) {
-    $matrix = attendance_month_matrix($venueIds, $mY, $mM, $filters);
+    $matrix = attendance_month_matrix($venueIds, $mY, $mM, $filters, $companyIds);
     $daysIn = $matrix['days'];
     $venueNames = []; foreach ($venues as $v) { $venueNames[(int)$v['id']] = $v['name']; }
     $fname = 'attendance_' . $month . '.csv';
@@ -171,7 +173,7 @@ $qs = function (array $extra) use ($date, $month, $fDept, $fVenue) {
 };
 $tab = fn($v, $label) => '<a href="/admin/attendance.php?' . e($qs(['view'=>$v])) . '" data-shell-link class="ts-tab' . ($view===$v?' is-active':'') . '" style="padding:9px 16px;font-weight:600;font-size:14px;text-decoration:none;border-bottom:2px solid ' . ($view===$v?'var(--teal,#1E5C6B)':'transparent') . ';color:' . ($view===$v?'var(--teal,#1E5C6B)':'var(--muted,#6b7280)') . '">' . e($label) . '</a>';
 ?>
-<?php $__leavePending = leave_requests_supported() ? leave_pending_count($venueIds) : 0; ?>
+<?php $__leavePending = leave_requests_supported() ? leave_pending_count($venueIds, $companyIds) : 0; ?>
 <div class="ts-tabs" role="tablist" style="display:flex;gap:6px;border-bottom:1px solid var(--border,#e5e7eb);margin-bottom:18px">
   <?= $tab('daily', 'Daily') ?><?= $tab('month', 'Month grid') ?><?= $tab('dashboard', 'Dashboard') ?><?= $tab('leave', 'Leave' . ($__leavePending ? ' (' . $__leavePending . ')' : '')) ?>
 </div>
@@ -222,7 +224,7 @@ $tab = fn($v, $label) => '<a href="/admin/attendance.php?' . e($qs(['view'=>$v])
 $venueNames = []; foreach ($venues as $v) { $venueNames[(int)$v['id']] = $v['name']; }
 
 if ($view === 'daily'):
-  $rows = fetch_attendance_for_date($venueIds, $date, $filters);
+  $rows = fetch_attendance_for_date($venueIds, $date, $filters, $companyIds);
   // Group by property.
   $groups = [];
   foreach ($rows as $r) {
@@ -316,7 +318,7 @@ if ($view === 'daily'):
 
 <?php
 elseif ($view === 'month'):
-  $matrix = attendance_month_matrix($venueIds, $mY, $mM, $filters);
+  $matrix = attendance_month_matrix($venueIds, $mY, $mM, $filters, $companyIds);
   $daysIn = $matrix['days'];
 ?>
 <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
@@ -355,8 +357,8 @@ elseif ($view === 'leave'):
 <div class="card"><div class="card__body card__body--pad"><p class="text-muted" style="margin:0">Leave requests are unavailable. Run the <code>add_leave_requests.sql</code> migration (after <code>add_attendance</code>) to enable it.</p></div></div>
 <?php
   else:
-    $activeStaff = fetch_hr_staff($venueIds, ['status' => 'active']);
-    $reqs = fetch_leave_requests($venueIds);
+    $activeStaff = fetch_hr_staff($venueIds, ['status' => 'active'], $companyIds);
+    $reqs = fetch_leave_requests($venueIds, [], $companyIds);
     $venueNamesL = []; foreach ($venues as $v) { $venueNamesL[(int)$v['id']] = $v['name']; }
 ?>
 <div class="card" style="margin-bottom:18px">
@@ -433,7 +435,7 @@ elseif ($view === 'person'):
   $sid = (int)($_GET['staff'] ?? 0);
   $person = fetch_hr_staff_row($sid);
   // Scope: a manager may only view staff at their own properties (home or extra).
-  $inScope = $person && att_staff_in_scope($sid, $venueIds);
+  $inScope = $person && att_staff_in_scope($sid, $venueIds, $companyIds);
   if (!$inScope):
 ?>
 <div class="card"><div class="card__body card__body--pad"><p class="text-muted" style="margin:0">Staff member not found or outside your properties. <a href="/admin/attendance.php?view=month&month=<?= e($month) ?>">Back to the month grid</a>.</p></div></div>
@@ -489,7 +491,7 @@ elseif ($view === 'person'):
 
 <?php
 else: // dashboard
-  $dash = attendance_dashboard($venueIds, $mY, $mM, $filters);
+  $dash = attendance_dashboard($venueIds, $mY, $mM, $filters, $companyIds);
   $k = $dash['kpi'];
   $card = fn($label, $val, $sub='') => '<div class="card" style="flex:1;min-width:150px"><div class="card__body" style="padding:16px 18px"><div class="text-muted" style="font-size:11px;text-transform:uppercase;letter-spacing:.04em">' . e($label) . '</div><div style="font-size:1.5rem;font-weight:800;color:var(--navy,#1E5C6B);margin-top:2px">' . e($val) . '</div>' . ($sub?'<div class="text-muted" style="font-size:11px">' . e($sub) . '</div>':'') . '</div></div>';
 ?>
