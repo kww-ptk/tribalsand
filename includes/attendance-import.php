@@ -543,7 +543,7 @@ function att_imp_code_map(): array {
 
 /** Codes an unknown code may be read as ('' = leave those days out, 'keep' = store the code as written). */
 function att_imp_code_targets(): array {
-    return ['' => 'Leave those days out', 'keep' => 'Keep the code as written'] + attendance_statuses();
+    return ['' => 'Leave those days out', 'keep' => 'Keep the code as written', 'NIGHT' => 'Night duty (worked)'] + attendance_statuses();
 }
 
 /** A parsed day with HR's answer for an unknown code applied (known codes untouched). Null = leave the day out. */
@@ -551,6 +551,7 @@ function att_imp_apply_code(array $d, array $codeMap): ?array {
     if (!empty($d['known'])) return $d;
     $to = $codeMap[$d['status']] ?? 'keep';
     if ($to === 'keep') return $d;
+    if ($to === 'NIGHT') return ['status' => 'P', 'known' => true, 'night' => true] + $d;
     if ($to === '' || !isset(attendance_statuses()[$to])) {
         $hasTime = $d['in1'] !== null || $d['out1'] !== null || $d['in2'] !== null || $d['out2'] !== null;
         return $hasTime ? ['status' => 'P', 'known' => true] + $d : null;
@@ -602,6 +603,7 @@ function att_imp_apply(int $importId, string $ym, array $decisions, bool $replac
         [$from, $to] = [$ym . '-01', date('Y-m-d', strtotime($ym . '-01 +1 month'))];
         $n = ['written' => 0, 'updated' => 0, 'replaced' => 0, 'same' => 0, 'kept_kiosk' => 0, 'kept_manual' => 0, 'people' => 0, 'former' => 0, 'added' => 0];
         $order = (int) db_query('SELECT COALESCE(MAX(sort_order), 0) FROM hr_staff')->fetchColumn();
+        $nightCol = attendance_night_supported();
         // Resolve every row to a person first; one person listed twice gets ONE merged month.
         $byPerson = [];
         foreach ($month['people'] as $p) {
@@ -644,10 +646,10 @@ function att_imp_apply(int $importId, string $ym, array $decisions, bool $replac
                 if ($a === 'same')   { $n['same']++;        continue; }
                 $status = $d['status'] === 'P' && att_imp_day_hours($d) > 0 ? null : ($d['status'] !== '' ? $d['status'] : null);
                 db_query(
-                    "INSERT INTO attendance (hr_staff_id, work_date, status, in1, out1, in2, out2, note, logged_by, source, import_id)
-                     VALUES (:s, :d, :st, :i1, :o1, :i2, :o2, :nt, :lb, 'import', :imp)
+                    "INSERT INTO attendance (hr_staff_id, work_date, status, in1, out1, in2, out2, note, logged_by, source, import_id" . ($nightCol ? ', night_duty' : '') . ")
+                     VALUES (:s, :d, :st, :i1, :o1, :i2, :o2, :nt, :lb, 'import', :imp" . ($nightCol ? ', ' . (!empty($d['night']) ? 'TRUE' : 'NULL') : '') . ")
                      ON CONFLICT (hr_staff_id, work_date) DO UPDATE SET status = :st, in1 = :i1, out1 = :o1, in2 = :i2, out2 = :o2,
-                            note = :nt, logged_by = :lb, source = 'import', import_id = :imp, updated_at = now()",
+                            note = :nt, logged_by = :lb, source = 'import', import_id = :imp, updated_at = now()" . ($nightCol ? ', night_duty = ' . (!empty($d['night']) ? 'TRUE' : 'NULL') : ''),
                     [':s' => $sid, ':d' => $ymd, ':st' => $status, ':i1' => $d['in1'], ':o1' => $d['out1'],
                      ':i2' => $d['in2'], ':o2' => $d['out2'], ':nt' => ($d['note'] ?? '') !== '' ? $d['note'] : null,
                      ':lb' => $adminId ?: null, ':imp' => $importId]);

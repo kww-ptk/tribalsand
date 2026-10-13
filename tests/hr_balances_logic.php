@@ -67,6 +67,16 @@ check('part month: only 15 days counted', $f['days'] === 15 && $f['entitled'] ==
 check('part month: leave pro-rata (1.75 × 15/30)', $f['leave_accrued'] === 0.875);
 check('a window that ends before it starts = nothing', hr_bal_month_figures([], 'SUN', '2026-09', [], '2026-10-01') === null);
 
+// ── Night duty ──────────────────────────────────────────────────────────────
+check('night: a shift past midnight', attendance_night_by_times(day(1080, 1800)) && attendance_is_night(day(1080, 1800)));
+check('night: a day shift is not', !attendance_night_by_times(day(480, 1020)));
+check('night: an evening ending 22:00 is not', !attendance_night_by_times(day(960, 1320)));
+check('night: HR\'s tick wins over the times', attendance_is_night(day(960, 1320) + ['night_duty' => true])
+    && !attendance_is_night(day(1080, 1800) + ['night_duty' => 'f']));
+check('night: no hours, no night', !attendance_night_by_times(day(null, null, null, null, 'OFF')));
+$f = hr_bal_month_figures(['2026-09-01' => day(1080, 1800), '2026-09-02' => day(1080, 1800), '2026-09-03' => day(480, 1020)], 'SUN', '2026-09', []);
+check('night: counted in the month', $f['nights'] === 2);
+
 // ── HR's summary sheet → opening balances ───────────────────────────────────
 $rows = [
     0 => [0 => 'ATTENDANCE SUMMARY & LEAVE DAYS BALANCES'],
@@ -137,6 +147,14 @@ if (!$haveDb) {
         $mine = array_values(array_filter($rows, fn($r) => (int)$r['staff']['id'] === $a))[0] ?? null;
         check('month view: before / after balances', $mine && abs(($mine['before']['off_days'] ?? 0) - 4.0) < 0.001 && $mine['counts'] === true);
         check('month closed record', hr_bal_month_closed('2026-06') !== null);
+        if (attendance_night_supported()) {
+            attendance_upsert($a, '2026-06-30', ['in1' => '18:00', 'out1' => '06:00+1'], null);
+            attendance_set_night($a, '2026-06-30', true);
+            check('night: matching the times is stored as "decided by times"', db_query("SELECT night_duty FROM attendance WHERE hr_staff_id = :s AND work_date = '2026-06-30'", [':s' => $a])->fetchColumn() === null);
+            attendance_set_night($a, '2026-06-29', true);
+            $nd = db_query("SELECT * FROM attendance WHERE hr_staff_id = :s AND work_date = '2026-06-29'", [':s' => $a])->fetch();
+            check('night: a day shift ticked by hand stays a night', $nd['night_duty'] === true && attendance_is_night($nd));
+        }
     } finally {
         $pdo->rollBack();
     }

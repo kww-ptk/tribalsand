@@ -127,6 +127,52 @@ function attendance_is_off_day(?string $offDay, string $ymd): bool {
     return $off === '' ? ($wd === 'SUN') : ($off === $wd);
 }
 
+/** attendance.night_duty present (add_night_duty.sql)? Catalog lookup — safe inside a transaction. */
+function attendance_night_supported(): bool {
+    static $c = null;
+    if ($c !== null) return $c;
+    try { return $c = (bool) db_query("SELECT 1 FROM information_schema.columns WHERE table_name = 'attendance' AND column_name = 'night_duty'")->fetchColumn(); }
+    catch (Throwable $e) { return $c = false; }
+}
+
+/**
+ * The times alone say "night duty": a worked shift that runs past midnight (an out
+ * ≥ 1440 — every security night 18:00 → 06:00, every kiosk night shift).
+ */
+function attendance_night_by_times(array $row): bool {
+    if (attendance_hours($row) <= 0) return false;
+    foreach (['out1', 'out2'] as $f) if (($row[$f] ?? null) !== null && (int)$row[$f] >= 1440) return true;
+    return false;
+}
+
+/** Was this day a night duty? HR's own setting on the day wins; otherwise the times decide. */
+function attendance_is_night(array $row): bool {
+    if (array_key_exists('night_duty', $row) && $row['night_duty'] !== null) {
+        return $row['night_duty'] === true || $row['night_duty'] === 't' || $row['night_duty'] === '1' || $row['night_duty'] === 1;
+    }
+    return attendance_night_by_times($row);
+}
+
+/**
+ * Store HR's night-duty choice for a day: NULL when it matches what the times say
+ * (so a later change of times keeps deciding), else TRUE / FALSE.
+ */
+function attendance_set_night(int $staffId, string $ymd, bool $night): void {
+    if (!attendance_night_supported()) return;
+    $row = db_query('SELECT * FROM attendance WHERE hr_staff_id = :s AND work_date = :d', [':s' => $staffId, ':d' => $ymd])->fetch();
+    if (!$row) return;
+    $val = $night === attendance_night_by_times($row) ? null : ($night ? 'TRUE' : 'FALSE');
+    db_query('UPDATE attendance SET night_duty = ' . ($val ?? 'NULL') . ' WHERE id = :id', [':id' => (int)$row['id']]);
+}
+
+/** Night allowance per property (KES per night): [venue id => amount]; setting night_allowance. */
+function attendance_night_rates(): array {
+    $m = json_decode(setting('night_allowance', '{}'), true);
+    $out = [];
+    if (is_array($m)) foreach ($m as $vid => $amt) if ((int)$vid > 0 && is_numeric($amt) && (float)$amt > 0) $out[(int)$vid] = round((float)$amt, 2);
+    return $out;
+}
+
 /** attendance.source present (add_attendance_import.sql)? Catalog lookup — safe inside a transaction. */
 function attendance_source_supported(): bool {
     static $c = null;
@@ -185,7 +231,7 @@ function fetch_attendance_for_date(?array $venueIds, string $ymd, array $filters
     $where .= $scope . attendance_filter_sql($filters, $params);
     return db_query(
         "SELECT s.id AS hr_staff_id, s.full_name, s.position, s.department, s.venue_id, s.unit_label, s.off_day,
-                a.id AS att_id, a.status, a.in1, a.out1, a.in2, a.out2
+                a.id AS att_id, a.status, a.in1, a.out1, a.in2, a.out2" . (attendance_night_supported() ? ', a.night_duty' : '') . "
            FROM hr_staff s
            LEFT JOIN attendance a ON a.hr_staff_id = s.id AND a.work_date = :d
           $where

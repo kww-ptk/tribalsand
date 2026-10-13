@@ -65,6 +65,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'save_
         // Skip completely empty rows (no status, no times) so we don't create blank records.
         if ($st === '' && trim($row['in1'].$row['out1'].$row['in2'].$row['out2']) === '') continue;
         attendance_upsert((int)$sid, $ymd, $row, (int)($_SESSION['admin_id'] ?? 0));
+        if (isset($_POST['night_shown'][$sid])) attendance_set_night((int)$sid, $ymd, !empty($_POST['night'][$sid]));
         $n++;
     }
     audit_log('attendance.save_day', 'attendance', 0, "$ymd: $n rows");
@@ -105,6 +106,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'leave
         $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Not your request.'];
     }
     header('Location: /admin/attendance.php?view=leave'); exit;
+}
+
+// ── Night allowance per property (owner + HR) ────────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'night_rates') {
+    verify_csrf();
+    if (is_owner() || is_hr()) {
+        $valid = array_map('intval', array_column(db_query('SELECT id FROM venues')->fetchAll(), 'id'));
+        $rates = [];
+        foreach ((array)($_POST['rate'] ?? []) as $vid => $amt) {
+            $amt = trim(str_replace(',', '', (string)$amt));
+            if (in_array((int)$vid, $valid, true) && is_numeric($amt) && (float)$amt > 0 && (float)$amt < 100000) $rates[(string)(int)$vid] = round((float)$amt, 2);
+        }
+        set_setting('night_allowance', json_encode($rates));
+        audit_log('attendance.night_rates', 'setting', 0, json_encode($rates));
+        $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Night allowance saved.'];
+    }
+    header('Location: /admin/attendance.php?view=summary&month=' . urlencode((string)($_POST['month'] ?? ''))); exit;
 }
 
 // ── Close a month: write everyone's balances for it (owner + HR) ─────────────
@@ -157,7 +175,8 @@ if (($_GET['export'] ?? '') === 'summary' && attendance_supported()) {
     fputcsv($out, ['Company', 'Payroll no.', 'Name', 'Position', 'Property', 'Off day', 'Entitled off days (off day + PH)', 'Days worked',
         'Days off taken', 'Of which recovery', 'PH not worked', 'Sick', 'Leave', 'Unpaid leave', 'Absent', 'Not recorded', 'Hours worked',
         'Overtime hours', 'Overtime days', 'Off days earned', 'Off days owed (start)', 'Off days owed (end)', 'Leave accrued', 'Leave taken',
-        'Annual leave (end)', 'Rest days worked', 'Holidays worked', 'Holiday hours']);
+        'Annual leave (end)', 'Rest days worked', 'Holidays worked', 'Holiday hours', 'Night duties', 'Night allowance (KES)']);
+    $nightRates = attendance_night_rates();
     foreach ($sumRows as $sr) {
         $s = $sr['staff']; $f = $sr['fig'];
         if (!$f) continue;
@@ -169,7 +188,8 @@ if (($_GET['export'] ?? '') === 'summary' && attendance_supported()) {
             $s['venue_id'] !== null ? ($venueNamesX[(int)$s['venue_id']] ?? '') : (string)$s['unit_label'], $s['off_day'] ?: 'SUN',
             $f['entitled'], $f['worked'], $f['off_taken'], $f['rec'], $f['ph_taken'], $f['sick'], $f['leave'], $f['unpaid'], $f['absent'], $f['not_recorded'],
             $f['hours'], $f['ot_hours'], $f['ot_days'], $f['off_earned'], round($offStart, 3), round($offEnd, 3),
-            $f['leave_accrued'], $f['leave'], round($lvEnd, 3), $f['rest_day_worked'], $f['holiday_worked'], $f['holiday_hours']]);
+            $f['leave_accrued'], $f['leave'], round($lvEnd, 3), $f['rest_day_worked'], $f['holiday_worked'], $f['holiday_hours'],
+            $f['nights'], $s['venue_id'] !== null && isset($nightRates[(int)$s['venue_id']]) ? $f['nights'] * $nightRates[(int)$s['venue_id']] : 0]);
     }
     fclose($out);
     exit;
@@ -321,7 +341,7 @@ if ($view === 'daily'):
     <div class="card__head"><span class="card__title"><?= e($label) ?></span><span class="text-muted" style="font-size:12px"><?= count($gRows) ?> staff</span></div>
     <div class="card__body" style="padding:0"><div class="table-wrap">
       <table class="data-table att-table">
-        <thead><tr><th>Staff</th><th>Off</th><th>Quick</th><th>In 1</th><th>Out 1</th><th>In 2</th><th>Out 2</th><th>Status</th><th style="text-align:right">Total / OT</th></tr></thead>
+        <thead><tr><th>Staff</th><th>Off</th><th>Quick</th><th>In 1</th><th>Out 1</th><th>In 2</th><th>Out 2</th><th>Status</th><?php if (attendance_night_supported()): ?><th data-tip="Night duty — on its own when the shift runs past midnight; tick or untick to set it">Night</th><?php endif; ?><th style="text-align:right">Total / OT</th></tr></thead>
         <tbody>
           <?php foreach ($gRows as $r):
             $sid = (int)$r['hr_staff_id'];
@@ -369,6 +389,10 @@ if ($view === 'daily'):
                 <?php endforeach; ?>
               </select>
             </td>
+            <?php if (attendance_night_supported()): ?>
+            <td style="text-align:center"><input type="hidden" name="night_shown[<?= $sid ?>]" value="1">
+              <label class="att-night" data-tip="Night duty"><input type="checkbox" name="night[<?= $sid ?>]" value="1" <?= $r['att_id'] && attendance_is_night($r) ? 'checked' : '' ?> aria-label="Night duty for <?= e($r['full_name']) ?>"><?= admin_icon('moon', 15) ?></label></td>
+            <?php endif; ?>
             <td style="text-align:right"><span class="att-total" style="font-variant-numeric:tabular-nums"><?= $isP ? number_format(attendance_hours($r),1) . 'h' : '—' ?></span></td>
           </tr>
           <?php endforeach; ?>
@@ -379,6 +403,10 @@ if ($view === 'daily'):
   <?php endforeach; endif; ?>
 </form>
 
+<style>.att-night{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border:1px solid var(--border,#e5e7eb);border-radius:8px;cursor:pointer;color:var(--muted,#6b7280)}
+.att-night input{position:absolute;opacity:0;width:1px;height:1px}
+.att-night:has(input:checked){background:#1E2A44;border-color:#1E2A44;color:#fff}
+.att-night:has(input:focus-visible){outline:2px solid var(--teal,#1E5C6B);outline-offset:2px}</style>
 <link rel="stylesheet" href="/css/timepicker.css?v=<?= @filemtime(__DIR__ . '/../css/timepicker.css') ?: '1' ?>">
 <script src="/js/timepicker.js?v=<?= @filemtime(__DIR__ . '/../js/timepicker.js') ?: '1' ?>"></script>
 <script src="/admin/assets/admin-attendance.js?v=<?= @filemtime(__DIR__ . '/assets/admin-attendance.js') ?: time() ?>"></script>
@@ -423,6 +451,8 @@ elseif ($view === 'summary'):
   $closed  = hr_bal_month_closed($month);
   $canClose = (is_owner() || is_hr()) && $month < date('Y-m');
   $coAll   = hr_company_names();
+  $nightRates = attendance_night_rates();
+  $anyNights  = (bool) array_filter($sumRows, fn($sr) => ($sr['fig']['nights'] ?? 0) > 0);
   $groups  = [];
   foreach ($sumRows as $sr) {
     if (!$sr['fig']) continue;
@@ -459,7 +489,8 @@ elseif ($view === 'summary'):
   <div class="table-wrap"><table class="data-table att-sum">
     <thead><tr><th>Name</th><th class="n" data-tip="Weekly off days + public holidays this month">Entitled off</th><th class="n">Worked</th><th class="n">Off taken</th>
       <th class="n">Sick</th><th class="n">Leave</th><th class="n">Hours</th><th class="n" data-tip="Hours over 8 a day worked (short days count against)">Overtime</th>
-      <th class="n" data-tip="Entitled − taken + overtime ÷ 8">Off days earned</th><th class="n">Off days owed</th><th class="n">Annual leave</th><th></th></tr></thead>
+      <th class="n" data-tip="Entitled − taken + overtime ÷ 8">Off days earned</th><th class="n">Off days owed</th><th class="n">Annual leave</th>
+      <?php if ($anyNights || $nightRates): ?><th class="n" data-tip="Night duties this month">Nights</th><th class="n" data-tip="Nights × the property's rate">Night allowance</th><?php endif; ?><th></th></tr></thead>
     <tbody>
     <?php foreach ($list as $sr): $s = $sr['staff']; $f = $sr['fig'];
       $offB = (float)($sr['before']['off_days'] ?? 0); $lvB = (float)($sr['before']['annual_leave'] ?? 0);
@@ -478,6 +509,10 @@ elseif ($view === 'summary'):
         <td class="n"><?= $sr['counts'] ? e(hr_bal_fmt($f['off_earned'])) : '<span class="text-muted" data-tip="Already inside their opening balance">—</span>' ?></td>
         <td class="n"><strong><?= e(hr_bal_fmt($offA)) ?></strong></td>
         <td class="n"><strong><?= e(hr_bal_fmt($lvA)) ?></strong></td>
+        <?php if ($anyNights || $nightRates): $nr = $s['venue_id'] !== null ? ($nightRates[(int)$s['venue_id']] ?? 0) : 0; ?>
+        <td class="n"><?= $f['nights'] ?: '' ?></td>
+        <td class="n"><?= $f['nights'] && $nr ? 'KES ' . e(number_format($f['nights'] * $nr)) : '' ?></td>
+        <?php endif; ?>
         <td><?php if ($f['not_recorded']): ?><span class="badge badge--orange" data-tip="Days in the month with nothing recorded (no times, no status)"><?= $f['not_recorded'] ?> not recorded</span><?php endif; ?>
             <?php if (!$sr['opened'] && $sr['counts']): ?><span class="badge badge--grey" data-tip="No opening balance yet — balances start from 0">no opening</span><?php endif; ?></td>
       </tr>
@@ -486,8 +521,24 @@ elseif ($view === 'summary'):
   </table></div>
 </div>
 <?php endforeach; endif; ?>
+<?php if (is_owner() || is_hr()): ?>
+<details class="card att-rates" style="margin-bottom:16px" <?= $nightRates ? '' : 'open' ?>>
+  <summary class="card__head" style="cursor:pointer"><span class="card__title"><?= admin_icon('moon', 15) ?> Night allowance</span>
+    <span class="text-muted" style="font-size:12px"><?= $nightRates ? e(implode(' · ', array_map(fn($vid, $amt) => ($venueNames[$vid] ?? '#' . $vid) . ' KES ' . number_format($amt), array_keys($nightRates), $nightRates))) : 'not set' ?></span></summary>
+  <div class="card__body card__body--pad">
+    <form method="POST" action="/admin/attendance.php" style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">
+      <?= csrf_field() ?><input type="hidden" name="action" value="night_rates"><input type="hidden" name="month" value="<?= e($month) ?>">
+      <?php foreach ($venues as $v): ?>
+      <div class="filter-field"><span><?= e($v['name']) ?> · KES a night</span><input name="rate[<?= (int)$v['id'] ?>]" class="inp inp--sm" inputmode="decimal" value="<?= isset($nightRates[(int)$v['id']]) ? e((string)$nightRates[(int)$v['id']]) : '' ?>" placeholder="none" style="width:120px"></div>
+      <?php endforeach; ?>
+      <button class="btn-primary btn-sm">Save</button>
+    </form>
+    <p class="text-muted" style="font-size:12px;margin:10px 0 0">Paid to people whose home property has a rate, for each night duty — a shift past midnight counts on its own; tick the moon on the Daily page to set one by hand.</p>
+  </div>
+</details>
+<?php endif; ?>
 <p class="text-muted" style="font-size:12px">Off days earned = entitled off days (weekly off + public holidays) − days off taken (off, recovery, holiday not worked) + overtime ÷ 8. Annual leave grows 1.75 days a month and drops by each leave day. Sick and unpaid days change neither.</p>
-<style>.att-sum .n{text-align:right;white-space:nowrap}.att-sum td{vertical-align:top}</style>
+<style>.att-sum .n{text-align:right;white-space:nowrap}.att-sum td{vertical-align:top}.att-rates>summary{list-style:none;display:flex;justify-content:space-between;align-items:center}.att-rates>summary::-webkit-details-marker{display:none}</style>
 
 <?php
 elseif ($view === 'leave'):

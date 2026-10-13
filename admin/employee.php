@@ -450,7 +450,7 @@ include __DIR__ . '/_layout.php';
         <div class="emp-cal__day<?= $isOff ? ' is-off' : '' ?><?= $ph ? ' is-ph' : '' ?><?= $ymd === date('Y-m-d') ? ' is-today' : '' ?>"<?= $tip !== '' || $ph ? ' data-tip="' . e(trim(($ph ? $ph . ' · ' : '') . $tip, ' ·')) . '"' : '' ?>>
           <span class="emp-cal__n"><?= $d ?></span>
           <?php if ($eff !== ''): ?><span class="badge <?= e(attendance_status_badge($eff)) ?>"><?= e($eff) ?></span><?php endif; ?>
-          <?php if ($hrs > 0): ?><span class="emp-cal__h"><?= number_format($hrs, 1) ?>h</span><?php endif; ?>
+          <?php if ($hrs > 0): ?><span class="emp-cal__h"><?= number_format($hrs, 1) ?>h<?= $row && attendance_is_night($row) ? ' <span class="emp-cal__moon" title="Night duty">' . admin_icon('moon', 11) . '</span>' : '' ?></span><?php endif; ?>
         </div>
         <?php endfor; ?>
       </div>
@@ -463,6 +463,7 @@ include __DIR__ . '/_layout.php';
         <div><span>Hours</span><strong><?= number_format($f['hours'], 1) ?></strong></div>
         <div><span>Overtime</span><strong><?= ($f['ot_hours'] > 0 ? '+' : '') . number_format($f['ot_hours'], 1) ?> h</strong></div>
         <div><span>Off days earned</span><strong><?= e(hr_bal_fmt($f['off_earned'])) ?></strong></div>
+        <?php if ($f['nights']): ?><div><span>Night duties</span><strong><?= $f['nights'] ?></strong></div><?php endif; ?>
         <?php if ($f['not_recorded']): ?><div class="is-warn"><span>Not recorded</span><strong><?= $f['not_recorded'] ?> days</strong></div><?php endif; ?>
       </div>
       <?php else: ?>
@@ -645,7 +646,8 @@ include __DIR__ . '/_layout.php';
 .emp-cal__day.is-today{outline:2px solid var(--teal,#1E5C6B);outline-offset:-1px}
 .emp-cal__day .badge{align-self:flex-start;padding:1px 5px;font-size:10px}
 .emp-cal__n{font-size:11px;color:var(--muted,#6b7280);font-weight:600}
-.emp-cal__h{font-size:11.5px;font-weight:600}
+.emp-cal__h{font-size:11.5px;font-weight:600;display:inline-flex;align-items:center;gap:3px}
+.emp-cal__moon{display:inline-flex;color:#1E2A44}
 .emp-figs{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;margin-top:14px}
 .emp-figs>div{border:1px solid var(--border,#e7ded7);border-radius:8px;padding:8px 10px;display:flex;flex-direction:column;gap:2px}
 .emp-figs span{font-size:11px;color:var(--muted,#6b7280);text-transform:uppercase;letter-spacing:.03em}

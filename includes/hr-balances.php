@@ -82,7 +82,7 @@ function hr_bal_month_figures(array $days, string $offDay, string $ym, array $ho
     if ($from > $to) return null;
     $f = ['from' => $from, 'to' => $to, 'days' => 0, 'entitled' => 0, 'worked' => 0, 'off_taken' => 0, 'rec' => 0, 'ph_taken' => 0,
           'sick' => 0, 'leave' => 0, 'unpaid' => 0, 'absent' => 0, 'other' => 0, 'not_recorded' => 0,
-          'hours' => 0.0, 'ot_hours' => 0.0, 'rest_day_worked' => 0, 'holiday_worked' => 0, 'holiday_hours' => 0.0];
+          'hours' => 0.0, 'ot_hours' => 0.0, 'rest_day_worked' => 0, 'holiday_worked' => 0, 'holiday_hours' => 0.0, 'nights' => 0];
     for ($d = $from; $d <= $to; $d = date('Y-m-d', strtotime($d . ' +1 day'))) {
         $f['days']++;
         $isOff = attendance_is_off_day($offDay, $d);
@@ -98,6 +98,7 @@ function hr_bal_month_figures(array $days, string $offDay, string $ym, array $ho
                 $f['hours'] += $h;
                 $f['ot_hours'] += $h - ATTENDANCE_STANDARD_HOURS;
                 if ($isOff) $f['rest_day_worked']++;
+                if (attendance_is_night($row)) $f['nights']++;
                 if ($isPh)  { $f['holiday_worked']++; $f['holiday_hours'] += $h; }
                 break;
             case 'OFF':   $f['off_taken']++; break;
