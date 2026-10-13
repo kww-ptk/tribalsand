@@ -11,6 +11,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/hr.php';
 require_once __DIR__ . '/../includes/hr-documents.php';
 require_once __DIR__ . '/../includes/hr-establishment.php';
+require_once __DIR__ . '/../includes/staff-requests.php';
 require_login();
 require_hr();
 
@@ -21,6 +22,12 @@ if (!$doc || !$p || !hr_staff_in_venue_scope((int)$p['id'], $p['venue_id'] !== n
     http_response_code(404);
     header('Content-Type: text/plain; charset=utf-8');
     exit('Document not found.');
+}
+// A sick / maternity note attached to a request is medical: the owner and HR only.
+if (!is_owner() && !is_hr() && staff_request_doc_is_medical($docId)) {
+    http_response_code(403);
+    header('Content-Type: text/plain; charset=utf-8');
+    exit('This is a medical note — only HR and the owner can open it.');
 }
 
 // Resolve the bytes BEFORE any content headers, so a missing file shows its real

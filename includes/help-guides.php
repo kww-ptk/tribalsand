@@ -340,6 +340,18 @@ function help_guides(): array {
             ['text' => 'Click a day to open it in the Daily view and correct it. **Print** or **Export** to share the week.'],
          ]],
 
+        ['slug' => 'rota', 'area' => 'team', 'minutes' => 3, 'pages' => ['attendance.php'],
+         'title' => 'Plan the week (rota)',
+         'summary' => 'Who works which shift each day — planned ahead, then checked against what was worked.',
+         'steps' => [
+            ['text' => 'Open **Team → Attendance → Week**, pick the property and the week, and press **Plan the week**.', 'target' => '[data-help="rota-plan"]'],
+            ['text' => 'Choose each person’s shift for each day: Day, Early, Late, Security day, Night, or Off. Press **Save plan**.'],
+            ['text' => '**Copy last week’s plan** fills the week from the one before. Days you already planned are kept.'],
+            ['text' => 'Press **Done**. Each day now shows **Plan · …** above what was worked. A red outline means a shift was planned but nothing was recorded; purple means someone worked on a day planned as Off.'],
+            ['text' => 'An approved **shift swap** request exchanges the two people’s planned shifts that day. Cancelling the swap puts them back.'],
+         ],
+         'tips' => ['The plan never changes the attendance — it is what you expect; attendance is what happened.']],
+
         ['slug' => 'attendance-import', 'area' => 'team', 'minutes' => 4, 'pages' => ['attendance-import.php', 'attendance.php'],
          'title' => 'Import the Excel attendance workbook',
          'summary' => 'Bring HR’s monthly time sheets into the system, check them, and take the opening balances.',

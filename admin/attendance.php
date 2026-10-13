@@ -20,6 +20,7 @@ require_once __DIR__ . '/../includes/attendance-clock.php';
 require_once __DIR__ . '/../includes/hr-establishment.php';
 require_once __DIR__ . '/../includes/attendance-import.php';
 require_once __DIR__ . '/../includes/hr-balances.php';
+require_once __DIR__ . '/../includes/staff-rota.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_login();
 require_hr();
@@ -113,6 +114,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'leave
     header('Location: /admin/attendance.php?view=leave'); exit;
 }
 
+// ── Rota: plan the week / copy last week's plan ──────────────────────────────
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && in_array($_POST['action'] ?? '', ['rota_save', 'rota_copy'], true)) {
+    verify_csrf();
+    $wkStart = attendance_week_start(preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)($_POST['week'] ?? '')) ? (string)$_POST['week'] : date('Y-m-d'));
+    $back = '/admin/attendance.php?view=week&plan=1&week=' . urlencode($wkStart) . '&venue=' . (int)($_POST['venue'] ?? 0) . '&co=' . (int)($_POST['co'] ?? 0) . '&dept=' . urlencode((string)($_POST['dept'] ?? ''));
+    if (!staff_rota_supported()) { $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'Run the add_staff_rota migration first.']; header('Location: ' . $back); exit; }
+    $uid = (int)($_SESSION['admin_id'] ?? 0);
+    if ($_POST['action'] === 'rota_save') {
+        $n = 0;
+        foreach ((array)($_POST['rota'] ?? []) as $sid => $days) {
+            $sid = (int)$sid;
+            if (!att_staff_in_scope($sid, $venueIds, $companyIds) || !is_array($days)) continue;   // only your own people
+            foreach ($days as $d => $shift) {
+                $d = (string)$d;
+                if ($d < $wkStart || $d > date('Y-m-d', strtotime($wkStart . ' +6 days'))) continue;
+                if (staff_rota_set($sid, $d, (string)$shift, $uid)) $n++;
+            }
+        }
+        audit_log('attendance.rota_save', 'staff_rota', 0, "$wkStart: $n days");
+        $_SESSION['hold_flash'] = ['type'=>'success','msg'=>$n ? "Plan saved ($n " . ($n === 1 ? 'day' : 'days') . ' changed).' : 'Nothing changed.'];
+    } else {
+        $ids = array_map(fn($p) => (int)$p['id'], fetch_hr_staff($venueIds, ['status' => 'active'], $companyIds));
+        $n = staff_rota_copy_week($ids, date('Y-m-d', strtotime($wkStart . ' -7 days')), $wkStart, $uid);
+        audit_log('attendance.rota_copy', 'staff_rota', 0, "$wkStart: $n days");
+        $_SESSION['hold_flash'] = ['type'=>'success','msg'=>$n ? "Copied last week's plan ($n days). Days you had already planned were kept." : "Nothing to copy — last week has no plan, or this week is already planned."];
+    }
+    header('Location: ' . $back); exit;
+}
+
 // ── Public holidays as HR counts them (owner + HR) ───────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'holiday') {
     verify_csrf();
@@ -194,6 +224,7 @@ $venues = db_query('SELECT id, name FROM venues ORDER BY sort_order ASC, name AS
 // ── Week CSV (same scope + filters) ──────────────────────────────────────────
 if (($_GET['export'] ?? '') === 'week' && attendance_supported()) {
     $wk = attendance_week($venueIds, $week, $filters, $companyIds);
+    $rotaX = staff_rota_supported() ? staff_rota_for(array_map(fn($s) => (int)$s['id'], $wk['staff']), $wk['days'][0], $wk['days'][6]) : [];
     header('Content-Type: text/csv; charset=utf-8');
     header('Content-Disposition: attachment; filename="attendance-week_' . $week . '.csv"');
     $out = fopen('php://output', 'w');
@@ -208,11 +239,12 @@ if (($_GET['export'] ?? '') === 'week' && attendance_supported()) {
         foreach ($wk['days'] as $d) {
             $c = $s['cells'][$d] ?? null;
             $eff = $c ? attendance_effective_status($c) : '';
-            $row[] = !$c ? '' : ($eff === 'P'
+            $plX = isset($rotaX[(int)$s['id']][$d]) ? '[plan ' . staff_rota_label($rotaX[(int)$s['id']][$d]) . '] ' : '';
+            $row[] = $plX . (!$c ? '' : ($eff === 'P'
                 ? trim(attendance_min_to_hhmm($c['in1'] !== null ? (int)$c['in1'] : null) . '-' . attendance_min_to_hhmm($c['out1'] !== null ? (int)$c['out1'] : null)
                   . ($c['in2'] !== null ? ' ' . attendance_min_to_hhmm((int)$c['in2']) . '-' . attendance_min_to_hhmm($c['out2'] !== null ? (int)$c['out2'] : null) : ''), '-')
                   . ' (' . number_format(attendance_hours($c), 1) . 'h' . (attendance_is_night($c) ? ', night' : '') . ')'
-                : $eff);
+                : $eff));
         }
         $f = $s['fig'];
         array_push($row, $f['days'], $f['hours'], $f['ot'], $f['nights'], $f['missing'], $f['off_worked'], $f['no_rest'] ? 'yes' : '');
@@ -309,7 +341,9 @@ include __DIR__ . '/_layout.php';
 <?php
 // Preserve the active date/month + filters across the tab links.
 $qs = function (array $extra) use ($date, $month, $week, $fDept, $fVenue, $fCo) {
-    return http_build_query(array_merge(['date'=>$date,'month'=>$month,'week'=>$week,'dept'=>$fDept,'venue'=>$fVenue,'co'=>$fCo], $extra));
+    // plan=1 (planning the week) stays on through the week arrows and filters; null drops it.
+    return http_build_query(array_merge(['date'=>$date,'month'=>$month,'week'=>$week,'dept'=>$fDept,'venue'=>$fVenue,'co'=>$fCo,
+        'plan'=>!empty($_GET['plan']) ? 1 : null], $extra));
 };
 $tab = fn($v, $label) => '<a href="/admin/attendance.php?' . e($qs(['view'=>$v])) . '" data-shell-link class="ts-tab' . ($view===$v?' is-active':'') . '" style="padding:9px 16px;font-weight:600;font-size:14px;text-decoration:none;border-bottom:2px solid ' . ($view===$v?'var(--teal,#1E5C6B)':'transparent') . ';color:' . ($view===$v?'var(--teal,#1E5C6B)':'var(--muted,#6b7280)') . '">' . e($label) . '</a>';
 ?>
@@ -321,6 +355,7 @@ $tab = fn($v, $label) => '<a href="/admin/attendance.php?' . e($qs(['view'=>$v])
 <!-- Shared filters -->
 <form method="GET" action="/admin/attendance.php" style="display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end;margin-bottom:16px">
   <input type="hidden" name="view" value="<?= e($view) ?>">
+  <?php if ($view === 'week' && !empty($_GET['plan'])): ?><input type="hidden" name="plan" value="1"><?php endif; ?>
   <?php if ($view === 'daily'): ?>
   <div class="filter-field"><span>Date</span>
     <div style="display:flex;gap:4px;align-items:center">
@@ -485,6 +520,12 @@ if ($view === 'daily'):
 elseif ($view === 'week'):
   $wk = attendance_week($venueIds, $week, $filters, $companyIds);
   $wkHol = hr_public_holidays($wk['days'][0], $wk['days'][6]);
+  $rotaOn = staff_rota_supported();
+  $planMode = $rotaOn && !empty($_GET['plan']);
+  $rota = $rotaOn ? staff_rota_for(array_map(fn($s) => (int)$s['id'], $wk['staff']), $wk['days'][0], $wk['days'][6]) : [];
+  $todayYmd = date('Y-m-d');
+  $planFlags = 0;
+  foreach ($wk['staff'] as $s) foreach ($wk['days'] as $d) if (staff_rota_day_flag($rota[(int)$s['id']][$d] ?? null, $s['cells'][$d] ?? null, $d, $todayYmd) !== '') $planFlags++;
   $wgroups = [];
   foreach ($wk['staff'] as $s) {
     $vid = $s['venue_id'] !== null ? (int)$s['venue_id'] : 0;
@@ -500,12 +541,27 @@ elseif ($view === 'week'):
     <?php if ($tot['no_rest']): ?><span class="badge badge--red"><?= $tot['no_rest'] ?> with no rest day</span><?php endif; ?>
     <?php if ($tot['nights']): ?><span class="badge badge--blue"><?= $tot['nights'] ?> night duties</span><?php endif; ?>
   </span>
-  <span style="display:flex;gap:8px">
+  <span style="display:flex;gap:8px;flex-wrap:wrap">
+    <?php if ($rotaOn && !$planMode): ?><a href="/admin/attendance.php?<?= e($qs(['view'=>'week','plan'=>1])) ?>" class="btn-primary btn-sm" data-shell-link data-help="rota-plan"><?= admin_icon('calendar', 15) ?> Plan the week</a><?php endif; ?>
+    <?php if ($planFlags): ?><span class="badge badge--orange" style="align-self:center"><?= $planFlags ?> differ from the plan</span><?php endif; ?>
     <button type="button" class="btn-outline btn-sm" onclick="window.print()"><?= admin_icon('download', 15) ?> Print</button>
     <a href="/admin/attendance.php?<?= e($qs(['view'=>'week','export'=>'week'])) ?>" class="btn-outline btn-sm"><?= admin_icon('download', 15) ?> Export</a>
   </span>
 </div></div>
 <h2 class="att-week-title"><?= e(date('j M', strtotime($wk['days'][0])) . ' – ' . date('j M Y', strtotime($wk['days'][6]))) ?></h2>
+<?php if ($planMode): ?>
+<div class="card no-print" style="margin-bottom:12px"><div class="card__body" style="padding:12px 18px;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+  <strong>Planning <?= e(date('j M', strtotime($wk['days'][0])) . ' – ' . date('j M', strtotime($wk['days'][6]))) ?></strong>
+  <span class="text-muted" style="font-size:12.5px">Pick each person's shift, then Save plan. The plan never changes what was worked.</span>
+  <span style="margin-left:auto;display:flex;gap:8px">
+    <form method="POST" action="/admin/attendance.php" style="margin:0"><?= csrf_field() ?><input type="hidden" name="action" value="rota_copy"><input type="hidden" name="week" value="<?= e($week) ?>"><input type="hidden" name="venue" value="<?= (int)$fVenue ?>"><input type="hidden" name="co" value="<?= (int)$fCo ?>"><input type="hidden" name="dept" value="<?= e($fDept) ?>">
+      <button class="btn-outline btn-sm" data-tip="Days already planned this week are kept">Copy last week's plan</button></form>
+    <button type="submit" form="rotaForm" class="btn-primary btn-sm"><?= admin_icon('check', 15) ?> Save plan</button>
+    <a href="/admin/attendance.php?<?= e($qs(['view'=>'week','plan'=>null])) ?>" class="btn-outline btn-sm" data-shell-link>Done</a>
+  </span>
+</div></div>
+<form method="POST" action="/admin/attendance.php" id="rotaForm"><?= csrf_field() ?><input type="hidden" name="action" value="rota_save"><input type="hidden" name="week" value="<?= e($week) ?>"><input type="hidden" name="venue" value="<?= (int)$fVenue ?>"><input type="hidden" name="co" value="<?= (int)$fCo ?>"><input type="hidden" name="dept" value="<?= e($fDept) ?>">
+<?php endif; ?>
 <?php if (!$wgroups): ?>
 <div class="card"><div class="card__body card__body--pad"><p class="text-muted" style="margin:0">No staff match these filters.</p></div></div>
 <?php else: foreach ($wgroups as $gl => $list): ?>
@@ -522,7 +578,15 @@ elseif ($view === 'week'):
         <?php foreach ($wk['days'] as $d): $c = $s['cells'][$d] ?? null; $eff = $c ? attendance_effective_status($c) : '';
           $isOff = attendance_is_off_day((string)$s['off_day'], $d);
           $miss = $c && (($c['in1'] !== null) !== ($c['out1'] !== null) || ($c['in2'] !== null) !== ($c['out2'] !== null)); ?>
-        <td class="d<?= $isOff ? ' is-off' : '' ?><?= isset($wkHol[$d]) ? ' is-ph' : '' ?><?= $miss ? ' is-miss' : '' ?>">
+        <?php $pl = $rota[(int)$s['id']][$d] ?? null; $pf = staff_rota_day_flag($pl, $c, $d, $todayYmd); ?>
+        <td class="d<?= $isOff ? ' is-off' : '' ?><?= isset($wkHol[$d]) ? ' is-ph' : '' ?><?= $miss ? ' is-miss' : '' ?><?= $pf !== '' ? ' is-plan-' . $pf : '' ?>">
+          <?php if ($planMode): ?>
+          <select name="rota[<?= (int)$s['id'] ?>][<?= e($d) ?>]" class="att-plan-sel" aria-label="<?= e($s['full_name'] . ' ' . date('D j M', strtotime($d))) ?>">
+            <option value="">—</option>
+            <?php foreach (staff_rota_shifts() as $sk => $sh): ?><option value="<?= e($sk) ?>" <?= ($pl['shift'] ?? '') === $sk ? 'selected' : '' ?>><?= e($sh[1]) ?></option><?php endforeach; ?>
+          </select>
+          <?php endif; ?>
+          <?php if (!$planMode && $pl): ?><span class="pl" title="<?= e(staff_rota_label($pl, true)) ?>">Plan · <?= e(staff_rota_label($pl)) ?></span><?php endif; ?>
           <a href="/admin/attendance.php?<?= e($qs(['view'=>'daily','date'=>$d])) ?>" data-shell-link>
           <?php if (!$c): ?><span class="dot">·</span>
           <?php elseif ($eff === 'P' || $c['in1'] !== null): ?>
@@ -545,6 +609,8 @@ elseif ($view === 'week'):
   </table></div>
 </div>
 <?php endforeach; endif; ?>
+<?php if ($planMode): ?></form><?php endif; ?>
+<p class="text-muted no-print" style="font-size:12px"><?php if ($rotaOn): ?>Red outline: a shift was planned, nothing was recorded. Purple: worked on a day planned as Off. <?php endif; ?>Orange: a time in with no time out.</p>
 <style>
 .att-week-title{display:none}
 .att-week th.d{text-align:center;min-width:92px;font-size:11px}
@@ -557,6 +623,10 @@ elseif ($view === 'week'):
 .att-week td.d .t{font-size:11.5px;font-variant-numeric:tabular-nums;white-space:nowrap}
 .att-week td.d .h{font-size:11px;color:var(--muted,#6b7280);display:inline-flex;align-items:center;gap:2px}
 .att-week td.d .dot{color:var(--border,#e5e7eb)}
+.att-week td.d .pl{display:block;font-size:10.5px;color:var(--teal,#1E5C6B);font-weight:600;white-space:nowrap;margin-bottom:2px}
+.att-week td.is-plan-missing{box-shadow:inset 0 0 0 2px #f2a08f}
+.att-week td.is-plan-unplanned{box-shadow:inset 0 0 0 2px #b9b2f0}
+.att-plan-sel{width:100%;max-width:96px;font-size:12px;padding:3px 4px;border:1px solid var(--border,#e5e7eb);border-radius:6px;background:#fff;margin-bottom:4px}
 .att-week td.is-off{background:#f6f3ef}
 .att-week .is-ph{background:#fdf0ec}
 .att-week td.is-miss{box-shadow:inset 0 0 0 2px #f2c48f}

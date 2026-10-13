@@ -8,6 +8,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/staff-requests.php';
 require_once __DIR__ . '/../includes/hr-balances.php';
+require_once __DIR__ . '/../includes/hr-documents.php';
 
 $failures = 0;
 function check(string $label, bool $cond): void {
@@ -23,6 +24,8 @@ check('steps: a manager acts at step 1 only', staff_request_can_act('pending', '
 check('steps: HR and the owner act at both', staff_request_can_act('pending', 'hr', true) && staff_request_can_act('pending_hr', 'owner', true));
 check('steps: nobody acts out of scope or on a closed request', !staff_request_can_act('pending', 'owner', false) && !staff_request_can_act('approved', 'hr', true));
 check('stamp days: the weekly off day is left alone', staff_request_stamp_days('2026-10-19', '2026-10-25', 'SUN') === ['2026-10-19', '2026-10-20', '2026-10-21', '2026-10-22', '2026-10-23', '2026-10-24']);
+check('result text: approved', staff_request_result_text(['full_name' => 'HENRY OUMA OKAKA', 'leave_type' => 'annual', 'start_date' => '2026-11-02', 'end_date' => '2026-11-06', 'status' => 'approved']) === 'Hi Henry, your annual leave for 2 Nov to 6 Nov is approved.');
+check('result text: declined with the reason', str_contains(staff_request_result_text(['full_name' => 'JUDY KEYA', 'leave_type' => 'day_off', 'start_date' => '2026-11-02', 'end_date' => '2026-11-02', 'status' => 'declined', 'decline_reason' => 'busy week']), 'was not approved: busy week'));
 check('types: leave codes', staff_request_types()['annual'][1] === 'LV' && staff_request_types()['day_off'][1] === 'REC' && staff_request_types()['unpaid'][1] === 'UL' && staff_request_types()['correction'][1] === null);
 
 // ── DB ──────────────────────────────────────────────────────────────────────
@@ -117,6 +120,36 @@ if (!$haveDb) {
         $cap = mail_capture(fn() => staff_request_notify($nid, null));
         $mine = array_values(array_filter($cap, fn($m) => $m['to'] === 'mgr-reqtest@tribalsand.test'));
         check('notify: the email names the person and the request', $mine && str_contains($mine[0]['subject'], 'REQUEST TEST') && str_contains($mine[0]['html'], 'Sick leave'));
+        // Policy: a type HR does not need is final at the supervisor.
+        $keepPolicy = setting('staff_request_hr_types', '');
+        staff_request_set_hr_types(array_values(array_diff(array_keys(staff_request_types()), ['overtime'])));
+        check('policy: overtime no longer needs HR', !staff_request_needs_hr('overtime') && staff_request_needs_hr('annual'));
+        $pol = staff_request_create($sid, ['type' => 'overtime', 'from' => '2026-11-21', 'hours' => '2'], null);
+        check('policy: the supervisor approval is final', staff_request_approve($pol, 'manager', null, true) === 'approved' && staff_request_fetch($pol)['hr_at'] === null);
+        set_setting('staff_request_hr_types', $keepPolicy);
+
+        // Check before submit.
+        attendance_upsert($sid, '2026-11-24', ['in1' => '08:00', 'out1' => '17:00'], null, 'kiosk');
+        $ck = staff_request_check($sid, 'annual', '2026-11-23', '2026-11-29');
+        check('check: working days, off day and a worked day told apart', count($ck['days']) === 5 && $ck['off'] === ['2026-11-29'] && $ck['worked'] === ['2026-11-24']);
+        check('check: a correction marks no leave days', staff_request_check($sid, 'correction', '2026-11-24', '2026-11-24')['days'] === []);
+        check('check: overlaps are listed', count(staff_request_check($sid, 'annual', '2026-11-20', '2026-11-20')['overlap']) >= 1);
+
+        // Reminders: only requests waiting 2+ days, once a day.
+        $old = staff_request_create($sid, ['type' => 'unpaid', 'from' => '2026-12-01'], null);
+        db_query("UPDATE leave_requests SET updated_at = now() - interval '3 days' WHERE id = :id", [':id' => $old]);
+        $sent = mail_capture(function () use (&$first) { $first = staff_requests_remind(2); });
+        $second = staff_requests_remind(2);
+        check('remind: a request waiting 3 days is reminded', $first >= 1 && $sent);
+        check('remind: not twice the same day', $second === 0);
+
+        // Medical notes.
+        if (hr_staff_documents_supported()) {
+            db_query("INSERT INTO hr_staff_documents (hr_staff_id, file_key, filename, content_type, size_bytes) VALUES (:s, 'hr/x/note.pdf', 'note.pdf', 'application/pdf', 10)", [':s' => $sid]);
+            $doc = (int)$pdo->lastInsertId();
+            $mid = staff_request_create($sid, ['type' => 'sick', 'from' => '2026-12-03', 'doc_id' => $doc], null);
+            check('medical: a sick note is medical', staff_request_doc_is_medical($doc) && staff_request_fetch($mid)['doc_id'] == $doc);
+        }
         check('waiting: a manager sees step-1 items, HR both', staff_requests_waiting(null, null, 'hr') >= staff_requests_waiting(null, null, 'manager'));
     } finally {
         $pdo->rollBack();

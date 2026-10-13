@@ -38,10 +38,29 @@ function sq_in_scope(int $staffId, ?array $venueIds, ?array $companyIds): bool {
     return $p && hr_staff_in_venue_scope($staffId, $p['venue_id'] !== null ? (int)$p['venue_id'] : null, $venueIds, $companyIds);
 }
 
+// ── GET ?check=1: what a request would do, shown under the form before Submit ──
+if (isset($_GET['check'])) {
+    header('Content-Type: application/json; charset=utf-8');
+    $sid = (int)($_GET['staff'] ?? 0);
+    if (!$ready || !sq_in_scope($sid, $venueIds, $companyIds)) { echo json_encode(['ok' => false]); exit; }
+    $c = staff_request_check($sid, (string)($_GET['type'] ?? ''), (string)($_GET['from'] ?? ''), (string)($_GET['to'] ?? ''));
+    $fmt = fn(array $ds) => array_map(fn($d) => date('D j M', strtotime($d)), $ds);
+    echo json_encode(['ok' => true, 'days' => count($c['days']), 'off' => $fmt($c['off']), 'worked' => $fmt($c['worked']),
+        'overlap' => array_map(fn($o) => $o['type'] . ' ' . date('j M', strtotime($o['from'])) . ($o['to'] !== $o['from'] ? '–' . date('j M', strtotime($o['to'])) : '') . ' (' . strtolower($o['status']) . ')', $c['overlap']),
+        'needs_hr' => $c['needs_hr']]);
+    exit;
+}
+
 // ── POST ─────────────────────────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     if (!$ready) sq_back('Run the add_staff_requests migration first.', 'error');
+    if (($_POST['action'] ?? '') === 'hr_types') {
+        if (!is_owner()) sq_back('Only the owner decides which requests need HR.', 'error');
+        staff_request_set_hr_types(array_map('strval', (array)($_POST['types'] ?? [])));
+        audit_log('hr.request_policy', 'setting', 0, implode(',', staff_request_hr_types()));
+        sq_back('Saved — the other requests are final once the supervisor approves.');
+    }
     $action = (string)($_POST['action'] ?? '');
     $uid = (int)($_SESSION['admin_id'] ?? 0);
     try {
@@ -99,7 +118,10 @@ $flash = $_SESSION['sq_flash'] ?? null; unset($_SESSION['sq_flash']);
 $fStatus = in_array($_GET['status'] ?? 'open', ['open', 'approved', 'declined', 'cancelled', 'all'], true) ? (string)($_GET['status'] ?? 'open') : 'open';
 $fType   = isset(staff_request_types()[$_GET['type'] ?? '']) ? (string)$_GET['type'] : '';
 $fCo     = (int)($_GET['co'] ?? 0);
-$reqs    = $ready ? staff_requests_list($venueIds, $companyIds, ['status' => $fStatus, 'type' => $fType, 'company_id' => $fCo]) : [];
+$venuesF = db_query('SELECT id, name FROM venues ORDER BY sort_order, name')->fetchAll();
+if ($venueIds !== null) $venuesF = array_values(array_filter($venuesF, fn($v) => in_array((int)$v['id'], $venueIds, true)));
+$fVenue  = in_array((int)($_GET['venue'] ?? 0), array_map(fn($v) => (int)$v['id'], $venuesF), true) ? (int)$_GET['venue'] : 0;
+$reqs    = $ready ? staff_requests_list($venueIds, $companyIds, ['status' => $fStatus, 'type' => $fType, 'company_id' => $fCo, 'venue_id' => $fVenue]) : [];
 $people  = $ready ? fetch_hr_staff($venueIds, ['status' => 'active'], $companyIds) : [];
 $bal     = $ready && hr_balances_supported() ? hr_bal_balances(array_map(fn($p) => (int)$p['id'], $people)) : [];
 $balJs   = [];
@@ -164,6 +186,7 @@ include __DIR__ . '/_layout.php';
       <div class="field sq-wide"><label>Reason / note</label><input name="reason" class="inp" maxlength="500" placeholder="e.g. family wedding · forgot to clock out" style="width:100%"></div>
       <div class="field sq-wide" data-sq-only="sick"><label>Sick note or other paper <span class="text-muted">(optional — kept private with their documents)</span></label>
         <div class="filefield"><label class="btn-outline btn-sm" style="cursor:pointer"><?= admin_icon('plus', 15) ?> Choose file<input type="file" name="doc" accept=".pdf,.jpg,.jpeg,.png,.webp,.doc,.docx" data-file-input></label><span class="filefield__name" data-file-name>No file chosen</span></div></div>
+      <div class="sq-wide sq-check" id="sqCheck" hidden aria-live="polite"></div>
       <div class="sq-wide sq-btns">
         <button class="btn-primary btn-sm"><?= admin_icon('check', 15) ?> Submit</button>
         <?php if (in_array($role, ['owner', 'hr'], true)): ?><button class="btn-outline btn-sm" name="and_approve" value="1" data-tip="Records both steps as you">Submit and approve</button><?php endif; ?>
@@ -183,6 +206,12 @@ include __DIR__ . '/_layout.php';
     <select name="type" class="filter-select" onchange="this.form.submit()"><option value="">All types</option>
       <?php foreach (staff_request_types() as $k => $t): ?><option value="<?= e($k) ?>" <?= $fType === $k ? 'selected' : '' ?>><?= e($t[0]) ?></option><?php endforeach; ?>
     </select></div>
+  <?php if (count($venuesF) > 1): ?>
+  <div class="filter-field"><span>Property</span>
+    <select name="venue" class="filter-select" onchange="this.form.submit()"><option value="0">All properties</option>
+      <?php foreach ($venuesF as $v): ?><option value="<?= (int)$v['id'] ?>" <?= $fVenue === (int)$v['id'] ? 'selected' : '' ?>><?= e($v['name']) ?></option><?php endforeach; ?>
+    </select></div>
+  <?php endif; ?>
   <?php if ($coNames): ?>
   <div class="filter-field"><span>Company</span>
     <select name="co" class="filter-select" onchange="this.form.submit()"><option value="0">All companies</option>
@@ -211,7 +240,7 @@ include __DIR__ . '/_layout.php';
           <?php if ($r['leave_type'] === 'overtime'): ?><div class="text-muted" style="font-size:12px"><?= e((string)($d['hours'] ?? '')) ?> h · <?= !empty($d['worked']) ? 'already worked' : 'planned' ?></div><?php endif; ?>
           <?php if ($r['leave_type'] === 'swap'): ?><div class="text-muted" style="font-size:12px">covered by <?= e($staffNames[(int)($d['with_staff_id'] ?? 0)] ?? '#' . (int)($d['with_staff_id'] ?? 0)) ?> · <?= !empty($d['accepted_at']) ? 'colleague agreed' : 'colleague not asked yet' ?></div><?php endif; ?>
           <?php if ($r['reason']): ?><div class="text-muted" style="font-size:12px">“<?= e($r['reason']) ?>”</div><?php endif; ?>
-          <?php if (!empty($r['doc_id'])): ?><div style="font-size:12px"><a href="/admin/employee-file.php?doc=<?= (int)$r['doc_id'] ?>" target="_blank" rel="noopener"><?= admin_icon('download', 12) ?> Supporting file</a></div><?php endif; ?>
+          <?php if (!empty($r['doc_id'])): ?><div style="font-size:12px"><?php if (in_array($role, ['owner', 'hr'], true) || !staff_request_doc_is_medical((int)$r['doc_id'])): ?><a href="/admin/employee-file.php?doc=<?= (int)$r['doc_id'] ?>" target="_blank" rel="noopener"><?= admin_icon('download', 12) ?> Supporting file</a><?php else: ?><span class="text-muted">Medical note on file (HR only)</span><?php endif; ?></div><?php endif; ?>
           <?php if (!empty($d['skipped'])): ?><div style="font-size:12px;color:#9a5b14">Not changed (worked): <?= e(implode(', ', array_map(fn($x) => date('j M', strtotime($x)), $d['skipped']))) ?></div><?php endif; ?></td>
         <td class="text-muted" style="font-size:12.5px"><?= e(date('j M', strtotime((string)$r['created_at']))) ?><?= $r['requested_by_name'] ? '<br>by ' . e($r['requested_by_name']) : '' ?></td>
         <td><span class="badge <?= e($stB) ?>"><?= e($stL) ?></span>
@@ -219,9 +248,12 @@ include __DIR__ . '/_layout.php';
           <?php if (!empty($r['hr_name']) && $r['status'] === 'approved'): ?><div class="text-muted" style="font-size:12px">HR: <?= e($r['hr_name']) ?></div><?php endif; ?>
           <?php if (!empty($r['decline_reason'])): ?><div class="text-muted" style="font-size:12px"><?= e($r['decline_reason']) ?></div><?php endif; ?></td>
         <td class="sq-act">
+          <?php if (in_array($r['status'], ['approved', 'declined', 'cancelled'], true) && ($wa = hr_whatsapp_link((string)($r['phone'] ?? ''))) !== ''): ?>
+          <a class="btn-outline btn-sm" target="_blank" rel="noopener" href="<?= e($wa . '?text=' . rawurlencode(staff_request_result_text($r))) ?>" data-tip="Opens WhatsApp with the message ready — nothing is sent until you press Send"><?= admin_icon('phone', 14) ?> Tell them on WhatsApp</a>
+          <?php endif; ?>
           <?php if ($canAct): ?>
           <form method="POST" action="<?= $self ?>" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="approve"><input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
-            <button class="btn-primary btn-sm"><?= admin_icon('check', 14) ?> <?= in_array($role, ['owner', 'hr'], true) ? 'Approve' : 'Approve (to HR)' ?></button></form>
+            <button class="btn-primary btn-sm"><?= admin_icon('check', 14) ?> <?= in_array($role, ['owner', 'hr'], true) || !staff_request_needs_hr((string)$r['leave_type']) ? 'Approve' : 'Approve (to HR)' ?></button></form>
           <details class="sq-more"><summary class="btn-outline btn-sm">Decline</summary>
             <form method="POST" action="<?= $self ?>" class="sq-reason"><?= csrf_field() ?><input type="hidden" name="action" value="decline"><input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
               <input name="reason" class="inp inp--sm" required placeholder="Why?" aria-label="Why it is declined"><button class="btn-outline btn-sm">Decline</button></form></details>
@@ -239,6 +271,23 @@ include __DIR__ . '/_layout.php';
   <?php endif; ?>
 </div>
 
+<?php if (is_owner()): $hrTypes = staff_request_hr_types(); ?>
+<details class="card sq-policy" style="margin-top:16px">
+  <summary class="card__head"><span class="card__title">Which requests need HR's approval</span>
+    <span class="text-muted" style="font-size:12px"><?= count($hrTypes) === count(staff_request_types()) ? 'all of them' : count($hrTypes) . ' of ' . count(staff_request_types()) ?></span></summary>
+  <div class="card__body card__body--pad">
+    <form method="POST" action="<?= $self ?>">
+      <?= csrf_field() ?><input type="hidden" name="action" value="hr_types">
+      <div class="optset">
+        <?php foreach (staff_request_types() as $k => $t): ?><label class="optchip"><input type="checkbox" name="types[]" value="<?= e($k) ?>" <?= in_array($k, $hrTypes, true) ? 'checked' : '' ?>> <?= e($t[0]) ?></label><?php endforeach; ?>
+      </div>
+      <p class="text-muted" style="font-size:12.5px;margin:10px 0">Ticked: the supervisor approves, then HR gives the final yes. Not ticked: the supervisor's approval is final.</p>
+      <button class="btn-primary btn-sm">Save</button>
+    </form>
+  </div>
+</details>
+<?php endif; ?>
+
 <link rel="stylesheet" href="/css/timepicker.css?v=<?= @filemtime(__DIR__ . '/../css/timepicker.css') ?: '1' ?>">
 <script src="/js/timepicker.js?v=<?= @filemtime(__DIR__ . '/../js/timepicker.js') ?: '1' ?>"></script>
 <style>
@@ -253,6 +302,9 @@ include __DIR__ . '/_layout.php';
 .sq-act form,.sq-act details{display:inline-block;margin:0 0 4px 4px;vertical-align:top}
 .sq-more>summary{list-style:none;cursor:pointer}.sq-more>summary::-webkit-details-marker{display:none}
 .sq-reason{display:flex;gap:6px;margin-top:6px}
+.sq-check{border:1px solid var(--border,#e7ded7);border-radius:8px;padding:10px 12px;font-size:13px;background:#fbf9f6}
+.sq-check .warn{color:#9a5b14}.sq-check .bad{color:#a12a1f;font-weight:600}
+.sq-policy>summary{list-style:none;display:flex;justify-content:space-between;align-items:center;cursor:pointer}.sq-policy>summary::-webkit-details-marker{display:none}
 </style>
 <script>
 (function () {
@@ -278,6 +330,31 @@ include __DIR__ . '/_layout.php';
   }
   if (person) person.addEventListener('change', showBal);
   if (type) { type.addEventListener('change', showType); showType(); }
+
+  // What the request would do, before Submit: days covered, off days, days already worked, overlaps.
+  var box = document.getElementById('sqCheck'), fromIn = document.getElementById('sqFrom'), toIn = document.getElementById('sqTo');
+  var esc = function (s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; };
+  var last = '';
+  function check() {
+    if (!box || !person.value || !fromIn.value) { if (box) box.hidden = true; return; }
+    var q = 'check=1&staff=' + encodeURIComponent(person.value) + '&type=' + encodeURIComponent(type.value)
+          + '&from=' + encodeURIComponent(fromIn.value) + '&to=' + encodeURIComponent(toIn.value || fromIn.value);
+    if (q === last) return; last = q;
+    fetch('/admin/staff-requests.php?' + q, { credentials: 'same-origin' }).then(function (r) { return r.json(); }).then(function (c) {
+      if (!c.ok) { box.hidden = true; return; }
+      var html = [];
+      if (c.days) html.push('<strong>' + c.days + ' working day' + (c.days === 1 ? '' : 's') + '</strong> will be marked on the attendance.');
+      if (c.off.length) html.push('Weekly off day' + (c.off.length === 1 ? '' : 's') + ' left alone: ' + esc(c.off.join(', ')) + '.');
+      if (c.worked.length) html.push('<span class="warn">Already worked — left as they are: ' + esc(c.worked.join(', ')) + '.</span>');
+      if (c.overlap.length) html.push('<span class="bad">Overlaps: ' + esc(c.overlap.join('; ')) + '.</span>');
+      html.push(c.needs_hr ? 'Needs the supervisor, then HR.' : 'The supervisor\u2019s approval is final for this kind of request.');
+      box.innerHTML = html.join('<br>'); box.hidden = false;
+    }).catch(function () { box.hidden = true; });
+  }
+  [person, type].forEach(function (el) { if (el) el.addEventListener('change', check); });
+  // The styled date picker fires change on its hidden inputs; poll lightly as a fallback.
+  [fromIn, toIn].forEach(function (el) { if (el) el.addEventListener('change', check); });
+  setInterval(function () { if (card && !card.hasAttribute('hidden')) check(); }, 800);
   document.querySelectorAll('#reqForm [data-file-input]').forEach(function (fi) {
     fi.addEventListener('change', function () { fi.closest('.filefield').querySelector('[data-file-name]').textContent = fi.files && fi.files.length ? fi.files[0].name : 'No file chosen'; });
   });
