@@ -17,6 +17,11 @@ $name   = trim((string)($me['passport_name'] ?? ''));
 $first  = $name !== '' ? explode(' ', $name)[0] : 'there';
 $stayLoc = trim(((string)($hold['venue_name'] ?? '')) . ' · ' . ((string)($hold['room_name'] ?? '')), ' ·');
 $v = fn($k) => e((string)($me[$k] ?? ''));
+// Same photo rules as the lead's wizard (includes/app/checkin.php): the photo is
+// read only with an AI key, and a name the page opens with gives way to the
+// passport's (js/checkin-passport.js).
+require_once __DIR__ . '/../ai.php';
+$ppAi = ai_assistant_supported();
 $otherStatus = function (array $g) use ($showWaiver) {
     $ok = checkin_guest_passport_complete($g) && (!$showWaiver || checkin_guest_waiver_signed($g));
     return $ok ? 'Checked in ✓' : 'Pending';
@@ -25,6 +30,7 @@ $otherStatus = function (array $g) use ($showWaiver) {
 <link rel="stylesheet" href="/css/portal-app.css?v=<?= @filemtime(__DIR__ . '/../../css/portal-app.css') ?: time() ?>">
 <script src="/js/signature-pad.js?v=<?= @filemtime(__DIR__ . '/../../js/signature-pad.js') ?: time() ?>" defer></script>
 <script src="/js/checkin-terms.js?v=<?= @filemtime(__DIR__ . '/../../js/checkin-terms.js') ?: time() ?>" defer></script>
+<script src="/js/checkin-passport.js?v=<?= @filemtime(__DIR__ . '/../../js/checkin-passport.js') ?: time() ?>"></script>
 <div class="pa-app">
   <div class="pa-topbar"><div class="pa-topbar__inner"><div class="pa-topbar__brand"><div class="pa-topbar__eyebrow">Tribal Sand</div><div class="pa-topbar__title">Guest check-in</div></div></div></div>
   <div class="pa-wrap" style="padding-top:16px">
@@ -67,18 +73,18 @@ $otherStatus = function (array $g) use ($showWaiver) {
             <details class="ci-review">
               <summary>Your details are on file — tap to review or edit</summary>
             <?php endif; ?>
-            <div class="ci-pp" data-pp>
+            <div class="ci-pp" data-pp data-pp-ai="<?= $ppAi ? '1' : '0' ?>">
             <label class="ci-l">Passport photo <span class="ci-opt">(the page with your photo)</span></label>
-            <p class="ci-pp-hint">Upload a photo of your passport’s photo page and we’ll fill in the details for you — or type them below.</p>
+            <p class="ci-pp-hint"><?= $ppAi ? 'Upload a photo of your passport’s photo page and we’ll fill in the details for you — or type them below.' : 'Upload a photo of your passport’s photo page, then type your details below.' ?></p>
             <div class="ci-upload" data-has="<?= !empty($me['passport_file_key']) ? '1' : '0' ?>">
-              <label class="ci-filebtn"><span class="ci-filebtn__t">&#128247; Choose photo</span><input type="file" id="ciGFile" accept="image/jpeg,image/png,application/pdf"></label>
+              <label class="ci-filebtn">&#128247; <span class="ci-filebtn__t"><?= !empty($me['passport_file_key']) ? 'Replace photo' : 'Choose photo' ?></span><input type="file" id="ciGFile" accept="image/jpeg,image/png,application/pdf"></label>
               <span class="ci-upload__state"><?= !empty($me['passport_file_key']) ? 'Uploaded &#10003;' : 'No photo yet' ?></span>
             </div>
             <div class="ci-pp-note" role="status" hidden></div>
             <div class="ci-grid2">
               <div class="ci-fld">
                 <label class="ci-l">Full name <span class="ci-opt">(as on passport)</span></label>
-                <input class="ci-in" name="passport_name" value="<?= $v('passport_name') ?>">
+                <input class="ci-in" name="passport_name" value="<?= $v('passport_name') ?>"<?= $name !== '' ? ' data-pp-replace' : '' ?>>
               </div>
               <div class="ci-fld">
                 <label class="ci-l">Passport number</label>
@@ -156,49 +162,25 @@ $otherStatus = function (array $g) use ($showWaiver) {
   var CSRF = form.querySelector('input[name=csrf_token]').value;
   var GTOK = form.querySelector('input[name=g]').value;
 
-  var file = document.getElementById('ciGFile');
-  if (file) file.addEventListener('change', function () {
-    var f = file.files && file.files[0]; if (!f) return;
-    var wrap = file.closest('.ci-upload'), state = wrap.querySelector('.ci-upload__state');
-    state.textContent = /^image\//.test(f.type || '') ? 'Uploading and reading your passport…' : 'Uploading…';
-    var fd = new FormData(); fd.append('g', GTOK); fd.append('csrf_token', CSRF); fd.append('passport', f);
-    fetch('/api/checkin-upload.php', { method: 'POST', body: fd, credentials: 'same-origin' })
-      .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
-      .then(function (d) {
-        state.innerHTML = 'Uploaded ✓'; wrap.setAttribute('data-has', '1');
-        if (d && (d.fields || d.read === false || d.warnings)) fillPassport(wrap.closest('[data-pp]'), d);
-      })
-      .catch(function () { state.textContent = 'Upload failed — try again'; });
-  });
-
-  // Same rules as fillPassport() in js/checkin-wizard.js: never overwrite what the
-  // guest typed; highlight what we filled until they edit it.
-  function fillPassport(pp, d) {
-    if (!pp) return;
-    var fields = d.fields || {}, warnings = d.warnings || [], filled = 0;
-    Object.keys(fields).forEach(function (k) {
-      var el = pp.querySelector('[name="' + k + '"]');
-      if (!el || (String(el.value).trim() !== '' && !el.hasAttribute('data-ai-filled'))) return;
-      el.value = fields[k]; el.setAttribute('data-ai-filled', '1'); el.classList.add('ci-in--ai'); filled++;
-    });
-    var note = pp.querySelector('.ci-pp-note'); if (!note) return;
-    var msgs = [];
-    if (filled) msgs.push('We filled in your details from the photo — please check them.');
-    else if (d.read === false || (Object.keys(fields).length === 0 && !warnings.length)) msgs.push('We couldn’t read the photo clearly — please type your details below.');
-    msgs = msgs.concat(warnings);
-    note.textContent = msgs.join(' ');
-    note.classList.toggle('ci-pp-note--warn', warnings.length > 0);
-    note.hidden = msgs.length === 0;
-  }
-  form.addEventListener('input', function (e) {
-    var el = e.target;
-    if (el && el.hasAttribute && el.hasAttribute('data-ai-filled')) { el.removeAttribute('data-ai-filled'); el.classList.remove('ci-in--ai'); }
+  // Upload, progress card and filling the fields: js/checkin-passport.js (shared
+  // with the lead's wizard, so the rules are the same on both pages).
+  if (window.tsCheckinPassport) window.tsCheckinPassport.bind(form, {
+    formData: function () {
+      var fd = new FormData(); fd.append('g', GTOK); fd.append('csrf_token', CSRF);
+      return fd;
+    }
   });
 
   // Finish: an unticked terms box opens the terms in a dialog (accepting ticks it
   // and carries on); a missing name or signature is said here, without a reload.
   // api/checkin-save.php still checks everything (checkin_consent_missing()).
   form.addEventListener('submit', function (e) {
+    if (window.tsCheckinPassport && window.tsCheckinPassport.busy(form)) {   // wait for the photo's details
+      e.preventDefault();
+      var busyErr = form.querySelector('.ci-err');
+      if (busyErr) { busyErr.textContent = 'Please wait a moment — your photo is still uploading.'; busyErr.hidden = false; }
+      return;
+    }
     var agree = form.querySelector('.ci-agree');
     if (!agree) return;   // no terms step
     var err = form.querySelector('.ci-err'); if (err) err.hidden = true;
