@@ -9,7 +9,10 @@
  *    for them — most staff have no login. The record keeps who it is FOR
  *    (hr_staff_id), who ENTERED it (requested_by), who approved each step, when.
  *  • Entering never approves. Step 1 (supervisor): owner, a manager who looks after
- *    the person, or HR. Step 2 (HR): owner or HR. When the owner or HR approves at
+ *    the person, or HR. Step 2 (HR): owner or HR — only for the types the owner says
+ *    need HR (staff_request_hr_types(); all of them unless changed).
+ *  • A sick or maternity note is a MEDICAL document: only the owner and HR open it
+ *    (staff_request_doc_is_medical(), checked in admin/employee-file.php). When the owner or HR approves at
  *    step 1 both steps are recorded at once; "Submit and approve" (owner/HR) does
  *    the same at entry. Declining needs a reason.
  *  • Approval changes the attendance on its own (source 'request', request_id):
@@ -247,12 +250,15 @@ function staff_request_approve(int $id, string $role, ?int $byAdmin, bool $inSco
         if (!staff_request_can_act((string)$r['status'], $role, $inScope)) {
             throw new StaffRequestRefusal($r['status'] === 'pending_hr' ? 'HR gives the final approval.' : 'This request is not waiting for you.');
         }
-        $final = in_array($role, ['owner', 'hr'], true);
+        // Final when HR / the owner approves, or when the supervisor approves a type HR
+        // does not need to see (owner's choice: staff_request_hr_types()).
+        $final = in_array($role, ['owner', 'hr'], true) || ($r['status'] === 'pending' && !staff_request_needs_hr((string)$r['leave_type']));
         if ($r['status'] === 'pending') {
             db_query('UPDATE leave_requests SET supervisor_by = :u, supervisor_at = now(), updated_at = now() WHERE id = :id', [':u' => $byAdmin ?: null, ':id' => $id]);
         }
         if ($final) {
-            db_query("UPDATE leave_requests SET hr_by = :u, hr_at = now(), status = 'approved', decided_by = :u, decided_at = now(), updated_at = now() WHERE id = :id",
+            $hrStep = in_array($role, ['owner', 'hr'], true);
+            db_query("UPDATE leave_requests SET " . ($hrStep ? 'hr_by = :u, hr_at = now(), ' : '') . "status = 'approved', decided_by = :u, decided_at = now(), updated_at = now() WHERE id = :id",
                 [':u' => $byAdmin ?: null, ':id' => $id]);
             staff_request_apply($id, $byAdmin);
             $status = 'approved';
@@ -420,4 +426,84 @@ function staff_request_notify(int $id, ?int $actorAdmin): int {
         error_log('[staff request] notify failed: ' . $e->getMessage());
         return 0;
     }
+}
+
+// ── Policy: which requests need HR's approval ───────────────────────────────
+
+/** The types that need HR's final approval (setting staff_request_hr_types; default: every type). */
+function staff_request_hr_types(): array {
+    $all = array_keys(staff_request_types());
+    $raw = setting('staff_request_hr_types', '');
+    if ($raw === '') return $all;
+    $v = json_decode($raw, true);
+    return is_array($v) ? array_values(array_intersect($all, $v)) : $all;
+}
+function staff_request_needs_hr(string $type): bool { return in_array($type, staff_request_hr_types(), true); }
+function staff_request_set_hr_types(array $types): void {
+    set_setting('staff_request_hr_types', json_encode(array_values(array_intersect(array_keys(staff_request_types()), $types))));
+}
+
+// ── Check before entering ───────────────────────────────────────────────────
+
+/**
+ * What entering this request would do, for the form to show BEFORE submitting:
+ * ['days' => [Y-m-d that would be stamped], 'off' => [weekly off days left alone],
+ *  'worked' => [days already worked / clocked — left alone], 'overlap' => [other
+ *  open/approved requests], 'balance' => ['off_days','annual_leave'], 'needs_hr' => bool].
+ */
+function staff_request_check(int $staffId, string $type, string $from, string $to): array {
+    $p = db_query('SELECT off_day FROM hr_staff WHERE id = :s', [':s' => $staffId])->fetch();
+    $out = ['days' => [], 'off' => [], 'worked' => [], 'overlap' => [], 'balance' => [], 'needs_hr' => staff_request_needs_hr($type)];
+    if (!$p || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $from)) return $out;
+    if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $to) || $to < $from) $to = $from;
+    if ((strtotime($to) - strtotime($from)) / 86400 > 120) $to = date('Y-m-d', strtotime($from . ' +120 days'));
+    $c = staff_request_conflicts($staffId, $from, $to);
+    $out['worked'] = $c['worked'];
+    foreach ($c['overlap'] as $o) {
+        $out['overlap'][] = ['type' => staff_request_type_label((string)$o['leave_type']), 'from' => $o['start_date'], 'to' => $o['end_date'],
+                             'status' => staff_request_status((string)$o['status'])[0]];
+    }
+    if ((staff_request_types()[$type][1] ?? null) !== null) {
+        for ($d = $from; $d <= $to; $d = date('Y-m-d', strtotime($d . ' +1 day'))) {
+            if (in_array($d, $out['worked'], true)) continue;            // named once, as worked
+            if (attendance_is_off_day((string)$p['off_day'], $d)) $out['off'][] = $d;
+            else $out['days'][] = $d;
+        }
+    }
+    if (function_exists('hr_bal_balances')) $out['balance'] = hr_bal_balances([$staffId])[$staffId] ?? [];
+    return $out;
+}
+
+// ── Reminders ───────────────────────────────────────────────────────────────
+
+/**
+ * Remind the approver(s) of requests waiting at their step for $days or more —
+ * at most once a day per request (details.reminded_on). Run daily by the
+ * scheduler (bin/staff-request-reminders.php). Returns how many requests.
+ */
+function staff_requests_remind(int $days = 2): int {
+    if (!staff_requests_supported()) return 0;
+    $today = date('Y-m-d');
+    $n = 0;
+    foreach (db_query("SELECT id, details FROM leave_requests WHERE status IN ('pending','pending_hr')
+                        AND updated_at < now() - make_interval(days => :d)", [':d' => max(1, $days)])->fetchAll() as $r) {
+        $det = json_decode((string)$r['details'], true) ?: [];
+        if (($det['reminded_on'] ?? '') === $today) continue;
+        // Claim first, so two scheduler tasks never send the same reminder twice.
+        $claimed = db_query("UPDATE leave_requests SET details = jsonb_set(details, '{reminded_on}', to_jsonb(CAST(:t AS text)))
+                              WHERE id = :id AND COALESCE(details->>'reminded_on', '') <> :t", [':t' => $today, ':id' => (int)$r['id']])->rowCount();
+        if (!$claimed) continue;
+        if (staff_request_notify((int)$r['id'], null) > 0) $n++;
+    }
+    return $n;
+}
+
+// ── Medical notes ───────────────────────────────────────────────────────────
+
+/** Is this employee document a sick / maternity note attached to a request? Then only the owner and HR open it. */
+function staff_request_doc_is_medical(int $docId): bool {
+    if ($docId <= 0 || !staff_requests_supported()) return false;
+    try {
+        return (bool) db_query("SELECT 1 FROM leave_requests WHERE doc_id = :d AND leave_type IN ('sick','maternity') LIMIT 1", [':d' => $docId])->fetchColumn();
+    } catch (Throwable $e) { return false; }
 }

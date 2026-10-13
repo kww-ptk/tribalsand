@@ -159,4 +159,15 @@ log "scheduler started"
   done
 ) &
 
+# ── Job 10: staff-request reminders daily ───────────────────────────────────
+# Emails the approver of any staff request still waiting after 2 days (once a
+# day per request, claimed atomically — safe on several ECS tasks). Quiet no-op
+# until add_staff_requests.sql has run.
+(
+  while true; do
+    php "$APP_DIR/bin/staff-request-reminders.php" >> "$LOG" 2>&1 || log "staff-request-reminders failed"
+    sleep 86400
+  done
+) &
+
 wait

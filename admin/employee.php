@@ -378,7 +378,8 @@ include __DIR__ . '/_layout.php';
         <?php else: ?>
         <ul class="emp-docs">
           <?php foreach ($docs as $d):
-            $viewUrl = '/admin/employee-file.php?doc=' . (int)$d['id']; ?>
+            $viewUrl = '/admin/employee-file.php?doc=' . (int)$d['id'];
+            if (!is_owner() && !is_hr() && staff_request_doc_is_medical((int)$d['id'])) continue;   // medical notes: HR + owner only ?>
           <li class="emp-docs__row">
             <span class="emp-docs__ext"><?= e(strtoupper(pathinfo((string)$d['filename'], PATHINFO_EXTENSION))) ?></span>
             <span class="emp-docs__main">
