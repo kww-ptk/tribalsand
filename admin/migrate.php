@@ -99,8 +99,11 @@ include __DIR__ . '/_layout.php';
 <?php endif; ?>
 
 <div class="card">
-  <div class="card__head">
-    <span class="card__title">Available migrations</span>
+  <div class="card__head" style="display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap">
+    <span class="card__title">Available migrations <span class="text-muted" id="migCount" style="font-size:12px;font-weight:500"></span></span>
+    <?php if ($display): ?>
+    <input type="search" id="migSearch" class="inp inp--sm" placeholder="Search migrations…" aria-label="Search migrations" autocomplete="off" style="min-width:240px">
+    <?php endif; ?>
   </div>
   <div class="card__body" style="padding:0">
     <table class="data-table">
@@ -111,7 +114,7 @@ include __DIR__ . '/_layout.php';
         <?php if (!$display): ?>
         <tr><td colspan="3" style="text-align:center;padding:2rem;color:var(--muted)">No migration files found.</td></tr>
         <?php else: foreach ($display as $row): $f = $row['name']; ?>
-        <tr>
+        <tr data-mig="<?= e(strtolower($f . ' ' . ($row['date'] !== '' ? date('j M Y', strtotime($row['date'])) . ' ' . $row['date'] : ''))) ?>">
           <td><strong><?= e($f) ?></strong>
             <?php if (!$row['listed']): ?> <span class="badge badge--orange">Not listed in ORDER.txt</span>
             <?php elseif ($row['date'] === $today): ?> <span class="badge badge--green">Today</span>
@@ -130,10 +133,38 @@ include __DIR__ . '/_layout.php';
           </td>
         </tr>
         <?php endforeach; endif; ?>
+        <tr id="migNone" hidden><td colspan="3" style="text-align:center;padding:2rem;color:var(--muted)">No migration matches.</td></tr>
       </tbody>
     </table>
   </div>
 </div>
+
+<script>
+/* Search the list as you type (file name or date). The text is kept for this visit,
+   so it is still there after Run reloads the page. */
+(function () {
+  var box = document.getElementById('migSearch');
+  if (!box || box.dataset.bound) return;
+  box.dataset.bound = '1';
+  var rows = document.querySelectorAll('tr[data-mig]'), none = document.getElementById('migNone'), count = document.getElementById('migCount');
+  var KEY = 'ts_migrate_q';
+  function apply() {
+    var words = box.value.toLowerCase().split(/\s+/).filter(Boolean), shown = 0;
+    rows.forEach(function (tr) {
+      var hay = tr.getAttribute('data-mig'), ok = words.every(function (w) { return hay.indexOf(w) !== -1; });
+      tr.hidden = !ok; if (ok) shown++;
+    });
+    if (none) none.hidden = shown !== 0;
+    if (count) count.textContent = words.length ? '· ' + shown + ' of ' + rows.length : '· ' + rows.length;
+    try { sessionStorage.setItem(KEY, box.value); } catch (e) {}
+    if (window.tsTableFit) window.tsTableFit();
+  }
+  try { box.value = sessionStorage.getItem(KEY) || ''; } catch (e) {}
+  box.addEventListener('input', apply);
+  box.addEventListener('keydown', function (e) { if (e.key === 'Escape') { box.value = ''; apply(); } });
+  apply();
+})();
+</script>
 
 <p class="text-muted" style="margin-top:24px;font-size:13px">
   Migrations use <code>IF NOT EXISTS</code> and <code>ON CONFLICT DO NOTHING</code> where appropriate, so re-running them is safe.
