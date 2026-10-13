@@ -216,35 +216,6 @@
     var wait = sec.querySelector('.ci-deposit__wait'); if (wait) wait.hidden = ok;
   }
 
-  // ── Passport photo → fields ────────────────────────────────────────────────
-  // Fill what the server read from the photo. A field the guest typed is never
-  // overwritten; one we filled earlier (data-ai-filled) may be replaced by a
-  // newer photo. Filled fields are highlighted until the guest edits them.
-  function fillPassport(pp, d) {
-    var scope = pp.closest('.ci-guest') || pp;
-    var fields = d.fields || {}, warnings = d.warnings || [], filled = 0;
-    Object.keys(fields).forEach(function (k) {
-      var el = scope.querySelector('[name="' + k + '"], [data-field="' + k + '"]');
-      if (!el || (String(el.value).trim() !== '' && !el.hasAttribute('data-ai-filled'))) return;
-      el.value = fields[k];
-      el.setAttribute('data-ai-filled', '1');
-      el.classList.add('ci-in--ai');
-      filled++;
-    });
-    var note = pp.querySelector('.ci-pp-note'); if (!note) return;
-    var msgs = [];
-    if (filled) msgs.push('We filled in the details from the photo — please check them.');
-    else if (d.read === false || (Object.keys(fields).length === 0 && !warnings.length)) msgs.push('We couldn’t read the photo clearly — please type the details below.');
-    msgs = msgs.concat(warnings);
-    note.textContent = msgs.join(' ');
-    note.classList.toggle('ci-pp-note--warn', warnings.length > 0);
-    note.hidden = msgs.length === 0;
-  }
-  form.addEventListener('input', function (e) {
-    var el = e.target;
-    if (el && el.hasAttribute && el.hasAttribute('data-ai-filled')) { el.removeAttribute('data-ai-filled'); el.classList.remove('ci-in--ai'); }
-  });
-
   // ── Sharing a guest's link — same sentence as checkin_guest_share_text() ───
   function shareText(name, link) {
     var party = form.querySelector('.ci-party');
@@ -264,6 +235,7 @@
   function validateStep(sec, retry) {
     if (!sec) return true;
     clearErr(sec);
+    if (uploading(sec)) { showMsg(sec, 'Please wait a moment — your photo is still uploading.'); return false; }
     if (sec.getAttribute('data-key') === 'deposit') {
       var dep = sec.querySelector('.ci-deposit');
       if (dep && dep.hasAttribute('data-deposit-gate')) {
@@ -396,6 +368,11 @@
     if (t.classList.contains('ci-guest__save')) {   // save an additional adult's data (per-guest AJAX)
       e.preventDefault();
       var card = t.closest('.ci-guest'), gid = card.getAttribute('data-guest-id');
+      if (uploading(card)) {   // save after the photo lands, or its fields would be missed
+        t.textContent = 'Wait — photo still uploading…';
+        setTimeout(function () { t.textContent = 'Save this guest'; }, 2500);
+        return;
+      }
       var nameEl = card.querySelector('.ci-guest__name');
       var gname = nameEl ? nameEl.value.trim() : '';
       if (!gname) {
@@ -497,36 +474,22 @@
     }
   });
 
-  // Delegated file upload — any .ci-upload file input. A wrap tagged
-  // data-kind="deposit" uploads the booking-level credit-card image; every other
-  // .ci-upload is a per-guest passport scan (guest_id from the enclosing card,
-  // absent → lead).
-  form.addEventListener('change', function (e) {
-    if (e.target.type !== 'file' || !e.target.closest('.ci-upload')) return;
-    var input = e.target, card = input.closest('[data-guest-id]');
-    var f = input.files && input.files[0]; if (!f) return;
-    var wrap = input.closest('.ci-upload'), state = wrap.querySelector('.ci-upload__state');
-    var isDeposit = wrap.getAttribute('data-kind') === 'deposit';
-    var isImage = /^image\//.test(f.type || '');
-    state.textContent = (!isDeposit && isImage) ? 'Uploading and reading your passport…' : 'Uploading…';
-    var fd = new FormData();
-    fd.append('ref', REF); fd.append('csrf_token', CSRF);
-    if (isDeposit) {
-      fd.append('deposit_card', f);
-    } else {
-      if (card) fd.append('guest_id', card.getAttribute('data-guest-id'));
-      fd.append('passport', f);
-    }
-    fetch('/api/checkin-upload.php', { method: 'POST', body: fd, credentials: 'same-origin' })
-      .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
-      .then(function (d) {
-        state.innerHTML = 'Uploaded ✓'; wrap.setAttribute('data-has', '1');
-        if (isDeposit) { syncDepositGate(); return; }
-        var pp = wrap.closest('[data-pp]');
-        if (pp && d && (d.fields || d.read === false || d.warnings)) fillPassport(pp, d);
-      })
-      .catch(function () { state.textContent = 'Upload failed — try again'; });
+  // Photo uploads (passport scans + the deposit card) — progress card, shrinking
+  // and filling the fields live in js/checkin-passport.js, shared with the
+  // co-guest page. A wrap tagged data-kind="deposit" is the booking-level card
+  // image; every other .ci-upload is a per-guest passport scan (guest_id from the
+  // enclosing card, absent → lead).
+  if (window.tsCheckinPassport) window.tsCheckinPassport.bind(form, {
+    formData: function (wrap, isDeposit) {
+      var fd = new FormData();
+      fd.append('ref', REF); fd.append('csrf_token', CSRF);
+      var card = wrap.closest('[data-guest-id]');
+      if (!isDeposit && card) fd.append('guest_id', card.getAttribute('data-guest-id'));
+      return fd;
+    },
+    onDone: function (wrap, d, isDeposit) { if (isDeposit) syncDepositGate(); }
   });
+  function uploading(el) { return !!(window.tsCheckinPassport && window.tsCheckinPassport.busy(el)); }
 
   form.addEventListener('change', function (e) {
     if (e.target.classList && e.target.classList.contains('ci-f-plan')) syncDepositGate();

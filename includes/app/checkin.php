@@ -44,7 +44,16 @@ $shareWa = function (string $name, string $link) use ($shareProperty, $shareDate
     return checkin_whatsapp_url(checkin_guest_share_text($name, $shareProperty, $shareDates, $link));
 };
 $waIcon = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.47 14.38c-.3-.15-1.75-.86-2.02-.96-.27-.1-.47-.15-.67.15-.2.3-.77.96-.94 1.16-.17.2-.35.22-.64.07-.3-.15-1.25-.46-2.38-1.47-.88-.79-1.47-1.76-1.64-2.05-.17-.3-.02-.46.13-.6.13-.13.3-.35.45-.52.15-.17.2-.3.3-.5.1-.2.05-.37-.02-.52-.07-.15-.67-1.6-.92-2.2-.24-.58-.49-.5-.67-.5h-.57c-.2 0-.52.07-.79.37-.27.3-1.04 1.02-1.04 2.48s1.07 2.88 1.21 3.08c.15.2 2.1 3.2 5.08 4.49.71.31 1.26.49 1.69.63.71.23 1.36.2 1.87.12.57-.09 1.75-.72 2-1.41.25-.69.25-1.29.17-1.41-.07-.12-.27-.2-.57-.35zM12.04 21.5h-.01a9.45 9.45 0 0 1-4.82-1.32l-.35-.21-3.58.94.96-3.49-.23-.36a9.43 9.43 0 0 1-1.45-5.03c0-5.22 4.25-9.47 9.48-9.47 2.53 0 4.91.99 6.7 2.78a9.41 9.41 0 0 1 2.77 6.7c0 5.23-4.25 9.47-9.47 9.47zm8.06-17.53A11.33 11.33 0 0 0 12.04.63C5.76.63.65 5.74.65 12.02c0 2.01.52 3.97 1.52 5.7L.55 23.62l6.03-1.58a11.36 11.36 0 0 0 5.45 1.39h.01c6.28 0 11.39-5.11 11.39-11.39 0-3.04-1.18-5.9-3.33-8.05z"/></svg>';
-$ppHint = 'Upload a photo of the passport’s photo page and we’ll fill in the details for you — or type them below.';
+// The photo is read into the fields only when an AI key is set (api/checkin-upload.php);
+// without one the hint must not promise it. js/checkin-passport.js reads data-pp-ai.
+require_once __DIR__ . '/../ai.php';
+$ppAi   = ai_assistant_supported();
+$ppHint = $ppAi
+    ? 'Upload a photo of the passport’s photo page and we’ll fill in the details for you — or type them below.'
+    : 'Upload a photo of the passport’s photo page, then type the details below.';
+// A name the page opens with (the booking name, or one saved earlier) gives way to
+// the name read off the passport — data-pp-replace; the note offers Undo.
+$ppReplace = fn(string $name): string => trim($name) !== '' ? ' data-pp-replace' : '';
 $guests   = fetch_checkin_guests($holdId);
 $adults   = array_values(array_filter($guests, fn($g) => empty($g['is_child'])));
 $kids     = [];
@@ -358,16 +367,19 @@ if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — for 
           <div class="ci-guest__title"><span class="ci-guest__who">You (lead guest)</span>
             <span class="ci-chip <?= (checkin_guest_passport_complete($lead) && (!$showWaiver || checkin_guest_waiver_signed($lead))) ? 'ci-chip--ok' : '' ?>"><?= (checkin_guest_passport_complete($lead) && (!$showWaiver || checkin_guest_waiver_signed($lead))) ? 'Complete' : 'Your details' ?></span></div>
           <?php if ($showPassport): ?>
-          <div class="ci-pp" data-pp>
+          <div class="ci-pp" data-pp data-pp-ai="<?= $ppAi ? '1' : '0' ?>">
             <label class="ci-l">Passport photo <span class="ci-opt">(the page with your photo)</span></label>
             <p class="ci-pp-hint"><?= e($ppHint) ?></p>
             <div class="ci-upload" data-has="<?= !empty($lead['passport_file_key']) ? '1' : '0' ?>">
-              <label class="ci-filebtn">&#128247; Choose photo<input type="file" accept="image/jpeg,image/png,application/pdf"></label>
+              <label class="ci-filebtn">&#128247; <span class="ci-filebtn__t"><?= !empty($lead['passport_file_key']) ? 'Replace photo' : 'Choose photo' ?></span><input type="file" accept="image/jpeg,image/png,application/pdf"></label>
               <span class="ci-upload__state"><?= !empty($lead['passport_file_key']) ? 'Uploaded &#10003;' : 'No photo yet' ?></span>
             </div>
             <div class="ci-pp-note" role="status" hidden></div>
             <label class="ci-l">Full name (as on passport)</label>
-            <input class="ci-in" name="passport_name" value="<?= $val('passport_name', $lead) ?>">
+            <?php // Starts with the booking name until a passport name is on file (display only —
+                  // the lead row may not exist yet); the passport photo replaces it. ?>
+            <?php $leadName = trim((string)($lead['passport_name'] ?? '')) ?: trim((string)($hold['guest_name'] ?? '')); ?>
+            <input class="ci-in" name="passport_name" value="<?= e($leadName) ?>"<?= $ppReplace($leadName) ?>>
             <label class="ci-l">Passport number</label>
             <input class="ci-in" name="passport_number" value="<?= $val('passport_number', $lead) ?>">
             <label class="ci-l">Nationality</label>
@@ -419,7 +431,7 @@ if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — for 
         // One card, three uses: saved guests (collapsed to a summary + their link),
         // a guest still being filled in (open), and the <template> js/checkin-wizard.js
         // clones when "+ Add adult" is pressed ($g = null). A saved guest = has a name.
-        $guestCard = function (?array $g) use ($showPassport, $showWaiver, $holdId, $kids, $shareWa, $waIcon, $ppHint): void {
+        $guestCard = function (?array $g) use ($showPassport, $showWaiver, $holdId, $kids, $shareWa, $waIcon, $ppHint, $ppAi, $ppReplace): void {
             $gid   = (int)($g['id'] ?? 0);
             $name  = trim((string)($g['passport_name'] ?? ''));
             $done  = $g !== null && $name !== '';
@@ -430,14 +442,14 @@ if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — for 
         <div class="ci-guest" data-guest-id="<?= $gid ?: '' ?>" data-link="<?= e($link) ?>">
           <div class="ci-guest__form"<?= $done ? ' hidden' : '' ?>>
             <div class="ci-guest__title">
-              <input class="ci-in ci-guest__name" data-field="passport_name" value="<?= e($name) ?>" placeholder="Guest full name">
+              <input class="ci-in ci-guest__name" data-field="passport_name" value="<?= e($name) ?>" placeholder="Guest full name"<?= $ppReplace($name) ?>>
               <button type="button" class="ci-guest__remove" aria-label="Remove guest">&times;</button>
             </div>
             <?php if ($showPassport): ?>
-            <div class="ci-pp" data-pp>
+            <div class="ci-pp" data-pp data-pp-ai="<?= $ppAi ? '1' : '0' ?>">
               <p class="ci-pp-hint"><?= e($ppHint) ?> Or leave it for them to add from their own link.</p>
               <div class="ci-upload" data-has="<?= !empty($g['passport_file_key']) ? '1' : '0' ?>">
-                <label class="ci-filebtn">&#128247; Choose photo<input type="file" accept="image/jpeg,image/png,application/pdf"></label>
+                <label class="ci-filebtn">&#128247; <span class="ci-filebtn__t"><?= !empty($g['passport_file_key']) ? 'Replace photo' : 'Choose photo' ?></span><input type="file" accept="image/jpeg,image/png,application/pdf"></label>
                 <span class="ci-upload__state"><?= !empty($g['passport_file_key']) ? 'Uploaded &#10003;' : 'No photo yet' ?></span>
               </div>
               <div class="ci-pp-note" role="status" hidden></div>
@@ -512,7 +524,7 @@ if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — for 
           <p class="ci-deposit__note"><?= nl2br(e($depositNote)) ?></p>
           <label class="ci-l">Photo of your credit card <span class="ci-opt">(front only — card you&rsquo;ll pay with)</span></label>
           <div class="ci-upload" data-kind="deposit" data-has="<?= $depositOnFile ? '1' : '0' ?>">
-            <label class="ci-filebtn"><?= '&#128247;' ?> Choose photo<input type="file" accept="image/jpeg,image/png"></label>
+            <label class="ci-filebtn">&#128247; <span class="ci-filebtn__t"><?= $depositOnFile ? 'Replace photo' : 'Choose photo' ?></span><input type="file" accept="image/jpeg,image/png"></label>
             <span class="ci-upload__state"><?= $depositOnFile ? 'Uploaded &#10003;' : 'No photo yet' ?></span>
           </div>
           <p class="ci-hint">Your card image is private, encrypted at rest and shared only with the Tribal Sand front desk. We never charge it online.</p>
@@ -553,4 +565,5 @@ if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — for 
 </form>
 <script src="/js/signature-pad.js?v=<?= @filemtime(__DIR__ . '/../../js/signature-pad.js') ?: time() ?>" defer></script>
 <script src="/js/checkin-terms.js?v=<?= @filemtime(__DIR__ . '/../../js/checkin-terms.js') ?: time() ?>" defer></script>
+<script src="/js/checkin-passport.js?v=<?= @filemtime(__DIR__ . '/../../js/checkin-passport.js') ?: time() ?>" defer></script>
 <script src="/js/checkin-wizard.js?v=<?= @filemtime(__DIR__ . '/../../js/checkin-wizard.js') ?: time() ?>" defer></script>

@@ -272,6 +272,39 @@
 .ci-in--ai{background:#fff8e1;border-color:#f2c94c}
 .ci-pp-note{background:#fff8e1;border:1px solid #f2c94c;color:#6b4e00;border-radius:9px;padding:9px 12px;font-size:13.5px;line-height:1.5;margin:10px 0 4px}
 .ci-pp-note--warn{background:#fbe6e6;border-color:#f0c2c2;color:#a12}
+/* Name replaced by the passport's — the old name with Undo (js/checkin-passport.js) */
+.ci-pp-note__was{display:block;margin-top:4px}
+.ci-pp-undo{background:none;border:0;padding:0;font:inherit;font-weight:600;color:var(--pa-teal-d);text-decoration:underline;cursor:pointer}
+/* Photo upload progress card: Upload (%) → Read passport → Done (js/checkin-passport.js) */
+.ci-upload[aria-busy="true"] .ci-filebtn{opacity:.5;pointer-events:none}
+.ci-prog{flex:1 1 100%;display:flex;align-items:center;gap:12px;min-width:0;background:#fff;border:1px solid var(--pa-line);border-radius:12px;padding:10px 12px;margin-top:4px}
+.ci-prog__thumb{flex:0 0 48px;width:48px;height:48px;border-radius:8px;background:#eef3f4 center/cover no-repeat;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;letter-spacing:.04em;color:var(--pa-teal)}
+.ci-prog__body{flex:1 1 auto;min-width:0}
+.ci-prog__top{display:flex;align-items:baseline;justify-content:space-between;gap:8px}
+.ci-prog__t{font-size:14px;font-weight:500;line-height:1.35;color:var(--pa-ink)}
+.ci-prog__pct{flex:0 0 auto;font-size:12px;color:var(--pa-muted);font-variant-numeric:tabular-nums}
+.ci-prog__bar{position:relative;height:6px;border-radius:999px;background:#e8eef0;overflow:hidden;margin:7px 0 7px}
+.ci-prog__bar>span{display:block;height:100%;width:2%;border-radius:inherit;background:var(--pa-teal);transition:width .25s ease}
+.ci-prog[data-stage="work"] .ci-prog__bar>span{width:35%;animation:ciProgSlide 1.3s ease-in-out infinite}
+@keyframes ciProgSlide{from{transform:translateX(-100%)}to{transform:translateX(290%)}}
+.ci-prog[data-stage="done"] .ci-prog__bar>span{background:#2e8b57}
+.ci-prog[data-stage="done"] .ci-prog__t::before{content:"\2713\00a0";color:#2e8b57;font-weight:700}
+.ci-prog[data-stage="error"]{background:#fdf3f3;border-color:#f0c2c2}
+.ci-prog[data-stage="error"] .ci-prog__t{color:#a12}
+.ci-prog[data-stage="error"] .ci-prog__bar,.ci-prog[data-stage="error"] .ci-prog__steps{display:none}
+.ci-prog__steps{display:flex;flex-wrap:wrap;gap:4px 14px;list-style:none;margin:0;padding:0;font-size:12px;color:var(--pa-muted)}
+.ci-prog__steps li{display:flex;align-items:center;gap:5px}
+.ci-prog__steps li::before{content:"";flex:0 0 auto;width:12px;height:12px;box-sizing:border-box;border-radius:50%;border:1.5px solid #c9d3d6;display:inline-flex;align-items:center;justify-content:center;font-size:8px;line-height:1;color:#fff}
+.ci-prog__steps li.is-on{color:var(--pa-teal-d);font-weight:500}
+.ci-prog__steps li.is-on::before{border-color:var(--pa-teal);background:var(--pa-teal)}
+.ci-prog__steps li.is-done{color:#2e6b4a}
+.ci-prog__steps li.is-done::before{content:"\2713";border-color:#2e8b57;background:#2e8b57}
+.ci-prog__steps li.is-err{color:#a12}
+.ci-prog__steps li.is-err::before{border-color:#d9534f;background:#d9534f}
+.ci-prog__retry{flex:0 0 auto;font:inherit;font-size:13px;font-weight:600;color:#fff;background:var(--pa-teal-d);border:0;border-radius:8px;padding:9px 13px;cursor:pointer}
+.ci-prog__retry:focus-visible,.ci-pp-undo:focus-visible{outline:3px solid var(--pa-gold);outline-offset:2px}
+@media (max-width:420px){.ci-prog{gap:10px;padding:9px 10px}.ci-prog__thumb{flex-basis:40px;width:40px;height:40px}.ci-prog__retry{padding:8px 10px}}
+@media (prefers-reduced-motion:reduce){.ci-prog__bar>span{transition:none}.ci-prog[data-stage="work"] .ci-prog__bar>span{animation:none;width:100%;opacity:.45}}
 .ci-in.is-invalid{border-color:#d9534f;box-shadow:0 0 0 3px rgba(217,83,79,.15)}
 /* Party: saved guest summary + link to send */
 .ci-guest__done{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
