@@ -938,7 +938,7 @@ function bill_total(int $holdId): float {
 function fetch_tour_categories(): array {
     $labels = ['classic' => 'Classic safari', 'custom' => 'Custom journey', 'excursion' => 'Excursion'];
     $rows = db_query(
-        "SELECT DISTINCT category FROM tours WHERE is_published = TRUE AND category <> '' ORDER BY category ASC"
+        "SELECT DISTINCT category FROM tours WHERE is_published = TRUE AND category <> ''" . tours_public_sql('') . " ORDER BY category ASC"
     )->fetchAll(PDO::FETCH_COLUMN);
     $out = [];
     foreach ($rows as $c) { $out[] = ['key' => $c, 'label' => $labels[$c] ?? ucfirst($c)]; }

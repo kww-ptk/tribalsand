@@ -214,6 +214,50 @@ function guest_extras_featured(array $list, int $max = GUEST_EXTRAS_MAX_FEATURED
     return array_slice($f, 0, $max);
 }
 
+/**
+ * The check-in wizard's "Add to your stay" step: the guest's list (already
+ * phase-filtered, with status) minus transfers — check-in asks about pickup in
+ * its own Arrival / Transfer step, so offering them here too would make two
+ * transfer requests — minus anything already asked for; featured first, then the
+ * owner's order. PURE.
+ */
+function guest_extras_for_checkin(array $list): array {
+    $out = array_values(array_filter($list, fn($x) => $x['kind'] === 'tour' && ($x['status'] ?? '') === ''));
+    $feat = array_values(array_filter($out, fn($x) => !empty($x['featured'])));
+    $rest = array_values(array_filter($out, fn($x) => empty($x['featured'])));
+    return array_merge($feat, $rest);
+}
+
+/** An extra in the row shape fetch_upsell_items() returns (what the step renders and upsell_attach_to_hold() stores). PURE. */
+function guest_extras_checkin_row(array $x): array {
+    return ['id' => (int)$x['ref_id'], 'slug' => (string)$x['slug'], 'name' => (string)$x['name'],
+            'short_desc' => (string)$x['desc'], 'duration' => (string)$x['duration'],
+            'price_amount' => $x['price'], 'price_per_person' => (bool)$x['per_person']];
+}
+
+/**
+ * What the check-in "Add to your stay" step offers for this booking. A property
+ * whose Guest extras list has been saved offers that list (guest_extras_for_checkin());
+ * one that was never curated keeps the old rule — each activity's own "Offer as a
+ * booking add-on" setting (fetch_upsell_items(…, 'checkin')) — so saving the list is
+ * what moves a property over. Used to RENDER the step and to VALIDATE what it posts
+ * (api/checkin-save.php), so a tampered id can't add anything else. Never throws.
+ * @return list<array> rows shaped like fetch_upsell_items()
+ */
+function guest_extras_checkin_items(array $hold): array {
+    $venueId = isset($hold['venue_id']) && $hold['venue_id'] !== null ? (int)$hold['venue_id'] : null;
+    $holdId  = (int)($hold['id'] ?? 0);
+    try {
+        if ($venueId && guest_extras_enabled($venueId) && guest_extras_settings($venueId) !== []) {
+            return array_map('guest_extras_checkin_row', guest_extras_for_checkin(guest_extras_for_hold($hold)));
+        }
+        return fetch_upsell_items($venueId, 'checkin', $holdId ?: null);
+    } catch (Throwable $e) {
+        error_log('[guest-extras] check-in list failed: ' . $e->getMessage());
+        return [];
+    }
+}
+
 /** The browser payload for the portal's add sheet. PURE. */
 function guest_extra_payload(array $x): array {
     return ['k' => $x['key'], 'kind' => $x['kind'], 'id' => $x['ref_id'], 'slug' => $x['slug'], 'name' => $x['name'],

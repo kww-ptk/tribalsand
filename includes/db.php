@@ -140,9 +140,33 @@ function fetch_venue_images(int $venue_id): array {
     )->fetchAll();
 }
 
+/**
+ * True once add_tour_guests_only.sql has run (tours.guests_only). A catalog
+ * lookup, not a failing SELECT — safe inside a transaction. Memoised.
+ */
+function tours_guests_only_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try {
+        $ok = (bool)db_query("SELECT 1 FROM information_schema.columns WHERE table_name = 'tours' AND column_name = 'guests_only' LIMIT 1")->fetchColumn();
+    } catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/**
+ * SQL to append to a PUBLIC website read of tours: leaves out activities marked
+ * "Only for booked guests" (they are still offered in the guest portal, check-in
+ * and the booking emails). '' before the migration. $a = the tours alias, '' for none.
+ */
+function tours_public_sql(string $a = 't'): string {
+    if (!tours_guests_only_supported()) return '';
+    return ' AND NOT ' . ($a !== '' ? $a . '.' : '') . 'guests_only';
+}
+
+/** A published activity for the PUBLIC website (enquire.php, api/submit-enquiry.php) — never a guests-only one. */
 function fetch_tour_by_slug(string $slug): array|false {
     return db_query(
-        'SELECT * FROM tours WHERE slug = :slug AND is_published = TRUE',
+        'SELECT * FROM tours WHERE slug = :slug AND is_published = TRUE' . tours_public_sql(''),
         [':slug' => $slug]
     )->fetch();
 }

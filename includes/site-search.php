@@ -222,7 +222,7 @@ function site_search_index(bool $fresh = false): array {
 
     // Activities.
     if (!$dbDown) try {
-        foreach (db_query("SELECT slug, name, category, tag_label, duration, short_desc FROM tours WHERE is_published = TRUE ORDER BY sort_order, name")->fetchAll() as $t) {
+        foreach (db_query("SELECT slug, name, category, tag_label, duration, short_desc FROM tours WHERE is_published = TRUE" . tours_public_sql('') . " ORDER BY sort_order, name")->fetchAll() as $t) {
             $sub = trim(implode(' · ', array_filter([(string)($t['tag_label'] ?? ''), (string)($t['duration'] ?? '')])));
             $items[] = [
                 'title' => (string)$t['name'], 'url' => '/activities#tour-' . rawurlencode((string)$t['slug']),

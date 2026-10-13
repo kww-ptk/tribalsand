@@ -66,10 +66,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             // 500s on a deploy where add_tour_favourite_location.sql isn't applied yet.
             $favVal = isset($_POST['is_guest_favourite']) ? 'TRUE' : 'FALSE';
             $locVal = tour_normalize_location($_POST['location'] ?? 'all');
-            $applyFavLoc = function (int $tid) use ($favVal, $locVal) {
+            $guestsOnly = isset($_POST['guests_only']) ? 'TRUE' : 'FALSE';
+            $applyFavLoc = function (int $tid) use ($favVal, $locVal, $guestsOnly) {
                 if (tours_favloc_supported()) {
                     db_query('UPDATE tours SET is_guest_favourite = :f, location = :l WHERE id = :id',
                         [':f' => $favVal, ':l' => $locVal, ':id' => $tid]);
+                }
+                // "Only for booked guests" (add_tour_guests_only.sql) — same pre-migration-safe pattern.
+                if (tours_guests_only_supported()) {
+                    db_query('UPDATE tours SET guests_only = :g WHERE id = :id', [':g' => $guestsOnly, ':id' => $tid]);
                 }
             };
 
@@ -324,6 +329,13 @@ include __DIR__ . '/_layout.php';
         <span class="ck"></span>
         <span>Guest Favourite <span class="text-muted">(badges the card + shows in the Guest Favourites filter)</span></span>
       </label>
+      <?php if (tours_guests_only_supported()): $__go = ($tour['guests_only'] ?? false) && ($tour['guests_only'] ?? 'f') !== 'f'; ?>
+      <label class="ckwrap" style="margin:2px 0 4px">
+        <input type="checkbox" name="guests_only" value="1" <?= $__go ? 'checked' : '' ?>>
+        <span class="ck"></span>
+        <span>Only for booked guests <span class="text-muted">(offered in the guest portal, at check-in and in the booking emails &mdash; never on the public website)</span></span>
+      </label>
+      <?php endif; ?>
 
       <div class="form-row" style="margin-top:14px">
         <div class="field" style="margin-bottom:0">
@@ -384,7 +396,9 @@ include __DIR__ . '/_layout.php';
         <span class="field-hint">
           Where guests can add this while booking. Only takes effect at properties with
           &ldquo;Offer add-ons in the booking flow&rdquo; ticked (Properties &rarr; Edit &rarr; Details),
-          and only at the properties selected above.
+          and only at the properties selected above. Once a property&rsquo;s
+          <strong>Guest extras</strong> list has been saved (Properties &rarr; Guest extras), its
+          check-in step follows that list instead.
         </span>
       </div>
       <?php endif; ?>

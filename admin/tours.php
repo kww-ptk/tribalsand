@@ -105,7 +105,7 @@ ob_start(); ?>
               <span class="thumb-empty" title="No photo" aria-label="No photo"><?= admin_icon('image', 18) ?></span>
               <?php endif; ?>
             </td>
-            <td><strong><?= e($tour['name']) ?></strong></td>
+            <td><strong><?= e($tour['name']) ?></strong><?php if (!empty($tour['guests_only']) && $tour['guests_only'] !== 'f'): ?> <span class="badge badge--orange" data-tip="Offered to booked guests only — not on the public website">Guests only</span><?php endif; ?></td>
             <td><span class="badge badge--blue"><?= e(ucfirst($tour['category'])) ?></span></td>
             <td>
               <?php if (is_priced($tour['price_amount'] ?? null)): ?>

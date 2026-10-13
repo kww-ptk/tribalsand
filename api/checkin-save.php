@@ -246,18 +246,20 @@ if ($triedConsent && checkin_signature_supported() && checkin_can_sign_self($onl
 // ── Optional add-ons ───────────────────────────────────────────────────────
 // The wizard re-posts the whole form on every "Save & continue", so this runs
 // on each step; upsell_attach_to_hold() is idempotent per tour, so a repeat
-// can't duplicate a request. Ids are re-validated against what this booking's
-// property actually offers on the check-in surface, with anything already
-// attached excluded — a posted id is never trusted.
+// can't duplicate a request. Ids are re-validated against what the step offers
+// this booking (guest_extras_checkin_items()), with anything already asked for
+// excluded — a posted id is never trusted.
 //
 // Unticking does not detach: once requested, the team has seen it. The guest
 // cancels it from the portal like any other addon, and an attached item stops
-// being offered here anyway (fetch_upsell_items excludes it).
+// being offered here anyway (the list leaves out what was asked for).
 if (!empty($_POST['upsell']) && is_array($_POST['upsell'])) {
     try {
-        $__items = upsell_validate_ids(
-            $_POST['upsell'], ((int)($hold['venue_id'] ?? 0)) ?: null, 'checkin', $holdId
-        );
+        // Only what the step offers this booking (guest_extras_checkin_items() — the
+        // property's Guest extras list once saved, else the per-activity setting).
+        require_once __DIR__ . '/../includes/guest-extras.php';
+        $__want  = array_flip(array_map('intval', $_POST['upsell']));
+        $__items = array_values(array_filter(guest_extras_checkin_items($hold), fn($r) => isset($__want[(int)$r['id']])));
         upsell_attach_to_hold($holdId, $__items, max(1, (int)($hold['guest_count'] ?? 1)));
     } catch (Throwable $e) {
         // An add-on must never break a check-in save.
