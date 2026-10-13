@@ -248,6 +248,9 @@ include __DIR__ . '/_layout.php';
           <?php if (!empty($r['hr_name']) && $r['status'] === 'approved'): ?><div class="text-muted" style="font-size:12px">HR: <?= e($r['hr_name']) ?></div><?php endif; ?>
           <?php if (!empty($r['decline_reason'])): ?><div class="text-muted" style="font-size:12px"><?= e($r['decline_reason']) ?></div><?php endif; ?></td>
         <td class="sq-act">
+          <?php if (in_array($r['status'], ['approved', 'declined', 'cancelled'], true) && ($wa = hr_whatsapp_link((string)($r['phone'] ?? ''))) !== ''): ?>
+          <a class="btn-outline btn-sm" target="_blank" rel="noopener" href="<?= e($wa . '?text=' . rawurlencode(staff_request_result_text($r))) ?>" data-tip="Opens WhatsApp with the message ready — nothing is sent until you press Send"><?= admin_icon('phone', 14) ?> Tell them on WhatsApp</a>
+          <?php endif; ?>
           <?php if ($canAct): ?>
           <form method="POST" action="<?= $self ?>" style="display:inline"><?= csrf_field() ?><input type="hidden" name="action" value="approve"><input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
             <button class="btn-primary btn-sm"><?= admin_icon('check', 14) ?> <?= in_array($role, ['owner', 'hr'], true) || !staff_request_needs_hr((string)$r['leave_type']) ? 'Approve' : 'Approve (to HR)' ?></button></form>

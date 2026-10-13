@@ -24,6 +24,8 @@ check('steps: a manager acts at step 1 only', staff_request_can_act('pending', '
 check('steps: HR and the owner act at both', staff_request_can_act('pending', 'hr', true) && staff_request_can_act('pending_hr', 'owner', true));
 check('steps: nobody acts out of scope or on a closed request', !staff_request_can_act('pending', 'owner', false) && !staff_request_can_act('approved', 'hr', true));
 check('stamp days: the weekly off day is left alone', staff_request_stamp_days('2026-10-19', '2026-10-25', 'SUN') === ['2026-10-19', '2026-10-20', '2026-10-21', '2026-10-22', '2026-10-23', '2026-10-24']);
+check('result text: approved', staff_request_result_text(['full_name' => 'HENRY OUMA OKAKA', 'leave_type' => 'annual', 'start_date' => '2026-11-02', 'end_date' => '2026-11-06', 'status' => 'approved']) === 'Hi Henry, your annual leave for 2 Nov to 6 Nov is approved.');
+check('result text: declined with the reason', str_contains(staff_request_result_text(['full_name' => 'JUDY KEYA', 'leave_type' => 'day_off', 'start_date' => '2026-11-02', 'end_date' => '2026-11-02', 'status' => 'declined', 'decline_reason' => 'busy week']), 'was not approved: busy week'));
 check('types: leave codes', staff_request_types()['annual'][1] === 'LV' && staff_request_types()['day_off'][1] === 'REC' && staff_request_types()['unpaid'][1] === 'UL' && staff_request_types()['correction'][1] === null);
 
 // ── DB ──────────────────────────────────────────────────────────────────────

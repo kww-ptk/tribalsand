@@ -125,7 +125,7 @@ function staff_requests_list(?array $venueIds, ?array $companyIds, array $f = []
     if (!empty($f['venue_id']))   { $where .= ' AND s.venue_id = :v';   $params[':v'] = (int)$f['venue_id']; }
     if (!empty($f['company_id']) && hr_staff_company_supported()) { $where .= ' AND s.company_id = :c'; $params[':c'] = (int)$f['company_id']; }
     if (!empty($f['staff_id']))   { $where .= ' AND l.hr_staff_id = :sid'; $params[':sid'] = (int)$f['staff_id']; }
-    $rows = db_query("SELECT l.*, s.full_name, s.position, s.venue_id, s.off_day, ub.name AS requested_by_name,
+    $rows = db_query("SELECT l.*, s.full_name, s.position, s.venue_id, s.off_day, s.phone, ub.name AS requested_by_name,
                              us.name AS supervisor_name, uh.name AS hr_name
                         FROM leave_requests l JOIN hr_staff s ON s.id = l.hr_staff_id LEFT JOIN admin_users ub ON ub.id = l.requested_by
                         LEFT JOIN admin_users us ON us.id = l.supervisor_by LEFT JOIN admin_users uh ON uh.id = l.hr_by
@@ -435,6 +435,25 @@ function staff_request_notify(int $id, ?int $actorAdmin): int {
         error_log('[staff request] notify failed: ' . $e->getMessage());
         return 0;
     }
+}
+
+// ── Telling the employee ────────────────────────────────────────────────────
+
+/**
+ * The message to send someone about their decided request (staff have no login —
+ * a manager or HR tells them, on WhatsApp). Pure.
+ */
+function staff_request_result_text(array $r): string {
+    $first = trim((string) strtok((string)($r['full_name'] ?? ''), ' '));
+    $first = $first !== '' ? ucfirst(strtolower($first)) : 'Hello';
+    $what  = strtolower(staff_request_type_label((string)$r['leave_type']));
+    $dates = date('j M', strtotime((string)$r['start_date'])) . ($r['end_date'] !== $r['start_date'] ? ' to ' . date('j M', strtotime((string)$r['end_date'])) : '');
+    return match ((string)$r['status']) {
+        'approved'  => "Hi {$first}, your {$what} for {$dates} is approved.",
+        'declined'  => "Hi {$first}, your {$what} for {$dates} was not approved" . (trim((string)($r['decline_reason'] ?? '')) !== '' ? ': ' . trim((string)$r['decline_reason']) : '') . '. Please speak to your supervisor.',
+        'cancelled' => "Hi {$first}, your {$what} for {$dates} has been cancelled.",
+        default     => "Hi {$first}, your {$what} for {$dates} is waiting for approval.",
+    };
 }
 
 // ── Policy: which requests need HR's approval ───────────────────────────────
