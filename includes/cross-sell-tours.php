@@ -11,7 +11,7 @@ try {
         'SELECT t.*,
                 (SELECT filename FROM tour_images WHERE tour_id = t.id AND is_hero = TRUE LIMIT 1) AS hero_img
          FROM tours t
-         WHERE t.is_published = TRUE
+         WHERE t.is_published = TRUE' . tours_public_sql('t') . '
          ORDER BY t.sort_order ASC
          LIMIT 3'
     )->fetchAll();

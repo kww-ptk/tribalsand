@@ -146,3 +146,4 @@ add_night_duty.sql                                   2026-10-13
 add_staff_rooms.sql                                  2026-10-13
 add_staff_requests.sql                               2026-10-13
 add_staff_rota.sql                                   2026-10-13
+add_tour_guests_only.sql                             2026-10-13

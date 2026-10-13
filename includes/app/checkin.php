@@ -25,10 +25,12 @@ $showDeposit  = isset($cfg['deposit']);
 
 // Optional add-ons for this property, minus anything already on the booking —
 // so something picked during the enquiry is never offered a second time here.
+// The property's Guest extras list once it has been saved (Properties → Guest
+// extras), else each activity's own "Offer as a booking add-on" setting —
+// guest_extras_checkin_items(); api/checkin-save.php validates against the same list.
 require_once __DIR__ . '/../upsells.php';
-$ciUpsells = isset($cfg['upsell'])
-    ? fetch_upsell_items(((int)($hold['venue_id'] ?? 0)) ?: null, 'checkin', $holdId)
-    : [];
+require_once __DIR__ . '/../guest-extras.php';
+$ciUpsells = isset($cfg['upsell']) ? guest_extras_checkin_items($hold) : [];
 $deposit      = checkin_venue_deposit($hold);   // ['amount','currency','formatted']
 $depositNote  = checkin_deposit_note();
 $depositOnFile = checkin_deposit_card_on_file($data);

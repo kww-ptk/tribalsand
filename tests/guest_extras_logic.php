@@ -67,6 +67,22 @@ check('featured: skips extras already asked for', array_column(guest_extras_feat
 foreach ($list as $i => $x) $list[$i]['featured'] = false;
 check('featured: none featured → the first ones not asked for', array_column(guest_extras_featured($list, 2), 'key') === ['tour:1', 'transfer:7']);
 
+// ── Check-in "Add to your stay" step follows the curated list ──
+$ci = guest_extras_for_phase(guest_extras_resolve($cat, [
+    'tour:1'     => ['shown' => true,  'featured' => false, 'when' => 'any',    'sort' => 0],
+    'transfer:7' => ['shown' => true,  'featured' => true,  'when' => 'any',    'sort' => 1],
+    'tour:2'     => ['shown' => true,  'featured' => true,  'when' => 'before', 'sort' => 2],
+]), 'before');
+foreach ($ci as $i => $x) $ci[$i]['status'] = '';
+check('check-in: activities only (transfers have their own step), featured first, then the owner order',
+    array_column(guest_extras_for_checkin($ci), 'key') === ['tour:2', 'tour:1']);
+foreach ($ci as $i => $x) $ci[$i]['status'] = $x['key'] === 'tour:2' ? 'requested' : '';
+check('check-in: an extra already asked for is not offered again', array_column(guest_extras_for_checkin($ci), 'key') === ['tour:1']);
+$row = guest_extras_checkin_row(array_column($ci, null, 'key')['tour:1']);
+check('check-in: row in the shape the step and upsell_attach_to_hold() use',
+    $row['id'] === 1 && $row['name'] === 'Kite lesson' && $row['price_amount'] === 120.0 && $row['price_per_person'] === true && $row['duration'] === '2 h');
+check('check-in: unpriced stays unpriced (never 0)', guest_extras_checkin_row($cat[1])['price_amount'] === null);
+
 // ── Admin form cleaning ──
 [$rows, $notice] = guest_extras_clean_post($cat, [
     'order' => 'tour:2,bogus:9,transfer:7',

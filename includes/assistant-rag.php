@@ -178,8 +178,10 @@ function rag_gather_documents(): array {
     // ── Tours / activities (global; not venue-scoped) ─────────────────────────
     if (rag_table_present('tours')) {
         try {
+            // The index also feeds the PUBLIC concierge, so "Only for booked guests"
+            // activities stay out of it (tours_public_sql()).
             $tours = db_query('SELECT slug, name, short_desc, long_desc, highlights_json
-                                 FROM tours WHERE is_published = TRUE ORDER BY sort_order')->fetchAll();
+                                 FROM tours WHERE is_published = TRUE' . tours_public_sql('') . ' ORDER BY sort_order')->fetchAll();
         } catch (Throwable $e) { $tours = []; }
         foreach ($tours as $t) {
             $parts = ["{$t['name']} (activity)."];

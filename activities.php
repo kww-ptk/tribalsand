@@ -35,7 +35,7 @@ try {
     $__acts = db_query(
         "SELECT t.*, (SELECT filename FROM tour_images WHERE tour_id = t.id AND is_hero = TRUE LIMIT 1) AS hero
          FROM tours t
-         WHERE t.is_published = TRUE AND t.category IN ('marine','watersports','nature','wellness','golf','classic','custom','excursion')
+         WHERE t.is_published = TRUE AND t.category IN ('marine','watersports','nature','wellness','golf','classic','custom','excursion')" . tours_public_sql('t') . "
          ORDER BY t.sort_order ASC"
     )->fetchAll();
 } catch (Throwable $e) {

@@ -51,8 +51,9 @@ unset($_SESSION['venue_extras_notice']);
         <div class="vx-head">
           <div>
             <p style="margin:0 0 6px;font-size:13.5px;color:var(--muted);max-width:640px">What guests at <?= e($venue['name']) ?> can add to their stay from their booking page. Each one is a request your team confirms; once confirmed it goes on the guest&rsquo;s bill. Prices come from <a href="/admin/tours.php">Activities</a> and <a href="/admin/services.php">Service pricing</a>.</p>
+            <p style="margin:0 0 6px;font-size:13.5px;color:var(--muted);max-width:640px">The same list is offered at the end of online check-in (&ldquo;Add to your stay&rdquo;) &mdash; the activities offered before arrival or any time, featured first. Transfers aren&rsquo;t offered there: check-in asks about pickup in its own Arrival step.</p>
             <div class="vx-stats">Last 30 days: <b><?= (int)$__xStats['requested'] ?></b> requested · <b><?= (int)$__xStats['confirmed'] ?></b> confirmed<?php if ($__xStats['value'] > 0): ?> · <b><?= e(format_price($__xStats['value'])) ?></b> confirmed value<?php endif; ?></div>
-            <?php if (!$__xSettings): ?><p style="margin:8px 0 0;font-size:12.5px;color:#b45309">Not set up yet: guests see everything below that is ticked. Save once to make this list the property&rsquo;s own.</p><?php endif; ?>
+            <?php if (!$__xSettings): ?><p style="margin:8px 0 0;font-size:12.5px;color:#b45309">Not set up yet: guests see everything below that is ticked, and check-in still follows each activity&rsquo;s own &ldquo;Offer as a booking add-on&rdquo; setting. Save once to make this list the property&rsquo;s own.</p><?php endif; ?>
           </div>
           <?php if (upsells_supported()): ?>
           <label class="togglerow" data-help="extras-on"><span class="toggle"><input type="checkbox" name="upsell_enabled" value="1"<?= $__xOn ? ' checked' : '' ?>><span class="toggle-slider"></span></span><span><strong>Offer extras at <?= e($venue['name']) ?></strong></span></label>

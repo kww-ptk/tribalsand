@@ -88,7 +88,7 @@ function fetch_upsell_items(?int $venueId, string $surface, ?int $excludeHoldId 
                     (SELECT filename FROM tour_images ti
                       WHERE ti.tour_id = t.id AND ti.is_hero = TRUE LIMIT 1) AS hero
                FROM tours t
-              WHERE t.is_published = TRUE
+              WHERE t.is_published = TRUE" . ($surface === 'enquiry' ? tours_public_sql('t') : '') . "
                 AND t.upsell_placement IN (:s, 'both')
                 AND (NOT EXISTS (SELECT 1 FROM tour_venues tv WHERE tv.tour_id = t.id)
                      OR EXISTS  (SELECT 1 FROM tour_venues tv WHERE tv.tour_id = t.id AND tv.venue_id = :v))
