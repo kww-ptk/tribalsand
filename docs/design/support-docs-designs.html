@@ -1,0 +1,528 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Support Page Designs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,600;1,600&display=swap" rel="stylesheet">
+<style>
+/* Mockups only — three directions for Admin → Support (the documentation library).
+   Every design does the same three things: IMPORT a guide (PDF), VIEW it in the page,
+   DOWNLOAD it. Nothing is hard-coded per guide: each guide is a record (title,
+   subtitle, who it is for, version, file), so a new feature = import a new PDF or a
+   new version of an old one. "View as" in the bar shows what each role would see. */
+:root{
+  --brand:#1E5C6B;--brand-dk:#102F3A;--accent:#B8965A;--bg:#FAF6EE;--white:#fff;
+  --text:#141412;--muted:#6B6050;--border:#e7ded7;--soft:#f4efe6;--tint:#e6f0f1;
+  --red:#c0392b;--green:#2e7d32;--green-bg:#e8f5e9;--warn:#b45309;--warn-bg:#fdf3e4;
+  --cover:#12313b;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:Inter,system-ui,sans-serif;color:var(--text);background:#E9E4DA;font-size:14px;line-height:1.5}
+button{font:inherit;cursor:pointer;color:inherit}
+input,textarea{font:inherit;color:inherit}
+svg.i{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* ── Picker bar (not part of the design) ── */
+.pick{position:sticky;top:0;z-index:80;background:#0d1615;color:#fff;display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;padding:10px 18px}
+.pick b{font-weight:600}
+.pick .grp{display:flex;gap:6px;flex-wrap:wrap}
+.pick button{border:1px solid #2c3d3b;background:#16221f;color:#cfe0dc;border-radius:999px;padding:6px 14px;font-size:13px}
+.pick button.on{background:#fff;color:#0d1615;border-color:#fff}
+.pick .note{font-size:12px;color:#8fa7a3;margin-left:auto}
+.stage{padding:22px 18px 60px}
+.desc{max-width:1280px;margin:0 auto 14px;color:#33413f;font-size:14px}
+.desc strong{color:#0d1615}
+.frame{max-width:1280px;margin:0 auto;border-radius:14px;overflow:clip;box-shadow:0 30px 80px rgba(13,22,21,.18);display:flex;min-height:820px;background:var(--bg);position:relative}
+.design{display:none;flex:1;min-width:0}.design.on{display:flex;flex-direction:column}
+
+/* ── Fake admin chrome ── */
+.side{width:200px;flex:none;background:var(--brand-dk);color:#cfe0dc;padding:18px 12px;font-size:12.5px}
+.side .logo{color:#fff;font-weight:600;letter-spacing:.06em;margin:0 6px 18px}
+.side .logo span{color:var(--accent)}
+.side a{display:flex;align-items:center;gap:9px;padding:7px 8px;border-radius:7px;color:#cfe0dc;text-decoration:none}
+.side a.on{background:rgba(255,255,255,.1);color:#fff;font-weight:600}
+.side .grp{margin:12px 8px 4px;font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:#7f9c98}
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.ph{padding:22px 32px 0;display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.ph h1{font-size:22px;margin:0;letter-spacing:-.01em}
+.ph p{margin:4px 0 0;color:var(--muted);font-size:13px}
+.ph .sp{flex:1}
+.body{padding:20px 32px 40px;flex:1;min-width:0}
+
+/* ── Shared controls ── */
+.btn{display:inline-flex;align-items:center;gap:7px;border-radius:9px;padding:9px 16px;font-weight:600;font-size:13.5px;border:1.5px solid transparent;text-decoration:none;white-space:nowrap}
+.btn-p{background:var(--brand);color:#fff}.btn-p:hover{background:var(--brand-dk)}
+.btn-o{background:#fff;border-color:var(--border);color:var(--brand)}.btn-o:hover{border-color:var(--brand)}
+.btn-g{background:transparent;color:var(--muted)}.btn-g:hover{color:var(--text)}
+.btn-sm{padding:6px 12px;font-size:12.5px}
+.ico{width:34px;height:34px;border-radius:9px;border:1.5px solid var(--border);background:#fff;display:inline-grid;place-items:center;color:var(--brand)}
+.ico:hover{border-color:var(--brand)}
+.search{display:flex;align-items:center;gap:8px;border:1.5px solid var(--border);border-radius:9px;background:#fff;padding:0 12px;min-width:220px}
+.search input{border:0;outline:0;padding:9px 0;flex:1;background:none;min-width:0}
+.chips{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border:1.5px solid var(--border);background:#fff;border-radius:999px;padding:5px 12px;font-size:12.5px;font-weight:600;color:var(--muted)}
+.chip.on{background:var(--brand);border-color:var(--brand);color:#fff}
+.pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 9px;font-size:11.5px;font-weight:600;background:var(--soft);color:var(--muted)}
+.pill--new{background:var(--warn-bg);color:var(--warn)}
+.pill--pub{background:var(--tint);color:var(--brand)}
+.muted{color:var(--muted)}
+.tiny{font-size:12px}
+
+/* Cover — drawn from the guide's own title + subtitle (in the real page: the PDF's first page) */
+.cover{background:var(--cover);color:#fff;border-radius:6px;padding:14% 10%;display:flex;flex-direction:column;justify-content:center;aspect-ratio:4/3;position:relative;overflow:hidden}
+.cover::before{content:"TRIBAL SAND";position:absolute;top:10%;left:10%;font-size:7px;letter-spacing:.3em;color:#7f9c98}
+.cover b{font-family:"Cormorant Garamond",serif;font-weight:600;font-size:clamp(14px,1.6vw,20px);line-height:1.1}
+.cover i{font-family:"Cormorant Garamond",serif;font-weight:600;color:var(--accent);font-size:clamp(13px,1.5vw,18px);line-height:1.15}
+.cover hr{border:0;border-top:1px solid rgba(184,150,90,.6);margin:9% 0 6%;width:100%}
+.cover span{font-size:7.5px;color:#a9bdba;line-height:1.4}
+
+/* ── Design A — Library shelf ── */
+.shelf{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:18px}
+.card{background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;transition:box-shadow .15s,transform .15s}
+.card:hover{box-shadow:0 10px 26px rgba(16,47,58,.12);transform:translateY(-2px)}
+.card .cv{padding:14px 14px 0;background:#f1ece3;cursor:pointer}
+.card .cv .cover{border-radius:6px 6px 0 0}
+.card .meta{padding:12px 14px 14px;display:flex;flex-direction:column;gap:6px;flex:1}
+.card .meta b{font-size:14px}
+.card .row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+.card .acts{display:flex;gap:6px;margin-top:auto;padding-top:6px}
+.card .acts .btn{flex:1;justify-content:center}
+.sec-h{display:flex;align-items:baseline;gap:10px;margin:22px 0 12px}
+.sec-h h2{font-size:15px;margin:0}
+.sec-h:first-child{margin-top:0}
+.toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:18px}
+
+/* ── Design B — Reader (list + viewer) ── */
+.reader{display:grid;grid-template-columns:300px minmax(0,1fr);flex:1;min-height:0;border-top:1px solid var(--border)}
+.rlist{border-right:1px solid var(--border);background:#fff;padding:16px;display:flex;flex-direction:column;gap:6px;overflow:auto}
+.rlist .g{font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:12px 4px 2px}
+.ritem{display:flex;gap:10px;align-items:center;padding:8px;border-radius:10px;border:1.5px solid transparent;cursor:pointer;text-align:left;background:none;width:100%}
+.ritem:hover{background:var(--soft)}
+.ritem.on{border-color:var(--brand);background:var(--tint)}
+.ritem .th{width:54px;flex:none}
+.ritem .th .cover{padding:10% 8%}
+.ritem .th .cover b{font-size:8px}.ritem .th .cover i{font-size:7px}.ritem .th .cover span,.ritem .th .cover::before{display:none}.ritem .th .cover hr{margin:5% 0 0}
+.ritem b{font-size:13px;display:block}
+.ritem small{font-size:11.5px;color:var(--muted)}
+.dropmini{border:1.5px dashed #cbbfb4;border-radius:10px;padding:12px;text-align:center;font-size:12.5px;color:var(--muted);background:var(--bg);cursor:pointer}
+.dropmini:hover{border-color:var(--brand);color:var(--brand)}
+.rview{display:flex;flex-direction:column;min-width:0;background:#e9e4da}
+.rhead{background:#fff;border-bottom:1px solid var(--border);padding:14px 20px;display:flex;gap:14px;align-items:center;flex-wrap:wrap}
+.rhead h2{margin:0;font-size:17px}
+.rhead .sp{flex:1}
+.pages{flex:1;overflow:auto;padding:22px;display:flex;flex-direction:column;align-items:center;gap:18px}
+.page{width:min(100%,560px);background:#fff;box-shadow:0 6px 20px rgba(0,0,0,.1);aspect-ratio:1/1.414;padding:7%;display:flex;flex-direction:column;gap:10px}
+.page.coverpage{background:var(--cover);color:#fff;justify-content:center}
+.page.coverpage b{font-family:"Cormorant Garamond",serif;font-size:34px;line-height:1.05}
+.page.coverpage i{font-family:"Cormorant Garamond",serif;font-size:28px;color:var(--accent)}
+.page.coverpage hr{border:0;border-top:1px solid rgba(184,150,90,.6);width:100%;margin:18px 0}
+.page.coverpage span{font-size:12px;color:#a9bdba}
+.page h3{font-family:"Cormorant Garamond",serif;font-size:22px;margin:0;color:var(--brand-dk)}
+.ln{height:8px;border-radius:4px;background:#ece6dc}
+.ln.s{width:60%}.ln.m{width:82%}
+.shot{height:120px;border-radius:8px;background:linear-gradient(135deg,#f1ece3,#e6f0f1);border:1px solid var(--border)}
+.verpop{position:relative}
+.vermenu{position:absolute;right:0;top:calc(100% + 6px);background:#fff;border:1px solid var(--border);border-radius:12px;box-shadow:0 14px 34px rgba(0,0,0,.14);width:300px;padding:8px;z-index:20}
+.vermenu[hidden]{display:none}
+.vrow{display:flex;gap:10px;align-items:center;padding:8px;border-radius:8px}
+.vrow:hover{background:var(--soft)}
+.vrow b{font-size:13px}.vrow small{display:block;color:var(--muted);font-size:11.5px}
+.vrow .sp{flex:1}
+
+/* ── Design C — Support hub (for you + all guides table) ── */
+.hero{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,1fr);gap:18px;margin-bottom:22px}
+.mine{background:var(--brand-dk);color:#fff;border-radius:14px;padding:22px;display:grid;grid-template-columns:150px minmax(0,1fr);gap:20px;align-items:center}
+.mine .k{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+.mine h2{margin:4px 0 6px;font-size:20px}
+.mine p{margin:0 0 14px;color:#cfe0dc;font-size:13px}
+.mine .btn-o{border-color:rgba(255,255,255,.3);background:transparent;color:#fff}
+.mine .btn-p{background:var(--accent);color:var(--brand-dk)}
+.drop{border:2px dashed #cbbfb4;border-radius:14px;background:#fff;padding:20px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:8px;cursor:pointer;transition:border-color .15s,background .15s}
+.drop:hover,.drop.over{border-color:var(--brand);background:var(--tint)}
+.drop .big{width:46px;height:46px;border-radius:12px;background:var(--tint);color:var(--brand);display:grid;place-items:center}
+.drop b{font-size:14px}
+.tbl{width:100%;border-collapse:collapse;background:#fff;border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.tbl th{font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);text-align:left;padding:10px 14px;background:#fbf8f2;border-bottom:1px solid var(--border)}
+.tbl td{padding:10px 14px;border-bottom:1px solid #f0ebe3;vertical-align:middle}
+.tbl tr:last-child td{border-bottom:0}
+.tbl tr:hover td{background:#fcfaf6}
+.tbl .doc{display:flex;gap:12px;align-items:center}
+.tbl .doc .cv{width:52px;flex:none}
+.tbl .doc .cover{padding:10% 8%}
+.tbl .doc .cover b{font-size:8px}.tbl .doc .cover i{font-size:7px}.tbl .doc .cover span,.tbl .doc .cover::before{display:none}.tbl .doc .cover hr{margin:5% 0 0}
+.tbl .acts{display:flex;gap:6px;justify-content:flex-end;white-space:nowrap}
+.tbl-wrap{overflow-x:auto}
+
+/* ── Shared overlays: viewer + import ── */
+.ov{position:absolute;inset:0;background:rgba(13,22,21,.55);z-index:40;display:flex;justify-content:flex-end}
+.ov[hidden]{display:none}
+.ov.center{justify-content:center;align-items:center}
+.viewer{background:#e9e4da;width:min(100%,900px);height:100%;display:flex;flex-direction:column}
+.viewer .rhead{border-radius:0}
+.sheet{background:#fff;width:min(100%,520px);height:100%;display:flex;flex-direction:column}
+.sheet .sh{padding:18px 22px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.sheet .sh h2{margin:0;font-size:17px;flex:1}
+.sheet .sb{padding:18px 22px;overflow:auto;flex:1;display:flex;flex-direction:column;gap:16px}
+.sheet .sf{padding:14px 22px;border-top:1px solid var(--border);display:flex;gap:10px;justify-content:flex-end}
+.f label{display:block;font-size:13px;font-weight:600;margin-bottom:4px}
+.f .hint{font-size:12px;color:var(--muted);margin-top:4px}
+.inp{width:100%;border:1.5px solid var(--border);border-radius:9px;padding:9px 12px;background:#fff;outline:none}
+.inp:focus{border-color:var(--brand);box-shadow:0 0 0 3px rgba(30,92,107,.12)}
+.file{display:flex;gap:12px;align-items:center;border:1.5px solid var(--border);border-radius:10px;padding:10px 12px;background:var(--soft)}
+.file .cv{width:64px;flex:none}
+.file .cv .cover{padding:10% 8%}.file .cv .cover b{font-size:8px}.file .cv .cover i{font-size:7px}.file .cv .cover span,.file .cv .cover::before{display:none}.file .cv .cover hr{margin:5% 0 0}
+.seg{display:inline-flex;border:1.5px solid var(--border);border-radius:9px;overflow:hidden;background:#fff}
+.seg button{border:0;background:none;padding:7px 12px;font-size:12.5px;font-weight:600;color:var(--muted)}
+.seg button.on{background:var(--brand);color:#fff}
+.who{display:flex;gap:6px;flex-wrap:wrap}
+.who label{display:inline-flex;align-items:center;gap:6px;border:1.5px solid var(--border);border-radius:999px;padding:5px 11px;font-size:12.5px;font-weight:600;color:var(--muted);cursor:pointer;background:#fff}
+.who input{display:none}
+.who label:has(input:checked){background:var(--brand);border-color:var(--brand);color:#fff}
+.toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(20px);background:#0d1615;color:#fff;padding:10px 18px;border-radius:10px;font-size:13.5px;opacity:0;transition:.25s;z-index:100;pointer-events:none}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* Responsive */
+@media (max-width:900px){
+  .side{display:none}
+  .reader{grid-template-columns:1fr}
+  .rlist{max-height:260px;border-right:0;border-bottom:1px solid var(--border)}
+  .hero{grid-template-columns:1fr}
+  .mine{grid-template-columns:96px minmax(0,1fr)}
+  .ph,.body{padding-left:16px;padding-right:16px}
+  .tbl .hide-sm{display:none}
+}
+</style>
+</head>
+<body>
+
+<div class="pick">
+  <b>Support page</b>
+  <div class="grp" id="pickD">
+    <button class="on" data-d="A">A · Library shelf</button>
+    <button data-d="B">B · Reader</button>
+    <button data-d="C">C · Support hub</button>
+  </div>
+  <div class="grp" id="pickRole">
+    <span class="tiny" style="color:#8fa7a3;align-self:center">View as</span>
+    <button class="on" data-r="owner">Owner</button>
+    <button data-r="reception">Reception</button>
+    <button data-r="hr">HR</button>
+    <button data-r="till">Till staff</button>
+  </div>
+  <span class="note">Mockup — click a guide to view it, Download, or Import (owner)</span>
+</div>
+
+<div class="stage">
+  <p class="desc" data-desc="A"><strong>A · Library shelf.</strong> A grid of guide covers like your PDF list, grouped "For your team" / "For guests &amp; partners", with search and a filter per role. A cover opens the guide in a side viewer; every card has View and Download. The owner gets <strong>Import guide</strong> (side panel: drop the PDF, title, who it's for, new guide or new version of an existing one).</p>
+  <p class="desc" data-desc="B" hidden><strong>B · Reader.</strong> Built for reading: the list of guides on the left, the selected guide open on the right, page by page. Download and <strong>Version history</strong> (older versions stay downloadable) sit above the guide. The owner imports from the small drop box at the top of the list or uploads a <strong>new version</strong> of the open guide.</p>
+  <p class="desc" data-desc="C" hidden><strong>C · Support hub.</strong> Starts with <strong>the guide for your role</strong> (Reception sees the Reception Guide first), then every guide in one table: who it's for, version, last updated, size, View / Download. The owner drags PDFs straight onto the import box; the table rows also offer New version and Remove.</p>
+
+  <div class="frame" id="frame">
+    <aside class="side">
+      <div class="logo">TRIBAL <span>SAND</span></div>
+      <a>Dashboard</a>
+      <div class="grp">Bookings</div><a>Calendar</a><a>Enquiries</a>
+      <div class="grp">Team</div><a>Staff</a><a>Attendance</a>
+      <div class="grp">Settings</div><a>Settings</a><a>Help &amp; guides</a>
+      <a class="on">Support</a>
+    </aside>
+    <div class="main">
+
+      <!-- ═════════ A ═════════ -->
+      <section class="design on" data-design="A">
+        <div class="ph">
+          <div><h1>Support</h1><p>Guides for every part of the system — read online or download as PDF.</p></div>
+          <span class="sp"></span>
+          <button class="btn btn-p owner-only" data-import><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>Import guide</button>
+        </div>
+        <div class="body">
+          <div class="toolbar">
+            <label class="search"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input placeholder="Search guides" data-q></label>
+            <div class="chips" data-chips></div>
+          </div>
+          <div data-shelf></div>
+        </div>
+      </section>
+
+      <!-- ═════════ B ═════════ -->
+      <section class="design" data-design="B">
+        <div class="ph" style="padding-bottom:16px">
+          <div><h1>Support</h1><p>Pick a guide on the left to read it here.</p></div>
+        </div>
+        <div class="reader">
+          <div class="rlist">
+            <div class="dropmini owner-only" data-import><svg class="i" viewBox="0 0 24 24" style="vertical-align:-3px"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg> Import a guide (PDF)</div>
+            <label class="search" style="min-width:0;margin-top:6px"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input placeholder="Search guides" data-q></label>
+            <div data-rlist></div>
+          </div>
+          <div class="rview">
+            <div class="rhead">
+              <div><h2 data-rtitle></h2><div class="tiny muted" data-rmeta></div></div>
+              <span class="sp"></span>
+              <div class="verpop">
+                <button class="btn btn-o btn-sm" data-vertoggle><svg class="i" viewBox="0 0 24 24"><path d="M12 8v4l3 2"/><circle cx="12" cy="12" r="9"/></svg>Version history</button>
+                <div class="vermenu" hidden data-vermenu></div>
+              </div>
+              <button class="btn btn-o btn-sm owner-only" data-newver><svg class="i" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg>New version</button>
+              <button class="btn btn-p btn-sm" data-dl-current><svg class="i" viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M5 20h14"/></svg>Download PDF</button>
+            </div>
+            <div class="pages" data-rpages></div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═════════ C ═════════ -->
+      <section class="design" data-design="C">
+        <div class="ph">
+          <div><h1>Support</h1><p>Your guide first, then every guide in the library.</p></div>
+        </div>
+        <div class="body">
+          <div class="hero">
+            <div class="mine" data-mine></div>
+            <div class="drop owner-only" data-drop>
+              <div class="big"><svg class="i" viewBox="0 0 24 24" style="width:22px;height:22px"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg></div>
+              <b>Drop guides here to import</b>
+              <span class="tiny muted">PDF, up to 20 MB each · or <u>choose files</u></span>
+              <span class="tiny muted">Same title as an existing guide → offered as its new version</span>
+            </div>
+            <div class="drop staff-only" style="cursor:default">
+              <div class="big"><svg class="i" viewBox="0 0 24 24" style="width:22px;height:22px"><path d="M12 8v4M12 16h.01"/><circle cx="12" cy="12" r="9"/></svg></div>
+              <b>Can't find what you need?</b>
+              <span class="tiny muted">Press <b>Help</b> on any page for a step-by-step walkthrough, or ask your manager.</span>
+            </div>
+          </div>
+          <div class="toolbar">
+            <label class="search"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg><input placeholder="Search guides" data-q></label>
+            <div class="chips" data-chips></div>
+          </div>
+          <div class="tbl-wrap"><table class="tbl"><thead><tr><th>Guide</th><th class="hide-sm">For</th><th class="hide-sm">Version</th><th class="hide-sm">Updated</th><th></th></tr></thead><tbody data-tbody></tbody></table></div>
+        </div>
+      </section>
+
+    </div>
+
+    <!-- Viewer (A + C) -->
+    <div class="ov" hidden data-viewer>
+      <div class="viewer">
+        <div class="rhead">
+          <button class="ico" data-close aria-label="Close"><svg class="i" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+          <div><h2 data-vtitle></h2><div class="tiny muted" data-vmeta></div></div>
+          <span class="sp"></span>
+          <button class="btn btn-o btn-sm" data-vnew>Open in new tab</button>
+          <button class="btn btn-p btn-sm" data-vdl><svg class="i" viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M5 20h14"/></svg>Download PDF</button>
+        </div>
+        <div class="pages" data-vpages></div>
+      </div>
+    </div>
+
+    <!-- Import sheet (all designs) -->
+    <div class="ov" hidden data-importer>
+      <div class="sheet">
+        <div class="sh"><h2>Import a guide</h2><button class="ico" data-close aria-label="Close"><svg class="i" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+        <div class="sb">
+          <div class="drop" data-pickfile style="padding:16px">
+            <b>Drop a PDF here</b><span class="tiny muted">or <u>choose a file</u> · PDF only, up to 20 MB</span>
+          </div>
+          <div class="file" data-picked hidden>
+            <div class="cv"><div class="cover"><b>Spa Guide</b><hr><i>Booking a Treatment</i></div></div>
+            <div style="flex:1;min-width:0"><b class="tiny">Tribal-Sand-Spa-Guide.pdf</b><div class="tiny muted">2.4 MB · 18 pages · cover read from page 1</div></div>
+          </div>
+          <div class="f"><label>This is</label>
+            <div class="seg" data-kind><button class="on" data-k="new">A new guide</button><button data-k="ver">A new version of…</button></div>
+            <div class="who" data-verof hidden style="margin-top:8px"></div>
+            <div class="hint" data-kindhint>It appears in the library for the people you tick below.</div>
+          </div>
+          <div class="f"><label>Title</label><input class="inp" value="Spa Guide" data-title><div class="hint">Filled in from the file name — change it if you like.</div></div>
+          <div class="f"><label>Subtitle</label><input class="inp" value="Booking a Treatment"></div>
+          <div class="f"><label>Who should see it</label>
+            <div class="who">
+              <label><input type="checkbox" checked>Owner</label><label><input type="checkbox" checked>Managers</label>
+              <label><input type="checkbox">Reception</label><label><input type="checkbox">HR</label>
+              <label><input type="checkbox">Staff</label><label><input type="checkbox" checked>Till staff</label>
+              <label><input type="checkbox">Guests (public link)</label><label><input type="checkbox">Travel agents</label>
+            </div>
+            <div class="hint">Guests and travel agents get a public download link to share; everyone else sees it here when they sign in.</div>
+          </div>
+          <div class="f"><label>What changed <span class="muted" style="font-weight:400">(optional)</span></label><textarea class="inp" rows="2" placeholder="e.g. Added the new spa booking steps"></textarea><div class="hint">Shown in Version history.</div></div>
+        </div>
+        <div class="sf"><button class="btn btn-g" data-close>Cancel</button><button class="btn btn-p" data-doimport>Import</button></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+(function () {
+  // One record per guide. The real page reads these from the database; a new
+  // guide or version is a new row + an uploaded PDF — no code change.
+  var GUIDES = [
+    { id:'reception', t:'Reception Guide', s:'The Booking Desk', who:['owner','manager','reception'], grp:'team', v:3, up:'14 Oct 2026', pages:24, mb:'3.1', blurb:'Enquiries, holds, confirming, the calendar and the guest page.', isNew:true },
+    { id:'owner', t:'Owner Guide', s:'The Back Office', who:['owner'], grp:'team', v:2, up:'12 Oct 2026', pages:36, mb:'4.6', blurb:'Settings, rates, money, access by role and reports.' },
+    { id:'manager', t:'Manager Guide', s:'Running a Property', who:['owner','manager'], grp:'team', v:2, up:'12 Oct 2026', pages:28, mb:'3.8', blurb:'Your properties day to day: team, tasks, stock and reports.' },
+    { id:'hr', t:'HR Guide', s:'People and Attendance', who:['owner','manager','hr'], grp:'team', v:1, up:'13 Oct 2026', pages:30, mb:'3.4', blurb:'Staff lists, attendance import, balances, requests and rota.', isNew:true },
+    { id:'staff', t:'Staff Guide', s:'Your Day at Work', who:['owner','manager','reception','hr','staff','till'], grp:'team', v:1, up:'9 Oct 2026', pages:12, mb:'1.6', blurb:'Signing in, tasks, clocking in and team chat.' },
+    { id:'till', t:'Till Guide', s:'Taking a Sale', who:['owner','manager','till'], grp:'team', v:1, up:'9 Oct 2026', pages:14, mb:'2.0', blurb:'Your PIN, ringing up a sale, room charges and receipts.' },
+    { id:'guest', t:'Guest Website', s:'User Guide', who:['owner','manager','reception','public'], grp:'guests', v:1, up:'9 Oct 2026', pages:16, mb:'2.7', blurb:'Booking, the guest page, check-in and the gate pass.' },
+    { id:'agent', t:'Travel Agent', s:'Portal Guide', who:['owner','manager','reception','agent'], grp:'guests', v:1, up:'7 Oct 2026', pages:10, mb:'1.4', blurb:'Trade sign-in, availability, net rates and requests.' }
+  ];
+  var VERSIONS = { reception:[[3,'14 Oct 2026','Gate pass + Delete imported bookings'],[2,'7 Oct 2026','New calendar zoom and Services row'],[1,'29 Sep 2026','First version']],
+                   owner:[[2,'12 Oct 2026','Settings redesign (one Save button)'],[1,'30 Sep 2026','First version']],
+                   manager:[[2,'12 Oct 2026','Reports monthly view'],[1,'30 Sep 2026','First version']] };
+  var ROLE_LABEL = { owner:'Owner', manager:'Managers', reception:'Reception', hr:'HR', staff:'Staff', till:'Till staff', public:'Guests', agent:'Travel agents' };
+  var MINE = { owner:'owner', reception:'reception', hr:'hr', till:'till' };
+  var role = 'owner', design = 'A', filter = 'all', q = '', current = 'reception';
+
+  var $ = function (s, r) { return (r || document).querySelector(s); };
+  var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  function esc(x) { return String(x).replace(/[&<>"]/g, function (c) { return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c]; }); }
+  function cover(g, small) { return '<div class="cover"><b>' + esc(g.t) + '</b>' + (small ? '<hr>' : '') + '<i>' + esc(g.s) + '</i>' + (small ? '' : '<hr><span>' + esc(g.blurb) + '</span>') + '</div>'; }
+  function whoTxt(g) { return g.who.filter(function (w) { return w !== 'owner'; }).map(function (w) { return ROLE_LABEL[w]; }).join(', ') || 'Owner only'; }
+  function visible() {
+    return GUIDES.filter(function (g) {
+      if (role !== 'owner' && g.who.indexOf(role) < 0) return false;
+      if (filter !== 'all' && g.who.indexOf(filter) < 0) return false;
+      if (q && (g.t + ' ' + g.s + ' ' + g.blurb).toLowerCase().indexOf(q) < 0) return false;
+      return true;
+    });
+  }
+  function toast(m) { var t = $('#toast'); t.textContent = m; t.classList.add('show'); clearTimeout(toast.h); toast.h = setTimeout(function () { t.classList.remove('show'); }, 2300); }
+  function pagesHtml(g) {
+    var h = '<div class="page coverpage"><span style="letter-spacing:.3em;font-size:10px">TRIBAL SAND</span><b>' + esc(g.t) + '</b><i>' + esc(g.s) + '</i><hr><span>' + esc(g.blurb) + '</span></div>';
+    ['Getting started', 'Step by step'].forEach(function (h3) {
+      h += '<div class="page"><h3>' + h3 + '</h3><div class="ln m"></div><div class="ln"></div><div class="ln s"></div><div class="shot"></div><div class="ln"></div><div class="ln m"></div><div class="ln"></div><div class="ln s"></div><div class="shot"></div><div class="ln m"></div></div>';
+    });
+    return h;
+  }
+  function dl(g) { toast('Downloading Tribal-Sand-' + g.t.replace(/\s+/g, '-') + '.pdf (v' + g.v + ')'); }
+  function find(id) { return GUIDES.filter(function (g) { return g.id === id; })[0]; }
+
+  function chips() {
+    var roles = role === 'owner' ? ['all','manager','reception','hr','staff','till','public','agent'] : ['all'];
+    $$('[data-chips]').forEach(function (c) {
+      c.innerHTML = roles.map(function (r) { return '<button class="chip' + (filter === r ? ' on' : '') + '" data-f="' + r + '">' + (r === 'all' ? 'All guides' : ROLE_LABEL[r]) + '</button>'; }).join('');
+    });
+  }
+  function renderA() {
+    var list = visible(), html = '';
+    [['team','For your team'],['guests','For guests & partners']].forEach(function (sec) {
+      var gs = list.filter(function (g) { return g.grp === sec[0]; });
+      if (!gs.length) return;
+      html += '<div class="sec-h"><h2>' + sec[1] + '</h2><span class="tiny muted">' + gs.length + ' guide' + (gs.length === 1 ? '' : 's') + '</span></div><div class="shelf">';
+      gs.forEach(function (g) {
+        html += '<div class="card"><div class="cv" data-view="' + g.id + '">' + cover(g) + '</div><div class="meta"><b>' + esc(g.t) + ' — ' + esc(g.s) + '</b>'
+          + '<div class="row"><span class="pill">v' + g.v + ' · ' + g.up + '</span>' + (g.isNew ? '<span class="pill pill--new">Updated</span>' : '') + (g.who.indexOf('public') >= 0 || g.who.indexOf('agent') >= 0 ? '<span class="pill pill--pub">Shareable</span>' : '') + '</div>'
+          + (role === 'owner' ? '<div class="tiny muted">For: ' + esc(whoTxt(g)) + '</div>' : '')
+          + '<div class="acts"><button class="btn btn-o btn-sm" data-view="' + g.id + '">View</button><button class="btn btn-p btn-sm" data-dl="' + g.id + '">Download</button></div></div></div>';
+      });
+      html += '</div>';
+    });
+    $('[data-shelf]').innerHTML = html || '<p class="muted">No guides match.</p>';
+  }
+  function renderB() {
+    var list = visible(), html = '';
+    if (list.length && !list.some(function (g) { return g.id === current; })) current = list[0].id;
+    [['team','For your team'],['guests','For guests & partners']].forEach(function (sec) {
+      var gs = list.filter(function (g) { return g.grp === sec[0]; });
+      if (!gs.length) return;
+      html += '<div class="g">' + sec[1] + '</div>';
+      gs.forEach(function (g) {
+        html += '<button class="ritem' + (g.id === current ? ' on' : '') + '" data-pick="' + g.id + '"><div class="th">' + cover(g, true) + '</div><div><b>' + esc(g.t) + '</b><small>' + esc(g.s) + ' · v' + g.v + (g.isNew ? ' · <span style="color:var(--warn)">updated</span>' : '') + '</small></div></button>';
+      });
+    });
+    $('[data-rlist]').innerHTML = html;
+    var g = find(current);
+    if (!g) return;
+    $('[data-rtitle]').textContent = g.t + ' — ' + g.s;
+    $('[data-rmeta]').textContent = 'Version ' + g.v + ' · updated ' + g.up + ' · ' + g.pages + ' pages · ' + g.mb + ' MB' + (role === 'owner' ? ' · for ' + whoTxt(g) : '');
+    $('[data-rpages]').innerHTML = pagesHtml(g);
+    var vs = VERSIONS[g.id] || [[g.v, g.up, 'First version']];
+    $('[data-vermenu]').innerHTML = vs.map(function (v, i) { return '<div class="vrow"><div><b>Version ' + v[0] + (i === 0 ? ' · current' : '') + '</b><small>' + v[1] + ' — ' + esc(v[2]) + '</small></div><span class="sp"></span><button class="ico" data-dlv="' + v[0] + '" aria-label="Download version ' + v[0] + '"><svg class="i" viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M5 20h14"/></svg></button></div>'; }).join('');
+  }
+  function renderC() {
+    var mine = find(MINE[role]) || GUIDES[0];
+    $('[data-mine]').innerHTML = '<div>' + cover(mine) + '</div><div><div class="k">' + (role === 'owner' ? 'Start here' : 'Your guide') + '</div><h2>' + esc(mine.t) + ' — ' + esc(mine.s) + '</h2><p>' + esc(mine.blurb) + ' Version ' + mine.v + ', updated ' + mine.up + '.</p><div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn btn-p btn-sm" data-view="' + mine.id + '">Read it</button><button class="btn btn-o btn-sm" data-dl="' + mine.id + '">Download PDF</button></div></div>';
+    $('[data-tbody]').innerHTML = visible().map(function (g) {
+      return '<tr><td><div class="doc"><div class="cv" data-view="' + g.id + '" style="cursor:pointer">' + cover(g, true) + '</div><div><b>' + esc(g.t) + '</b><div class="tiny muted">' + esc(g.s) + ' · ' + g.pages + ' pages · ' + g.mb + ' MB</div></div></div></td>'
+        + '<td class="hide-sm tiny">' + esc(whoTxt(g)) + '</td><td class="hide-sm"><span class="pill">v' + g.v + '</span>' + (g.isNew ? ' <span class="pill pill--new">Updated</span>' : '') + '</td><td class="hide-sm tiny muted">' + g.up + '</td>'
+        + '<td><div class="acts"><button class="btn btn-o btn-sm" data-view="' + g.id + '">View</button><button class="btn btn-p btn-sm" data-dl="' + g.id + '">Download</button>'
+        + (role === 'owner' ? '<button class="ico" data-newver-of="' + g.id + '" title="Upload a new version"><svg class="i" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg></button><button class="ico" data-remove="' + g.id + '" title="Remove" style="color:var(--red)"><svg class="i" viewBox="0 0 24 24"><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14"/></svg></button>' : '')
+        + '</div></td></tr>';
+    }).join('') || '<tr><td colspan="5" class="muted">No guides match.</td></tr>';
+  }
+  function render() {
+    $$('.owner-only').forEach(function (e) { e.style.display = role === 'owner' ? '' : 'none'; });
+    $$('.staff-only').forEach(function (e) { e.style.display = role === 'owner' ? 'none' : ''; });
+    chips(); renderA(); renderB(); renderC();
+  }
+  function openViewer(id) {
+    var g = find(id); if (!g) return;
+    $('[data-vtitle]').textContent = g.t + ' — ' + g.s;
+    $('[data-vmeta]').textContent = 'Version ' + g.v + ' · updated ' + g.up + ' · ' + g.pages + ' pages · ' + g.mb + ' MB';
+    $('[data-vpages]').innerHTML = pagesHtml(g);
+    $('[data-vdl]').dataset.dl = g.id;
+    $('[data-viewer]').hidden = false;
+  }
+  function openImport(ofId) {
+    var sel = $('[data-verof]'), pickId = ofId || GUIDES[0].id;
+    sel.innerHTML = GUIDES.map(function (g) { return '<label><input type="radio" name="verof" value="' + g.id + '"' + (g.id === pickId ? ' checked' : '') + '>' + esc(g.t) + ' · v' + g.v + '</label>'; }).join('');
+    setKind(ofId ? 'ver' : 'new');
+    $('[data-picked]').hidden = !ofId; $('[data-pickfile]').hidden = !!ofId;
+    $('[data-importer]').hidden = false;
+  }
+  function setKind(k) {
+    $$('[data-kind] button').forEach(function (b) { b.classList.toggle('on', b.dataset.k === k); });
+    $('[data-verof]').hidden = k !== 'ver';
+    $('[data-kindhint]').textContent = k === 'ver'
+      ? 'Replaces the guide everyone sees; the old version stays in Version history.'
+      : 'It appears in the library for the people you tick below.';
+  }
+
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    var b = t.closest('#pickD button');
+    if (b) { design = b.dataset.d; $$('#pickD button').forEach(function (x) { x.classList.toggle('on', x === b); });
+      $$('[data-design]').forEach(function (d) { d.classList.toggle('on', d.dataset.design === design); });
+      $$('[data-desc]').forEach(function (d) { d.hidden = d.dataset.desc !== design; }); return; }
+    b = t.closest('#pickRole button');
+    if (b) { role = b.dataset.r; filter = 'all'; $$('#pickRole button').forEach(function (x) { x.classList.toggle('on', x === b); }); render(); return; }
+    if ((b = t.closest('[data-f]'))) { filter = b.dataset.f; render(); return; }
+    if ((b = t.closest('[data-view]'))) { openViewer(b.dataset.view); return; }
+    if ((b = t.closest('[data-dl]'))) { dl(find(b.dataset.dl)); return; }
+    if (t.closest('[data-dl-current]')) { dl(find(current)); return; }
+    if ((b = t.closest('[data-dlv]'))) { toast('Downloading ' + find(current).t + ' — version ' + b.dataset.dlv); return; }
+    if ((b = t.closest('[data-pick]'))) { current = b.dataset.pick; $('[data-vermenu]').hidden = true; renderB(); return; }
+    if (t.closest('[data-vertoggle]')) { var m = $('[data-vermenu]'); m.hidden = !m.hidden; return; }
+    if (t.closest('[data-newver]')) { openImport(current); return; }
+    if ((b = t.closest('[data-newver-of]'))) { openImport(b.dataset.newverOf); return; }
+    if ((b = t.closest('[data-remove]'))) { toast(find(b.dataset.remove).t + ' removed — restore it from "Removed guides"'); return; }
+    if (t.closest('[data-import]') || t.closest('[data-drop]')) { openImport(null); return; }
+    if (t.closest('[data-pickfile]')) { $('[data-picked]').hidden = false; $('[data-pickfile]').hidden = true; return; }
+    if ((b = t.closest('[data-kind] button'))) { setKind(b.dataset.k); return; }
+    if (t.closest('[data-vnew]')) { toast('Opens the PDF in a new browser tab'); return; }
+    if (t.closest('[data-doimport]')) {
+      var ver = !$('[data-verof]').hidden;
+      $('[data-importer]').hidden = true;
+      if (ver) { var g = find(($('[data-verof] input:checked') || {}).value); g.v++; g.up = '14 Oct 2026'; g.isNew = true;
+        (VERSIONS[g.id] = VERSIONS[g.id] || [[g.v - 1, '—', 'Earlier version']]).unshift([g.v, '14 Oct 2026', 'New version']);
+        toast(g.t + ' is now version ' + g.v + ' — the old one is in Version history'); }
+      else if (!find('spa')) { GUIDES.splice(6, 0, { id:'spa', t:$('[data-title]').value || 'Spa Guide', s:'Booking a Treatment', who:['owner','manager','till'], grp:'team', v:1, up:'14 Oct 2026', pages:18, mb:'2.4', blurb:'Treatments, therapists and charging the spa to a room.', isNew:true });
+        toast('Imported — now in the library for Managers and Till staff'); }
+      render(); return;
+    }
+    if (t.closest('[data-close]') || t.classList.contains('ov')) { $$('.ov').forEach(function (o) { o.hidden = true; }); return; }
+    if (!t.closest('.verpop')) $('[data-vermenu]').hidden = true;
+  });
+  document.addEventListener('input', function (e) {
+    if (e.target.matches('[data-q]')) { q = e.target.value.trim().toLowerCase(); $$('[data-q]').forEach(function (i) { if (i !== e.target) i.value = e.target.value; }); renderA(); renderC();
+      var keep = document.activeElement; renderB(); if (keep) keep.focus(); }
+  });
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') $$('.ov').forEach(function (o) { o.hidden = true; }); });
+  render();
+})();
+</script>
+</body>
+</html>
