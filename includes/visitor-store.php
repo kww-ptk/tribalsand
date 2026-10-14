@@ -139,21 +139,32 @@ function visitor_update_identity(int $id, array $d, string $actor): bool {
     if (!$v) throw new RuntimeException('Visitor not found.');
     $changed = visitor_signed($v) ? visitor_identity_changed($v, $d) : [];
     $newPhoto = (string)($d['photo_key'] ?? '');
-    db_query('UPDATE registered_visitors SET full_name = :n, phone = :ph, phone_key = :pk, email = :em, id_type = :t,
-                     id_number = :num, nationality = :nat, id_expiry = :exp, id_photo_key = COALESCE(:photo, id_photo_key)
-               WHERE id = :id',
-        [':n' => $d['full_name'], ':ph' => $d['phone'] ?: null, ':pk' => $d['phone_key'] ?: null, ':em' => $d['email'] ?: null,
-         ':t' => $d['id_type'], ':num' => $d['id_number'] ?: null, ':nat' => $d['nationality'] ?: null,
-         ':exp' => $d['id_expiry'] ?: null, ':photo' => $newPhoto !== '' ? $newPhoto : null, ':id' => $id]);
+    $own = !db()->inTransaction();
+    if ($own) db()->beginTransaction(); else db()->exec('SAVEPOINT visitor_ident');
+    try {
+        db_query('UPDATE registered_visitors SET full_name = :n, phone = :ph, phone_key = :pk, email = :em, id_type = :t,
+                         id_number = :num, nationality = :nat, id_expiry = :exp, id_photo_key = COALESCE(:photo, id_photo_key)
+                   WHERE id = :id',
+            [':n' => $d['full_name'], ':ph' => $d['phone'] ?: null, ':pk' => $d['phone_key'] ?: null, ':em' => $d['email'] ?: null,
+             ':t' => $d['id_type'], ':num' => $d['id_number'] ?: null, ':nat' => $d['nationality'] ?: null,
+             ':exp' => $d['id_expiry'] ?: null, ':photo' => $newPhoto !== '' ? $newPhoto : null, ':id' => $id]);
+        if ($changed) {
+            db_query('UPDATE registered_visitors SET waiver_signature = NULL, waiver_signed_name = NULL, waiver_signed_at = NULL,
+                             waiver_terms_snapshot = NULL, waiver_version = NULL, waiver_name_snapshot = NULL, waiver_id_type_snapshot = NULL,
+                             waiver_id_number_snapshot = NULL, waiver_nationality_snapshot = NULL, waiver_id_expiry_snapshot = NULL,
+                             signed_ip = NULL, signed_ua = NULL, signed_via = NULL
+                       WHERE id = :id', [':id' => $id]);
+        }
+        if ($own) db()->commit(); else db()->exec('RELEASE SAVEPOINT visitor_ident');
+    } catch (Throwable $e) {
+        try { if ($own) { if (db()->inTransaction()) db()->rollBack(); } else db()->exec('ROLLBACK TO SAVEPOINT visitor_ident'); } catch (Throwable $e2) {}
+        throw $e;
+    }
+    // Only after the writes succeeded: drop the replaced photo file.
     if ($newPhoto !== '' && !empty($v['id_photo_key']) && $v['id_photo_key'] !== $newPhoto) {
         try { storage_delete_private((string)$v['id_photo_key']); } catch (Throwable $e) {}
     }
     if (!$changed) return false;
-    db_query('UPDATE registered_visitors SET waiver_signature = NULL, waiver_signed_name = NULL, waiver_signed_at = NULL,
-                     waiver_terms_snapshot = NULL, waiver_version = NULL, waiver_name_snapshot = NULL, waiver_id_type_snapshot = NULL,
-                     waiver_id_number_snapshot = NULL, waiver_nationality_snapshot = NULL, waiver_id_expiry_snapshot = NULL,
-                     signed_ip = NULL, signed_ua = NULL, signed_via = NULL
-               WHERE id = :id', [':id' => $id]);
     visitor_log_step('signature_voided', ['reference' => (string)$v['waiver_reference'], 'visitor_id' => $id,
         'waiver_version' => (string)$v['waiver_version'], 'method' => $actor,
         'detail' => 'Signature voided — identity changed after signing: ' . implode(', ', $changed)]);
@@ -315,6 +326,7 @@ function visitor_visit_party(?array $visit, int $leadId): array {
 function visitor_booking_lookup(string $code, string $name, string $today): array {
     $h = resolve_booking_by_code_only($code);
     if (!$h || !in_array((string)$h['status'], ['pending', 'confirmed'], true) || (string)$h['check_out'] < $today) return ['kind' => 'notfound', 'url' => ''];
+    if ((string)$h['status'] === 'pending' && !empty($h['expires_at']) && strtotime((string)$h['expires_at']) < time()) return ['kind' => 'notfound', 'url' => ''];   // 24h ran out, expiry job hasn't cleared it yet
     $id = (int)$h['id'];
     if (visitor_booking_name_match($name, (string)$h['guest_name'])) {
         return ['kind' => 'lead', 'url' => '/booking.php?ref=' . urlencode(make_guest_ref($id)) . (checkin_required($h) ? '&view=checkin' : '')];
@@ -365,32 +377,51 @@ function visitor_gate_card(int $visitorId, string $today, ?array $venueIds): ?ar
     ];
 }
 
-/** Let a visitor (and today's party) in: one row in the gate register. */
+/**
+ * Let a visitor (and today's party) in: one row in the gate register.
+ * Every refusal is decided BEFORE anything is written; the gate's own visit row
+ * and the register row are then written together in one savepoint/transaction,
+ * so a refused or failed let-in leaves no trace (a visit row would widen the
+ * registry scope of that property's managers).
+ */
 function visitor_let_in(int $visitorId, string $today, ?int $placeId, int $byAdmin, ?array $venueIds): array {
     $card = visitor_gate_card($visitorId, $today, $venueIds);
     if (!$card) return ['ok' => false, 'msg' => 'This pass isn’t valid.'];
-    if ($card['visit'] === null && $card['verdict']['level'] !== 'stop') {
+    if ($card['verdict']['level'] === 'stop') return ['ok' => false, 'msg' => $card['verdict']['msg']];
+    if ($card['on_site']) return ['ok' => false, 'msg' => 'Still signed in since ' . date('D j M H:i', strtotime((string)$card['on_site']['time_in'])) . ' — sign them out first.'];
+    $place = null;
+    if ($card['visit'] === null) {
         $place = $placeId ? visitor_place($placeId) : null;
         $okPlace = $place && !empty($place['is_active']) && ($venueIds === null || in_array((int)$place['venue_id'], array_map('intval', $venueIds), true));
         if (!$okPlace) return ['ok' => false, 'msg' => 'Pick where they are going.'];
-        visitor_choose_visit($visitorId, (int)$place['id'], $today, [], [], 'gate');
-        $card = visitor_gate_card($visitorId, $today, $venueIds);
     }
-    if ($card['verdict']['level'] === 'stop') return ['ok' => false, 'msg' => $card['verdict']['msg']];
-    if ($card['on_site']) return ['ok' => false, 'msg' => 'Still signed in since ' . date('D j M H:i', strtotime((string)$card['on_site']['time_in'])) . ' — sign them out first.'];
-    $v = $card['visitor']; $visit = $card['visit'];
-    $sp = db()->inTransaction();
+    $v = $card['visitor'];
+    $own = !db()->inTransaction();
+    if ($own) db()->beginTransaction(); else db()->exec('SAVEPOINT visitor_in');
+    $done = false;
     try {
-        if ($sp) db()->exec('SAVEPOINT visitor_in');
+        if ($place) {
+            visitor_choose_visit($visitorId, (int)$place['id'], $today, [], [], 'gate');
+            $card = visitor_gate_card($visitorId, $today, $venueIds);
+            if (!$card || $card['verdict']['level'] === 'stop') {
+                $msg = $card ? $card['verdict']['msg'] : 'This pass isn’t valid.';
+                throw new RuntimeException($msg);
+            }
+        }
+        $visit = $card['visit'];
         $newId = (int) db_query(
             "INSERT INTO visitors (venue_id, visitor_name, visiting, purpose, logged_by, registered_visitor_id, visit_id, people)
              VALUES (:ven, :n, :place, 'Registered visitor', :by, :rv, :visit, :ppl) RETURNING id",
             [':ven' => (int)$visit['venue_id'], ':n' => (string)$v['full_name'], ':place' => (string)$visit['place_name'],
              ':by' => $byAdmin ?: null, ':rv' => $visitorId, ':visit' => (int)$visit['id'], ':ppl' => $card['people']])->fetchColumn();
-        if ($sp) db()->exec('RELEASE SAVEPOINT visitor_in');
-    } catch (PDOException $e) {
-        if ($sp) db()->exec('ROLLBACK TO SAVEPOINT visitor_in');
-        if ($e->getCode() === '23505') return ['ok' => false, 'msg' => 'Already on site.'];
+        if ($own) db()->commit(); else db()->exec('RELEASE SAVEPOINT visitor_in');
+        $done = true;
+    } catch (Throwable $e) {
+        if (!$done) {
+            try { if ($own) { if (db()->inTransaction()) db()->rollBack(); } else db()->exec('ROLLBACK TO SAVEPOINT visitor_in'); } catch (Throwable $e2) {}
+        }
+        if ($e instanceof PDOException && $e->getCode() === '23505') return ['ok' => false, 'msg' => 'Already on site.'];
+        if ($e instanceof RuntimeException) return ['ok' => false, 'msg' => $e->getMessage()];
         throw $e;
     }
     if (function_exists('audit_log')) audit_log('visitor.in', 'visitor', $newId, (string)$v['full_name']);

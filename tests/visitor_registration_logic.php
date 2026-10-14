@@ -140,6 +140,13 @@ if (!$pdo) {
         visitor_sign($id, 'Anna Smith', $sig, 'self');
         check('db identity: re-sign snapshots the new number', visitor_find($id)['waiver_id_number_snapshot'] === 'ZZ999999');
 
+        visitor_update_identity($id, ['photo_key' => 'visitors/new.jpg', 'id_number' => 'ZZ999999'] + $d, 'visitor');
+        check('db identity: a new photo alone keeps the signature and stores the key', visitor_signed(visitor_find($id)) && visitor_find($id)['id_photo_key'] === 'visitors/new.jpg');
+        visitor_update_identity($id, ['id_number' => 'QQ1'] + $d, 'visitor');
+        check('db identity: void and change land together (new number + signature gone)', visitor_find($id)['id_number'] === 'QQ1' && !visitor_signed(visitor_find($id)));
+        visitor_update_identity($id, ['id_number' => 'ZZ999999'] + $d, 'visitor');
+        visitor_sign($id, 'Anna Smith', $sig, 'self');
+
         $kid = visitor_add_child($id, 'Mia Smith', 6);
         $ben = visitor_invite_adult($id, 'Ben Ode');
         $g = visitor_group($id);
@@ -164,6 +171,24 @@ if (!$pdo) {
         $again = visitor_let_in($id, '2026-10-15', $placeId, 0, [$venue]);   // next day, a place picked: only the open sign-in blocks it
         check('db gate: next day refused while still signed in', !$again['ok'] && str_contains($again['msg'], 'sign them out first'));
 
+        check('db gate: refused let-in leaves no visit row behind', visitor_visit_on($id, '2026-10-15') === null);
+        $venue2 = (int)db_query('SELECT id FROM venues WHERE id <> :v ORDER BY id LIMIT 1', [':v' => $venue])->fetchColumn();
+        if ($venue2) {
+            $place2 = visitor_place_save(null, 'Test Bar2 ' . bin2hex(random_bytes(3)), $venue2, 98, true);
+            $r2 = visitor_let_in($id, '2026-10-15', $place2, 0, [$venue2]);
+            check('db gate: refused let-in at another property is refused', !$r2['ok']);
+            check('db gate: ...and does not widen that property\'s registry scope', !visitor_in_scope($id, [$venue2], 0) && visitor_visit_on($id, '2026-10-15') === null);
+        } else {
+            echo "SKIP  second-property scope check (only one venue)\n";
+        }
+        $solo = visitor_create(visitor_clean_input(['passport_name' => 'Cleo Solo', 'phone' => '0733 111 222', 'email' => 'cleo.vtest@example.com',
+            'passport_number' => 'EF111222', 'nationality' => 'Kenya']) + ['photo_key' => ''], 'self');
+        visitor_sign($solo, 'Cleo Solo', $sig, 'self');
+        $bad = visitor_let_in($solo, '2026-10-14', null, 0, [$venue]);
+        check('db gate: no place picked = refused, no visit written', !$bad['ok'] && visitor_visit_on($solo, '2026-10-14') === null);
+        $good = visitor_let_in($solo, '2026-10-14', $placeId, 0, [$venue]);
+        check('db gate: gate picks the place and lets in together', $good['ok'] && visitor_visit_on($solo, '2026-10-14') !== null && visitor_on_site($solo) !== null);
+
         set_setting('visitor_waiver_text', 'Changed terms ' . bin2hex(random_bytes(3)));
         check('db terms: changed waiver = stop "sign again"', str_contains(visitor_gate_card($id, '2026-10-14', [$venue])['verdict']['msg'], 'sign again'));
 
@@ -184,6 +209,8 @@ if (!$pdo) {
             $hit = visitor_booking_lookup((string)$h['access_code'], (string)end($words), date('Y-m-d'));
             check('db lookup: code + surname = the lead\'s link', $hit['kind'] === 'lead' && str_contains($hit['url'], 'ref='));
             check('db lookup: code + wrong name = nomatch, no link', visitor_booking_lookup((string)$h['access_code'], 'Qqqzzx', date('Y-m-d')) === ['kind' => 'nomatch', 'url' => '']);
+            db_query("UPDATE holds SET status = 'pending', expires_at = now() - interval '1 hour' WHERE id = :id", [':id' => $h['id']]);
+            check('db lookup: a pending hold whose 24h ran out = notfound', visitor_booking_lookup((string)$h['access_code'], (string)end($words), date('Y-m-d'))['kind'] === 'notfound');
         } else {
             echo "SKIP  booking lookup (no current booking with a code)\n";
         }
