@@ -6,6 +6,7 @@ declare(strict_types=1);
  * array is coerced to [-1] so the SQL never emits an empty IN () (staff with no
  * venues therefore see nothing).
  */
+require_once __DIR__ . '/gate-pass.php';   // gate arrival columns (pre-migration-safe)
 
 /** 'today' in the property timezone (Kenya), not the server's UTC. */
 function frontdesk_today_ymd(): string {
@@ -44,10 +45,12 @@ function frontdesk_rows(?array $venueIds, string $datePredicate, array $params):
                AND COALESCE(cg.passport_name,'') <> '' AND COALESCE(cg.passport_number,'') <> ''
                AND COALESCE(cg.passport_file_key,'') <> '' AND cg.waiver_signed_at IS NOT NULL) AS ci_complete_count,"
         : '';
+    // Gate arrivals (add_gate_arrivals.sql): who security has let in / out.
+    $gate = gate_arrivals_supported() ? 'h.gate_arrived_at, h.gate_people, h.gate_departed_at,' : '';
     try {
         return db_query(
-            "SELECT h.id, h.guest_name, h.check_in, h.check_out, h.access_code, h.status,
-                    {$ci}
+            "SELECT h.id, h.guest_name, h.check_in, h.check_out, h.access_code, h.status, h.expires_at, h.submission_id,
+                    {$ci} {$gate}
                     r.name AS room_name, u.name AS unit_name,
                     v.id AS venue_id, v.name AS venue_name,
                     s.guest_phone,

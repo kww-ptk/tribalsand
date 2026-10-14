@@ -229,6 +229,18 @@ function admin_home_url(): string {
     return '/admin/dashboard.php';
 }
 
+/**
+ * Where to go right after signing in: a page that asked to be returned to (only
+ * the Gate does, so a scanned gate pass opens again after the guard signs in),
+ * else the Dashboard. Only a same-site /admin/ path is honoured — never a full URL.
+ */
+function admin_after_login_url(): string {
+    $u = (string)($_SESSION['admin_after_login'] ?? '');
+    unset($_SESSION['admin_after_login']);
+    return preg_match('#^/admin/[A-Za-z0-9_\-./]+\.php(\?[A-Za-z0-9_\-=&%.~]*)?$#', $u) && !str_contains($u, '..')
+        ? $u : admin_home_url();
+}
+
 /** Venue ids the current admin may see; null = all (owner). Managers and staff are scoped. */
 function admin_venue_ids(): ?array {
     // HR looks after people at every property, so it is unscoped like the owner.

@@ -830,3 +830,23 @@ button.pa-cal__day{cursor:pointer;}
 .pa-cal__detail{background:#fff;border:1px solid var(--pa-line);border-radius:14px;padding:14px;margin:0 0 12px;}
 .pa-cal__hint{font-size:12px;color:var(--pa-muted);margin:0;}
 .pa-tl[hidden],.pa-cal[hidden],.pa-cal__detail[hidden]{display:none;}
+
+/* Gate pass (Oct 2026): home card + full-screen pass (includes/app/_gatepass.php, pass.php). */
+.pa-gp{display:flex;align-items:center;gap:14px;background:var(--pa-card);border:1px solid var(--pa-line);border-radius:14px;padding:12px 16px;margin:0 0 16px;text-decoration:none;color:var(--pa-ink);}
+.pa-gp__qr{flex:0 0 56px;width:56px;height:56px;background:#fff;border-radius:6px;padding:4px;box-sizing:border-box;}
+.pa-gp__qr svg{display:block;width:100%;height:100%;}
+.pa-gp__text{flex:1;min-width:0;} .pa-gp__text b{display:block;font-size:14px;font-weight:600;} .pa-gp__text span{font-size:12.5px;color:var(--pa-muted);}
+.pa-gp>span:last-child{font-size:22px;color:var(--pa-muted);}
+.pa-gp--wait{border-style:dashed;}
+.pa-pass{background:var(--pa-card);border:1px solid var(--pa-line);border-radius:18px;padding:22px 20px;text-align:center;}
+.pa-pass__eyebrow{font-size:12px;letter-spacing:.12em;text-transform:uppercase;color:var(--pa-muted);margin-bottom:12px;}
+.pa-pass__qr{width:min(78vw,300px);aspect-ratio:1;margin:0 auto;background:#fff;border-radius:12px;}
+.pa-pass__qr svg{display:block;width:100%;height:100%;}
+.pa-pass__code{margin:14px 0 4px;} .pa-pass__code span{display:block;font-size:12px;color:var(--pa-muted);} .pa-pass__code b{font-family:ui-monospace,monospace;font-size:22px;letter-spacing:.08em;}
+.pa-pass__name{font-size:20px;margin:10px 0 2px;} .pa-pass__party{color:var(--pa-muted);font-size:14px;}
+.pa-pass__facts{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:16px 0 8px;text-align:left;}
+.pa-pass__facts dt{font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--pa-muted);} .pa-pass__facts dd{margin:2px 0 0;font-weight:600;font-size:14px;}
+.pa-pass__names{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-wrap:wrap;gap:6px;justify-content:center;}
+.pa-pass__names li{border:1px solid var(--pa-line);border-radius:999px;padding:3px 10px;font-size:13px;}
+.pa-pass__hint{font-size:12.5px;color:var(--pa-muted);margin:14px 0 0;}
+@media (max-width:380px){.pa-pass__facts{grid-template-columns:1fr;}}

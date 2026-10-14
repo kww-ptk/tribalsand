@@ -17,6 +17,8 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/booking-import.php';
+require_once __DIR__ . '/../includes/ical-sync.php';   // ical_tracking_supported() for "Delete imported bookings"
+require_once __DIR__ . '/../includes/confirm.php';
 require_login();
 require_manager();               // owner or house manager
 
@@ -57,6 +59,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canImport) {
     if ($action === 'cancel') {
         unset($_SESSION['import_preview'], $_SESSION['import_report']);
         header('Location: /admin/import-bookings.php');
+        exit;
+    }
+
+    // ── Delete imported bookings (this property, or every property the account covers) ──
+    if ($action === 'clear_imports') {
+        $kinds = array_values(array_intersect((array)($_POST['kinds'] ?? []), array_keys(import_clear_kinds())));
+        $scopeIds = ($_POST['clear_scope'] ?? '') === 'all' ? $allowedVenueIds : [$importVenueId];
+        $from  = ($_POST['clear_when'] ?? '') === 'future' ? (new DateTime('now', new DateTimeZone('Africa/Nairobi')))->format('Y-m-d') : '';
+        if (!$kinds) {
+            $_SESSION['import_clear_flash'] = ['type' => 'error', 'msg' => 'Tick what to delete: spreadsheet imports, OTA calendar feeds, or both.'];
+        } elseif (!typed_confirmation_ok('DELETE')) {
+            $_SESSION['import_clear_flash'] = ['type' => 'error', 'msg' => 'Type DELETE to confirm — nothing was deleted.'];
+        } else {
+            try {
+                $r = import_clear($scopeIds, $kinds, $from);
+                audit_log('bookings.import_clear', 'venue', count($scopeIds) === 1 ? (int)$scopeIds[0] : 0,
+                    sprintf('kinds=%s scope=%s from=%s blocks=%d ledger=%d conflicts=%d', implode('+', $kinds),
+                        count($scopeIds) === 1 ? 'one' : 'all', $from ?: 'all', $r['blocks'], $r['ledger'], $r['conflicts']));
+                $msg = $r['blocks'] . ' imported ' . ($r['blocks'] === 1 ? 'booking' : 'bookings') . ' deleted from the calendar'
+                     . ($r['conflicts'] ? ', ' . $r['conflicts'] . ' open ' . ($r['conflicts'] === 1 ? 'conflict' : 'conflicts') . ' cleared' : '') . '.';
+                if (in_array('ical', $kinds, true)) $msg .= ' iCal bookings come back at the next sync while their feed is still listed — remove the feed on iCal feeds to stop them.';
+                $_SESSION['import_clear_flash'] = ['type' => 'success', 'msg' => $msg];
+            } catch (Throwable $e) {
+                error_log('[import-bookings] clear failed: ' . $e->getMessage());
+                $_SESSION['import_clear_flash'] = ['type' => 'error', 'msg' => 'Could not delete the imports — nothing was changed.'];
+            }
+        }
+        header('Location: /admin/import-bookings.php?venue=' . $importVenueId . '#clear-imports');
         exit;
     }
 
@@ -144,6 +174,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $canImport) {
         }
     }
 }
+
+$clearFlash = $_SESSION['import_clear_flash'] ?? null;
+unset($_SESSION['import_clear_flash']);
+$clearSummary = $canImport ? import_clear_summary([$importVenueId]) : [];
 
 $step      = $_GET['step'] ?? '';
 $preview   = $_SESSION['import_preview'] ?? null;
@@ -397,6 +431,53 @@ $chip = function (string $s): string {
     </div>
   </div>
 <?php endif; ?>
+
+
+<!-- ── Delete imported bookings ── -->
+<?php
+  $__fmt = fn(?string $d) => $d ? date('j M Y', strtotime($d)) : '';
+  $__totalImp = array_sum(array_map(fn($r) => (int)$r['blocks'], $clearSummary));
+?>
+<div class="card" id="clear-imports" style="margin-top:16px" data-help="import-clear">
+  <div class="card__head"><span class="card__title" style="display:inline-flex;align-items:center;gap:8px"><?= admin_icon('trash', 16) ?> Delete imported bookings</span></div>
+  <div class="card__body" style="padding:20px">
+    <?php if ($clearFlash): ?><div class="alert alert--<?= e($clearFlash['type']) ?>" style="margin-bottom:14px"><?= e($clearFlash['msg']) ?></div><?php endif; ?>
+    <p style="margin:0 0 6px">On the calendar for <strong><?= e($importVenue['name'] ?? '') ?></strong> now:</p>
+    <ul style="margin:0 0 14px;padding-left:18px">
+      <?php foreach (import_clear_kinds() as $k => $label): $cs = $clearSummary[$k] ?? ['blocks' => 0, 'first' => null, 'last' => null]; ?>
+      <li><?= e($label) ?>: <strong><?= (int)$cs['blocks'] ?></strong><?php if ((int)$cs['blocks'] > 0): ?> <span class="text-muted">(<?= e($__fmt($cs['first'])) ?> – <?= e($__fmt($cs['last'])) ?>)</span><?php endif; ?></li>
+      <?php endforeach; ?>
+    </ul>
+    <form method="POST" style="display:flex;flex-direction:column;gap:12px;margin:0">
+      <?= csrf_field() ?>
+      <input type="hidden" name="action" value="clear_imports">
+      <input type="hidden" name="venue_id" value="<?= (int)$importVenueId ?>">
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <span class="text-muted" style="font-size:12.5px;align-self:center;min-width:90px">Delete</span>
+        <?php foreach (import_clear_kinds() as $k => $label): ?>
+        <label class="optchip"><input type="checkbox" name="kinds[]" value="<?= e($k) ?>" checked> <?= e($label) ?></label>
+        <?php endforeach; ?>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <span class="text-muted" style="font-size:12.5px;align-self:center;min-width:90px">Which stays</span>
+        <label class="optchip"><input type="radio" name="clear_when" value="all" checked> All of them</label>
+        <label class="optchip"><input type="radio" name="clear_when" value="future"> Only stays not finished yet</label>
+      </div>
+      <?php if (count($venues) > 1): ?>
+      <div style="display:flex;flex-wrap:wrap;gap:8px">
+        <span class="text-muted" style="font-size:12.5px;align-self:center;min-width:90px">Property</span>
+        <label class="optchip"><input type="radio" name="clear_scope" value="one" checked> <?= e($importVenue['name'] ?? 'This property') ?></label>
+        <label class="optchip"><input type="radio" name="clear_scope" value="all"> All <?= count($venues) ?> properties</label>
+      </div>
+      <?php endif; ?>
+      <p class="text-muted" style="font-size:12.5px;margin:0;max-width:75ch">Removes the imported blocks from the calendar, their imported amounts from Reports, and the open conflicts the imports raised. Website bookings, holds, staff closures and group imports are never touched. iCal bookings come back at the next sync (every 15 minutes) while their feed is still listed on <a href="/admin/ical-feeds.php">iCal feeds</a>.</p>
+      <div>
+        <button type="submit" class="btn-danger btn-sm"
+          <?= danger_confirm_attrs('This deletes the imported bookings you ticked from the calendar and Reports. It cannot be undone — you can import the file again.', 'Delete imported bookings?', 'Delete', 'DELETE') ?>><?= admin_icon('trash', 14) ?> Delete imported bookings</button>
+      </div>
+    </form>
+  </div>
+</div>
 
 <script>
 // Styled file field: reflect the chosen filename + enable the submit button.

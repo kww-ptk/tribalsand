@@ -174,6 +174,27 @@ function help_guides(): array {
             ['text' => 'Open a guest to see their booking, requests and bill.'],
          ]],
 
+        ['slug' => 'import-clear', 'area' => 'bookings', 'minutes' => 1, 'pages' => ['import-bookings.php'],
+         'title' => 'Delete imported bookings from the calendar',
+         'summary' => 'Clear what a spreadsheet or OTA calendar import put on the calendar, to start again.',
+         'steps' => [
+            ['text' => 'Pick the property at the top.'],
+            ['text' => 'In **Delete imported bookings**, tick spreadsheet imports, OTA calendar feeds, or both, and choose all stays or only the ones not finished yet.', 'target' => '[data-help="import-clear"]'],
+            ['text' => 'Press **Delete imported bookings** and type **DELETE** to confirm.'],
+         ],
+         'tips' => ['Website bookings, holds and closures you made are never deleted.', 'OTA calendar bookings come back at the next sync while the feed is listed — remove the feed on **iCal feeds** first if you don’t want them back.']],
+
+        ['slug' => 'gate-checkin', 'area' => 'guests', 'minutes' => 2, 'pages' => ['gate.php'],
+         'title' => 'Check guests in at the gate',
+         'summary' => 'Scan the guest’s gate pass, see who is coming and where, and let them in.',
+         'steps' => [
+            ['text' => 'When a guest arrives, press **Scan gate pass** and point the camera at the QR code on their phone.', 'target' => '[data-help="gate-scan"]'],
+            ['text' => 'No QR? Type their **booking code** here and press **Find**.', 'target' => '[data-help="gate-find"]'],
+            ['text' => 'The pass shows the party, where they are going and a coloured line: **green** let them in, **orange** check first, **red** do not admit — call reception. Set how many people came and press **Check in**.'],
+            ['text' => 'The lists show who is **arriving**, **in house** and **leaving** today. Press **Check out** when a party leaves.', 'target' => '[data-help="gate-lists"]'],
+         ],
+         'tips' => ['Guests get their gate pass in their booking page once they finish online check-in.', 'Pressed Check in by mistake? Open the pass again and press **Undo**.']],
+
         ['slug' => 'guest-messages', 'area' => 'guests', 'minutes' => 2, 'pages' => ['messages.php'],
          'title' => 'Answer a guest message',
          'summary' => 'Guests write from their guest page; you answer here.',

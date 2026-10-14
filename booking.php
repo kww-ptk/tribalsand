@@ -160,6 +160,7 @@ $__views = ['home','calendar','requests','extras','messages','settings'];
 if (($_GET['view'] ?? '') === 'activities') $_GET['view'] = 'extras';
 if (!$isCoGuest) $__views[] = 'checkin';
 if (share_reservation_on($hold ?: [])) $__views[] = 'bill';
+$__views[] = 'pass';   // the gate pass (includes/app/pass.php) — shows itself only once check-in is done
 $view = in_array($_GET['view'] ?? '', $__views, true) ? $_GET['view'] : 'home';
 // When check-in is outstanding, the portal is a hard gate: only the check-in
 // flow and the message thread (escape hatch) are reachable.
@@ -356,6 +357,8 @@ include __DIR__ . '/includes/head.php';
         <?php include __DIR__ . '/includes/app/bill.php'; ?>
       <?php elseif ($view === 'checkin'): ?>
         <?php include __DIR__ . '/includes/app/checkin.php'; ?>
+      <?php elseif ($view === 'pass'): ?>
+        <?php include __DIR__ . '/includes/app/pass.php'; ?>
       <?php endif; ?>
 
     <?php endif; ?>
