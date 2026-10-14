@@ -133,8 +133,50 @@ $audienceChips = function (array $on): string {
 .sp-acts { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
 .sp-old { background:#fdf3e4; color:#b45309; border-bottom:1px solid #f3dfbf; padding:8px 18px; font-size:13px; }
 .sp-old a { color:inherit; font-weight:600; }
-.sp-frame { flex:1; display:flex; padding:14px; min-height:560px; }
-.sp-frame iframe { flex:1; width:100%; min-height:560px; height:calc(100vh - 260px); border:0; border-radius:8px; background:#fff; box-shadow:0 6px 20px rgba(0,0,0,.08); }
+/* Guide viewer, design C "Book spread" (admin/assets/support-book.js) */
+.sp-book { --book-aspect:1.414; flex:1; display:flex; flex-direction:column; min-width:0; background:radial-gradient(ellipse at top,#1b3e48,#0c1f25 72%); color:#fff; }
+.sp-book__top { display:flex; align-items:center; gap:10px; padding:10px 16px; font-size:13px; color:#cfe0dc; min-height:48px; }
+.sp-book__top .sp-sp { flex:1; }
+.sp-book__top b { color:#fff; font-weight:600; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.sp-book__pn { font-variant-numeric:tabular-nums; white-space:nowrap; }
+.sp-book__icon { width:36px; height:36px; border-radius:9px; display:inline-grid; place-items:center; color:#cfe0dc; border:0; background:transparent; cursor:pointer; text-decoration:none; flex:none; }
+.sp-book__icon:hover { background:rgba(255,255,255,.1); color:#fff; }
+.sp-book__icon[hidden] { display:none; }
+.sp-book__stage { position:relative; height:max(440px, calc(100vh - 330px)); display:flex; align-items:center; justify-content:center; overflow:hidden; touch-action:pan-y; }
+.sp-book__spread { display:flex; justify-content:center; align-items:center; width:100%; height:100%; }
+.sp-book__pages { display:flex; align-items:center; justify-content:center; animation:spFade .28s ease; }
+.sp-book__pages.is-turn-next { animation:spTurnNext .3s ease; }
+.sp-book__pages.is-turn-prev { animation:spTurnPrev .3s ease; }
+@keyframes spFade { from { opacity:0; } to { opacity:1; } }
+@keyframes spTurnNext { from { opacity:0; transform:translateX(24px); } to { opacity:1; transform:none; } }
+@keyframes spTurnPrev { from { opacity:0; transform:translateX(-24px); } to { opacity:1; transform:none; } }
+.sp-book__page { display:block; background:#fff; box-shadow:0 20px 50px rgba(0,0,0,.4); border-radius:4px; }
+.is-two .sp-book__pages:not(.is-cover) .sp-book__page:first-child { border-radius:4px 0 0 4px; box-shadow:inset -14px 0 18px -14px rgba(0,0,0,.25), 0 20px 50px rgba(0,0,0,.4); }
+.is-two .sp-book__pages:not(.is-cover) .sp-book__page:last-child:not(:first-child) { border-radius:0 4px 4px 0; box-shadow:0 20px 50px rgba(0,0,0,.4); }
+.sp-book__nav { position:absolute; top:50%; transform:translateY(-50%); z-index:2; width:48px; height:48px; border-radius:999px; border:0; background:rgba(255,255,255,.12); color:#fff; display:grid; place-items:center; cursor:pointer; }
+.sp-book__nav:hover { background:rgba(255,255,255,.22); }
+.sp-book__nav[disabled] { opacity:.25; cursor:default; }
+.sp-book__nav--prev { left:14px; } .sp-book__nav--next { right:14px; }
+.sp-book__loading { position:absolute; inset:0; display:grid; place-items:center; color:#9fb7b3; font-size:13.5px; pointer-events:none; }
+.sp-book__loading[hidden] { display:none; }
+.sp-book__cap { text-align:center; font-size:12.5px; color:#9fb7b3; padding:2px 16px 0; min-height:18px; }
+.sp-book__cap[hidden] { visibility:hidden; display:block; }
+.sp-book__strip { display:flex; gap:10px; overflow-x:auto; padding:10px 104px 14px 16px; scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.25) transparent; }
+.sp-book__strip button { flex:none; border:0; background:none; padding:0; cursor:pointer; display:flex; flex-direction:column; align-items:center; gap:3px; color:#9fb7b3; font-size:10.5px; opacity:.6; }
+.sp-book__strip button:hover, .sp-book__strip button.is-on { opacity:1; }
+.sp-book__strip canvas { width:48px; height:calc(48px * var(--book-aspect)); background:#fff; border-radius:2px; outline:2px solid transparent; outline-offset:2px; display:block; }
+.sp-book__strip button.is-on canvas { outline-color:var(--accent); }
+.sp-book__strip button.is-on span { color:#fff; font-weight:600; }
+.sp-book__fallback { flex:1; width:100%; min-height:560px; height:calc(100vh - 260px); border:0; background:#fff; }
+.sp-book.is-fallback > :not(.sp-book__fallback) { display:none; }
+.sp-book:fullscreen { background:radial-gradient(ellipse at top,#1b3e48,#0c1f25 72%); }
+.sp-book:fullscreen .sp-book__stage { height:calc(100vh - 150px); }
+/* Narrow viewer (phones): one page, sized by width, arrows over the page edges, swipe to turn. */
+.sp-book.is-narrow .sp-book__stage { height:auto; padding:12px 8px; }
+.sp-book.is-narrow .sp-book__nav { width:38px; height:38px; background:rgba(16,47,58,.72); }
+.sp-book.is-narrow .sp-book__nav--prev { left:6px; } .sp-book.is-narrow .sp-book__nav--next { right:6px; }
+.sp-book.is-narrow .sp-book__top b { display:none; }
+.sp-book.is-narrow .sp-book__strip canvas { width:38px; height:calc(38px * var(--book-aspect)); }
 .sp-hist { position:relative; }
 .sp-hist summary { list-style:none; }
 .sp-hist summary::-webkit-details-marker { display:none; }
@@ -157,7 +199,9 @@ $audienceChips = function (array $on): string {
 @media (max-width:900px) {
   .sp { grid-template-columns:1fr; }
   .sp-list { border-right:0; border-bottom:1px solid var(--border); max-height:320px; overflow:auto; }
-  .sp-frame iframe { height:70vh; min-height:420px; }
+  .sp-bar { padding:12px 14px; }
+  .sp-acts { width:100%; }
+  .sp-acts .btn-primary { margin-left:auto; }
 }
 </style>
 
@@ -218,12 +262,28 @@ $audienceChips = function (array $on): string {
         <button type="button" class="btn-outline btn-sm" data-sp-open="spImport" data-sp-version="<?= (int)$cur['id'] ?>"><?= admin_icon('upload', 14) ?> New version</button>
         <button type="button" class="btn-outline btn-sm" data-sp-open="spEdit"><?= admin_icon('edit', 14) ?> Edit</button>
         <?php endif; ?>
-        <a class="btn-outline btn-sm" href="<?= e($fileUrl($shown)) ?>" target="_blank" rel="noopener"><?= admin_icon('external-link', 14) ?> Full screen</a>
         <a class="btn-primary btn-sm" href="<?= e($fileUrl($shown, true)) ?>" download data-help="support-download"><?= admin_icon('download', 14) ?> Download PDF</a>
       </div>
     </div>
     <?php if ($isOld): ?><div class="sp-old">You're reading version <?= (int)$shown['version_no'] ?>, an older version. <a href="/admin/support.php?doc=<?= (int)$cur['id'] ?>">Open the current version</a></div><?php endif; ?>
-    <div class="sp-frame"><iframe src="<?= e($fileUrl($shown)) ?>#view=FitH" title="<?= e((string)$cur['title']) ?>"></iframe></div>
+    <div class="sp-book" data-book data-src="<?= e($fileUrl($shown)) ?>" data-help="support-viewer">
+      <div class="sp-book__top">
+        <b><?= e((string)$cur['title']) ?><?= trim((string)$cur['subtitle']) !== '' ? ' · ' . e((string)$cur['subtitle']) : '' ?></b>
+        <span class="sp-sp"></span>
+        <span class="sp-book__pn" data-book-pn></span>
+        <a class="sp-book__icon" href="<?= e($fileUrl($shown)) ?>" target="_blank" rel="noopener" title="Open the PDF in a new tab (to print)" aria-label="Open the PDF in a new tab"><?= admin_icon('external-link', 16) ?></a>
+        <button type="button" class="sp-book__icon" data-book-full title="Full screen" aria-label="Full screen"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button>
+      </div>
+      <div class="sp-book__stage" data-book-stage>
+        <button type="button" class="sp-book__nav sp-book__nav--prev" data-book-prev aria-label="Previous page"><?= admin_icon('chevron-left', 22) ?></button>
+        <div class="sp-book__spread" data-book-spread></div>
+        <button type="button" class="sp-book__nav sp-book__nav--next" data-book-next aria-label="Next page"><?= admin_icon('chevron-right', 22) ?></button>
+        <div class="sp-book__loading" data-book-loading>Opening the guide…</div>
+      </div>
+      <div class="sp-book__cap" data-book-cap hidden></div>
+      <div class="sp-book__strip" data-book-strip aria-label="Pages"></div>
+      <iframe class="sp-book__fallback" data-book-fallback data-src="<?= e($fileUrl($shown)) ?>#view=FitH" title="<?= e((string)$cur['title']) ?>" hidden></iframe>
+    </div>
     <?php else: ?>
     <div class="sp-empty">
       <?php if ($isOwner): ?>
@@ -387,5 +447,7 @@ $audienceChips = function (array $on): string {
   });
 })();
 </script>
+
+<script src="/admin/assets/support-book.js?v=<?= @filemtime(__DIR__ . '/assets/support-book.js') ?: 1 ?>"></script>
 
 <?php include __DIR__ . '/_layout_end.php'; ?>
