@@ -35,7 +35,7 @@ const ACCESS_OWNER_ONLY = ['settings.php', 'emails.php', 'ai-settings.php', 'rei
     'tours.php', 'services.php', 'offers.php', 'reviews.php', 'partners.php', 'guest-board.php', 'pos-outlets.php', 'companies.php'];
 
 /** Sections that follow something other than role (always on, or the person's till outlets). */
-const ACCESS_AUTOMATIC = ['dashboard.php' => 'Everyone’s home page', 'help.php' => 'Everyone — shows only guides for pages the person can open', 'pos' => 'Follows the person’s till outlets',
+const ACCESS_AUTOMATIC = ['dashboard.php' => 'Everyone’s home page', 'help.php' => 'Everyone — shows only guides for pages the person can open', 'support.php' => 'Everyone — shows only the PDF guides meant for the person’s role', 'pos' => 'Follows the person’s till outlets',
                           'pos-pins.php' => 'Follows the person’s till outlets', 'maya-ilai-rates.php' => 'Managers and reception whose properties include Maya Ilai (reception: view only)'];
 
 /** Sections that only work for a manager (their pages show nothing to anyone else), so only managers can be given them. */
