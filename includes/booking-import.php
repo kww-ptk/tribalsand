@@ -615,3 +615,107 @@ function import_commit(array $resolved): array {
     }
     return $res;
 }
+
+// ── Delete imported bookings (Oct 2026) ─────────────────────────────
+// Clears what the importers put on the calendar, per property: the eZee
+// spreadsheet import's blocks ("Ezee import · …" notes) and/or the OTA iCal
+// feeds' blocks (ical_feed_id, or "iCal: …" notes from before tracking). Never
+// touches a website booking or hold (hold_id), a staff closure, or a group
+// import (those are holds). Page: Calendar → Import → "Delete imported bookings".
+
+/** The kinds of import that can be cleared: key => label. */
+function import_clear_kinds(): array {
+    return ['ezee' => 'Spreadsheet imports (eZee)', 'ical' => 'OTA calendar feeds (iCal)'];
+}
+
+/**
+ * WHERE fragment (alias b = availability_blocks) for the chosen kinds. Pure.
+ * '' when no known kind is chosen — callers must treat that as "nothing".
+ */
+function import_clear_kind_sql(array $kinds, bool $icalTracked): string {
+    $or = [];
+    if (in_array('ezee', $kinds, true)) $or[] = "b.notes LIKE 'Ezee import · %'";
+    if (in_array('ical', $kinds, true)) $or[] = $icalTracked ? "(b.ical_feed_id IS NOT NULL OR b.notes LIKE 'iCal: %')" : "b.notes LIKE 'iCal: %'";
+    return $or ? '(' . implode(' OR ', $or) . ')' : '';
+}
+
+/** The ids of the imported blocks to clear (scoped to $venueIds; $fromYmd = only stays ending after that day, '' = all). */
+function import_clear_block_ids(array $venueIds, array $kinds, string $fromYmd = ''): array {
+    $venueIds = array_values(array_filter(array_map('intval', $venueIds), fn($v) => $v > 0));
+    $kindSql  = import_clear_kind_sql($kinds, function_exists('ical_tracking_supported') && ical_tracking_supported());
+    if (!$venueIds || $kindSql === '') return [];
+    $p = []; $ph = [];
+    foreach ($venueIds as $i => $v) { $ph[] = ":v{$i}"; $p[":v{$i}"] = $v; }
+    $when = '';
+    if ($fromYmd !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $fromYmd)) { $when = ' AND b.date_to > :from'; $p[':from'] = $fromYmd; }
+    return array_map('intval', db_query(
+        "SELECT b.id FROM availability_blocks b
+           JOIN units u ON u.id = b.unit_id
+           JOIN rooms r ON r.id = u.room_id
+          WHERE r.venue_id IN (" . implode(',', $ph) . ")
+            AND b.hold_id IS NULL AND b.block_type = 'blocked'
+            AND {$kindSql}{$when}", $p)->fetchAll(PDO::FETCH_COLUMN));
+}
+
+/** What a clear would remove, per kind: ['ezee' => ['blocks'=>n,'first'=>Y-m-d|null,'last'=>…], 'ical' => …]. Writes nothing. */
+function import_clear_summary(array $venueIds, string $fromYmd = ''): array {
+    $out = [];
+    foreach (array_keys(import_clear_kinds()) as $k) {
+        $ids = import_clear_block_ids($venueIds, [$k], $fromYmd);
+        $row = ['blocks' => count($ids), 'first' => null, 'last' => null];
+        if ($ids) {
+            $r = db_query('SELECT MIN(date_from) AS f, MAX(date_to) AS t FROM availability_blocks WHERE id IN (' . implode(',', $ids) . ')')->fetch();
+            $row['first'] = $r['f'] ?? null; $row['last'] = $r['t'] ?? null;
+        }
+        $out[$k] = $row;
+    }
+    return $out;
+}
+
+/**
+ * Delete the imported blocks (+ their imported revenue rows in the bookings
+ * ledger, and pending import conflicts on the same units) in ONE transaction.
+ * Returns ['blocks' => n, 'ledger' => n, 'conflicts' => n].
+ * iCal blocks come back at the next sync (every 15 min) while their feed is
+ * still listed — remove the feed on Calendar → iCal feeds to stop that.
+ */
+function import_clear(array $venueIds, array $kinds, string $fromYmd = ''): array {
+    $res = ['blocks' => 0, 'ledger' => 0, 'conflicts' => 0];
+    $pdo = db();
+    $own = !$pdo->inTransaction();
+    if ($own) $pdo->beginTransaction();
+    try {
+        $ids = import_clear_block_ids($venueIds, $kinds, $fromYmd);
+        if ($ids) {
+            $in = implode(',', $ids);
+            try {
+                if ((bool)db_query("SELECT to_regclass('public.bookings') IS NOT NULL")->fetchColumn()) {
+                    $res['ledger'] = db_query("DELETE FROM bookings WHERE block_id IN ({$in}) AND hold_id IS NULL")->rowCount();
+                }
+            } catch (Throwable $e) { /* pre-ledger DB: nothing to clear */ }
+            $res['blocks'] = db_query("DELETE FROM availability_blocks WHERE id IN ({$in})")->rowCount();
+        }
+        // Pending conflicts the importers raised at these properties (an eZee
+        // overlap is recorded INSTEAD of a block, so match by property, not block).
+        $conf = [];
+        if (in_array('ezee', $kinds, true)) $conf[] = "c.ota_summary LIKE 'Ezee import · %'";
+        if (in_array('ical', $kinds, true)) $conf[] = 'c.ical_feed_id IS NOT NULL';
+        $vids = array_values(array_filter(array_map('intval', $venueIds), fn($v) => $v > 0));
+        if ($conf && $vids) {
+            $p = []; $ph = [];
+            foreach ($vids as $i => $v) { $ph[] = ":v{$i}"; $p[":v{$i}"] = $v; }
+            $when = '';
+            if ($fromYmd !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $fromYmd)) { $when = ' AND c.date_to > :from'; $p[':from'] = $fromYmd; }
+            $res['conflicts'] = db_query(
+                "DELETE FROM channel_conflicts c USING units u, rooms r
+                  WHERE u.id = c.unit_id AND r.id = u.room_id AND r.venue_id IN (" . implode(',', $ph) . ")
+                    AND c.status = 'pending' AND (" . implode(' OR ', $conf) . "){$when}", $p
+            )->rowCount();
+        }
+        if ($own) $pdo->commit();
+    } catch (Throwable $e) {
+        if ($own && $pdo->inTransaction()) $pdo->rollBack();
+        throw $e;
+    }
+    return $res;
+}

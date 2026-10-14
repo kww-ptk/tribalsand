@@ -45,7 +45,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($__code !== '' && ($__lock = login_lock_seconds($__code, client_ip())) > 0) {
             $error = login_lock_message($__lock);
         } elseif (login_staff($__code, client_ip())) {
-            header('Location: ' . admin_home_url());
+            header('Location: ' . admin_after_login_url());
             exit;
         } else {
             $error = 'Invalid or inactive staff code.';
@@ -59,7 +59,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif (($__lock = login_lock_seconds($email, client_ip())) > 0) {
             $error = login_lock_message($__lock);
         } elseif (login($email, $password)) {
-            header('Location: ' . admin_home_url());
+            header('Location: ' . admin_after_login_url());
             exit;
         } elseif (admin_login_as_agent($email, $password)) {
             // A travel agent who typed their details here: their account lives in the

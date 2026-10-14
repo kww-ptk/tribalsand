@@ -65,6 +65,8 @@ $__xFeat   = in_array($status, ['pending', 'confirmed'], true) ? guest_extras_fe
 <p class="pa-note pa-note--no"><?= $status === 'expired' ? 'This hold expired.' : 'This booking was cancelled.' ?> <a href="/properties">Browse our properties</a></p>
 <?php endif; ?>
 
+<?php include __DIR__ . '/_gatepass.php';   // gate pass QR once online check-in is done ?>
+
 <?php if ($__xFeat): ?>
 <div class="pa-xhead"><b>For your stay at <?= e($__vname) ?></b><a href="<?= e($__pu) ?>&amp;view=extras">See all</a></div>
 <div class="pa-xrail">
