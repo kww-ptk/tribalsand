@@ -238,6 +238,8 @@ function admin_nav_definition(array $f, array $badge = []): array {
             $item('Travel agents', 'agents', [$tab('Travel agents', 'agents.php', $on('owner'))]),
             $item('Zuri sync', 'sync', [$tab('Zuri sync', 'sync.php', $on('owner'))]),
             $item('Audit log', 'audit', [$tab('Audit log', 'audit.php', $on('owner'))]),
+            // Everyone — the PDF guide library; it lists only guides meant for this account's role.
+            $item('Support', 'support', [$tab('Support', 'support.php', true)]),
             // Everyone, last in the sidebar — the library lists only guides for pages this account can open.
             $item('Help & guides', 'help', [$tab('Help & guides', 'help.php', true)]),
         ]],
@@ -381,6 +383,7 @@ function admin_nav_help_button_html(): string {
  * Invoices & payments). Keyed by page file; every page of a tab is searched.
  */
 const ADMIN_NAV_SEARCH_WORDS = [
+    'support.php'          => 'support guides manual documentation pdf download user guide training',
     'unit-map.php'         => 'maya ilai villa bedroom studio occupancy aerial map',
     'gantt.php'            => 'calendar availability blocks occupancy',
     'holds.php'            => 'bookings reservations holds confirm',

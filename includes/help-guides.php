@@ -174,6 +174,17 @@ function help_guides(): array {
             ['text' => 'Open a guest to see their booking, requests and bill.'],
          ]],
 
+        ['slug' => 'support-guides', 'area' => 'start', 'minutes' => 2, 'pages' => ['support.php'],
+         'title' => 'Read, download or add a PDF guide',
+         'summary' => 'The Support page holds the PDF guides for each role — read them in the page or download them.',
+         'steps' => [
+            ['text' => 'Pick a guide on the left. You only see the guides meant for your role.', 'target' => '[data-help="support-list"]'],
+            ['text' => 'It opens on the right. Press **Download PDF** to keep a copy.', 'target' => '[data-help="support-download"]'],
+            ['text' => '**Version history** lists earlier versions; you can read or download any of them.', 'target' => '[data-help="support-history"]'],
+            ['text' => 'Owner: **Import a guide (PDF)** adds a guide. Choose the PDF, give it a title and tick who should see it. To update a guide, open it and press **New version**.', 'target' => '[data-help="support-import"]'],
+         ],
+         'tips' => ['A guide ticked for Guests or Travel agents has **Copy share link** — a link they can open without signing in. It always shows the newest version.']],
+
         ['slug' => 'import-clear', 'area' => 'bookings', 'minutes' => 1, 'pages' => ['import-bookings.php'],
          'title' => 'Delete imported bookings from the calendar',
          'summary' => 'Clear what a spreadsheet or OTA calendar import put on the calendar, to start again.',
