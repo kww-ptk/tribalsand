@@ -89,7 +89,7 @@ $card = function(array $r): string {
         <?php if ($unread > 0): ?><a class="fd-badge fd-badge--msg" href="/admin/booking.php?hold=<?= $hid ?>&tab=messages"><?= $unread ?> unread</a><?php endif; ?>
         <?php $__ci = checkin_badge($r); if ($__ci): ?><span class="ci-badge <?= e($__ci['class']) ?>"><?= e($__ci['label']) ?></span><?php endif; ?>
         <?php if (!empty($r['gate_departed_at'])): ?><span class="badge badge--grey" title="Checked out at the gate">Left <?= e(date('H:i', strtotime((string)$r['gate_departed_at']))) ?></span>
-        <?php elseif (!empty($r['gate_arrived_at'])): ?><span class="badge badge--green" title="Checked in at the gate">At gate <?= e(date(date('Y-m-d', strtotime((string)$r['gate_arrived_at'])) === date('Y-m-d') ? 'H:i' : 'j M H:i', strtotime((string)$r['gate_arrived_at']))) ?><?= !empty($r['gate_people']) ? ' · ' . (int)$r['gate_people'] : '' ?></span><?php endif; ?>
+        <?php elseif (!empty($r['gate_arrived_at'])): ?><span class="badge badge--green" title="Checked in at the gate by security — time and how many people came in">At gate <?= e(date(date('Y-m-d', strtotime((string)$r['gate_arrived_at'])) === date('Y-m-d') ? 'H:i' : 'j M H:i', strtotime((string)$r['gate_arrived_at']))) ?><?= !empty($r['gate_people']) ? ' · ' . (int)$r['gate_people'] . ((int)$r['gate_people'] === 1 ? ' person' : ' people') : '' ?></span><?php endif; ?>
       </div>
       <?php if ($phone !== ''): ?><a class="fd-phone" href="tel:<?= e(preg_replace('/[^0-9+]/', '', $phone)) ?>"><?= admin_icon('phone', 13) ?> <?= e($phone) ?></a><?php endif; ?>
     </div>

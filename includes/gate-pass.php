@@ -109,6 +109,17 @@ function gate_party_label(array $party): string {
     return $bits && ((int)$party['adults'] + (int)$party['children']) === $t ? $s . ' · ' . implode(', ', $bits) : $s;
 }
 
+/** More people at the gate than the booking is for? Pure. ($booked 0 = unknown → never "over".) */
+function gate_over_party(int $people, int $booked): bool {
+    return $booked > 0 && $people > $booked;
+}
+
+/** The warning the guard confirms before letting in more people than booked. Pure. */
+function gate_over_party_message(int $people, int $booked): string {
+    return 'Booked for ' . $booked . ' ' . ($booked === 1 ? 'person' : 'people') . ' — you are letting in ' . $people
+         . '. Call reception before you let the extra ' . ($people - $booked === 1 ? 'person' : 'people') . ' in.';
+}
+
 /**
  * What the guard should do with a scanned booking. Pure.
  * 'stop' = do not admit (cancelled, stay over, another property);
@@ -168,7 +179,7 @@ function gate_pass_ready_for(array $hold): array {
 }
 
 /** Check a party in at the gate. False when already in (or the migration has not run). */
-function gate_mark_arrived(int $holdId, int $byAdminId, int $people): bool {
+function gate_mark_arrived(int $holdId, int $byAdminId, int $people, string $note = ''): bool {
     if (!gate_arrivals_supported()) return false;
     $n = db_query(
         "UPDATE holds SET gate_arrived_at = NOW(), gate_arrived_by = :b, gate_people = :p,
@@ -176,7 +187,7 @@ function gate_mark_arrived(int $holdId, int $byAdminId, int $people): bool {
           WHERE id = :h AND gate_arrived_at IS NULL",
         [':h' => $holdId, ':b' => $byAdminId ?: null, ':p' => max(1, min(99, $people))]
     )->rowCount();
-    if ($n && function_exists('audit_log')) audit_log('gate.arrived', 'hold', $holdId, $people . ' people');
+    if ($n && function_exists('audit_log')) audit_log('gate.arrived', 'hold', $holdId, $people . ' people' . ($note !== '' ? ' · ' . $note : ''));
     return $n > 0;
 }
 
