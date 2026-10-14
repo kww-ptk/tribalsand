@@ -179,7 +179,8 @@ function help_guides(): array {
          'summary' => 'The Support page holds the PDF guides for each role — read them in the page or download them.',
          'steps' => [
             ['text' => 'Pick a guide on the left. You only see the guides meant for your role.', 'target' => '[data-help="support-list"]'],
-            ['text' => 'It opens on the right. Press **Download PDF** to keep a copy.', 'target' => '[data-help="support-download"]'],
+            ['text' => 'It opens on the right like a book. Turn pages with the arrows, the ← → keys, by swiping on a phone, or jump with the page strip underneath.', 'target' => '[data-help="support-viewer"]'],
+            ['text' => 'Press **Download PDF** to keep a copy.', 'target' => '[data-help="support-download"]'],
             ['text' => '**Version history** lists earlier versions; you can read or download any of them.', 'target' => '[data-help="support-history"]'],
             ['text' => 'Owner: **Import a guide (PDF)** adds a guide. Choose the PDF, give it a title and tick who should see it. To update a guide, open it and press **New version**.', 'target' => '[data-help="support-import"]'],
          ],
