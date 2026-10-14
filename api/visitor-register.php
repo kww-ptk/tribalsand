@@ -168,7 +168,7 @@ case 'update':
 
 case 'sign':
     // A name-only invited-adult row has no identity yet: it must be completed (details + ID photo) before it can sign.
-    if (visitor_validate($me + ['photo' => !empty($me['id_photo_key'])], 'edit', $gate, [])) {
+    if (visitor_validate($me + ['photo' => !empty($me['id_photo_key'])], 'edit', true, [])) {
         $back(['errors' => ['general' => 'Please add your details and a photo of your ID first.']], visitor_invite_url((int)$me['id']));
     }
     $errors = [];
