@@ -58,14 +58,25 @@ function visitor_phone_key(string $p): string {
     return strlen($d) >= 9 ? substr($d, -9) : '';
 }
 
-/** Lower-case, accent-free words of a name ("O'Brien" → "o", "brien"). */
+/** Lower-case, accent-free words of a name ("O’Brien" → "obrien", "Müller" → "muller"). */
 function visitor_name_words(string $name): array {
     $s = mb_strtolower(trim($name), 'UTF-8');
-    if (function_exists('iconv')) {
+    // Common Latin accents first, so the result does not depend on the platform's iconv
+    // (glibc turns ü into ? in the C locale; macOS gives "u and the quote is stripped).
+    $s = strtr($s, [
+        'à' => 'a', 'á' => 'a', 'â' => 'a', 'ã' => 'a', 'ä' => 'a', 'å' => 'a',
+        'è' => 'e', 'é' => 'e', 'ê' => 'e', 'ë' => 'e',
+        'ì' => 'i', 'í' => 'i', 'î' => 'i', 'ï' => 'i',
+        'ò' => 'o', 'ó' => 'o', 'ô' => 'o', 'õ' => 'o', 'ö' => 'o', 'ø' => 'o',
+        'ù' => 'u', 'ú' => 'u', 'û' => 'u', 'ü' => 'u',
+        'ñ' => 'n', 'ç' => 'c', 'ß' => 'ss', 'ý' => 'y', 'ÿ' => 'y',
+        '’' => '',   // curly apostrophe: O’Brien = OBrien
+    ]);
+    if (function_exists('iconv')) {   // fallback for anything rarer
         $t = @iconv('UTF-8', 'ASCII//TRANSLIT//IGNORE', $s);
-        if ($t !== false) $s = strtolower($t);
+        if ($t !== false) $s = strtolower(str_replace('?', '', $t));
     }
-    $s = str_replace(["'", '’', '`', '"'], '', $s);   // O'Brien = OBrien
+    $s = str_replace(["'", '`', '"'], '', $s);   // O'Brien = OBrien
     return preg_split('/[^a-z0-9]+/', $s, -1, PREG_SPLIT_NO_EMPTY) ?: [];
 }
 
@@ -194,7 +205,7 @@ function visitor_gate_verdict(array $v, ?array $visit, array $adults, bool $term
     foreach ($adults as $a) if (empty($a['current'])) $waiting[] = (string)($a['name'] ?? 'Guest');
     if ($waiting) return ['level' => 'stop', 'msg' => 'Still to sign: ' . implode(', ', $waiting) . '. Every adult must sign before the group enters.'];
     if ($visit === null) return ['level' => 'warn', 'msg' => 'No place chosen for today — pick where they are going, then let them in.'];
-    return ['level' => 'ok', 'msg' => 'Registered — going to ' . (string)$visit['place_name'] . '.'];
+    return ['level' => 'ok', 'msg' => 'Registered — going to ' . (string)($visit['place_name'] ?? '') . '.'];
 }
 
 function visitor_people_count(array $adults, array $children): int {

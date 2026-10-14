@@ -31,8 +31,10 @@ check('scan: GP pass is not read as VP', visitor_pass_from_scan('GP-12-012345678
 // ── Names and phones ──
 check('name: same surname matches', visitor_booking_name_match('anna smith', 'Anna Smith'));
 check('name: surname only matches', visitor_booking_name_match('Smith', 'Anna Smith'));
-check('name: apostrophe ignored', visitor_booking_name_match("Sean O'Brien", 'Sean OBrien') || visitor_booking_name_match("Sean O'Brien", "Sean O'Brien"));
+check('name: apostrophe ignored', visitor_booking_name_match("Sean O'Brien", 'Sean OBrien'));
 check('name: accents folded', visitor_booking_name_match('Muller', 'Jürgen Müller'));
+check('name words: accents folded without iconv', visitor_name_words('Jürgen Müller') === ['jurgen', 'muller']);
+check('name words: curly apostrophe dropped', visitor_name_words('O’Brien') === ['obrien']);
 check('name: second surname matches', visitor_booking_name_match('Garcia', 'Maria Lopez Garcia'));
 check('name: other surname refused', !visitor_booking_name_match('Jones', 'Anna Smith'));
 check('name: one letter refused', !visitor_booking_name_match('S', 'Anna S'));
