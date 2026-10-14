@@ -104,7 +104,100 @@ check('audit: int and string ids hash the same', visitor_audit_hash('p', $row) =
 $s = visitor_invite_share_text('Ben Ode', 'Tribal Table', 'https://x/register.php?t=VP-1-a');
 check('share: first name, place and link', str_contains($s, 'Ben') && !str_contains($s, 'Ode') && str_contains($s, 'Tribal Table') && str_contains($s, 'https://x/register.php?t=VP-1-a'));
 
-// ── DB (Task 3 adds this block) ──
+// ── DB (rolled back) ──
+require_once __DIR__ . '/../includes/visitor-store.php';
+try { $pdo = db(); $pdo->query('SELECT 1'); } catch (Throwable $e) { $pdo = null; }
+if (!$pdo) {
+    echo "SKIP  DB checks (no database)\n";
+} elseif (!visitor_reg_supported()) {
+    echo "SKIP  DB checks (run add_visitor_registration.sql)\n";
+} else {
+    $pdo->beginTransaction();
+    try {
+        $_SERVER['HTTP_USER_AGENT'] = 'visitor-test';
+        $venue = (int)db_query('SELECT id FROM venues ORDER BY id LIMIT 1')->fetchColumn();
+        $placeId = visitor_place_save(null, 'Test Bar ' . bin2hex(random_bytes(3)), $venue, 99, true);
+        check('db place: saved and listed', (bool)array_filter(visitor_places(true, [$venue]), fn($p) => (int)$p['id'] === $placeId));
+        $dup = false; try { visitor_place_save(null, strtoupper((string)visitor_place($placeId)['name']), $venue, 1, true); } catch (InvalidArgumentException $e) { $dup = true; }
+        check('db place: duplicate name refused (any case)', $dup);
+
+        $d = visitor_clean_input(['passport_name' => 'Anna Smith', 'phone' => '0712 345 678', 'email' => 'anna.vtest@example.com',
+            'id_type' => 'passport', 'passport_number' => 'AB123456', 'nationality' => 'Kenya']) + ['photo_key' => 'visitors/test.jpg'];
+        $id = visitor_create($d, 'self');
+        check('db create: found by token', ($r = visitor_find_by_token(visitor_pass_token($id))) && (int)$r['id'] === $id);
+        check('db create: found by phone in another format', ($r = visitor_find_by_contact('+254712345678')) && (int)$r['id'] === $id);
+        check('db create: found by email any case', ($r = visitor_find_by_contact('ANNA.VTEST@example.com')) && (int)$r['id'] === $id);
+
+        $sig = 'data:image/png;base64,' . base64_encode("\x89PNG\r\n\x1a\n" . str_repeat('x', 40));
+        $ref = visitor_sign($id, 'Anna Smith', $sig, 'self');
+        $v = visitor_find($id);
+        check('db sign: reference + snapshot', str_starts_with($ref, 'TSV-') && $v['waiver_name_snapshot'] === 'Anna Smith' && $v['waiver_id_number_snapshot'] === 'AB123456');
+        check('db sign: current for today\'s terms', visitor_waiver_current($v, waiver_version(visitor_waiver_text())));
+
+        check('db identity: unchanged details keep the signature', visitor_update_identity($id, $d, 'visitor') === false && visitor_signed(visitor_find($id)));
+        check('db identity: new ID number voids', visitor_update_identity($id, ['id_number' => 'ZZ999999'] + $d, 'visitor') === true && !visitor_signed(visitor_find($id)));
+        check('db identity: reference kept after void', visitor_find($id)['waiver_reference'] === $ref);
+        visitor_sign($id, 'Anna Smith', $sig, 'self');
+        check('db identity: re-sign snapshots the new number', visitor_find($id)['waiver_id_number_snapshot'] === 'ZZ999999');
+
+        $kid = visitor_add_child($id, 'Mia Smith', 6);
+        $ben = visitor_invite_adult($id, 'Ben Ode');
+        $g = visitor_group($id);
+        check('db group: one adult, one child', count($g['adults']) === 1 && count($g['children']) === 1);
+        $visitId = visitor_choose_visit($id, $placeId, '2026-10-14', [$ben, 999999], [$kid], 'self');
+        $visit = visitor_visit_on($id, '2026-10-14');
+        check('db visit: foreign ids dropped from the party', $visit && $visit['party']['adults'] === [$ben] && $visit['party']['children'] === [$kid]);
+        check('db visit: choosing again updates the same row', visitor_choose_visit($id, $placeId, '2026-10-14', [], [], 'self') === $visitId);
+        visitor_choose_visit($id, $placeId, '2026-10-14', [$ben], [$kid], 'self');
+
+        $card = visitor_gate_card($id, '2026-10-14', [$venue]);
+        check('db gate: unsigned adult in the party = stop', $card['verdict']['level'] === 'stop' && str_contains($card['verdict']['msg'], 'Ben Ode'));
+        check('db gate: let in refused while an adult hasn\'t signed', !visitor_let_in($id, '2026-10-14', null, 0, [$venue])['ok']);
+        visitor_update_identity($ben, visitor_clean_input(['passport_name' => 'Ben Ode', 'phone' => '0799 000 111', 'email' => 'ben.vtest@example.com',
+            'passport_number' => 'CD654321', 'nationality' => 'Kenya']) + ['photo_key' => 'visitors/ben.jpg'], 'visitor');
+        visitor_sign($ben, 'Ben Ode', $sig, 'self');
+        $card = visitor_gate_card($id, '2026-10-14', [$venue]);
+        check('db gate: everyone signed = ok, 3 people', $card['verdict']['level'] === 'ok' && $card['people'] === 3);
+        check('db gate: other property sees a stop', visitor_gate_card($id, '2026-10-14', [-1])['verdict']['level'] === 'stop');
+        $in = visitor_let_in($id, '2026-10-14', null, 0, [$venue]);
+        check('db gate: let in writes the register row', $in['ok'] && ($os = visitor_on_site($id)) && (int)$os['people'] === 3 && (int)$os['visit_id'] === $visitId);
+        $again = visitor_let_in($id, '2026-10-15', $placeId, 0, [$venue]);   // next day, a place picked: only the open sign-in blocks it
+        check('db gate: next day refused while still signed in', !$again['ok'] && str_contains($again['msg'], 'sign them out first'));
+
+        set_setting('visitor_waiver_text', 'Changed terms ' . bin2hex(random_bytes(3)));
+        check('db terms: changed waiver = stop "sign again"', str_contains(visitor_gate_card($id, '2026-10-14', [$venue])['verdict']['msg'], 'sign again'));
+
+        $audit = visitor_audit_verify($id);
+        check('db audit: chain verifies', $audit['ok'] && $audit['checked'] >= 3);
+        db_query("UPDATE visitor_signing_audit SET detail = 'edited' WHERE id = (SELECT MAX(id) FROM visitor_signing_audit WHERE visitor_id = :v)", [':v' => $id]);
+        check('db audit: an edited row is detected', !visitor_audit_verify($id)['ok']);
+
+        for ($i = 0; $i < VISITOR_CODE_FAIL_MAX; $i++) visitor_attempt_log('code_fail');
+        check('db limit: code failures counted per IP', visitor_attempt_count('code_fail', 10) >= VISITOR_CODE_FAIL_MAX);
+        visitor_attempt_log('recover_mail', 'anna.vtest@example.com');
+        check('db limit: counted per subject', visitor_attempt_count('recover_mail', 10, 'anna.vtest@example.com') === 1);
+
+        check('db lookup: unknown code = notfound', visitor_booking_lookup('ZZZZZZZZ', 'Smith', '2026-10-14')['kind'] === 'notfound');
+        $h = db_query("SELECT id, access_code, guest_name FROM holds WHERE status IN ('pending','confirmed') AND check_out >= CURRENT_DATE AND access_code IS NOT NULL AND guest_name <> '' ORDER BY id DESC LIMIT 1")->fetch();
+        if ($h) {
+            $words = visitor_name_words((string)$h['guest_name']);
+            $hit = visitor_booking_lookup((string)$h['access_code'], (string)end($words), date('Y-m-d'));
+            check('db lookup: code + surname = the lead\'s link', $hit['kind'] === 'lead' && str_contains($hit['url'], 'ref='));
+            check('db lookup: code + wrong name = nomatch, no link', visitor_booking_lookup((string)$h['access_code'], 'Qqqzzx', date('Y-m-d')) === ['kind' => 'nomatch', 'url' => '']);
+        } else {
+            echo "SKIP  booking lookup (no current booking with a code)\n";
+        }
+
+        check('db remove: removed', visitor_remove($id));
+        check('db remove: token stops working', visitor_find_by_token(visitor_pass_token($id)) === null);
+        $rm = visitor_find($id, true);
+        check('db remove: photo key cleared, signature evidence kept', $rm['id_photo_key'] === null && $rm['waiver_reference'] !== null);
+    } catch (Throwable $e) {
+        check('db checks ran without error: ' . $e->getMessage(), false);
+    } finally {
+        if ($pdo->inTransaction()) $pdo->rollBack();
+    }
+}
 
 echo $failures ? "\n{$failures} FAILED\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);
