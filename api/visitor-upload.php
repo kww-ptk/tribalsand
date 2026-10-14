@@ -45,8 +45,10 @@ if (!storage_put_private($f['tmp_name'], $key, $mime)) $fail(500, 'store failed'
 $old = (string)($_SESSION['vr_photo'] ?? '');
 if ($old !== '' && $old !== $key) { try { storage_delete_private($old); } catch (Throwable $e) {} }
 $_SESSION['vr_photo'] = $key;
+// The form must send this back as photo_draft: it ties the draft photo to the form that uploaded it.
+$_SESSION['vr_photo_nonce'] = bin2hex(random_bytes(12));
 
-$out = ['ok' => true];
+$out = ['ok' => true, 'draft' => $_SESSION['vr_photo_nonce']];
 $reads = (int)($_SESSION['vr_reads'] ?? 0);
 if ($bytes !== '' && ai_assistant_supported() && $reads < CHECKIN_PASSPORT_READS_MAX) {
     $_SESSION['vr_reads'] = $reads + 1;

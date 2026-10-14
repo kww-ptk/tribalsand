@@ -72,9 +72,8 @@ case 'lookup':
     $res = visitor_booking_lookup((string)($_POST['code'] ?? ''), (string)($_POST['name'] ?? ''), $today);
     if ($res['url'] !== '') { header('Location: ' . $res['url']); exit; }
     visitor_attempt_log('code_fail');
-    $back(['errors' => ['general' => $res['kind'] === 'nomatch'
-        ? 'We couldn’t match your name to that booking. Ask the person who booked to add you, or register as a visitor.'
-        : 'We couldn’t find a current booking with that code. Check the code, or register as a visitor.'], 'old' => $old]);
+    // One message for a wrong code and a wrong name: a miss must not reveal whether the code exists.
+    $back(['errors' => ['general' => 'We couldn’t find a current booking for that code and name. Check them, ask the person who booked to add you, or register as a visitor.'], 'old' => $old]);
 
 case 'nocode':
 case 'again':
@@ -90,7 +89,7 @@ case 'again':
             $links = visitor_booking_links_for_email($email, $today);
             if ($links && function_exists('send_visitor_booking_link')) {
                 visitor_attempt_log('recover_mail', $email);
-                send_visitor_booking_link($email, $links);
+                try { send_visitor_booking_link($email, $links); } catch (Throwable $e) { error_log('[visitor-register] booking link mail: ' . $e->getMessage()); }
             }
         }
     } else {
@@ -98,7 +97,7 @@ case 'again':
         $to = $v ? mb_strtolower((string)$v['email']) : '';
         if ($v && $to !== '' && visitor_attempt_count('recover_mail', 10, $to) === 0 && function_exists('send_visitor_pass')) {
             visitor_attempt_log('recover_mail', $to);
-            send_visitor_pass($v);
+            try { send_visitor_pass($v); } catch (Throwable $e) { error_log('[visitor-register] pass mail: ' . $e->getMessage()); }
         }
     }
     $neutral($said);
@@ -111,7 +110,10 @@ case 'update':
     }
     if ($mode === 'register' && $me && visitor_signed($me)) $back([], visitor_pass_url((int)$me['id']));
     $in = visitor_clean_input($_POST);
-    $draft = (string)($_SESSION['vr_photo'] ?? '');
+    // The session's draft photo belongs to THIS form only when the form carries the nonce its upload returned
+    // (one gate-tablet session serves many visitors; an abandoned photo must never attach to the next one).
+    $nonce = (string)($_SESSION['vr_photo_nonce'] ?? '');
+    $draft = ($nonce !== '' && hash_equals($nonce, (string)($_POST['photo_draft'] ?? ''))) ? (string)($_SESSION['vr_photo'] ?? '') : '';
     $errors = visitor_validate($in + [
         'place_id' => (int)($_POST['place_id'] ?? 0), 'photo' => $draft !== '' || !empty($me['id_photo_key']),
         'signed_name' => (string)($_POST['waiver_signed_name'] ?? ''), 'signature' => (string)($_POST['waiver_signature'] ?? ''),
@@ -140,7 +142,7 @@ case 'update':
         }
         db()->commit();
         visitor_flush_file_deletes();   // a replaced ID photo is removed only once the commit holds
-        unset($_SESSION['vr_photo']);   // now attached to a visitor: a later upload must never delete it
+        if ($draft !== '') unset($_SESSION['vr_photo'], $_SESSION['vr_photo_nonce']);   // now attached to a visitor: a later upload must never delete it
     } catch (InvalidArgumentException $e) {
         if (db()->inTransaction()) db()->rollBack();
         visitor_discard_file_deletes();
@@ -153,15 +155,22 @@ case 'update':
     }
     if ($mode === 'register' && !$gate && !$me) visitor_attempt_log('register');
     $v = visitor_find($id);
-    if ($mode === 'register' && $v && !empty($v['email']) && function_exists('send_visitor_pass')) send_visitor_pass($v);
+    if ($mode === 'register' && $v && !empty($v['email']) && function_exists('send_visitor_pass')) {
+        try { send_visitor_pass($v); } catch (Throwable $e) { error_log('[visitor-register] pass mail: ' . $e->getMessage()); }
+    }
     if ($gate) {   // back to the Gate page (its flash slot is hold_flash) with this visitor's card open
-        $_SESSION['hold_flash'] = ['type' => 'success', 'msg' => 'Registered — check the card and let them in.'];
+        $_SESSION['hold_flash'] = ['type' => 'success', 'msg' => $mode === 'register' ? 'Registered — check the card and let them in.'
+            : ($voided ? 'Details saved — they must sign again before entering.' : 'Details saved.')];
         header('Location: /admin/gate.php?vp=' . rawurlencode(visitor_pass_token($id))); exit;
     }
     $back($voided ? ['notice' => 'Your details changed, so please sign again.'] : ['notice' => $mode === 'register' ? 'You’re registered.' : 'Details saved.'],
           visitor_pass_url($id) . ($mode === 'register' ? '&new=1' : ''));
 
 case 'sign':
+    // A name-only invited-adult row has no identity yet: it must be completed (details + ID photo) before it can sign.
+    if (visitor_validate($me + ['photo' => !empty($me['id_photo_key'])], 'edit', $gate, [])) {
+        $back(['errors' => ['general' => 'Please add your details and a photo of your ID first.']], visitor_invite_url((int)$me['id']));
+    }
     $errors = [];
     if (trim((string)($_POST['waiver_signed_name'] ?? '')) === '') $errors['waiver_signed_name'] = 'Type your full name to sign.';
     if (!checkin_valid_signature((string)($_POST['waiver_signature'] ?? ''))) $errors['signature'] = 'Sign in the box with your finger.';
@@ -171,6 +180,7 @@ case 'sign':
     $back(['notice' => 'Thank you — signed.'], visitor_pass_url((int)$me['id']));
 
 case 'visit':
+    if (!visitor_waiver_current($me, waiver_version(visitor_waiver_text()))) $back([], visitor_pass_url((int)$me['id']));   // the pass page asks them to sign
     if (!in_array((int)($_POST['place_id'] ?? 0), $placeIdsFor(), true)) $back(['errors' => ['place_id' => 'Choose where you are going.']]);
     visitor_choose_visit((int)$me['id'], (int)$_POST['place_id'], $today, (array)($_POST['with_adult'] ?? []), (array)($_POST['with_child'] ?? []), $via);
     $back(['notice' => 'Saved — show this pass at the gate.'], visitor_pass_url((int)$me['id']));
