@@ -16,6 +16,7 @@ require_once __DIR__ . '/../includes/booking.php';    // team (visitor) helpers
 require_once __DIR__ . '/../includes/frontdesk.php';
 require_once __DIR__ . '/../includes/checkin.php';   // checkin_badge() on arrival rows
 require_once __DIR__ . '/../includes/gate-pass.php';
+require_once __DIR__ . '/../includes/visitor-store.php';
 require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/pagination.php';
 require_once __DIR__ . '/../includes/admin-pagination.php';
@@ -24,6 +25,8 @@ require_once __DIR__ . '/../includes/admin-pagination.php';
 session_init();
 $__passIn = gate_pass_from_scan((string)($_GET['pass'] ?? ''));
 if (empty($_SESSION['admin_id']) && $__passIn !== '') $_SESSION['admin_after_login'] = '/admin/gate.php?pass=' . $__passIn;
+$__vpIn = visitor_pass_from_scan((string)($_GET['vp'] ?? ''));
+if (empty($_SESSION['admin_id']) && $__vpIn !== '') $_SESSION['admin_after_login'] = '/admin/gate.php?vp=' . $__vpIn;
 
 require_login();
 require_gate();
@@ -53,6 +56,16 @@ $scopedVenueIds = array_map(fn($v) => (int)$v['id'], $venues);
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
     $action = $_POST['action'] ?? '';
+
+    // ── Let a registered visitor in (scanned VP pass) ──
+    if ($action === 'visitor_in') {
+        $vpTok = visitor_pass_from_scan((string)($_POST['vp'] ?? ''));
+        $vid   = $vpTok !== '' ? visitor_pass_verify($vpTok) : false;
+        $res   = $vid ? visitor_let_in((int)$vid, frontdesk_today_ymd(), (int)($_POST['place_id'] ?? 0) ?: null, $meId, $venueIds)
+                      : ['ok' => false, 'msg' => 'This visitor pass isn’t valid.'];
+        $_SESSION['hold_flash'] = ['type' => $res['ok'] ? 'success' : 'error', 'msg' => $res['msg']];
+        header('Location: /admin/gate.php' . ($vpTok !== '' && !$res['ok'] ? '?vp=' . $vpTok : '')); exit;
+    }
 
     // ── Check a booked party in / out at the gate ──
     if (in_array($action, ['arrive', 'depart', 'undo'], true)) {
@@ -158,6 +171,15 @@ if ($passBk && !$inScope((int)($passBk['venue_id'] ?? 0))) {
 }
 $passVerdict = $passBk ? gate_verdict($passBk, $today, $inScope((int)($passBk['venue_id'] ?? 0))) : null;
 
+// ── A scanned visitor pass (?vp=VP-…) ──
+$vpTok = $__vpIn; $vpCard = null; $vpErr = '';
+if ($vpTok !== '') {
+    $vid = visitor_pass_verify($vpTok);
+    $vpCard = $vid ? visitor_gate_card((int)$vid, $today, $venueIds) : null;
+    if (!$vpCard) $vpErr = 'This visitor pass isn’t valid. Ask them to register, or register them on this tablet.';
+}
+$vpPlaces = $vpCard && !$vpCard['visit'] ? visitor_places(true, $venueIds) : [];
+
 // Live "on site" count — everyone still signed in, independent of the log filters.
 $onsite = count(fetch_visitors($venueIds, true));
 
@@ -195,7 +217,7 @@ ob_start(); ?>
       <tbody>
         <?php foreach ($log as $vr): $open = empty($vr['time_out']); ?>
         <tr<?= $open ? '' : ' style="opacity:.6"' ?>>
-          <td><strong><?= e($vr['visitor_name']) ?></strong></td>
+          <td><strong><?= e($vr['visitor_name']) ?></strong><?php if (visitor_reg_supported()): ?> <?= !empty($vr['registered_visitor_id']) ? '<span class="badge badge--green">Registered</span>' : '<span class="badge">Not registered</span>' ?><?php endif; ?></td>
           <td><?= e($vr['venue_name'] ?? '') ?></td>
           <td><?= !empty($vr['visiting']) ? e($vr['visiting']) : '<span class="text-muted">—</span>' ?></td>
           <td><?= !empty($vr['purpose']) ? e($vr['purpose']) : '<span class="text-muted">—</span>' ?></td>
@@ -308,7 +330,10 @@ include __DIR__ . '/_layout.php';
     <span class="text-muted"><?= e(date('l j M', strtotime($today))) ?></span>
     <button type="button" class="btn-primary btn-sm" id="gtScanBtn" data-help="gate-scan"><?= admin_icon('search', 15) ?> Scan gate pass</button>
     <?php if (visitors_supported() && $venues): ?>
-    <button type="button" class="btn-outline btn-sm" id="gateSignInToggle" aria-expanded="<?= $signInOpen ? 'true' : 'false' ?>" aria-controls="gateSignInCard"><?= admin_icon('plus', 15) ?> Sign in visitor</button>
+    <?php if (visitor_reg_supported()): ?>
+    <a class="btn btn-sm" href="/register.php?gate=1" data-no-shell data-help="gate-register"><?= admin_icon('plus', 15) ?> Register visitor</a>
+    <?php endif; ?>
+    <button type="button" class="btn-outline btn-sm" id="gateSignInToggle" aria-expanded="<?= $signInOpen ? 'true' : 'false' ?>" aria-controls="gateSignInCard"><?= admin_icon('plus', 15) ?> No phone? Sign in without registering</button>
     <?php endif; ?>
   </div>
 </div>
@@ -365,6 +390,10 @@ include __DIR__ . '/_layout.php';
   </div>
 </div>
 <?php endif; ?>
+
+<?php if ($vpErr !== ''): ?>
+<div class="alert alert--error" style="margin-bottom:16px"><?= e($vpErr) ?></div>
+<?php elseif ($vpCard): include __DIR__ . '/_gate_visitor.php'; endif; ?>
 
 <div class="gt-kpis">
   <div class="gt-kpi"><b><?= count($day['arriving']) ?></b><span>Arriving<?= $gateOn ? ' · ' . $arrivedN . ' in' : '' ?></span></div>
@@ -536,7 +565,9 @@ include __DIR__ . '/_layout.php';
       if (code && code.data) {
         var m = /GP-\d{1,10}-[0-9a-fA-F]{12}/.exec(code.data);
         if (m) { go(m[0]); return; }
-        msg.textContent = 'That QR code isn’t a Tribal Sand gate pass.';
+        var vp = /VP-\d{1,10}-[0-9a-fA-F]{12}/.exec(code.data);
+        if (vp) { stop(); var vh = '/admin/gate.php?vp=' + encodeURIComponent(vp[0]); if (window.tsShellGo) window.tsShellGo(vh); else window.location.href = vh; return; }
+        msg.textContent = 'That QR code isn’t a Tribal Sand pass.';
       }
     }
     raf = requestAnimationFrame(tick);
