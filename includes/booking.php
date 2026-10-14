@@ -260,6 +260,19 @@ function portal_actor(?array $leadRow, ?array $meRow, bool $isCoGuest, string $b
 }
 
 /**
+ * May a co-guest use the portal? Once they have finished their own check-in
+ * (passport + signed waiver), or when the booking needs no check-in. The ONE
+ * rule for booking.php (the page) and resolve_portal_actor() (its actions).
+ * "Share reservation" no longer gates this — it only shows the shared Bill. Pure.
+ */
+function coguest_portal_open(array $hold, ?array $me): bool {
+    if ($me === null) return false;
+    require_once __DIR__ . '/checkin.php';
+    if (!checkin_required($hold)) return true;
+    return checkin_guest_passport_complete($me) && checkin_guest_waiver_signed($me);
+}
+
+/**
  * Resolve a portal token (from ?ref= / ?g= / a posted field) to the acting party.
  * Returns ['hold'=>row, 'guest_id'=>int, 'is_lead'=>bool] or false.
  */
@@ -273,7 +286,9 @@ function resolve_portal_actor(string $token): array|false {
     if (($r = verify_guest_pass_token($token)) !== false) {
         [$holdId, $guestId] = $r;
         $hold = fetch_hold_for_guest($holdId);
-        if (!$hold || !share_reservation_on($hold)) return false;
+        if (!$hold) return false;
+        $me = db_query('SELECT * FROM checkin_guests WHERE id = :g AND hold_id = :h', [':g' => $guestId, ':h' => $holdId])->fetch() ?: null;
+        if (!coguest_portal_open($hold, $me)) return false;
         return ['hold' => $hold, 'guest_id' => $guestId, 'is_lead' => false];
     }
     return false;

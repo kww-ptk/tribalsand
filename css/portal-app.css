@@ -272,6 +272,17 @@
 .ci-in--ai{background:#fff8e1;border-color:#f2c94c}
 .ci-pp-note{background:#fff8e1;border:1px solid #f2c94c;color:#6b4e00;border-radius:9px;padding:9px 12px;font-size:13.5px;line-height:1.5;margin:10px 0 4px}
 .ci-pp-note--warn{background:#fbe6e6;border-color:#f0c2c2;color:#a12}
+/* Deposit card details read from the photo — last 4 digits only */
+.ci-card{display:grid;grid-template-columns:1fr 1fr;gap:0 16px;align-items:end;margin-top:10px}
+.ci-card .ci-fld{min-width:0}
+.ci-card__last4{display:flex;align-items:center;gap:8px}
+.ci-card__last4 span{flex:0 0 auto;color:var(--pa-muted);letter-spacing:2px;font-size:15px}
+@media (max-width:400px){.ci-card{grid-template-columns:1fr}}
+/* Passport | Kenyan National ID switch (checkin_id_switch_html) */
+.ci-idtype{display:flex;gap:4px;padding:4px;margin:0 0 14px;background:#efe9df;border-radius:10px;max-width:420px}
+.ci-idtype__b{flex:1 1 0;min-width:0;font:inherit;font-size:14px;font-weight:500;color:var(--pa-muted);background:transparent;border:0;border-radius:7px;padding:9px 10px;cursor:pointer;line-height:1.25}
+.ci-idtype__b[aria-checked="true"]{background:#fff;color:var(--pa-teal-d);box-shadow:0 1px 3px rgba(16,47,58,.14);font-weight:600}
+.ci-idtype__b:focus-visible{outline:3px solid var(--pa-gold);outline-offset:1px}
 /* Name replaced by the passport's — the old name with Undo (js/checkin-passport.js) */
 .ci-pp-note__was{display:block;margin-top:4px}
 .ci-pp-undo{background:none;border:0;padding:0;font:inherit;font-weight:600;color:var(--pa-teal-d);text-decoration:underline;cursor:pointer}
@@ -690,6 +701,10 @@ a.pa-topbar__brand:hover .pa-topbar__title{opacity:.92;}
 .pa-set__h{font-size:15px;font-weight:600;color:var(--pa-ink);}
 .pa-set__note{margin:0;font-size:13.5px;line-height:1.55;color:var(--pa-muted);}
 .pa-set__note a{color:var(--pa-teal);font-weight:600;}
+.pa-set__row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 0;border-top:1px solid var(--pa-line);font-size:14px;min-width:0}
+.pa-set__row > span:first-child{min-width:0;overflow-wrap:anywhere}
+.pa-set__muted{color:var(--pa-muted);font-size:13px;text-align:right}
+.pa-btn.pa-set__btn{width:auto;flex:0 0 auto;padding:8px 14px}
 
 /* ── Messages, design 2: ONE conversation (Oct 2026) ── */
 .pa-convo__head{display:flex;gap:12px;align-items:center;margin:0 0 12px;}

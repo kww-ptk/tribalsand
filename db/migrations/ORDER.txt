@@ -149,3 +149,5 @@ add_staff_rota.sql                                   2026-10-13
 add_tour_guests_only.sql                             2026-10-13
 add_gate_arrivals.sql                                2026-10-14
 add_support_docs.sql                                 2026-10-14
+add_checkin_id_type.sql                              2026-10-14
+add_checkin_deposit_card_details.sql                 2026-10-14

@@ -40,13 +40,15 @@ $otherStatus = function (array $g) use ($showWaiver) {
       <div class="pa-card ci-done-card">
         <div class="ci-done-card__check">&#10003;</div>
         <h2>You're all set<?= $first !== 'there' ? ', ' . e($first) : '' ?></h2>
-        <p>Thanks — your check-in is complete. You can close this page.</p>
+        <p>Thanks — your check-in is complete.</p>
         <?php if (checkin_guest_waiver_signed($me)): ?>
         <a class="pa-btn pa-btn--ghost" href="/record.php?hold=<?= $holdId ?>&guest=<?= (int)$me['id'] ?>&g=<?= e($gtoken) ?>" target="_blank" style="margin-top:12px">Download my signed waiver</a>
         <?php endif; ?>
-        <?php if (share_reservation_on($hold)): ?>
-        <a class="pa-btn pa-btn--primary" href="/booking.php?g=<?= e($gtoken) ?>&view=home" style="margin-top:12px">Continue to your stay &rarr;</a>
+        <?php require_once __DIR__ . '/../eta-letter.php'; $__eta = eta_letter_status($hold, $me);
+              if ($__eta['ok']): ?>
+        <a class="pa-btn pa-btn--ghost" href="<?= e(eta_letter_url($holdId, (int)$me['id'], null, $gtoken)) ?>" target="_blank" style="margin-top:12px">Download my eTA letter</a>
         <?php endif; ?>
+        <a class="pa-btn pa-btn--primary" href="/booking.php?g=<?= e($gtoken) ?>&view=home" style="margin-top:12px">Continue to your stay &rarr;</a>
       </div>
     <?php else: ?>
 
@@ -74,20 +76,21 @@ $otherStatus = function (array $g) use ($showWaiver) {
               <summary>Your details are on file — tap to review or edit</summary>
             <?php endif; ?>
             <div class="ci-pp" data-pp data-pp-ai="<?= $ppAi ? '1' : '0' ?>">
-            <label class="ci-l">Passport photo <span class="ci-opt">(the page with your photo)</span></label>
-            <p class="ci-pp-hint"><?= $ppAi ? 'Upload a photo of your passport’s photo page and we’ll fill in the details for you — or type them below.' : 'Upload a photo of your passport’s photo page, then type your details below.' ?></p>
+            <?= checkin_id_switch_html($me['id_type'] ?? null, 'name="id_type"') ?>
+            <label class="ci-l">Passport or ID photo <span class="ci-opt">(the passport photo page, or the front of the ID)</span></label>
+            <p class="ci-pp-hint"><?= $ppAi ? 'Take a picture of your passport photo page or the front of your Kenyan ID and we’ll fill in the details for you — or type them below.' : 'Take a picture of your passport photo page or the front of your Kenyan ID, then type your details below.' ?></p>
             <div class="ci-upload" data-has="<?= !empty($me['passport_file_key']) ? '1' : '0' ?>">
-              <label class="ci-filebtn">&#128247; <span class="ci-filebtn__t"><?= !empty($me['passport_file_key']) ? 'Replace photo' : 'Choose photo' ?></span><input type="file" id="ciGFile" accept="image/jpeg,image/png,application/pdf"></label>
+              <label class="ci-filebtn">&#128247; <span class="ci-filebtn__t"><?= !empty($me['passport_file_key']) ? 'Retake picture' : 'Take picture' ?></span><input type="file" id="ciGFile" accept="image/jpeg,image/png,application/pdf"></label>
               <span class="ci-upload__state"><?= !empty($me['passport_file_key']) ? 'Uploaded &#10003;' : 'No photo yet' ?></span>
             </div>
             <div class="ci-pp-note" role="status" hidden></div>
             <div class="ci-grid2">
               <div class="ci-fld">
-                <label class="ci-l">Full name <span class="ci-opt">(as on passport)</span></label>
+                <label class="ci-l">Full name <span class="ci-opt">(as on the document)</span></label>
                 <input class="ci-in" name="passport_name" value="<?= $v('passport_name') ?>"<?= $name !== '' ? ' data-pp-replace' : '' ?>>
               </div>
               <div class="ci-fld">
-                <label class="ci-l">Passport number</label>
+                <?= checkin_id_label_html('number', $me['id_type'] ?? null) ?>
                 <input class="ci-in" name="passport_number" value="<?= $v('passport_number') ?>">
               </div>
               <div class="ci-fld">
@@ -95,7 +98,7 @@ $otherStatus = function (array $g) use ($showWaiver) {
                 <input class="ci-in" name="nationality" value="<?= $v('nationality') ?>">
               </div>
               <div class="ci-fld">
-                <label class="ci-l">Passport expiry</label>
+                <?= checkin_id_label_html('expiry', $me['id_type'] ?? null) ?>
                 <input class="ci-in" type="date" name="passport_expiry" value="<?= $v('passport_expiry') ?>">
               </div>
             </div>

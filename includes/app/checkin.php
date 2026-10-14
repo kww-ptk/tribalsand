@@ -30,6 +30,9 @@ $showDeposit  = isset($cfg['deposit']);
 // guest_extras_checkin_items(); api/checkin-save.php validates against the same list.
 require_once __DIR__ . '/../upsells.php';
 require_once __DIR__ . '/../guest-extras.php';
+require_once __DIR__ . '/../eta-letter.php';
+// The lead's own Kenya eTA accommodation letter, offered on the done cards.
+$etaLead = $lead ? eta_letter_status($hold, $lead) : ['ok' => false, 'reason' => '', 'hidden' => true];
 $ciUpsells = isset($cfg['upsell']) ? guest_extras_checkin_items($hold) : [];
 $deposit      = checkin_venue_deposit($hold);   // ['amount','currency','formatted']
 $depositNote  = checkin_deposit_note();
@@ -51,8 +54,8 @@ $waIcon = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path
 require_once __DIR__ . '/../ai.php';
 $ppAi   = ai_assistant_supported();
 $ppHint = $ppAi
-    ? 'Upload a photo of the passport’s photo page and we’ll fill in the details for you — or type them below.'
-    : 'Upload a photo of the passport’s photo page, then type the details below.';
+    ? 'Take a picture of the passport photo page or the front of a Kenyan ID and we’ll fill in the details for you — or type them below.'
+    : 'Take a picture of the passport photo page or the front of a Kenyan ID, then type the details below.';
 // A name the page opens with (the booking name, or one saved earlier) gives way to
 // the name read off the passport — data-pp-replace; the note offers Undo.
 $ppReplace = fn(string $name): string => trim($name) !== '' ? ' data-pp-replace' : '';
@@ -137,11 +140,10 @@ foreach ($flowKeys as $idx => $fk) {
 $autoResume = ($_GET['resume'] ?? '') === '1';
 
 $needs = [];
-if ($showPassport)           $needs[] = ['&#128179;', 'A passport for every adult — a photo of the photo page, or just the details'];
-if (isset($cfg['transfer'])) $needs[] = ['&#9992;&#65039;', 'If you&rsquo;d like us to collect you: your flight number &amp; landing time'];
-if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — for the security deposit'
-                                . ($deposit['formatted'] !== '' ? ' (' . e($deposit['formatted']) . ')' : '')
-                                . ', paid at the property on arrival'];
+if ($showPassport)           $needs[] = ['&#128179;', 'Passport or National ID is required to access the property'];
+if (isset($cfg['transfer'])) $needs[] = ['&#9992;&#65039;', 'Your arrival details: flight number &amp; landing time'];
+if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — the one you&rsquo;ll use when you arrive at the property'
+                                . ($deposit['formatted'] !== '' ? ' (security deposit ' . e($deposit['formatted']) . ')' : '')];
 
 ?>
 <link rel="stylesheet" href="/css/portal-app.css?v=<?= @filemtime(__DIR__ . '/../../css/portal-app.css') ?: time() ?>">
@@ -154,6 +156,11 @@ if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — for 
   <a class="pa-btn pa-btn--primary" href="/booking.php?ref=<?= e($ref) ?>&view=home">Continue to your stay &rarr;</a>
   <?php if (checkin_guest_waiver_signed($lead)): ?>
   <a class="pa-btn pa-btn--ghost" href="/record.php?hold=<?= $holdId ?>&guest=<?= (int)($lead['id'] ?? 0) ?>&ref=<?= e($ref) ?>" target="_blank">Download my signed waiver</a>
+  <?php endif; ?>
+  <?php if ($etaLead['ok']): ?>
+  <a class="pa-btn pa-btn--ghost" href="<?= e(eta_letter_url($holdId, (int)$lead['id'], $ref)) ?>" target="_blank">Download my eTA letter</a>
+  <?php elseif (!$etaLead['hidden']): ?>
+  <p class="ci-hint" style="margin:4px 0 0">eTA letter: <?= e($etaLead['reason']) ?></p>
   <?php endif; ?>
   <button type="button" class="pa-btn pa-btn--ghost" id="ciEdit">Update my details</button>
 </div>
@@ -187,6 +194,11 @@ if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — for 
   <a class="pa-btn pa-btn--primary" href="/booking.php?ref=<?= e($ref) ?>&view=home">Continue to your stay &rarr;</a>
   <?php if (checkin_guest_waiver_signed($lead)): ?>
   <a class="pa-btn pa-btn--ghost" href="/record.php?hold=<?= $holdId ?>&guest=<?= (int)($lead['id'] ?? 0) ?>&ref=<?= e($ref) ?>" target="_blank">Download my signed waiver</a>
+  <?php endif; ?>
+  <?php if ($etaLead['ok']): ?>
+  <a class="pa-btn pa-btn--ghost" href="<?= e(eta_letter_url($holdId, (int)$lead['id'], $ref)) ?>" target="_blank">Download my eTA letter</a>
+  <?php elseif (!$etaLead['hidden']): ?>
+  <p class="ci-hint" style="margin:4px 0 0">eTA letter: <?= e($etaLead['reason']) ?></p>
   <?php endif; ?>
   <button type="button" class="pa-btn pa-btn--ghost" id="ciEdit">Update my details</button>
 </div>
@@ -370,23 +382,24 @@ if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — for 
             <span class="ci-chip <?= (checkin_guest_passport_complete($lead) && (!$showWaiver || checkin_guest_waiver_signed($lead))) ? 'ci-chip--ok' : '' ?>"><?= (checkin_guest_passport_complete($lead) && (!$showWaiver || checkin_guest_waiver_signed($lead))) ? 'Complete' : 'Your details' ?></span></div>
           <?php if ($showPassport): ?>
           <div class="ci-pp" data-pp data-pp-ai="<?= $ppAi ? '1' : '0' ?>">
-            <label class="ci-l">Passport photo <span class="ci-opt">(the page with your photo)</span></label>
+            <?= checkin_id_switch_html($lead['id_type'] ?? null, 'name="id_type"') ?>
+            <label class="ci-l">Passport or ID photo <span class="ci-opt">(the passport photo page, or the front of the ID)</span></label>
             <p class="ci-pp-hint"><?= e($ppHint) ?></p>
             <div class="ci-upload" data-has="<?= !empty($lead['passport_file_key']) ? '1' : '0' ?>">
-              <label class="ci-filebtn">&#128247; <span class="ci-filebtn__t"><?= !empty($lead['passport_file_key']) ? 'Replace photo' : 'Choose photo' ?></span><input type="file" accept="image/jpeg,image/png,application/pdf"></label>
+              <label class="ci-filebtn">&#128247; <span class="ci-filebtn__t"><?= !empty($lead['passport_file_key']) ? 'Retake picture' : 'Take picture' ?></span><input type="file" accept="image/jpeg,image/png,application/pdf"></label>
               <span class="ci-upload__state"><?= !empty($lead['passport_file_key']) ? 'Uploaded &#10003;' : 'No photo yet' ?></span>
             </div>
             <div class="ci-pp-note" role="status" hidden></div>
-            <label class="ci-l">Full name (as on passport)</label>
+            <label class="ci-l">Full name (as on the document)</label>
             <?php // Starts with the booking name until a passport name is on file (display only —
                   // the lead row may not exist yet); the passport photo replaces it. ?>
             <?php $leadName = trim((string)($lead['passport_name'] ?? '')) ?: trim((string)($hold['guest_name'] ?? '')); ?>
             <input class="ci-in" name="passport_name" value="<?= e($leadName) ?>"<?= $ppReplace($leadName) ?>>
-            <label class="ci-l">Passport number</label>
+            <?= checkin_id_label_html('number', $lead['id_type'] ?? null) ?>
             <input class="ci-in" name="passport_number" value="<?= $val('passport_number', $lead) ?>">
             <label class="ci-l">Nationality</label>
             <input class="ci-in" name="nationality" value="<?= $val('nationality', $lead) ?>">
-            <label class="ci-l">Passport expiry</label>
+            <?= checkin_id_label_html('expiry', $lead['id_type'] ?? null) ?>
             <input class="ci-in" type="date" name="passport_expiry" value="<?= $val('passport_expiry', $lead) ?>">
           </div>
           <?php endif; ?>
@@ -449,17 +462,18 @@ if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — for 
             </div>
             <?php if ($showPassport): ?>
             <div class="ci-pp" data-pp data-pp-ai="<?= $ppAi ? '1' : '0' ?>">
+              <?= checkin_id_switch_html($g['id_type'] ?? null, 'data-field="id_type"') ?>
               <p class="ci-pp-hint"><?= e($ppHint) ?> Or leave it for them to add from their own link.</p>
               <div class="ci-upload" data-has="<?= !empty($g['passport_file_key']) ? '1' : '0' ?>">
-                <label class="ci-filebtn">&#128247; <span class="ci-filebtn__t"><?= !empty($g['passport_file_key']) ? 'Replace photo' : 'Choose photo' ?></span><input type="file" accept="image/jpeg,image/png,application/pdf"></label>
+                <label class="ci-filebtn">&#128247; <span class="ci-filebtn__t"><?= !empty($g['passport_file_key']) ? 'Retake picture' : 'Take picture' ?></span><input type="file" accept="image/jpeg,image/png,application/pdf"></label>
                 <span class="ci-upload__state"><?= !empty($g['passport_file_key']) ? 'Uploaded &#10003;' : 'No photo yet' ?></span>
               </div>
               <div class="ci-pp-note" role="status" hidden></div>
-              <label class="ci-l">Passport number</label>
+              <?= checkin_id_label_html('number', $g['id_type'] ?? null) ?>
               <input class="ci-in" data-field="passport_number" value="<?= $fv('passport_number') ?>">
               <label class="ci-l">Nationality</label>
               <input class="ci-in" data-field="nationality" value="<?= $fv('nationality') ?>">
-              <label class="ci-l">Passport expiry</label>
+              <?= checkin_id_label_html('expiry', $g['id_type'] ?? null) ?>
               <input class="ci-in" type="date" data-field="passport_expiry" value="<?= $fv('passport_expiry') ?>">
             </div>
             <?php endif; ?>
@@ -511,7 +525,7 @@ if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — for 
         <textarea class="ci-in" name="special_requests" rows="4" placeholder="Birthday surprise, a bottle of wine in the room…"><?= $val('special_requests') ?></textarea>
 
       <?php elseif ($key === 'deposit'): ?>
-        <div class="ci-deposit"<?= ($showDeposit && !empty($cfg['deposit']['required'])) ? ' data-deposit-required' : '' ?><?= $planOn ? ' data-deposit-gate' : '' ?>>
+        <div class="ci-deposit" data-pp-ai="<?= ($ppAi && checkin_deposit_card_details_supported()) ? '1' : '0' ?>"<?= ($showDeposit && !empty($cfg['deposit']['required'])) ? ' data-deposit-required' : '' ?><?= $planOn ? ' data-deposit-gate' : '' ?>>
           <?php if ($deposit['formatted'] !== ''): ?>
           <div class="ci-deposit__amt">
             <span class="ci-deposit__amt-k">Security deposit</span>
@@ -526,9 +540,23 @@ if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — for 
           <p class="ci-deposit__note"><?= nl2br(e($depositNote)) ?></p>
           <label class="ci-l">Photo of your credit card <span class="ci-opt">(front only — card you&rsquo;ll pay with)</span></label>
           <div class="ci-upload" data-kind="deposit" data-has="<?= $depositOnFile ? '1' : '0' ?>">
-            <label class="ci-filebtn">&#128247; <span class="ci-filebtn__t"><?= $depositOnFile ? 'Replace photo' : 'Choose photo' ?></span><input type="file" accept="image/jpeg,image/png"></label>
+            <label class="ci-filebtn">&#128247; <span class="ci-filebtn__t"><?= $depositOnFile ? 'Retake picture' : 'Take picture' ?></span><input type="file" accept="image/jpeg,image/png"></label>
             <span class="ci-upload__state"><?= $depositOnFile ? 'Uploaded &#10003;' : 'No photo yet' ?></span>
           </div>
+          <?php if (checkin_deposit_card_details_supported()):
+                // Read from the photo (js/checkin-passport.js) or typed. Only the LAST 4
+                // digits — the full card number is never asked for or stored.
+                $__ce = (string)($data['deposit_card_expiry'] ?? '');
+                $__ceShow = preg_match('/^(\d{4})-(\d{2})$/', $__ce, $__cm) ? $__cm[2] . '/' . substr($__cm[1], 2) : ''; ?>
+          <div class="ci-pp-note" role="status" hidden></div>
+          <div class="ci-card">
+            <div class="ci-fld"><label class="ci-l">Name on card</label><input class="ci-in" name="card_name" value="<?= e((string)($data['deposit_card_name'] ?? '')) ?>" autocomplete="cc-name"></div>
+            <div class="ci-fld"><label class="ci-l">Card type</label><input class="ci-in" name="card_brand" value="<?= e((string)($data['deposit_card_brand'] ?? '')) ?>" placeholder="Visa, Mastercard…"></div>
+            <div class="ci-fld"><label class="ci-l">Card ending in</label><div class="ci-card__last4"><span aria-hidden="true">&bull;&bull;&bull;&bull;</span><input class="ci-in" name="card_last4" value="<?= e((string)($data['deposit_card_last4'] ?? '')) ?>" inputmode="numeric" maxlength="4" pattern="[0-9]{4}" placeholder="1234" aria-label="Last 4 digits of the card" autocomplete="off"></div></div>
+            <div class="ci-fld"><label class="ci-l">Expiry</label><input class="ci-in" name="card_expiry" value="<?= e($__ceShow) ?>" placeholder="MM/YY" inputmode="numeric" maxlength="7" autocomplete="cc-exp"></div>
+          </div>
+          <p class="ci-hint">Only the last 4 digits — we never ask for or keep your full card number.</p>
+          <?php endif; ?>
           <p class="ci-hint">Your card image is private, encrypted at rest and shared only with the Tribal Sand front desk. We never charge it online.</p>
           <?php if ($planOn): ?>
           <div class="ci-noncard">

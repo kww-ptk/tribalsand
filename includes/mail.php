@@ -354,8 +354,8 @@ function send_guest_acknowledgement(array $a, array $ctx = []): void {
     // the first email (the same block the booking-confirmed email carries).
     $extras = ['html' => '', 'text' => []];
     if ($manage_url) {
-        $tl[] = 'MANAGE YOUR BOOKING';
-        $tl[] = "  View status & add tours/transfers: {$manage_url}";
+        $tl[] = 'COMPLETE YOUR BOOKING';
+        $tl[] = "  Complete your booking (check-in, tours, transfers): {$manage_url}";
         if ($access_code) $tl[] = "  Your booking code: {$access_code}";
         $tl[] = '';
         $prop   = _mail_hold_property(['id' => (int)$a['hold_id']]);
@@ -422,7 +422,7 @@ function _guest_ack_html(array $d): string {
             '<div style="text-align:center;margin:24px 0">'
           . '<a href="' . $esc((string)$d['manage_url']) . '" '
           . 'style="display:inline-block;background:#102F3A;color:#fff;text-decoration:none;'
-          . 'padding:12px 24px;border-radius:8px;font-weight:600">Manage your booking</a>'
+          . 'padding:12px 24px;border-radius:8px;font-weight:600">Complete your booking</a>'
           . $codeHtml . '</div>';
     }
 

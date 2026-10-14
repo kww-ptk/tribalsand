@@ -36,6 +36,7 @@ if ($isDeposit) {
     // Booking-level private key. Same private store as passports; served only via
     // admin/checkin-file.php?kind=deposit. Never a public URL.
     $key = 'checkin/' . $holdId . '/deposit/' . bin2hex(random_bytes(12)) . '.' . $allowed[$mime];
+    $cardBytes = (string) @file_get_contents($f['tmp_name']);   // read now: storage may move the temp file
     if (!storage_put_private($f['tmp_name'], $key, $mime)) { http_response_code(500); echo json_encode(['error' => 'store failed']); exit; }
 
     $prev = db_query('SELECT deposit_card_file_key FROM booking_checkin WHERE hold_id = :h', [':h' => $holdId])->fetch();
@@ -48,7 +49,30 @@ if ($isDeposit) {
         try { storage_delete_private($prev['deposit_card_file_key']); } catch (Throwable $e) {}
     }
     checkin_recompute_completion($holdId);   // flips green iff the deposit step was the last thing outstanding
-    echo json_encode(['ok' => true]);
+
+    // Read the card into the deposit fields for the guest to check: name, type,
+    // LAST 4 digits, expiry — never the full number (checkin_card_from_ai()).
+    // Images only, only with an AI key and the details columns, capped per session.
+    // Never fails the upload: the photo is already on file.
+    $out = ['ok' => true];
+    $cardReads = (int)($_SESSION['ci_card_reads'] ?? 0);
+    if ($cardBytes !== '' && ai_assistant_supported() && checkin_deposit_card_details_supported() && $cardReads < CHECKIN_CARD_READS_MAX) {
+        $_SESSION['ci_card_reads'] = $cardReads + 1;
+        $out['read'] = false;
+        try {
+            $raw = ai_read_image_json($cardBytes, $mime, checkin_card_read_prompt());
+            if ($raw !== null) {
+                $read = checkin_card_from_ai($raw, date('Y-m-d'));
+                $out['read'] = true;
+                $out['fields'] = $read['fields'];
+                $out['warnings'] = $read['warnings'];
+            }
+        } catch (Throwable $e) {
+            error_log('[checkin-upload] card read failed for hold ' . $holdId . ': ' . $e->getMessage());
+        }
+    }
+    unset($cardBytes);
+    echo json_encode($out);
     exit;
 }
 

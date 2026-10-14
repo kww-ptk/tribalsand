@@ -5,7 +5,7 @@
  * js/checkin-wizard.js) and a co-guest's own page (includes/app/checkin-guest.php),
  * so the two can't drift apart again. It owns:
  *   - shrinking a big phone photo before it is sent (≤ MAX_SIDE px, JPEG);
- *   - the progress card: Upload (real %) → Read passport → Done, with Try again;
+ *   - the progress card: Upload (real %) → Read details → Done, with Try again;
  *   - filling the form from what api/checkin-upload.php read off the photo.
  *
  * Fill rules: a field the guest typed on this visit is never overwritten; one we
@@ -146,25 +146,61 @@
   function mark(el)   { el.setAttribute('data-ai-filled', '1'); el.classList.add('ci-in--ai'); }
   function unmark(el) { el.removeAttribute('data-ai-filled'); el.removeAttribute('data-pp-replace'); el.classList.remove('ci-in--ai'); }
 
+  // ── Passport | Kenyan National ID switch ────────────────────────────────
+  // checkin_id_switch_html() renders it; the hidden input is what the form posts,
+  // and labels carrying data-idl-<type> show the text for the chosen document.
+  /** The details read off the photo, not counting which document it was. */
+  function readCount(fields) { return Object.keys(fields || {}).filter(function (k) { return k !== 'id_type'; }).length; }
+
+  function setIdType(pp, type) {
+    if (!pp) return;
+    var sw = pp.querySelector('.ci-idtype'); if (!sw) return;
+    type = type === 'kenya_id' ? 'kenya_id' : 'passport';
+    sw.querySelectorAll('[data-idtype]').forEach(function (b) { b.setAttribute('aria-checked', b.getAttribute('data-idtype') === type ? 'true' : 'false'); });
+    var h = sw.querySelector('input[type=hidden]'); if (h) h.value = type;
+    pp.querySelectorAll('[data-idl-passport]').forEach(function (l) { l.textContent = l.getAttribute('data-idl-' + type) || l.textContent; });
+  }
+
   function fill(pp, d) {
     var scope = pp.closest('.ci-guest') || pp;
-    var fields = d.fields || {}, warnings = d.warnings || [], filled = 0, was = null;
+    var fields = d.fields || {}, warnings = d.warnings || [], filled = 0, was = null, nameEl = null;
+    if (fields.id_type) setIdType(pp, fields.id_type);   // the photo says which document it is
     Object.keys(fields).forEach(function (k) {
+      if (k === 'id_type') return;
       var el = scope.querySelector('[name="' + k + '"], [data-field="' + k + '"]');
       if (!el) return;
       var cur = String(el.value).trim(), ours = el.hasAttribute('data-ai-filled');
       if (cur !== '' && !ours && !(k === NAME && el.hasAttribute('data-pp-replace'))) return;   // the guest's own
       if (k === NAME && cur !== '' && !ours && norm(cur) !== norm(fields[k])) was = { el: el, value: cur };
-      el.value = fields[k];
+      // The card expiry arrives as YYYY-MM; the guest reads and types MM/YY.
+      el.value = (k === 'card_expiry' && /^\d{4}-\d{2}$/.test(fields[k])) ? fields[k].slice(5) + '/' + fields[k].slice(2, 4) : fields[k];
       mark(el);
       filled++;
+      if (k === NAME && el.getAttribute('name') === NAME) nameEl = el;   // the signer's own name, not another guest's card
     });
+
+    // The name to sign with follows the passport, so the guest only has to draw
+    // the signature. Same rule as every field: never over something they typed —
+    // except a copy of the old name (still the booking name).
+    var sign = null;
+    if (nameEl && nameEl.form) {
+      var sg = nameEl.form.querySelector('[name="waiver_signed_name"]');
+      if (sg) {
+        var sCur = String(sg.value).trim();
+        if (sCur === '' || sg.hasAttribute('data-ai-filled') || (was && norm(sCur) === norm(was.value))) {
+          sign = { el: sg, value: sg.value };
+          sg.value = nameEl.value;
+          mark(sg);
+        }
+      }
+    }
+    if (was) was.sign = sign;
 
     var note = pp.querySelector('.ci-pp-note');
     if (note) {
       var msgs = [];
       if (filled) msgs.push('Please check the highlighted details.');
-      else if (d.read === false || (Object.keys(fields).length === 0 && !warnings.length)) msgs.push('We couldn’t read the photo clearly — please type the details below.');
+      else if (d.read === false || (readCount(fields) === 0 && !warnings.length)) msgs.push('We couldn’t read the photo clearly — please type the details below.');
       msgs = msgs.concat(warnings);
       note.textContent = msgs.join(' ');
       if (was) {
@@ -188,9 +224,10 @@
   // ── One upload, start to finish ──────────────────────────────────────────
   function start(wrap, input, file, opts) {
     var isDeposit = wrap.getAttribute('data-kind') === 'deposit';
-    var pp        = wrap.closest('[data-pp]');
+    // The box the read fills: the passport block, or the deposit card block.
+    var pp        = isDeposit ? wrap.closest('.ci-deposit') : wrap.closest('[data-pp]');
     var isImage   = /^image\//.test(file.type || '');
-    var reads     = !isDeposit && isImage && !!pp && pp.getAttribute('data-pp-ai') === '1';
+    var reads     = isImage && !!pp && pp.getAttribute('data-pp-ai') === '1';
     var run       = (wrap.__ciRun || 0) + 1;      // a newer photo makes older replies stale
     wrap.__ciRun  = run;
     wrap.__ciFile = file;
@@ -198,7 +235,7 @@
     var p = card(wrap), state = wrap.querySelector('.ci-upload__state'), timers = [];
     if (state) state.hidden = true;
     thumb(p, file);
-    setSteps(p, reads ? ['Upload', 'Read passport', 'Done'] : ['Upload', 'Done']);
+    setSteps(p, reads ? ['Upload', 'Read details', 'Done'] : ['Upload', 'Done']);
     set(p, 'upload', 0, 'Preparing your photo…', null);
     wrap.setAttribute('aria-busy', 'true');
     input.disabled = true;
@@ -212,7 +249,7 @@
     }
     function working() {
       if (!reads) { set(p, 'work', 0, 'Saving…', null); return; }
-      set(p, 'work', 1, 'Reading your passport…', null);
+      set(p, 'work', 1, 'Reading your document…', null);
       timers.push(setTimeout(function () { if (!stale()) p.querySelector('.ci-prog__t').textContent = 'Still reading — finding your details…'; }, 6000));
       timers.push(setTimeout(function () { if (!stale()) p.querySelector('.ci-prog__t').textContent = 'Almost there…'; }, 14000));
     }
@@ -232,17 +269,19 @@
       if (d === null || stale()) return;
       finish();
       wrap.setAttribute('data-has', '1');
-      var btn = wrap.querySelector('.ci-filebtn__t'); if (btn) btn.textContent = 'Replace photo';
+      var btn = wrap.querySelector('.ci-filebtn__t'); if (btn) btn.textContent = 'Retake picture';
       var title;
       if (isDeposit) {
-        title = 'Card photo uploaded';
+        var cres = (pp && (d.fields || d.warnings)) ? fill(pp, d) : { filled: 0 };
+        title = (d.read === true && cres.filled) ? 'Card read — ' + cres.filled + (cres.filled === 1 ? ' detail' : ' details') + ' filled in' : 'Card photo uploaded';
       } else {
         var res = (pp && (d.fields || d.read === false || d.warnings)) ? fill(pp, d) : { filled: 0 };
-        var gotAny = d.read === true && Object.keys(d.fields || {}).length > 0;
-        if (gotAny && res.filled)      title = 'Passport read — ' + res.filled + (res.filled === 1 ? ' detail' : ' details') + ' filled in';
-        else if (gotAny)               title = 'Passport read';   // everything it found was already typed in
+        var gotAny = d.read === true && readCount(d.fields) > 0;
+        var doc = (d.fields && d.fields.id_type === 'kenya_id') ? 'ID card' : 'Passport';
+        if (gotAny && res.filled)      title = doc + ' read — ' + res.filled + (res.filled === 1 ? ' detail' : ' details') + ' filled in';
+        else if (gotAny)               title = doc + ' read';   // everything it found was already typed in
         else if (d.read !== undefined) title = 'Photo saved — we couldn’t read it, please type the details';
-        else                           title = 'Passport photo saved — please type the details below';
+        else                           title = 'Photo saved — please type the details below';
       }
       set(p, 'done', 0, title, null);
       if (opts.onDone) opts.onDone(wrap, d, isDeposit);
@@ -277,6 +316,8 @@
 
     root.addEventListener('click', function (e) {
       var t = e.target;
+      var tb = t.closest && t.closest('.ci-idtype__b');
+      if (tb) { e.preventDefault(); setIdType(tb.closest('[data-pp]'), tb.getAttribute('data-idtype')); return; }
       if (t.classList.contains('ci-prog__retry')) {
         e.preventDefault();
         var wrap = t.closest('.ci-upload'), input = wrap && wrap.querySelector('input[type=file]');
@@ -289,6 +330,7 @@
         if (!was) return;
         was.el.value = was.value;
         unmark(was.el);   // their choice now — a later photo leaves it alone
+        if (was.sign && was.sign.el.hasAttribute('data-ai-filled')) { was.sign.el.value = was.sign.value; unmark(was.sign.el); }
         note.__was = null;
         var line = t.closest('.ci-pp-note__was'); if (line) line.remove();
         if (note.textContent.trim() === '') note.hidden = true;
@@ -296,5 +338,5 @@
     });
   }
 
-  window.tsCheckinPassport = { bind: bind, busy: busy, fill: fill };
+  window.tsCheckinPassport = { bind: bind, busy: busy, fill: fill, setIdType: setIdType };
 })();

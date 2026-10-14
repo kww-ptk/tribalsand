@@ -76,7 +76,8 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
       <input type="hidden" name="hold_id" value="<?= $holdId ?>">
       <input type="hidden" name="action" value="share_toggle">
       <input type="hidden" name="share_reservation" value="<?= !empty($hold['share_reservation']) ? '0' : '1' ?>">
-      <button class="btn-sm btn-outline"><?= !empty($hold['share_reservation']) ? 'Stop sharing' : 'Share reservation' ?></button>
+      <?php // Guests who finished check-in always get the portal; this only shares the Bill with them. ?>
+      <button class="btn-sm btn-outline" data-tip="Guests who finished check-in always get the booking portal. This decides whether they also see the Bill (every charge on the booking)."><?= !empty($hold['share_reservation']) ? 'Stop sharing the bill' : 'Share the bill with the party' ?></button>
     </form>
     <?php endif; ?>
   </div>
@@ -180,6 +181,9 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
       <?php else: ?><span class="text-muted">Not uploaded</span><?php endif; ?>
       <?php endif; ?>
     </span></div>
+    <?php $__cardLine = checkin_card_summary($__ci ?? []); if ($__cardLine !== ''): ?>
+    <div class="ci-fact"><span class="ci-fact__k">Card</span><span class="ci-fact__v"><?= e($__cardLine) ?></span></div>
+    <?php endif; ?>
     <?php endif; ?>
   </div>
 </div>
@@ -195,7 +199,7 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
   <div class="table-wrap">
   <table class="data-table">
     <thead>
-      <tr><th>Adult</th><th>Nationality</th><th>Passport #</th><th>Waiver</th><th>Scan</th><th>Status</th><?php if ($__canDocs): ?><th>Actions</th><?php endif; ?></tr>
+      <tr><th>Adult</th><th>Nationality</th><th>Document</th><th>Waiver</th><th>Scan</th><th>Status</th><?php if ($__canDocs): ?><th>Actions</th><?php endif; ?></tr>
     </thead>
     <tbody>
       <?php foreach ($__adults as $g): ?>
@@ -212,8 +216,12 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
               $__pn = trim((string)($g['passport_number'] ?? ''));
               $__ex = trim((string)($g['passport_expiry'] ?? ''));
               if ($__pn === '' && $__ex === ''): ?><span class="text-muted">—</span><?php else:
-                echo $__pn !== '' ? e($__pn) : '<span class="text-muted">—</span>'; ?>
+                echo '<span class="text-muted">' . e(checkin_id_type_label($g['id_type'] ?? null)) . ' · </span>' . ($__pn !== '' ? e($__pn) : '<span class="text-muted">—</span>'); ?>
                 <div class="text-muted" style="font-size:12px">Exp <?= $__ex !== '' ? e(date('j M Y', strtotime($__ex))) : '—' ?></div>
+              <?php endif; ?>
+              <?php require_once __DIR__ . '/../includes/eta-letter.php';
+                    if (eta_letter_status($hold, $g)['ok']): ?>
+                <a href="<?= e(eta_letter_url($holdId, (int)$g['id'])) ?>" target="_blank" class="btn-sm btn-outline" style="margin-top:4px" data-tip="Accommodation confirmation for this guest's Kenya eTA application"><?= admin_icon('download', 14) ?> eTA letter</a>
               <?php endif; ?>
         <?php endif; ?></td>
         <td>
@@ -250,19 +258,28 @@ $__party = checkin_party_status((int)($hold['guest_count'] ?? 1), $__completeAdu
             <input type="hidden" name="action" value="guest_fill">
             <input type="hidden" name="guest_id" value="<?= $__gid ?>">
             <div class="ci-field">
-              <label for="ciName<?= $__gid ?>">Full name (as on passport)</label>
+              <label for="ciName<?= $__gid ?>">Full name (as on the document)</label>
               <input id="ciName<?= $__gid ?>" class="inp inp--sm" name="passport_name" value="<?= e((string)($g['passport_name'] ?? '')) ?>" placeholder="Enter full name">
             </div>
             <div class="ci-field">
-              <label for="ciNum<?= $__gid ?>">Passport number</label>
-              <input id="ciNum<?= $__gid ?>" class="inp inp--sm" name="passport_number" value="<?= e((string)($g['passport_number'] ?? '')) ?>" placeholder="Enter passport number">
+              <label for="ciNum<?= $__gid ?>">Passport / ID number</label>
+              <input id="ciNum<?= $__gid ?>" class="inp inp--sm" name="passport_number" value="<?= e((string)($g['passport_number'] ?? '')) ?>" placeholder="Enter the document number">
             </div>
+            <?php if (checkin_id_type_supported()): $__it = checkin_id_type($g['id_type'] ?? null); ?>
+            <div class="ci-field">
+              <label for="ciType<?= $__gid ?>">Document</label>
+              <select id="ciType<?= $__gid ?>" class="inp inp--sm" name="id_type">
+                <option value="passport"<?= $__it === 'passport' ? ' selected' : '' ?>>Passport</option>
+                <option value="kenya_id"<?= $__it === 'kenya_id' ? ' selected' : '' ?>>Kenyan National ID</option>
+              </select>
+            </div>
+            <?php endif; ?>
             <div class="ci-field">
               <label for="ciNat<?= $__gid ?>">Nationality</label>
               <input id="ciNat<?= $__gid ?>" class="inp inp--sm" name="nationality" value="<?= e((string)($g['nationality'] ?? '')) ?>" placeholder="Enter nationality">
             </div>
             <div class="ci-field">
-              <label>Passport expiry</label>
+              <label>Expiry <span class="text-muted">(a Kenyan ID may have none)</span></label>
               <button type="button" class="dp-btn inp inp--sm" data-dp-target="ciExp<?= $__gid ?>" data-dp-placeholder="Select date">Select date</button>
               <input type="hidden" id="ciExp<?= $__gid ?>" name="passport_expiry" value="<?= e($__exp) ?>">
             </div>
