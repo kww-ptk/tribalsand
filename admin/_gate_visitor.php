@@ -10,12 +10,12 @@ $show = $vpCard['in_scope'];
 $lvl  = in_array($vd['level'], ['ok', 'warn', 'stop'], true) ? $vd['level'] : 'warn';
 // Not signed / terms changed: the only way to sign again is their own pass, so offer it on this tablet.
 $resignUrl = '';
-if ($show && $lvl === 'stop' && !visitor_waiver_current($v, waiver_version(visitor_waiver_text()))) {
+if ($show && $lvl === 'stop' && empty($v['removed_at']) && !visitor_waiver_current($v, waiver_version(visitor_waiver_text()))) {
     $resignUrl = visitor_pass_url((int)$v['id']);
 }
 ?>
 <div class="gt-pass gt-pass--<?= e($lvl) ?>" id="gtVisitorPass">
-  <div class="gt-pass__verdict"><?= $lvl === 'stop' ? '✕ Do not admit — ' : ($lvl === 'warn' ? '! ' : '✓ ') ?><?= e($vd['msg']) ?></div>
+  <div class="gt-pass__verdict"><?= $lvl === 'stop' ? '✕ ' : ($lvl === 'warn' ? '! ' : '✓ ') ?><?= e($vd['msg']) ?></div>
   <?php if ($show): ?>
   <p class="gt-pass__name"><?= e((string)$v['full_name']) ?></p>
   <div class="text-muted">Visitor pass · <?= (int)$vpCard['people'] ?> <?= (int)$vpCard['people'] === 1 ? 'person' : 'people' ?></div>

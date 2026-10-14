@@ -331,7 +331,7 @@ include __DIR__ . '/_layout.php';
     <button type="button" class="btn-primary btn-sm" id="gtScanBtn" data-help="gate-scan"><?= admin_icon('search', 15) ?> Scan gate pass</button>
     <?php if (visitors_supported() && $venues): ?>
     <?php if (visitor_reg_supported()): ?>
-    <a class="btn btn-sm" href="/register.php?gate=1" data-no-shell data-help="gate-register"><?= admin_icon('plus', 15) ?> Register visitor</a>
+    <a class="btn-outline btn-sm" href="/register.php?gate=1" data-no-shell data-help="gate-register"><?= admin_icon('plus', 15) ?> Register visitor</a>
     <?php endif; ?>
     <button type="button" class="btn-outline btn-sm" id="gateSignInToggle" aria-expanded="<?= $signInOpen ? 'true' : 'false' ?>" aria-controls="gateSignInCard"><?= admin_icon('plus', 15) ?> No phone? Sign in without registering</button>
     <?php endif; ?>
@@ -594,7 +594,7 @@ include __DIR__ . '/_layout.php';
     document.getElementById('gtScanClose').addEventListener('click', stop);
     document.addEventListener('keydown', function (e) { if (e.key === 'Escape' && box && !box.hidden) stop(); });
   }
-  var pass = document.getElementById('gtPass');
+  var pass = document.getElementById('gtPass') || document.getElementById('gtVisitorPass');
   if (pass) pass.scrollIntoView({ block: 'start' });
 })();
 </script>
