@@ -239,7 +239,7 @@ include __DIR__ . '/_layout.php';
           <span class="gt-row__tags">
             <?php if ($badge): ?><span class="ci-badge <?= e($badge['class']) ?>"><?= e($badge['label']) ?></span><?php endif; ?>
             <?php if ($out): ?><span class="badge badge--grey">Left <?= e(date('H:i', strtotime((string)$r['gate_departed_at']))) ?></span>
-            <?php elseif ($in): ?><span class="badge badge--green">In <?= e(date(date('Y-m-d', strtotime((string)$r['gate_arrived_at'])) === date('Y-m-d') ? 'H:i' : 'j M H:i', strtotime((string)$r['gate_arrived_at']))) ?><?= !empty($r['gate_people']) ? ' · ' . (int)$r['gate_people'] : '' ?></span><?php endif; ?>
+            <?php elseif ($in): ?><span class="badge badge--green">In <?= e(date(date('Y-m-d', strtotime((string)$r['gate_arrived_at'])) === date('Y-m-d') ? 'H:i' : 'j M H:i', strtotime((string)$r['gate_arrived_at']))) ?><?= !empty($r['gate_people']) ? ' · ' . (int)$r['gate_people'] . ((int)$r['gate_people'] === 1 ? ' person' : ' people') : '' ?></span><?php endif; ?>
           </span>
         </div>
         <?php if ($gateOn && $inScope($vid)): ?>
