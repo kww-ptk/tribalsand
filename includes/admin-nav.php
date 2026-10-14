@@ -34,7 +34,7 @@ declare(strict_types=1);
  * @param ?string $job  the staff job (NULL for a staff account = front desk)
  * @param array   $env  what is installed / per-account: ai, pos, inv, invOrders, companies,
  *                      acctDocs, acctIc, clockOn (bool) + seller (can sell at a till),
- *                      mayaIlai (a manager or reception scoped to Maya Ilai)
+ *                      mayaIlai (a manager or reception scoped to Maya Ilai), visitorReg (visitor tables installed)
  */
 function admin_nav_flags(string $role, ?string $job, array $env): array {
     $e = fn(string $k): bool => !empty($env[$k]);
@@ -64,6 +64,7 @@ function admin_nav_flags(string $role, ?string $job, array $env): array {
         'restaurant' => $owner || $manager || $reception,
         'clockOn' => $e('clockOn'), 'clockNav' => $e('clockOn') || $owner,
         'mayaIlai' => $owner || (($manager || $reception) && $e('mayaIlai')),   // reception: view only
+        'visitorReg' => $e('visitorReg'),
     ];
 }
 
@@ -103,7 +104,11 @@ function admin_nav_definition(array $f, array $badge = []): array {
                 $tab('Customers', 'messages.php', $on('messages'), 'Customer messages', $b('messages')),
                 $tab('Team chat', 'internal-messages.php', $on('internal'), 'Team chat', $b('team')),
             ]),
-            $item('Gate', 'gate', [$tab('Gate', 'gate.php', $on('gate'))]),
+            $item('Gate', 'gate', [
+                $tab('Gate', 'gate.php', $on('gate')),
+                $tab('Visitors', 'visitor-registry.php', $on('gate') && $on('visitorReg')),
+                $tab('Places & posters', 'visitor-places.php', $on('owner') && $on('visitorReg')),
+            ]),
             $item('AI assistant', 'assistant', [$tab('AI assistant', 'assistant.php', $on('assistant'))]),
         ]],
 
@@ -383,6 +388,8 @@ function admin_nav_help_button_html(): string {
  * Invoices & payments). Keyed by page file; every page of a tab is searched.
  */
 const ADMIN_NAV_SEARCH_WORDS = [
+    'visitor-registry.php' => 'visitor visitors register registration waiver walk-in day pass guest list',
+    'visitor-places.php'   => 'visitor places poster qr register gate restaurant tribal table',
     'support.php'          => 'support guides manual documentation pdf download user guide training',
     'unit-map.php'         => 'maya ilai villa bedroom studio occupancy aerial map',
     'gantt.php'            => 'calendar availability blocks occupancy',
