@@ -129,10 +129,35 @@ function visitor_create(array $d, string $via, ?int $createdBy = null): int {
          ':via' => in_array($via, ['self', 'gate', 'invite'], true) ? $via : 'self', ':by' => $createdBy ?: null])->fetchColumn();
 }
 
+/** A refusal decided inside visitor_let_in()'s write section (the only exception it turns into a message besides "already on site"). */
+final class VisitorRefusal extends RuntimeException {}
+
+/** Queue of ID-photo files to delete once the caller's transaction commits. */
+function &visitor_file_delete_queue(): array {
+    static $q = [];
+    return $q;
+}
+/** Keys waiting to be deleted (for tests / inspection). */
+function visitor_pending_file_deletes(): array { return array_values(visitor_file_delete_queue()); }
+/** Delete the queued files (call AFTER the surrounding transaction commits), then empty the queue. */
+function visitor_flush_file_deletes(): void {
+    $q = &visitor_file_delete_queue();
+    foreach ($q as $key) { try { storage_delete_private((string)$key); } catch (Throwable $e) {} }
+    $q = [];
+}
+/** Empty the queue without deleting (call when the surrounding transaction rolled back). */
+function visitor_discard_file_deletes(): void { $q = &visitor_file_delete_queue(); $q = []; }
+
 /**
  * Save new details. A signed visitor whose material identity changed loses the
  * signature (reference + audit rows kept) and must sign again. A new photo
  * (photo_key) replaces the old file. Returns true when a signature was voided.
+ *
+ * File deletion: when this function owns the transaction the old photo is deleted
+ * after commit. When the caller already has a transaction open, the old key is
+ * only QUEUED — callers that wrap visitor_update_identity() in their own
+ * transaction must call visitor_flush_file_deletes() after commit and
+ * visitor_discard_file_deletes() on rollback.
  */
 function visitor_update_identity(int $id, array $d, string $actor): bool {
     $v = visitor_find($id);
@@ -160,9 +185,10 @@ function visitor_update_identity(int $id, array $d, string $actor): bool {
         try { if ($own) { if (db()->inTransaction()) db()->rollBack(); } else db()->exec('ROLLBACK TO SAVEPOINT visitor_ident'); } catch (Throwable $e2) {}
         throw $e;
     }
-    // Only after the writes succeeded: drop the replaced photo file.
+    // Only once the writes are durable: drop the replaced photo file (queued when the caller owns the transaction).
     if ($newPhoto !== '' && !empty($v['id_photo_key']) && $v['id_photo_key'] !== $newPhoto) {
-        try { storage_delete_private((string)$v['id_photo_key']); } catch (Throwable $e) {}
+        if ($own) { try { storage_delete_private((string)$v['id_photo_key']); } catch (Throwable $e) {} }
+        else      { $q = &visitor_file_delete_queue(); $q[] = (string)$v['id_photo_key']; }
     }
     if (!$changed) return false;
     visitor_log_step('signature_voided', ['reference' => (string)$v['waiver_reference'], 'visitor_id' => $id,
@@ -405,7 +431,7 @@ function visitor_let_in(int $visitorId, string $today, ?int $placeId, int $byAdm
             $card = visitor_gate_card($visitorId, $today, $venueIds);
             if (!$card || $card['verdict']['level'] === 'stop') {
                 $msg = $card ? $card['verdict']['msg'] : 'This pass isn’t valid.';
-                throw new RuntimeException($msg);
+                throw new VisitorRefusal($msg);
             }
         }
         $visit = $card['visit'];
@@ -421,7 +447,7 @@ function visitor_let_in(int $visitorId, string $today, ?int $placeId, int $byAdm
             try { if ($own) { if (db()->inTransaction()) db()->rollBack(); } else db()->exec('ROLLBACK TO SAVEPOINT visitor_in'); } catch (Throwable $e2) {}
         }
         if ($e instanceof PDOException && $e->getCode() === '23505') return ['ok' => false, 'msg' => 'Already on site.'];
-        if ($e instanceof RuntimeException) return ['ok' => false, 'msg' => $e->getMessage()];
+        if ($e instanceof VisitorRefusal) return ['ok' => false, 'msg' => $e->getMessage()];
         throw $e;
     }
     if (function_exists('audit_log')) audit_log('visitor.in', 'visitor', $newId, (string)$v['full_name']);

@@ -147,6 +147,13 @@ if (!$pdo) {
         visitor_update_identity($id, ['id_number' => 'ZZ999999'] + $d, 'visitor');
         visitor_sign($id, 'Anna Smith', $sig, 'self');
 
+        visitor_discard_file_deletes();
+        $oldKey = (string)visitor_find($id)['id_photo_key'];
+        visitor_update_identity($id, ['photo_key' => 'visitors/newer.jpg', 'id_number' => 'ZZ999999'] + $d, 'visitor');
+        check('db identity: inside a caller transaction the old photo is queued, not deleted', $oldKey !== '' && visitor_pending_file_deletes() === [$oldKey]);
+        visitor_discard_file_deletes();
+        check('db identity: discard empties the queue', visitor_pending_file_deletes() === []);
+
         $kid = visitor_add_child($id, 'Mia Smith', 6);
         $ben = visitor_invite_adult($id, 'Ben Ode');
         $g = visitor_group($id);
@@ -180,6 +187,13 @@ if (!$pdo) {
             check('db gate: ...and does not widen that property\'s registry scope', !visitor_in_scope($id, [$venue2], 0) && visitor_visit_on($id, '2026-10-15') === null);
         } else {
             echo "SKIP  second-property scope check (only one venue)\n";
+        }
+        // Sign the lead out, then try a place behind a property the guard doesn't cover: the place-validity path is really reached.
+        db_query('UPDATE visitors SET time_out = now() WHERE registered_visitor_id = :v AND time_out IS NULL', [':v' => $id]);
+        if ($venue2) {
+            $oos = visitor_let_in($id, '2026-10-16', $placeId, 0, [$venue2]);
+            check('db gate: place out of the guard\'s scope = refused, no visit, no scope widening',
+                !$oos['ok'] && visitor_visit_on($id, '2026-10-16') === null && !visitor_in_scope($id, [$venue2], 0));
         }
         $solo = visitor_create(visitor_clean_input(['passport_name' => 'Cleo Solo', 'phone' => '0733 111 222', 'email' => 'cleo.vtest@example.com',
             'passport_number' => 'EF111222', 'nationality' => 'Kenya']) + ['photo_key' => ''], 'self');
