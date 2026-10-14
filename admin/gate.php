@@ -67,10 +67,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (gate_verdict($bk, frontdesk_today_ymd(), true)['level'] === 'stop') {
                 $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'This booking can’t be checked in at the gate. Call reception.'];
             } else {
-                $ppl = max(1, min(99, (int)($_POST['people'] ?? 0) ?: (int)$bk['party']['total']));
-                $_SESSION['hold_flash'] = gate_mark_arrived($hid, $meId, $ppl)
-                    ? ['type'=>'success','msg'=>($bk['guest_name'] ?: 'Guest') . ' checked in — ' . $ppl . ' ' . ($ppl === 1 ? 'person' : 'people') . '.']
-                    : ['type'=>'error','msg'=>'Already checked in.'];
+                $ppl    = max(1, min(99, (int)($_POST['people'] ?? 0) ?: (int)$bk['party']['total']));
+                $booked = (int)$bk['party']['total'];
+                // More people than booked: only after the guard confirmed the warning (the page
+                // asks first; a post without the confirmation is refused — JS off, double tap).
+                $over = gate_over_party($ppl, $booked);
+                if ($over && ($_POST['over_ok'] ?? '') !== '1') {
+                    $_SESSION['hold_flash'] = ['type'=>'error','msg'=>gate_over_party_message($ppl, $booked) . ' Nothing was saved.'];
+                } else {
+                    $_SESSION['hold_flash'] = gate_mark_arrived($hid, $meId, $ppl, $over ? 'booked for ' . $booked . ' — guard confirmed extra' : '')
+                        ? ['type'=>'success','msg'=>($bk['guest_name'] ?: 'Guest') . ' checked in — ' . $ppl . ' ' . ($ppl === 1 ? 'person' : 'people') . '.'
+                            . ($over ? ' Booked for ' . $booked . ' — tell reception.' : '')]
+                        : ['type'=>'error','msg'=>'Already checked in.'];
+                }
             }
         } elseif ($action === 'depart') {
             $_SESSION['hold_flash'] = gate_mark_departed($hid, $meId)
@@ -284,6 +293,7 @@ include __DIR__ . '/_layout.php';
 .gt-pass__act{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-top:14px}.gt-pass__act form{display:flex;gap:10px;align-items:center;margin:0}
 .gt-step{display:inline-flex;align-items:center;border:1px solid var(--border,#d9d2c6);border-radius:999px;background:#fff}
 .gt-step button{width:38px;height:38px;border:0;background:none;cursor:pointer;display:grid;place-items:center}
+.gt-over{color:#9a6200;font-weight:600;font-size:13px}.gt-over[hidden]{display:none}
 .gt-step input{width:42px;text-align:center;border:0;font:inherit;font-size:16px;font-weight:700;background:none}
 .gt-scan{position:fixed;inset:0;z-index:1000;background:rgba(10,20,20,.9);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;padding:16px}
 .gt-scan[hidden]{display:none}
@@ -338,10 +348,12 @@ include __DIR__ . '/_layout.php';
   <?php endif; ?>
   <div class="gt-pass__act">
     <?php if ($gateOn && $pv['level'] !== 'stop' && !$pin): ?>
-    <form method="POST" data-help="gate-checkin">
+    <form method="POST" data-help="gate-checkin" class="gt-arrive" data-booked="<?= (int)$pp['total'] ?>">
+      <input type="hidden" name="over_ok" value="">
       <?= csrf_field() ?><input type="hidden" name="action" value="arrive"><input type="hidden" name="hold_id" value="<?= (int)$passBk['id'] ?>"><input type="hidden" name="pass" value="<?= e($passTok) ?>">
       <span class="gt-step"><button type="button" data-step="-1" aria-label="One fewer"><?= admin_icon('minus', 14) ?></button><input type="text" inputmode="numeric" name="people" value="<?= (int)$pp['total'] ?>" aria-label="People arriving"><button type="button" data-step="1" aria-label="One more"><?= admin_icon('plus', 14) ?></button></span>
       <button class="btn-primary"><?= admin_icon('check', 15) ?> Check in</button>
+      <span class="gt-over" hidden></span>
     </form>
     <?php elseif ($gateOn && $pin && !$pout): ?>
     <form method="POST"><?= csrf_field() ?><input type="hidden" name="action" value="depart"><input type="hidden" name="hold_id" value="<?= (int)$passBk['id'] ?>"><input type="hidden" name="pass" value="<?= e($passTok) ?>"><button class="btn-outline"><?= admin_icon('logout', 15) ?> Check out</button></form>
@@ -461,13 +473,40 @@ include __DIR__ . '/_layout.php';
   var lf = document.getElementById('gateLogFilters');
   if (vd && lf) vd.addEventListener('change', function () { lf.submit(); });
 
-  // People stepper on the pass.
+  // People stepper on the pass, with a warning when more people come than are booked.
+  var arrive = document.querySelector('form.gt-arrive');
+  function overMsg(n, booked) {
+    return 'Booked for ' + booked + ' ' + (booked === 1 ? 'person' : 'people') + ' — you are letting in ' + n +
+           '. Call reception before you let the extra ' + (n - booked === 1 ? 'person' : 'people') + ' in.';
+  }
+  function showOver() {
+    if (!arrive) return;
+    var booked = parseInt(arrive.getAttribute('data-booked'), 10) || 0;
+    var n = parseInt(arrive.querySelector('[name="people"]').value, 10) || 0;
+    var el = arrive.querySelector('.gt-over');
+    var over = booked > 0 && n > booked;
+    el.hidden = !over;
+    el.textContent = over ? '! Booked for ' + booked : '';
+  }
   document.querySelectorAll('.gt-step [data-step]').forEach(function (b) {
     b.addEventListener('click', function () {
       var inp = b.parentNode.querySelector('input');
       inp.value = Math.max(1, Math.min(99, (parseInt(inp.value, 10) || 1) + parseInt(b.getAttribute('data-step'), 10)));
+      showOver();
     });
   });
+  if (arrive) {
+    arrive.querySelector('[name="people"]').addEventListener('input', showOver);
+    arrive.addEventListener('submit', function (e) {
+      var booked = parseInt(arrive.getAttribute('data-booked'), 10) || 0;
+      var n = parseInt(arrive.querySelector('[name="people"]').value, 10) || 0;
+      var ok = arrive.querySelector('[name="over_ok"]');
+      if (!(booked > 0 && n > booked) || ok.value === '1' || !window.tsConfirm) return;   // no dialog: the server refuses it with the same warning
+      e.preventDefault();
+      var yes = function () { ok.value = '1'; arrive.submit(); };
+      window.tsConfirm(overMsg(n, booked), yes, { title: 'More people than booked', label: 'Let ' + n + ' in' });
+    });
+  }
 
   // Scan a gate pass with the device camera (jsQR, as the clock kiosk). The
   // camera runs only while the scanner is open; it is released on close, on a

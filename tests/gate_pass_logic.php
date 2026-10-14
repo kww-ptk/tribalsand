@@ -55,6 +55,13 @@ check('party: no roster → the lead name, 1 person', $p['total'] === 1 && $p['n
 check('party label: singular', gate_party_label($p) === '1 person · 1 adult');
 check('party: Postgres "f" is not a child', gate_party([['passport_name' => 'X', 'is_child' => 'f']], 1)['children'] === 0);
 
+// ── More people than booked ──
+check('over: 3 at the gate, booked for 1', gate_over_party(3, 1));
+check('over: the booked number is fine', !gate_over_party(1, 1) && !gate_over_party(2, 3));
+check('over: unknown booking size never warns', !gate_over_party(5, 0));
+check('over message: names both numbers', gate_over_party_message(3, 1) === 'Booked for 1 person — you are letting in 3. Call reception before you let the extra people in.');
+check('over message: one extra person', str_contains(gate_over_party_message(3, 2), 'the extra person in'));
+
 // ── Verdict ──
 $base = ['status' => 'confirmed', 'check_in' => '2026-10-14', 'check_out' => '2026-10-17', 'venue_name' => 'Zuri'];
 check('verdict: expected today = ok', gate_verdict($base, '2026-10-14', true)['level'] === 'ok');
