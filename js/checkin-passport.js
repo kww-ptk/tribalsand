@@ -15,7 +15,8 @@
  * note offers Undo with the old name.
  *
  * Usage: tsCheckinPassport.bind(form, { formData: function (wrap, isDeposit) {…},
- *                                        onDone: function (wrap, d, isDeposit) {…} })
+ *                                        onDone: function (wrap, d, isDeposit) {…},
+ *                                        endpoint: '/api/visitor-upload.php' })   // optional, default check-in
  * formData returns a FormData carrying the auth fields (ref/g, csrf_token, guest_id).
  */
 (function () {
@@ -55,10 +56,10 @@
   // ── Sending (XHR: fetch can't report upload progress) ─────────────────────
   // onUp(fraction) while sending, onUp(1, true) once every byte is out and the
   // server is working (storing, then reading the photo).
-  function send(fd, onUp) {
+  function send(fd, onUp, url) {
     return new Promise(function (resolve, reject) {
       var x = new XMLHttpRequest();
-      x.open('POST', ENDPOINT);
+      x.open('POST', url || ENDPOINT);
       x.withCredentials = true;
       x.timeout = 90000;
       if (x.upload) {
@@ -264,7 +265,7 @@
       return send(fd, function (frac, sent) {
         if (stale()) return;
         if (sent) working(); else set(p, 'upload', 0, 'Uploading…', frac);
-      });
+      }, opts.endpoint);
     }).then(function (d) {
       if (d === null || stale()) return;
       finish();
