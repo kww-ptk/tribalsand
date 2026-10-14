@@ -24,6 +24,39 @@ $__nights = max(1, (int)((strtotime((string)$hold['check_out']) - strtotime((str
   <p class="pa-set__note">Keep your booking code: with it you can open this page from any device.</p>
 </div>
 
+<?php
+// Kenya eTA accommodation letters (includes/eta-letter.php): the lead sees one per
+// adult on the booking, a co-guest only their own. Kenyan ID holders need none.
+require_once __DIR__ . '/../eta-letter.php';
+$__etaRows = [];
+if (checkin_supported()) {
+    $__people = !empty($isCoGuest) ? (isset($me) && $me ? [$me] : [])
+              : array_values(array_filter(fetch_checkin_guests((int)$hold['id']), fn($g) => empty($g['is_child'])));
+    foreach ($__people as $__p) {
+        $__st = eta_letter_status($hold, $__p);
+        if ($__st['hidden'] && checkin_id_type($__p['id_type'] ?? null) !== 'kenya_id') continue;
+        $__etaRows[] = [$__p, $__st];
+    }
+}
+?>
+<?php if ($__etaRows): ?>
+<div class="pa-card pa-set">
+  <div class="pa-set__h">Travel documents</div>
+  <p class="pa-set__note">Your <strong>eTA letter</strong> confirms your stay with us — upload it as proof of accommodation when you apply for the Kenya eTA at etakenya.go.ke.</p>
+  <?php foreach ($__etaRows as [$__p, $__st]): $__nm = trim((string)($__p['passport_name'] ?? '')) ?: 'Guest'; ?>
+  <div class="pa-set__row">
+    <span><?= e($__nm) ?><?= !empty($__p['is_lead']) ? ' <span class="pa-set__muted">(you)</span>' : '' ?></span>
+    <?php if ($__st['ok']): ?>
+      <a class="pa-btn pa-btn--ghost pa-set__btn" target="_blank" rel="noopener"
+         href="<?= e(!empty($isCoGuest) ? eta_letter_url((int)$hold['id'], (int)$__p['id'], null, $ref) : eta_letter_url((int)$hold['id'], (int)$__p['id'], $ref)) ?>">eTA letter</a>
+    <?php else: ?>
+      <span class="pa-set__muted"><?= e($__st['reason']) ?></span>
+    <?php endif; ?>
+  </div>
+  <?php endforeach; ?>
+</div>
+<?php endif; ?>
+
 <div class="pa-card pa-set">
   <div class="pa-set__h">Change of plans</div>
   <?php if (!empty($isCoGuest)): ?>

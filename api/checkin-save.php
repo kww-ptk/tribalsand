@@ -117,6 +117,20 @@ if ($isLead && ($_POST['scope'] ?? '') !== 'guest') {
         $p
     );
 
+    // Deposit card details (read from the photo, or typed): name, type, LAST 4
+    // digits, expiry. Only when the deposit step was on the page; a malformed
+    // value is stored as nothing — never the full number (exactly 4 digits).
+    if (array_key_exists('card_last4', $_POST) && checkin_deposit_card_details_supported()) {
+        $cName  = mb_substr(trim((string)($_POST['card_name'] ?? '')), 0, 120);
+        $cBrand = trim((string)($_POST['card_brand'] ?? ''));
+        $cBrand = CHECKIN_CARD_BRANDS[strtolower($cBrand)] ?? mb_substr($cBrand, 0, 30);
+        db_query('UPDATE booking_checkin SET deposit_card_name = :n, deposit_card_brand = :b,
+                         deposit_card_last4 = :l, deposit_card_expiry = :e WHERE hold_id = :h',
+            [':n' => $cName !== '' ? $cName : null, ':b' => $cBrand !== '' ? $cBrand : null,
+             ':l' => checkin_card_last4_clean((string)$_POST['card_last4']),
+             ':e' => checkin_card_expiry_clean((string)($_POST['card_expiry'] ?? '')), ':h' => $holdId]);
+    }
+
     // Deposit without a card photo: how the guest will pay at arrival. The wizard
     // posts an empty deposit_plan alongside the radios, so the key is present
     // exactly when the deposit step was on the page — absent = leave it alone.
@@ -153,6 +167,12 @@ db_query(
      WHERE id=:g AND hold_id=:h",
     [':n'=>$s('passport_name'), ':num'=>$s('passport_number'), ':nat'=>$s('nationality'),
      ':exp'=>$s('passport_expiry'), ':g'=>$guestId, ':h'=>$holdId]);
+// Passport or Kenyan ID — only when the form carried the switch (a request
+// without it leaves the stored type alone; an unknown value is a passport).
+if (array_key_exists('id_type', $_POST) && checkin_id_type_supported()) {
+    db_query('UPDATE checkin_guests SET id_type = :t WHERE id = :g AND hold_id = :h',
+        [':t' => checkin_id_type((string)$_POST['id_type']), ':g' => $guestId, ':h' => $holdId]);
+}
 
 // ── Per-guest waiver signature: self-sign only, requires a drawn signature ──
 $sig = (string)($_POST['waiver_signature'] ?? '');
@@ -212,6 +232,10 @@ if ($triedConsent && checkin_signature_supported() && checkin_can_sign_self($onl
             $sigP[':snp']   = ($targetRow['passport_number'] ?? null) ?: null;
             $sigP[':snnat'] = ($targetRow['nationality'] ?? null)     ?: null;
             $sigP[':snexp'] = $exp !== '' ? $exp : null;
+        }
+        if (checkin_id_type_supported()) {
+            $sigSet .= ', waiver_id_type_snapshot=:snt';
+            $sigP[':snt'] = checkin_id_type($targetRow['id_type'] ?? null);
         }
 
         db_query("UPDATE checkin_guests SET $sigSet WHERE id=:g AND hold_id=:h", $sigP);

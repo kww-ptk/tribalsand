@@ -201,6 +201,96 @@ function checkin_deposit_card_on_file(?array $data): bool {
     return checkin_deposit_supported() && trim((string)(($data ?? [])['deposit_card_file_key'] ?? '')) !== '';
 }
 
+// ── Deposit card details (photo → name, type, last 4, expiry) ────────────────
+// booking_checkin.deposit_card_* (add_checkin_deposit_card_details.sql). What the
+// front desk needs to recognise the card at arrival — NEVER the full number: the
+// prompt asks for the last 4 only, the parser keeps at most 4 digits whatever the
+// reply says, typed input must be exactly 4 digits, and the column's CHECK refuses
+// anything else. The photo itself stays private (admin/checkin-file.php).
+
+const CHECKIN_CARD_READS_MAX = 4;   // AI reads of the card per browser session
+const CHECKIN_CARD_BRANDS = ['visa' => 'Visa', 'mastercard' => 'Mastercard', 'master card' => 'Mastercard',
+    'american express' => 'American Express', 'amex' => 'American Express', 'discover' => 'Discover',
+    'diners club' => 'Diners Club', 'diners' => 'Diners Club', 'jcb' => 'JCB', 'unionpay' => 'UnionPay',
+    'union pay' => 'UnionPay', 'maestro' => 'Maestro'];
+
+/** True once add_checkin_deposit_card_details.sql has run (catalog lookup). */
+function checkin_deposit_card_details_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try {
+        $ok = (bool)db_query("SELECT 1 FROM information_schema.columns WHERE table_name = 'booking_checkin' AND column_name = 'deposit_card_last4' LIMIT 1")->fetchColumn();
+    } catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/** The instruction sent with the card photo. Asks for JSON only — and only the last 4 digits. */
+function checkin_card_read_prompt(): string {
+    return 'This image should be the front of a payment card (credit or debit). Read it and reply with ONLY a JSON object, no other text: '
+         . '{"is_card": true or false, "name_on_card": "", "brand": "Visa / Mastercard / American Express / …", '
+         . '"last4": "ONLY the last 4 digits of the card number", "expiry": "MM/YY as printed"}. '
+         . 'Return the last 4 digits only — never the full number, never any other digits. '
+         . 'Use "" for anything you cannot read clearly. Never guess a character.';
+}
+
+/** Exactly four digits from a typed "card ending in" value, else null. Pure. */
+function checkin_card_last4_clean(string $v): ?string {
+    $d = preg_replace('/\D/', '', $v) ?? '';
+    return strlen($d) === 4 ? $d : null;
+}
+
+/** "MM/YY", "MM/YYYY" or "YYYY-MM" → "YYYY-MM", else null. Pure. */
+function checkin_card_expiry_clean(string $v): ?string {
+    $v = trim($v);
+    if (preg_match('/^(\d{4})-(\d{2})$/', $v, $m))            { $y = (int)$m[1]; $mo = (int)$m[2]; }
+    elseif (preg_match('/^(\d{1,2})\s*\/\s*(\d{2}|\d{4})$/', $v, $m)) { $mo = (int)$m[1]; $y = (int)$m[2]; if ($y < 100) $y += 2000; }
+    else return null;
+    if ($mo < 1 || $mo > 12 || $y < 2000 || $y > 2099) return null;
+    return sprintf('%04d-%02d', $y, $mo);
+}
+
+/**
+ * Turn the AI's reading of a card photo into the deposit fields. Pure.
+ * Keeps at most the last 4 digits, whatever the reply contains.
+ * @return array{fields:array<string,string>,warnings:list<string>}
+ */
+function checkin_card_from_ai(array $raw, string $today): array {
+    if (($raw['is_card'] ?? true) === false) return ['fields' => [], 'warnings' => ["That doesn't look like a payment card."]];
+    $str = fn($k) => trim((string)(is_scalar($raw[$k] ?? null) ? $raw[$k] : ''));
+    $fields = []; $warnings = [];
+
+    $name = trim(preg_replace('/\s+/', ' ', $str('name_on_card')) ?? '');
+    if ($name !== '' && !preg_match('/\d/', $name)) {
+        $fields['card_name'] = mb_substr(preg_replace_callback("/(^|[\\s\\-'’])(\\p{Ll})/u",
+            fn($m) => $m[1] . mb_strtoupper($m[2], 'UTF-8'), mb_strtolower($name, 'UTF-8')) ?? $name, 0, 120);
+    }
+    $brand = CHECKIN_CARD_BRANDS[strtolower($str('brand'))] ?? '';
+    if ($brand !== '') $fields['card_brand'] = $brand;
+
+    $digits = preg_replace('/\D/', '', $str('last4')) ?? '';
+    if (strlen($digits) >= 4) $fields['card_last4'] = substr($digits, -4);   // a longer reply is cut — never stored
+
+    $exp = checkin_card_expiry_clean($str('expiry'));
+    if ($exp !== null) {
+        $fields['card_expiry'] = $exp;
+        if ($exp < substr($today, 0, 7)) $warnings[] = 'This card has expired.';
+    }
+    return ['fields' => $fields, 'warnings' => $warnings];
+}
+
+/** One line for staff: "Visa •••• 4242 · exp 08/2028 · John Smith" ('' when nothing). Pure. */
+function checkin_card_summary(array $data): string {
+    $parts = [];
+    $last4 = trim((string)($data['deposit_card_last4'] ?? ''));
+    $head  = trim(trim((string)($data['deposit_card_brand'] ?? '')) . ($last4 !== '' ? ' •••• ' . $last4 : ''));
+    if ($head !== '') $parts[] = $head;
+    $exp = trim((string)($data['deposit_card_expiry'] ?? ''));
+    if (preg_match('/^(\d{4})-(\d{2})$/', $exp, $m)) $parts[] = 'exp ' . $m[2] . '/' . $m[1];
+    $name = trim((string)($data['deposit_card_name'] ?? ''));
+    if ($name !== '') $parts[] = $name;
+    return implode(' · ', $parts);
+}
+
 /** How a guest without a card photo will pay the deposit at arrival. Keys are stored. */
 function checkin_deposit_plans(): array {
     return [
@@ -499,8 +589,70 @@ function checkin_missing_steps(array $config, ?array $data, ?array $lead): array
 function checkin_guest_passport_complete(?array $g): bool {
     if ($g === null) return false;
     $has = fn($k) => trim((string)($g[$k] ?? '')) !== '';
-    return $has('passport_name') && $has('passport_number')
-        && ($has('passport_file_key') || ($has('nationality') && $has('passport_expiry')));
+    if (!$has('passport_name') || !$has('passport_number')) return false;
+    if ($has('passport_file_key')) return true;
+    // A Kenyan ID needs no expiry: the older cards don't print one.
+    return checkin_id_type($g['id_type'] ?? null) === 'kenya_id'
+        ? $has('nationality')
+        : $has('nationality') && $has('passport_expiry');
+}
+
+// ── Identity document: Passport or Kenyan National ID ───────────────────────
+// checkin_guests.id_type (add_checkin_id_type.sql). The number lives in
+// passport_number either way. Before the migration every guest is a passport.
+
+const CHECKIN_ID_TYPES = ['passport' => 'Passport', 'kenya_id' => 'Kenyan ID'];
+
+/** True once add_checkin_id_type.sql has run (catalog lookup — safe inside a transaction). */
+function checkin_id_type_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try {
+        $ok = (bool)db_query("SELECT 1 FROM information_schema.columns WHERE table_name = 'checkin_guests' AND column_name = 'id_type' LIMIT 1")->fetchColumn();
+    } catch (Throwable $e) { $ok = false; }
+    return $ok;
+}
+
+/** A known document type, else 'passport'. Pure. */
+function checkin_id_type(?string $t): string {
+    $t = (string)$t;
+    return isset(CHECKIN_ID_TYPES[$t]) ? $t : 'passport';
+}
+
+/** Short label for lists and the signed record ("Passport" / "Kenyan ID"). Pure. */
+function checkin_id_type_label(?string $t): string {
+    return CHECKIN_ID_TYPES[checkin_id_type($t)];
+}
+
+/** The guest-facing labels that follow the document type. Pure. */
+const CHECKIN_ID_FIELD_LABELS = [
+    'number' => ['passport' => 'Passport number', 'kenya_id' => 'ID number'],
+    'expiry' => ['passport' => 'Passport expiry', 'kenya_id' => 'ID expiry (if shown on the card)'],
+];
+
+/**
+ * A label whose text follows the switch: rendered for $type, carrying both texts
+ * so js/checkin-passport.js can swap them. Escaped. $field = 'number' | 'expiry'.
+ */
+function checkin_id_label_html(string $field, ?string $type): string {
+    $l = CHECKIN_ID_FIELD_LABELS[$field];
+    return '<label class="ci-l" data-idl-passport="' . e($l['passport']) . '" data-idl-kenya_id="' . e($l['kenya_id']) . '">'
+         . e($l[checkin_id_type($type)]) . '</label>';
+}
+
+/**
+ * The "Passport | Kenyan National ID" switch for one guest. $fieldAttr names the
+ * hidden input the form posts: 'name="id_type"' (the signer's own form) or
+ * 'data-field="id_type"' (a party card saved on its own). '' before the migration.
+ */
+function checkin_id_switch_html(?string $type, string $fieldAttr): string {
+    if (!checkin_id_type_supported()) return '';
+    $t = checkin_id_type($type);
+    $btn = fn($v, $label) => '<button type="button" role="radio" class="ci-idtype__b" data-idtype="' . $v . '" aria-checked="'
+        . ($t === $v ? 'true' : 'false') . '">' . $label . '</button>';
+    return '<div class="ci-idtype" role="radiogroup" aria-label="Identity document">'
+         . $btn('passport', 'Passport') . $btn('kenya_id', 'Kenyan National ID')
+         . '<input type="hidden" ' . $fieldAttr . ' value="' . $t . '"></div>';
 }
 
 // ── Passport reading (photo → fields) ───────────────────────────────────────
@@ -514,10 +666,15 @@ const CHECKIN_PASSPORT_READS_MAX = 6;   // AI reads per browser session (cost + 
 
 /** The instruction sent with the passport photo. Asks for JSON only. */
 function checkin_passport_read_prompt(): string {
-    return 'This image should be the photo page of a passport. Read it and reply with ONLY a JSON object, no other text: '
-         . '{"is_passport": true or false, "given_names": "", "surname": "", "passport_number": "", '
+    return 'This image should be either the photo page of a passport or the front of a Kenyan National ID card '
+         . '(the older green card or the newer Maisha card). Read it and reply with ONLY a JSON object, no other text: '
+         . '{"document_type": "passport" or "kenya_id" or "other", "given_names": "", "surname": "", '
+         . '"passport_number": "the passport number (passports only)", '
+         . '"document_number": "the ID NUMBER printed on a Kenyan ID (digits only; NOT the serial number)", '
          . '"nationality": "country name in English", "nationality_code": "3-letter code as printed", '
-         . '"date_of_expiry": "YYYY-MM-DD", "mrz_line2": "the second machine-readable line at the bottom, exactly as printed, 44 characters including < fillers"}. '
+         . '"date_of_expiry": "YYYY-MM-DD, or \"\" when the document shows none", '
+         . '"mrz_line2": "passports only: the second machine-readable line at the bottom, exactly as printed, 44 characters including < fillers"}. '
+         . 'For a Kenyan ID whose full names are printed as one line, put them all in given_names. '
          . 'Use "" for anything you cannot read clearly. Never guess a character.';
 }
 
@@ -583,9 +740,15 @@ function checkin_nationality_name(string $code): string {
  */
 function checkin_passport_from_ai(array $raw, string $today): array {
     $fields = []; $warnings = [];
-    if (($raw['is_passport'] ?? true) === false) {
+    $docType = strtolower(trim((string)(is_scalar($raw['document_type'] ?? null) ? $raw['document_type'] : '')));
+    if ($docType === 'other') {
+        return ['fields' => [], 'warnings' => ['Please use a passport or a Kenyan National ID card.']];
+    }
+    if ($docType === '' && ($raw['is_passport'] ?? true) === false) {   // a reply in the older shape
         return ['fields' => [], 'warnings' => ["That doesn't look like a passport photo page."]];
     }
+    $isId = $docType === 'kenya_id';
+    $fields['id_type'] = $isId ? 'kenya_id' : 'passport';
     $str = fn($k) => trim((string)(is_scalar($raw[$k] ?? null) ? $raw[$k] : ''));
 
     $name = trim(preg_replace('/\s+/', ' ', $str('given_names') . ' ' . $str('surname')) ?? '');
@@ -594,6 +757,20 @@ function checkin_passport_from_ai(array $raw, string $today): array {
     if ($name !== '') {
         $fields['passport_name'] = preg_replace_callback("/(^|[\\s\\-'’])(\\p{Ll})/u",
             fn($m) => $m[1] . mb_strtoupper($m[2], 'UTF-8'), mb_strtolower($name, 'UTF-8')) ?? $name;
+    }
+
+    if ($isId) {
+        // The ID number is digits (7–9 on the old and the Maisha card); the front of
+        // the card has no machine-readable lines, so there is no check digit to test.
+        $num = preg_replace('/[\s\-]/', '', $str('document_number') !== '' ? $str('document_number') : $str('passport_number')) ?? '';
+        if (preg_match('/^\d{7,9}$/', $num)) $fields['passport_number'] = $num;
+        $fields['nationality'] = 'Kenya';
+        $exp = $str('date_of_expiry');
+        if (preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $exp, $m) && checkdate((int)$m[2], (int)$m[3], (int)$m[1])) {
+            $fields['passport_expiry'] = $exp;
+            if ($exp < $today) $warnings[] = 'This ID card has expired.';
+        }
+        return ['fields' => $fields, 'warnings' => $warnings];
     }
 
     $number = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $str('passport_number')) ?? '');
@@ -813,7 +990,10 @@ function checkin_audit_verify(?int $holdId = null): array {
 
 /** Passport identity fields whose change AFTER signing invalidates a signature. */
 function checkin_identity_material_fields(): array {
-    return ['passport_name', 'passport_number', 'nationality', 'passport_expiry'];
+    $f = ['passport_name', 'passport_number', 'nationality', 'passport_expiry'];
+    // The document type changes what the number means — once it is stored.
+    if (checkin_id_type_supported()) $f[] = 'id_type';
+    return $f;
 }
 
 /**
@@ -856,6 +1036,7 @@ function checkin_void_signature_if_identity_changed(int $holdId, int $guestId, a
         $clear .= ', waiver_name_snapshot=NULL, waiver_passport_snapshot=NULL,
                     waiver_nationality_snapshot=NULL, waiver_passport_expiry_snapshot=NULL';
     }
+    if (checkin_id_type_supported()) $clear .= ', waiver_id_type_snapshot=NULL';
     db_query("UPDATE checkin_guests SET $clear WHERE id=:g AND hold_id=:h", [':g'=>$guestId, ':h'=>$holdId]);
 
     // A signed→unsigned transition must lift a completed booking back to pending,

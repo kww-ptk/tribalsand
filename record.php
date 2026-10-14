@@ -70,6 +70,9 @@ $dispNat  = ($snap && trim((string)($guest['waiver_nationality_snapshot'] ?? '')
           ? (string)$guest['waiver_nationality_snapshot'] : (string)($guest['nationality'] ?? '');
 $ppNum    = ($snap && trim((string)($guest['waiver_passport_snapshot'] ?? '')) !== '')
           ? trim((string)$guest['waiver_passport_snapshot']) : trim((string)($guest['passport_number'] ?? ''));
+// The document type as signed (frozen with the identity). No snapshot = signed
+// before Kenyan IDs were accepted, so it was a passport — never the live column.
+$docLabel = checkin_id_type_label(trim((string)($guest['waiver_id_type_snapshot'] ?? '')) ?: 'passport');
 $ppMask = $ppNum === '' ? '—' : (strlen($ppNum) <= 2 ? str_repeat('•', strlen($ppNum))
           : substr($ppNum, 0, 1) . str_repeat('•', max(1, strlen($ppNum) - 2)) . substr($ppNum, -1));
 $stayLoc     = trim(((string)($hold['venue_name'] ?? '')) . ' · ' . ((string)($hold['room_name'] ?? '')), ' ·');
@@ -120,7 +123,7 @@ $methodLabel = ((string)($guest['waiver_signed_method'] ?? '') === 'reception')
     <tr><td class="k">Full name</td><td><strong><?= e($dispName !== '' ? $dispName : '—') ?></strong></td></tr>
     <tr><td class="k">Role</td><td><?= !empty($guest['is_lead']) ? 'Lead guest' : 'Adult guest' ?></td></tr>
     <tr><td class="k">Nationality</td><td><?= e($dispNat !== '' ? $dispNat : '—') ?></td></tr>
-    <tr><td class="k">Passport</td><td>No. <?= e($ppMask) ?><?= !empty($guest['passport_file_key']) ? ' · scan on file' : '' ?></td></tr>
+    <tr><td class="k"><?= e($docLabel) ?></td><td>No. <?= e($ppMask) ?><?= !empty($guest['passport_file_key']) ? ' · scan on file' : '' ?></td></tr>
   </table>
 
   <div class="sec">2 · Terms agreed</div>

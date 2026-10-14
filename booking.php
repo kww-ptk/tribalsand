@@ -39,12 +39,17 @@ if (!$holdId && $gtoken !== '' && ($gc = verify_guest_pass_token($gtoken)) !== f
     $me = null;
     foreach (fetch_checkin_guests($gHoldId) as $row) { if ((int)$row['id'] === $gGuestId) { $me = $row; break; } }
     if ($gHold && $me) {
-        $meDone = (!checkin_required($gHold)) || (checkin_guest_passport_complete($me) && checkin_guest_waiver_signed($me));
-        // Shared + this co-guest has finished check-in → give them the full portal.
-        if (share_reservation_on($gHold) && $meDone) {
+        $meDone = coguest_portal_open($gHold, $me);
+        // A co-guest who has finished check-in gets the portal (owner, Oct 2026 —
+        // no longer only when "Share reservation" is on). That switch now governs
+        // only the shared Bill tab (nav.php, the 'bill' view), so a guest never sees
+        // what the lead spent unless staff choose it. Cancelling stays lead-only.
+        if ($meDone) {
             $hold = $gHold; $holdId = $gHoldId; $error = '';   // co-guest gets the full portal — clear the earlier "invalid link" error
             $ref = $gtoken;             // the whole portal threads $ref; a g-token here makes every view work for the co-guest
             $isCoGuest = true;
+            // Just finished (api/checkin-save.php redirects with done=1): say so on arrival.
+            if (!empty($_GET['done']) && checkin_required($gHold)) $success = 'Thank you — your check-in is complete. Welcome to your stay.';
         } elseif (checkin_required($gHold)) {
             // Not shared yet, or still needs to check in → the check-in screen (unchanged).
             $hold = $gHold; $holdId = $gHoldId;

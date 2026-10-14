@@ -269,12 +269,16 @@
     }
     if (sec.hasAttribute('data-passport-required')) {
       // Photo OR typed details — mirrors checkin_guest_passport_complete().
-      if (fieldVal(sec, 'passport_name') === '')   missing.push('enter your passport name');
-      if (fieldVal(sec, 'passport_number') === '') missing.push('enter your passport number');
+      // A Kenyan ID needs no expiry (the older cards print none).
+      var isId = fieldVal(sec, 'id_type') === 'kenya_id';
+      if (fieldVal(sec, 'passport_name') === '')   missing.push('enter your full name');
+      if (fieldVal(sec, 'passport_number') === '') missing.push(isId ? 'enter your ID number' : 'enter your passport number');
       var up = sec.querySelector('.ci-pp .ci-upload');
       var hasPhoto = up && up.getAttribute('data-has') === '1';
-      if (!hasPhoto && (fieldVal(sec, 'nationality') === '' || fieldVal(sec, 'passport_expiry') === '')) {
-        missing.push('upload a passport photo or enter your nationality and passport expiry');
+      if (!hasPhoto && isId && fieldVal(sec, 'nationality') === '') {
+        missing.push('take a picture of your ID or enter your nationality');
+      } else if (!hasPhoto && !isId && (fieldVal(sec, 'nationality') === '' || fieldVal(sec, 'passport_expiry') === '')) {
+        missing.push('take a picture of your passport or enter your nationality and passport expiry');
       }
     }
     if (!missing.length) return true;

@@ -142,7 +142,7 @@ function help_guides(): array {
             ['text' => '**Bill**: charges, payments and invoices. **Check-in**: guests, passports, signatures and the deposit card.'],
             ['text' => '**Details**: dates, room, guest and confirm/cancel. **Activity**: history and every email sent.'],
          ],
-         'tips' => ['Press **Share reservation** on the Check-in tab to show the guest their bill in their guest page.']],
+         'tips' => ['Press **Share the bill with the party** on the Check-in tab to show the whole party the bill in their guest page. Guests who finished check-in get the guest page either way.']],
 
         ['slug' => 'calendar', 'area' => 'bookings', 'minutes' => 3, 'pages' => ['gantt.php'],
          'title' => 'Use the calendar',
