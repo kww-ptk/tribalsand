@@ -4,13 +4,15 @@
  *   lookup  booking code + name → the booking's check-in (or an error)
  *   nocode  email → emails current booking links (neutral answer)
  *   again   phone/email → emails the visitor's pass link (neutral answer)
- *   register details + photo + signature + place (+ children, invited adults)
+ *   register details + photo + signature + place (+ children, invited adults);
+ *           with i= (an invite, VI token) = the invited adult completes their own row
  *   update  details only (t=) — a material change voids the signature
  *   sign    sign today's terms (t=)
  *   visit   today's place + who comes (t=)
  *   invite / child / drop   the group (t=)
  * Public actions without a pass token: CSRF + honeypot + Turnstile once per
- * session + per-IP limits. Token actions: the unguessable VP token is the key.
+ * session + per-IP limits. Token actions: the unguessable VP token is the key
+ * (an invite's VI token only ever completes a never-signed row, via register).
  * Tablet mode (gate=1): a signed-in gate account; no Turnstile, no limits.
  */
 declare(strict_types=1);
@@ -37,9 +39,9 @@ if ($gate) { require_login(); require_gate(); }
 $today  = frontdesk_today_ymd();
 $tok    = trim((string)($_POST['t'] ?? ''));
 $me     = $tok !== '' ? visitor_find_by_token($tok) : null;
-$ret    = (string)($_POST['ret'] ?? '');
-if (!preg_match('#^/(register|visitor-pass)\.php(\?[A-Za-z0-9=&%._~-]*)?$#', $ret)) $ret = '/register.php';
-$old    = array_diff_key($_POST, array_flip(['csrf_token', 'waiver_signature', 'cf-turnstile-response', 't']));
+$itok   = trim((string)($_POST['i'] ?? ''));
+$ret    = visitor_safe_ret((string)($_POST['ret'] ?? ''));
+$old    = array_diff_key($_POST, array_flip(['csrf_token', 'waiver_signature', 'cf-turnstile-response', 't', 'i']));
 
 $back = function (array $flash = [], ?string $to = null) use ($ret): never {
     if ($flash) $_SESSION['vr_flash'] = $flash;
@@ -52,6 +54,22 @@ if (!empty($_POST['website'])) $back([], '/register.php');   // honeypot: accept
 
 $tokenActions = ['update', 'sign', 'visit', 'invite', 'child', 'drop'];
 if (in_array($action, $tokenActions, true) && !$me) $back(['errors' => ['general' => 'This link isn’t valid any more. Register again, or ask at the gate.']], '/register.php');
+
+if ($action === 'register') {
+    // A second tap on Register (or a resend of the same form): the photo nonce it carries was already used
+    // for this visitor — go to what the first tap made instead of registering them twice.
+    $last  = $_SESSION['vr_last'] ?? null;
+    $draft = (string)($_POST['photo_draft'] ?? '');
+    if ($draft !== '' && is_array($last) && hash_equals((string)($last['nonce'] ?? ''), $draft) && (int)($last['id'] ?? 0) > 0) {
+        $lid = (int)$last['id'];
+        header('Location: ' . ($gate ? '/admin/gate.php?vp=' . rawurlencode(visitor_pass_token($lid)) : visitor_pass_url($lid))); exit;
+    }
+    // An invited adult completing their own row: the invite works only until they have signed.
+    if (!$me && $itok !== '') {
+        $me = visitor_find_by_invite($itok);
+        if (!$me) $back([], '/register.php?i=' . rawurlencode($itok));   // shows "This invitation has already been used"
+    }
+}
 
 // Turnstile: public actions without a pass token, once per session.
 if (!$gate && !$me && !visitor_session_verified()) {
@@ -132,7 +150,9 @@ case 'update':
             if (!$me) {
                 foreach ((array)($_POST['child_name'] ?? []) as $i => $cn) {
                     if (trim((string)$cn) === '') continue;
-                    $childIds[] = visitor_add_child($id, (string)$cn, (int)(($_POST['child_age'] ?? [])[$i] ?? -1));
+                    $age = trim((string)(($_POST['child_age'] ?? [])[$i] ?? ''));
+                    if (!ctype_digit($age)) throw new InvalidArgumentException('Add an age for each child.');   // blank is missing, never 0
+                    $childIds[] = visitor_add_child($id, (string)$cn, (int)$age);
                 }
                 foreach ((array)($_POST['adult_name'] ?? []) as $an) {
                     if (trim((string)$an) !== '') $adultIds[] = visitor_invite_adult($id, (string)$an);
@@ -142,7 +162,10 @@ case 'update':
         }
         db()->commit();
         visitor_flush_file_deletes();   // a replaced ID photo is removed only once the commit holds
-        if ($draft !== '') unset($_SESSION['vr_photo'], $_SESSION['vr_photo_nonce']);   // now attached to a visitor: a later upload must never delete it
+        if ($draft !== '') {
+            unset($_SESSION['vr_photo'], $_SESSION['vr_photo_nonce']);   // now attached to a visitor: a later upload must never delete it
+            if ($mode === 'register') $_SESSION['vr_last'] = ['nonce' => (string)$_POST['photo_draft'], 'id' => $id];   // a double tap lands here, not on a duplicate
+        }
     } catch (InvalidArgumentException $e) {
         if (db()->inTransaction()) db()->rollBack();
         visitor_discard_file_deletes();
@@ -169,7 +192,7 @@ case 'update':
 case 'sign':
     // A name-only invited-adult row has no identity yet: it must be completed (details + ID photo) before it can sign.
     if (visitor_validate($me + ['photo' => !empty($me['id_photo_key'])], 'edit', true, [])) {
-        $back(['errors' => ['general' => 'Please add your details and a photo of your ID first.']], visitor_invite_url((int)$me['id']));
+        $back(['errors' => ['general' => 'Please add your details and a photo of your ID first.']], visitor_register_url((int)$me['id']));
     }
     $errors = [];
     if (trim((string)($_POST['waiver_signed_name'] ?? '')) === '') $errors['waiver_signed_name'] = 'Type your full name to sign.';

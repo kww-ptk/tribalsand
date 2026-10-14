@@ -15,7 +15,7 @@ session_init();
 $tok = trim((string)($_GET['t'] ?? ''));
 $me  = $tok !== '' ? visitor_find_by_token($tok) : null;
 if (!$me || !empty($me['parent_id'])) { header('Location: /register.php?step=again'); exit; }
-if (!visitor_signed($me) && empty($me['waiver_reference'])) { header('Location: ' . visitor_invite_url((int)$me['id'])); exit; }   // never signed: finish registering
+if (!visitor_signed($me) && empty($me['waiver_reference'])) { header('Location: ' . visitor_register_url((int)$me['id'])); exit; }   // never signed: finish registering (their own VP form)
 
 $id     = (int)$me['id'];
 $today  = frontdesk_today_ymd();
@@ -52,7 +52,7 @@ $hidden = csrf_field() . '<input type="hidden" name="t" value="' . e($tok) . '">
     <?php if ($notice !== ''): ?><div class="vr-note"><?= e($notice) ?></div><?php endif; ?>
 
     <?php if (!$current): ?>
-    <form method="post" action="/api/visitor-register.php" class="pa-card ci-wg" id="vrSign">
+    <form method="post" action="/api/visitor-register.php" class="ci-guest ci-wg" id="vrSign">
       <?= $hidden ?><input type="hidden" name="action" value="sign">
       <h2 class="ci-wg__title"><?= visitor_signed($me) ? 'Our terms have changed' : 'Please sign again' ?></h2>
       <p class="pa-note">Read the terms and sign before your next visit.</p>
@@ -68,7 +68,7 @@ $hidden = csrf_field() . '<input type="hidden" name="t" value="' . e($tok) . '">
     <?php else: ?>
 
     <?php if (!$visit || !empty($_GET['change'])): ?>
-    <form method="post" action="/api/visitor-register.php" class="pa-card ci-wg">
+    <form method="post" action="/api/visitor-register.php" class="ci-guest ci-wg">
       <?= $hidden ?><input type="hidden" name="action" value="visit">
       <h2 class="ci-wg__title">Where are you going today?</h2>
       <div class="vr-places">
@@ -99,7 +99,7 @@ $hidden = csrf_field() . '<input type="hidden" name="t" value="' . e($tok) . '">
     </section>
     <?php endif; ?>
 
-    <div class="pa-card ci-wg" id="group">
+    <div class="ci-guest ci-wg" id="group">
       <h2 class="ci-wg__title">Your group</h2>
       <?= $err('group') ?>
       <?php foreach ($group['adults'] as $a): $link = visitor_invite_url((int)$a['id']); $txt = visitor_invite_share_text((string)$a['full_name'], (string)($visit['place_name'] ?? ''), $link); ?>
@@ -124,7 +124,7 @@ $hidden = csrf_field() . '<input type="hidden" name="t" value="' . e($tok) . '">
     <?php endif; ?>
 
     <p class="pa-note" style="margin-top:12px">
-      <a href="<?= e(visitor_invite_url($id)) ?>&amp;edit=1">Update my details</a>
+      <a href="<?= e(visitor_register_url($id)) ?>&amp;edit=1">Update my details</a>
       <?php if (visitor_signed($me)): ?> · <a href="/record.php?vp=<?= e(rawurlencode($tok)) ?>" target="_blank">My signed waiver</a><?php endif; ?>
     </p>
   </div>

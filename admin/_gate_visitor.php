@@ -25,7 +25,7 @@ if ($show && $lvl === 'stop' && empty($v['removed_at']) && !visitor_waiver_curre
     <div><dt>Phone</dt><dd><?= e((string)($v['phone'] ?: '—')) ?></dd></div>
     <div><dt>People</dt><dd><?= (int)$vpCard['people'] ?></dd></div>
   </dl>
-  <?php if (!empty($v['id_photo_key'])): ?><img src="/admin/visitor-file.php?id=<?= (int)$v['id'] ?>" alt="ID photo" style="max-width:260px;border-radius:8px;margin:4px 0 8px;display:block"><?php endif; ?>
+  <?php if (!empty($v['id_photo_key'])): ?><img src="/admin/visitor-file.php?vp=<?= e(rawurlencode(visitor_pass_token((int)$v['id']))) ?>" alt="ID photo" style="max-width:260px;border-radius:8px;margin:4px 0 8px;display:block"><?php endif; ?>
   <?php if ($vpCard['adults'] || $vpCard['children']): ?>
   <div class="text-muted" style="font-size:12px;text-transform:uppercase;letter-spacing:.04em">Group</div>
   <ul class="gt-pass__names">

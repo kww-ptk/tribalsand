@@ -28,6 +28,28 @@ check('token: a GP- pass is not a visitor pass', visitor_pass_verify('GP-12-' . 
 check('scan: token inside the gate link', visitor_pass_from_scan('https://tribalsand.com/admin/gate.php?vp=' . $t) === $t);
 check('scan: GP pass is not read as VP', visitor_pass_from_scan('GP-12-0123456789ab') === '');
 
+// ── Invite token (VI) ──
+$it = visitor_invite_token(12, $sec);
+check('invite: shape VI-<id>-<12 hex>', (bool)preg_match('/^VI-12-[0-9a-f]{12}$/', $it));
+check('invite: verifies', visitor_invite_verify($it, $sec) === 12);
+check('invite: upper case still verifies', visitor_invite_verify(strtoupper($it), $sec) === 12);
+check('invite: other secret refused', visitor_invite_verify($it, 'other') === false);
+check('invite: other id refused', visitor_invite_verify('VI-13-' . substr($it, 6), $sec) === false);
+check('invite: a VP pass is not an invite', visitor_invite_verify($t, $sec) === false && visitor_invite_verify('VI-12-' . substr($t, 6), $sec) === false);
+check('invite: an invite is not a VP pass', visitor_pass_verify($it, $sec) === false && visitor_pass_verify('VP-12-' . substr($it, 6), $sec) === false);
+check('invite: no secret = no token', visitor_invite_token(12, '') === '' && visitor_invite_verify($it, '') === false);
+
+// ── Return address after a form post ──
+check('ret: extensionless register kept', visitor_safe_ret('/register?step=visitor') === '/register?step=visitor');
+check('ret: register.php with gate kept', visitor_safe_ret('/register.php?step=visitor&gate=1') === '/register.php?step=visitor&gate=1');
+check('ret: extensionless pass kept', visitor_safe_ret('/visitor-pass?t=VP-1-abc') === '/visitor-pass?t=VP-1-abc');
+check('ret: bare /register kept', visitor_safe_ret('/register') === '/register');
+check('ret: protocol-relative refused', visitor_safe_ret('//evil.com') === '/register.php');
+check('ret: absolute URL refused', visitor_safe_ret('https://evil.com/register') === '/register.php');
+check('ret: path after .php refused', visitor_safe_ret('/register.php/../x') === '/register.php');
+check('ret: admin page refused', visitor_safe_ret('/admin/x.php') === '/register.php');
+check('ret: empty = default', visitor_safe_ret('') === '/register.php');
+
 // ── Names and phones ──
 check('name: same surname matches', visitor_booking_name_match('anna smith', 'Anna Smith'));
 check('name: surname only matches', visitor_booking_name_match('Smith', 'Anna Smith'));
@@ -101,8 +123,8 @@ check('audit: an edit changes the hash', visitor_audit_hash(str_repeat('0', 64),
 check('audit: int and string ids hash the same', visitor_audit_hash('p', $row) === visitor_audit_hash('p', ['visitor_id' => '12'] + $row));
 
 // ── Share text ──
-$s = visitor_invite_share_text('Ben Ode', 'Tribal Table', 'https://x/register.php?t=VP-1-a');
-check('share: first name, place and link', str_contains($s, 'Ben') && !str_contains($s, 'Ode') && str_contains($s, 'Tribal Table') && str_contains($s, 'https://x/register.php?t=VP-1-a'));
+$s = visitor_invite_share_text('Ben Ode', 'Tribal Table', 'https://x/register.php?i=VI-1-a');
+check('share: first name, place and link', str_contains($s, 'Ben') && !str_contains($s, 'Ode') && str_contains($s, 'Tribal Table') && str_contains($s, 'https://x/register.php?i=VI-1-a'));
 
 // ── DB (rolled back) ──
 require_once __DIR__ . '/../includes/visitor-store.php';
@@ -127,6 +149,15 @@ if (!$pdo) {
         check('db create: found by token', ($r = visitor_find_by_token(visitor_pass_token($id))) && (int)$r['id'] === $id);
         check('db create: found by phone in another format', ($r = visitor_find_by_contact('+254712345678')) && (int)$r['id'] === $id);
         check('db create: found by email any case', ($r = visitor_find_by_contact('ANNA.VTEST@example.com')) && (int)$r['id'] === $id);
+
+        $invId = visitor_invite_adult($id, 'Ivy Invitee');
+        check('db invite: an invited row resolves by its invite token', ($r = visitor_find_by_invite(visitor_invite_token($invId))) && (int)$r['id'] === $invId);
+        check('db invite: its VP token is not an invite', visitor_find_by_invite(visitor_pass_token($invId)) === null);
+        check('db invite: the invite url carries ?i= and no VP token', str_contains(visitor_invite_url($invId), '/register.php?i=VI-') && !str_contains(visitor_invite_url($invId), 'VP-'));
+        visitor_sign($invId, 'Ivy Invitee', 'data:image/png;base64,' . base64_encode("\x89PNG\r\n\x1a\n" . str_repeat('x', 40)), 'self');
+        check('db invite: after signing the invite no longer resolves', visitor_find_by_invite(visitor_invite_token($invId)) === null);
+        check('db invite: ...but their own pass still does', ($r = visitor_find_by_token(visitor_pass_token($invId))) && (int)$r['id'] === $invId);
+        db_query('UPDATE registered_visitors SET removed_at = now() WHERE id = :id', [':id' => $invId]);
 
         $sig = 'data:image/png;base64,' . base64_encode("\x89PNG\r\n\x1a\n" . str_repeat('x', 40));
         $ref = visitor_sign($id, 'Anna Smith', $sig, 'self');
@@ -202,6 +233,33 @@ if (!$pdo) {
         check('db gate: no place picked = refused, no visit written', !$bad['ok'] && visitor_visit_on($solo, '2026-10-14') === null);
         $good = visitor_let_in($solo, '2026-10-14', $placeId, 0, [$venue]);
         check('db gate: gate picks the place and lets in together', $good['ok'] && visitor_visit_on($solo, '2026-10-14') !== null && visitor_on_site($solo) !== null);
+
+        // Registry "Last place / Last visit" only among the account's own properties.
+        if ($venue2) {
+            $two = visitor_create(visitor_clean_input(['passport_name' => 'Tess Twoplace', 'phone' => '0744 222 333', 'email' => 'tess.vtest@example.com',
+                'passport_number' => 'GH333444', 'nationality' => 'Kenya']) + ['photo_key' => ''], 'self');
+            visitor_choose_visit($two, $placeId, '2026-10-01', [], [], 'self');   // in scope, older
+            visitor_choose_visit($two, $place2, '2026-10-05', [], [], 'self');    // other property, newer
+            $rowsIn = visitor_registry_list([$venue], 0, 'Tess Twoplace', 25, 0)['rows'];
+            check('db registry: scoped list shows only the in-scope last place',
+                count($rowsIn) === 1 && $rowsIn[0]['last_place'] === visitor_place($placeId)['name'] && (string)$rowsIn[0]['last_visit'] === '2026-10-01');
+            $rowsAll = visitor_registry_list(null, 0, 'Tess Twoplace', 25, 0)['rows'];
+            check('db registry: the owner sees the latest place anywhere', count($rowsAll) === 1 && (string)$rowsAll[0]['last_visit'] === '2026-10-05');
+        }
+
+        // Abandoned ID photos: an unattached draft older than 24 h is pruned, an attached one is left alone.
+        db_query("INSERT INTO visitor_reg_attempts (ip, kind, subject, created_at) VALUES
+                  ('t', 'upload', 'visitors/vtest-orphan.jpg', now() - interval '25 hours'),
+                  ('t', 'upload_gate', 'visitors/vtest-orphan2.jpg', now() - interval '25 hours'),
+                  ('t', 'upload', 'visitors/vtest-fresh.jpg', now() - interval '1 hour'),
+                  ('t', 'upload', :used, now() - interval '25 hours')", [':used' => (string)visitor_find($id)['id_photo_key']]);
+        $dry = visitor_prune_drafts(24, true);
+        check('db prune: dry run counts the orphans and the attached one', $dry['deleted'] >= 2 && $dry['kept'] >= 1
+            && (int)db_query("SELECT COUNT(*) FROM visitor_reg_attempts WHERE subject LIKE 'visitors/vtest-orphan%'")->fetchColumn() === 2);
+        visitor_prune_drafts(24, false);
+        check('db prune: orphans processed once (subject cleared)', (int)db_query("SELECT COUNT(*) FROM visitor_reg_attempts WHERE subject LIKE 'visitors/vtest-orphan%'")->fetchColumn() === 0);
+        check('db prune: a fresh draft is kept', (int)db_query("SELECT COUNT(*) FROM visitor_reg_attempts WHERE subject = 'visitors/vtest-fresh.jpg'")->fetchColumn() === 1);
+        check('db prune: the attached photo still on the visitor', (string)visitor_find($id)['id_photo_key'] !== '');
 
         set_setting('visitor_waiver_text', 'Changed terms ' . bin2hex(random_bytes(3)));
         check('db terms: changed waiver = stop "sign again"', str_contains(visitor_gate_card($id, '2026-10-14', [$venue])['verdict']['msg'], 'sign again'));

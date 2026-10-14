@@ -4,7 +4,9 @@
  * property is registered: a guest with a booking goes to their own check-in; a
  * visitor registers here once (details, ID photo, signed waiver, where they are
  * going) and gets a reusable pass. ?gate=1 = the same form on the guard's
- * tablet (signed-in gate account). Posts to api/visitor-register.php.
+ * tablet (signed-in gate account). ?t=<VP> = the person's own form (finish
+ * registering / ?edit=1 their details); ?i=<VI> = an invited adult's one-time
+ * invite (only until they have signed). Posts to api/visitor-register.php.
  */
 declare(strict_types=1);
 require_once __DIR__ . '/includes/auth.php';
@@ -21,9 +23,16 @@ $me   = $tok !== '' ? visitor_find_by_token($tok) : null;
 if ($tok !== '' && !$me) $tok = '';
 $edit = $me && !empty($_GET['edit']);
 if ($me && visitor_signed($me) && !$edit) { header('Location: ' . visitor_pass_url((int)$me['id'])); exit; }
+// An invite (VI) opens the invited adult's form only until they have signed; then it is spent.
+$itok = (!$me && !$gate) ? trim((string)($_GET['i'] ?? '')) : '';
+$inviteUsed = false;
+if ($itok !== '') {
+    $me = visitor_find_by_invite($itok);
+    if (!$me) { $itok = ''; $inviteUsed = true; }
+}
 
 $steps = ['start', 'booking', 'nocode', 'again', 'visitor', 'sent'];
-$step  = ($me || $gate) ? 'visitor' : (in_array($_GET['step'] ?? '', $steps, true) ? (string)$_GET['step'] : 'start');
+$step  = $inviteUsed ? 'used' : (($me || $gate) ? 'visitor' : (in_array($_GET['step'] ?? '', $steps, true) ? (string)$_GET['step'] : 'start'));
 
 $flash  = $_SESSION['vr_flash'] ?? []; unset($_SESSION['vr_flash']);
 $errors = $flash['errors'] ?? []; $old = $flash['old'] ?? []; $notice = (string)($flash['notice'] ?? '');
@@ -100,6 +109,8 @@ $ver = fn(string $f) => @filemtime(__DIR__ . '/' . $f) ?: time();
       <?php if (!empty($errors['general'])): ?><p class="ci-err" role="alert"><?= e($errors['general']) ?></p><?php endif; ?>
       <button class="pa-btn pa-btn--primary" style="margin-top:12px"><?= $step === 'booking' ? 'Continue' : 'Email me the link' ?></button>
     </form>
+  <?php elseif ($step === 'used'): ?>
+    <div class="pa-card" style="padding:18px"><p style="margin:0">This invitation has already been used. Open your pass from the email we sent you, or ask at the gate.</p></div>
   <?php elseif ($step === 'sent'): ?>
     <div class="pa-card" style="padding:18px"><p><?= e($notice !== '' ? $notice : 'Done.') ?></p><a class="pa-btn" href="/register.php">Back</a></div>
   <?php else: ?>

@@ -88,14 +88,17 @@ if (!empty($_GET['drawer'])) {
         </ul><?php endif; ?>
       </div>
     </div>
-    <?php if (is_owner() || is_manager()): ?>
-    <div class="adrawer__foot">
+    <div class="adrawer__foot" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <?php /* A visitor registered on the tablet without an email has no pass on a phone: open their gate card here. */ ?>
+      <a class="btn-primary btn-sm" href="/admin/gate.php?vp=<?= e(rawurlencode(visitor_pass_token($id))) ?>">Open at the gate</a>
+      <?php if (is_owner() || is_manager()): ?>
       <form method="POST" action="/admin/visitor-registry.php" style="margin:0"><?= csrf_field() ?>
         <input type="hidden" name="action" value="remove"><input type="hidden" name="id" value="<?= $id ?>">
         <button class="btn-danger btn-sm" <?= danger_confirm_attrs('Remove ' . (string)$v['full_name'] . '? Their pass stops working and their ID photo is deleted. The signed record stays.', 'Remove visitor', 'Remove', 'DELETE') ?>>Remove visitor</button>
       </form>
+      <?php endif; ?>
     </div>
-    <?php endif;
+    <?php
     exit;
 }
 

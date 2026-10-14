@@ -2,7 +2,8 @@
 /**
  * The visitor details form. Expects: $mode ('register'|'edit'), $gate (bool),
  * $me (?array, the visitor when opened with ?t=), $places, $prePlace (int),
- * $errors, $old, $ppAi (bool), $waiverText, $tok (string).
+ * $errors, $old, $ppAi (bool), $waiverText, $tok (string, the VP token), $itok
+ * (string, an invite's VI token — posted as `i`, never as `t`).
  * Field names follow check-in so js/checkin-passport.js fills them.
  */
 $val = function (string $k, string $col = '') use ($old, $me): string {
@@ -23,11 +24,12 @@ $idType = (string)($old['id_type'] ?? ($me['id_type'] ?? 'passport'));
   <input type="hidden" name="ret" value="<?= e($_SERVER['REQUEST_URI'] ?? '/register.php') ?>">
   <input type="hidden" name="photo_draft" value="<?= e((string)($old['photo_draft'] ?? '')) ?>">
   <?php if ($tok !== ''): ?><input type="hidden" name="t" value="<?= e($tok) ?>"><?php endif; ?>
+  <?php if (($itok ?? '') !== ''): ?><input type="hidden" name="i" value="<?= e($itok) ?>"><?php endif; ?>
   <?php if ($gate): ?><input type="hidden" name="gate" value="1"><?php endif; ?>
   <input type="text" name="website" value="" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px" aria-hidden="true">
 
   <?php if ($reg): ?>
-  <div class="pa-card ci-wg">
+  <div class="ci-guest ci-wg">
     <h3 class="ci-wg__title">Where are you going?</h3>
     <div class="vr-places" role="radiogroup">
       <?php foreach ($places as $p): $pid = (int)$p['id']; ?>
@@ -38,7 +40,7 @@ $idType = (string)($old['id_type'] ?? ($me['id_type'] ?? 'passport'));
   </div>
   <?php endif; ?>
 
-  <div class="pa-card ci-wg">
+  <div class="ci-guest ci-wg">
     <h3 class="ci-wg__title">Your details</h3>
     <div class="ci-pp" data-pp data-pp-ai="<?= $ppAi ? '1' : '0' ?>">
       <?= checkin_id_switch_html($idType, 'name="id_type"') ?>
@@ -68,20 +70,20 @@ $idType = (string)($old['id_type'] ?? ($me['id_type'] ?? 'passport'));
   </div>
 
   <?php if ($reg && !$me): ?>
-  <div class="pa-card ci-wg">
+  <div class="ci-guest ci-wg">
     <h3 class="ci-wg__title">Who's with you? <span class="ci-opt">(optional)</span></h3>
     <p class="ci-pp-hint">Add children under 18 here. Other adults register themselves: after you finish, you get a link to send each of them.</p>
     <div id="vrKids"></div>
     <div id="vrAdults"></div>
     <button type="button" class="pa-btn pa-btn--ghost" data-vr-add="kid">+ Add a child</button>
     <button type="button" class="pa-btn pa-btn--ghost" data-vr-add="adult">+ Add an adult</button>
-    <template id="vrKidTpl"><div class="vr-row"><input class="ci-in" name="child_name[]" placeholder="Child’s full name"><input class="ci-in vr-age" name="child_age[]" type="number" min="0" max="17" placeholder="Age"><button type="button" class="ci-kid__x" aria-label="Remove">&times;</button></div></template>
+    <template id="vrKidTpl"><div class="vr-row"><input class="ci-in" name="child_name[]" placeholder="Child’s full name"><input class="ci-in vr-age" name="child_age[]" type="number" min="0" max="17" placeholder="Age" required><button type="button" class="ci-kid__x" aria-label="Remove">&times;</button></div></template>
     <template id="vrAdultTpl"><div class="vr-row"><input class="ci-in" name="adult_name[]" placeholder="Adult’s full name"><button type="button" class="ci-kid__x" aria-label="Remove">&times;</button></div></template>
   </div>
   <?php endif; ?>
 
   <?php if ($reg): ?>
-  <div class="pa-card ci-wg">
+  <div class="ci-guest ci-wg">
     <label class="ci-l">Terms &amp; conditions</label>
     <div class="ci-waiver"><?= nl2br(e($waiverText)) ?></div>
     <label class="ci-radio"><input type="checkbox" class="ci-agree" name="waiver_agree" value="1"> I have read and agree to the terms</label><?= $err('agree') ?>
@@ -98,7 +100,7 @@ $idType = (string)($old['id_type'] ?? ($me['id_type'] ?? 'passport'));
   <?php endif; ?>
   <?= $err('general') ?>
   <div class="ci-err" data-vr-err role="alert" hidden></div>
-  <button type="submit" class="pa-btn pa-btn--primary" style="margin-top:12px"><?= $reg ? 'Register' : 'Save my details' ?></button>
+  <button type="submit" class="pa-btn pa-btn--primary" style="margin-top:12px" data-vr-submit data-busy="<?= $reg ? 'Registering…' : 'Saving…' ?>"><?= $reg ? 'Register' : 'Save my details' ?></button>
 </form>
 <script>
 (function () {
@@ -121,12 +123,17 @@ $idType = (string)($old['id_type'] ?? ($me['id_type'] ?? 'passport'));
     }
     if (e.target.classList.contains('ci-kid__x') && e.target.closest('.vr-row')) { e.target.closest('.vr-row').remove(); }
   });
+  // One tap = one registration: once every check passes the button is locked until the page is shown again.
+  var btn = form.querySelector('[data-vr-submit]'), btnText = btn ? btn.textContent : '';
+  var lock = function () { if (btn) { btn.disabled = true; btn.textContent = btn.getAttribute('data-busy') || btnText; } };
+  window.addEventListener('pageshow', function () { if (btn) { btn.disabled = false; btn.textContent = btnText; } });
   form.addEventListener('submit', function (e) {
     var err = form.querySelector('[data-vr-err]');
+    if (btn && btn.disabled) { e.preventDefault(); return; }
     if (window.tsCheckinPassport && window.tsCheckinPassport.busy(form)) {
       e.preventDefault(); err.textContent = 'Please wait a moment — your photo is still uploading.'; err.hidden = false; return;
     }
-    var agree = form.querySelector('.ci-agree'); if (!agree) return;
+    var agree = form.querySelector('.ci-agree'); if (!agree) { lock(); return; }
     if (!agree.checked && window.ciTermsDialog) {
       e.preventDefault();
       window.ciTermsDialog(form.querySelector('.ci-waiver'), function () { agree.checked = true; form.requestSubmit ? form.requestSubmit() : form.submit(); });
@@ -134,9 +141,15 @@ $idType = (string)($old['id_type'] ?? ($me['id_type'] ?? 'passport'));
     }
     var missing = [];
     if (!form.querySelector('[name=place_id]:checked')) missing.push('choose where you are going');
+    var kids = form.querySelectorAll('[name="child_name[]"]');
+    for (var i = 0; i < kids.length; i++) {
+      var age = kids[i].parentNode.querySelector('[name="child_age[]"]');
+      if (kids[i].value.trim() !== '' && age && age.value.trim() === '') { missing.push('add an age for each child'); break; }
+    }
     if (form.querySelector('[name=waiver_signed_name]').value.trim() === '') missing.push('type your full name');
     if (document.getElementById('vrSig').value === '') missing.push('draw your signature');
-    if (missing.length) { e.preventDefault(); err.textContent = 'Before you register, please ' + missing.join(', ') + '.'; err.hidden = false; err.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+    if (missing.length) { e.preventDefault(); err.textContent = 'Before you register, please ' + missing.join(', ') + '.'; err.hidden = false; err.scrollIntoView({ behavior: 'smooth', block: 'center' }); return; }
+    lock();
   });
 })();
 </script>

@@ -12,6 +12,7 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/checkin.php';   // waiver_version(), checkin_waiver_text(), checkin_valid_signature(), CHECKIN_ID_TYPES
 
 const VISITOR_PASS_PREFIX     = 'VP';
+const VISITOR_INVITE_PREFIX   = 'VI';
 /** Identity fields whose change after signing voids the signature. */
 const VISITOR_MATERIAL_FIELDS = ['full_name', 'id_type', 'id_number', 'nationality', 'id_expiry'];
 
@@ -34,6 +35,35 @@ function visitor_pass_verify(string $tok, ?string $secret = null): int|false {
     return hash_equals(visitor_pass_token($id, $secret), VISITOR_PASS_PREFIX . '-' . $id . '-' . strtolower($m[2])) ? $id : false;
 }
 
+/**
+ * An invited adult's one-time registration token: "VI-<id>-<hmac12>" (HMAC of
+ * "invite:<id>", domain-separated from the pass). It only ever opens the
+ * register form while that person has never signed (visitor_find_by_invite()),
+ * so the lead's copy of the link is never the invitee's permanent pass.
+ */
+function visitor_invite_token(int $id, ?string $secret = null): string {
+    $secret = visitor_secret($secret);
+    if ($secret === '' || $id <= 0) return '';
+    return VISITOR_INVITE_PREFIX . '-' . $id . '-' . substr(hash_hmac('sha256', "invite:{$id}", $secret), 0, 12);
+}
+
+function visitor_invite_verify(string $tok, ?string $secret = null): int|false {
+    $secret = visitor_secret($secret);
+    if ($secret === '') return false;
+    if (!preg_match('/^VI-(\d{1,10})-([0-9a-f]{12})$/i', trim($tok), $m)) return false;
+    $id = (int)$m[1];
+    return hash_equals(visitor_invite_token($id, $secret), VISITOR_INVITE_PREFIX . '-' . $id . '-' . strtolower($m[2])) ? $id : false;
+}
+
+/**
+ * Where a form post returns to: only /register or /visitor-pass, with or without
+ * ".php" (production strips the extension, so REQUEST_URI is "/register?…"), and
+ * a plain query string. Anything else → '/register.php'.
+ */
+function visitor_safe_ret(string $ret): string {
+    return preg_match('#^/(register|visitor-pass)(\.php)?(\?[A-Za-z0-9=&%._~-]*)?$#', $ret) ? $ret : '/register.php';
+}
+
 /** The visitor token inside whatever a scanner read (the gate link or the bare token). '' when none. */
 function visitor_pass_from_scan(string $text): string {
     return preg_match('/\bVP-\d{1,10}-[0-9a-fA-F]{12}\b/', $text, $m) ? $m[0] : '';
@@ -47,8 +77,13 @@ function visitor_link(string $path, int $id): string {
 function visitor_pass_url(int $id): string   { return visitor_link('/visitor-pass.php?t=', $id); }
 /** What the QR carries: the guard's Gate page. */
 function visitor_gate_url(int $id): string   { return visitor_link('/admin/gate.php?vp=', $id); }
-/** An invited adult's link to register and sign. */
-function visitor_invite_url(int $id): string { return visitor_link('/register.php?t=', $id); }
+/** An invited adult's link to register and sign (the VI token — dead once they have signed). */
+function visitor_invite_url(int $id): string {
+    $t = visitor_invite_token($id);
+    return $t === '' ? '' : site_url('/register.php?i=' . rawurlencode($t));
+}
+/** The person's OWN register / edit-details form (their VP token). */
+function visitor_register_url(int $id): string { return visitor_link('/register.php?t=', $id); }
 
 function visitor_phone_digits(string $p): string { return preg_replace('/\D+/', '', $p) ?? ''; }
 

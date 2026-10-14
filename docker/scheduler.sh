@@ -170,4 +170,16 @@ log "scheduler started"
   done
 ) &
 
+# ── Job 11: abandoned visitor ID photos daily ───────────────────────────────
+# Deletes visitor ID photos uploaded more than 24 h ago that no registered
+# visitor uses (a form that was never finished). Each log row is processed once
+# (its key is cleared), so several ECS tasks running this is harmless. Quiet
+# no-op until add_visitor_registration.sql has run.
+(
+  while true; do
+    php "$APP_DIR/bin/visitor-draft-prune.php" >> "$LOG" 2>&1 || log "visitor-draft-prune failed"
+    sleep 86400
+  done
+) &
+
 wait

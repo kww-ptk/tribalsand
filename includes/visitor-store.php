@@ -107,6 +107,19 @@ function visitor_find_by_token(string $tok): ?array {
     return $id ? visitor_find($id) : null;
 }
 
+/**
+ * An invited adult by their VI invite token — only while they have NEVER signed
+ * (no waiver_reference) and are not removed. Once used, the invite opens nothing:
+ * from then on only their own pass (VP) reaches their details.
+ */
+function visitor_find_by_invite(string $tok): ?array {
+    $id = visitor_invite_verify($tok);
+    if (!$id || !visitor_reg_supported()) return null;
+    $r = db_query('SELECT * FROM registered_visitors WHERE id = :id AND removed_at IS NULL AND parent_id IS NULL AND waiver_reference IS NULL',
+        [':id' => $id])->fetch();
+    return $r ?: null;
+}
+
 /** An adult visitor by email or phone (any format). Signed ones first, newest first. */
 function visitor_find_by_contact(string $s): ?array {
     if (!visitor_reg_supported()) return null;
@@ -482,11 +495,13 @@ function visitor_registry_list(?array $venueIds, int $me, string $q, int $per, i
     }
     $total = (int) db_query("SELECT COUNT(*) FROM registered_visitors rv WHERE {$where}", $p)->fetchColumn();
     $per = max(1, min(200, $per)); $offset = max(0, $offset);
+    // Last place / last visit only among the account's own properties (added after the COUNT: its params would be unbound there).
+    $lvScope = visitor_venue_in('pl.venue_id', $venueIds, $p, 'lv');
     $rows = db_query("SELECT rv.*, lv.visit_date AS last_visit, lv.place_name AS last_place
                         FROM registered_visitors rv
                         LEFT JOIN LATERAL (SELECT vv.visit_date, pl.name AS place_name FROM visitor_visits vv
                                              JOIN visitor_places pl ON pl.id = vv.place_id
-                                            WHERE vv.visitor_id = rv.id ORDER BY vv.visit_date DESC LIMIT 1) lv ON TRUE
+                                            WHERE vv.visitor_id = rv.id{$lvScope} ORDER BY vv.visit_date DESC LIMIT 1) lv ON TRUE
                        WHERE {$where} ORDER BY COALESCE(lv.visit_date, rv.created_at::date) DESC, rv.id DESC
                        LIMIT {$per} OFFSET {$offset}", $p)->fetchAll();
     return ['rows' => $rows, 'total' => $total];
@@ -509,4 +524,33 @@ function visitor_remove(int $id): bool {
     if (!empty($v['id_photo_key'])) { try { storage_delete_private((string)$v['id_photo_key']); } catch (Throwable $e) {} }
     if (function_exists('audit_log')) audit_log('visitor.remove', 'visitor', $id, (string)$v['full_name']);
     return true;
+}
+
+// ── Abandoned ID photos ─────────────────────────────────────────────────────
+/**
+ * Delete ID photos that were uploaded (kind 'upload' / 'upload_gate', the key in
+ * `subject`) more than $hours ago and never attached to a visitor, then clear
+ * those rows' subject so they are not processed again. Rows whose photo IS
+ * attached are cleared too (a visitor's photo is deleted by its own paths).
+ * Returns ['deleted' => n, 'kept' => n]. $dryRun counts only.
+ */
+function visitor_prune_drafts(int $hours = 24, bool $dryRun = false): array {
+    $out = ['deleted' => 0, 'kept' => 0];
+    if (!visitor_reg_supported()) return $out;
+    $rows = db_query("SELECT a.id, a.subject, EXISTS (SELECT 1 FROM registered_visitors rv WHERE rv.id_photo_key = a.subject) AS used
+                        FROM visitor_reg_attempts a
+                       WHERE a.kind IN ('upload', 'upload_gate') AND a.subject IS NOT NULL
+                         AND a.created_at < now() - (:h || ' hours')::interval
+                       ORDER BY a.id LIMIT 5000", [':h' => (string)max(1, $hours)])->fetchAll();
+    foreach ($rows as $r) {
+        $key  = (string)$r['subject'];
+        $used = !empty($r['used']) && $r['used'] !== 'f';
+        if ($used) $out['kept']++; else $out['deleted']++;
+        if ($dryRun) continue;
+        if (!$used && str_starts_with($key, 'visitors/')) {   // only ever our own draft keys
+            try { storage_delete_private($key); } catch (Throwable $e) { error_log('[visitor-prune] ' . $e->getMessage()); continue; }   // retry tomorrow
+        }
+        db_query('UPDATE visitor_reg_attempts SET subject = NULL WHERE id = :id', [':id' => (int)$r['id']]);
+    }
+    return $out;
 }
