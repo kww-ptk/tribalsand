@@ -1,9 +1,10 @@
 <?php
-/** Enquiry form partial — included inside room.php booking card */
+/** Enquiry form partial — the booking box for rooms in "Enquiry form" mode (booking-widget.php).
+ *  Submitted by the script below to /api/submit-enquiry, like the Live availability widget. */
 $room_slug = $room['slug'] ?? '';
 $room_name = $room['name'] ?? '';
 ?>
-<form class="room-enquiry-form" id="roomEnquiryForm" novalidate
+<form class="room-enquiry-form" id="roomEnquiryForm" method="post" novalidate
       data-room-slug="<?= e($room_slug) ?>"
       data-room-name="<?= e($room_name) ?>">
 
@@ -92,3 +93,77 @@ $room_name = $room['name'] ?? '';
     Request to Book <span aria-hidden="true">&rsaquo;</span>
   </button>
 </form>
+
+<?php if (empty($GLOBALS['__room_enquiry_js'])): $GLOBALS['__room_enquiry_js'] = true; ?>
+<style>
+.room-enquiry-form .form-feedback{margin:4px 0 10px;padding:10px 12px;border-radius:8px;font-size:13.5px;background:#fdecea;color:#9b1c1c}
+.room-enquiry-form .form-feedback.is-ok{background:#e8f5ee;color:#1f6b45}
+</style>
+<script>
+/* Enquiry-mode booking form (rooms set to "Enquiry form"). Sends the request to
+   /api/submit-enquiry — the same endpoint, payload and success message as the
+   Live availability widget (js/booking-widget.js) — so it is saved in
+   Enquiries and both emails go out. Also drives the adult/child steppers. */
+(function () {
+  var form = document.getElementById('roomEnquiryForm');
+  if (!form || form.dataset.enqBound) return;
+  form.dataset.enqBound = '1';
+  var fb = document.getElementById('roomEnquiryFeedback');
+  var btn = form.querySelector('[type=submit]');
+  function msg(text, ok) { fb.hidden = !text; fb.textContent = text || ''; fb.classList.toggle('is-ok', !!ok); }
+  function val(n) { var el = form.querySelector('[name="' + n + '"]'); return el ? el.value.trim() : ''; }
+
+  form.querySelectorAll('[data-bk]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var kind = b.getAttribute('data-bk');
+      var input = form.querySelector('[name="' + (kind === 'adult' ? 'adults' : 'children') + '"]');
+      var span = form.querySelector('[data-bk-count="' + kind + '"]');
+      var min = kind === 'adult' ? 1 : 0;
+      var n = Math.max(min, Math.min(20, (parseInt(input.value, 10) || min) + parseInt(b.getAttribute('data-dir'), 10)));
+      input.value = n; if (span) span.textContent = n;
+    });
+  });
+
+  form.addEventListener('submit', async function (e) {
+    e.preventDefault();
+    msg('');
+    if (!val('checkin') || !val('checkout')) return msg('Please choose your check-in and check-out dates.');
+    if (val('checkout') <= val('checkin')) return msg('Check-out must be after check-in.');
+    if (!val('name')) return msg('Please enter your name.');
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val('email'))) return msg('Please enter a valid email address.');
+
+    var label = btn.innerHTML;
+    btn.disabled = true; btn.textContent = 'Sending…';
+    var data = {
+      room_slug: form.getAttribute('data-room-slug') || '',
+      checkin: val('checkin'), checkout: val('checkout'),
+      name: val('name'), email: val('email'), phone: val('phone'), message: val('message'),
+      adults: parseInt(val('adults'), 10) || 1, children: parseInt(val('children'), 10) || 0,
+      website: val('website'),
+      'cf-turnstile-response': val('cf-turnstile-response'),
+      upsell: Array.prototype.map.call(form.querySelectorAll('[data-bk-upsell]:checked'), function (c) { return parseInt(c.value, 10); }),
+      embed_from: window.TS_EMBED_FROM || undefined
+    };
+    try {
+      var res = await fetch('/api/submit-enquiry', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+      var json = await res.json();
+      if (json.ok) {
+        if (window.showSuccessModal) {
+          if (json.mode === 'hold') window.showSuccessModal('Your dates are held!', 'Good news — those dates are available. We\'ve put a 24-hour hold on your booking and will confirm by email shortly.', true);
+          else window.showSuccessModal('Request received', 'Thank you — we\'ve received your booking request. Our reservations team will reply by email shortly. Nothing is charged now.', false);
+        } else {
+          msg('Thank you — we\'ve received your request and will reply by email shortly.', true);
+        }
+        return;
+      }
+      if (json.errors) msg(Object.values(json.errors).filter(Boolean).join(' '));
+      else msg(json.error || 'Something went wrong. Please try again.');
+    } catch (err) {
+      msg('Network error. Check your connection and try again.');
+    } finally {
+      btn.disabled = false; btn.innerHTML = label;
+    }
+  });
+})();
+</script>
+<?php endif; ?>
