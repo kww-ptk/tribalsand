@@ -1648,15 +1648,15 @@ function send_visitor_booking_link(string $to, array $links, array $ctx = []): b
     $key = 'visitor_booking_link';
     $vars = ['count' => (string)count($links)];
     $intro = email_field($key, 'intro', $vars);
-    $rows = []; $lines = [];
+    $buttons = ''; $lines = [];
     foreach ($links as $l) {
         $h = $l['hold'];
         $label = trim(((string)($h['venue_name'] ?? '')) . ' · ' . date('j M', strtotime((string)$h['check_in'])) . ' – ' . date('j M Y', strtotime((string)$h['check_out'])), ' ·');
-        $rows[] = [$label, $l['url']];   // _email_detail_block() escapes values — a plain link
+        $buttons .= _email_button('Open booking · ' . $label, $l['url']);   // _email_button() escapes label + URL and builds the <a>
         $lines[] = $label . ': ' . $l['url'];
     }
     $text = _email_plain($intro) . "\n\n" . implode("\n", $lines) . "\n\nTribal Sand";
-    $inner = _email_lead_rich($intro) . _email_detail_block($rows, 'Your bookings');
+    $inner = _email_lead_rich($intro) . $buttons;
     $r = mail_send($key, ['to' => $to, 'subject' => email_field($key, 'subject', $vars), 'text' => $text,
                           'html' => _email_shell(email_field($key, 'heading', $vars), $inner, _mail_site()), 'reply_to' => email_guest_reply_to()], $ctx);
     return $r['ok'];
