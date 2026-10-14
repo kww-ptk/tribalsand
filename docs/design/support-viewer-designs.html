@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guide Viewer Designs</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Cormorant+Garamond:ital,wght@0,600;1,600&display=swap" rel="stylesheet">
+<style>
+/* Mockups only — three ways to read a guide on Settings → Support instead of the
+   browser's built-in PDF viewer. In the real page the pages are the PDF's own pages,
+   drawn by pdf.js (kept in js/vendor like jsQR), so the frame, controls and
+   navigation are ours; the chapter list comes from the PDF's bookmarks, else from
+   its headings. Pages here are drawn in CSS from the Dashboard guide's layout. */
+:root{
+  --brand:#1E5C6B;--brand-dk:#102F3A;--accent:#B8965A;--bg:#FAF6EE;--white:#fff;
+  --text:#141412;--muted:#6B6050;--border:#e7ded7;--soft:#f4efe6;--tint:#e6f0f1;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:Inter,system-ui,sans-serif;color:var(--text);background:#E9E4DA;font-size:14px;line-height:1.5}
+button{font:inherit;cursor:pointer;color:inherit}
+svg.i{width:16px;height:16px;flex:none;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.pick{position:sticky;top:0;z-index:80;background:#0d1615;color:#fff;display:flex;flex-wrap:wrap;gap:10px 18px;align-items:center;padding:10px 18px}
+.pick b{font-weight:600}.pick .grp{display:flex;gap:6px;flex-wrap:wrap}
+.pick button{border:1px solid #2c3d3b;background:#16221f;color:#cfe0dc;border-radius:999px;padding:6px 14px;font-size:13px}
+.pick button.on{background:#fff;color:#0d1615;border-color:#fff}
+.pick .note{font-size:12px;color:#8fa7a3;margin-left:auto}
+.stage{padding:22px 18px 60px}
+.desc{max-width:1280px;margin:0 auto 14px;color:#33413f;font-size:14px}.desc strong{color:#0d1615}
+.frame{max-width:1280px;margin:0 auto;border-radius:14px;overflow:clip;box-shadow:0 30px 80px rgba(13,22,21,.18);background:var(--bg)}
+.design{display:none}.design.on{display:block}
+
+/* Support page bar (unchanged in all three) */
+.bar{background:#fff;border-bottom:1px solid var(--border);padding:14px 20px;display:flex;flex-wrap:wrap;gap:10px 12px;align-items:center}
+.bar h2{margin:0;font-size:17px}.bar .m{font-size:12.5px;color:var(--muted)}.bar .sp{flex:1}
+.btn{display:inline-flex;align-items:center;gap:7px;border-radius:9px;padding:7px 13px;font-weight:600;font-size:13px;border:1.5px solid var(--border);background:#fff;color:var(--brand);white-space:nowrap}
+.btn-p{background:var(--brand);border-color:var(--brand);color:#fff}
+.ico{width:34px;height:34px;border-radius:9px;display:inline-grid;place-items:center;border:0;background:transparent}
+
+/* A guide page, drawn like the Dashboard PDF */
+.pg{background:#fff;aspect-ratio:1/1.414;padding:7% 8%;display:flex;flex-direction:column;gap:2.2%;font-size:clamp(7px,1.05vw,11.5px);line-height:1.45;color:#2b2b28;position:relative}
+.pg .run{font-size:.8em;color:#8a7b66;text-align:right;margin-bottom:2%}
+.pg .k{font-size:.75em;letter-spacing:.14em;text-transform:uppercase;color:var(--brand)}
+.pg h3{font-family:"Cormorant Garamond",serif;font-size:2em;margin:0;color:var(--brand-dk);line-height:1.05}
+.pg h4{font-size:1.15em;margin:2% 0 0;color:var(--brand)}
+.pg p{margin:0}
+.pg ul{margin:0;padding-left:1.4em;display:flex;flex-direction:column;gap:.6em}
+.pg .rem{background:#f6efe2;border-left:3px solid var(--brand);padding:.8em 1em;font-size:.95em}
+.pg .rem b{color:var(--brand);letter-spacing:.06em;margin-right:.4em}
+.pg .shot{border-radius:5px;background:linear-gradient(135deg,#123540 0 34%,#f7f2ea 34%);aspect-ratio:16/8;position:relative;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.12)}
+.pg .shot::before{content:"";position:absolute;left:38%;top:12%;width:42%;height:34%;border-radius:6px;background:#1E5C6B}
+.pg .shot::after{content:"";position:absolute;right:4%;top:12%;width:14%;height:70%;border-radius:6px;background:#fff;box-shadow:0 0 0 1px #eadfce}
+.pg table{border-collapse:collapse;width:100%;font-size:.9em}
+.pg td,.pg th{border:1px solid #e6dccd;padding:.35em .5em;text-align:left}.pg th{background:#f6efe2}
+.pg .ft{margin-top:auto;font-size:.75em;color:#9a8b74;text-align:center}
+.pg.cover{background:#12313b;color:#fff;justify-content:center}
+.pg.cover .k{color:#9fb7b3}
+.pg.cover h3{color:#fff;font-size:3em}
+.pg.cover i{font-family:"Cormorant Garamond",serif;color:var(--accent);font-size:2.2em}
+.pg.cover hr{border:0;border-top:1px solid rgba(184,150,90,.6);width:100%;margin:5% 0}
+.pg.cover p{color:#a9bdba}
+
+/* ── A · Clean reader ── */
+.a-wrap{position:relative;background:#ece7dd;height:760px;display:grid;grid-template-columns:150px minmax(0,1fr)}
+.a-thumbs{background:#f6f2ea;border-right:1px solid var(--border);overflow:auto;padding:12px 18px;display:flex;flex-direction:column;gap:12px}
+.a-thumbs button{border:0;background:none;padding:0;text-align:center;font-size:11px;color:var(--muted)}
+.a-thumbs .pg{font-size:3px;padding:7%;border-radius:3px;box-shadow:0 1px 3px rgba(0,0,0,.12);outline:2px solid transparent;outline-offset:3px;margin-bottom:4px}
+.a-thumbs button.on .pg{outline-color:var(--brand)}.a-thumbs button.on{color:var(--brand);font-weight:700}
+.a-read{overflow:auto;padding:28px 0 90px;scroll-behavior:smooth}
+.a-read .pg{width:min(78%,680px);margin:0 auto 22px;border-radius:4px;box-shadow:0 10px 30px rgba(16,47,58,.12)}
+.a-prog{position:absolute;left:150px;right:0;top:0;height:3px;background:rgba(30,92,107,.12)}.a-prog i{display:block;height:100%;background:var(--brand);width:0;transition:width .2s}
+.a-dock{position:absolute;left:calc(150px + 50%);transform:translateX(-50%);bottom:18px;background:rgba(16,47,58,.94);color:#fff;border-radius:999px;padding:6px 8px;display:flex;align-items:center;gap:2px;box-shadow:0 12px 30px rgba(0,0,0,.25)}
+.a-dock .ico{color:#fff;width:36px;height:36px;border-radius:999px}.a-dock .ico:hover{background:rgba(255,255,255,.12)}
+.a-dock .pn{padding:0 10px;font-size:13px;font-variant-numeric:tabular-nums;white-space:nowrap}.a-dock .sep{width:1px;height:20px;background:rgba(255,255,255,.2);margin:0 4px}
+
+/* ── B · Chapters ── */
+.b-wrap{display:grid;grid-template-columns:270px minmax(0,1fr);height:760px;background:#fff}
+.b-toc{border-right:1px solid var(--border);padding:18px;overflow:auto}
+.b-toc .k{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:0 0 10px}
+.b-toc button{display:flex;gap:10px;align-items:baseline;width:100%;text-align:left;border:0;background:none;padding:8px 10px;border-radius:9px;font-size:13.5px;color:var(--text)}
+.b-toc button:hover{background:var(--soft)}
+.b-toc button.on{background:var(--tint);color:var(--brand);font-weight:600}
+.b-toc button span{color:var(--muted);font-size:12px;min-width:20px;font-variant-numeric:tabular-nums}
+.b-toc button em{margin-left:auto;font-style:normal;font-size:11.5px;color:var(--muted);white-space:nowrap;padding-left:8px}
+.b-toc .done{height:6px;border-radius:999px;background:var(--soft);margin:14px 10px 4px;overflow:hidden}.b-toc .done i{display:block;height:100%;background:var(--brand);width:0}
+.b-main{display:flex;flex-direction:column;min-width:0;background:#f3efe7}
+.b-crumb{padding:12px 22px;font-size:12.5px;color:var(--muted);border-bottom:1px solid var(--border);background:#fff;display:flex;gap:8px;align-items:center}
+.b-crumb b{color:var(--text)}
+.b-stage{flex:1;display:grid;grid-template-columns:64px minmax(0,1fr) 64px;align-items:center;min-height:0;padding:18px 0}
+.b-stage .pg{width:min(100%,520px);margin:0 auto;border-radius:4px;box-shadow:0 14px 34px rgba(16,47,58,.14);max-height:100%;transition:opacity .18s}
+.b-arrow{justify-self:center;width:46px;height:46px;border-radius:999px;border:1.5px solid var(--border);background:#fff;display:grid;place-items:center;color:var(--brand)}
+.b-arrow:hover{border-color:var(--brand)}.b-arrow[disabled]{opacity:.35;cursor:default}
+.b-foot{display:flex;justify-content:center;gap:5px;padding:0 0 16px}
+.b-foot i{width:7px;height:7px;border-radius:99px;background:#d5cbbd}.b-foot i.on{background:var(--brand);width:20px}
+
+/* ── C · Spread / full screen ── */
+.c-wrap{background:radial-gradient(ellipse at top,#1b3e48,#0c1f25 70%);height:760px;display:flex;flex-direction:column;color:#fff}
+.c-top{display:flex;align-items:center;gap:12px;padding:12px 18px;font-size:13px;color:#cfe0dc}
+.c-top b{color:#fff}.c-top .sp{flex:1}
+.c-top .ico{color:#cfe0dc}.c-top .ico:hover{background:rgba(255,255,255,.08)}
+.c-spread{flex:1;display:flex;justify-content:center;align-items:center;gap:0;min-height:0;padding:0 70px;position:relative;perspective:1600px}
+.c-spread .pg{height:min(100%,540px);aspect-ratio:1/1.414;width:auto;box-shadow:0 20px 50px rgba(0,0,0,.4);transition:transform .35s}
+.c-spread .pg:first-child{border-radius:4px 0 0 4px;box-shadow:inset -14px 0 18px -14px rgba(0,0,0,.25),0 20px 50px rgba(0,0,0,.4)}
+.c-spread .pg:last-child{border-radius:0 4px 4px 0;box-shadow:inset 14px 0 18px -14px rgba(0,0,0,.25),0 20px 50px rgba(0,0,0,.4)}
+.c-spread.flip .pg:last-child{transform:rotateY(-8deg)}
+.c-nav{position:absolute;top:50%;transform:translateY(-50%);width:48px;height:48px;border-radius:999px;border:0;background:rgba(255,255,255,.1);color:#fff;display:grid;place-items:center}
+.c-nav:hover{background:rgba(255,255,255,.2)}.c-nav.l{left:14px}.c-nav.r{right:14px}
+.c-strip{display:flex;gap:10px;overflow:auto;padding:12px 18px 16px;justify-content:center}
+.c-strip button{border:0;background:none;padding:0;opacity:.55;flex:none}
+.c-strip button.on{opacity:1}
+.c-strip .pg{width:40px;height:auto;font-size:2px;padding:6%;border-radius:2px;outline:2px solid transparent;outline-offset:2px}
+.c-strip button.on .pg{outline-color:var(--accent)}
+.c-cap{text-align:center;font-size:12px;color:#9fb7b3;padding-bottom:4px}
+
+@media (max-width:900px){
+  .a-wrap{grid-template-columns:1fr}.a-thumbs{display:none}.a-prog{left:0}.a-dock{left:50%}
+  .a-read .pg{width:92%}
+  .b-wrap{grid-template-columns:1fr;height:auto}.b-toc{max-height:200px;border-right:0;border-bottom:1px solid var(--border)}
+  .b-stage{grid-template-columns:44px minmax(0,1fr) 44px}.b-stage .pg{width:100%}
+  .c-spread{padding:0 50px}.c-spread .pg:last-child{display:none}.c-spread .pg:first-child{border-radius:4px}
+}
+</style>
+</head>
+<body>
+<div class="pick">
+  <b>Guide viewer</b>
+  <div class="grp" id="pickD">
+    <button class="on" data-d="A">A · Clean reader</button>
+    <button data-d="B">B · Chapters</button>
+    <button data-d="C">C · Book spread</button>
+  </div>
+  <span class="note">Mockup — the real page draws the PDF's own pages (pdf.js)</span>
+</div>
+
+<div class="stage">
+  <p class="desc" data-desc="A"><strong>A · Clean reader.</strong> The pages scroll on a warm background with soft shadows, like reading on paper — no grey browser toolbar. Thumbnails down the left (click to jump), a thin progress line on top, and one floating control: previous / page 3 of 17 / next, zoom, fit to width, download. Scrolling updates the page number.</p>
+  <p class="desc" data-desc="B" hidden><strong>B · Chapters.</strong> Reads like a course: the guide's chapters on the left (from the PDF's bookmarks or headings) with the page each starts on, one page at a time on the right with big previous / next arrows, a "Section · page" line on top, and a reading-progress bar. Keyboard ← → turns pages. Best for long guides people work through.</p>
+  <p class="desc" data-desc="C" hidden><strong>C · Book spread.</strong> Two pages side by side like an open book on a dark, quiet background, with a filmstrip of every page underneath. Turning a page flips the spread. Feels premium and suits a full-screen "read the guide" moment; on a phone it shows one page.</p>
+
+  <div class="frame">
+    <div class="bar">
+      <div><h2>Dashboard — Admin Guide 01</h2><div class="m">Version 1 · updated 14 Oct 2026 · 17 pages · 1.0 MB · for Managers, Reception</div></div>
+      <span class="sp"></span>
+      <button class="btn"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Version history</button>
+      <button class="btn"><svg class="i" viewBox="0 0 24 24"><path d="M12 16V4M7 9l5-5 5 5M5 20h14"/></svg>New version</button>
+      <button class="btn"><svg class="i" viewBox="0 0 24 24"><path d="M12 20h9M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>Edit</button>
+      <button class="btn btn-p" data-dl><svg class="i" viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M5 20h14"/></svg>Download PDF</button>
+    </div>
+
+    <section class="design on" data-design="A">
+      <div class="a-wrap">
+        <div class="a-thumbs" data-a-thumbs></div>
+        <div class="a-read" data-a-read></div>
+        <div class="a-prog"><i data-a-prog></i></div>
+        <div class="a-dock">
+          <button class="ico" data-a-step="-1" aria-label="Previous page"><svg class="i" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+          <span class="pn" data-a-pn>1 / 17</span>
+          <button class="ico" data-a-step="1" aria-label="Next page"><svg class="i" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
+          <span class="sep"></span>
+          <button class="ico" data-a-zoom="-1" aria-label="Zoom out"><svg class="i" viewBox="0 0 24 24"><path d="M5 12h14"/></svg></button>
+          <span class="pn" data-a-zl>100%</span>
+          <button class="ico" data-a-zoom="1" aria-label="Zoom in"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button>
+          <button class="ico" data-a-fit aria-label="Fit to width"><svg class="i" viewBox="0 0 24 24"><path d="M4 12h16M7 9l-3 3 3 3M17 9l3 3-3 3"/></svg></button>
+          <span class="sep"></span>
+          <button class="ico" data-dl aria-label="Download"><svg class="i" viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M5 20h14"/></svg></button>
+        </div>
+      </div>
+    </section>
+
+    <section class="design" data-design="B">
+      <div class="b-wrap">
+        <aside class="b-toc">
+          <p class="k">In this guide</p>
+          <div data-b-toc></div>
+          <div class="done"><i data-b-done></i></div>
+          <div style="font-size:12px;color:var(--muted);margin:0 10px" data-b-donetxt></div>
+        </aside>
+        <div class="b-main">
+          <div class="b-crumb"><span>Module 1 — The Dashboard</span>›<b data-b-crumb></b><span style="margin-left:auto" data-b-pn></span></div>
+          <div class="b-stage">
+            <button class="b-arrow" data-b-step="-1" aria-label="Previous page"><svg class="i" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+            <div data-b-page></div>
+            <button class="b-arrow" data-b-step="1" aria-label="Next page"><svg class="i" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
+          </div>
+          <div class="b-foot" data-b-dots></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="design" data-design="C">
+      <div class="c-wrap">
+        <div class="c-top"><b>Admin Team Guide</b> · Module 1 — The Dashboard<span class="sp"></span><span data-c-pn></span>
+          <button class="ico" data-dl aria-label="Download"><svg class="i" viewBox="0 0 24 24"><path d="M12 4v12M7 11l5 5 5-5M5 20h14"/></svg></button>
+          <button class="ico" aria-label="Full screen"><svg class="i" viewBox="0 0 24 24"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg></button></div>
+        <div class="c-spread" data-c-spread></div>
+        <div class="c-cap" data-c-cap></div>
+        <div class="c-strip" data-c-strip></div>
+      </div>
+    </section>
+  </div>
+</div>
+<div id="toast" style="position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#0d1615;color:#fff;padding:10px 18px;border-radius:10px;font-size:13.5px;opacity:0;transition:.25s;pointer-events:none;z-index:99"></div>
+
+<script>
+(function () {
+  var N = 17;
+  // Chapters as the Dashboard guide is laid out (in the real page: the PDF's bookmarks, else its headings).
+  var CH = [[1,'Overview'],[2,'What the Dashboard is for'],[4,'Getting there'],[5,'Your greeting tile'],[7,'"Needs you" — the queue'],
+            [9,'Today: arriving, leaving, in house'],[11,'Money at a glance'],[13,'When a number looks wrong'],[15,'By role: who sees what'],[17,'Quick reference']];
+  function chapterOf(p) { var c = CH[0]; CH.forEach(function (x) { if (p >= x[0]) c = x; }); return c; }
+  function page(p) {
+    if (p === 1) return '<div class="pg cover"><span class="k">Tribal Sand · Admin Team Guide</span><h3>Module 1</h3><i>The Dashboard</i><hr><p>What the Dashboard shows, where every number comes from, and what to do first each day.</p></div>';
+    var c = chapterOf(p), body = '<div class="run">Tribal Sand · Admin Team Guide · Module 1: The Dashboard</div>';
+    if (c[0] === p) body += '<span class="k">Section ' + (CH.indexOf(c)) + '</span><h3>' + c[1] + '</h3>';
+    else body += '<h4>' + c[1] + ' (continued)</h4>';
+    body += '<ul><li><b>It invents no figures.</b> Every number is taken from the same place the page behind it uses — a tile and the page behind it cannot disagree.</li>'
+          + '<li><b>It only shows your properties.</b> If you look after two properties, every count, list and figure covers only those two.</li></ul>';
+    if (p % 3 === 2) body += '<div class="rem"><b>REMEMBER</b>The Dashboard is read-only. Nothing you click on it confirms a booking or changes a price — you are always taken to another page first.</div>';
+    if (p % 2 === 0) body += '<div class="shot"></div>';
+    else body += '<table><tr><th>Tile</th><th>Comes from</th></tr><tr><td>Guest messages</td><td>Messages page counter</td></tr><tr><td>Revenue</td><td>Reports page</td></tr><tr><td>Arriving</td><td>Front desk</td></tr></table><p>Press a tile to open the page it counts.</p>';
+    return '<div class="pg">' + body + '<div class="ft">Page ' + p + ' of ' + N + '</div></div>';
+  }
+  var $ = function (s) { return document.querySelector(s); }, $$ = function (s) { return Array.prototype.slice.call(document.querySelectorAll(s)); };
+  function toast(m) { var t = $('#toast'); t.textContent = m; t.style.opacity = 1; clearTimeout(toast.h); toast.h = setTimeout(function () { t.style.opacity = 0; }, 2000); }
+
+  // ── A ──
+  var aPage = 1, zoom = 100, read = $('[data-a-read]');
+  var th = '', pages = '';
+  for (var p = 1; p <= N; p++) { th += '<button data-a-go="' + p + '">' + page(p) + p + '</button>'; pages += '<div data-a-p="' + p + '">' + page(p) + '</div>'; }
+  $('[data-a-thumbs]').innerHTML = th; read.innerHTML = pages;
+  function aSet(p) { aPage = p; $('[data-a-pn]').textContent = p + ' / ' + N; $('[data-a-prog]').style.width = (p / N * 100) + '%';
+    $$('[data-a-go]').forEach(function (b) { b.classList.toggle('on', +b.dataset.aGo === p); });
+    var t = $('[data-a-go="' + p + '"]'); if (t) t.scrollIntoView({ block: 'nearest' }); }
+  function aGo(p) { p = Math.max(1, Math.min(N, p)); var el = $('[data-a-p="' + p + '"]'); read.scrollTop = el.offsetTop - 28; aSet(p); }
+  read.addEventListener('scroll', function () {
+    var best = 1; $$('[data-a-p]').forEach(function (el) { if (el.offsetTop - read.scrollTop < read.clientHeight * .45) best = +el.dataset.aP; });
+    if (best !== aPage) aSet(best);
+  });
+  function aZoom() { $$('.a-read .pg').forEach(function (g) { g.style.width = 'min(' + (78 * zoom / 100) + '%,' + (680 * zoom / 100) + 'px)'; }); $('[data-a-zl]').textContent = zoom + '%'; }
+  aSet(1);
+
+  // ── B ──
+  var bPage = 1;
+  $('[data-b-toc]').innerHTML = CH.map(function (c, i) { return '<button data-b-go="' + c[0] + '"><span>' + (i === 0 ? '' : i) + '</span>' + c[1] + '<em>p. ' + c[0] + '</em></button>'; }).join('');
+  $('[data-b-dots]').innerHTML = CH.map(function (c) { return '<i data-b-dot="' + c[0] + '"></i>'; }).join('');
+  function bGo(p) { bPage = Math.max(1, Math.min(N, p)); var c = chapterOf(bPage);
+    $('[data-b-page]').innerHTML = page(bPage); $('[data-b-crumb]').textContent = c[1]; $('[data-b-pn]').textContent = 'Page ' + bPage + ' of ' + N;
+    $$('[data-b-go]').forEach(function (b) { b.classList.toggle('on', +b.dataset.bGo === c[0]); });
+    $$('[data-b-dot]').forEach(function (d) { d.classList.toggle('on', +d.dataset.bDot === c[0]); });
+    $('[data-b-done]').style.width = (bPage / N * 100) + '%'; $('[data-b-donetxt]').textContent = Math.round(bPage / N * 100) + '% read';
+    $('[data-b-step="-1"]').disabled = bPage === 1; $('[data-b-step="1"]').disabled = bPage === N; }
+  bGo(1);
+
+  // ── C ──
+  var cPage = 1;
+  $('[data-c-strip]').innerHTML = Array.from({ length: N }, function (_, i) { return '<button data-c-go="' + (i + 1) + '">' + page(i + 1) + '</button>'; }).join('');
+  function cGo(p) { cPage = Math.max(1, Math.min(N, p % 2 === 0 ? p - 1 : p)); var r = cPage + 1 <= N ? cPage + 1 : null;
+    var s = $('[data-c-spread]'); s.classList.add('flip'); setTimeout(function () { s.classList.remove('flip'); }, 200);
+    s.innerHTML = '<button class="c-nav l" data-c-step="-2" aria-label="Previous"><svg class="i" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>' + page(cPage) + (r ? page(r) : '') + '<button class="c-nav r" data-c-step="2" aria-label="Next"><svg class="i" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>';
+    $('[data-c-pn]').textContent = 'Pages ' + cPage + (r ? '–' + r : '') + ' of ' + N;
+    $('[data-c-cap]').textContent = chapterOf(cPage)[1];
+    $$('[data-c-go]').forEach(function (b) { var n = +b.dataset.cGo; b.classList.toggle('on', n === cPage || n === r); }); }
+  cGo(1);
+
+  document.addEventListener('click', function (e) {
+    var b = e.target.closest('#pickD button');
+    if (b) { $$('#pickD button').forEach(function (x) { x.classList.toggle('on', x === b); });
+      $$('[data-design]').forEach(function (d) { d.classList.toggle('on', d.dataset.design === b.dataset.d); });
+      $$('[data-desc]').forEach(function (d) { d.hidden = d.dataset.desc !== b.dataset.d; }); return; }
+    if ((b = e.target.closest('[data-a-go]'))) return aGo(+b.dataset.aGo);
+    if ((b = e.target.closest('[data-a-step]'))) return aGo(aPage + +b.dataset.aStep);
+    if ((b = e.target.closest('[data-a-zoom]'))) { zoom = Math.max(60, Math.min(160, zoom + 20 * +b.dataset.aZoom)); return aZoom(); }
+    if (e.target.closest('[data-a-fit]')) { zoom = 120; return aZoom(); }
+    if ((b = e.target.closest('[data-b-go]'))) return bGo(+b.dataset.bGo);
+    if ((b = e.target.closest('[data-b-step]'))) return bGo(bPage + +b.dataset.bStep);
+    if ((b = e.target.closest('[data-c-go]'))) return cGo(+b.dataset.cGo);
+    if ((b = e.target.closest('[data-c-step]'))) return cGo(cPage + +b.dataset.cStep);
+    if (e.target.closest('[data-dl]')) toast('Downloading TribalSand-Admin-Guide-01-Dashboard.pdf');
+  });
+  document.addEventListener('keydown', function (e) {
+    var d = ($('#pickD .on') || {}).dataset; if (!d) return;
+    var k = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0; if (!k) return;
+    if (d.d === 'A') aGo(aPage + k); else if (d.d === 'B') bGo(bPage + k); else cGo(cPage + 2 * k);
+  });
+})();
+</script>
+</body>
+</html>
