@@ -104,7 +104,7 @@ number + nationality, ID photo, signature, typed name, agree. Server re-checks a
 
 The lead's "add an adult" creates a `registered_visitors` row with only the name,
 `invited_by` = the lead, unsigned. Its invite link is `/register?i=<token>` (the
-same signed token family as the pass): it opens step 2 with the name pre-filled
+the invitee's own pass token, `VP-…` — one token per person): it opens step 2 with the name pre-filled
 and the place locked to the lead's most recent visit (today's, if any). When they sign they become a full
 registered visitor with their own pass (reusable on their own later). An invite
 row that never signs is harmless: it shows as "waiting" on the lead's pass.
@@ -126,19 +126,19 @@ Off Duty, kite school… A place is switched off, never deleted, once a visit us
 ### 4.2 `registered_visitors`
 - identity: `full_name`, `phone`, `phone_digits` (indexed, for "registered before"),
   `email` (lower-cased, indexed), `id_type`, `id_number`, `nationality`,
-  `id_expiry`, `id_photo_key` (private: `visitors/<id>/…`);
+  `id_expiry`, `id_photo_key` (private: `visitors/<random>.jpg|png` — uploaded before the row exists, so the key is random, never a public URL);
 - group: `parent_id` (child → the adult who added them; children have no ID,
   phone, email, signature or pass), `age`, `invited_by` (adult → the lead);
 - waiver: `waiver_signature` (PNG data URL), `waiver_signed_name`,
-  `waiver_signed_at`, `waiver_terms_snapshot`, `waiver_terms_hash`,
-  `waiver_reference` (`TSV-<id>-<rand>`), `waiver_{name,id_number,nationality,id_expiry}_snapshot`,
+  `waiver_signed_at`, `waiver_terms_snapshot`, `waiver_version` (= `waiver_version()` of the text, the same 12-char helper as check-in),
+  `waiver_reference` (`TSV-<id>-<rand>`), `waiver_{name,id_type,id_number,nationality,id_expiry}_snapshot`,
   `signed_ip`, `signed_ua`, `signed_via` (`self` | `gate`);
 - `created_via` (`self` | `gate` | `invite`), `created_by` (admin id, tablet mode),
   `created_at`, `removed_at` (soft remove, see §7.2).
 
 ### 4.3 Signature rules (same as check-in)
-- **Signed = current** when `waiver_signed_at` is set and `waiver_terms_hash`
-  equals the hash of today's visitor waiver text (`visitor_waiver_current()`).
+- **Signed = current** when `waiver_signed_at` is set and `waiver_version`
+  equals `waiver_version()` of today's visitor waiver text (`visitor_waiver_current()`).
 - **Void-on-edit:** `visitor_void_signature_if_identity_changed()` — compare
   before void, only posted fields, material fields = name / ID number /
   nationality / expiry. Clears the signature (keeps `waiver_reference` + audit
@@ -186,8 +186,9 @@ removed visitor's token stops working.
   - **ok** otherwise.
 - **Let in** (refused server-side on stop) → one `visitors` row: venue = the
   place's venue, `visiting` = place name, `registered_visitor_id`, `visit_id`,
-  `people` = 1 + signed adults + children, `logged_by`. A second Let in the same
-  day while still on site is refused ("already on site"). **Sign out** unchanged.
+  `people` = 1 + signed adults + children, `logged_by`. Let in is refused while the
+  visitor still has an open sign-in (any day — "still signed in since …, sign them
+  out first"); a partial unique index makes a double tap harmless. **Sign out** unchanged.
 - **Register visitor** button → `/register?gate=1` in the guard's session: same
   form; email optional (no email = no pass email, the pass shows on the tablet);
   the visitor signs on the tablet (`signed_via = gate`, `created_by`); finishing
