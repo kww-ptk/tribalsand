@@ -213,7 +213,7 @@ function help_guides(): array {
          'steps' => [
             ['text' => 'Visitors scan the **poster** at the gate (or open tribalsand.com/register), pick where they are going, take a picture of their ID and sign. They get a **visitor pass**.'],
             ['text' => 'Someone with no phone? Press **Register visitor** and they fill the same form on this tablet.', 'target' => '[data-help="gate-register"]'],
-            ['text' => 'Scan their pass. **OK to enter** → press **Let in**. **Do not admit** says why: not signed, terms changed, someone in the group hasn’t signed, or another property’s place.'],
+            ['text' => 'Scan their pass. When the card reads **✓ Registered — going to …**, press **Let in**. A card that starts with **✕** says why they can’t enter yet: not signed, terms changed, someone in the group hasn’t signed, or another property’s place.'],
             ['text' => '**Visitors** lists everyone registered. Open one to see their ID photo, group, visits and signed record.', 'target' => '[data-help="vr-list"]'],
             ['text' => 'The owner edits the **Places** list and prints a **poster** for each gate.', 'target' => '[data-help="vr-places"]'],
          ],
