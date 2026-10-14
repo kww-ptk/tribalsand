@@ -1,0 +1,93 @@
+﻿Summary,Description,Issue Type
+Delete imported bookings from the calendar,"Context: Bookings brought in from the eZee spreadsheet export or from the OTA calendar feeds (iCal) could not be removed in one go — a wrong or outdated import had to be cleared block by block on the calendar.
+
+Description: Added a **Delete imported bookings** card at the bottom of **Bookings → Calendar → Import**. It shows how many imported bookings the property has now (spreadsheet and OTA feeds separately, with their date range) and deletes them after you type **DELETE**. Choices: what to delete (spreadsheet imports, OTA calendar feeds, or both), which stays (all, or only stays not finished yet), and which property (this one or all your properties). It also removes their imported amounts from Reports and the open conflicts those imports raised. Website bookings, holds, closures made by staff and group imports are never touched. OTA feed bookings come back at the next sync (every 15 minutes) while the feed is still listed on iCal feeds.
+
+Also affects: Calendar (the blocks disappear) · Reports (imported revenue drops out) · Conflicts (the imports' open conflicts are cleared) · Help & guides (new guide ""Delete imported bookings from the calendar"").
+
+How to test:
+**Before you start:** a property with at least one spreadsheet import and one OTA feed booking on the calendar.
+1. Bookings → Calendar → Import → pick the property. Expected: the card at the bottom shows the number of spreadsheet imports and OTA calendar feeds, with their dates.
+2. Untick **OTA calendar feeds**, leave **All of them**, press **Delete imported bookings**. Expected: a confirmation asks you to type DELETE; the red button stays greyed until you do.
+3. Type DELETE and confirm. Expected: ""N imported bookings deleted from the calendar""; spreadsheet imports now show 0, OTA feeds unchanged.
+4. Open the Calendar. Expected: the imported blocks are gone; website bookings and your own closures are still there.
+5. Reports for those dates. Expected: the imported revenue is no longer counted.
+6. Press Delete without ticking anything. Expected: ""Tick what to delete…"", nothing deleted.",Story
+Gate pass for guests after online check-in,"Context: Security at the gate had nothing to check a guest against. The owner wanted guests to have something to show security after check-in — a QR code that says how many people are coming and where they are going.
+
+Description: Once a guest finishes online check-in on a confirmed booking (or the booking needs no check-in), their booking page shows a **Your gate pass** card under the booking card. Tapping it opens the pass: a large QR code, the booking code (for when a phone can't be scanned), the guest's name, the party (e.g. ""3 people · 2 adults, 1 child""), property and room, the stay dates and the guests' names. Before check-in is done the card says ""Finish online check-in to get your gate pass"" and links to check-in. The QR is a signed link to the Gate page — it only names the booking; nothing happens until a signed-in security account opens it. Pending web holds, cancelled bookings and finished stays get no pass.
+
+Also affects: Guest booking page Home (new card) · new guest view `booking.php?view=pass`.
+
+How to test:
+**Before you start:** a confirmed booking arriving today whose online check-in is complete, and one whose check-in is not finished.
+1. Open the guest booking link of the checked-in booking. Expected: under the booking card, **Your gate pass** with a small QR.
+2. Tap it. Expected: the full pass — QR, booking code, name, party, property · room, dates, guest names, and ""Show this screen to security at the gate"".
+3. Open the booking whose check-in is not finished. Expected: no pass; the page asks to finish check-in first.
+4. Cancel a test booking and open its link. Expected: no gate pass card.
+5. On a phone, the pass fits the screen with no sideways scrolling.",Story
+"Gate page: scan the pass, see arrivals / in house / leaving, check guests in and out","Context: The security role could see today's arrivals and departures but not who was in house, and had no way to check a booked party in at the gate — only the visitor register.
+
+Description: **Today → Gate** is rebuilt for security (also open to owner, managers and reception):
+- **Scan gate pass** opens the camera and reads the guest's QR; or type the **booking code** and press **Find**.
+- The pass panel shows the guest, the party and guest names, where they are going, the stay, the online check-in status, and a coloured line: **green** = let in (expected today / in house), **orange** = check first (booked for a later day, online check-in not finished, already checked out), **red** = do not admit (cancelled, not confirmed, stay ended, invalid pass, or a property the guard doesn't cover — then no guest details are shown).
+- **Check in** with how many people came (starts at the booked party), **Check out**, and **Undo**.
+- Three lists: **Arriving today**, **In house** (new) and **Leaving today**, each with a Check in / Check out button and the time a party came in.
+- A pass scanned with a phone while signed out opens again after signing in.
+- The visitor register is unchanged.
+
+Also affects: Front desk (guest cards show ""At gate 14:05 · 3 people"" / ""Left 11:20"") · Dashboard for the security role (""You can"" list mentions scanning passes and checking guests in) · Admin sign-in (returns to a scanned pass) · Help & guides (new guide ""Check guests in at the gate"") · database migration `add_gate_arrivals.sql` (already run on live).
+
+How to test:
+**Before you start:** a security login whose property is ticked in Team → Login accounts; a checked-in booking arriving today at that property (from ticket 2).
+1. Sign in as security → **Gate**. Expected: Arriving today / In house / Leaving today lists with counts at the top.
+2. Type the booking code → **Find**. Expected: the pass panel with a green line ""Expected today"", the party, guest names and where they're going.
+3. Press **Check in**. Expected: ""… checked in — N people""; the guest shows ""In HH:MM · N people"" in the list.
+4. Front desk. Expected: the guest's card shows ""At gate HH:MM · N people"".
+5. Open the pass again → **Check out** → the list shows ""Left HH:MM"". **Undo** clears both.
+6. Type the code of a booking for a later day. Expected: orange line ""They are booked from …"".
+7. Type `GP-1-000000000000`. Expected: red ""This gate pass isn't valid…"".
+8. As security, open a pass for a property they don't cover. Expected: red ""This pass is for …, which you don't cover"", no guest details.
+9. On the gate's phone/tablet: **Scan gate pass** → allow the camera → point at a guest's pass. Expected: the pass opens. (Not yet tested on a real device.)
+10. Signed out, scan a pass with a phone camera → sign in. Expected: you land back on that pass.",Story
+"Gate badges say ""3 people"", not a bare ""3""","Context: The gate badge read ""At gate 14:05 · 3"" — nothing said that 3 was the number of people let in.
+
+Description: The badges now spell it out: ""At gate 14:05 · 3 people"" (or ""· 1 person""); a check-in on an earlier day shows the date (""At gate 13 Oct 09:48 · 2 people""). Hovering the Front desk badge explains it: ""Checked in at the gate by security — time and how many people came in"". **On dev — goes live with the next merge.**
+
+Also affects: Front desk guest cards · Gate page lists.
+
+How to test:
+1. Check a guest in at the Gate with 3 people.
+2. Front desk. Expected: ""At gate HH:MM · 3 people""; hovering shows the explanation.
+3. Gate → the guest's row. Expected: ""In HH:MM · 3 people"".
+4. Check in a 1-person booking. Expected: ""· 1 person"".",Task
+Warn security before letting in more people than booked,"Context: Security could raise the people count above the booking (e.g. let 3 in on a booking for 1) with nothing to stop or flag it.
+
+Description: On the Gate pass panel, raising the count above the booked party shows ""! Booked for 1"" next to Check in. Pressing **Check in** then opens **More people than booked** — ""Booked for 1 person — you are letting in 3. Call reception before you let the extra people in."" — with **Cancel** and **Let 3 in**. Confirming saves it, tells security to inform reception, and records ""booked for 1 — guard confirmed extra"" in the audit log. Cancelling saves nothing. The server refuses an over-count that didn't come through the confirmation (double tap, JavaScript off). **On dev — goes live with the next merge.**
+
+Also affects: Gate pass panel · audit log / the guard's Activity log on their staff profile.
+
+How to test:
+**Before you start:** a 1-person booking arriving today or in house, not yet checked in at the gate.
+1. Gate → find the booking. Expected: the people count starts at 1.
+2. Press + twice (3). Expected: ""! Booked for 1"" appears next to Check in.
+3. Press **Check in**. Expected: the ""More people than booked"" dialog with Cancel / **Let 3 in**.
+4. Press **Cancel**. Expected: nothing saved; still not checked in.
+5. Press Check in again → **Let 3 in**. Expected: ""… checked in — 3 people. Booked for 1 — tell reception.""; the list shows ""· 3 people"".
+6. Team → the guard's profile → Activity log. Expected: the check-in with ""booked for 1 — guard confirmed extra"".
+7. Check in a booking with the booked number. Expected: no dialog.",Story
+HR attendance for September — import checked against HR's workbook,"Context: The owner wanted HR's September attendance on the live site and asked whether the Month grid was correct.
+
+Description: No code was needed: September was imported on the live site through **Team → Attendance → Import from Excel** (HR's workbook `STAFF ATTENDANCE 2026 JAN - OCT 2026.xlsx`). The live Month grid was compared with the workbook: all 10 people with data in the checked screenshot match day for day on all 30 days (P / OFF), with names matched even where the spelling differs. The empty rows are correct — Ndete Kituret and Maureen Kombe are on HR's sheets January–August but not in September; Juan Karlos and Suraj are not in the workbook at all (they are only in the staff directory). The September sheet lists 112 people.
+
+Follow-ups:
+- Check Month summary shows about 112 people for September; if far fewer, import September again and don't leave names out.
+- Ask HR whether Ndete Kituret and Maureen Kombe left at the end of August → mark them inactive in Team → Staff.
+- ""Tribalsand ltd kite school"" is a row on HR's September sheet but is a company, not a person — choose **Leave out** if it appears on the import preview.
+
+Also affects: Attendance → Month grid, Week, Month summary, employee profiles' Attendance tab (all read the imported days).
+
+How to test:
+1. Team → Attendance → Month grid → Sep 2026, All properties. Expected: each person's P / OFF days match HR's September sheet.
+2. Pick 3 people and compare day by day with the workbook.
+3. Month summary → Sep 2026. Expected: about 112 people; days worked and hours per person match HR's sheet totals.",Task

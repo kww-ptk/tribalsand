@@ -95,6 +95,9 @@
     let selStart = null, selEnd = null;
     let availSeq = 0;
     let availOk  = null;
+    // The room takes enquiries only (its "Enquiry form" mode, from
+    // /api/check-availability): no greyed dates, no live check, never a hold.
+    let enquiryMode = false;
     // Reachable-stay state. See loadMaxStay() below for why a per-night blocked
     // list is not enough. maxUntil is the LATEST selectable check-out (a ymd
     // string), or null for "no constraint known / none to apply".
@@ -276,7 +279,7 @@
     }
 
     async function loadMaxStay() {
-      if (!selStart || selEnd || !slug) return;
+      if (!selStart || selEnd || !slug || enquiryMode) return;
       const ci    = ymd(selStart);
       const mySeq = ++maxSeq;   // same guard as checkAvailability(): a slow
                                 // answer for an older check-in must not apply
@@ -322,6 +325,15 @@
     async function checkAvailability() {
       if (!selStart || !selEnd) return;
       const ci = ymd(selStart), co = ymd(selEnd);
+      if (enquiryMode) {
+        // Enquiry-form room: dates are a request, not a booking — nothing to check.
+        availSeq++;
+        availOk = true; lastTotal = 0;
+        const nights = Math.round((selEnd - selStart) / 86400000);
+        lastNights = nights;
+        setHint(`${nights} night${nights > 1 ? "s" : ""} · our team will check availability and reply by email.`, "neutral");
+        return;
+      }
       setHint("Checking availability…", "loading");
       const altBox = document.getElementById("bkAlternatives");
       if (altBox && window.tsClearAlternatives) window.tsClearAlternatives(altBox);
@@ -693,7 +705,7 @@
       defPrice = parseFloat(newPrice != null ? newPrice : wrap.dataset.price) || 0;
       currency = newCurrency || wrap.dataset.currency || "USD";
       wrap.dataset.slug = slug; wrap.dataset.price = defPrice; wrap.dataset.currency = currency;
-      selStart = null; selEnd = null; availOk = null; fullyBlocked = [];
+      selStart = null; selEnd = null; availOk = null; fullyBlocked = []; enquiryMode = false;
       clearMaxStay();
       clearError();
       prefillGuest();   // carry name/email/phone when the modal reopens for a new room
@@ -713,7 +725,12 @@
       if (slug) {
         fetch(`/api/check-availability?room=${encodeURIComponent(slug)}`)
           .then(r => r.json())
-          .then(d => { fullyBlocked = d.fully_blocked || []; renderCal(); })
+          .then(d => {
+            enquiryMode  = d.form_mode === "enquiry";
+            fullyBlocked = enquiryMode ? [] : (d.fully_blocked || []);
+            renderCal();
+            if (enquiryMode && selStart && selEnd) checkAvailability();   // prefilled dates: drop a stale "no availability"
+          })
           .catch(() => {});
       }
       if (prefill && prefill.checkin && prefill.checkout) {

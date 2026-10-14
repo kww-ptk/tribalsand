@@ -110,8 +110,16 @@ foreach (rates_nightly_map((int)$room['id'], (float)$room['price_amount'], $from
     if ($n['is_override']) $rate_dates_map[$ymd] = true;
 }
 
+// The room's booking form mode, resolved the way api/submit-enquiry.php does it
+// (room setting → global setting; a room with no units can only take enquiries).
+// The booking pop-up uses it: an Enquiry-form room shows an open calendar with no
+// greyed dates and no live check, because its requests are never checked or held.
+$form_mode = !empty($room['form_mode']) ? $room['form_mode'] : setting('form_mode', 'enquiry');
+if ($form_mode === 'availability' && count(fetch_units_by_room(room_inventory_room_id($room))) === 0) $form_mode = 'enquiry';
+
 exit(json_encode([
-    'fully_blocked' => get_room_blocked_dates($room['id'], $from, $to),
+    'form_mode'     => $form_mode,
+    'fully_blocked' => $form_mode === 'enquiry' ? [] : get_room_blocked_dates($room['id'], $from, $to),
     'rate_dates'    => array_keys($rate_dates_map),
     'price'         => (float)$room['price_amount'],
     'currency'      => $room['price_currency'],
