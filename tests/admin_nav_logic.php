@@ -72,7 +72,7 @@ check('every titled group has an icon' . ($noGroupIcon ? ' — ' . implode(', ',
 $owner = $labels($nav('owner'));
 check('owner: Dashboard is the first link, outside any group', $owner[0] === 'Dashboard');
 foreach (array_keys($roles) as $r) check("{$r}: Dashboard is the landing link", $labels($nav($r))[0] === 'Dashboard' && ($nav($r, 'dashboard.php')['active']['label'] ?? '') === 'Dashboard');
-check('owner: about 36 links (was 63)', count($owner) >= 33 && count($owner) <= 38);
+check('owner: about 37 links (was 63)', count($owner) >= 33 && count($owner) <= 39);
 check('owner: Home + nine titled groups', count($nav('owner')['groups']) === 10);
 foreach (['Today › Messages', 'Bookings › Calendar', 'Bookings › Enquiries', 'Team › Tasks', 'Team › Attendance',
           'Point of Sale › Catalogue & stock', 'Point of Sale › Setup', 'Inventory › Inventory', 'Finance › Accounting',

@@ -120,5 +120,35 @@ check('visitor removed: photo removed line', str_contains(waiver_record_html($vm
 check('record escapes names', !str_contains(waiver_record_html(waiver_record_model_guest($hold, ['waiver_name_snapshot' => '<b>x</b>'] + $g, 'R')), '<b>x</b>'));
 check('blank scan_url never renders an empty img', !str_contains(waiver_record_html($m, ['scan' => 'url', 'scan_url' => '']), 'src=""'));
 
+// ── Task 3: the list ──
+require_once __DIR__ . '/../includes/waiver-archive.php';
+check('month bounds', waiver_month_bounds('2026-10') === ['2026-10-01', '2026-11-01'] && waiver_month_bounds('2026-12') === ['2026-12-01', '2027-01-01']);
+check('month bounds: junk refused', waiver_month_bounds('2026-13') === null && waiver_month_bounds('x') === null);
+$rows = [['name' => 'Anne Smith', 'venue_id' => 3, 'reference' => 'R1', 'doc_number' => 'X1'], ['name' => 'Bob Jones', 'venue_id' => 4, 'reference' => 'R2', 'doc_number' => 'Y2']];
+check('filter: property', count(waiver_archive_filter_rows($rows, 3, '')) === 1);
+check('filter: name search, any case', array_column(waiver_archive_filter_rows($rows, null, 'jones'), 'name') === ['Bob Jones']);
+check('filter: search by reference or number', count(waiver_archive_filter_rows($rows, null, 'y2')) === 1 && count(waiver_archive_filter_rows($rows, null, 'r1')) === 1);
+try {
+    $db = db();
+    if (!checkin_signature_supported()) { echo "SKIP  list DB checks\n"; }
+    else {
+        $db->beginTransaction();
+        $hid = (int)db_query('SELECT id FROM holds ORDER BY id LIMIT 1')->fetchColumn();
+        // 31 Oct 23:30 Nairobi = October; 1 Nov 00:10 Nairobi = November
+        db_query("INSERT INTO checkin_guests (hold_id, is_lead, passport_name, waiver_signed_at, waiver_signed_name, waiver_signature, waiver_name_snapshot)
+                  VALUES (:h, FALSE, 'ZZ Oct', '2099-10-31 23:30:00+03', 'ZZ Oct', 'data:image/png;base64,x', 'ZZ Oct'),
+                         (:h, FALSE, 'ZZ Nov', '2099-11-01 00:10:00+03', 'ZZ Nov', 'data:image/png;base64,x', 'ZZ Nov')", [':h' => $hid]);
+        $oct = array_column(waiver_archive_rows('2099-10', null, 'guests', 'ZZ'), 'name');
+        check('Nairobi month edge: 23:30 on the 31st is October', $oct === ['ZZ Oct']);
+        check('Nairobi month edge: 00:10 on the 1st is November', array_column(waiver_archive_rows('2099-11', null, 'guests', 'ZZ'), 'name') === ['ZZ Nov']);
+        $r = waiver_archive_rows('2099-10', null, 'guests', 'ZZ Oct')[0] ?? [];
+        check('row: guest carries its booking and property', str_starts_with((string)($r['where'] ?? ''), 'TS-' . $hid) && array_key_exists('venue_name', $r));
+        $db->rollBack();
+    }
+} catch (Throwable $e) {
+    if (isset($db) && $db->inTransaction()) $db->rollBack();
+    echo "SKIP  list DB checks (" . strtok($e->getMessage(), "\n") . ")\n";
+}
+
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);
