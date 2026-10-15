@@ -4,6 +4,7 @@ require_once __DIR__ . '/../includes/db.php';
 require_once __DIR__ . '/../includes/upsells.php';
 require_once __DIR__ . '/../includes/booking.php';
 require_once __DIR__ . '/../includes/checkin.php';
+require_once __DIR__ . '/../includes/storage.php';
 require_once __DIR__ . '/../includes/mail.php';
 if (session_status() === PHP_SESSION_NONE) session_start();
 
@@ -237,8 +238,20 @@ if ($triedConsent && checkin_signature_supported() && checkin_can_sign_self($onl
             $sigSet .= ', waiver_id_type_snapshot=:snt';
             $sigP[':snt'] = checkin_id_type($targetRow['id_type'] ?? null);
         }
+        // Freeze WHICH scan this signature was given with: a photo retaken later must
+        // not change what the record shows (and the file is kept, see checkin_scan_delete_unless_frozen).
+        $prevFrozen = '';
+        if (waiver_scan_snapshot_supported()) {
+            $sigSet .= ', waiver_scan_snapshot=:snscan';
+            $sigP[':snscan'] = trim((string)($targetRow['passport_file_key'] ?? '')) ?: null;
+            $prevFrozen = trim((string)($targetRow['waiver_scan_snapshot'] ?? ''));
+        }
 
         db_query("UPDATE checkin_guests SET $sigSet WHERE id=:g AND hold_id=:h", $sigP);
+        // A re-sign replaces an earlier frozen scan: that file belongs to no record now.
+        if ($prevFrozen !== '' && $prevFrozen !== (string)($sigP[':snscan'] ?? '')) {
+            try { storage_delete_private($prevFrozen); } catch (Throwable $e) {}
+        }
 
         // Legal evidence: stamp a controlled reference ID + the personal link
         // used, then append a 'signed' step to the tamper-evident audit trail.

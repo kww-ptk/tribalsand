@@ -184,6 +184,7 @@ if (!$pdo) {
         $v = visitor_find($id);
         check('db sign: reference + snapshot', str_starts_with($ref, 'TSV-') && $v['waiver_name_snapshot'] === 'Anna Smith' && $v['waiver_id_number_snapshot'] === 'AB123456');
         check('db sign: current for today\'s terms', visitor_waiver_current($v, waiver_version(visitor_waiver_text())));
+        if (visitor_photo_snapshot_supported()) check('db sign: the photo on file is frozen with the signature', ($v['waiver_photo_snapshot'] ?? null) === $v['id_photo_key']);
 
         check('db identity: unchanged details keep the signature', visitor_update_identity($id, $d, 'visitor') === false && visitor_signed(visitor_find($id)));
         check('db identity: new ID number voids', visitor_update_identity($id, ['id_number' => 'ZZ999999'] + $d, 'visitor') === true && !visitor_signed(visitor_find($id)));
@@ -201,7 +202,17 @@ if (!$pdo) {
         visitor_discard_file_deletes();
         $oldKey = (string)visitor_find($id)['id_photo_key'];
         visitor_update_identity($id, ['photo_key' => 'visitors/newer.jpg', 'id_number' => 'ZZ999999'] + $d, 'visitor');
-        check('db identity: inside a caller transaction the old photo is queued, not deleted', $oldKey !== '' && visitor_pending_file_deletes() === [$oldKey]);
+        if (visitor_photo_snapshot_supported()) {
+            // The photo the signature was given with is frozen: replacing it keeps the file (nothing queued).
+            check('db identity: a signed photo is kept when only the photo is replaced', $oldKey !== '' && visitor_pending_file_deletes() === []);
+            // Voiding the signature releases the replaced photo AND the frozen one.
+            visitor_update_identity($id, ['photo_key' => 'visitors/newest.jpg', 'id_number' => 'VV7'] + $d, 'visitor');
+            check('db identity: voiding queues the replaced and the frozen photo', visitor_pending_file_deletes() === ['visitors/newer.jpg', $oldKey]);
+            visitor_update_identity($id, ['id_number' => 'ZZ999999'] + $d, 'visitor');
+            visitor_sign($id, 'Anna Smith', $sig, 'self');   // back to signed, as the checks below expect
+        } else {
+            check('db identity: inside a caller transaction the old photo is queued, not deleted', $oldKey !== '' && visitor_pending_file_deletes() === [$oldKey]);
+        }
         visitor_discard_file_deletes();
         check('db identity: discard empties the queue', visitor_pending_file_deletes() === []);
 
@@ -332,6 +343,7 @@ if (!$pdo) {
         check('db remove: token stops working', visitor_find_by_token(visitor_pass_token($id)) === null);
         $rm = visitor_find($id, true);
         check('db remove: photo key cleared, signature evidence kept', $rm['id_photo_key'] === null && $rm['waiver_reference'] !== null);
+        if (visitor_photo_snapshot_supported()) check('db remove: frozen photo cleared too', $rm['waiver_photo_snapshot'] === null);
     } catch (Throwable $e) {
         check('db checks ran without error: ' . $e->getMessage(), false);
     } finally {

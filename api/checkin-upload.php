@@ -87,7 +87,7 @@ if (!storage_put_private($f['tmp_name'], $key, $mime)) { http_response_code(500)
 $prev = db_query('SELECT passport_file_key FROM checkin_guests WHERE id = :g AND hold_id = :h', [':g' => $guestId, ':h' => $holdId])->fetch();
 db_query('UPDATE checkin_guests SET passport_file_key = :k WHERE id = :g AND hold_id = :h', [':k' => $key, ':g' => $guestId, ':h' => $holdId]);
 if ($prev && !empty($prev['passport_file_key']) && $prev['passport_file_key'] !== $key) {
-    try { storage_delete_private($prev['passport_file_key']); } catch (Throwable $e) {}
+    checkin_scan_delete_unless_frozen($holdId, $guestId, (string)$prev['passport_file_key']);
 }
 checkin_recompute_completion($holdId);   // flips green + notifies iff this was the last passport
 

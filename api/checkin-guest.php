@@ -53,7 +53,7 @@ if ($action === 'remove') {                          // lead: any non-lead; co-g
     $row = db_query('SELECT is_lead, is_child, parent_guest_id FROM checkin_guests WHERE id = :g AND hold_id = :h', [':g' => $gid, ':h' => $holdId])->fetch();
     if (!$row || !empty($row['is_lead'])) { http_response_code(400); echo json_encode(['error' => 'cannot remove']); exit; }
     if (!$isLead && (empty($row['is_child']) || (int)$row['parent_guest_id'] !== $onlyGuestId)) { http_response_code(403); echo json_encode(['error' => 'forbidden']); exit; }
-    $files = db_query('SELECT passport_file_key FROM checkin_guests WHERE (id = :g OR parent_guest_id = :g) AND hold_id = :h', [':g' => $gid, ':h' => $holdId])->fetchAll(PDO::FETCH_COLUMN);
+    $files = checkin_guest_file_keys($holdId, $gid);
     db_query('DELETE FROM checkin_guests WHERE id = :g AND hold_id = :h', [':g' => $gid, ':h' => $holdId]);
     foreach ($files as $fk) { if (!empty($fk)) { try { storage_delete_private($fk); } catch (Throwable $e) {} } }
     checkin_recompute_completion($holdId);

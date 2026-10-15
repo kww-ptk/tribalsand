@@ -25,6 +25,21 @@ function visitor_reg_supported(): bool {
     catch (Throwable $e) { return $ok = false; }
 }
 
+/** True once add_waiver_scan_snapshot.sql has added registered_visitors.waiver_photo_snapshot. Catalog lookup — safe inside a transaction. */
+function visitor_photo_snapshot_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { return $ok = (bool) db_query("SELECT 1 FROM information_schema.columns WHERE table_name = 'registered_visitors' AND column_name = 'waiver_photo_snapshot'")->fetchColumn(); }
+    catch (Throwable $e) { return $ok = false; }
+}
+
+/** The ID photo a visitor's record shows: frozen at signing, else (legacy) the current one. */
+function visitor_scan_key(array $v): array {
+    $frozen = trim((string)($v['waiver_photo_snapshot'] ?? ''));
+    if ($frozen !== '') return ['key' => $frozen, 'frozen' => true];
+    return ['key' => trim((string)($v['id_photo_key'] ?? '')), 'frozen' => false];
+}
+
 function visitor_session_verified(): bool {
     return (int)($_SESSION['vr_verified_at'] ?? 0) > time() - VISITOR_VERIFIED_TTL;
 }
@@ -190,7 +205,8 @@ function visitor_update_identity(int $id, array $d, string $actor): bool {
             db_query('UPDATE registered_visitors SET waiver_signature = NULL, waiver_signed_name = NULL, waiver_signed_at = NULL,
                              waiver_terms_snapshot = NULL, waiver_version = NULL, waiver_name_snapshot = NULL, waiver_id_type_snapshot = NULL,
                              waiver_id_number_snapshot = NULL, waiver_nationality_snapshot = NULL, waiver_id_expiry_snapshot = NULL,
-                             signed_ip = NULL, signed_ua = NULL, signed_via = NULL
+                             signed_ip = NULL, signed_ua = NULL, signed_via = NULL'
+                         . (visitor_photo_snapshot_supported() ? ', waiver_photo_snapshot = NULL' : '') . '
                        WHERE id = :id', [':id' => $id]);
         }
         if ($own) db()->commit(); else db()->exec('RELEASE SAVEPOINT visitor_ident');
@@ -199,9 +215,16 @@ function visitor_update_identity(int $id, array $d, string $actor): bool {
         throw $e;
     }
     // Only once the writes are durable: drop the replaced photo file (queued when the caller owns the transaction).
-    if ($newPhoto !== '' && !empty($v['id_photo_key']) && $v['id_photo_key'] !== $newPhoto) {
-        if ($own) { try { storage_delete_private((string)$v['id_photo_key']); } catch (Throwable $e) {} }
-        else      { $q = &visitor_file_delete_queue(); $q[] = (string)$v['id_photo_key']; }
+    // The photo a signature was given with is frozen: replacing the photo keeps that file until the signature is voided.
+    $oldPhoto = trim((string)($v['id_photo_key'] ?? ''));
+    $frozen   = visitor_photo_snapshot_supported() ? trim((string)($v['waiver_photo_snapshot'] ?? '')) : '';
+    $drop = [];
+    if ($newPhoto !== '' && $oldPhoto !== '' && $oldPhoto !== $newPhoto && ($changed || $oldPhoto !== $frozen)) $drop[] = $oldPhoto;
+    // Voided: the frozen file belongs to no record any more (unless it is still the current photo).
+    if ($changed && $frozen !== '' && $frozen !== $oldPhoto && $frozen !== $newPhoto) $drop[] = $frozen;
+    foreach ($drop as $k) {
+        if ($own) { try { storage_delete_private($k); } catch (Throwable $e) {} }
+        else      { $q = &visitor_file_delete_queue(); $q[] = $k; }
     }
     if (!$changed) return false;
     visitor_log_step('signature_voided', ['reference' => (string)$v['waiver_reference'], 'visitor_id' => $id,
@@ -223,7 +246,8 @@ function visitor_sign(int $id, string $signedName, string $signature, string $vi
                      waiver_terms_snapshot = :terms, waiver_version = :ver, waiver_reference = :ref,
                      waiver_name_snapshot = full_name, waiver_id_type_snapshot = id_type, waiver_id_number_snapshot = id_number,
                      waiver_nationality_snapshot = nationality, waiver_id_expiry_snapshot = id_expiry,
-                     signed_ip = :ip, signed_ua = :ua, signed_via = :via
+                     signed_ip = :ip, signed_ua = :ua, signed_via = :via'
+                     . (visitor_photo_snapshot_supported() ? ', waiver_photo_snapshot = id_photo_key' : '') . '
                WHERE id = :id AND removed_at IS NULL',
         [':sig' => $signature, ':n' => $signedName, ':terms' => $terms, ':ver' => $ver, ':ref' => $ref,
          ':ip' => client_ip(), ':ua' => substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 500),
@@ -597,8 +621,12 @@ function visitor_visit_history(int $id, ?array $venueIds): array {
 function visitor_remove(int $id): bool {
     $v = visitor_find($id);
     if (!$v) return false;
-    db_query('UPDATE registered_visitors SET removed_at = now(), id_photo_key = NULL WHERE (id = :id OR parent_id = :id) AND removed_at IS NULL', [':id' => $id]);
+    $snap = visitor_photo_snapshot_supported();
+    db_query('UPDATE registered_visitors SET removed_at = now(), id_photo_key = NULL' . ($snap ? ', waiver_photo_snapshot = NULL' : '') . ' WHERE (id = :id OR parent_id = :id) AND removed_at IS NULL', [':id' => $id]);
     if (!empty($v['id_photo_key'])) { try { storage_delete_private((string)$v['id_photo_key']); } catch (Throwable $e) {} }
+    // The frozen scan is an ID photo too — deleted with the visitor (the signature evidence stays).
+    $frozen = $snap ? trim((string)($v['waiver_photo_snapshot'] ?? '')) : '';
+    if ($frozen !== '' && $frozen !== (string)($v['id_photo_key'] ?? '')) { try { storage_delete_private($frozen); } catch (Throwable $e) {} }
     if (function_exists('audit_log')) audit_log('visitor.remove', 'visitor', $id, (string)$v['full_name']);
     return true;
 }
@@ -614,7 +642,8 @@ function visitor_remove(int $id): bool {
 function visitor_prune_drafts(int $hours = 24, bool $dryRun = false): array {
     $out = ['deleted' => 0, 'kept' => 0];
     if (!visitor_reg_supported()) return $out;
-    $rows = db_query("SELECT a.id, a.subject, EXISTS (SELECT 1 FROM registered_visitors rv WHERE rv.id_photo_key = a.subject) AS used
+    $usedBy = 'rv.id_photo_key = a.subject' . (visitor_photo_snapshot_supported() ? ' OR rv.waiver_photo_snapshot = a.subject' : '');
+    $rows = db_query("SELECT a.id, a.subject, EXISTS (SELECT 1 FROM registered_visitors rv WHERE $usedBy) AS used
                         FROM visitor_reg_attempts a
                        WHERE a.kind IN ('upload', 'upload_gate') AND a.subject IS NOT NULL
                          AND a.created_at < now() - (:h || ' hours')::interval
