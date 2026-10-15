@@ -392,6 +392,20 @@ function email_registry(): array {
             'placeholders' => ['name' => 'The visitor’s first name'],
             'sample' => fn() => send_visitor_pass(['id' => 1, 'full_name' => 'Anna Smith', 'email' => 'you@example.com']),
         ],
+        'visitor_standing_invite' => [
+            'name' => 'Standing pass invitation', 'audience' => 'guest', 'topic' => 'Visitors',
+            'trigger' => 'The owner or a manager creates a standing pass (member, friend, local community, contractor) for someone who hasn’t registered yet, with an email address.',
+            'sources' => ['admin/visitor-registry.php'], 'recipients' => 'The person the pass is for.',
+            'default_on' => true,
+            'fields' => [
+                'subject' => 'Your Tribal Sand pass',
+                'heading' => 'Your pass is ready',
+                'intro'   => 'Hi {{name}}, you have a **{{pass}}** pass for Tribal Sand (valid: {{until}}). Register once — your details, a photo of your ID and our waiver, about two minutes — and then just show your pass at the gate whenever you visit.',
+                'footer_note' => 'This link works once. After you register, keep the pass we email you — that is what you show at the gate.',
+            ],
+            'placeholders' => ['name' => 'Their first name', 'pass' => 'The kind of pass (Member, Friend…)', 'until' => 'Valid until (a date, or "no end date")'],
+            'sample' => fn() => send_visitor_standing_invite(['id' => 1, 'full_name' => 'Kim Otieno', 'email' => 'you@example.com', 'pass_type' => 'member', 'pass_until' => '2026-12-31']),
+        ],
         'visitor_booking_link' => [
             'name' => 'Booking link (no code)', 'audience' => 'guest', 'topic' => 'Visitors',
             'trigger' => 'Someone on the registration page says they have a booking but not the code, and types the booking email.',

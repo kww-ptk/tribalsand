@@ -218,6 +218,7 @@ function help_guides(): array {
             ['text' => 'The owner edits the **Places** list and prints a **poster** for each gate.', 'target' => '[data-help="vr-places"]'],
          ],
          'tips' => ['A guest with a booking chooses “I have a booking” and goes to their own check-in.',
+                    'Owner and managers: **New standing pass** (or open someone in Visitors) gives members, friends, the local community or contractors a pass with an end date and the places it covers. They register once; the gate shows “Member · until …”. An expired pass, or a place it doesn’t cover, means they come in as an ordinary visitor.',
                     'Changing the visitor waiver (Settings → Pre-Check-in) asks everyone to sign again on their next visit.']],
 
         ['slug' => 'guest-messages', 'area' => 'guests', 'minutes' => 2, 'pages' => ['messages.php'],

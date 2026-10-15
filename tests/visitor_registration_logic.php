@@ -114,6 +114,26 @@ check('verdict: changed terms = stop, says sign again', $terms['level'] === 'sto
 $wait = visitor_gate_verdict($v, $visit, [['name' => 'Ben Ode', 'current' => false]], true, true);
 check('verdict: an unsigned adult = stop naming them', $wait['level'] === 'stop' && str_contains($wait['msg'], 'Ben Ode'));
 check('verdict: no place today = warn', visitor_gate_verdict($v, null, [], true, true)['level'] === 'warn');
+// ── Standing pass (members, friends, community, contractors) ──
+check('standing: none without a type', visitor_standing(['pass_type' => null], '2026-10-15') === null);
+check('standing: unknown type = none', visitor_standing(['pass_type' => 'vip'], '2026-10-15') === null);
+$sp = visitor_standing(['pass_type' => 'member', 'pass_until' => '2026-12-31', 'pass_place_ids' => '{3,7}'], '2026-10-15');
+check('standing: label, until, places', $sp['label'] === 'Member' && $sp['until'] === '2026-12-31' && $sp['places'] === [3, 7] && $sp['active']);
+check('standing: last day still active', visitor_standing(['pass_type' => 'friend', 'pass_until' => '2026-10-15'], '2026-10-15')['active']);
+$spx = visitor_standing(['pass_type' => 'friend', 'pass_until' => '2026-10-14'], '2026-10-15');
+check('standing: day after = expired', !$spx['active'] && $spx['expired']);
+$spn = visitor_standing(['pass_type' => 'community', 'pass_until' => null, 'pass_place_ids' => null], '2026-10-15');
+check('standing: no end, all places', $spn['active'] && $spn['until'] === '' && $spn['places'] === null && $spn['label'] === 'Local community');
+$visit7 = ['place_name' => 'Tribal Table', 'venue_id' => 7, 'place_id' => 7];
+$sv = visitor_gate_verdict($v, $visit7, [], true, true, $sp);
+check('standing verdict: ok names the pass + end date', $sv['level'] === 'ok' && str_contains($sv['msg'], 'Member') && str_contains($sv['msg'], '31 Dec 2026'));
+$so = visitor_gate_verdict($v, ['place_id' => 9, 'place_name' => 'Zuri'] + $visit7, [], true, true, $sp);
+check('standing verdict: place not covered = warn, comes as a visitor', $so['level'] === 'warn' && str_contains($so['msg'], 'Zuri'));
+$se = visitor_gate_verdict($v, $visit7, [], true, true, $spx);
+check('standing verdict: expired = warn, comes as a visitor', $se['level'] === 'warn' && str_contains($se['msg'], 'ended'));
+check('standing verdict: still asks the place', visitor_gate_verdict($v, null, [], true, true, $sp)['level'] === 'warn');
+check('standing verdict: unsigned still stops', visitor_gate_verdict(['waiver_signature' => ''] + $v, $visit7, [], false, true, $sp)['level'] === 'stop');
+check('standing: places a pass allows', visitor_standing_allows($sp, 7) && !visitor_standing_allows($sp, 9) && visitor_standing_allows($spn, 9) && visitor_standing_allows(null, 9));
 check('people: lead + adults + children', visitor_people_count([['name' => 'a']], [['id' => 1], ['id' => 2]]) === 4);
 
 // ── Audit hash ──
@@ -260,6 +280,27 @@ if (!$pdo) {
         check('db prune: orphans processed once (subject cleared)', (int)db_query("SELECT COUNT(*) FROM visitor_reg_attempts WHERE subject LIKE 'visitors/vtest-orphan%'")->fetchColumn() === 0);
         check('db prune: a fresh draft is kept', (int)db_query("SELECT COUNT(*) FROM visitor_reg_attempts WHERE subject = 'visitors/vtest-fresh.jpg'")->fetchColumn() === 1);
         check('db prune: the attached photo still on the visitor', (string)visitor_find($id)['id_photo_key'] !== '');
+
+        // Standing passes.
+        if (visitor_standing_supported()) {
+            visitor_set_standing($id, 'member', '2099-12-31', [$placeId], 'Beach club', 0, '2026-10-14');
+            $card = visitor_gate_card($id, '2026-10-14', [$venue]);
+            check('db standing: card carries the pass, OK names it', $card['standing']['label'] === 'Member' && $card['verdict']['level'] === 'ok' && str_contains($card['verdict']['msg'], 'Member'));
+            $other = visitor_place_save(null, 'Test Other ' . bin2hex(random_bytes(3)), $venue, 97, true);
+            visitor_set_standing($id, 'member', '', [$other], '', 0, '2026-10-14');
+            check('db standing: place not covered = warn', visitor_gate_card($id, '2026-10-14', [$venue])['verdict']['level'] === 'warn');
+            $bad = []; foreach ([['vip', ''], ['member', '2020-01-01'], ['member', '2099-02-30']] as [$t, $u]) {
+                try { visitor_set_standing($id, $t, $u, null, '', 0, '2026-10-14'); $bad[] = false; } catch (InvalidArgumentException $e) { $bad[] = true; }
+            }
+            check('db standing: bad kind / past date / impossible date refused', $bad === [true, true, true]);
+            check('db standing: end pass keeps the visitor', visitor_end_standing($id) && visitor_find($id) !== null && visitor_gate_card($id, '2026-10-14', [$venue])['standing'] === null);
+            $inv = visitor_invite_standing('Kim Vtest', '0700 111 222', 'kim.vtest@example.com', 'friend', '', null, '', 0, '2026-10-14');
+            check('db standing: invite = unsigned row with the pass, single-use link works', ($r = visitor_find_by_invite(visitor_invite_token($inv))) && (int)$r['id'] === $inv && $r['pass_type'] === 'friend');
+            $badInv = false; try { visitor_invite_standing('Kim', '', '', 'friend', '', null, '', 0, '2026-10-14'); } catch (InvalidArgumentException $e) { $badInv = true; }
+            check('db standing: invite needs a full name', $badInv);
+        } else {
+            echo "SKIP  standing passes (run add_visitor_standing_pass.sql)\n";
+        }
 
         set_setting('visitor_waiver_text', 'Changed terms ' . bin2hex(random_bytes(3)));
         check('db terms: changed waiver = stop "sign again"', str_contains(visitor_gate_card($id, '2026-10-14', [$venue])['verdict']['msg'], 'sign again'));

@@ -227,9 +227,11 @@ function visitor_audit_hash(string $prev, array $r): string {
  * today's terms]] coming with them; $termsCurrent = the visitor's own signature
  * is for today's terms; $inScope = today's place is behind a property this
  * account covers. Scope is checked FIRST so a guard elsewhere learns nothing
- * but the place.
+ * but the place. $standing = visitor_standing() or null: a live pass names itself
+ * in the OK line; an expired pass, or a place it doesn't cover, is a warning —
+ * they come in as an ordinary visitor (blocking someone = Remove visitor).
  */
-function visitor_gate_verdict(array $v, ?array $visit, array $adults, bool $termsCurrent, bool $inScope): array {
+function visitor_gate_verdict(array $v, ?array $visit, array $adults, bool $termsCurrent, bool $inScope, ?array $standing = null): array {
     if (!empty($v['removed_at'])) return ['level' => 'stop', 'msg' => 'This pass has been withdrawn. Do not admit — call reception.'];
     if ($visit !== null && !$inScope) {
         return ['level' => 'stop', 'msg' => 'This pass is for ' . ((string)($visit['place_name'] ?? '') ?: 'another place') . ', which you don’t cover. Do not admit — call reception.'];
@@ -239,8 +241,47 @@ function visitor_gate_verdict(array $v, ?array $visit, array $adults, bool $term
     $waiting = [];
     foreach ($adults as $a) if (empty($a['current'])) $waiting[] = (string)($a['name'] ?? 'Guest');
     if ($waiting) return ['level' => 'stop', 'msg' => 'Still to sign: ' . implode(', ', $waiting) . '. Every adult must sign before the group enters.'];
-    if ($visit === null) return ['level' => 'warn', 'msg' => 'No place chosen for today — pick where they are going, then let them in.'];
-    return ['level' => 'ok', 'msg' => 'Registered — going to ' . (string)($visit['place_name'] ?? '') . '.'];
+    $passLine = $standing ? $standing['label'] . ' pass' . ($standing['until'] !== '' ? ' (until ' . date('j M Y', strtotime($standing['until'])) . ')' : '') : '';
+    if ($visit === null) return ['level' => 'warn', 'msg' => ($standing && $standing['active'] ? $passLine . '. ' : '') . 'No place chosen for today — pick where they are going, then let them in.'];
+    $place = (string)($visit['place_name'] ?? '');
+    if ($standing && $standing['expired']) {
+        return ['level' => 'warn', 'msg' => 'Their ' . $standing['label'] . ' pass ended on ' . date('j M Y', strtotime($standing['until'])) . ' — they come in as a visitor, going to ' . $place . '.'];
+    }
+    if ($standing && !visitor_standing_allows($standing, (int)($visit['place_id'] ?? 0))) {
+        return ['level' => 'warn', 'msg' => 'Their ' . $standing['label'] . ' pass doesn’t cover ' . $place . ' — they come in as a visitor.'];
+    }
+    if ($standing) return ['level' => 'ok', 'msg' => $passLine . ' — going to ' . $place . '.'];
+    return ['level' => 'ok', 'msg' => 'Registered — going to ' . $place . '.'];
+}
+
+/** Standing pass kinds the owner and managers can give (key => label). */
+const VISITOR_PASS_TYPES = ['member' => 'Member', 'friend' => 'Friend', 'community' => 'Local community', 'contractor' => 'Contractor'];
+
+/** A Postgres INT[] as text ("{3,7}") or a PHP array → list of ints; null stays null. Pure. */
+function visitor_int_list(mixed $a): ?array {
+    if ($a === null || $a === '') return null;
+    if (is_string($a)) $a = trim($a, '{}') === '' ? [] : explode(',', trim($a, '{}'));
+    return array_values(array_map('intval', (array)$a));
+}
+
+/**
+ * A visitor's standing pass, or null when they have none (or a kind no longer in
+ * VISITOR_PASS_TYPES). until '' = no end date; places null = every place. Active on
+ * its last day; expired the day after (Nairobi dates). Pure.
+ */
+function visitor_standing(array $v, string $today): ?array {
+    $type = (string)($v['pass_type'] ?? '');
+    if ($type === '' || !isset(VISITOR_PASS_TYPES[$type])) return null;
+    $until = substr((string)($v['pass_until'] ?? ''), 0, 10);
+    $active = $until === '' || $until >= $today;
+    return ['type' => $type, 'label' => VISITOR_PASS_TYPES[$type], 'until' => $until,
+            'places' => visitor_int_list($v['pass_place_ids'] ?? null), 'active' => $active, 'expired' => !$active,
+            'note' => (string)($v['pass_note'] ?? '')];
+}
+
+/** Does this standing pass count at that place? No pass / all places = yes. Pure. */
+function visitor_standing_allows(?array $standing, int $placeId): bool {
+    return $standing === null || $standing['places'] === null || in_array($placeId, $standing['places'], true);
 }
 
 function visitor_people_count(array $adults, array $children): int {

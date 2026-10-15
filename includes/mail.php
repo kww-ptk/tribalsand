@@ -1642,6 +1642,26 @@ function send_visitor_pass(array $v, array $ctx = []): bool {
     return $r['ok'];
 }
 
+/** A standing pass (member, friend, community, contractor) for someone not yet registered: their single-use registration link. */
+function send_visitor_standing_invite(array $v, array $ctx = []): bool {
+    $to = (string)($v['email'] ?? '');
+    if (!filter_var($to, FILTER_VALIDATE_EMAIL)) return false;
+    require_once __DIR__ . '/visitor-registration.php';
+    $key = 'visitor_standing_invite';
+    $url = visitor_invite_url((int)$v['id']);
+    if ($url === '') return false;
+    $sp = visitor_standing($v, date('Y-m-d'));
+    $vars = ['name' => explode(' ', trim((string)$v['full_name']))[0], 'pass' => $sp['label'] ?? 'Guest',
+             'until' => ($sp['until'] ?? '') !== '' ? date('j M Y', strtotime($sp['until'])) : 'no end date'];
+    $intro  = email_field($key, 'intro', $vars);
+    $footer = email_field($key, 'footer_note', $vars);
+    $text = _email_plain($intro) . "\n\nRegister here: {$url}\n\n" . _email_plain($footer) . "\n\nTribal Sand";
+    $inner = _email_lead_rich($intro) . _email_button('Register now', $url) . _email_note($footer);
+    $r = mail_send($key, ['to' => $to, 'subject' => email_field($key, 'subject', $vars), 'text' => $text,
+                          'html' => _email_shell(email_field($key, 'heading', $vars), $inner, _mail_site()), 'reply_to' => email_guest_reply_to()], $ctx);
+    return $r['ok'];
+}
+
 /** "I have a booking but not the code": the current bookings under that email, each with its link. */
 function send_visitor_booking_link(string $to, array $links, array $ctx = []): bool {
     if (!filter_var($to, FILTER_VALIDATE_EMAIL) || !$links) return false;

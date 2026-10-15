@@ -88,6 +88,9 @@ $hidden = csrf_field() . '<input type="hidden" name="t" value="' . e($tok) . '">
       <div class="pa-pass__eyebrow">Visitor pass · <?= e(date('D j M', strtotime($today))) ?></div>
       <div class="pa-pass__qr" data-gp-qr="<?= e(visitor_gate_url($id)) ?>" role="img" aria-label="Visitor pass QR code"></div>
       <h2 class="pa-pass__name"><?= e((string)$me['full_name']) ?></h2>
+      <?php $msp = visitor_standing_supported() ? visitor_standing($me, $today) : null; if ($msp && $msp['active']): ?>
+      <div class="pa-pass__party"><?= e($msp['label']) ?> pass<?= $msp['until'] !== '' ? ' · valid until ' . e(date('j M Y', strtotime($msp['until']))) : '' ?></div>
+      <?php endif; ?>
       <dl class="pa-pass__facts"><div><dt>Going to</dt><dd><?= e((string)$visit['place_name']) ?> · <a href="?t=<?= e(rawurlencode($tok)) ?>&amp;change=1">Change</a></dd></div></dl>
       <?php if ($party['adults'] || $party['children']): ?>
       <ul class="pa-pass__names">

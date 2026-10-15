@@ -18,7 +18,8 @@ if ($show && $lvl === 'stop' && empty($v['removed_at']) && !visitor_waiver_curre
   <div class="gt-pass__verdict"><?= $lvl === 'stop' ? '✕ ' : ($lvl === 'warn' ? '! ' : '✓ ') ?><?= e($vd['msg']) ?></div>
   <?php if ($show): ?>
   <p class="gt-pass__name"><?= e((string)$v['full_name']) ?></p>
-  <div class="text-muted">Visitor pass · <?= (int)$vpCard['people'] ?> <?= (int)$vpCard['people'] === 1 ? 'person' : 'people' ?></div>
+  <?php $gsp = $vpCard['standing'] ?? null; ?>
+  <div class="text-muted"><?php if ($gsp): ?><span class="badge badge--<?= $gsp['active'] ? 'green' : 'grey' ?>"><?= e($gsp['label']) ?><?= $gsp['until'] !== '' ? ' · ' . ($gsp['active'] ? 'until ' : 'ended ') . e(date('j M Y', strtotime($gsp['until']))) : '' ?></span> <?php endif; ?>Visitor pass · <?= (int)$vpCard['people'] ?> <?= (int)$vpCard['people'] === 1 ? 'person' : 'people' ?></div>
   <dl class="gt-pass__grid">
     <?php if ($vis): ?><div><dt>Going to</dt><dd><?= e((string)$vis['place_name']) ?></dd></div><?php endif; ?>
     <div><dt><?= e(checkin_id_type_label((string)$v['id_type'])) ?></dt><dd><?= e((string)($v['id_number'] ?: '—')) ?><?= !empty($v['nationality']) ? ' · ' . e((string)$v['nationality']) : '' ?></dd></div>
