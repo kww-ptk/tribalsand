@@ -286,9 +286,16 @@ include __DIR__ . '/includes/head.php';
     // The greeting stays put on every tab — the header always says "Karibu, <name>".
     $__t = $hold ? ('Karibu, ' . $__first) : 'Your booking';
     $__homeUrl = '/booking.php?ref=' . urlencode($ref) . '&view=home';
+    // Gate pass always one tap away (top right) once it is ready — the same rule as
+    // the Home "Your gate pass" card (includes/app/_gatepass.php).
+    $__qrReady = false;
+    if ($hold && in_array($status, ['confirmed', 'pending'], true)) {
+        require_once __DIR__ . '/includes/gate-pass.php';
+        $__qrReady = gate_pass_ready_for($hold)['ok'];
+    }
   ?>
   <div class="pa-topbar">
-    <div class="pa-topbar__inner">
+    <div class="pa-topbar__inner<?= $__qrReady ? ' has-qr' : '' ?>">
       <?php if ($hold): ?>
       <a class="pa-topbar__brand" href="<?= e($__homeUrl) ?>" aria-label="Go to home">
         <div class="pa-topbar__eyebrow">Tribal Sand</div>
@@ -299,6 +306,12 @@ include __DIR__ . '/includes/head.php';
         <div class="pa-topbar__eyebrow">Tribal Sand</div>
         <div class="pa-topbar__title"><?= e($__t) ?></div>
       </div>
+      <?php endif; ?>
+      <?php if ($__qrReady): ?>
+      <a class="pa-topbar__qr" href="/booking.php?ref=<?= e(urlencode($ref)) ?>&amp;view=pass" aria-label="Show my gate pass">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 17h3v3h-3z"/></svg>
+        <span>Pass</span>
+      </a>
       <?php endif; ?>
       <?php if ($hold): ?><?php include __DIR__ . '/includes/app/nav.php'; ?><?php endif; ?>
     </div>
