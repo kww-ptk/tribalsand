@@ -22,12 +22,9 @@ check('labels', checkin_id_type_label('passport') === 'Passport' && checkin_id_t
 
 // ── Complete = name + number + (photo, or what the document carries) ──
 $id = ['passport_name' => 'Wanjiru Kamau', 'passport_number' => '12345678', 'nationality' => 'Kenya', 'id_type' => 'kenya_id'];
-check('kenyan id: name + number + nationality is complete (old cards have no expiry)', checkin_guest_passport_complete($id));
-check('kenyan id: no nationality and no photo is not complete', !checkin_guest_passport_complete(['nationality' => ''] + $id));
-check('kenyan id: a photo stands in for nationality', checkin_guest_passport_complete(['nationality' => '', 'passport_file_key' => 'k'] + $id));
-check('passport: still needs expiry when typed', !checkin_guest_passport_complete(['id_type' => 'passport'] + $id)
-    && checkin_guest_passport_complete(['id_type' => 'passport', 'passport_expiry' => '2031-01-01'] + $id));
-check('a row with no id_type (before the migration) is a passport', !checkin_guest_passport_complete(array_diff_key($id, ['id_type' => 1])));
+check('kenyan id: typed details without the card photo are not complete', !checkin_guest_passport_complete($id));
+check('kenyan id: photo + name + number is complete (no expiry needed)', checkin_guest_passport_complete(['passport_file_key' => 'k'] + $id));
+check('passport: typed details without a photo are not complete', !checkin_guest_passport_complete(['id_type' => 'passport', 'passport_expiry' => '2031-01-01'] + $id));
 
 // ── Reading the photo ──
 $r = checkin_passport_from_ai(['document_type' => 'kenya_id', 'given_names' => 'WANJIRU', 'surname' => 'KAMAU',

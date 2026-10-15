@@ -582,19 +582,16 @@ function checkin_missing_steps(array $config, ?array $data, ?array $lead): array
 // ── Multi-guest per booking ─────────────────────────────────────────────────
 
 /**
- * A single guest row has a complete passport: name + number, plus EITHER the photo
- * OR nationality + expiry typed in (owner rule, Oct 2026 — a guest may upload or
- * type). The photo is read into the fields, so a photo normally brings all four.
+ * A single guest row has a complete passport / Kenyan ID: the PHOTO on file plus the
+ * name and number (read from it, checked by the guest). Same rule for both documents.
  */
 function checkin_guest_passport_complete(?array $g): bool {
     if ($g === null) return false;
+    // Owner rule (Oct 2026): the photo of the passport / Kenyan ID is REQUIRED — the
+    // details are read from it and the guest checks them. Typed details alone no
+    // longer complete a guest (staff can still type in the admin, and upload a scan).
     $has = fn($k) => trim((string)($g[$k] ?? '')) !== '';
-    if (!$has('passport_name') || !$has('passport_number')) return false;
-    if ($has('passport_file_key')) return true;
-    // A Kenyan ID needs no expiry: the older cards don't print one.
-    return checkin_id_type($g['id_type'] ?? null) === 'kenya_id'
-        ? $has('nationality')
-        : $has('nationality') && $has('passport_expiry');
+    return $has('passport_file_key') && $has('passport_name') && $has('passport_number');
 }
 
 // ── Identity document: Passport or Kenyan National ID ───────────────────────

@@ -78,13 +78,14 @@ $otherStatus = function (array $g) use ($showWaiver) {
             <div class="ci-pp" data-pp data-pp-ai="<?= $ppAi ? '1' : '0' ?>">
             <?= checkin_id_switch_html($me['id_type'] ?? null, 'name="id_type"') ?>
             <label class="ci-l">Passport or ID photo <span class="ci-opt">(the passport photo page, or the front of the ID)</span></label>
-            <p class="ci-pp-hint"><?= $ppAi ? 'Take a picture of your passport photo page or the front of your Kenyan ID and we’ll fill in the details for you — or type them below.' : 'Take a picture of your passport photo page or the front of your Kenyan ID, then type your details below.' ?></p>
+            <p class="ci-pp-hint"><?= $ppAi ? 'Take a picture of your passport photo page or the front of your Kenyan ID. We’ll read your details for you to check.' : 'Take a picture of your passport photo page or the front of your Kenyan ID, then fill in your details.' ?></p>
             <div class="ci-upload" data-has="<?= !empty($me['passport_file_key']) ? '1' : '0' ?>">
               <label class="ci-filebtn">&#128247; <span class="ci-filebtn__t"><?= !empty($me['passport_file_key']) ? 'Retake picture' : 'Take picture' ?></span><input type="file" id="ciGFile" accept="image/jpeg,image/png,application/pdf"></label>
               <span class="ci-upload__state"><?= !empty($me['passport_file_key']) ? 'Uploaded &#10003;' : 'No photo yet' ?></span>
             </div>
             <div class="ci-pp-note" role="status" hidden></div>
-            <div class="ci-grid2">
+            <?php // The photo is required: the details show once it is on file. ?>
+            <div class="ci-grid2 ci-pp__fields"<?= empty($me['passport_file_key']) ? ' hidden' : '' ?>>
               <div class="ci-fld">
                 <label class="ci-l">Full name <span class="ci-opt">(as on the document)</span></label>
                 <input class="ci-in" name="passport_name" value="<?= $v('passport_name') ?>"<?= $name !== '' ? ' data-pp-replace' : '' ?>>
@@ -197,6 +198,16 @@ $otherStatus = function (array $g) use ($showWaiver) {
       return;
     }
     var missing = [];
+    // The passport / ID photo is required (checkin_guest_passport_complete()).
+    var up = form.querySelector('.ci-pp .ci-upload');
+    if (up && up.getAttribute('data-has') !== '1') {
+      var idSw = form.querySelector('[name="id_type"]');
+      missing.push(idSw && idSw.value === 'kenya_id' ? 'take a picture of your ID' : 'take a picture of your passport');
+    } else {
+      var pn = form.querySelector('[name="passport_name"]'), pnum = form.querySelector('[name="passport_number"]');
+      if (pn && pn.value.trim() === '') missing.push('enter your full name as on the document');
+      if (pnum && pnum.value.trim() === '') missing.push('enter the document number');
+    }
     var nm = form.querySelector('[name="waiver_signed_name"]');
     if (nm && nm.value.trim() === '') missing.push('type your full name');
     var sig = document.getElementById('ciGSig');

@@ -155,8 +155,8 @@ check('optional step never missing',     !in_array('dietary', checkin_missing_st
 $adult = ['passport_name'=>'A','passport_number'=>'B','passport_file_key'=>'k','waiver_signed_name'=>'A','waiver_signed_at'=>'2026-08-06','waiver_signature'=>'sig'];
 check('guest passport complete',   checkin_guest_passport_complete($adult) === true);
 check('guest passport incomplete', checkin_guest_passport_complete(['passport_name'=>'A','passport_number'=>'B']) === false);
-check('passport: typed nat+expiry instead of photo', checkin_guest_passport_complete(['passport_name'=>'A','passport_number'=>'B','nationality'=>'Kenya','passport_expiry'=>'2030-01-01']) === true);
-check('passport: nationality alone is not enough',   checkin_guest_passport_complete(['passport_name'=>'A','passport_number'=>'B','nationality'=>'Kenya']) === false);
+check('passport: typed details WITHOUT a photo are not enough (photo required, Oct 2026)', checkin_guest_passport_complete(['passport_name'=>'A','passport_number'=>'B','nationality'=>'Kenya','passport_expiry'=>'2030-01-01']) === false);
+check('passport: photo + name + number is complete', checkin_guest_passport_complete(['passport_name'=>'A','passport_number'=>'B','passport_file_key'=>'k']) === true);
 check('passport: photo still needs name+number',     checkin_guest_passport_complete(['passport_name'=>'A','passport_file_key'=>'k']) === false);
 
 // ── Deposit: card photo OR a chosen plan ────────────────────────────────────

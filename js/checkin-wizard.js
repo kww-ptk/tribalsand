@@ -268,17 +268,15 @@
       }
     }
     if (sec.hasAttribute('data-passport-required')) {
-      // Photo OR typed details — mirrors checkin_guest_passport_complete().
-      // A Kenyan ID needs no expiry (the older cards print none).
+      // Photo + name + number — mirrors checkin_guest_passport_complete().
+      // The photo is required; the details are read from it and checked.
       var isId = fieldVal(sec, 'id_type') === 'kenya_id';
-      if (fieldVal(sec, 'passport_name') === '')   missing.push('enter your full name');
-      if (fieldVal(sec, 'passport_number') === '') missing.push(isId ? 'enter your ID number' : 'enter your passport number');
       var up = sec.querySelector('.ci-pp .ci-upload');
-      var hasPhoto = up && up.getAttribute('data-has') === '1';
-      if (!hasPhoto && isId && fieldVal(sec, 'nationality') === '') {
-        missing.push('take a picture of your ID or enter your nationality');
-      } else if (!hasPhoto && !isId && (fieldVal(sec, 'nationality') === '' || fieldVal(sec, 'passport_expiry') === '')) {
-        missing.push('take a picture of your passport or enter your nationality and passport expiry');
+      if (!(up && up.getAttribute('data-has') === '1')) {
+        missing.push(isId ? 'take a picture of your ID' : 'take a picture of your passport');
+      } else {
+        if (fieldVal(sec, 'passport_name') === '')   missing.push('enter your full name');
+        if (fieldVal(sec, 'passport_number') === '') missing.push(isId ? 'enter your ID number' : 'enter your passport number');
       }
     }
     if (!missing.length) return true;

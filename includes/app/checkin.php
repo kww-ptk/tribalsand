@@ -54,8 +54,8 @@ $waIcon = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path
 require_once __DIR__ . '/../ai.php';
 $ppAi   = ai_assistant_supported();
 $ppHint = $ppAi
-    ? 'Take a picture of the passport photo page or the front of a Kenyan ID and we’ll fill in the details for you — or type them below.'
-    : 'Take a picture of the passport photo page or the front of a Kenyan ID, then type the details below.';
+    ? 'Take a picture of the passport photo page or the front of a Kenyan ID. We’ll read the details for you to check.'
+    : 'Take a picture of the passport photo page or the front of a Kenyan ID, then fill in the details.';
 // A name the page opens with (the booking name, or one saved earlier) gives way to
 // the name read off the passport — data-pp-replace; the note offers Undo.
 $ppReplace = fn(string $name): string => trim($name) !== '' ? ' data-pp-replace' : '';
@@ -390,6 +390,8 @@ if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — the 
               <span class="ci-upload__state"><?= !empty($lead['passport_file_key']) ? 'Uploaded &#10003;' : 'No photo yet' ?></span>
             </div>
             <div class="ci-pp-note" role="status" hidden></div>
+            <?php // The photo is required: the details show once it is on file (read from it, then checked). ?>
+            <div class="ci-pp__fields"<?= empty($lead['passport_file_key']) ? ' hidden' : '' ?>>
             <label class="ci-l">Full name (as on the document)</label>
             <?php // Starts with the booking name until a passport name is on file (display only —
                   // the lead row may not exist yet); the passport photo replaces it. ?>
@@ -401,6 +403,7 @@ if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — the 
             <input class="ci-in" name="nationality" value="<?= $val('nationality', $lead) ?>">
             <?= checkin_id_label_html('expiry', $lead['id_type'] ?? null) ?>
             <input class="ci-in" type="date" name="passport_expiry" value="<?= $val('passport_expiry', $lead) ?>">
+            </div>
           </div>
           <?php endif; ?>
           <?php if ($showWaiver): $leadSigned = checkin_guest_waiver_signed($lead); ?>
@@ -469,12 +472,14 @@ if ($showDeposit)            $needs[] = ['&#128179;', 'Your credit card — the 
                 <span class="ci-upload__state"><?= !empty($g['passport_file_key']) ? 'Uploaded &#10003;' : 'No photo yet' ?></span>
               </div>
               <div class="ci-pp-note" role="status" hidden></div>
+              <div class="ci-pp__fields"<?= empty($g['passport_file_key']) ? ' hidden' : '' ?>>
               <?= checkin_id_label_html('number', $g['id_type'] ?? null) ?>
               <input class="ci-in" data-field="passport_number" value="<?= $fv('passport_number') ?>">
               <label class="ci-l">Nationality</label>
               <input class="ci-in" data-field="nationality" value="<?= $fv('nationality') ?>">
               <?= checkin_id_label_html('expiry', $g['id_type'] ?? null) ?>
               <input class="ci-in" type="date" data-field="passport_expiry" value="<?= $fv('passport_expiry') ?>">
+              </div>
             </div>
             <?php endif; ?>
             <?php if ($showWaiver): ?>
