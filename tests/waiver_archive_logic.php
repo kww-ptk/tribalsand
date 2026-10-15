@@ -84,5 +84,41 @@ try {
     echo "SKIP  DB checks (" . strtok($e->getMessage(), "\n") . ")\n";
 }
 
+// ── Task 2: the record ──
+require_once __DIR__ . '/../includes/waiver-record.php';
+$hold = ['id' => 175, 'access_code' => 'AB12', 'venue_name' => 'Maya Kobe', 'room_name' => 'Ocean Suite', 'check_in' => '2026-12-20', 'check_out' => '2026-12-27'];
+$g = ['id' => 9, 'is_lead' => true, 'waiver_name_snapshot' => 'Anne Smith', 'waiver_passport_snapshot' => 'X1234567',
+      'waiver_nationality_snapshot' => 'United Kingdom', 'waiver_passport_expiry_snapshot' => '2031-05-01', 'waiver_id_type_snapshot' => 'passport',
+      'waiver_terms_snapshot' => 'TERMS', 'waiver_version' => 'v1', 'waiver_signature' => 'data:image/png;base64,AAAA',
+      'waiver_signed_name' => 'Anne Smith', 'waiver_signed_at' => '2026-10-15 10:00:00+03', 'waiver_scan_snapshot' => 'k.jpg'];
+$m = waiver_record_model_guest($hold, $g, 'TSR-175-9-ab');
+check('record: full number, no dots', $m['doc_number'] === 'X1234567');
+check('record: expiry kept', $m['expiry'] === '2031-05-01');
+$html = waiver_record_html($m, ['scan' => 'none']);
+check('guest link: full number on the page', str_contains($html, 'X1234567') && !str_contains($html, '•'));
+check('guest link: expiry on the page', str_contains($html, '1 May 2031'));
+check('guest link: no scan image', !str_contains($html, 'Document scan'));
+$html = waiver_record_html($m, ['scan' => 'url', 'scan_url' => '/admin/checkin-file.php?hold=175&guest=9&signed=1']);
+check('owner view: scan image shown', str_contains($html, 'Document scan') && str_contains($html, 'checkin-file.php?hold=175&amp;guest=9&amp;signed=1'));
+$html = waiver_record_html($m, ['scan' => 'embed', 'scan_bytes' => "\xFF\xD8\xFFJPEG", 'scan_file' => 'x.jpg']);
+check('zip: image embedded as data URI', str_contains($html, 'src="data:image/jpeg;base64,'));
+$mPdf = waiver_record_model_guest($hold, ['waiver_scan_snapshot' => 'k.pdf'] + $g, 'R');
+$html = waiver_record_html($mPdf, ['scan' => 'embed', 'scan_bytes' => '%PDF-1.4', 'scan_file' => 'x.pdf']);
+check('zip: a PDF scan points at the file beside the record', str_contains($html, 'PDF scan') && str_contains($html, 'x.pdf'));
+$legacy = waiver_record_model_guest($hold, ['waiver_scan_snapshot' => null, 'passport_file_key' => 'now.jpg'] + $g, 'R');
+check('legacy record falls back to the current scan, labelled', $legacy['scan_key'] === 'now.jpg'
+    && str_contains(waiver_record_html($legacy, ['scan' => 'url', 'scan_url' => '/x']), 'Scan on file now'));
+$noScan = waiver_record_model_guest($hold, ['waiver_scan_snapshot' => null, 'passport_file_key' => null] + $g, 'R');
+check('no scan at all says so', str_contains(waiver_record_html($noScan, ['scan' => 'url', 'scan_url' => '']), 'No scan on file'));
+$v = ['id' => 4, 'waiver_reference' => 'VR-4', 'waiver_name_snapshot' => 'Wanjiru Kamau', 'waiver_id_type_snapshot' => 'kenya_id',
+      'waiver_id_number_snapshot' => '12345678', 'waiver_nationality_snapshot' => 'Kenya', 'waiver_id_expiry_snapshot' => null,
+      'waiver_terms_snapshot' => 'T', 'waiver_version' => 'v', 'waiver_signature' => 'data:image/png;base64,A', 'waiver_signed_name' => 'W K',
+      'waiver_signed_at' => '2026-10-15 09:00:00+03', 'removed_at' => '2026-10-20 12:00:00+03', 'waiver_photo_snapshot' => null, 'id_photo_key' => null];
+$vm = waiver_record_model_visitor($v);
+check('visitor: Kenyan ID full number, expiry dash', $vm['doc_label'] === 'Kenyan ID' && $vm['doc_number'] === '12345678' && $vm['expiry'] === '');
+check('visitor removed: photo removed line', str_contains(waiver_record_html($vm, ['scan' => 'url', 'scan_url' => '']), 'ID photo removed on 20 Oct 2026'));
+check('record escapes names', !str_contains(waiver_record_html(waiver_record_model_guest($hold, ['waiver_name_snapshot' => '<b>x</b>'] + $g, 'R')), '<b>x</b>'));
+check('blank scan_url never renders an empty img', !str_contains(waiver_record_html($m, ['scan' => 'url', 'scan_url' => '']), 'src=""'));
+
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);

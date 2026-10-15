@@ -20,8 +20,11 @@ if ($kind === 'deposit') {
     if ($key === '') { http_response_code(404); exit('No file'); }
     audit_log('checkin.file_view', 'hold', $holdId, 'deposit card');
 } else {
-    $row = db_query('SELECT passport_file_key FROM checkin_guests WHERE id = :g AND hold_id = :h', [':g' => $guestId, ':h' => $holdId])->fetch();
-    $key = $row['passport_file_key'] ?? '';
+    // &signed=1 = the scan the waiver was signed with (frozen), else the current photo.
+    $row = db_query('SELECT * FROM checkin_guests WHERE id = :g AND hold_id = :h', [':g' => $guestId, ':h' => $holdId])->fetch();
+    $key = $row
+        ? (($_GET['signed'] ?? '') === '1' ? checkin_guest_scan_key($row)['key'] : (string)($row['passport_file_key'] ?? ''))
+        : '';
     if ($key === '') { http_response_code(404); exit('No file'); }
     audit_log('checkin.file_view', 'hold', $holdId, 'guest ' . $guestId);
 }

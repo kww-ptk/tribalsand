@@ -29,7 +29,8 @@ if (isset($_GET['vp'])) {
     if (!visitor_in_scope($id, admin_venue_ids(), (int)($_SESSION['admin_id'] ?? 0))) $forbid();
 }
 $v   = visitor_find($id, true);
-$key = (string)($v['id_photo_key'] ?? '');
+// &signed=1 = the photo the waiver was signed with (frozen), else the current one.
+$key = ($_GET['signed'] ?? '') === '1' ? visitor_scan_key($v ?: [])['key'] : (string)($v['id_photo_key'] ?? '');
 if ($key === '') {
     http_response_code(404);
     header('Content-Type: text/plain; charset=utf-8');
