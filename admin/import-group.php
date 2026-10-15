@@ -38,10 +38,10 @@ if (isset($_GET['batch'], $_GET['export']) && ($b = gi_batch((string)$_GET['batc
     header('Content-Disposition: attachment; filename="' . $b['slug'] . '-links.csv"');
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF");
-    fputcsv($out, ['Head / contact email', 'Property', 'Room', 'Booking name', 'Check-in', 'Check-out', 'Status', 'Guest link'], ',', '"', '');
+    fputcsv($out, ['Head / contact email', 'Property', 'Room', 'Booking name', 'Check-in', 'Check-out', 'Status', 'Online check-in', 'Guest link'], ',', '"', '');
     foreach (gi_batch_links($scopedIds($b['hold_ids']), $b['heads']) as $g) {
         foreach ($g['rooms'] as $r) {
-            fputcsv($out, [$g['email'], $r['property'], $r['room'], $r['guest'], $r['check_in'], $r['check_out'], $r['status'], $r['link']], ',', '"', '');
+            fputcsv($out, [$g['email'], $r['property'], $r['room'], $r['guest'], $r['check_in'], $r['check_out'], $r['status'], $r['checkin']['label'] ?: '—', $r['link']], ',', '"', '');
         }
     }
     exit;
@@ -152,6 +152,10 @@ $fmtD = fn(?string $d) => $d ? date('j M', strtotime($d)) : '—';
 .gi-rooms{margin:8px 0 0;padding:0;list-style:none;display:grid;gap:6px}
 .gi-rooms li{font-size:13px;line-height:1.45}
 .gi-rooms a{overflow-wrap:anywhere}
+.gi-ci{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:12px 18px;border-bottom:1px solid var(--border,#e5e7eb);font-size:13px}
+.gi-ci__f{font:inherit;font-size:12.5px;font-weight:600;border:1px solid var(--border,#e5e7eb);background:#fff;color:var(--muted,#6b7280);border-radius:999px;padding:5px 12px;cursor:pointer}
+.gi-ci__f[aria-pressed="true"]{background:#102F3A;border-color:#102F3A;color:#fff}
+.gi-ci__f b{font-weight:700;margin-left:4px}
 .gi-btns{display:flex;gap:8px;flex-wrap:wrap;flex:0 0 auto}
 .gi-wa{background:#25d366;border-color:#25d366;color:#fff}
 .gi-wa:hover{background:#1ebe5a;color:#fff}
@@ -197,6 +201,15 @@ $fmtD = fn(?string $d) => $d ? date('j M', strtotime($d)) : '—';
       <span class="card__title"><?= e($batch['label']) ?> · <?= $rooms ?> room<?= $rooms === 1 ? '' : 's' ?> · <?= count($groups) ?> contact<?= count($groups) === 1 ? '' : 's' ?></span>
       <a class="btn-outline btn-sm" href="<?= e($self . '?batch=' . urlencode($batch['slug']) . '&export=csv') ?>" data-no-shell><?= admin_icon('download', 14) ?> CSV of all links</a>
     </div>
+    <?php $ciSum = gi_checkin_summary($groups); if ($ciSum['total'] > 0): ?>
+    <div class="gi-ci" data-gi-filters>
+      <strong>Online check-in:</strong>
+      <button type="button" class="gi-ci__f" data-gi-f="" aria-pressed="true">All<b><?= (int)$ciSum['total'] ?></b></button>
+      <button type="button" class="gi-ci__f" data-gi-f="done" aria-pressed="false">Checked in<b><?= (int)$ciSum['done'] ?></b></button>
+      <?php if ($ciSum['part'] > 0): ?><button type="button" class="gi-ci__f" data-gi-f="part" aria-pressed="false">Partly<b><?= (int)$ciSum['part'] ?></b></button><?php endif; ?>
+      <button type="button" class="gi-ci__f" data-gi-f="none" aria-pressed="false">Not checked in<b><?= (int)$ciSum['none'] ?></b></button>
+    </div>
+    <?php endif; ?>
     <div class="card__body" style="padding:0">
       <?php if (!$groups): ?><p class="text-muted" style="padding:18px;margin:0">No bookings in this group that you can see.</p><?php endif; ?>
       <?php foreach ($groups as $g):
@@ -208,11 +221,12 @@ $fmtD = fn(?string $d) => $d ? date('j M', strtotime($d)) : '—';
           <div class="gi-head__email"><?= e($g['email']) ?></div>
           <ul class="gi-rooms">
             <?php foreach ($g['rooms'] as $r): ?>
-            <li><strong><?= e($r['property']) ?> · <?= e($r['room']) ?></strong> — <?= e($r['guest']) ?> · <?= e($fmtD($r['check_in'])) ?> → <?= e($fmtD($r['check_out'])) ?>
-              <?php if ($r['status'] === 'cancelled'): ?> <span class="badge badge--grey">Cancelled</span><?php endif; ?><br>
+            <li data-gi-ci="<?= e($r['checkin']['key']) ?>"><strong><?= e($r['property']) ?> · <?= e($r['room']) ?></strong> — <?= e($r['guest']) ?> · <?= e($fmtD($r['check_in'])) ?> → <?= e($fmtD($r['check_out'])) ?>
+              <?php if ($r['status'] === 'cancelled'): ?> <span class="badge badge--grey">Cancelled</span><?php endif; ?>
+              <?php if ($r['checkin']['key'] !== 'off'): ?> <span class="badge <?= ['done' => 'badge--green', 'part' => 'badge--orange', 'none' => 'badge--grey'][$r['checkin']['key']] ?>"><?= $r['checkin']['key'] === 'done' ? '&#10003; ' : '' ?><?= e($r['checkin']['label']) ?></span><?php endif; ?><br>
               <?php if ($r['link'] !== ''): ?><a href="<?= e($r['link']) ?>" target="_blank" rel="noopener" data-no-shell><?= e($r['link']) ?></a>
               <?php else: ?><span class="text-muted">No link — BOOKING_TOKEN_SECRET is not set.</span><?php endif; ?>
-              · <a href="/admin/booking.php?id=<?= (int)$r['hold_id'] ?>">Open booking</a></li>
+              · <a href="/admin/booking.php?hold=<?= (int)$r['hold_id'] ?>">Open booking</a></li>
             <?php endforeach; ?>
           </ul>
         </div>
@@ -374,6 +388,25 @@ $fmtD = fn(?string $d) => $d ? date('j M', strtotime($d)) : '—';
       if (navigator.clipboard) navigator.clipboard.writeText(t).then(done, function () {});
     });
   });
+  // Online check-in filter: show only the rooms in one state (a contact with
+  // none left is hidden), e.g. "Not checked in" to know whom to chase.
+  var bar = document.querySelector('[data-gi-filters]');
+  if (bar && !bar.dataset.giBound) {
+    bar.dataset.giBound = '1';
+    bar.addEventListener('click', function (e) {
+      var b = e.target.closest('[data-gi-f]'); if (!b) return;
+      var want = b.getAttribute('data-gi-f');
+      bar.querySelectorAll('[data-gi-f]').forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+      document.querySelectorAll('.gi-head').forEach(function (h) {
+        var shown = 0;
+        h.querySelectorAll('li[data-gi-ci]').forEach(function (li) {
+          var ok = !want || li.getAttribute('data-gi-ci') === want;
+          li.hidden = !ok; if (ok) shown++;
+        });
+        h.hidden = shown === 0;
+      });
+    });
+  }
 })();
 </script>
 <?php include __DIR__ . '/_layout_end.php'; ?>

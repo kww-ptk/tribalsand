@@ -174,6 +174,22 @@ if (!$haveMi) {
     }
 }
 
+// ── Check-in status on the links page ──────────────────────────────────────
+$b = gi_checkin_badge(['require_checkin' => true, 'checkin_completed_at' => '2026-10-15 10:00'], 2, 2);
+check('badge: everyone done = checked in', $b['key'] === 'done' && $b['label'] === 'Checked in');
+$b = gi_checkin_badge(['require_checkin' => true, 'checkin_completed_at' => null], 1, 3);
+check('badge: some done = "1 of 3 checked in"', $b['key'] === 'part' && $b['label'] === '1 of 3 checked in');
+$b = gi_checkin_badge(['require_checkin' => true, 'checkin_completed_at' => null], 0, 2);
+check('badge: nobody yet = not started', $b['key'] === 'none' && $b['label'] === 'Not checked in');
+$b = gi_checkin_badge(['require_checkin' => true, 'checkin_completed_at' => null], 2, 2);
+check('badge: everyone done but not stamped yet still counts as checked in', $b['key'] === 'done');
+$b = gi_checkin_badge(['require_checkin' => false], 0, 2);
+check('badge: check-in not required', $b['key'] === 'off');
+$b = gi_checkin_badge(['require_checkin' => true, 'status' => 'cancelled'], 0, 2);
+check('badge: cancelled room is not counted', $b['key'] === 'off');
+$s = gi_checkin_summary([['rooms' => [['checkin' => ['key' => 'done']], ['checkin' => ['key' => 'part']]]], ['rooms' => [['checkin' => ['key' => 'none']], ['checkin' => ['key' => 'off']]]]]);
+check('summary: counts per state, off left out of the total', $s === ['done' => 1, 'part' => 1, 'none' => 1, 'total' => 3]);
+
 // ── DB: a mapped property (room picked on the preview), rolled back ────────
 $cot = null;
 try { $cot = db_query("SELECT r.id, r.venue_id FROM rooms r WHERE r.slug = 'maya-kobe-cottages'")->fetch() ?: null; } catch (Throwable $e) {}

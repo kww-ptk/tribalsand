@@ -513,11 +513,39 @@ function gi_group_lookup(string $code, string $name, string $today): array {
  * The head's name is the most common booking name among the group's rooms that…
  * simply: the first booking name under that email.
  */
+/**
+ * One room's check-in status for the links page. PURE. $done = adults whose own
+ * check-in is complete (checkin_guest_complete()), $need = adults the room expects.
+ * @return array{key:string,label:string} key: done | part | none | off (not required / not live)
+ */
+function gi_checkin_badge(array $hold, int $done, int $need): array {
+    if (empty($hold['require_checkin']) || in_array((string)($hold['status'] ?? ''), ['cancelled', 'expired', 'declined'], true)) {
+        return ['key' => 'off', 'label' => ''];
+    }
+    $need = max(1, $need);
+    if (!empty($hold['checkin_completed_at']) || $done >= $need) return ['key' => 'done', 'label' => 'Checked in'];
+    if ($done > 0) return ['key' => 'part', 'label' => $done . ' of ' . $need . ' checked in'];
+    return ['key' => 'none', 'label' => 'Not checked in'];
+}
+
+/** Rooms per check-in state across the links page (rooms with no check-in left out). PURE. */
+function gi_checkin_summary(array $groups): array {
+    $out = ['done' => 0, 'part' => 0, 'none' => 0, 'total' => 0];
+    foreach ($groups as $g) foreach ($g['rooms'] as $r) {
+        $k = $r['checkin']['key'] ?? 'off';
+        if (!isset($out[$k])) continue;
+        $out[$k]++; $out['total']++;
+    }
+    return $out;
+}
+
 function gi_batch_links(array $holdIds, array $heads = []): array {
     $ids = array_values(array_filter(array_map('intval', $holdIds)));
     if (!$ids) return [];
+    $ck = checkin_supported();
     $rows = db_query(
-        "SELECT h.id, h.guest_name, h.guest_email, h.check_in, h.check_out, h.status,
+        "SELECT h.id, h.guest_name, h.guest_email, h.check_in, h.check_out, h.status, h.guest_count,"
+        . ($ck ? " h.require_checkin, h.checkin_completed_at," : "") . "
                 v.name AS venue_name, r.name AS room_name, u.name AS unit_name,
                 (SELECT " . mi_components_select('ab') . " FROM availability_blocks ab WHERE ab.hold_id = h.id ORDER BY ab.id LIMIT 1) AS components
            FROM holds h JOIN units u ON u.id = h.unit_id
@@ -526,6 +554,17 @@ function gi_batch_links(array $holdIds, array $heads = []): array {
           WHERE h.id IN (" . implode(',', $ids) . ")
           ORDER BY lower(h.guest_email), h.id"
     )->fetchAll();
+    // Who has finished their own check-in, per room — the same rule the booking uses.
+    $adultRows = []; $adultsDone = [];
+    if ($ck) {
+        $cfg = checkin_config();
+        foreach (db_query('SELECT * FROM checkin_guests WHERE hold_id IN (' . implode(',', $ids) . ')')->fetchAll() as $g) {
+            if (!empty($g['is_child'])) continue;
+            $hid = (int)$g['hold_id'];
+            $adultRows[$hid] = ($adultRows[$hid] ?? 0) + 1;
+            if (checkin_guest_complete($g, $cfg)) $adultsDone[$hid] = ($adultsDone[$hid] ?? 0) + 1;
+        }
+    }
     $byEmail = [];
     foreach ($rows as $h) {
         $e = strtolower((string)$h['guest_email']);
@@ -539,6 +578,8 @@ function gi_batch_links(array $holdIds, array $heads = []): array {
             'room' => (string)$h['room_name'] . (((string)$h['unit_name'] !== '') ? ' · ' . $h['unit_name'] : '') . ($bed !== '' ? ' · ' . $bed : ''),
             'guest' => (string)$h['guest_name'], 'check_in' => (string)$h['check_in'], 'check_out' => (string)$h['check_out'],
             'status' => (string)$h['status'], 'link' => $ref !== '' ? site_url('/booking.php?ref=' . $ref) : '',
+            'checkin' => gi_checkin_badge($h, $adultsDone[(int)$h['id']] ?? 0,
+                max((int)($h['guest_count'] ?? 1), $adultRows[(int)$h['id']] ?? 0)),
         ];
     }
     $out = array_values($byEmail);
