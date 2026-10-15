@@ -140,34 +140,50 @@ function waiver_zip_build(array $rows, string $path, ?callable $read = null): ar
     $read = $read ?? 'storage_read_private';
     $z = new ZipArchive();
     if ($z->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) throw new RuntimeException('Could not create the ZIP file.');
-    $used = []; $missing = []; $count = 0; $skipped = 0;
-    $csv = fopen('php://temp', 'w+');
-    fputcsv($csv, ['Signed', 'Name', 'Type', 'Property', 'Booking / place', 'Document', 'Document number', 'Nationality', 'Expiry', 'Reference', 'Waiver version', 'Scan file'], ',', '"', '');
-    foreach ($rows as $row) {
-        $m = waiver_archive_model($row);
-        if (!$m) { $skipped++; continue; }
-        $dir = waiver_zip_folder($row); $base = waiver_file_base($row);
-        $n = 1; $try = $base;
-        while (isset($used[$dir . '/' . $try])) $try = $base . ' (' . (++$n) . ')';
-        $used[$dir . '/' . $try] = true; $base = $try;
-        $key = (string)($m['scan_key'] ?? '');
-        $bytes = $key !== '' ? $read($key) : null;
-        $scanFile = '';
-        if ($key !== '' && $bytes === null) { $missing[] = $key; $scanFile = 'missing'; }
-        if ($bytes !== null) {
-            $ext = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'application/pdf' => 'pdf'][waiver_scan_mime($bytes)] ?? (pathinfo($key, PATHINFO_EXTENSION) ?: 'bin');
-            $scanFile = $base . '.' . $ext;
-            $z->addFromString($dir . '/' . $scanFile, $bytes);
+    // ZipArchive::addFromString keeps every buffer in memory until close(), so each record's
+    // HTML and scan are spooled to a private temp dir and added by path (addFile reads them
+    // at close). Only one record's bytes are in PHP memory at a time.
+    $spool = sys_get_temp_dir() . '/waivers-spool-' . bin2hex(random_bytes(8));
+    if (!@mkdir($spool, 0700)) { $z->close(); throw new RuntimeException('Could not create a temporary folder.'); }
+    $used = []; $missing = []; $count = 0; $skipped = 0; $seq = 0;
+    try {
+        $csv = fopen('php://temp', 'w+');
+        fputcsv($csv, ['Signed', 'Name', 'Type', 'Property', 'Booking / place', 'Document', 'Document number', 'Nationality', 'Expiry', 'Reference', 'Waiver version', 'Scan file'], ',', '"', '');
+        foreach ($rows as $row) {
+            $m = waiver_archive_model($row);
+            if (!$m) { $skipped++; continue; }
+            $dir = waiver_zip_folder($row); $base = waiver_file_base($row);
+            $n = 1; $try = $base;
+            while (isset($used[$dir . '/' . $try])) $try = $base . ' (' . (++$n) . ')';
+            $used[$dir . '/' . $try] = true; $base = $try;
+            $key = (string)($m['scan_key'] ?? '');
+            $bytes = $key !== '' ? $read($key) : null;
+            $scanFile = '';
+            if ($key !== '' && $bytes === null) { $missing[] = $key; $scanFile = 'missing'; }
+            if ($bytes !== null) {
+                $ext = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'application/pdf' => 'pdf'][waiver_scan_mime($bytes)] ?? (pathinfo($key, PATHINFO_EXTENSION) ?: 'bin');
+                $scanFile = $base . '.' . $ext;
+                $tmp = $spool . '/' . (++$seq);
+                file_put_contents($tmp, $bytes);
+                if (!$z->addFile($tmp, $dir . '/' . $scanFile)) throw new RuntimeException('Could not add a file to the ZIP.');
+            }
+            $html = waiver_record_html($m, ['scan' => 'embed', 'scan_bytes' => $bytes ?? '', 'scan_file' => $scanFile, 'print_button' => true]);
+            $tmp = $spool . '/' . (++$seq);
+            file_put_contents($tmp, $html);
+            if (!$z->addFile($tmp, $dir . '/' . $base . '.html')) throw new RuntimeException('Could not add a file to the ZIP.');
+            unset($bytes, $html);
+            fputcsv($csv, [date('Y-m-d H:i', strtotime((string)$row['signed_at'])), $row['name'], $row['kind'] === 'guest' ? 'Guest' : 'Visitor',
+                $row['venue_name'], $row['where'], $row['doc_label'], $row['doc_number'], $row['nationality'], $row['expiry'],
+                $row['reference'], $row['version'], $scanFile], ',', '"', '');
+            $count++;
         }
-        $z->addFromString($dir . '/' . $base . '.html', waiver_record_html($m, ['scan' => 'embed', 'scan_bytes' => $bytes ?? '', 'scan_file' => $scanFile, 'print_button' => true]));
-        fputcsv($csv, [date('Y-m-d H:i', strtotime((string)$row['signed_at'])), $row['name'], $row['kind'] === 'guest' ? 'Guest' : 'Visitor',
-            $row['venue_name'], $row['where'], $row['doc_label'], $row['doc_number'], $row['nationality'], $row['expiry'],
-            $row['reference'], $row['version'], $scanFile], ',', '"', '');
-        $count++;
+        rewind($csv);
+        $z->addFromString('index.csv', "\xEF\xBB\xBF" . stream_get_contents($csv));   // small; BOM: Excel reads UTF-8
+        if (!$z->close()) throw new RuntimeException('Could not write the ZIP file.');
+    } finally {
+        foreach ((array)glob($spool . '/*') as $f) @unlink($f);
+        @rmdir($spool);
     }
-    rewind($csv);
-    $z->addFromString('index.csv', "\xEF\xBB\xBF" . stream_get_contents($csv));   // BOM: Excel reads UTF-8
-    $z->close();
     return ['records' => $count, 'missing' => $missing, 'skipped' => $skipped];
 }
 
@@ -176,16 +192,19 @@ function waiver_archive_download(array $rows, string $ym, ?int $venueId, string 
     if (!class_exists('ZipArchive')) { http_response_code(501); exit('ZIP support is not installed on the server.'); }
     @set_time_limit(300);
     $path = tempnam(sys_get_temp_dir(), 'waivers');
-    $res = waiver_zip_build($rows, $path);
-    $venueName = $venueId ? (string)db_query('SELECT name FROM venues WHERE id = :v', [':v' => $venueId])->fetchColumn() : '';
-    $file = 'waivers-' . $ym . ($venueName !== '' ? '-' . waiver_safe_name($venueName) : '') . '.zip';
-    audit_log('waivers.download', 'waivers', 0, "month $ym · " . ($venueName ?: 'all properties') . " · $kind · {$res['records']} records"
-        . ($res['missing'] ? ' · ' . count($res['missing']) . ' scans missing' : '')
-        . ($res['skipped'] ? ' · ' . $res['skipped'] . ' skipped' : ''));
-    header('Content-Type: application/zip');
-    header('Content-Disposition: attachment; filename="' . str_replace('"', '', $file) . '"');
-    header('Content-Length: ' . filesize($path));
-    header('Cache-Control: private, no-store');
-    readfile($path);
-    @unlink($path);
+    try {
+        $res = waiver_zip_build($rows, $path);
+        $venueName = $venueId ? (string)db_query('SELECT name FROM venues WHERE id = :v', [':v' => $venueId])->fetchColumn() : '';
+        $file = 'waivers-' . $ym . ($venueName !== '' ? '-' . waiver_safe_name($venueName) : '') . '.zip';
+        audit_log('waivers.download', 'waivers', 0, "month $ym · " . ($venueName ?: 'all properties') . " · $kind · {$res['records']} records"
+            . ($res['missing'] ? ' · ' . count($res['missing']) . ' scans missing' : '')
+            . ($res['skipped'] ? ' · ' . $res['skipped'] . ' skipped' : ''));
+        header('Content-Type: application/zip');
+        header('Content-Disposition: attachment; filename="' . str_replace('"', '', $file) . '"');
+        header('Content-Length: ' . filesize($path));
+        header('Cache-Control: private, no-store');
+        readfile($path);
+    } finally {
+        @unlink($path);   // never leave a ZIP of personal documents behind, even on an exception
+    }
 }

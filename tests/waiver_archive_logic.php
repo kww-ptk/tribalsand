@@ -170,6 +170,7 @@ if (class_exists('ZipArchive')) {
          '_model' => null],
     ];
     $zipPath = tempnam(sys_get_temp_dir(), 'wz');
+    $spoolBefore = glob(sys_get_temp_dir() . '/waivers-spool-*') ?: [];
     $res = waiver_zip_build($rowsZ, $zipPath, fn($k) => $k === 'a.jpg' ? "\xFF\xD8\xFFJPEG" : null);
     $z = new ZipArchive(); $z->open($zipPath);
     $names = []; for ($i = 0; $i < $z->numFiles; $i++) $names[] = $z->getNameIndex($i);
@@ -181,6 +182,13 @@ if (class_exists('ZipArchive')) {
     check('index.csv: header + 2 rows', substr_count(trim($csv), "\n") === 2 && str_contains($csv, 'Document number') && str_contains($csv, 'missing'));
     check('zip: embedded image in the record', str_contains((string)$z->getFromName('Maya Kobe/2026-10-15 Anne Smith R1.html'), 'data:image/jpeg;base64,'));
     $z->close(); @unlink($zipPath);
+    check('build leaves no spool files behind', (glob(sys_get_temp_dir() . '/waivers-spool-*') ?: []) === $spoolBefore);
+    // a build that throws midway cleans up too
+    $spoolBefore = glob(sys_get_temp_dir() . '/waivers-spool-*') ?: [];
+    $zp2 = tempnam(sys_get_temp_dir(), 'wz');
+    try { waiver_zip_build($rowsZ, $zp2, function ($k) { throw new RuntimeException('boom'); }); } catch (RuntimeException $e) {}
+    check('a failing build leaves no spool files behind', (glob(sys_get_temp_dir() . '/waivers-spool-*') ?: []) === $spoolBefore);
+    @unlink($zp2);
 } else { echo "SKIP  ZIP checks (no ZipArchive)\n"; }
 
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
