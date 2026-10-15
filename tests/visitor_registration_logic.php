@@ -216,6 +216,19 @@ if (!$pdo) {
         visitor_discard_file_deletes();
         check('db identity: discard empties the queue', visitor_pending_file_deletes() === []);
 
+        if (visitor_photo_snapshot_supported()) {
+            // Replace the photo of a signed visitor (frozen file A kept), then re-sign after a terms change: A is released.
+            $frozenA = (string)visitor_find($id)['waiver_photo_snapshot'];
+            visitor_update_identity($id, ['photo_key' => 'visitors/resign-b.jpg', 'id_number' => 'ZZ999999'] + $d, 'visitor');
+            check('db re-sign: replacing the photo keeps the frozen file for now', $frozenA !== '' && visitor_pending_file_deletes() === []);
+            visitor_sign($id, 'Anna Smith', $sig, 'self');
+            check('db re-sign: the old frozen photo is queued for deletion', visitor_pending_file_deletes() === [$frozenA]);
+            check('db re-sign: the new snapshot is the current photo', visitor_find($id)['waiver_photo_snapshot'] === 'visitors/resign-b.jpg');
+            visitor_sign($id, 'Anna Smith', $sig, 'self');
+            check('db re-sign: signing again with the same photo queues nothing more', visitor_pending_file_deletes() === [$frozenA]);
+            visitor_discard_file_deletes();
+        }
+
         $kid = visitor_add_child($id, 'Mia Smith', 6);
         $ben = visitor_invite_adult($id, 'Ben Ode');
         $g = visitor_group($id);

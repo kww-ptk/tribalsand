@@ -152,6 +152,13 @@ try {
 
 // ── Task 4: the ZIP ──
 check('file base is safe', waiver_file_base(['signed_at' => '2026-10-15 10:00:00+03', 'name' => 'José / "Q" Ñandú', 'reference' => 'TSR-1-2-ab']) === '2026-10-15 Jose Q Nandu TSR-1-2-ab');
+check('safe name: dots-only becomes empty (never a .. folder)', waiver_safe_name('..') === '' && waiver_safe_name(' . ') === '' && waiver_zip_folder(['kind' => 'guest', 'venue_name' => '..']) === 'No property');
+check('safe name: trims edge dots and spaces', waiver_safe_name('. Maya Kobe .') === 'Maya Kobe');
+$longBase = waiver_file_base(['signed_at' => '2026-10-15 10:00:00+03', 'name' => str_repeat('Abcdef ', 30), 'reference' => 'TSR-1-2-ab']);
+check('file base: a long name is cut, date and reference survive', strlen($longBase) <= 100 && str_starts_with($longBase, '2026-10-15 ') && str_ends_with($longBase, ' TSR-1-2-ab'));
+check('csv cell: formula starters are quoted', waiver_csv_cell('=HYPERLINK("x")') === "'=HYPERLINK(\"x\")" && waiver_csv_cell('+1') === "'+1" && waiver_csv_cell('-1') === "'-1"
+    && waiver_csv_cell('@x') === "'@x" && waiver_csv_cell("\tx") === "'\tx" && waiver_csv_cell("\rx") === "'\rx");
+check('csv cell: ordinary values untouched', waiver_csv_cell('Anne Smith') === 'Anne Smith' && waiver_csv_cell('') === '' && waiver_csv_cell('2026-10-15 10:00') === '2026-10-15 10:00');
 check('folders', waiver_zip_folder(['kind' => 'guest', 'venue_name' => 'Maya Kobe']) === 'Maya Kobe'
     && waiver_zip_folder(['kind' => 'visitor', 'venue_name' => '']) === 'Visitors/No visit yet');
 if (class_exists('ZipArchive')) {
@@ -181,6 +188,12 @@ if (class_exists('ZipArchive')) {
     $csv = (string)$z->getFromName('index.csv');
     check('index.csv: header + 2 rows', substr_count(trim($csv), "\n") === 2 && str_contains($csv, 'Document number') && str_contains($csv, 'missing'));
     check('zip: embedded image in the record', str_contains((string)$z->getFromName('Maya Kobe/2026-10-15 Anne Smith R1.html'), 'data:image/jpeg;base64,'));
+    $inj = [['kind' => 'guest', 'signed_at' => '2026-10-15 10:00:00+03', 'name' => '=HYPERLINK("http://x")', 'venue_name' => 'Maya Kobe', 'reference' => 'R5',
+         'where' => '@cmd', 'doc_label' => 'Passport', 'doc_number' => '+1', 'nationality' => '-2', 'expiry' => '', 'version' => 'v',
+         'scan_key' => '', 'scan_frozen' => false, 'hold_id' => 0, 'guest_id' => 0, 'visitor_id' => 0, 'removed_at' => '', '_model' => ['scan_key' => ''] + $m]];
+    $zp3 = tempnam(sys_get_temp_dir(), 'wz'); waiver_zip_build($inj, $zp3);
+    $z3 = new ZipArchive(); $z3->open($zp3); $csv3 = (string)$z3->getFromName('index.csv'); $z3->close(); @unlink($zp3);
+    check('index.csv: a formula-like name is quoted with a leading apostrophe', str_contains($csv3, "\"'=HYPERLINK(") && !preg_match('/(^|,)"?=HYPERLINK/m', $csv3) && str_contains($csv3, "'@cmd") && str_contains($csv3, "'+1"));
     $z->close(); @unlink($zipPath);
     check('build leaves no spool files behind', (glob(sys_get_temp_dir() . '/waivers-spool-*') ?: []) === $spoolBefore);
     // a build that throws midway cleans up too

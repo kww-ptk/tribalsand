@@ -36,7 +36,8 @@ function waiver_archive_rows(string $ym, ?int $venueId, string $kind, string $q 
         $snap = checkin_identity_snapshot_supported();
         $scan = waiver_scan_snapshot_supported() ? 'g.waiver_scan_snapshot' : 'NULL';
         $idt  = checkin_id_type_supported() ? 'g.waiver_id_type_snapshot' : 'NULL';
-        $rows = db_query("SELECT g.id AS guest_id, g.hold_id, g.waiver_signed_at, g.waiver_reference, g.waiver_version, g.passport_file_key,
+        $wref = checkin_reference_supported() ? 'g.waiver_reference' : 'NULL';
+        $rows = db_query("SELECT g.id AS guest_id, g.hold_id, g.waiver_signed_at, $wref AS waiver_reference, g.waiver_version, g.passport_file_key,
                                  $scan AS waiver_scan_snapshot, $idt AS waiver_id_type_snapshot,
                                  " . ($snap ? "COALESCE(NULLIF(g.waiver_name_snapshot,''), g.passport_name)" : 'g.passport_name') . " AS name,
                                  " . ($snap ? "COALESCE(NULLIF(g.waiver_passport_snapshot,''), g.passport_number)" : 'g.passport_number') . " AS doc_number,
@@ -104,12 +105,24 @@ function waiver_safe_name(string $s): string {
         'Ū'=>'U','ū'=>'u','Ů'=>'U','ů'=>'u','Ű'=>'U','ű'=>'u','Ź'=>'Z','ź'=>'z','Ż'=>'Z','ż'=>'z','Ž'=>'Z','ž'=>'z',
     ]);
     $s = preg_replace('/[^A-Za-z0-9 .\-]+/', ' ', $s);
-    return mb_substr(trim(preg_replace('/\s+/', ' ', (string)$s)), 0, 80);
+    // Edge dots/spaces go too: a property called ".." must never become a ".." folder.
+    return trim(mb_substr(trim(preg_replace('/\s+/', ' ', (string)$s), " ."), 0, 80), " .");
 }
 
 /** `YYYY-MM-DD <Name> <reference>`, safe for a file name. */
 function waiver_file_base(array $row): string {
-    return waiver_safe_name(date('Y-m-d', strtotime((string)$row['signed_at'])) . ' ' . $row['name'] . ' ' . $row['reference']);
+    $date = date('Y-m-d', strtotime((string)$row['signed_at']));
+    $ref  = waiver_safe_name((string)$row['reference']);
+    $name = waiver_safe_name((string)$row['name']);
+    // ≤ 100 characters overall; the NAME gives way so the date and the reference always survive.
+    $room = 100 - strlen($date) - strlen($ref) - 2;
+    $name = rtrim(substr($name, 0, max(0, $room)), ' .');
+    return preg_replace('/\s+/', ' ', trim($date . ' ' . $name . ' ' . $ref));
+}
+
+/** A spreadsheet cell safe to open in Excel: a value that starts like a formula is quoted with a leading apostrophe. */
+function waiver_csv_cell(string $v): string {
+    return $v !== '' && strpbrk($v[0], "=+-@\t\r") !== false ? "'" . $v : $v;
 }
 
 /** The folder a record goes in: the property, or Visitors/<property>. */
@@ -164,17 +177,17 @@ function waiver_zip_build(array $rows, string $path, ?callable $read = null): ar
                 $ext = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'application/pdf' => 'pdf'][waiver_scan_mime($bytes)] ?? (pathinfo($key, PATHINFO_EXTENSION) ?: 'bin');
                 $scanFile = $base . '.' . $ext;
                 $tmp = $spool . '/' . (++$seq);
-                file_put_contents($tmp, $bytes);
+                if (file_put_contents($tmp, $bytes) !== strlen($bytes)) throw new RuntimeException('Could not write a temporary file (disk full?).');
                 if (!$z->addFile($tmp, $dir . '/' . $scanFile)) throw new RuntimeException('Could not add a file to the ZIP.');
             }
             $html = waiver_record_html($m, ['scan' => 'embed', 'scan_bytes' => $bytes ?? '', 'scan_file' => $scanFile, 'print_button' => true]);
             $tmp = $spool . '/' . (++$seq);
-            file_put_contents($tmp, $html);
+            if (file_put_contents($tmp, $html) !== strlen($html)) throw new RuntimeException('Could not write a temporary file (disk full?).');
             if (!$z->addFile($tmp, $dir . '/' . $base . '.html')) throw new RuntimeException('Could not add a file to the ZIP.');
             unset($bytes, $html);
-            fputcsv($csv, [date('Y-m-d H:i', strtotime((string)$row['signed_at'])), $row['name'], $row['kind'] === 'guest' ? 'Guest' : 'Visitor',
+            fputcsv($csv, array_map('waiver_csv_cell', array_map('strval', [date('Y-m-d H:i', strtotime((string)$row['signed_at'])), $row['name'], $row['kind'] === 'guest' ? 'Guest' : 'Visitor',
                 $row['venue_name'], $row['where'], $row['doc_label'], $row['doc_number'], $row['nationality'], $row['expiry'],
-                $row['reference'], $row['version'], $scanFile], ',', '"', '');
+                $row['reference'], $row['version'], $scanFile])), ',', '"', '');
             $count++;
         }
         rewind($csv);
@@ -193,17 +206,21 @@ function waiver_archive_download(array $rows, string $ym, ?int $venueId, string 
     @set_time_limit(300);
     $path = tempnam(sys_get_temp_dir(), 'waivers');
     try {
+        // Building can take a while: let go of the session lock so the owner's other tabs keep working.
+        // (audit_log only reads $_SESSION, which stays readable after the write lock is released.)
+        if (session_status() === PHP_SESSION_ACTIVE) session_write_close();
         $res = waiver_zip_build($rows, $path);
         $venueName = $venueId ? (string)db_query('SELECT name FROM venues WHERE id = :v', [':v' => $venueId])->fetchColumn() : '';
         $file = 'waivers-' . $ym . ($venueName !== '' ? '-' . waiver_safe_name($venueName) : '') . '.zip';
-        audit_log('waivers.download', 'waivers', 0, "month $ym · " . ($venueName ?: 'all properties') . " · $kind · {$res['records']} records"
-            . ($res['missing'] ? ' · ' . count($res['missing']) . ' scans missing' : '')
-            . ($res['skipped'] ? ' · ' . $res['skipped'] . ' skipped' : ''));
         header('Content-Type: application/zip');
         header('Content-Disposition: attachment; filename="' . str_replace('"', '', $file) . '"');
         header('Content-Length: ' . filesize($path));
         header('Cache-Control: private, no-store');
-        readfile($path);
+        if (readfile($path) === false) throw new RuntimeException('Could not send the ZIP file.');
+        // Logged only once the file has gone out.
+        audit_log('waivers.download', 'waivers', 0, "month $ym · " . ($venueName ?: 'all properties') . " · $kind · {$res['records']} records"
+            . ($res['missing'] ? ' · ' . count($res['missing']) . ' scans missing' : '')
+            . ($res['skipped'] ? ' · ' . $res['skipped'] . ' skipped' : ''));
     } finally {
         @unlink($path);   // never leave a ZIP of personal documents behind, even on an exception
     }

@@ -242,6 +242,7 @@ function visitor_sign(int $id, string $signedName, string $signature, string $vi
     $terms = visitor_waiver_text();
     $ver   = waiver_version($terms);
     $ref   = trim((string)($v['waiver_reference'] ?? '')) ?: visitor_make_reference($id);   // the id makes it unique
+    $oldFrozen = visitor_photo_snapshot_supported() ? trim((string)($v['waiver_photo_snapshot'] ?? '')) : '';
     db_query('UPDATE registered_visitors SET waiver_signature = :sig, waiver_signed_name = :n, waiver_signed_at = now(),
                      waiver_terms_snapshot = :terms, waiver_version = :ver, waiver_reference = :ref,
                      waiver_name_snapshot = full_name, waiver_id_type_snapshot = id_type, waiver_id_number_snapshot = id_number,
@@ -252,6 +253,12 @@ function visitor_sign(int $id, string $signedName, string $signature, string $vi
         [':sig' => $signature, ':n' => $signedName, ':terms' => $terms, ':ver' => $ver, ':ref' => $ref,
          ':ip' => client_ip(), ':ua' => substr((string)($_SERVER['HTTP_USER_AGENT'] ?? ''), 0, 500),
          ':via' => $via === 'gate' ? 'gate' : 'self', ':id' => $id]);
+    // Re-signing freezes the CURRENT photo; a previously frozen file that is no longer the photo on file is now referenced
+    // by nothing — release it (queued when the caller owns the transaction, as in visitor_update_identity()).
+    if ($oldFrozen !== '' && $oldFrozen !== trim((string)($v['id_photo_key'] ?? ''))) {
+        if (db()->inTransaction()) { $q = &visitor_file_delete_queue(); $q[] = $oldFrozen; }
+        else { try { storage_delete_private($oldFrozen); } catch (Throwable $e) {} }
+    }
     visitor_log_step('signed', ['reference' => $ref, 'visitor_id' => $id, 'waiver_version' => $ver,
         'method' => $via === 'gate' ? 'gate' : 'self', 'detail' => 'Signed as ' . $signedName]);
     return $ref;

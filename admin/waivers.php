@@ -9,7 +9,6 @@
 declare(strict_types=1);
 require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/waiver-archive.php';
-require_once __DIR__ . '/../includes/icons.php';
 require_login();
 require_owner();
 
@@ -24,7 +23,7 @@ if (($_GET['download'] ?? '') === '1') { waiver_archive_download($rows, $ym, $ve
 
 $venues = db_query('SELECT id, name FROM venues ORDER BY sort_order, name')->fetchAll();
 $months = [];
-for ($i = -1; $i <= 36; $i++) $months[] = date('Y-m', strtotime(date('Y-m-01') . " -$i month"));
+for ($i = 0; $i <= 36; $i++) $months[] = date('Y-m', strtotime(date('Y-m-01') . " -$i month"));
 if (!in_array($ym, $months, true)) { $months[] = $ym; rsort($months); }
 
 $pageTitle  = 'Signed waivers';
