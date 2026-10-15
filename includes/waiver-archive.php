@@ -87,3 +87,105 @@ function waiver_archive_rows(string $ym, ?int $venueId, string $kind, string $q 
     usort($out, fn($a, $b) => strcmp($b['signed_at'], $a['signed_at']));
     return waiver_archive_filter_rows($out, $venueId, $q);
 }
+
+// ── Download a month as a ZIP ───────────────────────────────────────────────
+
+/** Letters, digits, space, dash and dot only; accents folded; at most 80 characters. */
+function waiver_safe_name(string $s): string {
+    // Fold accents ourselves: iconv //TRANSLIT differs by libc (macOS turns é into "'e").
+    $s = strtr($s, [
+        'À'=>'A','Á'=>'A','Â'=>'A','Ã'=>'A','Ä'=>'A','Å'=>'A','Æ'=>'AE','Ç'=>'C','È'=>'E','É'=>'E','Ê'=>'E','Ë'=>'E','Ì'=>'I','Í'=>'I','Î'=>'I','Ï'=>'I',
+        'Ð'=>'D','Ñ'=>'N','Ò'=>'O','Ó'=>'O','Ô'=>'O','Õ'=>'O','Ö'=>'O','Ø'=>'O','Ù'=>'U','Ú'=>'U','Û'=>'U','Ü'=>'U','Ý'=>'Y','ß'=>'ss',
+        'à'=>'a','á'=>'a','â'=>'a','ã'=>'a','ä'=>'a','å'=>'a','æ'=>'ae','ç'=>'c','è'=>'e','é'=>'e','ê'=>'e','ë'=>'e','ì'=>'i','í'=>'i','î'=>'i','ï'=>'i',
+        'ð'=>'d','ñ'=>'n','ò'=>'o','ó'=>'o','ô'=>'o','õ'=>'o','ö'=>'o','ø'=>'o','ù'=>'u','ú'=>'u','û'=>'u','ü'=>'u','ý'=>'y','ÿ'=>'y',
+        'Ā'=>'A','ā'=>'a','Ă'=>'A','ă'=>'a','Ą'=>'A','ą'=>'a','Ć'=>'C','ć'=>'c','Č'=>'C','č'=>'c','Ď'=>'D','ď'=>'d','Đ'=>'D','đ'=>'d','Ē'=>'E','ē'=>'e',
+        'Ė'=>'E','ė'=>'e','Ę'=>'E','ę'=>'e','Ě'=>'E','ě'=>'e','Ğ'=>'G','ğ'=>'g','Ī'=>'I','ī'=>'i','İ'=>'I','ı'=>'i','Ł'=>'L','ł'=>'l','Ń'=>'N','ń'=>'n',
+        'Ň'=>'N','ň'=>'n','Ő'=>'O','ő'=>'o','Œ'=>'OE','œ'=>'oe','Ř'=>'R','ř'=>'r','Ś'=>'S','ś'=>'s','Ş'=>'S','ş'=>'s','Š'=>'S','š'=>'s','Ť'=>'T','ť'=>'t',
+        'Ū'=>'U','ū'=>'u','Ů'=>'U','ů'=>'u','Ű'=>'U','ű'=>'u','Ź'=>'Z','ź'=>'z','Ż'=>'Z','ż'=>'z','Ž'=>'Z','ž'=>'z',
+    ]);
+    $s = preg_replace('/[^A-Za-z0-9 .\-]+/', ' ', $s);
+    return mb_substr(trim(preg_replace('/\s+/', ' ', (string)$s)), 0, 80);
+}
+
+/** `YYYY-MM-DD <Name> <reference>`, safe for a file name. */
+function waiver_file_base(array $row): string {
+    return waiver_safe_name(date('Y-m-d', strtotime((string)$row['signed_at'])) . ' ' . $row['name'] . ' ' . $row['reference']);
+}
+
+/** The folder a record goes in: the property, or Visitors/<property>. */
+function waiver_zip_folder(array $row): string {
+    $p = waiver_safe_name((string)($row['venue_name'] ?? ''));
+    if (($row['kind'] ?? '') === 'visitor') return 'Visitors/' . ($p !== '' ? $p : 'No visit yet');
+    return $p !== '' ? $p : 'No property';
+}
+
+/** The record model for an archive row (from the DB by id; tests pass `_model`). */
+function waiver_archive_model(array $row): ?array {
+    if (array_key_exists('_model', $row)) return $row['_model'];
+    if ($row['kind'] === 'guest') {
+        $hold = fetch_hold_for_guest((int)$row['hold_id']);
+        $g = db_query('SELECT * FROM checkin_guests WHERE id = :g AND hold_id = :h', [':g' => $row['guest_id'], ':h' => $row['hold_id']])->fetch();
+        return ($hold && $g) ? waiver_record_model_guest($hold, $g, (string)$row['reference']) : null;
+    }
+    $v = visitor_find((int)$row['visitor_id'], true);
+    return $v ? waiver_record_model_visitor($v) : null;
+}
+
+/**
+ * Build the ZIP at $path: one HTML record per signature (the scan embedded) plus
+ * the original scan file beside it, and index.csv. $read reads a private file
+ * (tests inject a stub). A record that can no longer be built is skipped and counted.
+ */
+function waiver_zip_build(array $rows, string $path, ?callable $read = null): array {
+    $read = $read ?? 'storage_read_private';
+    $z = new ZipArchive();
+    if ($z->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) throw new RuntimeException('Could not create the ZIP file.');
+    $used = []; $missing = []; $count = 0; $skipped = 0;
+    $csv = fopen('php://temp', 'w+');
+    fputcsv($csv, ['Signed', 'Name', 'Type', 'Property', 'Booking / place', 'Document', 'Document number', 'Nationality', 'Expiry', 'Reference', 'Waiver version', 'Scan file'], ',', '"', '');
+    foreach ($rows as $row) {
+        $m = waiver_archive_model($row);
+        if (!$m) { $skipped++; continue; }
+        $dir = waiver_zip_folder($row); $base = waiver_file_base($row);
+        $n = 1; $try = $base;
+        while (isset($used[$dir . '/' . $try])) $try = $base . ' (' . (++$n) . ')';
+        $used[$dir . '/' . $try] = true; $base = $try;
+        $key = (string)($m['scan_key'] ?? '');
+        $bytes = $key !== '' ? $read($key) : null;
+        $scanFile = '';
+        if ($key !== '' && $bytes === null) { $missing[] = $key; $scanFile = 'missing'; }
+        if ($bytes !== null) {
+            $ext = ['image/jpeg' => 'jpg', 'image/png' => 'png', 'application/pdf' => 'pdf'][waiver_scan_mime($bytes)] ?? (pathinfo($key, PATHINFO_EXTENSION) ?: 'bin');
+            $scanFile = $base . '.' . $ext;
+            $z->addFromString($dir . '/' . $scanFile, $bytes);
+        }
+        $z->addFromString($dir . '/' . $base . '.html', waiver_record_html($m, ['scan' => 'embed', 'scan_bytes' => $bytes ?? '', 'scan_file' => $scanFile, 'print_button' => true]));
+        fputcsv($csv, [date('Y-m-d H:i', strtotime((string)$row['signed_at'])), $row['name'], $row['kind'] === 'guest' ? 'Guest' : 'Visitor',
+            $row['venue_name'], $row['where'], $row['doc_label'], $row['doc_number'], $row['nationality'], $row['expiry'],
+            $row['reference'], $row['version'], $scanFile], ',', '"', '');
+        $count++;
+    }
+    rewind($csv);
+    $z->addFromString('index.csv', "\xEF\xBB\xBF" . stream_get_contents($csv));   // BOM: Excel reads UTF-8
+    $z->close();
+    return ['records' => $count, 'missing' => $missing, 'skipped' => $skipped];
+}
+
+/** Stream the month's ZIP and write the audit line. Call before any output. */
+function waiver_archive_download(array $rows, string $ym, ?int $venueId, string $kind): void {
+    if (!class_exists('ZipArchive')) { http_response_code(501); exit('ZIP support is not installed on the server.'); }
+    @set_time_limit(300);
+    $path = tempnam(sys_get_temp_dir(), 'waivers');
+    $res = waiver_zip_build($rows, $path);
+    $venueName = $venueId ? (string)db_query('SELECT name FROM venues WHERE id = :v', [':v' => $venueId])->fetchColumn() : '';
+    $file = 'waivers-' . $ym . ($venueName !== '' ? '-' . waiver_safe_name($venueName) : '') . '.zip';
+    audit_log('waivers.download', 'waivers', 0, "month $ym · " . ($venueName ?: 'all properties') . " · $kind · {$res['records']} records"
+        . ($res['missing'] ? ' · ' . count($res['missing']) . ' scans missing' : '')
+        . ($res['skipped'] ? ' · ' . $res['skipped'] . ' skipped' : ''));
+    header('Content-Type: application/zip');
+    header('Content-Disposition: attachment; filename="' . str_replace('"', '', $file) . '"');
+    header('Content-Length: ' . filesize($path));
+    header('Cache-Control: private, no-store');
+    readfile($path);
+    @unlink($path);
+}

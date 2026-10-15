@@ -150,5 +150,38 @@ try {
     echo "SKIP  list DB checks (" . strtok($e->getMessage(), "\n") . ")\n";
 }
 
+// ── Task 4: the ZIP ──
+check('file base is safe', waiver_file_base(['signed_at' => '2026-10-15 10:00:00+03', 'name' => 'José / "Q" Ñandú', 'reference' => 'TSR-1-2-ab']) === '2026-10-15 Jose Q Nandu TSR-1-2-ab');
+check('folders', waiver_zip_folder(['kind' => 'guest', 'venue_name' => 'Maya Kobe']) === 'Maya Kobe'
+    && waiver_zip_folder(['kind' => 'visitor', 'venue_name' => '']) === 'Visitors/No visit yet');
+if (class_exists('ZipArchive')) {
+    $rowsZ = [
+        ['kind' => 'guest', 'signed_at' => '2026-10-15 10:00:00+03', 'name' => 'Anne Smith', 'venue_name' => 'Maya Kobe', 'reference' => 'R1',
+         'where' => 'TS-175', 'doc_label' => 'Passport', 'doc_number' => 'X1', 'nationality' => 'UK', 'expiry' => '2031-05-01', 'version' => 'v',
+         'scan_key' => 'a.jpg', 'scan_frozen' => true, 'hold_id' => 0, 'guest_id' => 0, 'visitor_id' => 0, 'removed_at' => '',
+         '_model' => ['scan_key' => 'a.jpg'] + $m],
+        ['kind' => 'guest', 'signed_at' => '2026-10-15 10:00:00+03', 'name' => 'Anne Smith', 'venue_name' => 'Maya Kobe', 'reference' => 'R1',
+         'where' => 'TS-176', 'doc_label' => 'Passport', 'doc_number' => 'X2', 'nationality' => 'UK', 'expiry' => '', 'version' => 'v',
+         'scan_key' => 'gone.jpg', 'scan_frozen' => true, 'hold_id' => 0, 'guest_id' => 0, 'visitor_id' => 0, 'removed_at' => '',
+         '_model' => ['scan_key' => 'gone.jpg'] + $m],
+        ['kind' => 'guest', 'signed_at' => '2026-10-15 10:00:00+03', 'name' => 'Ghost', 'venue_name' => 'Maya Kobe', 'reference' => 'R9',
+         'where' => '', 'doc_label' => '', 'doc_number' => '', 'nationality' => '', 'expiry' => '', 'version' => 'v',
+         'scan_key' => '', 'scan_frozen' => false, 'hold_id' => 0, 'guest_id' => 0, 'visitor_id' => 0, 'removed_at' => '',
+         '_model' => null],
+    ];
+    $zipPath = tempnam(sys_get_temp_dir(), 'wz');
+    $res = waiver_zip_build($rowsZ, $zipPath, fn($k) => $k === 'a.jpg' ? "\xFF\xD8\xFFJPEG" : null);
+    $z = new ZipArchive(); $z->open($zipPath);
+    $names = []; for ($i = 0; $i < $z->numFiles; $i++) $names[] = $z->getNameIndex($i);
+    check('zip: record + scan in the property folder', in_array('Maya Kobe/2026-10-15 Anne Smith R1.html', $names, true) && in_array('Maya Kobe/2026-10-15 Anne Smith R1.jpg', $names, true));
+    check('file base is safe + unique (same name twice)', in_array('Maya Kobe/2026-10-15 Anne Smith R1 (2).html', $names, true));
+    check('missing scan file: record still there, listed as missing', in_array('Maya Kobe/2026-10-15 Anne Smith R1 (2).html', $names, true) && $res['missing'] === ['gone.jpg']);
+    check('record gone: skipped and counted', $res['records'] === 2 && $res['skipped'] === 1);
+    $csv = (string)$z->getFromName('index.csv');
+    check('index.csv: header + 2 rows', substr_count(trim($csv), "\n") === 2 && str_contains($csv, 'Document number') && str_contains($csv, 'missing'));
+    check('zip: embedded image in the record', str_contains((string)$z->getFromName('Maya Kobe/2026-10-15 Anne Smith R1.html'), 'data:image/jpeg;base64,'));
+    $z->close(); @unlink($zipPath);
+} else { echo "SKIP  ZIP checks (no ZipArchive)\n"; }
+
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);

@@ -369,7 +369,7 @@ function storage_delete_private(string $key): void {
 function storage_read_private(string $key): ?string {
     if ($key === '') return null;
     $signed = storage_signed_get_url($key);
-    if ($signed !== '') { $d = @file_get_contents($signed); return $d === false ? null : $d; }
+    if ($signed !== '') { $d = @file_get_contents($signed, false, stream_context_create(['http' => ['timeout' => 20]])); return $d === false ? null : $d; }
     $path = storage_local_path($key);
     if (!is_file($path)) return null;
     $d = @file_get_contents($path);

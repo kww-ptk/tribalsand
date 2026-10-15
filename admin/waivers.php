@@ -19,6 +19,9 @@ $kind  = in_array($_GET['kind'] ?? '', ['guests', 'visitors', 'both'], true) ? (
 $q     = trim((string)($_GET['q'] ?? ''));
 $rows  = waiver_archive_rows($ym, $venue, $kind, $q);
 
+// The month as a ZIP — must stream before the layout sends any output.
+if (($_GET['download'] ?? '') === '1') { waiver_archive_download($rows, $ym, $venue, $kind); exit; }
+
 $venues = db_query('SELECT id, name FROM venues ORDER BY sort_order, name')->fetchAll();
 $months = [];
 for ($i = -1; $i <= 36; $i++) $months[] = date('Y-m', strtotime(date('Y-m-01') . " -$i month"));
@@ -50,6 +53,11 @@ include __DIR__ . '/_layout.php';
     <input type="search" name="q" value="<?= e($q) ?>" placeholder="Name, reference or number" class="inp">
   </div>
   <button class="btn-outline btn-sm">Show</button>
+  <?php if (class_exists('ZipArchive')): ?>
+    <a class="btn-outline btn-sm" data-no-shell href="/admin/waivers.php?<?= e(http_build_query(['month' => $ym, 'venue' => (int)$venue, 'kind' => $kind, 'q' => $q, 'download' => 1])) ?>">Download month (ZIP)</a>
+  <?php else: ?>
+    <span class="muted">ZIP download needs the zip extension on the server.</span>
+  <?php endif; ?>
 </form>
 <div class="card"><table class="table" id="waiversTbl" data-paginate="50">
   <thead><tr><th>Signed</th><th>Name</th><th>Type</th><th>Property</th><th>Booking / place</th><th>Document</th><th>Reference</th><th></th></tr></thead>

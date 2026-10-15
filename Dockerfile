@@ -2,9 +2,9 @@ FROM php:8.2-apache
 
 # Install PostgreSQL PDO extension. `curl` is used by the in-container scheduler
 # (docker/scheduler.sh) to call the app's own sync endpoints over loopback.
-RUN apt-get update && apt-get install -y libpq-dev postgresql-client curl libgd-dev libjpeg62-turbo-dev libpng-dev libwebp-dev \
+RUN apt-get update && apt-get install -y libpq-dev postgresql-client curl libgd-dev libjpeg62-turbo-dev libpng-dev libwebp-dev libzip-dev \
     && docker-php-ext-configure gd --with-jpeg --with-webp \
-    && docker-php-ext-install pdo pdo_pgsql gd \
+    && docker-php-ext-install pdo pdo_pgsql gd zip \
     && apt-get clean && rm -rf /var/lib/apt/lists/*
 
 # Upload limits. The base image ships PHP's defaults (2 MB per file, 8 MB per
