@@ -53,6 +53,29 @@ try {
         checkin_void_signature_if_identity_changed($hid, $gid, ['passport_number' => 'X2'], 'admin');
         $snap = db_query('SELECT waiver_scan_snapshot FROM checkin_guests WHERE id = :g', [':g' => $gid])->fetchColumn();
         check('db: voiding the signature clears the frozen scan', $snap === null);
+        check('db: void where the frozen scan IS the current photo keeps the file', storage_read_private($old) === 'OLD');
+
+        // Void where the frozen scan differs from the current photo: the frozen file belongs to no record any more.
+        $mk = function (string $body): string {
+            $t = tempnam(sys_get_temp_dir(), 'wa'); file_put_contents($t, $body);
+            $k = 'tests/frozen-' . bin2hex(random_bytes(4)) . '.jpg';
+            storage_put_private($t, $k, 'image/jpeg');
+            return $k;
+        };
+        $frozen = $mk('FROZEN'); $current = $mk('CURRENT');
+        try {
+            $gid2 = (int)db_query("INSERT INTO checkin_guests (hold_id, is_lead, passport_name, passport_number, passport_file_key, waiver_signed_at, waiver_signed_name, waiver_signature, waiver_scan_snapshot)
+                                   VALUES (:h, FALSE, 'ZZ Retaken', 'Y1', :cur, now(), 'ZZ Retaken', 'data:image/png;base64,x', :fr) RETURNING id",
+                                  [':h' => $hid, ':cur' => $current, ':fr' => $frozen])->fetchColumn();
+            check('db: both files exist before the void', storage_read_private($frozen) === 'FROZEN' && storage_read_private($current) === 'CURRENT');
+            checkin_void_signature_if_identity_changed($hid, $gid2, ['passport_number' => 'Y2'], 'admin');
+            check('db: void with a retaken photo deletes the frozen file', storage_read_private($frozen) === null);
+            check('db: ...and keeps the current photo', storage_read_private($current) === 'CURRENT');
+            $row = db_query('SELECT passport_file_key, waiver_scan_snapshot FROM checkin_guests WHERE id = :g', [':g' => $gid2])->fetch();
+            check('db: ...the row keeps its current photo and loses the snapshot', $row['passport_file_key'] === $current && $row['waiver_scan_snapshot'] === null);
+        } finally {
+            storage_delete_private($frozen); storage_delete_private($current);
+        }
         $db->rollBack();
         storage_delete_private($old);
     }
