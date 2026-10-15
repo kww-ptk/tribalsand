@@ -97,42 +97,10 @@ if ((!$holdId || !$hold) && ($_POST['do'] ?? '') === 'lookup') {
     }
 }
 
-// Determine cancel eligibility
-if ($hold && !$error && !$isCoGuest) {
-    $status = $hold['status'];
-    if ($status === 'pending') {
-        $can_cancel = true;
-    } elseif ($status === 'confirmed') {
-        $days_until = (strtotime($hold['check_in']) - time()) / 86400;
-        if ($days_until >= 7) {
-            $can_cancel = true;
-        } else {
-            $cancel_blocked_reason = 'Online cancellation is only available more than 7 days before check-in. Please contact us directly to discuss your options.';
-        }
-    }
-}
-
-// Handle cancel POST
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && $hold && $can_cancel && !$isCoGuest) {   // only the lead may cancel
-    if (($_POST['action'] ?? '') === 'cancel') {
-        db_query(
-            "UPDATE holds SET status='cancelled', cancelled_at=NOW() WHERE id=:id AND status IN ('pending','confirmed')",
-            [':id' => $holdId]
-        );
-        db_query(
-            "DELETE FROM availability_blocks WHERE hold_id=:hid",
-            [':hid' => $holdId]
-        );
-
-        $hold = fetch_hold_for_guest($holdId);
-
-        send_hold_cancelled($hold, 'cancelled', ['trigger' => 'guest_cancel']);
-        send_admin_guest_cancelled($hold, ['trigger' => 'guest_cancel']);
-
-        $can_cancel = false;
-        $success    = 'Your booking has been cancelled. A confirmation email is on its way.';
-    }
-}
+// Guests no longer cancel online (owner, Oct 2026): the Settings tab points them to
+// Messages and staff cancel from the booking. $can_cancel / $cancel_blocked_reason stay
+// defined (false / '') for the views that read them; there is no guest cancel POST.
+if ($hold && !$error) $status = $hold['status'];
 
 // ── Who is actually looking at this page? ───────────────────────────────────
 // booking.php resolves a BOOKING; until now it never resolved an ACTOR, which is
@@ -286,9 +254,16 @@ include __DIR__ . '/includes/head.php';
     // The greeting stays put on every tab — the header always says "Karibu, <name>".
     $__t = $hold ? ('Karibu, ' . $__first) : 'Your booking';
     $__homeUrl = '/booking.php?ref=' . urlencode($ref) . '&view=home';
+    // Gate pass always one tap away (top right) once it is ready — the same rule as
+    // the Home "Your gate pass" card (includes/app/_gatepass.php).
+    $__qrReady = false;
+    if ($hold && in_array($status, ['confirmed', 'pending'], true)) {
+        require_once __DIR__ . '/includes/gate-pass.php';
+        $__qrReady = gate_pass_ready_for($hold)['ok'];
+    }
   ?>
   <div class="pa-topbar">
-    <div class="pa-topbar__inner">
+    <div class="pa-topbar__inner<?= $__qrReady ? ' has-qr' : '' ?>">
       <?php if ($hold): ?>
       <a class="pa-topbar__brand" href="<?= e($__homeUrl) ?>" aria-label="Go to home">
         <div class="pa-topbar__eyebrow">Tribal Sand</div>
@@ -299,6 +274,12 @@ include __DIR__ . '/includes/head.php';
         <div class="pa-topbar__eyebrow">Tribal Sand</div>
         <div class="pa-topbar__title"><?= e($__t) ?></div>
       </div>
+      <?php endif; ?>
+      <?php if ($__qrReady): ?>
+      <a class="pa-topbar__qr" href="/booking.php?ref=<?= e(urlencode($ref)) ?>&amp;view=pass" aria-label="Show my gate pass">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3h-3zM20 14v.01M14 20h.01M17 17h3v3h-3z"/></svg>
+        <span>Pass</span>
+      </a>
       <?php endif; ?>
       <?php if ($hold): ?><?php include __DIR__ . '/includes/app/nav.php'; ?><?php endif; ?>
     </div>

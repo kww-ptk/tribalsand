@@ -152,3 +152,4 @@ add_support_docs.sql                                 2026-10-14
 add_checkin_id_type.sql                              2026-10-14
 add_checkin_deposit_card_details.sql                 2026-10-14
 add_visitor_registration.sql                         2026-10-14
+add_visitor_standing_pass.sql                        2026-10-15

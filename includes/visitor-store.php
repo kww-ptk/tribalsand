@@ -408,10 +408,11 @@ function visitor_gate_card(int $visitorId, string $today, ?array $venueIds): ?ar
     $party = visitor_visit_party($visit, $visitorId);
     $adults = array_map(fn($a) => ['id' => (int)$a['id'], 'name' => (string)$a['full_name'], 'current' => visitor_waiver_current($a, $ver)], $party['adults']);
     $inScope = $visit === null || $venueIds === null || in_array((int)$visit['venue_id'], array_map('intval', $venueIds), true);
+    $standing = visitor_standing_supported() ? visitor_standing($v, $today) : null;
     return [
         'visitor'  => $v, 'visit' => $visit, 'adults' => $adults, 'children' => $party['children'],
-        'verdict'  => visitor_gate_verdict($v, $visit, $adults, visitor_waiver_current($v, $ver), $inScope),
-        'in_scope' => $inScope, 'on_site' => visitor_on_site($visitorId),
+        'verdict'  => visitor_gate_verdict($v, $visit, $adults, visitor_waiver_current($v, $ver), $inScope, $standing),
+        'in_scope' => $inScope, 'on_site' => visitor_on_site($visitorId), 'standing' => $standing,
         'people'   => visitor_people_count($adults, $party['children']),
     ];
 }
@@ -466,6 +467,82 @@ function visitor_let_in(int $visitorId, string $today, ?int $placeId, int $byAdm
     if (function_exists('audit_log')) audit_log('visitor.in', 'visitor', $newId, (string)$v['full_name']);
     $n = $card['people'];
     return ['ok' => true, 'msg' => (string)$v['full_name'] . ' let in — ' . $n . ' ' . ($n === 1 ? 'person' : 'people') . ' to ' . (string)$visit['place_name'] . '.'];
+}
+
+// ── Standing passes (members, friends, community, contractors) ───────────────
+// Issued by the owner or a manager (Gate → Visitors). A label + an end date + the
+// places it covers. The visitor still registers once (ID + waiver) and still picks a
+// place each visit; an expired pass or an uncovered place = an ordinary visit.
+
+/** True once add_visitor_standing_pass.sql has run (a catalog lookup). */
+function visitor_standing_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try {
+        return $ok = (bool) db_query("SELECT 1 FROM information_schema.columns WHERE table_schema = current_schema()
+                                       AND table_name = 'registered_visitors' AND column_name = 'pass_type'")->fetchColumn();
+    } catch (Throwable $e) { return $ok = false; }
+}
+
+/**
+ * Give (or change) a visitor's standing pass. $placeIds null = every place. $until ''
+ * = no end date. Validates everything; throws InvalidArgumentException with the reason.
+ * Callers check the account may manage this visitor and these places.
+ */
+function visitor_set_standing(int $id, string $type, string $until, ?array $placeIds, string $note, int $by, string $today): void {
+    if (!visitor_standing_supported()) throw new InvalidArgumentException('Run add_visitor_standing_pass.sql to turn standing passes on.');
+    $v = visitor_find($id);
+    if (!$v || !empty($v['parent_id'])) throw new InvalidArgumentException('Visitor not found.');
+    if (!isset(VISITOR_PASS_TYPES[$type])) throw new InvalidArgumentException('Choose the kind of pass.');
+    if ($until !== '') {
+        if (!preg_match('/^(\d{4})-(\d{2})-(\d{2})$/', $until, $m) || !checkdate((int)$m[2], (int)$m[3], (int)$m[1])) throw new InvalidArgumentException('The end date isn’t a date.');
+        if ($until < $today) throw new InvalidArgumentException('The end date is in the past.');
+    }
+    if ($placeIds !== null) {
+        $placeIds = array_values(array_unique(array_filter(array_map('intval', $placeIds))));
+        if (!$placeIds) throw new InvalidArgumentException('Choose at least one place, or all places.');
+        $known = array_map('intval', db_query('SELECT id FROM visitor_places WHERE id IN (' . implode(',', $placeIds) . ')')->fetchAll(PDO::FETCH_COLUMN));
+        if (count($known) !== count($placeIds)) throw new InvalidArgumentException('Unknown place.');
+    }
+    db_query('UPDATE registered_visitors SET pass_type = :t, pass_until = :u, pass_place_ids = CAST(:p AS int[]), pass_note = :n, pass_by = :by, pass_at = now()
+               WHERE id = :id AND removed_at IS NULL',
+        [':t' => $type, ':u' => $until !== '' ? $until : null, ':p' => $placeIds === null ? null : '{' . implode(',', $placeIds) . '}',
+         ':n' => mb_substr(trim($note), 0, 300) ?: null, ':by' => $by ?: null, ':id' => $id]);
+    if (function_exists('audit_log')) audit_log('visitor.pass_set', 'visitor', $id, VISITOR_PASS_TYPES[$type] . ($until !== '' ? ' until ' . $until : ' · no end'));
+}
+
+/** End a standing pass now: the person stays a registered visitor. */
+function visitor_end_standing(int $id): bool {
+    if (!visitor_standing_supported()) return false;
+    $n = db_query('UPDATE registered_visitors SET pass_type = NULL, pass_until = NULL, pass_place_ids = NULL, pass_note = NULL, pass_at = now()
+                    WHERE id = :id AND pass_type IS NOT NULL', [':id' => $id])->rowCount();
+    if ($n && function_exists('audit_log')) audit_log('visitor.pass_end', 'visitor', $id, '');
+    return $n > 0;
+}
+
+/**
+ * Invite someone who hasn't registered yet: creates their (unsigned) visitor row with
+ * the standing pass already on it. They register once from visitor_invite_url($id) —
+ * a single-use link — and the pass applies as soon as they sign. Returns the id.
+ */
+function visitor_invite_standing(string $name, string $phone, string $email, string $type, string $until, ?array $placeIds, string $note, int $by, string $today): int {
+    $name = mb_substr(trim(preg_replace('/\s+/u', ' ', $name) ?? ''), 0, 120);
+    if (count(visitor_name_words($name)) < 2) throw new InvalidArgumentException('Give their first name and surname.');
+    $email = mb_strtolower(trim($email));
+    if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) throw new InvalidArgumentException('That email address doesn’t look right.');
+    $own = !db()->inTransaction();
+    if ($own) db()->beginTransaction(); else db()->exec('SAVEPOINT visitor_standing_invite');
+    try {
+        $id = (int) db_query("INSERT INTO registered_visitors (full_name, phone, phone_key, email, created_via, created_by)
+                               VALUES (:n, :ph, :pk, :em, 'invite', :by) RETURNING id",
+            [':n' => $name, ':ph' => trim($phone) ?: null, ':pk' => visitor_phone_key($phone) ?: null, ':em' => $email ?: null, ':by' => $by ?: null])->fetchColumn();
+        visitor_set_standing($id, $type, $until, $placeIds, $note, $by, $today);
+        if ($own) db()->commit(); else db()->exec('RELEASE SAVEPOINT visitor_standing_invite');
+        return $id;
+    } catch (Throwable $e) {
+        if ($own) { if (db()->inTransaction()) db()->rollBack(); } else db()->exec('ROLLBACK TO SAVEPOINT visitor_standing_invite');
+        throw $e;
+    }
 }
 
 // ── Admin registry ──────────────────────────────────────────────────────────

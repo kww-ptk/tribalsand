@@ -1,9 +1,9 @@
 <?php
 /**
- * Settings — the booking's details and the actions a guest rarely needs but must
- * be able to find: cancelling (moved off Home, Oct 2026). Only the person who
- * booked can cancel; the POST is re-checked in booking.php (!$isCoGuest).
- * Expects $hold, $ref, $status, $can_cancel, $cancel_blocked_reason, $isCoGuest.
+ * Settings — the booking's details, travel documents, and where to go if plans
+ * change. Guests don't cancel online (owner, Oct 2026): changes and cancellations
+ * go through Messages, and staff act on the booking.
+ * Expects $hold, $ref, $status, $isCoGuest.
  */
 $__su = '/booking.php?ref=' . urlencode($ref);
 $__nights = max(1, (int)((strtotime((string)$hold['check_out']) - strtotime((string)$hold['check_in'])) / 86400));
@@ -59,21 +59,10 @@ if (checkin_supported()) {
 
 <div class="pa-card pa-set">
   <div class="pa-set__h">Change of plans</div>
-  <?php if (!empty($isCoGuest)): ?>
-    <p class="pa-set__note">Only the person who made the booking can cancel it. <a href="<?= e($__su) ?>&amp;view=messages">Message us</a> if anything needs to change.</p>
-  <?php elseif ($can_cancel): ?>
-    <p class="pa-set__note">To change dates or rooms, <a href="<?= e($__su) ?>&amp;view=messages">message us</a>. If you need to cancel, the dates are freed and you get a confirmation by email.</p>
-    <form method="POST" data-pa-confirm="Cancel this booking?"
-          data-pa-confirm-body="Your dates will be released and this can’t be undone."
-          data-pa-confirm-yes="Yes, cancel booking" data-pa-confirm-no="Keep my booking">
-      <input type="hidden" name="action" value="cancel">
-      <input type="hidden" name="ref" value="<?= e($ref) ?>">
-      <button type="submit" class="pa-btn pa-btn--danger">Cancel my booking</button>
-    </form>
-  <?php elseif ($cancel_blocked_reason): ?>
-    <p class="pa-set__note"><?= e($cancel_blocked_reason) ?></p>
-    <a class="pa-btn" href="<?= e($__su) ?>&amp;view=messages">Message us</a>
+  <?php if ($status === 'cancelled'): ?>
+    <p class="pa-set__note">This booking is cancelled.</p>
   <?php else: ?>
-    <p class="pa-set__note"><?= $status === 'cancelled' ? 'This booking is cancelled.' : 'Nothing to change here. Message us if you need anything.' ?></p>
+    <p class="pa-set__note">Need to change your dates, your room, or cancel? Message us and we’ll take care of it.</p>
+    <a class="pa-btn" href="<?= e($__su) ?>&amp;view=messages">Message us</a>
   <?php endif; ?>
 </div>
