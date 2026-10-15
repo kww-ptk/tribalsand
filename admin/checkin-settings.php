@@ -19,6 +19,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     set_setting('checkin_steps', json_encode($steps));
     set_setting('checkin_required_default', isset($_POST['required_default']) ? '1' : '0');
     set_setting('checkin_waiver_text', trim((string)($_POST['waiver_text'] ?? '')));
+    set_setting('visitor_waiver_text', trim((string)($_POST['visitor_waiver_text'] ?? '')));
     // Windows are free-form HH:MM strings; checkin_arrival_flag() ignores anything
     // it cannot parse, and checkin_times() falls back to the default for a blank.
     foreach (['checkin_time_from','checkin_time_to','checkout_time_from','checkout_time_to'] as $__tk) {
@@ -36,6 +37,7 @@ if (!empty($_SESSION['hold_flash'])) { $flash = $_SESSION['hold_flash']['msg']; 
 $cfg      = checkin_config();
 $default  = setting('checkin_required_default', '0') === '1';
 $waiver   = setting('checkin_waiver_text', '');
+$visitorWaiver = setting('visitor_waiver_text', '');
 $times    = checkin_times();   // defaults applied, so the inputs are never blank
 $welcome  = setting('checkin_welcome', '');
 $depNote  = checkin_deposit_note();   // default applied
@@ -137,6 +139,14 @@ include __DIR__ . '/_layout.php';
     <div class="card__head"><span class="card__title">Waiver / indemnity terms</span></div>
     <div class="card__body card__body--pad">
       <textarea name="waiver_text" rows="8" class="inp inp--area" style="width:100%;min-height:220px" placeholder="Indemnity and insurance waiver the guest agrees to…"><?= e($waiver) ?></textarea>
+    </div>
+  </div>
+
+  <div class="card" style="margin-bottom:16px">
+    <div class="card__head"><span class="card__title">Visitor waiver</span></div>
+    <div class="card__body card__body--pad">
+      <p class="text-muted" style="margin:0 0 12px;font-size:13px">What visitors without a booking sign on the registration link. Leave empty to use the guest waiver above. Changing it asks every visitor to sign again on their next visit.</p>
+      <textarea name="visitor_waiver_text" rows="6" class="inp inp--area" style="width:100%;min-height:160px" placeholder="Leave empty to use the guest waiver"><?= e($visitorWaiver) ?></textarea>
     </div>
   </div>
 

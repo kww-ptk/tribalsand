@@ -175,5 +175,16 @@ check('quote builder: Maya Ilai manager sees it',    $qbOpen(array_merge($roles[
 check('quote builder: other managers do not',        !$qbOpen($roles['manager']));
 check('quote builder: reception sees it',            $qbOpen($roles['reception']));
 
+// ── Visitor registration tabs under Gate (Oct 2026) ──
+$gateTabs = function (string $role, ?string $job, array $env): array {
+    $n = admin_nav_resolve(admin_nav_definition(admin_nav_flags($role, $job, $env), []), '');
+    foreach ($n['groups'] as $g) foreach ($g['items'] as $it) if ($it['label'] === 'Gate') return array_map(fn($t) => $t['label'], $it['tabs'] ?? []);
+    return [];
+};
+check('visitors: tabs hidden until the tables exist',  count($gateTabs('owner', null, [])) <= 1);
+check('visitors: owner sees Visitors + Places & posters', $gateTabs('owner', null, ['visitorReg' => true]) === ['Gate', 'Visitors', 'Places & posters']);
+check('visitors: reception sees Visitors, not Places',  $gateTabs('reception', null, ['visitorReg' => true]) === ['Gate', 'Visitors']);
+check('visitors: security sees Visitors, not Places',   $gateTabs('staff', 'security', ['visitorReg' => true]) === ['Gate', 'Visitors']);
+
 echo $failures ? "\n{$failures} FAILURE(S)\n" : "\nALL PASS\n";
 exit($failures ? 1 : 0);

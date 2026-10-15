@@ -207,6 +207,19 @@ function help_guides(): array {
          ],
          'tips' => ['Guests get their gate pass in their booking page once they finish online check-in.', 'Pressed Check in by mistake? Open the pass again and press **Undo**.']],
 
+        ['slug' => 'register-visitors', 'area' => 'guests', 'minutes' => 3, 'pages' => ['gate.php', 'visitor-registry.php', 'visitor-places.php'],
+         'title' => 'Register visitors (no booking)',
+         'summary' => 'Everyone who enters is registered: visitors sign once on their phone and show a pass at the gate.',
+         'steps' => [
+            ['text' => 'Visitors scan the **poster** at the gate (or open tribalsand.com/register), pick where they are going, take a picture of their ID and sign. They get a **visitor pass**.'],
+            ['text' => 'Someone with no phone? Press **Register visitor** and they fill the same form on this tablet.', 'target' => '[data-help="gate-register"]'],
+            ['text' => 'Scan their pass. When the card reads **✓ Registered — going to …**, press **Let in**. A card that starts with **✕** says why they can’t enter yet: not signed, terms changed, someone in the group hasn’t signed, or another property’s place.'],
+            ['text' => '**Visitors** lists everyone registered. Open one to see their ID photo, group, visits and signed record.', 'target' => '[data-help="vr-list"]'],
+            ['text' => 'The owner edits the **Places** list and prints a **poster** for each gate.', 'target' => '[data-help="vr-places"]'],
+         ],
+         'tips' => ['A guest with a booking chooses “I have a booking” and goes to their own check-in.',
+                    'Changing the visitor waiver (Settings → Pre-Check-in) asks everyone to sign again on their next visit.']],
+
         ['slug' => 'guest-messages', 'area' => 'guests', 'minutes' => 2, 'pages' => ['messages.php'],
          'title' => 'Answer a guest message',
          'summary' => 'Guests write from their guest page; you answer here.',

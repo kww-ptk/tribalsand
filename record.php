@@ -13,6 +13,9 @@ require_once __DIR__ . '/includes/db.php';
 require_once __DIR__ . '/includes/booking.php';
 require_once __DIR__ . '/includes/checkin.php';
 
+// A visitor's signed record (general registration link): same clean URL, own body.
+if (isset($_GET['vp']) || isset($_GET['vid'])) { require __DIR__ . '/includes/visitor-record.php'; exit; }
+
 $reference = trim((string)($_GET['r'] ?? ''));
 $holdId    = (int)($_GET['hold'] ?? 0);
 $guestId   = (int)($_GET['guest'] ?? 0);

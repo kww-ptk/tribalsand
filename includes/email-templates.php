@@ -378,6 +378,33 @@ function email_registry(): array {
             'sample' => fn() => send_staff_request_waiting(['id' => 0, 'full_name' => 'Henry Ouma Okaka', 'leave_type' => 'annual', 'start_date' => '2026-11-02',
                 'end_date' => '2026-11-06', 'reason' => 'Family wedding', 'requested_by_name' => 'Nusra Hassan'], 'you@example.com', 'pending'),
         ],
+        'visitor_pass' => [
+            'name' => 'Visitor pass', 'audience' => 'guest', 'topic' => 'Visitors',
+            'trigger' => 'A visitor registers on the general registration link (or the gate tablet with an email), or asks for their pass again.',
+            'sources' => ['api/visitor-register.php'], 'recipients' => 'The visitor.',
+            'default_on' => true,
+            'fields' => [
+                'subject' => 'Your Tribal Sand visitor pass',
+                'heading' => 'You’re registered',
+                'intro'   => 'Hi {{name}}, thank you for registering. Keep this email: open your pass whenever you visit, choose where you are going, and show it at the gate.',
+                'footer_note' => 'If our terms change, your pass will ask you to sign again before your next visit.',
+            ],
+            'placeholders' => ['name' => 'The visitor’s first name'],
+            'sample' => fn() => send_visitor_pass(['id' => 1, 'full_name' => 'Anna Smith', 'email' => 'you@example.com']),
+        ],
+        'visitor_booking_link' => [
+            'name' => 'Booking link (no code)', 'audience' => 'guest', 'topic' => 'Visitors',
+            'trigger' => 'Someone on the registration page says they have a booking but not the code, and types the booking email.',
+            'sources' => ['api/visitor-register.php'], 'recipients' => 'The email typed, only when a current booking uses it.',
+            'default_on' => true,
+            'fields' => [
+                'subject' => 'Your Tribal Sand booking link',
+                'heading' => 'Your booking',
+                'intro'   => 'Here is the link to your booking. Open it to finish your check-in before you arrive.',
+            ],
+            'placeholders' => ['count' => 'How many bookings are listed'],
+            'sample' => fn() => send_visitor_booking_link('you@example.com', [['hold' => ['venue_name' => 'Maya Kobe', 'check_in' => '2026-11-02', 'check_out' => '2026-11-06'], 'url' => 'https://tribalsand.com/booking.php?ref=TS-1-sample']]),
+        ],
         'password_reset' => [
             'name' => 'Admin password reset', 'audience' => 'staff', 'topic' => 'Staff alerts',
             'trigger' => 'Someone asks for a password reset on the admin sign-in page.',

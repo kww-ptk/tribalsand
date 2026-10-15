@@ -1624,6 +1624,44 @@ function send_staff_request_waiting(array $req, string $to, string $step, array 
     ], $ctx);
 }
 
+/** A registered visitor's pass link (after registering, or "I've registered before"). */
+function send_visitor_pass(array $v, array $ctx = []): bool {
+    $to = (string)($v['email'] ?? '');
+    if (!filter_var($to, FILTER_VALIDATE_EMAIL)) return false;
+    require_once __DIR__ . '/visitor-registration.php';
+    $key  = 'visitor_pass';
+    $url  = visitor_pass_url((int)$v['id']);
+    if ($url === '') return false;
+    $vars = ['name' => explode(' ', trim((string)$v['full_name']))[0]];
+    $intro  = email_field($key, 'intro', $vars);
+    $footer = email_field($key, 'footer_note', $vars);
+    $text = _email_plain($intro) . "\n\nYour pass: {$url}\n\n" . _email_plain($footer) . "\n\nTribal Sand";
+    $inner = _email_lead_rich($intro) . _email_button('Open my pass', $url) . _email_note($footer);
+    $r = mail_send($key, ['to' => $to, 'subject' => email_field($key, 'subject', $vars), 'text' => $text,
+                          'html' => _email_shell(email_field($key, 'heading', $vars), $inner, _mail_site()), 'reply_to' => email_guest_reply_to()], $ctx);
+    return $r['ok'];
+}
+
+/** "I have a booking but not the code": the current bookings under that email, each with its link. */
+function send_visitor_booking_link(string $to, array $links, array $ctx = []): bool {
+    if (!filter_var($to, FILTER_VALIDATE_EMAIL) || !$links) return false;
+    $key = 'visitor_booking_link';
+    $vars = ['count' => (string)count($links)];
+    $intro = email_field($key, 'intro', $vars);
+    $buttons = ''; $lines = [];
+    foreach ($links as $l) {
+        $h = $l['hold'];
+        $label = trim(((string)($h['venue_name'] ?? '')) . ' · ' . date('j M', strtotime((string)$h['check_in'])) . ' – ' . date('j M Y', strtotime((string)$h['check_out'])), ' ·');
+        $buttons .= _email_button('Open booking · ' . $label, $l['url']);   // _email_button() escapes label + URL and builds the <a>
+        $lines[] = $label . ': ' . $l['url'];
+    }
+    $text = _email_plain($intro) . "\n\n" . implode("\n", $lines) . "\n\nTribal Sand";
+    $inner = _email_lead_rich($intro) . $buttons;
+    $r = mail_send($key, ['to' => $to, 'subject' => email_field($key, 'subject', $vars), 'text' => $text,
+                          'html' => _email_shell(email_field($key, 'heading', $vars), $inner, _mail_site()), 'reply_to' => email_guest_reply_to()], $ctx);
+    return $r['ok'];
+}
+
 /** Admin password-reset link. Always sent (locked), never re-routed. */
 function send_password_reset(string $email, string $resetUrl, array $ctx = []): array {
     $text = "You requested a password reset for the Tribal Sand admin panel.\n\n"
