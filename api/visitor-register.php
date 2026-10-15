@@ -22,6 +22,7 @@ require_once __DIR__ . '/../includes/turnstile.php';
 require_once __DIR__ . '/../includes/frontdesk.php';
 require_once __DIR__ . '/../includes/mail.php';
 require_once __DIR__ . '/../includes/visitor-store.php';
+require_once __DIR__ . '/../includes/group-import.php';   // a group code (wedding, retreat) works where a booking code does
 session_init();
 
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') { header('Location: /register.php'); exit; }
@@ -88,10 +89,13 @@ case 'lookup':
         $back(['errors' => ['general' => 'Too many tries. Please wait 10 minutes, or register as a visitor.'], 'old' => $old]);
     }
     $res = visitor_booking_lookup((string)($_POST['code'] ?? ''), (string)($_POST['name'] ?? ''), $today);
+    // Not a booking code? It may be a group's code: the guest is found by first name + surname
+    // in that group's guest lists (gi_group_lookup()). Same single answer on a miss.
+    if ($res['kind'] === 'notfound') $res = gi_group_lookup((string)($_POST['code'] ?? ''), (string)($_POST['name'] ?? ''), $today);
     if ($res['url'] !== '') { header('Location: ' . $res['url']); exit; }
     visitor_attempt_log('code_fail');
     // One message for a wrong code and a wrong name: a miss must not reveal whether the code exists.
-    $back(['errors' => ['general' => 'We couldn’t find a current booking for that code and name. Check them, ask the person who booked to add you, or register as a visitor.'], 'old' => $old]);
+    $back(['errors' => ['general' => 'We couldn’t find you with that code and name. Check them (for a group, type your first name and surname), or ask the person who booked or reception — or register as a visitor.'], 'old' => $old]);
 
 case 'nocode':
 case 'again':

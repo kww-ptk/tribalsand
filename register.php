@@ -114,12 +114,13 @@ $ver = fn(string $f) => @filemtime(__DIR__ . '/' . $f) ?: time();
       <?php if ($step === 'booking'): ?>
         <input type="hidden" name="action" value="lookup">
         <h2 class="ci-wg__title">Find your booking</h2>
-        <p class="vr-hint">Your booking code is in your booking email.</p>
-        <label class="ci-l" for="vrCode">Booking code</label>
+        <p class="vr-hint">It’s in your booking email — or on your invitation if you’re with a group.</p>
+        <label class="ci-l" for="vrCode">Booking or group code</label>
         <input class="ci-in vr-code" id="vrCode" name="code" autocapitalize="characters" autocomplete="off" autocorrect="off" spellcheck="false" value="<?= e((string)($old['code'] ?? '')) ?>" required>
-        <?php // The match uses the last word typed (visitor_booking_name_match()), so a surname is all we ask for. ?>
-        <label class="ci-l" for="vrSurname">Surname</label>
-        <input class="ci-in" id="vrSurname" name="name" autocomplete="family-name" placeholder="e.g. Smith" value="<?= e((string)($old['name'] ?? '')) ?>" required>
+        <?php // A booking code matches on the last word typed (the surname); a group code needs
+              // first name + surname to find one person in the group (gi_group_lookup()). ?>
+        <label class="ci-l" for="vrSurname">Your name</label>
+        <input class="ci-in" id="vrSurname" name="name" autocomplete="name" placeholder="First name and surname" value="<?= e((string)($old['name'] ?? '')) ?>" required>
       <?php elseif ($step === 'nocode'): ?>
         <input type="hidden" name="action" value="nocode">
         <h2 class="ci-wg__title">Get your booking link</h2>

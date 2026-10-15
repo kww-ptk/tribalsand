@@ -57,6 +57,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         header('Location: ' . $self); exit;
     }
 
+    // Change the group code guests type at /register (only for a group this account can see).
+    if ($action === 'set_code') {
+        $slug = (string)($_POST['batch'] ?? '');
+        $b = gi_batch($slug);
+        $back = $self . '?batch=' . urlencode($slug);
+        if (!$b || !$scopedIds($b['hold_ids'])) { header('Location: ' . $self); exit; }
+        try {
+            $c = gi_batch_set_code($slug, (string)($_POST['code'] ?? ''));
+            audit_log('group_import.code', 'group', 0, $b['label'] . ': ' . $c);
+            header('Location: ' . $back . '&code_saved=1'); exit;
+        } catch (InvalidArgumentException $e) {
+            header('Location: ' . $back . '&code_error=' . urlencode($e->getMessage())); exit;
+        }
+    }
+
     if ($action === 'preview') {
         $f = $_FILES['sheet'] ?? null;
         $label = trim((string)($_POST['label'] ?? ''));
@@ -156,6 +171,27 @@ $fmtD = fn(?string $d) => $d ? date('j M', strtotime($d)) : '—';
     $created = isset($_GET['created']) ? (int)$_GET['created'] : null;
   ?>
   <?php if ($created !== null): ?><div class="alert alert--success is-flash"><?= $created ?> booking<?= $created === 1 ? '' : 's' ?> created. No emails were sent — send the links below.</div><?php endif; ?>
+  <?php if (isset($_GET['code_saved'])): ?><div class="alert alert--success is-flash">Group code saved.</div><?php endif; ?>
+  <?php if (!empty($_GET['code_error'])): ?><div class="alert alert--error is-flash"><?= e((string)$_GET['code_error']) ?></div><?php endif; ?>
+  <?php if ($groups):
+    $gCode = gi_batch_code($batch['slug']);           // mints one for a group made before codes existed
+    $gLast = gi_batch_last_day($batch);
+    $regUrl = preg_replace('~^https?://~', '', site_url('/register')); ?>
+  <div class="card" style="margin-bottom:16px">
+    <div class="card__head"><span class="card__title">Group code</span></div>
+    <div class="card__body card__body--pad" style="display:flex;flex-wrap:wrap;gap:16px;align-items:center;justify-content:space-between">
+      <div>
+        <div style="font-size:30px;font-weight:700;letter-spacing:5px;color:#102F3A"><?= e($gCode) ?></div>
+        <div class="text-muted" style="font-size:13px;margin-top:4px">Print it on the invitation or welcome card. Each guest goes to <strong><?= e($regUrl) ?></strong> → <em>I have a booking</em>, types this code and their first name and surname, and lands in their own check-in.<?= $gLast !== '' ? ' Works until ' . e(date('j M Y', strtotime($gLast))) . '.' : '' ?></div>
+      </div>
+      <form method="POST" style="display:flex;gap:8px;align-items:center;margin:0">
+        <?= csrf_field() ?><input type="hidden" name="action" value="set_code"><input type="hidden" name="batch" value="<?= e($batch['slug']) ?>">
+        <input class="inp" name="code" value="<?= e($gCode) ?>" maxlength="12" style="width:150px;text-transform:uppercase;letter-spacing:2px" aria-label="Group code">
+        <button class="btn-outline btn-sm">Change code</button>
+      </form>
+    </div>
+  </div>
+  <?php endif; ?>
   <div class="card">
     <div class="card__head">
       <span class="card__title"><?= e($batch['label']) ?> · <?= $rooms ?> room<?= $rooms === 1 ? '' : 's' ?> · <?= count($groups) ?> contact<?= count($groups) === 1 ? '' : 's' ?></span>
