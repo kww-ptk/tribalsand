@@ -17,7 +17,8 @@ require_once __DIR__ . '/../includes/acct.php';             // folio: payments, 
 require_once __DIR__ . '/../includes/hold-groups.php';      // a multi-room request is confirmed / cancelled as one
 require_login();
 
-$holdId = (int)($_GET['hold'] ?? $_POST['hold_id'] ?? 0);
+// ?id= is accepted too: the group import's links page used it (and those links went out).
+$holdId = (int)($_GET['hold'] ?? $_GET['id'] ?? $_POST['hold_id'] ?? 0);
 $agOn = holds_agent_supported();   // trade-portal link, only once add_holds_agent.sql has run
 $hold = $holdId ? db_query(
     "SELECT h.*, u.name AS unit_name, r.name AS room_name, r.venue_id AS venue_id, v.name AS venue_name"
