@@ -17,6 +17,7 @@ require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/booking.php';
 require_once __DIR__ . '/checkin.php';
 require_once __DIR__ . '/bookings.php';
+require_once __DIR__ . '/visitor-registration.php';   // visitor_name_words() — the same name matching /register uses
 
 const GI_ROOM_MAP_SETTING = 'group_import_room_map';   // {venue_id: {label: room_id}}
 const GI_BATCH_PREFIX     = 'group_import:';           // + slug → {label, created_at, hold_ids}
@@ -156,6 +157,34 @@ function gi_share_text(string $head, array $rooms, string $label): string {
               . (($r['guest'] ?? '') !== '' ? ' (' . $r['guest'] . ')' : '') . "\n" . ($r['link'] ?? '');
     }
     return $out;
+}
+
+/**
+ * A group code as typed (on an invitation, at /register) → its stored form: upper-case
+ * letters and digits, 4–12 long. '' when it can't be one. Pure.
+ */
+function gi_code_norm(string $s): string {
+    $c = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $s) ?? '');
+    return strlen($c) >= 4 && strlen($c) <= 12 ? $c : '';
+}
+
+/**
+ * Who in a group's guest list a typed name is. $roster rows carry `name`. The typed
+ * name needs two words of 2+ letters, all of them in the guest's name (any order,
+ * accents folded). One hit → that row. Several → the one whose name is exactly those
+ * words, else null (two "Sam Lee"s are sent to reception, never guessed). Pure.
+ */
+function gi_member_match(array $roster, string $typed): ?array {
+    $t = array_values(array_unique(array_filter(visitor_name_words($typed), fn($w) => strlen($w) >= 2)));
+    if (count($t) < 2) return null;
+    $hits = [];
+    foreach ($roster as $r) {
+        $w = visitor_name_words((string)($r['name'] ?? ''));
+        if (!array_diff($t, $w)) $hits[] = ['row' => $r, 'exact' => !array_diff(array_unique($w), $t)];
+    }
+    if (count($hits) === 1) return $hits[0]['row'];
+    $exact = array_values(array_filter($hits, fn($h) => $h['exact']));
+    return count($exact) === 1 ? $exact[0]['row'] : null;
 }
 
 /** "Chris & Bini wedding" → "chris-bini-wedding". */
@@ -355,6 +384,8 @@ function gi_create(array $plan, string $label, int $adminId): array {
         set_setting(GI_BATCH_PREFIX . $slug, json_encode([
             'label' => $label, 'created_at' => $prev['created_at'] ?? date('c'), 'updated_at' => date('c'),
             'by' => $adminId, 'hold_ids' => $all,
+            // The code guests type at /register with their name (gi_group_lookup()).
+            'code' => gi_code_norm((string)($prev['code'] ?? '')) ?: gi_new_code($slug),
             // Who each room's links go to — the file's Head / Group, not the booking name.
             'heads' => array_replace((array)($prev['heads'] ?? []), array_map('strval', $heads)),
         ]));
@@ -388,6 +419,92 @@ function gi_batches(): array {
     }
     usort($out, fn($a, $b) => strcmp($b['updated_at'], $a['updated_at']));
     return $out;
+}
+
+// ── Group code ──────────────────────────────────────────────────────────────
+// One short code per group (on the invitation / welcome card). At /register a guest
+// types it with their first name and surname and lands in their OWN check-in — only
+// when exactly one person in that group's guest lists has that name. Like a booking
+// code it is the secret; it works until the group's last checkout.
+
+/** True when $code is already used by another group or by a booking. */
+function gi_code_taken(string $code, string $exceptSlug = ''): bool {
+    $b = gi_batch_by_code($code);
+    if ($b && $b['slug'] !== $exceptSlug) return true;
+    return (bool) db_query('SELECT 1 FROM holds WHERE UPPER(access_code) = :c LIMIT 1', [':c' => $code])->fetchColumn();
+}
+
+/** A fresh 6-character code no other group or booking uses. */
+function gi_new_code(string $slug): string {
+    for ($i = 0; $i < 20; $i++) {
+        $c = generate_access_code(6);
+        if (!gi_code_taken($c, $slug)) return $c;
+    }
+    throw new RuntimeException('Could not pick a free group code.');
+}
+
+/** The group a code belongs to (any case, punctuation ignored), or null. */
+function gi_batch_by_code(string $code): ?array {
+    $code = gi_code_norm($code);
+    if ($code === '') return null;
+    foreach (db_query('SELECT setting_key, setting_value FROM settings WHERE setting_key LIKE :p', [':p' => GI_BATCH_PREFIX . '%'])->fetchAll() as $r) {
+        $b = json_decode((string)$r['setting_value'], true);
+        if (is_array($b) && hash_equals(gi_code_norm((string)($b['code'] ?? '')), $code)) {
+            return gi_batch(substr((string)$r['setting_key'], strlen(GI_BATCH_PREFIX)));
+        }
+    }
+    return null;
+}
+
+/** Change a group's code (staff, on the links page). Throws InvalidArgumentException with the reason. */
+function gi_batch_set_code(string $slug, string $code): string {
+    $b = gi_batch($slug);
+    if (!$b) throw new InvalidArgumentException('Group not found.');
+    $c = gi_code_norm($code);
+    if ($c === '') throw new InvalidArgumentException('Use 4 to 12 letters or digits.');
+    if (gi_code_taken($c, $slug)) throw new InvalidArgumentException('That code is already used — choose another.');
+    $raw = json_decode(setting(GI_BATCH_PREFIX . $slug, ''), true) ?: [];
+    $raw['code'] = $c;
+    set_setting(GI_BATCH_PREFIX . $slug, json_encode($raw));
+    return $c;
+}
+
+/** A group's code, minting one for a group created before codes existed. */
+function gi_batch_code(string $slug): string {
+    $b = gi_batch($slug);
+    if (!$b) return '';
+    $c = gi_code_norm((string)($b['code'] ?? ''));
+    return $c !== '' ? $c : gi_batch_set_code($slug, gi_new_code($slug));
+}
+
+/** The last checkout among the group's live bookings ('' = none left). */
+function gi_batch_last_day(array $batch): string {
+    $ids = array_values(array_filter(array_map('intval', $batch['hold_ids'] ?? [])));
+    if (!$ids) return '';
+    return (string) db_query("SELECT MAX(check_out) FROM holds WHERE id IN (" . implode(',', $ids) . ") AND status IN ('pending','confirmed')")->fetchColumn();
+}
+
+/**
+ * Group code + a guest's name → their own check-in link. Same shape as
+ * visitor_booking_lookup(): kind = lead · guest · nomatch · notfound; nothing about the
+ * group is returned on a miss. Only live bookings whose stay hasn't ended count.
+ */
+function gi_group_lookup(string $code, string $name, string $today): array {
+    $b = gi_batch_by_code($code);
+    $ids = $b ? array_values(array_filter(array_map('intval', $b['hold_ids']))) : [];
+    if (!$ids || !checkin_supported()) return ['kind' => 'notfound', 'url' => ''];
+    $roster = db_query(
+        "SELECT g.id AS guest_id, g.hold_id, g.passport_name AS name, g.is_lead
+           FROM checkin_guests g JOIN holds h ON h.id = g.hold_id
+          WHERE g.hold_id IN (" . implode(',', $ids) . ") AND NOT g.is_child
+            AND h.status IN ('pending','confirmed') AND h.check_out >= :d",
+        [':d' => $today])->fetchAll();
+    if (!$roster) return ['kind' => 'notfound', 'url' => ''];
+    $m = gi_member_match($roster, $name);
+    if (!$m) return ['kind' => 'nomatch', 'url' => ''];
+    $hid = (int)$m['hold_id'];
+    if (!empty($m['is_lead'])) return ['kind' => 'lead', 'url' => '/booking.php?ref=' . urlencode(make_guest_ref($hid)) . '&view=checkin'];
+    return ['kind' => 'guest', 'url' => '/booking.php?g=' . urlencode(make_guest_pass_token($hid, (int)$m['guest_id']))];
 }
 
 /**

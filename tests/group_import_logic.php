@@ -77,6 +77,27 @@ check('share: lists both links', str_contains($txt, 'https://x/b?ref=1') && str_
 check('share: names the event',  str_contains($txt, 'Chris & Bini wedding'));
 check('slug: label',             gi_batch_slug('Chris & Bini wedding') === 'chris-bini-wedding');
 
+// ── Group code: what a guest types at /register ─────────────────────────────
+check('code: upper, letters + digits only', gi_code_norm(' bini-26 ') === 'BINI26');
+check('code: too short / too long refused', gi_code_norm('ab1') === '' && gi_code_norm(str_repeat('A', 13)) === '');
+$roster = [
+    ['hold_id' => 1, 'guest_id' => 11, 'name' => 'Vishal Shah',       'is_lead' => true],
+    ['hold_id' => 1, 'guest_id' => 12, 'name' => 'Neha Shah',         'is_lead' => false],
+    ['hold_id' => 2, 'guest_id' => 21, 'name' => 'Anna Smith',        'is_lead' => true],
+    ['hold_id' => 3, 'guest_id' => 31, 'name' => 'Anna Maria Smith',  'is_lead' => true],
+    ['hold_id' => 4, 'guest_id' => 41, 'name' => 'Jürgen Müller',     'is_lead' => true],
+    ['hold_id' => 5, 'guest_id' => 51, 'name' => 'Sam Lee',           'is_lead' => true],
+    ['hold_id' => 6, 'guest_id' => 61, 'name' => 'Sam Lee',           'is_lead' => true],
+];
+check('member: first + last finds the guest',        (gi_member_match($roster, 'Neha Shah')['guest_id'] ?? 0) === 12);
+check('member: any order, any case',                 (gi_member_match($roster, 'shah NEHA')['guest_id'] ?? 0) === 12);
+check('member: accents folded',                      (gi_member_match($roster, 'Jurgen Muller')['guest_id'] ?? 0) === 41);
+check('member: surname alone is not enough',         gi_member_match($roster, 'Shah') === null);
+check('member: exact name wins over a longer one',   (gi_member_match($roster, 'Anna Smith')['guest_id'] ?? 0) === 21);
+check('member: middle name narrows it',              (gi_member_match($roster, 'Anna Maria Smith')['guest_id'] ?? 0) === 31);
+check('member: two people with the same name = none', gi_member_match($roster, 'Sam Lee') === null);
+check('member: someone not on the list = none',      gi_member_match($roster, 'John Doe') === null);
+
 // ── DB: plan + create, rolled back ──────────────────────────────────────────
 $haveMi = false;
 try { $haveMi = (bool) db_query("SELECT 1 FROM rooms WHERE slug = 'maya-ilai-villa'")->fetchColumn()
@@ -129,6 +150,25 @@ if (!$haveMi) {
         check('links: sorted by head',          array_column($links, 'head') === ['Pankaj Vagadia', 'Purav Vagadia', 'Vishal Shah']);
         $vishal = array_values(array_filter($links, fn($g) => $g['head'] === 'Vishal Shah'))[0];
         check('links: bedroom named',           str_ends_with($vishal['rooms'][0]['room'], '· first double'));
+
+        // Group code: minted on create, found by code, a guest finds their own check-in.
+        $code = (string)($batch['code'] ?? '');
+        check('code: minted on create',         gi_code_norm($code) === $code && $code !== '');
+        check('code: finds the batch',          (gi_batch_by_code(strtolower($code))['slug'] ?? '') === $res['slug']);
+        $hit = gi_group_lookup($code, 'Neha Shah', '2099-10-20');
+        check('lookup: a guest gets their own link', $hit['kind'] === 'guest' && str_contains($hit['url'], '/booking.php?g='));
+        $lead = gi_group_lookup($code, 'Vishal Shah', '2099-10-20');
+        check('lookup: the room lead gets the check-in', $lead['kind'] === 'lead' && str_contains($lead['url'], 'view=checkin'));
+        check('lookup: unknown name = nomatch, no link', gi_group_lookup($code, 'John Doe', '2099-10-20') === ['kind' => 'nomatch', 'url' => '']);
+        check('lookup: after the stay = notfound', gi_group_lookup($code, 'Neha Shah', '2099-11-30')['kind'] === 'notfound');
+        check('lookup: unknown code = notfound',   gi_group_lookup('ZZZZ99', 'Neha Shah', '2099-10-20')['kind'] === 'notfound');
+        gi_batch_set_code($res['slug'], 'test-2099');
+        check('code: owner can set their own',  (gi_batch_by_code('TEST2099')['slug'] ?? '') === $res['slug'] && gi_batch_by_code($code) === null);
+        $clash = db_query("SELECT access_code FROM holds WHERE access_code IS NOT NULL AND access_code <> '' LIMIT 1")->fetchColumn();
+        if ($clash) {
+            $refused = false; try { gi_batch_set_code($res['slug'], (string)$clash); } catch (InvalidArgumentException $e) { $refused = true; }
+            check('code: a booking code is refused', $refused);
+        }
     } finally {
         db()->rollBack();
     }
