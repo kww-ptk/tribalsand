@@ -304,7 +304,7 @@ function email_registry(): array {
         ],
         'staff_guest_cancelled' => [
             'name' => 'Guest cancelled their booking', 'audience' => 'staff', 'topic' => 'Staff alerts',
-            'trigger' => 'A guest cancels their own booking from their booking page.',
+            'trigger' => 'No longer sent: since Oct 2026 guests can’t cancel from their booking page (they message us and staff cancel the booking). Kept for the send history.',
             'sources' => ['booking.php'], 'recipients' => 'The notification address in Settings.',
             'fields' => [
                 'subject' => '[Guest Cancelled] {{room_name}} — {{guest_name}} — {{check_in}} to {{check_out}}',

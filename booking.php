@@ -97,42 +97,10 @@ if ((!$holdId || !$hold) && ($_POST['do'] ?? '') === 'lookup') {
     }
 }
 
-// Determine cancel eligibility
-if ($hold && !$error && !$isCoGuest) {
-    $status = $hold['status'];
-    if ($status === 'pending') {
-        $can_cancel = true;
-    } elseif ($status === 'confirmed') {
-        $days_until = (strtotime($hold['check_in']) - time()) / 86400;
-        if ($days_until >= 7) {
-            $can_cancel = true;
-        } else {
-            $cancel_blocked_reason = 'Online cancellation is only available more than 7 days before check-in. Please contact us directly to discuss your options.';
-        }
-    }
-}
-
-// Handle cancel POST
-if ($_SERVER['REQUEST_METHOD'] === 'POST' && $hold && $can_cancel && !$isCoGuest) {   // only the lead may cancel
-    if (($_POST['action'] ?? '') === 'cancel') {
-        db_query(
-            "UPDATE holds SET status='cancelled', cancelled_at=NOW() WHERE id=:id AND status IN ('pending','confirmed')",
-            [':id' => $holdId]
-        );
-        db_query(
-            "DELETE FROM availability_blocks WHERE hold_id=:hid",
-            [':hid' => $holdId]
-        );
-
-        $hold = fetch_hold_for_guest($holdId);
-
-        send_hold_cancelled($hold, 'cancelled', ['trigger' => 'guest_cancel']);
-        send_admin_guest_cancelled($hold, ['trigger' => 'guest_cancel']);
-
-        $can_cancel = false;
-        $success    = 'Your booking has been cancelled. A confirmation email is on its way.';
-    }
-}
+// Guests no longer cancel online (owner, Oct 2026): the Settings tab points them to
+// Messages and staff cancel from the booking. $can_cancel / $cancel_blocked_reason stay
+// defined (false / '') for the views that read them; there is no guest cancel POST.
+if ($hold && !$error) $status = $hold['status'];
 
 // ── Who is actually looking at this page? ───────────────────────────────────
 // booking.php resolves a BOOKING; until now it never resolved an ACTOR, which is
