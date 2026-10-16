@@ -12,6 +12,7 @@ require_once __DIR__ . '/../includes/auth.php';
 require_once __DIR__ . '/../includes/waiver-archive.php';
 require_once __DIR__ . '/../includes/pagination.php';
 require_once __DIR__ . '/../includes/admin-pagination.php';
+require_once __DIR__ . '/../includes/icons.php';   // admin_icon() — the table body is rendered before _layout.php loads it
 require_login();
 require_owner();
 
