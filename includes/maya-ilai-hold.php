@@ -26,6 +26,7 @@ declare(strict_types=1);
 
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/maya-ilai-pricing.php';
+require_once __DIR__ . '/rates.php';   // rates_window_ymd() — without it the endpoint fatals and the guest sees "Network error"
 
 /**
  * Book a whole configuration atomically. $units is the offer's product list:

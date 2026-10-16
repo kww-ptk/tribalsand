@@ -202,6 +202,18 @@ $audienceChips = function (array $on): string {
 .sp-chips .optchip { padding:6px 12px; font-size:12.5px; }
 .sp-sheet__foot { padding:14px 22px; border-top:1px solid var(--border); display:flex; justify-content:flex-end; gap:10px; }
 .sp-removed { margin-top:16px; }
+/* Desktop: the panel reaches the bottom of the window (admin-fit.js data-fill-screen sets the exact
+   height; the calc is the no-JS fallback) and the page area stretches into it. The guide list scrolls. */
+@media (min-width:901px) {
+  .sp { height:max(640px, calc(100vh - 160px)); }
+  .sp-list { overflow:auto; min-height:0; }
+  .sp-view { min-height:0; }
+  .sp-rd__main { flex:1; }
+  .sp-rd__body { grid-template-rows:minmax(0,1fr); }
+  .sp-rd:not(.is-narrow) .sp-rd__stage { height:auto; min-height:0; }
+  .sp-rd__fallback { flex:1; height:auto; min-height:0; }
+  .sp-rd.is-narrow { overflow:auto; }
+}
 @media (max-width:900px) {
   .sp { grid-template-columns:1fr; }
   .sp-list { border-right:0; border-bottom:1px solid var(--border); max-height:320px; overflow:auto; }
@@ -221,7 +233,7 @@ $audienceChips = function (array $on): string {
 <div class="card"><div class="card__body"><p class="text-muted" style="margin:0">The guide library isn't set up yet — the owner needs to run the <code>add_support_docs.sql</code> migration (Settings → Your account → Migrations).</p></div></div>
 <?php else: ?>
 
-<div class="sp">
+<div class="sp" data-fill-screen="901">
   <aside class="sp-list" data-help="support-list">
     <?php if ($isOwner): ?>
     <button type="button" class="sp-drop" data-sp-open="spImport" data-help="support-import"><?= admin_icon('upload', 15) ?> Import a guide (PDF)</button>
