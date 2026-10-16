@@ -310,7 +310,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if (storage_put_private($f['tmp_name'], $key, $mime)) {
                         $prev = db_query('SELECT passport_file_key FROM checkin_guests WHERE id=:g AND hold_id=:h', [':g'=>$gid, ':h'=>$holdId])->fetch();
                         db_query('UPDATE checkin_guests SET passport_file_key=:k WHERE id=:g AND hold_id=:h', [':k'=>$key, ':g'=>$gid, ':h'=>$holdId]);
-                        if ($prev && !empty($prev['passport_file_key']) && $prev['passport_file_key'] !== $key) { try { storage_delete_private($prev['passport_file_key']); } catch (Throwable $e) {} }
+                        if ($prev && !empty($prev['passport_file_key']) && $prev['passport_file_key'] !== $key) { checkin_scan_delete_unless_frozen($holdId, $gid, (string)$prev['passport_file_key']); }
                         audit_log('checkin.guest_upload', 'hold', $holdId, 'guest ' . $gid);
                         $_SESSION['hold_flash'] = ['type'=>'success','msg'=>'Passport scan uploaded.'];
                     } else {
@@ -357,7 +357,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!$row || !empty($row['is_lead'])) {
                 $_SESSION['hold_flash'] = ['type'=>'error','msg'=>'The lead guest can’t be removed.'];
             } else {
-                $files = db_query('SELECT passport_file_key FROM checkin_guests WHERE (id=:g OR parent_guest_id=:g) AND hold_id=:h', [':g'=>$gid, ':h'=>$holdId])->fetchAll(PDO::FETCH_COLUMN);
+                $files = checkin_guest_file_keys($holdId, $gid);
                 db_query('DELETE FROM checkin_guests WHERE id=:g AND hold_id=:h', [':g'=>$gid, ':h'=>$holdId]);
                 foreach ($files as $fk) { if (!empty($fk)) { try { storage_delete_private($fk); } catch (Throwable $e) {} } }
                 if (empty($row['is_child'])) {   // removed an adult — shrink the required party and un-latch completion

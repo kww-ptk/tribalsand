@@ -152,6 +152,7 @@ function admin_nav_definition(array $f, array $badge = []): array {
             ]),
             $item('Staff', 'staff', [$tab('Staff', ['staff.php', 'employee.php', 'staff-import.php'], $on('owner') || $on('hr'))]),
             $item('Staff rooms', 'staff-rooms', [$tab('Staff rooms', 'staff-rooms.php', $on('owner') || $on('hr') || $on('manager'))]),
+            $item('Signed waivers', 'waivers', [$tab('Signed waivers', 'waivers.php', $on('owner'))]),
         ]],
 
         ['key' => 'restaurant', 'icon' => 'menus', 'title' => 'Restaurant', 'items' => [
@@ -400,6 +401,7 @@ const ADMIN_NAV_SEARCH_WORDS = [
     'acct-documents.php'   => 'invoices payments receipts credit notes',
     'staff.php'            => 'team users accounts roles access permissions payroll company',
     'staff-rooms.php'      => 'staff housing accommodation beds quarters room allocation',
+    'waivers.php'          => 'waiver consent signed records passport scan id accounting archive download zip legal',
     'emails.php'           => 'email notifications templates',
     'settings.php'         => 'settings configuration',
     'conflicts.php'        => 'double booking overlap',

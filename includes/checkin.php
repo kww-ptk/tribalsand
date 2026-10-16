@@ -582,19 +582,16 @@ function checkin_missing_steps(array $config, ?array $data, ?array $lead): array
 // ── Multi-guest per booking ─────────────────────────────────────────────────
 
 /**
- * A single guest row has a complete passport: name + number, plus EITHER the photo
- * OR nationality + expiry typed in (owner rule, Oct 2026 — a guest may upload or
- * type). The photo is read into the fields, so a photo normally brings all four.
+ * A single guest row has a complete passport / Kenyan ID: the PHOTO on file plus the
+ * name and number (read from it, checked by the guest). Same rule for both documents.
  */
 function checkin_guest_passport_complete(?array $g): bool {
     if ($g === null) return false;
+    // Owner rule (Oct 2026): the photo of the passport / Kenyan ID is REQUIRED — the
+    // details are read from it and the guest checks them. Typed details alone no
+    // longer complete a guest (staff can still type in the admin, and upload a scan).
     $has = fn($k) => trim((string)($g[$k] ?? '')) !== '';
-    if (!$has('passport_name') || !$has('passport_number')) return false;
-    if ($has('passport_file_key')) return true;
-    // A Kenyan ID needs no expiry: the older cards don't print one.
-    return checkin_id_type($g['id_type'] ?? null) === 'kenya_id'
-        ? $has('nationality')
-        : $has('nationality') && $has('passport_expiry');
+    return $has('passport_file_key') && $has('passport_name') && $has('passport_number');
 }
 
 // ── Identity document: Passport or Kenyan National ID ───────────────────────
@@ -844,6 +841,42 @@ function checkin_audit_hash_supported(): bool {
     return $ok;
 }
 
+/** add_waiver_scan_snapshot.sql applied? Catalog lookup — safe inside a transaction. */
+function waiver_scan_snapshot_supported(): bool {
+    static $ok = null;
+    if ($ok !== null) return $ok;
+    try { return $ok = (bool) db_query("SELECT 1 FROM information_schema.columns WHERE table_name = 'checkin_guests' AND column_name = 'waiver_scan_snapshot'")->fetchColumn(); }
+    catch (Throwable $e) { return $ok = false; }
+}
+
+/** The scan a signed record shows: the one frozen at signing, else (legacy) the current file. */
+function checkin_guest_scan_key(array $g): array {
+    $frozen = trim((string)($g['waiver_scan_snapshot'] ?? ''));
+    if ($frozen !== '') return ['key' => $frozen, 'frozen' => true];
+    return ['key' => trim((string)($g['passport_file_key'] ?? '')), 'frozen' => false];
+}
+
+/** Every private scan file of a guest and their children (current + frozen), de-duplicated. */
+function checkin_guest_file_keys(int $holdId, int $guestId): array {
+    $cols = 'passport_file_key' . (waiver_scan_snapshot_supported() ? ', waiver_scan_snapshot' : '');
+    $rows = db_query("SELECT $cols FROM checkin_guests WHERE (id = :g OR parent_guest_id = :g) AND hold_id = :h",
+                     [':g' => $guestId, ':h' => $holdId])->fetchAll();
+    $keys = [];
+    foreach ($rows as $r) foreach ($r as $v) { $v = trim((string)$v); if ($v !== '') $keys[$v] = true; }
+    return array_keys($keys);
+}
+
+/** After a new photo replaced $oldKey: delete the old file — unless a signed record froze it. */
+function checkin_scan_delete_unless_frozen(int $holdId, int $guestId, string $oldKey): void {
+    if ($oldKey === '') return;
+    if (waiver_scan_snapshot_supported()) {
+        $frozen = (string) db_query('SELECT COALESCE(waiver_scan_snapshot, \'\') FROM checkin_guests WHERE id = :g AND hold_id = :h',
+                                   [':g' => $guestId, ':h' => $holdId])->fetchColumn();
+        if ($frozen === $oldKey) return;
+    }
+    try { storage_delete_private($oldKey); } catch (Throwable $e) {}
+}
+
 /** True once the identity-at-signing snapshot columns exist (add_checkin_record_integrity.sql). Cached per-request. */
 function checkin_identity_snapshot_supported(): bool {
     static $ok = null;
@@ -1037,7 +1070,14 @@ function checkin_void_signature_if_identity_changed(int $holdId, int $guestId, a
                     waiver_nationality_snapshot=NULL, waiver_passport_expiry_snapshot=NULL';
     }
     if (checkin_id_type_supported()) $clear .= ', waiver_id_type_snapshot=NULL';
+    // The frozen scan goes with the signature it belonged to.
+    $frozenScan = waiver_scan_snapshot_supported() ? trim((string)($g['waiver_scan_snapshot'] ?? '')) : '';
+    if (waiver_scan_snapshot_supported()) $clear .= ', waiver_scan_snapshot=NULL';
     db_query("UPDATE checkin_guests SET $clear WHERE id=:g AND hold_id=:h", [':g'=>$guestId, ':h'=>$holdId]);
+    // The frozen file belongs to no record any more (unless it is still the current photo).
+    if ($frozenScan !== '' && $frozenScan !== trim((string)($g['passport_file_key'] ?? ''))) {
+        try { storage_delete_private($frozenScan); } catch (Throwable $e) {}
+    }
 
     // A signed→unsigned transition must lift a completed booking back to pending,
     // or it would read "Checked in ✓" over a guest who now needs to re-sign.

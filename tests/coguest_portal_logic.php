@@ -16,7 +16,7 @@ function check(string $label, bool $cond): void {
 }
 
 $hold = ['id' => 1, 'require_checkin' => true, 'share_reservation' => false];
-$open = ['passport_name' => 'Maria Rossi', 'passport_number' => 'YA1234567', 'nationality' => 'Italy', 'passport_expiry' => '2031-01-01',
+$open = ['passport_name' => 'Maria Rossi', 'passport_number' => 'YA1234567', 'nationality' => 'Italy', 'passport_expiry' => '2031-01-01', 'passport_file_key' => 'checkin/1/9/x.jpg',
          'waiver_signed_at' => '2026-10-14 10:00', 'waiver_signed_name' => 'Maria Rossi', 'waiver_signature' => 'data:image/png;base64,x'];
 check('finished check-in: portal open, sharing off', coguest_portal_open($hold, $open));
 check('not signed yet: still the check-in page', !coguest_portal_open($hold, ['waiver_signed_at' => null] + $open));
@@ -38,7 +38,7 @@ try {
         check('db: a token was made', $tok !== '');
         check('db: unfinished co-guest cannot act in the portal', resolve_portal_actor($tok) === false);
         $sigCols = checkin_signature_supported() ? ", waiver_signed_at = now(), waiver_signed_name = 'ZZ Coguest', waiver_signature = 'data:image/png;base64,x'" : '';
-        db_query("UPDATE checkin_guests SET passport_number = 'YA1234567', nationality = 'Italy', passport_expiry = '2031-01-01'{$sigCols} WHERE id = :g", [':g' => $gid]);
+        db_query("UPDATE checkin_guests SET passport_number = 'YA1234567', nationality = 'Italy', passport_expiry = '2031-01-01', passport_file_key = 'checkin/x/y.jpg'{$sigCols} WHERE id = :g", [':g' => $gid]);
         $a = resolve_portal_actor($tok);
         check('db: finished co-guest acts in the portal with sharing off', is_array($a) && $a['guest_id'] === $gid && $a['is_lead'] === false);
         $db->rollBack();

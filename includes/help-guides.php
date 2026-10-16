@@ -441,6 +441,15 @@ function help_guides(): array {
             ['text' => 'Press **×** next to a name when they move out. The history is kept and shows on their profile.'],
          ]],
 
+        ['slug' => 'signed-waivers', 'area' => 'team', 'minutes' => 1, 'pages' => ['waivers.php'],
+         'title' => 'Signed waivers',
+         'summary' => 'Every signed guest and visitor waiver, by month and property.',
+         'steps' => [
+            ['text' => 'Open **Team → Signed waivers**. Pick the **Month**, the **Property** and **Kind** (guests, visitors or both), or search a name, reference or document number.', 'target' => '[data-help="waivers-filters"]'],
+            ['text' => 'Press **View** on a row to open the signed record, and **Scan** to see the passport or ID photo it was signed with.'],
+         ],
+         'tips' => ['Months follow Kenya time: a waiver signed at 23:30 on the 31st belongs to that month.']],
+
         ['slug' => 'employee-attendance', 'area' => 'team', 'minutes' => 2, 'pages' => ['employee.php'],
          'title' => 'A person’s attendance and balances',
          'summary' => 'Their month at a glance, off days owed, annual leave and requests — on their profile.',

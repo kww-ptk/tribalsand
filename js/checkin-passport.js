@@ -200,8 +200,8 @@
     var note = pp.querySelector('.ci-pp-note');
     if (note) {
       var msgs = [];
-      if (filled) msgs.push('Please check the highlighted details.');
-      else if (d.read === false || (readCount(fields) === 0 && !warnings.length)) msgs.push('We couldn’t read the photo clearly — please type the details below.');
+      if (filled) msgs.push('Please check your details — correct anything we misread.');
+      else if (d.read === false || (readCount(fields) === 0 && !warnings.length)) msgs.push('We couldn’t read it — please type the details from your document.');
       msgs = msgs.concat(warnings);
       note.textContent = msgs.join(' ');
       if (was) {
@@ -276,13 +276,15 @@
         var cres = (pp && (d.fields || d.warnings)) ? fill(pp, d) : { filled: 0 };
         title = (d.read === true && cres.filled) ? 'Card read — ' + cres.filled + (cres.filled === 1 ? ' detail' : ' details') + ' filled in' : 'Card photo uploaded';
       } else {
+        // The details show only once the photo is on file (owner rule, Oct 2026).
+        var box = pp && pp.querySelector('.ci-pp__fields'); if (box) box.hidden = false;
         var res = (pp && (d.fields || d.read === false || d.warnings)) ? fill(pp, d) : { filled: 0 };
         var gotAny = d.read === true && readCount(d.fields) > 0;
         var doc = (d.fields && d.fields.id_type === 'kenya_id') ? 'ID card' : 'Passport';
         if (gotAny && res.filled)      title = doc + ' read — ' + res.filled + (res.filled === 1 ? ' detail' : ' details') + ' filled in';
         else if (gotAny)               title = doc + ' read';   // everything it found was already typed in
         else if (d.read !== undefined) title = 'Photo saved — we couldn’t read it, please type the details';
-        else                           title = 'Photo saved — please type the details below';
+        else                           title = 'Photo saved — please fill in the details';
       }
       set(p, 'done', 0, title, null);
       if (opts.onDone) opts.onDone(wrap, d, isDeposit);
