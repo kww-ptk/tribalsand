@@ -1723,7 +1723,7 @@ try {
             'check_in' => $IBI, 'check_out' => $IBO,
             'gross_amount' => 450.0, 'currency' => 'USD', 'external_ref' => 'TEST-I2',
         ]);
-        $conv = bookings_convert_block_to_hold($ibBlock);
+        $conv = bookings_convert_block_to_hold($ibBlock, '', ['email' => 'agent-bunk@example.com']);
         check('convert block: the block becomes a hold', ($conv['ok'] ?? false) === true);
         check('convert block: the hold carries the PRODUCT the ledger row names, not the villa',
             (int) db_query('SELECT room_id FROM holds WHERE id = :h', [':h' => (int)$conv['hold_id']])

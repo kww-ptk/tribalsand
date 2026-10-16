@@ -30,6 +30,22 @@ $unitInScope = function (int $unitId) use ($gScope): bool {
     )->fetchColumn();
     return $v !== false && $v !== null && in_array((int)$v, $gScope, true);
 };
+// ── Taken nights for the Block Dates picker (JSON, read-only) ─────
+// ?taken=<unit>&from=Y-m-d&to=Y-m-d → the nights already booked, held or
+// blocked on that unit (or a unit that excludes it), so the picker greys them.
+if ($_SERVER['REQUEST_METHOD'] === 'GET' && isset($_GET['taken'])) {
+    $tu   = (int)$_GET['taken'];
+    $from = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)($_GET['from'] ?? '')) ? (string)$_GET['from'] : date('Y-m-01');
+    $to   = preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)($_GET['to']   ?? '')) ? (string)$_GET['to']   : date('Y-m-d', strtotime($from . ' +24 months'));
+    if ($to > date('Y-m-d', strtotime($from . ' +36 months'))) $to = date('Y-m-d', strtotime($from . ' +36 months'));   // bounded read
+    header('Content-Type: application/json');
+    header('Cache-Control: no-store');
+    if ($tu <= 0 || !$unitInScope($tu) || $from >= $to) { http_response_code(404); echo json_encode(['ok' => false]); exit; }
+    expire_stale_holds();
+    echo json_encode(['ok' => true, 'nights' => gantt_taken_nights(gantt_unit_taken_blocks($tu, $from, $to), $from, $to)]);
+    exit;
+}
+
 // ── POST handlers ────────────────────────────────────────────────
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     verify_csrf();
@@ -44,7 +60,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // date_to from modal is the last blocked night (inclusive) — add 1 day for exclusive DB storage
         $date_to_excl = $date_to ? date('Y-m-d', strtotime($date_to . ' +1 day')) : '';
-        $dates_ok = $unit_id && $date_from && $date_to_excl && $date_from < $date_to_excl;
+        $dates_ok = $unit_id && $date_from && $date_to_excl && $date_from < $date_to_excl
+                    && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$date_from) && preg_match('/^\d{4}-\d{2}-\d{2}$/', (string)$date_to);
+        expire_stale_holds();
 
         if ($unit_id && !$unitInScope($unit_id)) {
             $err = 'That unit isn’t one of your properties.';
@@ -54,13 +72,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // admin/submission-view.php, on the surface reception actually uses. A
         // Gantt block has no component picker, so it is written components NULL,
         // i.e. the WHOLE villa; dropped over a live Maya Ilai component booking
-        // it sells the same bedroom twice. Returns null for every unit that is
-        // not a Maya Ilai villa, so the deliberate "staff control overlaps"
-        // behaviour — including a knowingly double-booked block — is untouched
-        // at every other property. Asked only after the scope check, so a
-        // refusal never names another account's villa.
+        // it sells the same bedroom twice (it names the sold bedrooms, so it is
+        // asked first). Every other unit is covered by the overlap check below.
+        // Asked only after the scope check, so a refusal never names another
+        // account's villa.
         } elseif (($guard = staff_hold_block_reason($unit_id, $date_from, $date_to_excl)) !== null) {
             $err = $guard;
+        // No block over nights that are already booked, held or blocked on this
+        // unit (or a unit that excludes it). The picker greys them out; this is
+        // the rule for a typed or stale form. Lapsed holds were swept above, so
+        // a hold that has run out never refuses a block.
+        } elseif (($taken = gantt_block_overlap_reason($unit_id, $date_from, $date_to_excl)) !== null) {
+            $err = $taken;
         } else {
             db_query(
                 "INSERT INTO availability_blocks (unit_id, date_from, date_to, block_type, notes)
@@ -78,14 +101,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // here, so a posted block id outside the account's venues is ignored.
         require_once __DIR__ . '/../includes/bookings.php';
         require_once __DIR__ . '/../includes/booking.php';
-        $res = bookings_convert_block_to_hold((int)($_POST['block_id'] ?? 0), $gUnitIds);
+        // A booking needs a guest — name + email are required (the server rule is
+        // bookings_convert_guest_problem(); the form asks for both).
+        $res = bookings_convert_block_to_hold((int)($_POST['block_id'] ?? 0), $gUnitIds, [
+            'name'  => trim((string)($_POST['guest_name']  ?? '')),
+            'email' => trim((string)($_POST['guest_email'] ?? '')),
+        ]);
         if ($res['ok']) {
+            audit_log('gantt.convert_block', 'hold', (int)$res['hold_id'], 'block #' . (int)($_POST['block_id'] ?? 0));
             $convert_url = make_manage_url($res['hold_id']);
             $msg = $convert_url !== ''
                 ? 'Booking created. Guest portal link: ' . $convert_url
                 : 'Booking created (hold #' . $res['hold_id'] . '). Set BOOKING_TOKEN_SECRET to issue portal links.';
         } else {
-            $msg = $res['error'];
+            $err = $res['error'];
         }
     }
 
@@ -111,6 +140,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               // Both ends must be in scope: the block being moved and its destination unit.
               && $unitInScope($unit_id);
         $error = 'Invalid data';
+        // A drag may not land on nights another block already takes (the block
+        // itself is left out, so nudging it inside its own span is fine).
+        if ($ok) {
+            expire_stale_holds();
+            if (($taken = gantt_block_overlap_reason($unit_id, $date_from, $date_to, $block_id)) !== null) {
+                $ok = false; $error = $taken;
+            }
+        }
         if ($ok) {
             // Same oversell guard as create_block: a dragged block is written
             // components-NULL too, so dropping one on a Maya Ilai villa that
@@ -465,6 +502,15 @@ include __DIR__ . '/_layout.php';
 .dp__cell:hover:not(.dp__cell--blank) { background: #e8f4f6; color: var(--brand); }
 .dp__cell--sel { background: var(--brand) !important; color: #fff !important; font-weight: 600; }
 .dp__cell--blank { cursor: default; }
+.dp__cell--off { color: #c3c9cf; cursor: not-allowed; text-decoration: line-through; }
+.dp__cell--off:hover { background: none !important; color: #c3c9cf !important; }
+.dp__cell--taken { background: #fbeaea; color: #b4534e; text-decoration: line-through; cursor: not-allowed; }
+.dp__cell--taken:hover { background: #fbeaea !important; color: #b4534e !important; }
+.dp__cell--inrange { background: #e8f4f6; color: var(--brand); }
+.block-taken-msg { margin: 0 0 12px; padding: 9px 12px; border-radius: 8px; background: #fdf1f0; color: #9b3a33; font-size: 12.5px; line-height: 1.45; }
+.block-taken-msg[hidden] { display: none; }
+.dp__legend { display: flex; gap: 12px; padding: 8px 4px 2px; font-size: 11px; color: var(--muted); }
+.dp__legend i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: #fbeaea; border: 1px solid #efc9c6; margin-right: 4px; vertical-align: -1px; }
 /* Zoom switch + Services & excursions row (includes/gantt-services.php) */
 .gantt-tools { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 0 0 12px; }
 .gantt-tools .segswitch { margin: 0; }
@@ -901,10 +947,13 @@ include __DIR__ . '/_layout.php';
   <dl class="gb-card__rows" id="gbCardRows"></dl>
   <div class="gb-card__actions" id="gbCardActions" hidden>
     <a class="gb-card__link" id="gbCardPortal" target="_blank" rel="noopener" hidden>Open guest portal &rarr;</a>
-    <form method="POST" id="gbCardConvert" hidden style="margin:0">
+    <form method="POST" id="gbCardConvert" class="gb-card__convert" hidden style="margin:0">
       <?= csrf_field() ?>
       <input type="hidden" name="action" value="convert_block">
       <input type="hidden" name="block_id" id="gbCardBlockId">
+      <span class="gb-card__ctitle">Convert to a booking — who is the guest?</span>
+      <input type="text"  name="guest_name"  id="gbCardGuestName"  class="inp" placeholder="Guest name" required maxlength="255" autocomplete="off">
+      <input type="email" name="guest_email" id="gbCardGuestEmail" class="inp" placeholder="Guest email (their booking link goes here)" required maxlength="255" autocomplete="off">
       <button type="submit" class="btn-primary btn-sm">Convert to booking</button>
     </form>
   </div>
@@ -926,6 +975,11 @@ include __DIR__ . '/_layout.php';
 .gb-card__actions{margin-top:10px;padding-top:9px;border-top:1px solid var(--border,#eef1f5);display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
 .gb-card__actions[hidden]{display:none;}
 .gb-card__link{font-size:11.5px;color:var(--brand,#1e5c6b);text-decoration:underline;overflow-wrap:anywhere;}
+.gb-card__convert{display:flex;flex-direction:column;gap:6px;width:100%;}
+.gb-card__convert[hidden]{display:none;}
+.gb-card__convert .inp{width:100%;font-size:12.5px;padding:7px 9px;}
+.gb-card__convert .btn-primary{align-self:flex-start;}
+.gb-card__ctitle{font-size:11.5px;font-weight:600;color:var(--text,#1d2b36);}
 .gb-card__close{position:absolute;top:6px;right:8px;background:none;border:0;font-size:18px;line-height:1;color:var(--muted,#8a94a0);cursor:pointer;}
 </style>
 <script>
@@ -963,7 +1017,12 @@ include __DIR__ . '/_layout.php';
     portal.hidden = !d.portal;
     if (d.portal) { portal.href = d.portal; }
     form.hidden = !d.convertible;
-    if (d.convertible) { document.getElementById('gbCardBlockId').value = d.blockId || ''; }
+    if (d.convertible) {
+      document.getElementById('gbCardBlockId').value = d.blockId || '';
+      // Prefill what the import knows; the block's note is a reason, never a guest.
+      document.getElementById('gbCardGuestName').value  = d.guest || '';
+      document.getElementById('gbCardGuestEmail').value = d.email || '';
+    }
     acts.hidden = !(d.portal || d.convertible);
   }
   function esc(v) { return String(v == null ? '' : v).replace(/[&<>"]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
@@ -1034,6 +1093,7 @@ include __DIR__ . '/_layout.php';
         <label>Unit</label>
         <input type="text" id="m_unit_name" disabled style="background:#f4f6f8">
       </div>
+      <p class="block-taken-msg" id="blockTakenMsg" role="alert" hidden></p>
       <div class="form-row">
         <div class="field">
           <label>From (first blocked night)</label>
@@ -1062,7 +1122,7 @@ include __DIR__ . '/_layout.php';
       <div class="field"><label>Notes (optional)</label><input type="text" name="notes" placeholder="Reason, guest name, etc."></div>
       <div class="g-modal__actions">
         <button type="button" class="btn-outline btn-sm" id="blockModalClose">Cancel</button>
-        <button type="submit" class="btn-primary btn-sm">Create Block</button>
+        <button type="submit" class="btn-primary btn-sm" id="blockSubmit">Create Block</button>
       </div>
     </form>
   </div>
@@ -1358,8 +1418,9 @@ document.addEventListener('mouseup', async () => {
     const data = await res.json();
     if (!data.ok) throw new Error(data.error ?? 'Server error');
   } catch (err) {
-    alert('Save failed: ' + err.message + '. Page will reload.');
-    location.reload();
+    // Styled toast, then put the calendar back the way the server has it.
+    if (window.tsToast) { window.tsToast('Not moved: ' + err.message, 'err'); setTimeout(() => location.reload(), 2600); }
+    else location.reload();
   }
 });
 
@@ -1370,7 +1431,7 @@ document.querySelectorAll('.gantt-block').forEach(initBlockDrag);
 document.querySelectorAll('.gantt-block[data-block-type="hold"]').forEach(block => {
   block.addEventListener('click', e => {
     e.stopPropagation();
-    alert('Holds are managed via the Holds & Bookings page.');
+    if (window.tsToast) window.tsToast('Holds are managed on the Bookings page.', 'err');
   });
 });
 
@@ -1410,6 +1471,7 @@ document.addEventListener('mouseup', () => {
   dpFrom.setValue(lo);
   dpTo.setValue(hi);
   blockModal.classList.remove('is-hidden');
+  blockTaken.load(selUnit, lo);   // grey the unit's taken nights; flags a selection over them
 
   selUnit = selStart = selCurrent = null;
 });
@@ -1438,7 +1500,11 @@ if (syncBtn) {
 }
 
 // ── Mini date-picker ─────────────────────────────────────────────
-function makePicker(popId, hiddenId, displayId) {
+// opts.cellClass(ymd) → '' | 'dp__cell--taken' | 'dp__cell--off' | 'dp__cell--inrange'
+//   (taken/off cells can't be picked), opts.onPick(ymd), opts.view() → ymd to
+//   open on when nothing is picked yet.
+function makePicker(popId, hiddenId, displayId, opts) {
+  opts = opts || {};
   const pop     = document.getElementById(popId);
   const hidden  = document.getElementById(hiddenId);
   const display = document.getElementById(displayId);
@@ -1458,6 +1524,11 @@ function makePicker(popId, hiddenId, displayId) {
     const d = new Date(s + 'T00:00');
     return d.getDate() + ' ' + MONTHS[d.getMonth()].slice(0,3) + ' ' + d.getFullYear();
   }
+  function viewOn(s) {
+    if (!s) return;
+    const d = new Date(s + 'T00:00');
+    viewYear = d.getFullYear(); viewMonth = d.getMonth();
+  }
 
   function render() {
     const first  = new Date(viewYear, viewMonth, 1);
@@ -1473,11 +1544,18 @@ function makePicker(popId, hiddenId, displayId) {
     </div>
     <div class="dp__grid">`;
     for (let i = 0; i < blanks; i++) html += `<div class="dp__cell dp__cell--blank"></div>`;
+    let anyTaken = false;
     for (let d = 1; d <= last.getDate(); d++) {
       const key = toYmd(new Date(viewYear, viewMonth, d));
-      html += `<div class="dp__cell${key === selected ? ' dp__cell--sel' : ''}" data-date="${key}">${d}</div>`;
+      const cls = key === selected ? '' : (opts.cellClass ? opts.cellClass(key) : '');
+      if (cls === 'dp__cell--taken') anyTaken = true;
+      const locked = cls === 'dp__cell--taken' || cls === 'dp__cell--off';
+      html += `<div class="dp__cell${key === selected ? ' dp__cell--sel' : ''}${cls ? ' ' + cls : ''}" data-date="${key}"`
+            + (locked ? ` aria-disabled="true" title="${cls === 'dp__cell--taken' ? 'Already booked, held or blocked' : 'Not available for this range'}"` : '')
+            + `>${d}</div>`;
     }
     html += `</div>`;
+    if (anyTaken) html += `<div class="dp__legend"><span><i></i>Already booked, held or blocked</span></div>`;
     pop.innerHTML = html;
 
     pop.querySelectorAll('.dp__nav').forEach(btn => btn.addEventListener('click', e => {
@@ -1489,12 +1567,13 @@ function makePicker(popId, hiddenId, displayId) {
     }));
     pop.querySelectorAll('.dp__cell[data-date]').forEach(cell => cell.addEventListener('click', e => {
       e.stopPropagation();
+      if (cell.getAttribute('aria-disabled') === 'true') return;   // taken / out of range
       selected = cell.dataset.date;
       hidden.value = selected;
       display.textContent = fmtDisplay(selected);
       display.classList.add('has-val');
       pop.classList.add('is-hidden');
-      render();
+      if (opts.onPick) opts.onPick(selected);
     }));
   }
 
@@ -1502,31 +1581,106 @@ function makePicker(popId, hiddenId, displayId) {
     e.stopPropagation();
     document.querySelectorAll('.dp__pop').forEach(p => { if (p !== pop) p.classList.add('is-hidden'); });
     pop.classList.toggle('is-hidden');
-    if (!pop.classList.contains('is-hidden')) render();
+    if (!pop.classList.contains('is-hidden')) {
+      viewOn(selected || (opts.view ? opts.view() : null));   // open on the picked month, not "now"
+      render();
+    }
   });
   document.addEventListener('click', () => pop.classList.add('is-hidden'));
 
   return {
+    get value() { return selected; },
     setValue(s) {
       selected = s;
       hidden.value = s;
       display.textContent = fmtDisplay(s);
       display.classList.add('has-val');
-      const d = new Date(s + 'T00:00');
-      viewYear = d.getFullYear();
-      viewMonth = d.getMonth();
+      viewOn(s);
     },
     clear() {
       selected = null;
       hidden.value = '';
       display.textContent = 'Pick a date';
       display.classList.remove('has-val');
-    }
+    },
+    refresh() { if (!pop.classList.contains('is-hidden')) render(); }
   };
 }
 
-const dpFrom     = makePicker('dpFromPop',     'm_date_from',  'dpFromDisplay');
-const dpTo       = makePicker('dpToPop',       'm_date_to',    'dpToDisplay');
+// ── Taken nights for the Block Dates modal ───────────────────────
+// The unit's booked / held / blocked nights (and those of a unit that excludes
+// it — the property buyout) come from ?taken=<unit>. The From picker greys
+// them; the To picker also greys nights before From and from the first taken
+// night after it, so a range can never cross a booking. The server refuses an
+// overlap regardless (gantt_block_overlap_reason()).
+const blockTaken = (function () {
+  let nights = new Set(), seq = 0;
+  const msg = document.getElementById('blockTakenMsg');
+  const submit = document.getElementById('blockSubmit');
+  const addD = (ymd, n) => { const d = new Date(ymd + 'T00:00'); d.setDate(d.getDate() + n);
+    return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); };
+  const fmt = ymd => new Date(ymd + 'T00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+
+  // The first taken night on or after `from` (null = none in the loaded window).
+  function nextTaken(from) {
+    let best = null;
+    nights.forEach(n => { if (n >= from && (best === null || n < best)) best = n; });
+    return best;
+  }
+  function check() {
+    const f = dpFrom.value, t = dpTo.value;
+    let bad = null;
+    if (f && t && f <= t) { const n = nextTaken(f); if (n && n <= t) bad = n; }
+    else if (f && nights.has(f)) bad = f;
+    msg.hidden = !bad;
+    if (bad) msg.textContent = 'This unit is already booked, held or blocked on ' + fmt(bad)
+      + '. Pick nights that are free — taken nights are crossed out in the date picker.';
+    submit.disabled = !!bad;
+  }
+  return {
+    load(u, around) {
+      nights = new Set(); check();
+      const start = addD(String(around || '').slice(0, 8) + '01', -93);
+      const end   = addD(start, 365 * 2 + 120);
+      const my = ++seq;
+      fetch(location.pathname + '?taken=' + encodeURIComponent(String(u)) + '&from=' + start + '&to=' + end,
+            { credentials: 'same-origin', headers: { 'Accept': 'application/json' } })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (my !== seq || !d || !d.ok) return; nights = new Set(d.nights || []); check(); dpFrom.refresh(); dpTo.refresh(); })
+        .catch(() => {});   // the server still refuses an overlap
+    },
+    reset() { seq++; nights = new Set(); msg.hidden = true; submit.disabled = false; },
+    fromClass(ymd) { return nights.has(ymd) ? 'dp__cell--taken' : ''; },
+    toClass(ymd) {
+      if (nights.has(ymd)) return 'dp__cell--taken';
+      const f = dpFrom.value;
+      if (!f) return '';
+      if (ymd < f) return 'dp__cell--off';
+      const n = nextTaken(f);
+      if (n && ymd >= n) return 'dp__cell--off';
+      return ymd <= (dpTo.value || f) ? 'dp__cell--inrange' : '';
+    },
+    // A new From: keep the To when the range is still free, else start it at From.
+    afterFrom(f) {
+      const t = dpTo.value, n = nextTaken(f);
+      if (!t || t < f || (n && n <= t)) dpTo.setValue(f);
+      check();
+    },
+    check
+  };
+})();
+
+const dpFrom     = makePicker('dpFromPop',     'm_date_from',  'dpFromDisplay', {
+  cellClass: ymd => blockTaken.fromClass(ymd),
+  onPick:    ymd => blockTaken.afterFrom(ymd),
+  view:      () => dpTo.value
+});
+const dpTo       = makePicker('dpToPop',       'm_date_to',    'dpToDisplay', {
+  cellClass: ymd => blockTaken.toClass(ymd),
+  onPick:    () => blockTaken.check(),
+  view:      () => dpFrom.value
+});
+document.getElementById('blockModalClose').addEventListener('click', () => blockTaken.reset());
 })();
 </script>
 

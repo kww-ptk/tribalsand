@@ -494,6 +494,19 @@ function bookings_source_label(string $source): string {
 }
 
 /**
+ * Why a calendar block can't become a booking with this guest yet, or null when
+ * it can. Pure. The ONE rule for bookings_convert_block_to_hold() and the
+ * Calendar's convert form: a name, and an email the portal link can go to.
+ */
+function bookings_convert_guest_problem(string $name, string $email): ?string
+{
+    if (trim($name) === '')  return 'Add the guest’s name before converting this block to a booking.';
+    if (trim($email) === '') return 'Add the guest’s email before converting this block to a booking — it is where their booking link goes.';
+    if (filter_var(trim($email), FILTER_VALIDATE_EMAIL) === false) return 'That email address doesn’t look right — check it and try again.';
+    return null;
+}
+
+/**
  * Turn an imported/manual calendar block into a real hold, so the stay gets a
  * guest portal link (check-in, messages, concierge) like a website booking.
  *
@@ -511,9 +524,16 @@ function bookings_source_label(string $source): string {
  * The hold is created confirmed: an imported booking is already a real, paid
  * stay, and a pending hold would expire and release the nights.
  *
+ * A booking needs a guest: the name and a valid email are REQUIRED
+ * (bookings_convert_guest_problem()). Staff type them on the Calendar; the
+ * import's ledger row fills whatever they leave blank. Before this a manual
+ * block converted with no guest at all, and the block's note ("Maintenance",
+ * "Painting") became the guest's name.
+ *
+ * @param array $guest ['name' => string, 'email' => string] typed by staff; blank = the ledger's
  * @return array{ok:bool,hold_id:int,error:string}
  */
-function bookings_convert_block_to_hold(int $blockId, string $unitScopeSql = ''): array
+function bookings_convert_block_to_hold(int $blockId, string $unitScopeSql = '', array $guest = []): array
 {
     require_once __DIR__ . '/db.php';
     require_once __DIR__ . '/booking.php';
@@ -532,14 +552,15 @@ function bookings_convert_block_to_hold(int $blockId, string $unitScopeSql = '')
     if (!empty($b['hold_id']))     return $fail('This block already has a booking.');
     if ($b['block_type'] === 'hold') return $fail('This is already a hold.');
 
-    // Guest identity: the ledger row if the import captured one, else the note
-    // staff typed on the block. Neither is required — the portal link works off
-    // the hold id, and the name can be filled in later.
+    // Guest identity: what staff typed, else the ledger row if the import
+    // captured one. Never the block's note — that is a reason ("Maintenance"),
+    // not a person. Both are required: a booking with no guest is not a booking.
     $bk    = bookings_supported()
         ? db_query('SELECT * FROM bookings WHERE block_id = :b LIMIT 1', [':b' => $blockId])->fetch()
         : null;
-    $name  = trim((string)($bk['guest_name']  ?? '')) ?: trim((string)($b['notes'] ?? ''));
-    $email = trim((string)($bk['guest_email'] ?? ''));
+    $name  = trim((string)($guest['name']  ?? '')) ?: trim((string)($bk['guest_name']  ?? ''));
+    $email = trim((string)($guest['email'] ?? '')) ?: trim((string)($bk['guest_email'] ?? ''));
+    if (($problem = bookings_convert_guest_problem($name, $email)) !== null) return $fail($problem);
 
     // Own the transaction only when the caller has not already opened one —
     // PDO/pgsql cannot nest, and the tests wrap their work in one they roll
@@ -574,8 +595,13 @@ function bookings_convert_block_to_hold(int $blockId, string $unitScopeSql = '')
                  [':h' => $holdId, ':id' => $blockId]);
 
         if ($bk) {
-            db_query('UPDATE bookings SET hold_id = :h WHERE id = :id',
-                     [':h' => $holdId, ':id' => (int)$bk['id']]);
+            // Attach the ledger row, and fill the guest it was missing (an import
+            // often has no email) — never overwrite what the channel recorded.
+            db_query("UPDATE bookings SET hold_id = :h,
+                             guest_name  = CASE WHEN COALESCE(guest_name, '')  = '' THEN :gn ELSE guest_name  END,
+                             guest_email = CASE WHEN COALESCE(guest_email, '') = '' THEN :ge ELSE guest_email END
+                       WHERE id = :id",
+                     [':h' => $holdId, ':gn' => $name, ':ge' => $email, ':id' => (int)$bk['id']]);
         }
 
         if ($ownTx) db()->commit();

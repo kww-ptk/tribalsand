@@ -22,9 +22,12 @@ declare(strict_types=1);
  * admin/submission-view.php does. Moving a block needs one thing that plain call
  * cannot express, which is why this file exists — see gantt_block_move().
  *
- * Everything here is a pass-through to the frozen guard, so every unit that is
- * not a Maya Ilai villa keeps the deliberate "you control overlaps" behaviour:
- * staff_hold_block_reason() returns NULL for them and nothing below runs.
+ * gantt_block_move() is a pass-through to the frozen guard: staff_hold_block_reason()
+ * returns NULL for every unit that is not a Maya Ilai villa. The old "staff
+ * control overlaps" behaviour at the other properties is GONE since Oct 2026
+ * (owner): no Calendar block may cover a night that is already booked, held or
+ * blocked — see gantt_block_overlap_reason() at the bottom of this file, asked by
+ * create_block and update_block in admin/gantt.php.
  *
  * Test: php tests/maya_ilai_inventory.php
  */
@@ -147,4 +150,85 @@ function gantt_block_move(
         // refused, rather than a half-checked move being written.
         return ['ok' => false, 'error' => 'Could not move the block. Please reload the calendar and try again.'];
     }
+}
+
+/* ── No new block over a taken night ────────────────────────────────────
+ * A Calendar block ("Block Dates" or a drag) must not land on nights that are
+ * already booked, held or blocked on that unit — or on a unit that excludes it
+ * (the property's whole-place buyout ↔ its rooms, room_conflict_unit_ids()).
+ * The Block Dates picker greys those nights out (gantt_taken_nights()), and the
+ * server refuses them regardless (gantt_block_overlap_reason()): the picker is a
+ * convenience, the server is the rule.
+ */
+
+/** The unit plus every unit that cannot be sold at the same time as it. */
+function gantt_unit_watch_ids(int $unitId): array {
+    $room = db_query(
+        'SELECT r.id, r.slug, r.venue_id, r.is_entire_place
+           FROM units u JOIN rooms r ON r.id = u.room_id WHERE u.id = :u',
+        [':u' => $unitId]
+    )->fetch();
+    if (!$room) return [$unitId];
+    return array_values(array_unique(array_merge([$unitId], room_conflict_unit_ids($room))));
+}
+
+/**
+ * Blocks on the unit (or a unit that excludes it) overlapping [$from, $toExcl).
+ * $ignoreBlockId leaves out the block being moved.
+ *
+ * @return list<array{id:int,unit_id:int,date_from:string,date_to:string,block_type:string,unit_label:string}>
+ */
+function gantt_unit_taken_blocks(int $unitId, string $from, string $toExcl, int $ignoreBlockId = 0): array {
+    $ids = implode(',', array_map('intval', gantt_unit_watch_ids($unitId)));   // ints — safe to inline
+    return db_query(
+        "SELECT ab.id, ab.unit_id, ab.date_from::text AS date_from, ab.date_to::text AS date_to, ab.block_type,
+                TRIM(r.name || ' — ' || u.name) AS unit_label
+           FROM availability_blocks ab
+           JOIN units u ON u.id = ab.unit_id
+           JOIN rooms r ON r.id = u.room_id
+          WHERE ab.unit_id IN ($ids)
+            AND ab.date_from < :to AND ab.date_to > :from
+            AND ab.id <> :ign
+          ORDER BY ab.date_from",
+        [':from' => $from, ':to' => $toExcl, ':ign' => $ignoreBlockId]
+    )->fetchAll();
+}
+
+/**
+ * Pure: the nights (Y-m-d) inside [$from, $toExcl) that the given blocks cover.
+ * A block's date_to is the checkout morning, so it is NOT a taken night — a new
+ * block may start the day another one ends.
+ */
+function gantt_taken_nights(array $blocks, string $from, string $toExcl): array {
+    $out = [];
+    foreach ($blocks as $b) {
+        $d   = max((string)$b['date_from'], $from);
+        $end = min((string)$b['date_to'], $toExcl);
+        while ($d < $end) {
+            $out[$d] = true;
+            $d = date('Y-m-d', strtotime($d . ' +1 day'));
+        }
+    }
+    ksort($out);
+    return array_keys($out);
+}
+
+/** Pure: the refusal for a block that would cover a taken night. */
+function gantt_overlap_message(array $b): string {
+    $what = match ((string)($b['block_type'] ?? '')) {
+        'booked' => 'a booking',
+        'hold'   => 'a 24h hold',
+        default  => 'a blocked stay (closure or channel booking)',
+    };
+    $from = strtotime((string)$b['date_from']);
+    $last = strtotime((string)$b['date_to'] . ' -1 day');
+    $span = date('j M', $from) . ($last > $from ? ' – ' . date('j M Y', $last) : ' ' . date('Y', $from));
+    return trim((string)($b['unit_label'] ?? 'This unit')) . ' already has ' . $what . ' on ' . $span
+         . '. Pick nights that are free, or change that booking first.';
+}
+
+/** Why a block can't cover [$from, $toExcl) on this unit, or null when every night is free. */
+function gantt_block_overlap_reason(int $unitId, string $from, string $toExcl, int $ignoreBlockId = 0): ?string {
+    $rows = gantt_unit_taken_blocks($unitId, $from, $toExcl, $ignoreBlockId);
+    return $rows ? gantt_overlap_message($rows[0]) : null;
 }

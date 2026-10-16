@@ -117,6 +117,7 @@ if ($__shellFrag) { ob_start(); echo $__navTabs; return; }
   <script defer src="/admin/assets/admin-fit.js?v=<?= @filemtime(__DIR__ . '/assets/admin-fit.js') ?: '1' ?>"></script>
   <script defer src="/admin/assets/admin-inline-form.js?v=<?= @filemtime(__DIR__ . '/assets/admin-inline-form.js') ?: '1' ?>"></script>
   <script defer src="/admin/assets/admin-drawer.js?v=<?= @filemtime(__DIR__ . '/assets/admin-drawer.js') ?: '1' ?>"></script>
+  <script defer src="/admin/assets/admin-download.js?v=<?= @filemtime(__DIR__ . '/assets/admin-download.js') ?: '1' ?>"></script>
 </head>
 <body class="admin-body">
 
