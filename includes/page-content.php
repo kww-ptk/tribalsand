@@ -568,6 +568,17 @@ function page_content_registry(): array {
                 ],
             ],
         ],
+        'register' => [
+            'label' => 'Register to visit',
+            'url'   => '/register',
+            'groups' => [
+                'Sharing' => [
+                    'og_image' => ['type'=>'image', 'label'=>'Social share image',
+                        'hint'=>'Shown when the registration link (gate posters, visitor invites) is shared on WhatsApp, Facebook or LinkedIn. Not visible on the page itself. Leave empty to use the site\'s default sharing image.',
+                        'default'=>''],
+                ],
+            ],
+        ],
     ];
 }
 

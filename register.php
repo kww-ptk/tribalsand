@@ -14,6 +14,7 @@ require_once __DIR__ . '/includes/db.php';
 require_once __DIR__ . '/includes/ai.php';
 require_once __DIR__ . '/includes/turnstile.php';
 require_once __DIR__ . '/includes/visitor-store.php';
+require_once __DIR__ . '/includes/page-content.php';
 session_init();
 
 $gate = !empty($_GET['gate']);
@@ -49,6 +50,7 @@ $turnstile = !$gate && captcha_site_key() && !visitor_session_verified();
 $page_title = 'Register to visit · Tribal Sand';
 $page_desc  = 'Register before you enter a Tribal Sand property — it takes two minutes.';
 $page_url   = site_url('/register.php');
+$page_image = page_image('register', 'og_image');   // Admin → Website content → Pages; empty = the site default
 $noindex = true; $portal_chrome = true; $hide_floating_chat = true;
 include __DIR__ . '/includes/head.php';
 $ver = fn(string $f) => @filemtime(__DIR__ . '/' . $f) ?: time();
