@@ -850,6 +850,7 @@ include __DIR__ . '/_layout.php';
         if (!empty($b['hold_id'])) {
             $__pu = make_manage_url((int)$b['hold_id']);
             if ($__pu !== '') $card['portal'] = $__pu;
+            $card['booking'] = '/admin/booking.php?hold=' . (int)$b['hold_id'];
         } elseif ($b['block_type'] !== 'hold') {
             $card['convertible'] = 1;
         }
@@ -932,61 +933,53 @@ include __DIR__ . '/_layout.php';
   <?php endforeach; ?>
 </div>
 
-<p style="margin:0 0 28px;font-size:12px;color:var(--muted)">Drag empty cells to block · Drag blocks to move · Drag right edge to resize · Click block to delete</p>
+<p style="margin:0 0 28px;font-size:12px;color:var(--muted)">Drag empty cells to block · Drag blocks to move · Drag right edge to resize · Click a block for its details, Convert to booking and Remove</p>
 
 <?php endif; // end if units ?>
 
 <!-- ── Create block modal ── -->
-<!-- ── Block hover card ──────────────────────────────────────────────
-     Hover a calendar block for the whole record, click to pin it so it can be
-     read or copied without chasing the pointer. The native title= stays on the
-     block as the no-JS fallback and is suppressed only while the card is up. -->
-<div class="gb-card" id="gbCard" hidden role="dialog" aria-label="Block details">
-  <button type="button" class="gb-card__close" id="gbCardClose" aria-label="Close" hidden>&times;</button>
+<!-- ── Block hover card + side panel ────────────────────────────────
+     Hover a calendar block for a quick card; click it to open the side panel
+     (design B, docs/design/calendar-block-designs.html) with the details,
+     Convert to booking and Remove in one place. The panel reuses the shared
+     .adrawer element, so admin-drawer.js closes it (×, scrim, Esc). The native
+     title= stays on the block as the no-JS fallback. -->
+<div class="gb-card" id="gbCard" hidden role="tooltip">
   <div class="gb-card__head"><span class="gb-card__type" id="gbCardType"></span><span class="gb-card__unit" id="gbCardUnit"></span></div>
   <dl class="gb-card__rows" id="gbCardRows"></dl>
-  <div class="gb-card__actions" id="gbCardActions" hidden>
-    <a class="gb-card__link" id="gbCardPortal" target="_blank" rel="noopener" hidden>Open guest portal &rarr;</a>
-    <form method="POST" id="gbCardConvert" class="gb-card__convert" hidden style="margin:0">
-      <?= csrf_field() ?>
-      <input type="hidden" name="action" value="convert_block">
-      <input type="hidden" name="block_id" id="gbCardBlockId">
-      <span class="gb-card__ctitle">Convert to a booking — who is the guest?</span>
-      <input type="text"  name="guest_name"  id="gbCardGuestName"  class="inp" placeholder="Guest name" required maxlength="255" autocomplete="off">
-      <input type="email" name="guest_email" id="gbCardGuestEmail" class="inp" placeholder="Guest email (their booking link goes here)" required maxlength="255" autocomplete="off">
-      <button type="submit" class="btn-primary btn-sm">Convert to booking</button>
-    </form>
-  </div>
-  <div class="gb-card__hint" id="gbCardHint">Click to keep open</div>
+  <div class="gb-card__hint">Click for details and actions</div>
 </div>
 <style>
 .gb-card{position:fixed;z-index:1200;min-width:230px;max-width:320px;background:#fff;border:1px solid var(--border,#e3e8ee);
   border-radius:8px;box-shadow:0 10px 34px rgba(16,32,48,.16);padding:12px 14px;font-size:12.5px;line-height:1.5;pointer-events:none;}
-.gb-card.is-pinned{pointer-events:auto;}
 .gb-card[hidden]{display:none;}
-.gb-card__head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:8px;padding-right:14px;}
+.gb-card__head{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:8px;}
 .gb-card__type{font-weight:600;font-size:12.5px;}
 .gb-card__unit{color:var(--muted,#6b7785);font-size:11.5px;min-width:0;overflow-wrap:anywhere;}
 .gb-card__rows{margin:0;display:grid;grid-template-columns:auto 1fr;gap:3px 12px;}
 .gb-card__rows dt{color:var(--muted,#6b7785);font-size:11px;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;}
 .gb-card__rows dd{margin:0;overflow-wrap:anywhere;}
 .gb-card__hint{margin-top:9px;padding-top:7px;border-top:1px solid var(--border,#eef1f5);color:var(--muted,#8a94a0);font-size:10.5px;}
-.gb-card.is-pinned .gb-card__hint{display:none;}
-.gb-card__actions{margin-top:10px;padding-top:9px;border-top:1px solid var(--border,#eef1f5);display:flex;gap:8px;align-items:center;flex-wrap:wrap;}
-.gb-card__actions[hidden]{display:none;}
-.gb-card__link{font-size:11.5px;color:var(--brand,#1e5c6b);text-decoration:underline;overflow-wrap:anywhere;}
-.gb-card__convert{display:flex;flex-direction:column;gap:6px;width:100%;}
-.gb-card__convert[hidden]{display:none;}
-.gb-card__convert .inp{width:100%;font-size:12.5px;padding:7px 9px;}
-.gb-card__convert .btn-primary{align-self:flex-start;}
-.gb-card__ctitle{font-size:11.5px;font-weight:600;color:var(--text,#1d2b36);}
-.gb-card__close{position:absolute;top:6px;right:8px;background:none;border:0;font-size:18px;line-height:1;color:var(--muted,#8a94a0);cursor:pointer;}
+.gantt-block.is-drawer-on{outline:3px solid var(--accent,#B8965A);outline-offset:1px;}
+.gbp-tag{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:999px;background:#eceff1;color:#3c4650;}
+.gbp-tag i{width:9px;height:9px;border-radius:2px;display:inline-block;background:#4a5560;}
+.gbp-tag--booked i{background:#2e7d32;} .gbp-tag--hold i{background:#d9792b;}
+.gbp-sec{border:1px solid var(--border);border-radius:12px;padding:14px;display:flex;flex-direction:column;gap:10px;}
+.gbp-sec h3{margin:0;font-size:13px;display:flex;align-items:center;gap:7px;}
+.gbp-sec--danger{border-color:#f0d3cf;}
+.gbp-sec--danger h3{color:var(--red,#c0392b);}
+.gbp-sec p{margin:0;font-size:12.5px;color:var(--muted);}
+.gbp-sec label{display:block;font-size:12px;font-weight:600;margin-bottom:4px;}
+.gbp-sec .inp{width:100%;box-sizing:border-box;}
+.gbp-btns{display:flex;gap:8px;flex-wrap:wrap;}
+.gbp-btns[hidden]{display:none;}
+.btn-outline.gbp-red{color:var(--red,#c0392b);border-color:#efc9c4;}
+.btn-outline.gbp-red:hover{border-color:var(--red,#c0392b);}
 </style>
 <script>
 (function () {
   var card = document.getElementById('gbCard'), rows = document.getElementById('gbCardRows'),
-      typeEl = document.getElementById('gbCardType'), unitEl = document.getElementById('gbCardUnit'),
-      closeBtn = document.getElementById('gbCardClose');
+      typeEl = document.getElementById('gbCardType'), unitEl = document.getElementById('gbCardUnit');
   if (!card) return;
 
   // Order is fixed so the same field is always in the same place; anything the
@@ -997,36 +990,24 @@ include __DIR__ . '/_layout.php';
     ['status','Status'], ['amount','Amount'], ['ref','Ref'], ['venue','Property'],
     ['notes','Notes'], ['imported','Imported']
   ];
-  var pinned = false, hideTimer = null;
+  var hideTimer = null;
 
-  function build(d) {
-    typeEl.textContent = d.type || 'Block';
-    unitEl.textContent = d.unit || '';
-    var html = '<dt>Dates</dt><dd>' + esc(d.from) + ' → ' + esc(d.last) +
-               (d.nights ? ' <span style="color:var(--muted,#6b7785)">(' + d.nights + ' night' + (d.nights === 1 ? '' : 's') + ')</span>' : '') + '</dd>';
-    FIELDS.forEach(function (f) {
-      if (d[f[0]]) html += '<dt>' + f[1] + '</dt><dd>' + esc(d[f[0]]) + '</dd>';
-    });
-    rows.innerHTML = html;
-
-    // Actions only make sense on a pinned card — a hovering pointer cannot
-    // reach them, and a stray click on a submit button would be a surprise.
-    var portal = document.getElementById('gbCardPortal'),
-        form   = document.getElementById('gbCardConvert'),
-        acts   = document.getElementById('gbCardActions');
-    portal.hidden = !d.portal;
-    if (d.portal) { portal.href = d.portal; }
-    form.hidden = !d.convertible;
-    if (d.convertible) {
-      document.getElementById('gbCardBlockId').value = d.blockId || '';
-      // Prefill what the import knows; the block's note is a reason, never a guest.
-      document.getElementById('gbCardGuestName').value  = d.guest || '';
-      document.getElementById('gbCardGuestEmail').value = d.email || '';
-    }
-    acts.hidden = !(d.portal || d.convertible);
-  }
   function esc(v) { return String(v == null ? '' : v).replace(/[&<>"]/g, function (c) { return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]; }); }
+  function data(el) {
+    var d; try { d = JSON.parse(el.getAttribute('data-card') || ''); } catch (e) { return null; }
+    d.blockId = el.getAttribute('data-block-id');
+    d.blockType = el.getAttribute('data-block-type');
+    return d;
+  }
+  function nightsTxt(d) { return d.nights ? d.nights + ' night' + (d.nights === 1 ? '' : 's') : ''; }
+  function factsHtml(d) {
+    var html = '<dt>Dates</dt><dd>' + esc(d.from) + ' → ' + esc(d.last) +
+               (d.nights ? ' <span style="color:var(--muted,#6b7785)">(' + nightsTxt(d) + ')</span>' : '') + '</dd>';
+    FIELDS.forEach(function (f) { if (d[f[0]]) html += '<dt>' + f[1] + '</dt><dd>' + esc(d[f[0]]) + '</dd>'; });
+    return html;
+  }
 
+  // ── Hover card (read-only, follows the pointer) ──
   function place(el) {
     card.hidden = false;                       // measure before positioning
     var r = el.getBoundingClientRect(), c = card.getBoundingClientRect();
@@ -1036,49 +1017,124 @@ include __DIR__ . '/_layout.php';
     card.style.left = left + 'px';
     card.style.top  = top + 'px';
   }
-
-  function show(el, pin) {
-    var raw = el.getAttribute('data-card');
-    if (!raw) return;
-    var d; try { d = JSON.parse(raw); } catch (e) { return; }
-    d.blockId = el.getAttribute('data-block-id');
+  function show(el) {
+    if (document.documentElement.classList.contains('has-adrawer')) return;   // the panel already says it
+    var d = data(el); if (!d) return;
     clearTimeout(hideTimer);
-    build(d); place(el);
-    pinned = !!pin;
-    card.classList.toggle('is-pinned', pinned);
-    document.getElementById('gbCardActions').style.display = pinned ? '' : 'none';
-    closeBtn.hidden = !pinned;
+    typeEl.textContent = d.type || 'Block';
+    unitEl.textContent = d.unit || '';
+    rows.innerHTML = factsHtml(d);
+    place(el);
     // A native tooltip on top of the card is noise; restore it when we hide.
     if (el.hasAttribute('title')) { el.dataset.titleHold = el.getAttribute('title'); el.removeAttribute('title'); }
   }
-  function hide(force) {
-    if (pinned && !force) return;
-    pinned = false;
+  function hide() {
     card.hidden = true;
-    card.classList.remove('is-pinned');
     document.querySelectorAll('.gantt-block[data-title-hold]').forEach(function (b) {
       b.setAttribute('title', b.dataset.titleHold); delete b.dataset.titleHold;
     });
   }
 
+  // ── Side panel (click) ──
+  // Uses the shared .adrawer element, so admin-drawer.js closes it (×, scrim, Esc)
+  // and clears .is-drawer-on from the block.
+  var X = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+  var ICON_OK  = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>';
+  var ICON_DEL = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>';
+  function panelEls() {
+    var h = document.querySelector('.admin-content') || document.body;
+    var scrim = h.querySelector(':scope > .adrawer-scrim'), panel = h.querySelector(':scope > .adrawer');
+    if (!panel) {
+      scrim = document.createElement('div'); scrim.className = 'adrawer-scrim'; scrim.hidden = true;
+      panel = document.createElement('aside'); panel.className = 'adrawer'; panel.hidden = true;
+      panel.setAttribute('role', 'dialog'); panel.setAttribute('aria-modal', 'false'); panel.setAttribute('aria-label', 'Block details');
+      h.appendChild(scrim); h.appendChild(panel);
+    }
+    return { scrim: scrim, panel: panel };
+  }
+  function csrf() { var i = document.querySelector('input[name="csrf_token"]'); return i ? i.value : ''; }
+
+  function open(el) {
+    var d = data(el); if (!d) return;
+    hide();
+    var hold = d.blockType === 'hold';
+    var html = '<button type="button" class="adrawer__x btn-icon" data-adrawer-close aria-label="Close">' + X + '</button>'
+      + '<div class="adrawer__head"><span class="gbp-tag gbp-tag--' + esc(d.blockType) + '"><i></i>' + esc(d.type || 'Block') + '</span>'
+      + '<h2 style="margin-top:8px">' + esc(d.unit || 'Block') + '</h2>'
+      + '<p>' + esc(d.from) + ' → ' + esc(d.last) + (d.nights ? ' · ' + nightsTxt(d) : '') + '</p></div>'
+      + '<div class="adrawer__body">'
+      + '<section class="adrawer__sec"><h3>Details</h3><dl class="adrawer__kv">' + factsHtml(d) + '</dl></section>';
+
+    if (d.booking || d.portal) {
+      html += '<section class="gbp-sec"><h3>Booking</h3><div class="gbp-btns">'
+        + (d.booking ? '<a class="btn-primary btn-sm" href="' + esc(d.booking) + '">Open booking</a>' : '')
+        + (d.portal ? '<a class="btn-outline btn-sm" href="' + esc(d.portal) + '" target="_blank" rel="noopener">Open guest portal ↗</a>' : '')
+        + '</div>' + (hold ? '<p>Holds are confirmed, changed or cancelled from the booking.</p>' : '') + '</section>';
+    } else if (hold) {
+      html += '<section class="gbp-sec"><p>Holds are managed on the Bookings page.</p></section>';
+    }
+
+    if (d.convertible) {
+      html += '<section class="gbp-sec"><h3>' + ICON_OK + ' Convert to a booking</h3>'
+        + '<form method="POST" style="display:flex;flex-direction:column;gap:10px;margin:0">'
+        + '<input type="hidden" name="csrf_token" value="' + esc(csrf()) + '">'
+        + '<input type="hidden" name="action" value="convert_block">'
+        + '<input type="hidden" name="block_id" value="' + esc(d.blockId) + '">'
+        + '<div><label for="gbpName">Guest name</label><input class="inp" id="gbpName" type="text" name="guest_name" required maxlength="255" autocomplete="off" value="' + esc(d.guest || '') + '"></div>'
+        + '<div><label for="gbpEmail">Guest email</label><input class="inp" id="gbpEmail" type="email" name="guest_email" required maxlength="255" autocomplete="off" value="' + esc(d.email || '') + '">'
+        + '<p style="margin-top:4px">Their booking link is sent here.</p></div>'
+        + '<div class="gbp-btns"><button type="submit" class="btn-primary btn-sm">Convert to booking</button></div>'
+        + '</form></section>';
+    }
+
+    if (!hold) {
+      html += '<section class="gbp-sec gbp-sec--danger"><h3>' + ICON_DEL + ' Remove block</h3>'
+        + '<p>' + esc(d.from) + ' → ' + esc(d.last) + ' comes free again on the calendar. This can&#39;t be undone.</p>'
+        + '<div class="gbp-btns" data-gbp-ask><button type="button" class="btn-outline btn-sm gbp-red" data-gbp-remove>Remove block…</button></div>'
+        + '<form method="POST" class="gbp-btns" data-gbp-confirm hidden style="margin:0">'
+        + '<input type="hidden" name="csrf_token" value="' + esc(csrf()) + '">'
+        + '<input type="hidden" name="action" value="delete_block">'
+        + '<input type="hidden" name="block_id" value="' + esc(d.blockId) + '">'
+        + '<button type="submit" class="btn-danger btn-sm">Yes, remove it</button>'
+        + '<button type="button" class="btn-outline btn-sm" data-gbp-keep>Keep it</button></form></section>';
+    }
+    html += '</div><div class="adrawer__foot" style="justify-content:space-between;color:var(--muted);font-size:12px"><span>Esc to close</span><span>Block #' + esc(d.blockId) + '</span></div>';
+
+    var e = panelEls();
+    document.querySelectorAll('.gantt-block.is-drawer-on').forEach(function (b) { b.classList.remove('is-drawer-on'); });
+    el.classList.add('is-drawer-on');
+    e.panel.innerHTML = html;
+    e.panel.hidden = false; e.scrim.hidden = false;
+    document.documentElement.classList.add('has-adrawer');
+    if (window.tsAdminWire) window.tsAdminWire(e.panel);   // double-submit guard
+  }
+
   document.querySelectorAll('.gantt-block[data-card]').forEach(function (block) {
-    block.addEventListener('mouseenter', function () { if (!pinned) show(block, false); });
-    block.addEventListener('mouseleave', function () { if (!pinned) hideTimer = setTimeout(hide, 90); });
-    // Pin on a real click. A drag ends in a click too, so ignore one that moved
-    // — the block drag sets data-dragged on itself when it actually moved.
+    block.addEventListener('mouseenter', function () { show(block); });
+    block.addEventListener('mouseleave', function () { hideTimer = setTimeout(hide, 90); });
+    // A drag ends in a click too, so ignore one that moved — the block drag sets
+    // data-dragged on itself when it actually moved.
     block.addEventListener('click', function (e) {
       if (block.dataset.dragged === '1') { delete block.dataset.dragged; return; }
       e.stopPropagation();
-      show(block, true);
+      open(block);
     });
   });
 
-  closeBtn.addEventListener('click', function () { hide(true); });
-  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') hide(true); });
-  document.addEventListener('click', function (e) {
-    if (pinned && !card.contains(e.target) && !e.target.closest('.gantt-block')) hide(true);
-  });
-  window.addEventListener('scroll', function () { hide(true); }, true);
+  // Remove asks once, inside the panel — no second dialog. Bound once per page
+  // (the shell re-runs this script on Prev / Next / zoom).
+  if (!window.__gbpBound) {
+    window.__gbpBound = true;
+    document.addEventListener('click', function (e) {
+      var t = e.target;
+      if (!t || !t.closest) return;
+      var sec = t.closest('.adrawer .gbp-sec--danger'); if (!sec) return;
+      var ask = sec.querySelector('[data-gbp-ask]'), yes = sec.querySelector('[data-gbp-confirm]');
+      if (t.closest('[data-gbp-remove]')) { ask.hidden = true;  yes.hidden = false; }
+      if (t.closest('[data-gbp-keep]'))   { ask.hidden = false; yes.hidden = true; }
+    });
+  }
+  window.addEventListener('scroll', hide, true);
 })();
 </script>
 
@@ -1128,22 +1184,6 @@ include __DIR__ . '/_layout.php';
   </div>
 </div>
 
-<!-- ── Delete block modal ── -->
-<div class="g-modal is-hidden" id="deleteModal">
-  <div class="g-modal__box">
-    <h2>Remove Block</h2>
-    <p id="deleteDesc" style="font-size:13px;color:var(--muted);margin-bottom:20px"></p>
-    <form method="POST" id="deleteForm">
-      <?= csrf_field() ?>
-      <input type="hidden" name="action"   value="delete_block">
-      <input type="hidden" name="block_id" id="m_block_id">
-      <div class="g-modal__actions">
-        <button type="button" class="btn-outline btn-sm" id="deleteModalClose">Cancel</button>
-        <button type="submit" class="btn-danger btn-sm">Remove</button>
-      </div>
-    </form>
-  </div>
-</div>
 
 <script>
 // Own scope: the admin shell re-runs this script when the page is swapped in without
@@ -1160,11 +1200,9 @@ const roomFilter = <?= $filterRoom ? 'true' : 'false' ?>;
 
 // ── Modal helpers ────────────────────────────────────────────────
 const blockModal  = document.getElementById('blockModal');
-const deleteModal = document.getElementById('deleteModal');
 const closeModal  = m => m.classList.add('is-hidden');
 document.getElementById('blockModalClose').onclick  = () => { closeModal(blockModal); dpFrom.clear(); dpTo.clear(); };
-document.getElementById('deleteModalClose').onclick = () => closeModal(deleteModal);
-[blockModal, deleteModal].forEach(m => m.addEventListener('click', e => { if(e.target===m) closeModal(m); }));
+[blockModal].forEach(m => m.addEventListener('click', e => { if(e.target===m) closeModal(m); }));
 
 // ── Helpers ───────────────────────────────────────────────────────
 function addDays(ymd, n) {
@@ -1286,15 +1324,6 @@ function initBlockDrag(block) {
     e.preventDefault();
     const rect = block.getBoundingClientRect();
     beginDrag(block, 'move', e, Math.floor((e.clientX - rect.left) / CELL_W));
-  });
-
-  // Click (no drag) → delete modal
-  block.addEventListener('click', e => {
-    if (dragState?.moved) return; // was a drag, not a click
-    e.stopPropagation();
-    document.getElementById('deleteDesc').textContent = 'Remove: ' + block.title;
-    document.getElementById('m_block_id').value = block.dataset.blockId;
-    deleteModal.classList.remove('is-hidden');
   });
 }
 
@@ -1427,13 +1456,6 @@ document.addEventListener('mouseup', async () => {
 // Attach drag handlers to all non-hold blocks
 document.querySelectorAll('.gantt-block').forEach(initBlockDrag);
 
-// Hold blocks are read-only — inform admin on click
-document.querySelectorAll('.gantt-block[data-block-type="hold"]').forEach(block => {
-  block.addEventListener('click', e => {
-    e.stopPropagation();
-    if (window.tsToast) window.tsToast('Holds are managed on the Bookings page.', 'err');
-  });
-});
 
 // ── Drag-select on cells to create a block ────────────────────────
 let selUnit = null, selStart = null, selCurrent = null;

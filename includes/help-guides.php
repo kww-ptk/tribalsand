@@ -151,6 +151,7 @@ function help_guides(): array {
             ['text' => 'Each row is a room or unit, each column a day. Bars are bookings, holds and closures. Red days are public holidays.'],
             ['text' => 'Drag across empty days on a row to close those dates (maintenance, owner stay).'],
             ['text' => 'Drag a bar to move it to other dates or another unit.'],
+            ['text' => 'Click a bar to open its side panel: the details, **Convert to booking** (guest name + email) and **Remove block**.'],
             ['text' => 'Press **Sync now** to pull the latest Booking.com and Airbnb bookings.', 'target' => '#syncBtn'],
          ],
          'tips' => ['At Maya Ilai a staff booking takes the whole villa, so it is refused when a bedroom in it is already sold.']],
