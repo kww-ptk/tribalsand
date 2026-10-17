@@ -70,7 +70,7 @@ function access_tab_key(array $tab): string {
 function access_sections(): array {
     $all = array_fill_keys(['owner', 'manager', 'reception', 'hr', 'frontdesk', 'concierge', 'messages', 'internal', 'tasks', 'timetable',
         'gate', 'mywork', 'assistant', 'aiSettings', 'aiGaps', 'bookings', 'reports', 'pos', 'posTill', 'inventory', 'invOrders',
-        'count', 'accounting', 'acctDocs', 'acctIc', 'restaurant', 'clockOn', 'clockNav', 'mayaIlai', 'visitorReg'], true);
+        'count', 'accounting', 'acctDocs', 'acctIc', 'payLinks', 'restaurant', 'clockOn', 'clockNav', 'mayaIlai', 'visitorReg'], true);
     $out = [];
     foreach (admin_nav_definition($all) as $g) {
         foreach ($g['items'] as $it) {
@@ -172,6 +172,7 @@ function access_env(array $account = []): array {
         'companies' => function_exists('companies_supported') && companies_supported(),
         'acctDocs'  => function_exists('companies_supported') && companies_supported() && $has('acct_documents') && $has('acct_ic_entries'),
         'acctIc'    => $has('acct_ic_entries'),
+        'payLinks'  => $has('pay_links'),
         'clockOn'   => function_exists('clock_kiosk_enabled') && clock_kiosk_enabled(),
         'seller'    => $account && function_exists('pos_is_seller') && pos_is_seller($account),
         'visitorReg' => $has('visitor_signing_audit'),

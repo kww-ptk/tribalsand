@@ -16,14 +16,14 @@ function check(string $label, bool $cond): void {
 // optional module (POS, inventory, accounting, AI key, clock kiosk) switched on.
 $none = array_fill_keys(['owner','manager','reception','frontdesk','concierge','messages','internal','tasks','timetable',
     'gate','mywork','assistant','aiSettings','aiGaps','bookings','reports','pos','posTill','inventory','invOrders','count',
-    'accounting','acctDocs','acctIc','restaurant','clockOn','clockNav','mayaIlai'], false);
+    'accounting','acctDocs','acctIc','payLinks','restaurant','clockOn','clockNav','mayaIlai'], false);
 $roles = [
     'owner' => ['owner','frontdesk','concierge','messages','internal','tasks','timetable','gate','assistant','aiSettings','aiGaps',
-                'bookings','reports','pos','posTill','inventory','invOrders','accounting','acctDocs','acctIc','restaurant','clockOn','clockNav','mayaIlai'],
+                'bookings','reports','pos','posTill','inventory','invOrders','accounting','acctDocs','acctIc','payLinks','restaurant','clockOn','clockNav','mayaIlai'],
     'manager' => ['manager','frontdesk','concierge','messages','internal','tasks','timetable','gate','assistant','aiGaps',
-                  'reports','pos','posTill','inventory','invOrders','acctDocs','acctIc','restaurant','clockOn','clockNav'],
-    'reception' => ['reception','frontdesk','concierge','messages','internal','tasks','timetable','gate','mywork','assistant','bookings','restaurant','count'],
-    'frontdesk' => ['frontdesk','concierge','messages','internal','timetable','assistant','count'],
+                  'reports','pos','posTill','inventory','invOrders','acctDocs','acctIc','payLinks','restaurant','clockOn','clockNav'],
+    'reception' => ['reception','frontdesk','concierge','messages','internal','tasks','timetable','gate','mywork','assistant','bookings','restaurant','count','payLinks'],
+    'frontdesk' => ['frontdesk','concierge','messages','internal','timetable','assistant','count','payLinks'],
     'housekeeping' => ['internal','timetable','mywork','count'],
     'security' => ['internal','timetable','gate','count'],
     'shop' => ['internal','timetable','posTill','count'],
@@ -89,10 +89,11 @@ check('manager: Calendar shows Highlights + Import + Group import, not the owner
 check('manager: a lone tab becomes a plain link with its full name', in_array('Settings › Email log', $mgr, true) && in_array('Settings › AI gaps', $mgr, true));
 
 $rec = $labels($nav('reception'));
-check('reception: Bookings + Calendar + Enquiries, no Finance/Settings', in_array('Bookings › Bookings', $rec, true) && in_array('Bookings › Enquiries', $rec, true)
-    && !array_filter($rec, fn($l) => str_starts_with($l, 'Finance') || (str_starts_with($l, 'Settings') && !in_array($l, ['Settings › Support', 'Settings › Help & guides'], true)) || str_starts_with($l, 'Inventory')));
+check('reception: Bookings + Calendar + Enquiries, no Finance (but Payments)/Settings', in_array('Bookings › Bookings', $rec, true) && in_array('Bookings › Enquiries', $rec, true)
+    && !array_filter($rec, fn($l) => (str_starts_with($l, 'Finance') && $l !== 'Finance › Payments') || (str_starts_with($l, 'Settings') && !in_array($l, ['Settings › Support', 'Settings › Help & guides'], true)) || str_starts_with($l, 'Inventory')));
 check('reception: Calendar tabs are Calendar + Conflicts + iCal feeds', array_column($nav('reception', 'gantt.php')['active']['tabs'], 'label') === ['Calendar', 'Conflicts', 'iCal feeds']);
 check('reception: counts stock from Today', in_array('Today › Stock count', $rec, true));
+check('reception: makes payment links (Finance › Payments, a lone tab)', in_array('Finance › Payments', $rec, true));
 
 $hk = $labels($nav('housekeeping'));
 check('housekeeping: Dashboard, My work, Stock count, Team chat, Timetable, Support, Help — nothing else', $hk === ['Dashboard', 'Today › My work', 'Today › Stock count', 'Today › Team chat', 'Team › Timetable', 'Settings › Support', 'Settings › Help & guides']);

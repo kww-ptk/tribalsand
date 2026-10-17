@@ -346,7 +346,7 @@
   $('#clearBtn').onclick = function () { S.cart = []; render(); };
 
   /* ── Payment ──────────────────────────────────────────────────────── */
-  var PAY = [['card', 'card'], ['cash', 'cash'], ['room_charge', 'bed'], ['mobile_money', 'phone'], ['other', 'dots']];
+  var PAY = [['card', 'card'], ['cash', 'cash'], ['room_charge', 'bed'], ['mobile_money', 'phone'], ['paystack', 'qr'], ['other', 'dots']];
   function roomBlock() {
     if (!S.outlet.room_charge) return S.outlet.room_charge_note || 'Room charge is off here.';
     if (S.custMode !== 'inhouse' || !S.cust) return 'Room charge needs an in-house guest.';
@@ -372,7 +372,8 @@
   }
   function renderPay() {
     var block = roomBlock();
-    $('#pay').innerHTML = PAY.map(function (p) {
+    if (S.pay === 'paystack' && !S.outlet.paystack) S.pay = null;   // this outlet's company isn't on Paystack
+    $('#pay').innerHTML = PAY.filter(function (p) { return p[0] !== 'paystack' || S.outlet.paystack; }).map(function (p) {
       var k = p[0];
       return '<button type="button" data-pay="' + k + '" class="' + (S.pay === k ? 'is-on' : '') + '"' + (k === 'room_charge' && block ? ' disabled' : '') + '>' + ico(p[1]) + esc(B.payments[k]) + '</button>';
     }).join('');
@@ -418,8 +419,9 @@
       (S.pay === 'room_charge' ? '<p class="sub" style="margin:12px 0 0">Added to ' + esc(guestName()) + '’s bill for booking <strong>' + esc(S.cust.ref || '#' + S.cust.hold_id) + '</strong> (' + esc(S.cust.venue || S.cust.room) + ') and settled at check-out.</p><p class="sub" id="fxLine" style="margin:6px 0 0"></p>' : '') +
       (needSig ? '<span class="lbl">Guest signature</span><div class="ci-sign sig"><canvas class="ci-sign-pad sig__pad" data-target="#sigData" aria-label="Sign here"></canvas>' +
         '<div class="sig__foot"><span>' + esc(guestName()) + ' — sign above</span><button type="button" class="ci-sign-clear linkbtn">Clear</button></div><input type="hidden" id="sigData"></div>' : '') +
+      (S.pay === 'paystack' ? '<p class="sub" style="margin:12px 0 0">The guest scans a QR code (or gets the link) and pays by M-Pesa or card. The sale completes by itself once Paystack confirms' + (S.outlet.paystack_mode !== 'live' ? ' — <strong>' + esc(S.outlet.paystack_mode) + ' mode, no real money</strong>' : '') + '.</p>' : '') +
       '<div class="err" id="saleErr" role="alert"></div>' +
-      '<div class="btns"><button type="button" class="btn" data-close>Back</button><button type="button" class="btn btn--p" id="confirm">Confirm &amp; complete</button></div>');
+      '<div class="btns"><button type="button" class="btn" data-close>Back</button><button type="button" class="btn btn--p" id="confirm">' + (S.pay === 'paystack' ? 'Create payment link' : 'Confirm &amp; complete') + '</button></div>');
     if (needSig && window.ciSignInitAll) window.ciSignInitAll();
 
     function draw() {
@@ -494,6 +496,7 @@
     };
     S.lastAttempt = { body: JSON.parse(JSON.stringify(body)), totalC: t.totalC,
                       names: S.cart.map(function (l) { return l.qty + ' × ' + (item(l.id) ? item(l.id).name : '?'); }) };
+    if (S.pay === 'paystack') { paystackStart(body, btn); return; }
     api('/api/pos/sale.php', body).then(function (d) {
       S.sending = false;
       if (!d.ok) {
@@ -521,6 +524,79 @@
         $('#saveOffline').onclick = saveOffline;
       }
     });
+  }
+
+  /* ── Paystack: a payment link / QR; the sale completes when the guest has paid ──
+   * Nothing is sold until Paystack confirms (the server completes the sale with the
+   * same client_uuid). The till polls the link; closing the window stops polling
+   * but not the link — the scheduler still records a late payment. */
+  function paystackStart(body, btn) {
+    body.action = 'create';
+    api('/api/pos/paylink.php', body).then(function (d) {
+      S.sending = false;
+      if (!d.ok) {
+        if (d.__status === 422) S.saleKey = null;
+        btn.disabled = false; btn.textContent = 'Create payment link';
+        $('#saleErr').textContent = d.error || 'The payment link could not be made.';
+        return;
+      }
+      showPaylink(d.link);
+    }).catch(function (err) {
+      if (err && err.message === 'locked') return;
+      S.sending = false; btn.disabled = false; btn.textContent = 'Retry';
+      $('#saleErr').textContent = 'No connection — tap Retry. Paystack needs a connection, so it can’t be saved offline.';
+    });
+  }
+  function showPaylink(l) {
+    clearInterval(S.plTimer);
+    var phone = S.custMode === 'walkin' ? (S.walk.phone || '').replace(/\D+/g, '') : '';
+    if (/^0\d{9}$/.test(phone)) phone = '254' + phone.slice(1);
+    openModal('<div class="center" id="plBox"><h2>Scan to pay ' + esc(l.label) + '</h2><div class="sub">' + esc(l.number) + (l.mode !== 'live' ? ' · ' + esc(l.mode) + ' — no real money' : '') + '</div>' +
+      '<div class="plqr" id="plQr"></div>' +
+      '<div class="pill" id="plState">' + ico('clock') + ' Waiting for payment…</div>' +
+      '<p class="sub" id="plNote" style="margin:10px 0 0">M-Pesa or card. This window updates by itself when the guest has paid.</p></div>' +
+      '<div class="err" id="plErr" role="alert"></div>' +
+      '<div class="btns plbtns"><button type="button" class="btn" id="plCopy">Copy link</button>' +
+      '<a class="btn" target="_blank" rel="noopener" href="https://wa.me/' + phone + '?text=' + encodeURIComponent(l.share_text) + '">WhatsApp</a>' +
+      (l.mode === 'practice' ? '<a class="btn" target="_blank" rel="noopener" href="' + esc(l.url) + '">Open (practice)</a>' : '') +
+      '<button type="button" class="btn" id="plCancel">Cancel link</button><button type="button" class="btn btn--p" data-close>Keep selling</button></div>');
+    var q = $('#plQr');
+    if (q && window.qrcode) { var qr = qrcode(0, 'M'); qr.addData(l.url); qr.make(); q.innerHTML = qr.createSvgTag({ scalable: true, margin: 2 }); }
+    $('#plCopy').onclick = function () {
+      if (navigator.clipboard) navigator.clipboard.writeText(l.url).then(function () { toast('Link copied.'); }, function () { prompt('Copy the link', l.url); });
+      else prompt('Copy the link', l.url);
+    };
+    $('#plCancel').onclick = function () {
+      var b = this; b.disabled = true;
+      api('/api/pos/paylink.php', { action: 'cancel', id: l.id }).then(function (d) {
+        if (!d.ok) { $('#plErr').textContent = d.error || 'Could not cancel.'; b.disabled = false; return; }
+        clearInterval(S.plTimer); S.saleKey = null; closeModal(); toast('Payment link cancelled — the order is still here.');
+      }).catch(function () { $('#plErr').textContent = 'No connection — try again.'; b.disabled = false; });
+    };
+    var busy = false;
+    S.plTimer = setInterval(function () {
+      if (!$('#plBox')) { clearInterval(S.plTimer); return; }   // window closed: the link carries on without the till
+      if (busy) return; busy = true;
+      api('/api/pos/paylink.php?id=' + l.id).then(function (d) {
+        busy = false;
+        if (!d.ok || !$('#plBox')) return;
+        var st = d.link.status;
+        if (st === 'paid' && d.sale) {
+          clearInterval(S.plTimer); S.saleKey = null;
+          S.cart = []; S.pay = null; S.cust = null; S.guest = null; S.walk = { name: '', phone: '', id: null }; S.tender = null; S.tip = null;
+          $('#panel').classList.remove('is-open');
+          showReceipt(d.sale, null);
+          loadOutlet(S.outlet.id, true);
+        } else if (st === 'paid') {
+          $('#plState').innerHTML = ico('check') + ' Paid';
+          if (d.link.note) { clearInterval(S.plTimer); $('#plNote').textContent = d.link.note; }
+        } else if (st === 'expired' || st === 'cancelled') {
+          clearInterval(S.plTimer); S.saleKey = null;
+          $('#plState').textContent = st === 'expired' ? 'Link expired' : 'Link cancelled';
+          $('#plNote').textContent = 'Nothing was charged. Pick another way to pay.';
+        }
+      }).catch(function () { busy = false; });
+    }, 3000);
   }
 
   /* ── Offline mode: keep a sale on the tablet, send it when the connection is back ──

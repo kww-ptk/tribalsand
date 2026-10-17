@@ -182,4 +182,15 @@ log "scheduler started"
   done
 ) &
 
+# ── Job 12: Paystack payment links every 5 min ──────────────────────────────
+# Asks Paystack about links a guest opened but that aren't marked paid yet (there
+# is no webhook — the company's other system owns it), records the paid ones and
+# expires old links. Idempotent (row lock per link). Quiet no-op until add_paystack.sql has run.
+(
+  while true; do
+    php "$APP_DIR/bin/paystack-check.php" >> "$LOG" 2>&1 || log "paystack-check failed"
+    sleep 300
+  done
+) &
+
 wait
