@@ -58,7 +58,7 @@ $fmt    = fn(string $d): string => date('D j M Y', strtotime($d));
     <div><small>Traveller</small><span><?= e((string)$req['guest_name']) ?></span></div>
     <div><small>Guests</small><span><?= (int)$req['guests_adults'] ?> adult<?= (int)$req['guests_adults'] === 1 ? '' : 's' ?><?= (int)$req['guests_children'] ? ', ' . (int)$req['guests_children'] . ' child' . ((int)$req['guests_children'] === 1 ? '' : 'ren') : '' ?></span></div>
     <?php if (isset($pl['quoted_total'])): ?>
-    <div><small>Your rate</small><span class="tp-net"><?= e(format_price((float)$pl['quoted_total'], (string)($pl['quoted_currency'] ?? 'USD'))) ?></span></div>
+    <div><small>Your rate</small><span class="tp-net"><?= agent_money((float)$pl['quoted_total'], (string)($pl['quoted_currency'] ?? 'USD')) ?></span></div>
     <?php endif; ?>
   </div>
 

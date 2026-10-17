@@ -160,8 +160,8 @@ include __DIR__ . '/_layout.php';
         <div class="tp-card__row">
           <div>
             <?php if ($c['net'] > 0): ?>
-              <?php if ($c['pub'] > $c['net']): ?><span class="tp-was"><?= e(format_price($c['pub'], $c['cur'])) ?></span><?php endif; ?>
-              <div class="tp-price"><?= e(format_price($c['net'], $c['cur'])) ?> <small>· <?= e($nightsTxt) ?></small></div>
+              <?php if ($c['pub'] > $c['net']): ?><span class="tp-was"><?= agent_money((float)$c['pub'], (string)$c['cur']) ?></span><?php endif; ?>
+              <div class="tp-price"><?= agent_money((float)$c['net'], (string)$c['cur']) ?> <small>· <?= e($nightsTxt) ?></small></div>
             <?php else: ?>
               <div class="tp-price" style="font-size:15px">On request</div>
             <?php endif; ?>

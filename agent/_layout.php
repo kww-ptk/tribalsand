@@ -59,6 +59,8 @@ $__tabs = [
   .tp-nav a.is-active{background:var(--tp-soft);color:var(--tp-deep);font-weight:600}
   .tp-user{margin-left:auto;display:flex;align-items:center;gap:12px;font-size:14px;color:var(--tp-mid)}
   .tp-user__name{text-align:right;line-height:1.25}
+  .tp-money .mny-wrap{flex-direction:column;align-items:flex-end;gap:2px}
+  .tp-money .mny-note{font-size:10.5px}
   .tp-user__name b{display:block;color:var(--tp-ink);font-weight:600}
   .tp-user__name a{color:var(--tp-teal);font-size:12.5px;font-weight:600;text-decoration:none}
   .tp-av{width:36px;height:36px;border-radius:50%;background:var(--tp-teal);color:#fff;display:grid;place-items:center;font-weight:600;font-size:13px;flex:none}
@@ -192,6 +194,7 @@ $__tabs = [
     .tp-search .field:nth-child(3){border-right:0}
     .tp-search__go{grid-column:1/-1}
     .tp-user__name{display:none}
+    .tp-money .mny-note{display:none}
   }
   @media (max-width:720px){
     .tp-head{padding:10px 16px;gap:10px;flex-wrap:wrap}
@@ -225,6 +228,7 @@ $__tabs = [
     <?php endforeach; ?>
   </nav>
   <div class="tp-user">
+    <div class="tp-money"><script>window.TS_MONEY_KEY = 'ts_agent_cur'; window.TS_MONEY_DEFAULT = <?= json_encode(AGENT_MONEY_DEFAULT) ?>;</script><?php $ms_cur = AGENT_MONEY_DEFAULT; include __DIR__ . '/../includes/money-switch.php'; ?></div>
     <div class="tp-user__name"><b><?= e($__agent['name']) ?></b><?php if (trim((string)$__agent['agency']) !== ''): ?><?= e($__agent['agency']) ?> · <?php endif; ?><a href="/agent/logout.php">Sign out</a></div>
     <div class="tp-av" aria-hidden="true"><?= e($__initials) ?></div>
   </div>
