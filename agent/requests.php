@@ -37,7 +37,7 @@ foreach ($rows as $r) {
         }
     }
 }
-$bookedTxt = $booked ? implode(' · ', array_map(fn($c, $a) => format_price($a, $c), array_keys($booked), $booked)) : '—';
+$bookedTxt = $booked ? implode(' · ', array_map(fn($c, $a) => agent_money((float)$a, (string)$c), array_keys($booked), $booked)) : '—';   // HTML: one amount per currency, never summed across
 
 $agentPageTitle = 'Your requests';
 $agentActive    = 'requests';
@@ -56,7 +56,7 @@ include __DIR__ . '/_layout.php';
     <div class="tp-stat"><b><?= count($rows) ?></b><span>Requests sent</span></div>
     <div class="tp-stat"><b><?= $waiting ?></b><span>Waiting for a reply</span></div>
     <div class="tp-stat"><b><?= $confirmed ?></b><span>Confirmed</span></div>
-    <div class="tp-stat"><b style="font-size:<?= count($booked) > 1 ? '17' : '24' ?>px"><?= e($bookedTxt) ?></b><span>Booked at your rate</span></div>
+    <div class="tp-stat"><b style="font-size:<?= count($booked) > 1 ? '17' : '24' ?>px"><?= $bookedTxt ?></b><span>Booked at your rate</span></div>
   </div>
 
   <section class="tp-block">
@@ -72,7 +72,7 @@ include __DIR__ . '/_layout.php';
         <td style="white-space:nowrap"><?= e(date('j M', strtotime((string)$r['check_in']))) ?> → <?= e(date('j M Y', strtotime((string)$r['check_out']))) ?><br><span class="tp-note"><?= $nights ?> night<?= $nights === 1 ? '' : 's' ?></span></td>
         <td><strong><?= e((string)($r['venue_name'] ?? ($pl['venue'] ?? ''))) ?></strong><br><span class="tp-note"><?= e((string)($r['room_name'] ?? ($pl['rooms'] ?? ''))) ?></span></td>
         <td><span class="tp-pill tp-pill--<?= e($st['class']) ?>"><?= e($st['label']) ?></span><?= $st['note'] !== '' ? '<br><span class="tp-note">' . e($st['note']) . '</span>' : '' ?></td>
-        <td class="r tp-net" style="white-space:nowrap"><?= isset($pl['quoted_total']) ? e(format_price((float)$pl['quoted_total'], (string)($pl['quoted_currency'] ?? 'USD'))) : '—' ?></td>
+        <td class="r tp-net" style="white-space:nowrap"><?= isset($pl['quoted_total']) ? agent_money((float)$pl['quoted_total'], (string)($pl['quoted_currency'] ?? 'USD')) : '—' ?></td>
         <td class="r tp-links" style="white-space:nowrap"><a href="/agent/request-view.php?id=<?= (int)$r['id'] ?>">View &amp; message</a><?php if ($manage !== ''): ?><br><a href="<?= e($manage) ?>">Manage booking</a><?php endif; ?></td>
       </tr>
     <?php endforeach; ?>

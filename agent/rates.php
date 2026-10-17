@@ -74,8 +74,8 @@ include __DIR__ . '/_layout.php';
       <tr>
         <td><?= $name ?></td>
         <td><?= $r['capacity'] ? (int)$r['capacity'] : '—' ?></td>
-        <td class="r"><?php if ($pct > 0): ?><span class="tp-was"><?= e(format_price($from, $cur)) ?></span><?php else: ?><?= e(format_price($from, $cur)) ?><?php endif; ?></td>
-        <td class="r tp-net"><?= e(format_price($net, $cur)) ?></td>
+        <td class="r"><?php if ($pct > 0): ?><span class="tp-was"><?= agent_money($from, $cur) ?></span><?php else: ?><?= agent_money($from, $cur) ?><?php endif; ?></td>
+        <td class="r tp-net"><?= agent_money($net, $cur) ?></td>
       </tr>
       <?php endforeach; ?>
     </tbody>

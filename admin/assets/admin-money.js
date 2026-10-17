@@ -12,7 +12,10 @@
 (function () {
   'use strict';
   if (window.tsMoney) { window.tsMoney.apply(document); return; }
-  var KEY = 'ts_admin_cur', ALLOWED = ['KES', 'USD'];
+  // A page may set its own remembered choice + starting currency before this runs
+  // (the trade portal: window.TS_MONEY_KEY = 'ts_agent_cur', TS_MONEY_DEFAULT = 'USD').
+  var KEY = window.TS_MONEY_KEY || 'ts_admin_cur', ALLOWED = ['KES', 'USD'];
+  var DEFAULT = ALLOWED.indexOf(window.TS_MONEY_DEFAULT) >= 0 ? window.TS_MONEY_DEFAULT : 'KES';
 
   function cfg() { return window.TS_FX || { rates: { USD: 1 }, symbols: { USD: '$' } }; }
   function sym(c) { var s = cfg().symbols || {}; return s[c] || (c + ' '); }
@@ -45,7 +48,7 @@
     try { p = new URLSearchParams(location.search).get('cur'); } catch (e) {}
     if (ALLOWED.indexOf(p) >= 0) return p;
     try { var s = localStorage.getItem(KEY); if (ALLOWED.indexOf(s) >= 0) return s; } catch (e) {}
-    return 'KES';
+    return DEFAULT;
   }
   var cur = initial();
 

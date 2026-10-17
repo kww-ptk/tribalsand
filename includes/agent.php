@@ -115,6 +115,23 @@ function agent_net_price(float $published, array $agent, ?int $venueId = null): 
     return round($published * (1 - agent_discount_pct($agent, $venueId) / 100), 2);
 }
 
+/** The currency the portal shows money in until the agent picks one (KES | USD switch). */
+const AGENT_MONEY_DEFAULT = 'USD';
+
+/**
+ * An amount for the KES | USD switch (top bar of every portal page): rendered in
+ * AGENT_MONEY_DEFAULT, carrying its ORIGINAL amount + currency so the switch
+ * (admin/assets/admin-money.js) can re-show it in the other currency at the site
+ * FX rate. A converted figure is marked ≈. Display only — every request and
+ * booking is still priced and stored in the room's own currency.
+ */
+function agent_money(float $amount, string $currency): string {
+    require_once __DIR__ . '/rates-compare.php';
+    static $rates = null;
+    $rates ??= fx_rates()['rates'] ?? ['USD' => 1];
+    return rc_money_html($amount, $currency !== '' ? $currency : 'USD', AGENT_MONEY_DEFAULT, $rates);
+}
+
 /* ───────────────────────── Availability + requests ───────────────────────── */
 
 /** Longest stay the portal will request — the same cap as room_max_stay_nights(). */
