@@ -61,6 +61,17 @@ function help_guides(): array {
          'tips' => ['Pages open without reloading, so the back button works as usual.']],
 
         // ── Finance & reports ──────────────────────────────────────────
+        ['slug' => 'payment-links', 'area' => 'finance', 'minutes' => 2, 'pages' => ['payments.php'],
+         'title' => 'Send a payment link',
+         'summary' => 'Ask a guest to pay by M-Pesa or card through Paystack — for a room bill, an activity, a deposit or any amount.',
+         'steps' => [
+            ['text' => 'Press **New payment link**. For a room bill it is quicker to open the booking → **Bill** tab → **Payment link**, which fills in the balance.', 'target' => '[data-help="pl-new"]'],
+            ['text' => 'Pick what it is for, the amount and the guest, then **Create link**. Nothing is sent yet.'],
+            ['text' => 'Share it with **WhatsApp**, **Email**, **Copy link**, or let the guest scan the QR code.'],
+            ['text' => 'Every link is listed here. **Waiting** turns **Paid** by itself when Paystack confirms, and the money is recorded on the bill or for the company.', 'target' => '[data-help="pl-list"]'],
+         ],
+         'tips' => ['The owner connects each company to Paystack in Accounting → Companies → Paystack.', 'A practice or test link moves no real money.']],
+
         ['slug' => 'monthly-report', 'area' => 'finance', 'minutes' => 3, 'pages' => ['reports.php'],
          'title' => 'Read the monthly report',
          'summary' => 'What the month earned, property by property, and how to print it for the team.',

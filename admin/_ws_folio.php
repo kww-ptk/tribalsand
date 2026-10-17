@@ -93,7 +93,7 @@ $__vatOn   = companies_bool($__co['vat_registered']);
       <label class="wsf"><span>Into</span>
         <select name="account_id" class="inp inp--sm fo__acct"><?php foreach ($__accts as $__a): ?><option value="<?= (int)$__a['id'] ?>" data-kind="<?= e($__a['kind']) ?>" <?= $__a['is_default'] ? 'selected' : '' ?>><?= e($__a['label'] . ' · ' . $__a['currency']) ?></option><?php endforeach; ?></select></label>
       <label class="wsf"><span>How</span>
-        <select name="method" class="inp inp--sm" data-fo-method data-fits='<?= e(json_encode(ACCT_METHOD_ACCOUNTS)) ?>'><?php foreach (ACCT_PAY_METHODS as $__k => $__lbl): ?><option value="<?= e($__k) ?>"><?= e($__lbl) ?></option><?php endforeach; ?></select></label>
+        <select name="method" class="inp inp--sm" data-fo-method data-fits='<?= e(json_encode(ACCT_METHOD_ACCOUNTS)) ?>'><?php foreach (ACCT_PAY_METHODS as $__k => $__lbl): if ($__k === 'paystack') continue; ?><option value="<?= e($__k) ?>"><?= e($__lbl) ?></option><?php endforeach; ?></select></label>
       <label class="wsf"><span>Reference</span><input name="reference" class="inp inp--sm" maxlength="80" placeholder="M-Pesa code, card slip…"></label>
       <label class="wsf"><span>Received</span>
         <button type="button" class="dp-btn fo__date" data-dp-target="foRecv<?= $holdId ?>" data-dp-past data-dp-placeholder="Today">Today</button>

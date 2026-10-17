@@ -12,6 +12,7 @@ require_once __DIR__ . '/../includes/icons.php';
 require_once __DIR__ . '/../includes/companies.php';
 require_once __DIR__ . '/../includes/storage.php';
 require_once __DIR__ . '/../includes/acct.php';   // invoicing go-live (Accounting P2a)
+require_once __DIR__ . '/../includes/paystack.php';   // Paystack tab
 require_login();
 require_owner();
 
@@ -20,7 +21,7 @@ $id      = (int)($_GET['id'] ?? $_POST['company_id'] ?? 0);
 $company = companies_supported() ? company_fetch($id) : false;
 if (!$company) { header('Location: /admin/companies.php'); exit; }
 
-$tabs = ['details' => 'Details', 'accounts' => 'Money accounts', 'numbering' => 'Numbering', 'owns' => 'Owns'];
+$tabs = ['details' => 'Details', 'accounts' => 'Money accounts'] + (paystack_supported() ? ['paystack' => 'Paystack'] : []) + ['numbering' => 'Numbering', 'owns' => 'Owns'];
 $self = '/admin/company-edit.php?id=' . $id;
 
 function coe_flash(string $type, string $msg): void { $_SESSION['coe_flash'] = ['type' => $type, 'msg' => $msg]; }
@@ -122,6 +123,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             coe_back('accounts');
         }
 
+        if ($act === 'paystack_save' || $act === 'paystack_test') {
+            if (!paystack_supported()) throw new CompanyRefusal('Run add_paystack.sql first.');
+            paystack_save_settings($id, $_POST);
+            audit_log('company.paystack', 'company', $id, (string)($_POST['paystack_mode'] ?? ''));
+            if ($act === 'paystack_test') {
+                $cfg = paystack_company_config(company_fetch($id));
+                $r = $cfg['secret'] !== '' ? paystack_test_connection($cfg['secret']) : ['ok' => false, 'error' => 'Save a secret key for this mode first.'];
+                coe_flash($r['ok'] ? 'success' : 'error', $r['ok'] ? 'Saved — Paystack accepted the ' . $cfg['mode'] . ' key.' : 'Saved, but the test failed: ' . $r['error']);
+            } else {
+                coe_flash('success', 'Paystack settings saved.');
+            }
+            coe_back('paystack');
+        }
+
         if ($act === 'sequence_save') {
             $type = (string)($_POST['doc_type'] ?? '');
             company_sequence_save($id, $type, (string)($_POST['prefix'] ?? ''), (int)($_POST['next_no'] ?? 0));
@@ -144,7 +159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     } catch (CompanyRefusal $e) {
         coe_flash('error', $e->getMessage());
-        coe_back(match ($act) { 'account_save', 'account_delete' => 'accounts', 'sequence_save' => 'numbering', 'save_ownership' => 'owns', default => 'details' });
+        coe_back(match ($act) { 'account_save', 'account_delete' => 'accounts', 'paystack_save', 'paystack_test' => 'paystack', 'sequence_save' => 'numbering', 'save_ownership' => 'owns', default => 'details' });
     }
     coe_back('details');
 }
@@ -359,6 +374,77 @@ include __DIR__ . '/_layout.php';
   </div>
 </div>
 
+<!-- ── Paystack ── -->
+<?php if (paystack_supported()):
+  $psCfg  = paystack_company_config($company);
+  $psMode = (string)($company['paystack_mode'] ?? 'off');
+  $psCh   = array_filter(explode(',', (string)($company['paystack_channels'] ?? '')));
+  $psTestSec = paystack_decrypt((string)$company['paystack_test_secret_enc']);
+  $psLiveSec = paystack_decrypt((string)$company['paystack_live_secret_enc']);
+  $psPractice = paystack_practice_allowed(); ?>
+<div class="tab-panel <?= $tab === 'paystack' ? 'is-active' : '' ?>" id="tab-paystack">
+  <p class="text-muted co-intro">Connect <?= e($company['name']) ?>'s own Paystack account. Payment links for this company's bookings, outlets and services are paid into it, and each paid link is recorded in the account you pick below.</p>
+  <form method="POST" action="<?= e($self) ?>" class="card co-card" autocomplete="off">
+    <?= csrf_field() ?><input type="hidden" name="action" value="paystack_save"><input type="hidden" name="company_id" value="<?= $id ?>">
+    <div class="card__head"><span class="card__title">Paystack</span>
+      <?php if ($psCfg['ready']): ?><span class="badge badge--green">Ready · <?= e(PAYSTACK_MODES[$psCfg['mode']]) ?></span>
+      <?php elseif ($psMode === 'off'): ?><span class="badge badge--grey">Not connected yet</span>
+      <?php else: ?><span class="badge badge--orange"><?= e(PAYSTACK_MODES[$psMode] ?? $psMode) ?> · not ready</span><?php endif; ?></div>
+    <div class="card__body co-body">
+      <?php if (!$psCfg['ready'] && $psMode !== 'off'): ?><div class="alert alert--error co-psalert"><?= e($psCfg['problem']) ?></div><?php endif; ?>
+      <?php if ($psMode === 'off'): ?><div class="alert alert--info co-psalert">No keys yet? Everything else is ready — payment links for this company say "Paystack not connected" until a mode is switched on.<?= $psPractice ? ' On this test server, <strong>Practice</strong> lets you try the whole flow with pretend payments.' : '' ?></div><?php endif; ?>
+
+      <div class="co-sub">Mode</div>
+      <div class="co-chips">
+        <?php foreach (PAYSTACK_MODES as $k => $lbl): if ($k === 'practice' && !$psPractice && $psMode !== 'practice') continue; ?>
+        <label class="optchip"><input type="radio" name="paystack_mode" value="<?= e($k) ?>" <?= $psMode === $k ? 'checked' : '' ?>><?= e($lbl) ?></label>
+        <?php endforeach; ?>
+      </div>
+      <p class="text-muted co-small">Practice = pretend payments (test servers only) · Test = Paystack test keys, no real money · Live = real payments.</p>
+
+      <div class="co-pskeys">
+        <?php foreach (['test' => 'Test keys', 'live' => 'Live keys'] as $m => $title): $sec = $m === 'test' ? $psTestSec : $psLiveSec; ?>
+        <div class="co-pskey">
+          <div class="co-sub"><?= e($title) ?></div>
+          <div class="field"><label>Public key</label><input name="paystack_<?= $m ?>_public" class="co-mono" maxlength="120" value="<?= e((string)$company['paystack_' . $m . '_public']) ?>" placeholder="pk_<?= $m ?>_…" spellcheck="false"></div>
+          <div class="field"><label>Secret key <?php if ($sec !== ''): ?><span class="text-muted">· saved <?= e(paystack_mask($sec)) ?></span><?php endif; ?></label>
+            <input type="password" name="paystack_<?= $m ?>_secret" class="co-mono" maxlength="120" value="" placeholder="<?= $sec !== '' ? 'Leave blank to keep the saved key' : 'sk_' . $m . '_…' ?>" autocomplete="new-password" data-pw-rules="off" spellcheck="false"></div>
+          <?php if ($sec !== ''): ?><label class="togglerow"><span class="toggle"><input type="checkbox" name="forget_<?= $m ?>" value="1"><span class="toggle-slider"></span></span><span>Remove the saved <?= e($m) ?> secret key</span></label><?php endif; ?>
+        </div>
+        <?php endforeach; ?>
+      </div>
+      <p class="text-muted co-small">Find them in Paystack → Settings → API Keys &amp; Webhooks. Secret keys are stored encrypted and never shown again. <strong>No webhook is needed</strong> — your other system keeps Paystack's webhook; we check each payment with Paystack ourselves (when the guest finishes, then every few minutes).</p>
+
+      <div class="co-sub">Paid money is recorded into</div>
+      <div class="co-accgrid">
+        <?php foreach (PAYSTACK_CURRENCIES as $c): $sel = (int)($company['paystack_account_' . strtolower($c)] ?? 0); ?>
+        <div class="field"><label><?= e($c) ?> payments</label>
+          <select name="paystack_account_<?= strtolower($c) ?>"><option value="">Don't take <?= e($c) ?></option>
+            <?php foreach ($accounts as $a): if (!$a['is_active'] || strtoupper((string)$a['currency']) !== $c) continue; ?>
+            <option value="<?= (int)$a['id'] ?>" <?= $sel === (int)$a['id'] ? 'selected' : '' ?>><?= e($a['label']) ?></option>
+            <?php endforeach; ?></select></div>
+        <?php endforeach; ?>
+      </div>
+      <p class="text-muted co-small">Usually the bank account Paystack settles into. Add one on the <a href="<?= e($self . '&tab=accounts') ?>">Money accounts</a> tab if it's missing. USD needs USD switched on in your Paystack account.</p>
+
+      <div class="co-sub">Guests can pay with</div>
+      <div class="co-chips">
+        <?php foreach (PAYSTACK_CHANNELS as $k => $lbl): ?>
+        <label class="optchip"><input type="checkbox" name="paystack_channels[]" value="<?= e($k) ?>" <?= in_array($k, $psCh, true) ? 'checked' : '' ?>><?= e($lbl) ?></label>
+        <?php endforeach; ?>
+      </div>
+
+      <div class="co-psfoot">
+        <button type="submit" class="btn-primary btn-sm"><?= admin_icon('check', 15) ?> Save</button>
+        <?php if (in_array($psMode, ['test', 'live'], true) && $psCfg['secret'] !== ''): ?>
+        <button type="submit" class="btn-outline btn-sm" name="action" value="paystack_test">Test connection</button>
+        <?php endif; ?>
+      </div>
+    </div>
+  </form>
+</div>
+<?php endif; ?>
+
 <!-- ── Numbering ── -->
 <div class="tab-panel <?= $tab === 'numbering' ? 'is-active' : '' ?>" id="tab-numbering">
   <p class="text-muted co-intro">Every document this company issues gets the next number in its series — no gaps, no repeats, as KRA requires. You can change a series' prefix and starting number (e.g. to carry on from your spreadsheet) <strong>until its first number is used</strong>; after that it is locked.</p>
@@ -491,6 +577,10 @@ include __DIR__ . '/_layout.php';
 .co-chipnote{opacity:.7;font-size:11.5px}
 .co-chips + .co-small{margin:8px 0 0}
 .co-actions{margin-top:20px}
+.co-psalert{margin:0 0 14px}
+.co-pskeys{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,280px),1fr));gap:0 24px;margin-top:6px}
+.co-pskey .field{margin-bottom:10px}
+.co-psfoot{display:flex;flex-wrap:wrap;gap:8px;margin-top:20px}
 @media (max-width:640px){
   .co-body{padding:14px}
   .co-body .form-row{grid-template-columns:minmax(0,1fr)}

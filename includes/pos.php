@@ -30,7 +30,7 @@ require_once __DIR__ . '/acct.php';        // Accounting: the sale's tax documen
 
 const POS_KINDS            = ['experiences' => 'Experiences', 'shop' => 'Shop', 'salon_spa' => 'Salon & Spa', 'kite' => 'Kite school', 'other' => 'Other'];
 const POS_ITEM_KINDS       = ['product' => 'Product', 'service' => 'Service'];
-const POS_PAYMENT_METHODS  = ['card' => 'Card', 'cash' => 'Cash', 'room_charge' => 'Room charge', 'mobile_money' => 'M-Pesa', 'other' => 'Other'];
+const POS_PAYMENT_METHODS  = ['card' => 'Card', 'cash' => 'Cash', 'room_charge' => 'Room charge', 'mobile_money' => 'M-Pesa', 'other' => 'Other', 'paystack' => 'Paystack'];
 const POS_MAX_LINES        = 100;
 const POS_MAX_QTY          = 999;
 const POS_MAX_OPEN_PRICE   = 1000000.0;
@@ -906,14 +906,14 @@ function pos_next_reference(int $outletId): string {
  *   'outlet_id'   => int,
  *   'client_uuid' => string,                         // idempotency key from the till
  *   'lines'       => [['item_id'=>int, 'qty'=>int, 'open_price'=>?float], …],
- *   'payment_method' => card|cash|room_charge|mobile_money|other,
+ *   'payment_method' => card|cash|room_charge|mobile_money|other|paystack (paystack only from a paid link: $paystackPaid),
  *   'payment_ref'    => ?string, 'cash_tendered' => ?float,
  *   'customer'    => ['type'=>'inhouse','hold_id'=>int,'guest_id'=>?int]
  *                  | ['type'=>'walkin','name'=>?string,'phone'=>?string,'email'=>?string,'pos_customer_id'=>?int],
  * ]
  * Returns ['ok'=>true,'sale'=>array,'duplicate'=>bool] or ['ok'=>false,'error'=>string].
  */
-function pos_complete_sale(array $req, int $userId, ?int $terminalId = null): array {
+function pos_complete_sale(array $req, int $userId, ?int $terminalId = null, bool $paystackPaid = false): array {
     if (!pos_supported()) return ['ok' => false, 'error' => 'The POS is not enabled yet.'];
     $uuid = trim((string)($req['client_uuid'] ?? ''));
     if (!pos_valid_uuid($uuid)) return ['ok' => false, 'error' => 'Missing sale key — reload the till and try again.'];
@@ -923,7 +923,7 @@ function pos_complete_sale(array $req, int $userId, ?int $terminalId = null): ar
     if ($existing) return pos_duplicate_result($existing, (int)($req['outlet_id'] ?? 0));
 
     try {
-        $saleId = pos_tx(fn(): int => pos_complete_sale_tx($req, $uuid, $userId, $terminalId));
+        $saleId = pos_tx(fn(): int => pos_complete_sale_tx($req, $uuid, $userId, $terminalId, $paystackPaid));
     } catch (PosRefusal $e) {
         return ['ok' => false, 'error' => $e->getMessage()];
     } catch (PDOException $e) {
@@ -948,7 +948,7 @@ function pos_duplicate_result(array $sale, int $outletId): array {
 }
 
 /** Body of pos_complete_sale(), inside the transaction. Throws PosRefusal to refuse. */
-function pos_complete_sale_tx(array $req, string $uuid, int $userId, ?int $terminalId): int {
+function pos_complete_sale_tx(array $req, string $uuid, int $userId, ?int $terminalId, bool $paystackPaid = false): int {
     // 1. Who, and where.
     $user = pos_user($userId);
     if (!$user) throw new PosRefusal('Your account is not active.');
@@ -1010,6 +1010,8 @@ function pos_complete_sale_tx(array $req, string $uuid, int $userId, ?int $termi
     // 6. Payment.
     $method = (string)($req['payment_method'] ?? '');
     if (!isset(POS_PAYMENT_METHODS[$method])) throw new PosRefusal('Choose how the customer is paying.');
+    // A Paystack sale is completed only by its paid link (includes/pay-links.php), never by the till.
+    if ($method === 'paystack' && !$paystackPaid) throw new PosRefusal('A Paystack sale completes by itself once the guest has paid the link.');
     $payRef = trim((string)($req['payment_ref'] ?? ''));
     $tender = (isset($req['cash_tendered']) && $req['cash_tendered'] !== '' && $req['cash_tendered'] !== null) ? (float)$req['cash_tendered'] : null;
     if ($method === 'cash' && $tender !== null && pos_cents($tender) < pos_cents($tot['total'])) throw new PosRefusal('Cash tendered is less than the total.');
@@ -1420,6 +1422,10 @@ function pos_catalog_payload(array $outlet): array {
     $rcNote  = !pos_bool($outlet['allow_room_charge']) ? 'Room charge is turned off for this outlet.'
              : ($fx === null ? "No {$cur}→{$billCur} exchange rate — room charge is unavailable." : null);
     $charge  = pos_outlet_charge_venue_ids($oid);
+    // Paystack: offered when the outlet's company is connected and takes this currency.
+    require_once __DIR__ . '/paystack.php';
+    $psCfg = paystack_supported() && ($psCo = company_for_outlet($oid)) ? paystack_company_config(company_fetch($psCo)) : null;
+    $psOk  = $psCfg && $psCfg['ready'] && isset($psCfg['accounts'][$cur]);
     return [
         'outlet' => [
             'id' => $oid, 'name' => (string)$outlet['name'], 'kind' => (string)$outlet['kind'], 'currency' => $cur,
@@ -1433,6 +1439,8 @@ function pos_catalog_payload(array $outlet): array {
             'fx_rate'       => $fx,                       // units of the outlet currency per 1 unit of the bill currency
             'charge_from'   => pos_charge_venue_label($charge),
             'venue_name'    => $outlet['venue_name'] ?? null,
+            'paystack'      => $psOk,                     // offer "Paystack" (a payment link / QR) at this till
+            'paystack_mode' => $psOk ? $psCfg['mode'] : null,
         ],
         'categories' => $cats,
         'sources'    => $sources,

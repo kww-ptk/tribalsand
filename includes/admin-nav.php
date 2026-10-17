@@ -33,7 +33,7 @@ declare(strict_types=1);
  * @param string  $role owner | manager | reception | hr | staff
  * @param ?string $job  the staff job (NULL for a staff account = front desk)
  * @param array   $env  what is installed / per-account: ai, pos, inv, invOrders, companies,
- *                      acctDocs, acctIc, clockOn (bool) + seller (can sell at a till),
+ *                      acctDocs, acctIc, payLinks, clockOn (bool) + seller (can sell at a till),
  *                      mayaIlai (a manager or reception scoped to Maya Ilai), visitorReg (visitor tables installed)
  */
 function admin_nav_flags(string $role, ?string $job, array $env): array {
@@ -61,6 +61,7 @@ function admin_nav_flags(string $role, ?string $job, array $env): array {
         'count' => !$inventory && $e('inv') && $countable,
         'accounting' => $owner && $e('companies'),
         'acctDocs' => ($owner || $manager) && $e('acctDocs'), 'acctIc' => ($owner || $manager) && $e('acctDocs') && $e('acctIc'),
+        'payLinks' => ($owner || $manager || $reception || $deskStaff) && $e('payLinks'),   // Payments: who takes payments
         'restaurant' => $owner || $manager || $reception,
         'clockOn' => $e('clockOn'), 'clockNav' => $e('clockOn') || $owner,
         'mayaIlai' => $owner || (($manager || $reception) && $e('mayaIlai')),   // reception: view only
@@ -198,6 +199,7 @@ function admin_nav_definition(array $f, array $badge = []): array {
             $item('Reports', 'reports', [$tab('Reports', 'reports.php', $on('reports'))]),
             $item('Accounting', 'acct-documents', [
                 $tab('Invoices & payments', 'acct-documents.php', $on('acctDocs')),
+                $tab('Payments', 'payments.php', $on('payLinks')),
                 $tab('Between companies', 'acct-intercompany.php', $on('acctIc')),
                 $tab('Companies', ['companies.php', 'company-edit.php'], $on('accounting')),
             ]),
@@ -399,6 +401,7 @@ const ADMIN_NAV_SEARCH_WORDS = [
     'rates.php'            => 'prices pricing rate card season',
     'quote-builder.php'    => 'quote quotation price offer',
     'acct-documents.php'   => 'invoices payments receipts credit notes',
+    'payments.php'         => 'payment link paystack pay mpesa card qr send link deposit',
     'staff.php'            => 'team users accounts roles access permissions payroll company',
     'staff-rooms.php'      => 'staff housing accommodation beds quarters room allocation',
     'waivers.php'          => 'waiver consent signed records passport scan id accounting archive download zip legal',

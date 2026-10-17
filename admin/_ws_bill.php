@@ -8,6 +8,7 @@ $__adults = array_values(array_filter(fetch_checkin_guests($holdId), fn($g) => e
 /** number for a value input: 500.00 → "500", 12.50 → "12.5", null → "" */
 $__numval = fn($v) => ($v === null || $v === '') ? '' : rtrim(rtrim(number_format((float)$v, 2, '.', ''), '0'), '.');
 include __DIR__ . '/_ws_folio.php';   // Accounting: balance due, payments, invoices (renders nothing until live)
+include __DIR__ . '/_ws_paylinks.php';   // Paystack payment links for this booking (renders nothing until add_paystack.sql)
 ?>
 <div class="card" style="margin-bottom:16px">
   <div class="card__head">

@@ -16,11 +16,11 @@ function check(string $label, bool $cond): void {
 $guides = help_guides();
 $none = array_fill_keys(['owner','manager','reception','frontdesk','concierge','messages','internal','tasks','timetable',
     'gate','mywork','assistant','aiSettings','aiGaps','bookings','reports','pos','posTill','inventory','invOrders','count',
-    'accounting','acctDocs','acctIc','restaurant','clockOn','clockNav','mayaIlai','visitorReg'], false);
+    'accounting','acctDocs','acctIc','payLinks','restaurant','clockOn','clockNav','mayaIlai','visitorReg'], false);
 $nav = fn(array $flags) => admin_nav_resolve(admin_nav_definition(array_fill_keys($flags, true) + $none), '');
 $navOwner = $nav(['owner','frontdesk','concierge','messages','internal','tasks','timetable','gate','assistant','aiSettings','aiGaps',
-                  'bookings','reports','pos','posTill','inventory','invOrders','accounting','acctDocs','acctIc','restaurant','clockOn','clockNav','mayaIlai','visitorReg']);
-$navReception = $nav(['reception','frontdesk','concierge','messages','internal','tasks','timetable','gate','mywork','assistant','bookings','restaurant','count']);
+                  'bookings','reports','pos','posTill','inventory','invOrders','accounting','acctDocs','acctIc','payLinks','restaurant','clockOn','clockNav','mayaIlai','visitorReg']);
+$navReception = $nav(['reception','frontdesk','concierge','messages','internal','tasks','timetable','gate','mywork','assistant','bookings','restaurant','count','payLinks']);
 $navHk = $nav(['internal','timetable','mywork','count']);
 
 // ── Registry shape ──

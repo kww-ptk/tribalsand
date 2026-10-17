@@ -132,6 +132,7 @@
 
     function openMenu() {
       if (open) return; open = true;
+      build();   // a page may have switched options on/off (disabled) since the last open
       wrap.classList.add('is-open');
       btn.setAttribute('aria-expanded', 'true');
       positionMenu();

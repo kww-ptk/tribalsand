@@ -206,7 +206,7 @@ function acct_ic_settle(int $payer, int $payee, string $amountRaw, int $accountI
 
 /** POS payment method → accounting method (null = no automatic payment). */
 function acct_pos_method(string $posMethod): ?string {
-    return ['cash' => 'cash', 'card' => 'card', 'mobile_money' => 'mpesa'][$posMethod] ?? null;
+    return ['cash' => 'cash', 'card' => 'card', 'mobile_money' => 'mpesa', 'paystack' => 'paystack'][$posMethod] ?? null;
 }
 
 /**
@@ -351,7 +351,11 @@ function acct_pos_sale_issue_direct(array $s, array $sellerCo, array $saleLines,
         $first ??= $docId;
         if ($method === null) continue;   // "other": left for staff to reconcile
         $acc = null;
+        // Paystack money lands in the SELLING company's Paystack account (it was paid to
+        // that company); a cross-sold company's invoice stays due, to settle between companies.
+        $psAcc = $method !== 'paystack' ? 0 : ((int)$cid === (int)$sellerCo['id'] ? ((int)($co['paystack_account_' . strtolower($cur)] ?? 0) ?: -1) : -1);
         foreach (company_accounts((int)$cid, true) as $a) {
+            if ($psAcc) { if ((int)$a['id'] === $psAcc) $acc = $a; continue; }
             if ($a['currency'] === $cur && in_array($a['kind'], ACCT_METHOD_ACCOUNTS[$method], true) && ($acc === null || companies_bool($a['is_default']))) $acc = $a;
         }
         if (!$acc) continue;   // no matching account: the invoice stays due and shows on the list

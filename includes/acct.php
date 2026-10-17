@@ -27,7 +27,7 @@ require_once __DIR__ . '/companies.php';
 
 const ACCT_VAT_STANDARD = 16.0;   // KRA band B
 const ACCT_MAX_AMOUNT   = 99999999.99;
-const ACCT_PAY_METHODS  = ['cash' => 'Cash', 'card' => 'Card', 'mpesa' => 'M-Pesa', 'bank' => 'Bank transfer', 'ota_payout' => 'OTA payout'];
+const ACCT_PAY_METHODS  = ['cash' => 'Cash', 'card' => 'Card', 'mpesa' => 'M-Pesa', 'bank' => 'Bank transfer', 'ota_payout' => 'OTA payout', 'paystack' => 'Paystack'];
 const ACCT_CATEGORY_LABELS = [
     'room' => 'Accommodation', 'fnb' => 'Food & drink', 'retail' => 'Shop', 'activity' => 'Activities', 'spa' => 'Spa',
     'transfer' => 'Transfers', 'service' => 'Services', 'other' => 'Other', 'tip' => 'Tips (for staff)',
@@ -197,6 +197,7 @@ const ACCT_METHOD_ACCOUNTS = [
     'mpesa'      => ['mpesa_till', 'mpesa_paybill'],
     'bank'       => ['bank'],
     'ota_payout' => ['bank'],
+    'paystack'   => ['bank', 'card_merchant', 'mpesa_till', 'mpesa_paybill'],   // the company's Paystack account per currency wins
 ];
 
 /** Can money paid this way land in this kind of account? Pure. */
@@ -559,6 +560,7 @@ function acct_auto_allocate(int $holdId): int {
 function acct_record_payment(int $holdId, array $in, ?int $userId): int {
     $method = (string)($in['method'] ?? '');
     if (!isset(ACCT_PAY_METHODS[$method])) throw new AcctRefusal('Pick how it was paid.');
+    if ($method === 'paystack') throw new AcctRefusal('Paystack payments are recorded by their payment link — send one from the Bill tab.');
     $raw = trim((string)($in['amount'] ?? ''));
     if (!is_numeric($raw) || (float)$raw <= 0 || (float)$raw > ACCT_MAX_AMOUNT) throw new AcctRefusal('Enter the amount received.');
     $amount = acct_from_cents(acct_cents($raw));

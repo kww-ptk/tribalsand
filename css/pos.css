@@ -170,6 +170,9 @@ a{color:inherit}
 .ok{width:56px;height:56px;border-radius:50%;background:#e6f2e7;color:var(--green);display:grid;place-items:center;margin:0 auto 10px}
 .ok svg{width:28px;height:28px}
 .center{text-align:center}
+.plqr{width:220px;height:220px;max-width:70vw;max-height:70vw;margin:14px auto;background:#fff;border:1px solid var(--border);border-radius:12px;padding:8px}
+.plqr svg{width:100%;height:100%;display:block}
+.plbtns{flex-wrap:wrap}
 .cash{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:10px}
 .cash button{height:42px;border-radius:8px;border:1px solid var(--border);font-variant-numeric:tabular-nums}
 .cash button.is-on{background:var(--brand);border-color:var(--brand);color:#fff}

@@ -180,7 +180,7 @@ function fetch_person_activity(int $hrStaffId, int $acctId, int $limit = 100): a
         foreach ($q("SELECT s.reference, s.total, s.currency, s.payment_method, s.status, s.created_at, o.name AS outlet FROM pos_sales s
                       JOIN pos_outlets o ON o.id = s.outlet_id WHERE s.admin_user_id = :u ORDER BY s.created_at DESC LIMIT {$lim}", [':u' => $acctId]) as $r) {
             $method = defined('POS_PAYMENT_METHODS') ? (POS_PAYMENT_METHODS[$r['payment_method']] ?? $r['payment_method'])
-                    : (['cash' => 'Cash', 'card' => 'Card', 'room_charge' => 'Room charge', 'mobile_money' => 'M-Pesa', 'other' => 'Other'][$r['payment_method']] ?? ucfirst((string)$r['payment_method']));
+                    : (['cash' => 'Cash', 'card' => 'Card', 'room_charge' => 'Room charge', 'mobile_money' => 'M-Pesa', 'other' => 'Other', 'paystack' => 'Paystack'][$r['payment_method']] ?? ucfirst((string)$r['payment_method']));
             $rows[] = ['at' => $r['created_at'], 'kind' => 'sale', 'title' => 'Sale ' . $r['reference'] . ($r['status'] === 'voided' ? ' (later voided)' : ''),
                        'note' => $r['outlet'] . ' · ' . $r['currency'] . ' ' . number_format((float)$r['total'], 2) . ' · ' . $method, 'who' => ''];
         }
